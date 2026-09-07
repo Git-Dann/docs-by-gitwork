@@ -84,6 +84,10 @@ import {
   useClientHealth,
 } from "@/hooks/use-support";
 import { getTicketStats } from "@/lib/api";
+// Reply-state presentation is shared with the Care cockpit rather than re-declared, so the two
+// UIs cannot drift into disagreeing about what "replied" looks like. care-constants imports
+// nothing from here, so this is not a cycle.
+import { REPLY_STATE_DOT, REPLY_STATE_LABEL } from "@/components/care/care-constants";
 import type { AnalyticsReportMetric, SupportReport, SupportReportPayload } from "@/types/support";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -761,6 +765,9 @@ function AddConnectorModal({
         password: imapPassword,
         fromAddress: imapEmail.trim(),
         fromName: imapFromName.trim() || undefined,
+        // ...f was missing here too, so the shared filter fields (lookback, keywords, max items)
+        // rendered for an Email connector and were silently dropped on create.
+        ...f,
       } as Connection["scraperConfig"];
     }
     return undefined;
@@ -2156,12 +2163,19 @@ function ConversationCard({
               {convo.unread && (
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-700)]" title="Unread" />
               )}
+              {/* Reply state, shown here too so the legacy dashboard and the Care cockpit can
+                  never tell an operator two different stories about whether a customer has been
+                  answered. Both read the same server-derived field. */}
+              <span
+                className={cn("h-1.5 w-1.5 shrink-0 rounded-full", REPLY_STATE_DOT[convo.replyState])}
+                title={REPLY_STATE_LABEL[convo.replyState]}
+              />
               {convo.sentiment === "negative" && (
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" title="Negative sentiment" />
               )}
               <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-1)]">{subjectMain}</h3>
               <span className="shrink-0 whitespace-nowrap text-[11px] text-[var(--text-4)]">
-                {formatShort(convo.receivedAt)}
+                {formatShort(convo.lastMessageAt ?? convo.receivedAt)}
               </span>
             </div>
             {/* Row 2: email detail or preview */}
@@ -3712,6 +3726,33 @@ function EditConnectorModal({
   // Reddit
   const [redditSubreddit, setRedditSubreddit] = useState(conn.scraperConfig?.subreddit ?? "");
 
+  // IMAP/SMTP mailbox. This block was missing entirely, so an Email connector could not be edited
+  // at all: the shared filter fields rendered but were dropped on save (buildScraperConfig had no
+  // imap branch and fell through to `return conn.scraperConfig`), and an app password could only be
+  // changed by deleting and re-adding the connector.
+  const editImapCustomHosts =
+    !!conn.scraperConfig?.imapHost &&
+    !Object.values(IMAP_PRESETS).some((p) => p.imapHost === conn.scraperConfig?.imapHost);
+  const [editImapProvider, setEditImapProvider] = useState<"gmail" | "outlook" | "custom">(
+    editImapCustomHosts
+      ? "custom"
+      : conn.scraperConfig?.imapHost === IMAP_PRESETS.outlook.imapHost
+        ? "outlook"
+        : "gmail",
+  );
+  const [editImapEmail, setEditImapEmail] = useState(conn.scraperConfig?.username ?? "");
+  // Always starts blank — the stored secret is never sent to the browser. Blank means "unchanged".
+  const [editImapPassword, setEditImapPassword] = useState("");
+  const [editImapFromName, setEditImapFromName] = useState(conn.scraperConfig?.fromName ?? "");
+  const [editImapHost, setEditImapHost] = useState(conn.scraperConfig?.imapHost ?? "");
+  const [editImapPort, setEditImapPort] = useState(String(conn.scraperConfig?.imapPort ?? 993));
+  const [editSmtpHost, setEditSmtpHost] = useState(conn.scraperConfig?.smtpHost ?? "");
+  const [editSmtpPort, setEditSmtpPort] = useState(String(conn.scraperConfig?.smtpPort ?? 465));
+  const [editSentFolder, setEditSentFolder] = useState(conn.scraperConfig?.sentFolder ?? "");
+  const [editReadSent, setEditReadSent] = useState(conn.scraperConfig?.readSentFolder !== false);
+  const [editImapTest, setEditImapTest] = useState<{ imap?: { ok: boolean; error?: string }; smtp?: { ok: boolean; error?: string } } | null>(null);
+  const [editImapTesting, setEditImapTesting] = useState(false);
+
   // App Reviews
   const [editAppStore, setEditAppStore] = useState<"app_store" | "play_store">(
     (conn.scraperConfig?.store as "app_store" | "play_store") ?? "app_store",
@@ -3769,6 +3810,60 @@ function EditConnectorModal({
     });
   }
 
+  /**
+   * Test the mailbox before saving. The stored password is never sent to the browser, so when the
+   * field is left blank there is nothing to test with — say so rather than reporting a failure the
+   * operator can't act on.
+   */
+  async function handleEditTestImap() {
+    if (!editImapPassword.trim()) {
+      setEditImapTest({
+        imap: { ok: false, error: "Enter the app password to test. Leaving it blank keeps the saved one." },
+        smtp: { ok: false },
+      });
+      return;
+    }
+    setEditImapTesting(true);
+    setEditImapTest(null);
+    try {
+      const preset = IMAP_PRESETS[editImapProvider];
+      const custom = editImapProvider === "custom";
+      const res = await fetch(`/api/support/clients/${clientId}/connections/test-imap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: {
+            imapHost: custom ? editImapHost.trim() : preset.imapHost,
+            imapPort: custom ? Number(editImapPort) || 993 : preset.imapPort,
+            imapSecure: preset.imapSecure,
+            smtpHost: custom ? editSmtpHost.trim() : preset.smtpHost,
+            smtpPort: custom ? Number(editSmtpPort) || 465 : preset.smtpPort,
+            smtpSecure: custom ? (Number(editSmtpPort) || 465) === 465 : preset.smtpSecure,
+            username: editImapEmail.trim(),
+            password: editImapPassword,
+          },
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        imap?: { ok: boolean; error?: string };
+        smtp?: { ok: boolean; error?: string };
+        error?: string;
+      };
+      setEditImapTest(
+        json.imap || json.smtp
+          ? { imap: json.imap ?? { ok: false }, smtp: json.smtp ?? { ok: false } }
+          : { imap: { ok: false, error: json.error ?? "No response" }, smtp: { ok: false } },
+      );
+    } catch (err) {
+      setEditImapTest({
+        imap: { ok: false, error: err instanceof Error ? err.message : String(err) },
+        smtp: { ok: false },
+      });
+    } finally {
+      setEditImapTesting(false);
+    }
+  }
+
   function buildScraperConfig(): Connection["scraperConfig"] {
     const f = buildFilterConfig(conn.source, filters);
     if (conn.source === "gmail") {
@@ -3802,6 +3897,30 @@ function EditConnectorModal({
       return {
         ...conn.scraperConfig,
         subreddit: redditSubreddit.trim(),
+        ...f,
+      };
+    }
+    if (conn.source === "imap") {
+      const preset = IMAP_PRESETS[editImapProvider];
+      const custom = editImapProvider === "custom";
+      const email = editImapEmail.trim();
+      return {
+        ...conn.scraperConfig,
+        imapHost: custom ? editImapHost.trim() : preset.imapHost,
+        imapPort: custom ? Number(editImapPort) || 993 : preset.imapPort,
+        imapSecure: preset.imapSecure,
+        smtpHost: custom ? editSmtpHost.trim() : preset.smtpHost,
+        smtpPort: custom ? Number(editSmtpPort) || 465 : preset.smtpPort,
+        smtpSecure: custom ? (Number(editSmtpPort) || 465) === 465 : preset.smtpSecure,
+        username: email,
+        fromAddress: email,
+        fromName: editImapFromName.trim() || undefined,
+        // Blank means "leave the stored secret alone". The password is never sent to the browser,
+        // so writing the empty field through would wipe it and break the connector on next sync —
+        // the same reason the Play service-account field below is conditional.
+        ...(editImapPassword.trim() ? { password: editImapPassword } : {}),
+        ...(editSentFolder.trim() ? { sentFolder: editSentFolder.trim() } : { sentFolder: undefined }),
+        readSentFolder: editReadSent,
         ...f,
       };
     }
@@ -4035,6 +4154,136 @@ function EditConnectorModal({
               <span className="app-field-label">Subreddit (without r/)</span>
               <input value={redditSubreddit} onChange={(e) => setRedditSubreddit(e.target.value)} className="app-input w-full" placeholder="e.g. acmeapp" />
             </label>
+          </div>
+        )}
+
+        {/* IMAP/SMTP mailbox config */}
+        {conn.source === "imap" && (
+          <div className="space-y-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
+            <label className="block space-y-1">
+              <span className="app-field-label">Provider</span>
+              <select
+                value={editImapProvider}
+                onChange={(e) => setEditImapProvider(e.target.value as "gmail" | "outlook" | "custom")}
+                className="app-select w-full"
+              >
+                <option value="gmail">Gmail / Google Workspace</option>
+                <option value="outlook">Outlook / Microsoft 365</option>
+                <option value="custom">Custom (enter hosts)</option>
+              </select>
+            </label>
+            {IMAP_PRESETS[editImapProvider].hint && (
+              <p className="text-[11px] text-amber-600">{IMAP_PRESETS[editImapProvider].hint}</p>
+            )}
+            <label className="block space-y-1">
+              <span className="app-field-label">Email address</span>
+              <input
+                value={editImapEmail}
+                onChange={(e) => setEditImapEmail(e.target.value)}
+                className="app-input w-full"
+                placeholder="support@client.com"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">App password</span>
+              <input
+                type="password"
+                value={editImapPassword}
+                onChange={(e) => setEditImapPassword(e.target.value)}
+                className="app-input w-full"
+                placeholder="Leave blank to keep the current password"
+              />
+              <span className="app-field-hint">
+                Stored encrypted and never shown. Paste a new one only to rotate it.
+              </span>
+            </label>
+            <label className="block space-y-1">
+              <span className="app-field-label">From name (optional)</span>
+              <input
+                value={editImapFromName}
+                onChange={(e) => setEditImapFromName(e.target.value)}
+                className="app-input w-full"
+                placeholder="e.g. Acme Support"
+              />
+            </label>
+            {editImapProvider === "custom" && (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block space-y-1">
+                  <span className="app-field-label">IMAP host</span>
+                  <input value={editImapHost} onChange={(e) => setEditImapHost(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="imap.example.com" />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">IMAP port</span>
+                  <input value={editImapPort} onChange={(e) => setEditImapPort(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="993" />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">SMTP host</span>
+                  <input value={editSmtpHost} onChange={(e) => setEditSmtpHost(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="smtp.example.com" />
+                </label>
+                <label className="block space-y-1">
+                  <span className="app-field-label">SMTP port</span>
+                  <input value={editSmtpPort} onChange={(e) => setEditSmtpPort(e.target.value)} className="app-input w-full font-mono text-xs" placeholder="465" />
+                </label>
+              </div>
+            )}
+
+            {/* Sent folder — reading it is what lets Care see replies sent outside Care. */}
+            <div className="space-y-2 border-t border-[var(--border-2)] pt-3">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={editReadSent}
+                  onChange={(e) => setEditReadSent(e.target.checked)}
+                  className="app-checkbox mt-0.5"
+                />
+                <span className="text-[13px] text-[var(--text-2)]">
+                  Read the Sent folder
+                  <span className="block text-[11px] text-[var(--text-4)]">
+                    Detects replies sent from Gmail, Outlook or a phone, so those threads stop showing
+                    as awaiting a reply. Turn this off and they will look unanswered forever.
+                  </span>
+                </span>
+              </label>
+              <label className="block space-y-1">
+                <span className="app-field-label">Sent folder name (optional)</span>
+                <input
+                  value={editSentFolder}
+                  onChange={(e) => setEditSentFolder(e.target.value)}
+                  className="app-input w-full font-mono text-xs"
+                  placeholder="Auto-detected — e.g. [Gmail]/Sent Mail"
+                />
+                <span className="app-field-hint">
+                  Only needed if the connector reports it could not find a Sent mailbox.
+                </span>
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleEditTestImap()}
+                disabled={editImapTesting || !editImapEmail.trim()}
+                className="app-button app-button-secondary app-button-sm"
+              >
+                {editImapTesting ? "Testing…" : "Test connection"}
+              </button>
+              {editImapTest && (
+                <span className="font-mono text-xs">
+                  <span className={editImapTest.imap?.ok ? "text-emerald-600" : "text-red-500"}>
+                    IMAP {editImapTest.imap?.ok ? "✓" : "✕"}
+                  </span>
+                  {" · "}
+                  <span className={editImapTest.smtp?.ok ? "text-emerald-600" : "text-red-500"}>
+                    SMTP {editImapTest.smtp?.ok ? "✓" : "✕"}
+                  </span>
+                </span>
+              )}
+            </div>
+            {editImapTest && (!editImapTest.imap?.ok || !editImapTest.smtp?.ok) && (
+              <p className="text-[11px] text-red-600">
+                {editImapTest.imap?.error || editImapTest.smtp?.error}
+              </p>
+            )}
           </div>
         )}
 

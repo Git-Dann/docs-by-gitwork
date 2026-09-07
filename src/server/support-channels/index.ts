@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { recordMessageActivity } from "@/server/support";
+import { encryptScraperConfig } from "@/server/support-scraper-config";
 import type { SupportSource as PrismaSupportSource } from "@prisma/client";
 import type { ChannelAdapter, SyncContext, SyncResult, FilterReasons } from "./types";
 import { discordAdapter } from "./discord";
@@ -74,7 +76,10 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
           subject: item.subject,
           preview: (item.preview ?? "").slice(0, 150),
           receivedAt: item.receivedAt,
-          unread: true,
+          // Raised by recordMessageActivity below IFF an inbound message lands. A thread that
+          // is outbound-only (one we started, or one reconstructed from the Sent folder) has
+          // nothing for anyone to read, so it must not arrive pre-flagged.
+          unread: false,
           tags: item.tags,
           externalUrl: item.externalUrl ?? null,
           externalGuildId: item.externalGuildId ?? null,
@@ -96,7 +101,7 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
       });
     }
 
-    let createdHere = 0;
+    const createdMessages: Array<{ direction: string; createdAt: Date }> = [];
     for (const msg of item.messages) {
       const already = await prisma.supportMessage.findFirst({
         where: { conversationId: conv.id, externalId: msg.externalId },
@@ -115,13 +120,31 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
         },
       });
       ingested++;
-      createdHere++;
+      createdMessages.push({ direction: msg.direction, createdAt: msg.createdAt });
     }
 
-    if (createdHere > 0) {
+    // A conversation the connector created but for which it captured no message rows (empty
+    // body, a source that carries everything in the item itself) is still an INBOUND arrival —
+    // stamping it from the item's own timestamp keeps it in the awaiting queue instead of
+    // labelling a thread with visible preview text "no customer message". Same reasoning as the
+    // backfill; see backfillConversationActivity.
+    if (createdMessages.length === 0 && conv.lastMessageAt === null) {
       await prisma.supportConversation.update({
         where: { id: conv.id },
-        data: { unread: true, preview: (item.preview ?? "").slice(0, 150) },
+        data: { lastInboundAt: item.receivedAt, lastMessageAt: item.receivedAt },
+      });
+    }
+
+    if (createdMessages.length > 0) {
+      // Maintains lastInboundAt/lastOutboundAt/lastMessageAt and — crucially — sets `unread`
+      // ONLY for an inbound message. This used to set `unread: true` for ANY new message, so
+      // an outbound reply syncing back (the Gmail thread-walk returns the whole thread, and
+      // IMAP now reads the Sent folder) re-flagged the conversation as unread. The badge grew
+      // because of our OWN replies, which is a large part of why nobody trusted it.
+      await recordMessageActivity(conv.id, createdMessages);
+      await prisma.supportConversation.update({
+        where: { id: conv.id },
+        data: { preview: (item.preview ?? "").slice(0, 150) },
       });
     }
   }
@@ -135,8 +158,18 @@ export async function runChannelSync(ctx: SyncContext): Promise<SyncResult> {
       where: { id: ctx.connection.id },
       data: {
         lastSyncedAt: new Date(),
+        // RE-ENCRYPT on the way back. `ctx.connection.scraperConfig` is the DECRYPTED config (see
+        // toSyncContext), so spreading it into the row as-is persisted every secret in plaintext —
+        // silently undoing encryption at rest for any adapter that emits a configPatch. Discord
+        // does, on every single sync, so its botToken has been written in the clear each run.
+        // encryptScraperConfig is idempotent (it skips values already prefixed `enc:`).
         ...(configPatch
-          ? { scraperConfig: { ...((ctx.connection.scraperConfig as object) ?? {}), ...configPatch } as object }
+          ? {
+              scraperConfig: encryptScraperConfig({
+                ...((ctx.connection.scraperConfig as Record<string, unknown>) ?? {}),
+                ...configPatch,
+              }) as object,
+            }
           : {}),
       },
     });

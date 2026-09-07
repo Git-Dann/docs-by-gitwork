@@ -1,0 +1,306 @@
+[
+  {
+    "slug": "design-linkedin",
+    "name": "LinkedIn Design System",
+    "summary": "Recreate LinkedIn's cream-canvas professional feed with its restrained blue accent, connection-degree tags, and 6-reaction picker.",
+    "description": "A deep SwiftUI prompt distilling LinkedIn's cream-and-white feed, its single-accent blue discipline, avatar status rings, and its signature long-press reaction menu.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A complete SwiftUI color and type token set matching LinkedIn's cream-canvas, restrained-blue palette",
+        "Production-ready code for the feed post card, profile hero, and the 6-reaction long-press picker",
+        "A do/don't checklist plus responsive and dark-mode guidance so the system holds up across iPhone SE to iPad"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer and SwiftUI engineer who specializes in professional-network and enterprise social apps. You think in terms of information hierarchy and restraint: your job is to make dense, text-heavy content feel calm and authoritative rather than loud.\n</role>\n\n<reference_data>\nColor roles: Canvas Cream #F3F2EF (the desaturated off-white page background, never pure white), Card Surface #FFFFFF (feed post cards floating on the cream), Elevated Surface #F9F9F9, Divider #E0DFDC, Divider Subtle #EDEDED, Text Primary #000000E6 (90% black), Text Secondary #00000099 (60% black), Text Tertiary #00000066 (40% black), Brand Blue #0A66C2, Blue Pressed #004182, Blue Subtle #E7F3FF, Open-to-Work Green #057642, Premium Gold #915907 to #C37D16 gradient, Hiring Purple #6A3DAA. Reaction palette: Like #0A66C2, Celebrate #F5BB00, Support #B24020, Love #DF704D, Insightful #E7A33E, Funny #00A0DC. Dark mode: canvas #1B1F23, card #1D2226, divider #38434F, accent lightens to #70B5F9.\nType ladder: SF Pro Text/Display, sizes running 11-24pt, weights concentrated at 400 (body), 600 (names, buttons), and 700 (headers) only - no light or ultra-bold weights anywhere. Profile hero name sits at 24pt/700; feed post author at 14pt/600; post body at 14pt/400 with 1.5 line height; tab labels and badges at 11pt.\nSpacing/geometry: base unit 4pt, scale running 4-8-12-16-20-24-32-40-56-72. Corner radius is 0pt for full-bleed iPhone feed cards, 8pt for the same cards on iPad, and 500pt (true pill) for CTA buttons and the search bar; avatars and reaction glyphs are full circles.\nNamed distinctive patterns: (1) the full-bleed, zero-shadow feed card separated from its neighbor purely by an 8pt cream gutter, (2) the long-press 6-reaction picker that pops a floating pill of six colored icons above the Like button, (3) avatar status rings - a 4pt green stroke for \"Open to Work\", a 4pt gold gradient frame for Premium, layerable together, (4) the inline connection-degree tag (\"1st\", \"2nd\", \"3rd+\") appended after every name, (5) underlined hyperlinks on mentions and hashtags as a deliberate old-web signal of professionalism.\n</reference_data>\n\n<house_rules>\n1. Blue is a verb, not a decoration - it appears only on links, CTAs, and active states, and it never colors plain body text, borders, or backgrounds.\n2. The canvas must read as cream, not gray or white - if a mockup looks like a word processor, the desaturation was lost.\n3. Feed cards never carry a drop shadow; separation comes entirely from the cream gutter, so don't invent elevation that isn't in the reference data.\n4. Every name in a feed or list context carries its connection-degree tag - omitting the 1st/2nd/3rd+ marker breaks the professional-context convention.\n5. Reactions are always a set of six distinctly colored custom icons on long-press, never a single collapsed like/heart toggle.\n6. Status rings layer, they don't replace each other - a Premium user who is also Open to Work shows both rings at once.\n7. Typography weight is disciplined to exactly 400/600/700 - resist the temptation to add a light or extra-bold weight for polish.\n8. iPhone and iPad diverge structurally: cards are edge-to-edge with 0pt radius on iPhone, and gain both an 8pt radius and a 16pt margin on iPad - treat this as a real breakpoint, not a rounding error.\n9. Motion stays minimal and functional - a button press is a 0.98 scale over roughly 120ms, and only Connect/Apply/Send actions get a paired haptic.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (feed card / profile page / messaging list / job card / notifications):\n- Which avatar states are needed (plain / Open-to-Work / Premium / both):\n- Target devices (iPhone only, or iPhone + iPad):\n- Dark mode required (yes/no):\n- Any brand deviations from the reference palette (e.g. a different accent hue):\n- Content to populate the mock with (sample names, headlines, post copy):\n- Priority feature for this pass (e.g. just the reaction picker, or a full profile screen):\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the reference palette and type ladder exactly, with named semantic tokens (not raw hex in view code).\n2. Full SwiftUI view code for the requested primary surface, structured exactly as specified (author row, body, media, footer, action bar where relevant).\n3. Working code for the 6-reaction long-press picker as a standalone, reusable component, including the entrance stagger and hover-scale behavior.\n4. Avatar component code supporting layered Open-to-Work and Premium rings.\n5. A short motion and haptic specification table (what animates, duration, easing, which haptic fires).\n6. A responsive notes section covering iPhone SE through iPad, including which elements are fixed-size versus Dynamic-Type-scaled.\n7. A one-page do/don't checklist a reviewer could use to catch drift from this system.\n</what_to_give_me>",
+      "keywords": [
+        "linkedin",
+        "professional network",
+        "swiftui",
+        "ios design system",
+        "feed card",
+        "reaction picker",
+        "avatar ring",
+        "connection degree",
+        "sf pro",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:linkedin",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-locket",
+    "name": "Locket Design System",
+    "summary": "Recreate Locket's cream-and-gold widget-first camera app, its 40pt-round photo viewfinder, and its honey-shadow big capture button.",
+    "description": "A deep SwiftUI prompt distilling Locket's warm cream-gold world, its square 40pt-rounded friend photo, its 84pt gold-ringed capture button, and its friends photo-history grid.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A cream-and-gold SwiftUI token set including the signature honey-tinted shadow recipe",
+        "Ready-to-use code for the capture button, square viewfinder with frosted chips, and the friends photo-history grid",
+        "Motion and haptic notes for the capture-to-send flow so the warmth of the interaction survives translation to code"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in warm, intimate consumer photo apps built around a Home Screen widget as the primary surface, not the app itself. Your job is to make every choice feel cozy and analog rather than corporate or techy.\n</role>\n\n<reference_data>\nColor roles: Cream Canvas #FFF7EC, App Gradient #FFE9CC to #FFD9A8 (top to bottom), Card White #FFFFFF, Surface Warm #FFF1DD, Divider #F2E2C9, brand accent Locket Gold #FFB02E, Locket Amber #FF9E2C, on-cream accent Locket Deep #F08A1D, Gold Pressed #DC7A12, On-Gold Ink #3A2400 (a warm dark brown used for text on gold, never pure black), secondary accent Warm Coral #FF7A59 (used sparingly), Text Primary #2C2014 (warm near-black brown, never pure black), Text Secondary #8A7A63, Text Tertiary #B8A88E. There is deliberately no dark theme - the product is light-and-warm by design.\nType ladder: Poppins, a geometric rounded sans, running from a 32pt/800 display size down to a 10pt/700 tab label, with weights concentrated at 600 (SemiBold) through 800 (ExtraBold) plus 500 for body - light weights are avoided entirely to keep the warmth.\nSpacing/geometry: base unit 4pt, scale 4-8-12-16-18-20-24-28-40-48. Corner radius scale is distinctive: 14pt for history-grid cells, a very generous 40pt for the square friend photo/viewfinder (the signature locket roundness), and a full 500pt pill for CTAs, the friends pill, and search fields.\nNamed distinctive patterns: (1) the square, always-1:1, 40pt-corner friend photo as the in-app hero, overlaid with a frosted sender chip (\"from\" plus a name) and an optional caption pill, both rendered on warm dark-brown frosted glass rather than gray glass, (2) the 84pt white capture button with a 4pt gold inner ring and a 5pt translucent white outer border, (3) the 4-column square friends photo-history grid with an avatar dot per thumbnail, (4) honey/amber-tinted shadows everywhere (never neutral gray) such as rgba(180,120,30,0.30), (5) a Home Screen widget mock used prominently in onboarding because the widget, not the app, is the real product surface.\n</reference_data>\n\n<house_rules>\n1. Treat the Home Screen widget as the actual product and the app as merely the camera and history behind it - any onboarding flow should foreground adding it to the Home Screen.\n2. The friend photo is always a square with a 40pt corner radius - never let it become rectangular or sharp-cornered, since the roundness is what makes it read as a locket rather than a snapshot.\n3. Every shadow in the system must carry a honey/amber tint drawn from rgba(180,120,30,...) or rgba(160,100,20,...) - a neutral gray shadow breaks the cozy mood immediately.\n4. Body and label text is warm brown #2C2014, never pure black - this single substitution is most of what keeps the palette feeling analog.\n5. Keep the accent count to exactly two: Locket Gold as the sole brand color, with warm coral used only sparingly for reactions and avatar gradients - resist adding a third hue.\n6. Frosted glass overlays (sender chip, caption pill) tint warm dark brown, not gray - a gray blur reads as generic iOS chrome rather than the product's own material.\n7. There is no dark mode to design for - if asked for one, degrade gracefully to a deep warm espresso canvas rather than true black, but default every mock to the light cream-gold world.\n8. The circle of friends is meant to feel small and intimate - copy and UI should reference friend counts directly rather than follower-style scale language.\n9. Motion stays soft and physical: capture-button presses spring back rather than snapping, and incoming photos cross-dissolve rather than hard-cutting in.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (capture screen / friends photo-history grid / Home Screen widget mock / onboarding):\n- Number of friends supported in this build (affects the friends-pill copy):\n- Whether streak/moments tracking is included:\n- Target devices (iPhone SE through Pro Max, iPad):\n- Any brand deviations from the cream-gold palette:\n- Sample content to populate the mock with (a sender name, a caption):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the cream-gold palette and Poppins type ladder, including the honey-shadow recipe as a reusable modifier.\n2. Full SwiftUI code for the requested primary surface (capture button, square viewfinder with frosted chips, or the 4-up history grid).\n3. The Home Screen widget mock component used in onboarding, sized and radiused per the reference data.\n4. A friends pill component (overlapping avatar stack plus count) for the top bar.\n5. A motion and haptic specification table for the capture-to-send flow (press, freeze, send, incoming photo).\n6. Responsive notes across iPhone SE through iPad, noting where the viewfinder and capture button resize.\n7. A one-page do/don't list a reviewer could use to catch any drift toward a cold, gray, or corporate treatment.\n</what_to_give_me>",
+      "keywords": [
+        "locket",
+        "widget app",
+        "swiftui",
+        "ios design system",
+        "capture button",
+        "photo widget",
+        "poppins",
+        "warm palette",
+        "friends grid",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:locket",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-mastodon",
+    "name": "Mastodon Design System",
+    "summary": "Recreate Mastodon's calm, reading-first timeline with its purple-and-boost-green accent pair and its content-warning spoiler card.",
+    "description": "A deep SwiftUI prompt distilling Mastodon's flat, hairline-divided toot cards, its rounded-square avatars, its 360-degree boost spin, and its federated Home/Local/Federated switcher.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A two-accent SwiftUI token set (indigo purple plus boost green) tuned for a calm, document-like reading surface",
+        "Working code for the toot card, the content-warning spoiler reveal, and the federated timeline switcher",
+        "A motion spec centered on the signature 360-degree boost spin and the CW expand/collapse transition"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in federated and open-protocol social apps where trust, consent, and legibility matter more than engagement tricks. Your job is to make a long-form reading timeline feel calm and document-like.\n</role>\n\n<reference_data>\nColor roles (light): Canvas #FFFFFF, Surface 2 #F2F3F8, Divider #C0CDD9, Text Primary #000000, Text Secondary #606984, Text Tertiary #8B95A8. Dark mode deliberately avoids true black: Dark Canvas #191B22 (a deep blue-gray), Dark Surface 1 #282C37, Dark Surface 2 #313543, Dark Divider #393F4F, Dark Text Primary #FFFFFF, Dark Text Secondary #9BAEC8. Brand accent Mastodon Purple #6364FF with a pressed state #563ACC; the one other chromatic signal is Boost Green #2DCE89. Semantic: Favourite Gold #CA8F04, Error Red #DF405A.\nType ladder: system font (SF Pro on iOS, Inter as the cross-platform reference, Roboto as final fallback), sizes from 10pt tab labels up to a 28pt large screen title, weights at 400/500/600/700. Toot body sits at 16pt/400 with a generous 1.45 line height tuned for sustained reading; display names sit at 16pt/600; the federated handle (in the form of a user name at an instance domain) is always shown at 14pt in the secondary gray, never truncated away.\nSpacing/geometry: base unit 4pt, scale 4-8-12-16-20-24-32-40-56. Corner radius runs 8pt for buttons and avatars (a deliberate rounded-square, not a circle), 10-12pt for search fields and media, 16pt for sheets, and full circle only for the compose FAB and small glyph chips.\nNamed distinctive patterns: (1) the flat toot card separated from its neighbor by a 1pt hairline divider rather than a shadow or box, (2) rounded-square avatars at 8-12pt radius as a deliberate identity choice against the circular-avatar norm, (3) the content-warning spoiler card that collapses a toot's body behind a one-line warning and a show-more toggle, (4) the boost action, which spins its icon a full 360 degrees and turns boost green on activation, (5) the Home / Local / Federated segmented switcher pinned under the top nav that reframes the entire timeline.\n</reference_data>\n\n<house_rules>\n1. Dark mode's canvas is a blue-gray, never true black - the blue cast is part of the identity and must survive any palette substitution.\n2. Limit the chromatic system to exactly two accents: purple for links, navigation, and primary actions, and boost-green for the one amplification gesture - a third accent color dilutes the timeline's legibility.\n3. Avatars are rounded-squares at 8-12pt radius, never circles - this is a deliberate, checkable difference from most social apps and should never regress to a circle mask.\n4. The full federated handle (user at instance) is always visible in full - never truncate or hide the instance portion, since identity here is inseparable from the server a person belongs to.\n5. Content warnings default to collapsed - never auto-expand a CW body, because the whole point of the pattern is consent before exposure.\n6. Cards stay flat; separation is a hairline divider, never a drop shadow or a bordered box - the timeline should read like a printed document, not a stack of floating panels.\n7. Body text never drops below 16pt and never below a 1.45 line height - this is a reading app first, and density is not worth sacrificing legibility for.\n8. The boost is the one permitted moment of exuberant motion (a full 360-degree spin plus a color change) - everything else in the system stays understated by comparison.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (timeline/toot card / content-warning card / profile header / compose screen):\n- Whether the federated Home/Local/Federated switcher is needed for this build:\n- Target devices (iPhone, iPad, or both):\n- Light mode, dark mode, or both required:\n- Any brand deviations from the purple/boost-green pair:\n- Sample content to populate the mock with (a handle, a toot body, a CW warning line):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the light and dark palettes and the type ladder exactly.\n2. Full SwiftUI view code for the requested primary surface (toot card, CW spoiler card, profile header, or compose screen).\n3. Working code for the boost action including its 360-degree spin and green color transition.\n4. Working code for the Home/Local/Federated segmented switcher, including its cross-fade transition between feeds.\n5. A rounded-square avatar component reused consistently across the surfaces you generate.\n6. A motion and haptic specification table (boost spin, favourite bounce, CW expand/collapse, timeline switch).\n7. A short do/don't checklist a reviewer could use to catch any drift toward circular avatars, a third accent color, or auto-expanding content warnings.\n</what_to_give_me>",
+      "keywords": [
+        "mastodon",
+        "federated social",
+        "swiftui",
+        "ios design system",
+        "toot card",
+        "content warning",
+        "boost animation",
+        "rounded square avatar",
+        "fediverse",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:mastodon",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-nextdoor",
+    "name": "Nextdoor Design System",
+    "summary": "Recreate Nextdoor's warm cream community bulletin board with its civic green accent and hyperlocal map of neighborhood pins.",
+    "description": "A deep SwiftUI prompt distilling Nextdoor's paper-like cream canvas, its bordered neighborhood feed cards, its location-line-under-every-name convention, and its category-pinned hyperlocal map.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A warm-cream, civic-green SwiftUI token set with the friendly 24pt button radius that defines Nextdoor's tone",
+        "Working code for the bordered neighborhood feed card, group-chip filter row, and the hyperlocal map with category pins",
+        "Layout and motion guidance that keeps the whole system calm, warm-shadowed, and never bouncy"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in local and civic community apps. Your job is to make a neighborhood bulletin board feel warm, trustworthy, and grounded in real places rather than like a generic algorithmic feed.\n</role>\n\n<reference_data>\nColor roles: Cream Canvas #FAF9F6 (warm off-white, distinct from a cold pure white), Surface 1 #FFFFFF (cards), Surface 2 #F2F0EB (chip backgrounds, pressed rows), Divider #E4E2DD, Text Primary #221E1F (warm near-black ink), Text Secondary #6B6864 (warm brown-gray), Text Tertiary #9C9893. Brand accent Nextdoor Green #00B246 with a pressed state #007A30 and a darker Link Forest #006B3C for hyperlinks. Category-pin colors on the map: Event Blue #1B6FB3, For-Sale Purple #6E4FA3, Alert Amber #E58A00, plus green for recommendations. There is no dark mode - the app is light-only by design.\nType ladder: Lato, a warm humanist sans, running from a 28pt/700 large screen title down to a 10pt/700 tab label, with just two working weights - 400 for body and 700 for names, headlines, and buttons. A 13pt/400 location/meta line (distance, neighborhood, and elapsed time) is a structural element that appears under every name, not an optional extra.\nSpacing/geometry: base unit 4pt, scale 4-8-12-16-20-24-32-40-56. Corner radius is distinctive: primary and secondary buttons use a friendly 24pt radius that is neither a hard rectangle nor a full pill, feed cards use 16pt, and group-topic chips plus the search field use a full 500pt pill.\nNamed distinctive patterns: (1) the bordered white feed card (1pt divider-colored border, 16pt radius) sitting on the cream canvas with a 12pt gutter between cards, reading as a discrete pinned notice rather than a divider-separated timeline row, (2) the hyperlocal map screen showing real neighborhood tiles with category-colored pins (green, blue, purple, amber) dropped at actual addresses, with a draggable bottom peek sheet, (3) the location line under every name, pairing distance and neighborhood as inseparable from identity, (4) a green verified-neighbor checkmark badge signaling an address-verified resident, (5) the horizontally scrollable group/topic chip row that reframes the feed by community topic.\n</reference_data>\n\n<house_rules>\n1. The canvas must always read as warm cream, never a cold pure white - this single choice is what makes the feed feel like a neighborhood notice board rather than a tech product.\n2. Reserve Nextdoor Green for primary actions, the center Post FAB, follow/join buttons, and the verified badge only - it should never appear as a generic accent on unrelated UI.\n3. Every name in the feed carries its location line (distance, neighborhood, and time) - dropping it removes the hyperlocal context that is the entire premise of the app.\n4. Buttons use the 24pt friendly radius, not a hard rectangle and not a full pill - this in-between roundness is a deliberate tone choice and should not be smoothed into a pill by default.\n5. Shadows are warm-tinted, based on the ink color rather than pure black, and kept faint - feed cards get only the barest lift since their real separation comes from the border and the cream gutter.\n6. The hyperlocal map is a first-class hero screen, not a buried utility - category pins must use their assigned colors consistently (green recommendations, blue events, purple for-sale, amber alerts).\n7. There is no dark mode to design for - keep every mock in the light cream world.\n8. Motion stays gentle: fades and small scale changes only, never a bounce or a flashy spring - calm and unhurried is the entire emotional register of the app.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (neighborhood feed card / hyperlocal map / group chip row / profile header):\n- Whether verified-neighbor and Open-to-Work-style badges are needed:\n- Target devices (iPhone, iPad, or both):\n- Any brand deviations from the cream/green palette:\n- Sample content to populate the mock with (a neighbor name, a location line, a post body):\n- Category pin types needed on the map (recommendations, events, for-sale, alerts):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the cream/green palette and Lato type ladder exactly.\n2. Full SwiftUI view code for the requested primary surface (feed card, map screen, or chip row).\n3. Working code for the hyperlocal map's category pin and peek-sheet interaction.\n4. A verified-neighbor badge component plus the location-line text treatment reused across surfaces.\n5. A motion specification table (FAB press, reaction tap, card appear, pin select, chip switch) confirming everything stays gentle and non-bouncy.\n6. Responsive notes across iPhone SE through iPad, including the two-column feed-plus-map split on iPad.\n7. A one-page do/don't checklist a reviewer could use to catch drift toward a cold white canvas or a missing location line.\n</what_to_give_me>",
+      "keywords": [
+        "nextdoor",
+        "hyperlocal",
+        "swiftui",
+        "ios design system",
+        "community feed",
+        "neighborhood map",
+        "lato typeface",
+        "civic green",
+        "location badge",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:nextdoor",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-pinterest",
+    "name": "Pinterest Design System",
+    "summary": "Recreate Pinterest's photo-first masonry grid, its lone Pinterest Red Save button, and its 16pt-radius image tiles.",
+    "description": "A deep SwiftUI prompt distilling Pinterest's staggered two-column masonry feed, its red-to-black Save-button morph, and its infinite more-like-this pin detail experience.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A photo-first SwiftUI token set with Pinterest's single-accent red and its signature 16pt image corner radius",
+        "Working code for the two-column masonry grid, the Save button state morph, and the floating search pill",
+        "Motion specs for the shared-element pin-to-detail transition and the masonry entrance stagger"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in photo-first, visual-discovery apps. Your job is to keep the interface nearly invisible so user-generated imagery does all of the talking, while still making one button - Save - unmistakably the app's core verb.\n</role>\n\n<reference_data>\nColor roles (light): Canvas White #FFFFFF, Surface 1 #F8F8F8, Input Background #EFEFEF, Divider #E9E9E9. Dark mode uses a warm Material-style dark rather than true black: Canvas Dark #121212, Surface 1 Dark #1E1E1E, Surface 2 Dark #2A2A2A, Divider Dark #2E2E2E. Text Primary #111111 (light) / #FFFFFF (dark), Text Secondary #767676 (light) / #AAAAAA (dark). The single brand accent is Pinterest Red #E60023 with a pressed state #AD081B - it appears only on the Save button, primary CTAs, and the logomark, nowhere else. Semantic: Success Green #008A3C (rarely used), Info Blue #0074E8 (sparing link use).\nType ladder: Pinterest Sans (a 2022 proprietary humanist geometric sans, with SF Pro as fallback), sizes running 10-28pt, weights concentrated at 400/500/600/700 with 500 specifically reserved for pin title captions below masonry tiles. No screen shows more than three type sizes at once, and negative letter-spacing is reserved for 20pt and above.\nSpacing/geometry: base unit 4pt, scale 4-8-12-16-20-24-32-40-56-72. The masonry grid gap is a tight 8pt in both directions. Corner radius is famously generous on imagery - 16pt on every pin image and board cover, the app's signature softening move - while buttons, the Save pill, the search bar, and filter chips use a full 500pt pill.\nNamed distinctive patterns: (1) the two-column masonry grid where each pin renders at its native aspect ratio and falls into whichever column is currently shorter, producing a staggered scrapbook rhythm rather than a uniform grid, (2) the Save button, a persistent red pill in the top-right corner of every pin that morphs to solid black with the label Saved on success, (3) the floating search pill that sits above the feed and slides out of view on scroll-down, (4) the shared-element transition where a tapped pin's image scales up in place into the pin detail hero, (5) the infinite more-like-this masonry feed appended below every pin detail page.\n</reference_data>\n\n<house_rules>\n1. Pinterest Red is reserved exclusively for the Save button, primary CTAs, and the logomark - it must never appear as body text, a border, or a generic accent on metadata.\n2. Never force pins to a uniform tile height - the masonry layout depends on each pin rendering at its true aspect ratio, and normalizing heights breaks the entire signature.\n3. Pin images and board covers always carry a 16pt corner radius - this is larger than most apps use and is deliberate; don't shrink it toward a generic 8pt.\n4. Pin tiles never carry a shadow or border - the feed stays completely flat; shadows exist only on the floating search pill and on bottom sheets.\n5. The Save button always morphs from red to solid black on success, keeping its pill shape - this color flip is the app's primary feedback signal and should not be replaced with a checkmark or a toast alone.\n6. Keep the masonry grid to exactly two columns on every iPhone size, including the largest Pro Max - widen the tiles rather than adding a third column; iPad is the only place column count increases.\n7. The tab bar ships icon-only, with no labels, except for the center Create button which is visually distinct (a rounded-rect rather than a plain icon, filled with the brand red).\n8. Every pin detail page ends in an infinite more-like-this masonry feed - this is load-bearing UX, not an optional footer.\n9. Motion stays subtle - springs run in the 0.2 to 0.35 second range; nothing in the system should feel aggressive or bouncy.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (masonry feed / pin detail page / board cover grid / story-style card player):\n- Whether the floating search pill is needed for this build:\n- Target devices (iPhone, iPad, or both):\n- Light mode, dark mode, or both required:\n- Any brand deviations from the single-red-accent rule:\n- Sample content to populate the mock with (a pin title, a creator name, image aspect ratios):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the light/dark palettes and Pinterest Sans-equivalent type ladder exactly.\n2. Full SwiftUI view code for the requested primary surface (masonry grid, pin detail, or board cover grid).\n3. Working code for the Save button including its red-to-black morph animation and success haptic.\n4. Working code for the floating search pill including its scroll-hide/show behavior.\n5. A motion specification table covering the masonry entrance stagger, the pin-to-detail shared-element transition, and the Save morph.\n6. Responsive notes across iPhone SE through iPad, including the 2-to-3-to-4 column masonry progression.\n7. A one-page do/don't checklist a reviewer could use to catch drift toward uniform tile heights, extra accent colors, or shadows on pin tiles.\n</what_to_give_me>",
+      "keywords": [
+        "pinterest",
+        "masonry grid",
+        "swiftui",
+        "ios design system",
+        "save button",
+        "photo feed",
+        "pinterest sans",
+        "image corner radius",
+        "visual discovery",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:pinterest",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-quora",
+    "name": "Quora Design System",
+    "summary": "Recreate Quora's paper-white Q&A reader with its Georgia-question/Inter-answer split and its bordered upvote/downvote pill.",
+    "description": "A deep SwiftUI prompt distilling Quora's serif-question sans-answer typographic split, its credential byline as a trust signal, and its single-accent Quora Red restraint.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A paper-white SwiftUI token set built around the Georgia-serif/Inter-sans typographic split that is Quora's core identity",
+        "Working code for the question feed card, the upvote/downvote pill, and the credential byline component",
+        "Guidance on keeping Quora Red rationed to exactly the wordmark and the Answer CTA, nothing else"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in long-form Q&A and knowledge-sharing apps. Your job is to give a question the gravity of a printed headline while keeping every answer feeling like a person talking to the reader.\n</role>\n\n<reference_data>\nColor roles: Canvas White #FFFFFF, Surface Gray #F7F7F8, Divider #E0E0E0, Text Primary #282829, Text Secondary #636466, Text Tertiary #9A9A9C. Dark mode (limited use): Dark Canvas #1A1A1B, Dark Surface #262627, Dark Divider #383839. The sole brand accent is Quora Red #B92B27 with a pressed state #9E1F1B, reserved for the wordmark, the Answer CTA, and editorial accents. A separate Upvote Blue #2E69FF marks the active upvote state; downvote is deliberately neutral gray, never red, since downvote counts are hidden entirely.\nType ladder is a structural serif/sans split: every question is set in Georgia (weights 400/700) and every answer, byline, label, and button is set in Inter (weights 400/600/700). The question detail hero runs 26pt/700 Georgia; the feed-card question runs 19pt/700 Georgia; the answer body runs 16pt/400 Inter at a deliberately generous 1.6 line height; the credential byline (a professional history line under the author name) runs 13pt/600 Inter in the secondary gray, ranked above the timestamp.\nSpacing/geometry: base unit 4pt, scale 4-8-12-16-20-24-32-40-56. Corner radius is modest throughout - 6pt on the primary Answer button, 8pt on the search field, 10pt on Space tiles and prompt cards, and a 16pt pill specifically for the upvote/downvote capsule.\nNamed distinctive patterns: (1) the serif-question/sans-answer split, which alone makes a screen identifiable without reading a single word, (2) the upvote/downvote pill, a single bordered capsule with a hairline divider between an up-arrow-plus-count segment and a down-arrow-only segment (no downvote count is ever shown), (3) the credential byline sitting directly under an author's name as a first-class trust signal, (4) a horizontally scrollable community-tile carousel with colored banners, (5) a recurring prompt card that nudges the reader to contribute an answer.\n</reference_data>\n\n<house_rules>\n1. Every question is set in Georgia and every answer, in Inter - never swap the two, since the typographic contrast itself is the entire brand signal.\n2. Quora Red is rationed to the wordmark, the Answer CTA, and rare editorial accents - it must never bleed into body text, borders, or generic UI chrome.\n3. The answer body always sits at 16pt with a 1.6 line height - never compress the leading for density, since this is fundamentally a reading app.\n4. The upvote/downvote control is always one bordered pill, never two separate buttons - the upvote segment turns blue when active, and the downvote segment turns neutral gray, never red, and never shows a count.\n5. The credential byline ranks above the timestamp in visual priority - authority is the product here, so don't bury it as an afterthought.\n6. Feed cards separate using an 8pt gray gutter, not borders or shadows - keep the paper metaphor intact by avoiding heavier elevation.\n7. Shadows across the whole system stay nearly absent - the deepest shadow in steady-state UI is a faint lift on community tiles; real elevation appears only on transient sheets and toasts.\n8. Never use a display-size headline anywhere - the 26pt Georgia question on the detail page is the largest type size in the entire system.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (question feed card / answer detail page / community carousel / answer composer):\n- Whether the answer-prompt card is needed for this build:\n- Target devices (iPhone, iPad, or both):\n- Light mode, dark mode, or both required:\n- Any brand deviations from the single-red-plus-blue-upvote rule:\n- Sample content to populate the mock with (a question, an answer excerpt, a credential byline):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file that keeps Georgia and Inter cleanly separated by role, matching the palette above exactly.\n2. Full SwiftUI view code for the requested primary surface (feed card, answer detail block, or community carousel).\n3. Working code for the upvote/downvote pill including its active-state color transitions and haptic feedback.\n4. A credential byline component reused consistently under every author name.\n5. A motion specification table (upvote tap, pill press, card-to-detail transition, follow toggle).\n6. Responsive notes across iPhone SE through iPad, including the centered max-width reading column on iPad.\n7. A one-page do/don't checklist a reviewer could use to catch drift toward swapped fonts, a red downvote, or a shown downvote count.\n</what_to_give_me>",
+      "keywords": [
+        "quora",
+        "q&a app",
+        "swiftui",
+        "ios design system",
+        "serif sans split",
+        "upvote downvote",
+        "georgia typeface",
+        "inter typeface",
+        "credential byline",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:quora",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-reddit",
+    "name": "Reddit Design System",
+    "summary": "Recreate Reddit's card-based community feed with its signature vote column and its complementary orange-upvote/blue-purple-downvote pair.",
+    "description": "A deep SwiftUI prompt distilling Reddit's vote column, per-subreddit accent customization, flair pills, and indented comment-thread rule lines.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A SwiftUI token set covering Reddit's light/dark canvases and its semantic upvote-orange/downvote-blue-purple vote pair",
+        "Working code for the post card, the vote column with its state transitions, and indented comment threading",
+        "Guidance on subreddit accent-color customization and flair pill styling so per-community theming stays consistent"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in high-density, community-forum apps built around threaded discussion at scale. Your job is to keep every post card structurally identical so a reader can scan dozens of them in seconds, while still letting individual communities express their own accent color.\n</role>\n\n<reference_data>\nColor roles (light): Canvas (new) #F6F7F8, Canvas (classic) #DAE0E6, Card Surface #FFFFFF, Surface 2 #F2F3F5, Divider #EDEFF1, Text Primary #1A1A1B, Text Secondary #7C7C7C, Text Link #0079D3. Dark mode: Canvas #1A1A1B, Card Surface #272729, Surface 2 #343536, Divider #343536, Text Primary #D7DADC, Text Secondary #818384. Brand accent Reddit Orange-Red #FF4500 (logo, primary CTA, subreddit pill accent) with an alert red #FF585B, distinct from the vote-column colors. The vote pair is semantic and complementary: Upvote Orange #FF8717 (lighter #FFAA66 in dark mode) versus Downvote Blue-Purple #7193FF (lighter #9494FF in dark mode) - warm approval against cool disapproval, and the two states are mutually exclusive by design. Each community can also set its own accent color for its Join button and banner tint.\nType ladder: Reddit Sans (a 2023 proprietary humanist sans, with Noto Sans and SF Pro as fallbacks), workhorse body/comment size 14pt/400 at 1.5 line height, post title at 18pt/600, metadata and karma numbers at 12pt, tab labels at 11pt/500. Full Markdown renders inline in both post bodies and comments (bold, italic, strike, quote, code, links).\nSpacing/geometry: base unit 4pt, scale 4-8-10-12-16-20-24-32-44-72. Card corner radius is a user preference toggle between 0pt (classic full-bleed) and 16pt (new card style); flair pills use a tight 4pt radius; the Join/primary CTA pill uses 24pt or a full 500pt capsule.\nNamed distinctive patterns: (1) the vote column - a vertical stack of an up-chevron, a centered karma number, and a down-chevron, appearing on literally every post and comment, with three visually distinct states (neutral gray, active orange, active blue-purple), (2) the post card's fixed structure of header row, title, optional flair row, optional media, and action row, repeated identically across every post regardless of community, (3) per-community accent-color customization on the Join button and banner, (4) flair pills as small rectangular 4pt-radius tags with per-community styling, (5) comment-thread indentation using a 10pt step per reply level marked by a thin vertical rule on the leading edge.\n</reference_data>\n\n<house_rules>\n1. The vote column is non-negotiable - every post and every comment shows an up-chevron, a karma number, and a down-chevron as one vertical unit, never a single like button.\n2. Upvote must always be the warm orange and downvote must always be the cool blue-purple - never swap these, and never substitute the brand's primary red for the upvote color, since the brand accent and the vote-orange are deliberately distinct hues.\n3. Cards stay flat - use corner radius (16pt card style or 0pt classic) to communicate structure, never a drop shadow.\n4. Every post card shows its community identity via a circular avatar plus a community-name pill - never omit which community a post belongs to.\n5. Support per-community accent-color customization on the Join button and banner tint - don't hardcode every community to the same color.\n6. Comment threads indent exactly 10pt per reply level, marked by a thin vertical rule on the leading edge that runs continuously as the user scrolls - don't collapse nested replies into flat indentation-free text.\n7. Flair pills are small rectangular tags at a 4pt radius, not full pills - keep this distinct from the primary CTA's rounder pill shape.\n8. Markdown renders inline everywhere text appears (post bodies, comments) - bold, italic, quote, code, and links all need live rendering, not raw markup.\n9. Offer both a card view (16pt radius) and a classic view (0pt full-bleed) as a togglable user preference rather than picking only one permanently.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (post feed card / comment thread / community banner / vote column standalone):\n- Card view or classic view (or both) for this build:\n- Target devices (iPhone, iPad, or both):\n- Light mode, dark mode, or both required:\n- Community accent color(s) to demonstrate customization:\n- Sample content to populate the mock with (a post title, a community name, a comment thread):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the light/dark palettes and Reddit Sans-equivalent type ladder exactly.\n2. Full SwiftUI view code for the requested primary surface (post card, comment thread, or community banner).\n3. Working code for the vote column including its three-state transitions, scale-bounce animation, and haptic feedback.\n4. A flair pill component supporting per-community color customization plus the system NSFW/Spoiler/OC variants.\n5. A motion specification table (vote tap, card tap, comment expand/collapse, Join button morph).\n6. Responsive notes across iPhone SE through iPad, including the two-column landscape feed on iPad.\n7. A one-page do/don't checklist a reviewer could use to catch a swapped vote color or a missing community identity pill.\n</what_to_give_me>",
+      "keywords": [
+        "reddit",
+        "forum app",
+        "swiftui",
+        "ios design system",
+        "vote column",
+        "subreddit theming",
+        "flair pill",
+        "comment threading",
+        "reddit sans",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:reddit",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  },
+  {
+    "slug": "design-snapchat",
+    "name": "Snapchat Design System",
+    "summary": "Recreate Snapchat's camera-first interface with its aggressive Snap Yellow capture button and color-coded chat inbox.",
+    "description": "A deep SwiftUI prompt distilling Snapchat's camera-as-home-screen model, its 82pt yellow-ringed capture button, its avatar-everywhere identity, and its five-screen swipe navigation.",
+    "type": "PROMPT",
+    "tags": [
+      "social",
+      "design-system",
+      "ios"
+    ],
+    "content": {
+      "whatYouGet": [
+        "A dark-canvas SwiftUI token set built around a single saturated Snap Yellow accent and color-coded snap-type icons",
+        "Working code for the concentric-circle capture button, the chat inbox row with its type indicator, and the swipe-between-screens navigation",
+        "Motion and haptic specs for the signature capture, streak, and story-ring-pulse interactions"
+      ],
+      "promptText": "<role>\nYou are a senior iOS product designer who specializes in camera-first, ephemeral messaging apps. Your job is to treat the live camera viewfinder as the actual home screen and to make one saturated accent color function like a signal flare against an otherwise near-monochrome dark interface.\n</role>\n\n<reference_data>\nColor roles: Canvas Black #000000, Surface 1 #1A1A1A, Surface 2 #2C2C2C, Divider #333333, Text Primary #FFFFFF, Text Secondary #8A8A8F. The single brand accent is Snap Yellow #FFFC00, a near-max-brightness pure yellow used only on brand moments: the logo, the capture button, the streak flame, and the unread story ring. A light canvas (#FFFFFF / #F2F2F2) exists only in settings and the Memories grid. Snap-type colors used exclusively in the chat inbox: Photo Snap Red #FF2E3D, Video Snap Purple #9B51FF, Chat Blue #4DA7FF, Audio Green #4CD964 - each rendered as a filled square when unread and an outline of the same color once opened. Semantic: Error Red #FF3B30, Success Green #00D873.\nType ladder: Avenir Next, a humanist geometric sans, used almost exclusively at Bold (700) and Medium (500) with a Heavy (900) weight reserved for the splash wordmark and streak-count hero moments - no light or regular weight appears anywhere in the product. Camera HUD labels use uppercase with plus-0.3pt tracking to evoke a capture feeling; chat row names sit at 16pt/700, chat message text at 16pt/500.\nSpacing/geometry: base unit 4pt, scale 4-8-12-16-20-24-32-40-48-56-72-82. Corner radius scale is distinctive: 8pt on Memories thumbnails, 16pt on story thumbnails and discover tiles, a rounder 20pt specifically for chat bubbles (messaging feels rounder than posts), and a full pill/circle for search bars, the chat input, and every avatar.\nNamed distinctive patterns: (1) the concentric capture button - an 82pt outer yellow ring around a 64pt white inner circle, the single most recognizable control in the app, (2) swipe-between-five-screens navigation (a map, chat, camera, stories, and a discovery feed) replacing a conventional tab bar entirely, (3) the color-coded snap-type square icon in the chat inbox that lets a user parse conversation types at a glance, (4) a personalized cartoon avatar standing in for every profile photo throughout the app, including on the map in contextual poses, (5) the pulsing yellow story ring on unread content paired with a gray ring once viewed and a red ring for live stories.\n</reference_data>\n\n<house_rules>\n1. The app opens directly into the live camera viewfinder, full-screen - never design a feed or list as the default landing surface.\n2. Snap Yellow is reserved for brand moments only - the capture button, the streak flame, the unread story ring, and the logo - it should never bleed into general UI chrome or unrelated buttons.\n3. The capture button is always the precise 82pt-yellow-ring-around-64pt-white-circle construction - don't substitute a single flat-colored circle, since the double-ring silhouette is the recognizable part.\n4. Navigation between the five core screens is a horizontal swipe, not a conventional bottom tab bar - a persistent tab dock breaks the model entirely.\n5. Snap types in the chat inbox are always color-coded consistently: red for photo, purple for video, blue for chat text, green for audio, with unread shown filled and opened shown as an outline of the same color.\n6. A personalized cartoon avatar replaces every profile photo throughout the app - never fall back to a generic silhouette or a real photo as the default.\n7. Typography uses only two weights, Bold and Medium - avoid introducing a light or regular weight anywhere, since the two-weight discipline is part of the friendly, energetic voice.\n8. Camera HUD controls float chromelessly with only a soft drop shadow for legibility - never wrap them in a background panel or bar.\n9. Ephemerality is a structural feature, not a setting - chat content and stories are designed to disappear by default rather than persist indefinitely.\n</house_rules>\n\n<the_project>\n- App or product name:\n- Primary surface to design (camera HUD / chat inbox / story thumbnail row / capture button standalone):\n- Whether streak and friend-emoji-style mechanics are included in this build:\n- Target devices (iPhone SE through Pro Max, iPad):\n- Any brand deviations from the single-yellow-accent rule:\n- Sample content to populate the mock with (a friend name, a streak count, a story caption):\n- Snap types needed in the inbox mock (photo, video, chat, audio):\n- Priority feature for this pass:\n</the_project>\n\n<what_to_give_me>\n1. A SwiftUI Color and Font token file matching the dark-canvas palette, the snap-type colors, and the Avenir Next-equivalent type ladder exactly.\n2. Full SwiftUI view code for the requested primary surface (camera HUD, chat inbox row, or story thumbnail row).\n3. Working code for the concentric capture button including its tap, long-press-record, and double-tap-flip behaviors.\n4. A snap-type indicator component (filled-versus-outline square) reused consistently in the inbox.\n5. A motion and haptic specification table (capture tap, capture hold, streak save, story ring pulse).\n6. Responsive notes across iPhone SE through iPad, including how the capture button and lens carousel resize.\n7. A one-page do/don't checklist a reviewer could use to catch drift toward a feed-first home screen or a diluted yellow accent.\n</what_to_give_me>",
+      "keywords": [
+        "snapchat",
+        "camera app",
+        "swiftui",
+        "ios design system",
+        "capture button",
+        "avatar identity",
+        "avenir next",
+        "ephemeral messaging",
+        "story ring",
+        "design tokens"
+      ],
+      "_buildRef": "meliwat:awesome-ios-design-md:snapchat",
+      "install": [
+        "Fill in the <the_project> fields with your app's specifics",
+        "Run it in Claude or your AI assistant of choice",
+        "Paste the generated SwiftUI tokens/components into your project and adjust to your actual brand constraints"
+      ]
+    }
+  }
+]

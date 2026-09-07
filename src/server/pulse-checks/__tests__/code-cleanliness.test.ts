@@ -4,6 +4,7 @@ import {
   commentedOutCodeLines,
   maxNestingDepth,
   detectDuplication,
+  isSubstantiveLine,
 } from "../code-cleanliness";
 import type { RepoSnapshot } from "../native-mobile";
 
@@ -172,6 +173,102 @@ describe("duplication detection", () => {
   it("counts repetition inside a single file separately", () => {
     const dup = detectDuplication(new Map([["src/one.ts", block(1) + "\n" + block(1)]]));
     expect(dup.inFile).toBeGreaterThan(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Framework STRUCTURE is not duplicated logic.
+//
+// Found by running this family against a real 1,885-file Next.js repository: it
+// reported 853 cross-file duplicate blocks across 58% of sampled files, and
+// roughly half were framework glue — the seam between two App Router handlers,
+// and the closing brackets of an opengraph-image. Every file that exports two
+// handlers contains that seam verbatim; nobody copy-pasted it.
+//
+// It matters because of what the finding CLAIMS: "the next bug fix lands in one
+// copy, the others keep the bug." True of a copy-pasted helper. Meaningless for
+// `try {`. A metric that counts glue reports every Next.js, Rails and Django
+// codebase as heavily duplicated, and buries the real helper among hundreds of
+// `}` windows.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("duplication ignores framework structure", () => {
+  // Verbatim from the real repository, both of them.
+  const ROUTE_SEAM = [
+    "  } catch (error) {",
+    "    return fromError(error);",
+    "  }",
+    "}",
+    "",
+    "export async function POST(request: NextRequest) {",
+    "  try {",
+  ].join("\n");
+
+  const IMAGE_TAIL = [
+    "        logoDataUri={logo}",
+    "      />",
+    "    ),",
+    "    { ...size, fonts: fonts.length ? fonts : undefined },",
+    "  );",
+    "}",
+  ].join("\n");
+
+  it("does not count the seam between two route handlers", () => {
+    const dup = detectDuplication(new Map([
+      ["src/app/api/a/route.ts", `export async function GET() {\n  const a = 1;\n${ROUTE_SEAM}\n    const b = 2;\n  } catch {}\n}`],
+      ["src/app/api/b/route.ts", `export async function GET() {\n  const c = 3;\n${ROUTE_SEAM}\n    const d = 4;\n  } catch {}\n}`],
+    ]));
+    expect(dup.crossFile).toBe(0);
+  });
+
+  it("does not count the closing brackets of an opengraph image", () => {
+    const dup = detectDuplication(new Map([
+      ["src/app/a/opengraph-image.tsx", `const logo = one();\n${IMAGE_TAIL}`],
+      ["src/app/b/opengraph-image.tsx", `const logo = two();\n${IMAGE_TAIL}`],
+    ]));
+    expect(dup.crossFile).toBe(0);
+  });
+
+  it("STILL counts a genuinely copy-pasted helper", () => {
+    // The one this repository actually has, in 14 route files. If the exclusion
+    // above also dropped this, it would have removed the metric's whole value.
+    const helper = [
+      "async function resolveClientId(slug: string): Promise<string | null> {",
+      "  const { workspace } = await ensureBaseRecords();",
+      "  const client = await prisma.workspaceClient.findUnique({",
+      "    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },",
+      "    select: { id: true },",
+      "  });",
+      "  return client?.id ?? null;",
+      "}",
+    ].join("\n");
+    const dup = detectDuplication(new Map([
+      ["src/app/api/one/route.ts", helper],
+      ["src/app/api/two/route.ts", helper],
+    ]));
+    expect(dup.crossFile).toBeGreaterThan(0);
+    expect(dup.files.sort()).toEqual(["src/app/api/one/route.ts", "src/app/api/two/route.ts"]);
+  });
+});
+
+describe("isSubstantiveLine", () => {
+  it("accepts lines that carry logic, including short ones", () => {
+    for (const line of [
+      "const client = await prisma.workspaceClient.findUnique({",
+      "if (!client) return apiError(\"Client not found\", 404);",
+      "select: { id: true },",
+      // Short, and still logic. An earlier length-based rule excluded these and
+      // broke three existing tests — which is why the rule is now defined by
+      // naming what structure IS, rather than guessing at what logic looks like.
+      "return a1;",
+      "other(a1);",
+      "if (a1) {",
+    ]) expect(isSubstantiveLine(line), line).toBe(true);
+  });
+
+  it("rejects structure the language or framework requires", () => {
+    for (const line of ["}", "  );", "    ),", "      />", "try {", "} catch (error) {", "} else {"]) {
+      expect(isSubstantiveLine(line.trim()), line).toBe(false);
+    }
   });
 });
 

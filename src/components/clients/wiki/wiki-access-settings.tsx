@@ -73,6 +73,7 @@ const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "Timeline",
   monitors: "Monitors",
   documents: "Documents",
+  launchpad: "Launchpad",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -391,11 +392,12 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
               {[
                 { label: "BUG", title: "Creates a bug card", copy: "Use for defects, regressions, or reproducible issues." },
                 { label: "FEEDBACK", title: "Creates a feedback card", copy: "Use for client/customer comments or product suggestions." },
                 { label: "TASK", title: "Creates a task card", copy: "Use for small requested work items that need triage." },
+                { label: "DESIGN", title: "Creates a design card", copy: "Use for design edits or visual changes for the designer to pick up." },
               ].map((item) => (
                 <div key={item.label} className="rounded-[10px] border border-[var(--border-1)] bg-white p-4">
                   <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--brand-700)]">{item.label}</span>

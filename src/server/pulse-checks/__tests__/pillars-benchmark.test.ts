@@ -58,21 +58,21 @@ describe("pillar scoring mirrors the health score's rules", () => {
     expect(allFail.pillars.find((p) => p.key === "security")!.score).toBe(0);
   });
 
-  it("excludes SKIPPED and LOW-confidence failures, exactly as the score does", () => {
+  it("excludes SKIPPED but weights LOW-confidence outcomes symmetrically", () => {
     const out = computePillarBreakdown([
       check(CATEGORIES.SECURITY, "PASS"),
       check(CATEGORIES.SECURITY, "SKIPPED"),
       check(CATEGORIES.SECURITY, "FAIL", { confidence: "LOW" }),
     ]);
     const security = out.pillars.find((p) => p.key === "security")!;
-    // One scoreable PASS — the other two are measured but not scored.
-    expect(security.score).toBe(100);
-    expect(security.excluded).toBe(2);
+    // The weak FAIL is included at its lower evidence/confidence weight; it is
+    // no longer silently dropped, but it also cannot outweigh stronger evidence.
+    expect(security.score).toBe(79);
+    expect(security.excluded).toBe(1);
   });
 
   it("still counts a LOW-confidence PASS", () => {
-    // Matches score-breakdown: a working signal seen weakly is still a signal,
-    // and dropping it would unfairly lower the score.
+    // Confidence changes weight, not whether a favourable outcome gets special treatment.
     const out = computePillarBreakdown([check(CATEGORIES.SECURITY, "PASS", { confidence: "LOW" })]);
     expect(out.pillars.find((p) => p.key === "security")!.score).toBe(100);
   });

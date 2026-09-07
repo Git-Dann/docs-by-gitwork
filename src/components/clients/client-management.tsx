@@ -2,7 +2,7 @@
 
 import {
   ArrowRightCircleIcon,
-  ChatBubbleLeftRightIcon,
+  LifebuoyIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   LinkIcon,
@@ -533,7 +533,7 @@ function ClientCard({
               className="opacity-40 hover:opacity-70 transition-opacity"
               onClick={(e) => e.stopPropagation()}
             >
-              <ChatBubbleLeftRightIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
+              <LifebuoyIcon className="h-3.5 w-3.5 text-[var(--text-3)]" />
             </Link>
           )}
           {client.repoUrls?.length === 1 && (
@@ -1028,7 +1028,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"
@@ -1524,7 +1524,7 @@ export function ClientManagement() {
 
       {/* ── Create client modal ── */}
       {showCreate ? (
-        <div className="fixed inset-0 z-30">
+        <div className="fixed inset-0 z-50">
           <button
             type="button"
             aria-label="Close"
@@ -1671,7 +1671,7 @@ function NewOnboardingLinkModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close"

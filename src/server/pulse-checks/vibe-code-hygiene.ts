@@ -68,8 +68,13 @@ export async function runVibeCodeHygieneChecks(
     checkKey: "spa_client_rendered",
     label: "Content is server-rendered (not a JS-only shell)",
     status: isSpa ? "WARN" : "PASS",
+    // Says what is true about the PAGE, and nothing about what this scan managed to do with it.
+    // It used to promise the SEO checks were "marked not-applicable", which was wrong twice over:
+    // they are INCONCLUSIVE (applicable, unestablished), and on a scan that renders the page they
+    // are neither — they are measured. `spa_content_rendered_for_scan` reports that outcome, and
+    // this check must not contradict it.
     detail: isSpa
-      ? "This is a client-rendered SPA — the initial HTML is an empty shell and content only appears once JavaScript runs. That hurts SEO and answer-engine visibility, and means static scanners can't assess the real content (so the SEO/content checks here are marked not-applicable). Server-render the content and harden for production — see Starters → Ship It."
+      ? "This is a client-rendered SPA — the initial HTML is an empty shell and content only appears once JavaScript runs. Search crawlers and AI answer engines differ in how reliably they execute that JavaScript, so content that is not in the source risks being missed. Server-render it and harden for production — see Starters → Ship It."
       : "The initial HTML contains real server-rendered content.",
   });
 

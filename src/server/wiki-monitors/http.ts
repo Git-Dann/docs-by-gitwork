@@ -3,7 +3,7 @@
 // DEGRADED when up but slower than `degradedMs`. SSRF-guarded via assertScannableUrl.
 
 import type { WikiMonitor } from "@prisma/client";
-import { assertScannableUrl, UrlNotScannableError } from "@/server/pulse-lite/url-guard";
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import type { MonitorConnector, MonitorProbeResult, MonitorStatus } from "./types";
 
 const TIMEOUT_MS = 15_000;
@@ -15,25 +15,12 @@ export const httpConnector: MonitorConnector = {
   label: "HTTP / HTTPS",
   targetHint: "https://api.example.com/health",
   async run(monitor: WikiMonitor): Promise<MonitorProbeResult> {
-    let url: string;
-    try {
-      url = (await assertScannableUrl(monitor.target)).url;
-    } catch (e) {
-      return {
-        status: "DOWN",
-        latencyMs: null,
-        statusCode: null,
-        error: e instanceof UrlNotScannableError ? e.message : "Invalid or unreachable URL",
-      };
-    }
-
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     const started = Date.now();
     try {
-      const res = await fetch(url, {
+      const res = await fetchScannableUrl(monitor.target, {
         method: monitor.method || "GET",
-        redirect: "follow",
         signal: controller.signal,
         headers: { "User-Agent": "Foundry-Monitor/1.0 (+https://gitwork.co.uk)" },
         cache: "no-store",

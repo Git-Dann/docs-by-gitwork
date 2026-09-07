@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, DM_Serif_Display, JetBrains_Mono, Caveat, Dancing_Script, Great_Vibes, Fraunces, Playfair_Display, Poppins, Montserrat, Space_Grotesk, Manrope, Archivo, Sora } from "next/font/google";
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
 
@@ -72,7 +71,14 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? "https://foundry.gitwork.co.uk",
   ),
-  title: "Foundry by Gitwork",
+  title: {
+    // The bare app name is the fallback for anything that sets no title of its own.
+    default: "Foundry by Gitwork",
+    // Any page exporting `title: "X"` becomes "X · Foundry". Pages that build a
+    // full title themselves (the client-scoped ones, via pageMetadataTitle) return
+    // `{ absolute }` so this template doesn't append a second " · Foundry".
+    template: "%s · Foundry",
+  },
   description:
     "Gitwork’s prompt-to-production delivery platform for projects, signals, documents, reviews, and support.",
   // Self-referencing canonical. With metadataBase set, "./" resolves per route, so
@@ -112,7 +118,6 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${dmSerifDisplay.variable} ${jetbrainsMono.variable} ${caveat.variable} ${dancingScript.variable} ${greatVibes.variable} ${fraunces.variable} ${playfairDisplay.variable} ${poppins.variable} ${montserrat.variable} ${spaceGrotesk.variable} ${manrope.variable} ${archivo.variable} ${sora.variable}`}
       suppressHydrationWarning
     >
       <head>
@@ -143,7 +148,7 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet)(?:\\/|$)/.test(p),fdark=/^\\/edge(?:\\/|$)/.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=fdark||(!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
+            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet|login|portal\\/login)(?:\\/|$)/.test(p),fdark=/^\\/edge(?:\\/|$)/.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=fdark||(!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
           }}
         />
         {/*

@@ -24,8 +24,10 @@ class name" and a request to move fast are **not** exemptions — most of the de
   **§32**. This is how work is tracked across the team; an untagged chat is invisible.
 - **Run `npm run verify` before any PR**, and report what it actually printed. CI runs the same
   thing on every PR (§31), and a `pre-push` hook runs it for you on a push to `main`. Never call
-  something verified that wasn't run. There is **no staging and no branch previews** — only `main`
-  deploys, straight to the Fasthosts VPS (§23), not Vercel.
+  something verified that wasn't run. **Only `main` deploys to production** — straight to the
+  Fasthosts VPS (§23), not Vercel. There is no staging. But **Vercel branch previews DO still
+  build and ARE reachable** (§23's "vestigial" applies to production traffic, not to the preview
+  URL) — see `docs/build-checklist.md` §4 for what one can and cannot verify.
 - **Keep [`ONBOARDING.md`](ONBOARDING.md) current — in the same PR as the change.** It's the
   one-page handover new builders actually read, so a stale one actively misleads them. It is **not**
   a summary of this file; it only covers what someone needs in week one. Update it when you change:
@@ -298,7 +300,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | Route | Description |
 |---|---|
 | `/` | **307 → `/portal/login`.** A platform landing page briefly lived here to win the ~49 SEO/AEO/Trust checks that parse `/`'s HTML, but the portal login is the intended front door, so it was reverted. Because a scan FOLLOWS the redirect, `/portal/login` is the page that gets graded — which is why it carries a footer, `<main>`, Organization/WebSite JSON-LD and the company/VAT disclosure. Put scan-facing scaffolding THERE, not here |
-| `/legal` · `/privacy` · `/terms` · `/cookies` · `/security` | **308 → the gitwork.co.uk equivalent** (`next.config.ts`). One set of company policies, owned where the rest of the public content is owned — Foundry hosted its own briefly in July 2026 and they were removed pending legal review. ⚠️ The login footer must link these **relatively**: `privacy_policy` + `terms_of_service` hard-cap the Pulse score at 65 (`score-breakdown.ts`) and match a literal `href="/privacy"` in the SCANNED page's HTML (i.e. `/portal/login`, since `/` redirects there) — closing quote included, so a trailing slash does not count and an absolute `https://gitwork.co.uk/privacy` does not count either. Relative href satisfies the check; the redirect serves the content. |
+| `/legal` · `/privacy` · `/terms` · `/cookies` · `/security` | **308 → the gitwork.co.uk equivalent** (`next.config.ts`). One set of company policies, owned where the rest of the public content is owned — Foundry hosted its own briefly in July 2026 and they were removed pending legal review. The login footer links these relatively and should keep doing so, but **the trap this note used to describe is gone (Aug 2026)**: `privacy_policy`/`terms_of_service` no longer demand a literal `href="/privacy"` with the closing quote. They now match the path segment anywhere inside an href, so a locale prefix (`/gb/privacy`), a trailing slash, an absolute URL, a query/fragment and non-English paths all count. The old exact match falsely accused **every internationalised site** of having no privacy policy — it was Pulse's top finding on stripe.com, which links `href="/gb/privacy"`. The 65-point hard cap also no longer exists: score v3 (`score-breakdown.ts`) caps only on `target_content_accessible`. See `pulse-checks/__tests__/legal-link-detection.test.ts`. |
 | `/pulse-overview` | Standalone public Pulse product page (not in app nav, shareable URL). Self-embeds `/embed/pulse`, which is why `'self'` is in that route's `frame-ancestors` |
 | `/embed/pulse` | Embeddable scanner widget. **External contract** — allow-listed for gitwork.co.uk in `next.config.ts` and the only route exempt from the baseline security headers. Do not touch without checking the live embed |
 | `/api-docs` | REST API reference. Linked in-app from Settings → Developer |
@@ -546,14 +548,31 @@ Core domains:
 - **`PulseScanCheckInput.category` is the typed union `CheckCategory`** — a check that emits a
   raw/typo'd category is a **compile error**. Always tag checks with `CATEGORIES.<X>`, never a
   string literal. This applies in `pulse-checks/*`, `pulse-agents/*`, and `pulse-scan.ts`.
-- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>` **and** add its `{ key, category,
-  label }` row to `src/server/checks-registry.ts`. That's the catalogue the Settings → Checks
-  panel + per-workspace `PulseCheckConfig` overrides + framework counts are built from.
+- **To ADD A CHECK:** emit it with `category: CATEGORIES.<X>`, add its `{ key, category,
+  label }` row to `src/server/checks-registry.ts`, then run **`npm run pulse:catalogue`** to record
+  the new key. The registry is the catalogue the Settings → Checks panel + per-workspace
+  `PulseCheckConfig` overrides + framework counts are built from.
 - **To ADD A CATEGORY:** add one entry to `CATEGORIES` + one row to `CATEGORY_META` (pick a
   domain + weight + blurb). Nothing else needs editing.
-- **Enforced by `src/server/pulse-checks/__tests__/categories.reconcile.test.ts`** (`npm test`):
-  every emitted `checkKey` must be in the registry, every category must have metadata + one
-  domain, no duplicate keys. If it fails, the catalogue drifted — fix the source, not the test.
+- ⚠️ **To REMOVE A CHECK: you don't — you retire it.** A `checkKey` is a **public identifier**,
+  not an internal name: it keys every historical `PulseScanCheck` row *and* every
+  `PulseCheckConfig` row a workspace has set (`@@unique([workspaceId, checkKey])`). Deleting or
+  renaming one orphans a customer's own enable/label/severity decisions and makes the matching
+  rows in their stored scans unreadable — silently, because nothing recomputes an old scan. Add a
+  `RETIRED_CHECKS` entry in **`src/server/pulse-checks/catalogue-compat.ts`** naming the successor
+  and the relationship (`SUPERSEDED_BY` · `MERGED_INTO` · `SPLIT_INTO` · `ALIAS_OF` ·
+  `WITHDRAWN`), *then* run `npm run pulse:catalogue`. The key stays readable; only its
+  implementation goes.
+- **Enforced by two tests** (`npm test`), which cover opposite directions and neither is
+  sufficient alone:
+  - `pulse-checks/__tests__/categories.reconcile.test.ts` — every **emitted** `checkKey` is in the
+    registry, every category has metadata + exactly one domain, no duplicate keys.
+  - `pulse-checks/__tests__/catalogue-compat.test.ts` — every **registered** key is backed by an
+    implementation (so the Settings panel can't advertise a control that never runs), every key in
+    `catalogue-baseline.json` is still registered or explicitly retired, and every retirement names
+    a live successor. Baseline out of date? `npm run pulse:catalogue`.
+
+  If either fails, the catalogue drifted — fix the source, not the test.
 - Runtime stats are already automatic: all scan-results UI derives pass/warn/fail, category
   cards, score and priority live from the persisted `scan.checks` — nothing to wire per check.
 
@@ -900,12 +919,14 @@ checks (`runUrlChecks`/`runGithubChecks`/`runExtendedChecks`/`runDeployAgent`/`r
 were already AI-free; the AI (`pulse-ai.ts`) only ever ran on top. This work makes that split
 explicit and reuses it three ways.
 
-- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, skipUrlGuard, onChecks })`
+- **Shared core** — `runLiteScan({ inputType, url|githubRepo, includePageSpeed, checkPolicy, onChecks })`
   returns `{ checks, techStack, healthScore, browser/deploy/codeInsights, homepageUrl }`, de-duped by
   `checkKey` + stably ordered. It emits **incremental waves** via `onChecks` — implemented by an
   optional `onWave` threaded into `runUrlChecks` (emits core checks before extended) and
   `runExtendedChecks` (emits each of the 19 category modules as it resolves). No AI imports in
   `pulse-lite/*` — keep it that way.
+  ⚠️ **`skipUrlGuard` no longer exists** — it was removed in `2f6782a` (Aug 2026) along with both
+  of its call sites, so the guard is unconditional. Don't re-add a bypass parameter.
 - **SSRF guard** (`pulse-lite/url-guard.ts`) — `assertScannableUrl()`: http/https only, no creds,
   `dns.lookup` + reject private/reserved/loopback/link-local/metadata ranges. **Mandatory on the
   public path**; applied defensively elsewhere. **Rate limit** (`pulse-lite/rate-limit.ts`) —
@@ -928,11 +949,23 @@ explicit and reuses it three ways.
   (tag `pulse-report-<token>`, 5-min TTL); the share/unshare route `revalidateTag`s rotated/removed
   tokens so old links stop resolving. Added `robots: noindex`.
 - **Public embed widget** — standalone `/embed/pulse` (client widget, **score free, email-gates the
-  detail**), iframe-able anywhere (`frame-ancestors *` for `/embed/*` in `next.config.ts`),
-  postMessage auto-resize, snippet at `public/embed/pulse/embed.js`. Public no-auth endpoints
-  `POST/GET /api/public/pulse/scan[/id]` + `/unlock` (added `/api/public/pulse` to
-  `PUBLIC_API_PATHS`; CORS `*` already applies). `runPublicLiteScan` (`pulse-lite/public-scan.ts`)
-  runs with `includePageSpeed:false` and a single throttled JSON flusher (no write races).
+  detail**), postMessage auto-resize, snippet at `public/embed/pulse/embed.js`. Public no-auth
+  endpoints under `/api/public/pulse/` (added to `PUBLIC_API_PATHS`; CORS `*` already applies).
+  `runPublicLiteScan` (`pulse-lite/public-scan.ts`) runs with `includePageSpeed:false` and a single
+  throttled JSON flusher (no write races).
+  ⚠️ **Hardened since this entry was written — the two lines above describing framing and routes
+  are stale.** Framing is `frame-ancestors 'self' https://gitwork.co.uk https://www.gitwork.co.uk;`
+  (not `*`) — deliberately restricted to Gitwork's own domains, set on `/embed/:path*` in
+  `next.config.ts`. There is **no separate `/unlock` route** — email capture is folded into
+  `POST /api/public/pulse/scan` itself (email is required up front to start a scan at all); the
+  public surface is `POST /api/public/pulse/scan`, `GET /api/public/pulse/scan/[id]` (polling), and
+  `GET /api/public/pulse/config` (Turnstile site key + booking URL). The scan-start route also
+  gates on, in order: the `pulseEmbedEnabled` kill-switch, a honeypot field, Cloudflare Turnstile
+  (`pulse-lite/turnstile.ts` — fails open if no secret key is configured anywhere), a one-lifetime-
+  scan-per-email check, the shared SSRF guard (`pulse-lite/url-guard.ts`), then a Postgres-backed
+  rate limiter (`pulse-lite/rate-limit.ts`: 8/hr + 30/day per IP, 12/hr per target host). The
+  workspace's curated `pulseEmbedCheckKeys` (`pulse-embed-config.ts`) filter both the score/stat
+  strip and the findings list shown — a visitor never sees more than the configured ~10 checks.
 - **Foundry funnel** — captured email → `PulseLead` (notifies admins via `src/server/email.ts`).
   `leads-admin.ts` (`importLeadToFoundry`) one-click turns a lead into a full workspace `PulseScan`
   (→ proposal via `generateProposalFromScan`); surfaced by `PulseLeadsPanel` on `/app/pulse`.
@@ -1765,7 +1798,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -3089,3 +3122,1430 @@ in the place a reader looks first. **"Save as snippet"** was removed from the bl
   the client intake API (§40.1) writes into that surface and nothing holds it to the other three.
 - **The cover editor still shows every field always.** Making fields addable/removable — across all
   blocks, not just the cover — is an open design question, not a coded decision.
+
+## 42. Recent Changes (August 2026) — Care tells you whether a reply was actually sent
+
+Dan's charge was that Care could not be trusted for the one question a support desk exists to
+answer — *"has this been replied to?"* — so the team worked out of the mailbox instead and Care
+drifted further out of date. Reading the code, the complaint decomposed into **five independent
+defects**, four of which made Care actively state something false. None was a missing feature in
+the sense of "we never got to it"; each was a mechanism that produced a confident wrong answer.
+
+### 42.1 The five defects
+
+1. **There was no reply state at all.** `SupportConversation` recorded no notion of who spoke
+   last. The only "first reply" timestamp in the schema is `SupportTicket.firstReplyAt`, and
+   tickets are **dormant** in the cockpit (schema note, line ~2553), so nothing in Care read it.
+2. **`unread` was raised by ANY new message, including our own.** `runChannelSync` set
+   `unread: true` whenever it created messages, and Gmail's `threads.get` returns the *entire*
+   thread — so **a reply you sent from Gmail re-flagged the conversation as unread on the next
+   sync**. The badge grew because of your own replies. (CLAUDE.md §33 fixed nothing ever
+   *clearing* `unread`; this is the other half — something wrongly *setting* it.)
+3. **The IMAP connector never read the Sent folder.** It opened `INBOX` only, so a reply typed in
+   Apple Mail / Outlook / webmail was invisible to Care and the thread showed as unanswered
+   **forever**. This is precisely the "sometimes we go straight to the email" gap: Gmail happened
+   to be fine (whole-thread walk), IMAP structurally was not. Flagged as optional/v2 in
+   `docs/care-imap-smtp-connector-plan.md` line 85 — it is not optional if Care is the record.
+4. **Conversations were ordered by `receivedAt`, which is stamped once at creation and never
+   updated.** So the list sorted by *when a thread started*. A months-old thread that got a reply
+   an hour ago sat at the bottom — past the 100-row page limit, i.e. gone.
+5. **On manual-reply channels the reply was never recorded.** The messages route was *built* to
+   log replies for sources with no automated send path ("still get logged so the copy-to-send
+   flow works"), but the UI's manual button only ever wrote to the clipboard and never called it.
+   App Store Connect replies therefore left **no trace in Care at all**.
+
+### 42.2 The design — store facts, derive the judgement
+
+New pure module **`src/server/support-reply-state.ts`** (no Prisma, no I/O, 17 unit tests).
+The conversation stores only what a connector can *observe* — `lastInboundAt`, `lastOutboundAt`,
+`lastMessageAt` (additive, nullable → applies via the guarded `prisma db push`) — and
+`deriveReplyState()` decides `awaiting_reply | replied | no_inbound` from them at serialize time.
+
+**The reply state is never stored, and that is the whole point.** A `repliedAt` column can only
+be correct if every reply goes through Care, and they demonstrably do not. A flag nobody updated
+reads exactly like a conversation nobody answered. Deriving it means a reply sent from *anywhere*
+flips the state the moment a sync sees it, with nobody marking anything — so the board self-heals
+instead of drifting. Same call as Docs cover contents (§41.6): derive what describes current
+state, snapshot only what records a moment.
+
+⚠️ **`replied` requires the outbound message to be STRICTLY newer than the inbound one; an exact
+tie returns `awaiting_reply`.** The two errors are not symmetric — a false "replied" hides a
+customer who is actually waiting, which is the failure this work exists to remove, while a false
+"awaiting" costs one glance. **Never relax `>` to `>=`.** There is a test named for it.
+
+⚠️ **The three columns are REQUIRED (not optional) in `serializeConversation`'s parameter type.**
+A caller that narrowed its `select` and omitted them would otherwise get a silent, confident
+`no_inbound` on a conversation that is really awaiting a reply. Requiring them makes that a
+compile error.
+
+### 42.3 What changed per defect
+
+- **`recordMessageActivity()`** (`support.ts`) is the single writer for the stamps, shared by the
+  channel core, the Gmail adapter and in-app replies, so no connector can forget them. It sets
+  `unread` **only when an inbound message landed** — which is defect 2. New conversations are now
+  created `unread: false` and raised by a real customer message, so an outbound-only thread (one
+  we started, or one reconstructed from Sent) never arrives pre-flagged.
+- **IMAP reads Sent** (`imap.ts`). The mailbox is found by its RFC 6154 **`\Sent` special-use
+  flag**, not by name — names are non-standard *and localised* (`[Gmail]/Sent Mail`,
+  `INBOX.Sent`, `Sent Items`), so name-guessing fails silently on exactly the mailboxes that
+  matter. `sentFolder` overrides; `readSentFolder: false` disables. Existing Message-ID dedup and
+  References threading merge the sent copy onto the right conversation with no new logic.
+  ⚠️ Messages found in Sent are marked outbound **because of where they are**, not by comparing
+  the From address — a mailbox that sends from an alias (`support@` vs `app@`) would otherwise
+  have its own replies classified inbound, marking the thread unread and stranding it in the
+  awaiting queue. A Sent-discovered thread takes its `customerLabel` from `To`, else the operator
+  shows up as the customer on their own board.
+- **Ordering is by `lastMessageAt`** (nulls last, `id` tiebreaker so cursor pagination cannot skip
+  or repeat a row). `receivedAt` keeps its meaning as the thread start.
+- **"Copy & mark replied"** on manual channels copies *and* logs, so the thread stops claiming it
+  is unanswered. The copy happens first and independently — a failed log leaves the draft intact
+  and shows an error rather than silently losing it.
+- **`backfillConversationActivity()`** populates history. Bounded (500/run, chunked 25-wide) and
+  **self-terminating** — it only matches rows with a null `lastMessageAt`, so a drained client
+  costs one indexed lookup. That is why this needed no migration, no one-shot route and no manual
+  step: it runs on the ordinary sync path. A conversation with no captured messages is stamped
+  from `receivedAt` rather than skipped, or it would re-match the filter every sync forever.
+
+### 42.4 UI — the queue is now "awaiting reply", not "needs action"
+
+`SAVED_VIEWS` leads with **Awaiting reply** (the default) and adds **Replied**; "Needs action"
+became "All open". The awaiting view sorts **longest-waiting first** — a triage board that buries
+the oldest unanswered message under today's noise is how things fall through. Rows carry an amber
+left accent bar plus a `Awaiting reply · 3h` chip that escalates past `LONG_WAIT_HOURS` (24);
+the detail pane states whose turn it is outright. Care home's headline number is now **Awaiting
+reply**, not active-conversation count, which overstated the backlog and was easy to ignore.
+The legacy `/app/support` dashboard reads the **same** server-derived field (a shared dot +
+`lastMessageAt` timestamp) so the two UIs cannot tell an operator different stories.
+
+⚠️ Amber, not red — priority owns red, and a board where everything is red says nothing.
+
+### 42.5 Verified / not verified
+
+`npm run verify` green: tsc + lint **0 errors** (30 warnings, all pre-existing — confirmed
+identical on the stashed tree), **1534 tests** passing across 113 files, `audit:ui` **0 findings**
+with its self-test passing. `npx next build` clean, 98 static pages, no database. The 21 new tests
+were **proved to discriminate** by breaking three things on purpose: relaxing the tie to `>=`
+(1 failure), raising `sawInbound` for any message (1), and dropping the backwards-drag guard (1) —
+each failing only the test named for it.
+
+**Not verified:** none of this was seen in a browser. `/app/care` is auth-gated, there is no
+staging and no local DB, so the reply-state chips, the awaiting queue and the Sent-folder read
+have not been driven against real data. **Post-deploy, in order:** hit **Sync now** on each Care
+client once (that is what runs the backfill — until it does, existing conversations read "No
+customer message" and the Awaiting queue is empty, which looks like a broken feature rather than
+a draining one); confirm rows show Awaiting/Replied correctly; reply to a thread **from the
+mailbox, outside Care**, sync, and confirm it flips to Replied — that single check is the whole
+point of the change; then confirm the unread badge stops climbing on its own.
+
+**Known limits:** Discord and App Store replies made outside Care are still undetectable — there
+is no equivalent of a Sent folder to read — so those rely on "Copy & mark replied".
+`AWAITING_CUSTOMER` on the dormant `SupportTicket` remains unused; reply state lives on the
+conversation.
+
+### 42.6 The views became server queries, so a 50-row page is safe
+
+The first cut kept the cockpit's existing shape: fetch one page of conversations, filter it
+client-side with saved-view predicates. That made every view silently mean "…among the rows we
+happened to load", and the awaiting queue is the one list where that is unacceptable — an old
+unanswered thread outside the page makes the queue look empty when it is not. **Shrinking the
+page to 50 would have made that strictly worse**, so the filter moved into SQL first.
+
+- **`listConversations` gained `replyState`, `unassigned`, `q` and `sort`**, and `SAVED_VIEWS`
+  entries are now `ConversationListParams` rather than predicates. Source filter and search are
+  server params too — searching used to match only loaded rows, the same class of lie.
+- **Reply state is filtered with a Prisma field reference** (`lastOutboundAt lte
+  fields.lastInboundAt`), so no raw SQL and no denormalised boolean to drift.
+  ⚠️ A null `lastOutboundAt` needs **its own OR branch**: SQL comparisons against NULL yield
+  NULL, not true, so without it the query drops exactly the never-answered conversations the
+  queue exists for. ⚠️ It uses `lte`, matching `deriveReplyState`'s deliberate tie behaviour —
+  **the query rule and the display rule must agree**, or a row appears under "Awaiting reply"
+  wearing a "Replied" chip. `matchesReplyState()` pins the semantics and its test asserts the
+  three states **partition** the space (exactly one match per conversation, so none is in two
+  queues or in none).
+- **Pagination is 50/page with "Load more"**, and the list says *"End of list · N shown"* when
+  complete — so an empty queue is never confused with a truncated one.
+- **Badges come from `getConversationViewCounts()`** (indexed COUNTs over the whole client), not
+  from tallying loaded rows, which capped every badge at the page size. Care home uses it too,
+  replacing a fetch of up to 100 conversation rows *per client* that existed only to be counted.
+
+⚠️ **Optimistic triage patching had to be rewritten and this is the trap to remember.** The
+cockpit used to hold every conversation under ONE key, so `patchConversationInCache` targeted
+`["support","conversations",clientId]` directly. Now the key carries the view's params and the
+cache is an infinite query of pages, so that lookup would have found nothing and **silently
+stopped patching** — no error, just a UI that stopped feeling instant. It now sweeps every
+conversation query for the client via `getQueriesData`/`setQueriesData` and handles both shapes,
+and mutations invalidate the counts key as well, or the badges disagree with the list beside them.
+
+### 42.7 The row redesign, and a bug the first cut shipped
+
+Dan's read of the live list: *"very confusing, and things like this are present when we can see it
+has been replied to"*, pointing at a row labelled **"No customer message"** whose preview plainly
+read *"This has now been cancelled. Thank you…"*.
+
+**The bug is mine and it is the §35 mistake again — "we could not look" rendered as "it isn't
+there".** `backfillConversationActivity` derived `lastInboundAt` purely from `SupportMessage`
+rows, so any conversation whose message bodies were never captured (empty body, a purge, a
+pre-message-capture sync) got `lastInboundAt = null` → `no_inbound` → a confident *"No customer
+message"* on a thread with visible content, **and** it dropped out of the awaiting queue
+entirely. A conversation exists *because a connector ingested something inbound*, so `receivedAt`
+is the honest floor: with **no** message rows at all it is now stamped from `receivedAt`. Rows
+that DO exist are still trusted as-is, so a genuinely outbound-only thread (one we started, or
+one rebuilt from the Sent folder) correctly stays `no_inbound` — now labelled **"Sent by us"**,
+which says what it means. The same fallback runs in `runChannelSync` for a newly-created
+conversation that yielded no messages.
+
+**The row was carrying four competing status objects.** Reply chip + status chip + priority dot +
+sentiment dot, all at the same visual weight — and two of them were *defaults*: `status: NEW`
+printed a "New" pill on essentially every untriaged row, and neutral sentiment printed a dot on
+nearly all of them. A signal that appears on everything is not a signal. The redesign:
+
+- **Sender leads, not subject.** Support triage is about people, and the subject is frequently a
+  reference number that identifies nothing (`Follow-up [Case 1001-134555]`).
+- **One state readout**, in the house mono data-label voice rather than a bordered pill —
+  `NEEDS REPLY` / `REPLIED` / `SENT BY US` / `SNOOZED`. It sits **first on line 3 at a fixed 80px
+  width**, so the labels form an aligned, colour-coded column you can scan vertically; floating
+  it right made a ragged edge across three lines. Status *wins over* reply state when snoozed or
+  closed — a snoozed thread is in nobody's queue regardless of who spoke last — which is what
+  removes the double-chip.
+- **The readout carries no duration.** For an awaiting thread the last activity IS the customer's
+  message and for a replied one it is our reply, so the line-1 age is already that number —
+  printing both gave `6d … NEEDS REPLY 6D`.
+- **Time is the alarm.** It ages the *latest* message and turns amber + semibold past
+  `LONG_WAIT_HOURS`, so lateness is legible without another object on the row.
+- Priority renders **only when urgent**, sentiment is gone from the row (it lives in the detail),
+  the checkbox reveals on hover so a resting list is content rather than controls, and the
+  assignee is a distinct muted tile — adjacent plain mono read as one string (`HB NEEDS REPLY`).
+- The rail splits into **Queues** vs **Browse**; nine flat rows read as a filter dropdown. Only
+  the awaiting count carries colour, because it is the only one that is a call to action.
+- The detail pane's reply banner became a **rule + dot + sentence** instead of a filled alert
+  panel that appeared on every thread including healthy ones.
+
+**Verified by rendering, not by reading.** `/app/care` is auth-gated with no staging, so the list
+was server-rendered against the app's **real compiled CSS** in headless Chromium (the §39.1
+technique) at the true production rail width (`xl:w-80` = 320px) and at 390px. That caught two
+things a code read did not: the `NEEDS REPLY 6D` / `6d` duplication, and that the first
+screenshot's labels were *not* aligning — the injected CSS predated the arbitrary `w-[74px]`
+class, and once rebuilt the measured longest label (`NEEDS REPLY` ≈ 73px) needed 80px with
+`truncate` so a future longer label clips rather than shoving the preview out of column.
+Horizontal overflow measured **0** at both widths via `documentElement.clientWidth` (per the
+playbook — `innerWidth` lies). ⚠️ The first overflow reading of 227px was **my harness**, not the
+component: I had written `flex-1` where the real section has `w-full`, so it shrink-wrapped to
+content. Mirror the component's actual classes or the harness tests itself.
+
+### 42.8 The redesign that mattered was in the connector, not the CSS
+
+Dan's verdict on §42.7 was blunt and correct: *"it literally looks 90% the same … if you
+understand the logic, the connectors, the premise of the product, you would know this is not the
+world class way of handling customer support tickets."* The screenshot that came with it shows
+why, and none of it is styling:
+
+- **226 awaiting · 1 replied · 0 closed · 0 snoozed.** Nobody has ever burned this queue down.
+- **"Fellas Loaded" is the sender on 12 of 15 visible rows.** It is a contact-form forwarder: the
+  From line is the app emailing itself, and the customer is in the subject.
+- **Subject and preview are the identical string on every row**, so the list is two copies of one
+  line and nothing can be triaged without opening it.
+- **Every row reads `NEEDS REPLY` in amber**, because the view is "Awaiting reply".
+
+⚠️ **The root cause of the first two is one line each in `gmail.ts`**: `preview: subject` (never
+updated afterwards, because the Gmail `run()` path only ever writes `connectionId` on an existing
+conversation), and `customerLabel = from` display name. **I validated the row design against an
+invented fixture — "Sarah Mitchell", "Priya Anand" — where every sender differs and every preview
+is distinct. On that data the design was fine. On the real inbox it was unreadable.** This is
+§34.3's lesson ("validate against the real thing; unit tests pass while the output is wrong")
+applied to UI, and it should be the default: **screenshot a real client's data, not a fixture.**
+
+**`support-channels/identity.ts`** (pure, 18 tests against real rows from that inbox):
+- `resolveCustomer()` only overrides the From line when the mail is demonstrably the mailbox
+  talking to itself (address match, display-name match, or a no-reply sender), then takes the
+  first address in the subject, then the body. ⚠️ The dangerous failure mode is the reverse of
+  the bug — replacing a genuine sender with an address that happens to appear in their subject —
+  so "Björn Khermik" and "Sanmatin Matin" have tests asserting they are left alone, and the
+  mailbox's own address is never selected back out of the subject or body.
+- `derivePreview()` strips quoted history and signatures, unwraps `Message:` form labels, and
+  **returns null rather than echoing the subject** — the UI then renders no third line at all,
+  so the row collapses to two and more of the queue fits on screen.
+  ⚠️ `--` on its own line is the RFC 3676 signature delimiter; matching only long dash rules let
+  signatures into every preview. A test caught it.
+- **`repairForwardedIdentities()`** fixes the 226 rows already stored, from their own message
+  bodies (no Gmail round trip). Self-terminating with no schema change: it selects only rows that
+  still show the defect (label equals a mailbox address/name, or `preview` equals `subject`), so
+  a repaired client matches nothing next pass. Runs on the ordinary sync path.
+
+**UI changes that follow from the data:**
+- **The row state is hidden when the view already filters to it.** In "Awaiting reply" all 226
+  rows are awaiting, so the label and the amber bar were the view's own name repeated 226 times.
+  A signal that is constant within a view carries no information there. Shown only in mixed
+  views (All open, All, Urgent…).
+- **Keyboard triage — `j`/`k` move, `↵` open, `e` close, `s` snooze, `x` select, `Esc` clear.**
+  This is the actual product gap: a mouse-only UI cannot clear 226 items, which is why the board
+  reads 1 replied / 0 closed. Front, Superhuman, Missive and Linear are all keyboard-first for
+  this reason. The handler ignores events from inputs/textareas/contentEditable so `e` stays a
+  letter while the composer, search or notes field has focus, and after a close/snooze the cursor
+  holds position so a run of closes walks down the queue instead of jumping back to the top. The
+  shortcuts are printed once at the foot of the list — an invisible shortcut is unused.
+
+**Verified:** `npm run verify` green — 0 errors, **1555 tests**, `audit:ui` 0 findings; `npx next
+build` clean. The list was rendered against the app's real compiled CSS as a **before/after using
+the actual Fellas Loaded rows**. **Not verified in a browser against live data** — /app/care is
+auth-gated. **Post-deploy: hit Sync now on Fellas Loaded**, which is what runs
+`repairForwardedIdentities` over the existing 226 rows; until it does, they keep the old labels.
+
+### 42.9 The rest of the page — detail pane, empty state, Care home
+
+§42.7–8 redesigned the list and fixed the connector; the other ~60% of the screen was untouched.
+Dan's follow-up ("have you redesigned the ENTIRE page") was fair. What changed:
+
+**The detail pane is a workspace, not a viewer.** It gave ~288px of permanent width to a rail of
+three stacked `<select>`s, three snooze buttons and an always-open notes form — so the thread was
+squeezed, and the two things an operator does constantly (read it, answer it) competed for space
+with settings they change rarely. The verbs now sit in a **toolbar across the top** (Close ·
+Snooze · Assign · Priority · Status · Notes), the **thread gets the full width**, and the
+**composer is pinned and always visible**. That is the Front/Missive/Intercom shape, and it is
+the correct one: answering is the job, so it should never be behind a click. Notes moved behind a
+toolbar toggle — they matter, but a permanently-open notes form on a 226-item queue is 226 forms
+nobody filled in.
+
+⚠️ Caught by rendering it: the first cut had a **"Snooze" button beside a "Snooze for…" select** —
+the same verb twice. Now one split control: the button does the common case (a day, matching the
+`s` shortcut), the caret picks a longer one.
+
+**The empty state carries the queue.** The largest area on the page read *"Select a conversation
+to triage."* — an instruction, occupying the most space, telling you to do the thing you were
+obviously about to do. It is now a **queue overview**: how many are waiting, how long the worst
+one has waited, the four figures that matter (stat grammar per DESIGN.md — DM Serif figures, mono
+unit labels), and one button that opens the longest wait. `Start with the longest wait` is the
+only sensible first action on a 226-item board and now it is one click.
+
+**Care home is a ranked list, not a grid of cards.** Cards are all the same size whether a client
+has 0 waiting or 226, so the page could not answer the only question it exists for — *which
+client is being let down right now?* It is now one row per client with the awaiting figure
+leading, a left accent bar when the longest wait is stale, and secondary counts kept quiet. It
+also **stopped fetching up to 100 conversation rows per client purely to tally them** (N clients ×
+100 rows on every visit) — it reads `getConversationViewCounts` instead, which is both cheaper and
+actually complete.
+
+**Verified:** `npm run verify` green — 0 errors, **1555 tests**, `audit:ui` 0 findings (incl.
+SELECT-CHEVRON/SELECT-PAD, which matter here because the toolbar added four selects); `npx next
+build` clean. All three surfaces were rendered against the real compiled CSS at 1180×620 and
+1000×430 with **0 horizontal overflow**. **Not verified against live data** — /app/care is
+auth-gated, so the toolbar, keyboard shortcuts and composer have not been driven in a browser
+session.
+
+### 42.10 The repair matched nothing in production — and why the tests missed it
+
+The fix in §42.8 shipped, the sync ran, and the board was **unchanged**: still "Fellas Loaded" on
+every row, still subject-as-preview. Every unit test passed. Two defects, both from reasoning
+about the data model instead of checking what is actually stored:
+
+1. **The selection matched nothing.** `selfLabels` was built from `impersonateEmail` /
+   `intakeAddress` — **addresses** — while the stored `customerLabel` is a **display name**
+   ("Fellas Loaded"). They can never be equal. The other branch used a Prisma **field reference**
+   (`preview equals fields.subject`) comparing a nullable column to a non-nullable one, which is
+   at best fragile and was silently contributing nothing.
+2. **Even a selected row could not be repaired.** The Gmail adapter stores `authorLabel` with the
+   `<address>` **already stripped**, so at repair time `resolveCustomer` receives a bare name with
+   no address, finds nothing to compare against the mailbox, and returns it untouched.
+
+**The signal that works is the Care client's own name.** A "customer" whose name is the client's
+own name is definitionally the app forwarding to itself, and `SupportClient.name` is available on
+both paths. `IdentityContext.clientName` now carries it; `resolveCustomer` treats it as a
+self-name alongside `mailboxName`.
+
+The repair also stopped using a field reference: it selects plainly (`clientId` + `GMAIL`,
+bounded, newest first) and decides **in JS** whether each row still shows the defect. Ordinary
+code cannot fail silently the way that query did.
+
+⚠️ **The lesson, and it is the same one as §42.8 one layer down.** The tests all passed because
+every fixture was an idealised From line — `"Fellas Loaded" <support@fellasloaded.com>` — with
+the address present. The database holds `Fellas Loaded`, full stop. **Fixtures must be the shape
+the code will actually receive at the call site, not the shape the upstream format allows.** Four
+tests now assert exactly the stored shape, including the guard that `clientName` must not become
+a licence to rewrite a genuine sender.
+
+**Also:** the empty pane was a small status card floating in a very large empty area. It now
+carries a **"Next up"** list — the five longest waits, one click each — so the space does work
+rather than just reporting a number.
+
+**Verified:** `npm run verify` green — 0 errors, **1559 tests**, `audit:ui` 0 findings; `npx next
+build` clean. ⚠️ **Still not verified against live data**, which is precisely how the previous two
+attempts passed review and failed in production. The honest post-deploy check is: hit **Sync now**
+on Fellas Loaded and confirm the rows relabel to customer addresses. If they do not, read
+`repairForwardedIdentities` against a real row rather than adding another unit test.
+
+### 42.11 Simplicity through hierarchy, not removal
+
+Dan asked whether Care now follows the standard for this kind of app, whether Gmail was a better
+model, and where connectors belong — with the real point being *"I just need it to be simple
+enough to use and so far we have overcomplicated the actual functionality."* Offered a hard cut
+of the state model, he chose **layout only, keep all features**. So the constraint is: make it
+feel simple without removing anything.
+
+**On the question itself, for the record:**
+- **The layout already is the standard.** Views rail │ list │ reading pane is Gmail, Front,
+  Missive, Intercom and Help Scout alike. Switching to "more Gmail-like" would change little,
+  because Gmail *is* this layout with a different label system. Front is the right structural
+  reference (multi-client, multi-channel, assignment); Gmail is the right bar for simplicity.
+- **The complexity is the concept count, not the layout.** A Care conversation carries seven
+  overlapping axes — status (5 values), priority (4), sentiment (3), reply state (3), unread,
+  assignee, tags/issueType — across 9 saved views. Gmail runs on two axes and one verb (archive);
+  Front on three. That gap, not the CSS, is what makes it feel heavy, and it is recorded here as
+  a known, deliberately-accepted trade rather than an oversight.
+- **Connectors belong where they are** — bottom of the rail under `03 // MANAGE`. They are setup,
+  not daily work; Gmail does not put "add account" in the sidebar. Moving them above the queue
+  would put configuration in the path of triage.
+
+**What changed under the layout-only constraint: the detail toolbar became two tiers.** It had
+six controls in one row — Close, Snooze, Assignee, Priority, Status, Notes — four of them
+dropdowns at identical visual weight, which is what read as busy. Now:
+
+- **Row 1, actions:** `Close` · `Snooze` (split button) on the left, `Notes` pushed right. These
+  are the verbs pressed on essentially every thread.
+- **Row 2, properties:** `Assignee` · `Priority` · `Status` as labelled fields (mono caps label +
+  compact select, DESIGN.md's data-label voice), behind a hairline. They read as a property sheet
+  rather than three more buttons competing with Close.
+
+Every control is still present and still one click. Only priority carries colour, and only when
+urgent — four equally-weighted levels means three of them asking for attention they do not need.
+
+**Verified:** `npm run verify` green — 0 errors, **1574 tests**, `audit:ui` 0 findings (the
+SELECT-CHEVRON/SELECT-PAD rules matter here — the properties row is three selects). Rendered
+against the real compiled CSS at 820×600, 0 horizontal overflow. **Not verified against live
+data** — /app/care is auth-gated.
+
+### 42.12 The cockpit is an index and a record, not three columns
+
+§42.7–42.11 were compliance and correctness passes: the connector identity fix, the house palette,
+the numbered panels, the two-tier toolbar. Dan's verdict on the result was that it "looks almost
+identical to what we have… I wanted [something] totally different", and he was right — none of that
+touched the **information architecture**. It was still rail │ 320px list │ detail with tidier chrome.
+
+**What was actually wrong was the layout, not the styling.** Every pane was permanently on screen,
+so at 1440px the nine saved views ate a fifth of the width to show a filter set you touch a few
+times a day, the list of work was a 320px sliver, and the thread was a sliver beside it. That is why
+a 226-row queue was unreadable and why nothing was ever cleared. Offered a choice of reference
+shapes, Dan picked **HubSpot — views as tabs, a sortable table, a bulk toolbar on selection, a
+right-hand properties panel** — and explicitly **"keep DESIGN.md, change the layout only"**, so the
+instrument chrome (mono `NN //` bands, mono data-labels, DM Serif figures) is unchanged throughout.
+
+```
+INDEX                                    RECORD
+┌ client · queue readout · actions ─┐    ┌ client · ← conversations ─────────┐
+│ tabs: the saved views             │    ├ customer · subject · Close Snooze ┤
+│ search · channel · ⌨ hints        │    ├────────────────────┬──────────────┤
+│ ┌ table, the full width ────────┐ │    │ thread             │ 01 // PROPS  │
+│ │ ☐ CUSTOMER SUBJECT … WAITING ↑│ │    │ composer (pinned)  │ 02 // NOTES  │
+└─┴───────────────────────────────┴─┘    └────────────────────┴──────────────┘
+```
+
+One thing at a time, each with the whole width — the index/record shape of every CRM and issue
+tracker, and the reason a HubSpot table carries hundreds of rows legibly.
+
+- **The list is a table.** Cards are three lines of mixed-weight text per row: fine for five, a wall
+  at 226. Columns let the eye scan DOWN one attribute ("who has waited longest?", "what is
+  unowned?"). New **`.app-table app-table--dense`** in `globals.css` — mono-caps headers, 8px/12px
+  cells, per DESIGN.md's table grammar. ⚠️ Written `.app-table.app-table--dense` (0,2,0) because the
+  base `.app-table thead th` is (0,1,2); a bare `.app-table--dense th` loses and does nothing.
+- **The saved views are tabs**, keeping the QUEUES / BROWSE split as a hairline between groups.
+- **Sorting is server-only, on one column.** `listConversations` can produce exactly two orders
+  (`activity`, `oldest_inbound`), so WAITING is the only sortable header. ⚠️ **Do not add a header
+  that sorts the loaded page** — that reintroduces the "…among the rows we happened to fetch" lie
+  §42.6 removed. `SortHeader` exists to make that rule explicit at the call site.
+- **`QueueOverview` is deleted, not moved.** A status card that only appeared when *nothing* was
+  open is the wrong place for the state of the queue. Its headline is now a permanent mono readout
+  in the client header, its four figures are the tab counts, and "Next up" is the table itself
+  (sorted oldest-first). Nothing was lost; it stopped needing a pane.
+- **Properties moved off the top of the thread into a `lg:w-[286px]` sidebar** (`01 // PROPERTIES`,
+  `02 // NOTES`). Below `lg` the sidebar is a view you switch to via a **Details** toggle — one
+  boolean, one copy of the panel. The toggle is `lg:hidden`, not shown-inert, because at `lg+` the
+  panel is already on screen.
+- **Close is a tint, not a slab.** `bg-emerald-600` with white text was hardcoded and never flipped;
+  white on `--success-500` (#3DD68C) fails contrast in dark mode. It is now
+  `border/bg-50/text-500`. Same for every remaining hardcoded amber/emerald/red in these two files —
+  and note the palette has **no `-600` semantic tokens**: `--success-500`, `--warning-500`,
+  `--danger-500` and their `-50` tints are what exists, so a long wait is expressed as *weight*, not
+  as a hand-mixed darker amber.
+
+**Three defects found by rendering it, none of which a code read would have caught.** `/app/care`
+is auth-gated, so the surface was driven headlessly at `/demo/care` — and because the cockpit is two
+clicks deep, `npm run audit:clipping <url>` only ever reaches the client list. The fix is that
+**`scripts/audit-clipping.mjs` exports `AUDIT` as a library**: a throwaway script can drive the page
+into each state and run the real detector over it. Do that for any surface behind an interaction.
+
+1. At 390px the record's action group was one `shrink-0` nowrap row, so **Snooze was cut at the
+   frame edge and the Details toggle — the only route to properties and notes on a phone — was off
+   screen entirely.** It registered as **zero page overflow**, because a flex container clips rather
+   than scrolls. Fixed by stacking below `sm` and letting the group wrap.
+2. The header readout truncated to "…longest 1d · 1 urg", **clipping away the urgent count**, the
+   one figure on the line that is a call to action. It wraps now; a phone spends one more line.
+3. The subject column took its natural width and pushed **WAITING off the right edge at 390px** —
+   reachable by scrolling the table sideways, which nobody does to find the number they came for.
+   Column caps now step with the viewport, and the preview line is dropped below `sm` (106px of a
+   270-character message is not a preview, and a `title` tooltip is no answer on a touch device).
+
+Also fixed while auditing: the **On Your Desk** dock summary was a TRUNCATED finding on every `/app`
+screen (266px of text in 218px, no title, no scroll) — the dock is one 48px strip and cannot grow,
+so the recovery is a `title`.
+
+**Verified:** `npm run verify` green — tsc + lint **0 errors** (31 warnings, all pre-existing),
+**1612 tests**, `audit:ui` **0 findings** with its self-test passing; `npx next build` clean, 98
+static pages, no database. `audit:clipping` **0 findings** on `/demo/care` and **0 across 20
+state × viewport combinations** (index · record · record-details · selection · settings ×
+390 · 768 · 1280×620 · 1440) via the library harness above. **Not verified against live data** —
+`/app/care` is auth-gated and the demo user holds `support` but not `support.manage`, so the
+checkbox column, bulk bar and settings screen were screenshotted under a *temporary* local grant
+that was reverted before commit. **Post-deploy:** open Fellas, confirm the table renders 226 rows
+across the awaiting tab, sort WAITING both ways, select a few rows and bulk-close, open a thread and
+confirm the properties sidebar saves assignee/priority/status.
+
+**Deferred:** the legacy `/app/support` dashboard still owns add-client, Tickets, Reports, health
+scoring, AI search and workflow rules, and `client-cockpit.tsx` still imports `ConnectorsView` out
+of it — so `ConnectorsView` renders its own chrome inside `01 // MODE`'s screen rather than a
+numbered sibling. Extracting it is the first step of retiring the legacy file (§11).
+
+### 42.13 The Care touchpoints outside the module
+
+Three surfaces referred to Care and each said something different about it.
+
+**The HQ tile had the module's own three defects, one layer out.** It reported **open tickets and
+unread messages** — but tickets are dormant in the cockpit, and `unread` was climbing on our own
+replies until §42.2 fixed it, so neither number was actionable and the one that is (*is a customer
+waiting on us?*) was absent. It fired a `useSupportTickets` + `useSupportConversations` pair **per
+row**, the conversation read pulling up to 100 full rows purely to count the unread ones — the same
+N+1 Care home had, replaced by the one `useClientQueueSummaries` roll-up. And every colour was a
+literal (`#0F172A`, `#94A3B8`, `#475569`, `#1D4ED8`, `rgba(0,0,0,0.08)`), so the tile was unreadable
+in dark mode while every token-driven tile beside it was fine. It is now worst-client-first,
+awaiting-led, and all tokens.
+
+⚠️ **`AppOverview`'s tile container is still `bg-white` with a literal border** — so *every*
+dashboard widget sits on a white card in dark mode. Out of scope here, but it is the reason a
+token-correct widget can still look wrong on that screen.
+
+**One icon for Care everywhere.** Lifebuoy in the sidebar, Heart on HQ, a chat bubble on both Portal
+badges. The sidebar is canonical. The chat bubble stays where it genuinely means *a chat channel* —
+Slack links, and Care's own `SourceIcon`.
+
+**`/app/context`** called the module "Care / Support" and pointed at the legacy dashboard route.
+
+⚠️ **Portal's two Care badges are still different by design, not by accident** — a mono `CARE` pill
+on the client detail page, a quiet 3.5px icon in the client card's icon strip (beside the Drive
+favicon, GitHub and the Pulse chip). Each is consistent with its own cluster; converging them means
+either breaking the card's icon strip or dropping the detail page's label. The convergence worth
+doing is to put the client's **awaiting count** on the Portal card, which needs a new field on the
+client DTO — server work, and a separate change.
+
+**Verification technique worth keeping: a component no demo mounts can still be seen.** `CareWidget`
+is rendered only by `AppOverview`, and no `/demo/**` route mounts it (`/demo/dev` renders
+`DevOverview`), so there is no reachable page at all. It was verified by `renderToStaticMarkup` with
+the **query cache pre-seeded** (`qc.setQueryData(["support","queue-summaries"], …)`), wrapped in the
+real compiled stylesheet from `.next/static/css`, and screenshotted in both themes. Effects do not
+run, but tokens, geometry and content are the shipped ones. ⚠️ `tsx` compiles `.tsx` with the classic
+JSX runtime against this repo's `"jsx": "preserve"` tsconfig and fails with *"React is not
+defined"* — pass a throwaway tsconfig setting `"jsx": "react-jsx"`.
+
+### 42.14 The bar is the rest of the platform — Deck, Starters, Docs
+
+§42.12's restructure fixed the information architecture and Dan accepted the table, but the verdict
+on the rest was that the **tab bar felt basic** and the **reply/authoring screen "looks exactly the
+same, feels rubbish and outdated"** against Deck, Starters and Docs. Both were fair, and both were
+the same failure: the new IA was drawn in generic web chrome rather than in Foundry's own.
+
+- **The saved-view tabs are a segmented control**, not underlined text. Underline tabs are the web
+  default and read as exactly that. DESIGN.md already names the platform's pick-one control (Deck's
+  brand switch: *mono caps, 6px, brand-soft*): a hairline-bordered well on `--surface-1`, the active
+  view a raised `--surface-0` chip in brand, counts as 4px badges so "Awaiting reply 226" stops
+  reading as one string. The QUEUES / BROWSE split is a rule inside the well.
+- **The thread is a transcript, not chat bubbles.** Left/right rounded bubbles capped at 85% width
+  were wrong twice: Care holds *email* — a support reply is six paragraphs and a quoted history, so
+  alternating alignment and an 85% cap make long messages harder to read — and bubbles are nobody's
+  language on this platform. Now a mono meta rail (`US` / `CUSTOMER` · author · when) over full-width
+  prose, with direction carried by a 2px left rule and a faint wash.
+- **The composer is an instrument, not a bare form.** `01 // THREAD` and `02 // REPLY` are numbered
+  panels on the canvas like every other module surface (DESIGN.md: never bare cards floating on the
+  canvas), and the reply panel's header states **where the reply will actually go** —
+  `VIA GMAIL · ⌘↵ TO SEND` versus `MANUAL · COPY TO SEND`. On a manual channel that is the difference
+  between a sent reply and a lost draft, and the old naked textarea never said it.
+- The record numbers `01`–`04` across **both columns**, left then right: the sequence is per screen,
+  not per column.
+- **`formatWhen`** was added beside `formatAge`, because `formatAge` returns a bare duration and the
+  header appended "ago" to it — so a reply sent in the last minute read *"answered now ago"*.
+- **The thread opens at the newest message**, aligned to that message's **top** rather than the
+  container's bottom: scrolling to the bottom cut off the one line saying who you are reading.
+
+**`/demo/care` was a shell, and that is why this took three passes.** The interceptor answered
+`{ messages: [] }`, `{ members: [] }`, `{ connections: [] }` and `{ notes: [] }` for every request,
+so the entire record side of the module — transcript, assignee options, send path, notes — could not
+be rendered at all, on the only surface where an auth-gated module *can* be rendered. It now serves
+real threads (inbound + our reply), three members, per-source connections and notes.
+
+**It also ignored the query string entirely**, so all nine view tabs showed all four conversations,
+the counts disagreed with the rows beneath them, and search and the channel filter did nothing.
+`demo-fetch.ts` now passes `URLSearchParams` through and `filterDemoConversations` applies the same
+filters `listConversations` applies in SQL. ⚠️ Match the **wire** format, not the shape of the params
+object: `status` is **comma-joined** and `unassigned` is the string **`"1"`** (see
+`listSupportConversations`). Reading them as repeated params and as `"true"` matched nothing, so the
+awaiting tab rendered its empty state while its badge read 2 — the exact class of demo lie the
+function exists to remove.
+
+⚠️ **`npx next build` clobbers a running `npm run dev`.** The dev server keeps serving HTML that
+references chunks the build deleted, so every page 404s its JS and renders unstyled — which looks
+like a broken route and cost a diversion here. After any `next build`, `rm -rf .next` and restart dev
+before screenshotting.
+
+**Verified:** `npm run verify` green — 0 errors, **1612 tests**, `audit:ui` 0 findings; `npx next
+build` clean. `/demo/care` rendered at 390 · 768 · 1280×620 · 1440 across index · record ·
+record-details · selection · settings — **0 clipping findings across all 20 combinations**.
+
+### 42.15 Five defects found by using it on real data
+
+Dan reviewed #580 live on production. Two of the five were cosmetic; one was a scoping mistake; and
+**two were the same class of bug this module has now produced four times — a feature with several
+entry points, fixed on one of them.**
+
+#### The one that mattered: post-sync housekeeping ran on ONE of three sync paths
+
+`repairForwardedIdentities` and `backfillConversationActivity` were called from exactly one place,
+`syncSupportClient`. The other two entry points called `syncConnection` directly and ran neither:
+
+| Path | Ran the repair? |
+|---|---|
+| Client-level **Sync now** (cockpit header) | ✅ |
+| Per-connection **Refresh / Re-sync history** (Channels panel) | ❌ |
+| Nightly cron | ❌ |
+
+So the two paths an operator actually reaches for to fix a broken board were the two that could not
+fix it — "I re-synced history and it still looks off" was **correct**, and the nightly cron had been
+silently skipping the repair every night. Meanwhile the `courseRequestOnly` branch was copy-pasted
+into all three, each with a comment claiming it matched the others. That duplication is the disease;
+the missing repair is the symptom.
+
+One `runPostSyncHousekeeping({ clientId, workspace, newConversationIds })` now owns backfill →
+repair → (course-request import | enrich + rules), and all three call it and nothing else. It
+**returns** what it did (`relabelled` / `relabelRemaining` / `stamped`) rather than being silent —
+"nothing happened" and "there was nothing to do" being indistinguishable is most of why this took
+three attempts to find. ⚠️ The cron calls it **once per client**, not per connection.
+
+#### The repair could not see the rows it exists to fix — three ways at once
+
+Even on the one path that called it, it could not have worked:
+
+1. It required a `GMAIL` **connection** and returned early without one. Fellas' Gmail connector was
+   replaced by IMAP, so the whole Gmail history was frozen broken — the connector is gone, the
+   conversations are not.
+2. It only considered `source: "GMAIL"` **rows**, while the same forwarder now writes through the
+   IMAP connector, so the live rows were out of scope too.
+3. Its defect test compared the **whole** stored label to the client name. Gmail's adapter strips
+   the address (`Fellas Loaded`); IMAP keeps it (`"Fellas Loaded" <noreply@fellasloaded.com>`), so
+   the test matched the first and silently missed the second.
+
+⚠️ **The fixtures have now been wrong in both directions.** §42.10 corrected them to Gmail's shape
+and in doing so cemented the assumption that it was the only shape. `isSelfLabel` parses the label
+first and both forms are asserted, along with the guard that matters more than either — a genuine
+sender is never rewritten. The mailbox config is a *signal* now, not a gate: `clientName` alone
+identifies a forwarder and is always available.
+
+#### The channel filter was built from connections, not from the data
+
+The dropdown offered Reddit / Discord / Analytics API / Email while the table plainly showed **GMAIL**
+rows — visible and impossible to filter to, because the Gmail connector had been replaced.
+`getConversationViewCounts` now returns `sources` from a `groupBy(['source'])` (one more groupBy on
+an endpoint already doing several) and the dropdown renders the **union** of connected and
+present-in-data sources. ⚠️ Not a union over the loaded rows: that is capped at the page and would
+restore the "…among the rows we happened to fetch" lie removed in §42.6.
+
+#### The course-requests mode is Wedge-only machinery that was on every client
+
+`01 // MODE` offered "Support paused — course requests only" to every Care client. Everything behind
+it is Wedge's golf-course pipeline — `wiki-course-feedback.ts` says so in its own docstring, keyed on
+a `"New Feedback"` subject, with `resolveSupportClient` name-matching *Wedge ↔ "Big Wedge"*, beside
+`wiki-bigwedge-import.ts` and `bigwedge-course-api.ts`. The wiki already gated it correctly, so the
+list moved to **`src/lib/wiki-sections.ts`** (framework-free, so Care can import it without pulling
+a component tree in) and Care reuses it. Shown when the client has the pipeline **or** the flag is
+already on, so it can always be turned off.
+
+⚠️ Gate on the **Portal** client slug, not Care's: the same client is `wedge` in Portal and
+"Big Wedge Golf" in Care, so `SupportClient.slug` would never have matched. `workspaceClientSlug` was
+added to the DTO for exactly this.
+
+#### The awaiting queue opened oldest-first, burying today's mail
+
+Sorting longest-waiting-first was the original call and it is wrong on real data: a client whose
+whole backlog is two months old shows a wall of identical `2mo` rows with this morning's mail at the
+bottom. Both queues now open newest-first; the WAITING header still flips it, and the header readout
+still states `LONGEST 2mo`. The readout tells you the worst wait; the list shows you what is new.
+
+#### The record's proportions on a tall window
+
+**Not** a broken height chain — `/app/care` passes `mainClassName="flex min-h-0 flex-1
+overflow-hidden p-0"` and the shell is `h-[100dvh] overflow-hidden`, so the page cannot scroll
+(measured: `pageScrolls=false` at 2000×1770). The thread panel is `flex-1`, so on a 1770px window it
+was ~1100px for a one-message thread with the reply pinned a thousand pixels below what you had just
+read. The messages are **bottom-aligned** now (`mt-auto`), so the conversation ends 13px above the
+reply at every size.
+
+⚠️ **Four layouts were measured; three are wrong and look right in code.** `flex-initial` (hug the
+content) collapses the thread to **2px** on a short window, because the reply panel beside it is
+`shrink-0` and wins. `flex-1 max-h-fit` does the same — `fit-content` measures the scroller, which
+is collapsible, not the messages inside it. A `min-h` floor on the thread, and letting the record
+scroll as a unit, both push the **reply off the bottom of the screen**. When a short window cannot
+fit both, the thread yields and the reply keeps its size: a squeezed thread scrolls, a squeezed
+reply is the one thing you opened the record to do.
+
+#### `/demo/care` now reproduces the defect it is used to verify
+
+Northwind has **no `gmail` connection** while two of its conversations are gmail — the real Fellas
+shape. Built from connections alone the dropdown loses "Gmail" while gmail rows stay in the table;
+built from the union it does not. A demo that cannot express the bug cannot verify the fix.
+
+**Verified:** `npm run verify` green — 0 errors, **1643 tests** (24 new), `audit:ui` 0 findings;
+`npx next build` clean; `audit:clipping` 0 findings across 20 state × viewport combinations.
+The new guards were **proved to discriminate** by breaking five things on purpose — and the first
+attempt at two of them did **not** discriminate: the RFC-form fixture passed via the no-reply branch
+rather than the name parsing, and a bare `toContain("runPostSyncHousekeeping")` was satisfied by the
+import line while the call was renamed. Both were tightened until reverting the fix fails the test.
+
+**Post-deploy, on real data:** press **Re-sync history** on Fellas' Email connector — the path that
+previously did nothing — and confirm the customer column relabels; confirm the channel dropdown now
+offers **Gmail** and that picking it returns the historical rows; confirm the Awaiting tab opens with
+today's mail on top; confirm the course-requests panel is gone from Fellas and still present on
+Wedge.
+
+⚠️ **`/demo/care` under-reports available height by ~80px against the real app, so short-viewport
+measurements taken there are pessimistic.** `AppShell`'s title band is `h-20` (80px) since §40.2;
+`demo-shell.tsx` still carries the old 44px title on a `pb-5 pt-7` band (~130px) plus the demo
+banner. §40.2 flagged that mirror as deliberately left alone — worth remembering before treating a
+height measured on a demo page as the number the app will produce.
+
+**Known limit:** on a genuinely short window (~620px and below) the title band plus the record
+header leave too little for both panels, so the thread is squeezed — to a few pixels on the demo,
+to ~120px in the app. The reply stays put by design. Reclaiming the title band on the record screen
+is the real fix and needs `hideContentHeader` to become runtime state rather than a page prop
+(`/app/docs/[id]` and the Pulse report already pass it statically).
+
+## 43. Recent Changes (August 2026) — Launchpad (what we need FROM the client)
+
+A new section of every client's wiki that collects everything Gitwork needs **from** a
+client to start and ship, so developers stop waiting on missing accounts, assets and
+legal copy. Two jobs on one page: a **tracked requirements checklist** grouped into
+modules (Foundations / Website / Payments / iOS / Android / Compliance), and **fillable
+boilerplate legal docs** (cookie policy, T&Cs, privacy policy) rendered
+deterministically — no AI.
+
+**It is a SIBLING of the onboarding engine, not an extension of it.** The shared pieces
+are genuinely reused — `FIELD_TYPE_REGISTRY`, `validateAnswer`, `isFieldVisible`, and
+`FieldRenderer` itself, which `LaunchpadFieldRenderer` delegates to for every field type
+Launchpad didn't invent. What diverges is the answer model: per-item checklist status
+(`LaunchpadItem`) and per-doc approval state (`LaunchpadDoc`) have no meaningful value in
+onboarding's flat id→value map, so `LaunchpadFieldType = OnboardingFieldType | "link" |
+"checklist_item" | "legal_doc"` extends the union rather than editing it. Putting the two
+table-backed types into `OnboardingFieldType` would have given `validateAnswer` two
+branches that cannot validate anything and `FieldRenderer` props it never uses.
+
+⚠️ **The name.** "Launch Kit" was the original brief; it collides with the existing
+`launch-kit` **Starter** (`starters-catalog.ts` — the code-scaffolding kit, also
+referenced by name in the archetype-mapper prompt). Renamed to **Launchpad** before any
+code was written; `Launchpad` is now in the §32 `{{Feat}}` registry.
+
+- **Snapshot-on-assign**, the same rule as `ClientOnboarding.formSnapshot`: the structure
+  is frozen onto `ClientLaunchpad.structureSnapshot` when a template is assigned, so
+  editing the master template in Settings never disturbs a kit a client is working
+  through. Re-assigning replaces the snapshot and module selection but **keeps the item
+  and doc rows** — a client who has already provided their app icons shouldn't re-provide
+  them because we switched templates. Rows outside the new structure stop being read
+  rather than being deleted, so switching back restores them.
+- **Prefill is only-if-present, and it is allow-listed.** `prefillKey` names a key in
+  `PREFILL_SOURCES` (`src/lib/launchpad/prefill.ts`), **never a column**: template JSON is
+  operator-editable, so a key resolving straight to a column name would make a Settings
+  edit a way to read anything on the client record — encrypted bank details included — and
+  surface it on a page a client user can open. The client record beats an onboarding row
+  (it's the live one); a client who never went through onboarding just gets fewer
+  prefilled fields, never an error.
+- **Legal docs are Launchpad artifacts, NOT `Document` records** — the `DocumentType` enum
+  and its exhaustive maps are untouched. Three separate markdown templates rather than one
+  parameterised source (they diverge too much), UK-oriented: the privacy policy is
+  structured to the UK GDPR Art. 13/14 transparency list, the cookie policy leads on
+  **PECR** (consent *before* a non-essential cookie is set — the point most templates
+  miss), and the T&Cs state the Consumer Contracts Regs 14-day right and cap only what
+  UCTA/CRA 2015 actually let you cap.
+- ⚠️ **The red TEMPLATE banner is returned as its own field, never spliced into `body`.**
+  The client can edit the body — that's the point, they hand a filled draft to their
+  lawyer — so a banner living inside the markdown would be one backspace away from a
+  document reading as finished legal advice. `renderLegalDoc` returns
+  `{ title, banner, body, missing }` and a test asserts the banner text appears in **no**
+  doc body, in any answer state.
+- **Approval is a lightweight status, not e-sign.** Approving snapshots the rendered body
+  into `bodyOverride` so "approved" refers to a fixed text; editing an APPROVED doc drops
+  it back to EDITED, because keeping the badge over changed wording is the one genuinely
+  misleading thing this feature could do. The UI says "not an e-signature" in the byline.
+- **Assets are LINKS ONLY.** A pasted URL is stored and rendered as an anchor, never
+  fetched server-side (SSRF) — the same posture as `ClientWikiIntakeItem.attachmentUrls`.
+- **Auth mirrors the wiki's two paths.** Internal by client slug, `assertCan(…,
+  canManageClients)`. Client-facing by share token using the **hardened** posture
+  (`resolvePublicWiki` → `verifyWikiAccessCookie` → belongs check → per-IP rate limit),
+  because a Launchpad write records a commercial fact a developer will act on. Reads are
+  token-only, so a link recipient can see what is being asked of them but cannot answer
+  it. `/api/wiki` was already in `PUBLIC_API_PATHS` — no middleware change.
+
+### 43.1 The wiki section wiring is TWELVE lists, not eight
+
+The section allow-lists are the standing trap here, and the count in the original plan
+was wrong twice over. **Four are exhaustive `Record<WikiSection, …>` maps, so `tsc` finds
+them for you** — and it did, naming two nobody had listed: `SECTION_META` in
+`wiki-dashboard.tsx` and `SECTION_ICON` in `wiki-mobile-nav.tsx` (plus the demo
+`WikiDTO`, which is a third self-enforcing one).
+
+The other eight are plain string arrays and object literals with **no exhaustiveness
+checking at all**, which is what
+`components/clients/wiki/__tests__/launchpad-section-wiring.test.ts` now covers: the
+`WikiSection` union, the nav row, `SHAREABLE_SECTIONS`, `SHARE_SECTION_LABELS`, the
+public page's `SECTION_LABELS`, `ALL_WIKI_SECTIONS` (miss it and a refresh on
+`#launchpad` silently bounces to the dashboard), `SECTION_WIDGET_LABELS`, and the public
+view's `availableSections` + render dispatch. **Adding a section? Add it to that test's
+list too** — it is source-text assertions on purpose, because most of these live in
+`"use client"` components whose imports drag a React tree into a node test for no benefit.
+
+Two behavioural rules the test also pins: the operator must be able to reach the section
+from **+ ADD NEW** and get past the `confirmDeletePage` guard (which early-returns for any
+section it doesn't name, so a missing entry makes the delete button silently do nothing —
+the §40.1 unreachable-state defect), and the public view requires **enabled AND
+assigned** before listing the section, so an enabled-but-unassigned kit never lands a
+client on a blank page that reads as a broken link.
+
+### 43.2 Internal signal — and why it caps at amber
+
+`deriveClientHealth` takes a `launchpadOutstanding` input, wired at both call sites
+(`clients.ts`, `analytics/portal-analytics.ts`).
+
+⚠️ **It can never go red, however many items are outstanding, and that is deliberate.**
+Everything else in that function is a fault on *our* side (work late, code failing
+checks); this is work we are waiting on the **client** for. Letting it go red would put a
+client who simply hasn't sent their app icons in the same bucket as one whose delivery is
+genuinely failing, and the board would stop meaning anything. A test asserts amber at 1,
+5, 20 and 500 outstanding.
+
+⚠️ **`null` and `0` are different facts.** No Launchpad means we never asked; 0
+outstanding means they've given us everything. Reporting the first as the second is §35's
+mistake — "we could not look" becoming "it isn't there" — so the input is nullable and the
+absent case contributes no signal.
+
+**The HQ widget renders only when a client actually has a Launchpad**, and the decision
+lives in `app-overview.tsx`'s `GRID` (`requires: "launchpad"`), **not** in the widget.
+`BentoBand` wraps every grid entry in an unconditional bordered `<div>`, so a widget
+returning `null` would leave a 220px empty white card on the dashboard. The filter reads
+`useClientList()`, the same query key `ClientsWidget` already uses, so it is a cache hit
+rather than a second request.
+
+### 43.3 Three defects found by looking, not by testing
+
+All three passed `tsc`, `lint`, `audit:ui` and the unit suite.
+
+1. **`****` on an unanswered cookie policy.** `**{{trading_name}}**` with no answers
+   rendered a literal `****`: the token is optional, its `fallbackId` (`company_name`) was
+   also blank, so it resolved to `""` and orphaned its own emphasis markers — and the
+   empty-line rule couldn't save the line because it *also* carries a required token that
+   is correctly left visible. Fixed by having a fallback chain that terminates in a
+   required-and-blank field **inherit that treatment** (token stays visible). The guard is
+   now a test over every doc × three answer states (empty / partial / full) asserting
+   balanced `**` per line — and it had to be three states, because the bug appears in only
+   one of them. A fixture testing just the fully-answered case cannot tell the bug from the
+   fix (§42.10).
+2. **"YOUR ACCOUNT — IN YOUR NAME" rendered to Gitwork staff.** The section is one
+   component for both audiences on purpose (so they can never disagree about what is
+   outstanding, the defect §42.4 had to fix in Care) — but the *copy* still has to know
+   who is reading. `audience: "client" | "team"` switches the ownership line to
+   "Client-owned" / "Gitwork-owned" internally. Facts and controls are identical; only
+   wording moves.
+3. **The demo served an empty shell**, which is what caught #1. `/demo/wiki` writes now
+   run through the **real** `applyItemPatch` / `computeCompleteness` / `renderLegalDoc`
+   (`resolveDemoLaunchpad` in `dev-demo-data.ts`, with `init` threaded through
+   `demo-fetch.ts`), and the fixture is built from `getDefaultLaunchpadStructure()` rather
+   than invented rows. A demo where every write succeeds and changes nothing verifies the
+   CSS and nothing else — §42.8's lesson, applied before shipping rather than after.
+
+**Verification technique worth keeping.** `/app` is auth-gated with no staging, so the
+section was driven headlessly at **`/demo/wiki`**, clicking into the Launchpad and running
+`AUDIT` (exported from `scripts/audit-clipping.mjs`) per state — `npm run audit:clipping
+<url>` only ever sees a page as it first loads, and this section is two clicks deep. Clean
+at **390 · 768 · 1280×620 · 1440** across checklist and legal-doc states: 0 findings, 0
+console errors, 0 horizontal overflow. The status machine was driven end-to-end and the
+header moved **7/14 → 8/14**, which exercises the route, the transition rules and the
+completeness recompute rather than just the layout.
+
+**Verified:** `npm run verify` green — tsc + lint **0 errors** (31 warnings, all
+pre-existing), **1776 tests** across 133 files, `audit:dependencies` clean, `audit:ui`
+**0 findings** with its self-test passing; `npx next build` clean, 98 static pages, all 11
+Launchpad routes registered. The new tests were **proved to discriminate** by breaking ten
+things on purpose (the auto-advance rule, explicit-status precedence, the banner's
+separation from the body, section gates, the amber cap, a dropped allow-list entry, a
+missing helper, required-blank substitution, account ownership, and the fallback fix) —
+each failing only the tests named for it.
+
+**Not verified:** nothing ran against a real database. **Post-deploy checklist is in the
+PR body** — the short version is that a client's kit is created by switching the section
+on, so the first thing to confirm is that Add New → Launchpad lands on a populated page
+rather than an empty one.
+
+### 43.4 Review round — a link-validation hole, and the two-column pass
+
+**⚠️ The item link had no URL validation at all, and it renders as an `<a href>`.**
+`launchpadItemPatchSchema.link` was a bare `z.string().trim().max(2048)`, so
+`javascript:alert(1)` was reachable from a paste — while `validateLaunchpadAnswer`
+DID check http(s) for the `link` *field* type. Two copies of one rule with one of them
+wrong: the same class of drift as the duplicated model literals in §31.
+`rel="noreferrer noopener"` does nothing about a `javascript:` href.
+
+Fixed with **one** rule, `safeLaunchpadLink()` in `field-types.ts`, used by the field
+validator, the Zod item schema, and defensively at render on both anchors (so a legacy
+row can't paint a bad href either). It is a **protocol allow-list, not a blocklist** —
+`javascript:`, `data:`, `vbscript:` and `file:` are all reachable and enumerating them is
+how one gets missed. A test asserts all four are rejected, and breaking the allow-list
+back into a `javascript:`-only check fails it.
+
+**The client is now TOLD why**, inline. `saveLaunchpadAnswers` skips an invalid answer
+(`if (!ok) continue`), which from the client's side looks like their value silently
+reverting — so both link inputs validate on blur and render the message rather than
+firing a write that will be dropped.
+
+**Layout: two columns where the content earns it.** The first cut stacked everything
+full-width, which at 1440px put a three-way status picker ~900px from the label it
+belonged to. Now: the progress readout and the module toggles sit side by side from `xl`,
+and requirement cards are **two-up from `xl`** with `items-start` so a long helper doesn't
+stretch its neighbour. **`xl`, not `lg`** — a requirement card carries a label, a helper,
+the status picker and a link field on one row, and below ~1280 the picker wraps under the
+label, which reads worse than a single column. Roughly halves the page.
+
+**Pagination was considered and deliberately NOT added.** A Launchpad is a *form*, not a
+queue: paginating it would lose the client's place and break the one read the page exists
+for — what is still outstanding *in total*. The length problem is a density problem, which
+is what the two-column pass addresses (~45 requirements with every module on becomes ~23
+rows). The one genuinely unbounded surface, a legal doc's body, is already capped at
+`max-h-[420px]` with its own scroller.
+
+### 43.5 Simplicity through hierarchy: requirements first, details collapsed
+
+Dan's read of the live page: *"this page looks super heavy, difficult to see and/or
+understand what the client needs to do."* Correct, and the cause was ordering, not
+styling.
+
+⚠️ **Foundations rendered its 10 plain inputs BEFORE its 3 tracked requirements**, so a
+client landed on ten form fields that do not move the completeness figure, with the three
+things the header is actually counting buried in ninth position. The number and the
+content disagreed about what the page was for. Three changes:
+
+- **Requirements first, details second**, within every module. `checklist_item`s are what
+  `computeCompleteness` measures, so they lead.
+- **The plain inputs sit behind a `DetailFields` disclosure**, collapsed by default with a
+  filled-count summary ("3 still blank", warning tone). Nothing is hidden — the summary
+  carries the signal — but the ~20 lines of always-on helper text they cost is now opt-in.
+  It opens on first render only when EVERY field is blank, so a prefilled kit stays shut
+  and a cold one doesn't make the client go hunting.
+- **The progress panel leads with the instruction, not the statistic.** It was two 40px
+  figures ("0%" and "3") side by side, which reports a score without naming the task — and
+  `0%` as the first thing on the page reads as failure rather than as a start. Now
+  *"7 things still to send us"* with the named list beneath; the figure survives as the
+  `N of M done` readout and the bar.
+
+Measured after: the first requirement moved from ninth position to **368px** from the top.
+
+⚠️ **Known gap, and it is the next change: there is no way to add or edit a requirement
+for ONE client.** Settings → Launchpad edits the master template, and snapshot-on-assign
+means those edits deliberately never reach an already-assigned kit — so a bespoke ask
+(a client's liability-insurance certificate, a specific retention policy) has no home
+today. The only route is edit-the-template → re-assign, which does keep the client's
+answers and statuses but is nowhere labelled as "apply template changes". Dan's call
+(Aug 2026) is that per-client authoring writes into **that client's own snapshot**, not
+the master, so one client's bespoke requirement can never leak onto everyone else's kit.
+
+**Deferred (fast-follows, not oversights):** real file uploads (links only in v1, gated on
+the parked blob-storage migration); Foreman/Dispatch wiring of the completeness signal;
+"promote a legal doc into a real Docs `Document`"; any AI drafting of the legal text; and
+a full-kit PDF export mirroring `onboarding-pdf.ts`; and **custom per-client documents**
+— today a `legal_doc` can only point at one of the three in-code generators, so a
+client-specific document (liability insurance, a bespoke data-retention policy) has no
+home. The obvious shape is a `custom_doc` type carrying its own markdown body + question
+list in the template JSON, authored in Settings → Launchpad with no code change. Note that
+half of that ask is already possible: a document the client *provides* (an insurance
+certificate) is a `checklist_item` with a link, not a generated doc.
+
+## 44. Recent Changes (August 2026) — A second door to the free scanner, and the scanner told the truth about six real sites
+
+Two pieces of work, and the second one is the important one.
+
+### 44.1 `/production-ready` — the sales page, and the end of iframing our own scanner
+
+There are now **two doors to the same free scanner**: the embeddable widget a third party
+drops into their page, and a public sales page gitwork.co.uk links to. Conventional
+lead-gen structure, because it works — outcome-led hero with the tool immediately usable,
+stakes, the free/in-depth offer ladder, the differentiator, how it works, objections,
+close. Static (462 B), so it renders with no JavaScript and no database.
+
+**Nothing on it is invented.** No testimonials, no logos, no "trusted by" counts. Every
+number is derived from the check registry or measured. A page whose pitch is "we tell you
+what we could not establish" cannot itself embellish, and that is a constraint on future
+edits, not a one-off.
+
+**The page framed `/embed/pulse` at first, and that was wrong.** Same origin, so the
+iframe bought nothing and cost a visible seam: a second "Pulse / Free site health check"
+header above the page's own headline, a second "Powered by Gitwork Foundry" above the
+page's own footer, and postMessage resizing that snapped as results arrived. It looked
+broken because it was two of everything.
+
+So the scanner moved to **`src/components/pulse/public-scanner.tsx`** and takes a variant:
+
+| | `variant="embed"` | `variant="page"` |
+|---|---|---|
+| Where | `/embed/pulse`, for THIRD-PARTY sites | `/production-ready`, inline |
+| Card, header, credit | Yes — on someone else's page all three are the point | None; the page owns them |
+| postMessage resize | Yes | No — `window.parent` IS this window |
+
+`/embed/pulse` is now a five-line **server** wrapper, which also keeps the 135KB check
+registry out of the browser (`checkCountLabel` is a prop, not an import — verified against
+the build manifest that neither public route ships it; only `/app/pulse*` and
+`/app/settings` do, and they need it).
+
+⚠️ **`/embed/pulse` is an external contract** (allow-listed for gitwork.co.uk in
+`next.config.ts`, and the only route exempt from the baseline security headers). The
+variant split is pinned in **both** directions by
+`src/components/pulse/__tests__/public-scanner-variant.test.tsx` — asserting only that the
+page drops the chrome would let the embed silently lose it too, and that breaks a live
+third-party placement with nothing to catch it.
+
+**Three live defects fixed on the way:**
+- Both scanner text inputs were **15px**. iOS Safari zooms the viewport when a text field
+  under 16px takes focus, so tapping the URL box on a phone shoved the widget half
+  off-screen. Same rule already documented at `onboarding/field-renderer.tsx:66`. Pinned
+  by a test that checks every `<input>` — the submit button and a notice paragraph are
+  legitimately 15px, and only focusable text fields cause the zoom.
+- The widget claimed **"Over 900 automated checks"** and its layout metadata claimed
+  "100+", while the registry holds 1,646 and every other surface reads
+  `ADVERTISED_CHECK_COUNT_LABEL`. Both read the registry now, so they cannot drift.
+- Turnstile rendered with its default `auto` theme (which follows the **visitor's** OS), so
+  dark-mode visitors got a black box in the middle of a cream card — seen in production.
+  It was also missing `expired-callback`, which `turnstile-box.tsx` documents as mandatory:
+  an expired token fails server-side while the button still reads ready.
+
+`PULSE_SCAN_SOURCES` is declared once and shared. A caller that declares its source
+**skips referrer sniffing entirely** — the sales page is same-origin, so sniffing would
+have filed its leads under `gitwork.co.uk` and lost the one number that says which door
+converts.
+
+### 44.2 Pulse was audited against six real sites, and every one produced false positives
+
+Prompted by "the reports need to be truthful and real. Never false information." Six real
+sites were scanned, then **every P1/P2 finding was verified independently of Pulse** —
+`curl`, `dig`, DoH, `openssl`, headless Chrome against the live sites. A scanner's own
+report is not evidence about the scanner.
+
+**88 actionable findings checked · 38 defective · 19 root causes · no site scored zero.**
+
+| Site | Score | Actionable | Defective |
+|---|---|---|---|
+| gov.uk | 78 | 11 | **7** — both P1s wrong |
+| news.ycombinator.com | 74 | 19 | 8 — both P1s wrong |
+| gitwork.co.uk | 71 | 21 | 6 |
+| developer.mozilla.org | 80 | 14 | 7 |
+| vercel.com | 87 | 13 | 6 |
+| linear.app | 90 | 10 | 4 |
+
+Two of the six were told their **P1 launch blockers** were legal documents linked from the
+footer of the page Pulse had just parsed. Full evidence base, with the command that
+reproduces each one, in **`docs/pulse-false-positive-audit-2026-08.md`** — kept because the
+reproductions are the expensive part.
+
+**Three reproduced by hand afterwards, and that pass found things the audit missed:**
+- `linksLegalDocument` returned FALSE for gov.uk's `/help/terms-conditions` while
+  `GET` on it returns 200 with `<h1>Terms and conditions</h1>`.
+- The secret scanner fired on `govuk-icon-mask-<sha256>.svg` at P1 *"rotate credentials
+  immediately"* — **and** could not match a real modern OpenAI key, because
+  `sk-[a-zA-Z0-9]{32,}` has no hyphen in its class so it stops at `sk-proj`. A false
+  negative on the most important case there is, which the audit had not spotted.
+- A **20th root cause**: a brand-prefixed legal path (`github-terms-of-service`,
+  `company-privacy-policy`) is missed, because the matcher requires the token to start
+  immediately after a `/`. Found by sweeping ten live homepages, not by reading code.
+
+**Two patterns generate the whole class, and both are §35 one layer out:**
+- **A lookup narrower than the standard it cites.** DMARC queried with no RFC 7489 §6.6.3
+  org-domain retry; `www.` concatenated onto a subdomain (`www.www.gov.uk`, NXDOMAIN); CDN
+  detected by a five-vendor list omitting RFC 9211 `Cache-Status`; CSP reporting read only
+  from the enforced policy. Each turns a partial probe into a confident negative.
+- **Absence is the secure state, or the wrong response class was graded.** No
+  `Access-Control-Allow-Origin` on an HTML document is the locked-down state, and was
+  warned on all six sites — while Pulse's own newer `api-behaviour.ts` says the opposite
+  about identical evidence. `X-RateLimit-*` asked of a cached `text/html` page.
+
+### 44.3 The process: three passes, because pass one made it worse
+
+This is the part worth keeping. **The fixes were adversarially reviewed, and the review
+found the fixes had introduced false negatives — several worse than the bugs they
+replaced.** All four reviewers returned NEEDS_WORK. Examples:
+
+- A bare `<html lang="en-US">` began narrowing the market set on its own, so
+  `applyJurisdictionFilter` rewrote **46 of 55** jurisdiction-tagged checks to "not
+  applicable to your selected markets" — silently dropping GDPR and CCPA for any
+  English-language site. Same class as the bug it fixed, same direction, and **invisible on
+  the report**: the checks read as inapplicable rather than wrong.
+- Widening the legal terminator to accept `privacy.html` also made
+  `href="/assets/terms.css"` satisfy `terms_of_service`. **A stylesheet passed a
+  launch-blocking legal gate**, with zero fetches so no content-verify could save it.
+- A Cloudflare **NEL** `report-to` header counted as CSP reporting — Cloudflare sets it on
+  a large share of the web.
+- Nine keys were demoted to MEDIUM as "absence-derived" **while other agents were, in the
+  same tree, repairing those very probes** so they now read a header before speaking. Real
+  CORS origin reflection dropped out of the free actionable list. That was a coordination
+  failure in how the work was partitioned, not a reasoning error.
+
+Pass two closed those; a second independent re-verification confirmed the closures
+(3 of 4 SOUND) and found residuals, which pass three closed.
+
+⚠️ **The lesson: a false-positive fix is a two-sided change and needs a two-sided test.**
+Every fix here now has an input that must change AND a representative correct input that
+must not. Where a fix could not be made precise, the residual was documented instead of
+guessed at.
+
+### 44.4 The release gate could not tell "verified" from "could not verify"
+
+Found by re-verification, fixed in `release-decision.ts`, and the most dangerous single
+item in the whole review.
+
+`unverified` was populated by exactly three codes — `COVERAGE_BELOW_FLOOR`,
+`REQUIRED_COLLECTOR_UNAVAILABLE`, `EVIDENCE_REQUIRED` — none of which an **INCONCLUSIVE
+blocking key** triggers. Measured: `privacy_policy` and `terms_of_service` both
+INCONCLUSIVE on an otherwise-clean 42-check scan returned **`READY`, score 100,
+`unverified: []`** — byte-identical to the run where both PASSED.
+
+That contradicts the precedence argued at the top of that very file ("INCONCLUSIVE
+outranks CONDITIONAL and READY because the opposite mistake is worse"), and it is not an
+edge case: **a client-rendered site behind catch-all 200 routing cannot have either legal
+document established from outside, and that is Pulse's core target population.** The
+commonest scan we run was being rubber-stamped on the two controls a launch actually turns
+on.
+
+New `BLOCKING_CONTROL_UNESTABLISHED` reason: any blocking key whose status is
+`INCONCLUSIVE`, `ERROR` or `NOT_TESTED` yields decision `INCONCLUSIVE`, with wording that
+says Pulse could not see enough — **not** that the control is failing.
+
+⚠️ `SKIPPED` and `NOT_APPLICABLE` are deliberately **excluded**: those mean the control
+does not apply to this subject, which is a decision made on evidence, not a gap. Including
+them would make every URL-only scan permanently INCONCLUSIVE on its repo-only blockers. A
+blocker that produced **no check at all** is excluded too — that is what
+`COVERAGE_BELOW_FLOOR` already measures, and double-counting it would fire on any policy
+whose blocking set outruns the scan's input type. Both exclusions are pinned by tests.
+
+### 44.5 A deploy blocker with a delay fuse
+
+**Never create a table in the `public` schema of this database, not even a scratch copy.**
+
+A `_StarterBackup_20260822` table was created by hand as a second safety net before a
+Starter-row cleanup. Prisma does not know it, so `db push` wants to DROP it; it is not
+empty, so the guarded push refuses — and per §2's all-or-nothing behaviour the **entire**
+sync aborts. Net effect: **every deploy failed, for every commit**, and nothing failed
+until the next person pushed.
+
+Nothing broke, because the push is ordered before the app restart and gates it — the old
+image kept serving (`/api/health` 200 throughout). The repair, in `deploy.yml`, **moves**
+the table rather than dropping it: `CREATE SCHEMA IF NOT EXISTS scratch` +
+`ALTER TABLE … SET SCHEMA scratch`, guarded and idempotent, reversible with the inverse.
+`db push` stops seeing it because the datasource only manages `public`. Marked one-shot in
+place — delete the block once it has run. Full record in
+`docs/deploy-blocked-starter-backup-table.md`.
+
+### 44.5a Then it WAS validated against a live scan, and that found four more
+
+Every previous pass ended "not validated against a live scan", which §34.3 says is the
+step that finds the wrong checks. It has now happened — twice, against `https://www.gov.uk`
+through the deployed scanner.
+
+**The audit's findings were confirmed fixed.** `privacy_policy` and `terms_of_service`
+both PASS, `blocking: []`, score 78 → 81. The mask-icon P1 is gone. The prose-regex
+family, `cors_policy`, `rate_limiting_headers` and `x_frame_options` are all quiet. 391
+checks returned INCONCLUSIVE rather than guessing. And DMARC now reads:
+
+> No DMARC record at `_dmarc.www.gov.uk`. Discovery falls back to `_dmarc.gov.uk`, which
+> publishes `p=reject` and `sp=none` — and the policy that applies to a subdomain is
+> `sp=none`… Publish a record at `_dmarc.www.gov.uk`, or tighten `sp=` on `gov.uk`.
+
+which is the RFC 7489 §6.6.3 ladder working without falling into the false negative of
+passing on the parent's `p=reject`.
+
+**And the live scan found four more false positives that four passes of unit-tested
+review had not**, all on the most credible site in the corpus:
+
+| Check | What it claimed | What gov.uk actually has |
+|---|---|---|
+| `accessibility_statement` | "No accessibility statement" | `href="/help/accessibility-statement"`, in the markup Pulse parsed |
+| `cookie_policy_page` | "No dedicated cookie policy" | `href="/help/cookies"`, same |
+| `cookie_consent` | "No cookie consent mechanism" | The reference UK banner: `id="global-cookie-message"`, `govuk-cookie-banner` |
+| `cookie_consent_granular` | "no reject/manage options" | "Reject additional cookies" + `data-reject-cookies="true"` |
+
+Two root causes, both already named in this section:
+
+- **A fixed root path probed while ignoring the links in hand.** The first two HEADed
+  `/accessibility` and `/cookies` and never read the page's own hrefs, so a site serving
+  them under `/help/` was reported as not having them. `linksPathContaining()` reads the
+  links first — evidence already held, and cheaper than the HEAD.
+- **A closed list of fingerprints reported as a directly-observed absence.** The third
+  matched seven CMP vendor names; the fourth matched three phrases. Both missed a
+  self-hosted implementation.
+
+⚠️ **That third pattern has now cost three separate fixes in one audit** — the CDN
+five-vendor list, the CMP vendor list, and the granular-consent phrase list. The rule
+worth carrying: **if a check's evidence is "we looked for these N strings and found
+none", its verdict is bounded by the completeness of that list, and that is a
+MEDIUM-confidence derivation, not a HIGH-confidence observation.** Detect the mechanism,
+or declare the confidence honestly.
+
+Tests for all four are built from **verbatim slices of the live page** (two fixtures in
+`pulse-checks/__tests__/fixtures/`), not from the implementation's own token lists — the
+distinction that let the original gov.uk terms bug survive a passing suite.
+
+**Still owed post-deploy** (in `docs/pulse-false-positive-audit-2026-08.md`): the other
+five audited sites, a real `*.vercel.app` deployment, a real Caddy/LiteSpeed/nginx trio
+for the dual-role INCONCLUSIVE tier, and an SPA behind catch-all 200s to see the release
+gate say INCONCLUSIVE rather than READY.
+
+### 44.6 `audit:clipping` runs on macOS after all
+
+Documented in `docs/mobile-playbook.md` §3a. Three non-obvious blockers: this repo's own
+`engines: {node: "22.x"}` makes npm refuse **any** install on a newer node (use
+`--engine-strict=false`); a Claude Code worktree shares one `node_modules` by symlink so
+installing there disturbs other running sessions (install into a scratch dir); and the
+script is ESM so `NODE_PATH` is ignored (run it from where playwright lives). `CHROMIUM_PATH`
+accepts a normal system Chrome, so no browser download is needed. `/production-ready` and
+`/embed/pulse` both verified clean at 390 · 768 · 1280x620 · 1440, with `--self-test`
+passing first.
+
+## 45. Recent Changes (September 2026) — Course requests: a forgiving search, and 200px of the table was unreachable on a phone
+
+### 45.1 Search that spans every status
+
+"Have we already got this course?" was only answerable by clicking through four status tabs
+and then expanding the collapsed **02 // ADDED COURSES** table. The Wedge list is ~750 rows.
+
+A search now sits at the **opposite end of the tab row** and **overrides the tabs while it has
+a value**, deliberately spanning every status — `NEW`, `SENT`, `ADDED`, `REJECTED`. That is the
+whole point: an answer of *"not in New"* is useless for a course that went out as Sent months
+ago and is now Added. Each row already renders its own status, so a hit reads correctly whichever
+bucket it came from, and the **Added** table is hidden while searching so the same row can't
+appear twice. Filtering runs over the list already in memory, so results appear as you type with
+no request behind it.
+
+**`src/lib/fuzzy-search.ts`** is the matcher (pure, no dependency). It is forgiving in the two
+directions that actually occur in this data, and the second one is the one people forget:
+
+- **the query is misspelled** — "wentwerth" finds Wentworth Club;
+- **THE DATA is misspelled** — the live rows literally include **"Iver Golf Vlub"**, so a search
+  for "iver golf club" has to find it. A matcher tested only against clean fixtures fails this.
+
+Both fall out of a capped Levenshtein distance whose tolerance scales with token length, plus an
+in-order subsequence fallback. Two rules worth keeping:
+
+- **Tokens are ANDed.** Every word typed must match something, so a second word narrows rather
+  than widens. Scoring the best token instead lets "iver" pull in every row containing "golf".
+- **≤3 characters must be a real prefix.** Below that length a one-character allowance matches
+  almost every row, and a search that returns everything is worse than no search.
+
+⚠️ **A sabotage that reported "the tests are weak" when they were fine.** Disabling `tolerance()`
+appeared to change nothing — 27 tests still green. The replacement string had missed a trailing
+`//` comment on the line, so the edit was a **no-op**. Always print the sabotaged region (or
+assert the edit applied) before believing a passing suite. Once applied for real, the four
+sabotages fail 4 / 1 / 2 / 3 tests respectively.
+
+### 45.2 ⚠️ `.widget-card` is `overflow: hidden` — a wide child is UNREACHABLE, not just off-screen
+
+Measuring the section on a phone turned up a **pre-existing** defect worth generalising. The row
+is a 7-column grid whose fixed columns total **416px**, plus 72px of gaps and 24px of padding,
+before the course name is allocated a single pixel — so it cannot fit a 364px card and never did.
+
+The section renders inside `.widget-card`, which is **`overflow: hidden`**. So the overflowing
+columns were not scrolled off, they were **clipped with no scrollable ancestor**: at 390px wide,
+**249px was lost, taking the entire Status column and its dropdown**. A phone user could not see
+or change a request's status at all.
+
+**Why nothing caught it for months:** `overflow: hidden` absorbs the overflow, so the *page* never
+scrolls sideways and a `PAGE-X` check reports clean. `audit:ui` reads source and sees no misused
+class. `audit:clipping` would have caught it — it tests precisely "cut off by an ancestor that
+cannot scroll" — but `/app` is auth-gated with no staging, so it has never been pointed at this
+page. **The card being `overflow: hidden` is now called out in `docs/mobile-playbook.md`'s
+primitive table**, because "wide child of a widget-card" is a whole class of invisible defect,
+not one section's bug.
+
+Fixed per the playbook — tables scroll, they do not reflow — with **one** `overflow-x-auto` frame
+wrapping the column header **and** the rows. Two details that are not optional:
+
+- **The header must share the rows' scroller.** Left outside, the columns desync the instant
+  anyone scrolls sideways. `scroller.contains(header)` is **not** a sufficient test for this: a
+  header nested in its own scroller inside the outer one satisfies it and still desyncs. The
+  committed test compares each grid's **nearest** scrollable ancestor instead — a distinction the
+  first version of that test got wrong and a sabotage exposed.
+- **The inner frame's `min-width` is 700px, not the 512px the columns strictly need.** At 512px
+  the `1fr` course-name column is squeezed to **76px** — narrower than the Country column beside
+  it — and every name ellipses, which defeats the point of scrolling. 700px gives the name 186px.
+
+The row's status dropdown was already `<MenuItems anchor="bottom end">`, which portals, so the new
+scroller does **not** clip it. Check that before wrapping any row that contains a popover — an
+inline Headless UI panel would have been cut off by the very frame that fixed the columns.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3137 tests**, `audit:ui` 0 findings;
+`npx next build` clean. Geometry measured in headless Chromium against CSS built from this tree
+(Tailwind only emits classes the source uses, so a stale bundle silently ignores new ones), in
+both the editable and read-only variants, at 390 · 430 · 768 · 1024 · 1280: **0px unreachable,
+0px page scroll**, header and rows sharing one scroller. Proved to discriminate by removing the
+scroller (249px unreachable returns), removing the min-width, setting it to 512px, and giving the
+header its own scroller.
+
+**Still open:** a 7-column table on a 390px phone is a 384px sideways scroll — honest, and better
+than clipping, but a stacked card layout below `sm` would be better still. Not done here because
+it is a redesign rather than the defect, and `/app` cannot be visually verified before merge.
+
+### 45.3 Course requests carry a demand count and a Low/Medium/High tag
+
+Every row in the Wedge course-request table now shows **how many golfers have asked
+for that course** and a **LOW / MEDIUM / HIGH** reading of it, in both the active
+table and the collapsed Added table, and in the read-only client wiki view.
+
+**It is derived, never stored.** `computeCourseDemand` runs over the request list on
+every render, so it is correct for all 756 requests already in the table *and* for
+every new one, with no backfill, no schema change and no migration. That is the whole
+reason it was built this way — Dan asked for "all previous courses and all new
+requests", and derivation gives both for free.
+
+**Each row is one golfer's submission**, which is what makes counting rows a valid
+measure of demand: Big Wedge stamps the *submitted* date into the notes, and rows for
+the same course carry different ones. Checked before building — 13 of the 15
+duplicate-name pairs in the audit were submitted on different days, so they are
+separate people, not an import that ran twice.
+
+⚠️ **The count only works because the names are folded, and that fold is the whole
+design.** Keyed on the raw `courseName` the answer is always 1: an audit of the live
+table (368 of 756 rows, September 2026) found **zero** exact duplicates. Folding the
+trailing club/course designator, punctuation, casing and spacing found **18 courses
+asked for twice or more**, topping out at three — "Allen Park Golf Centre",
+"AllenPark" and "Allen park", one of whose notes reads *"I requested this over two
+weeks ago"*.
+
+⚠️ **Do NOT add a typo tolerance to `courseKey`.** It was tried. A one-character
+allowance merged **Hawick** (Scotland) with **Howick** (New Zealand), and **Basildon**
+(Essex) with **Baildon** (West Yorkshire) — four real, distinct courses reported as
+two. `country` cannot rescue it: the field is polluted with **raw UUIDs** from the
+intake (`3dae3001-4e4f-…`, which `safeCountry()` already hides in the UI) and
+disagrees with itself — "England" / "United Kingdom" / "Scotland" for the same place.
+Under-counting a genuine misspelling is the safe error; inventing demand sends someone
+to license a course nobody asked for. For the same reason the fold is anchored to the
+**end** of the name and never removes an interior word: "Richmond Park" is a different
+course from "The Richmond Golf Club", and both are in the table.
+
+Because the count is a judgement about free text, the grouping is **inspectable** — the
+cell's `title` lists every spelling that was counted together.
+
+**Demand is computed over EVERY request, never the filtered tab.** A course three
+golfers asked for that was sent to the provider months ago must not read "1 LOW" in
+the New tab; it is the most wanted course on the board. There is a render test for
+exactly this, because `filtered` is in scope, the component compiles either way, and
+the wrong numbers still look plausible.
+
+**Thresholds** live in `DEMAND_THRESHOLDS` (`medium: 2, high: 3`) and are calibrated to
+the observed distribution — 330 courses at one request, 16 at two, 2 at three. Anything
+higher and every row reads LOW.
+
+**Two things the contrast measurement caught**, both the class of defect behind the
+August `/login` incident:
+- `bg-indigo-100` beside `bg-indigo-50` measured a **1.1:1** step and read as the same
+  chip. HIGH is a **solid** fill instead, which also carries its own contrast rather
+  than borrowing the page surface, so it is safe in both themes.
+- The LOW chip used `--text-4` on `--surface-1` = **4.36:1**, under AA for 10px text.
+  It is `--text-3` now (6.95:1) — which is what the country chip beside it already
+  used.
+
+⚠️ **Measuring rendered contrast has two traps, and I hit both.** Tailwind v4 emits
+**`oklch()`**, and Chrome leaves it in oklch form in computed style — so parsing the
+numbers out of the string reads L/C/H as if they were R/G/B (it reported "fg=0,0,277").
+Resolve colours through a **1×1 canvas**, which always hands back sRGB bytes. And the
+dark remap turns `bg-indigo-50` into a **12%-alpha overlay**, so comparing against the
+declared colour as if it were opaque gives a meaningless 1.17:1 — **composite every
+alpha layer down to the first opaque ancestor** before computing the ratio.
+
+Demand uses **indigo**, deliberately not the amber/blue/emerald/red the statuses own:
+demand and status are different axes and must not read as the same scale. Indigo is one
+of the families `globals.css` remaps for dark mode; violet is not.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3161 tests** (24 new),
+`audit:ui` 0 findings; `npx next build` clean. The module was run over the audited live
+data and reproduced the audit exactly (348 courses, 18 with repeat demand, 6 rows HIGH
+/ 32 MEDIUM / 330 LOW, no false merges). Geometry re-measured at 390 · 430 · 768 ·
+1024 · 1280 · 1440 in both variants: 0px unreachable, 0px page scroll, course name
+still 186px on a phone, no chip overflow. All six chip × theme contrast pairs clear
+AA. Proved to discriminate by computing demand from `filtered` (2 failures), removing
+the designator fold (10), removing the space compression (5), reintroducing an
+over-eager fold (2) and shifting the thresholds (3).
+
+**Known limits, both under-counts rather than false positives:** a genuine misspelling
+("Rideway" for "Ridgeway", "contree" for "Cobtree") counts separately, and a name that
+gains a real word ("Cobtree Manor" vs "Cobtree Manor Park") does too. The fuzzy search
+from §45.1 is how you find those by hand. **Not verified:** the live table — `/app` is
+auth-gated with no staging, so the audit was done through the Foundry MCP and the UI
+through server-rendered screenshots. Post-deploy, open Wedge → Wiki → Course requests
+and confirm Allen Park reads 3 HIGH.
+
+### 45.4 The course search matched 33 rows for a course that was not there
+
+Searching the live table for **"Jamestown"** — not in it — returned **33 rows**, none
+containing the word: "HS2 Renovated Course", "home course", "Ardlodge", "Dorking"…
+
+**Cause: a subsequence match is meaningless against long text.** Every bogus row
+scored exactly **280** = `400 × 0.7`, the subsequence fallback hitting the **`notes`**
+field, which holds the original Big Wedge feedback email — 500-850 characters of
+prose. In a text that long, almost any ordinary sequence of letters can be found *in
+order*, so `isSubsequence` had quietly become a near-universal match on every row
+with a note. Name-only score was 0; dropping `notes` from the field list gave 0 hits.
+
+**The same disease sat one tier up.** A 600-character note holds hundreds of words, so
+one of them is nearly always within edit distance 2 of whatever was typed — which is
+how **"St Andrews"** matched "Wyboston Lakes Golf" (`"andrews"` was two edits from a
+word buried in its note, and `"st"` sits inside "Wybo**st**on").
+
+**Four fixes, each a bound rather than a removal** — the forgiveness Dan asked for is
+the point of the feature, so none of it was thrown away:
+
+| Fix | Rule |
+|---|---|
+| `SUBSEQ_MAX_TEXT_RATIO = 2.5` | A subsequence counts only where the text is at most 2.5x the query. "wtsn" in "Watson" still means something. |
+| `FUZZY_MAX_FIELD = 120` | Fuzzy tiers (typo **and** subsequence) apply only to short, identity-bearing fields. Long prose still matches — on an exact word, a word prefix or a literal substring, which is what makes searching "antrim" find the row whose note reads "Antrim, Allen Park, 18 holes". |
+| `MIN_TOKEN_FOR_MIDWORD = 3` | A one- or two-character token must match a word's START, never its middle. |
+| `tolerance()`: two edits from **7** chars, not 6 | At six characters two edits is a third of the word. It made "horley" match **40** rows. One edit at four characters is kept deliberately — it is what finds the real row "Iver Golf **Vlub**" when someone types "club". |
+
+Two ranking bugs surfaced on the way and are fixed too: a **word typo now outranks a
+mid-word substring** (ranked the other way round, "iver golf club" returned "Dodge
+R**iver**side Golf Club" above the actual "Iver Golf Vlub"), and the typo tier
+**breaks ties on shared prefix** ("dokring" is two edits from both "Dorking" and
+"Bowring"; only one plausibly starts the way it was typed).
+
+⚠️ **Why the suite missed all of this: its only negative case was `"zzzzzz"`.** Letters
+that appear nowhere cannot be a subsequence of anything, so it passed while every
+normal-looking absent name leaked. **A fuzzy matcher has to be tested with queries
+that LOOK like the data and still are not in it** — the new cases use Jamestown,
+Pebble Beach, Augusta National, Torrey Pines, Chambers Bay, Whistling Straits and
+Muirfield Village, against fixtures carrying a realistic 500-character note.
+
+⚠️ **And one of the new tests was itself weaker than it looked.** Removing the
+subsequence bound left all 35 green, because `FUZZY_MAX_FIELD` already excludes long
+notes — the two fixes overlap *there*. The bound still matters for a long course
+**name**, which is short enough to be matched fuzzily, so that needed its own case:
+**"tampa" is genuinely a subsequence of the real row "Elmpter Wald Golf ClubGolfclub
+Elmpter Wald"**. Found by searching the live names for a plausible absent query that
+was a subsequence of one of them, rather than inventing a fixture.
+
+**Measured on the live data after the fix:** 26 of 26 target queries rank the right
+row first (including "dokring", "brechn", "neangar", "wentwerth", "allenpark",
+"iver golf club"); 12 of 13 absent courses return **nothing**; "horley" went 40 -> 2
+with the right top hit; and "antrim" / "bendigo" still find their rows via the notes.
+
+**The one remaining loose match, kept deliberately:** "Wolf Creek" returns 2 rows,
+both containing "Creek", because `"wolf"` is one edit from `"golf"` — which appears in
+most rows of a golf table. It is inseparable from the flagship case: `"wolf"` vs
+"Sandy Creek **Golf** Club" and `"club"` vs "Iver Golf **Vlub**" both score 780 by the
+identical mechanism, so removing one removes the other. Two well-ranked rows for an
+absent course is normal fuzzy behaviour; 33 unrelated rows was the bug.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3178 tests** (17 new),
+`audit:ui` 0 findings; `npx next build` clean. Proved to discriminate by reverting each
+fix in turn — subsequence bound (1 failure), field-length gate (1), mid-word floor (1),
+tolerance scale (1), prefix tie-break (1), tier order (1).

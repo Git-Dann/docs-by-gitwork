@@ -10,6 +10,7 @@
 // font that isn't bundled falls back to the nearest generic — proprietary fonts don't embed.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { readableInk, relativeLuminance } from "@/lib/contrast";
 import { useQuery } from "@tanstack/react-query";
 import { listDesignSystemClients, type DesignSystemClient } from "@/lib/api";
 import { useClientDesignSystem } from "@/hooks/use-design-system";
@@ -49,14 +50,20 @@ function hexToRgb(hex: string): [number, number, number] | null {
   const int = parseInt(m[1], 16);
   return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
 }
-function luminance(hex: string): number {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return 0.5;
-  const [r, g, b] = rgb.map((v) => v / 255);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
+/**
+ * Readable ink for a brand surface.
+ *
+ * ⚠️ This used to be `luminance(hex) > 0.6`, on a luminance that was NOT
+ * gamma-corrected — two compounding errors that both push toward white text on
+ * mid-tone colours. It now defers to the shared contrast module, which compares
+ * actual contrast ratios instead of guessing at a threshold. Same defect made a
+ * client's brand-guidelines cover unreadable (see src/lib/contrast.ts).
+ *
+ * Note this can change existing renders: a mid-tone brand that used to get white
+ * text now gets dark ink — which is the point.
+ */
 export function onColor(hex: string): string {
-  return luminance(hex) > 0.6 ? "#111114" : "#FFFFFF";
+  return readableInk(hex);
 }
 export function rgba(hex: string, a: number): string {
   const rgb = hexToRgb(hex);
@@ -87,7 +94,8 @@ function buildBrand(tokens: DesignTokens, name: string, slug: string): StudioBra
   const secondary = tokens.colours?.secondary ?? [];
   const accent = secondary.find((c) => /accent/i.test(c.role))?.hex ?? secondary[0]?.hex ?? primary;
   const neutrals = (tokens.colours?.neutrals ?? []).map((c) => c.hex).filter(Boolean);
-  const sortedNeutrals = [...neutrals].sort((a, b) => luminance(a) - luminance(b));
+  // Ordering only — gamma correction is monotonic, so the sort is unchanged.
+  const sortedNeutrals = [...neutrals].sort((a, b) => relativeLuminance(a) - relativeLuminance(b));
   const neutralDark = sortedNeutrals[0] ?? primary;
   const neutralLight = sortedNeutrals[sortedNeutrals.length - 1] ?? "#FFFFFF";
   const palette = [...new Set([primary, accent, ...secondary.map((c) => c.hex), ...neutrals].filter(Boolean))].slice(0, 12);
@@ -98,7 +106,9 @@ function buildBrand(tokens: DesignTokens, name: string, slug: string): StudioBra
     colors: {
       primary,
       accent,
-      ink: luminance(neutralDark) < 0.4 ? neutralDark : "#1A1A1E",
+      // Threshold restated for the gamma-corrected scale: the old 0.4 was on a
+      // non-gamma value, where 0.4 sits at roughly 0.13 of real luminance.
+      ink: relativeLuminance(neutralDark) < 0.13 ? neutralDark : "#1A1A1E",
       onDark: onColor(primary),
       neutralLight,
       neutralDark,

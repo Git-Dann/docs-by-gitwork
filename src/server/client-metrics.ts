@@ -105,6 +105,16 @@ export async function computeClientOverdueTaskCounts(
 export function deriveClientHealth(input: {
   pulseHealthScore: number | null;
   overdueTasks: number;
+  /**
+   * Outstanding Launchpad requirements — things we are WAITING ON THE CLIENT for.
+   *
+   * Optional so the two existing call sites keep compiling, and absent (rather than
+   * 0) when the client has no Launchpad at all. That distinction matters: 0
+   * outstanding means "they've given us everything", while no Launchpad means "we
+   * never asked", and reporting the second as the first is the §35 mistake — turning
+   * "we could not look" into "there is nothing there".
+   */
+  launchpadOutstanding?: number | null;
 }): ClientHealth | null {
   const rank: Record<ClientHealthLevel, number> = { green: 0, amber: 1, red: 2 };
   let level: ClientHealthLevel | null = null;
@@ -127,6 +137,17 @@ export function deriveClientHealth(input: {
     } else {
       bump("green");
     }
+  }
+
+  // Launchpad — caps at AMBER however many items are outstanding, deliberately.
+  // Everything else here is a fault on our side (work late, code failing checks);
+  // this is work we are waiting on the CLIENT for. Letting it go red would put a
+  // client who simply hasn't sent their app icons yet in the same bucket as one whose
+  // delivery is genuinely failing, and the board would stop meaning anything.
+  const outstanding = input.launchpadOutstanding;
+  if (outstanding != null && outstanding > 0) {
+    bump("amber");
+    reasons.push(`${outstanding} Launchpad item${outstanding === 1 ? "" : "s"} outstanding`);
   }
 
   if (level == null) return null;

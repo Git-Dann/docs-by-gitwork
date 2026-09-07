@@ -102,19 +102,28 @@ Report what `verify` actually printed. Never call something verified that you di
    it handles prompt caching, the cheap Haiku tier, and cost tracking for you. Same rule for
    Gitwork's own company number / VAT / registered office: `src/lib/gitwork.ts` only. Both have a
    test that fails naming any file that pastes a copy back out.
-5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto`. Note
-   `overflow-hidden` is *not* a scroller — it clips the content away where nobody can reach it.
+5. **Tables scroll, they don't reflow.** Wrap wide ones in `overflow-x-auto` — and a `grid` with
+   fixed `px` columns counts as a table. Note `overflow-hidden` is *not* a scroller: it clips the
+   content away where nobody can reach it, and because the page then never scrolls sideways
+   nothing flags it. **`.widget-card` — the base card under nearly every panel — is
+   `overflow: hidden`**, so this is the default outcome, not an edge case: a course-request table
+   lost 249px of itself on a phone, including the entire status control. Put the header row inside
+   the *same* scroller as the rows, or they desync the moment anyone scrolls.
 6. **A new page under `/app` needs a gate, explicitly.** Add a `MODULE_PATHS` entry (or a row in
    `UNGATED_APP_PREFIXES` if it's open to every member) in `src/server/auth/module-gate.ts`. Miss
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
    default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
    ended up ungated.
-7. **In Docs, the renderer is the limit — not the editor.** Text fields store Markdown, and
-   `renderLines` (`src/lib/markdown.tsx`) draws a deliberately small subset: bold, italic, code,
-   links, and bulleted / numbered / nested lists. Anything else prints **verbatim on the client's
-   document**. So the editor's schema (`src/lib/sections/markdown-doc.ts`) is clamped to match, and
-   widening it — adding a heading extension, say — ships a literal `## Scope of work` to a client.
-   Teach the renderer first, in the same change. `markdown-doc.test.ts` is the tripwire.
+7. **The renderer is the limit — not the editor — and there are TWO of them.** Text fields store
+   Markdown, and anything the renderer can't draw prints **verbatim on the client's document**.
+   `renderLines` (`src/lib/markdown.tsx`) draws bold, italic, code, links and bulleted / numbered /
+   nested lists — **no headings**. The block-level `<Markdown>` component in the same file *does*
+   draw `#`/`##`/`###`, provided a heading is alone in its block. So check which one your surface
+   uses before writing Markdown into it: Docs fields use `renderLines`, which is why the editor's
+   schema (`src/lib/sections/markdown-doc.ts`) is clamped to match and why adding a heading
+   extension would ship a literal `## Scope of work` to a client; Launchpad's legal drafts use
+   `<Markdown>` and can head their clauses. Teach the renderer first, in the same change.
+   `markdown-doc.test.ts` is the tripwire.
 
 ## 5. Verifying honestly
 
@@ -123,11 +132,21 @@ gated screens** to check your own work. Two consequences:
 
 - If a change only got a typecheck and a careful read, **say exactly that.** Then hand over a
   precise capture list: the page, 2–3 viewports, the specific elements to look at.
-- Public pages *can* be driven headlessly — `/`, `/pulse-overview`, `/api-docs`, `/context`,
-  `/login`, `/embed/*`, and the tokenised `/docs/`, `/timeline/`, `/report/` pages. Run
-  `npm run audit:clipping <url>` against them. It needs `npm i --no-save playwright-core` plus a
+- Public pages *can* be driven headlessly — `/`, `/pulse-overview`, `/production-ready`,
+  `/api-docs`, `/context`, `/login`, `/embed/*`, and the tokenised `/docs/`, `/timeline/`,
+  `/report/` pages. Run `npm run audit:clipping <url>` against them. It needs `npm i --no-save playwright-core` plus a
   Chromium; in a Claude Code web session one is already installed, locally you may need
   `npx playwright install chromium`.
+- **`/production-ready` is how you verify the public scanner.** It renders the real
+  `PublicScanner` component inline (the same one `/embed/pulse` serves in an iframe), so it is
+  the one place you can screenshot that component with no auth and no database.
+- **`/demo/**` is your way in to a gated screen.** The 16 sales demos render the *real* components
+  on mock data and are public, so `/demo/care`, `/demo/docs`, `/demo/portal` … are drivable. Layout
+  work on an `/app` screen should be verified through its demo before you call it done.
+- **A state behind a click needs its own harness.** `audit:clipping <url>` only sees the page as it
+  first loads, so anything two clicks deep is unaudited. `scripts/audit-clipping.mjs` exports
+  `AUDIT` for exactly this: drive the page with playwright, then
+  `page.evaluate(`(${AUDIT.toString()})()`)` in each state.
 
 Both audits have a `--self-test`. Run it before trusting a clean report:
 

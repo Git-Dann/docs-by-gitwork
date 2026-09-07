@@ -1,7 +1,8 @@
 import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
 import { safeGithubRequest, parseGithubRepo, hasGithubToken } from "@/lib/github";
-import type { PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
+import type { PulseCheckStatus, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
+import { collectorCompletenessCheck } from "./pulse-checks/collector-health";
 import {
   type JurisdictionCode,
   CHECK_JURISDICTIONS,
@@ -10,17 +11,31 @@ import {
 } from "./pulse-checks/jurisdictions";
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
-import { detectSpaContext, reclassifySpaChecks } from "./pulse-lite/spa-detect";
+import { detectSpaContext, isEmptyShell as isEmptyRenderShell, reclassifySpaChecks, staticTextWordCount } from "./pulse-lite/spa-detect";
+import { permitsEveryOrigin } from "./pulse-checks/csp-sources";
+import { analyzeHost, boundedDmarcCandidates, organizationalDomainCandidates, registrableDomain } from "./pulse-lite/registrable-domain";
+import { isMateriallyRicher, runRenderAgent, type RenderResult } from "./pulse-agents/render-agent";
 import {
   applyNativeApplicability,
-  detectNativePlatform,
   nativeTechStack,
   type NativePlatform,
 } from "./pulse-checks/native-mobile";
-import { getRepoSnapshot } from "./pulse-checks/native-repo";
+import { detectRepoShape, getRepoSnapshot, type SnapshotShape } from "./pulse-checks/native-repo";
 import { runStandardsVerificationCatalog } from "./pulse-checks/standards-verification";
+import { fetchScannableUrl } from "./pulse-lite/url-guard";
+import {
+  detectUrlSurfaceKind,
+  getInapplicableCategoryDetails,
+  isCategoryApplicable,
+  keepApplicableChecks,
+  type UrlSurfaceKind,
+} from "./pulse-checks/platform-applicability";
+import {
+  effectivePlatformForRepoShape,
+  shouldRunDeepUrlChecks,
+} from "./pulse-checks/scan-execution-plan";
 
-export const SCAN_VERSION = "pulse-v2";
+export const SCAN_VERSION = "pulse-v3";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -42,11 +57,16 @@ type FetchResult = {
   finalUrl: string;
 };
 
-async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  options?: RequestInit,
+  /** Passed through to the SSRF-guarded transport. See fetchScannableUrl's options. */
+  guard?: { followRedirects?: boolean },
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetchScannableUrl(url, { ...options, signal: controller.signal }, {}, guard);
   } finally {
     clearTimeout(timer);
   }
@@ -92,11 +112,14 @@ async function headRequest(url: string): Promise<number> {
 // back to GET when HEAD is rejected (405/501).
 async function inspectRedirect(url: string): Promise<{ status: number; location: string }> {
   const probe = async (method: "HEAD" | "GET") => {
-    const response = await fetchWithTimeout(url, {
-      method,
-      redirect: "manual",
-      headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-    });
+    const response = await fetchWithTimeout(
+      url,
+      { method, redirect: "manual", headers: { "User-Agent": "Gitwork-Pulse/1.0" } },
+      // Essential, not cosmetic: the guarded transport follows redirects itself, so
+      // without this the 3xx this function exists to observe is invisible and every
+      // correctly-configured site reads as "does not redirect to HTTPS".
+      { followRedirects: false },
+    );
     return { status: response.status, location: response.headers.get("location") ?? "" };
   };
   try {
@@ -114,7 +137,14 @@ async function inspectRedirect(url: string): Promise<{ status: number; location:
 // soft-200. SPA / Vercel / Next.js hosts commonly serve the app-shell HTML with
 // status 200 for ANY unknown path, so a status-only probe would false-positive
 // on every "exposed file" check. The body + content-type let us tell them apart.
-async function probePath(url: string): Promise<{ status: number; contentType: string; body: string }> {
+async function probePath(
+  url: string,
+  // 2000 bytes is enough to tell a raw file from an HTML shell, which is what
+  // every exposure probe needs. A caller that must read a rendered PAGE (the
+  // legal-document verifier below reads <title>/<h1>) asks for more, because a
+  // heading can sit past 2KB of <head>.
+  maxChars = 2000,
+): Promise<{ status: number; contentType: string; body: string }> {
   try {
     const response = await fetchWithTimeout(url, {
       method: "GET",
@@ -124,7 +154,7 @@ async function probePath(url: string): Promise<{ status: number; contentType: st
     const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
     let body = "";
     try {
-      body = (await response.text()).slice(0, 2000);
+      body = (await response.text()).slice(0, maxChars);
     } catch {
       /* body unreadable — treat as empty */
     }
@@ -164,7 +194,858 @@ async function fileServed(
   return looksRight ? looksRight(r.body, r.contentType) : true;
 }
 
-function detectTechStack(headers: Record<string, string>, html: string, hostname?: string): string[] {
+// ─── Legal documents: privacy policy + terms of service ──────────────────────
+//
+// These two checks are the only ones in the URL family that a release gate
+// treats as non-negotiable (`release-decision.ts` blockingKeys) and that
+// `priority.ts` ranks as launch-blocking. So both error directions are
+// expensive, in opposite ways:
+//
+//   · a false FAIL tells a prospect their launch is blocked by a document that
+//     is linked from the footer Pulse just parsed. Two of the six sites in the
+//     July 2026 false-positive audit got exactly that as their headline P1;
+//   · a false PASS silently unblocks the gate for a site with no policy at all.
+//
+// The old implementation was a single regex over the static HTML, which produced
+// the first error on two real shapes and could only ever guess at the second:
+//
+//   1. HYPHENATION. `href="/help/terms-conditions"` — the standard UK form, used
+//      across GOV.UK. The token list held `terms-and-conditions`, and the
+//      matcher required a `/` before the token and a terminator after it, so
+//      "terms" (followed by `-`) and "conditions" (preceded by `-`) both missed.
+//   2. A LEGAL HUB. `href="https://www.ycombinator.com/legal/"` — one page
+//      holding both documents. The `/legal/…privacy` fallback needed the word
+//      inside the href, so a bare hub missed.
+//
+// Widening the regex alone would have fixed (1) and made (2) worse: matching a
+// bare `/legal/` link as proof PASSES a site whose Legal page contains no
+// privacy policy. So the widened matcher is paired with a CONTENT VERIFY — the
+// same discipline `security_txt` already uses at its `fileServed` call — and a
+// link is only ever upgraded to PASS on evidence read out of the fetched page.
+//
+// Three rules hold the honesty line, and each has a unit test:
+//   · CONFIRMATION IS PROMINENT-TEXT ONLY. The signal must appear in a <title>
+//     or an <h1>–<h3>, never anywhere in the body. Almost every homepage footer
+//     contains the literal words "Privacy Policy" as link text, so a body-wide
+//     match would let a catch-all host confirm its own shell.
+//   · A HUB MUST BE THE SAME ORGANISATION. Candidate URLs are restricted to the
+//     scanned host's registrable domain, so a link to a VENDOR's `/legal` page
+//     can never be credited to the scanned site.
+//   · "COULD NOT READ" IS INCONCLUSIVE, NOT FAIL AND NOT PASS. On a catch-all
+//     host, or an SPA route whose policy text is rendered by JS, neither
+//     presence nor absence is establishable from outside — so the check says so
+//     (§35).
+//
+// AND THE RELEASE GATE NOW CARRIES THAT ACROSS — verify the mechanism before
+// trusting this paragraph, because it was false for a while. An INCONCLUSIVE on
+// either of these two keys reaches `evaluateReleaseGate` in `release-decision.ts`
+// via its `unestablishedBlockers` filter (any `policy.blockingKeys` member whose
+// status is INCONCLUSIVE / ERROR / NOT_TESTED — SKIPPED and NOT_APPLICABLE are
+// deliberately excluded), which pushes the GateReason `BLOCKING_CONTROL_UNESTABLISHED`
+// onto `unverified`; a non-EVIDENCE_REQUIRED entry in `unverified` forces the
+// decision to INCONCLUSIVE, and INCONCLUSIVE outranks READY. Measured on a scan
+// differing only in these two verdicts:
+//
+//   privacy_policy/terms_of_service = FAIL          → CONDITIONAL, score 50
+//                                                     (HEALTH_BELOW_FLOOR + UNRESOLVED_FAILURES)
+//   the same scan, both = INCONCLUSIVE              → INCONCLUSIVE, BLOCKING_CONTROL_UNESTABLISHED
+//
+// Before that filter existed the second row returned READY, score 100, unverified []
+// — byte-identical to an all-PASS run — because `unverified` was populated only by
+// COVERAGE_BELOW_FLOOR, REQUIRED_COLLECTOR_UNAVAILABLE and EVIDENCE_REQUIRED, and two
+// checks out of ~800 cannot pull coverage under the 70% floor. So an INCONCLUSIVE here
+// is now genuinely "the gate holds and says why", not merely "the score stopped
+// counting it". `release-gate-unestablished.test.ts` pins it.
+//
+// ⚠️ The WARN branch (a policy published but linked from nowhere) is a different
+// matter and still reads READY: `reservations` filters on `status === "FAIL"`. That is
+// deliberate — the document exists — but do not read this paragraph as covering it.
+
+export type LegalDocKind = "privacy" | "terms";
+
+/**
+ * Path-token patterns identifying a link to each document.
+ *
+ * Multi-word tokens accept `-`, `_` or nothing as the internal separator, and an
+ * optional `and`, so `terms-conditions`, `terms-and-conditions`, `terms_of_use`
+ * and `termsofservice` are one pattern rather than four list entries that a
+ * fifth real-world spelling can slip between.
+ *
+ * The single-word forms (`privacy`, `terms`) still require a TERMINATOR, which
+ * is what keeps `/privacy-shield-explained` and `/terms-glossary` out.
+ */
+const LEGAL_HREF_TOKENS: Record<LegalDocKind, string> = {
+  privacy: [
+    // Combined documents satisfy both kinds — listed first so the longer form wins.
+    "privacy[-_]?and[-_]?terms",
+    "terms[-_]?and[-_]?privacy",
+    // ⚠️ Deliberately NOT here: `privacy-choices` and `privacy-cent(re|er)`. The
+    // first is the CCPA opt-out CONTROL, the second a hub that may or may not hold
+    // the document — accepting either would let a site with no policy at all PASS a
+    // launch-blocking legal check. A hub gets a content-verified fetch instead.
+    "privacy(?:[-_]?(?:policy|policies|notice|notices|statement))?",
+    "privacypolicy",
+    // ⚠️ Must be in THIS list as well as LEGAL_PREFIXABLE_TOKENS. It was added only
+    // to the prefixable list, which requires a preceding `(?:[a-z0-9]+[-_])+` prefix
+    // segment — so `/legal/our-data-protection-notice` matched while the far commoner
+    // UK/EU footer form `href="/data-protection-policy"` returned FALSE and still took
+    // a P1 launch blocker. Reproduced against the shipped matcher before this line.
+    "data[-_]protection[-_](?:policy|notice|statement)",
+    "datenschutz(?:erklaerung|erklarung)?",
+    "politique[-_]?de[-_]?confidentialite",
+    "confidentialite",
+    "privacidad",
+    "privacybeleid",
+    "privacyverklaring",
+    "personvern",
+    "tietosuoja",
+  ].join("|"),
+  terms: [
+    "privacy[-_]?and[-_]?terms",
+    "terms[-_]?and[-_]?privacy",
+    "terms(?:[-_]?(?:and[-_]?)?(?:of[-_]?(?:service|use|sale|business)|conditions|service|use))?",
+    "termsofservice",
+    "termsandconditions",
+    "tos",
+    "conditions(?:[-_]?(?:of[-_]?use|generales))?",
+    "agb",
+    "nutzungsbedingungen",
+    // ⚠️ `mentions-legales` is deliberately absent: it is the French IMPRINT
+    // (company identification), not terms of service, so accepting it would pass
+    // a site that has one and no CGV.
+  ].join("|"),
+};
+
+/**
+ * The UNAMBIGUOUS multi-word forms, which may additionally carry a brand or scope
+ * PREFIX on their own path segment.
+ *
+ * Found by sweeping ten real homepages after the first fix landed: the hyphenation
+ * problem has two sides and only the right-hand one had been fixed.
+ * `/help/terms-conditions` (a suffix variant) matched; `github-terms-of-service` did
+ * not, because the matcher requires the token to start immediately after a `/` and
+ * that segment starts with `github-`. Verified live 2026-08-22 — GitHub's footer links
+ * `docs.github.com/site-policy/github-terms/github-terms-of-service` (HTTP 200) and
+ * Pulse reported `terms_of_service: FAIL`, a P1 launch blocker.
+ *
+ * ⚠️ ONLY the multi-word forms may take a prefix, and that restriction is the whole
+ * design. Allowing a prefix before the bare words would match `/glossary-of-terms`,
+ * `/search-terms`, `/payment-terms` and `/company-privacy-first-approach` — PASSing a
+ * site that publishes no policy at all, which on a launch-blocking legal gate is a far
+ * worse outcome than the false positive being fixed. `privacy-policy` and
+ * `terms-of-service` are not ambiguous; `terms` on its own very much is.
+ */
+const LEGAL_PREFIXABLE_TOKENS: Record<LegalDocKind, string> = {
+  privacy: [
+    "privacy[-_](?:policy|policies|notice|notices|statement|statements)",
+    "data[-_]protection[-_](?:policy|notice|statement)",
+  ].join("|"),
+  terms: [
+    "terms[-_](?:and[-_])?(?:of[-_])?(?:service|use|sale|business|conditions)",
+    "terms[-_]and[-_]conditions",
+  ].join("|"),
+};
+
+/**
+ * Last-segment patterns for a LEGAL HUB — one page holding several documents.
+ *
+ * A hub is never proof on its own; matching one only earns the page a single
+ * fetch, after which the verdict comes from what the page actually said.
+ */
+const LEGAL_HUB_TOKENS = [
+  "legal",
+  "legals",
+  "legal[-_]notice",
+  "legal[-_]notices",
+  "legal[-_]information",
+  "legal[-_]info",
+  "legal[-_]terms",
+  "policies",
+  "policy",
+].join("|");
+
+/**
+ * Phrases that identify each document when they appear in a heading or title.
+ *
+ * Deliberately the DOCUMENT'S OWN NAME, not the topic: "privacy" alone appears
+ * in headings such as "Your privacy matters" on marketing pages.
+ */
+const LEGAL_CONTENT_SIGNALS: Record<LegalDocKind, RegExp> = {
+  privacy:
+    /privacy\s+(?:policy|policies|notice|statement)|data\s+protection\s+(?:policy|notice|statement)|datenschutzerkl|politique\s+de\s+confidentialit|pol[íi]tica\s+de\s+privacidad|privacyverklaring|privacybeleid/i,
+  terms:
+    /terms\s+(?:of\s+(?:service|use|sale|business)|and\s+conditions|&(?:amp;)?\s*conditions)|terms\s*&(?:amp;)?\s*conditions|conditions\s+of\s+use|allgemeine\s+gesch|nutzungsbedingungen|conditions\s+g[ée]n[ée]rales/i,
+};
+
+/** Every `href` value in the markup, in document order. */
+export function extractHrefs(html: string): string[] {
+  const out: string[] = [];
+  const re = /href=["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) out.push(match[1]);
+  return out;
+}
+
+/**
+ * Elements whose CONTENT is not part of the rendered, navigable page.
+ *
+ * `script` and `textarea` hold raw/escapable-raw text — a browser never parses tags
+ * out of them. `template` content is inert until something instantiates it, and
+ * `noscript` content is not parsed as markup at all when scripting is enabled.
+ */
+const INERT_ELEMENTS: ReadonlySet<string> = new Set(["script", "template", "noscript", "textarea"]);
+
+/**
+ * Drop the parts of a document a browser never renders: HTML comments, and the
+ * contents of `<script>` / `<template>` / `<noscript>` / `<textarea>`.
+ *
+ * ⚠️ THIS EXISTS BECAUSE A COMMENTED-OUT LINK CLEARED A LAUNCH-BLOCKING LEGAL GATE.
+ * The legal matcher and `extractHrefs` both ran over the whole raw document, so
+ *
+ *     <!-- <a href="https://privacy.example.com">old link</a> -->
+ *
+ * satisfied `privacy_policy` — a release-gate blocking key that also hard-caps the
+ * score at 65. Commenting the footer out is what a site looks like halfway through a
+ * redesign, i.e. the one moment it genuinely has no reachable policy was the moment
+ * Pulse reported that it had one. Same class as §34.3's "comments were matched as
+ * code", one layer out from source files into markup.
+ *
+ * ⚠️ AND IT IS A SCANNER, NOT A REGEX, FOR THE SAME REASON `stripSwiftComments` HAD
+ * TO PRESERVE STRING LITERALS. A `<` inside a QUOTED ATTRIBUTE VALUE is ordinary text
+ * to a browser, so `/<!--[\s\S]*?-->/` starts matching at the `<!--` in
+ *
+ *     <a data-tpl="<!--" href="/privacy-policy">Privacy</a><!-- gone --><a …>
+ *
+ * and runs to the next real `-->`, swallowing the LIVE privacy link between them.
+ * That is the fix buying the false negative it was written to remove. So tags are
+ * copied verbatim with quote awareness, and only a `<!--` outside a tag opens a
+ * comment. An unterminated comment runs to the end of the document, exactly as a
+ * browser treats it. A `<` that opens nothing (`1 < 2`) is ordinary text and is kept.
+ *
+ * Removed regions are replaced by a single space so the text either side cannot fuse
+ * into a token that was never in the document.
+ */
+export function stripInertMarkup(html: string): string {
+  const tagName = /\/?([a-zA-Z][a-zA-Z0-9:-]*)/y;
+  let out = "";
+  let i = 0;
+  const n = html.length;
+
+  while (i < n) {
+    const lt = html.indexOf("<", i);
+    if (lt < 0) {
+      out += html.slice(i);
+      break;
+    }
+    out += html.slice(i, lt);
+
+    if (html.startsWith("<!--", lt)) {
+      const end = html.indexOf("-->", lt + 4);
+      out += " ";
+      i = end < 0 ? n : end + 3;
+      continue;
+    }
+
+    tagName.lastIndex = lt + 1;
+    const name = tagName.exec(html)?.[1]?.toLowerCase();
+    if (!name) {
+      // Not a tag start: a bare `<` in text, a `<!DOCTYPE`, a `<?xml`. Keep it and
+      // carry on reading — skipping past it would drop real markup after it.
+      out += "<";
+      i = lt + 1;
+      continue;
+    }
+
+    // Copy the tag through, honouring quoted attribute values so neither a `>` nor a
+    // `<!--` inside one can end the tag or open a comment.
+    let j = lt + 1;
+    let quote: '"' | "'" | null = null;
+    while (j < n) {
+      const ch = html[j];
+      if (quote) {
+        if (ch === quote) quote = null;
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === ">") {
+        j += 1;
+        break;
+      }
+      j += 1;
+    }
+    const tag = html.slice(lt, j);
+    out += tag;
+    i = j;
+
+    // A close tag, an ordinary element or a self-closed one encloses nothing to drop.
+    if (html[lt + 1] === "/" || !INERT_ELEMENTS.has(name) || tag.endsWith("/>")) continue;
+
+    const close = new RegExp(`</${name}\\s*>`, "i").exec(html.slice(i));
+    if (!close) {
+      // Unclosed: like a browser, treat the rest of the document as its content.
+      out += " ";
+      i = n;
+      continue;
+    }
+    out += ` ${close[0]}`;
+    i += close.index + close[0].length;
+  }
+
+  return out;
+}
+
+/**
+ * Extensions a legal DOCUMENT is plausibly served as.
+ *
+ * ⚠️ This list is the whole reason the dot is allowed as a terminator at all, and
+ * it must never be widened to "any extension". The terminator was briefly `[/.]`
+ * — a bare dot — to support `href="privacy.html"` (Hacker News writes its footer
+ * that way). That also made every ASSET whose filename merely STARTS with a legal
+ * token satisfy a LAUNCH-BLOCKING check, with no fetch anywhere in the path, so no
+ * content-verify could catch it. Reproduced against the shipped matcher:
+ *
+ *   href="/assets/terms.css"      → terms_of_service   PASS
+ *   href="/build/privacy.min.css" → privacy_policy     PASS
+ *   href="/css/conditions.css"    → terms_of_service   PASS
+ *   href="/js/tos.min.js"         → terms_of_service   PASS
+ *   href="/img/privacy.svg"       → privacy_policy     PASS
+ *
+ * A build that emits a `terms.<hash>.css` chunk, or a footer with a `privacy.svg`
+ * icon, therefore cleared both release-gate blocking keys and lifted the 65-point
+ * score cap on a site with no policies at all. `.pdf` stays: a PDF terms of
+ * service is a real, common shape.
+ */
+const LEGAL_DOC_EXTENSIONS = "html|htm|xhtml|shtml|php|aspx?|jsp|pdf|txt|md";
+
+/**
+ * True when the page links the named document directly.
+ *
+ * Accepts a locale prefix, a trailing slash, an absolute URL, a query or
+ * fragment, a document extension (see LEGAL_DOC_EXTENSIONS), and a bare relative
+ * href with no leading slash (`href="privacy.html"`, which is how Hacker News
+ * writes its footer).
+ *
+ * ⚠️ Reads the RENDERABLE document only — see `stripInertMarkup`. A link inside an
+ * HTML comment, a `<script>` string literal or an uninstantiated `<template>` is not
+ * a link, and crediting one cleared a launch-blocking legal gate. Both paths below
+ * and the host-label branch all run on the stripped markup; `linksLegalDocument` is
+ * also the entry point callers use directly, so the strip has to happen HERE and not
+ * only in `resolveLegalDocumentChecks`.
+ */
+export function linksLegalDocument(html: string, kind: LegalDocKind, scannedHost?: string): boolean {
+  const renderable = stripInertMarkup(html);
+  const lower = renderable.toLowerCase();
+  // A `/`, a quote, a `#`, a `?` or end-of-href ends the token. A DOT ends it only
+  // when what follows is a document extension — never `.css`, `.js`, `.svg`, `.png`,
+  // `.json`, `.map`, `.woff2`, `.xml` or an intermediate segment such as `.min.css`.
+  //
+  // ⚠️ `\\.` — a LITERAL dot, and the escape has to survive the template literal.
+  // Written `\.` here it collapsed to a bare `.` before the RegExp ever saw it, i.e.
+  // "any one character", so the terminator was <any char> + document extension and
+  // these four all matched:
+  //     /terms-html   /privacy_md   /tos9pdf   /privacyQtxt
+  // Harmless in practice only because real assets end in a NON-document extension —
+  // but the guarantee the LEGAL_DOC_EXTENSIONS note above states was not the
+  // guarantee the code provided, and one `.html`-adjacent asset name would have been
+  // enough to clear both launch-blocking keys.
+  const terminator = `(?:/|["'#?]|$|\\.(?:${LEGAL_DOC_EXTENSIONS})(?:["'#?/]|$))`;
+
+  // (a) The token begins a path segment: /privacy, /help/terms-conditions, privacy.html.
+  const cleanSegment = new RegExp(
+    `href=["'](?:[^"']*/)?(?:${LEGAL_HREF_TOKENS[kind]})${terminator}`,
+    "i",
+  );
+  if (cleanSegment.test(lower)) return true;
+
+  // (b) An unambiguous multi-word form preceded by a brand/scope prefix on the same
+  //     segment: github-terms-of-service, company-privacy-policy. Restricted to the
+  //     multi-word forms — see LEGAL_PREFIXABLE_TOKENS for why that matters.
+  const prefixedSegment = new RegExp(
+    `href=["'](?:[^"']*/)?(?:[a-z0-9]+[-_])+(?:${LEGAL_PREFIXABLE_TOKENS[kind]})${terminator}`,
+    "i",
+  );
+  if (prefixedSegment.test(lower)) return true;
+
+  // (c) The document lives on its OWN SUBDOMAIN, so the token is in the HOST and
+  //     there is nothing in the path for (a) or (b) to match.
+  return linksLegalHostLabel(renderable, kind, scannedHost);
+}
+
+/**
+ * True when the page links a same-organisation host whose leading label IS the
+ * document token — `https://privacy.example.com`, `https://terms.example.com`.
+ *
+ * A residual false positive from the path-matcher work: both of those returned false
+ * and took a P1 launch blocker, while `https://legal.example.com/privacy`,
+ * `https://www.example.com/privacy` and `//example.com/privacy` all matched — the
+ * token was only ever looked for in the PATH.
+ *
+ * Three guards, and each one is load-bearing on a launch-blocking legal gate:
+ *
+ *  1. SAME ORGANISATION, via the same `sameOrganisation()` helper the hub candidates
+ *     use. A stranger's `privacy.` host is not this site's policy, and where the
+ *     registrable domain cannot be established the helper declines rather than
+ *     guessing (see `registrable-domain.ts`'s honesty contract).
+ *  2. THE WHOLE LABEL must be the token. `privacy-blog.example.com` is a blog;
+ *     anchoring the match to the full label is what keeps it out.
+ *  3. NOT THE SCANNED HOST ITSELF. Scanning `privacy.example.com` would otherwise let
+ *     any self-link on the page satisfy the check — the page's own address is not
+ *     evidence that a policy document is published.
+ *
+ * Without a `scannedHost` there is no way to run guard 1, so this returns false: a
+ * missing argument must not be the thing that clears a release gate.
+ */
+function linksLegalHostLabel(html: string, kind: LegalDocKind, scannedHost?: string): boolean {
+  // ⚠️ `html` here is ALREADY `stripInertMarkup`ed by the only caller. `extractHrefs`
+  // is a naive regex over whatever it is handed, so passing raw markup would re-open
+  // the commented-out-link hole on this branch alone.
+  const host = (scannedHost ?? "").trim().toLowerCase();
+  if (!host) return false;
+  const wholeLabel = new RegExp(`^(?:${LEGAL_HREF_TOKENS[kind]})$`, "i");
+
+  for (const href of extractHrefs(html)) {
+    // Only hrefs that actually carry a host can put the token in one. A
+    // protocol-relative `//privacy.example.com/x` does, and resolves against the
+    // scanned origin.
+    if (!/^(?:[a-z][a-z0-9+.\-]*:)?\/\//i.test(href)) continue;
+    let url: URL;
+    try {
+      url = new URL(href, `https://${host}/`);
+    } catch {
+      continue;
+    }
+    if (!/^https?:$/i.test(url.protocol)) continue;
+    const candidateHost = url.hostname.toLowerCase();
+    if (candidateHost === host) continue; // guard 3
+    if (!sameOrganisation(url.toString(), host)) continue; // guard 1
+    const [label] = candidateHost.split(".");
+    if (label && wholeLabel.test(label)) return true; // guard 2
+  }
+  return false;
+}
+
+/** True when this href points at a legal hub rather than a specific document. */
+/**
+ * True when the page LINKS a path containing one of these tokens.
+ *
+ * ⚠️ Why this exists, and why several checks were wrong without it. A family of
+ * compliance checks probed a FIXED ROOT PATH and never looked at the page's own links:
+ * `accessibility_statement` HEADed `/accessibility` and `/accessibility-statement`,
+ * `cookie_policy_page` HEADed `/cookie-policy` and `/cookies`. Live-scanned www.gov.uk
+ * on 2026-08-22 and both came back as findings — while the markup Pulse had just parsed
+ * contained `href="/help/accessibility-statement"` and `href="/help/cookies"`. Telling
+ * the UK government its site has no accessibility statement, on the strength of a path
+ * we guessed wrong, is the same defect as the legal-link matcher above: probing a guess
+ * while ignoring the evidence in hand.
+ *
+ * Reads the INERT-STRIPPED markup, so a commented-out or `<template>`d link does not
+ * count — the same rule the legal matcher uses.
+ */
+export function linksPathContaining(html: string, tokens: string[]): boolean {
+  const pattern = new RegExp(`(?:^|/)[^/?#]*(?:${tokens.join("|")})`, "i");
+  return extractHrefs(stripInertMarkup(html)).some((href) => {
+    const path = href.split("#")[0].split("?")[0].toLowerCase();
+    return pattern.test(path);
+  });
+}
+
+/**
+ * True when the page carries a cookie-consent mechanism.
+ *
+ * ⚠️ This was a CLOSED VENDOR LIST (cookiebot / osano / onetrust / cookie-consent /
+ * cookieconsent / cookie_notice / gdpr), so a SELF-HOSTED banner was invisible.
+ * Live-scanned www.gov.uk on 2026-08-22 and it was reported as having no cookie consent
+ * mechanism — while the page ships the reference UK implementation, with
+ * `id="global-cookie-message"`, `govuk-cookie-banner` / `gem-c-cookie-banner`, and
+ * accept/reject confirmation copy. Same shape as the CDN five-vendor list in §44.2:
+ * a closed fingerprint list reported as directly-observed absence.
+ *
+ * Detects the MECHANISM — a container named for what it is, or the copy a visitor
+ * actually reads — and keeps the vendor names as additional signals rather than as the
+ * definition of the thing.
+ */
+const COOKIE_BANNER_VENDORS = [
+  "cookiebot", "osano", "onetrust", "termly", "iubenda", "cookieyes", "complianz",
+  "consentmanager", "trustarc", "quantcast", "didomi", "usercentrics", "klaro",
+  "tarteaucitron", "orejime",
+];
+
+const COOKIE_BANNER_CONTAINER =
+  /(?:class|id)="[^"]*cookie[-_]?(?:banner|consent|notice|message|bar|law|prompt|dialog)[^"]*"/i;
+
+const CONSENT_CONTAINER =
+  /(?:class|id)="[^"]*(?:consent|cookie)[-_]?(?:manager|modal|overlay)[^"]*"/i;
+
+const COOKIE_BANNER_COPY =
+  /accept (?:all )?cookies|reject (?:all )?cookies|cookie settings|manage cookies|we use cookies|essential cookies/i;
+
+// ⚠️ This was a THREE-PHRASE list (`accept all`, `reject all`,
+// `manage cookies|preferences`), which is one vendor's wording rather than the
+// affordance. Live-scanned www.gov.uk on 2026-08-22 and it read "Basic cookie notice
+// detected but no reject/manage options" — while the GDS banner ships
+// "Reject additional cookies", "Accept additional cookies" and a machine-readable
+// `data-reject-cookies="true"`. Third time this shape has appeared in one audit
+// (the CDN vendor list, the CMP vendor list, and now this): a closed phrase list
+// reported as a directly-observed absence.
+//
+// Match the AFFORDANCE — a decline control, or a way to manage the choice — in the
+// wordings real banners actually use. Still gated by hasBasicConsent below, so prose
+// in a privacy policy cannot satisfy it on its own.
+    export function hasGranularCookieControls(html: string): boolean {
+  return (
+  // A decline control, however it is worded.
+    /(?:reject|decline|refuse|deny)\s+(?:all\s+|additional\s+|non-essential\s+|optional\s+|analytics\s+)?cookies?/i.test(html)
+    || /\baccept\s+(?:all|additional|selected)\b/i.test(html)
+  // "Essential only" / "Necessary cookies only" — a decline by another name.
+    || /(?:only\s+)?(?:strictly\s+)?(?:essential|necessary|required)\s+cookies?(?:\s+only)?\b/i.test(html)
+  // A way to manage or customise the choice.
+    || /(?:manage|customi[sz]e|adjust|change|review)\s+(?:your\s+)?(?:cookie|consent|privacy)\s*(?:settings|preferences|choices|options)?/i.test(html)
+    || /cookie\s*(?:settings|preferences|choices)/i.test(html)
+  // Machine-readable controls, which are the least ambiguous signal of all.
+    || /data-(?:reject|decline|deny)-cookies|data-cookie-(?:types|preferences)|onclick="[^"]*reject[^"]*cookie/i.test(html)
+  );
+}
+
+export function hasCookieConsentMechanism(html: string): boolean {
+  const lower = html.toLowerCase();
+  if (COOKIE_BANNER_VENDORS.some((vendor) => lower.includes(vendor))) return true;
+  if (COOKIE_BANNER_CONTAINER.test(lower) || CONSENT_CONTAINER.test(lower)) return true;
+  // The copy test is gated on the page mentioning cookies at all, so a page saying
+  // "manage cookies" in a blog post about baking does not qualify on its own.
+  return lower.includes("cookie") && COOKIE_BANNER_COPY.test(lower);
+}
+
+export function isLegalHubHref(href: string): boolean {
+  const path = href.split("#")[0].split("?")[0].toLowerCase();
+  return new RegExp(`(?:^|/)(?:${LEGAL_HUB_TOKENS})/?$`).test(path);
+}
+
+/**
+ * True when a FETCHED page names the document in its title or a top heading.
+ *
+ * Prominent text only — see the module note. A body-wide match would confirm
+ * any homepage that links its own policy in the footer, which is most of them.
+ *
+ * ⚠️ Reads the RENDERABLE body only, for the same reason the link matcher does: a
+ * `<!-- <h1>Privacy Policy</h1> -->` left in a template, or that heading inside a
+ * `<script>` string or an uninstantiated `<template>`, would otherwise CONFIRM a
+ * document the fetched page does not publish — a false PASS on a launch-blocking gate,
+ * reached by the very fetch that exists to prevent one.
+ */
+export function legalPageConfirms(kind: LegalDocKind, body: string): boolean {
+  const signal = LEGAL_CONTENT_SIGNALS[kind];
+  const renderable = stripInertMarkup(body);
+  const re = /<title[^>]*>([\s\S]{0,400}?)<\/title>|<h[1-3][^>]*>([\s\S]{0,400}?)<\/h[1-3]>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(renderable)) !== null) {
+    const text = (match[1] ?? match[2] ?? "").replace(/<[^>]*>/g, " ");
+    if (signal.test(text)) return true;
+  }
+  return false;
+}
+
+/** Conventional paths tried when the page's own links could not be read. */
+const LEGAL_WELL_KNOWN_PATHS: Record<LegalDocKind, string[]> = {
+  privacy: ["/privacy", "/privacy-policy", "/legal/privacy"],
+  terms: ["/terms", "/terms-of-service", "/legal/terms"],
+};
+
+export interface LegalProbeResult {
+  status: number;
+  contentType: string;
+  body: string;
+}
+
+export interface LegalDocOutcome {
+  status: "PASS" | "WARN" | "FAIL" | "INCONCLUSIVE";
+  detail: string;
+  evidence?: string;
+  /** Set only where the verdict is weaker than a direct read. */
+  confidence?: "HIGH" | "MEDIUM";
+}
+
+function sameOrganisation(candidate: string, scannedHost: string): boolean {
+  let host: string;
+  try {
+    host = new URL(candidate).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === scannedHost) return true;
+  const scannedOrg = registrableDomain(scannedHost);
+  // `null` means the module declined to answer, so we must NOT treat the two as
+  // related — crediting a stranger's policy page is the failure this guards.
+  return scannedOrg !== null && registrableDomain(host) === scannedOrg;
+}
+
+/**
+ * Decide `privacy_policy` and `terms_of_service` from evidence.
+ *
+ * `probe` is injected so the whole decision tree is unit-testable without a
+ * network: every branch below is exercised in `legal-link-detection.test.ts`.
+ */
+export async function resolveLegalDocumentChecks(input: {
+  /** The HTML actually read — the rendered DOM when a render was adopted. */
+  html: string;
+  /** Scanned origin, no trailing slash. */
+  baseUrl: string;
+  /** True when a random path returns 200, so a 200 proves nothing. */
+  catchAll200: boolean;
+  /** True when the static HTML is an unrendered SPA shell (links unreadable). */
+  unreadableShell: boolean;
+  probe: (url: string) => Promise<LegalProbeResult>;
+  /** Hard ceiling on fetches, shared across both documents. */
+  maxProbes?: number;
+}): Promise<Record<LegalDocKind, LegalDocOutcome>> {
+  let scannedHost = "";
+  try {
+    scannedHost = new URL(input.baseUrl).hostname.toLowerCase();
+  } catch {
+    /* unparseable base — hub candidates are then rejected, which is the safe way */
+  }
+
+  // ⚠️ Strip once, up front, and read the stripped copy everywhere below. A hub link
+  // inside an HTML comment or a `<script>` string is not a link the visitor can
+  // follow, and fetching it would spend a probe to manufacture a PASS from markup the
+  // browser never rendered (see `stripInertMarkup`).
+  const renderableHtml = stripInertMarkup(input.html);
+
+  const hubCandidates: string[] = [];
+  for (const href of extractHrefs(renderableHtml)) {
+    if (!isLegalHubHref(href)) continue;
+    let absolute: string;
+    try {
+      absolute = new URL(href, `${input.baseUrl}/`).toString();
+    } catch {
+      continue;
+    }
+    if (!/^https?:/i.test(absolute)) continue;
+    if (!sameOrganisation(absolute, scannedHost)) continue;
+    if (!hubCandidates.includes(absolute)) hubCandidates.push(absolute);
+    if (hubCandidates.length >= 2) break;
+  }
+
+  // 8 is the exact worst case, not a guess: at most 2 hub candidates (deduped in
+  // `seen`, so one fetch serves BOTH documents) plus 3 conventional paths per
+  // document. So no candidate is ever dropped for want of budget — which would read
+  // as "we checked and found nothing" when we had in fact stopped looking. Raising
+  // either cap is therefore a budget change; `legal-link-detection.test.ts` pins the
+  // arithmetic so it cannot drift silently.
+  let probesLeft = input.maxProbes ?? 8;
+  const seen = new Map<string, LegalProbeResult | null>();
+  const fetchOnce = async (url: string): Promise<LegalProbeResult | null> => {
+    if (seen.has(url)) return seen.get(url) ?? null;
+    if (probesLeft <= 0) {
+      seen.set(url, null);
+      return null;
+    }
+    probesLeft -= 1;
+    const result = await input.probe(url).catch(() => null);
+    seen.set(url, result);
+    return result;
+  };
+
+  const shellSuffix = input.unreadableShell
+    ? " The page's own links could not be read: the static HTML is a client-rendered shell, so Pulse probed the conventional paths instead."
+    : "";
+
+  const resolveOne = async (kind: LegalDocKind): Promise<LegalDocOutcome> => {
+    const noun = kind === "privacy" ? "privacy policy" : "terms of service";
+
+    // `scannedHost` is what lets the matcher credit a same-organisation
+    // `privacy.<domain>` host; without it that branch declines (see
+    // `linksLegalHostLabel`).
+    if (linksLegalDocument(renderableHtml, kind, scannedHost)) {
+      return {
+        status: "PASS",
+        detail: `A ${noun} link was found in the page markup.`,
+        evidence: "Linked from the scanned page",
+      };
+    }
+
+    // Probe the conventional paths for EVERY site, not only unrendered shells.
+    //
+    // Found by sweeping ten live homepages: stripe.com's served HTML links `/gb/privacy`
+    // and no terms page at all, so `terms_of_service` came back FAIL — a P1 launch
+    // blocker — while `https://stripe.com/terms` returns HTTP 200. "Not linked from the
+    // homepage" and "does not exist" are different facts, and only the second one is
+    // worth blocking a release over.
+    //
+    // The cost is bounded and lands only on sites that would otherwise take a P1: at
+    // most three extra requests, shared against the same `maxProbes` ceiling, and only
+    // once the markup test has already failed. Every probe is content-verified, so a
+    // catch-all 200 still cannot manufacture a pass.
+    //
+    // ⚠️ Not on a catch-all-200 host. There a 200 proves nothing (the code below
+    // correctly refuses to read it as evidence), so the probes would spend three
+    // requests to learn nothing AND would downgrade a well-evidenced FAIL — "no legal
+    // link in markup we could read" — into INCONCLUSIVE. A caught regression: the
+    // rendered-footer test asserts exactly this case.
+    // Skip the probes ONLY when the markup was readable AND a 200 would prove nothing.
+    // Then "no legal link in markup we could read" is solid evidence and the probes add
+    // none. For an unreadable SHELL on a catch-all host we have no evidence in either
+    // direction, so the probes must still run — that is what produces the honest
+    // INCONCLUSIVE instead of a FAIL we cannot support. Both halves of this condition
+    // were put here by a failing test.
+    const wellKnown = input.catchAll200 && !input.unreadableShell
+      ? []
+      : LEGAL_WELL_KNOWN_PATHS[kind].map((path) => `${input.baseUrl}${path}`);
+    const candidates = [...hubCandidates, ...wellKnown.filter((url) => !hubCandidates.includes(url))];
+
+    if (candidates.length === 0) {
+      return {
+        status: "FAIL",
+        detail:
+          kind === "privacy"
+            ? "No privacy policy link found in the page markup — required for GDPR, CCPA, and app store distribution."
+            : "No terms of service link found in the page markup — required for any product collecting payments or user data.",
+        evidence: "No matching link, and no legal index page to check",
+      };
+    }
+
+    // ⚠️ TWO KINDS OF "UNREADABLE", AND THEY DO NOT RANK THE SAME. They were one
+    // variable, set by whichever candidate hit first and then outranking every
+    // conclusive answer collected afterwards — so ONE transient probe failure turned
+    // an established FAIL into a silent INCONCLUSIVE, non-deterministically, run to
+    // run. Reproduced: page links nothing, `/privacy` returns status 0 while
+    // `/privacy-policy` AND `/legal/privacy` both 404 ⇒ privacy INCONCLUSIVE while
+    // terms (all three 404) FAILed, off the same evidence.
+    //
+    //   · `servedButUnreadable` — we asked and the server answered 200; we simply
+    //     cannot read the answer (catch-all routing, or the body is itself an empty
+    //     render shell). That IS information: something is served at that path, so it
+    //     outranks the conclusive absences. FAIL would assert more than we know.
+    //   · `transportFailure` — we never got an answer at all (timeout, reset, DNS).
+    //     That is information about the NETWORK, not about the site, so it must NOT
+    //     outrank a conclusive answer from another candidate. It is disclosed in the
+    //     FAIL's evidence instead of erasing it.
+    //
+    // ⚠️ AND THERE IS MORE THAN ONE OF EITHER. `transportFailure` was a single string
+    // set with `??=`, so with two or more unreachable candidates the FAIL disclosed
+    // the first and silently dropped the rest — "One further candidate could not be
+    // reached" while two had not been. Reproduced: page links nothing, `/privacy`
+    // 404s while `/privacy-policy` AND `/legal/privacy` both fail to connect ⇒
+    // evidence named one of the two. Understating how much of the probe set went
+    // unanswered makes a FAIL look better-evidenced than it is, which is the same
+    // dishonesty as overstating it.
+    let servedButUnreadable: string | null = null;
+    const transportFailures: string[] = [];
+    const checkedAndAbsent: string[] = [];
+
+    for (const url of candidates) {
+      const result = await fetchOnce(url);
+      if (!result || result.status === 0) {
+        transportFailures.push(`${url} could not be fetched`);
+        continue;
+      }
+      if (result.status !== 200) {
+        checkedAndAbsent.push(`${url} → HTTP ${result.status}`);
+        continue;
+      }
+      // A 200 on a host that 200s everything, or a body that is itself an empty
+      // app shell, is not an answer in either direction.
+      if (input.catchAll200) {
+        // On a catch-all host EVERY further probe returns the same non-evidence — the
+        // 200 branch below refuses to read it and, by definition, no candidate can
+        // 404. So stop here rather than spending up to four more 60KB fetches to
+        // reach the identical verdict.
+        servedButUnreadable = `${url} returned 200, but this host returns 200 for any path (catch-all routing), so the response is not evidence`;
+        break;
+      }
+      if (isEmptyRenderShell(result.body)) {
+        // NOT a break: a shell at `/privacy` says nothing about `/privacy-policy`,
+        // which may well serve the real document.
+        servedButUnreadable ??= `${url} returned a client-rendered shell, so its text is not in the static HTML`;
+        continue;
+      }
+      if (legalPageConfirms(kind, result.body)) {
+        // Reached from a hub the page actually linked: the visitor can get there, so
+        // this is a pass.
+        if (hubCandidates.includes(url)) {
+          return {
+            status: "PASS",
+            detail: `A ${noun} was confirmed by fetching ${url} and reading its heading — the scanned page links it via a legal index rather than directly.`,
+            evidence: `Confirmed at ${url}`,
+          };
+        }
+        // ⚠️ Only downgrade when the page's links were actually READABLE. On an
+        // unrendered SPA shell we could not read them, so "nothing links to it" is a
+        // claim with no evidence behind it — the link may well be in the rendered
+        // footer. There, a confirmed document is a clean PASS.
+        if (input.unreadableShell) {
+          return {
+            status: "PASS",
+            detail: `A ${noun} was confirmed by fetching ${url} and reading its heading.${shellSuffix}`,
+            evidence: `Confirmed at ${url}`,
+          };
+        }
+        // Found at a conventional path that NOTHING on the readable page linked. The
+        // document exists, so this is not the launch blocker a FAIL would claim — but a
+        // policy a user cannot navigate to is not fully published either, so it is not a
+        // clean pass. Saying exactly that is more useful than either extreme.
+        return {
+          status: "WARN",
+          detail: `A ${noun} is published at ${url}, but nothing on the scanned page links to it — so a visitor (or an app-store reviewer) has no way to find it. Add a footer link.${shellSuffix}`,
+          evidence: `Confirmed at ${url}; not linked from ${input.baseUrl}`,
+          confidence: "HIGH",
+        };
+      }
+      checkedAndAbsent.push(`${url} → 200, but no ${noun} heading`);
+    }
+
+    // A 200 we could not read outranks the conclusive absences (see above).
+    // A transport failure only speaks when NOTHING else answered conclusively.
+    //
+    // ⚠️ RESIDUAL: THIS REPORTED ONE KIND WHEN BOTH OCCURRED. Written
+    // `servedButUnreadable ?? (…transportFailures…)`, a shell served at `/privacy`
+    // PLUS two candidates that could not be reached at all disclosed only the shell.
+    // The FAIL branch below was already fixed for exactly this ("never silently drop a
+    // candidate we could not reach"); the INCONCLUSIVE branch was not, and understating
+    // how much of the probe set went unanswered makes an unproven verdict look
+    // better-evidenced than it is.
+    //
+    // What must NOT change: a transport failure still never CREATES an INCONCLUSIVE
+    // when another candidate answered conclusively — that is the `??=`-flake bug above,
+    // and it is why the second clause keeps its `checkedAndAbsent.length === 0` guard.
+    // It is only ever ADDED to a verdict that is already unproven.
+    const unreadableReasons: string[] = [];
+    if (servedButUnreadable) unreadableReasons.push(servedButUnreadable);
+    if (transportFailures.length > 0 && (servedButUnreadable || checkedAndAbsent.length === 0)) {
+      unreadableReasons.push(...transportFailures);
+    }
+    const unreadable = unreadableReasons.length > 0 ? unreadableReasons.join("; ") : null;
+    if (unreadable) {
+      return {
+        status: "INCONCLUSIVE",
+        detail: `Pulse could not establish whether this site publishes a ${noun}: ${unreadable}.${shellSuffix} This is reported as unproven rather than as a failure — neither presence nor absence was observed.`,
+        evidence: unreadable,
+        confidence: "MEDIUM",
+      };
+    }
+
+    return {
+      status: "FAIL",
+      detail:
+        (kind === "privacy"
+          ? "No privacy policy found — required for GDPR, CCPA, and app store distribution."
+          : "No terms of service found — required for any product collecting payments or user data.") +
+        ` Pulse checked the page's links and then fetched ${checkedAndAbsent.length} candidate page${checkedAndAbsent.length === 1 ? "" : "s"} directly; none served one.${shellSuffix}` +
+        // Never silently drop a candidate we could not reach: the verdict is FAIL on
+        // the evidence we DO have, and the gap is stated in full — the real count, and
+        // every URL, not just the first.
+        (transportFailures.length > 0
+          ? ` ${transportFailures.length} further candidate${transportFailures.length === 1 ? "" : "s"} could not be reached (${transportFailures.join("; ")}), so ${transportFailures.length === 1 ? "it is" : "they are"} not part of this verdict.`
+          : ""),
+      evidence: [...checkedAndAbsent, ...transportFailures].filter(Boolean).join("; ") || "No matching link or page",
+    };
+  };
+
+  return {
+    privacy: await resolveOne("privacy"),
+    terms: await resolveOne("terms"),
+  };
+}
+
+export function detectTechStack(headers: Record<string, string>, html: string, hostname?: string): string[] {
   const stack: string[] = [];
 
   // AI/no-code builder origin (Lovable, Bolt, v0, Replit, ...) — hostname-suffix + HTML watermark
@@ -185,22 +1066,49 @@ function detectTechStack(headers: Record<string, string>, html: string, hostname
   if (headers["server"]?.toLowerCase().includes("nginx")) stack.push("Nginx");
   if (headers["server"]?.toLowerCase().includes("apache")) stack.push("Apache");
 
-  if (html.includes("__NEXT_DATA__") || html.includes("_next/static")) stack.push("Next.js");
-  if (html.includes("nuxt") || html.includes("__NUXT__")) stack.push("Nuxt.js");
-  if (html.includes("svelte") || html.includes("_svelte")) stack.push("Svelte");
-  if (html.includes("gatsby")) stack.push("Gatsby");
-  if (html.includes("react")) stack.push("React");
-  if (html.includes("vue")) stack.push("Vue");
-  if (html.includes("js.stripe.com") || html.includes("stripe")) stack.push("Stripe");
-  if (html.includes("supabase")) stack.push("Supabase");
-  if (html.includes("firebase")) stack.push("Firebase");
-  if (html.includes("clerk")) stack.push("Clerk");
-  if (html.includes("next-auth") || html.includes("nextauth")) stack.push("NextAuth");
-  if (html.includes("plausible.io")) stack.push("Plausible");
-  if (html.includes("posthog")) stack.push("PostHog");
-  if (html.includes("gtag") || html.includes("google-analytics") || html.includes("_ga")) stack.push("Google Analytics");
-  if (html.includes("sentry")) stack.push("Sentry");
-  if (html.includes("intercom")) stack.push("Intercom");
+  // ⚠️ USE, not MENTION. Every line below used to be a naked `html.includes("<brand>")`,
+  // which asks "does this word appear anywhere on the page" — not "is this technology
+  // in use". On the B2B marketing sites Pulse mostly scans, that is routinely false:
+  //
+  //   · stripe.com/gb mentions "supabase" 14 times because Supabase is a Stripe
+  //     CUSTOMER (`/gb/customers/supabase`, `Supabase.png`). Pulse concluded the site
+  //     runs on Supabase and raised a P2 telling Stripe to verify their Row-Level
+  //     Security. Verified outside Pulse with curl.
+  //   · `includes("vue")`   matched "a**venue**", "re**vue**", "Belle**vue**".
+  //   · `includes("clerk")` matched the ordinary English word "clerk".
+  //   · `includes("react")` matched "reaction", "reactive", "reacted".
+  //
+  // This is not cosmetic: techStack drives `hasBackend` and platform detection, which
+  // decide WHICH CHECK FAMILIES RUN. A wrong stack manufactures wrong findings
+  // downstream — the Stripe case is exactly that chain.
+  //
+  // So each signal is now something only actual use produces: a first-party asset
+  // path, a vendor script host, or a runtime fingerprint. Where a bare product name
+  // is genuinely the only signal available, it is matched on a word boundary AND
+  // alongside a corroborating asset reference.
+  const has = (re: RegExp) => re.test(html);
+
+  // Framework runtime fingerprints — emitted by the build, impossible to mention.
+  if (has(/__NEXT_DATA__|_next\/static/)) stack.push("Next.js");
+  if (has(/__NUXT__|\/_nuxt\//)) stack.push("Nuxt.js");
+  if (has(/\/_app\/immutable\/|__sveltekit_|data-svelte-h=/)) stack.push("Svelte");
+  if (has(/\/page-data\/app-data\.json|gatsby-image-wrapper|___gatsby/)) stack.push("Gatsby");
+  if (has(/data-reactroot|__REACT_DEVTOOLS_|\/react(?:-dom)?[.@][\d.]*\/?[a-z.]*\.js/)) stack.push("React");
+  if (has(/__VUE__|data-v-[0-9a-f]{8}|\/vue(?:@|\.runtime|\.min)/)) stack.push("Vue");
+
+  // Third-party services — identified by the host they load from, not their name.
+  if (has(/js\.stripe\.com|checkout\.stripe\.com|api\.stripe\.com/)) stack.push("Stripe");
+  // `(?![a-z])` matters: without it this matches inside `.supabase.company`, which is
+  // literally present in stripe.com/gb's i18n keys.
+  if (has(/[a-z0-9-]+\.supabase\.(?:co|in)(?![a-z])|supabase-js/)) stack.push("Supabase");
+  if (has(/firebaseio\.com|firebaseapp\.com|googleapis\.com\/identitytoolkit|firebase-app\.js/)) stack.push("Firebase");
+  if (has(/clerk\.[a-z0-9-]+\.(?:dev|com)|clerk\.accounts\.|@clerk\//)) stack.push("Clerk");
+  if (has(/\/api\/auth\/(?:session|providers|csrf)|next-auth\.session-token/)) stack.push("NextAuth");
+  if (has(/plausible\.io/)) stack.push("Plausible");
+  if (has(/posthog\.com|posthog\.js|\/static\/array\.js/)) stack.push("PostHog");
+  if (has(/googletagmanager\.com|google-analytics\.com|gtag\(/)) stack.push("Google Analytics");
+  if (has(/sentry-cdn\.com|\.ingest\.sentry\.io|@sentry\//)) stack.push("Sentry");
+  if (has(/widget\.intercom\.io|intercomcdn\.com|intercomSettings/)) stack.push("Intercom");
 
   return [...new Set(stack)];
 }
@@ -227,7 +1135,12 @@ function detectProjectContext(html: string, headers: Record<string, string>): Pr
   const isAuthEnabled =
     ["/login", "/signin", "/sign-in", "/signup", "/sign-up", "/auth", "/register"].some(
       (p) => lower.includes(`href="${p}`) || lower.includes(`href='${p}`),
-    ) || ["clerk", "next-auth", "nextauth", "supabase", "auth0", "lucia", "kinde"].some((p) => lower.includes(p));
+    )
+    // Auth-provider evidence, not the provider's NAME. `lower.includes("clerk")`
+    // matched the English word, `"supabase"` matched a customer logo, and `"lucia"`
+    // matched a person's name — each of which switched on the whole auth check family
+    // for a site with no auth at all. Same USE-not-MENTION rule as detectTechStack.
+    || /clerk\.[a-z0-9-]+\.(?:dev|com)|@clerk\/|next-auth\.session-token|\/api\/auth\/(?:session|providers|csrf)|[a-z0-9-]{8,}\.supabase\.(?:co|in)(?![a-z])|supabase-js|[a-z0-9-]+\.auth0\.com|lucia-auth|[a-z0-9-]+\.kinde\.com/i.test(html);
 
   // Auth *method* — password vs. OTP/passwordless — so checks that only make
   // sense for traditional passwords (strength rules, breach-password lookups)
@@ -492,120 +1405,26 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
 }
 
 /**
- * Returns the categories that are irrelevant for the declared platform,
- * and a human-readable reason to embed in the SKIPPED detail message.
+ * Returns the categories that are irrelevant for the declared platform.
+ * Exported for the exhaustive applicability contract tests.
  */
 export function getSkippedCategoriesForPlatformForTest(platform: string) {
-  return getSkippedCategoriesForPlatform(platform);
+  return getInapplicableCategoryDetails(platform);
 }
 
-function getSkippedCategoriesForPlatform(platform: string): Array<{ category: string; reason: string }> {
-  const p = platform.toUpperCase();
-
-  if (p === "IOS_APP" || p === "ANDROID_APP") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — native mobile apps are not indexed by web search engines." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to native mobile apps." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — native mobile apps do not have marketing web pages." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to native apps." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms, not native mobile apps." },
-    ];
-  }
-
-  // React Native / Flutter ships the same store-distributed app as a native project,
-  // so it gets the SAME exclusions. It previously got only 2 of these 5 (and none of
-  // the 15 per-check platform guards), which meant picking "React Native / Flutter"
-  // in the scan dropdown ran the full web suite against a mobile app and buried the
-  // real findings under web failures. If a codebase genuinely also ships a web
-  // target, scan that URL as its own Web App scan.
-  if (p === "CROSS_PLATFORM_MOBILE") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — cross-platform mobile apps are distributed through app stores, not indexed by web search engines." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS UI patterns (billing portals, pricing pages) do not apply to a mobile app bundle." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — a mobile app bundle does not have marketing web pages." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — hreflang, language switchers, and international web routing do not apply to mobile app bundles." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms, not mobile apps." },
-    ];
-  }
-
-  if (p === "API_BACKEND") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — APIs are not web pages and are not indexed by search engines." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web UI SaaS patterns (billing portals, live chat, pricing pages) do not apply to API backends." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — APIs do not have About/Contact/FAQ pages." },
-      { category: CATEGORIES.TRUST_BRAND, reason: "Not applicable — social proof, testimonials, and press sections are not relevant for API backends." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — this is a backend API, not a mobile app." },
-      { category: CATEGORIES.MOBILE, reason: "Not applicable — APIs are not user-facing web interfaces." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation (hreflang, language switchers) does not apply to APIs." },
-      { category: CATEGORIES.PAYMENTS, reason: "Lower relevance — API backends typically do not host their own payment UI." },
-      { category: CATEGORIES.ROLES, reason: "Lower relevance — role management UI checks are for web app interfaces, not raw API backends." },
-      { category: CATEGORIES.BUSINESS_OPS, reason: "Not applicable — business operations compliance is managed through web presence, not raw API backends." },
-    ];
-  }
-
-  if (p === "CLI_TOOL") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Not applicable — CLI tools are distributed via package registries, not web search." },
-      { category: CATEGORIES.SAAS, reason: "Not applicable — web SaaS conversion patterns do not apply to command-line tools." },
-      { category: CATEGORIES.MISSING_PAGES, reason: "Not applicable — CLI tools do not have marketing web pages." },
-      { category: CATEGORIES.TRUST_BRAND, reason: "Not applicable — social proof and press coverage sections are not relevant for CLI tools." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — CLI tools are not distributed through app stores." },
-      { category: CATEGORIES.MOBILE, reason: "Not applicable — CLI tools are not web interfaces." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation does not apply to CLI tools." },
-      { category: CATEGORIES.PAYMENTS, reason: "Not applicable — CLI tools typically use package managers or separate billing systems." },
-      { category: CATEGORIES.ROLES, reason: "Not applicable — roles and permissions UI is not relevant for CLI tools." },
-      { category: CATEGORIES.EMAIL, reason: "Not applicable — CLI tools do not send email directly." },
-      { category: CATEGORIES.BUSINESS_OPS, reason: "Not applicable — business operations compliance is not relevant for CLI tools." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends, not CLI tools." },
-    ];
-  }
-
-  if (p === "DESKTOP_APP") {
-    return [
-      { category: CATEGORIES.SEO, reason: "Lower relevance — desktop apps are distributed via installers, not web search." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — iOS/Android app store checks do not apply to desktop applications." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web routing internationalisation does not apply to desktop app installers." },
-    ];
-  }
-
-  if (p === "CHROME_EXTENSION") {
-    return [
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — iOS/Android app store checks do not apply to browser extensions." },
-      { category: CATEGORIES.MOBILE, reason: "Not applicable — browser extensions do not have responsive mobile web layouts." },
-      { category: CATEGORIES.GLOBAL_DISTRIBUTION, reason: "Not applicable — web internationalisation does not apply to browser extensions." },
-      { category: CATEGORIES.SAAS, reason: "Lower relevance — standard web SaaS conversion patterns do not apply to browser extension UX." },
-    ];
-  }
-
-  if (p === "MARKETING_SITE") {
-    return [
-      { category: CATEGORIES.AUTHENTICATION, reason: "Lower relevance — pure marketing sites typically do not have user login flows." },
-      { category: CATEGORIES.PAYMENTS, reason: "Lower relevance — pure marketing sites typically do not have embedded checkout." },
-      { category: CATEGORIES.APP_STORE, reason: "Not applicable — this is a marketing website, not a mobile app listing." },
-      { category: CATEGORIES.ROLES, reason: "Not applicable — roles and permissions checks are not relevant for marketing websites." },
-      { category: CATEGORIES.API_QUALITY, reason: "Not applicable — API quality checks are for API backends and developer platforms." },
-    ];
-  }
-
-  // WEB_APP, SAAS, OTHER, or unrecognised — run all checks
-  return [];
+function getSkippedCategoriesForPlatform(platform: string, surfaceKind: UrlSurfaceKind) {
+  return getInapplicableCategoryDetails(platform, surfaceKind);
 }
-
-/**
- * Apply platform-aware filtering: replace checks in irrelevant categories
- * with SKIPPED status so they don't pollute results or mislead the AI.
- */
-function applyPlatformFilter(checks: PulseScanCheckInput[], platform: string): PulseScanCheckInput[] {
-  const skipped = getSkippedCategoriesForPlatform(platform);
+function applyPlatformFilter(
+  checks: PulseScanCheckInput[],
+  platform: string | undefined,
+  surfaceKind: UrlSurfaceKind,
+): PulseScanCheckInput[] {
+  const skipped = getSkippedCategoriesForPlatform(platform ?? "OTHER", surfaceKind);
   if (skipped.length === 0) return checks;
 
-  const skipMap = new Map(skipped.map((s) => [s.category, s.reason]));
-
-  return checks.map((check) => {
-    const reason = skipMap.get(check.category);
-    if (!reason) return check;
-    return { ...check, status: "SKIPPED" as const, detail: reason };
-  });
+  const excluded = new Set(skipped.map((s) => s.category));
+  return checks.filter((check) => !excluded.has(check.category));
 }
 
 /**
@@ -632,6 +1451,827 @@ function applyJurisdictionFilter(
   });
 }
 
+/**
+ * The single pipeline every URL check passes through — whether it is streamed in a wave or
+ * returned at the end of the scan.
+ *
+ * ⚠️ These were two separate code paths and they disagreed. The waves applied the platform and
+ * jurisdiction filters only; SPA reclassification happened just once, on the final return. And
+ * because `runLiteScan`'s ingest keeps the FIRST result it sees for a checkKey, the wave always
+ * won and the corrected status was silently discarded. Net effect: every Lovable/Bolt/v0 site —
+ * exactly the population Pulse targets — was scored with `has_word_count`, `has_heading_hierarchy`
+ * and `internal_links_present` FAILing at HIGH confidence, while `spa_client_rendered` correctly
+ * WARNed one row above. The mechanism existed, was unit-tested, and never reached a single scan.
+ *
+ * Reclassification runs FIRST so the applicability filters keep the last word: a check the
+ * platform says does not apply must stay out of the denominator, not be re-admitted as unknown.
+ */
+/**
+ * Say what the render attempt did. Emitted only when the served HTML was a shell — there is
+ * nothing to report about a page that arrived complete.
+ *
+ * Every outcome other than "we read the content" is INCONCLUSIVE, never PASS and never FAIL.
+ * A failed hydration is not a defect in the customer's product, and it is certainly not proof
+ * their page is fine: it is Pulse saying it could not see. Reporting it any other way is how a
+ * coverage gap gets laundered into a verdict.
+ */
+export function renderCoverageCheck(input: {
+  rendered: RenderResult | null;
+  staticWords: number;
+  adopted: boolean;
+  requested: boolean;
+}): PulseScanCheckInput {
+  const base = {
+    category: CATEGORIES.VIBE_HYGIENE,
+    checkKey: "spa_content_rendered_for_scan",
+    label: "Client-rendered content was read for this scan",
+  } as const;
+
+  if (input.adopted && input.rendered) {
+    return {
+      ...base,
+      status: "PASS",
+      confidence: "HIGH",
+      detail: `The page was rendered in a browser before its content was assessed: ${input.staticWords.toLocaleString()} words in the served HTML, ${input.rendered.renderedWords.toLocaleString()} after JavaScript ran. The content and SEO checks below measure what a visitor sees. Search crawlers and AI answer engines vary in how reliably they do the same, so server-rendering still matters.`,
+    };
+  }
+  if (!input.requested) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail:
+        "This page's content is rendered by JavaScript, and this scan did not run a browser, so the content and SEO checks could not read it. Re-run it as a full scan to have the page rendered first.",
+    };
+  }
+  if (input.rendered?.error) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail: `The page's content is rendered by JavaScript and the browser render did not complete (${input.rendered.error}), so the content and SEO checks could not read it. This says nothing about the page itself.`,
+    };
+  }
+  return {
+    ...base,
+    status: "INCONCLUSIVE",
+    detail: `The browser render returned no more content than the served HTML (${input.staticWords.toLocaleString()} words in the source, ${input.rendered?.renderedWords.toLocaleString() ?? 0} after rendering), so it was not used. That usually means hydration failed or the content needs a sign-in. The content checks remain unassessed rather than being measured against an empty shell.`,
+  };
+}
+
+// ─── Response-header security verdicts ───────────────────────────────────────
+//
+// Extracted from `runUrlChecks` so each decision tree is unit-testable. Every one
+// of them was a nested ternary that asserted more than the header it read.
+
+/**
+ * `cors_policy` — Access-Control-Allow-Origin on the scanned DOCUMENT.
+ *
+ * ⚠️ Two defects lived in one expression here, and they had to be fixed together
+ * — fixing either alone makes the check net-worse.
+ *
+ *   · ABSENCE WAS WARNED. No Access-Control-Allow-Origin on an HTML document is
+ *     the LOCKED-DOWN state: the browser refuses cross-origin reads by default.
+ *     All six sites in the July 2026 audit were verified header-less and all six
+ *     were told to go fix it — while Pulse's own probed API check says the
+ *     opposite about identical evidence (`api-behaviour.ts`: "No CORS headers
+ *     returned — the API is same-origin only, which is the safest default"). The
+ *     advice also named "API routes" this check never probed.
+ *   · ANY EXPLICIT ORIGIN SCORED PASS. `corsHeader ? "PASS"` meant a homepage
+ *     answering `Access-Control-Allow-Origin: https://attacker.example` was
+ *     UPGRADED from WARN to PASS. Only the literal `*` was ever caught. Going
+ *     quiet on the safe case while still rubber-stamping origin reflection would
+ *     be strictly worse than the original noise.
+ *
+ * So: absent ⇒ SKIPPED with a reason (the `secure_cookie_attributes` shape),
+ * `*` ⇒ WARN, own origin ⇒ PASS, any OTHER origin ⇒ WARN naming it. The API
+ * verdict belongs to the family that actually probes an API with an Origin
+ * header, not to a homepage read.
+ */
+export function corsPolicyVerdict(headers: Record<string, string>, scannedUrl: string): DnsCheckVerdict {
+  const value = headers["access-control-allow-origin"]?.trim();
+  const credentials = /^true$/i.test(headers["access-control-allow-credentials"] ?? "");
+  const evidence = value ? `access-control-allow-origin: ${value}` : "Header not present";
+
+  if (!value) {
+    return {
+      status: "SKIPPED",
+      detail:
+        "Not assessed — this response sent no Access-Control-Allow-Origin header, which is both the default and the restrictive state: browsers refuse cross-origin reads of it. Cross-origin policy is a property of an API endpoint answering a request that carries an Origin header, so it is graded there rather than on an HTML document.",
+      evidence,
+    };
+  }
+
+  if (value === "*") {
+    return {
+      status: "WARN",
+      detail: `This document is served with Access-Control-Allow-Origin: * — any website can read its content from a visitor's browser.${credentials ? " Access-Control-Allow-Credentials is also true; browsers reject that combination outright, so cross-origin credentialed requests will simply fail." : ""} Restrict the header to the origins that need it, or drop it.`,
+      evidence,
+    };
+  }
+
+  let scannedOrigin = "";
+  try {
+    scannedOrigin = new URL(scannedUrl).origin.toLowerCase();
+  } catch {
+    /* unparseable — fall through to the "some other origin" branch */
+  }
+
+  if (value.toLowerCase() === scannedOrigin) {
+    return {
+      status: "PASS",
+      detail: `Access-Control-Allow-Origin names this site's own origin (${value}) — no third-party origin is granted read access.`,
+      evidence,
+    };
+  }
+
+  return {
+    status: "WARN",
+    detail: `This document grants cross-origin read access to ${value}${credentials ? ", WITH credentials (Access-Control-Allow-Credentials: true), so a page on that origin can read authenticated responses" : ""}. A single request cannot tell a deliberate grant from origin REFLECTION — an echo of whatever Origin the requester sent, which effectively grants every site. Confirm this is a fixed allow-list and not reflected.`,
+    evidence,
+  };
+}
+
+/**
+ * `x_frame_options` — a HEADER check that used to wear a POSTURE label.
+ *
+ * CSP Level 2 `frame-ancestors` obsoletes X-Frame-Options and every current
+ * browser honours it; where both are present, frame-ancestors wins. Proved by
+ * driving real Chrome at linear.app, which sends no XFO:
+ *   "Framing 'https://linear.app/' violates ... frame-ancestors 'self'
+ *    https://cms.linear.app. The request has been blocked."
+ * (with https://example.com as the discriminating control — not blocked.)
+ * Meanwhile `csp_frame_ancestors` in security-extended.ts PASSED the identical
+ * response with "clickjacking protection via CSP (supersedes X-Frame-Options)",
+ * so one scan asserted both halves of a contradiction.
+ *
+ * ⚠️ A source list that permits every origin is NOT protection, and the bare `*`
+ * token is only ONE of the three ways to write that. The first cut of this guard
+ * tested `/(?:^|\s)\*(?:\s|$)/`, which catches only the bare token, so
+ * `frame-ancestors https://*` and `frame-ancestors http: https:` both PASSed — each
+ * permitting every origin on its scheme, i.e. framing is not restricted at all, on
+ * sites that would otherwise have taken a correct WARN for having no XFO.
+ *
+ * A CSP source list is a UNION, so ONE permissive source defeats the whole list:
+ * `frame-ancestors 'self' https://*` is as open as `https://*` alone. Hence
+ * `.some()`, not `.every()`.
+ *
+ * `https://*.example.com` is NOT in this class — it wildcards the host label under a
+ * named domain, which is a real restriction.
+ *
+ * Only the ENFORCED policy counts: `frame-ancestors` in a report-only policy reports
+ * and does not block, which is why only `content-security-policy` is read here.
+ *
+ * ⚠️ AND THE FIX FOR THAT OVER-MATCHED IN TURN, which is the residual this note
+ * records. The scheme rule was written as "any bare scheme source", `/^[a-z][a-z0-9+.-]*:$/`,
+ * so a policy that genuinely restricts WEB framing while additionally admitting an app
+ * or extension scheme was WARNed with an explanation that was simply untrue of it:
+ *
+ *   frame-ancestors 'self' chrome-extension:   → WARN "permits every origin"
+ *   frame-ancestors 'self' blob:               → WARN
+ *   frame-ancestors 'self' data:               → WARN
+ *
+ * None of those lets an attacker frame the page FROM A WEBSITE, which is what this
+ * check measures and what its sentence claims. `blob:`, `data:` and `filesystem:` are
+ * derived-context schemes with no remote publisher; `chrome-extension:`,
+ * `moz-extension:`, `capacitor:`, `ionic:`, `tauri:` and `file:` are locally-installed
+ * contexts a visitor's own machine already trusts. So only a scheme that can host an
+ * ARBITRARY REMOTE PAGE counts as "every origin" — and the same test governs the
+ * `scheme://*` form, for the same reason.
+ */
+
+
+
+export function clickjackingVerdict(headers: Record<string, string>): DnsCheckVerdict {
+  const xfo = headers["x-frame-options"]?.trim();
+  const frameAncestors = /(?:^|;)\s*frame-ancestors\s+([^;]+)/i
+    .exec(headers["content-security-policy"] ?? "")?.[1]
+    ?.trim()
+    .toLowerCase();
+  const permissiveSources = (frameAncestors ?? "").split(/\s+/).filter(permitsEveryOrigin);
+  const restricts = Boolean(frameAncestors) && permissiveSources.length === 0;
+  const evidence = xfo
+    ? `x-frame-options: ${xfo}`
+    : frameAncestors
+      ? `content-security-policy: frame-ancestors ${frameAncestors}`
+      : "Neither X-Frame-Options nor CSP frame-ancestors present";
+
+  if (xfo) {
+    return {
+      status: "PASS",
+      detail: `X-Frame-Options: ${xfo} — legacy framing protection is set${frameAncestors ? `, and the CSP also restricts framing (frame-ancestors ${frameAncestors})` : ""}.`,
+      evidence,
+    };
+  }
+  if (restricts) {
+    return {
+      status: "PASS",
+      detail: `No X-Frame-Options header, and none is needed: the Content-Security-Policy restricts framing with \`frame-ancestors ${frameAncestors}\`, which supersedes X-Frame-Options in every current browser — a foreign origin's frame is refused.`,
+      evidence,
+    };
+  }
+  if (frameAncestors) {
+    return {
+      status: "WARN",
+      detail: `No X-Frame-Options header, and the CSP's \`frame-ancestors ${frameAncestors}\` does not restrict framing: \`${permissiveSources.join("`, `")}\` permits every origin, and a source list is a union — so one permissive source opens the whole list. Set \`frame-ancestors 'self'\`, or list the specific origins allowed to embed this page.`,
+      evidence,
+    };
+  }
+  return {
+    status: "WARN",
+    detail:
+      "No X-Frame-Options header and no CSP frame-ancestors directive — nothing tells the browser to refuse being framed, so this page can be embedded by any site (clickjacking). Prefer `frame-ancestors` in the CSP; X-Frame-Options is the legacy equivalent.",
+    evidence,
+  };
+}
+
+/**
+ * `permissions_policy` — the absent-header sentence said the OPPOSITE of the spec.
+ *
+ * It claimed camera/microphone/geolocation were "unrestricted" with no header.
+ * The Permissions Policy default allowlist for all three is `self`: the document's
+ * own origin may use them and an embedded third-party frame may not. Asked
+ * directly via `document.featurePolicy` in real Chrome on linear.app (no header):
+ *   camera / microphone / geolocation → self=true, foreign-origin=false
+ * What a header actually buys is tightening beyond that default and governing what
+ * EMBEDDED frames may do.
+ *
+ * The predecessor header was read nowhere in the tree (`grep -rn 'feature-policy'
+ * src/` → no matches), so vercel.com — which sends `feature-policy: fullscreen
+ * 'self'; camera 'none'` and no permissions-policy — was told the one feature it
+ * explicitly denies was unrestricted.
+ */
+/**
+ * The features whose SPEC DEFAULT allowlist is `self`, so writing `=*` for them is a
+ * WIDENING rather than a scoping act.
+ *
+ * ⚠️ Deliberately narrow, and it must stay narrow. The check used to PASS any
+ * non-empty header with the sentence "powerful browser features are explicitly
+ * scoped", so `permissions-policy: camera=*, microphone=*, geolocation=*` — a policy
+ * granting the three most sensitive capabilities to every origin — was reported as
+ * scoped. But `=*` is ROUTINE and harmless for client-hint delegation: Google's own
+ * header is `ch-ua-arch=*, ch-ua-bitness=*, …`, and flagging any `=*` at all would
+ * fire on it. So only the capability features below are read, and only their `*`
+ * allowlist is adverse.
+ */
+const POWERFUL_PERMISSION_FEATURES = new Set([
+  "camera",
+  "microphone",
+  "geolocation",
+  "display-capture",
+  "payment",
+  "usb",
+  "serial",
+  "bluetooth",
+  "hid",
+  "midi",
+  "idle-detection",
+  "screen-wake-lock",
+  "local-fonts",
+  "window-management",
+]);
+
+/** One `name=allowlist` (or legacy `name allowlist`) pair read out of the header. */
+interface PermissionDirective {
+  name: string;
+  allowlist: string[];
+  /**
+   * True when the pair only parsed after tolerating whitespace around the `=`
+   * (`camera =*`). RFC 8941 allows none, so a browser rejects the WHOLE header and
+   * the spec defaults stay in force — which the WARN sentence has to say rather than
+   * asserting the author's allowlist is live.
+   */
+  spacedEquals: boolean;
+}
+
+/**
+ * Split a Permissions-Policy / Feature-Policy header into directives.
+ *
+ * ⚠️ BOTH SEPARATORS, and that is the residual this exists for. The parser split on
+ * `,` only — the structured-fields spelling — so two shapes reached the PASS branch
+ * and were described as "powerful browser features are explicitly scoped":
+ *
+ *   permissions-policy: camera=*; microphone=*     (`;` separator)
+ *   permissions-policy: camera *; microphone *     (legacy Feature-Policy spelling)
+ *
+ * The RISK is low — a browser rejects the malformed form and falls back to the secure
+ * `self` default, so the site is not actually exposed — but the SENTENCE was false,
+ * and a check that says "this is fine" about a header it never parsed is the same
+ * failure as saying "it isn't there" about a lookup it never made (§35).
+ *
+ * Splitting on `[;,]` is safe for both grammars: a structured-fields allowlist's
+ * members are space-separated inside parentheses and a Feature-Policy allowlist's are
+ * space-separated bare, so neither character can occur inside one.
+ */
+function parsePermissionDirectives(policy: string): PermissionDirective[] {
+  const out: PermissionDirective[] = [];
+  for (const directive of policy.split(/[;,]/)) {
+    const trimmed = directive.trim();
+    if (!trimmed) continue;
+    // Structured fields: `camera=(self)`. Legacy Feature-Policy: `camera 'self'`.
+    // Whichever delimiter appears first is the one that separates name from allowlist.
+    const eq = trimmed.indexOf("=");
+    const space = trimmed.search(/\s/);
+    const split = eq === -1 ? space : space === -1 ? eq : Math.min(eq, space);
+    // No delimiter at all is not a `feature=allowlist` pair, so nothing was read.
+    if (split === -1) continue;
+    const name = trimmed.slice(0, split).trim().toLowerCase();
+    // A feature name is a lowercase token (`camera`, `ch-ua-arch`, `sync-xhr`). Anything
+    // else is not a directive Pulse read, and counting it would let the PASS branch
+    // claim a header is "explicitly scoped" on the strength of unparseable junk.
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) continue;
+    // `+ 1` skips the `=`; for the space form the leading whitespace is trimmed below.
+    let rest = trimmed
+      .slice(trimmed[split] === "=" ? split + 1 : split)
+      .trim()
+      .toLowerCase();
+    // ⚠️ RESIDUAL FROM THE `;`/SPACE PARSE: `camera =*` — A SPACE BEFORE THE EQUALS.
+    // `split` is the FIRST of `=` and whitespace, so the space won, the name parsed as
+    // `camera` and the allowlist parsed as the literal `=*` — which the wide-open test
+    // does not recognise. The check therefore PASSED with "powerful browser features
+    // are explicitly scoped (camera =*)" on a header granting the camera to every
+    // origin. Strip the stranded `=` so the allowlist is read, and record that the
+    // header is malformed so the verdict can say so.
+    const spacedEquals = trimmed[split] !== "=" && rest.startsWith("=");
+    if (spacedEquals) rest = rest.slice(1).trim();
+    const allowlist = rest
+      // `camera=()` is a real, fully-scoped directive: the allowlist is legitimately
+      // EMPTY once the parentheses come off, which is why emptiness is not a reason to
+      // discard the directive.
+      .replace(/^\(/, "")
+      .replace(/\)$/, "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    out.push({ name, allowlist, spacedEquals });
+  }
+  return out;
+}
+
+/**
+ * Powerful features this policy grants to every origin, and whether any of them was
+ * only readable by tolerating invalid whitespace around the `=`.
+ */
+function wideOpenPowerfulFeatures(policy: string): { features: string[]; malformed: boolean } {
+  const features: string[] = [];
+  let malformed = false;
+  for (const { name, allowlist, spacedEquals } of parsePermissionDirectives(policy)) {
+    if (!POWERFUL_PERMISSION_FEATURES.has(name) || features.includes(name)) continue;
+    if (!allowlist.includes("*")) continue;
+    features.push(name);
+    if (spacedEquals) malformed = true;
+  }
+  return { features, malformed };
+}
+
+export function permissionsPolicyVerdict(headers: Record<string, string>): DnsCheckVerdict {
+  const policy = headers["permissions-policy"]?.trim();
+  const legacy = headers["feature-policy"]?.trim();
+  if (policy) {
+    const { features: wideOpen, malformed } = wideOpenPowerfulFeatures(policy);
+    if (wideOpen.length > 0) {
+      return {
+        status: "WARN",
+        detail:
+          `A Permissions-Policy header is set, but it grants ${wideOpen.map((name) => `\`${name}\``).join(", ")} to EVERY origin (\`=*\`). The spec default for those features is \`self\`, so on those directives this header is looser than sending none at all — any third-party iframe this page embeds may now request them. Use \`=()\` for features the product does not use and \`=(self)\` for the ones it does.` +
+          // Only say the policy is IN FORCE when it can be. With whitespace around the
+          // `=` the header is not a valid structured-fields dictionary, so a browser
+          // discards all of it and the `self` defaults stand — the intent is still
+          // wrong and still worth fixing, but claiming the exposure is live would
+          // overstate what was observed.
+          (malformed
+            ? " Note the syntax is also invalid — a structured-fields dictionary allows no whitespace around the `=` — so a browser is likely to reject the whole header and fall back to the spec defaults. Fix the spelling and the allowlist together."
+            : ""),
+        evidence: `permissions-policy: ${policy}`,
+      };
+    }
+    // Only claim "scoped" about a header Pulse actually read directives out of. A
+    // header it could not parse tells us nothing about scoping, and saying otherwise
+    // is the same class of overreach as asserting an absence we never probed.
+    if (parsePermissionDirectives(policy).length === 0) {
+      return {
+        status: "PASS",
+        detail: `A Permissions-Policy header is present (${policy}), but Pulse could not read any \`feature=allowlist\` directive out of it, so it makes no claim about which browser features are scoped. Check the syntax: directives are comma-separated \`name=(origin …)\` pairs, and a header a browser cannot parse is ignored entirely — leaving the spec defaults in force.`,
+        evidence: `permissions-policy: ${policy}`,
+      };
+    }
+    return {
+      status: "PASS",
+      detail: `Permissions-Policy header present (${policy}) — powerful browser features are explicitly scoped.`,
+      evidence: `permissions-policy: ${policy}`,
+    };
+  }
+  if (legacy) {
+    return {
+      status: "WARN",
+      detail: `No Permissions-Policy header, but the deprecated predecessor is present (feature-policy: ${legacy}). Browser support for Feature-Policy is being withdrawn, so migrate these directives to Permissions-Policy before they stop being honoured. The spec defaults apply meanwhile: camera, microphone and geolocation default to \`self\`, so they are already unavailable to embedded third-party frames.`,
+      evidence: `feature-policy: ${legacy}`,
+    };
+  }
+  return {
+    status: "WARN",
+    detail:
+      "No Permissions-Policy header. The spec defaults apply — camera, microphone and geolocation default to `self`, so they are restricted to this origin and are already unavailable to embedded third-party frames. Setting an explicit policy is still worth doing: it lets you deny features this product never uses, and control what any iframe you embed may request.",
+    evidence: "Neither Permissions-Policy nor Feature-Policy present",
+  };
+}
+
+// ─── CDN / edge-cache detection ──────────────────────────────────────────────
+//
+// The old test was a five-name vendor list — `x-vercel-id`, `cf-ray`,
+// `x-amz-cf-id`, `x-cache`, `x-fastly-request-id` — reported as directly
+// observed absence. Two consequences, both seen in the July 2026 audit:
+//
+//   · It carried the LEGACY `x-cache` but not the STANDARDISED RFC 9211
+//     `Cache-Status`, so any CDN that migrated to the RFC header is invisible.
+//     That is a systematic blind spot, not one missing vendor. gitwork.co.uk was
+//     told it had no CDN while its own response carried a proxy's machine-readable
+//     account of forwarding the request:
+//       cache-status: "Netlify Edge"; fwd=miss; fwd-status=200; stored
+//   · It never read `Age` (RFC 9111), which is a shared cache stating in seconds
+//     how long IT has held the response. Nothing but an intermediary emits it.
+//
+// So the standards-defined, vendor-neutral signals are tested FIRST and the
+// vendor list is the fallback. Note what is deliberately NOT here: a match against
+// `JSON.stringify(headers)` for `cloudflare|nginx|haproxy`, which would PASS any
+// site whose unrelated header value happens to contain one of those words; and
+// bare reverse proxies (nginx, Caddy, Traefik, Envoy) which are load balancers,
+// not CDNs, and belong to `load_balancer_detected`.
+//
+// ⚠️ It must still WARN on a genuinely CDN-less host. `news.ycombinator.com` is
+// one — single A record in one US colo, no CDN — and that finding was verified
+// CORRECT. Its response carries none of the signals below, and a unit test pins
+// that. Do not add a generic `server` value here to widen coverage.
+
+/**
+ * Standardised cache/proxy headers: emitted only by an intermediary.
+ *
+ * ⚠️ `CDN-Cache-Control` is deliberately absent. It is a directive the ORIGIN
+ * sends TO a CDN, so its presence proves the origin expects one, not that one
+ * handled this response — a framework default would PASS a CDN-less host.
+ */
+// Header plus the sentence that explains what reading it proves, so the check's
+// detail names the observation instead of asserting a conclusion.
+//
+// ⚠️ Deliberately a table of objects, not an array of header names.
+// `categories.reconcile.test.ts` reads any array of exactly three string
+// literals as a category/key/label tuple, and a bare list of these three headers
+// made it report `age` as an unregistered emitted checkKey — twice, because the
+// comment first written to explain that also carried the tuple shape. Restructure
+// the code, never the drift guard (CLAUDE.md §37.6).
+const STANDARD_CACHE_SIGNALS: { header: string; proves: (value: string) => string }[] = [
+  {
+    header: "cache-status",
+    proves: (value) =>
+      `the RFC 9211 Cache-Status header, which is a caching proxy's own account of handling the request (${value}).`,
+  },
+  {
+    header: "age",
+    proves: (value) =>
+      `an RFC 9111 Age header (${value}s), which only a shared cache holding the response can emit.`,
+  },
+  {
+    header: "via",
+    proves: (value) => `a Via header (${value}), which every conforming proxy adds as it forwards.`,
+  },
+];
+
+/** Vendor headers, for CDNs that have not adopted RFC 9211 yet. */
+const CDN_VENDOR_HEADERS = [
+  "x-vercel-id",
+  "x-vercel-cache",
+  "cf-ray",
+  "cf-cache-status",
+  "x-amz-cf-id",
+  "x-amz-cf-pop",
+  "x-cache",
+  "x-cache-hits",
+  "x-fastly-request-id",
+  "x-served-by",
+  "x-nf-request-id",
+  "fly-request-id",
+  "x-akamai-transformed",
+  "akamai-grn",
+  "x-azure-ref",
+  "x-iinfo",
+  "x-sucuri-id",
+  "x-bunny-cache-status",
+] as const;
+
+/** `Server:` values that name an edge platform outright (not a bare proxy). */
+const CDN_SERVER_VALUES = [
+  "cloudflare",
+  "cloudfront",
+  "netlify",
+  "vercel",
+  "fastly",
+  "akamai",
+  "akamaighost",
+  "bunnycdn",
+  "keycdn",
+  "sucuri",
+  "varnish",
+  "esf",
+] as const;
+
+export interface EdgeCacheEvidence {
+  header: string;
+  value: string;
+  reason: string;
+}
+
+/**
+ * Evidence that a CDN or edge cache handled this response, or `null`.
+ *
+ * Standards-defined signals first, so detection does not depend on knowing the
+ * vendor. Returns the header it read, so the check's evidence line names what was
+ * actually observed rather than asserting a conclusion.
+ */
+export function detectEdgeCache(headers: Record<string, string>): EdgeCacheEvidence | null {
+  for (const signal of STANDARD_CACHE_SIGNALS) {
+    const value = headers[signal.header];
+    // `Age: 0` is a legitimate value from a cache that has just stored the
+    // response, so PRESENCE — not magnitude — is the signal.
+    if (!value) continue;
+    return { header: signal.header, value, reason: signal.proves(value) };
+  }
+
+  const serverHeader = (headers["server"] ?? "").toLowerCase();
+  const vendorServer = CDN_SERVER_VALUES.find((vendor) => serverHeader.includes(vendor));
+  if (vendorServer) {
+    return {
+      header: "server",
+      value: headers["server"] ?? "",
+      reason: `the Server header names an edge platform (${headers["server"]}).`,
+    };
+  }
+
+  for (const header of CDN_VENDOR_HEADERS) {
+    const value = headers[header];
+    if (!value) continue;
+    return { header, value, reason: `a CDN vendor header (${header}: ${value}).` };
+  }
+
+  return null;
+}
+
+// ─── Email-authentication DNS (SPF / DMARC) ──────────────────────────────────
+//
+// Both checks read DNS over HTTPS, and both used to convert three different
+// situations into the same sentence: "no record found". They are not the same
+// thing, and the difference decides whether a finding is true:
+//
+//   1. THE RECORD IS ABSENT AT A NAME THAT COULD HOLD IT — a real finding.
+//   2. THE LOOKUP DID NOT COMPLETE — the resolver 5xx'd or timed out. Reporting
+//      that as "no record" is the §35 failure: "we couldn't look" printed as "it
+//      isn't there". `checkDnsRecord` returned `[]` for both.
+//   3. THE QUESTION WAS NARROWER THAN THE STANDARD. DMARC's own discovery
+//      algorithm (RFC 7489 §6.6.3) REQUIRES a receiver that finds no record at
+//      the DNS domain to retry at the Organizational Domain. Pulse asked once
+//      and stopped, so every subdomain of every DMARC-protected organisation was
+//      told it had no impersonation protection. Verified live (2026-08):
+//        _dmarc.www.gov.uk       → NXDOMAIN      ← the only query Pulse made
+//        _dmarc.gov.uk           → p=reject;sp=none;np=reject
+//        _dmarc.mozilla.org      → p=reject
+//        _dmarc.ycombinator.com  → p=none;sp=none
+//      gov.uk and mozilla.org run the strictest policy DMARC defines.
+//
+// ⚠️ The fallback must NOT become "a parent record found ⇒ PASS". For an
+// EXISTING subdomain the effective policy is the parent's `sp=` when present,
+// and gov.uk's and ycombinator.com's are both `sp=none` — so a blanket PASS
+// would reassure exactly the hosts that are unprotected. `np=` is deliberately
+// NOT consulted: RFC 9091 scopes it to NON-EXISTENT subdomains, and Pulse only
+// scans a host it just fetched a page from.
+//
+// ⚠️ And it must NOT be applied to SPF. RFC 7208 §3.1 makes SPF explicitly
+// non-inheriting — it is evaluated at the RFC5321.MailFrom domain, full stop.
+// `news.ycombinator.com` publishes no SPF and `ycombinator.com`'s `-all` record
+// genuinely does not cover it, so an org fallback there would convert a correct
+// email-spoofing finding into a false negative. SPF's fix is wording only.
+
+/** DNS answer types this module distinguishes. */
+const DNS_TYPE = { CNAME: 5, MX: 15, TXT: 16 } as const;
+
+export interface DnsAnswer {
+  type: number;
+  data: string;
+}
+
+/**
+ * A completed-or-not DNS lookup.
+ *
+ * `ok: false` means the query did not resolve to an authoritative answer, which
+ * is NOT the same as an empty answer and must never be reported as absence.
+ * NXDOMAIN is `ok: true` with no answers — the resolver did answer.
+ */
+export interface DnsLookup {
+  ok: boolean;
+  answers: DnsAnswer[];
+}
+
+/** TXT strings from a lookup, with the resolver's quoting removed and chunks joined. */
+export function txtStrings(lookup: DnsLookup): string[] {
+  return lookup.answers
+    .filter((answer) => answer.type === DNS_TYPE.TXT)
+    .map((answer) => answer.data.replace(/"/g, "").trim());
+}
+
+export interface DmarcTags {
+  p: string | null;
+  sp: string | null;
+  np: string | null;
+  raw: string;
+}
+
+/** Parse the first `v=DMARC1` record in a TXT answer set. */
+export function parseDmarcTags(records: string[]): DmarcTags | null {
+  const raw = records.find((record) => /(?:^|;)\s*v\s*=\s*dmarc1\b/i.test(record));
+  if (!raw) return null;
+  const tags = new Map<string, string>();
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq <= 0) continue;
+    tags.set(part.slice(0, eq).trim().toLowerCase(), part.slice(eq + 1).trim().toLowerCase());
+  }
+  return {
+    p: tags.get("p") ?? null,
+    sp: tags.get("sp") ?? null,
+    np: tags.get("np") ?? null,
+    raw,
+  };
+}
+
+/** True for a policy a receiver actually acts on. */
+function enforcingPolicy(policy: string | null): boolean {
+  return policy === "quarantine" || policy === "reject";
+}
+
+export interface DnsCheckVerdict {
+  status: PulseCheckStatus;
+  detail: string;
+  evidence?: string;
+}
+
+/**
+ * `dmarc_record`, implementing RFC 7489 §6.6.3 discovery honestly.
+ *
+ * `parents` are the organizational-domain candidates the caller actually queried,
+ * most specific first (`organizationalDomainCandidates()` order). `unresolvedReason`
+ * is set when the registrable domain could not be established at all — in which
+ * case the discovery algorithm could not be completed and the answer is unknown,
+ * not negative.
+ */
+export function dmarcCheckVerdict(input: {
+  hostname: string;
+  atHost: DnsLookup;
+  parents: { domain: string; lookup: DnsLookup }[];
+  unresolvedReason: string | null;
+}): DnsCheckVerdict {
+  const queried = `_dmarc.${input.hostname}`;
+
+  if (!input.atHost.ok) {
+    return {
+      status: "INCONCLUSIVE",
+      detail: `Not assessed — the DNS lookup for ${queried} did not complete, so Pulse cannot say whether a DMARC record exists. This is reported as unknown rather than missing.`,
+      evidence: `TXT ${queried}: lookup failed`,
+    };
+  }
+
+  const own = parseDmarcTags(txtStrings(input.atHost));
+  if (own) {
+    return {
+      status: "PASS",
+      detail: `DMARC record published at ${queried} (p=${own.p ?? "unspecified"}) — receiving servers are told what to do with unauthenticated mail claiming to be from this domain.`,
+      evidence: own.raw,
+    };
+  }
+
+  for (const parent of input.parents) {
+    if (!parent.lookup.ok) {
+      return {
+        status: "INCONCLUSIVE",
+        detail: `Not assessed — no DMARC record at ${queried}, and the RFC 7489 §6.6.3 fallback lookup at _dmarc.${parent.domain} did not complete, so the inherited policy is unknown.`,
+        evidence: `TXT _dmarc.${parent.domain}: lookup failed`,
+      };
+    }
+    const inherited = parseDmarcTags(txtStrings(parent.lookup));
+    if (!inherited) continue;
+
+    // For a subdomain that EXISTS, the parent's subdomain policy governs; `p`
+    // applies only when no `sp` is published. `np` is for names that do not
+    // exist and is therefore irrelevant to a host we just fetched.
+    const effective = inherited.sp ?? inherited.p;
+    if (enforcingPolicy(effective)) {
+      return {
+        status: "PASS",
+        detail: `No record at ${queried}, but DMARC discovery (RFC 7489 §6.6.3) falls back to the organizational domain, where _dmarc.${parent.domain} publishes ${inherited.sp ? `sp=${inherited.sp}` : `p=${inherited.p}`} — so mail claiming to be from ${input.hostname} is covered by an enforcing policy.`,
+        evidence: `Inherited from _dmarc.${parent.domain}: ${inherited.raw}`,
+      };
+    }
+    return {
+      status: "WARN",
+      detail: `No DMARC record at ${queried}. Discovery falls back to _dmarc.${parent.domain}, which publishes p=${inherited.p ?? "unspecified"}${inherited.sp ? ` and sp=${inherited.sp}` : ""} — and the policy that applies to a subdomain is ${inherited.sp ? `sp=${inherited.sp}` : `p=${inherited.p ?? "unspecified"}`}, which asks receivers to take no action. Mail impersonating ${input.hostname} is therefore not rejected. Publish a record at ${queried}, or tighten sp= on ${parent.domain}.`,
+      evidence: `Inherited from _dmarc.${parent.domain}: ${inherited.raw}`,
+    };
+  }
+
+  if (input.unresolvedReason) {
+    return {
+      status: "INCONCLUSIVE",
+      detail: `No DMARC record at ${queried}, and Pulse could not complete the RFC 7489 §6.6.3 organizational-domain fallback: ${input.unresolvedReason} Reported as unknown rather than missing, because the record may be published on a parent name Pulse could not identify.`,
+      evidence: `TXT ${queried}: no record; organizational domain not established`,
+    };
+  }
+
+  const searched = [queried, ...input.parents.map((parent) => `_dmarc.${parent.domain}`)].join(", ");
+  return {
+    status: "WARN",
+    detail: `No DMARC record found. Pulse queried ${searched} — the full RFC 7489 §6.6.3 discovery path — and found none. DMARC builds on SPF/DKIM and tells receiving servers what to do with unauthenticated email; without it, anyone can impersonate this domain and receivers have no instruction to act on.`,
+    evidence: `No v=DMARC1 record at ${searched}`,
+  };
+}
+
+/**
+ * `spf_record` — same probe as before, honest sentences.
+ *
+ * The probe was never wrong; the copy was. It turned an absent TXT record into
+ * "anyone can spoof your domain in phishing emails", which on `www.gov.uk` is
+ * addressed to a host whose organisation publishes the strictest record SPF has
+ * (`v=spf1 -all` at gov.uk, i.e. this domain sends no mail), and on
+ * `developer.mozilla.org` is addressed to a CNAME owner where RFC 1034 §3.6.2
+ * forbids any other record type from existing at all.
+ *
+ * No org-domain fallback: see the ⚠️ in the section note above.
+ */
+export function spfCheckVerdict(input: {
+  hostname: string;
+  txt: DnsLookup;
+  mx: DnsLookup;
+  registrable: string | null;
+}): DnsCheckVerdict {
+  if (!input.txt.ok) {
+    return {
+      status: "INCONCLUSIVE",
+      detail: `Not assessed — the TXT lookup for ${input.hostname} did not complete, so Pulse cannot say whether an SPF record exists.`,
+      evidence: `TXT ${input.hostname}: lookup failed`,
+    };
+  }
+
+  const records = txtStrings(input.txt);
+  const spf = records.find((record) => /^v=spf1\b/i.test(record));
+  if (spf) {
+    return {
+      status: "PASS",
+      detail: `SPF record published at ${input.hostname} — the mail servers allowed to send as this domain are declared.`,
+      evidence: spf,
+    };
+  }
+
+  const isCnameOwner =
+    records.length === 0 && input.txt.answers.some((answer) => answer.type === DNS_TYPE.CNAME);
+  if (isCnameOwner) {
+    return {
+      status: "INCONCLUSIVE",
+      detail: `Not assessed — ${input.hostname} is a CNAME, and RFC 1034 §3.6.2 forbids any other record type at a CNAME owner name, so no SPF record can exist here whatever the operator does. SPF for mail sent as this organisation is published at the name that actually sends it${input.registrable ? ` (typically ${input.registrable})` : ""}, which is outside the scanned name.`,
+      evidence: `TXT ${input.hostname}: CNAME owner, no TXT possible`,
+    };
+  }
+
+  const nonInheritance = input.registrable && input.registrable !== input.hostname
+    ? ` Note SPF does not inherit: RFC 7208 §3.1 evaluates it at the exact sending domain, so a record on ${input.registrable} does not cover ${input.hostname}.`
+    : "";
+
+  const receivesMail = input.mx.ok && input.mx.answers.some((answer) => answer.type === DNS_TYPE.MX);
+  if (receivesMail) {
+    return {
+      status: "WARN",
+      detail: `No SPF record at ${input.hostname}, which does publish MX records — so this name handles mail but declares no authorised senders, and a receiver has nothing to check a claimed sender against. Publish an SPF record listing your senders.${nonInheritance}`,
+      evidence: `No v=spf1 TXT record at ${input.hostname}; MX present`,
+    };
+  }
+
+  return {
+    status: "WARN",
+    detail: `No SPF record at ${input.hostname}, and no MX records either — consistent with a name that neither sends nor receives mail. If that is intended, say so explicitly by publishing \`v=spf1 -all\` at this name, so forged mail from it fails closed instead of being unauthenticated-but-unjudged.${nonInheritance}`,
+    evidence: `No v=spf1 TXT record and no MX at ${input.hostname}`,
+  };
+}
+
+export function finaliseUrlChecks(
+  batch: PulseScanCheckInput[],
+  opts: {
+    platform?: string;
+    surfaceKind: UrlSurfaceKind;
+    markets: JurisdictionCode[];
+    /** The static HTML is a client-rendered shell, so body-parse verdicts are not evidence. */
+    spaShell: boolean;
+  },
+): PulseScanCheckInput[] {
+  const reclassified = opts.spaShell ? reclassifySpaChecks(batch) : batch;
+  return applyJurisdictionFilter(
+    applyPlatformFilter(reclassified, opts.platform, opts.surfaceKind),
+    opts.markets,
+  );
+}
+
 export async function runUrlChecks(
   url: string,
   platform?: string,
@@ -641,11 +2281,26 @@ export async function runUrlChecks(
   // repo, runGithubChecks resolves before this runs on the homepage — see
   // orchestrator.ts / run-lite-scan.ts). Lets package.json deps correct a
   // homepage-HTML-only false negative (e.g. Stripe used server-side only).
-  contextHints?: { githubTechStack?: string[] },
-): Promise<{ checks: PulseScanCheckInput[]; techStack: string[]; detectedMarkets: JurisdictionCode[] }> {
+  contextHints?: {
+    githubTechStack?: string[];
+    /**
+     * Render a client-rendered page with headless Chromium before reading its content.
+     *
+     * Off by default, and the public embed path leaves it off deliberately — booting a browser
+     * per anonymous scan is an abuse surface and a cost, the same reason that path also skips
+     * PageSpeed. Internal scans turn it on, which is where the assessment is actually sold.
+     */
+    renderJs?: boolean;
+  },
+): Promise<{
+  checks: PulseScanCheckInput[];
+  techStack: string[];
+  detectedMarkets: JurisdictionCode[];
+  surfaceKind: UrlSurfaceKind;
+}> {
   const urlType = detectUrlType(url);
   if (urlType === "app_store" || urlType === "play_store") {
-    return { ...(await runMobileStoreChecks(url, urlType)), detectedMarkets: [] };
+    return { ...(await runMobileStoreChecks(url, urlType)), detectedMarkets: [], surfaceKind: "DEPLOYED_PRODUCT" };
   }
 
   const checks: PulseScanCheckInput[] = [];
@@ -655,12 +2310,16 @@ export async function runUrlChecks(
   // emit wrapper picks up the detected fallback once the page has been read.
   let effectiveMarkets: JurisdictionCode[] = targetMarkets ?? [];
   let detectedMarkets: JurisdictionCode[] = [];
-  // Optional incremental emitter — fires partial waves so callers (runLiteScan)
-  // can persist + stream checks as they land. Applies the same platform +
-  // jurisdiction filters the final return uses, so streamed statuses match.
+  let surfaceKind: UrlSurfaceKind = "DEPLOYED_PRODUCT";
+  // Set the moment the page is read, before any wave is emitted — mutable so the emit wrapper
+  // picks it up, the same pattern `effectiveMarkets` and `surfaceKind` already use.
+  let spaShell = false;
+  // Optional incremental emitter — fires partial waves so callers (runLiteScan) can persist +
+  // stream checks as they land. Goes through finaliseUrlChecks, the same function the final
+  // return uses, so a streamed status cannot differ from the one the scan settles on.
   const emit = onWave
     ? (batch: PulseScanCheckInput[]) =>
-        onWave(applyJurisdictionFilter(platform ? applyPlatformFilter(batch, platform) : batch, effectiveMarkets))
+        onWave(finaliseUrlChecks(batch, { platform, surfaceKind, markets: effectiveMarkets, spaShell }))
     : undefined;
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
@@ -668,6 +2327,27 @@ export async function runUrlChecks(
   const baseUrl = httpsUrl.replace(/\/$/, "");
 
   const pageResult = await fetchPage(httpsUrl);
+  if (pageResult) {
+    surfaceKind = detectUrlSurfaceKind(pageResult.html);
+    spaShell = detectSpaContext({
+      builder: detectAiBuilder(
+        (() => {
+          try {
+            return new URL(pageResult.finalUrl || httpsUrl).hostname.toLowerCase();
+          } catch {
+            return "";
+          }
+        })(),
+        pageResult.html.toLowerCase(),
+      ),
+      html: pageResult.html,
+      contentType: pageResult.headers["content-type"] ?? "",
+    }).isSpa;
+  }
+
+  // `contentHtml` is what every body-parse check reads. Set below, after the early returns —
+  // an App Store listing or a security interstitial must never cost a browser launch.
+  let contentHtml = pageResult?.html ?? "";
 
   // Infrastructure
   checks.push({
@@ -679,8 +2359,68 @@ export async function runUrlChecks(
     evidence: httpsUrl,
   });
 
+  // A bot/security checkpoint is not the product. Stop here rather than grading
+  // hundreds of product controls against Vercel/Cloudflare challenge markup.
+  // This is the URL equivalent of an unreadable private repository: report the
+  // coverage failure explicitly and make no claims about what is behind it.
+  if (pageResult && surfaceKind === "ACCESS_INTERSTITIAL") {
+    checks.push({
+      category: CATEGORIES.INFRASTRUCTURE,
+      checkKey: "target_content_accessible",
+      label: "Target content is inspectable",
+      status: "FAIL",
+      confidence: "HIGH",
+      detail:
+        "The host returned a browser/security checkpoint instead of the product. Pulse stopped before running product checks, because findings from an interstitial would be irrelevant and misleading. Allow the Pulse crawler or scan a source repository, staging URL, or exported build that is directly accessible.",
+      evidence: pageResult.html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "Access interstitial detected",
+    });
+    const hostname = new URL(pageResult.finalUrl || httpsUrl).hostname.toLowerCase();
+    return {
+      checks: checks.map((check, sortOrder) => ({ ...check, sortOrder })),
+      techStack: detectTechStack(pageResult.headers, "", hostname),
+      detectedMarkets: [],
+      surfaceKind,
+    };
+  }
+
+  // A native app, desktop binary, extension or CLI cannot be assessed from its
+  // marketing URL. Keep only reachability evidence; the outer orchestrator adds
+  // a source-required coverage finding and does not start any deep URL agents.
+  if (!shouldRunDeepUrlChecks(platform, "web")) {
+    const hostname = new URL(pageResult?.finalUrl || httpsUrl).hostname.toLowerCase();
+    return {
+      checks: applyPlatformFilter(checks, platform, surfaceKind)
+        .map((check, sortOrder) => ({ ...check, sortOrder })),
+      techStack: pageResult ? detectTechStack(pageResult.headers, "", hostname) : [],
+      detectedMarkets: [],
+      surfaceKind,
+    };
+  }
+
   if (pageResult) {
     let ctx = detectProjectContext(pageResult.html, pageResult.headers);
+
+    // ── Render a client-rendered page, when asked ───────────────────────────────────────
+    // Hydration gives the body-parse checks the page a human actually sees. On success
+    // `spaShell` goes false, so those checks report real verdicts instead of being
+    // reclassified as unassessable.
+    //
+    // ⚠️ A failed or unconvincing render must change NOTHING. Leaving `spaShell` true is what
+    // keeps the honest INCONCLUSIVE; adopting a DOM we failed to hydrate would turn "we could
+    // not look" back into a confident finding about an empty page — the §35 disease, arrived at
+    // from the opposite direction.
+    if (spaShell) {
+      const rendered = contextHints?.renderJs ? await runRenderAgent(pageResult.finalUrl || httpsUrl) : null;
+      const staticWords = staticTextWordCount(pageResult.html);
+      const adopted = Boolean(
+        rendered?.html && isMateriallyRicher(staticWords, rendered.renderedWords),
+      );
+      if (adopted && rendered?.html) {
+        contentHtml = rendered.html;
+        spaShell = false;
+      }
+      checks.push(renderCoverageCheck({ rendered, staticWords, adopted, requested: Boolean(contextHints?.renderJs) }));
+    }
 
     // Catch-all baseline — probe a random nonexistent path. If the host returns
     // 200 (the app shell) for a URL that cannot exist, it serves catch-all 200s
@@ -698,8 +2438,12 @@ export async function runUrlChecks(
     // companion GitHub scan's package.json deps (when connected), and a live
     // probe of the Stripe webhook route (skipped on catch-all hosts, where
     // every path 200s and presence can't be determined).
-    const repoPaymentSignal = contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false;
-    const liveStripeWebhookStatus = !catchAll200 ? await headRequest(`${baseUrl}/api/webhooks/stripe`) : 0;
+    const paymentsApplicable = isCategoryApplicable(platform, CATEGORIES.PAYMENTS, surfaceKind);
+    const repoPaymentSignal = paymentsApplicable &&
+      (contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false);
+    const liveStripeWebhookStatus = paymentsApplicable && !catchAll200
+      ? await headRequest(`${baseUrl}/api/webhooks/stripe`)
+      : 0;
     const liveStripeSignal = liveStripeWebhookStatus > 0 && liveStripeWebhookStatus < 500;
     const correctedPaymentSignal = repoPaymentSignal || liveStripeSignal;
     if (correctedPaymentSignal && !ctx.isPaymentEnabled) {
@@ -791,15 +2535,16 @@ export async function runUrlChecks(
       evidence: hostname,
     });
 
-    const cdnHeaders = ["x-vercel-id", "cf-ray", "x-amz-cf-id", "x-cache", "x-fastly-request-id"];
-    const cdnDetected = cdnHeaders.find((h) => pageResult.headers[h]);
+    const cdnEvidence = detectEdgeCache(pageResult.headers);
     checks.push({
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "cdn_detected",
-      label: "CDN present",
-      status: cdnDetected ? "PASS" : "WARN",
-      detail: cdnDetected ? `CDN detected via ${cdnDetected} header.` : "No CDN headers detected.",
-      evidence: cdnDetected ? `${cdnDetected}: ${pageResult.headers[cdnDetected]}` : undefined,
+      label: "CDN / edge cache present",
+      status: cdnEvidence ? "PASS" : "WARN",
+      detail: cdnEvidence
+        ? `A caching intermediary is serving this response: ${cdnEvidence.reason}`
+        : "No CDN or edge-cache signal in the response headers — no RFC 9211 Cache-Status, no RFC 9111 Age, no Via, and no known CDN vendor header. Requests appear to reach the origin directly, so every visitor pays full origin latency and a traffic spike hits the origin unabsorbed.",
+      evidence: cdnEvidence ? `${cdnEvidence.header}: ${cdnEvidence.value}` : "No CDN/edge-cache headers present",
     });
 
     // SEO
@@ -849,7 +2594,7 @@ export async function runUrlChecks(
       detail: hasCanonical ? "Canonical URL tag found." : "No canonical URL tag.",
     });
 
-    const hasH1 = /<h1[\s>]/i.test(pageResult.html);
+    const hasH1 = /<h1[\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "h1_present",
@@ -860,7 +2605,8 @@ export async function runUrlChecks(
 
     // robots.txt / sitemap.xml are content-verifiable, so they stay correct on
     // catch-all hosts: a real robots.txt is text (not HTML), a sitemap is XML.
-    const robotsFound = await fileServed(
+    const seoApplicable = isCategoryApplicable(platform, CATEGORIES.SEO, surfaceKind);
+    const robotsFound = seoApplicable && await fileServed(
       `${httpsUrl.replace(/\/$/, "")}/robots.txt`,
       (body, ct) => ct.includes("text/plain") || /user-agent:|disallow:|sitemap:/i.test(body),
     );
@@ -873,7 +2619,7 @@ export async function runUrlChecks(
       evidence: robotsFound ? "Served valid robots.txt" : "Not found (or catch-all shell)",
     });
 
-    const sitemapFound = await fileServed(
+    const sitemapFound = seoApplicable && await fileServed(
       `${httpsUrl.replace(/\/$/, "")}/sitemap.xml`,
       (body, ct) => ct.includes("xml") || /<\?xml|<urlset|<sitemapindex/i.test(body),
     );
@@ -906,14 +2652,16 @@ export async function runUrlChecks(
       evidence: hsts ?? undefined,
     });
 
-    const xfo = pageResult.headers["x-frame-options"];
+    // The label names the header this reads; the CSP `frame-ancestors`
+    // supersession is honoured in `clickjackingVerdict` (see its note).
+    const framing = clickjackingVerdict(pageResult.headers);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "x_frame_options",
-      label: "Clickjacking protection",
-      status: xfo ? "PASS" : "WARN",
-      detail: xfo ? `X-Frame-Options: ${xfo}` : "No X-Frame-Options header.",
-      evidence: xfo ?? undefined,
+      label: "X-Frame-Options header",
+      status: framing.status,
+      detail: framing.detail,
+      evidence: framing.evidence,
     });
 
     // .env — a real exposure serves the raw file (KEY=VALUE, not HTML). A 200
@@ -1070,37 +2818,69 @@ export async function runUrlChecks(
     detectedMarkets = detectMarketsFromPage({ hostname, html: pageResult.html, htmlLower });
     if (effectiveMarkets.length === 0) effectiveMarkets = detectedMarkets;
 
-    const hasPrivacy = ["/privacy", "/privacy-policy", "/legal/privacy", "/legal"].some((p) =>
-      htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
-      htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
-    );
+    // ⚠️ Launch-blocking legal checks. See the `resolveLegalDocumentChecks` note
+    // at the top of this file for why both error directions are expensive and why
+    // the widened matcher and the content-verify have to ship together.
+    //
+    // Two deliberate inputs here:
+    //   · `contentHtml`, NOT `pageResult.html`. These are PARSED checks, not
+    //     fetched ones, so on a client-rendered site they must read the DOM the
+    //     render agent adopted. Reading the static shell is how gitwork.co.uk —
+    //     which links `/privacy` from its rendered footer — got a FAIL as its top
+    //     P1 while `canonical_url` and `h1_present` in the same scan were
+    //     correctly marked unassessable.
+    //   · `unreadableShell: spaShell`. True only when the static HTML is a shell
+    //     AND no render was adopted, i.e. exactly when the page's own links were
+    //     never legible.
+    //
+    //     ⚠️ It does NOT gate whether the conventional paths are probed — that
+    //     comment used to say so and directly contradicted the code 1,700 lines
+    //     earlier. The probes run for EVERY site (see `resolveOne`); the ONLY case
+    //     that skips them is `catchAll200 && !unreadableShell`, where a 200 proves
+    //     nothing and the readable markup is already good evidence. What this flag
+    //     actually decides is three other things: it keeps the probes alive on a
+    //     catch-all host, it turns a confirmed-but-unlinked document into a PASS
+    //     rather than the WARN a readable page would earn ("nothing links to it" is
+    //     unsupportable when the links were never legible), and it adds the
+    //     shell-explaining sentence to the detail.
+    const legalVerdicts = await resolveLegalDocumentChecks({
+      html: contentHtml,
+      baseUrl,
+      catchAll200,
+      unreadableShell: spaShell,
+      probe: (probeUrl) => probePath(probeUrl, 60_000),
+    });
+
     checks.push({
       category: CATEGORIES.LEGAL,
       checkKey: "privacy_policy",
       label: "Privacy Policy",
-      status: hasPrivacy ? "PASS" : "FAIL",
-      detail: hasPrivacy
-        ? "Privacy policy link detected."
-        : "No privacy policy link — required for GDPR, CCPA, and app store distribution.",
+      status: legalVerdicts.privacy.status,
+      detail: legalVerdicts.privacy.detail,
+      evidence: legalVerdicts.privacy.evidence,
+      confidence: legalVerdicts.privacy.confidence,
     });
 
-    const hasToS = ["/terms", "/tos", "/terms-of-service", "/terms-and-conditions", "/legal/terms"].some((p) =>
-      htmlLower.includes(`href="${p}"`) || htmlLower.includes(`href='${p}'`) ||
-      htmlLower.includes(`href="${p} `) || htmlLower.includes(`href="${p}>`),
-    );
     checks.push({
       category: CATEGORIES.LEGAL,
       checkKey: "terms_of_service",
       label: "Terms of Service",
-      status: hasToS ? "PASS" : "FAIL",
-      detail: hasToS
-        ? "Terms of service link detected."
-        : "No terms of service — required for any product collecting payments or user data.",
+      status: legalVerdicts.terms.status,
+      detail: legalVerdicts.terms.detail,
+      evidence: legalVerdicts.terms.evidence,
+      confidence: legalVerdicts.terms.confidence,
     });
 
-    const hasCookieBanner = ["cookiebot", "osano", "onetrust", "cookie-consent", "cookieconsent", "cookie_notice", "gdpr"].some((s) =>
-      htmlLower.includes(s),
-    );
+    // ⚠️ This used to be a CLOSED VENDOR LIST (cookiebot / osano / onetrust / ...), so a
+    // SELF-HOSTED banner was invisible. Live-scanned www.gov.uk on 2026-08-22 and it was
+    // reported as having no cookie consent mechanism — while the page ships the reference
+    // UK implementation: `govuk-cookie-banner` / `gem-c-cookie-banner`, with accept and
+    // reject confirmation messages. Same shape as the CDN five-vendor list in §44.2:
+    // a closed fingerprint list reported as directly-observed absence.
+    //
+    // Detect the MECHANISM — a banner container named for what it is — and keep the
+    // vendor names as additional signals rather than as the definition.
+    const hasCookieBanner = hasCookieConsentMechanism(pageResult.html);
     const hasCookieLink = ["/cookie-policy", "/cookies", "/legal/cookies"].some((p) =>
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
@@ -1128,13 +2908,16 @@ export async function runUrlChecks(
     });
 
     // Missing Pages — batch HEAD requests in parallel
-    const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = await Promise.all([
-      headRequest(`${baseUrl}/about`),
-      headRequest(`${baseUrl}/contact`),
-      headRequest(`${baseUrl}/faq`),
-      headRequest(`${baseUrl}/status`),
-      headRequest(`${baseUrl}/changelog`),
-    ]);
+    const missingPagesApplicable = isCategoryApplicable(platform, CATEGORIES.MISSING_PAGES, surfaceKind);
+    const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = missingPagesApplicable
+      ? await Promise.all([
+          headRequest(`${baseUrl}/about`),
+          headRequest(`${baseUrl}/contact`),
+          headRequest(`${baseUrl}/faq`),
+          headRequest(`${baseUrl}/status`),
+          headRequest(`${baseUrl}/changelog`),
+        ])
+      : [0, 0, 0, 0, 0];
 
     checks.push(routePageCheck(
       "Missing Pages", "about_page", "About / Team page",
@@ -1343,15 +3126,16 @@ export async function runUrlChecks(
       evidence: xCto ?? undefined,
     });
 
-    const permissionsPolicy = pageResult.headers["permissions-policy"];
+    // Absent ⇒ the SPEC DEFAULTS apply (`self`), not "unrestricted", and the
+    // deprecated Feature-Policy is read as a fallback. See `permissionsPolicyVerdict`.
+    const permissions = permissionsPolicyVerdict(pageResult.headers);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "permissions_policy",
       label: "Permissions-Policy",
-      status: permissionsPolicy ? "PASS" : "WARN",
-      detail: permissionsPolicy
-        ? "Permissions-Policy header present."
-        : "No Permissions-Policy — browser features (camera, microphone, geolocation) are unrestricted.",
+      status: permissions.status,
+      detail: permissions.detail,
+      evidence: permissions.evidence,
     });
 
     const referrerPolicy = pageResult.headers["referrer-policy"];
@@ -1395,10 +3179,13 @@ export async function runUrlChecks(
     // Parallel batch: favicon, PWA manifest
     // Favicon (an image) and manifest.json (JSON) are content-verifiable, so they
     // stay correct on catch-all hosts — a soft-200 HTML shell is not an icon/JSON.
-    const [faviconFound, manifestFound] = await Promise.all([
-      fileServed(`${baseUrl}/favicon.ico`),
-      fileServed(`${baseUrl}/manifest.json`, (body, ct) => ct.includes("json") || /"(name|icons|start_url|display)"/.test(body)),
-    ]);
+    const mobileApplicable = isCategoryApplicable(platform, CATEGORIES.MOBILE, surfaceKind);
+    const [faviconFound, manifestFound] = mobileApplicable
+      ? await Promise.all([
+          fileServed(`${baseUrl}/favicon.ico`),
+          fileServed(`${baseUrl}/manifest.json`, (body, ct) => ct.includes("json") || /"(name|icons|start_url|display)"/.test(body)),
+        ])
+      : [false, false];
 
     const hasFaviconLink = /rel=["'](shortcut icon|icon)["']/i.test(pageResult.html);
     const hasFavicon = hasFaviconLink || faviconFound;
@@ -1447,7 +3234,8 @@ export async function runUrlChecks(
     // AASA + assetlinks.json are JSON, so content-verify (a catch-all HTML shell
     // is not JSON) — keeps deep-link detection correct on Vercel/SPA hosts.
     const isJsonFile = (body: string, ct: string) => ct.includes("json") || /^\s*[[{]/.test(body);
-    const [aasaFound, assetLinksFound] = ctx.isMobileApp ? await Promise.all([
+    const appStoreApplicable = isCategoryApplicable(platform, CATEGORIES.APP_STORE, surfaceKind);
+    const [aasaFound, assetLinksFound] = ctx.isMobileApp && appStoreApplicable ? await Promise.all([
       fileServed(`${baseUrl}/.well-known/apple-app-site-association`, isJsonFile),
       fileServed(`${baseUrl}/.well-known/assetlinks.json`, isJsonFile),
     ]) : [false, false];
@@ -1630,7 +3418,7 @@ export async function runUrlChecks(
     });
 
     // ─── Additional SEO ────────────────────────────────────────────────────────
-    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(pageResult.html);
+    const hasStructuredData = /<script[^>]+type=["']application\/ld\+json["']/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "structured_data",
@@ -1701,29 +3489,37 @@ export async function runUrlChecks(
     });
 
     const setCookieHeader = pageResult.headers["set-cookie"] ?? "";
-    const hasSecureCookieAttrs = setCookieHeader.toLowerCase().includes("secure") && setCookieHeader.toLowerCase().includes("samesite");
+    const lowerCookies = setCookieHeader.toLowerCase();
+    const hasSecureCookieAttrs = lowerCookies.includes("secure") && lowerCookies.includes("samesite");
+    // A response that sets NO cookies cannot have insecure ones. The old ternary read
+    // `setCookieHeader ? "WARN" : "WARN"` — someone began drawing this distinction and
+    // never finished it — so every cookie-less site was told its cookies were
+    // "vulnerable to CSRF and session theft". Verified outside Pulse with curl:
+    // stripe.com/gb sets zero cookies and was warned anyway.
+    const setsCookies = setCookieHeader.trim().length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "secure_cookie_attributes",
       label: "Secure cookie attributes",
-      status: hasSecureCookieAttrs ? "PASS" : setCookieHeader ? "WARN" : "WARN",
-      detail: hasSecureCookieAttrs
-        ? "Cookies have Secure and SameSite attributes — session hijacking risk reduced."
-        : "Cookies lack Secure or SameSite attributes — vulnerable to CSRF and session theft on mixed-content pages.",
+      status: !setsCookies ? "SKIPPED" : hasSecureCookieAttrs ? "PASS" : "WARN",
+      detail: !setsCookies
+        ? "Not assessed — this response set no cookies, so there are no cookie attributes to check. If cookies are only set after sign-in, they are not visible to an unauthenticated scan."
+        : hasSecureCookieAttrs
+          ? "Cookies have Secure and SameSite attributes — session hijacking risk reduced."
+          : "Cookies lack Secure or SameSite attributes — vulnerable to CSRF and session theft on mixed-content pages.",
     });
 
-    const corsHeader = pageResult.headers["access-control-allow-origin"];
-    const hasWildcardCors = corsHeader === "*";
+    // Absent ⇒ SKIPPED (the `secure_cookie_attributes` shape just above), `*` ⇒
+    // WARN, own origin ⇒ PASS, any other origin ⇒ WARN. See `corsPolicyVerdict`
+    // for why the absence branch and the PASS branch had to be fixed together.
+    const cors = corsPolicyVerdict(pageResult.headers, pageResult.finalUrl || httpsUrl);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "cors_policy",
-      label: "CORS policy",
-      status: hasWildcardCors ? "WARN" : corsHeader ? "PASS" : "WARN",
-      detail: hasWildcardCors
-        ? "CORS allows all origins (*) — restrict to trusted domains in production."
-        : corsHeader
-          ? `CORS header configured (${corsHeader}).`
-          : "No CORS header — verify cross-origin policy is correctly configured for API routes.",
+      label: "CORS policy (Access-Control-Allow-Origin on this document)",
+      status: cors.status,
+      detail: cors.detail,
+      evidence: cors.evidence,
     });
 
     // security.txt is plain text with Contact:/Expires: fields — content-verify so
@@ -1732,6 +3528,15 @@ export async function runUrlChecks(
       `${baseUrl}/.well-known/security.txt`,
       (body, ct) => ct.includes("text/plain") || /contact:|expires:|encryption:/i.test(body),
     );
+    // ⚠️ WORDING, not logic. The probe is right — it content-verifies, so a
+    // catch-all HTML 404 shell is not mistaken for a disclosure file, and it was
+    // NOT fooled by gitwork.co.uk's catch-all 200. The sentence was the defect:
+    // it converted "this host does not serve the RFC 9116 file" into "security
+    // researchers have no official path to report vulnerabilities". Verified
+    // false on both sites it fired on — news.ycombinator.com publishes a
+    // `/security.html` page (linked from the footer Pulse parsed) with a contact
+    // address, and mozilla.org serves a security.txt with a bounty programme.
+    // Name the missing artefact and what it buys, not an absence of process.
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "security_txt",
@@ -1739,7 +3544,7 @@ export async function runUrlChecks(
       status: securityTxtFound ? "PASS" : "WARN",
       detail: securityTxtFound
         ? "security.txt found — responsible disclosure channel available for security researchers."
-        : "No security.txt — security researchers have no official path to report vulnerabilities (RFC 9116).",
+        : "No machine-readable security.txt at /.well-known/security.txt. If a disclosure contact already exists on a security or contact page, add the RFC 9116 file too so scanners, researchers and bug-bounty tooling can discover it automatically instead of hunting for it.",
     });
 
     const serverHeader = pageResult.headers["server"] ?? "";
@@ -1887,18 +3692,27 @@ export async function runUrlChecks(
         : "No account deletion option visible — GDPR Art. 17 requires users can request erasure of all personal data.",
     });
 
-    const [accessibilityStatus, dpaStatus, cookiePolicyStatus] = await Promise.all([
-      headRequest(`${baseUrl}/accessibility`),
-      headRequest(`${baseUrl}/dpa`),
-      headRequest(`${baseUrl}/cookie-policy`),
-    ]);
-    const accessibilityAltStatus = accessibilityStatus !== 200 ? await headRequest(`${baseUrl}/accessibility-statement`) : 200;
-    const dpaAltStatus = dpaStatus !== 200 ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
-    const cookiePolicyAltStatus = cookiePolicyStatus !== 200 ? await headRequest(`${baseUrl}/cookies`) : 200;
+    const legalApplicable = isCategoryApplicable(platform, CATEGORIES.LEGAL, surfaceKind);
+    const [accessibilityStatus, dpaStatus, cookiePolicyStatus] = legalApplicable
+      ? await Promise.all([
+          headRequest(`${baseUrl}/accessibility`),
+          headRequest(`${baseUrl}/dpa`),
+          headRequest(`${baseUrl}/cookie-policy`),
+        ])
+      : [0, 0, 0];
+    const accessibilityAltStatus = legalApplicable && accessibilityStatus !== 200
+      ? await headRequest(`${baseUrl}/accessibility-statement`) : 200;
+    const dpaAltStatus = legalApplicable && dpaStatus !== 200
+      ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
+    const cookiePolicyAltStatus = legalApplicable && cookiePolicyStatus !== 200
+      ? await headRequest(`${baseUrl}/cookies`) : 200;
 
+    // A link on the page outranks a HEAD on a guessed path: it is evidence we already
+    // hold, and it costs nothing. See linksPathContaining for the www.gov.uk case.
+    const linksAccessibility = linksPathContaining(pageResult.html, ["accessibility"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "accessibility_statement", "Accessibility statement",
-      accessibilityStatus === 200 || accessibilityAltStatus === 200,
+      linksAccessibility || accessibilityStatus === 200 || accessibilityAltStatus === 200,
       "Accessibility statement page found — EU Web Accessibility Directive compliance documented.",
       "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
     ));
@@ -1943,9 +3757,10 @@ export async function runUrlChecks(
         : "No 'last updated' date in policy — regulators and users expect visible evidence of ongoing policy maintenance.",
     });
 
+    const linksCookiePolicy = linksPathContaining(pageResult.html, ["cookie-policy", "cookiepolicy", "cookies", "cookie"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page",
-      cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200,
+      linksCookiePolicy || cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200,
       "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met.",
       "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
     ));
@@ -1962,20 +3777,22 @@ export async function runUrlChecks(
     });
 
     // ─── Additional Missing Pages (batch) ─────────────────────────────────────
-    const [blogStatus, careersStatus, pressStatus, docsStatus, integrationsStatus, mediaKitStatus] = await Promise.all([
-      headRequest(`${baseUrl}/blog`),
-      headRequest(`${baseUrl}/careers`),
-      headRequest(`${baseUrl}/press`),
-      headRequest(`${baseUrl}/docs`),
-      headRequest(`${baseUrl}/integrations`),
-      headRequest(`${baseUrl}/media-kit`),
-    ]);
-    const blogAltStatus = blogStatus !== 200 ? await headRequest(`${baseUrl}/resources`) : 200;
-    const careersAltStatus = careersStatus !== 200 ? await headRequest(`${baseUrl}/jobs`) : 200;
-    const pressAltStatus = pressStatus !== 200 ? await headRequest(`${baseUrl}/media`) : 200;
-    const docsAltStatus = docsStatus !== 200 ? await headRequest(`${baseUrl}/documentation`) : 200;
-    const integrationsAltStatus = integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
-    const brandKitStatus = mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
+    const [blogStatus, careersStatus, pressStatus, docsStatus, integrationsStatus, mediaKitStatus] = missingPagesApplicable
+      ? await Promise.all([
+          headRequest(`${baseUrl}/blog`),
+          headRequest(`${baseUrl}/careers`),
+          headRequest(`${baseUrl}/press`),
+          headRequest(`${baseUrl}/docs`),
+          headRequest(`${baseUrl}/integrations`),
+          headRequest(`${baseUrl}/media-kit`),
+        ])
+      : [0, 0, 0, 0, 0, 0];
+    const blogAltStatus = missingPagesApplicable && blogStatus !== 200 ? await headRequest(`${baseUrl}/resources`) : 200;
+    const careersAltStatus = missingPagesApplicable && careersStatus !== 200 ? await headRequest(`${baseUrl}/jobs`) : 200;
+    const pressAltStatus = missingPagesApplicable && pressStatus !== 200 ? await headRequest(`${baseUrl}/media`) : 200;
+    const docsAltStatus = missingPagesApplicable && docsStatus !== 200 ? await headRequest(`${baseUrl}/documentation`) : 200;
+    const integrationsAltStatus = missingPagesApplicable && integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
+    const brandKitStatus = missingPagesApplicable && mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
 
     checks.push(routePageCheck(
       "Missing Pages", "blog_resources", "Blog / resources hub",
@@ -2075,14 +3892,18 @@ export async function runUrlChecks(
         : "No free trial signal — freemium or free trial converts 3–5× better than paid-only for early SaaS.",
     });
 
-    const [apiStatus, affiliateStatus, securityPageStatus] = await Promise.all([
-      headRequest(`${baseUrl}/api`),
-      headRequest(`${baseUrl}/affiliate`),
-      headRequest(`${baseUrl}/security`),
-    ]);
-    const apiAltStatus = apiStatus !== 200 ? await headRequest(`${baseUrl}/api-docs`) : 200;
-    const affiliateAltStatus = affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
-    const trustPageStatus = securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
+    const saasApplicable = isCategoryApplicable(platform, CATEGORIES.SAAS, surfaceKind);
+    const trustApplicable = isCategoryApplicable(platform, CATEGORIES.TRUST_BRAND, surfaceKind);
+    const [apiStatus, affiliateStatus, securityPageStatus] = saasApplicable || trustApplicable
+      ? await Promise.all([
+          saasApplicable ? headRequest(`${baseUrl}/api`) : Promise.resolve(0),
+          saasApplicable ? headRequest(`${baseUrl}/affiliate`) : Promise.resolve(0),
+          trustApplicable ? headRequest(`${baseUrl}/security`) : Promise.resolve(0),
+        ])
+      : [0, 0, 0];
+    const apiAltStatus = saasApplicable && apiStatus !== 200 ? await headRequest(`${baseUrl}/api-docs`) : 200;
+    const affiliateAltStatus = saasApplicable && affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
+    const trustPageStatus = trustApplicable && securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
 
     checks.push(routePageCheck(
       "SaaS Readiness", "api_availability", "Public API / developer access",
@@ -2414,64 +4235,106 @@ export async function runUrlChecks(
     });
 
     // ─── A1: Email Security (DNS-over-HTTPS) ──────────────────────────────────
-    async function checkDnsRecord(name: string, type: string): Promise<string[]> {
+    // Returns `{ ok }` rather than a bare array so a resolver failure cannot be
+    // mistaken for an empty answer — see the section note above `dmarcCheckVerdict`.
+    // Answer TYPES are kept because they carry information the SPF wording needs:
+    // a TXT query against a CNAME owner comes back as a type-5 answer with no
+    // type-16, which is how `spfCheckVerdict` recognises a name that provably
+    // cannot hold the record, with no extra query.
+    async function dnsLookup(name: string, type: string): Promise<DnsLookup> {
       try {
         const res = await fetchWithTimeout(
           `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
           { headers: { Accept: "application/dns-json" } },
         );
-        if (!res.ok) return [];
-        const json = await res.json() as { Answer?: { data: string }[] };
-        return (json.Answer ?? []).map((a) => a.data);
+        if (!res.ok) return { ok: false, answers: [] };
+        const json = await res.json() as { Status?: number; Answer?: { type?: number; data: string }[] };
+        // DoH Status: 0 = NOERROR, 3 = NXDOMAIN. Both are real answers. Anything
+        // else (SERVFAIL, REFUSED, ...) means the question was not answered.
+        if (json.Status !== undefined && json.Status !== 0 && json.Status !== 3) {
+          return { ok: false, answers: [] };
+        }
+        return {
+          ok: true,
+          answers: (json.Answer ?? []).map((a) => ({ type: a.type ?? 0, data: a.data })),
+        };
       } catch {
-        return [];
+        return { ok: false, answers: [] };
       }
     }
 
     try {
-      const [spfRecords, dmarcRecords, mxRecords] = await Promise.all([
-        checkDnsRecord(hostname, "TXT"),
-        checkDnsRecord(`_dmarc.${hostname}`, "TXT"),
-        checkDnsRecord(hostname, "MX"),
+      const hostAnalysis = analyzeHost(hostname);
+      // RFC 7489 §6.6.3 strictly says "retry at the Organizational Domain". We walk
+      // the ladder most-specific-first instead, capped, because in a delegated tree
+      // (`www.hmrc.gov.uk` → `hmrc.gov.uk` → `gov.uk`) the department publishes its
+      // own record and stopping at the single organizational answer would report the
+      // parent's policy as the department's.
+      const parentNames = boundedDmarcCandidates(organizationalDomainCandidates(hostname));
+      const [txtLookup, dmarcLookup, mxLookup, ...parentLookups] = await Promise.all([
+        dnsLookup(hostname, "TXT"),
+        dnsLookup(`_dmarc.${hostname}`, "TXT"),
+        dnsLookup(hostname, "MX"),
+        ...parentNames.map((name) => dnsLookup(`_dmarc.${name}`, "TXT")),
       ]);
 
-      const hasSpf = spfRecords.some((r) => r.includes("v=spf1"));
+      const spf = spfCheckVerdict({
+        hostname,
+        txt: txtLookup,
+        mx: mxLookup,
+        registrable: hostAnalysis.registrable,
+      });
       checks.push({
         category: CATEGORIES.SECURITY,
         checkKey: "spf_record",
         label: "SPF record (email spoofing protection)",
-        status: hasSpf ? "PASS" : "WARN",
-        detail: hasSpf
-          ? "SPF record found — mail server authenticity is declared."
-          : "No SPF record found. SPF authenticates which mail servers can send on your behalf. Without it, anyone can spoof your domain in phishing emails.",
+        status: spf.status,
+        detail: spf.detail,
+        evidence: spf.evidence,
       });
 
-      const hasDmarc = dmarcRecords.some((r) => r.includes("v=DMARC1"));
+      const dmarc = dmarcCheckVerdict({
+        hostname,
+        atHost: dmarcLookup,
+        parents: parentNames.map((domain, index) => ({ domain, lookup: parentLookups[index] })),
+        // An apex has no parent to fall back to, so its absence is a complete
+        // answer. Only an unidentifiable registrable domain leaves the discovery
+        // algorithm unfinished.
+        unresolvedReason: parentNames.length === 0 ? hostAnalysis.reason : null,
+      });
       checks.push({
         category: CATEGORIES.SECURITY,
         checkKey: "dmarc_record",
         label: "DMARC record (email impersonation protection)",
-        status: hasDmarc ? "PASS" : "WARN",
-        detail: hasDmarc
-          ? "DMARC record found — email authentication policy is published."
-          : "No DMARC record. DMARC builds on SPF/DKIM and tells receiving servers what to do with unauthenticated email. Essential to prevent domain impersonation.",
+        status: dmarc.status,
+        detail: dmarc.detail,
+        evidence: dmarc.evidence,
       });
 
-      const hasMx = mxRecords.length > 0;
+      const mxRecords = mxLookup.answers.filter((a) => a.type === 15);
       checks.push({
         category: CATEGORIES.INFRASTRUCTURE,
         checkKey: "mx_record",
         label: "MX records (email infrastructure)",
-        status: hasMx ? "PASS" : "WARN",
-        detail: hasMx
-          ? `MX records found — email infrastructure is declared (${mxRecords.length} record${mxRecords.length !== 1 ? "s" : ""}).`
-          : "No MX records detected — the domain may not be configured to receive email.",
+        status: !mxLookup.ok ? "INCONCLUSIVE" : mxRecords.length > 0 ? "PASS" : "WARN",
+        detail: !mxLookup.ok
+          ? `Not assessed — the MX lookup for ${hostname} did not complete, so Pulse cannot say whether email infrastructure is declared.`
+          : mxRecords.length > 0
+            ? `MX records found — email infrastructure is declared (${mxRecords.length} record${mxRecords.length !== 1 ? "s" : ""}).`
+            : `No MX records at ${hostname} — this name is not configured to receive email. That is normal for a web-only host; mail for the organisation is usually handled at another name.`,
+        evidence: mxLookup.ok ? `${mxRecords.length} MX record(s) at ${hostname}` : `MX ${hostname}: lookup failed`,
       });
     } catch {
+      // `dnsLookup` swallows its own transport errors, so reaching here means
+      // something unexpected broke. All three checks must still be EMITTED — a key
+      // that silently vanishes from the set is worse than one that admits it has no
+      // answer, because a missing check is invisible in both the report and the
+      // coverage number. INCONCLUSIVE, never the old WARN: nothing was established.
+      const failed = "Not assessed — the DNS lookups for this host did not complete, so no email-authentication conclusion can be drawn.";
       checks.push(
-        { category: CATEGORIES.SECURITY, checkKey: "spf_record", label: "SPF record (email spoofing protection)", status: "WARN", detail: "Could not verify SPF record — DNS lookup failed." },
-        { category: CATEGORIES.SECURITY, checkKey: "dmarc_record", label: "DMARC record (email impersonation protection)", status: "WARN", detail: "Could not verify DMARC record — DNS lookup failed." },
-        { category: CATEGORIES.INFRASTRUCTURE, checkKey: "mx_record", label: "MX records (email infrastructure)", status: "WARN", detail: "Could not verify MX records — DNS lookup failed." },
+        { category: CATEGORIES.SECURITY, checkKey: "spf_record", label: "SPF record (email spoofing protection)", status: "INCONCLUSIVE", detail: failed },
+        { category: CATEGORIES.SECURITY, checkKey: "dmarc_record", label: "DMARC record (email impersonation protection)", status: "INCONCLUSIVE", detail: failed },
+        { category: CATEGORIES.INFRASTRUCTURE, checkKey: "mx_record", label: "MX records (email infrastructure)", status: "INCONCLUSIVE", detail: failed },
       );
     }
 
@@ -2479,7 +4342,7 @@ export async function runUrlChecks(
     async function checkPaths(baseUrl: string, paths: string[], timeoutMs = 3000): Promise<number[]> {
       const results = await Promise.allSettled(
         paths.map((p) =>
-          fetch(`${baseUrl}${p}`, {
+          fetchScannableUrl(`${baseUrl}${p}`, {
             method: "HEAD",
             redirect: "follow",
             signal: AbortSignal.timeout(timeoutMs),
@@ -2505,15 +4368,27 @@ export async function runUrlChecks(
       ? " (Host returns 200 for any path — catch-all routing — so path-based probes are inconclusive; nothing actually exposed by status.)"
       : "";
 
+    const absenceStatus = (
+      exposed: boolean,
+      statuses: number[],
+      exposedStatus: "WARN" | "FAIL",
+    ): "PASS" | "WARN" | "FAIL" | "INCONCLUSIVE" => {
+      if (exposed) return exposedStatus;
+      if (catchAll200 || statuses.some((status) => status === 0)) return "INCONCLUSIVE";
+      return "PASS";
+    };
+
     const adminExposed = !catchAll200 && adminStatuses.some((s) => s === 200);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_admin",
       label: "Admin panel not publicly accessible",
-      status: adminExposed ? "WARN" : "PASS",
+      status: absenceStatus(adminExposed, adminStatuses, "WARN"),
       detail: adminExposed
         ? "An admin path (/admin or /wp-admin) returned HTTP 200 — verify it requires authentication. Exposed admin panels are prime targets for credential stuffing attacks."
-        : "Admin paths not freely accessible." + catchAllNote,
+        : adminStatuses.some((status) => status === 0)
+          ? "One or more admin-path probes failed, so public exposure could not be ruled out."
+          : "Admin paths not freely accessible." + catchAllNote,
     });
 
     const phpInfoExposed = !catchAll200 && phpInfoStatuses.some((s) => s === 200);
@@ -2521,10 +4396,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_phpinfo",
       label: "PHP info page not exposed",
-      status: phpInfoExposed ? "FAIL" : "PASS",
+      status: absenceStatus(phpInfoExposed, phpInfoStatuses, "FAIL"),
       detail: phpInfoExposed
         ? "phpinfo.php or info.php returned HTTP 200 — this file exposes PHP version, server paths, loaded extensions, and environment variables to attackers."
-        : "No exposed PHP info pages detected." + catchAllNote,
+        : phpInfoStatuses.some((status) => status === 0)
+          ? "One or more PHP-info probes failed, so exposure could not be ruled out."
+          : "No exposed PHP info pages detected." + catchAllNote,
     });
 
     const gitConfigExposed = !catchAll200 && gitConfigStatus === 200;
@@ -2532,10 +4409,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_git_config",
       label: "Git config not publicly accessible",
-      status: gitConfigExposed ? "FAIL" : "PASS",
+      status: absenceStatus(gitConfigExposed, [gitConfigStatus], "FAIL"),
       detail: gitConfigExposed
         ? "/.git/config is publicly accessible — this reveals repository URLs, credentials, and project structure. Remove or block access immediately."
-        : "Git config not publicly accessible." + catchAllNote,
+        : gitConfigStatus === 0
+          ? "The Git-config probe failed, so exposure could not be ruled out."
+          : "Git config not publicly accessible." + catchAllNote,
     });
 
     const debugExposed = !catchAll200 && debugStatuses.some((s) => s === 200);
@@ -2543,10 +4422,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_debug_endpoints",
       label: "Debug/monitoring endpoints not public",
-      status: debugExposed ? "WARN" : "PASS",
+      status: absenceStatus(debugExposed, debugStatuses, "WARN"),
       detail: debugExposed
         ? "A debug endpoint (/telescope, /__clockwork, /horizon, or /_debug) returned HTTP 200 — these expose internal request logs, jobs, and performance data."
-        : "Debug and monitoring endpoints are not publicly accessible." + catchAllNote,
+        : debugStatuses.some((status) => status === 0)
+          ? "One or more debug-endpoint probes failed, so exposure could not be ruled out."
+          : "Debug and monitoring endpoints are not publicly accessible." + catchAllNote,
     });
 
     const backupExposed = !catchAll200 && backupStatuses.some((s) => s === 200);
@@ -2554,10 +4435,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_backup",
       label: "Database backup files not exposed",
-      status: backupExposed ? "FAIL" : "PASS",
+      status: absenceStatus(backupExposed, backupStatuses, "FAIL"),
       detail: backupExposed
         ? "A database backup file (backup.sql, dump.sql, .env.bak, or db.sql) is publicly downloadable — this is a critical data breach risk."
-        : "No exposed database backup files detected." + catchAllNote,
+        : backupStatuses.some((status) => status === 0)
+          ? "One or more backup-file probes failed, so exposure could not be ruled out."
+          : "No exposed database backup files detected." + catchAllNote,
     });
 
     // ─── A3: HTTP Protocol & Headers Quality ──────────────────────────────────
@@ -2573,11 +4456,25 @@ export async function runUrlChecks(
         : "Could not verify HTTP/2 support — consider upgrading for multiplexing benefits. Modern servers (Nginx 1.9.5+, Apache 2.4.17+) support HTTP/2 natively.",
     });
 
+    // ⚠️ The label used to be the fixed string "X-Powered-By header absent" —
+    // phrased as the PASS state — while `status` and `detail` flip to the
+    // opposite. The public triage view renders `label` as the finding HEADLINE,
+    // so on vercel.com (`x-powered-by: Next.js, Payload`) a prospect read:
+    //     X-Powered-By header absent — X-Powered-By is set to "Next.js, Payload"
+    // The finding itself is sound; the presentation made it unusable. A label must
+    // name the SUBJECT being measured, never the desired outcome, because it is
+    // shown identically whichever way the check goes.
+    //
+    // Other checks in this file share the shape and were left alone deliberately
+    // (no audit reproduced them, and each label is duplicated in
+    // checks-registry.ts, which this change does not own): `.env not public`,
+    // `.git directory not public`, `Server version not exposed`, `Server version
+    // not disclosed`, and the five A2 exposure labels. Worth a follow-up pass.
     const xPoweredBy = pageResult.headers["x-powered-by"];
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_x_powered_by",
-      label: "X-Powered-By header absent",
+      label: "X-Powered-By header",
       status: xPoweredBy ? "FAIL" : "PASS",
       detail: xPoweredBy
         ? `X-Powered-By is set to "${xPoweredBy}" — this exposes your backend technology to attackers who can target known vulnerabilities in that stack.`
@@ -2612,7 +4509,7 @@ export async function runUrlChecks(
     });
 
     // ─── A4: Content Quality (HTML analysis) ──────────────────────────────────
-    const strippedText = pageResult.html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    const strippedText = contentHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
@@ -2630,8 +4527,8 @@ export async function runUrlChecks(
           : `Page contains only approximately ${wordCount.toLocaleString()} words — too thin for search engine indexing. Search engines prefer pages with substantial content.`,
     });
 
-    const a4HasH1 = /<h1[\s>]/i.test(pageResult.html);
-    const hasH2orH3 = /<h[23][\s>]/i.test(pageResult.html);
+    const a4HasH1 = /<h1[\s>]/i.test(contentHtml);
+    const hasH2orH3 = /<h[23][\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "has_heading_hierarchy",
@@ -2644,21 +4541,24 @@ export async function runUrlChecks(
           : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
     });
 
-    const imgTags = pageResult.html.match(/<img[^>]*>/gi) ?? [];
+    const imgTags = contentHtml.match(/<img[^>]*>/gi) ?? [];
     const imgsWithAlt = imgTags.filter((img) => /\balt=/i.test(img)).length;
     const altCoverage = imgTags.length > 0 ? imgsWithAlt / imgTags.length : 1;
     checks.push({
       category: CATEGORIES.ACCESSIBILITY,
       checkKey: "image_alt_coverage",
       label: "Image alt text coverage",
-      status: imgTags.length === 0 ? "PASS" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
+      // Zero images is NOT_APPLICABLE, never PASS. A PASS asserts the control was satisfied; with
+      // nothing to caption there is no control to satisfy, and on a client-rendered shell the
+      // images simply had not rendered — so a PASS there would be a finding invented from absence.
+      status: imgTags.length === 0 ? "NOT_APPLICABLE" : altCoverage >= 0.8 ? "PASS" : altCoverage >= 0.5 ? "WARN" : "FAIL",
       detail: imgTags.length === 0
-        ? "No images detected on this page."
+        ? "No images were present in the page HTML, so there was no alt-text coverage to measure."
         : `${imgsWithAlt}/${imgTags.length} images have alt attributes (${Math.round(altCoverage * 100)}%). ${altCoverage < 0.8 ? "Missing alt text fails WCAG 1.1.1 and harms screen reader users." : "Good alt text coverage."}`,
     });
 
     const internalLinkPattern = new RegExp(`<a[^>]+href=["'](/|https?://${hostname.replace(".", "\\.")})[^"']*["']`, "gi");
-    const internalLinkMatches = pageResult.html.match(internalLinkPattern) ?? [];
+    const internalLinkMatches = contentHtml.match(internalLinkPattern) ?? [];
     const internalLinkCount = internalLinkMatches.length;
     checks.push({
       category: CATEGORIES.SEO,
@@ -2838,25 +4738,38 @@ export async function runUrlChecks(
         : "No API documentation signals found. API docs are essential for technical buyers and integration partners.",
     });
 
-    const [openApiStatuses] = await Promise.all([
-      checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"]),
-    ]);
-    const hasOpenApiEndpoint = openApiStatuses.some((s) => s === 200);
+    const apiQualityApplicable = isCategoryApplicable(platform, CATEGORIES.API_QUALITY, surfaceKind);
+    const openApiStatuses = apiQualityApplicable
+      ? await checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"])
+      : [];
+    // A bare 200 proves nothing on a catch-all host (SPA / Vercel / Next), which
+    // 200s every path with the app shell — the same reason the exposed-file probes
+    // at :2141 consult catchAll200. Without this guard the status-only probe emitted
+    // a false PASS, and because the content-verified `openapi_spec_served` in
+    // api-quality.ts correctly WARNed on the same host, one report asserted both
+    // that a spec exists and that it does not.
+    const hasOpenApiEndpoint = !catchAll200 && openApiStatuses.some((s) => s === 200);
     checks.push({
-      category: CATEGORIES.SAAS,
+      category: CATEGORIES.API_QUALITY,
       checkKey: "openapi_endpoint",
       label: "OpenAPI spec endpoint",
       status: hasOpenApiEndpoint ? "PASS" : "WARN",
       detail: hasOpenApiEndpoint
         ? "OpenAPI/Swagger spec endpoint found — machine-readable API spec enables auto-generated SDKs and Postman imports."
-        : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
+        : catchAll200
+          ? "Could not establish an OpenAPI spec endpoint: this host returns 200 for paths that cannot exist, so a 200 on /openapi.json is not evidence a spec is served. Serve the spec with a JSON content type to make it verifiable."
+          : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
     });
 
     const hasGraphqlInHtml = /\bgraphql\b/i.test(pageResult.html);
-    const graphqlPathStatus = await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0]);
-    const hasGraphql = hasGraphqlInHtml || graphqlPathStatus === 200;
+    const graphqlPathStatus = apiQualityApplicable
+      ? await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0])
+      : 0;
+    // Same catch-all caveat: only trust the /graphql 200 when the host does not
+    // 200 everything. An in-HTML mention is independent evidence and still counts.
+    const hasGraphql = hasGraphqlInHtml || (!catchAll200 && graphqlPathStatus === 200);
     checks.push({
-      category: CATEGORIES.SAAS,
+      category: CATEGORIES.API_QUALITY,
       checkKey: "graphql_signal",
       label: "GraphQL API",
       status: hasGraphql ? "PASS" : "WARN",
@@ -2880,7 +4793,7 @@ export async function runUrlChecks(
         : "No search functionality detected. Apps without search force users to navigate manually — search reduces time-to-value.",
     });
 
-    const hasGranularConsent = /accept\s+all|reject\s+all|manage\s+(cookies|preferences)/i.test(pageResult.html);
+    const hasGranularConsent = hasGranularCookieControls(pageResult.html);
     const hasBasicConsent = /cookie\s*(consent|banner|notice)|we\s+use\s+cookies|this\s+site\s+uses\s+cookies/i.test(pageResult.html);
     checks.push({
       category: CATEGORIES.LEGAL,
@@ -2919,13 +4832,26 @@ export async function runUrlChecks(
         ctx,
         htmlLower,
         catchAll200,
+        surfaceKind,
         targetMarkets,
         detectedMarkets,
         effectiveMarkets,
       }, emit);
       checks.push(...extended);
-    } catch {
-      // Extended checks are non-critical — swallow errors so core scan still succeeds
+    } catch (error) {
+      // The scan still succeeds without the extended families — but it must not
+      // LOOK like a complete one. runExtendedChecks emits its own completeness
+      // check from inside itself, so a throw here loses that row too: ~300 checks
+      // and the only record that they were expected both disappear, while
+      // url-checks still reports COMPLETED. Emit the row the collector could not.
+      checks.push(collectorCompletenessCheck(
+        [{
+          name: "extended-checks",
+          outcome: "ERROR",
+          detail: error instanceof Error ? error.message.slice(0, 160) : "collector failed",
+        }],
+        "scan_extended_collector_completeness",
+      ));
     }
 
   } else {
@@ -2935,7 +4861,7 @@ export async function runUrlChecks(
       ["Infrastructure", "response_time", "Response time"],
       ["Infrastructure", "status_200", "Returns 200 OK"],
       ["Infrastructure", "custom_domain", "Custom domain"],
-      ["Infrastructure", "cdn_detected", "CDN present"],
+      ["Infrastructure", "cdn_detected", "CDN / edge cache present"],
       ["SEO", "meta_title", "<title> tag"],
       ["SEO", "meta_description", "Meta description"],
       ["SEO", "og_tags", "Open Graph tags"],
@@ -2945,7 +4871,7 @@ export async function runUrlChecks(
       ["SEO", "has_sitemap", "sitemap.xml"],
       ["Security", "csp_header", "Content-Security-Policy"],
       ["Security", "hsts_header", "HSTS header"],
-      ["Security", "x_frame_options", "Clickjacking protection"],
+      ["Security", "x_frame_options", "X-Frame-Options header"],
       ["Security", "no_exposed_env", ".env not public"],
       ["Security", "no_exposed_git", ".git directory not public"],
       ["Performance", "compression", "Gzip/Brotli compression"],
@@ -3009,7 +4935,7 @@ export async function runUrlChecks(
       // Additional Security
       ["Security", "subresource_integrity", "Subresource Integrity (SRI)"],
       ["Security", "secure_cookie_attributes", "Secure cookie attributes"],
-      ["Security", "cors_policy", "CORS policy"],
+      ["Security", "cors_policy", "CORS policy (Access-Control-Allow-Origin on this document)"],
       ["Security", "security_txt", "security.txt (responsible disclosure)"],
       ["Security", "server_header_leakage", "Server version not exposed"],
       ["Security", "no_mixed_content", "No mixed HTTP/HTTPS content"],
@@ -3407,9 +5333,6 @@ export async function runUrlChecks(
     }
   }
 
-  // Client-rendered SPA / vibe-code preview (Lovable/Bolt/Replit): the static HTML is an empty
-  // shell, so HTML-parse SEO/content checks fail falsely. Reclassify those to SKIPPED (excluded
-  // from the score) rather than letting them tank an otherwise-fine prototype. See spa-detect.ts.
   const spaHostname = (() => {
     try {
       return new URL(pageResult?.finalUrl || httpsUrl).hostname.toLowerCase();
@@ -3419,24 +5342,24 @@ export async function runUrlChecks(
   })();
   const techStack = pageResult ? detectTechStack(pageResult.headers, pageResult.html, spaHostname) : [];
   const rawChecks = checks.map((check, i) => ({ ...check, sortOrder: i }));
-  const platformFiltered = platform ? applyPlatformFilter(rawChecks, platform) : rawChecks;
-  const filteredChecks = applyJurisdictionFilter(platformFiltered, effectiveMarkets);
-  const spaAdjusted =
-    pageResult &&
-    detectSpaContext({
-      builder: detectAiBuilder(spaHostname, pageResult.html.toLowerCase()),
-      html: pageResult.html,
-      contentType: pageResult.headers["content-type"] ?? "",
-    }).isSpa
-      ? reclassifySpaChecks(filteredChecks)
-      : filteredChecks;
-  return { checks: spaAdjusted, techStack, detectedMarkets };
+  // Same pipeline as every streamed wave — see finaliseUrlChecks for why that matters.
+  const finalChecks = finaliseUrlChecks(rawChecks, {
+    platform,
+    surfaceKind,
+    markets: effectiveMarkets,
+    spaShell,
+  });
+  return { checks: finalChecks, techStack, detectedMarkets, surfaceKind };
 }
 
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
 type GitHubContentsResponse = GitHubContentsEntry[] | { message?: string };
 
-export async function runGithubChecks(repoInput: string): Promise<{
+export async function runGithubChecks(
+  repoInput: string,
+  platform?: string,
+  detectedShape?: SnapshotShape,
+): Promise<{
   checks: PulseScanCheckInput[];
   techStack: string[];
   /** Detected mobile project shape, or null for anything else. Null on every early
@@ -3550,7 +5473,27 @@ export async function runGithubChecks(repoInput: string): Promise<{
     names.includes(".windsurfrules") ||
     names.includes(".aider.conf.yml") ||
     names.some((n) => n.startsWith("agent") && n.endsWith(".md"));
-  const hasRepoLlmsTxt = names.includes("llms.txt") || names.includes("llms-full.txt");
+  // llms.txt must be SERVED at /llms.txt, and for every mainstream web framework
+  // the only way to achieve that is to commit it to a static root — public/ for
+  // Next, Vite and Astro, static/ for Nuxt and SvelteKit. Matching the repo root
+  // only therefore WARNed every correctly-configured project for failing to publish
+  // a file it does publish (verified against this repo: no root llms.txt,
+  // public/llms.txt present and served). Only probe the static roots that exist,
+  // so a repo without one costs no extra API calls.
+  const STATIC_ROOTS = ["public", "static", "www", "assets"] as const;
+  const presentStaticRoots = STATIC_ROOTS.filter((d) =>
+    entries.some((e) => e.name.toLowerCase() === d && e.type === "dir"),
+  );
+  const staticRootListings = await Promise.all(
+    presentStaticRoots.map((d) =>
+      safeGithubRequest<GitHubContentsResponse>(`/repos/${fullName}/contents/${d}`, []),
+    ),
+  );
+  const staticNames = staticRootListings
+    .flatMap((l) => (Array.isArray(l) ? (l as GitHubContentsEntry[]) : []))
+    .map((e) => e.name.toLowerCase());
+  const isLlmsTxt = (n: string) => n === "llms.txt" || n === "llms-full.txt";
+  const hasRepoLlmsTxt = names.some(isLlmsTxt) || staticNames.some(isLlmsTxt);
 
   checks.push(
     {
@@ -4007,24 +5950,32 @@ export async function runGithubChecks(repoInput: string): Promise<{
     detail: `Repository ${fullName} read successfully (${entries.length} root entries), so the findings below are based on the actual file tree.`,
   });
 
+  const resolvedShape = detectedShape ?? await detectRepoShape(repoInput).catch(() => "none" as const);
   const nativeSnapshot = await getRepoSnapshot(repoInput).catch(() => null);
-  const nativePlatform = nativeSnapshot?.accessible
-    ? detectNativePlatform(nativeSnapshot.paths)
-    : null;
+  const nativePlatform = (["ios", "android", "flutter", "react-native"] as const).includes(
+    resolvedShape as NativePlatform,
+  ) ? resolvedShape as NativePlatform : null;
   techStack.push(...nativeTechStack(nativePlatform, nativeSnapshot?.paths ?? []));
+  const effectivePlatform = effectivePlatformForRepoShape(platform, resolvedShape);
 
   return {
-    checks: applyNativeApplicability(checks, nativePlatform).map((check, i) => ({ ...check, sortOrder: i })),
+    checks: keepApplicableChecks(
+      applyNativeApplicability(checks, nativePlatform),
+      effectivePlatform,
+    ).map((check, i) => ({ ...check, sortOrder: i })),
     techStack: [...new Set(techStack)],
-    // Surfaced so the orchestrator knows not to run the ~400-check WEB suite against
-    // a mobile repo's GitHub "Website" field. That field is a link, not the artefact
-    // under test — grading a native app on it scored a real client app 0/100.
+    // Retained for report metadata and compatibility. The live orchestrator never
+    // expands a repository scan into its optional GitHub Website field.
     nativePlatform,
   };
 }
 
 export function skipAllChecks(inputType: PulseScanInputType, platform?: string): PulseScanCheckInput[] {
   if (inputType !== "FREE_TEXT") return [];
+  // A description contains no executable artefact. Synthesising hundreds of
+  // URL/repository rows as SKIPPED is noise, consumes storage and implies work
+  // Pulse did not perform. Description scans are intentionally AI analysis only.
+  return [];
 
   const skippedChecks: Array<[CheckCategory, string, string]> = [
     ["Infrastructure", "ssl_valid", "HTTPS / SSL certificate"],
@@ -4032,7 +5983,7 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Infrastructure", "response_time", "Response time"],
     ["Infrastructure", "status_200", "Returns 200 OK"],
     ["Infrastructure", "custom_domain", "Custom domain"],
-    ["Infrastructure", "cdn_detected", "CDN present"],
+    ["Infrastructure", "cdn_detected", "CDN / edge cache present"],
     ["SEO", "meta_title", "<title> tag"],
     ["SEO", "meta_description", "Meta description"],
     ["SEO", "og_tags", "Open Graph tags"],
@@ -4042,7 +5993,7 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["SEO", "has_sitemap", "sitemap.xml"],
     ["Security", "csp_header", "Content-Security-Policy"],
     ["Security", "hsts_header", "HSTS header"],
-    ["Security", "x_frame_options", "Clickjacking protection"],
+    ["Security", "x_frame_options", "X-Frame-Options header"],
     ["Security", "no_exposed_env", ".env not public"],
     ["Security", "no_exposed_git", ".git directory not public"],
     ["Performance", "compression", "Gzip/Brotli compression"],
@@ -4113,7 +6064,7 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     // Additional Security
     ["Security", "subresource_integrity", "Subresource Integrity (SRI)"],
     ["Security", "secure_cookie_attributes", "Secure cookie attributes"],
-    ["Security", "cors_policy", "CORS policy"],
+    ["Security", "cors_policy", "CORS policy (Access-Control-Allow-Origin on this document)"],
     ["Security", "security_txt", "security.txt (responsible disclosure)"],
     ["Security", "server_header_leakage", "Server version not exposed"],
     ["Security", "no_mixed_content", "No mixed HTTP/HTTPS content"],

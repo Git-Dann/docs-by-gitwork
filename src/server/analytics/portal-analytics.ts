@@ -28,6 +28,7 @@ import {
   computeClientPulseHealth,
   deriveClientHealth,
 } from "@/server/client-metrics";
+import { computeLaunchpadSummaries } from "@/server/launchpad";
 import { normalizeToMonthly } from "@/server/rate-card";
 import { getDeveloperUserIds } from "@/server/tasks-standup";
 import {
@@ -242,6 +243,7 @@ export async function getPortalAnalytics(
     checkinUpdates,
     approvedLeaveToday,
     absencesToday,
+    launchpads,
   ] = await Promise.all([
     devIds.length
       ? prisma.user.findMany({
@@ -373,6 +375,11 @@ export async function getPortalAnalytics(
           select: { userId: true, kind: true },
         })
       : Promise.resolve([] as Array<{ userId: string; kind: string }>),
+    // Launchpad completeness per client — the "waiting on the client" half of health.
+    computeLaunchpadSummaries(
+      workspaceId,
+      clientRows.map((c) => c.id),
+    ),
   ]);
 
   // Throughput time-series (pure, gapless).
@@ -510,7 +517,11 @@ export async function getPortalAnalytics(
         engagementType: c.engagementType,
         endDate: c.endDate ? c.endDate.toISOString() : null,
         daysLeft,
-        health: deriveClientHealth({ pulseHealthScore: pulse?.healthScore ?? null, overdueTasks: overdue }),
+        health: deriveClientHealth({
+          pulseHealthScore: pulse?.healthScore ?? null,
+          overdueTasks: overdue,
+          launchpadOutstanding: launchpads.get(c.id)?.needed ?? null,
+        }),
       };
     })
     .filter((c) => c.open > 0 || c.overdue > 0 || c.completedInRange > 0 || c.devs > 0 || c.engagementType != null)

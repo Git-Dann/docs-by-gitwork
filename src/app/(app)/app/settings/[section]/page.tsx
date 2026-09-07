@@ -28,6 +28,11 @@ const ForemanPanel = dynamic(() => import("@/components/settings/foreman/foreman
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
 );
+const LaunchpadTemplatesTab = dynamic(() =>
+  import("@/components/settings/launchpad/templates-tab").then((m) => ({
+    default: m.LaunchpadTemplatesTab,
+  })),
+);
 const OnboardingFormsTab = dynamic(() =>
   import("@/components/settings/onboarding/forms-tab").then((m) => ({ default: m.OnboardingFormsTab })),
 );
@@ -43,6 +48,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "branding",
   "templates",
   "onboarding",
+  "launchpad",
   "content",
   "rate-card",
   "people",
@@ -78,6 +84,7 @@ const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>([
   "rate-card",
   "workspace",
   "onboarding",
+  "launchpad",
   "foreman",
 ]);
 
@@ -153,6 +160,11 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   onboarding: {
     title: "Onboarding",
     subtitle: "Customise the client onboarding forms sent at /onboarding.",
+  },
+  launchpad: {
+    title: "Launchpad",
+    subtitle:
+      "The accounts, assets and legal drafts we ask a client for before a build can ship.",
   },
   content: {
     title: "Boilerplate copy",
@@ -330,6 +342,7 @@ export default async function SettingsSectionPage({
         {/* branding + content slugs redirect to /general before render (PEOPLE_REDIRECTS) */}
         {sectionId === "templates" ? <TemplatesTab /> : null}
         {sectionId === "onboarding" ? <OnboardingFormsTab /> : null}
+        {sectionId === "launchpad" ? <LaunchpadTemplatesTab /> : null}
         {sectionId === "rate-card" ? <RateCardTab /> : null}
         {sectionId === "people" ? <PeopleAccess /> : null}
         {sectionId === "integrations" ? <IntegrationsTab /> : null}

@@ -15,7 +15,7 @@ import { CATEGORIES } from "./categories";
 // *validity*, crawler *access*, and crawl-without-JS *legibility*.
 
 import type { PulseScanCheckInput } from "@/types/pulse";
-import { type ExtendedCheckContext, verifyFileExposure, fetchWithTimeout, platformIs, skip } from "./_types";
+import { type ExtendedCheckContext, verifyFileExposure, fetchWithTimeout, probeInconclusive, platformIs, skip } from "./_types";
 
 const CATEGORY = CATEGORIES.AEO;
 
@@ -120,6 +120,10 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
   //    answer engines. Fetch + parse robots.txt directly (need the body, not just 200).
   let robotsBody = "";
   let robotsStatus = 0;
+  // A fetch that never completed is not the same fact as a site with no robots.txt.
+  // Conflating them turned every transient network error into "nothing blocks AI
+  // crawlers" — a PASS asserted about a file Pulse never managed to read.
+  let robotsProbeError: string | null = null;
   try {
     const res = await fetchWithTimeout(`${httpsUrl}/robots.txt`, {
       method: "GET",
@@ -132,11 +136,14 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
     if (res.status === 200 && !ct.includes("html")) {
       robotsBody = (await res.text().catch(() => "")).slice(0, 20_000);
     }
-  } catch {
-    /* network error — treat as no robots.txt (unrestricted) */
+  } catch (error) {
+    robotsProbeError = error instanceof Error ? error.message : "robots.txt request failed";
   }
 
-  if (!robotsBody) {
+  if (robotsProbeError) {
+    checks.push(probeInconclusive(CATEGORY, "aeo_ai_crawlers_allowed", "AI crawlers allowed in robots.txt",
+      `The request for ${httpsUrl}/robots.txt did not complete (${robotsProbeError}), so crawler rules could not be read.`));
+  } else if (!robotsBody) {
     checks.push({
       category: CATEGORY,
       checkKey: "aeo_ai_crawlers_allowed",

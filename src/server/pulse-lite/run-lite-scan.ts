@@ -23,10 +23,16 @@ import { resolveEvidenceBackedControls } from "@/server/pulse-checks/standards-v
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
-import { CATEGORIES } from "@/server/pulse-checks/categories";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { detectRepoShape } from "@/server/pulse-checks/native-repo";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
+import {
+  buildUrlCollectorPlan,
+  detectUrlTargetKind,
+  effectivePlatformForRepoShape,
+} from "@/server/pulse-checks/scan-execution-plan";
+import { collectorCompletenessCheck, collectorOutcome, sourceCollectorsUnavailable, urlCollectorsUnavailable, type CollectorExecution } from "@/server/pulse-checks/collector-health";
+import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
 import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
   PulseScanCheckInput,
@@ -43,9 +49,17 @@ export interface LiteScanInput {
   /** Include the Google PageSpeed (Lighthouse) wave. Default true. Off for the
    *  public path to stay fast and avoid PSI quota pressure. */
   includePageSpeed?: boolean;
-  /** Skip the SSRF guard (internal callers that have already validated, or that
-   *  intentionally scan platform subdomains). Public callers must leave this off. */
-  skipUrlGuard?: boolean;
+  /**
+   * Render a client-rendered page in headless Chromium before reading its content, so the
+   * content and SEO checks measure the page a visitor sees rather than an empty shell.
+   *
+   * Defaults to the same switch as PageSpeed, and for the same reason: the public embed path
+   * turns both off. A browser launch per anonymous scan is a cost and an abuse surface, and
+   * the public scan already declares what it could not assess.
+   */
+  renderJs?: boolean;
+  /** Workspace policy loaded by the authenticated orchestration path. */
+  checkPolicy?: CheckPolicy;
   /** Jurisdiction codes the product serves — drives compliance filtering + scorecard. */
   targetMarkets?: JurisdictionCode[];
   /** Fired with each fresh, de-duplicated, ordered batch of checks as it lands. */
@@ -62,20 +76,37 @@ export interface LiteScanResult {
   homepageUrl: string | null;
   /** Jurisdiction codes auto-detected from the page (audit + legacy fallback). */
   detectedMarkets: JurisdictionCode[];
+  /**
+   * What ran, what failed and what was unavailable. Returned so the scan can
+   * state its own coverage rather than leaving it inside one check row's
+   * evidence JSON, where nothing but a reader of raw rows would ever find it.
+   */
+  collectorExecutions: CollectorExecution[];
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
   const includePageSpeed = input.includePageSpeed ?? true;
+  const renderJs = input.renderJs ?? includePageSpeed;
 
   // De-dup + stable ordering across every wave; first writer of a checkKey wins.
   const seen = new Map<string, PulseScanCheckInput>();
   const collected: PulseScanCheckInput[] = [];
   let order = 0;
   const pending: Promise<void>[] = [];
+  const collectorExecutions: CollectorExecution[] = [];
+
+  const collectorFailed = (name: string, error: unknown) => {
+    collectorExecutions.push({
+      name,
+      outcome: "ERROR",
+      detail: error instanceof Error ? error.message.slice(0, 160) : "collector failed",
+    });
+  };
+  const collectorCompleted = (name: string) => collectorExecutions.push({ name, outcome: "COMPLETED" });
 
   const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
     const fresh: PulseScanCheckInput[] = [];
-    for (const c of batch) {
+    for (const c of applyCheckPolicy(batch, input.checkPolicy)) {
       if (seen.has(c.checkKey)) continue;
       // Trust layer — stamp confidence + bucket centrally (covers every probe).
       const withOrder = { ...annotateTrust(c), sortOrder: order++ };
@@ -99,25 +130,36 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let codeInsights: CodeAgentInsights | null = null;
   let homepageUrl: string | null = null;
   let detectedMarkets: JurisdictionCode[] = [];
+  let urlTargetBlocked = false;
+  let urlSurfaceIsProduction = true;
+  let shouldResolveStandards = input.inputType === "GITHUB_REPO";
+  let executionPlatform = input.platform;
 
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
     if (!raw) throw new Error("A URL is required.");
-    const safeUrl = input.skipUrlGuard ? raw : (await assertScannableUrl(raw)).url;
+    const safeUrl = (await assertScannableUrl(raw)).url;
 
-    // Top-level parallelism: page checks ∥ deploy probes ∥ PageSpeed.
-    const deployP = runDeployAgent(safeUrl)
-      .then((r) => { deployInsights = r.insights; pending.push(ingest(r.checks)); })
-      .catch(() => {});
-    const browserP = includePageSpeed
-      ? runBrowserAgent(safeUrl)
-          .then((r) => { browserInsights = r.insights; pending.push(ingest(r.checks)); })
-          .catch(() => {})
-      : Promise.resolve();
-
-    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets);
+    // Classify the actual document first. Starting deploy/PageSpeed in parallel
+    // used quota and time on App Store pages, source-only platforms, prototypes,
+    // and Vercel/Cloudflare checkpoints whose results were later discarded.
+    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
+    collectorCompleted("url-checks");
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
+    urlSurfaceIsProduction = urlResult.surfaceKind === "DEPLOYED_PRODUCT";
+    urlTargetBlocked = urlResult.checks.some(
+      (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
+    );
+    const targetKind = detectUrlTargetKind(safeUrl);
+    if (targetKind === "app_store") executionPlatform = "IOS_APP";
+    if (targetKind === "play_store") executionPlatform = "ANDROID_APP";
+    const collectorPlan = buildUrlCollectorPlan(
+      input.platform,
+      urlResult.surfaceKind,
+      targetKind,
+    );
+    shouldResolveStandards = collectorPlan.standards;
     // Reconcile: persist anything not already emitted (e.g. unreachable-site branch).
     pending.push(ingest(urlResult.checks));
 
@@ -129,17 +171,60 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     });
     if (coverage) pending.push(ingest([coverage]));
 
-    await Promise.all([deployP, browserP]);
+    const [deployOutcome, browserOutcome] = await Promise.all([
+      collectorPlan.deploy
+        ? Promise.allSettled([runDeployAgent(safeUrl)]).then(([result]) => result)
+        : Promise.resolve(null),
+      collectorPlan.browser && includePageSpeed
+        ? Promise.allSettled([runBrowserAgent(safeUrl)]).then(([result]) => result)
+        : Promise.resolve(null),
+    ]);
+
+    // `collectorOutcome` (not the bare settled status) decides COMPLETED vs ERROR —
+    // both agents catch their own network failures and resolve with an empty result,
+    // so a fulfilled promise is not proof either of them collected anything.
+    // Whatever checks they did produce are still ingested; a partial result is
+    // evidence, it just is not a complete one.
+    if (deployOutcome) {
+      collectorExecutions.push(collectorOutcome("deploy-agent", deployOutcome));
+      if (deployOutcome.status === "fulfilled") {
+        deployInsights = deployOutcome.value.insights;
+        pending.push(ingest(deployOutcome.value.checks));
+      }
+    } else {
+      collectorExecutions.push({ name: "deploy-agent", outcome: "NOT_APPLICABLE" });
+    }
+
+    if (browserOutcome) {
+      collectorExecutions.push(collectorOutcome("browser-agent", browserOutcome));
+      if (browserOutcome.status === "fulfilled") {
+        browserInsights = browserOutcome.value.insights;
+        pending.push(ingest(browserOutcome.value.checks));
+      }
+    } else {
+      collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
+    }
+
+    // The source collectors are not merely absent from a URL scan — they are
+    // UNAVAILABLE, and for a reason the customer can act on. Recording nothing
+    // made the coverage check read "every collector completed" while half of
+    // Pulse had not run.
+    collectorExecutions.push(...sourceCollectorsUnavailable(
+      "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
+    ));
   } else {
-    // GITHUB_REPO — repo + code checks in parallel, then the homepage (if any).
+    // GITHUB_REPO — detect the artefact, then run only its source families.
     const repo = (input.githubRepo ?? "").trim();
     if (!repo) throw new Error("A GitHub repo is required.");
 
-    const [ghResult, codeResult, repoShape] = await Promise.all([
-      runGithubChecks(repo).then((r) => { pending.push(ingest(r.checks)); return r; }).catch(() => ({ checks: [], techStack: [] as string[], nativePlatform: null })),
-      runCodeAgent(repo).then((r) => { codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch(() => null),
-      // Shares the memoized snapshot the families already fetched — no extra call.
-      detectRepoShape(repo).catch(() => "none" as const),
+    // Shares one memoized snapshot with both collectors — no repeated tree fetch.
+    const repoShape = await detectRepoShape(repo)
+      .then((shape) => { collectorCompleted("repo-shape"); return shape; })
+      .catch((error) => { collectorFailed("repo-shape", error); return "none" as const; });
+    executionPlatform = effectivePlatformForRepoShape(input.platform, repoShape);
+    const [ghResult, codeResult] = await Promise.all([
+      runGithubChecks(repo, input.platform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
+      runCodeAgent(repo, input.platform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
     ]);
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
@@ -155,55 +240,29 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     });
     if (coverage) pending.push(ingest([coverage]));
 
-    // A MOBILE repo is not graded on its GitHub "Website" link.
-    //
-    // homepageUrl was always null until July 2026 because runCodeAgent bailed on any
-    // GraphQL failure, so this branch never ran. Once that was fixed (#463) a native
-    // iOS repo whose Website field points at a marketing page had the full ~400-check
-    // web suite run against it and failed nearly all of it — 0/100 off 439 checks.
-    // The repo's own source is the subject of the scan; the link is not.
-    //
-    // ⚠️ The same guard exists in pulse-agents/orchestrator.ts, which is DEAD CODE —
-    // runOrchestratedScan has no callers. THIS is the live path. Check for callers
-    // before assuming a change to that file affects a scan.
-    const isMobileRepo = ghResult.nativePlatform != null;
+    // The mirror of the URL branch: a repo scan never reaches the live site, so
+    // headers, TLS, rendered content and deployment signals are unmeasured. Left
+    // unrecorded, coverage would report "3 of 3 collectors completed" and read as
+    // a whole-product assessment — the same defect as the URL side, in the other
+    // direction, and I fixed only one of them the first time.
+    collectorExecutions.push(...urlCollectorsUnavailable(
+      "No deployed URL was scanned, so the live-site families (headers, TLS, rendered content, deployment) did not run. Re-scan with a URL to include them.",
+    ));
 
-    if (homepageUrl && isMobileRepo) {
-      pending.push(ingest([{
-        category: CATEGORIES.CODE_QUALITY,
-        checkKey: "mobile_repo_web_suite_skipped",
-        label: "Web checks skipped (mobile repo)",
-        status: "SKIPPED",
-        detail:
-          `Detected a ${ghResult.nativePlatform} project, so the website suite was not run against the repository's ` +
-          `linked homepage (${homepageUrl}). A mobile app is graded on its source and store readiness, not on the ` +
-          `marketing page it links to. Scan that URL separately if you want it graded.`,
-      }]));
-    } else if (homepageUrl) {
-      const safeHome = input.skipUrlGuard ? homepageUrl : (await assertScannableUrl(homepageUrl).then((r) => r.url).catch(() => null));
-      if (safeHome) {
-        const deployP = runDeployAgent(safeHome)
-          .then((r) => { deployInsights = r.insights; pending.push(ingest(r.checks)); })
-          .catch(() => {});
-        const browserP = includePageSpeed
-          ? runBrowserAgent(safeHome)
-              .then((r) => { browserInsights = r.insights; pending.push(ingest(r.checks)); })
-              .catch(() => {})
-          : Promise.resolve();
-        const urlResult = await runUrlChecks(safeHome, input.platform, onWave, input.targetMarkets, { githubTechStack: techStack });
-        if (urlResult.techStack.length > 0) techStack = urlResult.techStack;
-        detectedMarkets = urlResult.detectedMarkets;
-        pending.push(ingest(urlResult.checks));
-        await Promise.all([deployP, browserP]);
-      }
-    }
+    // The optional GitHub homepage remains useful metadata for the report, but it
+    // is not the selected artefact and is never scanned implicitly. Users can run
+    // a separate URL scan when they want that surface assessed.
   }
 
   // First flush every live source/probe wave. The deep catalogue can then use
   // those deterministic observations as real evidence instead of showing every
   // item as a generic manual task.
   await Promise.all(pending);
-  await ingest(resolveEvidenceBackedControls(input.platform, collected));
+  if (!urlTargetBlocked && urlSurfaceIsProduction && shouldResolveStandards) {
+    await ingest(resolveEvidenceBackedControls(executionPlatform, collected));
+    await ingest(customPolicyChecks(input.checkPolicy));
+  }
+  await ingest([collectorCompletenessCheck(collectorExecutions)]);
 
   return {
     checks: collected,
@@ -214,5 +273,6 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     codeInsights,
     homepageUrl,
     detectedMarkets,
+    collectorExecutions,
   };
 }

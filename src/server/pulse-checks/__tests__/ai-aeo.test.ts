@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runAiAeoChecks } from "../ai-aeo";
 import type { ExtendedCheckContext } from "../_types";
 
+vi.mock("@/server/pulse-lite/url-guard", () => ({
+  fetchScannableUrl: (url: string, init?: RequestInit) => fetch(url, init),
+}));
+
 function context(html: string): ExtendedCheckContext {
   return {
     pageResult: { ok: true, status: 200, headers: {}, html, responseTimeMs: 10, finalUrl: "https://example.test" },

@@ -6,6 +6,8 @@
 
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./pulse-checks/_types";
+import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
+import { getInapplicableCategories } from "./pulse-checks/platform-applicability";
 
 import { runSecurityExtended } from "./pulse-checks/security-extended";
 import { runLegalExtended } from "./pulse-checks/legal-extended";
@@ -34,6 +36,7 @@ import { runVibeCodeHygieneChecks } from "./pulse-checks/vibe-code-hygiene";
 import { runUsPrivacyExtended } from "./pulse-checks/us-privacy-extended";
 import { runVibeSecurityChecks } from "./pulse-checks/vibe-security";
 import { runAiAppSafetyChecks } from "./pulse-checks/ai-app-safety";
+import { collectorCompletenessCheck, collectorExecution } from "./pulse-checks/collector-health";
 
 export type { ExtendedCheckContext };
 
@@ -49,38 +52,45 @@ export async function runExtendedChecks(
   ctx: ExtendedCheckContext,
   onWave?: (checks: PulseScanCheckInput[]) => void,
 ): Promise<PulseScanCheckInput[]> {
-  const runners = [
-    runSecurityExtended,
-    runLegalExtended,
-    runPerformanceExtended,
-    runWcagChecks,
-    runAuthExtended,
-    runRolesPermissionsChecks,
-    runEmailDeliverabilityChecks,
-    runObservabilityExtended,
-    runInfrastructureExtended,
-    runSaasExtended,
-    runPaymentsExtended,
-    runSeoExtended,
-    runTrustBrandExtended,
-    runMissingPagesExtended,
-    runGlobalDistributionExtended,
-    runCodeQualityExtended,
-    runMobileExtended,
-    runBusinessOperationsChecks,
-    runApiQualityChecks,
-    runApiHealthChecks,
-    runApiBehaviourChecks,
-    runAiReadinessChecks,
-    runAiAeoChecks,
-    runVibeCodeHygieneChecks,
-    runUsPrivacyExtended,
-    runVibeSecurityChecks,
-    runAiAppSafetyChecks,
+  const runners: Array<[
+    string,
+    CheckCategory,
+    (context: ExtendedCheckContext) => PulseScanCheckInput[] | Promise<PulseScanCheckInput[]>,
+  ]> = [
+    ["security", CATEGORIES.SECURITY, runSecurityExtended],
+    ["legal", CATEGORIES.LEGAL, runLegalExtended],
+    ["performance", CATEGORIES.PERFORMANCE, runPerformanceExtended],
+    ["wcag", CATEGORIES.ACCESSIBILITY, runWcagChecks],
+    ["authentication", CATEGORIES.AUTHENTICATION, runAuthExtended],
+    ["roles-permissions", CATEGORIES.ROLES, runRolesPermissionsChecks],
+    ["email-deliverability", CATEGORIES.EMAIL, runEmailDeliverabilityChecks],
+    ["observability", CATEGORIES.OBSERVABILITY, runObservabilityExtended],
+    ["infrastructure", CATEGORIES.INFRASTRUCTURE, runInfrastructureExtended],
+    ["saas", CATEGORIES.SAAS, runSaasExtended],
+    ["payments", CATEGORIES.PAYMENTS, runPaymentsExtended],
+    ["seo", CATEGORIES.SEO, runSeoExtended],
+    ["trust-brand", CATEGORIES.TRUST_BRAND, runTrustBrandExtended],
+    ["missing-pages", CATEGORIES.MISSING_PAGES, runMissingPagesExtended],
+    ["global-distribution", CATEGORIES.GLOBAL_DISTRIBUTION, runGlobalDistributionExtended],
+    ["code-quality", CATEGORIES.CODE_QUALITY, runCodeQualityExtended],
+    ["mobile", CATEGORIES.MOBILE, runMobileExtended],
+    ["business-operations", CATEGORIES.BUSINESS_OPS, runBusinessOperationsChecks],
+    ["api-quality", CATEGORIES.API_QUALITY, runApiQualityChecks],
+    ["api-health", CATEGORIES.API_QUALITY, runApiHealthChecks],
+    ["api-behaviour", CATEGORIES.API_QUALITY, runApiBehaviourChecks],
+    ["ai-readiness", CATEGORIES.AI_READINESS, runAiReadinessChecks],
+    ["ai-aeo", CATEGORIES.AEO, runAiAeoChecks],
+    ["vibe-hygiene", CATEGORIES.VIBE_HYGIENE, runVibeCodeHygieneChecks],
+    ["us-privacy", CATEGORIES.LEGAL, runUsPrivacyExtended],
+    ["vibe-security", CATEGORIES.SECURITY, runVibeSecurityChecks],
+    ["ai-app-safety", CATEGORIES.AI_SAFETY, runAiAppSafetyChecks],
   ];
 
+  const excludedCategories = new Set(getInapplicableCategories(ctx.platform, ctx.surfaceKind));
+  const relevantRunners = runners.filter(([, category]) => !excludedCategories.has(category));
+
   const results = await Promise.allSettled(
-    runners.map((run) =>
+    relevantRunners.map(([, , run]) =>
       Promise.resolve(run(ctx)).then((value) => {
         if (onWave && value.length) onWave(value);
         return value;
@@ -88,5 +98,10 @@ export async function runExtendedChecks(
     ),
   );
 
-  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  const checks = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  checks.push(collectorCompletenessCheck(
+    results.map((result, index) => collectorExecution(relevantRunners[index][0], result)),
+    "scan_extended_collector_completeness",
+  ));
+  return checks;
 }

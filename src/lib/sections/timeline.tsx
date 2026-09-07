@@ -78,7 +78,7 @@ export const timelineSection = defineSection<TimelineSectionData>({
           {phases.map((phase, index) => (
             <div
               key={phase.id ?? phase.name}
-              className="proposal-block-avoid relative mt-4 rounded-[10px] border border-[var(--border-2)] p-4 first:mt-0"
+              className="proposal-block-avoid relative mt-4 rounded-[10px] border border-[var(--border-2)] bg-white p-4 first:mt-0"
             >
               {index < phases.length - 1 ? (
                 <span
@@ -93,9 +93,11 @@ export const timelineSection = defineSection<TimelineSectionData>({
               <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
               <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[var(--text-4)]">{phase.duration}</p>
               <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{phase.summary}</p>
-              <p className="mt-3 text-xs text-[var(--text-3)]">
-                Deliverables: {phase.deliverables.join(", ")}
-              </p>
+              {phase.deliverables.length ? (
+                <p className="mt-3 text-xs text-[var(--text-3)]">
+                  Deliverables: {phase.deliverables.join(", ")}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -106,16 +108,18 @@ export const timelineSection = defineSection<TimelineSectionData>({
         {phases.map((phase) => (
           <article
             key={phase.id ?? phase.name}
-            className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] p-4"
+            className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white p-4"
           >
             <div className="flex items-center justify-between gap-2">
               <p className="text-base font-semibold text-[var(--text-1)]">{phase.name}</p>
               <p className="text-xs uppercase tracking-[0.12em] text-[var(--text-4)]">{phase.duration}</p>
             </div>
             <p className="mt-3 text-sm leading-7 text-[var(--text-2)]">{phase.summary}</p>
-            <p className="mt-3 text-xs text-[var(--text-3)]">
-              Deliverables: {phase.deliverables.join(", ")}
-            </p>
+            {phase.deliverables.length ? (
+              <p className="mt-3 text-xs text-[var(--text-3)]">
+                Deliverables: {phase.deliverables.join(", ")}
+              </p>
+            ) : null}
           </article>
         ))}
       </div>

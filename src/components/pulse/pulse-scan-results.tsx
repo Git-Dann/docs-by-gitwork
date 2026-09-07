@@ -32,13 +32,17 @@ import { Modal } from "@/components/ui/modal";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
+import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
+import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
+import { evaluateReleaseGate } from "@/server/pulse-checks/release-decision";
+import { computePillarBreakdown } from "@/server/pulse-checks/pillars";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useStarterList } from "@/hooks/use-starters";
 import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { FixAgentResult } from "@/lib/api";
 import { cn, formatRelative } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff, GateEvaluationRecord, ReleaseDecisionState } from "@/types/pulse";
 import { AI_MATURITY_LABELS } from "@/types/pulse";
 import {
   PulseCheckStatusIcon,
@@ -65,17 +69,188 @@ function groupChecksByCategory(checks: PulseScanCheckRecord[]) {
   return map;
 }
 
+/**
+ * A category's score, from the same core the headline uses.
+ *
+ * This is the FALLBACK path — a scan carrying a stored `scoreBreakdown` reads
+ * that instead. It used to be a hand-rolled PASS=1 / WARN=0.5 ratio under a
+ * comment claiming it matched `calculateHealthScore`. It did not: the real
+ * formula weights every check by severity, evidence strength and confidence, and
+ * damps checks that share a `controlId` so several views of one signal count
+ * once. So a legacy scan's bars could disagree with its own headline number, and
+ * with the same bars on a newer scan.
+ *
+ * Reading `byCategory` rather than `finalScore` is deliberate: it is exactly the
+ * arithmetic the stored path does (`earned / possible`), and it avoids
+ * `finalScore`'s scan-level caps, which would zero a single category for a
+ * reason that has nothing to do with that category.
+ */
 function categoryScore(checks: PulseScanCheckRecord[]): number {
-  const applicable = checks.filter((c) => c.status !== "SKIPPED");
-  if (!applicable.length) return 0;
-  // Match calculateHealthScore: a WARN earns half credit (it's "could be better",
-  // not a hard failure) so a category of only warnings reads ~50, never 0.
-  let earned = 0;
-  for (const c of applicable) {
-    if (c.status === "PASS") earned += 1;
-    else if (c.status === "WARN") earned += 0.5;
-  }
-  return Math.round((earned / applicable.length) * 100);
+  const [row] = computeScoreBreakdown(checks as unknown as PulseScanCheckInput[]).byCategory;
+  return row && row.possible > 0 ? Math.round((row.earned / row.possible) * 100) : 0;
+}
+
+/**
+ * The six pillars, above the 26-category wall.
+ *
+ * 1,645 checks across 26 categories is a more accurate measurement than any
+ * six-bucket rollup and a much worse conversation: a client sees one number and
+ * then a list, with no answer to "which part of this is the problem?". This is
+ * the answer, and it is a PRESENTATION rollup — `computePillarBreakdown`
+ * delegates every check to the same `computeScoreBreakdown` the headline uses, so
+ * the two cannot apply different trust rules.
+ *
+ * Derived at render, never stored: it describes the checks on this page, so a
+ * snapshot would be correct exactly once. (Opposite call from Countermark, which
+ * freezes because it records what was true at a moment.)
+ */
+/** Plain words for each decision — the label a non-engineer reads first. */
+const GATE_LABEL: Record<ReleaseDecisionState, string> = {
+  READY: "Ready to ship",
+  CONDITIONAL: "Ship with reservations",
+  BLOCKED: "Blocked",
+  INCONCLUSIVE: "Not enough evidence",
+};
+
+/**
+ * The release decision, at the top of the report.
+ *
+ * A score says how a product is doing; this says whether it can ship and what is
+ * stopping it. It leads because that is the question the reader actually arrived
+ * with — §39 of the assurance brief puts the decision above the number for
+ * exactly that reason.
+ *
+ * INCONCLUSIVE is styled as its own state, not as a soft failure: "we could not
+ * establish this" and "this is broken" are different facts with different fixes,
+ * and collapsing them is the mistake the whole gate exists to avoid.
+ */
+function ReleaseGateBanner({ gate }: { gate: GateEvaluationRecord }) {
+  // Semantic tokens, not Tailwind's own reds and ambers — the palette has no
+  // -600 step and the literals do not flip in dark mode, which is the defect
+  // §42.12 had to go back and fix across Care.
+  //
+  // INCONCLUSIVE is deliberately NEUTRAL rather than a warning colour. It is not
+  // a finding about the product; colouring it like one invites a reader to treat
+  // "we could not see enough" as "something is wrong here", and the two need
+  // different actions from different people.
+  // Semantic tokens, not Tailwind's own reds and ambers — the palette has no
+  // -600 step and the literals do not flip in dark mode, which is the defect
+  // §42.12 had to go back and fix across Care.
+  //
+  // Colour lives in the accent rule, the dot and the decision word; the reasons
+  // stay in ordinary text tokens. This banner renders on EVERY scan, and a
+  // saturated panel that is always on screen becomes wallpaper — the same
+  // lesson §42.7 had to learn when Care's reply banner filled a card on healthy
+  // threads too. Only BLOCKED is allowed to fill, because it is the one state
+  // that must interrupt.
+  //
+  // INCONCLUSIVE is deliberately NEUTRAL rather than a warning colour. It is not
+  // a finding about the product; colouring it like one invites a reader to treat
+  // "we could not see enough" as "something is wrong here", and the two need
+  // different actions from different people.
+  const tone =
+    gate.decision === "BLOCKED"
+      ? { rule: "border-l-[var(--danger-500)]", bg: "bg-[var(--danger-50)]", text: "text-[var(--danger-700)]", dot: "bg-[var(--danger-500)]" }
+      : gate.decision === "INCONCLUSIVE"
+        ? { rule: "border-l-[var(--text-4)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--text-2)]", dot: "bg-[var(--text-4)]" }
+        : gate.decision === "CONDITIONAL"
+          ? { rule: "border-l-[var(--warning-500)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--warning-500)]", dot: "bg-[var(--warning-500)]" }
+          : { rule: "border-l-[var(--success-500)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--success-500)]", dot: "bg-[var(--success-500)]" };
+
+  const reasons = gate.decision === "BLOCKED" ? gate.blocking
+    : gate.decision === "INCONCLUSIVE" ? gate.unverified
+      : gate.decision === "CONDITIONAL" ? gate.conditional
+        : [];
+
+  return (
+    <div className={cn("rounded-[10px] border border-[var(--border-1)] border-l-[3px] p-4", tone.rule, tone.bg)}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", tone.dot)} />
+        <span className={cn("text-sm font-semibold", tone.text)}>{GATE_LABEL[gate.decision]}</span>
+        <span className="widget-data-label text-[var(--text-4)]">
+          {gate.policy.label} · health {gate.metrics.health} · coverage {gate.metrics.coverage}%
+        </span>
+      </div>
+      {reasons.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {reasons.map((reason) => (
+            <li key={reason.code} className="text-xs leading-5 text-[var(--text-2)]">{reason.summary}</li>
+          ))}
+        </ul>
+      )}
+      {/* Always visible, whatever the decision — a READY that quietly omits what
+          it could not check is the overstatement this report is built to avoid. */}
+      {gate.decision !== "INCONCLUSIVE" && gate.unverified.length > 0 && (
+        <p className="mt-2 border-t border-current/10 pt-2 text-xs leading-5 text-[var(--text-3)]">
+          {gate.unverified.map((reason) => reason.summary).join(" ")}
+        </p>
+      )}
+      <p className="mt-2 text-[10px] text-[var(--text-4)]">
+        Decided from the checks and coverage on this scan under policy{" "}
+        <span className="font-mono">{gate.policy.id}@{gate.policy.version}</span>. No AI output is used.
+      </p>
+    </div>
+  );
+}
+
+function PillarStrip({ checks, num }: { checks: PulseScanCheckRecord[]; num: string }) {
+  const { pillars, dropped } = computePillarBreakdown(checks as unknown as PulseScanCheckInput[]);
+  const scored = pillars.filter((pillar) => pillar.score !== null);
+  if (scored.length === 0) return null;
+
+  return (
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">{`${num} // WHERE IT STANDS`}</span>
+        <span className="widget-header-right">
+          {dropped.length > 0 ? `${scored.length} of ${pillars.length} apply` : "published weights"}
+        </span>
+      </div>
+      <div className="widget-body">
+        <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+          {scored.map((pillar) => (
+            <div key={pillar.key}>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="widget-data-label truncate" title={pillar.question}>{pillar.label}</p>
+                {/* The weight it ACTUALLY carried, after dropped pillars were
+                    redistributed — not the published one, which would be a
+                    different number from the one that produced this score. */}
+                <span className="shrink-0 font-mono text-[10px] text-[var(--text-4)]">{pillar.effectiveWeight}%</span>
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="font-serif text-2xl font-bold leading-none tabular-nums text-[var(--text-1)]">{pillar.score}</span>
+                <span className="font-mono text-[10px] text-[var(--text-4)]">
+                  {pillar.pass}/{pillar.pass + pillar.warn + pillar.fail}
+                  {pillar.excluded > 0 ? ` · ${pillar.excluded} unscored` : ""}
+                </span>
+              </div>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--surface-2)]">
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    (pillar.score ?? 0) >= 75 ? "bg-emerald-500"
+                      : (pillar.score ?? 0) >= 50 ? "bg-amber-500"
+                        : "bg-red-500",
+                  )}
+                  style={{ width: `${pillar.score}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* A dropped pillar is NAMED. Scoring one on nothing, or scoring it zero,
+            is the "we could not look" → "it is not there" failure this codebase
+            keeps finding. */}
+        {dropped.length > 0 && (
+          <p className="mt-4 border-t border-[var(--border-2)] pt-3 text-xs text-[var(--text-3)]">
+            <span className="widget-data-label">Not assessed</span>{" "}
+            {pillars.filter((pillar) => pillar.score === null).map((pillar) => pillar.label).join(" · ")}
+            {" — nothing applicable to this project type ran, so their points were shared across the pillars that did apply rather than counting against the score."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Best-effort tech stack: prefer the deterministically-detected stack; when none
@@ -1319,6 +1494,7 @@ function ScoreExplainer({
   }, [open]);
 
   const capped = breakdown.capsApplied.length > 0;
+  const isV3 = breakdown.scoreVersion === "pulse-score-v3";
   const delta = previousScore !== null ? score - previousScore : null;
 
   // What moved since the last scan, in plain words.
@@ -1327,6 +1503,10 @@ function ScoreExplainer({
     if (diff.fixed.length) changeParts.push(`${diff.fixed.length} fixed`);
     if (diff.regressed.length) changeParts.push(`${diff.regressed.length} regressed`);
     if (diff.newIssues.length) changeParts.push(`${diff.newIssues.length} new ${diff.newIssues.length === 1 ? "issue" : "issues"}`);
+    // Stated alongside the fixes, never omitted while a fix count is shown —
+    // "4 fixed" beside a silent 7 that stopped being checkable is the reading
+    // this whole bucket exists to prevent.
+    if (diff.unverified.length) changeParts.push(`${diff.unverified.length} no longer verifiable`);
   }
 
   return (
@@ -1347,14 +1527,21 @@ function ScoreExplainer({
           className="z-[9999] rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5 text-left shadow-xl"
         >
           <p className="text-sm font-semibold text-[var(--text-1)]">How this score works</p>
-          <p className="mt-1.5 text-xs leading-5 text-[var(--text-2)]">
-            Every check earns points: a <span className="font-semibold text-emerald-600">pass</span> scores full,
-            a <span className="font-semibold text-amber-600">warning</span> half, a <span className="font-semibold text-red-600">fail</span> nothing.
-            Infrastructure, Security and Legal count double. This project earned{" "}
-            <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.earnedWeight}</span> of{" "}
-            <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.totalWeight}</span> weighted points —{" "}
-            that&rsquo;s <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.rawScore}</span>/100.
-          </p>
+          {isV3 ? (
+            <p className="mt-1.5 text-xs leading-5 text-[var(--text-2)]">
+              Score v3 weights each applicable control by impact, evidence strength and confidence. Correlated controls share weight,
+              and every category has a fixed contribution so adding weak checks cannot dilute a material failure. The result is{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.rawScore}/100</span> at{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.completeness}% completeness</span>, with a{" "}
+              {breakdown.lowerBound}–{breakdown.upperBound} uncertainty interval.
+            </p>
+          ) : (
+            <p className="mt-1.5 text-xs leading-5 text-[var(--text-2)]">
+              Legacy scans award full points for a pass, half for a warning and none for a fail. This scan earned{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.earnedWeight}</span> of{" "}
+              <span className="font-semibold tabular-nums text-[var(--text-1)]">{breakdown.totalWeight}</span> weighted points.
+            </p>
+          )}
 
           {capped && (
             <div className="mt-2 space-y-1 rounded-[6px] bg-red-50 p-2">
@@ -1362,6 +1549,27 @@ function ScoreExplainer({
                 <p key={c.cap} className="text-[11px] leading-4 text-red-700">
                   Held at {breakdown.finalScore}: {c.reason}
                 </p>
+              ))}
+            </div>
+          )}
+
+          {/* What DIDN'T run. `completeness` is a percentage with no account of
+              itself unless the collectors behind it are named — and a collector
+              that could not run for a reason the customer controls is the most
+              actionable thing on this panel. */}
+          {breakdown.collectors && (breakdown.collectors.failed > 0 || breakdown.collectors.unavailable.length > 0) && (
+            <div className="mt-2.5 border-t border-[var(--border-2)] pt-2">
+              <p className="widget-data-label mb-1.5">What Pulse could not check</p>
+              {breakdown.collectors.failed > 0 && (
+                <p className="text-[11px] leading-4 text-amber-700">
+                  {breakdown.collectors.failed} collector{breakdown.collectors.failed === 1 ? "" : "s"} failed
+                  ({breakdown.collectors.failedNames.join(", ")}). Those families are unknown, not passing.
+                </p>
+              )}
+              {/* The three source collectors share one reason — state it once,
+                  not once per collector. */}
+              {[...new Set(breakdown.collectors.unavailable.map((item) => item.reason))].map((reason) => (
+                <p key={reason} className="text-[11px] leading-4 text-[var(--text-3)]">{reason}</p>
               ))}
             </div>
           )}
@@ -1377,7 +1585,9 @@ function ScoreExplainer({
                       {cat.category}
                       {cat.weight === 2 && <span className="text-[var(--text-4)]"> ·2×</span>}
                     </span>
-                    <span className="shrink-0 tabular-nums text-[var(--text-2)]">{cat.pass}/{total} passed</span>
+                    <span className="shrink-0 tabular-nums text-[var(--text-2)]">
+                      {cat.pass}/{total} passed{cat.unknown ? ` · ${cat.unknown} unknown` : ""}
+                    </span>
                   </div>
                 );
               })}
@@ -1737,6 +1947,20 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   let __sectionNo = 0;
   const sectionNo = () => String(++__sectionNo).padStart(2, "0");
 
+  // Prefer the decision stored with the scan — it is the one that knew which
+  // collectors ran, which cannot be recovered from the checks. Failing that,
+  // derive it from the same pure engine, so a scan run before the gate existed
+  // still gets a decision rather than a blank space where one should be. What
+  // is never done is inventing a permissive default: a scan with no checks at
+  // all yields no banner rather than a quiet pass.
+  const gate: GateEvaluationRecord | undefined = scan.scoreBreakdown?.gate
+    ?? (scan.checks.length > 0
+      ? evaluateReleaseGate(
+        scan.checks as unknown as PulseScanCheckInput[],
+        scan.scoreBreakdown ?? computeScoreBreakdown(scan.checks as unknown as PulseScanCheckInput[]),
+      )
+      : undefined);
+
   // ── Hero — Gitwork navy DocumentCover, reused in its compact "screen" variant (the same
   // component/props shape that renders the printable report's navy cover). Replaces the old
   // header row's plain ScoreRing + the Overview tab's standalone "01 // PROJECT HEALTH" widget,
@@ -1753,15 +1977,21 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         : llm.projectClassification.type,
     });
   }
-  if (scan.healthScore !== null) {
+  // Readiness comes from the deterministic release gate when the scan has one.
+  //
+  // It used to be a fourth ad-hoc formula — `healthScore >= 80 && criticalBlockers
+  // === 0` — where `criticalBlockers` counted entries in `llm.productionBlockers`,
+  // i.e. MODEL OUTPUT. A release verdict derived from generated prose is a guess
+  // in a confident voice, and it could disagree with the deterministic checks on
+  // the same page. Scans predating the gate keep the old wording, since there is
+  // no decision to show and inventing one would be worse.
+  if (gate) {
+    heroMeta.push({ label: "Release", value: GATE_LABEL[gate.decision] });
+  } else if (scan.healthScore !== null) {
     const criticalBlockers = (llm?.productionBlockers ?? []).filter((b) => b.urgency === "CRITICAL").length;
     const ready = scan.healthScore >= 80 && criticalBlockers === 0;
     const nearly = !ready && scan.healthScore >= 55 && criticalBlockers <= 2;
-    // Just the verdict word here — the blocker/failing-check count it's gated on is
-    // already the headline of the "01 // PRODUCTION BLOCKERS" card below, so stating
-    // it twice on one screen read as redundant.
-    const verdict = ready ? "Launch-ready" : nearly ? "Nearly there" : "Not launch-ready";
-    heroMeta.push({ label: "Readiness", value: verdict });
+    heroMeta.push({ label: "Readiness", value: ready ? "Launch-ready" : nearly ? "Nearly there" : "Not launch-ready" });
   }
   if (scan.previousHealthScore !== null && scan.healthScore !== null && scan.healthScore !== scan.previousHealthScore) {
     const delta = scan.healthScore - scan.previousHealthScore;
@@ -2049,6 +2279,11 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         />
       )}
 
+      {/* The decision, above the tabs, so it is read before any of the detail
+          that supports it — and on every tab, not just the one it happens to
+          live on. */}
+      {gate && <ReleaseGateBanner gate={gate} />}
+
       {/* Tabs */}
       <div className="border-b border-[var(--border-2)]">
         <div className="flex gap-0 overflow-x-auto">
@@ -2147,6 +2382,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {activeTab === "overview" && (
         <div className="space-y-4">
 
+          {/* Directly under the headline score, because that is where the reader
+              asks "which part of this is the problem?" — the question the whole
+              rollup exists to answer. On the Checks tab it would sit above the
+              wall it is meant to save you reading. */}
+          <PillarStrip checks={scan.checks} num={sectionNo()} />
+
           {/* COMPLIANCE BY MARKET — per-jurisdiction posture; deep-links to the Compliance tab */}
           {scorecard.length > 0 && (
             <button
@@ -2180,19 +2421,19 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* CHANGES SINCE LAST SCAN — diff vs the previous scan of this target */}
-          {scanDiff && (scanDiff.fixed.length + scanDiff.regressed.length + scanDiff.newIssues.length > 0) && (
+          {scanDiff && (scanDiff.fixed.length + scanDiff.regressed.length + scanDiff.newIssues.length + scanDiff.unverified.length > 0) && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">CHANGES SINCE LAST SCAN</span>
-                <span className={cn("widget-header-right tabular-nums", scanDiff.scoreChange > 0 ? "text-emerald-600" : scanDiff.scoreChange < 0 ? "text-red-600" : "text-[var(--text-4)]")}>
+                <span className={cn("widget-header-right tabular-nums", scanDiff.scoreChange > 0 ? "text-[var(--success-500)]" : scanDiff.scoreChange < 0 ? "text-[var(--danger-500)]" : "text-[var(--text-4)]")}>
                   {scanDiff.scoreChange > 0 ? "+" : ""}{scanDiff.scoreChange} pts
                 </span>
               </div>
               <div className="widget-body space-y-3">
                 {[
-                  { items: scanDiff.regressed, label: "Regressed", tone: "text-red-600", sign: "▼" },
-                  { items: scanDiff.newIssues, label: "New issues", tone: "text-amber-600", sign: "+" },
-                  { items: scanDiff.fixed, label: "Fixed", tone: "text-emerald-600", sign: "✓" },
+                  { items: scanDiff.regressed, label: "Regressed", tone: "text-[var(--danger-500)]", sign: "▼" },
+                  { items: scanDiff.newIssues, label: "New issues", tone: "text-[var(--warning-500)]", sign: "+" },
+                  { items: scanDiff.fixed, label: "Fixed", tone: "text-[var(--success-500)]", sign: "✓" },
                 ].filter((g) => g.items.length > 0).map((g) => (
                   <div key={g.label}>
                     <p className={cn("widget-data-label", g.tone)}>{g.sign} {g.label} ({g.items.length})</p>
@@ -2204,6 +2445,34 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                     </div>
                   </div>
                 ))}
+
+                {/* Given its own block rather than a fourth chip row, because the
+                    REASON is the content. "We stopped being able to check this"
+                    reads as "sorted" the moment it is reduced to a label, which
+                    is precisely how a finding disappears. Neutral, not a warning
+                    colour: it is not a finding about the product. */}
+                {scanDiff.unverified.length > 0 && (
+                  <div className="border-t border-[var(--border-2)] pt-3">
+                    <p className="widget-data-label text-[var(--text-3)]">
+                      ? No longer verifiable ({scanDiff.unverified.length})
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--text-3)]">
+                      These were findings last time. This scan could not confirm or clear them, so they are
+                      still outstanding — not fixed.
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {scanDiff.unverified.slice(0, 6).map((it) => (
+                        <li key={it.checkKey} className="text-xs leading-5">
+                          <span className="text-[var(--text-1)]">{it.label}</span>
+                          <span className="text-[var(--text-3)]"> — {it.detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {scanDiff.unverified.length > 6 && (
+                      <p className="mt-1 text-xs text-[var(--text-4)]">+{scanDiff.unverified.length - 6} more</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3022,12 +3291,16 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             {/* Category list */}
             <div className="space-y-2">
               {entries.map(([category, checks]) => {
-                const applicable = checks.filter((c) => c.status !== "SKIPPED");
+                const applicable = checks.filter((c) => c.status !== "SKIPPED" && c.status !== "NOT_APPLICABLE");
                 if (!applicable.length) return null;
-                const score = categoryScore(checks);
+                const storedCategory = scan.scoreBreakdown?.byCategory.find((item) => item.category === category);
+                const score = storedCategory && storedCategory.possible > 0
+                  ? Math.round((storedCategory.earned / storedCategory.possible) * 100)
+                  : categoryScore(checks);
                 const failed = checks.filter((c) => c.status === "FAIL").length;
                 const warned = checks.filter((c) => c.status === "WARN").length;
                 const passed = checks.filter((c) => c.status === "PASS").length;
+                const unknown = checks.filter((c) => ["ERROR", "INCONCLUSIVE", "NOT_TESTED", "EVIDENCE_REQUIRED"].includes(c.status)).length;
                 const hasIssues = failed > 0 || warned > 0;
                 const isExpanded = expandedCategories.has(category) || checkStatusFilter !== "ALL";
                 const visibleChecks = applicable.filter((c) => checkStatusFilter === "ALL" || c.status === checkStatusFilter);
@@ -3050,7 +3323,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                         {warned > 0 && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">{warned} warn</span>
                         )}
-                        {!hasIssues && (
+                        {unknown > 0 && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{unknown} unknown</span>
+                        )}
+                        {!hasIssues && unknown === 0 && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{passed} passed</span>
                         )}
                         <span className={cn(
@@ -3093,6 +3369,21 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                               </div>
                               {check.detail && (
                                 <p className="mt-0.5 text-xs text-[var(--text-3)]">{check.detail}</p>
+                              )}
+                              {/* What the scanner found, when workspace policy changed it.
+                                  Two separate facts — the detector's finding and the
+                                  workspace's decision about it — and the row used to show
+                                  only the second, so a disabled check read as if nothing
+                                  had been found. */}
+                              {check.detectorStatus && check.detectorStatus !== check.status && (
+                                <p className="mt-0.5 text-xs text-[var(--text-4)]">
+                                  <span className="widget-data-label">
+                                    {policyDisposition(check) === "DISABLED" ? "Workspace disabled" : "Workspace re-graded"}
+                                  </span>
+                                  {" · scanner found "}
+                                  <span className="font-semibold text-[var(--text-3)]">{check.detectorStatus}</span>
+                                  {check.detectorDetail ? ` — ${check.detectorDetail}` : ""}
+                                </p>
                               )}
                               {check.evidence && (
                                 <p className="mt-0.5 font-mono text-[10px] leading-4 text-[var(--text-4)]">{check.evidence}</p>
