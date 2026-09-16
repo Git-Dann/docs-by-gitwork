@@ -1,3 +1,4 @@
+import { GITWORK } from "@/lib/gitwork";
 import { DEFAULT_DOC_THEME } from "@/types/proposal";
 import type {
   AssetInput,
@@ -226,7 +227,7 @@ export const proposalSectionBlueprints: SectionBlueprint[] = [
       // document speaks with one voice. Set a value here only to override the footer line.
       preparedBy: "",
       team: "Product and Delivery",
-      contactDetails: "hello@gitwork.io",
+      contactDetails: GITWORK.email,
       footerNote: "Foundry by Gitwork | Internal Business Proposal",
       showBrandingBlock: true,
       signatureName: "",
@@ -359,7 +360,7 @@ export const defaultCtas: CTAInput[] = [
   {
     role: "PRIMARY",
     label: "Book a call",
-    destination: "mailto:hello@gitwork.io?subject=Proposal%20Review",
+    destination: `mailto:${GITWORK.email}?subject=Proposal%20Review`,
     destinationType: "EMAIL_LINK",
     sortOrder: 0,
   },

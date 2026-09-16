@@ -55,6 +55,29 @@ describe("the identifiers live in exactly one place", () => {
       ).toEqual([]);
     });
   }
+
+  // Five contract templates (CO/MSA/SLA/SOW/DSA) hard-coded "Gitwork Ltd" — missing "Group" — as
+  // their own party name, and six sites hard-coded the pre-migration "hello@gitwork.io" address as
+  // Gitwork's own contact email, both silently wrong on real generated documents until caught by a
+  // manual audit. Same failure mode as the company/VAT sweep above: nothing compared them. These
+  // two literals have no legitimate use anywhere outside gitwork.ts — unlike the numbers above,
+  // there is no live-data test fixture that needs to quote them — so the sweep needs no exclusion.
+  for (const [label, wrong] of [
+    ["wrong legal name (missing \"Group\")", "Gitwork Ltd"],
+    ["pre-migration email domain", "hello@gitwork.io"],
+  ] as const) {
+    it(`no source file quotes the ${label}`, () => {
+      const offenders = sourceFiles(SRC)
+        .filter((path) => !path.endsWith(join("lib", "gitwork.ts")))
+        .filter((path) => readFileSync(path, "utf8").includes(wrong))
+        .map((path) => path.slice(SRC.length + 1));
+
+      expect(
+        offenders,
+        `${label} found — import from "@/lib/gitwork" instead:\n  ${offenders.join("\n  ")}`,
+      ).toEqual([]);
+    });
+  }
 });
 
 describe("the rendered forms", () => {

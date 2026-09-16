@@ -16,6 +16,7 @@
  */
 
 import type { SectionBlueprint } from "@/lib/default-template";
+import { GITWORK } from "@/lib/gitwork";
 
 function id() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -50,10 +51,10 @@ export const sowSectionBlueprints: SectionBlueprint[] = [
       parties: [
         {
           id: id(),
-          name: "Gitwork Ltd",
+          name: GITWORK.legalName,
           role: "Service Provider",
-          organization: "Gitwork Ltd",
-          email: "hello@gitwork.io",
+          organization: GITWORK.legalName,
+          email: GITWORK.email,
           signatureRequired: true,
         },
         {
@@ -186,7 +187,7 @@ export const sowSectionBlueprints: SectionBlueprint[] = [
           id: id(),
           type: "gitwork",
           variableName: "Gitwork Signature",
-          partyName: "Gitwork Ltd",
+          partyName: GITWORK.legalName,
           signatoryName: "[REVIEW] authorised signatory name",
           signatoryRole: "Director",
           signatoryEmail: "[REVIEW] signatory email",

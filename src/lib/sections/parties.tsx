@@ -14,7 +14,7 @@
  *     (b) **Shuffle Love Ltd**, a company registered in England and Wales … ("the Client"); and
  *     (c) **Alex Doe**, in a personal capacity, care of … ("the Founder").
  *
- * It used to print a grid of `DISCLOSING PARTY / Gitwork Ltd` cards, which duplicated the party
+ * It used to print a grid of `DISCLOSING PARTY / [party name]` cards, which duplicated the party
  * columns the cover already carries — the same fact stated twice, in two different visual grammars.
  * The cover owns the at-a-glance columns; this block owns the operative sentence.
  *

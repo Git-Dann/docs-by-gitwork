@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { GITWORK } from "@/lib/gitwork";
 
 const STORAGE_KEY = "gitwork.local-settings.v1";
 const UPDATE_EVENT = "gitwork:settings-updated";
@@ -60,7 +61,7 @@ export const defaultLocalSettings: LocalSettingsState = {
   workspace: {
     preparedBy: "Gitwork Delivery Team",
     team: "Product & Delivery",
-    contactDetails: "hello@gitwork.io",
+    contactDetails: GITWORK.email,
     internalConfidentialityText: "Confidential: For internal stakeholder review only.",
     externalConfidentialityText: "Confidential: Shared for client review only. Not for onward distribution.",
   },

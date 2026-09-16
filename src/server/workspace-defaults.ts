@@ -8,6 +8,7 @@
  */
 
 import { Prisma } from "@prisma/client";
+import { GITWORK } from "@/lib/gitwork";
 
 export interface ObjectiveSnippet {
   title: string;
@@ -24,7 +25,7 @@ export interface WorkspaceProposalDefaults {
 export const EMPTY_PROPOSAL_DEFAULTS: WorkspaceProposalDefaults = {
   preparedBy: "Gitwork Delivery Team",
   team: "Product & Delivery",
-  contactDetails: "hello@gitwork.io",
+  contactDetails: GITWORK.email,
   objectiveSnippets: [
     {
       title: "Reduce proposal cycle time",
