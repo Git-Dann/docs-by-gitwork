@@ -10,6 +10,7 @@ import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
+import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
@@ -54,6 +55,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   documents: "Documents",
   intake: "Requests",
   launchpad: "Launchpad",
+  insights: "Insights",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -113,6 +115,9 @@ export function WikiPublicView({
     // enabled-but-unassigned kit would land the client on an empty page, which
     // reads as a broken link rather than as work we have not set up yet.
     ...(wiki.launchpad?.enabled && wiki.launchpad.assigned ? (["launchpad"] as const) : []),
+    // Enabled AND has boards. An enabled-but-empty section lands a client on a blank
+    // page that reads as a broken link — the same predicate code-handover uses.
+    ...(wiki.insights.enabled && wiki.insights.boards.length > 0 ? (["insights"] as const) : []),
     ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
       ? (["code-handover"] as const)
       : []),
@@ -211,6 +216,11 @@ export function WikiPublicView({
       );
     }
 
+    if (activeSection === "insights") {
+      return (
+        <WikiInsightsSectionView slug={wiki.clientSlug} boards={wiki.insights.boards} mode="public" />
+      );
+    }
     if (activeSection === "launchpad") {
       if (!wiki.launchpad) return null;
       return (

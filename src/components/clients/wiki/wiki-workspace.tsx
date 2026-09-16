@@ -34,6 +34,7 @@ import { CourseRequestsSection } from "./course-requests-section";
 import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
+import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
@@ -71,6 +72,7 @@ import {
   useSetWikiCodeEnabled,
 } from "@/hooks/use-wiki";
 import { useSetLaunchpadEnabled } from "@/hooks/use-launchpad";
+import { useSetWikiInsightsEnabled } from "@/hooks/use-wiki";
 import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -111,6 +113,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   documents: "Documents",
   intake: "Requests",
   launchpad: "Launchpad",
+  insights: "Insights",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -127,6 +130,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
   launchpad: "LAUNCHPAD",
+  insights: "INSIGHTS",
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   "api-docs": "API DOCS",
@@ -822,7 +826,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -904,6 +908,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
   const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
+  const setInsightsEnabled = useSetWikiInsightsEnabled(slug);
   // Attribution for requests logged internally — see WikiIntakeSection.
   const account = useAccount();
   const setCodeEnabled = useSetWikiCodeEnabled(slug);
@@ -947,6 +952,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const intakeOn = wiki.intakeEnabled || wiki.blockers.length > 0;
   const codeOn = wiki.codeHandover.enabled;
   const launchpadOn = Boolean(wiki.launchpad?.enabled);
+  const insightsOn = wiki.insights.enabled;
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
   // Every other section appears once it has real content OR is explicitly enabled,
   // and is otherwise offered under "+ Add New".
@@ -959,6 +965,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(documentsOn ? (["documents"] as const) : []),
     ...(intakeOn ? (["intake"] as const) : []),
     ...(launchpadOn ? (["launchpad"] as const) : []),
+    ...(insightsOn ? (["insights"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
     ...(designSystemOn ? (["design-system"] as const) : []),
     ...OPTIONAL_DOC_SECTIONS.filter(
@@ -978,6 +985,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
     ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
+    ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Insights" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
     ...(designSystemOn ? [] : [{ section: "design-system" as WikiSection, label: "Design System" }]),
     ...(changelogOn ? [] : [{ section: "changelog" as WikiSection, label: "Changelog" }]),
@@ -1029,6 +1037,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection("launchpad");
       return;
     }
+    if (section === "insights") {
+      await setInsightsEnabled.mutateAsync(true);
+      setActiveSection("insights");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(true);
       setActiveSection("code-handover");
@@ -1074,6 +1087,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "launchpad") ?? "dashboard");
       return;
     }
+    if (section === "insights") {
+      await setInsightsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "insights") ?? "dashboard");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "code-handover") ?? "dashboard");
@@ -1094,6 +1112,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "documents" &&
       section !== "intake" &&
       section !== "launchpad" &&
+      section !== "insights" &&
       section !== "code-handover"
     )
       return;
@@ -1102,7 +1121,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         ? " Clients and the intake API can no longer add items until you re-add it."
         : section === "launchpad"
           ? " The client can no longer update it. Their answers and statuses are kept, so re-adding it restores everything."
-          : "";
+          : section === "insights"
+            ? " The boards are kept, so re-adding it brings every chart back."
+            : "";
     const ok = window.confirm(
       `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
     );
@@ -1307,6 +1328,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "launchpad") {
       if (!wiki!.launchpad) return null;
       return <LaunchpadSection launchpad={wiki!.launchpad} slug={slug} mode="internal" />;
+    }
+    if (activeSection === "insights") {
+      return (
+        <WikiInsightsSectionView slug={slug} boards={wiki!.insights.boards} mode="internal" />
+      );
     }
     if (activeSection === "intake") {
       return (
@@ -1739,6 +1765,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "monitors" ||
                 s === "documents" ||
                 s === "intake" ||
+                s === "insights" ||
                 s === "code-handover",
             )}
             onDeleteSection={confirmDeletePage}

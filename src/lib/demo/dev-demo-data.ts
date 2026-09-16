@@ -754,6 +754,95 @@ const demoWiki: WikiDTO = {
     { id: "wi5", type: "BUG", title: "Search returns nothing for titles with an apostrophe", description: "“Grey’s Anatomy” returns 0 results; “Greys Anatomy” works.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: null, label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-5", taskStatus: "BACKLOG", stage: "SCHEDULED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-6), updatedAt: atDays(-5), comments: [] },
     { id: "wi6", type: "FEEDBACK", title: "Downloads should keep working on a plane", description: "Offline playback asks to sign in again once the device loses signal.", priority: "LOW", status: "CLOSED", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "CLOSED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-27), updatedAt: atDays(-20), comments: [] },
   ],
+  // Every board type, with a real two-level node map — a demo that only carried a bar
+  // chart would verify the CSS and nothing else (§43.3). The node board is deliberately
+  // shaped like the case this was built for: one thing at the centre, lots hanging off it.
+  insights: {
+    enabled: true,
+    boards: [
+      {
+        id: "ib-node",
+        kind: "node",
+        title: "How the product fits together",
+        caption:
+          "The app at the centre, and everything it talks to. Anything we do not own outright is shown on its own branch.",
+        core: "Northwind app",
+        branches: [
+          { id: "n1", label: "Playback", color: "blue", note: null, link: null, leaves: [
+            { id: "n1a", label: "HLS streaming", note: null, link: null },
+            { id: "n1b", label: "Offline downloads", note: null, link: null },
+            { id: "n1c", label: "AirPlay & Chromecast", note: null, link: null },
+            { id: "n1d", label: "Subtitles", note: null, link: null },
+          ] },
+          { id: "n2", label: "Identity", color: "violet", note: null, link: null, leaves: [
+            { id: "n2a", label: "Household profiles", note: null, link: null },
+            { id: "n2b", label: "Sign-in with Apple", note: null, link: null },
+          ] },
+          { id: "n3", label: "Billing", color: "emerald", note: null, link: null, leaves: [
+            { id: "n3a", label: "Stripe", note: null, link: null },
+            { id: "n3b", label: "App Store IAP", note: null, link: null },
+            { id: "n3c", label: "Play Billing", note: null, link: null },
+          ] },
+          { id: "n4", label: "Catalogue", color: "amber", note: null, link: null, leaves: [
+            { id: "n4a", label: "Search index", note: null, link: null },
+            { id: "n4b", label: "Editorial rails", note: null, link: null },
+          ] },
+          { id: "n5", label: "Analytics", color: "rose", note: null, link: null, leaves: [] },
+        ],
+        createdAt: atDays(-14),
+        updatedAt: atDays(-2),
+      },
+      {
+        id: "ib-bar",
+        kind: "bar",
+        title: "Where the build time went",
+        caption: "Days of engineering time by area, across the first two phases.",
+        unit: "d",
+        points: [
+          { id: "p1", label: "Playback", value: 34, color: "blue", note: null },
+          { id: "p2", label: "Identity", value: 12, color: "violet", note: null },
+          { id: "p3", label: "Billing", value: 21, color: "emerald", note: null },
+          { id: "p4", label: "Catalogue", value: 16, color: "amber", note: null },
+        ],
+        createdAt: atDays(-10),
+        updatedAt: atDays(-10),
+      },
+      {
+        id: "ib-pie",
+        kind: "pie",
+        title: "Where people watch",
+        caption: "Share of playback minutes by platform, last 30 days.",
+        unit: null,
+        points: [
+          { id: "q1", label: "iOS", value: 46, color: "blue", note: null },
+          { id: "q2", label: "Android", value: 31, color: "violet", note: null },
+          { id: "q3", label: "Web", value: 17, color: "emerald", note: null },
+          { id: "q4", label: "TV", value: 6, color: "amber", note: null },
+        ],
+        createdAt: atDays(-8),
+        updatedAt: atDays(-8),
+      },
+      {
+        id: "ib-venn",
+        kind: "venn",
+        title: "What each plan includes",
+        caption: "Where the two paid tiers overlap, and what only one of them carries.",
+        sets: [
+          { key: "A", label: "Standard", color: "blue" },
+          { key: "B", label: "Premium", color: "violet" },
+        ],
+        items: [
+          { id: "v1", label: "Ad-free playback", region: "AB", note: null },
+          { id: "v2", label: "Two profiles", region: "A", note: null },
+          { id: "v3", label: "Six profiles", region: "B", note: null },
+          { id: "v4", label: "4K & HDR", region: "B", note: null },
+          { id: "v5", label: "Offline downloads", region: "AB", note: null },
+        ],
+        createdAt: atDays(-6),
+        updatedAt: atDays(-6),
+      },
+    ],
+  },
   blockers: [
     { taskId: "t-blocked-1", title: "Wire up the new search index", blockedReason: "We need the Algolia admin API key for the production index before we can cut over. Can you add it to the shared vault?", blockedAt: atDays(-2), category: "Search & discovery", blockedResponse: null, blockedResponseAt: null },
   ],

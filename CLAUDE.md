@@ -4725,3 +4725,150 @@ it is why CI is red on every open PR. Nothing to do with this work; it needs its
 staging, so the derivation has only been exercised against demo data. **Post-deploy:** open a
 client's Requests page, promote a request, move its task to Doing on the board, reload the
 wiki, and confirm the row reads **In progress** without anyone having touched the request.
+## 48. Recent Changes (September 2026) — Insights: charts and diagrams in a client's wiki
+
+A new client-wiki section where a Gitwork user authors figures for a client: **bar, pie,
+Venn and a two-level node map**. The node map is why it exists — Dan's brief was to show
+Coachman *"the caravan as a core then loads of connected entities"*, and there was no node
+or Venn renderer anywhere in the codebase.
+
+**No charting library, and none was needed.** `analytics-widgets.tsx` is already a
+dependency-free, token-correct SVG kit; its `Donut` is reused **verbatim** for the pie
+(zero prop changes). Only the node and Venn renderers are genuinely new.
+
+⚠️ **`MiniColumns` is deliberately NOT reused for the bar**, and that is the one place
+this work went against "reuse before building". Three concrete blockers: it is
+`preserveAspectRatio="none"` so it STRETCHES (correct for a micro-chart, wrong the moment
+there is text); it has no labels at all (its one consumer supplies them as a sibling row
+of `<span>`s, which works for five fixed buckets and not for twelve authored names); and
+it takes `values: number[]`, so there is no per-column colour. Extending it would push
+label fitting, a height-varying viewBox and a palette into a component whose two existing
+consumers want none of it. The five-line diverging-baseline maths is reimplemented in
+`bar-layout.ts` and its test pins the same semantics, so the two cannot disagree.
+
+### 47.1 The data model is one board table and THREE point tables
+
+A single flat point table would have had **four of seven columns dead for three of the
+four types**, and would have forced `value Float?` — which no validator can express and
+every bar renderer would then have to handle. That is the `LaunchpadFieldType` trap from
+§43, one layer down. Bar and pie DO share a table, because they are genuinely the same
+shape; splitting those would be the opposite mistake.
+
+The usual objection to three tables is 3× the CRUD. It does not apply, because **writes
+replace the whole board's content** — the same contract `updateCodeVersion` uses for a
+version's files. There is no per-point API, `orderKey` is the array index, and the three
+tables collapse to one `switch` in `replaceBoardContent`.
+
+**The DTO is a discriminated union even though the table is not.** The database keeps a
+union header (five nullable config columns, which a board header inherently is); the wire
+format does not, so a bar board carries no `sets` and no `branches` and no component ever
+receives a field that cannot apply to it. `wiki-insights-serialize.test.ts` asserts that
+shape directly, because the pressure to flatten it back is exactly what produces "why is
+this nullable" three months later.
+
+**Palette keys, never hex.** A stored hex outlives the palette it came from: change the
+scale and old boards keep a colour nothing else on the page uses, with no way to find
+them. Colours are re-resolved on every render, and the editor offers swatches rather than
+a colour input. Venn set colours are derived by POSITION and not stored at all — three
+fewer columns, and palette compliance becomes structural.
+
+### 47.2 The radial layout, and the two rules that make it hold
+
+`src/lib/insights/radial-layout.ts` — pure, DOM-free, deterministic.
+
+- **Angular slice proportional to `1 + leafCount`.** The `1 +` is load-bearing twice: a
+  branch with no leaves still earns a wedge, and an all-empty board does not divide by
+  zero. Even spacing looks broken the moment a tree is lopsided.
+- **The leaf ring GROWS until its circumference can hold every leaf** at 22 viewBox-px of
+  arc each, with a per-branch stagger for the residual case. That is what makes "loads of
+  connected entities" work rather than degrade — at 100 leaves the ring is ~407px, the
+  viewBox grows with it and the SVG scales down.
+- **No coordinates are stored.** A freeform canvas with saved x/y cannot reflow to a
+  phone and can be saved in a state that renders wrong. Computing the layout means a
+  board is correct by construction at every width.
+- **`MAX_BRANCHES_RADIAL = 10`, past which the LIST is rendered instead** — and that is
+  not a degraded mode. A twenty-spoke radial is a bad diagram and no machinery makes it a
+  good one.
+
+⚠️ **Do not make the Venn area-proportional.** Sizing circles so every region's area
+matches its count is a constrained optimisation with **no exact solution for most
+inputs** — for a great many three-set boards the correct diagram cannot be drawn with
+circles at all, so an area-proportional renderer necessarily draws something close-but-
+wrong and presents it as measurement. Fixed geometry with honest counts makes no claim it
+cannot keep. Region names are plain English ("Both — Standard + Premium"), never `∩`.
+
+### 47.3 Every figure is followed by the same facts in text
+
+An SVG scaled into a 350px column is decoration, and a screen reader gets nothing from it
+at all. So each chart renders a readable list underneath carrying the same numbers: on a
+phone that list IS the chart, on a desktop it is the caption. The Venn's item names live
+in that list rather than inside the circles, which is what actually gets read.
+
+⚠️ Venn fills are **stacked alpha over the surface token, never `mixBlendMode: multiply`**
+— multiply collapses to black on the navy ground, so every overlap would vanish in dark
+mode. Alpha self-adapts: 0.16 → 0.29 → 0.40 reads as progressively deeper in both themes.
+
+An **empty region shows a muted `0` when the board has items anywhere, and nothing at all
+when the board is empty.** "We looked and it is empty" and "there is nothing here to look
+at" are different facts (§43.2's `null`-vs-`0` rule, applied to a lens).
+
+### 47.4 The node editor is a FLAT list
+
+A two-level tree's obvious editor is a nested one with nested drag-and-drop. Instead each
+row carries a Branch/Leaf toggle and **a leaf attaches to the nearest branch above it**,
+so the tree is edited as one flat reorderable list — which is also literally how the brief
+described it ("add data points… as easy as possible"). A leaf dragged above the first
+branch is promoted on save, so there is no list order the tree cannot express.
+
+### 47.5 Wiring, and the assertion that nearly did not discriminate
+
+Twelve allow-lists, of which `tsc` catches four. `insights-section-wiring.test.ts` is a
+sibling of the Launchpad one rather than an addition to it — that test's needles are
+launchpad-shaped and its last blocks assert a `[token]`-route posture Insights
+deliberately does NOT have. The new test asserts the inverse: **`app/api/wiki/[token]/insights`
+must not exist.** The client side is read-only and boards ride down inside the wiki DTO,
+so a token write route would be dead surface with a live attack surface.
+
+⚠️ A naive `toContain('"insights",')` does **not** discriminate in `wiki-sidebar.tsx` — it
+is a substring of the `navItem("insights", "Insights", …)` line, so it passes with the
+`visibleSections` entry deleted. The test slices a single declaration block instead
+(stopping at a **line-leading** `]`, because stopping at the first `]` cuts
+`WikiSection[] = [` in half at its own type annotation).
+
+The dashboard gets a **real `case "insights"`**. A section with no case falls through to
+the markdown-doc default and the card reads "Documentation." — the defect the Requests
+card actually shipped with (§40.1). ⚠️ Launchpad still has no case and still falls
+through; worth fixing separately.
+
+### 47.6 Verified
+
+`tsc` + `lint` **0 errors** (41 warnings, all pre-existing) · **3324 tests** ·
+`audit:ui` **0 findings** · `npx next build` clean, 103 static pages, both routes
+registered. Schema diff is **purely additive** — two enums, four models, one flag.
+
+⚠️ **Do not run `npx prisma format` to apply a schema change here.** It reformats the
+whole 4,000-line file (measured: 435 insertions / 313 deletions for a five-line addition),
+which buries the diff and conflicts with every other open branch.
+
+Driven live at `/demo/wiki`, seeded with **all four board types** including a five-branch
+node map — a demo carrying only a bar chart would verify the CSS and nothing else (§43.3).
+Measured in the DOM rather than by screenshot (the browser pane was not displayed, and
+`read_page`/`javascript_tool` are the better instruments anyway): **0 elements fall outside
+their SVG box, 0 real label collisions across 18 labels**, and at **375px the page overflow
+is 0** with each wide figure carrying its own scroller (119–179px of travel) — so nothing
+is unreachable inside `.widget-card`'s `overflow: hidden` (§45.2).
+
+**88 new unit tests.** Proved to discriminate by breaking things on purpose: **19
+wiring sabotages, each failing exactly one test**, plus twelve on the pure modules
+(mistyped Venn anchor, `∩` in a region name, baseline ignoring negatives, the bar-width
+cap, value labels on negative bars, a single-colour palette fallback, `isInsightColorKey`
+accepting a hex, a drifted palette hex, reordered palette keys, a set label drifting
+inside its circle, the `maxAbs === 0` guard, bars sorted by value).
+
+⚠️ Twice during this work a sabotage was a **silent no-op** — the edit did not match and
+the suite stayed green, which reads as a weak test. Both times the fix was to prove the
+edit landed before believing the result. That is §45.1, and it keeps happening.
+
+**Not verified:** nothing ran against a real database. **Post-deploy:** open a client's
+wiki → Add New → Insights, create a node board, and confirm it renders and the client's
+share link shows the same figure.

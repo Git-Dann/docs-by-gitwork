@@ -59,6 +59,11 @@ import {
   createWikiIntakeItem,
   importWikiIntakeItemsApi,
   type WikiIntakeImportRow,
+  createWikiInsightBoardApi,
+  deleteWikiInsightBoardApi,
+  setWikiInsightsEnabledApi,
+  updateWikiInsightBoardApi,
+  type WikiInsightBoardInput,
   setWikiIntakeCategoriesApi,
   createPublicWikiIntakeItem,
   updatePublicWikiIntakeItem,
@@ -384,6 +389,44 @@ export function useImportWikiIntakeItems(slug: string) {
       // A dry run wrote nothing — refetching would only make the preview flicker.
       if (!input.dryRun) queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
     },
+  });
+}
+
+// ─── Insights (charts & diagrams) ─────────────────────────────────────────────
+// Every write invalidates the whole wiki rather than patching a board into the cache:
+// a board write replaces its entire content, so there is no local edit that would leave
+// the page telling the truth about ordering or derived colours.
+
+export function useSetWikiInsightsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiInsightsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useCreateInsightBoard(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiInsightBoardInput) => createWikiInsightBoardApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateInsightBoard(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { boardId: string; input: WikiInsightBoardInput }) =>
+      updateWikiInsightBoardApi(slug, args.boardId, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteInsightBoard(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (boardId: string) => deleteWikiInsightBoardApi(slug, boardId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
 
