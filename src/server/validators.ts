@@ -1150,6 +1150,10 @@ export const dailyUpdatePushSchema = z.object({
   phase: z.enum(["AM", "PM"]),
   weekPlan: z.string().max(5000).optional(),
   note: z.string().max(2000).optional(),
+  // Optional target filter — when a dev's work this phase spans multiple clients,
+  // the composer lets them pick which client channel(s) the update posts to.
+  // Absent/empty = post to every involved client (unchanged behaviour).
+  clientIds: z.array(z.string()).max(100).optional(),
 });
 
 // ── Slack push (per-client "Push to Slack" composer + DevOps broadcast) ──────

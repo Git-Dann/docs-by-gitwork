@@ -3120,6 +3120,9 @@ export function pushDailyUpdate(input: {
   phase: "AM" | "PM";
   weekPlan?: string;
   note?: string;
+  /** Restrict the post to these client ids (used by the multi-client picker).
+   *  Omit to post to every involved client. */
+  clientIds?: string[];
 }): Promise<DailyUpdateDTO> {
   return apiFetch("/api/tasks/standup", {
     method: "POST",

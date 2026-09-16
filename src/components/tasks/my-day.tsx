@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRightCircleIcon,
   CheckCircleIcon,
   PaperAirplaneIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
+import { CheckIcon } from "@heroicons/react/16/solid";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { cn } from "@/lib/format";
 import { useMyDay, usePushDailyUpdate, useDeleteStandupUpdate, useUpdateTask } from "@/hooks/use-tasks";
 import { TaskPriorityBadge, TaskLabelBadge } from "@/components/tasks/task-badges";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
@@ -64,7 +66,7 @@ export function MyDay() {
     });
   }
 
-  async function pushUpdate(phase: "AM" | "PM") {
+  async function pushUpdate(phase: "AM" | "PM", clientIds?: string[]) {
     if (pushingRef.current) return;
     pushingRef.current = true;
     setConfirm(null);
@@ -74,6 +76,7 @@ export function MyDay() {
         phase,
         weekPlan: data!.isMonday ? weekPlan : undefined,
         note: note.trim() || undefined,
+        clientIds,
       });
       setPushed(phase);
       const posted = res?.posted ?? 0;
@@ -253,7 +256,7 @@ export function MyDay() {
         weekPlan={confirm === "AM" && data.isMonday ? weekPlan.trim() : ""}
         sending={push.isPending}
         onCancel={() => setConfirm(null)}
-        onSend={() => confirm && pushUpdate(confirm)}
+        onSend={(clientIds) => confirm && pushUpdate(confirm, clientIds)}
       />
 
       {/* Quick View — details + status action for a Doing/Up next task, no navigation away. */}
@@ -408,22 +411,97 @@ function PushConfirmModal({
   weekPlan: string;
   sending: boolean;
   onCancel: () => void;
-  onSend: () => void;
+  /** `undefined` posts to every involved client (single-client dev); an explicit
+   *  list restricts the post to the clients the dev ticked. */
+  onSend: (clientIds: string[] | undefined) => void;
 }) {
-  const clients = [...new Set(tasks.map((t) => t.client.name))];
+  // Distinct clients present in this phase's tasks, in first-seen order.
+  const clientsInPhase = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const t of tasks) if (!seen.has(t.client.id)) seen.set(t.client.id, t.client.name);
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  }, [tasks]);
+
+  // The client picker only appears when there's an actual choice to make — a dev
+  // whose work this phase touches a single client sees nothing and behaviour is
+  // unchanged (Umer's request: "for devs working in more than 2 projects… an
+  // option to select which project update we're targeting").
+  const multiClient = clientsInPhase.length >= 2;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Reset the selection (default: all) whenever the modal (re)opens for a phase.
+  useEffect(() => {
+    setSelected(new Set(clientsInPhase.map((c) => c.id)));
+  }, [phase, clientsInPhase]);
+
+  const activeIds = multiClient ? selected : new Set(clientsInPhase.map((c) => c.id));
+  const shownTasks = tasks.filter((t) => activeIds.has(t.client.id));
+  const shownClients = clientsInPhase.filter((c) => activeIds.has(c.id));
   const heading = phase === "AM" ? "In progress" : "Done today";
-  const nothing = tasks.length === 0 && !weekPlan;
+  const nothing = shownTasks.length === 0 && !weekPlan;
+
+  function toggleClient(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <Modal
       open={phase !== null}
       onClose={onCancel}
       title={phase === "AM" ? "Send morning standup" : "Send end-of-day update"}
+      panelClassName="flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col"
     >
-      <div className="space-y-4 p-5">
+      {/* Body scrolls internally so a long standup never grows the panel past the
+          viewport (which pushed the Cancel/Send footer off-screen). */}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+        {multiClient ? (
+          <div>
+            <p className="app-eyebrow mb-1.5">Post to</p>
+            <div className="flex flex-wrap gap-2">
+              {clientsInPhase.map((c) => {
+                const on = selected.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => toggleClient(c.id)}
+                    aria-pressed={on}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-[7px] border px-2.5 py-1.5 text-xs font-medium transition",
+                      on
+                        ? "border-[var(--brand-400)] bg-[var(--surface-brand)] text-[var(--brand-800)]"
+                        : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] border",
+                        on
+                          ? "border-[var(--brand-700)] bg-[var(--brand-700)] text-white"
+                          : "border-[var(--border-3)] bg-white",
+                      )}
+                    >
+                      {on ? <CheckIcon className="h-2.5 w-2.5" /> : null}
+                    </span>
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-[var(--text-4)]">
+              You&apos;re on multiple projects — pick which client channels this update posts to.
+            </p>
+          </div>
+        ) : null}
+
         <p className="text-[13px] text-[var(--text-3)]">
-          {clients.length > 0
-            ? `Posts to ${clients.length} client ${clients.length === 1 ? "channel" : "channels"}: ${clients.join(", ")}.`
-            : "This won't post to any client channel — nothing here belongs to a client with a linked Slack channel."}
+          {shownClients.length > 0
+            ? `Posts to ${shownClients.length} client ${shownClients.length === 1 ? "channel" : "channels"}: ${shownClients.map((c) => c.name).join(", ")}.`
+            : "This won't post to any client channel — nothing selected with a linked Slack channel."}
         </p>
 
         {weekPlan ? (
@@ -434,14 +512,18 @@ function PushConfirmModal({
         ) : null}
 
         <div>
-          <p className="app-eyebrow mb-1.5">{heading} · {tasks.length}</p>
-          {tasks.length === 0 ? (
+          <p className="app-eyebrow mb-1.5">{heading} · {shownTasks.length}</p>
+          {shownTasks.length === 0 ? (
             <p className="text-[13px] text-[var(--text-4)]">
-              {phase === "AM" ? "Nothing in progress." : "No tasks marked done today."}
+              {multiClient
+                ? "No tasks for the selected clients."
+                : phase === "AM"
+                  ? "Nothing in progress."
+                  : "No tasks marked done today."}
             </p>
           ) : (
             <ul className="space-y-1">
-              {tasks.map((t) => (
+              {shownTasks.map((t) => (
                 <li key={t.id} className="flex items-baseline gap-2 text-sm text-[var(--text-1)]">
                   <span className="text-[var(--text-4)]">•</span>
                   <span className="min-w-0 flex-1 truncate">
@@ -460,22 +542,22 @@ function PushConfirmModal({
             <p className="whitespace-pre-wrap text-sm text-[var(--text-2)]">{note}</p>
           </div>
         ) : null}
+      </div>
 
-        <div className="flex justify-end gap-2 border-t border-[var(--border-2)] pt-3">
-          <Button type="button" variant="tertiary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
-            onClick={onSend}
-            loading={sending}
-            disabled={nothing}
-          >
-            {nothing ? "Nothing to send" : "Send to Slack"}
-          </Button>
-        </div>
+      <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-2)] p-4">
+        <Button type="button" variant="tertiary" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          leadingIcon={<PaperAirplaneIcon className="h-4 w-4" />}
+          onClick={() => onSend(multiClient ? [...selected] : undefined)}
+          loading={sending}
+          disabled={nothing}
+        >
+          {nothing ? "Nothing to send" : "Send to Slack"}
+        </Button>
       </div>
     </Modal>
   );

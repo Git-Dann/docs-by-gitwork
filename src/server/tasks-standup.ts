@@ -167,7 +167,7 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
 
 export async function pushDailyUpdate(
   user: EffectiveUser,
-  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string },
+  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string; clientIds?: string[] },
 ): Promise<DailyUpdateDTO> {
   await ensureBaseRecords();
   const workDate = parseWorkDate();
@@ -280,7 +280,7 @@ export async function deleteStandupUpdate(
 async function postStandupToSlack(
   user: EffectiveUser,
   workDate: Date,
-  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string },
+  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string; clientIds?: string[] },
 ): Promise<{ posted: number; failures: string[] }> {
   const ws = await prisma.workspace.findUnique({
     where: { id: user.workspaceId },
@@ -302,7 +302,7 @@ async function postStandupToSlack(
    * "in progress"/"done" depending on the phase, which reported unreviewed work
    * as finished. Sign-off is now its own line and never counts as done.
    */
-  const groups: Array<{ label: string; tasks: TaskDTO[] }> =
+  const allGroups: Array<{ label: string; tasks: TaskDTO[] }> =
     input.phase === "AM"
       ? [
           { label: "In progress", tasks: active },
@@ -313,6 +313,15 @@ async function postStandupToSlack(
           { label: "In review — waiting on sign-off", tasks: inReview },
           { label: "Still in progress", tasks: active },
         ];
+
+  // Target filter — when the dev picked specific clients in the composer, drop
+  // every other client's tasks up front so the fan-out, the "nothing to say"
+  // check and the cards all reflect the selection. Absent/empty = no filter.
+  const targetClients =
+    input.clientIds && input.clientIds.length > 0 ? new Set(input.clientIds) : null;
+  const groups = targetClients
+    ? allGroups.map((g) => ({ ...g, tasks: g.tasks.filter((t) => targetClients.has(t.client.id)) }))
+    : allGroups;
 
   // Everything referenced by any group — drives the client fan-out, the parent
   // title lookup and the "nothing to say" check, so a task can't be posted to a
