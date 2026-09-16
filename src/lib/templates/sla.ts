@@ -255,7 +255,7 @@ export const slaSectionBlueprints: SectionBlueprint[] = [
           id: id(),
           type: "gitwork",
           variableName: "Gitwork Signature",
-          partyName: "Gitwork Ltd",
+          partyName: GITWORK.legalName,
           signatoryName: "[REVIEW] authorised signatory name",
           signatoryRole: "Director",
           signatoryEmail: "[REVIEW] signatory email",

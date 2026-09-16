@@ -165,7 +165,7 @@ export function PartiesEditor({
                   </span>
                 </label>
                 <label className="space-y-1.5">
-                  <FieldLabel>Organisation</FieldLabel>
+                  <FieldLabel>Organization</FieldLabel>
                   <input
                     value={party.organization}
                     onChange={(e) => patch(index, { organization: e.target.value })}

@@ -168,7 +168,7 @@ export const msaSectionBlueprints: SectionBlueprint[] = [
           id: id(),
           type: "gitwork",
           variableName: "Gitwork Signature",
-          partyName: "Gitwork Ltd",
+          partyName: GITWORK.legalName,
           signatoryName: "[REVIEW] Authorised Gitwork signatory",
           signatoryRole: "Director",
           signatoryEmail: GITWORK.email,
