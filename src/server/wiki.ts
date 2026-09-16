@@ -24,6 +24,7 @@ import type {
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import { buildTaskStatusCounts, type TaskLabel, type TaskStatus } from "@/types/tasks";
+import { deriveRequestStage, type RequestStage } from "@/lib/wiki-request-stage";
 import {
   resolveIntakeCategories,
   typeForCategory,
@@ -118,6 +119,23 @@ export interface WikiIntakeItemRecord {
   attachmentUrls: string[];
   source: string | null;
   taskId: string | null;
+  /**
+   * The linked task's live board column, or null when none could be established —
+   * either nothing has been promoted yet, or `taskId` points at a task that has since
+   * been deleted (it is a loose id with no FK, so that dangles).
+   *
+   * Populated only on the list path, which batch-reads the tasks. A single-item
+   * response after a create/update/promote leaves it null and the client's query
+   * invalidation refetches the list a moment later — so the worst case is one render
+   * of a slightly conservative stage, never an invented one.
+   */
+  taskStatus: TaskStatus | null;
+  /**
+   * Where this request has actually got to, in the client's language. DERIVED from
+   * `status` + `taskStatus` on every read and never stored — see
+   * src/lib/wiki-request-stage.ts for why a stored copy would go stale silently.
+   */
+  stage: RequestStage;
   /** True when an image is attached — bytes are served via a separate route. */
   hasImage: boolean;
   imageFilename: string | null;
@@ -324,6 +342,13 @@ function serializeCourseRequest(r: {
   };
 }
 
+/**
+ * @param taskStatuses  linked task id → board column, from `loadLinkedTaskStatuses`.
+ *   Omitted on the single-item paths (create/update/promote/comment), where the client
+ *   refetches the list immediately afterwards. A missing entry is treated as "could not
+ *   establish", which `deriveRequestStage` renders conservatively — never as progress
+ *   that may not exist.
+ */
 function serializeWikiIntakeItem(item: {
   id: string;
   type: WikiIntakeItemType;
@@ -353,7 +378,8 @@ function serializeWikiIntakeItem(item: {
     body: string;
     createdAt: Date;
   }[];
-}): WikiIntakeItemRecord {
+}, taskStatuses?: ReadonlyMap<string, TaskStatus>): WikiIntakeItemRecord {
+  const taskStatus = item.taskId ? (taskStatuses?.get(item.taskId) ?? null) : null;
   return {
     id: item.id,
     type: item.type,
@@ -371,6 +397,8 @@ function serializeWikiIntakeItem(item: {
     attachmentUrls: Array.isArray(item.attachmentUrls) ? (item.attachmentUrls as string[]) : [],
     source: item.source,
     taskId: item.taskId,
+    taskStatus,
+    stage: deriveRequestStage(item.status, taskStatus),
     hasImage: Boolean(item.mime),
     imageFilename: item.filename ?? null,
     device: item.device ?? null,
@@ -385,6 +413,29 @@ function serializeWikiIntakeItem(item: {
       createdAt: c.createdAt.toISOString(),
     })),
   };
+}
+
+/**
+ * Read the board column of every task a request has been promoted to, in one query.
+ *
+ * This is the whole of the "the client's sheet follows the dev board" mechanism: there is
+ * no write path, no sync job and nothing to forget — a developer drags a card and the next
+ * read of the wiki reports it. `Task.id` is the primary key so the `in` lookup is an index
+ * scan; `ClientWikiIntakeItem.taskId` carries its own index for the same reason.
+ *
+ * A `taskId` whose task has been deleted simply has no entry in the returned map, which is
+ * what `deriveRequestStage` reads as "could not establish" rather than as a claim.
+ */
+async function loadLinkedTaskStatuses(
+  taskIds: readonly (string | null)[],
+): Promise<Map<string, TaskStatus>> {
+  const ids = [...new Set(taskIds.filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return new Map();
+  const rows = await prisma.task.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, status: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.status]));
 }
 
 const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
@@ -634,6 +685,15 @@ async function buildDTO(
     status: WikiIntakeItemStatus;
     requestedBy: string | null;
     externalRef: string | null;
+    // These five were in the model and in the DTO but were NOT in the loader's `select`,
+    // so every request on the Requests page rendered with no dev label, no category (it
+    // silently fell back to the underlying type) and no link back to the client's own
+    // tracker — the one reason the intake API stores `externalUrl` at all.
+    label?: TaskLabel | null;
+    categoryId?: string | null;
+    categoryLabel?: string | null;
+    externalUrl?: string | null;
+    attachmentUrls?: unknown;
     source: string | null;
     taskId: string | null;
     createdAt: Date;
@@ -642,8 +702,8 @@ async function buildDTO(
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
-  // These 10 section loaders are independent — run them together instead of one
-  // round-trip after another (this ran on every wiki page load with zero caching).
+  // These 11 loaders are independent — run them together instead of one round-trip
+  // after another (this ran on every wiki page load with zero caching).
   const [
     blockers,
     timeline,
@@ -655,6 +715,7 @@ async function buildDTO(
     headerLinks,
     documents,
     launchpad,
+    taskStatuses,
   ] =
     await Promise.all([
       loadWikiBlockers(wiki.clientId),
@@ -667,6 +728,7 @@ async function buildDTO(
       loadWikiHeaderLinks(wiki.clientId),
       loadWikiDocuments(wiki.clientId),
       getLaunchpadByWikiId(wiki.id),
+      loadLinkedTaskStatuses((wiki.intakeItems ?? []).map((item) => item.taskId)),
     ]);
   return {
     id: wiki.id,
@@ -710,7 +772,7 @@ async function buildDTO(
     intakeItems: (wiki.intakeItems ?? [])
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(serializeWikiIntakeItem),
+      .map((item) => serializeWikiIntakeItem(item, taskStatuses)),
     intakeEnabled: wiki.intakeEnabled ?? true,
     intakeCategories: resolveIntakeCategories(wiki.intakeCategories),
     intakeCategoriesAreDefault: usesDefaultCategories(wiki.intakeCategories),
@@ -766,6 +828,15 @@ const WIKI_INCLUDE = {
       status: true,
       requestedBy: true,
       externalRef: true,
+      // ⚠️ These five were missing, and their absence was invisible because
+      // `serializeWikiIntakeItem` defaults each one to null rather than failing. Result:
+      // the Requests page showed every item's category as its underlying TYPE, never
+      // showed a dev label, and dropped the deep link back into the client's own tracker.
+      label: true,
+      categoryId: true,
+      categoryLabel: true,
+      externalUrl: true,
+      attachmentUrls: true,
       source: true,
       taskId: true,
       mime: true,
@@ -1369,15 +1440,34 @@ export async function ingestWikiItemsByToken(
 }
 
 /**
- * Shared body for both intake paths — the API's ingest token and the client's
- * own wiki share link. Takes a resolved wiki id so the CREDENTIAL question is
- * answered by the caller and this function only does the work.
+ * Shared body for every intake path — the API's ingest token, the client's own wiki
+ * share link, and the staff-side spreadsheet import. Takes a resolved wiki id so the
+ * CREDENTIAL question is answered by the caller and this function only does the work.
+ *
+ * The three differ in exactly three ways, so they are three options rather than three
+ * copies of the dedupe-and-create loop:
+ *
+ * - **`source`** — provenance, and `wiki-intake-limit.ts` counts only `"api"` rows.
+ * - **`skipQuota`** — the ceiling exists to stop a client's looping integration burying
+ *   the page. A Gitwork user pasting a sheet is not that, and the quota doc is explicit
+ *   that a client's misbehaving integration must never block the team filing by hand —
+ *   so an import must not be refused because the client's own API is at its limit.
+ * - **`notify`** — "New client request" told to the dev team, and the Slack ping to the
+ *   client's channel, are both statements that THE CLIENT asked for something. Firing
+ *   them when a Gitwork user imports their own backlog would be untrue.
  */
 async function ingestWikiItemsIntoWiki(
   wikiId: string,
   items: WikiItemIngestItem[],
-  opts: { dryRun?: boolean } = {},
+  opts: {
+    dryRun?: boolean;
+    source?: string;
+    skipQuota?: boolean;
+    notify?: boolean;
+  } = {},
 ): Promise<WikiItemIngestResult | null> {
+  const source = opts.source ?? "api";
+  const notify = opts.notify ?? true;
   const wiki = await prisma.clientWiki.findUnique({
     where: { id: wikiId },
     select: {
@@ -1400,7 +1490,7 @@ async function ingestWikiItemsIntoWiki(
   // Checked BEFORE any write: the token is the only gate on a public write
   // endpoint, and without a ceiling a looping integration could bury this page.
   // Throws a 429; existing items are untouched.
-  await assertWithinIntakeQuota(wiki.id);
+  if (!opts.skipQuota) await assertWithinIntakeQuota(wiki.id);
 
   const seenRefs = new Set(
     wiki.intakeItems.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref)),
@@ -1446,7 +1536,7 @@ async function ingestWikiItemsIntoWiki(
         attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
         device: raw.device?.trim() || null,
         osVersion: raw.osVersion?.trim() || null,
-        source: "api",
+        source,
       },
     });
     created.push(serializeWikiIntakeItem(item));
@@ -1457,7 +1547,7 @@ async function ingestWikiItemsIntoWiki(
   // Flag new client requests to the client's attributed devs (clientTeam scope
   // means only devs assigned to this client are notified). No actorId — the
   // submitter is the client, not a workspace user, so nobody is excluded.
-  if (created.length > 0) {
+  if (created.length > 0 && notify) {
     const reqTitle = (n: number) =>
       n === 1 ? `New client request: ${created[0].title}` : `${n} client requests to review`;
     dispatchNotification({
@@ -1478,6 +1568,35 @@ async function ingestWikiItemsIntoWiki(
   }
 
   return { client, created, skipped, count: created.length };
+}
+
+/**
+ * Import requests from a pasted or uploaded spreadsheet. Staff-side, by client slug.
+ *
+ * Deliberately routed through the SAME `ingestWikiItemsIntoWiki` body the intake API
+ * uses, so an imported row is deduped by exactly the rules an API-pushed one is: same
+ * `externalRef` → skipped, same title as an existing OPEN request → skipped. That
+ * matters more here than on the API path, because the natural way to use an import is to
+ * re-paste a sheet after editing it, and a second copy of every row would be the failure.
+ *
+ * Returns `{ created, skipped, count }`; `skipped` is an outcome, not an error.
+ */
+export async function importWikiIntakeItems(
+  clientId: string,
+  items: WikiItemIngestItem[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiItemIngestResult | null> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId },
+    select: { id: true },
+  });
+  if (!wiki) return null;
+  return ingestWikiItemsIntoWiki(wiki.id, items, {
+    dryRun: opts.dryRun,
+    source: "import",
+    skipQuota: true,
+    notify: false,
+  });
 }
 
 /**
@@ -1713,7 +1832,11 @@ export async function listWikiIntakeItemsByToken(
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
   });
-  return rows.map(serializeWikiIntakeItem);
+  // Carry the live stage here too. This is the endpoint an integrator polls to reconcile
+  // their own tracker, so "has Gitwork actually shipped this yet" is precisely the
+  // question being asked — and before this it could only be answered as PROMOTED forever.
+  const taskStatuses = await loadLinkedTaskStatuses(rows.map((row) => row.taskId));
+  return rows.map((row) => serializeWikiIntakeItem(row, taskStatuses));
 }
 
 export async function addWikiIntakeItem(

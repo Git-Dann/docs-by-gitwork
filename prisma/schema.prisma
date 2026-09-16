@@ -1646,6 +1646,10 @@ model ClientWikiIntakeItem {
 
   @@index([wikiId])
   @@index([wikiId, externalRef])
+  /// The wiki loader batch-reads the linked tasks to derive each request's live stage
+  /// (src/lib/wiki-request-stage.ts). `taskId` is a loose id with no FK — the
+  /// cross-module convention here — so this index is what keeps that lookup cheap.
+  @@index([taskId])
   @@map("ClientWikiIntakeItem")
 }
 
