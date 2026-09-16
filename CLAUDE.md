@@ -4549,3 +4549,69 @@ absent course is normal fuzzy behaviour; 33 unrelated rows was the bug.
 `audit:ui` 0 findings; `npx next build` clean. Proved to discriminate by reverting each
 fix in turn — subsequence bound (1 failure), field-length gate (1), mid-word floor (1),
 tolerance scale (1), prefix tie-break (1), tier order (1).
+
+## 46. Recent Changes (September 2026) — The standup review dialog resized with its content
+
+Dan reported that the **Morning** and **End of day** review popups on the daily roll-up
+card "do not follow our fixed height rule for pop ups". They did not.
+
+**Cause: nothing declared a height, so the content set one.** The panel was
+`w-full max-w-lg` — width only — and the update list inside was `max-h-[46vh]`. A
+`max-h` caps the tall case but does nothing for the short one, so the box collapsed
+around whatever was being reviewed. Measured in headless Chromium against CSS built
+from the tree, the **same dialog**:
+
+| Viewport | one-line update | long update | swing |
+|---|---|---|---|
+| 1440×900 | 281px | 597px | **316px** |
+| 1280×620 | 281px | 468px | 187px |
+| 390×844 | 298px | 571px | 273px |
+
+Opening Morning and then End of day resized the box under the cursor — which is
+exactly what the rule exists to stop.
+
+**Fixed by giving the height to the panel**, per DESIGN.md: `flex h-[80vh]
+max-h-[680px] min-h-[min(460px,80vh)] w-full max-w-lg flex-col`, with a `shrink-0`
+header, a `min-h-0 flex-1 overflow-y-auto` middle and a `shrink-0` footer. Same clamp
+as `project-update-composer.tsx`, the sibling dialog that does the same job (pushing an
+update to Slack) — consistency between the two was worth more than shaving 100px off the
+short case. Re-measured: **0px spread at all three viewports**, header a steady 36px,
+Send always reachable without scrolling, nothing off-screen.
+
+⚠️ **`min-h-[min(460px,80vh)]`, not `min-h-[460px]`** — a bare 460px floor would push the
+panel past a short viewport, and the Modal's backdrop layer does not scroll, so the
+bottom of the dialog would be unreachable rather than merely cramped.
+
+**`.widget-header` had no `flex-shrink: 0`.** It is `height: 36px` with no shrink guard,
+so the moment a dialog panel becomes a flex column the header compresses. Fixed in the
+`<Modal>` primitive (`widget-header shrink-0`) rather than in `globals.css` — scoped to
+dialogs, which is where flex-col panels are being introduced.
+
+⚠️ **The rule was written narrowly and that is why this shipped.** DESIGN.md described the
+fixed height only as part of the **two-column "list + inspector"** pattern, so a
+single-column review dialog read as out of scope. The rule now says explicitly that it
+applies to **any** dialog whose content varies, and that a `max-h-[Nvh]` on the scroll
+region is not a fixed height.
+
+⚠️ **A test that passed for free.** The first version of the regression test mounted each
+content size without clearing the DOM, so `document.querySelector('[role="dialog"]')`
+returned the **previous** mount's panel — making the long-vs-short comparison compare one
+panel with itself. It only surfaced because a later assertion failed against the stale
+panel. `openDialog()` now clears `document.body` first.
+
+**~20 other components still use `max-h-[Nvh]`** (`grep -rl "max-h-\[[0-9]*vh\]" src/components`).
+Most are dropdowns and menus, where sizing to the viewport is correct. Not swept — a dialog
+that varies its height needs the panel treatment, a menu does not, and telling them apart
+needs looking at each one.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3216 tests** (5 new), `audit:ui`
+0 findings; `npx next build` clean. Geometry measured at 1440×900 · 1280×620 · 390×844 in
+both themes, before and after. Proved to discriminate by reverting each part in turn —
+restoring the original `max-h-[46vh]` (2 failures), removing the panel height (1), dropping
+`min-h-0` (1), unpinning the footer (1), letting the header compress (1), and collapsing the
+empty state (1).
+
+**Not verified live:** `/app` is auth-gated with no staging, so the dialog was mounted in
+jsdom through its real hooks (mocked at the module edge) and the resulting markup measured in
+headless Chromium. Post-deploy: open Morning and End of day back to back and confirm the box
+does not move.

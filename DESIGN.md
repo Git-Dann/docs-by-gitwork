@@ -148,6 +148,14 @@ The system pairs **Geist** (a crisp geometric sans) with **Lora** (a transitiona
   detail/preview on the right (`minmax(0,1fr)`), divided by a `{colors.hairline}` rule, each column
   its own `overflow-y-auto`. Select-on-left → render-on-right; default-select the first item on open.
   Reach for this shape before inventing a new layout for any "pick one of a list and inspect it" popup.
+- **The fixed height applies to ANY dialog whose content varies**, not just the two-column shape.
+  A single-column review, preview or composer dialog gets its height from the **panel**
+  (`panelClassName="flex h-[80vh] max-h-[680px] min-h-[min(460px,80vh)] … flex-col"`), with a
+  `shrink-0` header, a `min-h-0 flex-1 overflow-y-auto` middle and a `shrink-0` footer. ⚠️ A
+  `max-h-[Nvh]` on the scroll region is **not** a fixed height — it caps the tall case while still
+  letting a short one collapse the box, so the same dialog opens at wildly different sizes
+  (measured: 281px vs 597px for the standup review). Bound the height to the **viewport**, never to
+  the content.
 
 ---
 
