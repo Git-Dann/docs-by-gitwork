@@ -61,7 +61,9 @@ import {
   type WikiIntakeImportRow,
   createWikiInsightBoardApi,
   deleteWikiInsightBoardApi,
+  setWikiDeliveryEnabledApi,
   setWikiInsightsEnabledApi,
+  setWikiSupportEnabledApi,
   updateWikiInsightBoardApi,
   type WikiInsightBoardInput,
   setWikiIntakeCategoriesApi,
@@ -401,6 +403,22 @@ export function useSetWikiInsightsEnabled(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiInsightsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiDeliveryEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiDeliveryEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiSupportEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiSupportEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

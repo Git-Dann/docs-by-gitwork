@@ -754,6 +754,48 @@ const demoWiki: WikiDTO = {
     { id: "wi5", type: "BUG", title: "Search returns nothing for titles with an apostrophe", description: "“Grey’s Anatomy” returns 0 results; “Greys Anatomy” works.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: null, label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-5", taskStatus: "BACKLOG", stage: "SCHEDULED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-6), updatedAt: atDays(-5), comments: [] },
     { id: "wi6", type: "FEEDBACK", title: "Downloads should keep working on a plane", description: "Offline playback asks to sign in again once the device loses signal.", priority: "LOW", status: "CLOSED", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "CLOSED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-27), updatedAt: atDays(-20), comments: [] },
   ],
+  deliveryEnabled: true,
+  // A LINKED support section with two months of figures, so the trend badges have
+  // something to compare against — a demo with one month would render every trend as an
+  // em-dash and prove nothing about the part most likely to be wrong (a duration where
+  // DOWN is good).
+  support: {
+    enabled: true,
+    linked: true,
+    current: {
+      month: "2026-09",
+      totalTickets: 38,
+      resolvedCount: 34,
+      openCount: 4,
+      resolutionRate: 89.5,
+      avgFirstResponseMs: 1000 * 60 * 74,
+      medianFirstResponseMs: 1000 * 60 * 41,
+      avgResolutionMs: 1000 * 60 * 60 * 9,
+      medianResolutionMs: 1000 * 60 * 60 * 5,
+      slaCompliancePct: 92,
+      categories: [
+        { label: "Technical issues", count: 17 },
+        { label: "Account queries", count: 11 },
+        { label: "Cancellations", count: 6 },
+        { label: "Other", count: 4 },
+      ],
+    },
+    previous: {
+      month: "2026-08",
+      totalTickets: 45,
+      resolvedCount: 38,
+      openCount: 7,
+      resolutionRate: 84.4,
+      avgFirstResponseMs: 1000 * 60 * 96,
+      medianFirstResponseMs: 1000 * 60 * 58,
+      avgResolutionMs: 1000 * 60 * 60 * 11,
+      medianResolutionMs: 1000 * 60 * 60 * 7,
+      slaCompliancePct: 86,
+      categories: [],
+    },
+    daysAllowance: 5,
+    daysUsed: 3,
+  },
   // Every board type, with a real two-level node map — a demo that only carried a bar
   // chart would verify the CSS and nothing else (§43.3). The node board is deliberately
   // shaped like the case this was built for: one thing at the centre, lots hanging off it.

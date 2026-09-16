@@ -4872,3 +4872,110 @@ edit landed before believing the result. That is §45.1, and it keeps happening.
 **Not verified:** nothing ran against a real database. **Post-deploy:** open a client's
 wiki → Add New → Insights, create a node board, and confirm it renders and the client's
 share link shows the same figure.
+
+## 49. Recent Changes (September 2026) — Delivery and Support: two client-portal pages over data we already held
+
+Two more client-wiki sections, both **read-only for the client** and both built almost
+entirely out of figures Foundry was already computing and simply never showing to the
+person they were about.
+
+### 49.1 Delivery — no loader, no route beyond a toggle, no DTO object
+
+`WikiTimeline` already carries per-phase `statusCounts`, `progress` and `milestones`, and
+`wiki.blockers` was already in the DTO and already documented client-safe. So Delivery is
+**pure presentation** — `src/lib/wiki-delivery.ts`, not `src/server/`, because there is
+nothing to fetch and it can therefore be unit-tested with no database. The wiring test
+asserts there is **no `loadWikiDelivery` anywhere under `src/server`**: adding one would be
+a second copy of data the DTO already carries.
+
+**The number that justifies the page is "waiting on you"** — open `wiki.blockers` with no
+client reply. It already existed and had never been surfaced to the one person who could
+clear it.
+
+Three honesty rules, each with a test:
+
+- ⚠️ **No timeline reports `percent: null`, never `0%`.** "Nobody has built a plan" and
+  "the plan is 0% done" are different facts, and the second is the one a client acts on.
+- ⚠️ **A phase with no tasks is "not started", not "complete".** 0 of 0 is not 100%, and a
+  plan whose phases are not broken down would otherwise report as finished — the single
+  most misleading thing this page could say.
+- **Only UNANSWERED blockers count as waiting on the client.** One they have replied to is
+  ours again.
+
+### 49.2 ⚠️ The demo's timeline blocks carry no `statusCounts`, and the cast hid it
+
+Rendering the page threw on first paint: *"Cannot read properties of undefined (reading
+'DONE')"* inside `WikiDashboard`. `dev-demo-data.ts` builds the wiki timeline from
+`demoGanttBlocks` with **`as unknown as WikiDTO["timeline"]`**, so the blocks carry
+`tasks: [{title, done}]` and no `statusCounts` at all — and `tsc` said nothing, because
+the cast is the point of a cast.
+
+Fixed by counting from `statusCounts` when present and **falling back to `tasks`**. That is
+not a second source of truth: they are the same facts at two grains, the finer one wins,
+and a block carrying both can never report two different answers. Three regression tests
+pin it, including the both-present case.
+
+The lesson is the one §45.1 keeps re-teaching in a different costume: **an `as unknown as`
+in a fixture disables the only check that would have caught the mismatch.** A page rendered
+against that fixture is the only thing that finds it.
+
+### 49.3 Support — client-safe by PRECEDENT, not by judgement
+
+Every figure on the Support page is one the monthly Care report **already emails the
+client** (`support-report-doc.ts`). That is deliberately the test used, because the
+alternative is one person's taste standing between a client and their own data.
+
+Deliberately excluded, and each for a stated reason: **sentiment** and
+`getClientHealthScore` ("23% of your customers sound negative" is a conversation, not a
+number to publish at someone); `SupportConversationNote` (staff-only by its own schema
+comment); raw `SupportMessage` bodies and `CustomerIdentity` (the client's END customers'
+personal data — we hold it to do the work, not to redistribute it); anything cross-client.
+
+⚠️ **Support days are NOT the `clients.viewFinancials` fields.** That gate covers
+`monthlyCost` / `workingDays` / `retainerDays` / `retainerDaysUsed` on `WorkspaceClient`
+and must never appear here. `SupportClient.supportDaysPerMonth` is the client's own
+contractual allowance — a term of an agreement they already hold a copy of.
+
+The Care link is `SupportClient.workspaceClientId`, never a name match: the same client is
+`wedge` in Portal and "Big Wedge Golf" in Care, which is exactly the failure §42.15
+records. It is **not** declared `@unique`, so this is a `findFirst`.
+
+⚠️ **`TrendBadge` has a `goodWhen` prop and durations must use `goodWhen="down"`.** Without
+it, "we replied 29% faster" paints green-for-up and reads as a regression. Inverting the
+sign by hand would have worked and would have hidden the intent inside a minus. Verified by
+resolving the rendered colours through a canvas: tickets neutral slate, resolution-rate up
+green, and **both duration trends green while pointing down**.
+
+### 49.4 The public predicates differ per section, on purpose
+
+- `insights` — enabled AND at least one board.
+- `delivery` — enabled AND `timeline.blocks.length > 0`. A client following a link that
+  promised progress must not land on "no plan yet".
+- `support` — enabled AND **linked**. An unlinked section shows "not connected", which is
+  our problem to fix, not theirs to read.
+
+`insights-section-wiring.test.ts` became **`wiki-section-wiring.test.ts`**, parameterised
+over all three sections for the seventeen shape-identical checks and keeping separate
+assertions for the parts that genuinely differ. **60 tests**, and eight sabotages across
+`delivery` and `support` each failed exactly one test.
+
+⚠️ That sabotage pass could not use `git` to restore, because the feature work was
+uncommitted — `git checkout --` would have destroyed it. Scratchpad backups with `shasum`
+verification are the technique when the tree is dirty.
+
+### 49.5 Verified
+
+`tsc` + `lint` **0 errors** (41 warnings, all pre-existing) · **3380 tests** ·
+`audit:ui` **0 findings** · `npx next build` clean, 103 static pages, both toggle routes
+registered. Schema diff purely additive — two boolean flags.
+
+Driven live at `/demo/wiki` with a linked Support fixture carrying **two months** of
+figures, so the trend badges have something to compare against — one month would render
+every trend as an em-dash and prove nothing about the part most likely to be wrong.
+Measured: page overflow **0**, and the rendered trend colours are correct in all four
+tiles.
+
+**Not verified:** nothing ran against a real database, so the Care reads in
+`loadWikiSupport` have only been exercised against a fixture. **Post-deploy:** enable
+Support on a client that has a linked Care record and confirm the month's figures match
+that client's latest Care report.

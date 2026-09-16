@@ -10,6 +10,7 @@ import {
   BookOpenIcon,
   CalendarDaysIcon,
   ChartBarIcon,
+  ChartBarSquareIcon,
   ChartPieIcon,
   CircleStackIcon,
   ClockIcon,
@@ -21,6 +22,7 @@ import {
   EnvelopeIcon,
   FlagIcon,
   GlobeAltIcon,
+  LifebuoyIcon,
   PhoneIcon,
   RocketLaunchIcon,
   ServerStackIcon,
@@ -28,6 +30,7 @@ import {
   UserIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
+import { summariseDelivery } from "@/lib/wiki-delivery";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
 
@@ -53,6 +56,8 @@ const SECTION_META: Record<
   intake: { label: "Requests", icon: FlagIcon },
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
   insights: { label: "Insights", icon: ChartPieIcon },
+  delivery: { label: "Delivery", icon: ChartBarSquareIcon },
+  support: { label: "Support", icon: LifebuoyIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
@@ -463,6 +468,32 @@ export function WikiDashboard({
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)]">No charts yet.</p>
+        );
+      }
+      case "delivery": {
+        const d = summariseDelivery({
+          blocks: wiki.timeline.blocks,
+          milestones: wiki.timeline.milestones,
+          blockers: wiki.blockers,
+        });
+        return d.noTimeline ? (
+          <p className="text-[13px] text-[var(--text-4)]">No delivery plan yet.</p>
+        ) : (
+          <div className="flex items-end gap-6">
+            <Metric value={`${d.percent}%`} label="Complete" />
+            <Metric value={String(d.waitingOnClient)} label="Waiting on you" />
+          </div>
+        );
+      }
+      case "support": {
+        const c = wiki.support.current;
+        return c ? (
+          <div className="flex items-end gap-6">
+            <Metric value={String(c.totalTickets)} label="Tickets" />
+            <Metric value={`${Math.round(c.resolutionRate)}%`} label="Resolved" />
+          </div>
+        ) : (
+          <p className="text-[13px] text-[var(--text-4)]">Support reporting isn&rsquo;t connected.</p>
         );
       }
       case "course-requests": {

@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Sibling: `insights-section-wiring.test.ts` pins the same twelve lists for Insights.
+ * Sibling: `wiki-section-wiring.test.ts` pins the same twelve lists for Insights,
+ * Delivery and Support.
  *
  * Adding a Wiki section touches TWELVE parallel allow-lists, and missing one makes
  * the section silently 400, vanish on refresh, or 500 on an exhaustive lookup.

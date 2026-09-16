@@ -11,6 +11,8 @@ import { CourseRequestsSection } from "./course-requests-section";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
+import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
+import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
@@ -56,6 +58,8 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   intake: "Requests",
   launchpad: "Launchpad",
   insights: "Insights",
+  delivery: "Delivery",
+  support: "Support",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -118,6 +122,12 @@ export function WikiPublicView({
     // Enabled AND has boards. An enabled-but-empty section lands a client on a blank
     // page that reads as a broken link — the same predicate code-handover uses.
     ...(wiki.insights.enabled && wiki.insights.boards.length > 0 ? (["insights"] as const) : []),
+    // Delivery needs a timeline to describe, or the client lands on "no plan yet" from a
+    // link that promised progress.
+    ...(wiki.deliveryEnabled && wiki.timeline.blocks.length > 0 ? (["delivery"] as const) : []),
+    // Support needs a LINKED Care record, not merely the flag — an unlinked section would
+    // show "not connected", which is our problem to fix, not theirs to read.
+    ...(wiki.support.enabled && wiki.support.linked ? (["support"] as const) : []),
     ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
       ? (["code-handover"] as const)
       : []),
@@ -216,6 +226,18 @@ export function WikiPublicView({
       );
     }
 
+    if (activeSection === "delivery") {
+      return (
+        <WikiDeliverySection
+          blocks={wiki.timeline.blocks}
+          milestones={wiki.timeline.milestones}
+          blockers={wiki.blockers}
+        />
+      );
+    }
+    if (activeSection === "support") {
+      return <WikiSupportSectionView support={wiki.support} />;
+    }
     if (activeSection === "insights") {
       return (
         <WikiInsightsSectionView slug={wiki.clientSlug} boards={wiki.insights.boards} mode="public" />
