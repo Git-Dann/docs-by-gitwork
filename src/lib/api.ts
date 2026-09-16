@@ -3532,6 +3532,39 @@ export async function setWikiIntakeCategoriesApi(
   );
 }
 
+/** One row of a pasted/uploaded sheet, already mapped and coerced in the browser. */
+export interface WikiIntakeImportRow {
+  title: string;
+  description?: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH";
+  type?: "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
+  categoryId?: string | null;
+  requestedBy?: string | null;
+  externalRef?: string | null;
+  externalUrl?: string | null;
+  device?: string | null;
+  osVersion?: string | null;
+}
+
+export interface WikiIntakeImportResult {
+  created: number;
+  /** Deduped against an existing externalRef or an open request with the same title. */
+  skipped: number;
+  count: number;
+}
+
+export async function importWikiIntakeItemsApi(
+  slug: string,
+  items: WikiIntakeImportRow[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiIntakeImportResult> {
+  return apiFetch<WikiIntakeImportResult>(`/api/clients/${slug}/wiki/intake-items/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, dryRun: opts.dryRun }),
+  });
+}
+
 export async function createWikiIntakeItem(
   slug: string,
   input: WikiIntakeItemPayload,

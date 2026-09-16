@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
+  ArrowUpTrayIcon,
   ChatBubbleLeftIcon,
   CheckCircleIcon,
   ChevronRightIcon,
@@ -15,6 +16,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiIntakeItemRecord } from "@/lib/api";
+import { RequestImportModal } from "@/components/clients/wiki/request-import-modal";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
 import {
   STAGE_HINT,
@@ -40,6 +42,7 @@ import {
   useDeletePublicWikiIntakeItem,
   useAddWikiIntakeComment,
   useAddPublicWikiIntakeComment,
+  useImportWikiIntakeItems,
 } from "@/hooks/use-wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -179,6 +182,7 @@ export function WikiIntakeSection({
   const deletePublic = useDeletePublicWikiIntakeItem(token ?? "");
   const addCommentInternal = useAddWikiIntakeComment(slug);
   const addCommentPublic = useAddPublicWikiIntakeComment(token ?? "");
+  const importItems = useImportWikiIntakeItems(slug);
 
   const [localItems, setLocalItems] = useState(items);
   /** Which rows are expanded. A grid row is a summary; everything the old card
@@ -219,6 +223,7 @@ export function WikiIntakeSection({
   const [batchBusy, setBatchBusy] = useState(false);
   const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function selectTab(tab: string) {
@@ -737,6 +742,20 @@ export function WikiIntakeSection({
                 </button>
               )}
             </div>
+            {/* Import — internal only. A client pasting a sheet into their own wiki is
+                not a thing anyone asked for, and it would bypass the per-client quota
+                the public intake path is metered by. */}
+            {isInternal && (
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                title="Import requests from a spreadsheet — paste, or a .csv/.tsv file"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+              >
+                <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+                Import
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void copySelected()}
@@ -1472,6 +1491,25 @@ export function WikiIntakeSection({
             </button>
           </div>
         </div>
+      )}
+
+      {isInternal && (
+        <RequestImportModal
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          categories={categories}
+          // Only OPEN titles, matching the server's own dedupe rule — a request that has
+          // been dealt with is allowed to come back, and flagging it as a duplicate would
+          // quietly refuse to re-log something that has genuinely recurred.
+          existingTitles={allItems
+            .filter((i) => i.status !== "CLOSED")
+            .map((i) => i.title)}
+          importing={importItems.isPending}
+          onImport={async (rows) => {
+            const res = await importItems.mutateAsync({ items: rows });
+            return { created: res.created, skipped: res.skipped };
+          }}
+        />
       )}
 
       {viewingImageId ? (

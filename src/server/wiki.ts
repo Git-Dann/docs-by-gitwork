@@ -1440,15 +1440,34 @@ export async function ingestWikiItemsByToken(
 }
 
 /**
- * Shared body for both intake paths — the API's ingest token and the client's
- * own wiki share link. Takes a resolved wiki id so the CREDENTIAL question is
- * answered by the caller and this function only does the work.
+ * Shared body for every intake path — the API's ingest token, the client's own wiki
+ * share link, and the staff-side spreadsheet import. Takes a resolved wiki id so the
+ * CREDENTIAL question is answered by the caller and this function only does the work.
+ *
+ * The three differ in exactly three ways, so they are three options rather than three
+ * copies of the dedupe-and-create loop:
+ *
+ * - **`source`** — provenance, and `wiki-intake-limit.ts` counts only `"api"` rows.
+ * - **`skipQuota`** — the ceiling exists to stop a client's looping integration burying
+ *   the page. A Gitwork user pasting a sheet is not that, and the quota doc is explicit
+ *   that a client's misbehaving integration must never block the team filing by hand —
+ *   so an import must not be refused because the client's own API is at its limit.
+ * - **`notify`** — "New client request" told to the dev team, and the Slack ping to the
+ *   client's channel, are both statements that THE CLIENT asked for something. Firing
+ *   them when a Gitwork user imports their own backlog would be untrue.
  */
 async function ingestWikiItemsIntoWiki(
   wikiId: string,
   items: WikiItemIngestItem[],
-  opts: { dryRun?: boolean } = {},
+  opts: {
+    dryRun?: boolean;
+    source?: string;
+    skipQuota?: boolean;
+    notify?: boolean;
+  } = {},
 ): Promise<WikiItemIngestResult | null> {
+  const source = opts.source ?? "api";
+  const notify = opts.notify ?? true;
   const wiki = await prisma.clientWiki.findUnique({
     where: { id: wikiId },
     select: {
@@ -1471,7 +1490,7 @@ async function ingestWikiItemsIntoWiki(
   // Checked BEFORE any write: the token is the only gate on a public write
   // endpoint, and without a ceiling a looping integration could bury this page.
   // Throws a 429; existing items are untouched.
-  await assertWithinIntakeQuota(wiki.id);
+  if (!opts.skipQuota) await assertWithinIntakeQuota(wiki.id);
 
   const seenRefs = new Set(
     wiki.intakeItems.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref)),
@@ -1517,7 +1536,7 @@ async function ingestWikiItemsIntoWiki(
         attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
         device: raw.device?.trim() || null,
         osVersion: raw.osVersion?.trim() || null,
-        source: "api",
+        source,
       },
     });
     created.push(serializeWikiIntakeItem(item));
@@ -1528,7 +1547,7 @@ async function ingestWikiItemsIntoWiki(
   // Flag new client requests to the client's attributed devs (clientTeam scope
   // means only devs assigned to this client are notified). No actorId — the
   // submitter is the client, not a workspace user, so nobody is excluded.
-  if (created.length > 0) {
+  if (created.length > 0 && notify) {
     const reqTitle = (n: number) =>
       n === 1 ? `New client request: ${created[0].title}` : `${n} client requests to review`;
     dispatchNotification({
@@ -1549,6 +1568,35 @@ async function ingestWikiItemsIntoWiki(
   }
 
   return { client, created, skipped, count: created.length };
+}
+
+/**
+ * Import requests from a pasted or uploaded spreadsheet. Staff-side, by client slug.
+ *
+ * Deliberately routed through the SAME `ingestWikiItemsIntoWiki` body the intake API
+ * uses, so an imported row is deduped by exactly the rules an API-pushed one is: same
+ * `externalRef` → skipped, same title as an existing OPEN request → skipped. That
+ * matters more here than on the API path, because the natural way to use an import is to
+ * re-paste a sheet after editing it, and a second copy of every row would be the failure.
+ *
+ * Returns `{ created, skipped, count }`; `skipped` is an outcome, not an error.
+ */
+export async function importWikiIntakeItems(
+  clientId: string,
+  items: WikiItemIngestItem[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiItemIngestResult | null> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId },
+    select: { id: true },
+  });
+  if (!wiki) return null;
+  return ingestWikiItemsIntoWiki(wiki.id, items, {
+    dryRun: opts.dryRun,
+    source: "import",
+    skipQuota: true,
+    notify: false,
+  });
 }
 
 /**

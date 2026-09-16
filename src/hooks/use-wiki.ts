@@ -57,6 +57,8 @@ import {
   addDocToWikiApi,
   removeDocFromWikiApi,
   createWikiIntakeItem,
+  importWikiIntakeItemsApi,
+  type WikiIntakeImportRow,
   setWikiIntakeCategoriesApi,
   createPublicWikiIntakeItem,
   updatePublicWikiIntakeItem,
@@ -363,6 +365,25 @@ export function useCreateWikiIntakeItem(slug: string) {
   return useMutation({
     mutationFn: (input: WikiIntakeItemPayload) => createWikiIntakeItem(slug, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/**
+ * Staff-only: import requests from a pasted or uploaded sheet.
+ *
+ * Invalidates the whole wiki rather than patching the list: an import can create
+ * dozens of rows AND skip dozens more as duplicates, so there is no local edit that
+ * would leave the page telling the truth.
+ */
+export function useImportWikiIntakeItems(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { items: WikiIntakeImportRow[]; dryRun?: boolean }) =>
+      importWikiIntakeItemsApi(slug, input.items, { dryRun: input.dryRun }),
+    onSuccess: (_result, input) => {
+      // A dry run wrote nothing — refetching would only make the preview flicker.
+      if (!input.dryRun) queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
   });
 }
 
