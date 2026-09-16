@@ -35,6 +35,8 @@ import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
+import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
+import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
@@ -72,7 +74,11 @@ import {
   useSetWikiCodeEnabled,
 } from "@/hooks/use-wiki";
 import { useSetLaunchpadEnabled } from "@/hooks/use-launchpad";
-import { useSetWikiInsightsEnabled } from "@/hooks/use-wiki";
+import {
+  useSetWikiDeliveryEnabled,
+  useSetWikiInsightsEnabled,
+  useSetWikiSupportEnabled,
+} from "@/hooks/use-wiki";
 import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -114,6 +120,8 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   intake: "Requests",
   launchpad: "Launchpad",
   insights: "Insights",
+  delivery: "Delivery",
+  support: "Support",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -131,6 +139,8 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
   launchpad: "LAUNCHPAD",
   insights: "INSIGHTS",
+  delivery: "DELIVERY",
+  support: "SUPPORT",
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   "api-docs": "API DOCS",
@@ -826,7 +836,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "delivery", "support", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -909,6 +919,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
   const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
   const setInsightsEnabled = useSetWikiInsightsEnabled(slug);
+  const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
+  const setSupportEnabled = useSetWikiSupportEnabled(slug);
   // Attribution for requests logged internally — see WikiIntakeSection.
   const account = useAccount();
   const setCodeEnabled = useSetWikiCodeEnabled(slug);
@@ -953,6 +965,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const codeOn = wiki.codeHandover.enabled;
   const launchpadOn = Boolean(wiki.launchpad?.enabled);
   const insightsOn = wiki.insights.enabled;
+  const deliveryOn = wiki.deliveryEnabled;
+  const supportOn = wiki.support.enabled;
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
   // Every other section appears once it has real content OR is explicitly enabled,
   // and is otherwise offered under "+ Add New".
@@ -966,6 +980,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(intakeOn ? (["intake"] as const) : []),
     ...(launchpadOn ? (["launchpad"] as const) : []),
     ...(insightsOn ? (["insights"] as const) : []),
+    ...(deliveryOn ? (["delivery"] as const) : []),
+    ...(supportOn ? (["support"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
     ...(designSystemOn ? (["design-system"] as const) : []),
     ...OPTIONAL_DOC_SECTIONS.filter(
@@ -986,6 +1002,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
     ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
     ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Insights" }]),
+    ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
+    ...(supportOn ? [] : [{ section: "support" as WikiSection, label: "Support" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
     ...(designSystemOn ? [] : [{ section: "design-system" as WikiSection, label: "Design System" }]),
     ...(changelogOn ? [] : [{ section: "changelog" as WikiSection, label: "Changelog" }]),
@@ -1042,6 +1060,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection("insights");
       return;
     }
+    if (section === "delivery") {
+      await setDeliveryEnabled.mutateAsync(true);
+      setActiveSection("delivery");
+      return;
+    }
+    if (section === "support") {
+      await setSupportEnabled.mutateAsync(true);
+      setActiveSection("support");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(true);
       setActiveSection("code-handover");
@@ -1092,6 +1120,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "insights") ?? "dashboard");
       return;
     }
+    if (section === "delivery") {
+      await setDeliveryEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "delivery") ?? "dashboard");
+      return;
+    }
+    if (section === "support") {
+      await setSupportEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "support") ?? "dashboard");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "code-handover") ?? "dashboard");
@@ -1113,6 +1151,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "intake" &&
       section !== "launchpad" &&
       section !== "insights" &&
+      section !== "delivery" &&
+      section !== "support" &&
       section !== "code-handover"
     )
       return;
@@ -1328,6 +1368,18 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "launchpad") {
       if (!wiki!.launchpad) return null;
       return <LaunchpadSection launchpad={wiki!.launchpad} slug={slug} mode="internal" />;
+    }
+    if (activeSection === "delivery") {
+      return (
+        <WikiDeliverySection
+          blocks={wiki!.timeline.blocks}
+          milestones={wiki!.timeline.milestones}
+          blockers={wiki!.blockers}
+        />
+      );
+    }
+    if (activeSection === "support") {
+      return <WikiSupportSectionView support={wiki!.support} />;
     }
     if (activeSection === "insights") {
       return (
@@ -1766,6 +1818,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "documents" ||
                 s === "intake" ||
                 s === "insights" ||
+                s === "delivery" ||
+                s === "support" ||
                 s === "code-handover",
             )}
             onDeleteSection={confirmDeletePage}

@@ -3589,6 +3589,22 @@ export interface WikiInsightBoardInput {
   }[];
 }
 
+export async function setWikiDeliveryEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/delivery`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setWikiSupportEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/support`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function setWikiInsightsEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/insights`, {
     method: "PATCH",
