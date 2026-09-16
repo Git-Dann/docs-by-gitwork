@@ -1385,6 +1385,11 @@ model ClientWiki {
   /// starts minimal, and the client-facing write routes reject until it's on.
   launchpadEnabled    Boolean                @default(false)
   launchpad           ClientLaunchpad?
+  /// Whether the Insights section is enabled — hand-authored charts and diagrams shown
+  /// to the client. Flag-driven exactly like `codeHandoverEnabled`: default false so a
+  /// fresh wiki starts minimal.
+  insightsEnabled     Boolean                @default(false)
+  insightBoards       WikiInsightBoard[]
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -4828,4 +4833,121 @@ enum CountermarkGrade {
   // Same reasoning as the model's @@map above: renaming a Postgres enum type is a
   // drop-and-recreate, which would trip the same guard and skip the whole sync.
   @@map("HallmarkGrade")
+}
+
+/// The four board forms. Adding a fifth is additive — a new enum value and, if it needs
+/// one, a new content table. It never rewrites an existing row.
+enum WikiInsightBoardType {
+  BAR
+  PIE
+  VENN
+  NODE
+}
+
+/// Which lens of a 2- or 3-set Venn an item sits in. A fixed set, because the geometry is
+/// fixed: two sets use A/B/AB, three use all seven.
+enum WikiInsightVennRegion {
+  A
+  B
+  C
+  AB
+  AC
+  BC
+  ABC
+}
+
+/// One hand-authored chart or diagram in a client's wiki Insights section.
+///
+/// `type` is the discriminant. The type-specific CONFIG lives here as nullable columns —
+/// there are only five, and a board header is inherently a union header — but the
+/// type-specific DATA lives in its own table, so no point row ever carries a column that
+/// means nothing for its board. A single flat point table would have had four of seven
+/// columns dead for three of four types, and would have forced `value Float?`, which no
+/// validator can express and every bar renderer would then have had to handle.
+model WikiInsightBoard {
+  id        String               @id @default(cuid())
+  wikiId    String
+  wiki      ClientWiki           @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  type      WikiInsightBoardType
+  title     String
+  /// A plain-English paragraph under the figure — what the reader is looking at. The
+  /// single most important field on a hand-authored chart.
+  caption   String?              @db.Text
+  /// BAR/PIE only: a unit shown on values ("£", "%", "users"). Null = bare numbers.
+  valueUnit String?
+  /// VENN only: the 2 or 3 set names. C null means a two-circle board.
+  setALabel String?
+  setBLabel String?
+  setCLabel String?
+  /// NODE only: the label on the centre node (e.g. "Coachman caravan").
+  coreLabel String?
+  orderKey  Int                  @default(0)
+
+  seriesPoints WikiInsightSeriesPoint[]
+  vennItems    WikiInsightVennItem[]
+  nodes        WikiInsightNode[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiInsightBoard")
+}
+
+/// A labelled numeric point — BAR and PIE boards only. Those two are genuinely the same
+/// shape, so they share a table; splitting them would be the opposite mistake.
+model WikiInsightSeriesPoint {
+  id       String           @id @default(cuid())
+  boardId  String
+  board    WikiInsightBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  label    String
+  value    Float
+  /// A palette KEY ("blue" | "violet" | "emerald" | "amber" | "rose" | "slate"), never a
+  /// hex — a stored hex outlives the palette it came from, with no way to find it later.
+  color    String?
+  note     String?          @db.Text
+  orderKey Int              @default(0)
+
+  @@index([boardId])
+  @@map("WikiInsightSeriesPoint")
+}
+
+/// One item placed in one lens of a Venn board.
+model WikiInsightVennItem {
+  id       String                @id @default(cuid())
+  boardId  String
+  board    WikiInsightBoard      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  label    String
+  region   WikiInsightVennRegion
+  note     String?               @db.Text
+  orderKey Int                   @default(0)
+
+  @@index([boardId])
+  @@map("WikiInsightVennItem")
+}
+
+/// A node on a NODE board. TWO LEVELS ONLY: `parentId` null means a branch off the core,
+/// set means a leaf off that branch. Enforced in the validator and again when
+/// serialising, because the radial layout is two-level by construction.
+///
+/// No coordinates are stored — the layout is computed, so a board can never be saved in a
+/// state that renders wrong, and it reflows to any width.
+model WikiInsightNode {
+  id       String            @id @default(cuid())
+  boardId  String
+  board    WikiInsightBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  parentId String?
+  parent   WikiInsightNode?  @relation("WikiInsightNodeTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children WikiInsightNode[] @relation("WikiInsightNodeTree")
+  label    String
+  color    String?
+  note     String?           @db.Text
+  /// A pasted URL, rendered as an anchor. NEVER fetched server-side — the same posture as
+  /// ClientWikiIntakeItem.attachmentUrls and the Launchpad asset links.
+  link     String?
+  orderKey Int               @default(0)
+
+  @@index([boardId])
+  @@index([parentId])
+  @@map("WikiInsightNode")
 }

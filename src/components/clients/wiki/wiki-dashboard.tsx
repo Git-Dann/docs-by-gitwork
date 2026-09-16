@@ -4,28 +4,29 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
+  ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
+  BoltIcon,
   BookOpenIcon,
   CalendarDaysIcon,
   ChartBarIcon,
+  ChartPieIcon,
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
   CpuChipIcon,
   CubeTransparentIcon,
+  DocumentDuplicateIcon,
   DocumentTextIcon,
+  EnvelopeIcon,
   FlagIcon,
+  GlobeAltIcon,
+  PhoneIcon,
   RocketLaunchIcon,
   ServerStackIcon,
-  BoltIcon,
-  DocumentDuplicateIcon,
-  WrenchScrewdriverIcon,
-  ArrowRightIcon,
-  ArrowTopRightOnSquareIcon,
   Squares2X2Icon,
-  GlobeAltIcon,
   UserIcon,
-  EnvelopeIcon,
-  PhoneIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
@@ -51,6 +52,7 @@ const SECTION_META: Record<
   documents: { label: "Documents", icon: DocumentDuplicateIcon },
   intake: { label: "Requests", icon: FlagIcon },
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
+  insights: { label: "Insights", icon: ChartPieIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
@@ -444,6 +446,23 @@ export function WikiDashboard({
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
+        );
+      }
+      case "insights": {
+        // A real case, not the markdown-doc default. A section with no case here falls
+        // through and the dashboard card reads "Documentation." — which is exactly the
+        // defect the Requests card shipped with (§40.1).
+        const boards = wiki.insights.boards;
+        const kinds = new Set(boards.map((b) => b.kind));
+        return boards.length > 0 ? (
+          <div className="space-y-1.5">
+            <Metric value={String(boards.length)} label={boards.length === 1 ? "Board" : "Boards"} />
+            <p className="truncate text-[12px] text-[var(--text-4)]">
+              {[...kinds].join(" · ")}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[13px] text-[var(--text-4)]">No charts yet.</p>
         );
       }
       case "course-requests": {

@@ -42,6 +42,7 @@ import {
 } from "./wiki-slack-notify";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
+import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { getLaunchpadByWikiId } from "./launchpad";
 import type { LaunchpadDTO } from "@/types/launchpad";
 
@@ -259,6 +260,8 @@ export interface WikiDTO {
    * off" and "on but not set up yet" need different copy on the page.
    */
   launchpad: LaunchpadDTO | null;
+  /** Hand-authored charts and diagrams — see src/server/wiki-insights.ts. */
+  insights: WikiInsightsSection;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -633,6 +636,7 @@ async function buildDTO(
   shareEnabled: boolean;
   intakeEnabled?: boolean;
   launchpadEnabled?: boolean;
+  insightsEnabled?: boolean;
   intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
@@ -716,6 +720,7 @@ async function buildDTO(
     documents,
     launchpad,
     taskStatuses,
+    insights,
   ] =
     await Promise.all([
       loadWikiBlockers(wiki.clientId),
@@ -729,6 +734,7 @@ async function buildDTO(
       loadWikiDocuments(wiki.clientId),
       getLaunchpadByWikiId(wiki.id),
       loadLinkedTaskStatuses((wiki.intakeItems ?? []).map((item) => item.taskId)),
+      loadWikiInsights(wiki.clientId),
     ]);
   return {
     id: wiki.id,
@@ -786,6 +792,7 @@ async function buildDTO(
     headerLinks,
     documents,
     launchpad,
+    insights,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -2440,6 +2447,7 @@ const SHAREABLE_SECTIONS = [
   // token-only; writes still require the wiki-access cookie (see launchpad-access.ts),
   // so a link recipient can see what is being asked of them but cannot answer it.
   "launchpad",
+  "insights",
   "code-handover",
   "design-system",
   "ia",

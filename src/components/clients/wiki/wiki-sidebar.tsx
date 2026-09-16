@@ -8,17 +8,18 @@ import {
   BookOpenIcon,
   CalendarDaysIcon,
   ChartBarIcon,
+  ChartPieIcon,
   ChevronDownIcon,
-  Cog6ToothIcon,
-  GlobeAltIcon,
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
+  Cog6ToothIcon,
   CpuChipIcon,
-  DocumentDuplicateIcon,
   CubeTransparentIcon,
+  DocumentDuplicateIcon,
   DocumentTextIcon,
   FlagIcon,
+  GlobeAltIcon,
   PlusIcon,
   RocketLaunchIcon,
   ServerStackIcon,
@@ -34,6 +35,7 @@ export type WikiSection =
   | "documents"
   | "intake"
   | "launchpad"
+  | "insights"
   | "code-handover"
   | "design-system"
   | "ia"
@@ -154,6 +156,7 @@ export function WikiSidebar({
       "documents",
       "intake",
       "launchpad",
+      "insights",
       "code-handover",
       "design-system",
       "ia",
@@ -251,6 +254,7 @@ export function WikiSidebar({
         {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
         {navItem("intake", "Requests", <FlagIcon />)}
         {navItem("launchpad", "Launchpad", <RocketLaunchIcon />)}
+        {navItem("insights", "Insights", <ChartPieIcon />)}
         {navItem("code-handover", "Code Handover", <CpuChipIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}

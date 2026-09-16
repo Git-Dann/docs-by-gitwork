@@ -1984,3 +1984,102 @@ export const launchpadDocPatchSchema = z
 export const launchpadDocApproveSchema = z.object({
   approved: z.boolean(),
 });
+
+// ─── Wiki Insights (charts & diagrams) ────────────────────────────────────────
+
+/**
+ * One board and its complete content.
+ *
+ * ⚠️ Rejects rather than coerces, and the two guards that matter are the ones a flat
+ * point table could not have expressed at all:
+ *
+ *  - a PIE may not carry a negative value — there is no such thing as a negative slice,
+ *    and rendering `Math.abs()` of one would quietly show the opposite of the truth;
+ *  - a VENN item may only sit in a region the board's SET COUNT can express, so a
+ *    two-set board can never hold an `ABC` item.
+ */
+export const insightColorKeySchema = z.enum([
+  "blue",
+  "violet",
+  "emerald",
+  "amber",
+  "rose",
+  "slate",
+]);
+
+const seriesPointSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  value: z.number().finite(),
+  color: insightColorKeySchema.nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+const vennItemSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  region: z.enum(["A", "B", "C", "AB", "AC", "BC", "ABC"]),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+const nodeBranchSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  color: insightColorKeySchema.nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  link: z.string().trim().max(2048).nullable().optional(),
+  leaves: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(80),
+        note: z.string().trim().max(500).nullable().optional(),
+        link: z.string().trim().max(2048).nullable().optional(),
+      }),
+    )
+    .max(120)
+    .optional(),
+});
+
+export const boardSchema = z
+  .object({
+    type: z.enum(["BAR", "PIE", "VENN", "NODE"]),
+    title: z.string().trim().min(1).max(120),
+    caption: z.string().trim().max(1000).nullable().optional(),
+    valueUnit: z.string().trim().max(12).nullable().optional(),
+    setALabel: z.string().trim().max(60).nullable().optional(),
+    setBLabel: z.string().trim().max(60).nullable().optional(),
+    setCLabel: z.string().trim().max(60).nullable().optional(),
+    coreLabel: z.string().trim().max(80).nullable().optional(),
+    points: z.array(seriesPointSchema).max(40).optional(),
+    items: z.array(vennItemSchema).max(120).optional(),
+    // 10 matches MAX_BRANCHES_RADIAL — past that the renderer shows the list instead, and
+    // accepting an eleventh would store a board the figure deliberately will not draw.
+    branches: z.array(nodeBranchSchema).max(10).optional(),
+  })
+  .superRefine((board, ctx) => {
+    if (board.type === "PIE") {
+      (board.points ?? []).forEach((p, i) => {
+        if (p.value < 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["points", i, "value"],
+            message: "A pie slice cannot be negative.",
+          });
+        }
+      });
+    }
+    if (board.type === "VENN") {
+      const threeSets = Boolean(board.setCLabel?.trim());
+      const allowed = threeSets
+        ? new Set(["A", "B", "C", "AB", "AC", "BC", "ABC"])
+        : new Set(["A", "B", "AB"]);
+      (board.items ?? []).forEach((item, i) => {
+        if (!allowed.has(item.region)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["items", i, "region"],
+            message: threeSets
+              ? `Unknown region "${item.region}".`
+              : `Region "${item.region}" needs a third set — this board has two.`,
+          });
+        }
+      });
+    }
+  });

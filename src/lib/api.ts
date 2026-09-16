@@ -3565,6 +3565,65 @@ export async function importWikiIntakeItemsApi(
   });
 }
 
+export type { WikiInsightBoardRecord, WikiInsightsSection } from "@/server/wiki-insights";
+import type { WikiInsightBoardRecord as WikiInsightBoardRecordT } from "@/server/wiki-insights";
+
+/** One board plus its whole content — writes replace, they do not patch. */
+export interface WikiInsightBoardInput {
+  type: "BAR" | "PIE" | "VENN" | "NODE";
+  title: string;
+  caption?: string | null;
+  valueUnit?: string | null;
+  setALabel?: string | null;
+  setBLabel?: string | null;
+  setCLabel?: string | null;
+  coreLabel?: string | null;
+  points?: { label: string; value: number; color?: string | null; note?: string | null }[];
+  items?: { label: string; region: string; note?: string | null }[];
+  branches?: {
+    label: string;
+    color?: string | null;
+    note?: string | null;
+    link?: string | null;
+    leaves?: { label: string; note?: string | null; link?: string | null }[];
+  }[];
+}
+
+export async function setWikiInsightsEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/insights`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiInsightBoardApi(
+  slug: string,
+  input: WikiInsightBoardInput,
+): Promise<WikiInsightBoardRecordT> {
+  return apiFetch(`/api/clients/${slug}/wiki/insights`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiInsightBoardApi(
+  slug: string,
+  boardId: string,
+  input: WikiInsightBoardInput,
+): Promise<WikiInsightBoardRecordT> {
+  return apiFetch(`/api/clients/${slug}/wiki/insights/${boardId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiInsightBoardApi(slug: string, boardId: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/insights/${boardId}`, { method: "DELETE" });
+}
+
 export async function createWikiIntakeItem(
   slug: string,
   input: WikiIntakeItemPayload,

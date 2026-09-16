@@ -16,6 +16,7 @@ const SECTION_LABELS: Record<string, string> = {
   monitors: "Monitors",
   documents: "Documents",
   launchpad: "Launchpad",
+  insights: "Insights",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
