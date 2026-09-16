@@ -30,6 +30,7 @@ import {
   SignatureSignerStatus,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { sendCompletionEmailsToAllSigners } from "@/server/send-completion-email";
 import type { PartyItem, SignatureBlockItem } from "@/types/proposal";
 
 // ── Token helpers ──────────────────────────────────────────────────────────
@@ -47,6 +48,8 @@ export interface CreateSignerInput {
   role: string;
   organization?: string;
   signatureBlockId?: string;
+  type?: "gitwork" | "client";
+  variableName?: string;
 }
 
 export interface CreateSignatureRequestInput {
@@ -235,9 +238,6 @@ export async function findSignerByToken(token: string) {
   // Reject tokens for requests that haven't been sent yet or are no longer valid for signing.
   const status = signer.request.status;
   if (status !== "SENT") return { signer, gate: status as Exclude<SignatureRequestStatus, "SENT"> };
-  if (signer.request.expiresAt && signer.request.expiresAt < new Date()) {
-    return { signer, gate: "EXPIRED" as const };
-  }
 
   return { signer, gate: null };
 }
@@ -312,6 +312,14 @@ export async function submitSignature(input: SubmitSignatureInput, context: Requ
       },
     });
 
+    // Synchronize signature payload and date directly to the document's signatures section block in PostgreSQL
+    await syncSignerPayloadToDocumentSection(
+      tx,
+      signer.request.documentId,
+      { blockId: signer.signatureBlockId, role: signer.signerType, email: signer.email },
+      { payload: input.payload, signedName: input.signedName, signedAt: now },
+    );
+
     await tx.signatureEvent.create({
       data: {
         requestId: signer.requestId,
@@ -344,11 +352,76 @@ export async function submitSignature(input: SubmitSignatureInput, context: Requ
       });
     }
 
-    return tx.signatureRequest.findUniqueOrThrow({
+    const updatedRequest = await tx.signatureRequest.findUniqueOrThrow({
       where: { id: signer.requestId },
       include: { signers: true, events: { orderBy: { createdAt: "asc" } } },
     });
+
+    if (everyoneSigned) {
+      void sendCompletionEmailsToAllSigners(signer.requestId);
+    }
+
+    return updatedRequest;
   });
+}
+
+/**
+ * Synchronizes captured signature details (signaturePayload, signedName, signatureDate)
+ * directly into the target block inside DocumentSection.data.blocks in PostgreSQL.
+ */
+export async function syncSignerPayloadToDocumentSection(
+  tx: Prisma.TransactionClient | typeof prisma,
+  documentId: string,
+  blockIdOrRoleOrEmail: { blockId?: string | null; role?: string | null; email?: string | null },
+  signatureData: {
+    payload?: string | null;
+    signedName?: string | null;
+    signedAt?: Date | null;
+  },
+) {
+  const section = await tx.documentSection.findFirst({
+    where: { documentId, key: "signatures" },
+  });
+  if (!section) return;
+
+  const data = section.data as { blocks?: SignatureBlockItem[] } | null;
+  if (!data || !Array.isArray(data.blocks)) return;
+
+  const formattedDate = (signatureData.signedAt ?? new Date()).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  let updatedAny = false;
+  const updatedBlocks = data.blocks.map((b) => {
+    const matchByBlockId = blockIdOrRoleOrEmail.blockId && b.id === blockIdOrRoleOrEmail.blockId;
+    const matchByEmail =
+      blockIdOrRoleOrEmail.email &&
+      b.signatoryEmail?.trim().toLowerCase() === blockIdOrRoleOrEmail.email.trim().toLowerCase();
+    const matchByRole =
+      blockIdOrRoleOrEmail.role &&
+      b.type?.trim().toLowerCase() === blockIdOrRoleOrEmail.role.trim().toLowerCase();
+
+    if (matchByBlockId || matchByEmail || matchByRole) {
+      updatedAny = true;
+      return {
+        ...b,
+        signaturePayload: signatureData.payload ?? b.signaturePayload ?? "DOCUSEAL_SIGNED",
+        signedName: signatureData.signedName ?? b.signedName ?? b.signatoryName,
+        signatureDate: formattedDate,
+        signed: true,
+      };
+    }
+    return b;
+  });
+
+  if (updatedAny) {
+    await tx.documentSection.update({
+      where: { id: section.id },
+      data: { data: { ...data, blocks: updatedBlocks } as unknown as Prisma.InputJsonValue },
+    });
+  }
 }
 
 /** Record a decline. Flips both the signer and the request to DECLINED. */
@@ -398,6 +471,21 @@ export async function declineSignature(
     });
   });
 }
+/**
+ * Regenerates a single-use accessToken for a signer and resets their view state.
+ * Use when a client closed their session before signing and needs a fresh link.
+ */
+export async function regenerateSignerToken(signerId: string) {
+  const newToken = mintSignerToken();
+  return prisma.signatureSigner.update({
+    where: { id: signerId },
+    data: {
+      accessToken: newToken,
+      firstViewedAt: null,
+      status: SignatureSignerStatus.PENDING,
+    },
+  });
+}
 
 // ── Query helpers ──────────────────────────────────────────────────────────
 
@@ -407,6 +495,7 @@ export async function listSignatureRequestsForDocument(documentId: string) {
     where: { documentId },
     orderBy: { createdAt: "desc" },
     include: {
+      document: { select: { updatedAt: true } },
       signers: true,
       events: { orderBy: { createdAt: "asc" } },
     },
@@ -430,6 +519,8 @@ export function inferSignersFromSections(sections: Array<{ key: string; data: un
       role: block.signatoryRole || "Signatory",
       organization: block.partyName || undefined,
       signatureBlockId: block.id,
+      type: block.type,
+      variableName: block.variableName,
     }));
   }
 

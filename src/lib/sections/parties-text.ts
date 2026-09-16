@@ -180,6 +180,8 @@ export interface SignatureBlockLike {
   signatoryRole?: string;
   signatoryEmail?: string;
   details?: string[];
+  type?: "gitwork" | "client";
+  variableName?: string;
 }
 
 /**

@@ -33,8 +33,8 @@ describe("scoreVideoTranscript", () => {
   });
 
   it("no AI key → heuristic scoring, flagged (never a black box)", async () => {
-    // Guard: only meaningful when the test env has no real Anthropic key.
-    if (process.env.ANTHROPIC_API_KEY) return;
+    // Guard: only meaningful when the test env has no real AI key.
+    if (process.env.ANTHROPIC_API_KEY || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY) return;
     const transcript = Array.from({ length: 120 }, (_, i) => `word${i}`).join(" ");
     const r = await scoreVideoTranscript({ transcript, question: "q", workspace: noAiWorkspace });
     expect(r.subScores.length).toBeGreaterThan(0);

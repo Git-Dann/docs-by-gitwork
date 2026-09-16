@@ -96,6 +96,8 @@ interface SignatureBlockLike {
   signatoryRole?: string;
   signatoryEmail?: string;
   signatureDate?: string;
+  type?: "gitwork" | "client";
+  variableName?: string;
 }
 
 /**
@@ -143,13 +145,10 @@ export function applyClientNameToSections(
       case "signatures": {
         const blocks = Array.isArray(data.blocks) ? (data.blocks as SignatureBlockLike[]) : [];
         if (blocks.length === 0) return section;
-        // Heuristic: the first block tends to be the supplier (Gitwork by template convention),
-        // every other block is customer-side. Operators who reorder blocks can edit manually.
+        // Check block.type if explicitly set; otherwise fallback to heuristics.
         const nextBlocks = blocks.map((block, index) => {
-          // Index 0 is the supplier by template convention; also skip anything that names Gitwork
-          // (templates may order parties differently) or is a `[placeholder]` — the NDA's third
-          // signatory is the Founder, who signs personally and is NOT the client.
-          if (index === 0 || isNotTheCounterparty(block.signatoryRole, block.partyName)) return block;
+          if (block.type === "gitwork") return block;
+          if (!block.type && (index === 0 || isNotTheCounterparty(block.signatoryRole, block.partyName))) return block;
           return {
             ...block,
             partyName: trimmed,

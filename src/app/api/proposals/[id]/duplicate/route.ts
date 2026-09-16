@@ -95,16 +95,38 @@ export async function POST(request: NextRequest, context: RouteContext) {
       existing.documentType,
     );
 
-    // Carry the section payload from the original, then — if the operator asked to swap the
-    // client — propagate the new name into cover / parties / signatures.
-    const carriedSections = existing.sections.map((section, index) => ({
-      key: section.key,
-      title: section.title,
-      description: section.description,
-      sortOrder: index,
-      isVisible: section.isVisible,
-      data: section.data,
-    }));
+    // Carry the section payload from the original, sanitizing any signature payload
+    // and signed status so the duplicate copy always starts in a clean, unsigned state.
+    const carriedSections = existing.sections.map((section, index) => {
+      let data = section.data;
+      if (section.key === "signatures" && data && typeof data === "object") {
+        const sigData = data as { blocks?: Array<Record<string, unknown>> };
+        if (Array.isArray(sigData.blocks)) {
+          data = {
+            ...sigData,
+            blocks: sigData.blocks.map((b) => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { signed, signaturePayload, signedName, signatureDate, ...rest } = b;
+              return {
+                ...rest,
+                signed: false,
+                signaturePayload: undefined,
+                signedName: undefined,
+                signatureDate: "",
+              };
+            }),
+          };
+        }
+      }
+      return {
+        key: section.key,
+        title: section.title,
+        description: section.description,
+        sortOrder: index,
+        isVisible: section.isVisible,
+        data,
+      };
+    });
     const sectionsForClone = renameClient
       ? applyClientNameToSections(carriedSections, effectiveClientName)
       : carriedSections;
@@ -125,6 +147,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       actor,
       typeof carriedMetadata?.owner === "string" ? carriedMetadata.owner : null,
     );
+    const cleanedMetadata = carriedMetadata
+      ? ({
+          ...carriedMetadata,
+          owner: clonedOwner,
+          productSignOff: false,
+          techSignOff: false,
+          approvalChecked: false,
+        } as unknown as Prisma.InputJsonValue)
+      : clonedOwner
+        ? ({ owner: clonedOwner } as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull;
 
     const duplicate = await prisma.document.create({
       data: {
@@ -140,11 +173,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         summary: existing.summary,
         version: existing.version,
         expiresAt: existing.expiresAt,
-        metadata: carriedMetadata
-          ? ({ ...carriedMetadata, owner: clonedOwner } as unknown as Prisma.InputJsonValue)
-          : clonedOwner
-            ? ({ owner: clonedOwner } as unknown as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
+        metadata: cleanedMetadata,
         // A DECK's content is its slides, not its sections — without this the copy
         // arrives empty and, because metadata.deckTemplate came along, the Deck app
         // would helpfully rebuild it FROM THE TEMPLATE on first open. "Duplicate"

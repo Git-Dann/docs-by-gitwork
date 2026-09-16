@@ -154,6 +154,33 @@ export async function updateDocument(
     }
   }
 
+  // Edit lock when document has a COMPLETED signature request — all parties have executed it.
+  const completedSigRequest =
+    (existing as { signatureRequests?: Array<{ status: string }> })?.signatureRequests?.find(
+      (r) => r.status === "COMPLETED",
+    ) ??
+    (await prisma.signatureRequest?.findFirst?.({
+      where: { documentId: id, status: "COMPLETED" },
+    }));
+  if (completedSigRequest) {
+    const hasContentChanges =
+      payload.sections !== undefined ||
+      payload.costLineItems !== undefined ||
+      payload.timelinePhases !== undefined ||
+      payload.title !== undefined ||
+      payload.productName !== undefined ||
+      payload.clientName !== undefined;
+
+    if (hasContentChanges) {
+      throw Object.assign(
+        new Error(
+          "This document is fully executed and locked. Duplicate the document to create an amended revision.",
+        ),
+        { status: 423 }, // 423 Locked — semantically accurate
+      );
+    }
+  }
+
   // Protect the client's conversion signal: once a document is ACCEPTED/DECLINED (set from the
   // public page), an autosave/update carrying a client-derived status must not silently
   // downgrade it back to DRAFT/APPROVED. Only an explicit ARCHIVE may move it out of a terminal

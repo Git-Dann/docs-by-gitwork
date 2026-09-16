@@ -5,11 +5,13 @@ import { SignaturesEditor } from "@/components/proposals/legal-editors";
 import { asTrimmedText } from "@/lib/sections/_shared";
 import { defineSection } from "@/lib/sections/types";
 import { renderInline } from "@/lib/markdown";
+import { getDocusealBlocksMeta } from "@/lib/docuseal-block-meta";
+import type { DocusealBlockMeta } from "@/lib/docuseal-block-meta";
 import type { ReactNode } from "react";
 import type { SignatureBlockItem, SignaturesSectionData } from "@/types/proposal";
 
-/** Max cards per row. 4–5 signatories wrap to a second row rather than squashing to slivers. */
-const MAX_COLUMNS = 3;
+/** Max cards per row. Max 2 columns guarantees cards have ~360px width so DocuSeal tags fit on one line. */
+const MAX_COLUMNS = 2;
 
 /** Mono uppercase label, the doc's own eyebrow grammar. Accent when it heads a card. */
 function MonoLabel({
@@ -37,51 +39,130 @@ function MonoLabel({
 
 /**
  * One ruled signing field: a mono caps label over a hairline the signatory writes on (wet ink) or
- * that carries the captured value just above it. ~34px of clear height keeps the rule signable at
- * print size and stops two fields reading as one.
+ * that carries the captured signature payload / value just above it.
  */
-function SigningField({ label, value }: { label: string; value?: string }) {
+function SigningField({
+  label,
+  value,
+  payload,
+  signed,
+  signedName,
+  docusealTag,
+}: {
+  label: string;
+  value?: string;
+  payload?: string;
+  signed?: boolean;
+  signedName?: string;
+  docusealTag?: string;
+}) {
   const filled = value?.trim();
+  const isImagePayload =
+    payload?.startsWith("data:image/") ||
+    payload?.startsWith("http://") ||
+    payload?.startsWith("https://");
+
+  const isSignature = label.toUpperCase() === "SIGNATURE";
+
   return (
     <div>
       <MonoLabel size={9.5}>{label}</MonoLabel>
       <div
         className="mt-1 flex items-end"
-        style={{ minHeight: 34, borderBottom: "1px solid var(--text-1)" }}
+        style={{
+          minHeight: 38,
+          borderBottom: "1px solid var(--text-1)",
+          // IMPORTANT: overflow must be visible when rendering DocuSeal text tags.
+          // Puppeteer generates PDFs that honour overflow:hidden, which physically
+          // clips text from the PDF text layer. A clipped tag (e.g. "…type=sign" 
+          // instead of "…type=signature}}") is invalid and DocuSeal ignores it.
+          // For signed/filled states we keep hidden to contain image or text values.
+          overflow: !isImagePayload && !signed && !payload && !filled && docusealTag
+            ? "visible"
+            : "hidden",
+        }}
       >
-        {filled ? (
-          <span className="pb-1 text-[13px] leading-tight text-[var(--text-1)]">{filled}</span>
+        {isSignature && isImagePayload ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={payload}
+            alt="Signature"
+            className="max-h-12 object-contain pb-0.5"
+            style={{ maxHeight: "44px" }}
+          />
+        ) : isSignature && (signed || payload) ? (
+          <span className="pb-1 font-serif italic text-[17px] font-semibold text-[var(--brand-900)]">
+            {signedName || filled || "Digitally Signed"}
+          </span>
+        ) : filled ? (
+          <span className="pb-1 text-[13px] font-medium text-[var(--text-1)]">{filled}</span>
+        ) : docusealTag ? (
+          // Font size 8px + white-space:nowrap → entire tag renders on one line.
+          // Must be one unbroken text run in the PDF text layer for DocuSeal to detect.
+          <span
+            className="pb-1 font-mono select-none"
+            style={{ fontSize: 8, color: "var(--text-4)", opacity: 0.7, whiteSpace: "nowrap" }}
+          >
+            {docusealTag}
+          </span>
         ) : null}
       </div>
     </div>
   );
 }
 
-function SignatureCard({ block }: { block: SignatureBlockItem }) {
+/**
+ * `meta` is computed once for ALL blocks by the parent `Preview` via
+ * `getDocusealBlocksMeta`, guaranteeing the tags printed in the PDF are
+ * identical to what `route.ts` registers with the DocuSeal API.
+ */
+function SignatureCard({
+  block,
+  meta,
+}: {
+  block: SignatureBlockItem;
+  meta: DocusealBlockMeta;
+}) {
   const personal = block.personal === true;
   // Blank lines are kept in the data so the editor's one-line-per-detail textarea stays typable;
   // they're dropped here so they never print as gaps.
   const details = (block.details ?? []).filter((line) => asTrimmedText(line));
+
+  const { sigTag: docusealSigTag, dateTag: docusealDateTag } = meta;
+
   return (
     <div
       className="proposal-block-avoid rounded-[10px] border border-[var(--border-2)] bg-white"
       style={{ padding: 24 }}
     >
-      <MonoLabel accent>{personal ? "Signed personally by" : "For and on behalf of"}</MonoLabel>
+      <div className="flex items-center justify-between gap-2">
+        <MonoLabel accent>{personal ? "Signed personally by" : "For and on behalf of"}</MonoLabel>
+        {block.type ? (
+          <span className="rounded bg-[var(--bg-3)] px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-[var(--text-3)]">
+            {block.type}
+          </span>
+        ) : null}
+      </div>
       <p className="mt-2 font-[family-name:var(--font-display)] text-[19px] font-normal leading-tight text-[var(--text-1)]">
         {block.partyName || "—"}
       </p>
       {details.length ? (
         <div className="mt-2 space-y-0.5">
-          {details.map((line, index) => (
-            <p key={index} className="text-[13px] leading-[1.35] text-[var(--text-3)]">
+          {details.map((line, idx) => (
+            <p key={idx} className="text-[13px] leading-[1.35] text-[var(--text-3)]">
               {line}
             </p>
           ))}
         </div>
       ) : null}
       <div className="mt-6 space-y-4">
-        <SigningField label="Signature" />
+        <SigningField
+          label="SIGNATURE"
+          payload={block.signaturePayload}
+          signed={block.signed}
+          signedName={block.signedName}
+          docusealTag={docusealSigTag}
+        />
         <SigningField label="Name" value={block.signatoryName} />
         {/* A personal signatory is witnessed rather than holding a position in a company. */}
         {personal ? (
@@ -89,7 +170,12 @@ function SignatureCard({ block }: { block: SignatureBlockItem }) {
         ) : (
           <SigningField label="Position" value={block.signatoryRole} />
         )}
-        <SigningField label="Date" value={block.signatureDate} />
+        <SigningField
+          label="Date"
+          value={block.signatureDate}
+          signed={block.signed}
+          docusealTag={docusealDateTag}
+        />
       </div>
     </div>
   );
@@ -112,6 +198,11 @@ export const signaturesSection = defineSection<SignaturesSectionData>({
     // Adapts to the signatory count: 1–3 sit on one row, 4–5 wrap. Never more than 3 across.
     const columns = Math.min(Math.max(blocks.length, 1), MAX_COLUMNS);
     const note = data.note?.trim();
+
+    // Compute DocuSeal metadata for ALL blocks in one pass so every card
+    // gets the exact role + field names that route.ts will send to the API.
+    const blocksMeta = getDocusealBlocksMeta(blocks);
+
     return (
       <div className="space-y-5">
         <div>
@@ -130,8 +221,8 @@ export const signaturesSection = defineSection<SignaturesSectionData>({
             className="grid gap-4"
             style={{ gridTemplateColumns: `repeat(${columns}, minmax(0,1fr))` }}
           >
-            {blocks.map((block) => (
-              <SignatureCard key={block.id} block={block} />
+            {blocks.map((block, index) => (
+              <SignatureCard key={block.id} block={block} meta={blocksMeta[index]} />
             ))}
           </div>
         ) : null}
