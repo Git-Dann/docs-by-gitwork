@@ -83,12 +83,27 @@ export interface WikiInsightsSection {
   boards: WikiInsightBoardRecord[];
 }
 
+/**
+ * ⚠️ These three child models have **no `createdAt`**, and an earlier version of this
+ * ordered by one. That took down EVERY client's wiki with a 500 in production:
+ * `loadWikiInsights` runs inside `buildDTO`'s `Promise.all`, so its rejection rejected
+ * the whole DTO — *"Unknown argument `createdAt`"*.
+ *
+ * `tsc` could not see it, and the reason is worth remembering: TypeScript's
+ * excess-property check fires only on an object literal assigned **directly** at the call
+ * site. Extracting this include into a named const is exactly what disabled it. The
+ * companion test (`wiki-insights-include.test.ts`) reads the schema and checks every
+ * field named here actually exists, because the compiler structurally cannot.
+ *
+ * Not `as const` — Prisma's generated `orderBy` wants a MUTABLE array, and a readonly
+ * tuple is rejected with an error that points at the include rather than at the cause.
+ */
+const CHILD_ORDER = [{ orderKey: "asc" as const }, { id: "asc" as const }];
+
 const BOARD_INCLUDE = {
-  // Not `as const` — Prisma's generated `orderBy` wants a MUTABLE array, and a readonly
-  // tuple is rejected with an error that points at the include rather than at the cause.
-  seriesPoints: { orderBy: [{ orderKey: "asc" as const }, { createdAt: "asc" as const }] },
-  vennItems: { orderBy: [{ orderKey: "asc" as const }, { createdAt: "asc" as const }] },
-  nodes: { orderBy: [{ orderKey: "asc" as const }, { createdAt: "asc" as const }] },
+  seriesPoints: { orderBy: CHILD_ORDER },
+  vennItems: { orderBy: CHILD_ORDER },
+  nodes: { orderBy: CHILD_ORDER },
 };
 
 type BoardRow = {

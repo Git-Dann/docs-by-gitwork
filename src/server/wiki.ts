@@ -637,6 +637,22 @@ async function loadWikiDesignSystem(clientId: string): Promise<WikiDesignSystem 
   };
 }
 
+/**
+ * Run one wiki section loader, falling back to its empty state if it throws.
+ *
+ * Deliberately NOT swallowed silently: the error is logged with the section's name, so a
+ * section that has quietly stopped loading is findable in the container logs rather than
+ * only visible as an absence on the page.
+ */
+async function settle<T>(section: string, load: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    console.error(`[wiki] section "${section}" failed to load; rendering it empty.`, err);
+    return fallback;
+  }
+}
+
 async function buildDTO(
   wiki: {
   id: string;
@@ -716,8 +732,19 @@ async function buildDTO(
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
-  // These 11 loaders are independent — run them together instead of one round-trip
+  // These 13 loaders are independent — run them together instead of one round-trip
   // after another (this ran on every wiki page load with zero caching).
+  //
+  // ⚠️ `settle` rather than a bare `Promise.all`, and this is not belt-and-braces: an
+  // `orderBy` on a column that does not exist made `loadWikiInsights` reject, and because
+  // `Promise.all` rejects as a whole that 500'd EVERY client's wiki — not the Insights
+  // section, the entire page, including clients who had never enabled it. One optional
+  // section must not be able to take down the rest. Same shape as §35.1, where one failed
+  // GraphQL call silently discarded a whole repo scan.
+  //
+  // A failure is logged with the section's name, and that section falls back to its empty
+  // state — so it reads as "nothing here" rather than as a broken wiki, and the error is
+  // in the container logs rather than swallowed.
   const [
     blockers,
     timeline,
@@ -732,22 +759,36 @@ async function buildDTO(
     taskStatuses,
     insights,
     support,
-  ] =
-    await Promise.all([
-      loadWikiBlockers(wiki.clientId),
-      loadWikiTimeline(wiki.clientId),
-      loadWikiDesignSystem(wiki.clientId),
-      loadWikiMonitors(wiki.clientId),
-      loadWikiCodeHandover(wiki.clientId),
-      loadWikiTeam(wiki.clientId),
-      loadWikiProductTeam(wiki.clientId),
-      loadWikiHeaderLinks(wiki.clientId),
-      loadWikiDocuments(wiki.clientId),
-      getLaunchpadByWikiId(wiki.id),
-      loadLinkedTaskStatuses((wiki.intakeItems ?? []).map((item) => item.taskId)),
-      loadWikiInsights(wiki.clientId),
-      loadWikiSupport(wiki.clientId),
-    ]);
+  ] = await Promise.all([
+    settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
+    settle("timeline", () => loadWikiTimeline(wiki.clientId), { blocks: [], milestones: [] }),
+    settle("designSystem", () => loadWikiDesignSystem(wiki.clientId), null),
+    settle("monitors", () => loadWikiMonitors(wiki.clientId), { enabled: false, monitors: [] }),
+    settle("codeHandover", () => loadWikiCodeHandover(wiki.clientId), { enabled: false, modules: [] }),
+    settle("team", () => loadWikiTeam(wiki.clientId), []),
+    settle("productTeam", () => loadWikiProductTeam(wiki.clientId), []),
+    settle("headerLinks", () => loadWikiHeaderLinks(wiki.clientId), {
+      platformName: wiki.client.name,
+      productionUrl: null,
+      stagingUrl: null,
+    }),
+    settle("documents", () => loadWikiDocuments(wiki.clientId), { enabled: false, documents: [] }),
+    settle("launchpad", () => getLaunchpadByWikiId(wiki.id), null),
+    settle(
+      "taskStatuses",
+      () => loadLinkedTaskStatuses((wiki.intakeItems ?? []).map((item) => item.taskId)),
+      new Map<string, TaskStatus>(),
+    ),
+    settle("insights", () => loadWikiInsights(wiki.clientId), { enabled: false, boards: [] }),
+    settle("support", () => loadWikiSupport(wiki.clientId), {
+      enabled: false,
+      linked: false,
+      current: null,
+      previous: null,
+      daysAllowance: null,
+      daysUsed: null,
+    }),
+  ]);
   return {
     id: wiki.id,
     clientId: wiki.clientId,
