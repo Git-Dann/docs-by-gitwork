@@ -55,7 +55,7 @@ const SECTION_META: Record<
   documents: { label: "Documents", icon: DocumentDuplicateIcon },
   intake: { label: "Requests", icon: FlagIcon },
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
-  insights: { label: "Insights", icon: ChartPieIcon },
+  insights: { label: "Charts", icon: ChartPieIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
@@ -445,7 +445,7 @@ export function WikiDashboard({
         const items = wiki.intakeItems;
         const open = items.filter((r) => r.status === "NEW" || r.status === "TRIAGED").length;
         return items.length > 0 ? (
-          <div className="flex items-end gap-6">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(open)} label="Open" />
             <Metric value={String(items.length)} label="Total" />
           </div>
@@ -462,7 +462,10 @@ export function WikiDashboard({
         return boards.length > 0 ? (
           <div className="space-y-1.5">
             <Metric value={String(boards.length)} label={boards.length === 1 ? "Board" : "Boards"} />
-            <p className="truncate text-[12px] text-[var(--text-4)]">
+            <p
+              className="truncate text-[12px] text-[var(--text-4)]"
+              title={[...kinds].join(" · ")}
+            >
               {[...kinds].join(" · ")}
             </p>
           </div>
@@ -479,8 +482,12 @@ export function WikiDashboard({
         return d.noTimeline ? (
           <p className="text-[13px] text-[var(--text-4)]">No delivery plan yet.</p>
         ) : (
-          <div className="flex items-end gap-6">
-            <Metric value={`${d.percent}%`} label="Complete" />
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            {/* `percent` is null when a plan is drawn but no block has tasks yet — the
+                normal state between a Gantt being laid out and work being broken down.
+                Render an em-dash, never `null%`; this card is the landing page of a
+                whole-wiki client share. The Delivery section itself already does this. */}
+            <Metric value={d.percent === null ? "—" : `${d.percent}%`} label="Complete" />
             <Metric value={String(d.waitingOnClient)} label="Waiting on you" />
           </div>
         );
@@ -488,7 +495,10 @@ export function WikiDashboard({
       case "support": {
         const c = wiki.support.current;
         return c ? (
-          <div className="flex items-end gap-6">
+          // `flex-wrap` + a narrower gap: the card is overflow:hidden, so a second
+          // tile that does not fit is UNREACHABLE rather than merely off-screen
+          // (CLAUDE.md §45.2). Wrapping costs one line; clipping loses the figure.
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(c.totalTickets)} label="Tickets" />
             <Metric value={`${Math.round(c.resolutionRate)}%`} label="Resolved" />
           </div>
@@ -500,7 +510,7 @@ export function WikiDashboard({
         const reqs = wiki.courseRequests;
         const open = reqs.filter((r) => r.status === "NEW").length;
         return (
-          <div className="flex items-end gap-6">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(open)} label="New" />
             <Metric value={String(reqs.length)} label="Total" />
           </div>
@@ -510,7 +520,7 @@ export function WikiDashboard({
         const reqs = wiki.courseRequests;
         const added = reqs.filter((r) => r.status === "ADDED").length;
         return (
-          <div className="flex items-end gap-6">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(added)} label="Live courses" />
             <Metric value="3" label="Providers" />
           </div>
@@ -564,7 +574,13 @@ export function WikiDashboard({
           rather than pulled from the light/dark `--text-*`/`--surface-*` tokens. */}
       <section className="rounded-[14px] bg-[#0F172A] p-6 md:p-9">
         <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          {/* ⚠️ `lg:`, NOT `sm:`. The team stack beside this is `shrink-0`, so once the
+              row goes horizontal the title column absorbs every pixel of squeeze. At
+              768px — where the 256px sidebar mounts — that left the `<h1>` a 139px
+              column for 52px serif, and `break-words` shattered the client's own name
+              mid-word: "Nort / hwin / d / Studi / o." On their front door.
+              Below `lg` the team stack sits under the title at full width instead. */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
             <div className="flex min-w-0 items-start gap-4">
               {wiki.designSystem?.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -602,7 +618,7 @@ export function WikiDashboard({
             {/* Teams — stacked avatars with a name + italic-bio tooltip on
                 hover. Product (account leads) above Delivery (the devs). */}
             {(wiki.productTeam.length > 0 || wiki.team.length > 0) && (
-              <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+              <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
                 <span
                   className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/35"
                   style={{ fontFamily: MONO }}

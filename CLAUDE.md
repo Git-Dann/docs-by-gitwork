@@ -4979,3 +4979,211 @@ tiles.
 `loadWikiSupport` have only been exercised against a fixture. **Post-deploy:** enable
 Support on a client that has a linked Care record and confirm the month's figures match
 that client's latest Care report.
+
+## 50. Incident (September 2026) — every client's wiki 500'd, and `tsc` could not have caught it
+
+**Symptom:** `/api/clients/[slug]/wiki` returned 500 for **all 13 clients**. Reported from a
+browser console; root cause read out of the production container logs, not inferred.
+
+```
+prisma:error Invalid `prisma.clientWiki.findUnique()` invocation:
+Unknown argument `createdAt`. Available options are marked with ?.
+```
+
+`BOARD_INCLUDE` in `wiki-insights.ts` ordered the three Insight child relations by
+`createdAt`. None of `WikiInsightSeriesPoint`, `WikiInsightVennItem` or `WikiInsightNode`
+has that column.
+
+### 50.1 ⚠️ The compiler check that a named const silently disables
+
+**TypeScript's excess-property check fires only on an object literal assigned DIRECTLY at
+the call site.** The moment a Prisma `select` / `include` / `where` / `orderBy` is lifted
+into a named const — or returned from a helper, or spread in — that check is skipped
+entirely, and a field that does not exist compiles perfectly.
+
+So the readability refactor *was* the defect. `tsc`, `eslint`, **3,394 tests**, `audit:ui`
+and `npx next build` were all green on a query that could never run.
+
+There is now a test — `src/server/__tests__/wiki-insights-include.test.ts` — that reads
+`prisma/schema.prisma` and checks every field named in an extracted include actually
+exists on its model. Reintroducing the exact bug fails 5 of its 9 tests. **Any future
+extracted Prisma args object wants the same treatment**, because nothing else can see it.
+
+### 50.2 The severity was a `Promise.all`, not the bad column
+
+A wrong column in one optional section should have broken one optional section. Instead
+`loadWikiInsights` ran inside `buildDTO`'s `Promise.all`, so its rejection rejected the
+whole DTO — **clients who had never enabled Insights lost their entire wiki.**
+
+Every loader now goes through `settle(section, load, fallback)`: it logs the failing
+section by name and falls back to that section's empty state. A broken section reads as
+"nothing here" and is findable in the logs, instead of taking the page with it. Same shape
+as §35.1, where one failed GraphQL call silently discarded a whole repo scan — the lesson
+did not transfer the first time, hence writing it down again.
+
+### 50.3 ⚠️ A green deploy job does NOT mean the release works
+
+I reported the release sound because the `deploy` job was green and `/api/health` returned
+200. That proves the image built, `prisma db push` applied, and the container is up. It
+says **nothing** about whether any real page loads — `/api/health` touches none of the
+code a feature changed.
+
+**Verify a release by hitting the surface the change actually touched.** For anything
+server-side that is one command from the box, and it takes seconds:
+
+```bash
+ssh <vps> "cd /opt/apps/foundry && K=\$(grep '^API_KEY=' .env | cut -d= -f2- | tr -d '\"') \
+  && curl -s -o /dev/null -w '%{http_code}\n' -H \"Authorization: Bearer \$K\" \
+     localhost:3000/api/clients/<slug>/wiki"
+```
+
+Post-fix that was run for **every** client, not one: 13/13 → 200.
+
+### 50.4 Two log lines that look like defects and are not
+
+Checked while sweeping, and recorded so the next person does not chase them:
+
+- **`Error: The Server Reference ID did not match the expected format. Received "x".`** —
+  8 in 24h. The received value is a single character, not a stale bundle hash. Cross-
+  referenced against nginx: external POSTs to `/` and `/portal/login` from Cloudflare,
+  GCP and other scanner IPs, all answered **404**. Next is correctly refusing junk and
+  being loud about it. Silencing it would hide real Server Action errors.
+- **`[auth][error] InvalidCheck: pkceCodeVerifier value could not be parsed`** — exactly
+  **once** in 48h, seconds after a deploy restarted the container, with a successful
+  Google callback (302) nearby. An in-flight OAuth handshake interrupted by a restart.
+  Sign in again; nothing to fix.
+
+Apart from those two, production's error log across 24 hours contained **only** this
+incident.
+
+### 50.5 The compiler check the outage disabled, re-enabled everywhere
+
+§50 explains *why* `tsc` could not see the bad `orderBy`: the excess-property check fires
+only on an object literal passed **directly** at the call site, so extracting it into a
+named const (`include: BOARD_INCLUDE`) silently switches it off. The first fix corrected
+the bad value. This one removes the mechanism.
+
+⚠️ **`as const` does NOT restore the check.** It reads like a safety measure and is not
+one. Verified both directions rather than assumed:
+
+```ts
+const A = { id: true, bogusA: true } as const;                          // 0 diagnostics
+const B = { id: true, bogusB: true } as const satisfies Prisma.XSelect; // TS2353 ✅
+```
+
+**`as const satisfies T` is the form, and both halves are load-bearing.** `satisfies`
+re-enables the excess-property check; `as const` preserves the literal `true` types that
+Prisma's payload inference needs — with `satisfies` alone, `true` widens to `boolean` and
+every result degrades to `{ [x: string]: any }`. (That is what a first pass produced, and
+it showed up as ~20 unrelated type errors downstream, which is how it was caught.)
+
+Applied to all **19** extracted args objects across 17 files. Reintroducing the exact
+outage bug is now a **compile error naming all three models**, and a bogus relation in
+`WIKI_INCLUDE` is `TS2353` — both proved by deliberate sabotage, both reverted.
+
+**`src/server/__tests__/prisma-args-satisfies.test.ts`** keeps it that way: it sweeps
+`src/` for consts used at a `select:`/`include:`/`orderBy:` position and fails naming any
+that lack a `satisfies Prisma.` tail. It carries its own "did the sweep actually find
+anything" assertion, because a broken matcher would otherwise report *"0 unguarded"* and
+pass forever. It found one the hand pass missed (`CHILD_ORDER`).
+
+**Known gaps, so a green run is not over-read:** `$queryRaw`/`$executeRaw` name columns in
+SQL strings and are invisible to all of this (~13 sites); shapes built inline in a helper's
+return, or spread into a call, are not matched; `where`/`data` are excluded deliberately
+(routinely built from variables, so requiring a tail there would be mostly noise).
+
+### 50.6 `audit:clipping` was crying wolf — four false-positive sources, all fixed
+
+A full wiki sweep (11 sections × 4 viewports) produced ~60 raw findings of which **roughly
+half were false**. A detector that noisy is worse than none: it trains you to skim.
+
+| Was reported | Why it was wrong |
+|---|---|
+| Content inside a **closed `<details>`** | `isClosedDisclosure` was only consulted on ancestors that *themselves* clip. A `<details>` is `overflow: visible`, so the walk sailed past it to the nearest card. 12 of 12 Charts findings. |
+| A **sticky** element below the fold | `sticky` was treated as `fixed`. A sticky element is in normal flow and scrolls into view like anything else. |
+| Text whose full value is on a **titled wrapper** | Only `el.title` was read. Hovering a child shows its wrapper's tooltip, so the text *is* reachable (bounded to 3 levels — unbounded `closest('[title]')` would let one titled panel excuse everything inside it). |
+| An **inline child of an ellipsed box** | The ellipsis clipping its own children is the ellipsis working. Whether that box loses text is the TRUNCATED rule's call; reporting each inner `<span>` doubled it up and pointed the fix at the wrong element. |
+
+All four are now in **`--self-test`** (seven lookalikes, up from three) and each was proved
+to discriminate by reverting the fix and watching the named case fail.
+
+⚠️ **Run it from where `playwright-core` lives** (§44.6), not from the repo — the script is
+ESM, so `NODE_PATH` is ignored, and a Claude worktree shares `node_modules` by symlink.
+
+After the fixes, and with the real defects below repaired: **44 wiki states, 0 findings,
+0 console errors.**
+
+### 50.7 What the sweep found once it was trustworthy
+
+All client-facing, none caught by `tsc`, `lint`, `audit:ui` or 3,461 unit tests:
+
+- **The wiki hero shattered the client's own name mid-word** — `Nort / hwin / d / Studi / o.`
+  at 768–1023px, on the front door of their wiki. The team stack beside it is `shrink-0`
+  and the row went horizontal at `sm:`, so from the moment the 256px sidebar mounted the
+  title column absorbed every pixel of squeeze: **139px for 52px serif, 7 line boxes,
+  295px tall**. Now `lg:`, measured **303px / 2 lines / 120px**, and ≤2 lines at all of
+  390 · 430 · 640 · 760 · 768 · 800 · 880 · 1023 · 1024 · 1280 · 1440 with 0 page overflow.
+- **`null%` on the Delivery dashboard card** — the section guarded `percent === null`, the
+  card did not. Fires whenever a Gantt is drawn before tasks are broken out, which is the
+  normal state, and the card is the landing page of a whole-wiki client share.
+- **Monitors' uptime strip** — bars are `flex-1` floored at 3px, so N checks need ~5N px and
+  cannot shrink. In the 2-up grid at 768 the last ~10 days were past the card, and
+  `.widget-card` is `overflow: hidden`, so **unreachable** (§45.2).
+- **Changelog on a phone** — the action cluster is `shrink-0` in a nowrap row, so editing a
+  release was impossible at 390px.
+- **The Design System type specimen showed `Wa…`** — a 210px meta column left the sample
+  117px at 768 and **36px at 390**, clipped rather than wrapped. A type specimen that
+  cannot show its sentence is not doing its job.
+- **Two Design System tables were `overflow-hidden`** — 198px of columns (`Border`,
+  `Surfaces`, `Use`) unreachable at 390px. Tables scroll, they do not reflow.
+
+**The lesson is the one §42.8 already paid for, one layer out:** every one of these needed
+the page *rendered at a real viewport*. Reading the component tells you nothing about a
+column that collapses only when a sibling stops shrinking.
+
+### 50.8 Requests: eight defects, and the one pattern behind four of them
+
+Found by adversarial review of the merged PRs, all confirmed by reproduction:
+
+- **Every internal mutation was fire-and-forget.** No intake hook defines `onError`, and
+  every internal call site was `void x.mutateAsync(…)`. A failed promote/close/delete was
+  an unhandled rejection with zero UI consequence. Delete was worst: `setConfirmDeleteId(null)`
+  sat *after* an `await`, so a failure left the row stuck on "Delete permanently?" forever —
+  which reads as an unresponsive button and invites a second click. ⚠️ **The public half of
+  the same file did this correctly and rendered into `rowError`; the internal half never
+  adopted it.** Now one `runRowAction` / `runBatch` pair that a call site cannot forget.
+- **A partial batch cleared the selection wholesale**, including the rows that failed. It
+  now clears only what completed, leaving the failures ticked and ready to retry.
+- **The stage filter offered a "Closed" bucket that was always empty** — `stagesPresent`
+  read `allItems`, the list read `scopedItems`, and those two are exactly complementary
+  for CLOSED while "Dealt with" is off (the default).
+- **A deleted-but-selected row left a stuck batch bar** — `selected` is a `Set<string>`
+  never pruned, so `selected.size` counted ids with nothing behind them and every button on
+  the bar was a silent no-op. All user-facing counts read `selectedRows` now.
+- **A >500-row or long-title import failed with the bare words "Validation failed"** — the
+  cap lived only in the route's zod schema, so the modal previewed "640 to import", offered
+  "Import 640", and surfaced the rejection after every column had been mapped by hand. The
+  limits now live in `src/lib/wiki-intake-import-limits.ts` and **both sides import them**;
+  over-long titles are shortened and *counted in the preview* rather than rejected.
+- **Escape stranded the import modal on its success screen** — `Modal` fires `onClose` on
+  Escape/backdrop/X and the parent only hides the component, so reopening showed
+  "5 requests imported / Done" with nothing to paste into.
+- **The "could not read this column" tooltip never rendered** — `title` was passed to a
+  Heroicon, which spreads it onto the `<svg>` as an *attribute*; SVG needs a `<title>`
+  **child**. The `DUP` marker four lines above got it right with `<span title=…>`.
+
+### 50.9 Naming: "Insights" was two different things
+
+The wiki section holding author-drawn bar/pie/Venn/node boards was called **Insights**, and
+`proposal-editor-layout.tsx` already ships `{ id: "insights", label: "Insights" }` for the
+Docs editor's analytics tab — same word, same platform, unrelated thing. Worse, it sat
+directly above **Delivery** and **Support** in the rail, both of which are *also* insights,
+so the label distinguished it from nothing.
+
+Renamed to **Charts** in all seven label sites. ⚠️ **The section id stays `insights`** —
+changing it would touch all twelve allow-lists (§43.1), the `insightsEnabled` column and
+every share link already sent, for no user-visible gain. Label ≠ id is already the norm
+here (`intake` → "Requests", `ia` → "Info Architecture").
+
+**Delivery was left alone** despite sitting next to Timeline: its own header reads
+`01 // WHERE WE ARE`, and "Delivery" is the agency's word for it.

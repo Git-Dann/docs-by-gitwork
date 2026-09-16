@@ -60,15 +60,24 @@ function HistoryStrip({ history }: { history: WikiMonitorDTO["history"] }) {
     return <div className="h-6 text-[11px] text-[var(--text-4)]">Awaiting first checks…</div>;
   }
   return (
-    <div className="flex h-6 items-stretch gap-[2px]" title={`${history.length} recent checks`}>
-      {history.map((h, i) => (
-        <span
-          key={i}
-          className="flex-1 rounded-[2px]"
-          style={{ background: DOT[h.status as Status], minWidth: 3 }}
-          title={`${META[h.status as Status].label}${h.latencyMs != null ? ` · ${h.latencyMs}ms` : ""} · ${new Date(h.checkedAt).toLocaleString()}`}
-        />
-      ))}
+    // ⚠️ Each bar is `flex-1` but floored at 3px, so N checks need ~5N px and CANNOT
+    // shrink below it. In the 2-up card grid at 768 that overflowed the monitor card,
+    // and `.widget-card` is overflow:hidden — so the most recent ~10 days of uptime
+    // were unreachable, not merely off-screen (CLAUDE.md §45.2). Scrolls now.
+    <div className="overflow-x-auto">
+      <div
+        className="flex h-6 items-stretch gap-[2px]"
+        title={`${history.length} recent checks`}
+      >
+        {history.map((h, i) => (
+          <span
+            key={i}
+            className="flex-1 rounded-[2px]"
+            style={{ background: DOT[h.status as Status], minWidth: 3 }}
+            title={`${META[h.status as Status].label}${h.latencyMs != null ? ` · ${h.latencyMs}ms` : ""} · ${new Date(h.checkedAt).toLocaleString()}`}
+          />
+        ))}
+      </div>
     </div>
   );
 }

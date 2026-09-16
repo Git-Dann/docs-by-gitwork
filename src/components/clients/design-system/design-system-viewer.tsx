@@ -222,7 +222,11 @@ function ColourChip({ c, varName }: { c: ColourToken; varName?: string }) {
         )}
 
         {/* Hex */}
-        <p className="truncate text-[10px] text-[var(--text-4)]" style={{ fontFamily: mono }}>
+        <p
+          className="truncate text-[10px] text-[var(--text-4)]"
+          title={`${c.hex.toUpperCase()}${c.rgb ? ` ${c.rgb}` : ""}`}
+          style={{ fontFamily: mono }}
+        >
           {c.hex.toUpperCase()}
           {c.rgb && <span className="ml-1 opacity-60">{c.rgb}</span>}
         </p>
@@ -300,7 +304,11 @@ function ColoursSection({ tokens }: { tokens: DesignTokens }) {
                 <div key={name}>
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <p className="text-[11px] font-medium capitalize text-[var(--text-2)]">{name}</p>
-                    <p className="truncate text-[10px]" style={{ fontFamily: mono, color: "var(--text-4)" }}>
+                    <p
+                      className="truncate text-[10px]"
+                      title={`${first} → ${last}`}
+                      style={{ fontFamily: mono, color: "var(--text-4)" }}
+                    >
                       {first} → {last}
                     </p>
                   </div>
@@ -386,8 +394,11 @@ function TypographySection({ tokens }: { tokens: DesignTokens }) {
           return (
             <div
               key={`${t.role}-${i}`}
-              className="grid items-baseline gap-5 border-b border-[rgba(0,0,0,0.06)] px-5 last:border-0"
-              style={{ gridTemplateColumns: "210px 1fr", paddingTop: isLarge ? 20 : 14, paddingBottom: isLarge ? 20 : 14 }}
+              // Stacks below `md`. Side by side, the 210px meta column left the
+              // specimen 117px at 768px and 36px at 390px — a type specimen that
+              // renders "Wa…" is not showing you the typeface.
+              className="grid items-baseline gap-x-5 gap-y-2 border-b border-[rgba(0,0,0,0.06)] px-5 last:border-0 md:grid-cols-[210px_1fr]"
+              style={{ paddingTop: isLarge ? 20 : 14, paddingBottom: isLarge ? 20 : 14 }}
             >
               <div className="self-start pt-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-2)]">
@@ -400,7 +411,9 @@ function TypographySection({ tokens }: { tokens: DesignTokens }) {
                 </p>
               </div>
               <p
-                className="min-w-0 overflow-hidden text-[var(--text-1)]"
+                // Wraps rather than clips — the whole point of the row is to read the
+                // sample sentence, and three lines of it beats one truncated word.
+                className="min-w-0 break-words text-[var(--text-1)]"
                 style={{
                   fontFamily: `${t.fontFamily}, ${systemFallback}`,
                   fontSize: t.fontSize,
@@ -536,15 +549,19 @@ function ButtonsSection({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="grid gap-3 sm:grid-cols-3">
+      {/* 3-up only from `lg`. At `sm:grid-cols-3` each preview card was ~150px wide
+          inside the wiki's sidebar layout, and 24px of padding on both sides left a
+          button wider than the content box — `flex-wrap` cannot break a single item,
+          and the card is overflow:hidden, so "Secondary" was cut by 15px at 768px. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {surfaces.map((s) => {
           const btns = onSurface(s.key);
           if (!btns.length) return null;
           return (
             <div key={s.key} className="flex h-full flex-col overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
               <div
-                style={{ background: s.bg, border: s.border, padding: 24, minHeight: 116 }}
-                className="flex flex-1 flex-wrap content-start items-start gap-2.5"
+                style={{ background: s.bg, border: s.border, minHeight: 116 }}
+                className="flex flex-1 flex-wrap content-start items-start gap-2.5 p-4 sm:p-6"
               >
                 {btns.map((b, i) => renderBtn(b, `${s.key}-${i}`))}
               </div>
@@ -558,7 +575,10 @@ function ButtonsSection({
           );
         })}
       </div>
-      <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+      {/* `overflow-x-auto`, not `overflow-hidden`: this table cannot shrink, and hidden
+          made its right-hand columns (Border / Surfaces / Use) unreachable rather than
+          merely off-screen — 198px of them at 390px. Tables scroll. */}
+      <div className="overflow-x-auto rounded-[10px] border border-[rgba(0,0,0,0.08)]">
         <table className="w-full border-collapse text-[12px]">
           <thead>
             <tr style={{ background: darkSurface }}>
@@ -837,7 +857,8 @@ function LogoSection({
       {lr?.colourRules && lr.colourRules.length > 0 && (
         <div>
           <GroupLabel>Colour on surface</GroupLabel>
-          <div className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)]">
+          {/* Scrolls, for the same reason as the variants table above. */}
+          <div className="overflow-x-auto rounded-[10px] border border-[rgba(0,0,0,0.08)]">
             <table className="w-full border-collapse text-[12px]">
               <tbody>
                 {lr.colourRules.map((r, i) => (

@@ -260,7 +260,7 @@ export function WikiSidebar({
         {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
         {navItem("intake", "Requests", <FlagIcon />)}
         {navItem("launchpad", "Launchpad", <RocketLaunchIcon />)}
-        {navItem("insights", "Insights", <ChartPieIcon />)}
+        {navItem("insights", "Charts", <ChartPieIcon />)}
         {navItem("delivery", "Delivery", <ChartBarSquareIcon />)}
         {navItem("support", "Support", <LifebuoyIcon />)}
         {navItem("code-handover", "Code Handover", <CpuChipIcon />)}

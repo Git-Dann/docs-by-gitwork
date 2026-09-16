@@ -175,7 +175,16 @@ export const AUDIT = () => {
     // through. Only `hidden`/`clip` actually loses the text.
     const selfScrollsX = ['auto', 'scroll'].includes(cs.overflowX)
     if (ownText && el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0 && !selfScrollsX && cs.overflowX !== 'visible') {
-      const recoverable = el.title || el.getAttribute('aria-label') || el.matches('input, textarea, select')
+      // A `title` on a near ancestor counts: hovering the child shows the wrapper's
+      // tooltip, so the full text IS reachable. Bounded to 3 levels on purpose —
+      // `closest('[title]')` unbounded would let one titled panel excuse every
+      // truncation inside it.
+      let titled = false
+      let t = el
+      for (let up = 0; up < 3 && t; up++, t = t.parentElement) {
+        if (t.title || t.getAttribute('aria-label')) { titled = true; break }
+      }
+      const recoverable = titled || el.matches('input, textarea, select')
       if (!recoverable) {
         out.push({ kind: 'TRUNCATED', el: label(el), detail: `${el.scrollWidth}px of text in ${el.clientWidth}px, no title and no scroll` })
       }
@@ -187,14 +196,24 @@ export const AUDIT = () => {
       let p = el.parentElement
       while (p && p !== document.body) {
         const ps = getComputedStyle(p)
+        // ⚠️ Checked on EVERY ancestor, not only the clipping ones. A closed
+        // `<details>` is `overflow: visible`, so gating this on `clipX || clipY`
+        // let the walk sail straight past it to the nearest clipping card and
+        // report the disclosure's own hidden contents as "cut off". That was ~30
+        // of ~60 findings on a wiki sweep — all false, and the header above has
+        // always claimed <details> was covered.
+        if (isClosedDisclosure(p, Math.min(p.clientWidth || 0, p.clientHeight || 0))) break
         const clipX = ps.overflowX !== 'visible'
         const clipY = ps.overflowY !== 'visible'
         if (clipX || clipY) {
           const pr = p.getBoundingClientRect()
-          // A closed drawer/rail is hiding its contents on purpose — stop here.
-          if (isClosedDisclosure(p, Math.min(p.clientWidth || 0, p.clientHeight || 0))) break
           // A slide/artboard cropping its own content is the canvas doing its job.
           if (p.matches(CROP_SURFACES)) break
+          // An ellipsed text box clipping its own inline children is the ellipsis
+          // working. Whether that box loses text is the TRUNCATED rule's call —
+          // reporting each inner <span> as separately CLIPPED just doubles it up
+          // and points the fix at the wrong element.
+          if (ps.textOverflow === 'ellipsis') break
           // A person can only scroll `auto`/`scroll`. With `hidden`/`clip` the
           // browser still reports scrollWidth/scrollHeight past the box, so testing
           // those alone silently excuses the single most common way UI goes missing.
@@ -226,9 +245,16 @@ export const AUDIT = () => {
       }
     }
 
-    // OFFSCREEN — a fixed/sticky panel rendering outside the viewport can't be
-    // scrolled to. Only flag ones big enough to be real UI.
-    if ((cs.position === 'fixed' || cs.position === 'sticky') && r.width > 40 && r.height > 24) {
+    // OFFSCREEN — a FIXED panel rendering outside the viewport cannot be scrolled
+    // to. Only flag ones big enough to be real UI.
+    //
+    // ⚠️ `sticky` is deliberately NOT included. A sticky element sits in normal
+    // document flow and scrolls into view like anything else — one that is simply
+    // below the fold right now is reachable, and reporting it produced a steady
+    // stream of false positives (verified: scroll to it and the detector reports
+    // nothing). A sticky element that is genuinely unreachable is cut by an
+    // ancestor or pushes the page sideways, which CLIPPED and PAGE-X already catch.
+    if (cs.position === 'fixed' && r.width > 40 && r.height > 24) {
       const off = []
       if (r.bottom > innerHeight + 2) off.push(`${Math.round(r.bottom - innerHeight)}px below the fold`)
       if (r.right > innerWidth + 2) off.push(`${Math.round(r.right - innerWidth)}px past the right edge`)
@@ -293,8 +319,11 @@ if (!isCli) {
 /**
  * Self-test fixture. A detector that never fires is worse than no detector, so
  * `--self-test` renders deliberately broken markup and asserts every kind fires
- * AND that the three lookalikes stay quiet: a scrollable parent, a scrollable code
- * block, and a screen-reader-only node. Run it after touching the rules above.
+ * AND that the seven lookalikes stay quiet: a scrollable parent, a scrollable code
+ * block, a screen-reader-only node, content inside a CLOSED <details>, a sticky
+ * element merely below the fold, text whose full value is on a titled WRAPPER, and
+ * an inline child of an ellipsed box. All four of the last were real false-positive
+ * sources found by a full wiki sweep. Run it after touching the rules above.
  */
 const SELF_TEST_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -308,13 +337,19 @@ const SELF_TEST_HTML = `<!doctype html>
   .fixedoff { position: fixed; bottom: -80px; left: 0; width: 300px; height: 60px }
   table { width: 100%; min-width: 520px }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%) }
+  .stickylow { position: sticky; top: 0; width: 300px; height: 60px; background: #eee }
 </style>
 <div class="clipbox"><div class="toowide">cut off, parent cannot scroll</div></div>
 <div class="scrollbox"><div class="toowide">fine: parent scrolls</div></div>
 <div class="zero">container has zero height</div>
 <div class="ellipsed">this label is far too long to fit inside its box</div>
+<div title="the whole label, available on hover"><div class="ellipsed">fine: titled wrapper makes this readable</div></div>
+<div class="ellipsed" title="#14B8A6 rgb(20, 184, 166)">#14B8A6 <span>fine: inline child of an ellipsed box</span></div>
 <div class="fixedoff">fixed below the fold</div>
 <div class="sr">announcement, must be ignored</div>
+<div class="clipbox"><details><summary>Read as a list</summary><div class="toowide">fine: inside a closed disclosure</div></details></div>
+<div style="height:1400px"></div>
+<div class="stickylow">fine: sticky, simply below the fold</div>
 <pre style="overflow-x:auto">fine: scrollable code block ......................................................</pre>
 <table><tr><td>forces the page wider than a phone</td></tr></table>`
 

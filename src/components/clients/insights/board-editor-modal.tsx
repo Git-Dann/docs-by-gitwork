@@ -240,10 +240,20 @@ export function BoardEditorModal({
     "rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-rose-600";
 
   return (
-    <Modal open={open} onClose={onClose} title={board ? "Edit board" : "New board"} panelClassName="w-full max-w-4xl">
-      <div className="grid gap-0 md:grid-cols-[300px_minmax(0,1fr)]">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={board ? "Edit board" : "New board"}
+      // ⚠️ Height bound to the VIEWPORT, never to the content. A `max-h-[Nvh]` on the
+      // scroll region alone is NOT a fixed height — it caps the tall case while letting a
+      // short one collapse the box, so a two-point board and a forty-point board opened at
+      // wildly different sizes. DESIGN.md § Grid & Container; same geometry as
+      // daily-rollup.tsx and project-update-composer.tsx.
+      panelClassName="flex h-[80vh] max-h-[680px] min-h-[min(460px,80vh)] w-full max-w-3xl flex-col"
+    >
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 md:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
         {/* Left: what the board IS. */}
-        <div className="space-y-3 border-b border-[var(--border-2)] p-5 md:border-b-0 md:border-r">
+        <div className="min-h-0 space-y-3 overflow-y-auto border-b border-[var(--border-2)] p-5 md:border-b-0 md:border-r">
           <div>
             <label className="app-field-label" htmlFor="board-type">Type</label>
             <select
@@ -326,7 +336,7 @@ export function BoardEditorModal({
         </div>
 
         {/* Right: the data. Scrolls; the modal itself does not grow. */}
-        <div className="max-h-[46vh] space-y-2 overflow-auto p-5">
+        <div className="min-h-0 space-y-2 overflow-y-auto p-5">
           {(type === "BAR" || type === "PIE") && (
             <>
               {series.map((row, i) => (
@@ -442,7 +452,7 @@ export function BoardEditorModal({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border-2)] p-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border-2)] p-4">
         {error && <p className="mr-auto text-[13px] text-rose-600">{error}</p>}
         <button type="button" onClick={onClose}
           className="rounded-[8px] border border-[var(--border-2)] px-3 py-2 text-sm font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">

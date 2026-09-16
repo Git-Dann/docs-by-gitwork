@@ -402,7 +402,11 @@ export function ChangelogSection({
 
                   <div className="flex-1 rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white px-4 py-3.5">
                     {/* ── Header row ─────────────────────────── */}
-                    <div className="flex items-start justify-between gap-2">
+                    {/* `flex-wrap`: the right-hand cluster is `shrink-0` (date + status
+                        badge + three icon buttons), so on a phone it ran past the card —
+                        and the card is overflow:hidden, so editing a release was simply
+                        impossible there. It takes a second line instead. */}
+                    <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Version */}
                         <span

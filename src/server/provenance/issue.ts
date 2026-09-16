@@ -260,7 +260,12 @@ export function serializeCountermark(row: CountermarkRow, now: Date = new Date()
   };
 }
 
-const withClient = { client: { select: { id: true, name: true } } } as const;
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
+const withClient = { client: { select: { id: true, name: true } } } as const satisfies Prisma.CountermarkInclude;
 
 export async function listCountermarks(workspaceId: string, limit = 50): Promise<CountermarkRecord[]> {
   const rows = await prisma.countermark.findMany({

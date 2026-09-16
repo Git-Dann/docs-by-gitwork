@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { decryptNullable } from "@/lib/encryption";
 import { prisma } from "@/lib/prisma";
 import { verifySlackSignature } from "@/server/slack/signature";
@@ -39,12 +40,17 @@ export async function POST(request: NextRequest) {
   //    the single-tenant "any workspace with a signing secret" — `Workspace.slackTeamId`
   //    is not populated anywhere, so a team-id-only match would always miss for
   //    slash commands (which always send a team_id).
+  /** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+   *  const DISABLES the excess-property check that would otherwise catch a field
+   *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+   *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+   *  See CLAUDE.md §50. */
   const wsSelect = {
     id: true,
     slackSigningSecretEncrypted: true,
     slackBotToken: true,
     slackBotTokenEncrypted: true,
-  } as const;
+  } as const satisfies Prisma.WorkspaceSelect;
   let ws = teamId
     ? await prisma.workspace.findFirst({ where: { slackTeamId: teamId }, select: wsSelect })
     : null;

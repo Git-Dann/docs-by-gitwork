@@ -24,6 +24,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import type { WikiInsightBoardType, WikiInsightVennRegion } from "@prisma/client";
 import { insightColorKey, type InsightColorKey } from "@/lib/insights/palette";
 
@@ -98,13 +99,24 @@ export interface WikiInsightsSection {
  * Not `as const` — Prisma's generated `orderBy` wants a MUTABLE array, and a readonly
  * tuple is rejected with an error that points at the include rather than at the cause.
  */
-const CHILD_ORDER = [{ orderKey: "asc" as const }, { id: "asc" as const }];
+// Guarded directly as well as transitively through BOARD_INCLUDE. All three child
+// models carry `orderKey` and `id`; pinning to one of them is enough to catch a field
+// that exists on none, and BOARD_INCLUDE's own `satisfies` covers the other two.
+const CHILD_ORDER = [
+  { orderKey: "asc" },
+  { id: "asc" },
+] as const satisfies Prisma.WikiInsightSeriesPointOrderByWithRelationInput[];
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const BOARD_INCLUDE = {
   seriesPoints: { orderBy: CHILD_ORDER },
   vennItems: { orderBy: CHILD_ORDER },
   nodes: { orderBy: CHILD_ORDER },
-};
+} as const satisfies Prisma.WikiInsightBoardInclude;
 
 type BoardRow = {
   id: string;

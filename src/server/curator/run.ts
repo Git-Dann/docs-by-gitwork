@@ -20,6 +20,11 @@ import { runChecksPass } from "./checks-pass";
 import { runConsolidation } from "./consolidate";
 import type { CuratorProposal, CuratorRunResult, CuratorStats, CuratorTransition } from "./types";
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const AI_FIELD_SELECT = {
   aiProvider: true,
   anthropicApiKey: true,
@@ -30,7 +35,7 @@ const AI_FIELD_SELECT = {
   geminiModel: true,
   localLlmUrl: true,
   localLlmModel: true,
-} as const;
+} as const satisfies Prisma.WorkspaceSelect;
 
 export interface RunCuratorOptions {
   workspaceId?: string;

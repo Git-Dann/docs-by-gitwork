@@ -221,6 +221,7 @@ export function WikiIntakeSection({
   /** Bulk selection — internal only. */
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchBusy, setBatchBusy] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
   const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
   const [copied, setCopied] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -281,9 +282,24 @@ export function WikiIntakeSection({
   const busy = createInternal.isPending || createPublic.isPending;
   const uploadingImage = uploadImageInternal.isPending || uploadImagePublic.isPending;
 
-  /** Stages actually present, so the filter never offers an empty bucket. */
-  const stagesPresent = STAGE_ORDER.filter((stage) => allItems.some((i) => i.stage === stage));
+  /** Stages actually present, so the filter never offers an empty bucket.
+   *  ⚠️ Derived from `afterTab` — the exact set the stage filter is applied to — NOT
+   *  from `allItems`. Read from `allItems` this offered "Closed" whenever the client
+   *  had any dealt-with request, while `scopedItems` drops CLOSED unless "Dealt with"
+   *  is on (the default is off), and `deriveRequestStage` returns CLOSED only for that
+   *  status. So the two sets were exactly complementary and picking it always landed on
+   *  "Nothing at 'Closed' right now." The current selection is kept in the list even if
+   *  nothing matches it any more, or the `<select>` would render a value it has no
+   *  option for and read as blank. */
+  const stagesPresent = STAGE_ORDER.filter(
+    (stage) => stage === stageFilter || afterTab.some((i) => i.stage === stage),
+  );
+  /** ⚠️ The selection is a Set of ids that is NOT pruned when an item disappears (a
+   *  delete, a filter change, a refetch), so `selected.size` overcounts and can be
+   *  non-zero with nothing real behind it — a batch bar reading "1 selected" whose
+   *  every button is a silent no-op. Everything user-facing counts `selectedRows`. */
   const selectedRows = allItems.filter((item) => selected.has(item.id));
+  const selectedCount = selectedRows.length;
   const allVisibleSelected =
     pagedItems.length > 0 && pagedItems.every((item) => selected.has(item.id));
 
@@ -379,6 +395,44 @@ export function WikiIntakeSection({
     }
   }
 
+  /**
+   * ⚠️ Every internal mutation goes through one of these two.
+   *
+   * None of the intake hooks defines an `onError`, so a bare `void x.mutateAsync(…)`
+   * is an unhandled rejection with no UI consequence whatsoever: the row does not
+   * change, nothing says why, and the obvious response is to click again. Delete was
+   * the worst of it — the `setConfirmDeleteId(null)` after an `await` never ran, so a
+   * failed delete left the row stuck on "Delete permanently?" forever.
+   *
+   * The PUBLIC half of this component already did this correctly and rendered into
+   * `rowError`; the internal half simply never adopted it. These exist so a call site
+   * cannot forget again.
+   */
+  async function runRowAction(id: string, fallback: string, fn: () => Promise<unknown>) {
+    setRowError(null);
+    try {
+      await fn();
+      return true;
+    } catch (err) {
+      setRowError({ id, message: err instanceof Error ? err.message : fallback });
+      return false;
+    }
+  }
+
+  /** Batch equivalent. Reports which row stopped the run rather than a bare failure:
+   *  a partial batch is the confusing case, so it has to name where it got to. */
+  async function runBatch(fallback: string, fn: () => Promise<void>) {
+    setBatchError(null);
+    setBatchBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : fallback);
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   async function copySelected() {
     const text = requestsAsTsv(selectedRows.length ? selectedRows : filteredItems, categories);
     try {
@@ -391,43 +445,66 @@ export function WikiIntakeSection({
     }
   }
 
+  /**
+   * ⚠️ These run row-by-row, so a mid-run failure leaves a PARTIAL result. The rows
+   * that did succeed keep their selection cleared out from under them if we blanket
+   * `setSelected(new Set())` regardless — so the selection is only cleared for rows
+   * that actually completed, leaving the failed ones ticked and ready to retry.
+   */
   async function batchSetStatus(status: "CLOSED" | "NEW") {
-    setBatchBusy(true);
-    try {
-      for (const item of selectedRows) {
-        if (item.status === status) continue;
-        await updateItem.mutateAsync({ id: item.id, data: { status } });
+    await runBatch("Could not update every request.", async () => {
+      const done: string[] = [];
+      try {
+        for (const item of selectedRows) {
+          if (item.status !== status) {
+            await updateItem.mutateAsync({ id: item.id, data: { status } });
+          }
+          done.push(item.id);
+        }
+      } finally {
+        dropFromSelection(done);
       }
-      setSelected(new Set());
-    } finally {
-      setBatchBusy(false);
-    }
+    });
   }
 
   async function batchPromote() {
-    setBatchBusy(true);
-    try {
-      for (const item of selectedRows) {
-        // Already on the board — promoting again is a no-op server-side, but skipping
-        // it here keeps the progress honest and saves a round trip per row.
-        if (item.taskId) continue;
-        await promoteItem.mutateAsync({ id: item.id });
+    await runBatch("Could not create every task.", async () => {
+      const done: string[] = [];
+      try {
+        for (const item of selectedRows) {
+          // Already on the board — promoting again is a no-op server-side, but skipping
+          // it here keeps the progress honest and saves a round trip per row.
+          if (!item.taskId) await promoteItem.mutateAsync({ id: item.id });
+          done.push(item.id);
+        }
+      } finally {
+        dropFromSelection(done);
       }
-      setSelected(new Set());
-    } finally {
-      setBatchBusy(false);
-    }
+    });
   }
 
   async function batchDelete() {
-    setBatchBusy(true);
-    try {
-      for (const item of selectedRows) await deleteItem.mutateAsync(item.id);
-      setSelected(new Set());
-      setConfirmBatchDelete(false);
-    } finally {
-      setBatchBusy(false);
-    }
+    await runBatch("Could not delete every request.", async () => {
+      const done: string[] = [];
+      try {
+        for (const item of selectedRows) {
+          await deleteItem.mutateAsync(item.id);
+          done.push(item.id);
+        }
+        setConfirmBatchDelete(false);
+      } finally {
+        dropFromSelection(done);
+      }
+    });
+  }
+
+  function dropFromSelection(ids: string[]) {
+    if (ids.length === 0) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
   }
 
   /**
@@ -764,7 +841,7 @@ export function WikiIntakeSection({
               className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-40"
             >
               <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-              {copied ? "Copied" : selected.size > 0 ? `Copy ${selected.size}` : "Copy"}
+              {copied ? "Copied" : selectedCount > 0 ? `Copy ${selectedCount}` : "Copy"}
             </button>
           </div>
 
@@ -955,7 +1032,11 @@ export function WikiIntakeSection({
                               <button
                                 type="button"
                                 disabled={promoteItem.isPending}
-                                onClick={() => void promoteItem.mutateAsync({ id: item.id })}
+                                onClick={() =>
+                                  void runRowAction(item.id, "Could not create that task.", () =>
+                                    promoteItem.mutateAsync({ id: item.id }),
+                                  )
+                                }
                                 title="Create a task on the delivery board from this request"
                                 aria-label={`Create a task from ${item.title}`}
                                 className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] disabled:opacity-60"
@@ -987,10 +1068,14 @@ export function WikiIntakeSection({
                                   : `Mark ${item.title} dealt with`
                               }
                               onClick={() =>
-                                void updateItem.mutateAsync({
-                                  id: item.id,
-                                  data: { status: item.status === "CLOSED" ? "NEW" : "CLOSED" },
-                                })
+                                void runRowAction(item.id, "Could not update that request.", () =>
+                                  updateItem.mutateAsync({
+                                    id: item.id,
+                                    data: {
+                                      status: item.status === "CLOSED" ? "NEW" : "CLOSED",
+                                    },
+                                  }),
+                                )
                               }
                               className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                             >
@@ -1163,10 +1248,14 @@ export function WikiIntakeSection({
                                 type="button"
                                 className="rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] md:hidden"
                                 onClick={() =>
-                                  void updateItem.mutateAsync({
-                                    id: item.id,
-                                    data: { status: item.status === "CLOSED" ? "NEW" : "CLOSED" },
-                                  })
+                                  void runRowAction(item.id, "Could not update that request.", () =>
+                                    updateItem.mutateAsync({
+                                      id: item.id,
+                                      data: {
+                                        status: item.status === "CLOSED" ? "NEW" : "CLOSED",
+                                      },
+                                    }),
+                                  )
                                 }
                               >
                                 {item.status === "CLOSED" ? "Reopen request" : "Mark dealt with"}
@@ -1175,7 +1264,11 @@ export function WikiIntakeSection({
                                 <button
                                   type="button"
                                   disabled={promoteItem.isPending}
-                                  onClick={() => void promoteItem.mutateAsync({ id: item.id })}
+                                  onClick={() =>
+                                  void runRowAction(item.id, "Could not create that task.", () =>
+                                    promoteItem.mutateAsync({ id: item.id }),
+                                  )
+                                }
                                   className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] md:hidden"
                                 >
                                   <CheckCircleIcon className="h-4 w-4" /> Create task
@@ -1194,7 +1287,16 @@ export function WikiIntakeSection({
                                     type="button"
                                     disabled={deleteItem.isPending}
                                     onClick={async () => {
-                                      await deleteItem.mutateAsync(item.id);
+                                      // ⚠️ `setConfirmDeleteId(null)` must run whether or
+                                      // not the delete succeeded, or a failed delete
+                                      // leaves the row stuck on "Delete permanently?"
+                                      // with no error — which reads as an unresponsive
+                                      // button and invites a second click.
+                                      await runRowAction(
+                                        item.id,
+                                        "Could not delete that request.",
+                                        () => deleteItem.mutateAsync(item.id),
+                                      );
                                       setConfirmDeleteId(null);
                                     }}
                                     className="rounded-[6px] bg-rose-600 px-2 py-0.5 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
@@ -1308,7 +1410,9 @@ export function WikiIntakeSection({
 
                           {/* Whatever went wrong on this row — save OR withdraw. */}
                           {rowError?.id === item.id && (
-                            <p className="text-[12px] text-rose-600">{rowError.message}</p>
+                            <p role="alert" className="text-[12px] text-rose-600">
+                              {rowError.message}
+                            </p>
                           )}
 
                           {/* Reply thread — either side can add to it, so the client
@@ -1416,14 +1520,26 @@ export function WikiIntakeSection({
           The "make it easier for devs to take the tasks into their pipeline" half
           of the brief: promoting thirty requests one row at a time is why nobody
           did it. Fixed to the bottom, above the On Your Desk dock (z-40). */}
-      {isInternal && selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+      {isInternal && selectedCount > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
+          role="region"
+          aria-label="Bulk actions"
+        >
+          {batchError && (
+            <p
+              role="alert"
+              className="mb-1.5 rounded-[8px] border border-rose-300 bg-rose-50 px-3 py-1.5 text-[12px] font-medium text-rose-700"
+            >
+              {batchError}
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]">
             <span
               className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]"
               style={{ fontFamily: MONO }}
             >
-              {selected.size} selected
+              {selectedCount} selected
             </span>
             <button
               type="button"
@@ -1453,7 +1569,7 @@ export function WikiIntakeSection({
             {confirmBatchDelete ? (
               <span className="inline-flex items-center gap-1.5 rounded-[6px] border border-rose-300 bg-rose-50 px-2 py-1">
                 <span className="text-[12px] font-medium text-rose-700">
-                  Delete {selected.size}?
+                  Delete {selectedCount}?
                 </span>
                 <button
                   type="button"
@@ -1475,7 +1591,7 @@ export function WikiIntakeSection({
               <button
                 type="button"
                 onClick={() => setConfirmBatchDelete(true)}
-                aria-label={`Delete ${selected.size} requests`}
+                aria-label={`Delete ${selectedCount} requests`}
                 className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
               >
                 <TrashIcon className="h-4 w-4" />
