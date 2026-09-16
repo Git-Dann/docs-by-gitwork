@@ -174,14 +174,32 @@ export async function pushDailyUpdate(
   const now = new Date();
   await assertDailyUpdateCooldown(user, { phase: input.phase, workDate });
 
-  // For the EOD "all-in" nudge: was this dev's PM already in before this push?
-  const prior =
-    input.phase === "PM"
-      ? await prisma.dailyUpdate.findUnique({
-          where: { userId_workDate: { userId: user.id, workDate } },
-          select: { pmPushedAt: true },
-        })
-      : null;
+  // Which clients this update covers — drives per-client retainer-day accrual. Computed
+  // independent of Slack (works with no bot token) and honours the composer's client picker,
+  // so a deselected client accrues no day. AM = in-progress + in-review, PM = done + in-review
+  // + still-in-progress, mirroring what each phase reports.
+  const myTasks = await listTasks(user, { assigneeId: "me" });
+  const { active, inReview, done } = partition(myTasks, workDate);
+  const phaseTasks =
+    input.phase === "AM" ? [...active, ...inReview] : [...done, ...inReview, ...active];
+  const targetFilter =
+    input.clientIds && input.clientIds.length > 0 ? new Set(input.clientIds) : null;
+  const involvedClientIds = Array.from(
+    new Set(
+      phaseTasks.map((t) => t.client.id).filter((id) => !targetFilter || targetFilter.has(id)),
+    ),
+  );
+
+  // Read the existing row once: the PM "all-in" nudge needs the prior pmPushedAt, and we union
+  // today's involved clients with what an earlier phase already recorded (AM+PM = one day).
+  const existing = await prisma.dailyUpdate.findUnique({
+    where: { userId_workDate: { userId: user.id, workDate } },
+    select: { pmPushedAt: true, involvedClientIds: true },
+  });
+  const prior = input.phase === "PM" ? existing : null;
+  const mergedInvolved = Array.from(
+    new Set([...(existing?.involvedClientIds ?? []), ...involvedClientIds]),
+  );
 
   // Persist the push log + editable fields.
   const phaseField = input.phase === "AM" ? { amPushedAt: now } : { pmPushedAt: now };
@@ -194,11 +212,13 @@ export async function pushDailyUpdate(
       ...phaseField,
       weekPlan: input.weekPlan ?? null,
       note: input.note ?? null,
+      involvedClientIds: mergedInvolved,
     },
     update: {
       ...phaseField,
       ...(input.weekPlan !== undefined ? { weekPlan: input.weekPlan } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
+      involvedClientIds: mergedInvolved,
     },
   });
 

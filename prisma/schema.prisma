@@ -4131,6 +4131,10 @@ model DailyUpdate {
   /// Monday "This week" section — prefilled from tasks due this ISO week, edited by the dev.
   weekPlan    String?   @db.Text
   note        String?   @db.Text
+  /// Client ids this dev's standup covered on this day (union across AM/PM, honouring the
+  /// composer's client picker). Drives per-client retainer-day accrual — one day per dev per
+  /// day whose update touched the client. Empty until a phase is actually pushed.
+  involvedClientIds String[] @default([])
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

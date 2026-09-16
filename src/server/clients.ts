@@ -710,6 +710,15 @@ export async function listDerivedClients(filters?: {
     .map((c) => ({ id: c.id }));
   const manualIds = manualClientMeta.map((c) => c.id);
 
+  // Current calendar month (UTC) — the window retainer days are counted against.
+  const nowForRetainer = new Date();
+  const retainerMonthStart = new Date(
+    Date.UTC(nowForRetainer.getUTCFullYear(), nowForRetainer.getUTCMonth(), 1),
+  );
+  const retainerMonthEnd = new Date(
+    Date.UTC(nowForRetainer.getUTCFullYear(), nowForRetainer.getUTCMonth() + 1, 1),
+  );
+
   // Parallel enrichment queries — single round-trip.
   const [
     careRecords,
@@ -719,6 +728,7 @@ export async function listDerivedClients(filters?: {
     overdueCounts,
     financials,
     launchpads,
+    standupDays,
   ] = await Promise.all([
     // Which portal clients have a linked Care client (FK on SupportClient).
     prisma.supportClient.findMany({
@@ -744,7 +754,29 @@ export async function listDerivedClients(filters?: {
     // Launchpad completeness per client — what we're waiting on THEM for. Batched,
     // and only covers clients with the section on and a kit assigned.
     computeLaunchpadSummaries(workspace.id, manualIds),
+    // Standup days this month, per involved client — one row per dev per day whose AM/PM
+    // update covered a client (retainer accrual). Gated to financial viewers (retainer figures
+    // are financial). A row's involvedClientIds only fills once a phase is pushed.
+    includeFinancials
+      ? prisma.dailyUpdate.findMany({
+          where: {
+            workspaceId: workspace.id,
+            workDate: { gte: retainerMonthStart, lt: retainerMonthEnd },
+            OR: [{ amPushedAt: { not: null } }, { pmPushedAt: { not: null } }],
+          },
+          select: { involvedClientIds: true },
+        })
+      : Promise.resolve([] as { involvedClientIds: string[] }[]),
   ]);
+
+  // Tally standup days per client: each DailyUpdate row is one dev-day, so counting rows whose
+  // involvedClientIds contains the client yields person-days (AM+PM already collapse to one row).
+  const standupDaysByClient = new Map<string, number>();
+  for (const u of standupDays) {
+    for (const cid of u.involvedClientIds) {
+      standupDaysByClient.set(cid, (standupDaysByClient.get(cid) ?? 0) + 1);
+    }
+  }
 
   const careIds = new Set(
     careRecords.map((r) => r.workspaceClientId).filter(Boolean),
@@ -768,8 +800,12 @@ export async function listDerivedClients(filters?: {
           c.id,
           {
             retainerDays: c.retainerDays,
-            // Lazy monthly reset applied here so the card never shows a stale prior-month figure.
-            retainerDaysUsed: effectiveRetainerUsed(c.retainerDaysUsed, c.retainerPeriodMonth),
+            // Used = any manual adjustment (lazily reset each month) + days auto-accrued from
+            // this month's standups. Standup accrual is what fills the bar as devs push updates;
+            // the manual figure stays available for off-standup top-ups.
+            retainerDaysUsed:
+              (effectiveRetainerUsed(c.retainerDaysUsed, c.retainerPeriodMonth) ?? 0) +
+              (standupDaysByClient.get(c.id) ?? 0),
           },
         ] as const,
     ),
