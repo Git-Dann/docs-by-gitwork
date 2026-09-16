@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { after } from "next/server";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
-import { decryptScraperConfig, evaluateWorkflowRules } from "@/server/support";
+import { backfillConversationActivity, repairForwardedIdentities, evaluateWorkflowRules } from "@/server/support";
+import { toSyncContext } from "@/server/support-scraper-config";
 import { enrichConversations } from "@/server/care-agents/enrich";
 import { runCourseFeedbackImport } from "@/server/wiki-course-feedback";
 import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-channels/types";
@@ -27,6 +28,10 @@ const WORKSPACE_AI_SELECT = {
 } as const;
 
 // ─── Context builder (used by the per-connection sync route) ──────────────────
+
+// `toSyncContext` lives in the dependency-light support-scraper-config module so it can be
+// unit-tested; re-exported here because this is where callers expect sync plumbing to live.
+export { toSyncContext };
 
 export async function buildSyncContext(connId: string): Promise<SyncContext> {
   const workspace = await prisma.workspace.findFirst({
@@ -57,14 +62,7 @@ export async function buildSyncContext(connId: string): Promise<SyncContext> {
     },
   });
 
-  return {
-    connection: {
-      ...conn,
-      scraperConfig: decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null),
-    },
-    client: conn.client,
-    workspace,
-  };
+  return toSyncContext(conn, workspace);
 }
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
@@ -132,15 +130,7 @@ export async function syncClientConnections(
 
   const results = await Promise.allSettled(
     connections.map(async (conn) => {
-      const ctx: SyncContext = {
-        connection: {
-          ...conn,
-          scraperConfig: decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null),
-        },
-        client: conn.client,
-        workspace,
-      };
-      const result = await syncConnection(ctx);
+      const result = await syncConnection(toSyncContext(conn, workspace));
       return { source: conn.source, connId: conn.id, result };
     }),
   );
@@ -158,11 +148,71 @@ export async function syncClientConnections(
     }
   }
 
-  // Course-requests-only clients (support paused): never triage; instead auto-import
-  // the "New Feedback" course requests into the wiki. Run this on EVERY sync — not only
-  // when new mail arrived this run — so an already-ingested backlog still gets filed.
-  // The import dedupes by source conversation, so once caught up it's a cheap no-op
-  // (nothing new → no AI call).
+  await runPostSyncHousekeeping({ clientId, workspace, newConversationIds });
+
+  return { total: connections.length, ingested, filtered, errors };
+}
+
+/**
+ * Everything that must happen after mail lands, wherever the sync was started from.
+ *
+ * ⚠️ **This exists because Care has THREE sync entry points and the housekeeping was wired into
+ * one of them.** `syncSupportClient` (the header's "Sync now") ran the identity repair and the
+ * activity backfill; the per-connection route behind the Channels panel's Refresh / "Re-sync
+ * history" buttons and the nightly cron both called `syncConnection` directly and ran neither. So
+ * the two paths an operator actually uses to fix a broken board were the two that could not fix
+ * it — a client could be re-synced repeatedly, report success, and stay wrong. Meanwhile the
+ * course-request branch was copy-pasted into all three, each with a comment claiming it matched
+ * the others.
+ *
+ * One function, called by all three. Adding a step here reaches every path by construction, which
+ * is the only version of this that stays true.
+ *
+ * ⚠️ Call it **once per client**, not once per connection — a client with three connectors would
+ * otherwise pay for the repair three times per cron run.
+ */
+/** What the housekeeping actually did, so a sync can say so instead of reporting a bare success. */
+export interface HousekeepingResult {
+  /** Conversations whose forwarder label / echoed preview was corrected. */
+  relabelled: number;
+  /** Still-broken rows beyond this run's batch — non-zero means "sync again". */
+  relabelRemaining: number;
+  /** Conversations given reply-tracking stamps they previously lacked. */
+  stamped: number;
+}
+
+export async function runPostSyncHousekeeping({
+  clientId,
+  workspace,
+  newConversationIds,
+}: {
+  clientId: string;
+  workspace: SyncContext["workspace"];
+  /** Conversations created by THIS run — the only ones worth enriching. */
+  newConversationIds: string[];
+}): Promise<HousekeepingResult> {
+  // Both are bounded and self-terminating (they only match rows that still show the defect), so
+  // once a client has drained they cost one indexed lookup per sync. That is why neither needs a
+  // migration step or a one-shot route to become correct on existing history.
+  //
+  // Reported rather than silent: "I re-synced and nothing changed" was indistinguishable from
+  // "there was nothing to change", which is most of why this took three attempts to diagnose.
+  const outcome: HousekeepingResult = { relabelled: 0, relabelRemaining: 0, stamped: 0 };
+  try {
+    const repair = await repairForwardedIdentities(clientId);
+    outcome.relabelled = repair.repaired;
+    outcome.relabelRemaining = repair.remaining;
+    const backfill = await backfillConversationActivity(clientId);
+    outcome.stamped = backfill.updated;
+  } catch (err) {
+    // Housekeeping must never mask or fail a sync that ingested real mail.
+    console.error("[support-sync] post-sync housekeeping failed", err);
+  }
+
+  // Course-requests-only clients (support paused): never triage; instead auto-import the
+  // "New Feedback" course requests into the wiki. Runs on EVERY sync — not only when new mail
+  // arrived — so an already-ingested backlog still gets filed. The import dedupes by source
+  // conversation, so once caught up it is a cheap no-op (nothing new → no AI call).
   const sc = await prisma.supportClient.findUnique({
     where: { id: clientId },
     select: { courseRequestOnly: true, workspaceClientId: true },
@@ -181,5 +231,5 @@ export async function syncClientConnections(
     });
   }
 
-  return { total: connections.length, ingested, filtered, errors };
+  return outcome;
 }

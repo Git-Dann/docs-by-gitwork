@@ -33,6 +33,7 @@ import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
 import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
+import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
@@ -43,6 +44,7 @@ import { WikiDashboard } from "./wiki-dashboard";
 import { MonitorsManager } from "./monitors-section";
 import { DocumentsManager } from "./documents-section";
 import { WikiAccessSettings } from "./wiki-access-settings";
+import { WikiIntakeCategoriesPanel } from "./wiki-intake-categories-panel";
 import {
   ApiDocsPageEditor,
   normalizeApiDocsContent,
@@ -68,6 +70,8 @@ import {
   useSetWikiIntakeEnabled,
   useSetWikiCodeEnabled,
 } from "@/hooks/use-wiki";
+import { useSetLaunchpadEnabled } from "@/hooks/use-launchpad";
+import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
 import type { CourseRequestRecord } from "@/lib/api";
@@ -106,6 +110,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   monitors: "Monitors",
   documents: "Documents",
   intake: "Requests",
+  launchpad: "Launchpad",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -121,6 +126,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
+  launchpad: "LAUNCHPAD",
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   "api-docs": "API DOCS",
@@ -816,7 +822,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -897,6 +903,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setMonitorsEnabled = useSetWikiMonitorsEnabled(slug);
   const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
+  const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
+  // Attribution for requests logged internally — see WikiIntakeSection.
+  const account = useAccount();
   const setCodeEnabled = useSetWikiCodeEnabled(slug);
   const addEntry = useAddChangelogEntry(slug);
   const deleteEntry = useDeleteChangelogEntry(slug);
@@ -937,6 +946,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   // Requests section shows when intake is enabled OR there are dev-raised blockers to surface.
   const intakeOn = wiki.intakeEnabled || wiki.blockers.length > 0;
   const codeOn = wiki.codeHandover.enabled;
+  const launchpadOn = Boolean(wiki.launchpad?.enabled);
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
   // Every other section appears once it has real content OR is explicitly enabled,
   // and is otherwise offered under "+ Add New".
@@ -948,6 +958,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(monitorsOn ? (["monitors"] as const) : []),
     ...(documentsOn ? (["documents"] as const) : []),
     ...(intakeOn ? (["intake"] as const) : []),
+    ...(launchpadOn ? (["launchpad"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
     ...(designSystemOn ? (["design-system"] as const) : []),
     ...OPTIONAL_DOC_SECTIONS.filter(
@@ -966,6 +977,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
     ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
+    ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
     ...(designSystemOn ? [] : [{ section: "design-system" as WikiSection, label: "Design System" }]),
     ...(changelogOn ? [] : [{ section: "changelog" as WikiSection, label: "Changelog" }]),
@@ -1008,6 +1020,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection("intake");
       return;
     }
+    if (section === "launchpad") {
+      // Enabling also assigns the default template + prefills, server-side — see the
+      // PATCH route. Otherwise the operator lands on an empty page and has to know
+      // to press a second button, which is how §40.1's "enabled but rejects
+      // everything" defect happened.
+      await setLaunchpadEnabled.mutateAsync(true);
+      setActiveSection("launchpad");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(true);
       setActiveSection("code-handover");
@@ -1048,6 +1069,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "intake") ?? "dashboard");
       return;
     }
+    if (section === "launchpad") {
+      await setLaunchpadEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "launchpad") ?? "dashboard");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "code-handover") ?? "dashboard");
@@ -1067,13 +1093,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "monitors" &&
       section !== "documents" &&
       section !== "intake" &&
+      section !== "launchpad" &&
       section !== "code-handover"
     )
       return;
     const extra =
       section === "intake"
         ? " Clients and the intake API can no longer add items until you re-add it."
-        : "";
+        : section === "launchpad"
+          ? " The client can no longer update it. Their answers and statuses are kept, so re-adding it restores everything."
+          : "";
     const ok = window.confirm(
       `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
     );
@@ -1219,7 +1248,18 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Settings — set the public-link username/password gate (internal only).
     if (activeSection === "settings") {
       return (
-        <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
+        <div className="space-y-4">
+          <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
+          {/* Only meaningful while the Requests section is on — the categories
+              are what a client picks from when raising one. */}
+          {wiki!.intakeEnabled ? (
+            <WikiIntakeCategoriesPanel
+              slug={slug}
+              categories={wiki!.intakeCategories}
+              isDefault={wiki!.intakeCategoriesAreDefault}
+            />
+          ) : null}
+        </div>
       );
     }
 
@@ -1264,11 +1304,58 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "code-handover") {
       return <WikiCodeSection slug={slug} section={wiki!.codeHandover} mode="internal" />;
     }
+    if (activeSection === "launchpad") {
+      if (!wiki!.launchpad) return null;
+      return <LaunchpadSection launchpad={wiki!.launchpad} slug={slug} mode="internal" />;
+    }
     if (activeSection === "intake") {
       return (
         <>
           <WikiBlockersSection blockers={wiki!.blockers} mode="internal" />
-          {wiki!.intakeEnabled ? <WikiIntakeSection slug={slug} items={wiki!.intakeItems} mode="internal" /> : null}
+          {wiki!.intakeEnabled ? (
+            <WikiIntakeSection
+              slug={slug}
+              items={wiki!.intakeItems}
+              mode="internal"
+              categories={wiki!.intakeCategories}
+            />
+          ) : (
+            /**
+             * Requests is switched OFF for this client, yet we are standing on the
+             * Requests page — which happens whenever a dev raises a blocker, because
+             * `intakeOn` reveals the section on `intakeEnabled || blockers.length > 0`.
+             *
+             * That combination used to render the blockers and nothing else: no add
+             * form, no explanation, and — the real trap — no way to fix it, because
+             * `addableSections` only offers "Requests" under + ADD NEW while
+             * `!intakeOn`. So the blocker that revealed the section simultaneously
+             * hid the only control that switches it on, leaving the state
+             * unreachable from the wiki UI. The control belongs here, where someone
+             * hunting for the missing form actually is.
+             */
+            <section className="mb-6">
+              <div className="widget-card">
+                <div className="widget-body">
+                  <p className="text-sm font-medium text-[var(--text-2)]">
+                    Requests are switched off for this client
+                  </p>
+                  <p className="mt-1 max-w-[70ch] text-[13px] leading-5 text-[var(--text-4)]">
+                    Any blocker above is still shown to the client, but they can&rsquo;t file
+                    bugs, feedback or feature requests — and neither can you — until Requests
+                    is on. Turning it on also enables this client&rsquo;s API intake token.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={setIntakeEnabled.isPending}
+                    onClick={() => setIntakeEnabled.mutate(true)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
+                  >
+                    {setIntakeEnabled.isPending ? "Turning on…" : "Turn on requests"}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
         </>
       );
     }

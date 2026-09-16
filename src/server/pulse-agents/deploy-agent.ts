@@ -1,5 +1,6 @@
 import { CATEGORIES } from "../pulse-checks/categories";
 import type { PulseScanCheckInput, DeployAgentInsights } from "@/types/pulse";
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 
 const VERCEL_API = "https://api.vercel.com";
 const FETCH_TIMEOUT_MS = 8_000;
@@ -60,11 +61,17 @@ function extractWarnings(logs: VercelBuildLog[]): string[] {
   return [...new Set(warnings)].slice(0, 10);
 }
 
-async function fetchHeaders(url: string): Promise<Record<string, string>> {
+/**
+ * Returns the response headers, or the reason there are none. A bare `{}` could
+ * not tell "this host sent no platform headers" (so it is not Vercel) from "the
+ * HEAD request failed" (so we have no idea) — and the caller read both as
+ * "not Vercel", quietly downgrading an unreachable host to a clean skip.
+ */
+async function fetchHeaders(url: string): Promise<{ headers: Record<string, string>; error?: string }> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(url, {
+    const res = await fetchScannableUrl(url, {
       method: "HEAD",
       headers: { "User-Agent": "Gitwork-Pulse/1.0" },
       signal: controller.signal,
@@ -73,9 +80,9 @@ async function fetchHeaders(url: string): Promise<Record<string, string>> {
     clearTimeout(timer);
     const headers: Record<string, string> = {};
     res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
-    return headers;
-  } catch {
-    return {};
+    return { headers };
+  } catch (error) {
+    return { headers: {}, error: error instanceof Error ? error.message : "HEAD request failed" };
   }
 }
 
@@ -102,7 +109,7 @@ function detectPlatformFromHeaders(
 
 export async function runDeployAgent(
   urlOrAppName: string,
-): Promise<{ checks: PulseScanCheckInput[]; insights: DeployAgentInsights }> {
+): Promise<{ checks: PulseScanCheckInput[]; insights: DeployAgentInsights; collectorError?: string }> {
   const token = process.env.VERCEL_TOKEN?.trim();
   const checks: PulseScanCheckInput[] = [];
 
@@ -113,9 +120,11 @@ export async function runDeployAgent(
   let isVercel = isVercelHostname;
   let detectedPlatform: DeployAgentInsights["platform"] = isVercelHostname ? "vercel" : null;
 
+  let headerProbeError: string | undefined;
   if (!isVercelHostname) {
-    const headers = await fetchHeaders(rawUrl);
-    detectedPlatform = detectPlatformFromHeaders(headers);
+    const probe = await fetchHeaders(rawUrl);
+    headerProbeError = probe.error;
+    detectedPlatform = detectPlatformFromHeaders(probe.headers);
     isVercel = detectedPlatform === "vercel";
   }
 
@@ -130,6 +139,10 @@ export async function runDeployAgent(
         buildWarnings: [],
         recentErrorPatterns: [],
       },
+      // Only a failed probe is a collector failure. A successful probe that found
+      // no Vercel signals is a real, correct answer, and a missing VERCEL_TOKEN is
+      // a configuration choice — neither is an error.
+      ...(headerProbeError ? { collectorError: `platform detection failed: ${headerProbeError}` } : {}),
     };
   }
 

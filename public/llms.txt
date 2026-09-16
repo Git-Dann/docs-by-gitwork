@@ -17,9 +17,11 @@ the platform.
 ## Public pages
 
 - [Pulse](https://foundry.gitwork.co.uk/pulse-overview): Pulse checks whether a
-  web app is genuinely production-ready — around 600 automated checks across
-  security, SEO, infrastructure, accessibility, performance and AI readiness —
-  and returns a scored report. Includes a free scanner you can run on any URL.
+  web app, mobile app or repository is genuinely production-ready — over 1,600
+  automated checks across security, SEO, infrastructure, accessibility,
+  performance, code quality and AI readiness — and returns a scored report that
+  states what it could NOT establish as clearly as what it found. Includes a
+  free scanner you can run on any URL.
 - [API reference](https://foundry.gitwork.co.uk/api-docs): REST API reference for
   the Foundry platform. The API itself requires a key.
 

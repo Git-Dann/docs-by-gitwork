@@ -11,6 +11,7 @@
 // PDF export (guidelines-pdf.ts) can snapshot pages individually.
 
 import type { CSSProperties, ReactNode } from "react";
+import { ensureContrast, isLightBackground, readableInk, rgba } from "@/lib/contrast";
 import type { DesignTokens } from "@/types/design-tokens";
 import { generateGuidelinesContent } from "@/lib/design-system/guidelines-content";
 import { formatDate } from "@/lib/format";
@@ -19,34 +20,7 @@ const mono = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 
 // ── colour helpers (self-contained) ────────────────────────────────────────────
 
-function parseHex(hex: string): { r: number; g: number; b: number } | null {
-  let h = (hex || "").trim().replace(/^#/, "");
-  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
-  if (h.length !== 6 || /[^0-9a-fA-F]/.test(h)) return null;
-  const n = parseInt(h, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
 
-function relLuminance(hex: string): number {
-  const rgb = parseHex(hex);
-  if (!rgb) return 1;
-  const f = (c: number) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * f(rgb.r) + 0.7152 * f(rgb.g) + 0.0722 * f(rgb.b);
-}
-
-/** Near-black or white, whichever reads on the given background hex. */
-function readable(bg: string): string {
-  return relLuminance(bg) > 0.5 ? "#141414" : "#FFFFFF";
-}
-
-function rgba(hex: string, a: number): string {
-  const rgb = parseHex(hex);
-  if (!rgb) return hex;
-  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`;
-}
 
 // ── page chrome ─────────────────────────────────────────────────────────────────
 
@@ -67,7 +41,9 @@ function Page({
   ink: string;
   children: ReactNode;
 }) {
-  const faint = ink === "#FFFFFF" ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.45)";
+  // Derived from the ink, not from a string compare against one specific white —
+  // any other light ink silently took the dark-on-light branch.
+  const faint = isLightBackground(ink) ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.6)";
   return (
     <div
       data-brand-page
@@ -128,6 +104,8 @@ function Lead({ children, body }: { children: ReactNode; body: string }) {
 
 // ── deck ─────────────────────────────────────────────────────────────────────────
 
+const PAPER_BG = "#FBFBFA";
+
 export function GuidelinesDeck({
   tokens,
   clientLogoUrl = null,
@@ -141,10 +119,21 @@ export function GuidelinesDeck({
   const blurbs = content.sectionBlurbs;
 
   const primary = tokens.colours.primary[0]?.hex ?? "#0F172A";
-  const coverInk = readable(primary);
+  const coverInk = readableInk(primary);
   const display = `${tokens.typography.displayFont}, ${tokens.typography.systemFallback}`;
   const body = `${tokens.typography.bodyFont}, ${tokens.typography.systemFallback}`;
   const paperInk = "#141414";
+  /**
+   * The brand colour, adjusted until it reads on the paper pages.
+   *
+   * Used for OUR chrome only — section eyebrows and editorial labels. The brand
+   * specimens below (the secondary button, the sample stat card, the swatches)
+   * deliberately keep the raw colour: a guide that quietly darkens a client's own
+   * palette to make itself look tidy is lying about the brand it documents. If
+   * their outline button really is low-contrast, that is a finding for them, not
+   * something for us to paper over.
+   */
+  const accentOnPaper = ensureContrast(primary, PAPER_BG);
   const defaultRadius = tokens.radius.md ?? tokens.radius.lg ?? Object.values(tokens.radius)[0] ?? "8px";
 
   const allColours = [
@@ -174,7 +163,7 @@ export function GuidelinesDeck({
               <ul className="flex flex-1 flex-col justify-center gap-2">
                 {content.logoRulesText.map((item, i) => (
                   <li key={i} className="flex gap-2 text-[13px] leading-relaxed" style={{ fontFamily: body }}>
-                    <span aria-hidden style={{ color: primary }}>·</span>
+                    <span aria-hidden style={{ color: accentOnPaper }}>·</span>
                     <span className="opacity-80">{item}</span>
                   </li>
                 ))}
@@ -310,7 +299,7 @@ export function GuidelinesDeck({
     render: () => (
       <div className="grid flex-1 grid-cols-2 gap-6">
         <div>
-          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.1em]" style={{ fontFamily: mono, color: primary }}>Do</p>
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.1em]" style={{ fontFamily: mono, color: accentOnPaper }}>Do</p>
           <ul className="flex flex-col gap-1.5">
             {content.dosAndDonts.dos.map((d, i) => (
               <li key={i} className="text-[12.5px] leading-relaxed opacity-80" style={{ fontFamily: body }}>{d}</li>
@@ -339,7 +328,7 @@ export function GuidelinesDeck({
       <Page brandName={content.brandName} showFoundryBranding={showFoundryBranding} ink={coverInk} style={{ background: primary, color: coverInk }}>
         <div className="flex flex-1 flex-col justify-center">
           {clientLogoUrl && (
-            <div className="mb-6 flex h-14 w-14 items-center justify-center overflow-hidden" style={{ borderRadius: 12, background: rgba(coverInk === "#FFFFFF" ? "#FFFFFF" : "#000000", 0.12) }}>
+            <div className="mb-6 flex h-14 w-14 items-center justify-center overflow-hidden" style={{ borderRadius: 12, background: rgba(coverInk, 0.12) }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={clientLogoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             </div>
@@ -357,8 +346,8 @@ export function GuidelinesDeck({
       </Page>
 
       {/* 02 — Overview + contents */}
-      <Page n={nextNo()} brandName={content.brandName} showFoundryBranding={showFoundryBranding} ink={paperInk} style={{ background: "#FBFBFA", color: paperInk }}>
-        <SectionHead n={0} eyebrow="OVERVIEW" title="Contents" accent={primary} display={display} />
+      <Page n={nextNo()} brandName={content.brandName} showFoundryBranding={showFoundryBranding} ink={paperInk} style={{ background: PAPER_BG, color: paperInk }}>
+        <SectionHead n={0} eyebrow="OVERVIEW" title="Contents" accent={accentOnPaper} display={display} />
         <Lead body={body}>{content.intro}</Lead>
         <ol className="grid flex-1 grid-cols-2 gap-x-8 gap-y-2 self-start">
           {sections.map((s, i) => (
@@ -372,8 +361,8 @@ export function GuidelinesDeck({
 
       {/* Section pages */}
       {sections.map((s, i) => (
-        <Page key={s.eyebrow} n={nextNo()} brandName={content.brandName} showFoundryBranding={showFoundryBranding} ink={paperInk} style={{ background: "#FBFBFA", color: paperInk }}>
-          <SectionHead n={i + 1} eyebrow={s.eyebrow} title={s.title} accent={primary} display={display} />
+        <Page key={s.eyebrow} n={nextNo()} brandName={content.brandName} showFoundryBranding={showFoundryBranding} ink={paperInk} style={{ background: PAPER_BG, color: paperInk }}>
+          <SectionHead n={i + 1} eyebrow={s.eyebrow} title={s.title} accent={accentOnPaper} display={display} />
           {s.render()}
         </Page>
       ))}

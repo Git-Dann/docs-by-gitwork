@@ -184,6 +184,11 @@ export function PulseCheckStatusIcon({ status }: { status: PulseCheckStatus }) {
   if (status === "PASS") return <span className="text-emerald-600" title="Pass">✓</span>;
   if (status === "WARN") return <span className="text-amber-500" title="Warning">⚠</span>;
   if (status === "FAIL") return <span className="text-red-600" title="Fail">✗</span>;
+  if (status === "ERROR") return <span className="text-red-600" title="Collector error">!</span>;
+  if (status === "INCONCLUSIVE") return <span className="text-slate-500" title="Inconclusive">?</span>;
+  if (status === "EVIDENCE_REQUIRED") return <span className="text-blue-600" title="Evidence required">◇</span>;
+  if (status === "NOT_TESTED") return <span className="text-slate-500" title="Not tested">○</span>;
+  if (status === "NOT_APPLICABLE") return <span className="text-[var(--text-4)]" title="Not applicable">—</span>;
   return <span className="text-[var(--text-4)]" title="Skipped">—</span>;
 }
 

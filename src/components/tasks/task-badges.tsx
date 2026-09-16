@@ -68,6 +68,7 @@ const LABEL_TONE: Record<TaskLabel, string> = {
   UI_UX: "border-pink-200 bg-pink-50 text-pink-700",
   RESEARCH: "border-amber-200 bg-amber-50 text-amber-700",
   DESIGN: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  SUPPORT: "border-cyan-200 bg-cyan-50 text-cyan-700",
 };
 
 export function TaskLabelBadge({ label, className }: { label: TaskLabel; className?: string }) {

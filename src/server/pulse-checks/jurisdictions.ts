@@ -175,39 +175,279 @@ export function checkAppliesToMarkets(checkKey: string, markets: JurisdictionCod
 // ── Auto-detection (best-effort fallback) ─────────────────────────────────────
 // Centralises the TLD / lang / currency heuristics that were scattered through
 // legal-extended.ts. Only used when the user declares no target markets.
-export function detectMarketsFromPage(args: {
-  hostname: string;
-  html: string;
-  htmlLower: string;
-}): JurisdictionCode[] {
-  const { hostname, html, htmlLower } = args;
-  const found = new Set<JurisdictionCode>();
+//
+// ⚠️ DETECTION MAY ONLY WIDEN OR ABSTAIN — IT MUST NEVER NARROW ON WEAK EVIDENCE.
+// `applyJurisdictionFilter` (pulse-scan.ts) treats a NON-EMPTY market set as
+// authoritative and rewrites every check tagged for another market to SKIPPED. An
+// EMPTY set filters nothing. So the asymmetry is total:
+//   []            → every compliance check runs.            fail-safe
+//   a superset    → more checks run than strictly needed.   noisy, never a miss
+//   a small WRONG set → whole bodies of law silently vanish from the report, and
+//                    they do not read as wrong findings — they read as "not
+//                    applicable", which is the invisible kind of miss.
+//
+// Both rules below were learned from a real scan of developer.mozilla.org — a
+// US-headquartered, `lang="en-US"` site whose only inferred market was BRAZIL:
+//
+//  1. CONTEXT. `htmlLower.includes("brasil")` matched
+//     `&quot;native&quot;:&quot;Português (do Brasil)&quot;` inside MDN's own Next.js
+//     JSON payload. The report then dismissed CCPA and EU VAT as "not applicable to
+//     your selected markets (BR)". Locale metadata — script payloads, hreflang
+//     alternates, locale switchers — is evidence of which LANGUAGES a site is
+//     translated into, never of which markets it sells into. Same class of bug as
+//     §34.3's "comments were matched as code": a string found in the wrong context.
+//
+//  2. CORROBORATION. A bare country-name mention cannot narrow the set on its own;
+//     it needs an ANCHOR. And a page advertising three or more locales is asserting
+//     breadth, so it can never be reduced to a single market. Note the inversion
+//     that makes this cheap: the very locale list that used to CAUSE the false
+//     narrowing is now the thing that FORBIDS it.
+//
+// ⚠️ THE DOCUMENT LANGUAGE IS NOT AN ANCHOR. `<html lang>` — both its primary
+// subtag (`es`, `fr`, `ja`) and its region subtag (`en-US`, `en-GB`, `de-CH`) — is
+// CORROBORATION ONLY. It says what language the markup is written in, which is a
+// fact about the text and not about the markets the business sells into, and it is
+// a template default in most scaffolds: WordPress ships `lang="en-US"`, so does
+// create-next-app, so does almost every generator. Treating it as an anchor made a
+// plain `<html lang="en-US">` page on a `.com` scope to ["US"] and silently rewrote
+// 46 of the 55 jurisdiction-tagged checks — every GDPR check and
+// `cookie_consent_granular` among them — to "not applicable to your selected
+// markets". That is the SAME harm as the `brasil` bug above, in the same direction,
+// on WEAKER evidence, and it is invisible on the report because the checks read as
+// inapplicable rather than wrong. It also made the MDN fix hinge entirely on
+// MULTI_LOCALE_BREADTH: with one hreflang alternate removed, MDN was mis-scoped
+// again. Anchors are therefore only things a site chooses market-by-market:
+//   · a country-code TLD                (`.uk`, `.de`, `.br`, `.jp` …)
+//   · a currency it prices in           (`£`, `€`, `¥`, `₹`, `usd`, `gbp` …)
+//   · a named statute in its own prose  (`ccpa` / `cpra`)
+// Removing an anchor pathway can only move detection toward ABSTAIN, which runs
+// every compliance check. Adding one is what deletes bodies of law.
+
+/**
+ * Distinct locales must reach this many before a page counts as multi-market.
+ *
+ * ⚠️ A SECOND belt, never the only one. This number is a judgement call, not a
+ * measurement, so nothing load-bearing may depend on it: the MDN regression is
+ * caught by rule 2a (its only market signal is `<html lang="en-US">`, which is
+ * corroboration, so there is no anchor to narrow on) and stays caught with every
+ * hreflang alternate deleted. Rule 2b exists for the different case of a site that
+ * DOES have a hard anchor — a `.de` domain pricing in € — while advertising eight
+ * languages: the anchor is real, and reducing that site to one market would still
+ * be wrong. Changing this constant must not be able to re-open item 16.
+ */
+const MULTI_LOCALE_BREADTH = 3;
+
+/**
+ * Strip the regions whose text is machine payload or locale chrome rather than a
+ * claim about the markets this site serves. Everything removed here is a place a
+ * country name can appear without meaning anything about jurisdiction.
+ *
+ * Removing too much is safe (fewer signals → abstain → nothing filtered); leaving a
+ * payload in is what produced the MDN false negative.
+ */
+export function stripNonMarketContext(html: string): string {
+  return html
+    // Machine payloads and non-prose blocks. `<script type="application/json">` is
+    // where framework page data (and therefore every locale endonym) lives.
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    // A whole page payload smuggled through a data-* attribute (Inertia, Livewire,
+    // Alpine) is HTML-escaped, so the script strip above never reaches it.
+    .replace(/\sdata-[\w-]+=("|')\s*(?:\{|\[|&quot;|&#34;|%7b|%5b)[\s\S]*?\1/gi, " ")
+    // <link rel="alternate" hreflang="pt-br"> — pure metadata, no prose.
+    .replace(/<link\b[^>]*>/gi, " ")
+    // A locale switcher's own label is the language's endonym ("Português (do
+    // Brasil)"), which says nothing about where the business operates.
+    .replace(/<a\b[^>]*\bhreflang\s*=[^>]*>[\s\S]*?<\/a\s*>/gi, " ")
+    .replace(/<option\b[^>]*\b(?:hreflang|lang)\s*=[^>]*>[\s\S]*?<\/option\s*>/gi, " ")
+    .replace(/<option\b[^>]*\bvalue\s*=("|')[a-z]{2,3}(?:[-_][a-z0-9]{2,4})?\1[^>]*>[\s\S]*?<\/option\s*>/gi, " ")
+    // Any remaining hreflang attribute value.
+    .replace(/\shreflang\s*=\s*("|')[^"']*\1/gi, " ");
+}
+
+/**
+ * How many distinct languages the page advertises a translation for.
+ *
+ * Read from the RAW html on purpose, including the payloads `stripNonMarketContext`
+ * removes: a locale list is worthless as evidence of a MARKET and excellent evidence
+ * of BREADTH. Counted by primary subtag, so `en` + `en-GB` + `en-US` is one language,
+ * not three.
+ */
+export function countAdvertisedLocales(html: string): number {
+  const languages = new Set<string>();
+  const add = (tag: string | undefined) => {
+    const primary = (tag ?? "").toLowerCase().split(/[-_]/)[0];
+    // `x-default` is a routing hint, not a language.
+    if (/^[a-z]{2,3}$/.test(primary) && primary !== "x") languages.add(primary);
+  };
+  // hreflang, in markup or inside an escaped payload.
+  for (const m of html.matchAll(/hreflang\s*(?:=|&#61;)\s*(?:["']|&quot;|&#34;)\s*([A-Za-z][\w-]*)/gi)) add(m[1]);
+  // A `"locale": "pt-BR"` key, raw or HTML-escaped (MDN's shape).
+  for (const m of html.matchAll(/(?:&quot;|&#34;|["'])locales?(?:&quot;|&#34;|["'])\s*(?::|&#58;)\s*(?:&quot;|&#34;|["'])([A-Za-z][\w-]*)/gi)) add(m[1]);
+  for (const m of html.matchAll(/(?:&quot;|&#34;|["'])locale(?:&quot;|&#34;|["'])\s*(?::|&#58;)\s*(?:&quot;|&#34;|["'])([A-Za-z][\w-]*)/gi)) add(m[1]);
+  return languages.size;
+}
+
+/** The document's own declared language, e.g. "en-us" — NOT any `lang=` anywhere in
+ *  the page. The old `/lang=["']pt/` form matched a locale switcher's `<option
+ *  lang="pt">`, which is the same context bug as the `brasil` match. */
+export function documentLanguage(html: string): string | null {
+  const openTag = /<html\b[^>]*>/i.exec(html)?.[0];
+  if (!openTag) return null;
+  const m = /\blang\s*=\s*["']?\s*([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*)/i.exec(openTag);
+  return m ? m[1].toLowerCase().replace(/_/g, "-") : null;
+}
+
+export interface MarketDetection {
+  /** Markets the scan will actually be scoped to ([] = do not filter anything). */
+  markets: JurisdictionCode[];
+  /** Markets backed by a ccTLD, a currency, or a statute named in the site's own
+   *  prose. Deliberately NOT the document language — see the ⚠️ above. */
+  anchored: JurisdictionCode[];
+  /** Corroboration only: a bare country-name mention in prose, or the `<html lang>`
+   *  primary/region subtag. Never narrows on its own; widens an anchored set. */
+  mentioned: JurisdictionCode[];
+  /** Distinct languages the page advertises. */
+  advertisedLocales: number;
+  /** Why detection abstained, when it did. */
+  abstainedReason?: "no-signal" | "no-anchor" | "multi-locale";
+}
+
+/** The full detection, with the evidence tiers kept separate so the abstention rules
+ *  are testable and the reasoning is visible. `detectMarketsFromPage` is the thin
+ *  wrapper the scan calls. */
+export function detectMarketEvidence(args: { hostname: string; html: string }): MarketDetection {
+  const { hostname, html } = args;
+  // Prose only — a country name inside a script payload or a locale switcher is not
+  // a market signal (rule 1 above).
+  const proseLower = stripNonMarketContext(html).toLowerCase();
   const host = hostname.toLowerCase();
   const tld = (suffix: string) => host.endsWith(suffix);
+  const docLang = documentLanguage(html);
+  const langIs = (primary: string) => docLang?.split("-")[0] === primary;
+  const regionIs = (region: string) => docLang?.split("-")[1] === region;
+  const prose = (needle: string) => proseLower.includes(needle);
+  const word = (token: string) => new RegExp(`\\b${token}\\b`, "i").test(proseLower);
+
+  const anchored = new Set<JurisdictionCode>();
+  const mentioned = new Set<JurisdictionCode>();
+
+  // ── Anchors: ccTLD, currency, statute named in the site's own prose ──────────
+  // Nothing derived from `<html lang>` may go in this tier. See the ⚠️ above.
 
   // EU (incl. major member-state TLDs).
   if (tld(".eu") || tld(".de") || tld(".fr") || tld(".nl") || tld(".es") || tld(".it") || tld(".ie")
-    || htmlLower.includes("european union") || htmlLower.includes("€") || /\beur\b/i.test(html)) found.add("EU");
-  // UK.
-  if (tld(".uk") || htmlLower.includes("united kingdom") || htmlLower.includes("£") || /\bgbp\b/i.test(html)) found.add("UK");
-  // US (conservative — .com is ambiguous so requires an explicit signal).
-  if (tld(".us") || htmlLower.includes("united states") || /\busd\b/i.test(html) || htmlLower.includes("california")
-    || htmlLower.includes("ccpa")) {
-    found.add("US");
-    if (htmlLower.includes("california") || htmlLower.includes("ccpa") || htmlLower.includes("cpra")) found.add("US-CA");
-  }
-  if (tld(".ca") || htmlLower.includes("canada") || htmlLower.includes("canadian")) found.add("CA");
-  if (tld(".au") || htmlLower.includes("australia") || /\baud\b/i.test(html)) found.add("AU");
-  if (tld(".br") || /lang=["']pt/i.test(html) || htmlLower.includes("brasil")) found.add("BR");
-  if (tld(".sg") || htmlLower.includes("singapore") || /\bsgd\b/i.test(html)) found.add("SG");
-  if (tld(".th") || /lang=["']th/i.test(html) || htmlLower.includes("thailand")) found.add("TH");
-  if (tld(".za") || htmlLower.includes("south africa") || /\bzar\b/i.test(html)) found.add("ZA");
-  if (tld(".jp") || /lang=["']ja/i.test(html) || htmlLower.includes("japan") || htmlLower.includes("¥")) found.add("JP");
-  if (tld(".cn") || /lang=["']zh/i.test(html) || htmlLower.includes("人民币") || /\bcny\b/i.test(html)) found.add("CN");
-  if (tld(".kr") || /lang=["']ko/i.test(html) || htmlLower.includes("₩")) found.add("KR");
-  if (tld(".in") || /lang=["']hi/i.test(html) || htmlLower.includes("₹")) found.add("IN");
+    || prose("€") || prose("&euro;") || word("eur")) anchored.add("EU");
+  if (prose("european union")) mentioned.add("EU");
 
-  return Array.from(found);
+  // UK.
+  if (tld(".uk") || prose("£") || prose("&pound;") || word("gbp")) anchored.add("UK");
+  if (prose("united kingdom")) mentioned.add("UK");
+
+  // US (conservative — .com is ambiguous so requires an explicit signal). CCPA/CPRA
+  // named in prose is legal text about California, not a passing mention.
+  const ccpaNamed = word("ccpa") || word("cpra");
+  if (tld(".us") || word("usd") || ccpaNamed) anchored.add("US");
+  if (prose("united states")) mentioned.add("US");
+  if (ccpaNamed) anchored.add("US-CA");
+  else if (prose("california")) { mentioned.add("US"); mentioned.add("US-CA"); }
+
+  // NOTE: the currency-code anchors below are exactly the ones the original
+  // heuristic used (eur/gbp/usd/aud/sgd/zar/cny). Do not "complete the set" — `CAD`
+  // is computer-aided design far more often than it is a Canadian dollar, and a new
+  // anchor is a new way to narrow wrongly.
+  if (tld(".ca")) anchored.add("CA");
+  if (prose("canada") || prose("canadian")) mentioned.add("CA");
+
+  if (tld(".au") || word("aud")) anchored.add("AU");
+  if (prose("australia")) mentioned.add("AU");
+
+  if (tld(".br")) anchored.add("BR");
+  if (prose("brasil") || prose("brazil")) mentioned.add("BR");
+
+  if (tld(".sg") || word("sgd")) anchored.add("SG");
+  if (prose("singapore")) mentioned.add("SG");
+
+  if (tld(".th")) anchored.add("TH");
+  if (prose("thailand")) mentioned.add("TH");
+
+  if (tld(".za") || word("zar")) anchored.add("ZA");
+  if (prose("south africa")) mentioned.add("ZA");
+
+  if (tld(".jp") || prose("¥")) anchored.add("JP");
+  if (prose("japan")) mentioned.add("JP");
+
+  if (tld(".cn") || prose("人民币") || word("cny")) anchored.add("CN");
+  if (tld(".kr") || prose("₩")) anchored.add("KR");
+  if (tld(".in") || prose("₹")) anchored.add("IN");
+
+  // ── Corroboration: the document language ────────────────────────────────────
+  // Recorded so an already-anchored set can WIDEN (safe, merely noisy) and so the
+  // evidence is visible in the report — never so it can narrow. A page whose only
+  // market signal is its own `lang` attribute falls out at rule 2a below with
+  // `abstainedReason: "no-anchor"`, exactly as a bare country name does.
+  const langMentions: Array<[JurisdictionCode, boolean]> = [
+    ["EU", ["de", "fr", "nl", "es", "it", "ga", "pl", "sv", "da", "fi", "el", "cs", "ro", "hu"].some(langIs)
+      || ["de", "fr", "nl", "es", "it", "ie", "at", "be", "pl", "se", "dk", "fi", "pt", "gr"].some(regionIs)],
+    ["UK", regionIs("gb") || regionIs("uk")],
+    ["US", regionIs("us")],
+    ["CA", regionIs("ca")],
+    ["AU", regionIs("au")],
+    // `pt-PT` is Portugal (EU, above); only an unregioned `pt` or `pt-BR` points at Brazil.
+    ["BR", regionIs("br") || (langIs("pt") && !regionIs("pt"))],
+    ["SG", regionIs("sg")],
+    ["TH", regionIs("th") || langIs("th")],
+    ["ZA", regionIs("za")],
+    ["JP", regionIs("jp") || langIs("ja")],
+    ["CN", regionIs("cn") || langIs("zh")],
+    ["KR", regionIs("kr") || langIs("ko")],
+    ["IN", regionIs("in") || langIs("hi")],
+  ];
+  for (const [code, matched] of langMentions) if (matched) mentioned.add(code);
+
+  const advertisedLocales = countAdvertisedLocales(html);
+  const union = new Set<JurisdictionCode>([...anchored, ...mentioned]);
+  const base = {
+    anchored: normalise([...anchored]),
+    mentioned: normalise([...mentioned]),
+    advertisedLocales,
+  };
+
+  if (union.size === 0) return { ...base, markets: [], abstainedReason: "no-signal" };
+  // Rule 2a — corroboration with nothing to corroborate. A bare country name, a
+  // shipping-country list, a single "we have an office in Canada" line, or the
+  // document's own `lang` attribute is not a market scope, and scoping to it would
+  // silently drop every other body of law. This is the rule that catches the
+  // template-default `<html lang="en-US">` on a `.com`.
+  if (anchored.size === 0) return { ...base, markets: [], abstainedReason: "no-anchor" };
+  // Rule 2b — a page advertising several languages is asserting breadth. It must
+  // never be reduced to ONE market; abstain and let every compliance check run.
+  if (advertisedLocales >= MULTI_LOCALE_BREADTH && countCountries(union) <= 1) {
+    return { ...base, markets: [], abstainedReason: "multi-locale" };
+  }
+  // Otherwise the union (never just the anchors): widening is safe, narrowing is not.
+  return { ...base, markets: normalise([...union]) };
+}
+
+/** Distinct COUNTRIES in a market set — US and US-CA are one country, so a set of
+ *  {US, US-CA} is still a single-market narrowing for rule 2b's purposes. */
+function countCountries(codes: Iterable<JurisdictionCode>): number {
+  const countries = new Set<JurisdictionCode>();
+  for (const c of codes) countries.add(JURISDICTIONS[c]?.parent ?? c);
+  return countries.size;
+}
+
+export function detectMarketsFromPage(args: {
+  hostname: string;
+  html: string;
+  /** @deprecated Unused — detection re-derives a lowercased PROSE-ONLY view of the
+   *  page, because the raw lowercased HTML is exactly what made a JSON payload look
+   *  like a market signal. Kept so existing call-sites still type-check. */
+  htmlLower?: string;
+}): JurisdictionCode[] {
+  return detectMarketEvidence({ hostname: args.hostname, html: args.html }).markets;
 }
 
 /** Normalise + dedupe a list of codes in canonical order; drop unknowns. */

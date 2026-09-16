@@ -14,8 +14,9 @@ export type GanttBlock = {
   progress: number;
   tasks: { title: string; done: boolean }[];
   /** Per-status task counts for this block. When present, the bar fill is coloured
-   *  by status composition (Done → UI Done → In Review → Doing) instead of a single
-   *  progress fill. Omitted on the public client timeline (progress fill only). */
+   *  by status composition (Done → In Review → Doing) instead of a single progress
+   *  fill. Every caller (internal Tasks Gantt, wiki Timeline, public /timeline share)
+   *  supplies this now, so the client sees the same breakdown as the team. */
   statusCounts?: Record<TaskStatus, number>;
 };
 
@@ -71,7 +72,11 @@ const STATUS_FILL: Record<TaskStatus, string> = {
   TODO: "bg-transparent",
   DOING: "bg-amber-500",
   IN_REVIEW: "bg-blue-500",
-  UI_DONE: "bg-teal-500",
+  // UI_DONE is retired (the column was removed in Aug 2026). `buildTaskStatusCounts`
+  // coalesces any legacy row into IN_REVIEW, so it can never reach the fill — but
+  // the key must stay to satisfy the Record, and a legacy row must never render as
+  // an unfilled gap, so it maps to the same blue.
+  UI_DONE: "bg-blue-500",
   DONE: "bg-emerald-500",
 };
 // Left → right within the filled portion (most complete first).
@@ -291,6 +296,7 @@ export function GanttChart({
       ),
     [blocks],
   );
+
   const allOpen = blocks.length > 0 && open.size >= blocks.length;
 
   return (
@@ -525,6 +531,7 @@ export function GanttChart({
                             <button
                               type="button"
                               onClick={onBlockClick ? () => onBlockClick(b.id) : undefined}
+                              title={b.name}
                               className={cn(
                                 "block w-full truncate text-left text-sm font-medium text-[var(--text-1)]",
                                 onBlockClick && "hover:text-[var(--brand-700)]",
@@ -549,7 +556,10 @@ export function GanttChart({
                                   className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
                                   style={{ background: task.done ? "#16A34A" : "#CBD5E1" }}
                                 />
-                                <span className={cn("truncate", task.done && "line-through opacity-60")}>
+                                <span
+                                  title={task.title}
+                                  className={cn("truncate", task.done && "line-through opacity-60")}
+                                >
                                   {task.title}
                                 </span>
                               </li>

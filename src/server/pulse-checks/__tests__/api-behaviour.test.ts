@@ -2,6 +2,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { runApiBehaviourChecks } from "../api-behaviour";
 import type { ExtendedCheckContext } from "../_types";
 
+vi.mock("@/server/pulse-lite/url-guard", () => ({
+  fetchScannableUrl: (url: string, init?: RequestInit) => fetch(url, init),
+}));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The point of this family is that it PROBES rather than reads documentation, so
 // the tests that matter are the ones about what a probe is allowed to conclude:

@@ -8,11 +8,10 @@
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { decryptNullable } from "@/lib/encryption";
-import { resolveEmbedCheckKeys, resolveBookingUrl } from "@/server/pulse-embed-config";
+import { resolveBookingUrl } from "@/server/pulse-embed-config";
 
 export interface PulseEmbedWorkspaceConfig {
   enabled: boolean;
-  checkKeys: string[];
   bookingUrl: string;
   turnstileSiteKey: string | null;
   turnstileSecretKey: string | null;
@@ -25,7 +24,6 @@ export async function getPulseEmbedWorkspaceConfig(): Promise<PulseEmbedWorkspac
     where: { slug: DEFAULT_WORKSPACE_SLUG },
     select: {
       pulseEmbedEnabled: true,
-      pulseEmbedCheckKeys: true,
       pulseEmbedBookingUrl: true,
       turnstileSiteKey: true,
       turnstileSecretKeyEncrypted: true,
@@ -33,7 +31,6 @@ export async function getPulseEmbedWorkspaceConfig(): Promise<PulseEmbedWorkspac
   });
   return {
     enabled: workspace?.pulseEmbedEnabled ?? true,
-    checkKeys: resolveEmbedCheckKeys(workspace?.pulseEmbedCheckKeys),
     bookingUrl: resolveBookingUrl(workspace?.pulseEmbedBookingUrl),
     turnstileSiteKey: workspace?.turnstileSiteKey || process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || null,
     turnstileSecretKey: decryptNullable(workspace?.turnstileSecretKeyEncrypted ?? null) || process.env.TURNSTILE_SECRET_KEY || null,

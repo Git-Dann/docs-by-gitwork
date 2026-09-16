@@ -179,3 +179,73 @@ describe("buildAgentVerdict ranks findings by priority", () => {
     expect(v.topFixes[0]).toBe("Cleartext HTTP disabled on Android");
   });
 });
+
+// ── The release decision travels with the verdict ────────────────────────────
+//
+// An agent or a CI script reads this object and decides whether to ship. The
+// rule these tests defend is that it can never read a pass it did not earn:
+// every verdict carries a decision, and a scan that did not finish is never one
+// of the two decisions that mean "we looked and were satisfied".
+
+describe("buildAgentVerdict carries a release decision", () => {
+  it("returns a decision on an ordinary completed scan", () => {
+    const v = verdict([check({ checkKey: "has_readme", status: "PASS" })]);
+    expect(v.gate.decision).toBeDefined();
+    expect(v.gate.policy.id, "names the policy it judged against").toBe("launch-ready");
+    expect(v.gate.policy.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("never reports READY or CONDITIONAL for a FAILED scan", () => {
+    const v = buildAgentVerdict({
+      url: "https://example.com",
+      status: "FAILED",
+      healthScore: 0,
+      techStack: [],
+      checks: [],
+      failureReason: "DNS lookup failed.",
+    });
+
+    expect(v.gate.decision).toBe("INCONCLUSIVE");
+    expect(
+      v.gate.unverified.map((r) => r.summary).join(" "),
+      "the actual failure reaches the reader rather than a generic coverage line",
+    ).toContain("DNS lookup failed.");
+    expect(v.summary).toContain("DNS lookup failed.");
+  });
+
+  it("still reports BLOCKED when a failed scan already proved a blocker", () => {
+    // A partial scan that confirmed an exposed .git directory has KNOWLEDGE.
+    // Downgrading that to INCONCLUSIVE would bury the one thing it is sure of.
+    const v = buildAgentVerdict({
+      url: "https://example.com",
+      status: "FAILED",
+      healthScore: 10,
+      techStack: [],
+      checks: [
+        check({
+          checkKey: "no_exposed_git",
+          status: "FAIL",
+          category: CATEGORIES.SECURITY,
+          confidence: "HIGH",
+          severity: "CRITICAL",
+        }),
+      ],
+      failureReason: "Timed out after the security probes.",
+    });
+
+    expect(v.gate.decision).toBe("BLOCKED");
+    expect(v.gate.blocking.flatMap((r) => r.checkKeys)).toContain("no_exposed_git");
+  });
+
+  it("judges against the requested policy", () => {
+    const v = buildAgentVerdict({
+      url: "https://example.com",
+      status: "COMPLETED",
+      healthScore: 90,
+      techStack: [],
+      checks: [check({ checkKey: "has_readme", status: "PASS" })],
+      gatePolicyId: "handover",
+    });
+    expect(v.gate.policy.id).toBe("handover");
+  });
+});

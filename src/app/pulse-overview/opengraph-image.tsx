@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { BrandedCard } from "@/lib/og/card";
 import { loadOgFonts } from "@/lib/og/fonts";
 import { loadFoundryLogo } from "@/lib/og/logo";
@@ -16,7 +17,7 @@ export default async function OgImage() {
       <BrandedCard
         module="PULSE"
         title="Pulse — AI project validation"
-        subtitle="500+ automated checks. Find what's broken before your users do."
+        subtitle={`${ADVERTISED_CHECK_COUNT_LABEL} automated checks. Find what's broken before your users do.`}
         bottomRight="Overview"
         logoDataUri={logo}
       />

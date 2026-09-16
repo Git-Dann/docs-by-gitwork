@@ -5,6 +5,7 @@ import {
   isEmptyShell,
   staticTextWordCount,
   HTML_RENDER_DEPENDENT_CHECK_KEYS,
+  VACUOUS_ON_EMPTY_SHELL_KEYS,
 } from "../spa-detect";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
@@ -48,16 +49,40 @@ describe("reclassifySpaChecks", () => {
   ];
   const out = reclassifySpaChecks(checks);
 
-  it("flips FAIL/WARN html-dependent checks to SKIPPED", () => {
-    expect(out[0].status).toBe("SKIPPED");
+  it("flips FAIL/WARN html-dependent checks to INCONCLUSIVE", () => {
+    expect(out[0].status).toBe("INCONCLUSIVE");
     expect(out[0].detail).toContain("Not assessable");
-    expect(out[1].status).toBe("SKIPPED");
+    expect(out[1].status).toBe("INCONCLUSIVE");
   });
-  it("leaves PASS checks and non-set checks untouched", () => {
+
+  it("does NOT use SKIPPED — an unread page must cost coverage, not vanish from it", () => {
+    // SKIPPED and NOT_APPLICABLE leave score-breakdown's denominator entirely, so the scan would
+    // keep claiming ~96% coverage of a page whose content it never read. INCONCLUSIVE is counted
+    // as unknown: excluded from the score, subtracted from completeness, widening the bounds.
+    expect(out.map((c) => c.status)).not.toContain("SKIPPED");
+    expect(out.map((c) => c.status)).not.toContain("NOT_APPLICABLE");
+  });
+
+  it("leaves an earned PASS and non-set checks untouched", () => {
     expect(out[2].status).toBe("PASS");
     expect(out[3].status).toBe("FAIL"); // ssl_valid keeps its hard-cap-triggering FAIL
   });
-  it("only skips keys in the dependent set", () => {
+
+  it("rewrites a PASS that was manufactured from the absence of body content", () => {
+    // image_alt_coverage reports "no images detected" on a shell whose images had not rendered.
+    // It is the one non-adverse status that is evidence of nothing.
+    const vacuous = reclassifySpaChecks([
+      { category: "Accessibility", checkKey: "image_alt_coverage", label: "alt", status: "NOT_APPLICABLE" },
+      { category: "Accessibility", checkKey: "image_alt_coverage", label: "alt", status: "PASS" },
+      // Already excluded by a platform/jurisdiction filter — must stay excluded.
+      { category: "Accessibility", checkKey: "image_alt_coverage", label: "alt", status: "SKIPPED" },
+    ]);
+    expect(vacuous.map((c) => c.status)).toEqual(["INCONCLUSIVE", "INCONCLUSIVE", "SKIPPED"]);
+    expect(VACUOUS_ON_EMPTY_SHELL_KEYS.has("image_alt_coverage")).toBe(true);
+    expect(VACUOUS_ON_EMPTY_SHELL_KEYS.has("meta_title")).toBe(false);
+  });
+
+  it("only reclassifies keys in the dependent set", () => {
     expect(HTML_RENDER_DEPENDENT_CHECK_KEYS.has("meta_title")).toBe(true);
     expect(HTML_RENDER_DEPENDENT_CHECK_KEYS.has("ssl_valid")).toBe(false);
   });

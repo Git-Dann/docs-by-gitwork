@@ -1,4 +1,5 @@
 import { unstable_cache, revalidateTag } from "next/cache";
+import { normalisePlatformLinks } from "@/lib/platform-links";
 import { Prisma } from "@prisma/client";
 import { getClientLookupKey, normalizeClientName, slugifyClientName } from "@/lib/clients";
 import { prisma } from "@/lib/prisma";
@@ -33,6 +34,7 @@ import {
   computeClientPulseHealth,
   deriveClientHealth,
 } from "@/server/client-metrics";
+import { computeLaunchpadSummaries } from "@/server/launchpad";
 import { recordAuditEntry } from "@/server/audit-log";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 
@@ -560,6 +562,7 @@ function serializeClientPlatform(platform: {
   notes: string | null;
   previewImageUrl?: string | null;
   featuredInWiki?: boolean;
+  links?: unknown;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -588,6 +591,10 @@ function serializeClientPlatform(platform: {
     notes: platform.notes,
     previewImageUrl: platform.previewImageUrl ?? null,
     featuredInWiki: platform.featuredInWiki ?? false,
+    // Normalised on the way OUT too: the column predates the field, so existing
+    // rows hold null, and a row written before validation tightened could hold
+    // anything. Callers get a clean array or an empty one, never a surprise.
+    links: normalisePlatformLinks(platform.links),
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };
@@ -704,7 +711,15 @@ export async function listDerivedClients(filters?: {
   const manualIds = manualClientMeta.map((c) => c.id);
 
   // Parallel enrichment queries — single round-trip.
-  const [careRecords, platformRepos, devCounts, pulseHealth, overdueCounts, financials] = await Promise.all([
+  const [
+    careRecords,
+    platformRepos,
+    devCounts,
+    pulseHealth,
+    overdueCounts,
+    financials,
+    launchpads,
+  ] = await Promise.all([
     // Which portal clients have a linked Care client (FK on SupportClient).
     prisma.supportClient.findMany({
       where: { workspaceClientId: { not: null } },
@@ -726,6 +741,9 @@ export async function listDerivedClients(filters?: {
     includeFinancials
       ? computeClientFinancials(workspace.id, manualClientMeta)
       : Promise.resolve(null),
+    // Launchpad completeness per client — what we're waiting on THEM for. Batched,
+    // and only covers clients with the section on and a kit assigned.
+    computeLaunchpadSummaries(workspace.id, manualIds),
   ]);
 
   const careIds = new Set(
@@ -815,9 +833,19 @@ export async function listDerivedClients(filters?: {
         retainerDaysUsed: includeFinancials ? (retainerByClient.get(client.id)?.retainerDaysUsed ?? null) : null,
         pulseHealthScore: pulse?.healthScore ?? null,
         pulseScanId: pulse?.scanId ?? null,
+        launchpad: launchpads.get(client.id)
+          ? {
+              percent: launchpads.get(client.id)!.percent,
+              needed: launchpads.get(client.id)!.needed,
+              outstanding: launchpads.get(client.id)!.outstanding,
+            }
+          : null,
         health: deriveClientHealth({
           pulseHealthScore: pulse?.healthScore ?? null,
           overdueTasks: overdueCounts.get(client.id) ?? 0,
+          // Undefined (not 0) when there is no kit — "we never asked" is not the same
+          // fact as "they have given us everything".
+          launchpadOutstanding: launchpads.get(client.id)?.needed ?? null,
         }),
         ...(engagementByClient.get(client.id) ?? {}),
         ...(leadInfoByClient.get(client.id) ?? {}),
@@ -1459,7 +1487,9 @@ export async function createClientPlatform(
     username?: string;
     password?: string;
     notes?: string;
+    previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<ClientPlatformRecord> {
   const platform = await clientPlatforms.create({
@@ -1473,7 +1503,14 @@ export async function createClientPlatform(
       usernameCipher: encryptNullable(input.username),
       passwordCipher: encryptNullable(input.password),
       notes: input.notes?.trim() || null,
+      // Was accepted by the validator and then dropped here, so a preview image
+      // set at creation time silently vanished — including the one the form now
+      // fetches automatically from the URL.
+      previewImageUrl: input.previewImageUrl || null,
       featuredInWiki: input.featuredInWiki ?? false,
+      // Re-normalised server-side: the form is not the gate. Anything with a
+      // non-http(s) scheme is dropped rather than stored and later rendered.
+      links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -1493,6 +1530,7 @@ export async function updateClientPlatform(
     notes?: string;
     previewImageUrl?: string;
     featuredInWiki?: boolean;
+    links?: { label?: string; url: string }[];
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -1512,6 +1550,7 @@ export async function updateClientPlatform(
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
       ...(input.featuredInWiki !== undefined ? { featuredInWiki: input.featuredInWiki } : {}),
+      ...(input.links !== undefined ? { links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue } : {}),
     },
   });
 
@@ -1835,6 +1874,26 @@ export async function getClientIdBySlug(
   });
 
   return record?.id ?? null;
+}
+
+/**
+ * Just the display name, for a page's document title.
+ *
+ * Deliberately its own tiny query rather than reusing a full client loader:
+ * `generateMetadata` runs on every navigation to these routes, and pulling a
+ * whole client record (with its relations) to render eight characters into a
+ * browser tab would be a real cost for no reason.
+ *
+ * Resolves the default workspace itself so a caller only needs the slug — the
+ * pages calling this have the slug from the route and nothing else.
+ */
+export async function getClientNameBySlug(slug: string): Promise<string | null> {
+  const { workspace } = await ensureBaseRecords();
+  const record = await workspaceClients.findUnique({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    select: { name: true },
+  });
+  return record?.name ?? null;
 }
 
 function clientLifecycleTarget(clientId: string): string {

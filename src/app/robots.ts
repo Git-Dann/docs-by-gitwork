@@ -36,6 +36,10 @@ export default function robots(): MetadataRoute.Robots {
           // Client deliverables — the URL token is the only credential.
           "/docs/",
           "/report/",
+          // Free public scan results. Shareable by whoever ran the scan, but not
+          // crawlable: publishing a named third party's score needs an explicit
+          // consent step and a takedown path, neither of which exists yet.
+          "/scan/",
           "/countermark/",
           "/sign/",
           "/onboarding/",

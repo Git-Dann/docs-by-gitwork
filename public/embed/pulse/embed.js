@@ -27,6 +27,11 @@
 
   window.addEventListener("message", function (e) {
     if (e.origin !== ORIGIN) return;
+    // Also require the message to come from THIS instance's own iframe — with
+    // two Pulse embeds on one page, both share the same origin, so an origin-only
+    // check lets either iframe resize the other whenever it's the one that last
+    // posted a height update.
+    if (e.source !== iframe.contentWindow) return;
     var data = e.data || {};
     if (data.type === "pulse-embed-height" && typeof data.height === "number") {
       iframe.style.height = data.height + "px";

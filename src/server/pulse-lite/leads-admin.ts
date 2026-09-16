@@ -45,6 +45,37 @@ export async function listPulseLeads(): Promise<PulseLeadView[]> {
   });
 }
 
+export interface PulseLeadPreview {
+  id: string;
+  email: string;
+  targetUrl: string;
+  healthScore: number | null;
+  checks: PulseScanCheckInput[];
+}
+
+/**
+ * Read-only preview of what the lead's own scan actually found — the same FULL,
+ * unfiltered checks `listPulseLeads` derives `criticalCount` from, just returned
+ * in full so the team can triage before committing to `importLeadToFoundry`
+ * (which kicks off a real, billable AI pipeline run). Never mutates anything.
+ */
+export async function getPulseLeadPreview(leadId: string): Promise<PulseLeadPreview> {
+  const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
+  if (!lead) throw Object.assign(new Error("Lead not found."), { status: 404 });
+
+  const lite = lead.liteScanId
+    ? await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true } })
+    : null;
+
+  return {
+    id: lead.id,
+    email: lead.email,
+    targetUrl: lead.targetUrl,
+    healthScore: lead.healthScore,
+    checks: (lite?.checks as PulseScanCheckInput[] | null) ?? [],
+  };
+}
+
 /**
  * Turn a public lead into a real workspace scan — runs the FULL AI pipeline on
  * the lead's URL. The public scanner thus becomes the top of the Foundry funnel:

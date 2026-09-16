@@ -10,9 +10,9 @@
  * 1. SSRF. The destination is a URL a client supplied, so posting to it blindly
  *    would let them aim our server at our own network — cloud metadata, the
  *    Postgres container, anything on the VPS. Every delivery re-resolves the
- *    host through `assertPublicHost` (the same guard the public Pulse scanner
- *    uses), not just the URL as saved: DNS can be repointed at 127.0.0.1 after
- *    the fact, so validating only at save time is not enough.
+ *    URL through the same pinned transport as the public Pulse scanner, not
+ *    just the URL as saved: DNS can be repointed at 127.0.0.1 after the fact,
+ *    so validating only at save time is not enough.
  *
  * 2. Signed. Deliveries carry `X-Foundry-Signature: sha256=<hmac>` over the raw
  *    body, keyed by a per-client secret. Without it a receiver cannot distinguish
@@ -26,7 +26,7 @@
 
 import { createHmac, randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { assertPublicHost } from "@/server/pulse-lite/url-guard";
+import { assertScannableUrl, fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import { loggerFor } from "@/lib/logger";
 
 const log = loggerFor("wiki-intake-webhook");
@@ -69,7 +69,7 @@ export async function setIntakeWebhook(
     // Status changes name client work; http would put that on the wire in clear.
     throw Object.assign(new Error("The webhook URL must use https."), { status: 400 });
   }
-  await assertPublicHost(parsed.hostname);
+  await assertScannableUrl(parsed.toString());
 
   const secret = randomBytes(32).toString("base64url");
   await prisma.clientWiki.update({
@@ -129,7 +129,7 @@ export async function deliverIntakeWebhook(input: {
     // Re-check the host on EVERY delivery, not just at save time: a hostname
     // that resolved publicly when saved can be repointed at 127.0.0.1 later.
     const parsed = new URL(url);
-    await assertPublicHost(parsed.hostname);
+    await assertScannableUrl(parsed.toString());
 
     const body = JSON.stringify({
       event: input.event,
@@ -149,7 +149,7 @@ export async function deliverIntakeWebhook(input: {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const res = await fetch(url, {
+      const res = await fetchScannableUrl(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

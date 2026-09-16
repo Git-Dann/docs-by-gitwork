@@ -8,7 +8,6 @@
  * is currently configured (from the workspace or the env var fallback).
  */
 
-import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
@@ -17,12 +16,11 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import { encryptNullable } from "@/lib/encryption";
-import { resolveEmbedCheckKeys, resolveBookingUrl } from "@/server/pulse-embed-config";
+import { resolveBookingUrl } from "@/server/pulse-embed-config";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 
 const patchSchema = z.object({
   enabled: z.boolean().optional(),
-  checkKeys: z.array(z.string()).min(1).optional(),
   bookingUrl: z.string().url().optional(),
   turnstileSiteKey: z.string().optional(),
   // Only sent when the user actually types a new secret — omitted (not empty-stringed)
@@ -36,7 +34,6 @@ export async function GET() {
     const config = await getPulseEmbedWorkspaceConfig();
     return apiOk({
       enabled: workspace.pulseEmbedEnabled,
-      checkKeys: resolveEmbedCheckKeys(workspace.pulseEmbedCheckKeys),
       bookingUrl: resolveBookingUrl(workspace.pulseEmbedBookingUrl),
       turnstileSiteKey: config.turnstileSiteKey,
       turnstileConfigured: Boolean(config.turnstileSiteKey) && Boolean(config.turnstileSecretKey),
@@ -61,14 +58,12 @@ export async function PATCH(request: NextRequest) {
       where: { id: workspace.id },
       data: {
         ...(parsed.data.enabled !== undefined ? { pulseEmbedEnabled: parsed.data.enabled } : {}),
-        ...(parsed.data.checkKeys !== undefined ? { pulseEmbedCheckKeys: parsed.data.checkKeys as unknown as Prisma.InputJsonValue } : {}),
         ...(parsed.data.bookingUrl !== undefined ? { pulseEmbedBookingUrl: parsed.data.bookingUrl } : {}),
         ...(parsed.data.turnstileSiteKey !== undefined ? { turnstileSiteKey: parsed.data.turnstileSiteKey } : {}),
         ...(parsed.data.turnstileSecretKey !== undefined ? { turnstileSecretKeyEncrypted: encryptNullable(parsed.data.turnstileSecretKey) } : {}),
       },
       select: {
         pulseEmbedEnabled: true,
-        pulseEmbedCheckKeys: true,
         pulseEmbedBookingUrl: true,
         turnstileSiteKey: true,
       },
@@ -87,7 +82,6 @@ export async function PATCH(request: NextRequest) {
     const config = await getPulseEmbedWorkspaceConfig();
     return apiOk({
       enabled: updated.pulseEmbedEnabled,
-      checkKeys: resolveEmbedCheckKeys(updated.pulseEmbedCheckKeys),
       bookingUrl: resolveBookingUrl(updated.pulseEmbedBookingUrl),
       turnstileSiteKey: updated.turnstileSiteKey,
       turnstileConfigured: Boolean(config.turnstileSiteKey) && Boolean(config.turnstileSecretKey),

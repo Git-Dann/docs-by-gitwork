@@ -20,6 +20,7 @@
 // the consequence is stronger: it shouldn't earn a pass either.
 
 import type { CheckConfidence } from "@/server/pulse-checks/confidence";
+import type { PulseCheckStatus } from "@/types/pulse";
 import type { ProvenanceBlindSpot, ProvenanceResult, ProvenanceStandard, ClauseOutcome, ClauseVerdict } from "./types";
 
 /**
@@ -30,7 +31,7 @@ import type { ProvenanceBlindSpot, ProvenanceResult, ProvenanceStandard, ClauseO
  */
 export interface ProvenanceCheckEvidence {
   checkKey: string;
-  status: "PASS" | "WARN" | "FAIL" | "SKIPPED";
+  status: PulseCheckStatus;
   confidence?: CheckConfidence | null;
   detail?: string | null;
 }
@@ -77,7 +78,7 @@ function evaluateClause(
     }
     evidenceKeys.push(key);
     for (const hit of hits) {
-      if (hit.status === "SKIPPED") {
+      if (!["PASS", "WARN", "FAIL"].includes(hit.status)) {
         skipped++;
       } else if (hit.status === "PASS") {
         passes++;

@@ -10,7 +10,12 @@ import { assertClientInScope } from "@/server/tasks";
 import type { FeatureBlockDTO } from "@/types/tasks";
 
 const blockInclude = {
-  tasks: { select: { status: true } },
+  // Top-level, active tasks only — matching server/wiki.ts's loadWikiTimeline
+  // and client-timeline.ts's getPublicTimeline. Without this filter, subtasks
+  // and archived tasks were also counted here, which could diverge this DTO's
+  // progress/taskCount from the client-facing Gantt views reading the exact
+  // same blocks.
+  tasks: { where: { parentId: null, archivedAt: null }, select: { status: true } },
 } satisfies Prisma.FeatureBlockInclude;
 
 type BlockRow = Prisma.FeatureBlockGetPayload<{ include: typeof blockInclude }>;

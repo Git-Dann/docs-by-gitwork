@@ -122,14 +122,20 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
             No monitors yet.
           </p>
         ) : (
-          <ul className="space-y-3">
+          /* Two-up from md. A monitor card is a name, a pill, a history strip
+             and one meta line — at full width most of each row sat empty, and a
+             client running a dozen containers had to scroll past all of them.
+             The strip's bars are flex-1, so they just render narrower. */
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {visible.map((m) => (
               <li key={m.id} className="rounded-[12px] border border-[rgba(0,0,0,0.08)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: DOT[m.status] }} />
-                      <span className="truncate text-[15px] font-medium text-[var(--text-1)]">{m.name}</span>
+                      <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: DOT[m.status] }} />
+                      <span className="truncate text-[15px] font-medium text-[var(--text-1)]" title={m.name}>
+                        {m.name}
+                      </span>
                     </div>
                   </div>
                   <StatusPill status={m.status} />
@@ -397,10 +403,18 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
                 <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[m.status] }} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-[14px] font-medium text-[var(--text-1)]">{m.name}</span>
+                    <span className="truncate text-[14px] font-medium text-[var(--text-1)]" title={m.name}>
+                      {m.name}
+                    </span>
                     {!m.enabled && <span className="text-[11px] text-[var(--text-4)]">(paused)</span>}
                   </div>
-                  <p className="truncate text-[12px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                  {/* Truncates, so it carries the full target on hover — a
+                      container URL is routinely longer than the row. */}
+                  <p
+                    className="truncate text-[12px] text-[var(--text-4)]"
+                    style={{ fontFamily: MONO }}
+                    title={m.target}
+                  >
                     {m.type} · {m.target} · {fmtUptime(m.uptime.d30)} · {fmtLatency(m.latencyMs)}
                   </p>
                 </div>
