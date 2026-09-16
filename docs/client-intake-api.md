@@ -129,6 +129,29 @@ thumbnail is generated. One image per item (a second upload replaces it); use
 curl "https://foundry.gitwork.co.uk/api/public/wiki-items/<token>?items=1&status=New&limit=50"
 ```
 
+Every item carries **`stage`** — how far the request has actually got, derived live
+from the delivery board rather than from its own record:
+
+| `stage` | Means |
+|---|---|
+| `NEW` | Logged with us, not triaged yet |
+| `REVIEWING` | Seen by the team, not scheduled onto the board |
+| `SCHEDULED` | On the board, waiting to be picked up |
+| `IN_PROGRESS` | A developer is working on it now |
+| `IN_REVIEW` | Built, being checked before it ships |
+| `DONE` | Shipped |
+| `CLOSED` | Filed as dealt with by the team |
+
+This is the field to sync into your own tracker. **`status` is not a substitute**:
+it stops at `PROMOTED` the moment we create a task and never moves again, so an
+integration reading it can tell you we started and never that we finished.
+`taskStatus` is also returned (`BACKLOG`/`TODO`/`DOING`/`IN_REVIEW`/`UI_DONE`/`DONE`)
+if you would rather map our board columns yourself; it is `null` when nothing has
+been scheduled.
+
+⚠️ `stage` is **derived on every read, never stored**, so it is always current — but
+for the same reason it is not something you can set. It moves when the work moves.
+
 ---
 
 ## 3. Idempotency — why `externalRef` matters

@@ -4615,3 +4615,113 @@ empty state (1).
 jsdom through its real hooks (mocked at the module edge) and the resulting markup measured in
 headless Chromium. Post-deploy: open Morning and End of day back to back and confirm the box
 does not move.
+
+## 47. Recent Changes (September 2026) — Requests became a tracker, and the client's sheet follows the board
+
+Dan's brief: *"clients are forever linking spreadsheets, I want to unify this in Foundry
+… make it easier for devs to take the tasks into their pipeline, but clients to also see
+where the tasks are up to."* Reading the code, the reason clients keep their own sheets
+turned out to be a defect, not a missing feature.
+
+### 46.1 The defect: nothing ever wrote back
+
+`promoteWikiIntakeItemToTask` sets `ClientWikiIntakeItem.status = "PROMOTED"` and stamps
+`taskId`. **No code path anywhere writes that row again.** A developer could drag the card
+BACKLOG → DOING → DONE, ship the fix, and the client's Requests page would still read
+"Task created" — forever. Verified exhaustively: `src/server/tasks.ts` contains **zero**
+references to the intake table, `taskId` is a bare `String?` with no relation (so Prisma
+cannot even join it), and the `metadata.wikiIntake` breadcrumb written at promotion is
+**written once and never read anywhere in the repo**.
+
+So Foundry told a client we had started and could never tell them we had finished. That is
+what a parallel spreadsheet is for.
+
+### 46.2 The fix is derived, not synced — and that is the whole design
+
+The obvious repair is to write the task's status onto the intake row whenever a task moves.
+That is a second source of truth, correct only while **every** write path remembers it —
+batch updates, the drag handler, the detail drawer, the standup, the importer, MCP. Miss
+one and the row lies again, silently, exactly as it does today.
+
+Instead: `loadLinkedTaskStatuses()` batch-reads the linked tasks in the wiki loader, and the
+**pure** `deriveRequestStage()` (`src/lib/wiki-request-stage.ts`) turns
+`(intake status, task status)` into one client-facing word on every read. There is no write
+path to forget, and a board that has drifted repairs itself the moment anyone looks at it.
+Same call as Care's reply state (§42.2) and the Docs cover contents (§41.6): **store the
+facts a system can observe, derive the judgement at read time.**
+
+Two rules the derivation must keep, each with a test named for it:
+
+- ⚠️ **`taskStatus: null` never becomes SCHEDULED.** It means either nothing is promoted yet
+  *or* `taskId` points at a task that has been deleted — there is no FK, so that dangles.
+  Both collapse to `REVIEWING`, because "we have it" is true in both cases and "it is on the
+  board" is not. Reporting a deleted task as scheduled is the §35 mistake exactly: "we could
+  not look" rendered as a fact.
+- ⚠️ **`CLOSED` wins over a live task.** "Mark dealt with" is the team explicitly filing the
+  request, and its own tooltip says any task created from it is deliberately untouched. A
+  task still in flight must not put a filed request back on the client's open list.
+
+`stage` also ships on the intake API's `?items=1` reconciliation endpoint — that is the
+endpoint an integrator polls to answer "has Gitwork shipped this yet", which until now it
+could only answer as `PROMOTED` forever. Documented in `docs/client-intake-api.md`.
+
+### 46.3 Five DTO fields were in the model and in the type but not in the query
+
+`WIKI_INCLUDE.intakeItems.select` omitted `label`, `categoryId`, `categoryLabel`,
+`externalUrl` and `attachmentUrls`. The omission was **invisible** because
+`serializeWikiIntakeItem` defaults each to `null` rather than failing — so the Requests page
+showed every item's category as its underlying TYPE, never showed a dev label at all, and
+dropped the deep link back into the client's own tracker, which is the entire reason the
+intake API stores `externalUrl`. A defaulting serializer over a narrowed `select` turns a
+missing column into a plausible value; prefer requiring the field in the parameter type.
+
+### 46.4 The UI is a grid, and it collapses rather than scrolls on a phone
+
+Two stacked `widget-card`s, full width: `01 // LOG A REQUEST` (one line + Enter, with
+everything optional behind "More fields") and `02 // REQUESTS` (the grid). Search reuses
+`fuzzySearch` (§45.1) and spans every category and stage, a stage `<select>` filters the new
+axis, bulk select drives a fixed batch bar (create tasks / dealt with / reopen / delete), and
+**Copy** puts the visible rows on the clipboard as TSV — one paste into Sheets, because
+pretending nobody will ever want the data elsewhere is what created the problem.
+
+⚠️ **The mobile answer here is fewer columns, not a scroller.** Below `md` the grid is two
+columns — request and stage — with the other four values on a mono sub-line under the title,
+so nothing is lost and **nothing overflows**. The `min-w-[940px]` is therefore `md:`-prefixed;
+unprefixed it would manufacture a sideways scroll on a phone that need not exist. From `md`
+up the header and the rows share **one** `overflow-x-auto`, per §45.2 — this section renders
+inside `.widget-card`, which is `overflow: hidden`, so a wide child with no scroller of its
+own is *unreachable*, not merely off-screen.
+
+### 46.5 Three defects found by rendering it, none of which a code read would have caught
+
+1. **`sm:flex-row` on the add row left the title input 38px wide.** A breakpoint asks about
+   the VIEWPORT; the constraint was the CONTAINER — the wiki's own content column is 405px at
+   a 768px viewport. Now `flex-wrap` with `min-w-[220px]` on the field, which asks the right
+   question: if the title cannot have 220px, the selects drop to their own line.
+2. **The mobile sub-line truncated with no `title`** — a `TRUNCATED` defect under
+   `audit:clipping`, and measured: it really does cut off mid-name at 375px. A test now sweeps
+   every `.truncate` in a rendered row and fails naming any without a recoverable title.
+3. **The stage chip rendered empty with a literal `undefined` in its class list** when `stage`
+   was absent. Caught because a render fixture ended in `as unknown as WikiIntakeItemRecord`,
+   which is precisely why that cast is a trap — it meant a new required field was missing and
+   `tsc` said nothing. The cast is gone, and the chip now shows an em-dash, which matters for
+   one real case: a React Query cache written by the deploy *before* `stage` existed.
+
+**Verified:** tsc + lint **0 errors** (41 warnings, all pre-existing), **3239 tests**,
+`audit:ui` **0 findings** with its self-test passing; `npx next build` clean, 103 static
+pages. Driven live at `/demo/wiki` (seeded with a request at every stage — a demo showing
+only NEW and TRIAGED would verify the CSS and nothing else, §43.3): at 375 · 768 · 1440 the
+page overflow is **0**, no truncated cell is unrecoverable, and the grid scrolls rather than
+clips. Seven guards were **proved to discriminate** by breaking them on purpose — removing
+the scroller (6 failures), dropping the `md:` prefix (2), giving the header its own scroller
+(2), removing the unknown-stage guard (1), un-escaping tabs in the export (1), dropping a
+truncation title (1), and claiming SCHEDULED for an unestablished task status (1).
+
+⚠️ **`npm run verify` currently FAILS on `main` for everyone**, at `audit:dependencies`
+(`npm audit --audit-level=high`) — confirmed on a clean checkout with no local changes, and
+it is why CI is red on every open PR. Nothing to do with this work; it needs its own PR.
+
+**Not verified:** the live page against a real database. `/app` is auth-gated with no
+staging, so the derivation has only been exercised against demo data. **Post-deploy:** open a
+client's Requests page, promote a request, move its task to Doing on the board, reload the
+wiki, and confirm the row reads **In progress** without anyone having touched the request.
