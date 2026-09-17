@@ -39,7 +39,7 @@ export function CourseApiIntakeModal({ slug, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-[12px] bg-white shadow-xl">
+      <div className="app-dialog-fixed flex w-full max-w-2xl flex-col rounded-[12px] bg-white shadow-xl">
         <div className="widget-header shrink-0 rounded-t-[12px]">
           <span className="widget-header__label">Course requests · API intake</span>
           <button
@@ -51,7 +51,7 @@ export function CourseApiIntakeModal({ slug, onClose }: Props) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <p className="mb-5 text-[13px] leading-6 text-[var(--text-3)]">
             Let an external system push course requests straight into this tracker. POST to the
             tokenised endpoint below — each request lands as <span className="font-medium text-[var(--text-2)]">New</span>,

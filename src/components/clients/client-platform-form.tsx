@@ -505,15 +505,19 @@ export function ClientPlatformFormModal({
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel w-full max-w-3xl overflow-hidden">
+        {/* The height is on the PANEL. The right-hand column used to carry
+            `max-h-[65vh]`, which caps the tall case and lets a short one collapse — and
+            this form swaps entire field sets on `isAppStoreType`, so the box jumped
+            between platform types (§46). */}
+        <div className="app-dialog-panel app-dialog-fixed w-full max-w-3xl overflow-hidden">
           {/* Widget header */}
-          <div className="widget-header">
+          <div className="widget-header shrink-0">
             <span className="widget-header__label">
               {platform ? "EDIT PLATFORM" : "NEW PLATFORM"}
             </span>
           </div>
 
-          <div className="p-6">
+          <div className="flex min-h-0 flex-1 flex-col p-6">
             <h2 className="mb-5 text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
               {platform ? "Edit platform" : "Add platform"}
             </h2>
@@ -523,7 +527,7 @@ export function ClientPlatformFormModal({
                 and squeezed every field to a stub — measured at 430px: 7 fields
                 under 120px wide and 4 labels clipped. Browser zoom does the same
                 thing, since it shrinks the viewport in CSS pixels. Stack below sm. */}
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-[240px_1fr] sm:items-start">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 sm:grid-cols-[240px_1fr] sm:items-start">
               {/* Left — preview image (only for non-app-store) */}
               {!isAppStoreType ? (
                 <div>
@@ -570,7 +574,7 @@ export function ClientPlatformFormModal({
                   sat flush against its left edge (measured: 0px), so their 4px focus
                   ring was sliced off dead straight and read as a hard second border.
                   6px either side gives the ring room to paint. */}
-              <div className="min-w-0 max-h-[65vh] space-y-4 overflow-y-auto px-1.5">
+              <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto px-1.5">
                 {!isAppStoreType && (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -796,7 +800,7 @@ export function ClientPlatformFormModal({
             </div>
 
             {/* Footer */}
-            <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-[rgba(0,0,0,0.06)] pt-4">
+            <div className="mt-6 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[rgba(0,0,0,0.06)] pt-4">
               {/* Say WHY the button is dead. A disabled primary with no reason is a
                   dead end — the required marker on Name is a red asterisk halfway
                   up a two-column form, and it is easy to fill in everything else

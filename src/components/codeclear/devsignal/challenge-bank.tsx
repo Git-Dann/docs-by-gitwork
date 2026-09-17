@@ -238,8 +238,8 @@ function ChallengeEditor({
       title={isEdit ? `Edit — ${initial?.title}` : "New challenge"}
       panelClassName="w-[760px] max-w-[94vw]"
     >
-      <div className="flex max-h-[76vh] flex-col">
-        <div className="flex-1 space-y-4 overflow-y-auto p-6">
+      <div className="app-dialog-fixed flex flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-4">
             <TextField label="Title" value={title} onChange={setTitle} />
             <TextField

@@ -502,8 +502,8 @@ export default function ApiDocsPage() {
             <p>
               All protected endpoints accept <code>Authorization: Bearer &lt;API_KEY&gt;</code>.
               Internal app pages also use a secure HttpOnly session cookie, so browser requests do
-              not need to expose the raw key. Manage <code>API_KEY</code> in your Vercel project
-              settings.
+              not need to expose the raw key. <code>API_KEY</code> is managed in the
+              deployment environment — ask your Foundry administrator to issue or rotate one.
             </p>
             <pre style={{ marginTop: 12, color: "#86efac" }}>
               {`Authorization: Bearer your-api-key`}

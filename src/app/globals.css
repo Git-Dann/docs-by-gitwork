@@ -668,6 +668,31 @@ h2, h3, h4, h5 {
     box-shadow: 0 12px 32px -4px rgba(0,0,0,0.12);
   }
 
+  /**
+   * DESIGN.md's fixed-height dialog clamp, declared ONCE.
+   *
+   * A dialog whose content varies must not resize with it: opening two of them back to
+   * back moved the box under the cursor (measured 281px vs 597px on the standup review,
+   * CLAUDE.md §46). The height belongs to the PANEL — a `max-h-[Nvh]` on the scroll
+   * region caps the tall case and still lets a short one collapse, which is the bug, not
+   * the fix.
+   *
+   * Pair with `shrink-0` header / `min-h-0 flex-1 overflow-y-auto` body / `shrink-0`
+   * footer. ⚠️ `min-height` is `min(460px, 80vh)`, never a bare 460px: the backdrop
+   * layer does not scroll, so a floor taller than a short viewport pushes the footer
+   * out of reach rather than merely cramping it.
+   *
+   * NOT for menus, dropdowns, popovers or image lightboxes — those are *supposed* to
+   * hug their content and cap at the viewport.
+   */
+  .app-dialog-fixed {
+    display: flex;
+    flex-direction: column;
+    height: 80vh;
+    max-height: 680px;
+    min-height: min(460px, 80vh);
+  }
+
   .app-button {
     display: inline-flex;
     align-items: center;

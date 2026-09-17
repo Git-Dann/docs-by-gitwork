@@ -50,7 +50,7 @@ export function ImportModal({ slug, onClose }: { slug: string; onClose: () => vo
       onClick={onClose}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]"
+        className="app-dialog-fixed flex w-full max-w-2xl flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="widget-header">
@@ -68,7 +68,7 @@ export function ImportModal({ slug, onClose }: { slug: string; onClose: () => vo
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 overflow-y-auto p-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
           <p className="text-[13px] text-[var(--text-3)]">
             Paste the <code style={{ fontFamily: MONO }}>design-tokens.json</code> produced by the
             Cowork <span className="font-medium text-[var(--text-2)]">design-system</span> skill, or
