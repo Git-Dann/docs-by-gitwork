@@ -5187,3 +5187,114 @@ here (`intake` → "Requests", `ia` → "Info Architecture").
 
 **Delivery was left alone** despite sitting next to Timeline: its own header reads
 `01 // WHERE WE ARE`, and "Delivery" is the agency's word for it.
+## 51. Recent Changes (September 2026) — Two controls nobody could reach
+
+Both found by a full-page sweep, both live (not demo-only), neither visible to `tsc`,
+`lint`, `audit:ui` or 3,459 unit tests.
+
+### 51.1 A phone could not change month in the Backstage calendar
+
+`.widget-header` is a **fixed 36px band** inside `.widget-card`, which is
+`overflow: hidden`. `CalendarTab` put five controls in that band — three `<details>`
+pickers plus Previous/Today/Next. Measured at 390px (card right edge 366px):
+
+| Control | past the card | fully outside |
+|---|---|---|
+| Calendars picker | 34px | no |
+| Previous month | 70px | **yes** |
+| Today | 137px | **yes** |
+| Next month | 169px | **yes** |
+
+So on a phone **you could not change month or return to today, ever** — and page overflow
+read **0** the whole time, because a flex row clips rather than scrolls (§45.2). Live at
+`/app/backstage`, not just the demo.
+
+⚠️ **Neither obvious fix works here**, and both are worth knowing:
+- **Wrapping the row** breaks the 36px band, which is the instrument grammar.
+- **`overflow-x-auto` on the row clips the dropdowns.** All three pickers are inline
+  `absolute right-0` panels, NOT portalled — so the scroller that fixed the buttons would
+  have cut the panels instead. §45.2 says to check that before wrapping any row holding a
+  popover; this is the case where the check changes the answer.
+
+**The month nav moved into the body, beside the month label it controls** — which is where
+calendar nav belongs anyway — and the three pickers drop their text word below `sm`,
+keeping icon + count. Measured after: every control **inside** the card at 390 · 430 · 768
+· 1440, 0 clipping findings, 0 page overflow.
+
+⚠️ **The admin case is the one that matters and it is not the default.** `isAdminOrAbove`
+gates the Timeline picker, so the demo user sees **two** pickers and an admin sees
+**three**. The first fix measured clean on the demo and was still **19px over** for an
+admin. Verified under a *temporary* local grant, reverted before commit (§42.12's
+technique). **Measure the branch with the most controls, not the one that renders by
+default.**
+
+⚠️ **A `str.replace` mislabelled a control.** Both picker summaries carry an identical
+`className`, so replacing on it hit the FIRST — leaving the **Holidays** control announcing
+itself as "Overlay Google Calendars" to a screen reader. Anchor on something unique to each
+element (here, its icon), and assert the post-condition (`count(...) == 1`).
+
+### 51.2 `/api-docs` served two documents
+
+`src/app/api-docs/page.tsx` rendered its own `<html lang="en">` / `<head>` / `<body>`
+inside the root layout, so every response carried **two of each**:
+
+```
+curl -s …/api-docs | grep -o "<html\|<body\|<head>" | sort | uniq -c
+   2 <body    2 <head>    2 <html          →  after: 1 / 1 / 1
+```
+
+Every load threw `Hydration failed…`, `In HTML, <html> cannot be a child of <body>` and
+two `You are mounting a new html/head/body component…`, then **discarded the SSR tree and
+re-rendered client-side**. It *looked* perfect — browsers hoist the stray `<style>` — which
+is exactly why it survived. The only page in `src/app` doing it.
+
+⚠️ **The styles had to be scoped in the same change, or the fix leaks.** The page's CSS
+styled `body` directly (`background: #0a0a0a`), so simply deleting the wrapper would have
+painted the real document body dark **on every route**. Everything is now `.apidocs`-scoped
+with `min-height: 100vh`; verified the wrapper is `rgb(10,10,10)` while `document.body`
+stays `rgb(250,250,249)`. The hand-written `<meta viewport>` became a `viewport` export.
+
+### 51.3 The console is now clean across every reachable page — measured, 19 pages, 0 errors
+
+`resolveDemoApi`'s catch-all `return {}` is not harmless for a hook that reads a field off
+the response: `useUnreadCount` does `.then((r) => r.unread)`, gets `undefined`, and React
+Query treats an undefined result as an error. **Every demo page that mounts the app shell**
+logged *"Query data cannot be undefined"* with the notification bell stuck in an error
+state. Two endpoints were unmapped (`notifications/unread-count`, and
+`documents/[id]/signature-requests` on `/demo/docs/doc-1`); both are mapped now.
+
+**And the white-label demo painted the WRONG BRAND first.** `/demo/<Client>` read its name
+from `window.location`, which is `null` on the server — so SSR always rendered "Foundry by
+Gitwork" and the client swapped in the client's name a moment later. That is a hydration
+mismatch on every load *and* a prospect opening a white-labelled sales link seeing **our**
+branding before theirs. The segment is a **route param**, so the server has it: it is passed
+to `<DemoHub>` as `initialBrand` and `readBrand()` now only covers `/demo?client=` and the
+localStorage carry-over. Verified on the wire — SSR went from 0 to 27 occurrences of the
+client name, and from 0 to 2 of "Powered by Foundry".
+
+⚠️ The comment above `readBrand()` claimed it read the brand "synchronously so the first
+paint is already on-brand (no flash)". That was **never true on the server**, and the
+`suppressHydrationWarning` on the wrapper only covers that element's own attributes and
+direct text children — not the subtree — so it suppressed nothing here.
+
+**Measured after: 19 reachable pages swept, `0` real console errors** (excluding two local
+env artefacts — no `DATABASE_URL`, no `AUTH_SECRET` — which are absent in production). A
+console that is never clean is a console nobody reads, which is how the two defects above
+went unnoticed.
+
+### 51.4 Verified
+
+`npm run verify` green — tsc + lint **0 errors** (41 warnings, all pre-existing),
+**3459 tests**, `audit:dependencies` clean, `audit:ui` **0 findings** with its self-test
+passing; `npx next build` clean, 103 static pages.
+
+**Proved by before/after on the same harness**, restoring `origin/main`'s file rather than
+hand-editing a sabotage — the first attempt at that produced a **syntax error**, which is a
+broken build, not a reproduction of the defect. On main's code the three buttons measure
++70 / +137 / +169px past the card with `offscreen: true`; on this branch, −145 / −78 / −46
+inside it.
+
+⚠️ **The closed-`<details>` false positives are back in this measurement**, because the
+detector fix lives in a different branch (§50.6 of that PR). The unpatched detector
+reported 12 findings at 390px where 2 were real. Re-measured with the corrected one before
+believing either number.

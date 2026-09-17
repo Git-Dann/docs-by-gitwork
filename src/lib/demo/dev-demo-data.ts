@@ -2800,5 +2800,14 @@ export function resolveDemoApi(
   if (/^\/api\/vet\/[^/]+\/consent$/.test(pathname)) return { session: demoVetSession };
   if (/^\/api\/vet\/[^/]+(\/connect)?$/.test(pathname)) return { session: demoVetSession };
 
+  // ⚠️ The catch-all `{}` is why an unmapped endpoint is NOT harmless here. A hook
+  // that reads a field off the response (`.then((r) => r.unread)`) gets `undefined`,
+  // and React Query treats an undefined query result as an error — so every demo page
+  // that mounts the app shell logged "Query data cannot be undefined" forever, with
+  // the notification bell stuck in an error state. Map the endpoint rather than
+  // letting it fall through.
+  if (pathname === "/api/notifications/unread-count") return { unread: 0 };
+  if (/^\/api\/documents\/[^/]+\/signature-requests$/.test(pathname)) return { requests: [] };
+
   return {};
 }

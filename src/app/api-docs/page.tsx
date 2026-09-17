@@ -3,6 +3,13 @@ export const metadata = {
   description: "REST API documentation for Foundry by Gitwork",
 };
 
+// Was a hand-written <meta> inside the page's own <head>. The root layout owns the
+// document, so the viewport is declared the framework's way instead.
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 const BASE_URL = "https://foundry.gitwork.co.uk";
 
 interface Param {
@@ -417,17 +424,20 @@ const METHOD_COLORS: Record<string, string> = {
 
 export default function ApiDocsPage() {
   return (
-    <html lang="en">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>{`
-          *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; line-height: 1.6; }
-          a { color: #60a5fa; text-decoration: none; }
-          a:hover { text-decoration: underline; }
-          code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; background: #1a1a1a; padding: 2px 6px; border-radius: 4px; color: #d1d5db; }
-          pre { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.83em; color: #a3e635; line-height: 1.5; }
+    // ⚠️ A page renders NO <html>/<head>/<body> — the root layout already provides
+    // them, so doing it here served two of each and every load threw
+    // "In HTML, <html> cannot be a child of <body>" plus a hydration failure, then
+    // re-rendered the whole tree on the client. It LOOKED fine (browsers hoist the
+    // stray <style>), which is why it survived: the page was correct and the document
+    // was not. This was the only page in src/app doing it.
+    <div className="apidocs">
+      <style>{`
+          .apidocs *, .apidocs *::before, .apidocs *::after { box-sizing: border-box; margin: 0; padding: 0; }
+          .apidocs { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #e5e5e5; line-height: 1.6; min-height: 100vh; }
+          .apidocs a { color: #60a5fa; text-decoration: none; }
+          .apidocs a:hover { text-decoration: underline; }
+          .apidocs code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; background: #1a1a1a; padding: 2px 6px; border-radius: 4px; color: #d1d5db; }
+          .apidocs pre { background: #111; border: 1px solid #222; border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.83em; color: #a3e635; line-height: 1.5; }
           .container { max-width: 900px; margin: 0 auto; padding: 40px 24px 80px; }
           .header { border-bottom: 1px solid #1f1f1f; padding-bottom: 32px; margin-bottom: 40px; }
           .logo { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: #6b7280; margin-bottom: 12px; }
@@ -475,9 +485,7 @@ export default function ApiDocsPage() {
           .e400 { color: #fbbf24; } .e401 { color: #f87171; } .e404 { color: #fb923c; } .e500 { color: #c084fc; }
           .footer { margin-top: 60px; padding-top: 24px; border-top: 1px solid #1a1a1a; font-size: 0.8rem; color: #374151; text-align: center; }
         `}</style>
-      </head>
-      <body>
-        <div className="container">
+      <div className="container">
           <div className="header">
             <div className="logo">Foundry by Gitwork</div>
             <h1>API Reference</h1>
@@ -597,11 +605,10 @@ APPROVED         → Approved by all parties
 SENT             → Delivered to client
 ARCHIVED         → Archived / no longer active`}</pre>
 
-          <div className="footer">
-            Foundry by Gitwork · <a href={BASE_URL}>foundry.gitwork.co</a>
-          </div>
+        <div className="footer">
+          Foundry by Gitwork · <a href={BASE_URL}>foundry.gitwork.co</a>
         </div>
-      </body>
-    </html>
+      </div>
+    </div>
   );
 }
