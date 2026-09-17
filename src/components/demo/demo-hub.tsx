@@ -44,11 +44,13 @@ function readBrand(): string | null {
   return window.localStorage.getItem(BRAND_KEY);
 }
 
-export function DemoHub() {
+export function DemoHub({ initialBrand }: { initialBrand?: string | null } = {}) {
   // Cards mirror the demo sidebar — filtered by the config (URL ?modules= / localStorage).
   const [demos] = useState(() => filterModules(readDemoModules()));
-  // Read brand + colour synchronously so the first paint is already on-brand (no flash).
-  const [brand] = useState<string | null>(() => readBrand());
+  // `initialBrand` comes from the route param on /demo/<Client>, so the SERVER render is
+  // already on-brand and matches the client's — which is what removes the hydration
+  // mismatch. `readBrand()` still covers /demo?client= and the localStorage carry-over.
+  const [brand] = useState<string | null>(() => initialBrand ?? readBrand());
   const [brandColor] = useState(() => readDemoColor());
 
   const name = brand ?? "Foundry";

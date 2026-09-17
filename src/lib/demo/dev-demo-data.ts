@@ -2807,6 +2807,7 @@ export function resolveDemoApi(
   // the notification bell stuck in an error state. Map the endpoint rather than
   // letting it fall through.
   if (pathname === "/api/notifications/unread-count") return { unread: 0 };
+  if (/^\/api\/documents\/[^/]+\/signature-requests$/.test(pathname)) return { requests: [] };
 
   return {};
 }

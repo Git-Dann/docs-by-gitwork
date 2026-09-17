@@ -5254,14 +5254,33 @@ painted the real document body dark **on every route**. Everything is now `.apid
 with `min-height: 100vh`; verified the wrapper is `rgb(10,10,10)` while `document.body`
 stays `rgb(250,250,249)`. The hand-written `<meta viewport>` became a `viewport` export.
 
-### 51.3 The demo console was never clean, so it hid things
+### 51.3 The console is now clean across every reachable page — measured, 19 pages, 0 errors
 
 `resolveDemoApi`'s catch-all `return {}` is not harmless for a hook that reads a field off
 the response: `useUnreadCount` does `.then((r) => r.unread)`, gets `undefined`, and React
 Query treats an undefined result as an error. **Every demo page that mounts the app shell**
 logged *"Query data cannot be undefined"* with the notification bell stuck in an error
-state. One mapped endpoint fixes it — and a demo console that is never clean is a console
-nobody reads, which is how the two defects above went unnoticed.
+state. Two endpoints were unmapped (`notifications/unread-count`, and
+`documents/[id]/signature-requests` on `/demo/docs/doc-1`); both are mapped now.
+
+**And the white-label demo painted the WRONG BRAND first.** `/demo/<Client>` read its name
+from `window.location`, which is `null` on the server — so SSR always rendered "Foundry by
+Gitwork" and the client swapped in the client's name a moment later. That is a hydration
+mismatch on every load *and* a prospect opening a white-labelled sales link seeing **our**
+branding before theirs. The segment is a **route param**, so the server has it: it is passed
+to `<DemoHub>` as `initialBrand` and `readBrand()` now only covers `/demo?client=` and the
+localStorage carry-over. Verified on the wire — SSR went from 0 to 27 occurrences of the
+client name, and from 0 to 2 of "Powered by Foundry".
+
+⚠️ The comment above `readBrand()` claimed it read the brand "synchronously so the first
+paint is already on-brand (no flash)". That was **never true on the server**, and the
+`suppressHydrationWarning` on the wrapper only covers that element's own attributes and
+direct text children — not the subtree — so it suppressed nothing here.
+
+**Measured after: 19 reachable pages swept, `0` real console errors** (excluding two local
+env artefacts — no `DATABASE_URL`, no `AUTH_SECRET` — which are absent in production). A
+console that is never clean is a console nobody reads, which is how the two defects above
+went unnoticed.
 
 ### 51.4 Verified
 
