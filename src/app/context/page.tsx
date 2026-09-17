@@ -18,7 +18,7 @@ export default function ContextPage() {
   return (
     <div style={{ fontFamily: "monospace", maxWidth: 860, margin: "0 auto", padding: "48px 24px", color: "#1a1a18", lineHeight: 1.7 }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Foundry by Gitwork — AI Context</h1>
-      <p style={{ color: "#666", marginBottom: 40 }}>Last updated: May 2026 · Not linked in nav · noindex</p>
+      <p style={{ color: "#666", marginBottom: 40 }}>Last updated: September 2026 · Not linked in nav · noindex</p>
 
       {/* ── WHAT IT IS ───────────────────────────────────────────────── */}
       <section style={{ marginBottom: 40 }}>
@@ -79,11 +79,11 @@ export default function ContextPage() {
         <ul style={{ paddingLeft: 20, fontSize: 14 }}>
           <li><strong>Framework:</strong> Next.js 15 (App Router, React 19) · TypeScript</li>
           <li><strong>Styling:</strong> Tailwind CSS v4 (CSS-first config, <code>@layer base/components/utilities</code>)</li>
-          <li><strong>Database:</strong> Neon PostgreSQL via Prisma ORM (pooled + direct URL)</li>
+          <li><strong>Database:</strong> Self-hosted PostgreSQL (Docker container, pgvector) via Prisma ORM</li>
           <li><strong>AI:</strong> Anthropic SDK (<code>@anthropic-ai/sdk</code>) + OpenAI-compatible SDK for multi-provider routing</li>
           <li><strong>Data fetching:</strong> TanStack React Query v5 + custom hooks in <code>src/hooks/</code></li>
-          <li><strong>Auth:</strong> Cookie-based session middleware (API_KEY env var) — full employee auth is upcoming</li>
-          <li><strong>Deploy:</strong> Vercel (team: <code>dans-projects-7462374f</code>, project: <code>foundry-by-gitwork</code>)</li>
+          <li><strong>Auth:</strong> Google OAuth (NextAuth) for staff; API routes accept a Bearer <code>API_KEY</code>; <code>/app/**</code> is gated per module</li>
+          <li><strong>Deploy:</strong> Docker Compose on a dedicated VPS — push to <code>main</code> auto-deploys via GitHub Actions</li>
           <li><strong>Drag &amp; drop:</strong> @dnd-kit</li>
           <li><strong>PDF:</strong> pdf-lib</li>
           <li><strong>Validation:</strong> Zod (schemas in <code>src/server/validators.ts</code>)</li>
@@ -177,8 +177,7 @@ export default function ContextPage() {
       <section style={{ marginBottom: 40 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, borderBottom: "1px solid #e5e5e5", paddingBottom: 6, marginBottom: 16 }}>Upcoming (Next Sessions)</h2>
         <ul style={{ paddingLeft: 20, fontSize: 14 }}>
-          <li><strong>Auth — Gitwork employees:</strong> Login with Admin + Staff roles. Middleware guards on <code>/app/**</code>. User model already in Prisma schema.</li>
-          <li><strong>Care vector store:</strong> pgvector via Neon extension for semantic search over Care conversations and client context.</li>
+          <li><strong>Care vector store:</strong> pgvector is live (enabled at boot); the remaining work is embedding coverage across older Care conversations.</li>
         </ul>
       </section>
 

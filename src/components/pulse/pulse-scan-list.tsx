@@ -363,14 +363,24 @@ function ScanRow({
       {/* Col 3 — Project name + URL + mobile meta */}
       <Link href={`/app/pulse/${scan.id}`} className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 truncate">
-          <p className="truncate text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-600)]">
+          <p
+            className="truncate text-sm font-medium text-[var(--text-1)] group-hover:text-[var(--brand-600)]"
+            title={scan.projectName}
+          >
             {scan.projectName}
           </p>
           {scan.generatedProposalId && (
             <DocumentTextIcon className="h-3.5 w-3.5 shrink-0 text-[var(--brand-400)]" title="Proposal generated" />
           )}
         </div>
-        <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">
+        {/* ⚠️ `title` as well as `truncate`. The part that gets cut is the CLIENT NAME
+            (it trails the URL), so at 390px this line reads as a bare URL with no way to
+            tell whose scan it is — a TRUNCATED defect under `audit:clipping`, and live
+            at /app/pulse. Measured: up to 66px of text lost in a 196px column. */}
+        <p
+          className="mt-0.5 truncate text-xs text-[var(--text-4)]"
+          title={[inputLabel, scan.clientName].filter(Boolean).join(" · ") || undefined}
+        >
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
         </p>

@@ -466,10 +466,18 @@ function AddVersionModal({
   }
 
   return (
-    <Modal open={open} onClose={close} title={`NEW VERSION · ${moduleName.toUpperCase()}`} panelClassName="w-full max-w-4xl">
-      <div className="grid gap-0 md:grid-cols-[320px_1fr]">
+    <Modal
+      open={open}
+      onClose={close}
+      title={`NEW VERSION · ${moduleName.toUpperCase()}`}
+      panelClassName="app-dialog-fixed w-full max-w-3xl"
+    >
+      {/* Height lives on the PANEL (`app-dialog-fixed`), not on a `max-h-[46vh]` scroll
+          region — that capped the tall case and still let a one-file version collapse
+          the box, so opening two in a row moved it under the cursor (§46). */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 md:grid-cols-[300px_minmax(0,1fr)]">
         {/* Left — version meta */}
-        <div className="space-y-4 border-b border-[var(--border-1)] p-5 md:border-b-0 md:border-r">
+        <div className="min-h-0 space-y-4 overflow-y-auto border-b border-[var(--border-1)] p-5 md:border-b-0 md:border-r">
           <label className="block">
             <span className="app-field-label">Version label</span>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. v1.2.0" className="app-input" autoFocus />
@@ -491,9 +499,9 @@ function AddVersionModal({
         </div>
 
         {/* Right — files */}
-        <div className="space-y-3 p-5">
+        <div className="min-h-0 space-y-3 overflow-y-auto p-5">
           <span className="app-field-label">Files</span>
-          <div className="max-h-[46vh] space-y-3 overflow-auto pr-0.5">
+          <div className="space-y-3 pr-0.5">
             {files.map((f, i) => (
               <div key={i} className="space-y-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
                 <div className="flex gap-2">
@@ -515,8 +523,8 @@ function AddVersionModal({
         </div>
       </div>
 
-      {error && <p className="px-5 text-sm text-rose-600">{error}</p>}
-      <div className="flex justify-end gap-2 border-t border-[var(--border-1)] p-4">
+      {error && <p className="shrink-0 px-5 text-sm text-rose-600">{error}</p>}
+      <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-1)] p-4">
         <button type="button" onClick={close} className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">Cancel</button>
         <button type="button" onClick={() => void save()} disabled={create.isPending} className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60">
           {create.isPending ? "Saving…" : "Save version"}

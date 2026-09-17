@@ -1918,7 +1918,7 @@ function GrabNoteModal({
   return (
     <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="app-dialog-panel flex max-h-[80vh] w-full max-w-[560px] flex-col overflow-hidden"
+        className="app-dialog-panel app-dialog-fixed flex w-full max-w-[560px] flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-5 py-4">
@@ -2094,7 +2094,7 @@ function MeetingNotesModal({
     >
       <div
         className={cn(
-          "app-dialog-panel flex max-h-[85vh] w-full flex-col overflow-hidden",
+          "app-dialog-panel app-dialog-fixed flex w-full flex-col overflow-hidden",
           hasRightRail ? "max-w-[980px]" : "max-w-[680px]",
         )}
         onClick={(e) => e.stopPropagation()}
@@ -3450,7 +3450,7 @@ function ClientEditModal({
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
+        <div className="app-dialog-panel app-dialog-fixed flex w-full max-w-3xl flex-col overflow-hidden">
           {/* Modal widget header */}
           <div className="widget-header shrink-0">
             <span className="widget-header__label">EDIT CLIENT</span>

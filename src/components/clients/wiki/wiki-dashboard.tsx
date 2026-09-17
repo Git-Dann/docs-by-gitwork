@@ -473,6 +473,37 @@ export function WikiDashboard({
           <p className="text-[13px] text-[var(--text-4)]">No charts yet.</p>
         );
       }
+      case "launchpad": {
+        // ⚠️ A section with NO case here falls through to the markdown-doc default and
+        // the card reads "Documentation." — which is what Launchpad shipped with, and
+        // the same defect the Requests card shipped with (§40.1). Launchpad is the one
+        // section that asks the CLIENT for things, so its card must say what is still
+        // outstanding rather than describe itself.
+        const lp = wiki.launchpad;
+        if (!lp || !lp.assigned) {
+          return <p className="text-[13px] text-[var(--text-4)]">Nothing requested yet.</p>;
+        }
+        const c = lp.completeness;
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              {/* `needed` leads, not `percent`. The client's question is "what do you
+                  still want from me", and 0 outstanding is the finish line — a
+                  percentage makes them do the subtraction. */}
+              <Metric value={String(c.needed)} label={c.needed === 1 ? "To send" : "To send"} />
+              <Metric value={`${c.provided}/${c.total}`} label="Provided" />
+            </div>
+            {c.outstanding.length > 0 && (
+              <p
+                className="truncate text-[12px] text-[var(--text-4)]"
+                title={c.outstanding.join(", ")}
+              >
+                {c.outstanding.join(" · ")}
+              </p>
+            )}
+          </div>
+        );
+      }
       case "delivery": {
         const d = summariseDelivery({
           blocks: wiki.timeline.blocks,

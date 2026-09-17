@@ -5298,3 +5298,97 @@ inside it.
 detector fix lives in a different branch (§50.6 of that PR). The unpatched detector
 reported 12 findings at 390px where 2 were real. Re-measured with the corrected one before
 believing either number.
+
+## 52. Recent Changes (September 2026) — The recorded debt, cleared
+
+Five items that had been written down in this file as known-and-open rather than fixed.
+
+### 52.1 Launchpad's dashboard card read "Documentation."
+
+§43 shipped it without a `case` in `wiki-dashboard.tsx`, so it fell through to the
+markdown-doc default — the exact defect §40.1 records for the Requests card, repeated.
+The card now leads with **what is still outstanding** (`7 To send · 5/14 Provided` plus
+the named list), not a percentage: the client's question is "what do you still want from
+me", and a percentage makes them do the subtraction. Measured on `/demo/wiki`.
+
+### 52.2 Every HQ widget sat on a hardcoded white card
+
+`AppOverview`'s tile container was `bg-white` + a literal `rgba(0,0,0,0.08)` border.
+`globals.css` **does** remap both of those for dark mode — but this element wraps every
+widget, so a token-correct widget still rendered on a white slab. That is why §42.13's
+Care tile "looked wrong in dark mode" after its own colours were fixed. Now
+`bg-[var(--surface-0)]` + `border-[var(--border-1)]`, both of which genuinely flip
+(`#FFFFFF` → `#161617`, black → white at 18%).
+
+### 52.3 The `max-h-[Nvh]` sweep — triaged, not blanket-applied
+
+§46 fixed one dialog and deferred the rest because "telling them apart needs looking at
+each one". Doing that: **35 matches, 14 were dialogs, 21 correctly stay as they are.**
+
+**The clamp is now declared ONCE** as `.app-dialog-fixed` in `globals.css` (`height: 80vh;
+max-height: 680px; min-height: min(460px, 80vh)` + flex column), so the magic numbers
+cannot drift across 14 files.
+
+| Left alone, on purpose | Why |
+|---|---|
+| Menus / dropdowns / popovers (app-shell, mobile nav, notifications, reminders, batch bar, settings shell, two editor popovers, two scan/assessment dropdowns) | A menu is *supposed* to hug its content and cap at the viewport |
+| Image lightboxes (receipts, intake attachments, task attachments) | `max-h-[70vh]` on an `<img>` is how you fit an image to the viewport |
+| `presentation-mode` speaker notes | Same — an overlay that hugs |
+| `support-dashboard` | Already has an explicit `h-[600px]`; the `max-h` is the viewport guard |
+
+⚠️ **Pinning a panel is only half the change, and the other half is the dangerous half.**
+A pinned panel is `overflow: hidden`, so a body with no scroll region makes everything
+past 80vh **unreachable** — strictly worse than the resizing it replaced. My first pass
+did exactly that to **six** dialogs. `src/components/__tests__/dialog-fixed-height.test.ts`
+now fails naming any `app-dialog-fixed` panel without one.
+
+⚠️ **The first version of that test was wrong about grid children.** It required
+`flex-1 + min-h-0 + overflow-y-auto` on one element, but the two-column "meta | content"
+dialogs put the scroller in a **grid** track, where `flex-1` is meaningless and the track
+carries it instead. The rule that holds for both is **`min-h-0` on the scrolling
+element** — a flex *or* grid item's automatic minimum size is its content, so without it
+the region refuses to shrink and pushes the footer out of the panel.
+
+**Measured** on the reachable case (`AddVersionModal`, `/demo/wiki` → Code Handover),
+one file vs six:
+
+| Viewport | 1 file | 6 files | active scrollers |
+|---|---|---|---|
+| 1440×900 | 680px | 680px | 0 → 1 |
+| 1280×620 | 496px | 496px | 0 → 1 |
+| 390×844 | 675px | 675px | 2 → 2 |
+
+Identical height, viewport-bound, always inside the viewport, **0 clipping findings** —
+and the scroller *activating* as content grows is the proof that nothing became
+unreachable.
+
+### 52.4 `/context` and `/api-docs` told readers production runs on Vercel + Neon
+
+It hasn't since July 2026 (§23). `/context` is the page whose entire purpose is telling an
+AI reader what is true, and it also still called auth "upcoming" (it shipped) and was
+stamped "May 2026". All corrected.
+
+⚠️ The Vercel **team slug and project id** were *removed* rather than updated: that page
+needs no auth, and naming internal infrastructure on it is a small disclosure for no
+reader benefit.
+
+### 52.5 Pulse's scan list lost the client name with no way to recover it
+
+`pulse-scan-list.tsx` truncated the sub-line with no `title`, and the part that gets cut
+is the **client name** (it trails the URL) — so at 390px the row reads as a bare URL and
+you cannot tell whose scan it is. Live at `/app/pulse`. Both that line and the project
+name above it now carry a `title`.
+
+### 52.6 Verified
+
+`npm run verify` green — tsc + lint **0 errors** (41 warnings, all pre-existing),
+**3464 tests**, `audit:dependencies` clean, `audit:ui` **0 findings**; `npx next build`
+clean, 103 static pages. The new test was proved to discriminate by removing a `min-h-0`
+(fails, naming the file) and by replacing the `min(460px, 80vh)` floor with a bare
+`460px` (fails).
+
+**Not verified:** the 13 pinned dialogs that have no demo route — `/app` is auth-gated
+with no staging. What IS verified for those is structural (every one carries a shrinkable
+scroll region, enforced by the test) plus the one reachable dialog measured above. The
+honest post-deploy check is to open a Backstage leave form, a client Edit modal and the
+Team member modal and confirm each opens at a steady size with its footer reachable.

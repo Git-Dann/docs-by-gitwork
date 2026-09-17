@@ -87,9 +87,11 @@ function PurgeReviewModal({ open, onClose }: { open: boolean; onClose: () => voi
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Purge review" panelClassName="w-full max-w-2xl">
-      <div className="p-5">
-        <p className="mb-4 text-sm text-[var(--text-3)]">
+    <Modal open={open} onClose={onClose} title="Purge review" panelClassName="app-dialog-fixed w-full max-w-2xl">
+      {/* Three states — loading, empty, and a list of unknown length — so the box
+          resized every time it opened. Height on the panel (§46). */}
+      <div className="flex min-h-0 flex-1 flex-col p-5">
+        <p className="mb-4 shrink-0 text-sm text-[var(--text-3)]">
           These cold archives are past their retention window. Purging permanently deletes the cold copy —
           it cannot be recovered. Aging itself is reversible; this is the only destructive step.
         </p>
@@ -100,7 +102,7 @@ function PurgeReviewModal({ open, onClose }: { open: boolean; onClose: () => voi
           <p className="text-sm text-[var(--text-4)]">Nothing awaiting a purge decision.</p>
         ) : (
           <>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex shrink-0 items-center justify-between">
               <button
                 type="button"
                 onClick={() => {
@@ -116,7 +118,7 @@ function PurgeReviewModal({ open, onClose }: { open: boolean; onClose: () => voi
               </span>
             </div>
 
-            <ul className="max-h-[46vh] space-y-1.5 overflow-y-auto">
+            <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
               {rows.map((r) => (
                 <li key={r.id}>
                   <label className="flex cursor-pointer items-center gap-3 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2.5 hover:border-[var(--brand-300)]">
@@ -141,7 +143,7 @@ function PurgeReviewModal({ open, onClose }: { open: boolean; onClose: () => voi
               ))}
             </ul>
 
-            <div className="mt-4 flex items-center justify-end gap-2">
+            <div className="mt-4 flex shrink-0 items-center justify-end gap-2">
               <Button type="button" variant="secondary" size="sm" onClick={onClose}>
                 Cancel
               </Button>

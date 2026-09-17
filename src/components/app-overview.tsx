@@ -94,7 +94,12 @@ function BentoBand({ tiles, band }: { tiles: NumberedTile[]; band: WidgetBand })
         return (
           <div
             key={number}
-            className="overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white"
+            // ⚠️ Was `bg-white` + a literal `rgba(0,0,0,0.08)` border. The dark remap
+            // covers `bg-white` and rgba-black borders (see globals.css), but this card
+            // ALSO wraps every HQ widget — so a token-correct widget still rendered on a
+            // hardcoded white slab, which is why §42.13's Care tile "looked wrong in dark
+            // mode" even after its own colours were fixed. Uses the surface tokens now.
+            className="overflow-hidden rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)]"
             style={{ gridColumn: `span ${span}`, height: `${height}px` }}
           >
             <Widget size={size} index={number} />

@@ -110,7 +110,7 @@ export function LogoManagerModal({
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
+        <div className="app-dialog-panel app-dialog-fixed flex w-full max-w-3xl flex-col overflow-hidden">
           <div className="widget-header shrink-0">
             <span className="widget-header__label">
               <span className="widget-header__label--number">··</span>

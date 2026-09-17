@@ -105,8 +105,8 @@ function BroadcastModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal open onClose={onClose} panelClassName="w-full max-w-2xl">
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
+    <Modal open onClose={onClose} panelClassName="app-dialog-fixed w-full max-w-2xl">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
         <div>
           <p className="widget-data-label">DEVOPS BROADCAST</p>
           <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-[var(--text-1)]">
@@ -118,7 +118,7 @@ function BroadcastModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div className="max-h-[65vh] space-y-5 overflow-y-auto px-6 py-5">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
         {/* Clients */}
         <div>
           <div className="mb-2 flex items-center justify-between">

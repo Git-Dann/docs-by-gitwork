@@ -621,7 +621,7 @@ function MemberAccessModal({
       onClick={onClose}
     >
       <div
-        className="proposal-form-theme flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-[14px] bg-white shadow-2xl"
+        className="proposal-form-theme app-dialog-fixed flex w-full max-w-5xl flex-col overflow-hidden rounded-[14px] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

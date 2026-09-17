@@ -33,7 +33,7 @@ function PulseLeadPreviewModal({ leadId, onClose }: { leadId: string | null; onC
       {isLoading || !data ? (
         <p className="p-6 text-sm text-[var(--text-4)]">Loading…</p>
       ) : (
-        <div className="flex max-h-[70vh] flex-col">
+        <div className="app-dialog-fixed flex flex-col">
           <div className="flex items-center gap-4 border-b border-[var(--border-2)] px-5 py-4">
             {data.healthScore != null && <ScoreRing score={data.healthScore} size={64} />}
             <div className="min-w-0">
@@ -41,7 +41,7 @@ function PulseLeadPreviewModal({ leadId, onClose }: { leadId: string | null; onC
               <p className="truncate text-xs text-[var(--text-4)]">{data.targetUrl}</p>
             </div>
           </div>
-          <div className="flex-1 divide-y divide-[var(--border-2)] overflow-y-auto">
+          <div className="min-h-0 flex-1 divide-y divide-[var(--border-2)] overflow-y-auto">
             {checks.length === 0 ? (
               <p className="p-5 text-sm text-[var(--text-4)]">No check data was captured for this scan.</p>
             ) : (
