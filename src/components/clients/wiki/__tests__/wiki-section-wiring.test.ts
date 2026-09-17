@@ -38,7 +38,7 @@ function read(relative: string): string {
  * that closes it.
  *
  * Needed wherever a bare `toContain` would not discriminate: `"insights",` is a
- * substring of the sidebar's `navItem("insights", "Insights", …)` line, so asserting
+ * substring of the sidebar's `navItem("insights", "Charts", …)` line, so asserting
  * it against the whole file would pass with the list entry deleted.
  *
  * The terminator has to be line-leading. Stopping at the first `]` instead cuts
@@ -55,7 +55,7 @@ function declBlock(source: string, marker: string): string {
 }
 
 const SECTIONS = [
-  { id: "insights", label: "Insights" },
+  { id: "insights", label: "Charts" },
   { id: "delivery", label: "Delivery" },
   { id: "support", label: "Support" },
 ] as const;

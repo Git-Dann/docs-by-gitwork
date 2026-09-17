@@ -30,6 +30,7 @@ import { Modal } from "@/components/ui/modal";
 import { matchHeader, parseDelimited } from "@/lib/delimited";
 import type { WikiIntakeImportRow } from "@/lib/api";
 import type { IntakeCategory } from "@/lib/wiki-intake-categories";
+import { IMPORT_MAX_ROWS, IMPORT_MAX_TITLE } from "@/lib/wiki-intake-import-limits";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -97,6 +98,11 @@ export interface ParsedRow {
   /** Matches an existing OPEN request by title. The server dedupes too; saying so here
    *  is what stops someone importing a sheet twice and wondering where it went. */
   duplicate: boolean;
+  /** Title is longer than the store accepts and will be shortened on import. Surfaced
+   *  rather than left to the server, which would reject the WHOLE batch with a bare
+   *  "Validation failed" naming neither the row nor the reason. A Jira summary can be
+   *  255 characters, so this is an ordinary input, not a malformed one. */
+  longTitle: boolean;
   skip: boolean;
 }
 
@@ -158,7 +164,13 @@ export function buildRows(
     }
     const title = values.title ?? "";
     const duplicate = Boolean(title) && openTitles.has(normTitle(title));
-    return { values, flags, duplicate, skip: !title || duplicate };
+    return {
+      values,
+      flags,
+      duplicate,
+      longTitle: title.length > IMPORT_MAX_TITLE,
+      skip: !title || duplicate,
+    };
   });
 }
 
@@ -169,7 +181,10 @@ export function rowsToPayload(
   return rows
     .filter((r) => !r.skip && r.values.title)
     .map((r) => ({
-      title: r.values.title!,
+      // Shortened, not rejected: the detail is almost always in the description
+      // column anyway, and dropping someone's request because its summary ran long
+      // is the wrong trade. The preview says how many this affects before you commit.
+      title: r.values.title!.slice(0, IMPORT_MAX_TITLE),
       description: r.values.description ?? null,
       priority: mapPriority(r.values.priority).value,
       categoryId: mapCategory(r.values.category, categories).id,
@@ -240,6 +255,24 @@ export function RequestImportModal({
   const duplicates = rows.filter((r) => r.duplicate).length;
   const untitled = rows.filter((r) => !r.values.title).length;
   const flagged = rows.filter((r) => r.flags.length > 0).length;
+  const shortened = rows.filter((r) => !r.skip && r.longTitle).length;
+  /** ⚠️ The server caps a batch at IMPORT_MAX_ROWS. Without this the modal previewed
+   *  "640 to import", offered "Import 640", and surfaced the rejection as the bare
+   *  words "Validation failed" — after every column had been mapped by hand. */
+  const overCap = importable > IMPORT_MAX_ROWS;
+
+  /**
+   * ⚠️ EVERY dismissal path goes through here, not just the "Done" button.
+   *
+   * `Modal` calls `onClose` on Escape, on a backdrop click and on the X, and the parent
+   * only hides this component — it does not unmount it — so state survives. Leaving
+   * `result` set meant dismissing with Escape and reopening landed you back on
+   * "5 requests imported / Done" with no way to paste anything.
+   */
+  function handleClose() {
+    setResult(null);
+    onClose();
+  }
 
   function setColumn(index: number, field: FieldKey | null) {
     const next = [...effectiveMapping];
@@ -271,11 +304,16 @@ export function RequestImportModal({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Import requests"
-      panelClassName="w-full max-w-4xl"
+      // ⚠️ Height bound to the VIEWPORT, never to the content (DESIGN.md § Grid &
+      // Container). This dialog's body grows with however many rows were pasted, so
+      // without this it opened at one size for three rows and another entirely for
+      // three hundred. A `max-h-[Nvh]` on the scroll region is not a fixed height.
+      panelClassName="flex h-[80vh] max-h-[680px] min-h-[min(460px,80vh)] w-full max-w-3xl flex-col"
     >
-      <div className="space-y-4 p-5">
+      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
         {result ? (
           <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-5 text-center">
             <p className="text-[15px] font-semibold text-[var(--text-1)]">
@@ -289,10 +327,7 @@ export function RequestImportModal({
             )}
             <button
               type="button"
-              onClick={() => {
-                setResult(null);
-                onClose();
-              }}
+              onClick={handleClose}
               className="mt-3 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)]"
             >
               Done
@@ -406,7 +441,27 @@ export function RequestImportModal({
                   {flagged > 0 && (
                     <span className="text-amber-700">· {flagged} need a look</span>
                   )}
+                  {shortened > 0 && (
+                    <span className="text-amber-700">· {shortened} shortened</span>
+                  )}
                 </div>
+
+                {overCap && (
+                  <p
+                    role="alert"
+                    className="flex items-start gap-1.5 text-[13px] text-amber-700"
+                  >
+                    <ExclamationTriangleIcon
+                      aria-hidden="true"
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                    />
+                    <span>
+                      {importable} rows pasted, and {IMPORT_MAX_ROWS} is the most that can
+                      go in at once. Split the sheet and import it in two goes — nothing
+                      here has been saved yet.
+                    </span>
+                  </p>
+                )}
 
                 {!hasTitle && (
                   <p className="flex items-start gap-1.5 text-[13px] text-amber-700">
@@ -459,10 +514,18 @@ export function RequestImportModal({
                               DUP
                             </span>
                           ) : r.flags.length > 0 ? (
-                            <ExclamationTriangleIcon
-                              className="ml-auto h-3.5 w-3.5 text-amber-600"
+                            <span
+                              className="ml-auto inline-flex"
                               title={`Could not read: ${r.flags.join(", ")}. Imported with a default.`}
-                            />
+                            >
+                              <ExclamationTriangleIcon
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5 text-amber-600"
+                              />
+                              <span className="sr-only">
+                                Could not read: {r.flags.join(", ")}. Imported with a default.
+                              </span>
+                            </span>
                           ) : null}
                         </span>
                       </div>
@@ -479,10 +542,16 @@ export function RequestImportModal({
                 </div>
               </>
             )}
+          </>
+        )}
+      </div>
 
-            {error && <p className="text-sm text-rose-600">{error}</p>}
-
-            <div className="flex items-center justify-end gap-2">
+      {/* Pinned: the action a person came here to take must never be the thing they
+          scroll to find — the same fix the badge studio needed (CLAUDE.md §39.1). */}
+      {!result && (
+        <div className="shrink-0 border-t border-[var(--border-2)] p-4">
+          {error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
+          <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={onClose}
@@ -492,16 +561,16 @@ export function RequestImportModal({
               </button>
               <button
                 type="button"
-                disabled={importing || importable === 0 || !hasTitle}
+                disabled={importing || importable === 0 || !hasTitle || overCap}
                 onClick={() => void run()}
                 className="inline-flex items-center gap-1.5 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
               >
                 <ClipboardDocumentIcon className="h-4 w-4" />
                 {importing ? "Importing…" : `Import ${importable}`}
               </button>
-            </div>
-          </>
-        )}
+          </div>
+        </div>
+      )}
       </div>
     </Modal>
   );

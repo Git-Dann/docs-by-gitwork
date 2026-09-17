@@ -21,11 +21,12 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { importWikiIntakeItems } from "@/server/wiki";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { intakeCommonFields } from "@/server/wiki-intake-vocab";
+import { IMPORT_MAX_ROWS, IMPORT_MAX_TITLE } from "@/lib/wiki-intake-import-limits";
 
 
 const itemSchema = z.object({
   ...intakeCommonFields,
-  title: z.string().trim().min(1).max(180),
+  title: z.string().trim().min(1).max(IMPORT_MAX_TITLE),
   type: intakeCommonFields.type.default("FEEDBACK"),
   priority: intakeCommonFields.priority.default("MEDIUM"),
   externalRef: z.string().trim().max(180).optional().nullable(),
@@ -34,9 +35,9 @@ const itemSchema = z.object({
 });
 
 const bodySchema = z.object({
-  // 500, matching the task importer rather than the API's 200: a person pasting their
-  // own backlog in one go is a different risk from an integration looping unattended.
-  items: z.array(itemSchema).min(1).max(500),
+  // Shared with the browser so the modal can stop you BEFORE the mapping work —
+  // see src/lib/wiki-intake-import-limits.ts.
+  items: z.array(itemSchema).min(1).max(IMPORT_MAX_ROWS),
   /** Parse and dedupe without writing, so the preview can report what WOULD happen. */
   dryRun: z.boolean().optional(),
 });

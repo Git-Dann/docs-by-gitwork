@@ -863,6 +863,11 @@ async function buildDTO(
   };
 }
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const WIKI_INCLUDE = {
   client: {
     select: {
@@ -916,7 +921,7 @@ const WIKI_INCLUDE = {
   wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
-} as const;
+} as const satisfies Prisma.ClientWikiInclude;
 
 const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
   IA_GUIDE: "ia",

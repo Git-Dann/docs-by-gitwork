@@ -630,7 +630,16 @@ export function GanttChart({
                           </div>
                         </div>
                       ) : null}
-                      <div className="group absolute top-2 h-7" style={{ left, width }}>
+                      {/* `title` as well as the styled hover card below: the in-bar
+                          label truncates (a bar is only as wide as its date range),
+                          and a CSS `group-hover` tooltip is invisible to assistive
+                          tech and to `audit:clipping`, which correctly reports the
+                          label as unrecoverable without this. */}
+                      <div
+                        className="group absolute top-2 h-7"
+                        title={b.name}
+                        style={{ left, width }}
+                      >
                         <div className={cn("h-full w-full overflow-hidden rounded-[6px]", t.bar)}>
                           {b.statusCounts ? (
                             <StatusFill counts={b.statusCounts} />

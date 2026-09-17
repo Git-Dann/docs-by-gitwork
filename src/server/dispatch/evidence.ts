@@ -55,6 +55,11 @@ function assignedTo(userId: string): Prisma.TaskWhereInput {
   return { OR: [{ assignees: { some: { id: userId } } }, { assigneeId: userId }] };
 }
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const TASK_SELECT = {
   id: true,
   title: true,
@@ -67,7 +72,7 @@ const TASK_SELECT = {
   client: { select: { name: true } },
   featureBlock: { select: { name: true } },
   assignees: { select: { name: true, email: true } },
-} as const;
+} as const satisfies Prisma.TaskSelect;
 
 type TaskRow = Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>;
 

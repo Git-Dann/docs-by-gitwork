@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { after } from "next/server";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { runChannelSync } from "@/server/support-channels";
@@ -11,6 +12,11 @@ import type { SyncContext, SyncResult, FilterReasons } from "@/server/support-ch
 // Re-exported for the API routes / agents that import these from here.
 export type { SyncContext, SyncResult, FilterReasons };
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const WORKSPACE_AI_SELECT = {
   id: true,
   googleServiceAccountJson: true,
@@ -25,7 +31,7 @@ const WORKSPACE_AI_SELECT = {
   geminiModel: true,
   localLlmUrl: true,
   localLlmModel: true,
-} as const;
+} as const satisfies Prisma.WorkspaceSelect;
 
 // ─── Context builder (used by the per-connection sync route) ──────────────────
 

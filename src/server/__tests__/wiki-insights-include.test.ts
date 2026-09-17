@@ -55,7 +55,7 @@ describe("BOARD_INCLUDE only names fields that exist", () => {
   it("covers every relation on WikiInsightBoard that the include touches", () => {
     // If a fifth board type adds a fourth child relation, this fails until the map above
     // knows about it — otherwise the checks below would silently skip it.
-    const includeBlock = source.match(/const BOARD_INCLUDE = \{([\s\S]*?)\n\};/);
+    const includeBlock = source.match(/const BOARD_INCLUDE = \{([\s\S]*?)\n\}(?: as const)?(?: satisfies [\w.]+)?;/);
     expect(includeBlock, "BOARD_INCLUDE not found — has it been renamed?").toBeTruthy();
     const keys = [...includeBlock![1].matchAll(/^\s*(\w+):/gm)].map((m) => m[1]);
     expect(keys.sort()).toEqual(Object.keys(RELATION_MODEL).sort());
@@ -66,7 +66,7 @@ describe("BOARD_INCLUDE only names fields that exist", () => {
     (relation, model) => {
       const fields = fieldsOf(model);
       // Resolve the shared order constant, then any inline orderBy on this relation.
-      const shared = source.match(/const CHILD_ORDER = \[([\s\S]*?)\];/)?.[1] ?? "";
+      const shared = source.match(/const CHILD_ORDER = \[([\s\S]*?)\](?: as const)?(?: satisfies [\w.]+)?;/)?.[1] ?? "";
       const inline =
         source.match(new RegExp(`${relation}:\\s*\\{[^}]*orderBy:\\s*\\[([^\\]]*)\\]`))?.[1] ?? "";
       const named = [...`${shared}${inline}`.matchAll(/\{\s*(\w+):/g)].map((m) => m[1]);
@@ -86,14 +86,14 @@ describe("BOARD_INCLUDE only names fields that exist", () => {
     for (const model of Object.values(RELATION_MODEL)) {
       expect(fieldsOf(model).has("createdAt"), `${model}`).toBe(false);
     }
-    const order = source.match(/const CHILD_ORDER = \[([\s\S]*?)\];/)?.[1] ?? "";
+    const order = source.match(/const CHILD_ORDER = \[([\s\S]*?)\](?: as const)?(?: satisfies [\w.]+)?;/)?.[1] ?? "";
     expect(order).not.toContain("createdAt");
   });
 
   it("gives child rows a stable tiebreaker, so equal orderKeys do not reorder per query", () => {
     // Postgres does not promise an order for ties. Two points sharing an orderKey would
     // otherwise swap places between page loads, which reads as a chart redrawing itself.
-    const order = source.match(/const CHILD_ORDER = \[([\s\S]*?)\];/)?.[1] ?? "";
+    const order = source.match(/const CHILD_ORDER = \[([\s\S]*?)\](?: as const)?(?: satisfies [\w.]+)?;/)?.[1] ?? "";
     expect(order).toContain("orderKey");
     expect(order).toContain("id");
   });
