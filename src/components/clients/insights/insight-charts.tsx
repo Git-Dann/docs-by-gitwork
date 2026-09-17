@@ -44,6 +44,29 @@ const figureFrame =
   // UNREACHABLE rather than merely off-screen (CLAUDE.md §45.2).
   "overflow-x-auto";
 
+/**
+ * ⚠️ A figure is capped at its OWN design size and never stretched to the card.
+ *
+ * Every chart here is `w-full` with an `aspect-ratio`, which means its height grows with
+ * whatever width it is given — with no cap. Measured in a 1591px card at 1920px wide:
+ * the node map rendered **1549 x 1270px** and the venn **1549 x 996px**, both taller than
+ * the viewport. Two things follow from that, and the second is the one that matters:
+ *
+ *   1. The chart is simply too big to read — a three-circle venn does not become clearer
+ *      at 1549px, it becomes a wall.
+ *   2. It pushes the region/data list underneath it BELOW THE FOLD. That list is where
+ *      the item names live, so a reader sees bare numbers with nothing explaining them.
+ *      "Where does the 1 come from?" is the exact question it produces, and the figure
+ *      cannot answer it on its own by design — the names were deliberately put in the
+ *      list rather than inside the circles (§48.3).
+ *
+ * The viewBox IS the design size, so that is the cap. Wider cards get whitespace, not a
+ * bigger drawing; narrower ones still scale down, and `min-w` still drives the scroller.
+ */
+function figureScale(width: number) {
+  return { maxWidth: `${width}px` } as const;
+}
+
 function DataList({
   rows,
 }: {
@@ -105,7 +128,7 @@ export function InsightBarChart({
           aria-label={`Bar chart: ${points.map((p) => `${p.label} ${fmt(p.value, unit)}`).join(", ")}`}
           preserveAspectRatio="xMidYMid meet"
           className="block w-full min-w-[480px]"
-          style={{ aspectRatio: `${layout.width} / ${layout.height}` }}
+          style={{ aspectRatio: `${layout.width} / ${layout.height}`, ...figureScale(layout.width) }}
         >
           <line
             x1={0}
@@ -213,7 +236,7 @@ export function InsightVennChart({
           aria-label={`Venn diagram of ${sets.map((s) => s.label).join(", ")}`}
           preserveAspectRatio="xMidYMid meet"
           className="block w-full min-w-[420px]"
-          style={{ aspectRatio: `${geo.width} / ${geo.height}` }}
+          style={{ aspectRatio: `${geo.width} / ${geo.height}`, ...figureScale(geo.width) }}
         >
           {geo.circles.map((circle, i) => {
             const hex = insightColor(sets[i]?.color, i);
@@ -268,8 +291,18 @@ export function InsightVennChart({
           })}
         </svg>
       </div>
-      {/* The names live here, not in the circles — which is what actually gets read, and
-          what works at 350px. */}
+      {/* The numbers in the circles are COUNTS, which is not self-evident — a reader
+          seeing "1" has no way to know it means one item unless something says so. The
+          names themselves live in the list below, not in the circles (that is what
+          actually gets read, and what works at 350px). */}
+      {anyItems && (
+        <p
+          className="mt-2 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+          style={{ fontFamily: MONO }}
+        >
+          Numbers are how many items sit in each region · named below
+        </p>
+      )}
       <div className="mt-3 space-y-2">
         {regionsFor(setCount).map((region) => {
           const list = byRegion.get(region) ?? [];
@@ -377,7 +410,7 @@ export function InsightNodeMap({
           aria-label={`${core}, connected to ${branches.map((b) => b.label).join(", ")}`}
           preserveAspectRatio="xMidYMid meet"
           className="block w-full min-w-[420px]"
-          style={{ aspectRatio: `${layout.width} / ${layout.height}` }}
+          style={{ aspectRatio: `${layout.width} / ${layout.height}`, ...figureScale(layout.width) }}
         >
           {layout.edges.map((edge) => (
             <line
