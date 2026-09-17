@@ -5392,3 +5392,40 @@ with no staging. What IS verified for those is structural (every one carries a s
 scroll region, enforced by the test) plus the one reachable dialog measured above. The
 honest post-deploy check is to open a Backstage leave form, a client Edit modal and the
 Team member modal and confirm each opens at a steady size with its footer reachable.
+
+### 52.7 The Insights figures stretched to the card, which is also why the venn read as meaningless
+
+Dan asked *"how does the Venn diagram work… where does the 1 come from?"* and, separately,
+that the charts were "massive". **One root cause.**
+
+Every SVG figure is `w-full` with an `aspect-ratio` and **no cap**, so its height grows
+with whatever width it is handed. Measured in a 1591px card at 1920px wide:
+
+| Figure | Was | Now |
+|---|---|---|
+| Node map | 1549 × **1270px** | 894 × 733 |
+| Venn | 1549 × **996px** | 560 × 360 |
+| Bar | 1549 × 595px | 640 × 246 |
+| Pie | 150 × 150 | unchanged — `Donut` already takes a `size` |
+
+Both the node map and the venn were **taller than the viewport**.
+
+⚠️ **The size was not just an aesthetic problem — it broke the figure's meaning.** The
+numbers inside the venn's regions are **counts**, and the item NAMES deliberately live in
+the list underneath rather than inside the circles (§48.3 — that is what gets read, and
+what works at 350px). A 996px-tall figure pushes that list below the fold, so the reader
+is left with bare numerals and no way to resolve them. "Where does the 1 come from" is the
+exact question that produces, and the figure by design cannot answer it alone.
+
+**The viewBox IS the design size, so that is the cap** (`figureScale()`). A wider card now
+gets whitespace, not a bigger drawing; a narrower one still scales down, and `min-w` still
+drives the §45.2 scroller. Identical at 1440 and 1920, 420×270 at 390px with **0 page
+overflow and 0 clipping findings**.
+
+**And the figure now says what its numbers are** — a one-line mono legend, shown only when
+the board has items: *"Numbers are how many items sit in each region · named below."* A
+reader seeing "1" had no way to know it meant one item unless something said so.
+
+⚠️ The lesson generalises past this file: **`w-full` + `aspect-ratio` with no `max-width`
+is an unbounded figure.** It looks right in the width you designed it at and grows without
+limit in every wider one.
