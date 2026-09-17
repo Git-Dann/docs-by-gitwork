@@ -440,6 +440,8 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
           {isAdminOrAbove ? (
             <details className="relative mr-1">
               <summary
+                title="Client timelines"
+                aria-label="Client timelines"
                 className={cn(
                   "flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border px-3 py-1 text-xs font-medium transition [&::-webkit-details-marker]:hidden",
                   timelineEnabled
@@ -448,7 +450,7 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
                 )}
               >
                 <CalendarDaysIcon className="h-3.5 w-3.5 text-[var(--brand-500)]" />
-                Timeline
+                <span className="hidden sm:inline">Timeline</span>
                 {timelineEnabled && timelineClients.length > 0 ? (
                   <span className="rounded-full bg-[var(--brand-50)] px-1.5 text-[10px] font-semibold text-[var(--brand-700)]">
                     {visibleClientCount}/{timelineClients.length}
@@ -539,9 +541,13 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
           ) : null}
           {/* Holiday country toggle */}
           <details className="relative mr-1">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden">
+            <summary
+              title="Public holidays"
+              aria-label="Public holidays"
+              className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden"
+            >
               <GlobeAltIcon className="h-3.5 w-3.5 text-sky-500" />
-              Holidays
+              <span className="hidden sm:inline">Holidays</span>
             </summary>
             <div className="absolute right-0 z-20 mt-1 w-60 rounded-[8px] border border-[var(--border-2)] bg-white p-2 shadow-lg">
               <p className="px-2 pb-1.5 pt-1 text-[11px] font-medium text-[var(--text-3)]">
@@ -569,9 +575,13 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
           </details>
           {/* Colleagues' Google Calendars */}
           <details className="relative mr-1">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden">
+            <summary
+              title="Overlay Google Calendars"
+              aria-label="Overlay Google Calendars"
+              className="flex cursor-pointer list-none items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] [&::-webkit-details-marker]:hidden"
+            >
               <UsersIcon className="h-3.5 w-3.5 text-[var(--brand-500)]" />
-              Calendars
+              <span className="hidden sm:inline">Calendars</span>
               {selectedIds.length > 0 ? (
                 <span className="rounded-full bg-[var(--brand-50)] px-1.5 text-[10px] font-semibold text-[var(--brand-700)]">
                   {selectedIds.length}
@@ -607,38 +617,53 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
               )}
             </div>
           </details>
-          <button
-            type="button"
-            aria-label="Previous month"
-            onClick={() => gotoMonth(prevMonth(year, month))}
-            className="rounded-[6px] border border-[var(--border-2)] bg-white p-1 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <ChevronLeftIcon className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setView({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 });
-              setSelectedDate(todayKey());
-            }}
-            className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            aria-label="Next month"
-            onClick={() => gotoMonth(nextMonth(year, month))}
-            className="rounded-[6px] border border-[var(--border-2)] bg-white p-1 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            <ChevronRightIcon className="h-4 w-4" />
-          </button>
         </>
       }
     >
-      {/* Month label + legend */}
+      {/* Month label + nav + legend.
+          ⚠️ The month nav lives HERE, not in the panel's `action` slot. That slot is a
+          fixed 36px `.widget-header` band inside a `.widget-card`, which is
+          `overflow: hidden` — so at 390px the five controls ran past the card and
+          Previous/Today/Next were CLIPPED WITH NO SCROLLABLE ANCESTOR (measured: 70px,
+          137px and 169px past the edge, all three fully outside). A phone user could
+          not change month or return to today at all, and page overflow read 0 the whole
+          time because a flex row clips rather than scrolls (CLAUDE.md §45.2).
+          It cannot be fixed by wrapping the slot: the band is a fixed height, and both
+          pickers in it are inline `absolute` panels rather than portalled, so an
+          `overflow-x-auto` there would clip the dropdowns themselves.
+          Beside the month label is also simply where month nav belongs. */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 className="text-lg font-semibold text-[var(--text-1)]">{monthLabel}</h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-lg font-semibold text-[var(--text-1)]">{monthLabel}</h2>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => gotoMonth(prevMonth(year, month))}
+              className="rounded-[6px] border border-[var(--border-2)] bg-white p-1 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <ChevronLeftIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setView({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 });
+                setSelectedDate(todayKey());
+              }}
+              className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => gotoMonth(nextMonth(year, month))}
+              className="rounded-[6px] border border-[var(--border-2)] bg-white p-1 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <ChevronRightIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-[var(--text-3)]">
           {(Object.keys(LEAVE_COLOURS) as LeaveType[]).map((t) => (
             <span key={t} className="inline-flex items-center gap-1.5">
