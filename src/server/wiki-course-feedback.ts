@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { addCourseRequest, type CourseRequestRecord } from "@/server/wiki";
 import { resolveAiConfig, completeText, parseJsonObject } from "@/server/ai-provider";
+import { checkCourseName } from "@/lib/wiki-course-name";
 
 const FEEDBACK_SUBJECT = "New Feedback";
 const PREVIEW_LEN = 240;
@@ -228,7 +229,18 @@ async function aiExtractCourses(
     "COURSE REQUEST only if it asks to add a specific named golf course, or reports that a " +
     "specific named course's data (holes, tees, pars, yardages, layout) is wrong. App bugs " +
     "(sign-in/search/sync errors), feature ideas, praise, and general comments are NOT course " +
-    "requests. Extract the golf course's name and the country it is in.";
+    "requests. Extract the golf course's name and the country it is in.\n" +
+    // Everything below exists because of three real rows where the golfer never named a
+    // course and the model supplied one anyway — "home course", "HS2 Renovated Course
+    // (Home Course)", and "Ardlodge" taken from the sender's email domain.
+    "CRITICAL — the course must be NAMED BY THE USER:\n" +
+    "- If the message complains about a course but never states its name, set " +
+    "isCourseRequest false. A complaint you cannot act on is not a request.\n" +
+    "- \"my home course\", \"my local club\", \"the course near me\" are NOT names.\n" +
+    "- NEVER take a name from the sender's email address, domain or signature.\n" +
+    "- NEVER build a name out of surrounding words (e.g. from \"my home course was " +
+    "renovated due to hs2\", do not produce \"HS2 Renovated Course\").\n" +
+    "- If you are not copying a name the user wrote, return an empty courseName.";
 
   const chunks: FeedbackItem[][] = [];
   for (let i = 0; i < items.length; i += AI_CHUNK) chunks.push(items.slice(i, i + AI_CHUNK));
@@ -406,10 +418,21 @@ export async function runCourseFeedbackImport(
     }
     const name = (v?.courseName || "").trim();
     if (onlyCourse) {
+      // ⚠️ The name must be one the GOLFER wrote, not one the model assembled. A prompt
+      // instruction is a request, not a guarantee — see `checkCourseName`, which rejects
+      // placeholders ("home course") and names that appear nowhere in the golfer's own
+      // message ("Ardlodge", lifted from the sender's email domain).
+      const verdict = checkCourseName(name, c.text);
+      if (!verdict.usable) {
+        console.warn(
+          `[course-feedback] rejected extracted name ${JSON.stringify(name)} ` +
+            `(${verdict.reason}) for conversation ${c.id} — not imported.`,
+        );
+        skipped++;
+        continue;
+      }
       const norm = name.toLowerCase();
-      // `!norm` is the one that matters: an auto-created row with no course name is what
-      // the client sees as "Untitled Course". It can never be right, so it is never written.
-      if (!norm || existingNames.has(norm) || batchNames.has(norm)) {
+      if (existingNames.has(norm) || batchNames.has(norm)) {
         skipped++;
         continue;
       }

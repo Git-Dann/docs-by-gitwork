@@ -5579,3 +5579,63 @@ client. It was verified under a **temporary local edit adding the demo slug**, r
 before commit and the revert confirmed in the diff — the §42.12 technique. **Do not add a
 demo slug to that list**: it is a production gate, and §42.15 records why it keys on the
 Portal slug specifically.
+
+### 53.7 The classifier invented course names when the golfer never gave one
+
+Clearing the unnamed rows left four, and three were the same fabrication — **none of these
+golfers named a course**:
+
+| What the golfer wrote | What was filed |
+|---|---|
+| "My home course has very incorrect information" | `home course` |
+| "My home course was renovated due to hs2" | `HS2 Renovated Course (Home Course)` |
+| "the scorecard for my home course is incorrect" — from `craig@ardlodge.co.uk` | `Ardlodge` |
+
+All three are genuine complaints about *some* course's data and all three are
+**unactionable**: you cannot ask a provider to fix "home course". The third is the
+dangerous one — the name came from the sender's **email domain**, which makes it plausible
+enough to send on while being something the golfer never said.
+
+The prompt only ever said a course request concerns a *"specific named course"*. It never
+said what to do when the complaint is about a course the user did **not** name, so the
+model filled the gap. It now says so explicitly, and forbids taking a name from an email
+address, a signature, or the surrounding words.
+
+⚠️ **A prompt instruction is a request, not a guarantee** (§35's discipline), so
+`src/lib/wiki-course-name.ts` enforces it deterministically:
+
+1. **Placeholder** — no course is called "home course"; also rejects a name whose words
+   are *all* generic ("Golf Club", "The Course").
+2. **Not in the golfer's own message** — if no distinctive token of the name appears in
+   what they wrote, it came from somewhere else. That is a fabrication whether or not it
+   happens to be correct.
+
+⚠️ Rule 2 strips the notification wrapper **first**, and that is the whole trick: the raw
+body carries the `From:`/`Email:` headers, so `ardlodge` *is* in the text. Checking the
+whole body would have accepted the one fabrication it exists to catch.
+
+⚠️ **One distinctive token must match, not all of them** — the model routinely tidies the
+golfer's spelling, and misspelled names are the norm here (§45.3).
+
+⚠️ **My first fixture for that rule could not detect it.** "Iver Golf Vlub" → "Iver Golf
+Club" reduces to the single token `["iver"]`, so `some` and `every` are identical and
+swapping the implementation left all 13 tests green. Replaced with a two-token name the
+golfer misspelled ("Wybostn Lakes Golf" → "Wyboston Lakes Golf"), which fails under
+`every`. **A fixture that cannot distinguish the bug from the fix is not covering it**
+(§42.10) — and it is worth re-running each sabotage after changing a fixture, not just
+after changing the code.
+
+Every fixture is a verbatim slice of a real row: the three fabrications, and the five
+genuine requests (Wyboston, Brechin, Pendleton Creek, a spelling correction, and
+"Home Farm Golf Club" — a real name containing "home") that must keep working.
+
+**Deliberately biased toward rejecting.** A wrongly-rejected request costs one golfer's
+course going untracked, and the operator can still add it by hand from the Care thread. A
+wrongly-accepted one puts a fabricated name in front of a client and can be sent to a
+provider. Not symmetric.
+
+⚠️ **Known gap, pre-existing:** a rejected item records nothing, and dedupe is on
+`sourceConversationId` — which is only written when a row is *created*. So every rejected
+item is re-fetched and re-classified on **every sync, forever**. Harmless at this volume
+and it costs a light-tier call each time; fixing it properly needs a "seen, not imported"
+record, which is a schema change.
