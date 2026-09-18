@@ -5505,3 +5505,49 @@ passes.
 Code cannot un-write them. They are identifiable exactly — `courseName` empty **and**
 `createdAt` on 2026-09-16 **and** `sourceConversationId` set — but deleting client data on
 production is Dan's call, not a cleanup to run unilaterally. Not done here.
+
+### 53.5 The classifier failed because its model had been retired seven months earlier
+
+⚠️ **`LIGHT_MODELS.ANTHROPIC` was pinned to `claude-3-5-haiku-20241022`, which Anthropic
+retired on 19 Feb 2026.**
+
+A retired id does not degrade — every request 404s. And **nine** features route through
+`tier: "light"`: Dispatch, Foreman's narrative, the Curator's consolidation pass, Scribe
+meeting summaries, Slack activity, both Care narratives, the Care agents, and the Wedge
+course-request classifier. Every one of them wraps its call in a `catch`, so a dead model
+arrives as *"the AI returned nothing"*, not as an error. Most degrade quietly by design
+(Dispatch and Foreman have no-AI floors); only the course importer converted it into
+something a client could see.
+
+Now `claude-haiku-4-5`. **Anthropic ids are complete as-is — never append a date suffix.**
+
+⚠️ `DEFAULT_MODELS.ANTHROPIC` is `claude-sonnet-4-6`: previous-generation but **still
+served**, so stale rather than broken. Deliberately left alone and dated instead —
+moving every workspace without a pinned model onto a new model changes behaviour and cost
+across the platform, which is a decision, not a bug fix.
+
+**The `catch {}` is the other half of this.** `aiExtractCourses` swallowed each failed
+chunk under the comment *"chunk failed — leave its items unfilled"*, which is precisely
+why a retired model looked identical to "this feedback contained no courses". It now logs
+the provider and model id, because the likeliest cause of a **total** classifier failure
+is that the pin went stale.
+
+**`src/server/__tests__/model-pins.test.ts`** is the floor: no id from a retired
+generation (Claude 1/2/3/3.5), and no date-suffixed id. ⚠️ It cannot ask Anthropic what is
+live — no network, no key — so a future 4.x retirement will not fail it. The durable
+defence is the review cadence now written on the constants (§37.5's discipline) plus the
+fact that a total failure names its model.
+
+⚠️ **`audit:ui`'s MODEL-LITERAL rule fired on this test's own error message** — the third
+time a guard has matched a model-shaped string in prose rather than at a call site
+(§37.6 records two). The prose was reworded; **the rule was not weakened**, because it is
+right that a model id in server code is suspicious.
+
+**Still unestablished:** which provider the Wedge workspace is actually configured with.
+If it is `ANTHROPIC`, the retirement explains the failure exactly — but a course import on
+**5 Aug** extracted a real name *and* a country it had to infer, which that model could
+not have done if it was already retired in February. So either the workspace runs a
+different provider (the light pin for `GROQ` is `llama-3.1-8b-instant`, which Groq also
+retires on its own schedule) or the pin was reached some other way. **Do not close this
+out as "stale model id, fixed" without checking the workspace's configured provider** —
+the fix is right either way, but the diagnosis is not confirmed.

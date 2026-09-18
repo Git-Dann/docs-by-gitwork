@@ -266,8 +266,19 @@ async function aiExtractCourses(
             country: (r.country ?? "").trim(),
           });
         }
-      } catch {
-        // chunk failed — leave its items unfilled
+      } catch (err) {
+        // ⚠️ This used to be a bare `catch {}` with the comment "chunk failed — leave
+        // its items unfilled". That is how a RETIRED MODEL ID looked identical to "the
+        // feedback simply contained no courses": every call 404'd, every chunk was
+        // swallowed, and the only visible symptom was 389 rows named "Untitled Course"
+        // on a client's wiki three days later (§53). Name the model, because the
+        // likeliest cause of a total classifier failure is that the pin went stale.
+        console.error(
+          `[course-feedback] AI chunk failed (${chunk.length} item(s), provider ` +
+            `${config.provider}, model ${config.model}, light tier) — items left ` +
+            `unclassified and will NOT be imported:`,
+          err,
+        );
       }
     }),
   );
