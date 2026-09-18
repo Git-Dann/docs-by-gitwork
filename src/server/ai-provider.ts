@@ -43,6 +43,10 @@ export interface ResolvedAiConfig {
  * fallback models when a workspace hasn't pinned its own.
  */
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
+  // Previous-generation but STILL SERVED, so this is stale rather than broken — left as
+  // it is deliberately: moving every workspace without a pinned model onto a new model
+  // changes behaviour and cost across the platform, which is a decision, not a bug fix.
+  // Reviewed 18 Sept 2026. See the LIGHT_MODELS warning below for why this gets a date.
   ANTHROPIC: "claude-sonnet-4-6",
   OPENAI: "gpt-4o",
   GROQ: "openai/gpt-oss-120b",
@@ -98,9 +102,26 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
 
 /**
  * Cheaper models used when tier="light".
+ *
+ * ⚠️ **THESE ARE VERSION-PINNED CONSTANTS AND THEY GO STALE SILENTLY.** A retired model
+ * id does not degrade — every call 404s, and because each caller wraps its request in a
+ * `catch`, the failure arrives as "the AI returned nothing" rather than as an error.
+ *
+ * `ANTHROPIC` was pinned to `claude-3-5-haiku-20241022`, **retired 19 Feb 2026**. Nine
+ * features route through `tier: "light"` — Dispatch, Foreman's narrative, the Curator's
+ * consolidation pass, Scribe summaries, Slack activity, two Care narratives, the Care
+ * agents, and the Wedge course-request classifier. When the classifier came back empty
+ * the importer filed 389 unclassified feedback emails onto a client's wiki as
+ * "Untitled Course" (§53).
+ *
+ * Treat this like `PLAY_TARGET_SDK_FLOOR` and the Electron/RN floors in §37.5: a dated
+ * constant with a review cadence, not a value to leave alone because nothing is red.
+ * Check against the current model list before assuming a "the AI isn't working" report
+ * is anything more subtle than this.
  */
 const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
-  ANTHROPIC: "claude-3-5-haiku-20241022",
+  // Current Haiku. Anthropic's ids are complete as-is — never append a date suffix.
+  ANTHROPIC: "claude-haiku-4-5",
   OPENAI: "gpt-4o-mini",
   GROQ: "llama-3.1-8b-instant",
 };
