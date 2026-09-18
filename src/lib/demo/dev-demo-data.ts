@@ -659,7 +659,69 @@ const demoWiki: WikiDTO = {
     { id: "cl3", platform: "WEB", version: "2.8.1", title: "Faster search", body: "- New search index, ~3x faster results\n- Keyboard navigation in the results list", releasedAt: atDays(-9), createdAt: atDays(-10), status: "APPROVED" },
     { id: "cl4", platform: "IOS", version: "3.1.0", title: "New player controls", body: "- Redesigned scrubber\n- Playback speed control", releasedAt: atDays(-24), createdAt: atDays(-25), status: "APPROVED" },
   ],
-  courseRequests: [],
+  // Mirrors the real Wedge board's two shapes so both are verifiable here: genuine
+  // requests extracted from feedback, and the unnamed rows a failed classifier
+  // produces (§53). A demo carrying only the healthy shape cannot express the bug,
+  // and so cannot verify the fix (§42.15).
+  courseRequests: [
+    {
+      id: "cr-1",
+      courseName: "Caernarfon Golf Club",
+      country: "United Kingdom",
+      status: "ADDED",
+      notes: "From Big Wedge Golf (16 Jun 2026):\nCourse map jumps after hole 9.",
+      sourceConversationId: "conv-1",
+      sentAt: null,
+      createdAt: "2026-08-05T14:13:04.682Z",
+      updatedAt: "2026-08-18T13:23:28.107Z",
+    },
+    {
+      id: "cr-2",
+      courseName: "Brechin Golf Course",
+      country: "United Kingdom",
+      status: "SENT",
+      notes: "From Big Wedge Golf (15 Jun 2026):\nCourse map is incorrect.",
+      sourceConversationId: "conv-2",
+      sentAt: "2026-08-18T13:39:06.015Z",
+      createdAt: "2026-08-05T14:13:04.697Z",
+      updatedAt: "2026-08-18T13:39:06.016Z",
+    },
+    {
+      id: "cr-3",
+      courseName: "Wyboston Lakes Golf",
+      country: "United Kingdom",
+      status: "NEW",
+      notes: "From Big Wedge Golf (12 Jun 2026):\nMissing course in my area.",
+      sourceConversationId: "conv-3",
+      sentAt: null,
+      createdAt: "2026-08-05T14:13:04.711Z",
+      updatedAt: "2026-08-05T14:13:04.711Z",
+    },
+    // Unnamed — general app feedback the classifier never labelled. Renders to the
+    // client as "Untitled Course".
+    {
+      id: "cr-4",
+      courseName: "",
+      country: null,
+      status: "NEW",
+      notes: "From Big Wedge Golf (28 Jun 2026):\nIs there a plan to add an Apple Watch app",
+      sourceConversationId: "conv-4",
+      sentAt: null,
+      createdAt: "2026-09-16T13:00:14.944Z",
+      updatedAt: "2026-09-16T13:00:14.944Z",
+    },
+    {
+      id: "cr-5",
+      courseName: "",
+      country: null,
+      status: "NEW",
+      notes: "From Big Wedge Golf (19 Jun 2026):\nI lost all my game records.",
+      sourceConversationId: "conv-5",
+      sentAt: null,
+      createdAt: "2026-09-16T13:00:14.988Z",
+      updatedAt: "2026-09-16T13:00:14.988Z",
+    },
+  ],
   // The wiki timeline reuses the shared Gantt shape (rendered fine in prod); the two
   // are separately typed, so bridge them here rather than duplicate the data.
   timeline: { blocks: demoGanttBlocks, milestones: demoGanttMilestones } as unknown as WikiDTO["timeline"],
