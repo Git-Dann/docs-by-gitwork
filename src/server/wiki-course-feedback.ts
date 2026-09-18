@@ -292,6 +292,9 @@ export interface CourseImportResult {
   skipped: number;
   scanned: number;
   aiUsed: boolean;
+  /** Auto mode found work but the classifier did not run, so NOTHING was imported.
+   *  Distinct from `scanned: 0` — "we could not look" is not "there was nothing there". */
+  classifierUnavailable?: boolean;
 }
 
 /**
@@ -331,9 +334,49 @@ export async function runCourseFeedbackImport(
     ? await aiExtractCourses(workspaceClientId, items)
     : { verdicts: new Map<string, AiCourseVerdict>(), aiUsed: false };
 
-  // Filter to course requests only when asked AND the AI actually ran (so an AI
-  // outage can't silently drop everything — it falls back to importing unfilled).
-  const onlyCourse = (opts.onlyCourseRequests ?? !opts.conversationIds?.length) && aiUsed;
+  const wantOnlyCourse = opts.onlyCourseRequests ?? !opts.conversationIds?.length;
+
+  /**
+   * ⚠️ Auto mode FAILS CLOSED when the classifier did not run. It used to fail OPEN —
+   * `onlyCourse = wantOnlyCourse && aiUsed` — on the reasoning that "an AI outage can't
+   * silently drop everything, so fall back to importing unfilled".
+   *
+   * That reasoning is wrong twice over, and it produced 389 junk rows on a live client
+   * wiki (Wedge, 16 Sept 2026) that the client then reported:
+   *
+   *   1. `aiUsed` false disables EVERY guard at once — the is-this-even-a-course-request
+   *      filter, the require-a-real-name check, and the dedupe. So one failed AI call
+   *      turns every "New Feedback" email into a course request named "" — rendered to
+   *      the client as "Untitled Course". Handicap questions and Apple Watch requests
+   *      filed as courses to go and license.
+   *   2. Nothing is actually "dropped" by importing none of them. The scan re-runs on
+   *      every sync and dedupes on `sourceConversationId`, so a skipped batch is picked
+   *      up whole by the next run that has a working classifier. The cost of waiting is
+   *      one sync; the cost of importing unfilled is junk in front of the client and a
+   *      person deleting rows by hand.
+   *
+   * This is §35's rule one layer out: a failed check must not become a confident
+   * assertion. "We could not classify these" is not "these are all course requests".
+   *
+   * Explicit manual selection is unaffected — an operator who ticked specific rows chose
+   * them, and is about to fill the name in themselves.
+   */
+  if (wantOnlyCourse && !aiUsed) {
+    console.error(
+      `[course-feedback] classifier unavailable — skipped ${items.length} item(s) for ` +
+        `client ${workspaceClientId} rather than importing them unclassified. ` +
+        `They will be re-scanned on the next sync.`,
+    );
+    return {
+      created: [],
+      skipped: items.length,
+      scanned: items.length,
+      aiUsed: false,
+      classifierUnavailable: true,
+    };
+  }
+
+  const onlyCourse = wantOnlyCourse;
 
   // In auto / only-course mode, dedupe by course name against what's already tracked
   // AND within this batch, and require a real name — so we never create duplicates or
@@ -353,6 +396,8 @@ export async function runCourseFeedbackImport(
     const name = (v?.courseName || "").trim();
     if (onlyCourse) {
       const norm = name.toLowerCase();
+      // `!norm` is the one that matters: an auto-created row with no course name is what
+      // the client sees as "Untitled Course". It can never be right, so it is never written.
       if (!norm || existingNames.has(norm) || batchNames.has(norm)) {
         skipped++;
         continue;
