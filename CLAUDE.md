@@ -5429,3 +5429,79 @@ reader seeing "1" had no way to know it meant one item unless something said so.
 ⚠️ The lesson generalises past this file: **`w-full` + `aspect-ratio` with no `max-width`
 is an unbounded figure.** It looks right in the width you designed it at and grows without
 limit in every wider one.
+
+## 53. Incident (September 2026) — 389 "Untitled Course" rows on a client's wiki
+
+Big Wedge reported that their Course Requests all read **"Untitled Course"**. They were
+right, it was ours, and the rows were not course requests at all — they were ordinary app
+feedback: handicap questions, "add Apple Watch support", yards-vs-metres.
+
+**State on production when reported:** 875 rows. **486 correct** (real names, created 5 and
+25 Aug — the importer working as designed). **~389 junk**, every one `courseName: ""`, all
+created in a **single run on 16 Sept 2026 at 13:00:15**.
+
+### 53.1 One line, and it disabled three guards at once
+
+```ts
+const onlyCourse = (opts.onlyCourseRequests ?? !opts.conversationIds?.length) && aiUsed;
+//                                                                              ^^^^^^^
+```
+
+`aiUsed` is `verdicts.size > 0`. The AI is what decides **both** whether an item is a
+course request **and** what the course is called. So when it produced no verdicts — no
+key, a failed chunk, unparseable JSON — `onlyCourse` went false and switched off, in one
+move:
+
+1. the **is-this-a-course-request** filter,
+2. the **require-a-real-name** check,
+3. the **dedupe**.
+
+Every scanned feedback email was then written as a nameless course request.
+
+⚠️ **It was deliberate**, and the comment said so: *"so an AI outage can't silently drop
+everything — it falls back to importing unfilled."* That trade is wrong in both
+directions:
+
+- **Nothing is dropped by importing none.** The scan re-runs on every sync and dedupes on
+  `sourceConversationId`, so a skipped batch is picked up whole by the next run with a
+  working classifier. The cost of waiting is one sync.
+- **Importing unfilled costs the client.** Junk on a page they read, and a person deleting
+  rows by hand.
+
+**This is §35's rule one layer out: a check that could not run must not become a confident
+assertion.** "We could not classify these" is not "these are all course requests". The
+codebase has paid for this lesson in Pulse (§35, §44) and in Care (§42.7); it reached a
+client here.
+
+### 53.2 ⚠️ My own change widened the blast radius
+
+The fail-open behaviour predates **#584** (§42.15, 12 Aug), but that PR moved the
+course-request auto-import inside `runPostSyncHousekeeping` — which #584 made **all three**
+sync paths call, including the **nightly cron**. Before it, the auto-import ran only when
+someone pressed client-level **Sync now**.
+
+So the import went from operator-triggered to unattended-and-nightly, which is what turned
+a latent bad failure mode into 389 rows. Consolidating those paths was right — two of the
+three previously skipped the identity repair entirely — but **widening what runs
+unattended raises the bar on how its failures behave, and that half was not revisited.**
+
+### 53.3 The fix — fail closed, and never write a nameless row
+
+Auto mode now returns `{ created: [], skipped: n, scanned: n, classifierUnavailable: true }`
+and logs the count. ⚠️ `scanned` deliberately reports the real number rather than 0:
+*"there was no feedback waiting"* is a different and reassuring fact from *"there was
+feedback and we declined to classify it"*.
+
+Explicit manual selection is untouched — an operator who ticked specific rows chose them
+and is about to name them.
+
+`src/server/__tests__/course-feedback-fail-closed.test.ts` pins it. Proved to discriminate
+by restoring the original `&& aiUsed` line: **3 of 4 fail**, including *"never writes a
+course request with an empty name"*, while the operator-selection case correctly still
+passes.
+
+### 53.4 The 389 existing rows are a separate, destructive job
+
+Code cannot un-write them. They are identifiable exactly — `courseName` empty **and**
+`createdAt` on 2026-09-16 **and** `sourceConversationId` set — but deleting client data on
+production is Dan's call, not a cleanup to run unilaterally. Not done here.
