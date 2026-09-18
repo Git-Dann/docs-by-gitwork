@@ -5551,3 +5551,31 @@ different provider (the light pin for `GROQ` is `llama-3.1-8b-instant`, which Gr
 retires on its own schedule) or the pin was reached some other way. **Do not close this
 out as "stale model id, fixed" without checking the workspace's configured provider** —
 the fix is right either way, but the diagnosis is not confirmed.
+
+### 53.6 The board could not select the rows it needed to delete
+
+The bulk select + delete on Course Requests had existed all along. What did not exist was
+any way to **isolate** the unnamed rows:
+
+- they all sit in `NEW` alongside genuine requests, so "select all" would have swept real
+  work in with them;
+- the fuzzy search (§45.1) cannot match an empty string.
+
+**That is the only reason clearing 389 junk rows needed database access rather than two
+clicks.** A repair the product cannot perform on itself becomes a support ticket and a
+person with a SQL prompt.
+
+An **Unnamed (n)** chip now sits beside the status tabs. ⚠️ It is **not a status** — it is
+a repair view derived from `!courseName.trim()`, shown only when such rows exist and never
+in the client's read-only view (they cannot act on it, and it names our own mess).
+
+⚠️ **The demo seeded `courseRequests: []`**, so this section rendered empty and could not
+be verified at all. Seeded now with BOTH shapes — genuine extracted requests and unnamed
+classifier casualties — because a demo carrying only the healthy shape cannot express the
+bug and therefore cannot verify the fix (§42.15, §43.3).
+
+⚠️ `COURSE_REQUESTS_SLUGS` is `["wedge"]`, so the section is unreachable on the demo
+client. It was verified under a **temporary local edit adding the demo slug**, reverted
+before commit and the revert confirmed in the diff — the §42.12 technique. **Do not add a
+demo slug to that list**: it is a production gate, and §42.15 records why it keys on the
+Portal slug specifically.

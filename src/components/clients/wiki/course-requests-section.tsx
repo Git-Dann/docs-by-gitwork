@@ -156,7 +156,14 @@ export function CourseRequestsSection({
   onSetStatus,
   readOnly = false,
 }: CourseRequestsSectionProps) {
-  const [filter, setFilter] = useState<"ALL" | ActiveStatus>("ALL");
+  /** ⚠️ `UNNAMED` is not a status — it is a repair view.
+   *  A course request with no name cannot be actioned: it renders as "Untitled Course"
+   *  to the client and there is nothing to send a provider. 389 of them were created in
+   *  one run when the import classifier failed (§53), and there was **no way to isolate
+   *  them** — every one sits in NEW alongside genuine requests, so "select all" would
+   *  have taken real work with it, and search cannot match an empty string. That is why
+   *  clearing them needed database access instead of two clicks. */
+  const [filter, setFilter] = useState<"ALL" | ActiveStatus | "UNNAMED">("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -187,11 +194,15 @@ export function CourseRequestsSection({
     [requests, search],
   );
 
+  const unnamedRequests = nonAddedRequests.filter((r) => !r.courseName.trim());
+
   const filtered = searching
     ? searchResults
     : filter === "ALL"
       ? activeRequests
-      : nonAddedRequests.filter((r) => r.status === filter);
+      : filter === "UNNAMED"
+        ? unnamedRequests
+        : nonAddedRequests.filter((r) => r.status === filter);
 
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((r) => selected.has(r.id));
@@ -347,6 +358,24 @@ export function CourseRequestsSection({
                 : `${STATUS_LABEL[s]} (${counts[s]})`}
             </button>
           ),
+        )}
+        {/* Only ever shown when there ARE unnamed rows — an affordance for a state that
+            should not exist does not belong on a healthy board. Amber, not red: these
+            are junk to clear, not a fault to alarm about. */}
+        {!readOnly && unnamedRequests.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilter("UNNAMED")}
+            title="Requests with no course name — they show as “Untitled Course” and cannot be actioned"
+            className={[
+              "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
+              filter === "UNNAMED"
+                ? "bg-amber-600 text-white"
+                : "border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100",
+            ].join(" ")}
+          >
+            Unnamed ({unnamedRequests.length})
+          </button>
         )}
         {/* On a phone the tabs wrap first, so this group takes its own full-width
             row rather than leaving a 190px search stub floated right. */}
