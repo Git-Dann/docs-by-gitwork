@@ -4292,6 +4292,11 @@ model TeamMessageRecipient {
   messageId String
   userId    String
   readAt    DateTime?
+  /// Hidden from THIS person's list, without touching anyone else's copy or the
+  /// author's read receipts. A recipient clearing their own list must not be able to
+  /// destroy a message addressed to four other people — that is the author's call, and
+  /// it is a different verb (see `deleteTeamMessage`).
+  dismissedAt DateTime?
 
   message TeamMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user    User        @relation("TeamMessageRecipient", fields: [userId], references: [id], onDelete: Cascade)

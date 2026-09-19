@@ -10,7 +10,11 @@ import { cn } from "@/lib/format";
 import { useTeamMembers } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
+  useDeleteMessage,
+  useDismissMessage,
+  useMarkAllMessagesRead,
   useMarkMessageRead,
+  useMarkMessageUnread,
   useMyMessages,
   useSendMessage,
   useSentMessages,
@@ -29,6 +33,11 @@ export function MessagesWorkspace() {
   const inbox = useMyMessages();
   const sent = useSentMessages(isAdminOrAbove && tab === "sent");
   const markRead = useMarkMessageRead();
+  const markUnread = useMarkMessageUnread();
+  const dismiss = useDismissMessage();
+  const remove = useDeleteMessage();
+  const markAllRead = useMarkAllMessagesRead();
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const messages = tab === "inbox" ? (inbox.data?.messages ?? []) : (sent.data?.messages ?? []);
   const loading = tab === "inbox" ? inbox.isLoading : sent.isLoading;
@@ -83,6 +92,17 @@ export function MessagesWorkspace() {
             )}
           </div>
           <div className="flex-1" />
+          {tab === "inbox" && unread > 0 && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={markAllRead.isPending}
+              onClick={() => markAllRead.mutate(undefined as never)}
+            >
+              Mark all read
+            </Button>
+          )}
           {isAdminOrAbove && (
             <Button type="button" size="sm" onClick={() => setComposing(true)}>
               <PaperAirplaneIcon className="mr-1.5 h-4 w-4" />
@@ -137,6 +157,44 @@ export function MessagesWorkspace() {
                     {preview(message.body)}
                   </p>
                 </button>
+                {/* Actions sit outside the row button — nesting a button inside a
+                    button is invalid HTML and the inner click would not fire. */}
+                <div className="-mt-2 flex flex-wrap gap-3 px-4 pb-2.5">
+                  {tab === "inbox" ? (
+                    <>
+                      <RowAction
+                        onClick={() =>
+                          message.readAt
+                            ? markUnread.mutate(message.id)
+                            : markRead.mutate(message.id)
+                        }
+                      >
+                        {message.readAt ? "Mark unread" : "Mark read"}
+                      </RowAction>
+                      <RowAction onClick={() => dismiss.mutate(message.id)}>
+                        Remove from my list
+                      </RowAction>
+                    </>
+                  ) : (
+                    <RowAction
+                      danger
+                      onClick={() =>
+                        confirmDelete === message.id
+                          ? remove.mutate(message.id, {
+                              onSettled: () => setConfirmDelete(null),
+                            })
+                          : setConfirmDelete(message.id)
+                      }
+                    >
+                      {/* Two-click rather than a dialog: it is reversible for nobody,
+                          but it is also not dangerous enough to warrant a modal, and
+                          the label states plainly that it does not unsend. */}
+                      {confirmDelete === message.id
+                        ? "Delete for everyone — click to confirm"
+                        : "Delete"}
+                    </RowAction>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -146,6 +204,29 @@ export function MessagesWorkspace() {
       {open && <ReadModal message={open} showReceipts={tab === "sent"} onClose={() => setOpenId(null)} />}
       {composing && <ComposeModal onClose={() => setComposing(false)} />}
     </>
+  );
+}
+
+function RowAction({
+  onClick,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "text-[11px] underline-offset-2 hover:underline",
+        danger ? "text-[var(--danger-500)]" : "text-[var(--text-4)] hover:text-[var(--text-2)]",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

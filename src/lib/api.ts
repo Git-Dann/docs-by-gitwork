@@ -4729,3 +4729,20 @@ export async function sendTeamMessage(data: {
 export async function markTeamMessageRead(id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/messages/${id}/read`, { method: "POST" });
 }
+
+export async function markTeamMessageUnread(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/messages/${id}/read`, { method: "DELETE" });
+}
+
+export async function dismissTeamMessage(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/messages/${id}/dismiss`, { method: "POST" });
+}
+
+/** Author-only. Removes it for everyone — see the note on `deleteTeamMessage`. */
+export async function deleteTeamMessage(id: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/messages/${id}`, { method: "DELETE" });
+}
+
+export async function markAllTeamMessagesRead(): Promise<{ marked: number }> {
+  return apiFetch("/api/messages/read-all", { method: "POST" });
+}
