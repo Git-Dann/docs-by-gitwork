@@ -4717,9 +4717,12 @@ the scroller (6 failures), dropping the `md:` prefix (2), giving the header its 
 (2), removing the unknown-stage guard (1), un-escaping tabs in the export (1), dropping a
 truncation title (1), and claiming SCHEDULED for an unestablished task status (1).
 
-⚠️ **`npm run verify` currently FAILS on `main` for everyone**, at `audit:dependencies`
-(`npm audit --audit-level=high`) — confirmed on a clean checkout with no local changes, and
-it is why CI is red on every open PR. Nothing to do with this work; it needs its own PR.
+⚠️ **`npm run verify` failed on `main` for everyone when this was written. Fixed in
+September 2026 — see §54.** The diagnosis recorded here (`audit:dependencies`) was wrong:
+that step passes on its own and always did. Every one of the ~28,000 errors came from
+ESLint walking into `.claude/worktrees`, the nested checkouts Claude Code creates per
+session, and linting the whole repo again from inside each one. `npm run verify` now
+exits 0.
 
 **Not verified:** the live page against a real database. `/app` is auth-gated with no
 staging, so the derivation has only been exercised against demo data. **Post-deploy:** open a
@@ -5639,3 +5642,73 @@ provider. Not symmetric.
 item is re-fetched and re-classified on **every sync, forever**. Harmless at this volume
 and it costs a light-tier call each time; fixing it properly needs a "seen, not imported"
 record, which is a schema change.
+
+## 54. Recent Changes (September 2026) — The gate could not pass, and the iOS app could not authenticate
+
+### 50.1 `npm run verify` reported ~28,000 errors, none of them in this codebase
+
+The quality gate had been failing locally for everyone — §47 recorded it as red and
+blamed `audit:dependencies`, which was wrong and passes on its own. **Every one of the
+28,136 errors was in `.claude/worktrees`.** Claude Code creates a git worktree per
+session there: a nested checkout of this repo inside itself. ESLint walked into them and
+linted 1,533 duplicate files, a second and fifth and tenth time.
+
+⚠️ **CI never saw it**, because CI clones fresh and has no worktrees. So the failure was
+invisible in the one place designed to catch it and unavoidable in the one place people
+actually run it — which is how a gate stops being run at all. `.claude/**` is now in
+`eslint.config.mjs`'s ignore list; lint goes to 0 errors and `verify` exits 0.
+
+**The lesson worth keeping:** a tool that walks the working directory will find whatever
+the *environment* leaves there, and a per-session worktree is invisible to everyone
+except the person whose machine has one. When a gate fails locally but passes in CI,
+suspect the environment before the code — and check *where* the findings are before
+reading the count.
+
+### 50.2 The iOS app could never complete its half of sign-in
+
+Reported as "the Portal asks me to sign in but the rest of the app doesn't". Three
+separate defects, and the reported symptom was the least of them.
+
+**Google sign-in has always worked and is how everyone got into the app.** What never
+worked is the second half — trading Google's ID token for a per-user Foundry JWT. That
+step was only added on 2026-09-17; before then the app ran on the workspace `API_KEY`. So
+the exchange has failed every time it has ever run, invisibly, because the workspace key
+covered for it. (Stating this precisely matters: an earlier commit message here claimed
+"sign-in has never worked", which is false and was corrected before pushing.)
+
+1. **`POST /api/auth/mobile-callback` returned 400, always.** The app's shared
+   `JSONEncoder` applied `.convertToSnakeCase`, so it sent `{"id_token":…}` where the Zod
+   schema requires `idToken`. ⚠️ **Foundry's API is camelCase end to end**, so this broke
+   every multi-word key: creating a Pulse scan (`project_name`) failed the same way, and
+   device registration failed *silently*, storing a null app version forever, because
+   those fields are optional. Only single-word payloads (`body`, `status`, `token`)
+   survived — which is why most of the app worked and nobody noticed.
+   ⚠️ Explicit `CodingKeys` would not have helped: a key-encoding strategy rewrites the
+   key `CodingKeys` produces. The strategy is the only place it can be fixed.
+
+2. **The ID token audience never matched.** `verifyGoogleIdToken` pinned `aud` to a single
+   value — `GOOGLE_IOS_SERVER_CLIENT_ID`, holding the **web** client ID — while the app,
+   configured with `serverClientID: nil`, mints a token for the **iOS** client ID. Which
+   one lands in `aud` is decided by the *client's* configuration, so pinning the backend
+   to one value couples it to a client build it cannot see. The env var is now a
+   comma-separated allow-list.
+   ⚠️ **It is an allow-list of our own client IDs and must never be widened to one we do
+   not control** — the `aud` check is what stops a token minted for another application
+   being replayed here. The `hd` workspace-domain check remains the real authorisation
+   gate.
+
+3. **The sign-in gate was on the wrong screen.** `SessionStore.isSignedIn` meant the
+   *Google* session alone, so the app showed its full tab bar while holding no Foundry
+   credential and each screen reported the failure on its own. A whole-app condition asked
+   one screen at a time. It now requires both, and a credential refused mid-session
+   broadcasts an invalidation so the gate closes without waiting for a cold start.
+
+**Also:** the security fix from the day before — deleting the compiled-in workspace key —
+had not taken effect on any device that had already run an older build, because the
+Keychain outlives the app and the key was still in the slot. A credential that is not a
+Foundry mobile JWT (wrong issuer, wrong audience, no subject, expired, or not a JWT) is
+now refused and erased at the single read path.
+
+⚠️ **Rotating a shared key is a good diagnostic**: what breaks is what was using it. The
+rotation is what exposed both the stale Keychain key and a Stream Deck bridge still
+polling `/api/agents/status` every three seconds on the old credential.
