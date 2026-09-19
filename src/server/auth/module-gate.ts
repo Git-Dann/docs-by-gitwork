@@ -75,6 +75,11 @@ export const UNGATED_APP_PREFIXES = [
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
   "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
+  // Messages addressed to you. Ungated because being sent one is what grants access:
+  // the server only ever returns a message you sent or received (a miss is a 404, not a
+  // 403), so there is nothing here a module permission could usefully gate. Sending is
+  // Admin+, enforced in /api/messages.
+  "/app/messages",
 ];
 
 /**

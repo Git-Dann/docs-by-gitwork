@@ -52,6 +52,8 @@ export const NOTIFICATION_EVENTS = [
   "clients.onboarded",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
+  // A message a person wrote and addressed to you (src/server/team-messages.ts)
+  "team.message",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
@@ -100,4 +102,15 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.
   "foreman.digest": ["inApp", "push", "slack"],
+  // ⚠️ The ONLY event routed to `mobile`, and the reason that channel exists.
+  //
+  // Everything else in this table is something the system noticed. This is the one
+  // thing a person deliberately wrote, addressed to named people, and chose to send —
+  // so it is the one case where interrupting a phone is the point rather than a side
+  // effect. It keeps `inApp` too: an alert that is swiped away must still be readable
+  // afterwards, which for a weekly summary is most of its value.
+  //
+  // Adding `mobile` to anything else is a decision, not a tweak — see
+  // src/server/__tests__/mobile-channel-quiet.test.ts.
+  "team.message": ["inApp", "push", "mobile"],
 };

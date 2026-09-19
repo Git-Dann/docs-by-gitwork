@@ -27,7 +27,12 @@ describe("the mobile channel is opt-in, not inherited", () => {
   // for everyone, by default. That may well be right, but it is a decision: add the
   // event to ALLOWED_ON_PHONE_BY_DEFAULT below with a reason, rather than deleting
   // this test.
-  const ALLOWED_ON_PHONE_BY_DEFAULT: NotificationEvent[] = [];
+  const ALLOWED_ON_PHONE_BY_DEFAULT: NotificationEvent[] = [
+    // A message a person wrote and addressed to named people. Every other event in the
+    // table is something the system noticed; this is the one a human chose to send, so
+    // interrupting a phone is the intent rather than a side effect.
+    "team.message",
+  ];
 
   it("no event rings a phone by default", () => {
     const ringing = NOTIFICATION_EVENTS.filter(

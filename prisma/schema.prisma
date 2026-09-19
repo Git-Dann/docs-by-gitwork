@@ -237,6 +237,8 @@ model User {
   // shared org-wide sync (cron / Care Gmail ingest) — an admin sets that explicitly.
   googleOAuthRefreshToken   String?
   googleOAuthEmail          String?
+  teamMessagesAuthored  TeamMessage[]          @relation("TeamMessageAuthor")
+  teamMessagesReceived  TeamMessageRecipient[] @relation("TeamMessageRecipient")
 }
 
 // APNs device registrations. One row per (user, device).
@@ -469,6 +471,7 @@ model Workspace {
   /// Master switch for per-call AI usage logging (feeds the Super-Admin Analytics → AI usage
   /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
   aiUsageLoggingEnabled       Boolean                    @default(true)
+  teamMessages TeamMessage[]
 }
 
 /**
@@ -4256,6 +4259,45 @@ model Broadcast {
   createdBy User      @relation("BroadcastCreator", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, active, expiresAt])
+}
+
+/// An internal message one person writes and sends to named people — the weekly
+/// summary, a heads-up, an announcement that matters enough to reach a phone.
+///
+/// ⚠️ Deliberately NOT an extension of `Broadcast`, which looks similar and is not.
+/// A Broadcast is a workspace-wide notice board: one active at a time (posting a new
+/// one deactivates the previous), capped at 500 characters, expiring, shown passively
+/// on the Desk, and it notifies nobody. Sending someone a weekly summary through it
+/// would take down the workspace notice and reach no one.
+model TeamMessage {
+  id          String   @id @default(cuid())
+  workspaceId String
+  authorId    String
+  subject     String
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+
+  workspace  Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author     User                   @relation("TeamMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  recipients TeamMessageRecipient[]
+
+  @@index([workspaceId, createdAt])
+}
+
+/// One row per addressee. `readAt` is per person, which is the point: a message sent
+/// to four people is read by each of them separately, and "did Harry read it" is the
+/// question worth being able to answer.
+model TeamMessageRecipient {
+  id        String    @id @default(cuid())
+  messageId String
+  userId    String
+  readAt    DateTime?
+
+  message TeamMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation("TeamMessageRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, readAt])
 }
 
 // ── Data lifecycle: durable job queue + retention/cold-storage ───────────────

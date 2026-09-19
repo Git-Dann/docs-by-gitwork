@@ -2083,3 +2083,11 @@ export const boardSchema = z
       });
     }
   });
+
+export const teamMessageCreateSchema = z.object({
+  subject: z.string().trim().min(1, "Give it a subject").max(200),
+  // Generous, and deliberately so: this is where a weekly summary lives, and a limit
+  // that truncates the thing the feature exists for is worse than a long row.
+  body: z.string().trim().min(1, "Write something").max(20000),
+  recipientIds: z.array(z.string().min(1)).min(1, "Pick at least one person").max(200),
+});

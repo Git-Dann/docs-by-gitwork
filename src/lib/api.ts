@@ -4690,3 +4690,42 @@ export async function deleteLaunchpadTemplateApi(
 ): Promise<{ deleted: boolean; archived?: boolean }> {
   return apiFetch(`/api/launchpad-templates/${id}`, { method: "DELETE" });
 }
+
+// ── Team messages ───────────────────────────────────────────────────────────
+
+export interface TeamMessageRecipient {
+  userId: string;
+  name: string | null;
+  email: string;
+  readAt: string | null;
+}
+
+export interface TeamMessage {
+  id: string;
+  subject: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string | null; email: string };
+  recipients: TeamMessageRecipient[];
+  readAt: string | null;
+}
+
+export async function listTeamMessages(sent = false): Promise<{ messages: TeamMessage[] }> {
+  return apiFetch(`/api/messages${sent ? "?sent=1" : ""}`);
+}
+
+export async function getTeamMessage(id: string): Promise<{ message: TeamMessage }> {
+  return apiFetch(`/api/messages/${id}`);
+}
+
+export async function sendTeamMessage(data: {
+  subject: string;
+  body: string;
+  recipientIds: string[];
+}): Promise<{ message: TeamMessage }> {
+  return apiFetch("/api/messages", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function markTeamMessageRead(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/messages/${id}/read`, { method: "POST" });
+}
