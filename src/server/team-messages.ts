@@ -81,11 +81,13 @@ function toDTO(row: MessageRow, viewerId: string): TeamMessageDTO {
 /**
  * Sends a message to named people.
  *
- * ⚠️ The author is removed from the recipient set rather than rejected. Picking
- * yourself is an easy slip when sending to "everyone", and failing the whole send over
- * it would be worse than quietly not notifying yourself — `dispatchNotification`
- * already excludes the actor, so including yourself would produce a recipient row that
- * never gets a notification, which reads as a delivery failure later.
+ * ⚠️ Addressing YOURSELF is honoured, not dropped. `dispatchNotification` excludes the
+ * actor by default — right for the other 23 events, which are things the system noticed
+ * about something you did and needn't tell you about — but a message you deliberately
+ * typed your own name into is a choice, not a slip. The first version silently removed
+ * the author, which made it impossible to send yourself a test of your own wording
+ * before sending it to someone else. So when the author is among the recipients, the
+ * dispatch runs with no actor and the author is notified like anyone else.
  */
 export async function sendTeamMessage(
   user: EffectiveUser,
@@ -93,7 +95,8 @@ export async function sendTeamMessage(
 ): Promise<TeamMessageDTO> {
   assertAtLeastAdmin(user);
 
-  const requested = [...new Set(input.recipientIds)].filter((id) => id !== user.id);
+  const requested = [...new Set(input.recipientIds)];
+  const includesSelf = requested.includes(user.id);
 
   // Only people who are actually in this workspace — an id from a stale picker, or a
   // hand-crafted request, must not create a recipient row for someone who cannot open
@@ -123,7 +126,9 @@ export async function sendTeamMessage(
   dispatchNotification({
     event: "team.message",
     workspaceId: user.workspaceId,
-    actorId: user.id,
+    // Omitted when the author addressed themselves, so the dispatcher's
+    // exclude-the-actor rule does not undo a deliberate choice.
+    actorId: includesSelf ? null : user.id,
     title: created.subject,
     body: preview(created.body),
     actionUrl: `/app/messages/${created.id}`,

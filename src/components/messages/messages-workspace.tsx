@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
@@ -216,6 +217,8 @@ function ReadModal({
 
 function ComposeModal({ onClose }: { onClose: () => void }) {
   const members = useTeamMembers();
+  const { data: session } = useSession();
+  const myUserId = session?.user?.id;
   const send = useSendMessage();
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -273,6 +276,7 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
             <div className="flex flex-wrap gap-1.5">
               {people.map((m) => {
                 const on = picked.includes(m.userId);
+                const isMe = m.userId === myUserId;
                 return (
                   <button
                     key={m.userId}
@@ -285,7 +289,10 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
                         : "border-[var(--border-2)] text-[var(--text-3)] hover:text-[var(--text-2)]",
                     )}
                   >
-                    {m.name ?? m.email}
+                    {/* Picking yourself is supported and worth signposting — it is how
+                        you check your own wording, and the phone it lands on, before
+                        sending it to anyone else. */}
+                    {isMe ? "Me (test)" : (m.name ?? m.email)}
                   </button>
                 );
               })}
