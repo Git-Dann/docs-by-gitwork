@@ -54,15 +54,40 @@ export async function POST(request: NextRequest) {
       collapseId: `test:${user.id}`,
     });
 
+    if (result.sent > 0) {
+      return apiOk({
+        sent: result.sent,
+        failed: result.failed,
+        devices: devices.length,
+        outcome: "sent",
+        detail: `Sent to ${result.sent} of ${devices.length} device(s).`,
+      });
+    }
+
+    // ⚠️ Whose fault it is matters more than that it failed, and the first version of
+    // this got it wrong: it reported every failure as a dead device token and told the
+    // user to sign in again. The actual failure was InvalidProviderToken — Apple
+    // rejecting THIS SERVER's APNs key — so the advice sent someone to reinstall an app
+    // that was working perfectly. Reporting "we could not look" as "it is not there"
+    // again, one layer out.
+    const providerFault = result.reasons.some((r) =>
+      ["InvalidProviderToken", "ExpiredProviderToken", "BadTopic", "TopicDisallowed", "NotConfigured"].includes(r),
+    );
+    const transient = result.reasons.some((r) =>
+      ["TooManyRequests", "ServiceUnavailable", "InternalServerError", "NetworkError"].includes(r),
+    );
+
     return apiOk({
-      sent: result.sent,
+      sent: 0,
       failed: result.failed,
       devices: devices.length,
-      outcome: result.sent > 0 ? "sent" : "all_failed",
-      detail:
-        result.sent > 0
-          ? `Sent to ${result.sent} of ${devices.length} device(s).`
-          : "Every device rejected the push. A dead token is cleared automatically — sign in on the app again to re-register.",
+      reasons: result.reasons,
+      outcome: providerFault ? "server_credentials" : transient ? "transient" : "dead_tokens",
+      detail: providerFault
+        ? `Apple rejected this server's APNs credentials (${result.reasons.join(", ")}). Your phone is fine — the APNs key, Key ID or Team ID on the server needs fixing.`
+        : transient
+          ? `Apple was temporarily unavailable (${result.reasons.join(", ")}). Try again shortly.`
+          : "Every device token was rejected as dead. They are cleared automatically — sign in on the app again to re-register.",
     });
   } catch (error) {
     return fromError(error);

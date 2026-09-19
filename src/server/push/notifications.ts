@@ -12,7 +12,13 @@
 //     write) must not throw if push fails. Wrap any call site in try/catch
 //     and log the failure.
 
-import { isApnsConfigured, sendApns, type ApnsPayload, type ApnsSendResult } from "./apns";
+import {
+  isApnsConfigured,
+  sendApns,
+  type ApnsFailureReason,
+  type ApnsPayload,
+  type ApnsSendResult,
+} from "./apns";
 import {
   listActiveDeviceTokensForUser,
   listActiveDeviceTokensForWorkspace,
@@ -49,11 +55,11 @@ export type FoundryNotificationPushInput = {
  */
 export async function sendFoundryNotificationPush(
   input: FoundryNotificationPushInput,
-): Promise<{ sent: number; failed: number; skipped: boolean }> {
-  if (!isApnsConfigured()) return { sent: 0, failed: 0, skipped: true };
+): Promise<{ sent: number; failed: number; skipped: boolean; reasons: ApnsFailureReason[] }> {
+  if (!isApnsConfigured()) return { sent: 0, failed: 0, skipped: true, reasons: [] };
 
   const devices = await listActiveDeviceTokensForUser(input.userId);
-  if (devices.length === 0) return { sent: 0, failed: 0, skipped: true };
+  if (devices.length === 0) return { sent: 0, failed: 0, skipped: true, reasons: [] };
 
   const payload: ApnsPayload = {
     aps: {
@@ -183,7 +189,7 @@ async function fanOut(
   devices: DeviceTokenRecord[],
   payload: ApnsPayload,
   collapseId: string,
-): Promise<{ sent: number; failed: number; skipped: boolean }> {
+): Promise<{ sent: number; failed: number; skipped: boolean; reasons: ApnsFailureReason[] }> {
   // Parallel send — APNs handles concurrent connections fine, and each open
   // HTTP/2 session is independent. For a 2-3 person team this is <10 devices
   // typically; we'd batch differently at higher fan-out.
@@ -202,7 +208,12 @@ async function fanOut(
 
   const sent = results.filter((r) => r.ok).length;
   const failed = results.length - sent;
-  return { sent, failed, skipped: false };
+  // The reason has to travel with the counts. Collapsing every failure to "it failed"
+  // is what let a SERVER credential problem (InvalidProviderToken — our own APNs key
+  // rejected by Apple) be reported to the user as a dead device token, sending them to
+  // re-install the app when nothing about their phone was wrong.
+  const reasons = [...new Set(results.flatMap((r) => (r.ok ? [] : [r.reason])))];
+  return { sent, failed, skipped: false, reasons };
 }
 
 async function handleResult(device: DeviceTokenRecord, result: ApnsSendResult): Promise<void> {
