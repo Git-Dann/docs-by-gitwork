@@ -50,8 +50,12 @@ export function MessagesWorkspace() {
   // Infinite lists: pages are flattened for rendering, and the query itself owns
   // whether another page exists.
   const active = tab === "inbox" ? inbox : sent;
-  const messages: TeamMessage[] = (active.data?.pages ?? []).flatMap((p) => p.messages);
-  const inboxMessages: TeamMessage[] = (inbox.data?.pages ?? []).flatMap((p) => p.messages);
+  const messages: TeamMessage[] = (active.data?.pages ?? []).flatMap(
+    (p) => p.messages,
+  );
+  const inboxMessages: TeamMessage[] = (inbox.data?.pages ?? []).flatMap(
+    (p) => p.messages,
+  );
   const loading = active.isLoading;
   const open = messages.find((m) => m.id === openId) ?? null;
   // Counts only what has been LOADED, which is why the readout says so — claiming a
@@ -322,20 +326,25 @@ function ReadModal({
   onClose: () => void;
 }) {
   return (
-    <Modal open onClose={onClose} title={message.subject}>
-      <div className="app-dialog-fixed">
-        <p className="shrink-0 border-b border-[var(--border-2)] px-1 pb-3 text-xs text-[var(--text-4)]">
+    <Modal
+      open
+      onClose={onClose}
+      title={message.subject}
+      panelClassName="app-dialog-fixed w-full max-w-xl"
+    >
+      <>
+        <p className="shrink-0 border-b border-[var(--border-2)] px-6 py-3 text-xs text-[var(--text-4)]">
           {message.author.name ?? message.author.email} ·{" "}
           {formatWhen(message.createdAt)}
         </p>
         {/* The body is the point, so it gets the room and the scroll. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--text-2)]">
             {message.body}
           </p>
         </div>
         {showReceipts && (
-          <div className="shrink-0 border-t border-[var(--border-2)] px-1 pt-3">
+          <div className="shrink-0 border-t border-[var(--border-2)] px-6 py-4">
             <p className="widget-data-label mb-2 text-[var(--text-4)]">
               READ BY
             </p>
@@ -358,7 +367,7 @@ function ReadModal({
             </ul>
           </div>
         )}
-      </div>
+      </>
     </Modal>
   );
 }
@@ -539,9 +548,14 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
     subject.trim() && body.trim() && picked.length > 0 && !send.isPending;
 
   return (
-    <Modal open onClose={onClose} title="New message">
-      <div className="app-dialog-fixed">
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-1">
+    <Modal
+      open
+      onClose={onClose}
+      title="New message"
+      panelClassName="app-dialog-fixed w-full max-w-xl"
+    >
+      <>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
           <div>
             <label
               htmlFor="msg-subject"
@@ -577,9 +591,11 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
             />
           </div>
 
-          {/* The message takes the room the chip wall used to: it is what the dialog is
-              for, and the box is a known height now. min-h keeps it usable on a short
-              viewport, where the body scroller takes over. */}
+          {/* The dialog is a fixed 680px, so a fixed-height box leaves ~200px of white
+              above the footer. The message IS the dialog, so it takes the slack — a
+              composer with room to write, not a small field marooned in an empty panel.
+              min-h-0 lets it shrink on a short viewport, where the body scroller takes
+              over. */}
           <div className="flex min-h-0 flex-1 flex-col">
             <label
               htmlFor="msg-body"
@@ -589,7 +605,7 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
             </label>
             <textarea
               id="msg-body"
-              className="app-textarea min-h-[180px] w-full flex-1"
+              className="app-textarea w-full flex-1 resize-none"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Write the summary…"
@@ -597,7 +613,7 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-[var(--border-2)] pt-3">
+        <div className="shrink-0 border-t border-[var(--border-2)] px-6 py-4">
           {error && (
             <p className="mb-2 text-xs text-[var(--danger-500)]">{error}</p>
           )}
@@ -625,7 +641,7 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </div>
-      </div>
+      </>
     </Modal>
   );
 }
