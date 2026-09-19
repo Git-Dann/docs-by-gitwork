@@ -5712,3 +5712,85 @@ now refused and erased at the single read path.
 ⚠️ **Rotating a shared key is a good diagnostic**: what breaks is what was using it. The
 rotation is what exposed both the stale Keychain key and a Stream Deck bridge still
 polling `/api/agents/status` every three seconds on the old credential.
+
+## 55. Recent Changes (September 2026) — Messages: one recipient field, and the audit the feature never had
+
+Messages shipped with a **chip per teammate**. Measured at 390px, the 29 chips ran to 13
+rows and consumed ~700px of a 760px viewport, so the MESSAGE box — the entire point of
+the dialog — started below the fold and you scrolled past everyone's name to reach it.
+
+Replaced with one field that opens a checklist: a filter box, **Select all / Clear**, and
+a checkbox row per person. The field names the choice rather than counting it
+(`Sian Woolridge, Harry Brown +2`), because *"4 selected"* makes you reopen the picker to
+check you picked the right four — which is the check you want before something reaches
+29 people's phones. Picking everyone reads **`Everyone (29)`**: sending to the whole
+company is the one choice that should never look like an ordinary list.
+
+⚠️ **The panel MUST be anchored/portalled, and that is not a preference.** It sits inside
+the dialog's `overflow-y-auto` body, and `overflow-y: auto` forces `overflow-x: auto` —
+so that element clips on **both** axes. An absolutely-positioned panel (the shape
+`task-filter-bar.tsx` uses, which is correct on a page) would be cut off, and the cut is
+invisible to `audit:ui` (no class is misused) and reports **no page overflow** (the
+scroller absorbs it). Same trap as `.widget-card` in §45.2. There is a test asserting the
+panel has no clipping ancestor; removing `anchor` fails it.
+
+### 55.1 The house popover is now declared once
+
+`menuPanel` / `menuItem` were written out in **three** files; two were byte-identical.
+They live in **`src/components/ui/menu-styles.ts`** now, and the two identical copies
+import it. `wiki-workspace.tsx` keeps its variant (it adds `min-w-[12rem]` and `gap-2.5`)
+— a real difference, left alone rather than flattened.
+
+Both Messages dialogs also **adopted `.app-dialog-fixed`** (§52.3). They had invented
+their own clamps — `76vh/680/460` on compose and `70vh/620/420` on read — which is
+precisely the drift that class exists to prevent. Adopting it also pulls the file into
+`dialog-fixed-height.test.ts`'s sweep, which went 11 files → 12.
+
+### 55.2 What the audit found, and what it found nothing wrong with
+
+Driven at 390 · 768 · 1440 in **both themes**, across four states (list, compose, read,
+**picker open**), using the repo's own `AUDIT` from `scripts/audit-clipping.mjs` as a
+library plus a canvas-resolving, alpha-compositing contrast sweep (§45.3's two traps).
+
+- **Clipping / offscreen / truncated / page-X: 0.**
+- **Contrast: 234 text nodes examined, 0 below AA.** The previous session's colour work
+  is sound — the tightest are `10px "1 UNREAD"` at 4.56:1 and `11px "Mark read"` at
+  4.76:1, both passing. Reported as measured rather than dressed up as a finding.
+- **Two defects a detector cannot see**, both found by screenshotting: the row actions
+  were `-mt-2` under a bordered button, so the **hairline ran through the link text**;
+  and they were drawn on every resting row, which is the §42.8 lesson (a list whose every
+  row carries controls reads as chrome, not content). They reveal on hover now, with
+  `focus-within` so they stay keyboard-reachable — revealing is a visual default, never
+  a gate.
+
+⚠️ **The first audit run reported "clean" on a control it had never looked at.** The
+popover is portalled and only exists while open, so the harness — which only clicked
+*New message* — never rendered it. Adding the open state took the sweep from 124 text
+nodes to 234. **A harness that does not drive a surface into a state cannot report on
+that state**, and "0 findings" reads identically either way.
+
+⚠️ **jsdom computes no layout, so `--button-width` arrived as `0px`** and the panel
+measured 2px wide. A harness artefact — but it exposed a real fragility, since anything
+leaving that variable unset collapses the panel to nothing. It now carries a
+`min-w-[260px]` floor that never binds at a real field width.
+
+⚠️ **One of my own sabotages proved a branch was dead.** Guarding `Everyone` with
+`totalPeople > 0` changed no test — because an empty selection returns before that line,
+so the two can only be equal when both are real. The guard is gone and the test that
+pretended to cover it now asserts the case that can actually happen.
+
+**Verified:** tsc + lint **0 errors**, **3527 tests** (17 new), `audit:ui` **0 findings**;
+`npx next build` clean, 104 static pages. The new tests were proved to discriminate by
+breaking four things on purpose — removing `anchor` (1 failure), dropping the blank-name
+filter (1), removing accent stripping (1), and putting the filter box back under 16px,
+which is what makes iOS Safari zoom the viewport on focus (1).
+
+**Not verified:** `/app/messages` is auth-gated with no demo route, so the picker has not
+been driven in a real browser — anchoring and keyboard behaviour are Headless UI's and
+were asserted structurally, not observed. **Post-deploy:** open New message, confirm the
+panel opens over the dialog rather than being cut off, filter, Select all, and send one
+to yourself to check the phone notification still lands.
+
+⚠️ **Another session was mid-edit on `messages-workspace.tsx`** (adding pagination to the
+list) when this landed. This change is from `origin/main` and touches the compose modal
+and the row markup; that one touches the list's data flow. They will need merging.

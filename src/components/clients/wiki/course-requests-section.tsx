@@ -16,6 +16,7 @@ import {
 } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import {
   computeCourseDemand,
   type CourseDemand,
@@ -134,10 +135,6 @@ function downloadTxt(reqs: CourseRequestRecord[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const menuPanel =
-  "z-50 mt-1.5 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
-const menuItem =
-  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] hover:bg-[var(--surface-1)]";
 
 export interface CourseRequestsSectionProps {
   requests: CourseRequestRecord[];

@@ -22,6 +22,7 @@ import {
   BookOpenIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import { DesignSystemViewer } from "./design-system-viewer";
 import { GuidelinesDeck } from "./guidelines-deck";
 import { ImportModal } from "./import-modal";
@@ -30,10 +31,6 @@ import { LogoManagerModal } from "./logo-manager-modal";
 const MONO = "var(--font-mono), 'SF Mono', Menlo, Consolas, monospace";
 const chipBtn =
   "inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50";
-const menuPanel =
-  "z-50 mt-1.5 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
-const menuItem =
-  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)]";
 
 /** Pill toggle — matches WikiShareMenu. */
 function Toggle({
