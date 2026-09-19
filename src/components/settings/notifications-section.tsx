@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import { SettingsCard } from "@/components/settings/settings-card";
@@ -409,6 +409,7 @@ export function NotificationsSection() {
       </SettingsCard>
 
       <PushDeviceCard />
+      <MobilePushCard />
     </div>
   );
 }
@@ -418,6 +419,68 @@ export function NotificationsSection() {
  * subscription for THIS browser (native Web Push, no third party). Hidden unless
  * the server has VAPID keys configured and the browser supports push.
  */
+/**
+ * The Foundry app on a phone, and a way to prove a push actually arrives.
+ *
+ * It is separate from the browser card above because they are different channels:
+ * `push` is this browser, `mobile` is the app. The test reports WHICH thing went
+ * wrong, because from the handset an unconfigured server, an unregistered device, a
+ * dead token and an Apple rejection all look identical — nothing happens.
+ */
+function MobilePushCard() {
+  const [state, setState] = useState<{ busy: boolean; detail: string | null; ok: boolean | null }>({
+    busy: false,
+    detail: null,
+    ok: null,
+  });
+
+  async function sendTest() {
+    setState({ busy: true, detail: null, ok: null });
+    try {
+      const res = await fetch("/api/notifications/test-push", { method: "POST" });
+      const data = (await res.json()) as { outcome?: string; detail?: string };
+      setState({
+        busy: false,
+        detail: data.detail ?? "No response from the server.",
+        ok: data.outcome === "sent",
+      });
+    } catch {
+      setState({ busy: false, detail: "Couldn't reach the server.", ok: false });
+    }
+  }
+
+  return (
+    <SettingsCard number="05" title="Foundry app on your phone">
+      <p className="text-sm leading-6 text-[var(--text-3)]">
+        Events routed to <strong>Mobile</strong> above are delivered to the Foundry iOS app.
+        Your phone registers when you sign in to the app — nothing routes here by default, so
+        a phone stays quiet until you opt an event in.
+      </p>
+
+      <div className="mt-5 flex items-center justify-between gap-4 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[var(--text-1)]">Send a test notification</p>
+          <p
+            className={cn(
+              "mt-0.5 text-xs",
+              state.ok === null
+                ? "text-[var(--text-4)]"
+                : state.ok
+                  ? "text-[var(--success-500)]"
+                  : "text-[var(--warning-500)]",
+            )}
+          >
+            {state.detail ?? "Goes to your own phones only."}
+          </p>
+        </div>
+        <Button type="button" variant="secondary" size="sm" disabled={state.busy} onClick={() => void sendTest()}>
+          {state.busy ? "Sending…" : "Send test"}
+        </Button>
+      </div>
+    </SettingsCard>
+  );
+}
+
 function PushDeviceCard() {
   const { supported, enabled, permission, subscribed, loading, busy, subscribe, unsubscribe } =
     useWebPush();
