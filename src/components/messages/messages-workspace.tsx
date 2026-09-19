@@ -39,10 +39,16 @@ export function MessagesWorkspace() {
   const markAllRead = useMarkAllMessagesRead();
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const messages = tab === "inbox" ? (inbox.data?.messages ?? []) : (sent.data?.messages ?? []);
-  const loading = tab === "inbox" ? inbox.isLoading : sent.isLoading;
+  // Infinite lists: pages are flattened for rendering, and the query itself owns
+  // whether another page exists.
+  const active = tab === "inbox" ? inbox : sent;
+  const messages: TeamMessage[] = (active.data?.pages ?? []).flatMap((p) => p.messages);
+  const inboxMessages: TeamMessage[] = (inbox.data?.pages ?? []).flatMap((p) => p.messages);
+  const loading = active.isLoading;
   const open = messages.find((m) => m.id === openId) ?? null;
-  const unread = inbox.data?.messages.filter((m) => !m.readAt).length ?? 0;
+  // Counts only what has been LOADED, which is why the readout says so — claiming a
+  // total we have not fetched would be a number that quietly understates itself.
+  const unread = inboxMessages.filter((m) => !m.readAt).length;
 
   // A notification links to /app/messages/<id>, which redirects here with ?open=<id>.
   // Opening it here rather than on its own page keeps one implementation of reading a
@@ -50,7 +56,7 @@ export function MessagesWorkspace() {
   const requestedId = searchParams.get("open");
   useEffect(() => {
     if (!requestedId) return;
-    const target = inbox.data?.messages.find((m) => m.id === requestedId);
+    const target = inboxMessages.find((m) => m.id === requestedId);
     if (!target) return;
     setOpenId(requestedId);
     if (!target.readAt) markRead.mutate(requestedId);
@@ -76,7 +82,7 @@ export function MessagesWorkspace() {
             {" // MESSAGES"}
           </span>
           <span className="widget-header__status">
-            {unread > 0 ? `${unread} UNREAD` : `${messages.length} TOTAL`}
+            {unread > 0 ? `${unread} UNREAD` : `${messages.length} SHOWN`}
           </span>
         </div>
 
@@ -198,6 +204,29 @@ export function MessagesWorkspace() {
               </li>
             ))}
           </ul>
+        )}
+
+        {/* Say which of the two it is. A list that simply stops is indistinguishable
+            from one that has been truncated, and the truncated case is the one that
+            loses information without telling anyone. */}
+        {!loading && messages.length > 0 && (
+          <div className="border-t border-[var(--border-2)] px-4 py-3 text-center">
+            {active.hasNextPage ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={active.isFetchingNextPage}
+                onClick={() => void active.fetchNextPage()}
+              >
+                {active.isFetchingNextPage ? "Loading…" : "Load older"}
+              </Button>
+            ) : (
+              <span className="widget-data-label text-[var(--text-4)]">
+                END OF LIST · {messages.length} SHOWN
+              </span>
+            )}
+          </div>
         )}
       </section>
 

@@ -165,8 +165,37 @@ export async function sendTeamMessage(
   return toDTO(created, user.id);
 }
 
-/** Messages addressed to this person, newest first. */
-export async function listMyTeamMessages(user: EffectiveUser): Promise<TeamMessageDTO[]> {
+export type TeamMessagePage = {
+  messages: TeamMessageDTO[];
+  /** Pass back as `cursor` to get the next page. `null` means this is the end. */
+  nextCursor: string | null;
+};
+
+export const MESSAGE_PAGE_SIZE = 50;
+const MESSAGE_PAGE_MAX = 200;
+
+/**
+ * Newest first, `id` as a deterministic tiebreaker.
+ *
+ * ⚠️ The tiebreaker is not decoration. Two messages sent in the same second — which a
+ * script or a fast double-send produces — have identical `createdAt`, and cursor
+ * pagination over a non-unique sort key can then skip or repeat a row silently. Care
+ * learned this the same way.
+ */
+const MESSAGE_ORDER = [{ createdAt: "desc" }, { id: "desc" }] as const satisfies
+  readonly Prisma.TeamMessageOrderByWithRelationInput[];
+
+function clampLimit(limit?: number): number {
+  if (!limit || !Number.isFinite(limit) || limit < 1) return MESSAGE_PAGE_SIZE;
+  return Math.min(Math.floor(limit), MESSAGE_PAGE_MAX);
+}
+
+/** One page of messages addressed to this person. */
+export async function listMyTeamMessages(
+  user: EffectiveUser,
+  opts: { cursor?: string; limit?: number } = {},
+): Promise<TeamMessagePage> {
+  const limit = clampLimit(opts.limit);
   const rows = await prisma.teamMessage.findMany({
     where: {
       workspaceId: user.workspaceId,
@@ -174,22 +203,40 @@ export async function listMyTeamMessages(user: EffectiveUser): Promise<TeamMessa
       recipients: { some: { userId: user.id, dismissedAt: null } },
     },
     include: MESSAGE_INCLUDE,
-    orderBy: { createdAt: "desc" },
-    take: 100,
+    orderBy: [...MESSAGE_ORDER],
+    // One more than asked for, so "is there another page" is known without a
+    // second COUNT query — and without guessing from a full page, which is wrong
+    // exactly when the total is an even multiple of the page size.
+    take: limit + 1,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
-  return rows.map((row) => toDTO(row, user.id));
+  return page(rows, limit, user.id);
 }
 
-/** Messages this person sent, newest first — so you can see whether it was read. */
-export async function listSentTeamMessages(user: EffectiveUser): Promise<TeamMessageDTO[]> {
+/** One page of messages this person sent — so you can see whether they were read. */
+export async function listSentTeamMessages(
+  user: EffectiveUser,
+  opts: { cursor?: string; limit?: number } = {},
+): Promise<TeamMessagePage> {
   assertAtLeastAdmin(user);
+  const limit = clampLimit(opts.limit);
   const rows = await prisma.teamMessage.findMany({
     where: { workspaceId: user.workspaceId, authorId: user.id },
     include: MESSAGE_INCLUDE,
-    orderBy: { createdAt: "desc" },
-    take: 100,
+    orderBy: [...MESSAGE_ORDER],
+    take: limit + 1,
+    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
-  return rows.map((row) => toDTO(row, user.id));
+  return page(rows, limit, user.id);
+}
+
+function page(rows: MessageRow[], limit: number, viewerId: string): TeamMessagePage {
+  const hasMore = rows.length > limit;
+  const slice = hasMore ? rows.slice(0, limit) : rows;
+  return {
+    messages: slice.map((row) => toDTO(row, viewerId)),
+    nextCursor: hasMore ? slice[slice.length - 1].id : null,
+  };
 }
 
 /**

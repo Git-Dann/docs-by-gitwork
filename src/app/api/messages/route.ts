@@ -16,9 +16,19 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuthedUser(request);
-    const sent = new URL(request.url).searchParams.get("sent") === "1";
-    const messages = sent ? await listSentTeamMessages(user) : await listMyTeamMessages(user);
-    return apiOk({ messages });
+    const params = new URL(request.url).searchParams;
+    const sent = params.get("sent") === "1";
+    const cursor = params.get("cursor") ?? undefined;
+    const rawLimit = params.get("limit");
+    // An unparseable limit falls through to the default rather than 400ing — the
+    // server clamps it anyway, so there is nothing a bad value can do.
+    const limit = rawLimit ? Number(rawLimit) : undefined;
+
+    const opts = { cursor, limit };
+    const result = sent
+      ? await listSentTeamMessages(user, opts)
+      : await listMyTeamMessages(user, opts);
+    return apiOk(result);
   } catch (error) {
     return fromError(error);
   }

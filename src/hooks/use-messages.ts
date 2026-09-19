@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteTeamMessage,
   dismissTeamMessage,
@@ -12,17 +12,28 @@ import {
   sendTeamMessage,
 } from "@/lib/api";
 
+/**
+ * Infinite lists rather than a fixed page.
+ *
+ * The first cut capped both at 100 rows with no way past it, which is fine for a
+ * fortnight and then quietly hides the oldest message with nothing on screen saying so
+ * — the worst kind of limit, because it looks like the data is simply not there.
+ */
 export function useMyMessages() {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["messages", "inbox"],
-    queryFn: () => listTeamMessages(false),
+    queryFn: ({ pageParam }) => listTeamMessages({ cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
 }
 
 export function useSentMessages(enabled = true) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["messages", "sent"],
-    queryFn: () => listTeamMessages(true),
+    queryFn: ({ pageParam }) => listTeamMessages({ sent: true, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled,
   });
 }

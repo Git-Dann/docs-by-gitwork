@@ -4710,8 +4710,15 @@ export interface TeamMessage {
   readAt: string | null;
 }
 
-export async function listTeamMessages(sent = false): Promise<{ messages: TeamMessage[] }> {
-  return apiFetch(`/api/messages${sent ? "?sent=1" : ""}`);
+export async function listTeamMessages(
+  opts: { sent?: boolean; cursor?: string; limit?: number } = {},
+): Promise<{ messages: TeamMessage[]; nextCursor: string | null }> {
+  const params = new URLSearchParams();
+  if (opts.sent) params.set("sent", "1");
+  if (opts.cursor) params.set("cursor", opts.cursor);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+  return apiFetch(`/api/messages${query ? `?${query}` : ""}`);
 }
 
 export async function getTeamMessage(id: string): Promise<{ message: TeamMessage }> {

@@ -116,3 +116,33 @@ describe("sending", () => {
     expect(body("listMyTeamMessages")).not.toContain("assertAtLeastAdmin");
   });
 });
+
+describe("pagination", () => {
+  // ⚠️ The tiebreaker is the load-bearing part. Two messages created in the same
+  // second — a script, or a fast double-send — share a `createdAt`, and a cursor over
+  // a non-unique sort key silently skips or repeats rows. Care learned this the same
+  // way, which is why both now order by `id` as well.
+  it("orders by a unique tiebreaker, not by createdAt alone", () => {
+    expect(SOURCE).toContain('{ createdAt: "desc" }, { id: "desc" }');
+  });
+
+  it("both lists paginate by cursor", () => {
+    for (const fn of ["listMyTeamMessages", "listSentTeamMessages"]) {
+      const b = body(fn);
+      expect(b, `${fn} must accept a cursor`).toContain("cursor: { id: opts.cursor }, skip: 1");
+      // +1 so "is there more" is known without a second COUNT — and without inferring
+      // it from a full page, which is wrong precisely when the total is a multiple of
+      // the page size.
+      expect(b, `${fn} must over-fetch by one`).toContain("take: limit + 1");
+    }
+  });
+
+  it("clamps the page size so a caller cannot ask for everything", () => {
+    const start = SOURCE.indexOf("function clampLimit");
+    expect(start, "clampLimit no longer exists — update this test").toBeGreaterThan(-1);
+    const fn = SOURCE.slice(start, SOURCE.indexOf("\n}", start));
+    expect(fn).toContain("Math.min");
+    expect(fn).toContain("MESSAGE_PAGE_MAX");
+    expect(SOURCE).toMatch(/MESSAGE_PAGE_MAX\s*=\s*\d+/);
+  });
+});
