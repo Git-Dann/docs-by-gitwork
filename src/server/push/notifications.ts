@@ -23,6 +23,58 @@ import {
 
 // ─── Public senders ─────────────────────────────────────────────────────────
 
+export type FoundryNotificationPushInput = {
+  userId: string;
+  title: string;
+  body: string | null;
+  /** In-app path the tap should open, e.g. "/app/portal/wedge". */
+  actionUrl: string | null;
+  /** Collapses repeats of the same grouped notification into one phone alert. */
+  collapseId: string;
+};
+
+/**
+ * Sends one in-app notification to a user's phones.
+ *
+ * This is the bridge that was missing: `dispatchNotification` could reach the bell and
+ * the browser, while APNs was wired only for Pulse scans. Every other event — a task
+ * assigned, a client request, the Foreman digest — stopped at the browser, so the
+ * Foundry app on a phone had never received a notification of any kind.
+ *
+ * ⚠️ Delivery is gated by the **`mobile`** channel, not `push`. See the note on
+ * `NOTIFICATION_CHANNELS`: reusing `push` would have made every already-routed event
+ * ring a phone. Being on this path at all means someone listed the event explicitly.
+ *
+ * Best-effort like every other sender here — the caller must not fail because a push did.
+ */
+export async function sendFoundryNotificationPush(
+  input: FoundryNotificationPushInput,
+): Promise<{ sent: number; failed: number; skipped: boolean }> {
+  if (!isApnsConfigured()) return { sent: 0, failed: 0, skipped: true };
+
+  const devices = await listActiveDeviceTokensForUser(input.userId);
+  if (devices.length === 0) return { sent: 0, failed: 0, skipped: true };
+
+  const payload: ApnsPayload = {
+    aps: {
+      alert: {
+        title: input.title,
+        ...(input.body ? { body: input.body } : {}),
+      },
+      sound: "default",
+      "thread-id": input.collapseId,
+    },
+    // Custom keys arrive as userInfo. `kind` tells the app how to read the rest —
+    // the Pulse pushes send `kind: "scan"` + `scanId`, so a generic destination needs
+    // its own kind rather than overloading theirs.
+    kind: "notification",
+    ...(input.actionUrl ? { path: input.actionUrl } : {}),
+  };
+
+  return await fanOut(devices, payload, input.collapseId);
+}
+
+
 export type PulseScanCompletedInput = {
   scanId: string;
   workspaceId: string;

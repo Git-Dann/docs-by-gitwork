@@ -8,7 +8,9 @@
 // Fire-and-forget, exactly like notifyDocumentEvent in slack-notify.ts: a failure here must
 // never bubble into the originating request (createTask, approveLeaveRequest, …).
 //
-// Channels: `inApp`, `push` and `slack` are wired; `email` is still deferred.
+// Channels: `inApp`, `push` (browser), `mobile` (the Foundry app on a phone, via APNs)
+// and `slack` are wired; `email` is still deferred — it is declared in the routing table
+// but has no sender here, so listing it is a no-op.
 //
 // `slack` is deliberately NOT per-recipient. The other channels deliver to a person, so a
 // person's preference governs them. A Slack channel post is a workspace-level broadcast — it
@@ -29,6 +31,7 @@ import {
 } from "@/server/notification-events";
 import type { NotificationDTO } from "@/types/notifications";
 import { isWebPushEnabled, sendWebPushToUser } from "@/server/web-push";
+import { sendFoundryNotificationPush } from "@/server/push/notifications";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
@@ -95,6 +98,19 @@ export function dispatchNotification(input: DispatchInput): void {
               body: input.body ?? null,
               url: input.actionUrl ?? "/app",
               tag: input.groupKey,
+            }).catch(() => undefined);
+          }
+          // The Foundry app on a phone (APNs). Deliberately a separate channel from
+          // `push` — see NOTIFICATION_CHANNELS. No event routes here by default, so
+          // adding this bridge cannot make an existing notification start ringing
+          // someone's phone; an event reaches a phone only by being opted in.
+          if (channels.includes("mobile")) {
+            await sendFoundryNotificationPush({
+              userId,
+              title: input.title,
+              body: input.body ?? null,
+              actionUrl: input.actionUrl ?? null,
+              collapseId: input.groupKey,
             }).catch(() => undefined);
           }
         }),

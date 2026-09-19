@@ -5,7 +5,17 @@
  * these IDs. Keep them stable — changing an ID orphans existing user preferences.
  */
 
-export const NOTIFICATION_CHANNELS = ["email", "push", "slack", "inApp"] as const;
+/**
+ * `push` is **browser** Web Push (VAPID). `mobile` is the Foundry **app on a phone**
+ * (APNs). They are deliberately separate channels rather than one "push".
+ *
+ * ⚠️ Keeping them separate is what makes a phone quiet by default. Bridging APNs onto
+ * the existing `push` channel would have turned on a phone notification for every event
+ * already routed to it — which for an admin is ~51 a month, none of which anyone had
+ * read. A phone is the most interrupting surface Foundry has, so an event reaches it
+ * only by being listed explicitly below.
+ */
+export const NOTIFICATION_CHANNELS = ["email", "push", "slack", "inApp", "mobile"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 export const NOTIFICATION_EVENTS = [
