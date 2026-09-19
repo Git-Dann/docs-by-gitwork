@@ -22,6 +22,20 @@ const PRODUCTION_HOST = "https://api.push.apple.com";
 const SANDBOX_HOST = "https://api.sandbox.push.apple.com";
 const JWT_TTL_SECONDS = 50 * 60; // APNs allows up to 60min; renew slightly early
 
+/**
+ * APNs rejects an oversized payload outright — it does NOT truncate it.
+ *
+ * ⚠️ Worth being explicit about, because the intuition is usually the other way round:
+ * iOS truncates the *display* of a long alert, so it is natural to assume a long body
+ * is simply shortened. It is not. A payload over the limit is refused with 413
+ * `PayloadTooLarge` and the notification is never delivered — so a message long enough
+ * to be worth sending would be exactly the one that silently fails to arrive.
+ *
+ * 4096 bytes is Apple's documented maximum for an alert notification. Measured in
+ * BYTES, not characters: one emoji is four.
+ */
+export const APNS_MAX_PAYLOAD_BYTES = 4096;
+
 export type ApnsPushType = "alert" | "background" | "voip";
 
 export type ApnsAlert = {

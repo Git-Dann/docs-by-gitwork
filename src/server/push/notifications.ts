@@ -18,6 +18,7 @@ import {
   type ApnsFailureReason,
   type ApnsPayload,
   type ApnsSendResult,
+  APNS_MAX_PAYLOAD_BYTES,
 } from "./apns";
 import {
   listActiveDeviceTokensForUser,
@@ -65,7 +66,7 @@ export async function sendFoundryNotificationPush(
   const payload: ApnsPayload = {
     aps: {
       alert: {
-        title: input.title,
+        title: fitTitle(input.title),
         ...(input.body ? { body: input.body } : {}),
       },
       sound: "default",
@@ -78,7 +79,65 @@ export async function sendFoundryNotificationPush(
     ...(input.actionUrl ? { path: input.actionUrl } : {}),
   };
 
-  return await fanOut(devices, payload, input.collapseId);
+  return await fanOut(devices, shrinkToFit(payload), input.collapseId);
+}
+
+/**
+ * Caps the alert title so a long one cannot crowd out the body.
+ *
+ * iOS shows roughly a line of title on a banner regardless, so anything beyond this is
+ * bytes spent on text nobody reads — and those bytes are the ones that push a payload
+ * over the limit.
+ */
+export function fitTitle(title: string): string {
+  return title.length > 120 ? `${title.slice(0, 119)}…` : title;
+}
+
+/**
+ * Shortens the alert body until the whole payload fits APNs' size limit.
+ *
+ * ⚠️ APNs does NOT truncate an oversized payload — it refuses it with 413 and the
+ * notification is never delivered. Today every caller already passes a short preview,
+ * so nothing reaches this; it exists because the day someone passes a full message
+ * body instead, the failure is a push that silently never arrives, which is the single
+ * hardest thing to notice in this whole system.
+ *
+ * Trims by CODE POINT and measures in BYTES: slicing a JavaScript string by index can
+ * cut a surrogate pair in half, and one emoji is four bytes, so a character count is
+ * the wrong unit twice over.
+ */
+export function shrinkToFit(payload: ApnsPayload): ApnsPayload {
+  if (payloadBytes(payload) <= APNS_MAX_PAYLOAD_BYTES) return payload;
+
+  const alert = payload.aps.alert;
+  if (typeof alert !== "object" || !alert?.body) {
+    // Nothing safely trimmable. Let it go and be rejected loudly rather than
+    // silently dropping a field a caller deliberately set.
+    console.error("[push] payload exceeds the APNs limit and has no trimmable body");
+    return payload;
+  }
+
+  const points = Array.from(alert.body);
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    const candidate = withBody(payload, `${points.slice(0, mid).join("")}…`);
+    if (payloadBytes(candidate) <= APNS_MAX_PAYLOAD_BYTES) lo = mid;
+    else hi = mid - 1;
+  }
+  console.warn(`[push] trimmed an oversized alert body to ${lo} characters to fit APNs`);
+  return withBody(payload, `${points.slice(0, lo).join("")}…`);
+}
+
+function withBody(payload: ApnsPayload, body: string): ApnsPayload {
+  const alert = payload.aps.alert;
+  if (typeof alert !== "object" || !alert) return payload;
+  return { ...payload, aps: { ...payload.aps, alert: { ...alert, body } } };
+}
+
+function payloadBytes(payload: ApnsPayload): number {
+  return Buffer.byteLength(JSON.stringify(payload), "utf8");
 }
 
 
@@ -279,6 +338,10 @@ async function handleResult(device: DeviceTokenRecord, result: ApnsSendResult): 
     case "BadTopic":
     case "TopicDisallowed":
     case "InvalidProviderToken":
+    // ⚠️ NOT transient, which is where this used to fall. Retrying re-sends the
+    // identical oversized payload, so it fails forever — and `shrinkToFit` should
+    // have made it unreachable, which makes seeing it a bug report, not a blip.
+    case "PayloadTooLarge":
       // Configuration issue — log loudly but don't kill the device row, the
       // tokens themselves are fine, our env is wrong.
       console.error(
