@@ -24,6 +24,7 @@ import {
   listActiveDeviceTokensForWorkspace,
   markDeviceTokenFailed,
   markDeviceTokenUsed,
+  correctDeviceEnvironment,
   type DeviceTokenRecord,
 } from "./devices";
 
@@ -185,6 +186,52 @@ async function resolveAudience(
   return await listActiveDeviceTokensForWorkspace(workspaceId);
 }
 
+/**
+ * Sends to one device, and on `BadDeviceToken` retries the OTHER APNs gateway once.
+ *
+ * ⚠️ A device token is only valid on the gateway it was minted for, and the CLIENT
+ * decides which environment it reports at registration — from a value it infers, which
+ * it can get wrong. It did: the iOS app matched the provisioning profile's
+ * `aps-environment` with an exact string requiring a single tab, while real profiles
+ * use two, so the match always failed and every build fell back to reporting
+ * "sandbox". A production build's token then went to the sandbox gateway, Apple said
+ * BadDeviceToken, and the row was soft-deleted as dead — when it was perfectly good and
+ * merely sent to the wrong address.
+ *
+ * Trusting the client's self-report is the fragile part, so this stops depending on it:
+ * if the other gateway accepts the token, the send succeeded and the stored environment
+ * is corrected, so the next send goes straight there. A token is only declared dead when
+ * BOTH gateways reject it, which is the only evidence that actually means dead.
+ */
+async function sendToDevice(
+  device: DeviceTokenRecord,
+  payload: ApnsPayload,
+  collapseId: string,
+): Promise<ApnsSendResult> {
+  const first = await sendApns({
+    deviceToken: device.token,
+    environment: device.environment,
+    payload,
+    collapseId,
+  });
+  if (first.ok || first.reason !== "BadDeviceToken") return first;
+
+  const other = device.environment === "production" ? "sandbox" : "production";
+  const retry = await sendApns({
+    deviceToken: device.token,
+    environment: other,
+    payload,
+    collapseId,
+  });
+  if (retry.ok) {
+    await correctDeviceEnvironment(device.token, other);
+    console.warn(
+      `[push] device ${device.id} was registered as ${device.environment} but is ${other} — corrected`,
+    );
+  }
+  return retry;
+}
+
 async function fanOut(
   devices: DeviceTokenRecord[],
   payload: ApnsPayload,
@@ -195,12 +242,7 @@ async function fanOut(
   // typically; we'd batch differently at higher fan-out.
   const results = await Promise.all(
     devices.map(async (device) => {
-      const result = await sendApns({
-        deviceToken: device.token,
-        environment: device.environment,
-        payload,
-        collapseId,
-      });
+      const result = await sendToDevice(device, payload, collapseId);
       await handleResult(device, result);
       return result;
     }),

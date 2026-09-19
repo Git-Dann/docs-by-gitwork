@@ -118,3 +118,21 @@ export async function unregisterDeviceToken(userId: string, token: string): Prom
     where: { userId, token },
   });
 }
+
+/**
+ * Corrects a device's recorded APNs environment after the other gateway accepted it.
+ *
+ * The environment is self-reported by the app at registration and can be wrong — see
+ * `sendToDevice`. Once a send proves which gateway the token belongs to, that is better
+ * evidence than the client's guess, so it is written back and the next send goes
+ * straight to the right place instead of paying a failed request first.
+ */
+export async function correctDeviceEnvironment(
+  token: string,
+  environment: string,
+): Promise<void> {
+  await prisma.deviceToken.updateMany({
+    where: { token },
+    data: { environment, failedAt: null },
+  });
+}
