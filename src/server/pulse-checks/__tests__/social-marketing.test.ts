@@ -226,3 +226,225 @@ describe("share affordance and alt text", () => {
     expect(statusOf(checks, "social_image_alt_coverage")).toBe("PASS");
   });
 });
+
+describe("the share card, completely", () => {
+  it("catches a square image that PASSES the size check", async () => {
+    // 1200×1200 clears the ≥1200×630 floor and is still wrong: every network
+    // centre-crops to ~1.91:1, so the headline at the top of the image is cut off.
+    // This is the case the size check cannot see, which is why the ratio is its own.
+    const checks = await runSocialMarketingChecks(context(`
+      <meta property="og:image" content="https://example.test/card.png">
+      <meta property="og:image:width" content="1200">
+      <meta property="og:image:height" content="1200">
+    `));
+    expect(statusOf(checks, "social_og_image_size")).toBe("PASS");
+    expect(statusOf(checks, "social_og_image_ratio")).toBe("WARN");
+    expect(detailOf(checks, "social_og_image_ratio")).toContain("1.00:1");
+  });
+
+  it("accepts the shapes networks actually render", async () => {
+    for (const [w, h] of [[1200, 630], [1920, 1005], [1200, 675]]) {
+      const checks = await runSocialMarketingChecks(context(`
+        <meta property="og:image" content="https://example.test/c.png">
+        <meta property="og:image:width" content="${w}">
+        <meta property="og:image:height" content="${h}">
+      `));
+      expect(statusOf(checks, "social_og_image_ratio"), `${w}x${h}`).toBe("PASS");
+    }
+  });
+
+  it("flags a relative share image — the commonest silently-broken card", async () => {
+    const rel = await runSocialMarketingChecks(
+      context(`<meta property="og:image" content="/images/card.png">`),
+    );
+    expect(statusOf(rel, "social_og_image_absolute")).toBe("WARN");
+
+    // Protocol-relative is fine; scrapers resolve it.
+    const proto = await runSocialMarketingChecks(
+      context(`<meta property="og:image" content="//cdn.example.test/card.png">`),
+    );
+    expect(statusOf(proto, "social_og_image_absolute")).toBe("PASS");
+  });
+
+  it("warns on image formats scrapers drop rather than degrade", async () => {
+    for (const ext of ["webp", "avif", "svg"]) {
+      const c = await runSocialMarketingChecks(
+        context(`<meta property="og:image" content="https://e.test/c.${ext}">`),
+      );
+      expect(statusOf(c, "social_og_image_format"), ext).toBe("WARN");
+    }
+    for (const ext of ["png", "jpg", "jpeg"]) {
+      const c = await runSocialMarketingChecks(
+        context(`<meta property="og:image" content="https://e.test/c.${ext}">`),
+      );
+      expect(statusOf(c, "social_og_image_format"), ext).toBe("PASS");
+    }
+  });
+
+  it("ignores a query string when reading the format", async () => {
+    const c = await runSocialMarketingChecks(
+      context(`<meta property="og:image" content="https://e.test/c.png?v=2&w=1200">`),
+    );
+    expect(statusOf(c, "social_og_image_format")).toBe("PASS");
+  });
+
+  it("only compares og:url and canonical when BOTH are present", async () => {
+    const one = await runSocialMarketingChecks(
+      context(`<meta property="og:url" content="https://e.test/a">`),
+    );
+    expect(statusOf(one, "social_og_canonical_agree")).toBe("PASS");
+
+    const agree = await runSocialMarketingChecks(context(`
+      <meta property="og:url" content="https://e.test/a/">
+      <link rel="canonical" href="https://e.test/a">
+    `));
+    expect(statusOf(agree, "social_og_canonical_agree"), "a trailing slash is not a disagreement").toBe("PASS");
+
+    const differ = await runSocialMarketingChecks(context(`
+      <meta property="og:url" content="https://e.test/a">
+      <link rel="canonical" href="https://e.test/b">
+    `));
+    expect(statusOf(differ, "social_og_canonical_agree")).toBe("WARN");
+  });
+});
+
+describe("measurement", () => {
+  it("does not ask for consent mode when there is no pixel to consent to", async () => {
+    // Otherwise every site with no advertising carries a permanent EEA-compliance
+    // warning about machinery it does not run.
+    const none = await runSocialMarketingChecks(context("<html><body>Hi</body></html>"));
+    expect(statusOf(none, "social_ad_pixel")).toBe("WARN");
+    expect(statusOf(none, "social_consent_mode")).toBe("PASS");
+  });
+
+  it("asks for it once a pixel is installed", async () => {
+    const pixel = await runSocialMarketingChecks(
+      context(`<script>fbq('init','1');</script>`),
+    );
+    expect(statusOf(pixel, "social_ad_pixel")).toBe("PASS");
+    expect(statusOf(pixel, "social_consent_mode")).toBe("WARN");
+
+    const both = await runSocialMarketingChecks(context(`
+      <script>gtag('consent','default',{ad_storage:'denied'});fbq('init','1');</script>
+    `));
+    expect(statusOf(both, "social_consent_mode")).toBe("PASS");
+  });
+
+  it("names which pixels it found", async () => {
+    const c = await runSocialMarketingChecks(context(`
+      <script src="https://analytics.tiktok.com/i18n/pixel/events.js"></script>
+      <script src="https://snap.licdn.com/li.lms-analytics/insight.min.js"></script>
+    `));
+    expect(detailOf(c, "social_ad_pixel")).toContain("TikTok");
+    expect(detailOf(c, "social_ad_pixel")).toContain("LinkedIn");
+  });
+
+  it("distinguishes an event from a page view", async () => {
+    const pv = await runSocialMarketingChecks(
+      context(`<script src="https://www.googletagmanager.com/gtag/js"></script>`),
+    );
+    expect(statusOf(pv, "social_event_tracking")).toBe("WARN");
+    const ev = await runSocialMarketingChecks(
+      context(`<script>gtag('event','sign_up');</script>`),
+    );
+    expect(statusOf(ev, "social_event_tracking")).toBe("PASS");
+  });
+
+  it("flags a canonical carrying a query string", async () => {
+    const dirty = await runSocialMarketingChecks(
+      context(`<link rel="canonical" href="https://e.test/p?utm_source=x">`),
+    );
+    expect(statusOf(dirty, "social_campaign_landing")).toBe("WARN");
+    const clean = await runSocialMarketingChecks(
+      context(`<link rel="canonical" href="https://e.test/p">`),
+    );
+    expect(statusOf(clean, "social_campaign_landing")).toBe("PASS");
+  });
+});
+
+describe("the copy", () => {
+  it("calls out a headline that says nothing", async () => {
+    for (const h of ["Home", "Welcome", "Coming soon", "welcome to our website"]) {
+      const c = await runSocialMarketingChecks(context(`<h1>${h}</h1>`));
+      expect(statusOf(c, "social_headline_specific"), h).toBe("WARN");
+    }
+    const good = await runSocialMarketingChecks(
+      context("<h1>Production-readiness for AI-built software</h1>"),
+    );
+    expect(statusOf(good, "social_headline_specific")).toBe("PASS");
+  });
+
+  it("reads the headline through its inline markup", async () => {
+    // A headline is almost never bare text — it carries a <span> for the accent word.
+    const c = await runSocialMarketingChecks(
+      context("<h1>Ship <span class='x'>production-ready</span> software</h1>"),
+    );
+    expect(statusOf(c, "social_headline_specific")).toBe("PASS");
+    expect(detailOf(c, "social_headline_specific")).toContain("Ship production-ready software");
+  });
+
+  it("flags search and social copy that are the same sentence", async () => {
+    const same = "Pulse checks your site against sixteen hundred production controls today.";
+    const dup = await runSocialMarketingChecks(context(`
+      <meta name="description" content="${same}">
+      <meta property="og:description" content="${same}">
+    `));
+    expect(statusOf(dup, "social_description_distinct")).toBe("WARN");
+
+    const differ = await runSocialMarketingChecks(context(`
+      <meta name="description" content="${same}">
+      <meta property="og:description" content="A different line written for a feed reader.">
+    `));
+    expect(statusOf(differ, "social_description_distinct")).toBe("PASS");
+  });
+
+  it("does not claim a duplicate when only one description exists", async () => {
+    const c = await runSocialMarketingChecks(
+      context(`<meta name="description" content="Only one of the two is set here.">`),
+    );
+    expect(statusOf(c, "social_description_distinct")).toBe("PASS");
+  });
+
+  it("sees a subheading through the wrappers a real page puts between them", async () => {
+    const wrapped = await runSocialMarketingChecks(
+      context("<h1>A headline</h1><div><p>The supporting line.</p>"),
+    );
+    expect(statusOf(wrapped, "social_hero_subhead")).toBe("PASS");
+    const bare = await runSocialMarketingChecks(
+      context("<h1>A headline</h1><img src='x.png' alt='y'>"),
+    );
+    expect(statusOf(bare, "social_hero_subhead")).toBe("WARN");
+  });
+});
+
+describe("structured data and distribution", () => {
+  it("reads @type from an array as well as a string", async () => {
+    // schema.org allows both, and a page using the array form is not missing the type.
+    const arr = await runSocialMarketingChecks(
+      context(`<script type="application/ld+json">{"@type":["FAQPage","WebPage"]}</script>`),
+    );
+    expect(statusOf(arr, "social_faq_schema")).toBe("PASS");
+  });
+
+  it("wants a logo INSIDE Organization, not any logo anywhere", async () => {
+    const withLogo = await runSocialMarketingChecks(context(
+      `<script type="application/ld+json">{"@type":"Organization","name":"X","logo":"https://e.test/l.png"}</script>`,
+    ));
+    expect(statusOf(withLogo, "social_org_logo_schema")).toBe("PASS");
+    const without = await runSocialMarketingChecks(context(
+      `<script type="application/ld+json">{"@type":"Organization","name":"X"}</script>`,
+    ));
+    expect(statusOf(without, "social_org_logo_schema")).toBe("WARN");
+  });
+
+  it("finds app store, community and review links", async () => {
+    const c = await runSocialMarketingChecks(context(`
+      <a href="https://apps.apple.com/gb/app/x/id1">iOS</a>
+      <a href="https://discord.gg/abc">Discord</a>
+      <a href="https://www.g2.com/products/x/reviews">G2</a>
+    `));
+    expect(statusOf(c, "social_app_store_link")).toBe("PASS");
+    expect(statusOf(c, "social_community_link")).toBe("PASS");
+    expect(statusOf(c, "social_review_platform")).toBe("PASS");
+  });
+});
