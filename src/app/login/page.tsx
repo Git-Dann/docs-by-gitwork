@@ -1,5 +1,6 @@
 "use client";
 
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useActionState, useState } from "react";
@@ -27,7 +28,7 @@ const PAGE_BG = "#EDE8E1";
 const PANEL = "#FFFFFF";
 
 const FEATURES = [
-  { number: "01", name: "Pulse", description: "500+ automated project checks — AI gap analysis and fix-agent PRs in minutes." },
+  { number: "01", name: "Pulse", description: `${ADVERTISED_CHECK_COUNT_LABEL} automated project checks — AI gap analysis and fix-agent PRs in minutes.` },
   { number: "02", name: "Study", description: "Multi-agent user research: persona interviews, synthesis, and shareable reports." },
   { number: "03", name: "Docs", description: "Proposal builder with costing, timelines, and one-click PDF export." },
 ];

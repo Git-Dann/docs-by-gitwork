@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { ArrowRightIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 // The boss's bespoke design: warm cream, violet accent (NOT the Foundry blue
@@ -314,12 +314,17 @@ export function PortalLoginForm({ next }: { next: string | null }) {
                 onClick={() =>
                   isStaffAuthed
                     ? window.location.assign("/app")
-                    : void signIn("google", { callbackUrl: "/app" })
+                    : // ⚠️ Go to /login, do NOT call signIn("google") straight off.
+                      // This is the site's front door, and it used to throw whoever
+                      // clicked it at Google — which is a dead end for an invited guest,
+                      // who has no Gitwork Google account and needs the email/password
+                      // form. /login offers both, so it is the honest destination.
+                      window.location.assign("/login")
                 }
                 className="mt-5 block w-full text-center text-[12px] transition hover:opacity-70"
                 style={{ color: FAINT }}
               >
-                {isStaffAuthed ? "Continue to Foundry →" : "Gitwork team? Sign in →"}
+                {isStaffAuthed ? "Continue to Foundry →" : "Gitwork team or invited guest? Sign in →"}
               </button>
             </>
           )}
