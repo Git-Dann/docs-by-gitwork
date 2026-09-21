@@ -278,7 +278,7 @@ export default auth(async (req) => {
     // module apply on their next sign-in; field/data gates are enforced live server-side.
     if (!isAtLeast(req.auth.user.role, "ADMIN")) {
       const permissions = req.auth.user.permissions ?? [];
-      if (!hasModuleAccess(pathname, permissions)) {
+      if (!hasModuleAccess(pathname, permissions, req.auth.user.role)) {
         return NextResponse.redirect(new URL("/app", req.url));
       }
     }

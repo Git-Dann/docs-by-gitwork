@@ -71,16 +71,40 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
 export const UNGATED_APP_PREFIXES = [
   "/app/settings", // own settings; sensitive tabs gate themselves (Labs/Curator = Super Admin)
   "/app/account-settings",
-  "/app/team",
-  "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
-  "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
-  "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
   // Messages addressed to you. Ungated because being sent one is what grants access:
   // the server only ever returns a message you sent or received (a miss is a 404, not a
   // 403), so there is nothing here a module permission could usefully gate. Sending is
   // Admin+, enforced in /api/messages.
   "/app/messages",
 ];
+
+/**
+ * Open to any signed-in member of GITWORK, and to nobody else.
+ *
+ * ⚠️ These were in the list above, and the word that made that safe was "member". The
+ * whole allow-list was written when every account was an @gitwork.co.uk Google sign-in,
+ * so "any signed-in member" and "any colleague" were the same sentence. GUEST breaks
+ * that: an outside collaborator holding an email and password would have read the
+ * internal developer handbook and the full team roster, because nobody had to decide to
+ * show them — the premise decided it.
+ *
+ * So the split is by AUDIENCE, not by sensitivity. A page here is one we are happy for
+ * any colleague to open without a permission, which is a different question from whether
+ * we are happy for a client's contractor to open it.
+ */
+export const INTERNAL_ONLY_PREFIXES = [
+  "/app/team",
+  "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
+  "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
+  "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
+];
+
+/** Roles that are NOT Gitwork staff. Everything here is external by definition. */
+const EXTERNAL_ROLES = new Set(["GUEST"]);
+
+export function isExternalRole(role: string | null | undefined): boolean {
+  return !!role && EXTERNAL_ROLES.has(role);
+}
 
 /**
  * The HQ dashboard. Deliberately NOT in UNGATED_APP_PREFIXES: a "/app" entry there would
@@ -109,12 +133,22 @@ export function moduleForPath(pathname: string): string | null {
   return null;
 }
 
-export function hasModuleAccess(pathname: string, permissions: string[]): boolean {
+export function hasModuleAccess(
+  pathname: string,
+  permissions: string[],
+  role?: string | null,
+): boolean {
   // Not named `module` — Next forbids assigning that identifier (no-assign-module-variable).
   const required = moduleForPath(pathname);
   if (required) return permissions.includes(required);
   if (pathname === APP_ROOT) return true;
   if (UNGATED_APP_PREFIXES.some((p) => matchesPrefix(pathname, p))) return true;
+  if (INTERNAL_ONLY_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
+    // `role` is optional so existing callers compile, and an ABSENT role is treated as
+    // internal — every caller before GUEST existed was passing a staff account. An
+    // external role is denied explicitly rather than by omission.
+    return !isExternalRole(role);
+  }
   // Default deny. An /app path that matched neither list is a page nobody chose to
   // expose — most likely one added without a MODULE_PATHS entry. Admins and Super Admins
   // never reach here (the caller short-circuits on role), so a missing entry shows up as
