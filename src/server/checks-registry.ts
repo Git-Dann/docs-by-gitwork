@@ -1225,6 +1225,20 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "flutter_dev_deps_in_prod", category: CATEGORIES.CODE_QUALITY, label: "No test-only packages in production dependencies" },
   { key: "flutter_analyzer_lints", category: CATEGORIES.CODE_QUALITY, label: "Dart analyzer lint set configured" },
   { key: "flutter_commented_features", category: CATEGORIES.CODE_QUALITY, label: "No disabled features left commented out" },
+
+  // Social & Marketing — what a shared link looks like, and where the audience is.
+  // Observation only: see the header of pulse-checks/social-marketing.ts for why
+  // nothing here fails and why the category carries no score weight.
+  { key: "social_og_image_present", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image (og:image)" },
+  { key: "social_og_image_size", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image is large enough" },
+  { key: "social_og_title", category: CATEGORIES.SOCIAL_MARKETING, label: "Share headline (og:title)" },
+  { key: "social_og_description", category: CATEGORIES.SOCIAL_MARKETING, label: "Share description length" },
+  { key: "social_twitter_card", category: CATEGORIES.SOCIAL_MARKETING, label: "Large-image card on X" },
+  { key: "social_profiles_linked", category: CATEGORIES.SOCIAL_MARKETING, label: "Social profiles linked from the site" },
+  { key: "social_short_form_video", category: CATEGORIES.SOCIAL_MARKETING, label: "Short-form video presence" },
+  { key: "social_schema_sameas", category: CATEGORIES.SOCIAL_MARKETING, label: "Profiles declared in structured data" },
+  { key: "social_share_affordance", category: CATEGORIES.SOCIAL_MARKETING, label: "Something to share with" },
+  { key: "social_image_alt_coverage", category: CATEGORIES.SOCIAL_MARKETING, label: "Images carry alt text" },
 ];
 
 /** All unique categories in display order */

@@ -118,6 +118,11 @@ export const PILLARS: PillarDef[] = [
       CATEGORIES.AEO,
       CATEGORIES.STORE_LISTING,
       CATEGORIES.TRUST_BRAND,
+      // Sits beside SEO and Trust because it answers the same question — can people
+      // find it and does it look like something to take seriously. Like those two it
+      // is unweighted in the headline score (WEIGHTED_CATEGORIES), so it shapes this
+      // subscore's conversation without moving the readiness number.
+      CATEGORIES.SOCIAL_MARKETING,
       CATEGORIES.GLOBAL_DISTRIBUTION,
       CATEGORIES.MOBILE,
       CATEGORIES.ACCESSIBILITY,

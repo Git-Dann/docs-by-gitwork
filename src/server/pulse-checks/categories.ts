@@ -42,6 +42,7 @@ export const CATEGORIES = {
   APP_STORE: "App Store & Mobile",
   GLOBAL_DISTRIBUTION: "Global Distribution",
   TRUST_BRAND: "Trust & Brand",
+  SOCIAL_MARKETING: "Social & Marketing",
   ROLES: "Roles & Permissions",
   EMAIL: "Email Deliverability",
   BUSINESS_OPS: "Business Operations",
@@ -131,6 +132,11 @@ export const CATEGORY_META: CategoryMeta[] = [
   { name: CATEGORIES.SEO, domain: "SEO & Presence", weighted: false, aiEra: false, blurb: "Structured data, canonical, sitemaps, Open Graph, preload hints, search verification" },
   { name: CATEGORIES.STORE_LISTING, domain: "SEO & Presence", weighted: false, aiEra: false, blurb: "App name, description, screenshots, ratings, privacy label, data safety section" },
   { name: CATEGORIES.TRUST_BRAND, domain: "SEO & Presence", weighted: false, aiEra: false, blurb: "Customer logos, case studies, reviews, team bios, security whitepaper, awards" },
+  // `weighted: false` on purpose. These are observable facts about how a page shares —
+  // the preview image, the card type, which profiles are linked — and acting on them is
+  // a marketing decision, not a launch blocker. Whether a business SHOULD be on TikTok
+  // is not something a scanner can know, so this must never move a readiness score.
+  { name: CATEGORIES.SOCIAL_MARKETING, domain: "SEO & Presence", weighted: false, aiEra: false, blurb: "Share previews, social profiles, short-form video, and the copy a link shows when posted" },
   { name: CATEGORIES.GLOBAL_DISTRIBUTION, domain: "SEO & Presence", weighted: false, aiEra: false, blurb: "hreflang, multi-currency, RTL, i18n, EU data residency, compliance certifications" },
   // Mobile & Accessibility
   { name: CATEGORIES.MOBILE, domain: "Mobile & Accessibility", weighted: false, aiEra: false, blurb: "Viewport, PWA manifest, web push, offline, reduced-motion, biometric auth signals" },
