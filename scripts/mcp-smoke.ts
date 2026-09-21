@@ -64,37 +64,43 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 29 tools", tools.length === 29, `got ${tools.length}`);
+    check("returns 35 tools", tools.length === 35, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
       "update_client",
-      "set_client_status",
-      "get_client",
       "add_platform",
       "list_platforms",
-      "add_design",
       "add_monitor",
       "list_monitors",
+      "create_course_request",
+      "list_course_requests",
+      "get_running_costs",
+      "set_cost_line",
+      "delete_cost_line",
+      "set_running_costs_settings",
       "list_wiki",
       "get_wiki_page",
       "upsert_wiki_page",
       "delete_wiki_page",
-      "list_conversations",
+      "set_client_status",
+      "add_design",
       "list_tasks",
-      "get_task",
       "create_task",
       "update_task",
-      "comment_task",
       "list_members",
-      "whoami",
       "find_meetings",
       "create_document",
       "update_document",
-      "list_documents",
       "pulse_scan",
       "pulse_scan_result",
+      "whoami",
+      "get_task",
+      "comment_task",
+      "list_documents",
       "list_pulse_scans",
+      "get_client",
+      "list_conversations",
     ];
     for (const name of expected) {
       check(`includes ${name}`, tools.some((t) => t.name === name));
