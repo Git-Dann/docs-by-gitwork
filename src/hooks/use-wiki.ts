@@ -63,6 +63,13 @@ import {
   deleteWikiInsightBoardApi,
   setWikiDeliveryEnabledApi,
   setWikiInsightsEnabledApi,
+  setWikiCostsEnabledApi,
+  updateWikiCostSettingsApi,
+  createWikiCostItemApi,
+  updateWikiCostItemApi,
+  deleteWikiCostItemApi,
+  type WikiCostItemInput,
+  type WikiCostSettingsInput,
   setWikiSupportEnabledApi,
   updateWikiInsightBoardApi,
   type WikiInsightBoardInput,
@@ -444,6 +451,52 @@ export function useDeleteInsightBoard(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (boardId: string) => deleteWikiInsightBoardApi(slug, boardId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Running costs ────────────────────────────────────────────────────────────
+// Every write returns the whole model and invalidates the wiki: a line's totals are
+// derived from every other line, so patching one row into the cache would leave the
+// banner stating a cost-per-user that no longer matches the lines under it.
+
+export function useSetWikiCostsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiCostsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiCostSettings(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiCostSettingsInput) => updateWikiCostSettingsApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useCreateWikiCostItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiCostItemInput) => createWikiCostItemApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiCostItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { itemId: string; input: WikiCostItemInput }) =>
+      updateWikiCostItemApi(slug, args.itemId, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiCostItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => deleteWikiCostItemApi(slug, itemId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

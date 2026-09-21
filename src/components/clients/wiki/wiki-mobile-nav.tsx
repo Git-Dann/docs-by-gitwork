@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import {
+  BanknotesIcon,
   BoltIcon,
   BookOpenIcon,
   CalendarDaysIcon,
@@ -37,6 +38,7 @@ const SECTION_ICON: Record<WikiSection, IconType> = {
   intake: FlagIcon,
   launchpad: RocketLaunchIcon,
   insights: ChartPieIcon,
+  costs: BanknotesIcon,
   delivery: ChartBarSquareIcon,
   support: LifebuoyIcon,
   "code-handover": CpuChipIcon,

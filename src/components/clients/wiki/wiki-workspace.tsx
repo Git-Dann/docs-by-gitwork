@@ -36,6 +36,7 @@ import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
+import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
@@ -77,6 +78,7 @@ import { useSetLaunchpadEnabled } from "@/hooks/use-launchpad";
 import {
   useSetWikiDeliveryEnabled,
   useSetWikiInsightsEnabled,
+  useSetWikiCostsEnabled,
   useSetWikiSupportEnabled,
 } from "@/hooks/use-wiki";
 import { useAccount } from "@/hooks/use-account";
@@ -120,6 +122,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   intake: "Requests",
   launchpad: "Launchpad",
   insights: "Charts",
+  costs: "Running costs",
   delivery: "Delivery",
   support: "Support",
   "code-handover": "Code Handover",
@@ -139,6 +142,7 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
   launchpad: "LAUNCHPAD",
   insights: "CHARTS",
+  costs: "RUNNING COSTS",
   delivery: "DELIVERY",
   support: "SUPPORT",
   ia: "IA GUIDE",
@@ -836,7 +840,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "delivery", "support", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "delivery", "support", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -919,6 +923,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
   const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
   const setInsightsEnabled = useSetWikiInsightsEnabled(slug);
+  const setCostsEnabled = useSetWikiCostsEnabled(slug);
   const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
   const setSupportEnabled = useSetWikiSupportEnabled(slug);
   // Attribution for requests logged internally — see WikiIntakeSection.
@@ -965,6 +970,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const codeOn = wiki.codeHandover.enabled;
   const launchpadOn = Boolean(wiki.launchpad?.enabled);
   const insightsOn = wiki.insights.enabled;
+  const costsOn = wiki.costs.enabled;
   const deliveryOn = wiki.deliveryEnabled;
   const supportOn = wiki.support.enabled;
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
@@ -980,6 +986,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(intakeOn ? (["intake"] as const) : []),
     ...(launchpadOn ? (["launchpad"] as const) : []),
     ...(insightsOn ? (["insights"] as const) : []),
+    ...(costsOn ? (["costs"] as const) : []),
     ...(deliveryOn ? (["delivery"] as const) : []),
     ...(supportOn ? (["support"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
@@ -1002,6 +1009,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
     ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
     ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Charts" }]),
+    ...(costsOn ? [] : [{ section: "costs" as WikiSection, label: "Running costs" }]),
     ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
     ...(supportOn ? [] : [{ section: "support" as WikiSection, label: "Support" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
@@ -1058,6 +1066,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (section === "insights") {
       await setInsightsEnabled.mutateAsync(true);
       setActiveSection("insights");
+      return;
+    }
+    if (section === "costs") {
+      await setCostsEnabled.mutateAsync(true);
+      setActiveSection("costs");
       return;
     }
     if (section === "delivery") {
@@ -1120,6 +1133,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "insights") ?? "dashboard");
       return;
     }
+    if (section === "costs") {
+      await setCostsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "costs") ?? "dashboard");
+      return;
+    }
     if (section === "delivery") {
       await setDeliveryEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "delivery") ?? "dashboard");
@@ -1151,6 +1169,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "intake" &&
       section !== "launchpad" &&
       section !== "insights" &&
+      section !== "costs" &&
       section !== "delivery" &&
       section !== "support" &&
       section !== "code-handover"
@@ -1163,7 +1182,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           ? " The client can no longer update it. Their answers and statuses are kept, so re-adding it restores everything."
           : section === "insights"
             ? " The boards are kept, so re-adding it brings every chart back."
-            : "";
+            : section === "costs"
+              ? " The cost lines are kept, so re-adding it restores the whole model."
+              : "";
     const ok = window.confirm(
       `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
     );
@@ -1380,6 +1401,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki!.support} />;
+    }
+    if (activeSection === "costs") {
+      return <WikiCostsSection slug={slug} model={wiki!.costs} mode="internal" />;
     }
     if (activeSection === "insights") {
       return (
@@ -1818,6 +1842,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "documents" ||
                 s === "intake" ||
                 s === "insights" ||
+                s === "costs" ||
                 s === "delivery" ||
                 s === "support" ||
                 s === "code-handover",

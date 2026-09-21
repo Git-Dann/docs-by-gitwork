@@ -1401,6 +1401,21 @@ model ClientWiki {
   /// ones the monthly report already emails them. Off unless a linked SupportClient
   /// exists AND someone turns it on.
   supportEnabled      Boolean                @default(false)
+  /// Whether the Running costs section is enabled — what the app costs to operate, and
+  /// the cost per end user. Client-facing, so off until someone turns it on.
+  costsEnabled        Boolean                @default(false)
+  /// ⚠️ ONE currency for the whole model, entered by hand. Most infrastructure bills in
+  /// USD, but a client-facing cost-per-user that moves with a live FX rate every time
+  /// they reload implies a precision the model does not have. The rate assumed is a
+  /// decision to record, not a feed.
+  costsCurrency       String                 @default("GBP")
+  /// The user count the headline banner is calculated at.
+  costsHeadlineUsers  Int                    @default(1000)
+  /// What the model deliberately excludes (staff time, payment fees, ...). Shown to the
+  /// client under the figure, because a cost model without its exclusions reads as a
+  /// total when it is a subtotal.
+  costsNotes          String?                @db.Text
+  costItems           WikiCostItem[]
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -4919,6 +4934,70 @@ enum WikiInsightVennRegion {
 /// means nothing for its board. A single flat point table would have had four of seven
 /// columns dead for three of four types, and would have forced `value Float?`, which no
 /// validator can express and every bar renderer would then have had to handle.
+/// How a running-cost line item behaves as the user count changes.
+enum WikiCostItemKind {
+  /// Fixed monthly fee, unaffected by user count.
+  FLAT
+  /// Priced per user per month — the only kind whose cost/user is constant.
+  PER_USER
+  /// A base fee plus usage beyond an included allowance.
+  METERED
+  /// Plan bands that step at user thresholds.
+  STEPPED
+}
+
+/// One line on a client's running-cost model — a third-party service the app pays for.
+///
+/// ⚠️ Distinct from `CostLineItem`, which is a line on a Docs proposal (what Gitwork
+/// charges). This is what the CLIENT'S APP costs to run.
+model WikiCostItem {
+  id            String           @id @default(cuid())
+  wikiId        String
+  wiki          ClientWiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  name          String
+  vendor        String?
+  kind          WikiCostItemKind
+  /// FLAT: the fee. PER_USER: the fee per user. METERED: the base before usage.
+  amountMonthly Float?
+  /// Annual price where it differs from 12x monthly. For PER_USER this is still PER USER.
+  amountAnnual  Float?
+  /// METERED — what is metered, for the readout ("GB egress", "SMS").
+  unitLabel     String?
+  /// METERED — units included in the base fee.
+  includedUnits Float?
+  /// METERED — price per unit beyond the allowance.
+  unitPrice     Float?
+  /// METERED — units one user consumes per month. ⚠️ Without this the item cannot scale,
+  /// and the engine reports that rather than costing its usage at zero.
+  unitsPerUser  Float?
+  notes         String?          @db.Text
+  orderKey      Int              @default(0)
+
+  tiers     WikiCostTier[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiCostItem")
+}
+
+/// One plan band on a STEPPED cost item.
+model WikiCostTier {
+  id            String       @id @default(cuid())
+  itemId        String
+  item          WikiCostItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Highest user count this band covers. Null = the unbounded top band. ⚠️ A model whose
+  /// top band is capped has NO price above it — the engine treats that as a floor, not as
+  /// the price.
+  upToUsers     Int?
+  amountMonthly Float
+  label         String?
+  orderKey      Int          @default(0)
+
+  @@index([itemId])
+  @@map("WikiCostTier")
+}
+
 model WikiInsightBoard {
   id        String               @id @default(cuid())
   wikiId    String
