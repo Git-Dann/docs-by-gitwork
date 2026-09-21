@@ -4,7 +4,7 @@ import { z } from "zod";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
-import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManagePulse, getEffectiveUserOrNull, assertInternal } from "@/server/auth/effective-user";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import type { PulseAnalysisOutput } from "@/types/pulse";
 import { requireScanAccess } from "@/server/pulse";
@@ -23,6 +23,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sc
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "email Pulse audits");
     const { scanId } = await context.params;
     await requireScanAccess(request, scanId);
+    // ⚠️ Internal-only, and the button being hidden is NOT what enforces it. This sends
+    // from Gitwork's own email infrastructure to any address in the request body, so a
+    // guest calling it directly would put our domain behind a message we never saw.
+    assertInternal(await getEffectiveUserOrNull(request));
     const body = bodySchema.parse(await request.json());
 
     const scan = await prisma.pulseScan.findUnique({

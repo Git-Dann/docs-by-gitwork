@@ -1616,7 +1616,14 @@ function ScoreExplainer({
 
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
-  const { canRunFixAgent } = usePermissions();
+  const { canRunFixAgent, isExternal } = usePermissions();
+  // Two actions on this bar act AS Gitwork rather than on the scan, so a guest gets
+  // neither: "Generate proposal" writes a Document into our Docs workspace (a module
+  // they do not hold — the route now refuses it, and offering a button that refuses is
+  // worse than not offering it), and "Email audit" sends from Gitwork's own email
+  // infrastructure to any address typed into the box, which puts our domain reputation
+  // behind a message we never saw.
+  const canActAsAgency = !isExternal;
   const { data: benchmarkData } = usePulseBenchmarks(scan.id, scan.status === "COMPLETED");
   const benchmark = benchmarkData?.benchmarks ?? null;
   const { data: historyData } = usePulseScanHistory(scan.id, scan.status === "COMPLETED");
@@ -2049,7 +2056,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
 
         <div className="flex items-center gap-2">
-          {llm && (
+          {llm && canActAsAgency && (
             scan.generatedProposalId ? (
               <Link href={`/app/docs/${scan.generatedProposalId}`}>
                 <Button variant="secondary" size="sm" leadingIcon={<DocumentTextIcon className="h-4 w-4" />}>
@@ -2116,16 +2123,18 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   {pdfPending ? "Preparing PDF…" : "PDF"}
                 </button>
               </MenuItem>
-              <MenuItem>
-                <button
-                  type="button"
-                  className={actionMenuItem}
-                  onClick={() => { setEmailSent(false); setEmailError(null); setEmailModalOpen(true); }}
-                >
-                  <EnvelopeIcon className="h-4 w-4 text-[var(--text-4)]" />
-                  Email audit
-                </button>
-              </MenuItem>
+              {canActAsAgency ? (
+                <MenuItem>
+                  <button
+                    type="button"
+                    className={actionMenuItem}
+                    onClick={() => { setEmailSent(false); setEmailError(null); setEmailModalOpen(true); }}
+                  >
+                    <EnvelopeIcon className="h-4 w-4 text-[var(--text-4)]" />
+                    Email audit
+                  </button>
+                </MenuItem>
+              ) : null}
             </MenuItems>
           </Menu>
         </div>

@@ -8,7 +8,7 @@
 // blanked in the API response regardless of what the client renders.
 
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast, isSuperAdmin } from "@/types/auth";
+import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
 
 export function usePermissions() {
   const { data, isPending } = useAccount();
@@ -24,6 +24,8 @@ export function usePermissions() {
     // Role tier checks — used by gates that don't fit a single permission
     // (e.g. moving devs between Bench / Off Bench, which is admin+ only).
     isAdminOrAbove: isAtLeast(role, "ADMIN"),
+    /** Outside Gitwork — see isExternalRole. Hides surfaces that act AS the agency. */
+    isExternal: isExternalRole(role),
     isSuperAdmin: isSuperAdmin(role),
     // Field gates — rate/financial fields also respect the workspace showDevRates toggle
     // (Settings → General → Developer rates) so admins can hide them for demos.

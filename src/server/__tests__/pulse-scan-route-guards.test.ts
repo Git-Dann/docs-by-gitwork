@@ -70,3 +70,35 @@ describe("NotFoundError carries its status", () => {
     expect(readFileSync(join(ROOT, "src/lib/api-response.ts"), "utf8")).toMatch(/status\?: unknown/);
   });
 });
+
+describe("a guest cannot act AS Gitwork", () => {
+  const read = (sub: string) => readFileSync(join(DIR, sub, "route.ts"), "utf8");
+  const results = readFileSync(
+    join(ROOT, "src/components/pulse/pulse-scan-results.tsx"),
+    "utf8",
+  );
+
+  it("the email route refuses an external caller SERVER-side", () => {
+    // It sends from Gitwork's email infrastructure to an address in the request body.
+    // Hiding the button does not stop a direct POST.
+    expect(read("email")).toMatch(/assertInternal\(await getEffectiveUserOrNull\(request\)\)/);
+  });
+
+  it("hides both agency actions from a guest in the UI as well", () => {
+    // Not the control — the control is the two server gates. This is so a guest is not
+    // shown a button that will refuse them, which reads as the product being broken.
+    expect(results).toMatch(/const canActAsAgency = !isExternal;/);
+    expect(results).toMatch(/\{llm && canActAsAgency && \(/);
+    expect(results).toMatch(/\{canActAsAgency \? \(\s*\n\s*<MenuItem>/);
+  });
+
+  it("keeps the actions that ARE the guest's own work", () => {
+    // Share, Report, PDF and Re-scan are what she signed in to do. Hiding those would
+    // make the account pointless, so assert they are NOT behind the agency flag.
+    for (const label of ["Share report", "Re-scan", "Report", "PDF"]) {
+      expect(results, label).toContain(label);
+    }
+    const guarded = results.split("canActAsAgency");
+    expect(guarded.length, "the flag should gate exactly two places").toBe(4);
+  });
+});
