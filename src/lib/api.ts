@@ -3622,6 +3622,8 @@ export interface WikiCostItemInput {
   unitPrice?: number | null;
   unitsPerUser?: number | null;
   notes?: string | null;
+  /** False = priced as an option, kept out of the total. Absent means committed. */
+  included?: boolean;
   tiers?: { upToUsers: number | null; amountMonthly: number; label?: string | null }[];
 }
 

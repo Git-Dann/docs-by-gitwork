@@ -25,6 +25,7 @@ function item(partial: Partial<CostItem> & Pick<CostItem, "id" | "name" | "kind"
     tiers: [],
     notes: null,
     orderKey: 0,
+    included: true,
     ...partial,
   };
 }
@@ -269,5 +270,125 @@ describe("zero users — a client before launch", () => {
       ],
     });
     expect(projectAt([stepped], 0).totalMonthly).toBe(25);
+  });
+});
+
+describe("options — priced, not committed", () => {
+  const committed = item({
+    id: "host",
+    name: "Hosting",
+    kind: "FLAT",
+    amountMonthly: 100,
+    amountAnnual: 1000,
+  });
+  /** Two AI providers on identical assumptions, so only the unit price differs. */
+  const cheap = item({
+    id: "haiku",
+    name: "Haiku",
+    kind: "METERED",
+    amountMonthly: 0,
+    unitPrice: 0.001,
+    unitsPerUser: 40,
+    unitLabel: "k tokens",
+    notes: "40k tokens per user",
+    included: false,
+  });
+  const dear = item({
+    id: "sonnet",
+    name: "Sonnet",
+    kind: "METERED",
+    amountMonthly: 0,
+    unitPrice: 0.01,
+    unitsPerUser: 40,
+    unitLabel: "k tokens",
+    included: false,
+  });
+  const all = [committed, cheap, dear];
+
+  it("keeps an option out of the total — the whole point", () => {
+    // 1,000 users: committed 100; Haiku would add 40, Sonnet 400. Neither counts.
+    expect(projectAt(all, 1_000).totalMonthly).toBe(100);
+  });
+
+  it("keeps an option out of cost per user", () => {
+    expect(projectAt(all, 1_000).perUserMonthly).toBe(0.1);
+  });
+
+  it("keeps an option out of every band of the growth curve", () => {
+    // ⚠️ The curve is what a client reads to plan. One option leaking in here is
+    // harder to spot than in the total, because there is no single figure to check.
+    const withOptions = buildCostReadout(all, 1_000).scale;
+    const withoutOptions = buildCostReadout([committed], 1_000).scale;
+    expect(withOptions.map((r) => r.totalMonthly)).toEqual(
+      withoutOptions.map((r) => r.totalMonthly),
+    );
+  });
+
+  it("keeps an option out of the committed line list", () => {
+    expect(buildCostReadout(all, 1_000).lines.map((l) => l.itemId)).toEqual(["host"]);
+  });
+
+  it("still prices each option at the headline count, so they are comparable", () => {
+    const opts = buildCostReadout(all, 1_000).options;
+    expect(opts.map((o) => o.line.name)).toEqual(["Haiku", "Sonnet"]);
+    expect(opts[0].line.monthly).toBe(40);
+    expect(opts[1].line.monthly).toBe(400);
+  });
+
+  it("gives each option the two figures a choice turns on", () => {
+    const [haiku] = buildCostReadout(all, 1_000).options;
+    expect(haiku.perUserMonthly).toBe(0.04);
+    // "adopting this takes you from £100 to £140" — the decision number.
+    expect(haiku.totalMonthlyWith).toBe(140);
+  });
+
+  it("carries the option's note, because a comparison needs its assumptions", () => {
+    expect(buildCostReadout(all, 1_000).options[0].notes).toBe("40k tokens per user");
+  });
+
+  it("an item with no `included` field counts, so nothing already stored changed", () => {
+    // Belt and braces: the column defaults true AND the filter tests `!== false`.
+    const legacy = { ...committed } as Partial<CostItem>;
+    delete legacy.included;
+    expect(projectAt([legacy as CostItem], 1_000).totalMonthly).toBe(100);
+  });
+
+  it("says so when EVERY line is an option, rather than reading as free", () => {
+    const r = buildCostReadout([cheap, dear], 1_000);
+    expect(r.headline.totalMonthly).toBe(0);
+    expect(r.blindSpots.map((b) => b.kind)).toContain("ALL_EXCLUDED");
+  });
+
+  it("reports no options when there are none, so the panel stays away", () => {
+    expect(buildCostReadout([committed], 1_000).options).toEqual([]);
+    expect(buildCostReadout([committed], 1_000).blindSpots.map((b) => b.kind)).not.toContain(
+      "ALL_EXCLUDED",
+    );
+  });
+});
+
+describe("metered wording", () => {
+  const noAllowance = item({
+    id: "ai",
+    name: "AI",
+    kind: "METERED",
+    amountMonthly: 0,
+    unitPrice: 0.001,
+    unitsPerUser: 40,
+    unitLabel: "k tokens",
+  });
+
+  it("does not say 'over the 0 included' when there is no allowance", () => {
+    // The normal case for usage-priced AI, and a client reads this line.
+    const [line] = buildCostReadout([noAllowance], 1_000).lines;
+    expect(line.detail).toBe("40,000 k tokens");
+    expect(line.detail).not.toContain("included");
+  });
+
+  it("still names the allowance when there is one", () => {
+    const withAllowance = item({ ...noAllowance, id: "e", includedUnits: 50_000 });
+    expect(buildCostReadout([withAllowance], 1_000).lines[0].detail).toContain(
+      "within the 50,000 included",
+    );
   });
 });

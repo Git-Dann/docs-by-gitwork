@@ -44,7 +44,7 @@ type Draft = WikiCostItemInput & { tiers: NonNullable<WikiCostItemInput["tiers"]
 
 function draftFrom(item: CostItem | null): Draft {
   if (!item) {
-    return { name: "", vendor: "", kind: "FLAT", amountMonthly: null, tiers: [] };
+    return { name: "", vendor: "", kind: "FLAT", amountMonthly: null, included: true, tiers: [] };
   }
   return {
     name: item.name,
@@ -57,6 +57,7 @@ function draftFrom(item: CostItem | null): Draft {
     unitPrice: item.unitPrice,
     unitsPerUser: item.unitsPerUser,
     notes: item.notes ?? "",
+    included: item.included,
     tiers: item.tiers.map((t) => ({
       upToUsers: t.upToUsers,
       amountMonthly: t.amountMonthly,
@@ -274,6 +275,28 @@ export function WikiCostsEditor({
               ))}
             </select>
             {kindHint && <span className="mt-1 block text-[12px] text-[var(--text-4)]">{kindHint}</span>}
+          </label>
+
+          {/* ⚠️ Sits directly under the pricing kind, not buried at the bottom: it
+              decides whether every figure below counts toward the client's bill, and
+              an operator must see that before they type the numbers. */}
+          <label className="flex items-start gap-2.5 rounded-md border border-[var(--border-1)] p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--brand-700)]"
+              checked={draft.included !== false}
+              onChange={(e) => setDraft({ ...draft, included: e.target.checked })}
+            />
+            <span className="min-w-0">
+              <span className="block text-[14px] text-[var(--text-1)]">
+                Include in the total
+              </span>
+              <span className="mt-0.5 block text-[12px] text-[var(--text-4)]">
+                {draft.included !== false
+                  ? "This is part of what the app costs to run."
+                  : "Priced as an OPTION — fully costed at the client's user numbers so it can be compared, but kept out of the total and the growth curve until it is chosen."}
+              </span>
+            </span>
           </label>
 
           {draft.kind !== "STEPPED" && (

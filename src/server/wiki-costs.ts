@@ -46,6 +46,7 @@ function serializeItem(row: ItemRow): CostItem {
       orderKey: t.orderKey,
     })),
     notes: row.notes,
+    included: row.included,
     orderKey: row.orderKey,
   };
 }
@@ -140,6 +141,8 @@ export interface CostItemInput {
   unitPrice?: number | null;
   unitsPerUser?: number | null;
   notes?: string | null;
+  /** Omitted means committed — a caller that does not know about options is safe. */
+  included?: boolean;
   tiers?: Array<{ upToUsers: number | null; amountMonthly: number; label?: string | null }>;
 }
 
@@ -155,6 +158,7 @@ function itemData(input: CostItemInput) {
     unitPrice: input.unitPrice ?? null,
     unitsPerUser: input.unitsPerUser ?? null,
     notes: input.notes?.trim() || null,
+    included: input.included ?? true,
   };
 }
 

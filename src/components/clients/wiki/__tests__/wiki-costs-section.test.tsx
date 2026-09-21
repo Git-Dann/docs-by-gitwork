@@ -26,6 +26,7 @@ function costItem(partial: Partial<CostItem> & Pick<CostItem, "id" | "name" | "k
     tiers: [],
     notes: null,
     orderKey: 0,
+    included: true,
     ...partial,
   };
 }
