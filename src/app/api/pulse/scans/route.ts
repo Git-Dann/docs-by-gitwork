@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManagePulse, canGenerateAi, canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertClientAccess } from "@/server/client-assignments";
 import { assignedClientIds } from "@/server/tasks";
 import { pulseScanCreateSchema } from "@/server/validators";
 import { createPulseScanRecord, runAnalysis, listPulseScans } from "@/server/pulse";
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
     assertCan(scanUser, canManagePulse, "create Pulse scans");
     assertCan(scanUser, canGenerateAi, "run AI-powered Pulse scans");
     const body = pulseScanCreateSchema.parse(await request.json());
+
+    // ⚠️ `clientId` arrives in the BODY and was passed straight through. A scoped
+    // viewer — a restricted developer, or a guest with no assignments at all — could
+    // therefore file a scan against any Gitwork client just by naming its id. The
+    // picker not offering it is not a control; this is.
+    if (body.clientId) await assertClientAccess(scanUser, body.clientId);
 
     // For URL/GITHUB_REPO scans, projectDescription supplements the main input as inputDescription.
     // For FREE_TEXT scans, inputDescription IS the main input — use it directly.

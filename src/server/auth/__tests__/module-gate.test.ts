@@ -150,7 +150,20 @@ describe("a guest is not a colleague", () => {
 
   it.each(INTERNAL_ONLY_PREFIXES)("still allows a developer %s", (prefix) => {
     // The split is by audience, not sensitivity — internal staff keep what they had.
-    expect(hasModuleAccess(prefix, [], "DEVELOPER")).toBe(true);
+    //
+    // ⚠️ An internal-only path may ALSO carry a module gate: `/app/pulse/embed` sits
+    // under /app/pulse, so it needs the `pulse` permission on top of being internal.
+    // The two rules compose, so the developer here is given whatever module the path
+    // requires — otherwise this asserts the module gate, not the audience rule.
+    const required = moduleForPath(prefix);
+    expect(hasModuleAccess(prefix, required ? [required] : [], "DEVELOPER")).toBe(true);
+  });
+
+  it.each(INTERNAL_ONLY_PREFIXES)("denies a guest %s even WITH the module", (prefix) => {
+    // The whole point of evaluating the deny first: holding the module must not be a
+    // way round the audience rule.
+    const required = moduleForPath(prefix);
+    expect(hasModuleAccess(prefix, required ? [required] : [], "GUEST")).toBe(false);
   });
 
   it("keeps a guest's own settings, account and messages open", () => {

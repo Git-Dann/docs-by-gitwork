@@ -215,6 +215,34 @@ export async function listPulseScans(params?: {
   return scans.map(serializePulseScanListItem);
 }
 
+/**
+ * May this user read this scan?
+ *
+ * Mirrors `listPulseScans`' scoping exactly — assigned client, or you ran it — because
+ * a list that hides a row and a detail route that serves it are the same bug wearing
+ * two hats. Reads the two authorisation fields straight from the row rather than the
+ * serialized record, so `triggeredByUserId` never has to be added to a DTO that ships
+ * to the browser.
+ *
+ * A null user is the trusted API_KEY / server caller and passes, matching every other
+ * gate in this codebase.
+ */
+export async function canViewPulseScan(
+  user: { id: string; workspaceId: string; role: string; permissions: string[] } | null,
+  scanId: string,
+  assignedIds: () => Promise<string[]>,
+): Promise<boolean> {
+  if (!user) return true;
+  const row = await prisma.pulseScan.findUnique({
+    where: { id: scanId },
+    select: { clientId: true, triggeredByUserId: true },
+  });
+  if (!row) return false;
+  if (row.triggeredByUserId === user.id) return true;
+  if (!row.clientId) return false; // a standalone scan someone else ran
+  return (await assignedIds()).includes(row.clientId);
+}
+
 /** Lower-cased target key for a scan — the unit a trend / monitor is keyed on. */
 function scanTargetKey(scan: { inputUrl: string | null; inputGithubRepo: string | null; projectName: string }): string {
   return (scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName).toLowerCase().trim();

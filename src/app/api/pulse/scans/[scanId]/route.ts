@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan, deletePulseScan, renamePulseScan } from "@/server/pulse";
+import { canViewPulseScan, getPulseScan, deletePulseScan, renamePulseScan } from "@/server/pulse";
 import { pulseScanRenameSchema } from "@/server/validators";
-import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManagePulse, canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assignedClientIds } from "@/server/tasks";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
@@ -16,6 +17,20 @@ export async function GET(
     if (!scan) {
       return apiError("Scan not found.", 404);
     }
+
+    // ⚠️ This had NO check at all. The LIST is scoped (assigned clients, or scans you
+    // ran), but the detail was reachable by id alone — so any signed-in account,
+    // including a guest, could read any scan in the workspace given its id. The
+    // scoping of a list means nothing if the row behind it is open.
+    //
+    // 404 rather than 403 on purpose: "that scan exists and you may not see it" is
+    // itself a disclosure when the id is the only thing being probed.
+    const viewer = await getEffectiveUserOrNull(request);
+    if (viewer && !canSeeAllClients(viewer)) {
+      const visible = await canViewPulseScan(viewer, scanId, () => assignedClientIds(viewer));
+      if (!visible) return apiError("Scan not found.", 404);
+    }
+
     return apiOk({ scan });
   } catch (error) {
     return fromError(error);

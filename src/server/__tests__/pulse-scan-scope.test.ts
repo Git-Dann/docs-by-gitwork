@@ -53,3 +53,91 @@ describe("a scoped viewer sees the scans they ran", () => {
     expect(guards.length, "every clientIds filter needs the empty-set guard").toBe(2);
   });
 });
+
+describe("a guest's scan is their own, never filed against a Gitwork client", () => {
+  const route = read("src/app/api/pulse/scans/route.ts");
+  const newPage = read("src/app/(app)/app/pulse/new/page.tsx");
+  const form = read("src/components/pulse/pulse-new-scan-form.tsx");
+
+  it("does not offer clients the viewer has no access to", () => {
+    // This page is a server component that listed EVERY WorkspaceClient by name and
+    // handed it to the form — Gitwork's whole client roster, in a dropdown, to a guest.
+    expect(newPage).toMatch(/assignments: \{ some: \{ userId: viewer\.userId \} \}/);
+    expect(
+      /where: \{ workspaceId: workspace\.id \},\s*\n\s*select: \{ id: true, name: true \}/.test(
+        newPage.replace(/seesAllClients[\s\S]*?orderBy: \{ name: "asc" \},\s*\}\)/, ""),
+      ),
+      "the unscoped findMany must only survive on the sees-all-clients branch",
+    ).toBe(false);
+  });
+
+  it("refuses a clientId the caller may not use, whatever the picker offered", () => {
+    // The body is caller-controlled. A picker that does not list a client is not a
+    // control over what can be posted.
+    expect(route).toMatch(/if \(body\.clientId\) await assertClientAccess\(scanUser, body\.clientId\)/);
+  });
+
+  it("validates AFTER parsing the body, not before", () => {
+    // Ordering matters and tsc caught it once already: referencing `body` above its
+    // own declaration is a TDZ error, so the check has to follow the parse.
+    // ⚠️ Anchor on the CALL, not the bare name — `indexOf("assertClientAccess")`
+    // finds the import on line 5 and reports the order backwards.
+    expect(route.indexOf("pulseScanCreateSchema.parse")).toBeLessThan(
+      route.indexOf("await assertClientAccess(scanUser"),
+    );
+  });
+
+  it("leaves the scan unattributed when no client is chosen", () => {
+    // The default, and for a guest the only, path: empty string → undefined → null.
+    expect(form).toMatch(/clientId: clientId \|\| undefined/);
+    expect(form).toMatch(/clients\.length > 0 &&/);
+  });
+});
+
+describe("the scan DETAIL is scoped like the list", () => {
+  const detail = read("src/app/api/pulse/scans/[scanId]/route.ts");
+  const pulse = read("src/server/pulse.ts");
+
+  it("checks visibility at all", () => {
+    // The GET had no check whatsoever: any signed-in account could read any scan in
+    // the workspace given its id. A scoped list over an open row is not scoping.
+    expect(detail).toMatch(/canViewPulseScan\(viewer, scanId/);
+  });
+
+  it("answers 404, not 403, so an id probe learns nothing", () => {
+    // Same trap: the first "canViewPulseScan" in the file is its import.
+    const at = detail.indexOf("await canViewPulseScan(");
+    expect(at, "the visibility call is missing").toBeGreaterThan(-1);
+    const block = detail.slice(at, at + 200);
+    expect(block).toMatch(/404/);
+    expect(block).not.toMatch(/403/);
+  });
+
+  it("applies the same rule as the list — mine, or my client's", () => {
+    expect(pulse).toMatch(/row\.triggeredByUserId === user\.id/);
+    expect(pulse).toMatch(/if \(!row\.clientId\) return false/);
+  });
+
+  it("does not put the authorisation field on the browser DTO", () => {
+    // Widening PulseScanRecord to authorise would ship it to every client.
+    expect(
+      /triggeredByUserId/.test(read("src/types/pulse.ts")),
+      "keep the auth input off the wire format",
+    ).toBe(false);
+  });
+});
+
+describe("internal-only wins over a module grant", () => {
+  const gate = read("src/server/auth/module-gate.ts");
+
+  it("denies /app/pulse/embed to a guest who holds the pulse module", () => {
+    expect(gate).toMatch(/"\/app\/pulse\/embed"/);
+  });
+
+  it("evaluates the deny BEFORE the grant", () => {
+    // /app/pulse/embed matches MODULE_PATHS on `pulse`, so a grant checked first would
+    // return true and never reach the restriction.
+    const fn = gate.slice(gate.indexOf("export function hasModuleAccess"));
+    expect(fn.indexOf("INTERNAL_ONLY_PREFIXES")).toBeLessThan(fn.indexOf("moduleForPath"));
+  });
+});

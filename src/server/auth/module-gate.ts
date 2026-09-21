@@ -94,6 +94,9 @@ export const UNGATED_APP_PREFIXES = [
  * we are happy for a client's contractor to open it.
  */
 export const INTERNAL_ONLY_PREFIXES = [
+  // Configuration for OUR public scanner widget — nothing to do with a guest's own
+  // scans, and it sits under /app/pulse so the module grant would otherwise cover it.
+  "/app/pulse/embed",
   "/app/team",
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
@@ -137,6 +140,14 @@ export function hasModuleAccess(
   permissions: string[],
   role?: string | null,
 ): boolean {
+  // ⚠️ The internal-only DENY is evaluated BEFORE the module grant, because a
+  // restriction that a grant can overrule is not a restriction. `/app/pulse/embed`
+  // matches MODULE_PATHS on `pulse`, so checking grants first would hand our own
+  // public-widget configuration to any guest holding the Pulse module.
+  if (INTERNAL_ONLY_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
+    if (isExternalRole(role)) return false;
+  }
+
   // Not named `module` — Next forbids assigning that identifier (no-assign-module-variable).
   const required = moduleForPath(pathname);
   if (required) return permissions.includes(required);

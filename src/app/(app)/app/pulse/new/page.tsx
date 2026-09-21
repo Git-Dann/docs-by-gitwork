@@ -2,6 +2,8 @@ import { AppShell } from "@/components/app-shell";
 import { PulseNewScanForm } from "@/components/pulse/pulse-new-scan-form";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { auth } from "@/auth";
+import { isAtLeast } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,13 +24,45 @@ async function getPageData() {
     },
   });
 
-  const clients = workspace
-    ? await prisma.workspaceClient.findMany({
-        where: { workspaceId: workspace.id },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
+  // ⚠️ Scoped to the VIEWER. This used to list every client in the workspace and hand
+  // the names to the form, so a guest opening this page saw Gitwork's entire client
+  // roster in a dropdown — a disclosure on its own, and an invitation to file their
+  // scan against someone else's account.
+  //
+  // A guest has no assignments, so they get an empty list and the form drops the
+  // picker entirely: their scan is theirs, attributed to no client. That is the
+  // intended shape, not a degraded one.
+  const session = await auth();
+  const viewer = session?.user?.id
+    ? await prisma.workspaceMember.findFirst({
+        where: { userId: session.user.id, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+        select: { role: true, permissions: true, userId: true, workspaceId: true },
       })
-    : [];
+    : null;
+
+  const seesAllClients =
+    !!viewer &&
+    (isAtLeast(viewer.role, "ADMIN") ||
+      ((viewer.permissions as string[]) ?? []).includes("seeAllClients"));
+
+  const clients = !workspace
+    ? []
+    : seesAllClients
+      ? await prisma.workspaceClient.findMany({
+          where: { workspaceId: workspace.id },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      : viewer
+        ? await prisma.workspaceClient.findMany({
+            where: {
+              workspaceId: workspace.id,
+              assignments: { some: { userId: viewer.userId } },
+            },
+            select: { id: true, name: true },
+            orderBy: { name: "asc" },
+          })
+        : [];
 
   type Provider = { id: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; label: string; model: string };
   const configuredProviders: Provider[] = [];
