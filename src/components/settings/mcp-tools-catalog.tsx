@@ -65,6 +65,51 @@ const TOOLS: Tool[] = [
     examples: ["Add the Figma link to Speakify's designs.", "Save the Big Wedge brand kit to Designs."],
   },
   {
+    name: "list_course_requests",
+    blurb:
+      "List a client's course requests — the golf courses their users have asked for, with status and how many people asked.",
+    examples: ["What courses have Big Wedge's players asked for?", "Which course requests are still New?"],
+  },
+  {
+    name: "create_course_request",
+    blurb: "File a course request against a client. Requires 'Manage clients'.",
+    examples: ["Add Wentworth to Big Wedge's course requests."],
+  },
+  {
+    name: "get_running_costs",
+    blurb:
+      "What a client's app costs to RUN and the cost per end user — totals, the 0 → 1,000,000 growth curve, anything priced as an option, and the figures the model cannot establish. Not Docs costing: this is what the client pays monthly to keep it up.",
+    examples: [
+      "What does Speakify's app cost to run per user?",
+      "What would Big Wedge cost at 50,000 users?",
+      "What does it cost before launch, with no users?",
+    ],
+  },
+  {
+    name: "set_cost_line",
+    blurb:
+      "Add or update one line in a client's running-cost model — flat fee, per-seat, metered usage or plan bands. Set it as an OPTION to price something without counting it, which is how you compare providers. Requires 'Manage clients'.",
+    examples: [
+      "Add Supabase at £25/mo to Speakify's running costs.",
+      "Price Claude Haiku and Sonnet as options for Speakify at 40k tokens per user.",
+      "Move the Haiku option into the total.",
+    ],
+  },
+  {
+    name: "delete_cost_line",
+    blurb: "Remove a line from a client's running-cost model. Requires 'Manage clients'.",
+    examples: ["Drop the old Mailgun line from Speakify's costs."],
+  },
+  {
+    name: "set_running_costs_settings",
+    blurb:
+      "Set the currency, the head count the cost-per-user banner is worked out at (0 is valid — pre-launch), the note shown to the client, or switch the section on/off. Requires 'Manage clients'.",
+    examples: [
+      "Work Speakify's costs out at 25,000 users.",
+      "Set Big Wedge's running costs to 0 users so we can see the pre-launch burn.",
+    ],
+  },
+  {
     name: "list_wiki",
     blurb:
       "Overview of a client's wiki — which pages exist, which of the 11 page types are still empty, and section counts (changelog, monitors, docs, requests, team).",

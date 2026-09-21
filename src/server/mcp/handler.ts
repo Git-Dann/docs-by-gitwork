@@ -36,6 +36,16 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "@/server/auth/effective-user";
+import {
+  addWikiCostItem,
+  deleteWikiCostItem,
+  loadWikiCosts,
+  setWikiCostsEnabled,
+  updateWikiCostItem,
+  updateWikiCostSettings,
+  type CostItemInput,
+} from "@/server/wiki-costs";
+import { buildCostReadout } from "@/lib/wiki-costs";
 import { listStarters, getStarterBySlug, recordStarterUsage } from "@/server/starters";
 import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
@@ -424,6 +434,48 @@ const wikiPageContentSchema = z.union([
   z.array(z.unknown()),
 ]);
 const listWikiSchema = z.object({ client: z.string().min(1) });
+
+/* ─────────────────────────────── running costs ─────────────────────────────── */
+
+const costTierArg = z.object({
+  upToUsers: z.number().int().min(1).max(100_000_000).nullable(),
+  amountMonthly: z.number().finite().min(0),
+  label: z.string().trim().max(60).nullable().optional(),
+});
+
+const getRunningCostsSchema = z.object({
+  client: z.string().min(1),
+  atUsers: z.number().int().min(0).max(100_000_000).optional(),
+});
+
+const setCostLineSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  vendor: z.string().trim().max(80).nullable().optional(),
+  kind: z.enum(["FLAT", "PER_USER", "METERED", "STEPPED"]).optional(),
+  amountMonthly: z.number().finite().min(0).nullable().optional(),
+  amountAnnual: z.number().finite().min(0).nullable().optional(),
+  unitLabel: z.string().trim().max(40).nullable().optional(),
+  includedUnits: z.number().finite().min(0).nullable().optional(),
+  unitPrice: z.number().finite().min(0).nullable().optional(),
+  unitsPerUser: z.number().finite().min(0).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  included: z.boolean().optional(),
+  tiers: z.array(costTierArg).max(20).optional(),
+});
+
+const deleteCostLineSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+});
+
+const setRunningCostsSettingsSchema = z.object({
+  client: z.string().min(1),
+  currency: z.string().trim().length(3).optional(),
+  headlineUsers: z.number().int().min(0).max(100_000_000).optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
 const getWikiPageSchema = z.object({
   client: z.string().min(1),
   type: z.enum(WIKI_PAGE_TYPE_VALUES),
@@ -949,6 +1001,266 @@ const TOOLS: ToolDef[] = [
       return textResult(
         { requests, total },
         `${resolved.name} — ${total} course request${total === 1 ? "" : "s"}${filtered} (showing ${requests.length}).`,
+      );
+    },
+  },
+  {
+    name: "get_running_costs",
+    description:
+      "What a client's app costs to RUN, and the cost per end user. This is NOT Docs costing — " +
+      "Docs prices what Gitwork charges to build something; this prices what the client pays every " +
+      "month to keep it up. Returns the stored lines plus the computed readout: totals, cost per " +
+      "user, the 0 → 1,000,000 growth curve, anything priced as an OPTION (costed but deliberately " +
+      "not counted), and the blind spots — figures the model cannot establish and therefore does " +
+      "not claim. Pass atUsers to price the whole model at a different head count without saving.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        atUsers: {
+          type: "number",
+          description:
+            "Price at this head count instead of the saved one. 0 is valid and useful — it is " +
+            "what the app costs to run before launch, when the fixed fees are paid and there is " +
+            "nobody to divide them by.",
+        },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = getRunningCostsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const model = await loadWikiCosts(resolved.id);
+      const at = parsed.atUsers ?? model.headlineUsers;
+      const readout = buildCostReadout(model.items, at);
+      return textResult(
+        {
+          client: { id: resolved.id, slug: resolved.slug, name: resolved.name },
+          enabled: model.enabled,
+          currency: model.currency,
+          pricedAtUsers: at,
+          headlineUsers: model.headlineUsers,
+          notes: model.notes,
+          total: readout.headline,
+          lines: readout.lines,
+          options: readout.options,
+          scale: readout.scale,
+          blindSpots: readout.blindSpots,
+          annualSaving: readout.annualSaving,
+        },
+        model.items.length === 0
+          ? `${resolved.name} has no running costs recorded yet — add lines with set_cost_line.`
+          : `${resolved.name} — ${model.currency} ${readout.headline.totalMonthly}/mo at ${at} users` +
+            (readout.headline.perUserMonthly === null
+              ? " (no per-user figure at zero users)"
+              : `, ${readout.headline.perUserMonthly} per user`) +
+            (readout.options.length ? `; ${readout.options.length} priced as options` : "") +
+            (readout.headline.incomplete ? ". Figures are a MINIMUM — see blindSpots." : "."),
+      );
+    },
+  },
+  {
+    name: "set_cost_line",
+    description:
+      "Add or update one line in a client's running-cost model, matched by `name` (case-insensitive) " +
+      "so calling twice updates rather than duplicates. Four ways to price: FLAT (same every month), " +
+      "PER_USER (rate x head count), METERED (base fee + usage — needs unitPrice AND unitsPerUser or " +
+      "it cannot scale and the page says so), STEPPED (plan bands; supply `tiers` ascending, last may " +
+      "have upToUsers null for 'and up'). " +
+      "Set included:false to price something as an OPTION — fully costed at the client's user numbers " +
+      "so it can be compared, but kept OUT of the total and the growth curve until they choose it. " +
+      "That is how you compare, say, three AI providers. Only fields you pass are changed; passing " +
+      "`tiers` replaces the whole ladder. Turns the Running costs section on if it is off, so the " +
+      "line is actually visible. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Service name — also the match key for updates." },
+        vendor: { type: "string", description: "Who provides it (Supabase, Anthropic, …)." },
+        kind: {
+          type: "string",
+          enum: ["FLAT", "PER_USER", "METERED", "STEPPED"],
+          description: "How it is priced. Defaults to FLAT on a new line.",
+        },
+        amountMonthly: {
+          type: "number",
+          description: "FLAT: the fee. PER_USER: the fee PER USER. METERED: the base before usage.",
+        },
+        amountAnnual: {
+          type: "number",
+          description: "Annual price where it beats 12x monthly. For PER_USER this is still per user.",
+        },
+        unitLabel: { type: "string", description: "METERED — what is metered (GB, k tokens, SMS)." },
+        includedUnits: { type: "number", description: "METERED — units included before charging." },
+        unitPrice: { type: "number", description: "METERED — price per unit beyond the allowance." },
+        unitsPerUser: {
+          type: "number",
+          description:
+            "METERED — units ONE user consumes per month. Without it the line cannot scale, and " +
+            "only its base fee is counted; the client's page says so rather than costing usage at zero.",
+        },
+        notes: {
+          type: "string",
+          description:
+            "Shown to the client. On an option this is where the assumption goes ('40k tokens per " +
+            "user') — a comparison without its assumptions is not one.",
+        },
+        included: {
+          type: "boolean",
+          description:
+            "True (default) = part of the bill. False = priced as an option, kept out of the total.",
+        },
+        tiers: {
+          type: "array",
+          description: "STEPPED only. Ascending; only the last may have upToUsers null.",
+          items: {
+            type: "object",
+            properties: {
+              upToUsers: { type: ["number", "null"], description: "Cap, or null for the top band." },
+              amountMonthly: { type: "number" },
+              label: { type: "string" },
+            },
+            required: ["upToUsers", "amountMonthly"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["client", "name"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit running costs");
+      const parsed = setCostLineSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const model = await loadWikiCosts(resolved.id);
+      const existing = model.items.find(
+        (i) => i.name.trim().toLowerCase() === parsed.name.trim().toLowerCase(),
+      );
+
+      // Only what the caller passed changes. `updateWikiCostItem` REPLACES the row, so
+      // an unmerged patch would silently wipe every field the caller left out.
+      const merged: CostItemInput = {
+        name: parsed.name,
+        vendor: parsed.vendor !== undefined ? parsed.vendor : (existing?.vendor ?? null),
+        kind: parsed.kind ?? existing?.kind ?? "FLAT",
+        amountMonthly:
+          parsed.amountMonthly !== undefined ? parsed.amountMonthly : (existing?.amountMonthly ?? null),
+        amountAnnual:
+          parsed.amountAnnual !== undefined ? parsed.amountAnnual : (existing?.amountAnnual ?? null),
+        unitLabel: parsed.unitLabel !== undefined ? parsed.unitLabel : (existing?.unitLabel ?? null),
+        includedUnits:
+          parsed.includedUnits !== undefined ? parsed.includedUnits : (existing?.includedUnits ?? null),
+        unitPrice: parsed.unitPrice !== undefined ? parsed.unitPrice : (existing?.unitPrice ?? null),
+        unitsPerUser:
+          parsed.unitsPerUser !== undefined ? parsed.unitsPerUser : (existing?.unitsPerUser ?? null),
+        notes: parsed.notes !== undefined ? parsed.notes : (existing?.notes ?? null),
+        included: parsed.included !== undefined ? parsed.included : (existing?.included ?? true),
+        // Passing tiers replaces the ladder; omitting it keeps what is there.
+        tiers:
+          parsed.tiers ??
+          (existing?.tiers ?? []).map((t) => ({
+            upToUsers: t.upToUsers,
+            amountMonthly: t.amountMonthly,
+            label: t.label,
+          })),
+      };
+
+      // ⚠️ A line on a section that is switched off is invisible to the client — the
+      // unreachable-state defect. Writing one turns the section on.
+      if (!model.enabled) await setWikiCostsEnabled(resolved.id, true);
+      const next = existing
+        ? await updateWikiCostItem(resolved.id, existing.id, merged)
+        : await addWikiCostItem(resolved.id, merged);
+
+      const readout = buildCostReadout(next.items, next.headlineUsers);
+      const saved = next.items.find(
+        (i) => i.name.trim().toLowerCase() === parsed.name.trim().toLowerCase(),
+      );
+      const asOption = saved?.included === false;
+      return textResult(
+        { item: saved, total: readout.headline, blindSpots: readout.blindSpots },
+        `${existing ? "Updated" : "Added"} "${parsed.name}" on ${resolved.name}` +
+          (asOption
+            ? " as an OPTION — priced but not counted in the total."
+            : `. Total is now ${next.currency} ${readout.headline.totalMonthly}/mo at ${next.headlineUsers} users.`),
+      );
+    },
+  },
+  {
+    name: "delete_cost_line",
+    description:
+      "Remove one line from a client's running-cost model, matched by name (case-insensitive). " +
+      "Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Service name, as stored." },
+      },
+      required: ["client", "name"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit running costs");
+      const parsed = deleteCostLineSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const model = await loadWikiCosts(resolved.id);
+      const existing = model.items.find(
+        (i) => i.name.trim().toLowerCase() === parsed.name.trim().toLowerCase(),
+      );
+      if (!existing) {
+        return textResult(
+          { deleted: false, name: parsed.name },
+          `${resolved.name} has no cost line called "${parsed.name}".`,
+        );
+      }
+      const next = await deleteWikiCostItem(resolved.id, existing.id);
+      const readout = buildCostReadout(next.items, next.headlineUsers);
+      return textResult(
+        { deleted: true, total: readout.headline },
+        `Deleted "${existing.name}" from ${resolved.name}. Total is now ${next.currency} ` +
+          `${readout.headline.totalMonthly}/mo at ${next.headlineUsers} users.`,
+      );
+    },
+  },
+  {
+    name: "set_running_costs_settings",
+    description:
+      "Set the currency, the headline user count the banner is worked out at, the note shown to the " +
+      "client, or switch the Running costs section on/off. headlineUsers accepts 0 — a client before " +
+      "launch has no users and still pays the fixed fees, and that floor is a real figure. " +
+      "Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        currency: { type: "string", description: "ISO 4217, e.g. GBP. One currency per model." },
+        headlineUsers: { type: "number", description: "Head count the banner uses. 0 is valid." },
+        notes: { type: "string", description: "Shown under the headline figures on the client's page." },
+        enabled: { type: "boolean", description: "Show or hide the section on the client's wiki." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit running costs");
+      const parsed = setRunningCostsSettingsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      if (parsed.enabled !== undefined) await setWikiCostsEnabled(resolved.id, parsed.enabled);
+      if (parsed.currency !== undefined || parsed.headlineUsers !== undefined || parsed.notes !== undefined) {
+        await updateWikiCostSettings(resolved.id, {
+          ...(parsed.currency !== undefined ? { currency: parsed.currency.toUpperCase() } : {}),
+          ...(parsed.headlineUsers !== undefined ? { headlineUsers: parsed.headlineUsers } : {}),
+          ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+        });
+      }
+      const model = await loadWikiCosts(resolved.id);
+      return textResult(
+        { enabled: model.enabled, currency: model.currency, headlineUsers: model.headlineUsers, notes: model.notes },
+        `${resolved.name} running costs — ${model.enabled ? "on" : "off"}, ${model.currency}, ` +
+          `headline ${model.headlineUsers} users.`,
       );
     },
   },
