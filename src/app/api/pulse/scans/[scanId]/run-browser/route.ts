@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan } from "@/server/pulse";
+import { getPulseScan, requireScanAccess } from "@/server/pulse";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -9,11 +9,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 45;
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);

@@ -1,15 +1,16 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan, cancelPulseScan } from "@/server/pulse";
+import { getPulseScan, cancelPulseScan, requireScanAccess } from "@/server/pulse";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   try {
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "RUNNING") return apiError("Scan is not running.", 400);

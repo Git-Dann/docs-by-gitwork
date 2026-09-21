@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { revalidateTag } from "next/cache";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan } from "@/server/pulse";
+import { getPulseScan, requireScanAccess } from "@/server/pulse";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 
@@ -15,6 +15,7 @@ export async function POST(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "share Pulse scans");
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Only completed scans can be shared.", 400);
@@ -43,6 +44,7 @@ export async function DELETE(
   try {
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "unshare Pulse scans");
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const existing = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { shareToken: true } });
     await prisma.pulseScan.update({
       where: { id: scanId },

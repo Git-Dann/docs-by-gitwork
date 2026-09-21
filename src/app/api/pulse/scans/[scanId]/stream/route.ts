@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireScanAccess } from "@/server/pulse";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -54,10 +55,19 @@ function sseEvent(type: string, data: Record<string, unknown>): string {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
+
+  // ⚠️ SSE, so it cannot use `fromError` — the guard is caught and turned into the same
+  // 404 the other sub-routes return. Without it a guest could stream the live progress
+  // and check results of any scan in the workspace by id.
+  try {
+    await requireScanAccess(request, scanId);
+  } catch {
+    return new Response("Scan not found", { status: 404 });
+  }
 
   const initial = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: SCALAR_SELECT });
   if (!initial) return new Response("Scan not found", { status: 404 });

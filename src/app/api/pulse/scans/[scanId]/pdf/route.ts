@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requireScanAccess } from "@/server/pulse";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sca
   try {
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "export Pulse reports");
     const { scanId } = await context.params;
+    await requireScanAccess(request, scanId);
 
     const scan = await prisma.pulseScan.findUnique({
       where: { id: scanId },

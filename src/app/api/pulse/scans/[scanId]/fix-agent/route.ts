@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan } from "@/server/pulse";
+import { getPulseScan, requireScanAccess } from "@/server/pulse";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { runFixAgent } from "@/server/pulse-agents/fix-agent";
 import { assertCan, canRunFixAgent, getEffectiveUserOrNull } from "@/server/auth/effective-user";
@@ -17,6 +17,7 @@ export async function POST(
     // High-risk: opens GitHub PRs. Gate on `pulse.fixAgent` (Admin-only by default).
     assertCan(await getEffectiveUserOrNull(request), canRunFixAgent, "run the fix-agent");
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Only completed scans can be fixed.", 400);

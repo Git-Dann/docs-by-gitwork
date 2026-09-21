@@ -1,6 +1,8 @@
+import { NotFoundError, canSeeAllClients, type EffectiveUser, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { Prisma } from "@prisma/client";
 import { resolveDocumentOwnerName, type DocumentOwnerIdentity } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
+import { assignedClientIds } from "@/server/tasks";
 import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
@@ -227,8 +229,44 @@ export async function listPulseScans(params?: {
  * A null user is the trusted API_KEY / server caller and passes, matching every other
  * gate in this codebase.
  */
+/**
+ * Throw unless this caller may act on this scan.
+ *
+ * ⚠️ Every `/api/pulse/scans/[scanId]/*` sub-route took the id from the URL and acted on
+ * it with no check at all — retry, cancel, re-analyse, diff, history, benchmarks,
+ * generate-proposal. Gating the parent GET alone was pointless: the siblings are the
+ * ones that SPEND tokens and WRITE. One shared guard, so a new sub-route inherits the
+ * rule instead of having to remember it.
+ *
+ * 404, not 403 — the id is the only thing being probed, so confirming a scan exists is
+ * itself the disclosure.
+ */
+/**
+ * The one line a scan sub-route needs: resolve the caller, check they may touch this
+ * scan, throw 404 if not.
+ *
+ * Wraps `assertPulseScanAccess` so a route does not repeat the user resolution and the
+ * assigned-clients closure. The first cut of this pasted eight lines into thirteen
+ * routes, and `code-cleanliness` correctly flagged it as duplicated logic.
+ */
+export async function requireScanAccess(request: Request, scanId: string): Promise<void> {
+  const user = await getEffectiveUserOrNull(request);
+  await assertPulseScanAccess(user, scanId, async () => (user ? assignedClientIds(user) : []));
+}
+
+export async function assertPulseScanAccess(
+  user: EffectiveUser | null,
+  scanId: string,
+  assignedIds: () => Promise<string[]>,
+): Promise<void> {
+  if (!user) return;
+  if (canSeeAllClients(user)) return;
+  if (await canViewPulseScan(user, scanId, assignedIds)) return;
+  throw new NotFoundError("Scan not found.");
+}
+
 export async function canViewPulseScan(
-  user: { id: string; workspaceId: string; role: string; permissions: string[] } | null,
+  user: EffectiveUser | null,
   scanId: string,
   assignedIds: () => Promise<string[]>,
 ): Promise<boolean> {

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan, reanalysePulseScan } from "@/server/pulse";
+import { getPulseScan, reanalysePulseScan, requireScanAccess } from "@/server/pulse";
+import { getEffectiveUserOrNull, assertCan, canGenerateAi } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -11,6 +12,10 @@ export async function POST(
 ) {
   try {
     const { scanId } = await params;
+    // Visibility is not permission: it re-runs the AI phase and spends tokens, which is a
+    // separate grant from being allowed to look at the scan.
+    assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "reanalyse");
+    await requireScanAccess(request, scanId);
 
     const existing = await getPulseScan(scanId);
     if (!existing) return apiError("Scan not found.", 404);

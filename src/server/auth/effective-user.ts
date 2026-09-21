@@ -31,6 +31,21 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * "You may not see this, and you do not get to learn that it exists."
+ *
+ * Used where the resource id is the thing being probed — a scan id, a token. A 403
+ * confirms the row is real, which for an enumerable id is the disclosure itself.
+ * `fromError` already maps `status` onto the response.
+ */
+export class NotFoundError extends Error {
+  status = 404;
+  constructor(message = "Not found") {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
 export class ForbiddenError extends Error {
   status = 403;
   constructor(message = "Forbidden") {

@@ -7,6 +7,7 @@ import { originFrom } from "@/lib/request-origin";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import type { PulseAnalysisOutput } from "@/types/pulse";
+import { requireScanAccess } from "@/server/pulse";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sc
   try {
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "email Pulse audits");
     const { scanId } = await context.params;
+    await requireScanAccess(request, scanId);
     const body = bodySchema.parse(await request.json());
 
     const scan = await prisma.pulseScan.findUnique({

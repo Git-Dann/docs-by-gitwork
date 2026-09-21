@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan } from "@/server/pulse";
+import { getPulseScan, requireScanAccess } from "@/server/pulse";
 import { generateDiscoveryKit } from "@/server/pulse-ai";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
@@ -18,6 +18,7 @@ export async function POST(
 ) {
   try {
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);
