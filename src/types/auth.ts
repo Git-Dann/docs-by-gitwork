@@ -25,7 +25,7 @@ declare module "next-auth" {
 // ════════════════════════════════════════════════════════════════════════════
 
 // ── Roles ────────────────────────────────────────────────────────────────────
-export type RoleId = "SUPER_ADMIN" | "ADMIN" | "STAFF" | "DEVELOPER";
+export type RoleId = "SUPER_ADMIN" | "ADMIN" | "STAFF" | "DEVELOPER" | "GUEST";
 
 export interface RoleDef {
   id: RoleId;
@@ -69,13 +69,28 @@ export const ROLES: readonly RoleDef[] = [
     description:
       "Minimal access — typically their own clients and project tooling, no rates or costs.",
   },
+  {
+    // The only role a password can authenticate (see server/auth/password-login.ts),
+    // and the only one whose default grant is NOTHING. Every other role's default is a
+    // list of things it can reach; a guest starts with none and a Super Admin turns on
+    // exactly what they should see. That asymmetry is the point: forgetting to restrict
+    // a guest leaves them with nothing, not with everything — which is what would
+    // happen today, since a new sign-in auto-provisions as STAFF and STAFF inherits
+    // every module id.
+    id: "GUEST",
+    label: "Guest",
+    rank: 10,
+    configurable: true,
+    description:
+      "Outside collaborator. No access at all by default — a Super Admin switches on the individual products they should see. Signs in with an email and password rather than a Gitwork Google account.",
+  },
 ] as const;
 
 const ROLE_BY_ID = new Map<string, RoleDef>(ROLES.map((r) => [r.id, r]));
 
 /** The roles a Super Admin can configure in the matrix (everyone except SUPER_ADMIN). */
 export const CONFIGURABLE_ROLES: readonly RoleDef[] = ROLES.filter((r) => r.configurable);
-export type ConfigurableRoleId = "ADMIN" | "STAFF" | "DEVELOPER";
+export type ConfigurableRoleId = "ADMIN" | "STAFF" | "DEVELOPER" | "GUEST";
 
 export function roleLabel(role: string): string {
   return ROLE_BY_ID.get(role)?.label ?? role;
@@ -540,6 +555,10 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
   // create/edit the lightweight docs (handover, status report, brief, blank) and never see or open
   // proposals/contracts. The type boundary is enforced server-side (allowedDocTypesForUser).
   DEVELOPER: ["clients", "support", "pulse", "backstage", "proposals", "docs.manage"],
+  // Deliberately empty. A guest sees nothing until a Super Admin grants it per person
+  // in Settings → Team, which is what makes "give this person Pulse and nothing else"
+  // a decision someone made rather than a default nobody checked.
+  GUEST: [],
 };
 
 /**
@@ -605,7 +624,12 @@ export function normalizeMatrix(raw: unknown): RoleMatrix {
     if (!Array.isArray(v)) return [...DEFAULT_ROLE_PERMISSIONS[role]];
     return v.filter((x): x is string => typeof x === "string" && isValidPermissionId(x));
   };
-  return { ADMIN: pick("ADMIN"), STAFF: pick("STAFF"), DEVELOPER: pick("DEVELOPER") };
+  return {
+    ADMIN: pick("ADMIN"),
+    STAFF: pick("STAFF"),
+    DEVELOPER: pick("DEVELOPER"),
+    GUEST: pick("GUEST"),
+  };
 }
 
 function expandAliases(ids: string[]): string[] {

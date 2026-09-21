@@ -1,10 +1,12 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 import { authConfig, SESSION_VERSION } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
+import { verifyGuestPassword } from "@/server/auth/password-login";
 
 // The placeholder email created by bootstrap — never a real team member
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
@@ -41,15 +43,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
+    // Email + password, and ONLY ever for a GUEST — see server/auth/password-login.ts
+    // for why that restriction is structural rather than a policy. Staff and admins
+    // stay Google-only, which is also what keeps the @gitwork.co.uk check below
+    // meaningful for them.
+    Credentials({
+      id: "guest-password",
+      name: "Email and password",
+      credentials: { email: { type: "text" }, password: { type: "password" } },
+      async authorize(raw) {
+        const email = typeof raw?.email === "string" ? raw.email : "";
+        const password = typeof raw?.password === "string" ? raw.password : "";
+        const result = await verifyGuestPassword(email, password);
+        // `null` for every failure. NextAuth turns it into one generic error, which is
+        // what we want: telling "no such account" apart from "wrong password" is an
+        // enumeration oracle.
+        if (!result.ok) return null;
+        return { id: result.userId, email: result.email, name: result.name };
+      },
+    }),
   ],
   callbacks: {
     ...authConfig.callbacks,
-    async signIn({ user }) {
-      // Restrict to @gitwork.co.uk accounts only
-      if (!user.email?.endsWith("@gitwork.co.uk")) {
-        return false;
+    async signIn({ user, account }) {
+      // ⚠️ This callback runs for EVERY provider, so it is written as a positive rule
+      // per provider rather than one blanket test. Phrasing it as "not credentials →
+      // must be @gitwork.co.uk" would mean any future provider silently defaults to
+      // allowed; an unrecognised provider is refused here instead.
+      if (account?.provider === "guest-password") {
+        // Already authenticated in `authorize`, which only returns a user for a GUEST.
+        return true;
       }
-      return true;
+      if (account?.provider === "google") {
+        return !!user.email?.endsWith("@gitwork.co.uk");
+      }
+      return false;
     },
     async jwt({ token, user, account }) {
       // On first sign-in, look up or create the user in the DB
@@ -75,7 +103,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             user: { email: { not: BOOTSTRAP_USER_EMAIL } },
           },
         });
-        const shouldBeSuperAdmin = isKnownSuperAdmin || adminOrAboveCount === 0;
+        // ⚠️ NEVER on a password sign-in. Both halves of this are reachable by a guest
+        // otherwise: `adminOrAboveCount === 0` promotes whoever signs in first, and a
+        // guest whose email happened to be in KNOWN_SUPER_ADMIN_EMAILS would be handed
+        // the workspace. Google sign-in is @gitwork.co.uk-only, so the bootstrap can
+        // only ever run for someone who already holds a Gitwork account.
+        const isPasswordSignIn = account.provider === "guest-password";
+        const shouldBeSuperAdmin =
+          !isPasswordSignIn && (isKnownSuperAdmin || adminOrAboveCount === 0);
+
+        // A password sign-in must never CREATE anything. `authorize` already proved the
+        // user exists and is a guest, so reaching this with no row means the account was
+        // deleted mid-session — refuse rather than quietly re-provision them as STAFF,
+        // which is what the branch below would otherwise do.
+        if (!dbUser && isPasswordSignIn) return token;
 
         // Auto-provision new Gitwork team members. New members default to STAFF (whose
         // access is whatever the role matrix grants); a Super Admin can refine their role.
