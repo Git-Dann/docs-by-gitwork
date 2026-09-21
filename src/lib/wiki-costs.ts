@@ -28,9 +28,14 @@ import type {
  * The bands the scale table walks. Roughly log-spaced because cost-per-user changes
  * fastest at the low end, where fixed fees dominate, and a linear axis would spend
  * every row on the flat part of the curve.
+ *
+ * ⚠️ It STARTS AT ZERO on purpose. A client before launch still pays every fixed fee,
+ * and that floor is the most useful number they can be given — what the app costs to
+ * run with nobody on it. Cost per user is undefined there (see `projectAt`), which is
+ * the one cell in the table that reads as an em-dash rather than a figure.
  */
 export const SCALE_BANDS = [
-  50, 100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000,
+  0, 50, 100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000,
 ] as const;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

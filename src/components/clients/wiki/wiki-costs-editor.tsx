@@ -138,7 +138,9 @@ export function WikiCostsEditor({
     try {
       await saveSettings.mutateAsync({
         currency: currency.trim().toUpperCase(),
-        ...(users != null && users > 0 ? { headlineUsers: Math.round(users) } : {}),
+        // 0 is a valid head count (a client before launch), so the guard is >= 0 —
+        // only a blank or non-numeric field is skipped.
+        ...(users != null && users >= 0 ? { headlineUsers: Math.round(users) } : {}),
         notes: notes.trim() || null,
       });
       toast.success("Settings saved");
@@ -200,6 +202,10 @@ export function WikiCostsEditor({
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
               />
+              <span className="mt-1 block text-[12px] text-[var(--text-4)]">
+                The number the banner is worked out at. Enter 0 before launch — the page
+                then shows what it costs to run with no users.
+              </span>
             </label>
             <label className="block">
               <span className="app-field-label">Currency</span>

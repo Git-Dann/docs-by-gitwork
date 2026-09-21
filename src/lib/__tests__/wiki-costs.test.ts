@@ -212,3 +212,62 @@ describe("formatCostMoney — the figure a client reads", () => {
     expect(formatCostMoney(12, "XXZZ", false)).toBe("XXZZ 12.00");
   });
 });
+
+describe("zero users — a client before launch", () => {
+  /** Two fixed fees and a per-seat line, so the seat line must contribute nothing. */
+  const preLaunch: CostItem[] = [
+    item({ id: "host", name: "Hosting", kind: "FLAT", amountMonthly: 48, amountAnnual: 480 }),
+    item({ id: "db", name: "Database", kind: "FLAT", amountMonthly: 25 }),
+    item({ id: "seats", name: "Seats", kind: "PER_USER", amountMonthly: 0.4 }),
+  ];
+
+  it("totals the fixed fees — they are paid whether or not anyone signs up", () => {
+    // THE point of the zero state. A client pre-launch has a real monthly cost and it
+    // is the number they most need; reporting nothing here would be the §35 mistake.
+    expect(projectAt(preLaunch, 0).totalMonthly).toBe(73);
+  });
+
+  it("contributes nothing for per-seat lines at zero head count", () => {
+    expect(projectAt([preLaunch[2]], 0).totalMonthly).toBe(0);
+  });
+
+  it("leaves cost per user undefined, never zero", () => {
+    // £0.00 would read as "free to run", which is the opposite of true here.
+    const p = projectAt(preLaunch, 0);
+    expect(p.perUserMonthly).toBeNull();
+    expect(p.perUserAnnual).toBeNull();
+  });
+
+  it("never reports a negative total — the cost is positive, the margin is not ours", () => {
+    // Foundry holds no revenue figure, so a minus sign here would be a P&L we cannot
+    // back. Every band must be >= 0 however the model is built.
+    for (const row of buildCostReadout(preLaunch, 0).scale) {
+      expect(row.totalMonthly).toBeGreaterThanOrEqual(0);
+      expect(row.totalAnnual).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("starts the scale table at zero, so the fixed-cost floor is a visible row", () => {
+    expect(SCALE_BANDS[0]).toBe(0);
+    expect(buildCostReadout(preLaunch, 0).scale[0]).toMatchObject({
+      users: 0,
+      totalMonthly: 73,
+      perUserMonthly: null,
+    });
+  });
+
+  it("still prices a stepped plan at its smallest band with no users", () => {
+    // `tierFor` takes the first band whose cap covers the count, and every bounded band
+    // covers 0 — so a pre-launch client is on the cheapest plan, not off the ladder.
+    const stepped = item({
+      id: "s",
+      name: "Plan",
+      kind: "STEPPED",
+      tiers: [
+        { id: "t1", upToUsers: 1000, amountMonthly: 25, label: "Pro", orderKey: 0 },
+        { id: "t2", upToUsers: null, amountMonthly: 120, label: "Team", orderKey: 1 },
+      ],
+    });
+    expect(projectAt([stepped], 0).totalMonthly).toBe(25);
+  });
+});

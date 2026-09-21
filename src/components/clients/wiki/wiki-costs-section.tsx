@@ -55,6 +55,11 @@ export function WikiCostsSection({
    * serif "from" doubled the width of the longest tile and wrapped it onto two lines,
    * which is how a four-across row of totals stopped being scannable.
    */
+  /**
+   * Zero users is a legitimate, useful state — a client before launch. The totals are
+   * real there; only the per-user figures are undefined. See the banner below.
+   */
+  const atZero = model.headlineUsers === 0;
   const prefix = headline.incomplete ? (
     <span
       className="mr-1 align-[0.28em] text-[12px] tracking-[0.08em] text-[var(--text-4)] uppercase"
@@ -101,13 +106,21 @@ export function WikiCostsSection({
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
             <span className="widget-header__label--number">01</span>
-            {" // COST PER USER"}
+            {/* The panel does not show a cost per user when there are no users, so it
+                does not claim to. */}
+            {atZero ? " // COST TO RUN" : " // COST PER USER"}
           </span>
           <span className="widget-header__status" style={{ fontFamily: MONO }}>
             {mode === "internal" ? (
-              <button type="button" className="app-button app-button-secondary app-button-xs" onClick={() => setEditing(true)}>
+              <button
+                type="button"
+                className="app-button app-button-secondary app-button-xs"
+                onClick={() => setEditing(true)}
+              >
                 Edit model
               </button>
+            ) : atZero ? (
+              "NO USERS YET"
             ) : (
               `AT ${users(model.headlineUsers)} USERS`
             )}
@@ -123,60 +136,121 @@ export function WikiCostsSection({
               34px serif currency figures need ~200px each, so at `lg` the longest total
               rendered 201px of text in a 149px cell and spilled over its neighbour.
               Measured at 768 · 1024 · 1280 · 1440. */}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
-            <div>
-              <p
-                className="text-[11px] tracking-[0.12em] text-[var(--text-4)] uppercase"
-                style={{ fontFamily: MONO }}
-              >
-                Per user / month
-              </p>
-              <p
-                className="mt-1 text-[36px] leading-none text-[var(--text-1)]"
-                style={{ fontFamily: SERIF }}
-              >
-                {prefix}
-                {money(headline.perUserMonthly, cur, true)}
-              </p>
-              <p className="mt-1 text-[12px] text-[var(--text-4)]">
-                at {users(model.headlineUsers)} users
-              </p>
-            </div>
-            <StatTile
-              label="Total / month"
-              figure={
-                <>
+          {atZero ? (
+            /* ⚠️ Zero users is a real, useful state, not an error — a client before
+               launch still pays every fixed fee, and that floor is the number they
+               actually need. So the TOTAL leads here instead of the per-user figure,
+               which is genuinely undefined (nothing to divide by) and is stated in
+               words rather than shown as a dash or, worse, as £0.00.
+
+               It is deliberately NOT rendered as a negative. The cost is +£48; it is
+               the MARGIN that is negative, and Foundry holds no revenue figure to
+               subtract from — a minus sign here would be a P&L we cannot back. */
+            <div className="grid gap-4 sm:grid-cols-2 sm:items-end">
+              <div>
+                <p
+                  className="text-[11px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+                  style={{ fontFamily: MONO }}
+                >
+                  Cost / month
+                </p>
+                <p
+                  className="mt-1 text-[36px] leading-none text-[var(--text-1)]"
+                  style={{ fontFamily: SERIF }}
+                >
                   {prefix}
                   {money(headline.totalMonthly, cur)}
-                </>
-              }
-            />
-            <StatTile
-              label="Total / year"
-              figure={
-                <>
+                </p>
+                <p className="mt-1 text-[12px] text-[var(--text-4)]">with no users yet</p>
+              </div>
+              <StatTile
+                label="Cost / year"
+                figure={
+                  <>
+                    {prefix}
+                    {money(headline.totalAnnual, cur)}
+                  </>
+                }
+                sub={
+                  readout.annualSaving > 0 ? (
+                    <span
+                      className="text-[11px] text-[var(--success-500)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {money(readout.annualSaving, cur)} SAVED ANNUALLY
+                    </span>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
+              <div>
+                <p
+                  className="text-[11px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+                  style={{ fontFamily: MONO }}
+                >
+                  Per user / month
+                </p>
+                <p
+                  className="mt-1 text-[36px] leading-none text-[var(--text-1)]"
+                  style={{ fontFamily: SERIF }}
+                >
                   {prefix}
-                  {money(headline.totalAnnual, cur)}
-                </>
-              }
-              sub={
-                readout.annualSaving > 0 ? (
-                  <span className="text-[11px] text-[var(--success-500)]" style={{ fontFamily: MONO }}>
-                    {money(readout.annualSaving, cur)} SAVED ANNUALLY
-                  </span>
-                ) : undefined
-              }
-            />
-            <StatTile
-              label="Per user / year"
-              figure={
-                <>
-                  {prefix}
-                  {money(headline.perUserAnnual, cur, true)}
-                </>
-              }
-            />
-          </div>
+                  {money(headline.perUserMonthly, cur, true)}
+                </p>
+                <p className="mt-1 text-[12px] text-[var(--text-4)]">
+                  at {users(model.headlineUsers)} users
+                </p>
+              </div>
+              <StatTile
+                label="Total / month"
+                figure={
+                  <>
+                    {prefix}
+                    {money(headline.totalMonthly, cur)}
+                  </>
+                }
+              />
+              <StatTile
+                label="Total / year"
+                figure={
+                  <>
+                    {prefix}
+                    {money(headline.totalAnnual, cur)}
+                  </>
+                }
+                sub={
+                  readout.annualSaving > 0 ? (
+                    <span
+                      className="text-[11px] text-[var(--success-500)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {money(readout.annualSaving, cur)} SAVED ANNUALLY
+                    </span>
+                  ) : undefined
+                }
+              />
+              <StatTile
+                label="Per user / year"
+                figure={
+                  <>
+                    {prefix}
+                    {money(headline.perUserAnnual, cur, true)}
+                  </>
+                }
+              />
+            </div>
+          )}
+
+          {atZero && (
+            <p className="mt-4 text-[13px] leading-relaxed text-[var(--text-3)]">
+              There is no cost per user yet — there is nobody to divide it by. These are
+              what the app costs to run with no users on it, and they are paid whether
+              anyone signs up or not. The table below shows what it becomes as users
+              arrive.
+            </p>
+          )}
 
           {/* ⚠️ Rendered ABOVE the lines and never suppressed. "from" on the figures
               above is meaningless without the sentence that says why. */}
@@ -346,7 +420,10 @@ export function WikiCostsSection({
                     className="text-right text-[13px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
                     style={{ fontFamily: MONO }}
                   >
-                    {row.incomplete ? "from " : ""}
+                    {/* ⚠️ "from —" is meaningless. A floor qualifies a FIGURE, so the
+                        prefix is suppressed where there is no figure — which is exactly
+                        the zero-users row this table now starts at. */}
+                    {row.incomplete && row.perUserMonthly !== null ? "from " : ""}
                     {money(row.perUserMonthly, cur, true)}
                   </span>
                 </div>

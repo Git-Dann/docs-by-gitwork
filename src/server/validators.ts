@@ -2151,7 +2151,10 @@ export const costItemSchema = z
 export const costSettingsSchema = z.object({
   /** ISO 4217, entered by hand. One currency per model — see src/types/wiki-costs.ts. */
   currency: z.string().trim().length(3).toUpperCase().optional(),
-  headlineUsers: z.number().int().min(1).max(100_000_000).optional(),
+  /** ⚠️ min 0, not 1 — a client before launch has no users and still pays the fixed
+   *  fees. That floor is a real figure the page is built to show; rejecting it would
+   *  force an operator to enter a user count the client does not have. */
+  headlineUsers: z.number().int().min(0).max(100_000_000).optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
 });
 
