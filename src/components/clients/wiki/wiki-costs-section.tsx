@@ -47,7 +47,7 @@ export function WikiCostsSection({
     () => buildCostReadout(model.items, model.headlineUsers),
     [model.items, model.headlineUsers],
   );
-  const { headline, lines, scale, blindSpots } = readout;
+  const { headline, lines, scale, blindSpots, options } = readout;
   /**
    * "from" on EVERY banner figure or none — see the note at the grid below.
    *
@@ -355,11 +355,112 @@ export function WikiCostsSection({
         </div>
       </section>
 
+      {/* ── 03 the options, when there are any ───────────────────────────────
+           Priced but NOT committed. A separate panel rather than a flag on a row in
+           02, because the reader's question about 02 is "what am I paying" and the
+           reader's question here is "which of these should we pick" — and because a
+           muted row inside a table of real costs is exactly how someone comes away
+           believing they are already paying for it. */}
+      {options.length > 0 && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label" style={{ fontFamily: MONO }}>
+              <span className="widget-header__label--number">03</span>
+              {" // OPTIONS BEING PRICED"}
+            </span>
+            <span className="widget-header__status" style={{ fontFamily: MONO }}>
+              NOT IN THE TOTAL
+            </span>
+          </div>
+          <div className="p-5 sm:p-6">
+            <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
+              Costed at {users(model.headlineUsers)} users so they can be compared like
+              for like, and <strong className="font-semibold">not counted</strong> in the
+              figures above. Pick one and we will move it into the total.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {options.map((opt) => (
+                <div
+                  key={opt.line.itemId}
+                  className="rounded-[8px] border border-dashed border-[var(--border-2)] p-4"
+                >
+                  <p className="truncate text-[14px] text-[var(--text-1)]" title={opt.line.name}>
+                    {opt.line.name}
+                  </p>
+                  {opt.line.vendor && (
+                    <p className="truncate text-[12px] text-[var(--text-4)]" title={opt.line.vendor}>
+                      {opt.line.vendor}
+                    </p>
+                  )}
+                  <p
+                    className="mt-3 text-[26px] leading-none text-[var(--text-1)]"
+                    style={{ fontFamily: SERIF }}
+                  >
+                    {opt.line.incomplete ? (
+                      <span
+                        className="mr-1 align-[0.3em] text-[11px] tracking-[0.08em] text-[var(--text-4)] uppercase"
+                        style={{ fontFamily: MONO }}
+                      >
+                        from
+                      </span>
+                    ) : null}
+                    {money(opt.line.monthly, cur)}
+                  </p>
+                  <p
+                    className="mt-1 text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+                    style={{ fontFamily: MONO }}
+                  >
+                    per month
+                  </p>
+                  {/* The two numbers a choice actually turns on. */}
+                  <dl className="mt-3 space-y-1 border-t border-[var(--border-1)] pt-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt
+                        className="text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+                        style={{ fontFamily: MONO }}
+                      >
+                        Per user
+                      </dt>
+                      <dd
+                        className="text-[13px] whitespace-nowrap text-[var(--text-2)] tabular-nums"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {money(opt.perUserMonthly, cur, true)}
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <dt
+                        className="text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+                        style={{ fontFamily: MONO }}
+                      >
+                        Total would be
+                      </dt>
+                      <dd
+                        className="text-[13px] whitespace-nowrap text-[var(--text-2)] tabular-nums"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {money(opt.totalMonthlyWith, cur)}
+                      </dd>
+                    </div>
+                  </dl>
+                  {opt.line.detail && (
+                    <p className="mt-2 text-[12px] text-[var(--text-4)]">{opt.line.detail}</p>
+                  )}
+                  {opt.notes && (
+                    <p className="mt-1 text-[12px] text-[var(--text-4)]">{opt.notes}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── 03 the curve ────────────────────────────────────────────────────── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">03</span>
+            <span className="widget-header__label--number">{options.length ? "04" : "03"}</span>
             {" // AS YOU GROW"}
           </span>
           <span className="widget-header__status" style={{ fontFamily: MONO }}>

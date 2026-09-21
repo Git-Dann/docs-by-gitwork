@@ -59,6 +59,19 @@ export interface CostItem {
   tiers: CostTier[];
   notes: string | null;
   orderKey: number;
+  /**
+   * Whether this line counts toward the committed total.
+   *
+   * ⚠️ Defaults TRUE, and every line that already exists is true, so introducing this
+   * changed no figure anyone had already seen.
+   *
+   * `false` means **priced, not committed** — an option under consideration. It is
+   * still fully costed, which is the point: the question "which AI provider is
+   * cheapest for us" is only answerable at the client's real user numbers. But it is
+   * excluded from the total, from cost-per-user and from the growth curve, and it
+   * renders in its own panel, so a reader can never mistake it for part of the bill.
+   */
+  included: boolean;
 }
 
 /** A thing the model cannot answer, named rather than silently costed as zero. */
@@ -67,7 +80,9 @@ export type CostBlindSpotKind =
   | "METERED_NO_DRIVER"
   | "STEPPED_NO_TIERS"
   | "BEYOND_LAST_TIER"
-  | "NO_PRICE";
+  | "NO_PRICE"
+  /** Every line is an option; nothing is committed, so the total really is zero. */
+  | "ALL_EXCLUDED";
 
 export interface CostBlindSpot {
   kind: CostBlindSpotKind;
@@ -101,6 +116,27 @@ export interface CostProjection {
   incomplete: boolean;
 }
 
+/**
+ * A line that is priced but NOT committed — one of the options being compared.
+ *
+ * It carries the two figures a choice actually turns on: what it costs per user at
+ * the headline count (which is what "most cost efficient" means), and what the
+ * committed total becomes if it is adopted.
+ */
+export interface CostOption {
+  line: CostLine;
+  /** `null` at zero users, and at zero this whole comparison has no denominator. */
+  perUserMonthly: number | null;
+  /** The committed monthly total WITH this option added — the decision number. */
+  totalMonthlyWith: number;
+  /**
+   * The item's own note. Carried on the option rather than on `CostLine` because
+   * this is where it earns its place: "Haiku at 6 calls/user" is the assumption the
+   * comparison rests on, and a comparison without its assumptions is not one.
+   */
+  notes: string | null;
+}
+
 export interface CostModel {
   enabled: boolean;
   currency: string;
@@ -119,4 +155,6 @@ export interface CostReadout {
   blindSpots: CostBlindSpot[];
   /** Annual saving across the model, where annual pricing was supplied. */
   annualSaving: number;
+  /** Priced but not committed — rendered apart from the total, never inside it. */
+  options: CostOption[];
 }

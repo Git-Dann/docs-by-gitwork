@@ -18,6 +18,7 @@
  */
 import type {
   CostBlindSpot,
+  CostOption,
   CostItem,
   CostLine,
   CostProjection,
@@ -146,10 +147,15 @@ function lineFor(item: CostItem, users: number): CostLine {
         ...base,
         monthly,
         annual: annualFor(monthly, item.amountAnnual, 1),
+        // ⚠️ "over the 0 included" is not English. A line with no allowance is the
+        // normal case for usage-priced AI, so it gets its own wording rather than a
+        // sentence built around an allowance that does not exist.
         detail:
-          billable === 0
-            ? `${fmtNum(units)} ${unit} — within the ${fmtNum(item.includedUnits ?? 0)} included`
-            : `${fmtNum(billable)} ${unit} over the ${fmtNum(item.includedUnits ?? 0)} included`,
+          !item.includedUnits
+            ? `${fmtNum(units)} ${unit}`
+            : billable === 0
+              ? `${fmtNum(units)} ${unit} — within the ${fmtNum(item.includedUnits)} included`
+              : `${fmtNum(billable)} ${unit} over the ${fmtNum(item.includedUnits)} included`,
         incomplete: false,
       };
     }
@@ -193,9 +199,17 @@ function fmtNum(n: number): string {
   return n >= 1000 ? n.toLocaleString("en-GB", { maximumFractionDigits: 0 }) : String(round2(n));
 }
 
-/** Total the model at one user count. */
+/**
+ * Total the model at one user count.
+ *
+ * ⚠️ The included/excluded split happens HERE, at the lowest level, rather than in
+ * each caller. `projectAt` is called directly by the wiki dashboard card as well as
+ * by `buildCostReadout`, and a caller that forgot to filter would quietly report an
+ * option the client has not chosen as part of their bill — which is the one thing
+ * this feature must never do.
+ */
 export function projectAt(items: CostItem[], users: number): CostProjection {
-  const lines = items.map((i) => lineFor(i, users));
+  const lines = committedItems(items).map((i) => lineFor(i, users));
   const totalMonthly = round2(lines.reduce((s, l) => s + l.monthly, 0));
   const totalAnnual = round2(lines.reduce((s, l) => s + l.annual, 0));
   return {
@@ -209,11 +223,34 @@ export function projectAt(items: CostItem[], users: number): CostProjection {
   };
 }
 
+/** The lines that count toward the bill. An item predating this field counts. */
+export function committedItems(items: CostItem[]): CostItem[] {
+  return items.filter((i) => i.included !== false);
+}
+
+/** The lines being priced as options — costed, never counted. */
+export function optionItems(items: CostItem[]): CostItem[] {
+  return items.filter((i) => i.included === false);
+}
+
 function blindSpots(items: CostItem[]): CostBlindSpot[] {
   const out: CostBlindSpot[] = [];
   if (items.length === 0) {
     out.push({ kind: "NO_ITEMS", items: [], message: "No costs have been added yet." });
     return out;
+  }
+
+  // ⚠️ Every line an option means the committed total is genuinely £0 — true, but it
+  // would read as "free to run" beside a table full of priced services. Say which it
+  // is. Reported first because it reframes every figure above it.
+  if (committedItems(items).length === 0) {
+    out.push({
+      kind: "ALL_EXCLUDED",
+      items: [],
+      message:
+        "Nothing here is committed yet — every line is being priced as an option, so " +
+        "the total above is zero rather than cheap.",
+    });
   }
 
   const noDriver = items
@@ -268,14 +305,31 @@ function blindSpots(items: CostItem[]): CostBlindSpot[] {
 
 /** Everything the page renders, from the stored model. */
 export function buildCostReadout(items: CostItem[], headlineUsers: number): CostReadout {
+  const committed = committedItems(items);
   const headline = projectAt(items, headlineUsers);
-  const lines = items.map((i) => lineFor(i, headlineUsers));
+  const lines = committed.map((i) => lineFor(i, headlineUsers));
+
+  /**
+   * Each option priced at the SAME user count as the committed total, which is what
+   * makes them comparable with each other and with the bill. `totalMonthlyWith` is
+   * the number a decision actually turns on — "adopting this takes you from X to Y".
+   */
+  const options: CostOption[] = optionItems(items).map((item) => {
+    const line = lineFor(item, headlineUsers);
+    return {
+      line,
+      perUserMonthly: headlineUsers > 0 ? round2(line.monthly / headlineUsers) : null,
+      totalMonthlyWith: round2(headline.totalMonthly + line.monthly),
+      notes: item.notes,
+    };
+  });
   const monthlyTimesTwelve = round2(headline.totalMonthly * 12);
   return {
     headline,
     lines,
     scale: SCALE_BANDS.map((u) => projectAt(items, u)),
     blindSpots: blindSpots(items),
+    options,
     // Positive when paying annually is cheaper than twelve monthly payments.
     annualSaving: round2(Math.max(0, monthlyTimesTwelve - headline.totalAnnual)),
   };

@@ -4971,6 +4971,11 @@ model WikiCostItem {
   /// and the engine reports that rather than costing its usage at zero.
   unitsPerUser  Float?
   notes         String?          @db.Text
+  /// Whether this line counts toward the committed total. FALSE = priced, not
+  /// committed: an option being compared (e.g. three AI providers). Still fully
+  /// costed, but excluded from the total, the per-user figure and the growth curve.
+  /// ⚠️ Defaults true, so every line written before this field keeps counting.
+  included      Boolean          @default(true)
   orderKey      Int              @default(0)
 
   tiers     WikiCostTier[]

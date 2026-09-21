@@ -2107,6 +2107,8 @@ export const costItemSchema = z
     unitPrice: z.number().finite().min(0).max(1_000_000).nullable().optional(),
     unitsPerUser: z.number().finite().min(0).max(1_000_000).nullable().optional(),
     notes: z.string().trim().max(1000).nullable().optional(),
+    /** False = priced as an option, kept out of the total. Absent means committed. */
+    included: z.boolean().optional(),
     tiers: z.array(costTierSchema).max(20).optional(),
   })
   .superRefine((item, ctx) => {
