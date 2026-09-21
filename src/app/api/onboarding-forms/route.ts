@@ -2,12 +2,14 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { createOnboardingForm, listOnboardingForms } from "@/server/onboarding-forms";
 import { onboardingFormCreateSchema } from "@/server/validators";
-import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageClients, getEffectiveUserOrNull, assertInternal } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
+    // Client-onboarding templates — our forms, our wording. Internal.
+    assertInternal(await getEffectiveUserOrNull(request));
     const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
     const result = await listOnboardingForms({ includeArchived });
     return apiOk(result);

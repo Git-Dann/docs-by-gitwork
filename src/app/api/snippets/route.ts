@@ -7,7 +7,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { assertCan, canManageDocs, getEffectiveUserOrNull, assertInternal } from "@/server/auth/effective-user";
 import { createSnippet, listSnippets } from "@/server/snippets";
 
 const createSchema = z.object({
@@ -18,6 +18,8 @@ const createSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    // The Docs content library — reusable clauses and copy we sell with. Internal.
+    assertInternal(await getEffectiveUserOrNull(request));
     const user = await getEffectiveUserOrNull(request);
     const workspaceId = user?.workspaceId ?? (await ensureBaseRecords()).workspace.id;
     return apiOk({ snippets: await listSnippets(workspaceId) });

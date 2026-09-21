@@ -9,6 +9,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/format";
 import { JURISDICTIONS, JURISDICTION_CODES, JURISDICTION_PRESETS } from "@/server/pulse-checks/jurisdictions";
 import type { PulseScanInputType } from "@/types/pulse";
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 
 const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder: string; description: string }> = [
   {
@@ -405,7 +406,7 @@ export function PulseNewScanForm({
         >
           <span>Advanced options</span>
           <span className="flex items-center gap-2 text-xs font-normal text-[var(--text-4)]">
-            Client, AI model, competitors, login
+            {clients.length > 0 ? "Client, " : ""}AI model, competitors, login
             <ChevronDownIcon className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
           </span>
         </button>
@@ -671,7 +672,7 @@ export function PulseNewScanForm({
       )}
 
       <p className="text-center text-xs text-[var(--text-4)]">
-        500+ automated checks · security, compliance, performance & AI-app safety
+        {ADVERTISED_CHECK_COUNT_LABEL} automated checks · security, compliance, performance & AI-app safety
       </p>
     </form>
   );

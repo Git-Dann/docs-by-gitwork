@@ -809,11 +809,18 @@ function ProfileMenu({
     (m) => m.role === "STAFF" || m.role === "DEVELOPER",
   );
 
-  // Identity reads from the live Google session by default. The account hook supplies the
-  // user's custom avatar (if they've uploaded one in Account settings); React Query caches
-  // it aggressively so it's a once-per-session fetch in practice.
-  const displayName = session?.user?.name || "";
-  const displayEmail = session?.user?.email || "";
+  // Identity reads from the live Google session first, then falls back to the account
+  // record. The account hook also supplies a custom avatar if one was uploaded; React
+  // Query caches it aggressively so it's a once-per-session fetch in practice.
+  //
+  // ⚠️ The fallback is load-bearing for a password sign-in. Google fills token.name in
+  // itself; credentials do not, so a guest rendered an empty name and a "?" avatar here
+  // while the rest of the app knew perfectly well who they were. `auth.ts` now writes
+  // both onto the token — but a session minted BEFORE that deploy still lacks them, and
+  // a JWT is long-lived, so reading the account record is what fixes the existing
+  // sessions rather than making everyone sign in again.
+  const displayName = session?.user?.name || account?.name || "";
+  const displayEmail = session?.user?.email || account?.email || "";
   const resolvedAvatar = resolveAvatar(account?.avatarUrl, session?.user?.image);
   const displayAvatar = resolvedAvatar.src;
   const displayAvatarPosition = avatarPosition(account?.avatarPosition);

@@ -382,6 +382,17 @@ export function canManageDevSignal(user: EffectiveUser): boolean {
 export function canCalibrateDevSignal(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role);
 }
+/**
+ * READ documents in Docs — the module grant, not the manage action.
+ *
+ * Deliberately weaker than `canManageDocs`: a developer who may read a SOW should not
+ * need permission to delete one. It exists because `GET /api/proposals` had no check at
+ * all, which was indistinguishable from "any colleague may read" until an account
+ * existed that is not a colleague.
+ */
+export function canViewDocs(user: EffectiveUser): boolean {
+  return can(user, "proposals");
+}
 /** Create/edit/delete documents in Docs. */
 export function canManageDocs(user: EffectiveUser): boolean {
   return can(user, "docs.manage");
