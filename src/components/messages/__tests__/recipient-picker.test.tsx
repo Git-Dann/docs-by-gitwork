@@ -16,8 +16,8 @@
  *
  * @vitest-environment jsdom
  */
-import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createRoot } from "react-dom/client";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 
 const MEMBERS = [
@@ -57,22 +57,45 @@ function click(label: RegExp) {
   act(() => btn!.click());
 }
 
-/** Mount the workspace, open the compose dialog, open the picker. */
-function openPicker() {
+/**
+ * ⚠️ The root is kept and unmounted after each test.
+ *
+ * Wiping `document.body.innerHTML` is NOT an unmount — it rips the DOM out from
+ * under a root React still owns, leaving it live in the scheduler. When vitest then
+ * tore down this file's jsdom environment, that orphaned work fired against a
+ * `window` that no longer existed: `ReferenceError: window is not defined`, four
+ * uncaught exceptions, every test still passing, and CI red.
+ *
+ * It is timing-dependent, so it passes in isolation and on a quiet machine and fails
+ * on a loaded CI runner — which is exactly the kind of intermittent that gets
+ * dismissed as a flake. It is not a flake; it is a missing unmount.
+ */
+let root: Root | null = null;
+
+afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
   document.body.innerHTML = "";
+});
+
+/** Mount the workspace into a fresh root, tracked so afterEach can unmount it. */
+function mount() {
   const host = document.createElement("div");
   document.body.appendChild(host);
-  act(() => createRoot(host).render(<MessagesWorkspace />));
+  root = createRoot(host);
+  act(() => root!.render(<MessagesWorkspace />));
+}
+
+/** Mount the workspace, open the compose dialog, open the picker. */
+function openPicker() {
+  mount();
   click(/New message/);
   click(/Choose people/);
 }
 
 describe("recipient picker", () => {
   it("replaces the per-person chips with ONE control", () => {
-    document.body.innerHTML = "";
-    const host = document.createElement("div");
-    document.body.appendChild(host);
-    act(() => createRoot(host).render(<MessagesWorkspace />));
+    mount();
     click(/New message/);
     // Before the dropdown, every teammate had a button in the dialog body. Now the
     // roster is not rendered at all until the field is opened.
