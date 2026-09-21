@@ -2084,6 +2084,77 @@ export const boardSchema = z
     }
   });
 
+/* ---------------------------------------------------------------- wiki: running costs */
+
+const money = z.number().finite().min(0).max(100_000_000);
+
+const costTierSchema = z.object({
+  /** `null` is the unbounded top band — "5,000 users and up". */
+  upToUsers: z.number().int().min(1).max(100_000_000).nullable(),
+  amountMonthly: money,
+  label: z.string().trim().max(60).nullable().optional(),
+});
+
+export const costItemSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    vendor: z.string().trim().max(80).nullable().optional(),
+    kind: z.enum(["FLAT", "PER_USER", "METERED", "STEPPED"]),
+    amountMonthly: money.nullable().optional(),
+    amountAnnual: money.nullable().optional(),
+    unitLabel: z.string().trim().max(40).nullable().optional(),
+    includedUnits: z.number().finite().min(0).max(1_000_000_000).nullable().optional(),
+    unitPrice: z.number().finite().min(0).max(1_000_000).nullable().optional(),
+    unitsPerUser: z.number().finite().min(0).max(1_000_000).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+    tiers: z.array(costTierSchema).max(20).optional(),
+  })
+  .superRefine((item, ctx) => {
+    if (item.kind !== "STEPPED") return;
+    const tiers = item.tiers ?? [];
+    // ⚠️ A stepped plan with no bands prices at nothing, so the engine reports it as a
+    // blind spot rather than as £0 — but storing one is still a mistake worth catching
+    // at the edge, where the author can see the message.
+    if (tiers.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tiers"],
+        message: "A stepped plan needs at least one band.",
+      });
+      return;
+    }
+    // Bands must ASCEND and only the last may be unbounded. Out of order, `tierFor`
+    // would pick the first band whose cap covers the head count and quietly under-price.
+    let prev = 0;
+    tiers.forEach((tier, i) => {
+      if (tier.upToUsers === null) {
+        if (i !== tiers.length - 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["tiers", i, "upToUsers"],
+            message: "Only the last band can be open-ended.",
+          });
+        }
+        return;
+      }
+      if (tier.upToUsers <= prev) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tiers", i, "upToUsers"],
+          message: "Bands must go up — each one covers more users than the last.",
+        });
+      }
+      prev = tier.upToUsers;
+    });
+  });
+
+export const costSettingsSchema = z.object({
+  /** ISO 4217, entered by hand. One currency per model — see src/types/wiki-costs.ts. */
+  currency: z.string().trim().length(3).toUpperCase().optional(),
+  headlineUsers: z.number().int().min(1).max(100_000_000).optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
 export const teamMessageCreateSchema = z.object({
   subject: z.string().trim().min(1, "Give it a subject").max(200),
   // Generous, and deliberately so: this is where a weekly summary lives, and a limit

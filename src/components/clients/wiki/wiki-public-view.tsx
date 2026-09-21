@@ -12,6 +12,7 @@ import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
+import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
@@ -58,6 +59,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   intake: "Requests",
   launchpad: "Launchpad",
   insights: "Charts",
+  costs: "Running costs",
   delivery: "Delivery",
   support: "Support",
   "code-handover": "Code Handover",
@@ -122,6 +124,10 @@ export function WikiPublicView({
     // Enabled AND has boards. An enabled-but-empty section lands a client on a blank
     // page that reads as a broken link — the same predicate code-handover uses.
     ...(wiki.insights.enabled && wiki.insights.boards.length > 0 ? (["insights"] as const) : []),
+    // Running costs needs at least one priced line. Enabled-and-empty would state a
+    // cost per user of £0.00 — a confident figure derived from nothing, which is worse
+    // than the blank page it would replace.
+    ...(wiki.costs.enabled && wiki.costs.items.length > 0 ? (["costs"] as const) : []),
     // Delivery needs a timeline to describe, or the client lands on "no plan yet" from a
     // link that promised progress.
     ...(wiki.deliveryEnabled && wiki.timeline.blocks.length > 0 ? (["delivery"] as const) : []),
@@ -237,6 +243,9 @@ export function WikiPublicView({
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki.support} />;
+    }
+    if (activeSection === "costs") {
+      return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
     }
     if (activeSection === "insights") {
       return (

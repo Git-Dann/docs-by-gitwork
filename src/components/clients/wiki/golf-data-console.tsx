@@ -1281,7 +1281,7 @@ function ErrorState({ onRetry, label }: { onRetry: () => void; label: string }) 
   return (
     <div className="rounded-[10px] border border-dashed border-[var(--border-1)] py-14 text-center">
       <p className="text-[13px] text-[var(--text-4)]">{label}</p>
-      <button className="app-button-secondary mt-3" onClick={onRetry}>Retry</button>
+      <button className="app-button app-button-secondary app-button-sm mt-3" onClick={onRetry}>Retry</button>
     </div>
   );
 }

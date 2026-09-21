@@ -14,7 +14,7 @@ import { join } from "node:path";
  * the tsc-checked four are cheap to pin and a map can be widened to `Partial<…>` by a
  * future change without anyone noticing the guard went away.
  *
- * This covers THREE sections — `insights`, `delivery` and `support` — which share the
+ * This covers FOUR sections — `insights`, `costs`, `delivery` and `support` — which share the
  * same twelve lists. The shape-identical lists are parameterised over all three; the
  * places the three genuinely differ (each one's public `availableSections` predicate,
  * and Delivery having no server loader at all) get their own assertions at the bottom.
@@ -56,6 +56,7 @@ function declBlock(source: string, marker: string): string {
 
 const SECTIONS = [
   { id: "insights", label: "Charts" },
+  { id: "costs", label: "Running costs" },
   { id: "delivery", label: "Delivery" },
   { id: "support", label: "Support" },
 ] as const;
@@ -176,6 +177,13 @@ describe("wiki-public-view.tsx — each availableSections predicate has its OWN 
     read("components/clients/wiki/wiki-public-view.tsx"),
     "const availableSections",
   );
+
+  it("costs — enabled AND at least one priced line", () => {
+    // Enabled-and-empty would state a cost per user of £0.00 — a confident figure
+    // derived from nothing, which is worse than the blank page it would replace.
+    expect(available).toContain("wiki.costs.enabled");
+    expect(available).toContain("wiki.costs.items.length");
+  });
 
   it("insights — enabled AND at least one board", () => {
     expect(available).toContain("wiki.insights.enabled");

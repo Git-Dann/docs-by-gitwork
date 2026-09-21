@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
+  BanknotesIcon,
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   BoltIcon,
@@ -31,6 +32,7 @@ import {
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { summariseDelivery } from "@/lib/wiki-delivery";
+import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
 
@@ -56,6 +58,7 @@ const SECTION_META: Record<
   intake: { label: "Requests", icon: FlagIcon },
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
   insights: { label: "Charts", icon: ChartPieIcon },
+  costs: { label: "Running costs", icon: BanknotesIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
@@ -451,6 +454,30 @@ export function WikiDashboard({
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
+        );
+      }
+      case "costs": {
+        // A real case, not the markdown-doc default (§40.1). The card leads with the
+        // number the page exists for — cost per user — not a line count.
+        const cost = wiki.costs;
+        if (cost.items.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No costs recorded yet.</p>;
+        }
+        const projection = projectAt(cost.items, cost.headlineUsers);
+        // ⚠️ The SAME formatter the section uses — null at zero users, 4dp for a
+        // fraction of a penny. Re-implementing it here printed "GBP 0.44" on the card
+        // beside a page reading "£0.44".
+        const per = formatCostMoney(projection.perUserMonthly, cost.currency, true);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={per} label="Per user / mo" />
+              <Metric value={String(cost.items.length)} label="Lines" />
+            </div>
+            <p className="text-[12px] text-[var(--text-4)]">
+              at {cost.headlineUsers.toLocaleString("en-GB")} users
+            </p>
+          </div>
         );
       }
       case "insights": {

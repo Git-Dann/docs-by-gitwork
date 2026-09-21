@@ -3605,6 +3605,78 @@ export async function setWikiSupportEnabledApi(slug: string, enabled: boolean): 
   });
 }
 
+/* ------------------------------------------------------------- wiki: running costs */
+
+export type { CostItem, CostModel, CostItemKind } from "@/types/wiki-costs";
+import type { CostModel as CostModelT } from "@/types/wiki-costs";
+
+/** One cost line plus its whole tier ladder — writes REPLACE, they do not patch. */
+export interface WikiCostItemInput {
+  name: string;
+  vendor?: string | null;
+  kind: "FLAT" | "PER_USER" | "METERED" | "STEPPED";
+  amountMonthly?: number | null;
+  amountAnnual?: number | null;
+  unitLabel?: string | null;
+  includedUnits?: number | null;
+  unitPrice?: number | null;
+  unitsPerUser?: number | null;
+  notes?: string | null;
+  tiers?: { upToUsers: number | null; amountMonthly: number; label?: string | null }[];
+}
+
+export interface WikiCostSettingsInput {
+  currency?: string;
+  headlineUsers?: number;
+  notes?: string | null;
+}
+
+export async function setWikiCostsEnabledApi(slug: string, enabled: boolean): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function updateWikiCostSettingsApi(
+  slug: string,
+  input: WikiCostSettingsInput,
+): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createWikiCostItemApi(
+  slug: string,
+  input: WikiCostItemInput,
+): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiCostItemApi(
+  slug: string,
+  itemId: string,
+  input: WikiCostItemInput,
+): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiCostItemApi(slug: string, itemId: string): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs/${itemId}`, { method: "DELETE" });
+}
+
 export async function setWikiInsightsEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/insights`, {
     method: "PATCH",

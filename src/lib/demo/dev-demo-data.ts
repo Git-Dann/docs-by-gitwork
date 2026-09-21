@@ -861,6 +861,101 @@ const demoWiki: WikiDTO = {
   // Every board type, with a real two-level node map — a demo that only carried a bar
   // chart would verify the CSS and nothing else (§43.3). The node board is deliberately
   // shaped like the case this was built for: one thing at the centre, lots hanging off it.
+  /**
+   * All FOUR pricing kinds, plus two live blind spots — a metered line with no driver
+   * and a stepped line capped at its top band. A demo that only carried well-formed
+   * lines would verify the CSS and nothing else (§43.3); these are the two states the
+   * page's honesty rules exist for.
+   */
+  costs: {
+    enabled: true,
+    currency: "GBP",
+    headlineUsers: 5000,
+    notes:
+      "Figures are the list price of each service at today's rates. They exclude VAT and any Gitwork retainer.",
+    updatedAt: "2026-09-18T09:00:00.000Z",
+    items: [
+      {
+        id: "cost-hosting",
+        name: "App hosting",
+        vendor: "Fasthosts VPS",
+        kind: "FLAT",
+        amountMonthly: 48,
+        amountAnnual: 480,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: "Two instances behind the load balancer.",
+        orderKey: 0,
+      },
+      {
+        id: "cost-db",
+        name: "Database & storage",
+        vendor: "Supabase",
+        kind: "STEPPED",
+        amountMonthly: null,
+        amountAnnual: null,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [
+          { id: "t1", upToUsers: 1000, amountMonthly: 25, label: "Pro", orderKey: 0 },
+          { id: "t2", upToUsers: 10000, amountMonthly: 120, label: "Team", orderKey: 1 },
+          { id: "t3", upToUsers: 100000, amountMonthly: 599, label: "Scale", orderKey: 2 },
+        ],
+        notes: "Enterprise pricing above 100k users is quoted, not published.",
+        orderKey: 1,
+      },
+      {
+        id: "cost-seats",
+        name: "Admin seats",
+        vendor: "Foundry",
+        kind: "PER_USER",
+        amountMonthly: 0.4,
+        amountAnnual: 4,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: null,
+        orderKey: 2,
+      },
+      {
+        id: "cost-email",
+        name: "Transactional email",
+        vendor: "Resend",
+        kind: "METERED",
+        amountMonthly: 18,
+        amountAnnual: null,
+        unitLabel: "emails",
+        includedUnits: 50000,
+        unitPrice: 0.0004,
+        unitsPerUser: 6,
+        tiers: [],
+        notes: null,
+        orderKey: 3,
+      },
+      {
+        id: "cost-ai",
+        name: "AI assistant",
+        vendor: "Anthropic",
+        kind: "METERED",
+        amountMonthly: 0,
+        amountAnnual: null,
+        unitLabel: "tokens",
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: "Usage per user still being measured from the beta.",
+        orderKey: 4,
+      },
+    ],
+  },
   insights: {
     enabled: true,
     boards: [

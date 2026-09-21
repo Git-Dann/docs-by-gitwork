@@ -43,6 +43,8 @@ import {
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
+import { loadWikiCosts } from "./wiki-costs";
+import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
 import type { LaunchpadDTO } from "@/types/launchpad";
@@ -263,6 +265,12 @@ export interface WikiDTO {
   launchpad: LaunchpadDTO | null;
   /** Hand-authored charts and diagrams — see src/server/wiki-insights.ts. */
   insights: WikiInsightsSection;
+  /**
+   * What the app costs to RUN, and the cost per end user. Distinct from Docs costing,
+   * which is what Gitwork charges. Client-facing, so the totals carry their own blind
+   * spots — see src/lib/wiki-costs.ts.
+   */
+  costs: CostModel;
   /**
    * Whether the Delivery section is on. There is no `delivery` DTO: the page derives
    * everything from `timeline` and `blockers`, which are already here — so a loader
@@ -758,6 +766,7 @@ async function buildDTO(
     launchpad,
     taskStatuses,
     insights,
+    costs,
     support,
   ] = await Promise.all([
     settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
@@ -780,6 +789,14 @@ async function buildDTO(
       new Map<string, TaskStatus>(),
     ),
     settle("insights", () => loadWikiInsights(wiki.clientId), { enabled: false, boards: [] }),
+    settle("costs", () => loadWikiCosts(wiki.clientId), {
+      enabled: false,
+      currency: "GBP",
+      headlineUsers: 1000,
+      items: [],
+      notes: null,
+      updatedAt: null,
+    }),
     settle("support", () => loadWikiSupport(wiki.clientId), {
       enabled: false,
       linked: false,
@@ -846,6 +863,7 @@ async function buildDTO(
     documents,
     launchpad,
     insights,
+    costs,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     support,
     users: opts?.includeUsers
@@ -2508,6 +2526,7 @@ const SHAREABLE_SECTIONS = [
   // so a link recipient can see what is being asked of them but cannot answer it.
   "launchpad",
   "insights",
+  "costs",
   "delivery",
   "support",
   "code-handover",
