@@ -174,6 +174,8 @@ export function serializePulseScanListItem(
 export async function listPulseScans(params?: {
   clientId?: string;
   clientIds?: string[] | null;
+  /** Also include scans this user started, whatever client they belong to. */
+  triggeredByUserId?: string | null;
 }): Promise<PulseScanListItem[]> {
   const workspace = await prisma.workspace.findFirst({
     where: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -181,11 +183,28 @@ export async function listPulseScans(params?: {
   });
   if (!workspace) return [];
 
+  // Scoping is "scans for a client I'm assigned to, OR a scan I ran myself".
+  //
+  // ⚠️ The second half is load-bearing and was missing. A standalone URL scan has NO
+  // clientId, so a viewer scoped by `clientIds` could never see one — and a guest, who
+  // has no client assignments at all, matched `clientId IN ("__none__")` and saw an
+  // empty list however many scans they had just run. Prospecting from a URL is the
+  // whole point of a Pulse guest, so "I ran it" has to be a way in.
+  const mine = params?.triggeredByUserId;
+  const scopedByClient =
+    params?.clientIds != null
+      ? { clientId: { in: params.clientIds.length ? params.clientIds : ["__none__"] } }
+      : null;
+
   const scans = await prisma.pulseScan.findMany({
     where: {
       workspaceId: workspace.id,
       ...(params?.clientId ? { clientId: params.clientId } : {}),
-      ...(params?.clientIds ? { clientId: { in: params.clientIds.length ? params.clientIds : ["__none__"] } } : {}),
+      ...(scopedByClient
+        ? mine
+          ? { OR: [scopedByClient, { triggeredByUserId: mine }] }
+          : scopedByClient
+        : {}),
     },
     include: {
       client: { select: { name: true } },
