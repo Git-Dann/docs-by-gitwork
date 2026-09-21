@@ -4,11 +4,11 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, ROLE_IDS } from "@/types/auth";
 
 const UpdateMemberSchema = z.object({
   name: z.string().min(1).optional(),
-  role: z.enum(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]).optional(),
+  role: z.enum(ROLE_IDS).optional(),
   permissions: z.array(z.string()).optional(),
 });
 

@@ -92,6 +92,15 @@ export function TeamSection() {
   const [editingLabel, setEditingLabel] = useState("");
   const [accessMember, setAccessMember] = useState<Member | null>(null);
 
+  // Guest: name + email + password, because a guest has no Gitwork Google account and
+  // therefore cannot use an invite link — the flow every other member uses.
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPassword, setGuestPassword] = useState("");
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const [guestAdded, setGuestAdded] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     const [membersRes, invitesRes] = await Promise.all([
       fetch("/api/team/members"),
@@ -105,6 +114,40 @@ export function TeamSection() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function createGuest() {
+    setGuestError(null);
+    setGuestAdded(null);
+    if (guestPassword.length < 8) {
+      setGuestError("The password needs to be at least 8 characters.");
+      return;
+    }
+    setGuestBusy(true);
+    const res = await fetch("/api/team", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: guestName.trim(),
+        email: guestEmail.trim().toLowerCase(),
+        password: guestPassword,
+        // A guest starts with nothing on purpose — you turn products on afterwards via
+        // Access. Sending permissions here would mean forgetting to is what grants them.
+        role: "GUEST",
+        permissions: [],
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok) {
+      setGuestAdded(guestEmail.trim().toLowerCase());
+      setGuestName("");
+      setGuestEmail("");
+      setGuestPassword("");
+      await load();
+    } else {
+      setGuestError(json?.error ?? "Could not create that guest.");
+    }
+    setGuestBusy(false);
+  }
 
   async function createInvite() {
     setCreating(true);
@@ -195,9 +238,60 @@ export function TeamSection() {
         </SettingsCard>
       ) : null}
 
+      {/* Guest — the only member who signs in with a password rather than Google. */}
+      {isAdmin ? (
+        <SettingsCard number="02" title="Add a guest">
+          <div className="flex flex-wrap gap-3">
+            <input
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              placeholder="Name"
+              className="app-input min-w-[160px] flex-1"
+            />
+            <input
+              type="email"
+              value={guestEmail}
+              onChange={(e) => setGuestEmail(e.target.value)}
+              placeholder="Email"
+              className="app-input min-w-[200px] flex-[2]"
+            />
+            <input
+              type="password"
+              value={guestPassword}
+              onChange={(e) => setGuestPassword(e.target.value)}
+              placeholder="Password (min 8)"
+              className="app-input min-w-[160px] flex-1"
+              onKeyDown={(e) => e.key === "Enter" && createGuest()}
+            />
+            <button
+              onClick={createGuest}
+              disabled={guestBusy || !guestName.trim() || !guestEmail.trim() || !guestPassword}
+              className="shrink-0 rounded-[8px] bg-[var(--brand-700)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
+            >
+              {guestBusy ? "Adding…" : "Add guest"}
+            </button>
+          </div>
+          {guestError ? (
+            <p className="mt-2 text-xs text-[var(--danger-500)]">{guestError}</p>
+          ) : guestAdded ? (
+            <p className="mt-2 text-xs text-[var(--success-500)]">
+              {guestAdded} can now sign in. They have <strong>no access to anything</strong> yet —
+              open <strong>Access</strong> on their row below to switch on the products they should
+              see.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--text-4)]">
+              For someone outside Gitwork. They sign in with this email and password, and start
+              with no access at all — you grant products individually from Access. Tell them the
+              password yourself; Foundry never emails it.
+            </p>
+          )}
+        </SettingsCard>
+      ) : null}
+
       {/* Pending invites */}
       {pendingInvites.length > 0 ? (
-        <SettingsCard number="02" title="Pending invites">
+        <SettingsCard number="03" title="Pending invites">
           <div className="divide-y divide-[var(--border-2)]">
             {pendingInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
@@ -266,7 +360,7 @@ export function TeamSection() {
 
       {/* Members */}
       <SettingsCard
-        number="03"
+        number="04"
         title="Members"
         right={<span className="text-xs text-[var(--text-4)]">{members.length} people</span>}
         bodyClassName="p-0"
@@ -334,7 +428,7 @@ export function TeamSection() {
 
       {/* Past invites */}
       {pastInvites.length > 0 ? (
-        <SettingsCard number="04" title="Past invites">
+        <SettingsCard number="05" title="Past invites">
           <div className="divide-y divide-[var(--border-2)]">
             {pastInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">

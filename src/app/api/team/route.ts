@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, ROLE_IDS } from "@/types/auth";
 import { recomputeMember } from "@/server/permissions";
 import { isSeedAccountEmail } from "@/server/seed-accounts";
 
@@ -13,7 +13,7 @@ const CreateMemberSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]),
+  role: z.enum(ROLE_IDS),
   permissions: z.array(z.string()).default([]),
 });
 

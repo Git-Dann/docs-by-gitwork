@@ -4,6 +4,7 @@ import {
   ALL_PERMISSION_IDS,
   DEFAULT_ROLE_PERMISSIONS,
   LEGACY_PERMISSION_ALIASES,
+  ROLES,
   isSuperAdmin,
   isValidPermissionId,
   normalizeMatrix,
@@ -24,7 +25,12 @@ import {
 // the single `permissions` field.
 // ════════════════════════════════════════════════════════════════════════════
 
-const KNOWN_ROLES = new Set<string>(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]);
+// Derived from ROLES, never hand-listed. `freezeExistingMembers` rewrites any member
+// whose role is not in here TO STAFF — so a role missing from this set is not a typo,
+// it is a silent privilege escalation for everyone holding it. GUEST was exactly that
+// case when it was added: rank 10, default grant of nothing, and it would have been
+// frozen into STAFF with STAFF's full module set.
+const KNOWN_ROLES = new Set<string>(ROLES.map((r) => r.id));
 
 /** Emails that are always Super Admins (the workspace owner). Idempotently enforced. */
 export const KNOWN_SUPER_ADMIN_EMAILS = ["dan@gitwork.co.uk"];

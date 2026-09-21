@@ -25,7 +25,19 @@ declare module "next-auth" {
 // ════════════════════════════════════════════════════════════════════════════
 
 // ── Roles ────────────────────────────────────────────────────────────────────
-export type RoleId = "SUPER_ADMIN" | "ADMIN" | "STAFF" | "DEVELOPER" | "GUEST";
+
+/**
+ * Every role id, in one place, as a tuple the API schemas can build a `z.enum` from.
+ *
+ * It lives here rather than being written out again in each route because the three
+ * `/api/team*` schemas each carried their own copy, and adding GUEST to the platform
+ * without adding it to those three made the role real everywhere except the one place
+ * that can assign it. `RoleId` is derived from this list, so the type cannot drift
+ * from it, and `role-ids.test.ts` holds ROLES and the schemas to it as well.
+ */
+export const ROLE_IDS = ["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER", "GUEST"] as const;
+
+export type RoleId = (typeof ROLE_IDS)[number];
 
 export interface RoleDef {
   id: RoleId;

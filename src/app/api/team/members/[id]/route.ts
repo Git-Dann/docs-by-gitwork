@@ -12,7 +12,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { auth } from "@/auth";
 import { recordAuditEntry } from "@/server/audit-log";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, ROLE_IDS } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ const overridesSchema = z.object({
 });
 
 const patchSchema = z.object({
-  role: z.enum(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]).optional(),
+  role: z.enum(ROLE_IDS).optional(),
   permissionOverrides: overridesSchema.optional(),
 });
 
