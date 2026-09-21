@@ -10,8 +10,7 @@ import {
   isSuperAdmin,
   normalizeMatrix,
   normalizeOverrides,
-  resolveEffectivePermissions,
-} from "@/types/auth";
+  resolveEffectivePermissions, isExternalRole } from "@/types/auth";
 
 export type EffectiveUser = {
   id: string;
@@ -439,6 +438,27 @@ export function assertCan(user: EffectiveUser | null, check: (u: EffectiveUser) 
  * assertCan: a signed-in user below the bar is rejected; a trusted API_KEY-only caller
  * (no per-user identity → null) passes, so external/server integrations keep working.
  */
+/**
+ * Refuse a caller who is not a member of Gitwork.
+ *
+ * ⚠️ This exists because "authed" stopped meaning "a colleague". Every account used to
+ * be an @gitwork.co.uk Google sign-in, so a route that merely required a session was
+ * implicitly internal — and several were written that way, with a comment saying
+ * "authed" and nothing else. `GET /api/pulse/leads` returned every captured lead email
+ * to anyone with a session, which a GUEST now has.
+ *
+ * Use it on anything that returns data about GITWORK rather than about the caller:
+ * workspace-wide roll-ups, our own marketing config, captured leads.
+ *
+ * A null user passes, matching `assertAtLeastAdmin` — an identity-less caller is the
+ * workspace API_KEY (server integrations and cron), not a guest with a browser.
+ */
+export function assertInternal(user: EffectiveUser | null): void {
+  if (user && isExternalRole(user.role)) {
+    throw new ForbiddenError("This is only available to the Gitwork team.");
+  }
+}
+
 export function assertAtLeastAdmin(user: EffectiveUser | null): void {
   if (user && !isAtLeast(user.role, "ADMIN")) {
     throw new ForbiddenError("Admin access required.");

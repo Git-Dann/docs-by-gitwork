@@ -9,6 +9,7 @@
  * token can never lock an admin out of a module.
  */
 
+import { isExternalRole } from "@/types/auth";
 /**
  * Maps /app/* path prefixes to the module permission that gates them. Listed as pairs
  * (not a module→path map) so a module can expose both its canonical route and its legacy
@@ -99,12 +100,10 @@ export const INTERNAL_ONLY_PREFIXES = [
   "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
 ];
 
-/** Roles that are NOT Gitwork staff. Everything here is external by definition. */
-const EXTERNAL_ROLES = new Set(["GUEST"]);
-
-export function isExternalRole(role: string | null | undefined): boolean {
-  return !!role && EXTERNAL_ROLES.has(role);
-}
+// Lives in types/auth.ts so client components can gate on it without pulling this
+// module (and NextAuth) into the browser. Re-exported because this is where the
+// internal-vs-external rule is reasoned about.
+export { isExternalRole };
 
 /**
  * The HQ dashboard. Deliberately NOT in UNGATED_APP_PREFIXES: a "/app" entry there would

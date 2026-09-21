@@ -35,6 +35,37 @@ declare module "next-auth" {
  * that can assign it. `RoleId` is derived from this list, so the type cannot drift
  * from it, and `role-ids.test.ts` holds ROLES and the schemas to it as well.
  */
+/**
+ * The only roles a password may authenticate.
+ *
+ * ⚠️ Read the note at the top of `server/auth/password-login.ts` before widening this.
+ * `POST /api/auth/forgot-password` is public and sets ANY user's password on a shared
+ * recovery key, so a password that authenticates an admin is an account takeover. The
+ * pairing is what keeps that route harmless.
+ *
+ * It lives HERE rather than beside the bcrypt code because client components need the
+ * predicate to decide whether to render a "change your password" field, and importing
+ * it from the server module would pull Prisma and bcrypt into the browser bundle.
+ */
+/**
+ * Roles that are NOT Gitwork staff. Everything here is external by definition.
+ *
+ * Used to decide both what a page may show (the gate in server/auth/module-gate.ts)
+ * and what the UI should bother rendering — a guest has no Google account, no
+ * standup and no colleagues, so several surfaces are noise rather than a leak.
+ */
+const EXTERNAL_ROLES = new Set<string>(["GUEST"]);
+
+export function isExternalRole(role: string | null | undefined): boolean {
+  return !!role && EXTERNAL_ROLES.has(role);
+}
+
+export const PASSWORD_LOGIN_ROLES = ["GUEST"] as const;
+
+export function isPasswordLoginAllowed(role: string | null | undefined): boolean {
+  return !!role && (PASSWORD_LOGIN_ROLES as readonly string[]).includes(role);
+}
+
 export const ROLE_IDS = ["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER", "GUEST"] as const;
 
 export type RoleId = (typeof ROLE_IDS)[number];
@@ -586,6 +617,21 @@ export const LEGACY_PERMISSION_ALIASES: Record<string, string[]> = {
 export const DEFAULT_STAFF_PERMISSIONS: string[] = [...DEFAULT_ROLE_PERMISSIONS.STAFF];
 
 // ── Presets (back-compat for the existing Team modal quick buttons) ─────────────
+/**
+ * What a guest needs to run a Pulse scan and read the result — all three, not one.
+ *
+ * ⚠️ Granting the `pulse` MODULE alone gets them the page and a "New scan" button that
+ * 403s on submit: `POST /api/pulse/scans` asserts `pulse.manage` (create a scan) and
+ * `canGenerateAi` (spend tokens). Three separate grants is not obvious from the Access
+ * matrix, which is why this preset exists rather than a note in a doc.
+ *
+ * ⚠️ `ai.generate` is a COST decision. It is admin-gated everywhere else precisely
+ * because it spends tokens, so handing it to someone outside the company means they can
+ * run scans on our account. That is the intended trade for a Pulse guest — but it is a
+ * trade, and it should be made on purpose.
+ */
+export const PULSE_GUEST_PERMISSIONS: readonly string[] = ["pulse", "pulse.manage", "ai.generate"];
+
 export const PERMISSION_PRESETS = [
   {
     id: "admin",
@@ -600,6 +646,14 @@ export const PERMISSION_PRESETS = [
     role: "STAFF" as const,
     description: "Every module, sees rates and all clients. Default for new hires.",
     permissions: DEFAULT_ROLE_PERMISSIONS.STAFF,
+  },
+  {
+    id: "pulse-guest",
+    label: "Pulse guest",
+    role: "GUEST" as const,
+    description:
+      "Outside collaborator who can run Pulse scans and read the results — and nothing else. Includes AI generation, which spends tokens on our account.",
+    permissions: PULSE_GUEST_PERMISSIONS,
   },
   {
     id: "developer",

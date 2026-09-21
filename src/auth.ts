@@ -175,6 +175,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const membership = dbUser.memberships[0];
         token.id = dbUser.id;
+        // Carry identity from the DB row, not from the provider profile.
+        //
+        // ⚠️ Google populates token.name/email on its own, so nothing here ever needed
+        // to. A CREDENTIALS sign-in does not: the guest arrived with an empty name and
+        // email on the session, which showed up as a "?" avatar in the sidebar and two
+        // em-dashes on the profile page. Setting both from `dbUser` fixes every surface
+        // at once rather than each one falling back on its own, and for a Google account
+        // it writes the same values it already had.
+
+        token.name = dbUser.name ?? token.name;
+        token.email = dbUser.email ?? token.email;
         token.role = membership?.role ?? "STAFF";
         // Resolve + persist the member's effective permissions from the role matrix so
         // the JWT carries the live set (and the cached column stays in sync).

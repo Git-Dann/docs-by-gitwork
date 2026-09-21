@@ -26,7 +26,7 @@ import { cn } from "@/lib/format";
 import { buildPageTitle } from "@/lib/page-title";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, isExternalRole } from "@/types/auth";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -501,7 +501,10 @@ export function AppShell({
       </div>
 
       {/* The Desk — persistent internal aggregator drawer (fixed to the viewport). */}
-      <DeskDrawer sidebarCollapsed={collapsed} />
+      {/* On Your Desk is internal staff tooling — a standup prompt, my-clients cash
+          flow, the Gmail/Slack inbox. All of it is either meaningless to a guest or
+          about people they do not work with, and the dock is on every /app screen. */}
+      {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
     </div>
   );
 }

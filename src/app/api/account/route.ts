@@ -14,6 +14,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { splitAvatarInput } from "@/lib/avatar";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { isPasswordLoginAllowed } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +82,13 @@ export async function GET() {
 
     // Keep DB name in sync with the live Google profile name. We only update when something
     // changed — most reads are no-ops.
-    if (sessionName && sessionName !== (mutableUser.name ?? "")) {
+    //
+    // ⚠️ NOT for a password-login account. Their name is editable here (there is no Google
+    // profile to source it from), and a JWT carries whatever name it was minted with — so
+    // without this guard the next GET after a rename would quietly write the OLD name back
+    // and the edit would appear to revert on its own.
+    const ownsOwnName = isPasswordLoginAllowed(mutableUser.memberships[0]?.role);
+    if (!ownsOwnName && sessionName && sessionName !== (mutableUser.name ?? "")) {
       await prisma.user.update({
         where: { id: mutableUser.id },
         data: { name: sessionName },
@@ -113,6 +120,11 @@ export async function GET() {
 // ImagePicker. We allow up to ~8MB encoded so even chunky uploads round-trip. Stored on the
 // User row — eventual move to an object-storage upload pipeline can shrink this back down.
 const patchSchema = z.object({
+  // Editable ONLY for a password-login account (see the PATCH handler). A Google
+  // account's name is owned by Google Workspace and is re-synced from the session on
+  // every GET, so letting one edit it here would silently revert on the next request —
+  // worse than not offering it.
+  name: z.string().trim().min(1, "Enter a name").max(120).optional(),
   avatarUrl: z.string().trim().max(8_000_000).optional(),
   // CSS object-position — "50% 30%" style, or empty to clear (centre). Kept short and
   // constrained so it can never be an injection vector when written into an inline style.
@@ -137,6 +149,19 @@ export async function PATCH(request: NextRequest) {
       return apiError(parsed.error.issues.map((issue) => issue.message).join(", "), 400);
     }
 
+    let nameUpdate: string | undefined;
+    if (parsed.data.name !== undefined) {
+      const membership = await prisma.workspaceMember.findFirst({
+        where: { userId: session.user.id, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+        select: { role: true },
+      });
+      // Read the role from the DATABASE, not the token — a JWT outlives a role change.
+      if (!isPasswordLoginAllowed(membership?.role)) {
+        return apiError("Your name is managed by Google Workspace.", 400);
+      }
+      nameUpdate = parsed.data.name;
+    }
+
     // A `data:` avatar must never land in `avatarUrl` (it would be inlined per
     // row into every list that embeds an avatar). Split it: the blob goes to the
     // private `avatarImage` column, and `avatarUrl` gets the short served path.
@@ -154,6 +179,7 @@ export async function PATCH(request: NextRequest) {
         ...(parsed.data.avatarPosition !== undefined
           ? { avatarPosition: parsed.data.avatarPosition }
           : {}),
+        ...(nameUpdate !== undefined ? { name: nameUpdate } : {}),
       },
       select: { id: true, email: true, name: true, avatarUrl: true, avatarPosition: true },
     });

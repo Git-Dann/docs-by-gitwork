@@ -25,7 +25,7 @@ import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
 import { useClientList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
-import { isAtLeast, isSuperAdmin } from "@/types/auth";
+import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
 import { useViewAs } from "@/lib/view-as";
 
 export type WidgetSize = "sm" | "md" | "lg";
@@ -42,7 +42,7 @@ type GridEntry = {
    * wrapper per entry, so a widget returning null would leave a 220px empty card
    * where the tile should be.
    */
-  requires?: "launchpad";
+  requires?: "launchpad" | "google";
   size: WidgetSize;
   /** Module permission required to see this widget (undefined = always shown). */
   module?: string;
@@ -61,8 +61,8 @@ const TILE_GAP = 12;
 // blank cell — and numbering stays sequential because the parent assigns it.
 const GRID: GridEntry[] = [
   { component: ClientsWidget,   band: "feed",    size: "md", module: "clients" },
-  { component: GmailWidget,     band: "feed",    size: "md" },
-  { component: CalendarWidget,  band: "feed",    size: "md" },
+  { component: GmailWidget,     band: "feed",    size: "md", requires: "google" },
+  { component: CalendarWidget,  band: "feed",    size: "md", requires: "google" },
   { component: PulseWidget,     band: "summary", size: "sm", module: "pulse" },
   { component: CareWidget,      band: "summary", size: "sm", module: "support" },
   { component: ProposalsWidget, band: "summary", size: "sm", module: "proposals" },
@@ -79,6 +79,65 @@ type NumberedTile = GridEntry & { number: number };
  * columns each; a final row of two spans 3 each and a lone tile spans all 6 —
  * so every row is completely filled and no blank cells are ever left.
  */
+/**
+ * Foundry HQ for someone outside Gitwork.
+ *
+ * The internal dashboard is a standup, a client roster, staffing alerts and an inbox —
+ * every one of which is either about people a guest does not work with or a prompt they
+ * cannot answer. So this is not a trimmed version of it: it renders ONLY the tiles for
+ * modules a Super Admin actually switched on, and says plainly when that is none.
+ *
+ * `widgets` is already filtered by the caller, so this component cannot show a tile the
+ * guest has no permission for even if someone adds one to the GRID later.
+ */
+function GuestOverview({
+  widgets,
+  firstName,
+  longDate,
+}: {
+  widgets: GridEntry[];
+  firstName: string;
+  longDate: string;
+}) {
+  const feeds = widgets.filter((w) => w.band === "feed").map((w, i) => ({ ...w, number: i + 1 }));
+  const summaries = widgets
+    .filter((w) => w.band === "summary")
+    .map((w, i) => ({ ...w, number: feeds.length + i + 1 }));
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="widget-data-label text-[var(--text-4)]">{longDate}</p>
+        <h2 className="mt-1 font-serif text-[28px] leading-tight text-[var(--text-1)]">
+          {firstName ? `Welcome, ${firstName}.` : "Welcome."}
+        </h2>
+      </div>
+
+      {widgets.length === 0 ? (
+        // Not an error state — nobody has granted anything yet, and the guest cannot
+        // fix that themselves, so it says who can rather than what went wrong.
+        <div className="widget-card">
+          <div className="widget-header">
+            <span>01 // NOTHING SHARED YET</span>
+          </div>
+          <div className="widget-body">
+            <p className="text-sm leading-6 text-[var(--text-3)]">
+              Your account is set up, but nothing has been shared with it yet. Whoever
+              invited you can switch on the products you need — ask them and refresh this
+              page.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {feeds.length > 0 ? <BentoBand tiles={feeds} band="feed" /> : null}
+          {summaries.length > 0 ? <BentoBand tiles={summaries} band="summary" /> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 function BentoBand({ tiles, band }: { tiles: NumberedTile[]; band: WidgetBand }) {
   const height = band === "feed" ? ROW_HEIGHT * 2 + TILE_GAP : ROW_HEIGHT;
   return (
@@ -140,14 +199,14 @@ export function AppOverview() {
   const resolvedPermissions = previewPerms ?? realPermissions;
 
 
+  // Someone outside Gitwork: signs in with an email and password, and holds only what
+  // a Super Admin switched on for them.
+  const isExternal = isExternalRole(isAdmin && viewAs ? viewAs : role);
+
   // Show developer view when previewing as Developer, or when actually a restricted dev.
   const isDeveloper = isAdmin
     ? viewAs === "DEVELOPER"
     : role === "DEVELOPER" || !realPermissions.includes("seeAllClients");
-
-  if (isDeveloper) {
-    return <DevOverview />;
-  }
 
   // Full unrestricted view: real Super Admin (isAdmin, no preview, empty permissions array).
   const showAll = isAdmin && previewPerms === null && realPermissions.length === 0;
@@ -174,15 +233,32 @@ export function AppOverview() {
   const canBroadcast = canPublishRollup;
   // Same query key ClientsWidget uses, so this reads the cache rather than refetching.
   const anyLaunchpad = (clientList.data?.clients ?? []).some((c) => c.launchpad);
+  // A guest has no Google account, so Gmail and Calendar can only render an error for
+  // them. Neither carries a module permission, so nothing else would have filtered them.
   const widgets = GRID.filter(
     (g) =>
       (showAll || !g.module || resolvedPermissions.includes(g.module)) &&
-      (g.requires !== "launchpad" || anyLaunchpad),
+      (g.requires !== "launchpad" || anyLaunchpad) &&
+      (g.requires !== "google" || !isExternal),
   );
   const hasBackstage = showAll || resolvedPermissions.includes("backstage");
 
   const firstName = (account.data?.name ?? "").trim().split(/\s+/)[0];
   const longDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+
+  // ⚠️ Both branches sit HERE, below `widgets`, because that is what the guest view
+  // renders. A guest also satisfies `isDeveloper` ("not an admin, not scoped to every
+  // client"), so the guest test must come first — otherwise they land on DevOverview:
+  // an internal AM/PM standup, a "My Clients" list and a publish roll-up, none of which
+  // applies to someone outside the company.
+  if (isExternal) {
+    return <GuestOverview widgets={widgets} firstName={firstName} longDate={longDate} />;
+  }
+
+  if (isDeveloper) {
+    return <DevOverview />;
+  }
+
 
   // ── Sequential numbering, computed from what actually renders so there are
   //    never holes (01, 02, 03 …). The desk card is always slot 1 when shown;

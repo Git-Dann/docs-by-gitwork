@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { PASSWORD_LOGIN_ROLES, isPasswordLoginAllowed } from "@/types/auth";
 
 /**
  * Email-and-password sign-in, for guests only.
@@ -24,12 +25,10 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
  * dealing with that recovery-key route. The two are a pair.
  */
 
-/** The only roles a password may authenticate. See the note above before editing. */
-export const PASSWORD_LOGIN_ROLES = ["GUEST"] as const;
-
-export function isPasswordLoginAllowed(role: string | null | undefined): boolean {
-  return !!role && (PASSWORD_LOGIN_ROLES as readonly string[]).includes(role);
-}
+// The rule itself lives in types/auth.ts so a client component can read it without
+// pulling bcrypt and Prisma into the browser bundle. Re-exported here because this is
+// where anyone reasoning about password sign-in will look for it.
+export { PASSWORD_LOGIN_ROLES, isPasswordLoginAllowed };
 
 /**
  * A bcrypt hash of a throwaway value, compared against when no user is found.
