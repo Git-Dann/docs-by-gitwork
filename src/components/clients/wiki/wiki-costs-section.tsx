@@ -33,6 +33,42 @@ function users(n: number): string {
   return n.toLocaleString("en-GB");
 }
 
+/** One figure in the AS YOU GROW readout — house grammar: serif figure, mono caps label. */
+function ScaleFigure({
+  label,
+  figure,
+  unit,
+}: {
+  label: string;
+  figure: string;
+  unit?: string;
+}) {
+  return (
+    <div>
+      <p
+        className="text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+        style={{ fontFamily: MONO }}
+      >
+        {label}
+      </p>
+      <p
+        className="mt-1 text-[30px] leading-none break-words text-[var(--text-1)]"
+        style={{ fontFamily: SERIF }}
+      >
+        {figure}
+        {unit ? (
+          <span
+            className="ml-2 align-[0.35em] text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+            style={{ fontFamily: MONO }}
+          >
+            {unit}
+          </span>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
 export function WikiCostsSection({
   slug,
   model,
@@ -69,6 +105,38 @@ export function WikiCostsSection({
     </span>
   ) : null;
   const cur = model.currency;
+
+  /**
+   * Which band the AS YOU GROW slider is on. Opens on the client's own headline count
+   * so the panel agrees with the banner above it; falls back to the nearest band when
+   * the headline is not itself one (a hand-typed 1,234).
+   */
+  const defaultBand = useMemo(() => {
+    let best = 0;
+    for (let i = 1; i < scale.length; i += 1) {
+      const closer =
+        Math.abs(scale[i].users - model.headlineUsers) <
+        Math.abs(scale[best].users - model.headlineUsers);
+      if (closer) best = i;
+    }
+    return best;
+  }, [scale, model.headlineUsers]);
+  const [bandIdx, setBandIdx] = useState(defaultBand);
+  // `scale` is a fixed ladder, but clamp anyway so a stale index can never index undefined.
+  const band = scale[Math.min(bandIdx, scale.length - 1)] ?? scale[0];
+  const maxTotal = Math.max(...scale.map((r) => r.totalMonthly), 1);
+  /**
+   * Bar heights are LOG-scaled, and the panel says so. The bands span five orders of
+   * magnitude (50 → 1,000,000 users) and cost tracks users, so on a linear scale the
+   * first eight bars render as 4px slivers — the whole range a client is actually
+   * choosing within reads as empty. Log makes the ramp legible; the caption keeps it
+   * from being read as a linear jump, and every exact figure is one hover or one
+   * disclosure away.
+   */
+  const barPct = (value: number) => {
+    if (!(value > 0)) return 4;
+    return Math.max(6, Math.round((Math.log10(1 + value) / Math.log10(1 + maxTotal)) * 100));
+  };
 
   if (model.items.length === 0) {
     return (
@@ -456,7 +524,7 @@ export function WikiCostsSection({
         </section>
       )}
 
-      {/* ── 03 the curve ────────────────────────────────────────────────────── */}
+      {/* ── 04 the curve ────────────────────────────────────────────────────── */}
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
@@ -467,70 +535,153 @@ export function WikiCostsSection({
             {users(SCALE_BANDS[0])} → {users(SCALE_BANDS[SCALE_BANDS.length - 1])} USERS
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <div className="min-w-[620px]">
-            <div
-              className="grid grid-cols-[110px_minmax(0,1fr)_150px_150px] gap-3 border-b border-[var(--border-1)] px-4 py-2 text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
-              style={{ fontFamily: MONO }}
-            >
-              <span>Users</span>
-              <span />
-              <span className="text-right">Per month</span>
-              <span className="text-right">Per user</span>
-            </div>
-            {scale.map((row) => {
-              const isHeadline = row.users === model.headlineUsers;
-              return (
-                <div
+
+        {/*
+          This was an 11-row table behind a 620px scroller, so on a phone the per-user
+          column — the number the panel exists for — sat off the edge inside
+          `widget-card`, which is `overflow: hidden`. One band at a time, scrubbable,
+          reads at 390px with no sideways scroll at all. The shape of the curve is not
+          lost: it moves into the bars, the same relative-width idiom the table row
+          used, turned upright. Every band is still readable as a figure via the
+          disclosure at the foot — nothing was removed, only folded away.
+        */}
+        <div className="space-y-5 p-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <ScaleFigure label="At" figure={users(band.users)} unit="users" />
+            <ScaleFigure
+              label="Per month"
+              figure={`${band.incomplete ? "from " : ""}${money(band.totalMonthly, cur)}`}
+            />
+            <ScaleFigure
+              label="Per user"
+              figure={`${
+                band.incomplete && band.perUserMonthly !== null ? "from " : ""
+              }${money(band.perUserMonthly, cur, true)}`}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex h-14 items-end gap-1">
+              {scale.map((row, i) => (
+                <button
                   key={row.users}
-                  className={`grid grid-cols-[110px_minmax(0,1fr)_150px_150px] items-center gap-3 border-b border-[var(--border-1)] px-4 py-2 last:border-b-0 ${
-                    isHeadline ? "bg-[var(--brand-50)]" : ""
-                  }`}
+                  type="button"
+                  onClick={() => setBandIdx(i)}
+                  title={`${users(row.users)} users — ${money(row.totalMonthly, cur)} per month`}
+                  aria-label={`Price at ${users(row.users)} users`}
+                  aria-pressed={i === bandIdx}
+                  className="group flex h-full flex-1 items-end"
                 >
                   <span
-                    className="text-[13px] text-[var(--text-2)] tabular-nums"
-                    style={{ fontFamily: MONO }}
-                  >
-                    {users(row.users)}
-                  </span>
-                  {/* A bar, not a chart: the shape of the curve is the point, and one
-                      relative bar carries it without a renderer or a library. */}
-                  <span className="block h-1.5 rounded-full bg-[var(--surface-2)]">
-                    <span
-                      className="block h-1.5 rounded-full bg-[var(--brand-700)]"
-                      style={{
-                        width: `${Math.max(
-                          2,
-                          Math.round(
-                            (row.totalMonthly /
-                              Math.max(...scale.map((s) => s.totalMonthly), 1)) *
-                              100,
-                          ),
-                        )}%`,
-                      }}
-                    />
-                  </span>
-                  <span
-                    className="text-right text-[13px] whitespace-nowrap text-[var(--text-1)] tabular-nums"
-                    style={{ fontFamily: MONO }}
-                  >
-                    {row.incomplete ? "from " : ""}
-                    {money(row.totalMonthly, cur)}
-                  </span>
-                  <span
-                    className="text-right text-[13px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
-                    style={{ fontFamily: MONO }}
-                  >
-                    {/* ⚠️ "from —" is meaningless. A floor qualifies a FIGURE, so the
-                        prefix is suppressed where there is no figure — which is exactly
-                        the zero-users row this table now starts at. */}
-                    {row.incomplete && row.perUserMonthly !== null ? "from " : ""}
-                    {money(row.perUserMonthly, cur, true)}
-                  </span>
-                </div>
-              );
-            })}
+                    className={`block w-full rounded-sm transition-colors ${
+                      i === bandIdx
+                        ? "bg-[var(--brand-700)]"
+                        : "bg-[var(--surface-2)] group-hover:bg-[var(--brand-300)]"
+                    }`}
+                    style={{ height: `${barPct(row.totalMonthly)}%` }}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={scale.length - 1}
+              step={1}
+              value={bandIdx}
+              onChange={(e) => setBandIdx(Number(e.target.value))}
+              aria-label="User count"
+              aria-valuetext={`${users(band.users)} users`}
+              className="w-full accent-[var(--brand-700)]"
+            />
+
+            <div
+              className="flex justify-between text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+              style={{ fontFamily: MONO }}
+            >
+              <span>{users(scale[0].users)}</span>
+              <span className="text-[var(--text-4)]">bars: log scale</span>
+              <span>{users(scale[scale.length - 1].users)}</span>
+            </div>
           </div>
+
+          <details className="group/bands">
+            <summary
+              className="cursor-pointer list-none text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase hover:text-[var(--text-2)]"
+              style={{ fontFamily: MONO }}
+            >
+              <span className="group-open/bands:hidden">All {scale.length} bands</span>
+              <span className="hidden group-open/bands:inline">Hide bands</span>
+            </summary>
+            <div className="-mx-4 mt-3">
+            <div className="overflow-x-auto">
+              <div className="min-w-[620px]">
+                <div
+                  className="grid grid-cols-[110px_minmax(0,1fr)_150px_150px] gap-3 border-b border-[var(--border-1)] px-4 py-2 text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+                  style={{ fontFamily: MONO }}
+                >
+                  <span>Users</span>
+                  <span />
+                  <span className="text-right">Per month</span>
+                  <span className="text-right">Per user</span>
+                </div>
+                {scale.map((row) => {
+                  const isHeadline = row.users === model.headlineUsers;
+                  return (
+                    <div
+                      key={row.users}
+                      className={`grid grid-cols-[110px_minmax(0,1fr)_150px_150px] items-center gap-3 border-b border-[var(--border-1)] px-4 py-2 last:border-b-0 ${
+                        isHeadline ? "bg-[var(--brand-50)]" : ""
+                      }`}
+                    >
+                      <span
+                        className="text-[13px] text-[var(--text-2)] tabular-nums"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {users(row.users)}
+                      </span>
+                      {/* A bar, not a chart: the shape of the curve is the point, and one
+                          relative bar carries it without a renderer or a library. */}
+                      <span className="block h-1.5 rounded-full bg-[var(--surface-2)]">
+                        <span
+                          className="block h-1.5 rounded-full bg-[var(--brand-700)]"
+                          style={{
+                            width: `${Math.max(
+                              2,
+                              Math.round(
+                                (row.totalMonthly /
+                                  Math.max(...scale.map((s) => s.totalMonthly), 1)) *
+                                  100,
+                              ),
+                            )}%`,
+                          }}
+                        />
+                      </span>
+                      <span
+                        className="text-right text-[13px] whitespace-nowrap text-[var(--text-1)] tabular-nums"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {row.incomplete ? "from " : ""}
+                        {money(row.totalMonthly, cur)}
+                      </span>
+                      <span
+                        className="text-right text-[13px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
+                        style={{ fontFamily: MONO }}
+                      >
+                        {/* ⚠️ "from —" is meaningless. A floor qualifies a FIGURE, so the
+                            prefix is suppressed where there is no figure — which is exactly
+                            the zero-users row this table now starts at. */}
+                        {row.incomplete && row.perUserMonthly !== null ? "from " : ""}
+                        {money(row.perUserMonthly, cur, true)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            </div>
+          </details>
         </div>
       </section>
 
