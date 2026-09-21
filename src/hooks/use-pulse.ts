@@ -61,18 +61,22 @@ export function useUnsharePulseScan() {
   });
 }
 
-export function usePulseStats() {
+export function usePulseStats(enabled = true) {
   return useQuery({
     queryKey: ["pulse-stats"],
     queryFn: getPulseStats,
     staleTime: 1000 * 15,
+    // Workspace-wide figures, so the route refuses an external caller. Skipping the
+    // fetch keeps a guest from firing a request that can only 403.
+    enabled,
   });
 }
 
-export function usePulseScans(params?: { clientId?: string }) {
+export function usePulseScans(params?: { clientId?: string }, enabled = true) {
   return useQuery({
     queryKey: ["pulse-scans", params],
     queryFn: () => listPulseScans(params),
+    enabled,
   });
 }
 
