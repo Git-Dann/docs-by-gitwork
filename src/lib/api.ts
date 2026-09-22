@@ -3589,6 +3589,14 @@ export interface WikiInsightBoardInput {
   }[];
 }
 
+export async function setWikiRoundupEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/roundup`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function setWikiDeliveryEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/delivery`, {
     method: "PATCH",

@@ -29,6 +29,7 @@ import {
   TrashIcon,
   WrenchScrewdriverIcon,
   BanknotesIcon,
+  NewspaperIcon,
 } from "@heroicons/react/24/outline";
 
 export type WikiSection =
@@ -40,6 +41,7 @@ export type WikiSection =
   | "launchpad"
   | "insights"
   | "costs"
+  | "roundup"
   | "delivery"
   | "support"
   | "code-handover"
@@ -164,6 +166,7 @@ export function WikiSidebar({
       "launchpad",
       "insights",
       "costs",
+      "roundup",
       "delivery",
       "support",
       "code-handover",
@@ -265,6 +268,7 @@ export function WikiSidebar({
         {navItem("launchpad", "Launchpad", <RocketLaunchIcon />)}
         {navItem("insights", "Charts", <ChartPieIcon />)}
         {navItem("costs", "Running costs", <BanknotesIcon />)}
+        {navItem("roundup", "RoundUp", <NewspaperIcon />)}
         {navItem("delivery", "Delivery", <ChartBarSquareIcon />)}
         {navItem("support", "Support", <LifebuoyIcon />)}
         {navItem("code-handover", "Code Handover", <CpuChipIcon />)}

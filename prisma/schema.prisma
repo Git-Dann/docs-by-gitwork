@@ -1397,6 +1397,9 @@ model ClientWiki {
   /// are waiting on the client for. Pure presentation over the timeline and blockers the
   /// wiki already carries, so this flag is the only storage it needs.
   deliveryEnabled     Boolean                @default(false)
+  /// RoundUp — the weekly summary. Derived entirely from the timeline the wiki already
+  /// carries, so this flag is the only stored state the section has.
+  roundupEnabled      Boolean                @default(false)
   /// Whether the Support section is enabled — the client's own Care figures, the same
   /// ones the monthly report already emails them. Off unless a linked SupportClient
   /// exists AND someone turns it on.

@@ -594,6 +594,65 @@ const demoLaunchpad: LaunchpadDTO = {
   updatedAt: atDays(-1),
 };
 
+/**
+ * The wiki's timeline, built from the shared Gantt fixture.
+ *
+ * Adds the completion/start stamps RoundUp derives "what we did this week" from. The
+ * Gantt fixture carries only `{title, done}`, so without this the demo would render
+ * RoundUp as "nothing delivered" — a demo that cannot express the feature cannot
+ * verify it (§43.3), and here it would have looked like a bug in the derivation.
+ *
+ * Deterministic rather than random: done tasks are stamped backwards from today so some
+ * land inside the seven-day window and some in the week before (which is what makes the
+ * "+N on the week before" comparison real), and the first unfinished task of any
+ * part-built block is marked started, so "ON NOW" is populated and at least one block
+ * genuinely spans two Venn regions.
+ */
+function wikiTimelineFromGantt(): WikiDTO["timeline"] {
+  const blocks = demoGanttBlocks.map((block, bi) => {
+    let doneSeen = 0;
+    let startedOne = false;
+    const tasks = block.tasks.map((t) => {
+      if (t.done) {
+        // 2, 6, 10 … days back, shifted per block — straddling the boundary on purpose.
+        const daysBack = 2 + bi * 3 + doneSeen * 4;
+        doneSeen += 1;
+        return {
+          title: t.title,
+          done: true,
+          completedAt: atDays(-daysBack),
+          startedAt: atDays(-(daysBack + 3)),
+        };
+      }
+      if (!startedOne && block.progress > 0 && block.progress < 100) {
+        startedOne = true;
+        return { title: t.title, done: false, completedAt: null, startedAt: atDays(-2) };
+      }
+      return { title: t.title, done: false, completedAt: null, startedAt: null };
+    });
+    const doneCount = tasks.filter((t) => t.done).length;
+    const doingCount = tasks.filter((t) => t.startedAt && !t.done).length;
+    return {
+      id: block.id,
+      name: block.name,
+      startDate: block.startDate,
+      endDate: block.endDate,
+      color: block.color ?? null,
+      progress: block.progress,
+      tasks,
+      statusCounts: {
+        BACKLOG: tasks.length - doneCount - doingCount,
+        TODO: 0,
+        DOING: doingCount,
+        IN_REVIEW: 0,
+        UI_DONE: 0,
+        DONE: doneCount,
+      },
+    };
+  });
+  return { blocks, milestones: demoGanttMilestones as WikiDTO["timeline"]["milestones"] };
+}
+
 const demoWiki: WikiDTO = {
   id: "wiki-northwind",
   clientId: WIKI_CLIENT.id,
@@ -722,9 +781,14 @@ const demoWiki: WikiDTO = {
       updatedAt: "2026-09-16T13:00:14.988Z",
     },
   ],
-  // The wiki timeline reuses the shared Gantt shape (rendered fine in prod); the two
-  // are separately typed, so bridge them here rather than duplicate the data.
-  timeline: { blocks: demoGanttBlocks, milestones: demoGanttMilestones } as unknown as WikiDTO["timeline"],
+  // The wiki timeline reuses the shared Gantt shape; the two are separately typed, so
+  // bridge them here rather than duplicate the data.
+  //
+  // ⚠️ This used to be `as unknown as WikiDTO["timeline"]`. That cast is precisely how
+  // the demo's blocks came to be missing `statusCounts` while `tsc` said nothing, and
+  // Delivery threw on first render (§49.2). It is a real typed mapping now, so a field
+  // the DTO gains and the demo does not is a compile error rather than a blank panel.
+  timeline: wikiTimelineFromGantt(),
   designSystem: { tokens: demoDesignTokens, logoUrl: null, showFoundryBranding: true, guidelinesEnabled: true },
   monitors: {
     enabled: true,
@@ -817,6 +881,7 @@ const demoWiki: WikiDTO = {
     { id: "wi6", type: "FEEDBACK", title: "Downloads should keep working on a plane", description: "Offline playback asks to sign in again once the device loses signal.", priority: "LOW", status: "CLOSED", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "CLOSED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-27), updatedAt: atDays(-20), comments: [] },
   ],
   deliveryEnabled: true,
+  roundupEnabled: true,
   // A LINKED support section with two months of figures, so the trend badges have
   // something to compare against — a demo with one month would render every trend as an
   // em-dash and prove nothing about the part most likely to be wrong (a duration where

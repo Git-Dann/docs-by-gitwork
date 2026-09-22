@@ -13,6 +13,7 @@ import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-secti
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
 import { WikiCostsSection } from "./wiki-costs-section";
+import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
@@ -60,6 +61,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   launchpad: "Launchpad",
   insights: "Charts",
   costs: "Running costs",
+  roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
   "code-handover": "Code Handover",
@@ -128,6 +130,9 @@ export function WikiPublicView({
     // cost per user of £0.00 — a confident figure derived from nothing, which is worse
     // than the blank page it would replace.
     ...(wiki.costs.enabled && wiki.costs.items.length > 0 ? (["costs"] as const) : []),
+    // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
+    // "nothing to report", which reads as a broken link rather than as work not started.
+    ...(wiki.roundupEnabled && wiki.timeline.blocks.length > 0 ? (["roundup"] as const) : []),
     // Delivery needs a timeline to describe, or the client lands on "no plan yet" from a
     // link that promised progress.
     ...(wiki.deliveryEnabled && wiki.timeline.blocks.length > 0 ? (["delivery"] as const) : []),
@@ -243,6 +248,15 @@ export function WikiPublicView({
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki.support} />;
+    }
+    if (activeSection === "roundup") {
+      return (
+        <WikiRoundupSection
+          blocks={wiki.timeline.blocks}
+          milestones={wiki.timeline.milestones}
+          blockers={wiki.blockers}
+        />
+      );
     }
     if (activeSection === "costs") {
       return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
