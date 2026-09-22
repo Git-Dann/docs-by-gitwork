@@ -18,6 +18,7 @@ const SECTION_LABELS: Record<string, string> = {
   launchpad: "Launchpad",
   insights: "Charts",
   costs: "Running costs",
+  roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
   "design-system": "Design System",

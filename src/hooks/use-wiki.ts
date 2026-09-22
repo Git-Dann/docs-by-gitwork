@@ -62,6 +62,7 @@ import {
   createWikiInsightBoardApi,
   deleteWikiInsightBoardApi,
   setWikiDeliveryEnabledApi,
+  setWikiRoundupEnabledApi,
   setWikiInsightsEnabledApi,
   setWikiCostsEnabledApi,
   updateWikiCostSettingsApi,
@@ -410,6 +411,14 @@ export function useSetWikiInsightsEnabled(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiInsightsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiRoundupEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiRoundupEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

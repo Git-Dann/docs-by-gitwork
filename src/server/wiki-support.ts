@@ -169,3 +169,12 @@ export async function setWikiDeliveryEnabled(clientId: string, enabled: boolean)
     select: { id: true },
   });
 }
+
+export async function setWikiRoundupEnabled(clientId: string, enabled: boolean): Promise<void> {
+  await prisma.clientWiki.upsert({
+    where: { clientId },
+    create: { clientId, roundupEnabled: enabled },
+    update: { roundupEnabled: enabled },
+    select: { id: true },
+  });
+}

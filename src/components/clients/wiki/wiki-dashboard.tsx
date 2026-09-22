@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
   BanknotesIcon,
+  NewspaperIcon,
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
   BoltIcon,
@@ -33,6 +34,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
+import { summariseRoundup } from "@/lib/wiki-roundup";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
 
@@ -59,6 +61,7 @@ const SECTION_META: Record<
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
   insights: { label: "Charts", icon: ChartPieIcon },
   costs: { label: "Running costs", icon: BanknotesIcon },
+  roundup: { label: "RoundUp", icon: NewspaperIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
@@ -454,6 +457,26 @@ export function WikiDashboard({
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
+        );
+      }
+      case "roundup": {
+        // A real case, not the markdown-doc default (§40.1). The card leads with what
+        // moved this week — the one thing a weekly summary is opened to find out.
+        const r = summariseRoundup(wiki.timeline.blocks, new Date());
+        if (wiki.timeline.blocks.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No plan to summarise yet.</p>;
+        }
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(r.delivered.length)} label={`Done / ${r.window.days}d`} />
+              <Metric value={String(r.totals.inFlight)} label="In flight" />
+            </div>
+            {/* ⚠️ Never "0 delivered" when the truth is "we cannot tell which week". */}
+            {r.deliveredUndated > 0 && r.delivered.length === 0 && (
+              <p className="text-[12px] text-[var(--text-4)]">completion dates not recorded</p>
+            )}
+          </div>
         );
       }
       case "costs": {

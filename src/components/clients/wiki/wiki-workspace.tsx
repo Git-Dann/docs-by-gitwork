@@ -37,6 +37,7 @@ import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-secti
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
 import { WikiCostsSection } from "./wiki-costs-section";
+import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
@@ -79,6 +80,7 @@ import {
   useSetWikiDeliveryEnabled,
   useSetWikiInsightsEnabled,
   useSetWikiCostsEnabled,
+  useSetWikiRoundupEnabled,
   useSetWikiSupportEnabled,
 } from "@/hooks/use-wiki";
 import { useAccount } from "@/hooks/use-account";
@@ -123,6 +125,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   launchpad: "Launchpad",
   insights: "Charts",
   costs: "Running costs",
+  roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
   "code-handover": "Code Handover",
@@ -143,6 +146,7 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   launchpad: "LAUNCHPAD",
   insights: "CHARTS",
   costs: "RUNNING COSTS",
+  roundup: "ROUNDUP",
   delivery: "DELIVERY",
   support: "SUPPORT",
   ia: "IA GUIDE",
@@ -840,7 +844,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "delivery", "support", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "roundup", "delivery", "support", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -924,6 +928,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
   const setInsightsEnabled = useSetWikiInsightsEnabled(slug);
   const setCostsEnabled = useSetWikiCostsEnabled(slug);
+  const setRoundupEnabled = useSetWikiRoundupEnabled(slug);
   const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
   const setSupportEnabled = useSetWikiSupportEnabled(slug);
   // Attribution for requests logged internally — see WikiIntakeSection.
@@ -971,6 +976,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const launchpadOn = Boolean(wiki.launchpad?.enabled);
   const insightsOn = wiki.insights.enabled;
   const costsOn = wiki.costs.enabled;
+  const roundupOn = wiki.roundupEnabled ?? false;
   const deliveryOn = wiki.deliveryEnabled;
   const supportOn = wiki.support.enabled;
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
@@ -987,6 +993,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(launchpadOn ? (["launchpad"] as const) : []),
     ...(insightsOn ? (["insights"] as const) : []),
     ...(costsOn ? (["costs"] as const) : []),
+    ...(roundupOn ? (["roundup"] as const) : []),
     ...(deliveryOn ? (["delivery"] as const) : []),
     ...(supportOn ? (["support"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
@@ -1010,6 +1017,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
     ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Charts" }]),
     ...(costsOn ? [] : [{ section: "costs" as WikiSection, label: "Running costs" }]),
+    ...(roundupOn ? [] : [{ section: "roundup" as WikiSection, label: "RoundUp" }]),
     ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
     ...(supportOn ? [] : [{ section: "support" as WikiSection, label: "Support" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
@@ -1071,6 +1079,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (section === "costs") {
       await setCostsEnabled.mutateAsync(true);
       setActiveSection("costs");
+      return;
+    }
+    if (section === "roundup") {
+      await setRoundupEnabled.mutateAsync(true);
+      setActiveSection("roundup");
       return;
     }
     if (section === "delivery") {
@@ -1138,6 +1151,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "costs") ?? "dashboard");
       return;
     }
+    if (section === "roundup") {
+      await setRoundupEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "roundup") ?? "dashboard");
+      return;
+    }
     if (section === "delivery") {
       await setDeliveryEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "delivery") ?? "dashboard");
@@ -1170,6 +1188,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "launchpad" &&
       section !== "insights" &&
       section !== "costs" &&
+      section !== "roundup" &&
       section !== "delivery" &&
       section !== "support" &&
       section !== "code-handover"
@@ -1401,6 +1420,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki!.support} />;
+    }
+    if (activeSection === "roundup") {
+      return (
+        <WikiRoundupSection
+          blocks={wiki!.timeline.blocks}
+          milestones={wiki!.timeline.milestones}
+          blockers={wiki!.blockers}
+        />
+      );
     }
     if (activeSection === "costs") {
       return <WikiCostsSection slug={slug} model={wiki!.costs} mode="internal" />;
@@ -1843,6 +1871,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "intake" ||
                 s === "insights" ||
                 s === "costs" ||
+                s === "roundup" ||
                 s === "delivery" ||
                 s === "support" ||
                 s === "code-handover",

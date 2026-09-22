@@ -168,7 +168,22 @@ export interface WikiTimelineBlock {
   endDate: string;
   color: string | null;
   progress: number;
-  tasks: { title: string; done: boolean }[];
+  /**
+   * ⚠️ `completedAt` / `startedAt` are REQUIRED, not optional-with-a-default.
+   * RoundUp's "what we did last week" is derived from them, and §47.3 records what a
+   * defaulting serializer over a narrowed `select` does: it turns a missing column into
+   * a plausible value. Required means a caller that narrows the query is a compile
+   * error rather than a page quietly reporting that nothing shipped.
+   *
+   * Still deliberately coarse for a client: title, done, and when — never assignee,
+   * priority or the finer internal statuses.
+   */
+  tasks: {
+    title: string;
+    done: boolean;
+    completedAt: string | null;
+    startedAt: string | null;
+  }[];
   statusCounts: Record<TaskStatus, number>;
 }
 
@@ -277,6 +292,8 @@ export interface WikiDTO {
    * would only be a second copy of data this object already carries.
    */
   deliveryEnabled: boolean;
+  /** RoundUp — the weekly summary. Pure derivation; this flag is its only state. */
+  roundupEnabled: boolean;
   /** The client's own Care figures — see src/server/wiki-support.ts. */
   support: WikiSupportSection;
   /**
@@ -576,7 +593,14 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
         // move together) badly overstated the real board's numbers.
         tasks: {
           where: { parentId: null, archivedAt: null },
-          select: { title: true, status: true, dueDate: true },
+          select: {
+            title: true,
+            status: true,
+            dueDate: true,
+            // RoundUp needs "when", not just "whether" — see WikiTimelineBlock.tasks.
+            completedAt: true,
+            startedAt: true,
+          },
           orderBy: { orderKey: "asc" },
         },
       },
@@ -609,7 +633,12 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
         endDate: end.toISOString(),
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
-        tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        tasks: b.tasks.map((t) => ({
+          title: t.title,
+          done: t.status === "DONE",
+          completedAt: t.completedAt?.toISOString() ?? null,
+          startedAt: t.startedAt?.toISOString() ?? null,
+        })),
         statusCounts: buildTaskStatusCounts(b.tasks),
       };
     })
@@ -671,6 +700,7 @@ async function buildDTO(
   launchpadEnabled?: boolean;
   insightsEnabled?: boolean;
   deliveryEnabled?: boolean;
+  roundupEnabled?: boolean;
   intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
@@ -865,6 +895,7 @@ async function buildDTO(
     insights,
     costs,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
+    roundupEnabled: wiki.roundupEnabled ?? false,
     support,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
@@ -2527,6 +2558,7 @@ const SHAREABLE_SECTIONS = [
   "launchpad",
   "insights",
   "costs",
+  "roundup",
   "delivery",
   "support",
   "code-handover",
