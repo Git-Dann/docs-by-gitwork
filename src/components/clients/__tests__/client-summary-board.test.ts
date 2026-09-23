@@ -15,6 +15,16 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 
+/**
+ * Source with comments stripped.
+ *
+ * ⚠️ A "this word must not appear" assertion has to read CODE. Run against the raw
+ * file it fires on the comment explaining why the thing was removed — which is how
+ * the first version of the status guards below failed.
+ */
+const code = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
 const BOARD = read("src/components/clients/client-summary-board.tsx");
 const SERVER = read("src/server/client-summary.ts");
 const CLIENTS = read("src/server/clients.ts");
@@ -48,7 +58,7 @@ describe("the note is the card's content, not a footnote", () => {
     expect(clamp).not.toContain("title={card.note}");
   });
 
-  it("keeps ALL the figures and the flags in the detail view", () => {
+  it("keeps ALL the figures in the detail view", () => {
     // ⚠️ `toContain("<Figure")` alone passes with three of the four deleted — it was
     // written that way first, and a sabotage that removed one figure fired nothing.
     const detail = BOARD.slice(
@@ -58,18 +68,7 @@ describe("the note is the card's content, not a footnote", () => {
     for (const label of ["Done / 7d", "In flight", "To do", "Devs"]) {
       expect(detail, `the detail view lost the "${label}" figure`).toContain(label);
     }
-    expect(detail).toContain("card.reasons.join");
     expect(detail).toContain("<NoteEditor");
-  });
-
-  it("puts the derived signals on the status dot rather than dropping them", () => {
-    // ⚠️ Removed from sight is not the same as removed. The dot is the only thing on
-    // the card saying a client is red, so WHY has to stay reachable from it.
-    const card = BOARD.slice(
-      BOARD.indexOf("function Card("),
-      BOARD.indexOf("export function ClientSummaryBoardView"),
-    );
-    expect(card).toMatch(/title=\{[\s\S]{0,200}card\.reasons\.join/);
   });
 
   it("spends the header's right-hand slot on a fact, not on the dot repeated", () => {
@@ -295,39 +294,49 @@ describe("summary and fuller update are two fields", () => {
   });
 });
 
-describe("the record popup is not colour-coded", () => {
-  const DETAIL = BOARD.slice(
-    BOARD.indexOf("function BoardDetailModal("),
-    BOARD.indexOf("function Card("),
-  );
-
+describe("the board carries no derived status, anywhere", () => {
   /**
-   * The popup is the reading surface, and it was rendering the same judgement three
-   * ways: a dot per row, a "NEEDS ATTENTION" label, and the flag strip in the footer.
-   * Only the strip says anything a reader can act on ("HEALTH RED · 237 AWAITING
-   * REPLY"); the other two are the same fact, vaguer. The dot stays on the CARD,
-   * which is the scanning surface and has room for one signal and no words.
+   * ⚠️ The board is a place to WRITE a summary of each project, not a status
+   * dashboard. It used to derive an attention level and render it three ways — a
+   * coloured dot per card, a "NEEDS ATTENTION" label, and `HEALTH RED · 1 BLOCKED ON
+   * CLIENT` in the footer. All of it is gone at Dan's instruction: a machine's verdict
+   * sitting beside a person's own account competes with the thing the page is for.
+   *
+   * If a signal is ever worth showing here it belongs beside the other figures as a
+   * NUMBER — "3 blocked" is a fact, "HEALTH RED" is an opinion.
    */
-  it("has no status dot in the client list", () => {
-    expect(DETAIL, "the popup list should not be colour-coded").not.toContain("TONE[c.attention]");
-    expect(DETAIL).not.toMatch(/rounded-full/);
+  it("renders no attention level, colour or label", () => {
+    const src = code(BOARD);
+    expect(src).not.toMatch(/attention/i);
+    expect(src).not.toMatch(/(tone|TONE\[[^\]]*\])\.(dot|label)/);
+    expect(src, "no status dots").not.toMatch(/rounded-full/);
   });
 
-  it("has no status label beside the client name", () => {
-    expect(DETAIL).not.toMatch(/(tone|TONE\[[^\]]*\])\.label/);
+  it("does not derive one in the pure module either", () => {
+    const LIB = read("src/lib/client-summary.ts");
+    expect(code(LIB)).not.toMatch(/reasons|SummaryAttention/);
+    // The staleness of a note is about the WRITING, not the client's health — it stays.
+    expect(LIB).toContain("noteStale");
   });
 
-  it("still states the judgement in words, where it is useful", () => {
-    // ⚠️ Removing the decoration must not remove the information — the footer strip
-    // is what tells you WHY, and it is the thing that has to survive.
-    expect(DETAIL).toContain("card.reasons.join");
+  it("stops paying for the queries that only fed it", () => {
+    /**
+     * ⚠️ A query whose result nothing renders is a cost with no reader. The Care
+     * awaiting-reply read and the per-client blocker count existed only for the
+     * status line, so they were removed rather than left running.
+     */
+    const SERVER_SRC = code(read("src/server/client-summary.ts"));
+    expect(SERVER_SRC).not.toContain("getClientQueueSummaries");
+    expect(SERVER_SRC).not.toContain("blockedResponse");
   });
 
-  it("keeps the dot on the card, which has no room for words", () => {
-    const card = BOARD.slice(
+  it("keeps the figures, which are facts", () => {
+    const detail = BOARD.slice(
+      BOARD.indexOf("function BoardDetailModal("),
       BOARD.indexOf("function Card("),
-      BOARD.indexOf("export function ClientSummaryBoardView"),
     );
-    expect(card).toContain("tone.dot");
+    for (const label of ["Done / 7d", "In flight", "To do", "Devs"]) {
+      expect(detail).toContain(label);
+    }
   });
 });
