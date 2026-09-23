@@ -3043,7 +3043,11 @@ const demoSummaryClients: SummaryClientInput[] = [
  */
 function resolveDemoSummary(pathname: string, init?: { method?: string; body?: unknown }) {
   if (pathname === "/api/clients/summary") {
-    return { ...buildSummaryBoard(demoSummaryClients, new Date()), generatedAt: atDays(0) };
+    const board = buildSummaryBoard(demoSummaryClients, new Date());
+    // Distinct people, deliberately LESS than the sum of the per-client counts (9) —
+    // a fixture where the two agree cannot show the difference the real query exists
+    // to get right.
+    return { ...board, devTotal: 6, generatedAt: atDays(0) };
   }
   const match = /^\/api\/clients\/summary\/([^/]+)$/.exec(pathname);
   if (!match) return undefined;

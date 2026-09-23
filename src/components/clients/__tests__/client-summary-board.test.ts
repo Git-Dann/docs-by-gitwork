@@ -26,13 +26,64 @@ describe("the note is the card's content, not a footnote", () => {
    * and the question it produced on sight was "where do I type?". The page exists to
    * carry what a person writes about a client, so that has to lead.
    */
-  it("renders the editor before the derived figures", () => {
-    const body = BOARD.slice(BOARD.indexOf("function Card("));
-    const note = body.indexOf("<NoteEditor");
-    const figures = body.indexOf("<Figure");
-    expect(note, "the card should render a NoteEditor").toBeGreaterThan(-1);
-    expect(figures, "the card should render figures").toBeGreaterThan(-1);
-    expect(note).toBeLessThan(figures);
+  it("previews the update in two lines and keeps the detail one click away", () => {
+    /**
+     * The card is a preview, not the record. The figures and the derived flag strip
+     * moved into `CardDetail`: as an overview they crowded out the only thing on the
+     * card a person writes, and as detail they are what you want once it catches your
+     * eye. The whole card is the control, so nothing inside it is separately clickable.
+     */
+    const card = BOARD.slice(BOARD.indexOf("function Card("), BOARD.indexOf("export function ClientSummaryBoardView"));
+    expect(card).toContain("line-clamp-2");
+    expect(card).toContain("<CardDetail");
+    expect(card, "the card should not render figures").not.toContain("<Figure");
+    expect(card, "the card should not hold the editor").not.toContain("<NoteEditor");
+  });
+
+  it("does not hide the full update behind a tooltip", () => {
+    // ⚠️ A `title` on the clamped text is unreachable on a touch device, and a
+    // truncation with no recoverable path is a defect under audit:clipping.
+    const card = BOARD.slice(BOARD.indexOf("function Card("), BOARD.indexOf("export function ClientSummaryBoardView"));
+    const clamp = card.slice(card.indexOf("line-clamp-2") - 200, card.indexOf("line-clamp-2") + 200);
+    expect(clamp).not.toContain("title={card.note}");
+  });
+
+  it("keeps ALL the figures and the flags in the detail view", () => {
+    // ⚠️ `toContain("<Figure")` alone passes with three of the four deleted — it was
+    // written that way first, and a sabotage that removed one figure fired nothing.
+    const detail = BOARD.slice(
+      BOARD.indexOf("function CardDetail("),
+      BOARD.indexOf("function Card("),
+    );
+    for (const label of ["Done / 7d", "In flight", "To do", "Devs"]) {
+      expect(detail, `the detail view lost the "${label}" figure`).toContain(label);
+    }
+    expect(detail).toContain("card.reasons.join");
+    expect(detail).toContain("<NoteEditor");
+  });
+
+  it("puts the derived signals on the status dot rather than dropping them", () => {
+    // ⚠️ Removed from sight is not the same as removed. The dot is the only thing on
+    // the card saying a client is red, so WHY has to stay reachable from it.
+    const card = BOARD.slice(
+      BOARD.indexOf("function Card("),
+      BOARD.indexOf("export function ClientSummaryBoardView"),
+    );
+    expect(card).toMatch(/title=\{[\s\S]{0,200}card\.reasons\.join/);
+  });
+
+  it("spends the header's right-hand slot on a fact, not on the dot repeated", () => {
+    // "NEEDS ATTENTION" beside a red dot says the same thing twice and spends the only
+    // slot on the card that could carry something the dot cannot.
+    const card = BOARD.slice(
+      BOARD.indexOf("function Card("),
+      BOARD.indexOf("export function ClientSummaryBoardView"),
+    );
+    const status = card.slice(card.indexOf("widget-header__status"), card.indexOf("widget-header__status") + 220);
+    expect(status).toContain("card.devCount");
+    expect(status, "the status label belongs in the detail view, not on the card").not.toContain(
+      "tone.label",
+    );
   });
 
   it("offers an explicit invitation when there is nothing written yet", () => {
@@ -82,5 +133,36 @@ describe("the static /summary segment cannot be stolen by a client slug", () => 
   it("refuses 'summary' as a client slug", () => {
     expect(CLIENTS).toMatch(/RESERVED_CLIENT_SLUGS[\s\S]{0,120}"summary"/);
     expect(CLIENTS).toMatch(/RESERVED_CLIENT_SLUGS\.has\(/);
+  });
+});
+
+describe("the portfolio card", () => {
+  const SERVER_SRC = read("src/server/client-summary.ts");
+
+  it("counts distinct people, never a sum of the per-client figures", () => {
+    /**
+     * ⚠️ A developer routinely works across two or three clients, so `sum(devCount)`
+     * counts placements. A board reading "31 devs" over a team of nineteen is a number
+     * nobody can reconcile against the payroll.
+     */
+    expect(SERVER_SRC).toContain("groupBy");
+    const fn = SERVER_SRC.slice(SERVER_SRC.indexOf("async function distinctDevCount"));
+    expect(fn.slice(0, 400)).toContain('by: ["candidateId"]');
+    expect(fn.slice(0, 400)).toContain("endDate: null");
+    const board = BOARD.slice(BOARD.indexOf("export function ClientSummaryBoardView"));
+    expect(board, "the UI must not add the per-client counts up itself").not.toMatch(
+      /reduce\([\s\S]{0,80}devCount/,
+    );
+  });
+
+  it("counts devs over the VISIBLE clients, so it agrees with the cards below it", () => {
+    expect(SERVER_SRC).toMatch(/distinctDevCount\(board\.cards\.map/);
+  });
+
+  it("opens the hidden list from the card rather than only counting it", () => {
+    const board = BOARD.slice(BOARD.indexOf("export function ClientSummaryBoardView"));
+    expect(board).toContain("setShowHidden");
+    // Each hidden client must be restorable — a count with no way back is a dead end.
+    expect(board).toMatch(/hiddenCards\.map\([\s\S]{0,400}hidden: false/);
   });
 });
