@@ -216,7 +216,6 @@ function BoardDetailModal({
   // rendering an empty right-hand pane.
   const card = cards.find((c) => c.id === selectedId) ?? cards[0];
   if (!card) return null;
-  const tone = TONE[card.attention];
 
   return (
     <Modal open onClose={onClose} title="Client summary" panelClassName="w-full max-w-3xl">
@@ -235,10 +234,6 @@ function BoardDetailModal({
                       : "hover:bg-[var(--surface-1)]"
                   }`}
                 >
-                  <span
-                    aria-hidden
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${TONE[c.attention].dot}`}
-                  />
                   <span className="min-w-0 flex-1 truncate text-[13px]">{c.name}</span>
                   <span
                     className="shrink-0 text-[10px] tracking-[0.08em] text-[var(--text-4)]"
@@ -254,23 +249,9 @@ function BoardDetailModal({
 
         <div className="flex min-h-0 min-w-0 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="truncate text-[18px] text-[var(--text-1)]" style={{ fontFamily: SERIF }}>
-                {card.name}
-              </h3>
-              <span
-                className={`shrink-0 text-[10px] tracking-[0.1em] uppercase ${
-                  card.attention === "critical"
-                    ? "text-[var(--danger-500)]"
-                    : card.attention === "watch"
-                      ? "text-[var(--warning-500)]"
-                      : "text-[var(--text-4)]"
-                }`}
-                style={{ fontFamily: MONO }}
-              >
-                {tone.label}
-              </span>
-            </div>
+            <h3 className="truncate text-[18px] text-[var(--text-1)]" style={{ fontFamily: SERIF }}>
+              {card.name}
+            </h3>
 
             <div className="mt-4">
               <NoteEditor card={card} />

@@ -294,3 +294,40 @@ describe("summary and fuller update are two fields", () => {
     expect(fn.slice(0, 900)).toContain("note || detail ? new Date() : null");
   });
 });
+
+describe("the record popup is not colour-coded", () => {
+  const DETAIL = BOARD.slice(
+    BOARD.indexOf("function BoardDetailModal("),
+    BOARD.indexOf("function Card("),
+  );
+
+  /**
+   * The popup is the reading surface, and it was rendering the same judgement three
+   * ways: a dot per row, a "NEEDS ATTENTION" label, and the flag strip in the footer.
+   * Only the strip says anything a reader can act on ("HEALTH RED · 237 AWAITING
+   * REPLY"); the other two are the same fact, vaguer. The dot stays on the CARD,
+   * which is the scanning surface and has room for one signal and no words.
+   */
+  it("has no status dot in the client list", () => {
+    expect(DETAIL, "the popup list should not be colour-coded").not.toContain("TONE[c.attention]");
+    expect(DETAIL).not.toMatch(/rounded-full/);
+  });
+
+  it("has no status label beside the client name", () => {
+    expect(DETAIL).not.toMatch(/(tone|TONE\[[^\]]*\])\.label/);
+  });
+
+  it("still states the judgement in words, where it is useful", () => {
+    // ⚠️ Removing the decoration must not remove the information — the footer strip
+    // is what tells you WHY, and it is the thing that has to survive.
+    expect(DETAIL).toContain("card.reasons.join");
+  });
+
+  it("keeps the dot on the card, which has no room for words", () => {
+    const card = BOARD.slice(
+      BOARD.indexOf("function Card("),
+      BOARD.indexOf("export function ClientSummaryBoardView"),
+    );
+    expect(card).toContain("tone.dot");
+  });
+});
