@@ -29,6 +29,7 @@ function client(p: Partial<SummaryClientInput> & Pick<SummaryClientInput, "id">)
     inFlight: 0,
     planned: 0,
     note: null,
+  detail: null,
     noteAt: null,
     ...p,
   };

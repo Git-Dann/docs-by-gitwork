@@ -43,6 +43,8 @@ export interface SummaryClientInput {
   /** Not started. */
   planned: number;
   note: string | null;
+  /** The fuller account — detail view only, never on the card. */
+  detail: string | null;
   noteAt: string | null;
 }
 
@@ -92,7 +94,10 @@ export function assessClient(input: SummaryClientInput, now: Date): SummaryCard 
   }
 
   const noteAgeDays = ageInDays(input.noteAt, now);
-  const noteStale = input.note !== null && (noteAgeDays === null || noteAgeDays > NOTE_STALE_DAYS);
+  // ⚠️ Either field counts as "written about". Marking a card stale while a long
+  // update sits under it, unread, would be the same lie in the other direction.
+  const written = input.note !== null || input.detail !== null;
+  const noteStale = written && (noteAgeDays === null || noteAgeDays > NOTE_STALE_DAYS);
 
   const measured = hasWork || input.health !== null || input.awaitingReply > 0;
   // ⚠️ An unmeasured card is otherwise four zeros and nothing else, which reads as

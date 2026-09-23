@@ -1123,10 +1123,17 @@ model WorkspaceClient {
   /// findFirst, so a plain index is enough.
   timelineShareToken       String?
   timelineShareEnabled     Boolean                   @default(false)
-  /// Client summary board (Portal → Summary) — a hand-written line of judgement beside
-  /// the derived figures. Stamped because prose ages and numbers do not: an unstamped
-  /// note reads as current forever.
+  /// Client summary board (Portal → Summary) — hand-written judgement beside the
+  /// derived figures. Two fields on purpose: `summaryNote` is the short line the card
+  /// shows (clamped to two lines), `summaryDetail` is the fuller account you only see
+  /// once you open the record. Splitting them means the board stays scannable without
+  /// the longer write-up having nowhere to live.
+  ///
+  /// ⚠️ ONE stamp covers both. It means "when did anyone last write about this
+  /// client", which is the question the staleness marker answers; a per-field stamp
+  /// would let a card show a fresh date for a line nobody had touched.
   summaryNote    String?   @db.Text
+  summaryDetail  String?   @db.Text
   summaryNoteAt  DateTime?
   /// Hidden from the summary board. The board still reports how many are hidden, so it
   /// is never silently partial.

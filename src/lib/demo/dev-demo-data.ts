@@ -2955,6 +2955,8 @@ const demoSummaryClients: SummaryClientInput[] = [
     inFlight: 3,
     planned: 11,
     note: "Search release slipped a week — their content team is late on copy.",
+    detail:
+      "Facets and autocomplete are built and behind a flag. The blocker is 40-odd category descriptions we asked for on the 2nd; their marketing lead is on leave until Monday. If it lands next week we hold the launch date, if not it moves a fortnight. Nothing is blocked on us.",
     noteAt: atDays(-2),
   },
   {
@@ -2970,6 +2972,7 @@ const demoSummaryClients: SummaryClientInput[] = [
     inFlight: 0,
     planned: 6,
     note: "All on track, nothing to flag.",
+    detail: null,
     // Deliberately old: this is the case the stale marker exists for — prose that
     // reads as current sitting beside figures that say otherwise.
     noteAt: atDays(-21),
@@ -2987,6 +2990,7 @@ const demoSummaryClients: SummaryClientInput[] = [
     inFlight: 2,
     planned: 8,
     note: null,
+    detail: null,
     noteAt: null,
   },
   {
@@ -3002,6 +3006,7 @@ const demoSummaryClients: SummaryClientInput[] = [
     inFlight: 0,
     planned: 0,
     note: null,
+    detail: null,
     noteAt: null,
   },
   {
@@ -3017,6 +3022,7 @@ const demoSummaryClients: SummaryClientInput[] = [
     inFlight: 1,
     planned: 4,
     note: "Retainer renewed to March.",
+    detail: null,
     noteAt: atDays(-5),
   },
   {
@@ -3032,6 +3038,7 @@ const demoSummaryClients: SummaryClientInput[] = [
     inFlight: 1,
     planned: 2,
     note: null,
+    detail: null,
     noteAt: null,
   },
 ];

@@ -15,8 +15,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { MONO } from "@/components/analytics/analytics-widgets";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { MONO, SERIF } from "@/components/analytics/analytics-widgets";
 import { Modal } from "@/components/ui/modal";
 import { useClientSummaryBoard, useUpdateClientSummary } from "@/hooks/use-client-summary";
 import { NOTE_STALE_DAYS, type SummaryAttention, type SummaryCard } from "@/lib/client-summary";
@@ -71,50 +70,81 @@ function NoteAge({ card }: { card: SummaryCard }) {
   );
 }
 
-/** The update, edited in place inside the detail view. */
-function NoteEditor({ card, onDone }: { card: SummaryCard; onDone?: () => void }) {
+/** The two things you write about a client, edited together. */
+function NoteEditor({ card }: { card: SummaryCard }) {
   const update = useUpdateClientSummary();
-  const [value, setValue] = useState(card.note ?? "");
+  const [note, setNote] = useState(card.note ?? "");
+  const [detail, setDetail] = useState(card.detail ?? "");
   const [editing, setEditing] = useState(false);
   useEffect(() => {
-    if (!editing) setValue(card.note ?? "");
-  }, [card.note, editing]);
+    if (!editing) {
+      setNote(card.note ?? "");
+      setDetail(card.detail ?? "");
+    }
+  }, [card.note, card.detail, editing]);
 
   if (editing) {
     return (
-      <div>
-        <textarea
-          className="app-input min-h-[160px] text-base leading-relaxed sm:text-[14px]"
-          value={value}
-          autoFocus
-          placeholder="What's actually going on with this client? Write it in your own words."
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              setValue(card.note ?? "");
-              setEditing(false);
-            }
-          }}
-        />
-        <div className="mt-2 flex items-center gap-2">
+      <div className="space-y-4">
+        <div>
+          <label
+            className="mb-1.5 block text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+            style={{ fontFamily: MONO }}
+            htmlFor={`summary-${card.id}`}
+          >
+            Summary — the line on the card
+          </label>
+          <textarea
+            id={`summary-${card.id}`}
+            className="app-input min-h-[64px] text-base leading-relaxed sm:text-[14px]"
+            value={note}
+            autoFocus
+            placeholder="One or two lines. Where does this client stand?"
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+        <div>
+          <label
+            className="mb-1.5 block text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+            style={{ fontFamily: MONO }}
+            htmlFor={`detail-${card.id}`}
+          >
+            Fuller update — only in here
+          </label>
+          <textarea
+            id={`detail-${card.id}`}
+            className="app-input min-h-[150px] text-base leading-relaxed sm:text-[14px]"
+            value={detail}
+            placeholder="The longer account: what happened, what is next, what you are watching."
+            onChange={(e) => setDetail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setNote(card.note ?? "");
+                setDetail(card.detail ?? "");
+                setEditing(false);
+              }
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             className="app-button app-button-primary app-button-xs"
             disabled={update.isPending}
             onClick={async () => {
-              await update.mutateAsync({ clientId: card.id, note: value });
+              await update.mutateAsync({ clientId: card.id, note, detail });
               setEditing(false);
-              onDone?.();
             }}
           >
-            {update.isPending ? "Saving…" : "Save update"}
+            {update.isPending ? "Saving…" : "Save"}
           </button>
           <button
             type="button"
             className="app-button app-button-secondary app-button-xs"
             onClick={() => {
-              setValue(card.note ?? "");
+              setNote(card.note ?? "");
+              setDetail(card.detail ?? "");
               setEditing(false);
             }}
           >
@@ -125,118 +155,179 @@ function NoteEditor({ card, onDone }: { card: SummaryCard; onDone?: () => void }
     );
   }
 
+  const written = card.note || card.detail;
   return (
     <div>
       {card.note ? (
-        <>
-          <p className="text-[14px] leading-relaxed whitespace-pre-wrap text-[var(--text-1)]">
-            {card.note}
-          </p>
-          <div className="mt-2">
-            <NoteAge card={card} />
-          </div>
-        </>
-      ) : (
-        <p className="text-[13px] text-[var(--text-4)]">No update written yet.</p>
+        <p className="text-[14px] leading-relaxed whitespace-pre-wrap text-[var(--text-1)]">
+          {card.note}
+        </p>
+      ) : null}
+      {card.detail ? (
+        <p
+          className={`text-[13px] leading-relaxed whitespace-pre-wrap text-[var(--text-2)] ${
+            card.note ? "mt-3 border-t border-[var(--border-1)] pt-3" : ""
+          }`}
+        >
+          {card.detail}
+        </p>
+      ) : null}
+      {!written && <p className="text-[13px] text-[var(--text-4)]">No update written yet.</p>}
+      {written && (
+        <div className="mt-2">
+          <NoteAge card={card} />
+        </div>
       )}
       <button
         type="button"
         className="app-button app-button-secondary app-button-xs mt-3"
         onClick={() => setEditing(true)}
       >
-        {card.note ? "Edit update" : "Write an update"}
+        {written ? "Edit update" : "Write an update"}
       </button>
     </div>
   );
 }
 
 /**
- * Everything the card no longer shows, behind one click.
+ * The record — DESIGN.md's standard fixed-height two-column popup ("list + inspector").
  *
- * ⚠️ The figures and the derived flags were taken OFF the card, not deleted. As an
- * overview they crowded out the only thing on it a person writes; as detail they are
- * exactly what you want once a card has caught your eye.
+ * ⚠️ This shape is specified for exactly this case and must be reached for before
+ * inventing another: pick one of a list, inspect it. The first cut was a single
+ * 512px column with the detail floating in ~500px of empty space, which is not a
+ * house dialog — it just happened to use the height clamp.
+ *
+ * Clients on the left, the selected one on the right, so the whole portfolio can be
+ * walked without closing and reopening thirteen times.
  */
-function CardDetail({ card, onClose }: { card: SummaryCard; onClose: () => void }) {
+function BoardDetailModal({
+  cards,
+  selectedId,
+  onSelect,
+  onClose,
+}: {
+  cards: SummaryCard[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
   const update = useUpdateClientSummary();
+  // A card hidden from inside the popup leaves the list; fall back rather than
+  // rendering an empty right-hand pane.
+  const card = cards.find((c) => c.id === selectedId) ?? cards[0];
+  if (!card) return null;
   const tone = TONE[card.attention];
+
   return (
-    <Modal
-      open
-      onClose={onClose}
-      panelClassName="app-dialog-fixed w-full max-w-lg"
-      labelledById={`summary-detail-${card.id}`}
-    >
-      <div className="widget-header shrink-0">
-        <span
-          id={`summary-detail-${card.id}`}
-          className="widget-header__label flex min-w-0 items-center gap-2"
-          style={{ fontFamily: MONO }}
-        >
-          <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
-          <span className="truncate">{card.name.toUpperCase()}</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-3">
-          <span className="widget-header__status" style={{ fontFamily: MONO }}>
-            {tone.label.toUpperCase()}
-          </span>
-          {/* Escape and the backdrop both close it, but neither is visible — a dialog
-              with no close control reads as stuck on a touch device. */}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="app-button app-button-utility app-button-icon-sm"
-          >
-            <XMarkIcon className="h-4 w-4" />
-          </button>
-        </span>
-      </div>
+    <Modal open onClose={onClose} title="Client summary" panelClassName="w-full max-w-3xl">
+      <div className="grid h-[460px] grid-cols-1 divide-x divide-[var(--border-2)] sm:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+        <ul className="hidden min-h-0 overflow-y-auto p-2 sm:block">
+          {cards.map((c) => {
+            const active = c.id === card.id;
+            return (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(c.id)}
+                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition ${
+                    active
+                      ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
+                      : "hover:bg-[var(--surface-1)]"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${TONE[c.attention].dot}`}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[13px]">{c.name}</span>
+                  <span
+                    className="shrink-0 text-[10px] tracking-[0.08em] text-[var(--text-4)]"
+                    style={{ fontFamily: MONO }}
+                  >
+                    {c.devCount}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        <NoteEditor card={card} />
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="truncate text-[18px] text-[var(--text-1)]" style={{ fontFamily: SERIF }}>
+                {card.name}
+              </h3>
+              <span
+                className={`shrink-0 text-[10px] tracking-[0.1em] uppercase ${
+                  card.attention === "critical"
+                    ? "text-[var(--danger-500)]"
+                    : card.attention === "watch"
+                      ? "text-[var(--warning-500)]"
+                      : "text-[var(--text-4)]"
+                }`}
+                style={{ fontFamily: MONO }}
+              >
+                {tone.label}
+              </span>
+            </div>
 
-        <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t border-[var(--border-1)] pt-4">
-          <Figure value={card.deliveredThisWeek} label="Done / 7d" />
-          <Figure value={card.inFlight} label="In flight" />
-          <Figure value={card.planned} label="To do" muted />
-          <Figure value={card.devCount} label="Devs" muted />
+            <div className="mt-4">
+              <NoteEditor card={card} />
+            </div>
+
+          </div>
+
+          {/* ⚠️ Pinned, not scrolled with the prose. The figures are reference you
+              glance at WHILE writing, so they have to stay put as the writing area
+              grows — and it keeps the whole right-hand pane for what you type. */}
+          <div className="shrink-0 border-t border-[var(--border-1)] px-5 pt-3">
+            <div className="flex flex-wrap gap-x-8 gap-y-2">
+              <Figure value={card.deliveredThisWeek} label="Done / 7d" />
+              <Figure value={card.inFlight} label="In flight" />
+              <Figure value={card.planned} label="To do" muted />
+              <Figure value={card.devCount} label="Devs" muted />
+            </div>
+            {card.reasons.length > 0 && (
+              <p
+                className="mt-2 text-[10px] leading-relaxed tracking-[0.1em] text-[var(--text-4)] uppercase"
+                style={{ fontFamily: MONO }}
+              >
+                {card.reasons.join(" · ")}
+              </p>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center justify-between gap-2 px-5 pt-2 pb-3">
+            <a
+              href={`/app/portal/${card.slug}`}
+              className="text-[13px] text-[var(--brand-700)] hover:underline"
+            >
+              Open client →
+            </a>
+            <button
+              type="button"
+              className="text-[12px] text-[var(--text-4)] hover:underline"
+              onClick={() => void update.mutateAsync({ clientId: card.id, hidden: true })}
+            >
+              Hide from board
+            </button>
+          </div>
         </div>
-
-        {card.reasons.length > 0 && (
-          <p
-            className="mt-3 text-[10px] leading-relaxed tracking-[0.1em] text-[var(--text-4)] uppercase"
-            style={{ fontFamily: MONO }}
-          >
-            {card.reasons.join(" · ")}
-          </p>
-        )}
-      </div>
-
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--border-1)] px-5 py-3">
-        <a
-          href={`/app/portal/${card.slug}`}
-          className="text-[13px] text-[var(--brand-700)] hover:underline"
-        >
-          Open client →
-        </a>
-        <button
-          type="button"
-          className="text-[12px] text-[var(--text-4)] hover:underline"
-          onClick={async () => {
-            await update.mutateAsync({ clientId: card.id, hidden: true });
-            onClose();
-          }}
-        >
-          Hide from board
-        </button>
       </div>
     </Modal>
   );
 }
 
-function Card({ card, index }: { card: SummaryCard; index: number }) {
-  const [open, setOpen] = useState(false);
+function Card({
+  card,
+  index,
+  onOpen,
+}: {
+  card: SummaryCard;
+  index: number;
+  onOpen: () => void;
+}) {
   const tone = TONE[card.attention];
   return (
     <>
@@ -244,7 +335,7 @@ function Card({ card, index }: { card: SummaryCard; index: number }) {
           it is interactive, so there are no nested buttons and no dead zones. */}
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={onOpen}
         className="widget-card group flex min-w-0 flex-col text-left transition hover:border-[var(--brand-500)]"
       >
         <div className="widget-header w-full">
@@ -301,7 +392,6 @@ function Card({ card, index }: { card: SummaryCard; index: number }) {
           )}
         </div>
       </button>
-      {open && <CardDetail card={card} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -310,6 +400,7 @@ export function ClientSummaryBoardView() {
   const { data, isLoading, isError, error } = useClientSummaryBoard();
   const update = useUpdateClientSummary();
   const [showHidden, setShowHidden] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   if (isLoading) {
     return <p className="p-6 text-[13px] text-[var(--text-4)]">Loading the board…</p>;
@@ -381,9 +472,17 @@ export function ClientSummaryBoardView() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cards.map((c, i) => (
-            <Card key={c.id} card={c} index={i + 2} />
+            <Card key={c.id} card={c} index={i + 2} onOpen={() => setOpenId(c.id)} />
           ))}
         </div>
+      )}
+      {openId && (
+        <BoardDetailModal
+          cards={cards}
+          selectedId={openId}
+          onSelect={setOpenId}
+          onClose={() => setOpenId(null)}
+        />
       )}
       {update.isError && (
         <p className="text-[12px] text-[var(--danger-500)]">
