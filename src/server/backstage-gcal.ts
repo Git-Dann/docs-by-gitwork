@@ -88,6 +88,14 @@ export async function getTeamCalendarEvents(
           singleEvents: true,
           orderBy: "startTime",
           maxResults: 250,
+          // ⚠️ Ask for MEETINGS, not everything on the calendar. Without this the API
+          // also returns `birthday` and `workingLocation` events — neither is a meeting,
+          // both are all-day, and Google marks contact birthdays `visibility: private`,
+          // so they arrived here as anonymous all-day "Busy" blocks on the viewer's own
+          // row. (Reported live: two "Busy" bars that were one duplicated contact's
+          // birthday.) Both types also carry `transparency: transparent`, i.e. Google
+          // itself says they do not make you busy.
+          eventTypes: ["default", "outOfOffice", "focusTime"],
         });
         const name = displayName(m.user);
         const out: TeamCalendarEvent[] = [];
@@ -97,8 +105,13 @@ export async function getTeamCalendarEvents(
           const endRaw = ev.end?.dateTime ?? ev.end?.date;
           if (!startRaw) continue;
           const allDay = !ev.start?.dateTime;
-          const isPrivate = ev.visibility === "private";
-          // Respect privacy: don't leak titles of events marked private.
+          // ⚠️ Mask private titles from COLLEAGUES, never from the person whose calendar
+          // it is. The masking exists so one teammate cannot read another's private
+          // event titles — applied to your own row it just hides your day from you, and
+          // an unlabelled "Busy" on your own calendar reads as a bug in the product
+          // rather than as privacy working.
+          const isOwnCalendar = m.user.id === user.id;
+          const isPrivate = ev.visibility === "private" && !isOwnCalendar;
           const summary = isPrivate ? "Busy" : ev.summary ?? "Busy";
           // Reliable conference link only (hangout / Meet video entry point) —
           // never scrape description/location for other members' events. Null on
