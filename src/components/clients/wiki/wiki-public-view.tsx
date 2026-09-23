@@ -243,7 +243,7 @@ export function WikiPublicView({
           blocks={wiki.timeline.blocks}
           milestones={wiki.timeline.milestones}
           blockers={wiki.blockers}
-        />
+         unassigned={wiki.timeline.unassigned} />
       );
     }
     if (activeSection === "support") {
@@ -255,6 +255,7 @@ export function WikiPublicView({
           blocks={wiki.timeline.blocks}
           milestones={wiki.timeline.milestones}
           blockers={wiki.blockers}
+          unassigned={wiki.timeline.unassigned}
         />
       );
     }

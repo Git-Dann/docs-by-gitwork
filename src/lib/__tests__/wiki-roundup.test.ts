@@ -198,3 +198,66 @@ describe("GAIA Bloom's real shape", () => {
     expect(s.venn.items.map((i) => i.region).sort()).toEqual(["A", "B", "C"]);
   });
 });
+
+describe("work that is on no phase — GAIA Bloom's actual failure", () => {
+  /**
+   * Measured on her board 2026-09-22: 47 tasks across 10 phases (46 done), and SIX
+   * tasks attached to no phase at all — including BOTH of the ones in progress.
+   *
+   * Every unit test above passed and the demo rendered perfectly while "ON NOW" would
+   * have been empty on the one real client it was built for.
+   */
+  const phased = block("Enforcement layer", [doneTask("Multi-tenant testing", 3)]);
+  const loose = [
+    doingTask("Role-specific copy under the Resources heading"),
+    doingTask("Share resources at three levels"),
+    plannedTask("School admin access into the resource library"),
+  ];
+
+  it("shows loose in-progress work under ON NOW", () => {
+    const s = summariseRoundup([phased], NOW, { unassigned: loose });
+    expect(s.inFlight.map((i) => i.title)).toEqual([
+      "Role-specific copy under the Resources heading",
+      "Share resources at three levels",
+    ]);
+  });
+
+  it("renders those rows with NO workstream rather than inventing one", () => {
+    const s = summariseRoundup([phased], NOW, { unassigned: loose });
+    expect(s.inFlight.every((i) => i.block === null)).toBe(true);
+  });
+
+  it("counts them in the totals", () => {
+    const s = summariseRoundup([phased], NOW, { unassigned: loose });
+    expect(s.totals).toEqual({ delivered: 1, inFlight: 2, planned: 1 });
+  });
+
+  it("keeps them OUT of the Venn, which is about phases", () => {
+    // A workstream region for tasks that belong to no workstream would be a lie about
+    // the plan's shape.
+    const s = summariseRoundup([phased], NOW, { unassigned: loose });
+    expect(s.venn.items.map((i) => i.label)).toEqual(["Enforcement layer"]);
+  });
+
+  it("stops claiming nothing is in flight once they are counted", () => {
+    // ⚠️ The phased block needs PLANNED work for the blind spot to be reachable at
+    // all — it fires on "things to do, none started". The first version of this test
+    // used a block of one finished task, so the "before" case had nothing to warn
+    // about and the assertion was testing my fixture rather than the fix.
+    const phasedWithPlanned = block("Enforcement layer", [
+      doneTask("Multi-tenant testing", 3),
+      plannedTask("Timezone rollout"),
+    ]);
+    const without = summariseRoundup([phasedWithPlanned], NOW);
+    const withLoose = summariseRoundup([phasedWithPlanned], NOW, { unassigned: loose });
+    expect(without.blindSpots.map((b) => b.kind)).toContain("NOTHING_IN_FLIGHT");
+    expect(withLoose.blindSpots).toEqual([]);
+  });
+
+  it("counts a loose completion in the week's delivered list", () => {
+    const s = summariseRoundup([phased], NOW, {
+      unassigned: [task({ title: "stray fix", done: true, completedAt: ago(2) })],
+    });
+    expect(s.delivered.map((d) => d.title)).toContain("stray fix");
+  });
+});

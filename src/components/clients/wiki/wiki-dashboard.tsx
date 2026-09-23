@@ -96,6 +96,12 @@ function overallProgress(wiki: WikiDTO): number | null {
     total += b.tasks.length;
     done += b.tasks.filter((t) => t.done).length;
   }
+  // ⚠️ Live work that is on no phase counts too. Without this GAIA Bloom's card read
+  // 98% (46 of 47 phase tasks) while six items, two of them in progress, were counted
+  // nowhere on the client's portal. The honest figure for her is 87%.
+  const loose = wiki.timeline.unassigned;
+  total += loose.length;
+  done += loose.filter((t) => t.done).length;
   if (total === 0) {
     return Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
   }
@@ -462,8 +468,10 @@ export function WikiDashboard({
       case "roundup": {
         // A real case, not the markdown-doc default (§40.1). The card leads with what
         // moved this week — the one thing a weekly summary is opened to find out.
-        const r = summariseRoundup(wiki.timeline.blocks, new Date());
-        if (wiki.timeline.blocks.length === 0) {
+        const r = summariseRoundup(wiki.timeline.blocks, new Date(), {
+          unassigned: wiki.timeline.unassigned,
+        });
+        if (wiki.timeline.blocks.length === 0 && wiki.timeline.unassigned.length === 0) {
           return <p className="text-[13px] text-[var(--text-4)]">No plan to summarise yet.</p>;
         }
         return (

@@ -164,7 +164,19 @@ function buildVenn(blocks: readonly RoundupBlock[]): RoundupSummary["venn"] {
 export function summariseRoundup(
   blocks: readonly RoundupBlock[],
   now: Date,
-  opts: { windowDays?: number; upNextLimit?: number } = {},
+  opts: {
+    windowDays?: number;
+    upNextLimit?: number;
+    /**
+     * Live work that is not on the timeline — see `WikiTimeline.unassigned`.
+     *
+     * ⚠️ Not optional in spirit. On GAIA Bloom BOTH in-progress tasks belonged to no
+     * phase, so without this "ON NOW" rendered "nothing is marked as started" while the
+     * team was working on two things — the headline half of the page, empty and wrong.
+     * Unit tests and the demo were green throughout; only her real rows showed it.
+     */
+    unassigned?: readonly RoundupTask[];
+  } = {},
 ): RoundupSummary {
   const days = opts.windowDays ?? ROUNDUP_WINDOW_DAYS;
   const to = now.getTime();
@@ -179,7 +191,14 @@ export function summariseRoundup(
   const totals = { delivered: 0, inFlight: 0, planned: 0 };
   let anyTask = false;
 
-  for (const block of blocks) {
+  // `block: null` on the item, so the row renders without a workstream label rather
+  // than under an invented one.
+  const groups: { name: string | null; tasks: readonly RoundupTask[] }[] = [
+    ...blocks.map((b) => ({ name: b.name as string | null, tasks: b.tasks ?? [] })),
+    { name: null, tasks: opts.unassigned ?? [] },
+  ];
+
+  for (const block of groups) {
     for (const task of block.tasks ?? []) {
       anyTask = true;
       const bucket = bucketOf(task);

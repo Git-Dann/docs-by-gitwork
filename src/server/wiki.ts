@@ -178,13 +178,16 @@ export interface WikiTimelineBlock {
    * Still deliberately coarse for a client: title, done, and when — never assignee,
    * priority or the finer internal statuses.
    */
-  tasks: {
-    title: string;
-    done: boolean;
-    completedAt: string | null;
-    startedAt: string | null;
-  }[];
+  tasks: WikiTimelineTask[];
   statusCounts: Record<TaskStatus, number>;
+}
+
+/** The client-safe grain: what, whether, and when. Never who or how urgent. */
+export interface WikiTimelineTask {
+  title: string;
+  done: boolean;
+  completedAt: string | null;
+  startedAt: string | null;
 }
 
 export interface WikiTimelineMilestone {
@@ -197,6 +200,22 @@ export interface WikiTimelineMilestone {
 export interface WikiTimeline {
   blocks: WikiTimelineBlock[];
   milestones: WikiTimelineMilestone[];
+  /**
+   * Live work that is NOT on the timeline above, and therefore was invisible to the
+   * client until this field existed.
+   *
+   * ⚠️ Two ways a task falls out of `blocks`, and both were real on GAIA Bloom:
+   *   1. it belongs to no feature block at all (6 of her tasks, including BOTH the
+   *      ones actually in progress);
+   *   2. its block has no resolvable dates, and the loader drops such blocks whole.
+   *
+   * The consequence was a client portal reporting 98% complete (46 of 47 block tasks)
+   * while six items — two of them active — were counted nowhere. Every consumer that
+   * reports "how much is done" must include these, which is why they are a named field
+   * rather than folded into `blocks`: a synthetic block would have appeared as a phase
+   * on the Gantt and in the Venn, which it is not.
+   */
+  unassigned: WikiTimelineTask[];
 }
 
 /** A delivery-team member (active dev on the client), for the dashboard hero stack. */
@@ -581,7 +600,7 @@ async function loadWikiBlockers(clientId: string): Promise<WikiBlockerRecord[]> 
 
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   // Independent queries — run together instead of one round-trip after the other.
-  const [blocks, milestones] = await Promise.all([
+  const [blocks, milestones, allTasks] = await Promise.all([
     prisma.featureBlock.findMany({
       where: { clientId },
       orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
@@ -594,6 +613,8 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
         tasks: {
           where: { parentId: null, archivedAt: null },
           select: {
+            // `id` so the unassigned set can be worked out by subtraction below.
+            id: true,
             title: true,
             status: true,
             dueDate: true,
@@ -609,6 +630,14 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
       where: { clientId },
       orderBy: { date: "asc" },
       select: { id: true, name: true, date: true, color: true },
+    }),
+    // Every live top-level task. What is NOT on the timeline is worked out below by
+    // subtraction, so a task cannot go missing through a second filter drifting out of
+    // step with the block query's.
+    prisma.task.findMany({
+      where: { clientId, parentId: null, archivedAt: null },
+      select: { id: true, title: true, status: true, completedAt: true, startedAt: true },
+      orderBy: { orderKey: "asc" },
     }),
   ]);
 
@@ -644,8 +673,27 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
     })
     .filter((b): b is WikiTimelineBlock => b !== null);
 
+  // ⚠️ By SUBTRACTION, not by a mirrored `featureBlockId: null` filter. A block is
+  // dropped from the timeline when it has no resolvable dates, so "has a block" and
+  // "is on the timeline" are different sets — and it is the second that decides whether
+  // the client can see the task.
+  const onTimeline = new Set(
+    blocks.flatMap((b) =>
+      timelineBlocks.some((tb) => tb.id === b.id) ? b.tasks.map((t) => t.id) : [],
+    ),
+  );
+  const unassigned: WikiTimelineTask[] = allTasks
+    .filter((t) => !onTimeline.has(t.id))
+    .map((t) => ({
+      title: t.title,
+      done: t.status === "DONE",
+      completedAt: t.completedAt?.toISOString() ?? null,
+      startedAt: t.startedAt?.toISOString() ?? null,
+    }));
+
   return {
     blocks: timelineBlocks,
+    unassigned,
     milestones: milestones.map((m) => ({
       id: m.id,
       name: m.name,
@@ -800,7 +848,7 @@ async function buildDTO(
     support,
   ] = await Promise.all([
     settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
-    settle("timeline", () => loadWikiTimeline(wiki.clientId), { blocks: [], milestones: [] }),
+    settle("timeline", () => loadWikiTimeline(wiki.clientId), { blocks: [], milestones: [], unassigned: [] }),
     settle("designSystem", () => loadWikiDesignSystem(wiki.clientId), null),
     settle("monitors", () => loadWikiMonitors(wiki.clientId), { enabled: false, monitors: [] }),
     settle("codeHandover", () => loadWikiCodeHandover(wiki.clientId), { enabled: false, modules: [] }),

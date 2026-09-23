@@ -35,12 +35,15 @@ export function WikiDeliverySection({
   blocks,
   milestones,
   blockers,
+  unassigned,
 }: {
   blocks: DeliveryBlock[];
   milestones: DeliveryMilestone[];
   blockers: DeliveryBlocker[];
+  /** Live work on no phase — counts toward done/total. See summariseDelivery. */
+  unassigned?: readonly { done: boolean }[];
 }) {
-  const s = summariseDelivery({ blocks, milestones, blockers });
+  const s = summariseDelivery({ blocks, milestones, blockers, unassigned });
   const rows = phaseRows(blocks);
 
   if (s.noTimeline) {
