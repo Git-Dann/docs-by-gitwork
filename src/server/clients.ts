@@ -668,11 +668,26 @@ async function loadClientCollections() {
   };
 }
 
+/**
+ * Slugs that are route segments under /app/portal and /api/clients.
+ *
+ * ⚠️ A static segment wins over `[slug]` in Next, so a client slugged "summary" would
+ * make its own page and API route unreachable — silently, with no error anywhere. The
+ * same precedence is what makes `/api/documents/analytics` work (§17); here it is a
+ * hazard rather than a feature, so the name is refused at creation instead.
+ */
+const RESERVED_CLIENT_SLUGS = new Set(["summary", "new", "api"]);
+
 async function assertClientSlugAvailable(
   workspaceId: string,
   slug: string,
   currentId?: string,
 ) {
+  if (RESERVED_CLIENT_SLUGS.has(slug)) {
+    throw new Error(
+      `"${slug}" is a reserved name — it would collide with a Portal page. Pick another.`,
+    );
+  }
   const existing = await workspaceClients.findUnique({
     where: {
       workspaceId_slug: {

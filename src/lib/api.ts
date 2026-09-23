@@ -3589,6 +3589,25 @@ export interface WikiInsightBoardInput {
   }[];
 }
 
+export type { SummaryCard, SummaryAttention } from "@/lib/client-summary";
+import type { ClientSummaryBoard } from "@/server/client-summary";
+export type { ClientSummaryBoard };
+
+export async function getClientSummaryBoard(): Promise<ClientSummaryBoard> {
+  return apiFetch<ClientSummaryBoard>("/api/clients/summary");
+}
+
+export async function updateClientSummary(
+  clientId: string,
+  patch: { note?: string | null; hidden?: boolean },
+): Promise<void> {
+  await apiFetch(`/api/clients/summary/${clientId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function setWikiRoundupEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/roundup`, {
     method: "PATCH",

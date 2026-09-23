@@ -1282,6 +1282,15 @@ export function ClientManagement() {
                     Add lead
                   </Button>
                 ) : null}
+                {/* The portfolio board — every client on one page. Lives under Portal
+                    rather than as its own sidebar item, per §4a: it is a view of the
+                    client list, not a separate product. */}
+                <Link
+                  href="/app/portal/summary"
+                  className="app-button app-button-secondary app-button-xs"
+                >
+                  Summary board
+                </Link>
                 <Button
                   type="button"
                   variant="primary"
