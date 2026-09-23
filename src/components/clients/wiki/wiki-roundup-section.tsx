@@ -119,6 +119,13 @@ export function WikiRoundupSection({
   // ⚠️ "more than last week" is only sayable when BOTH weeks are measurable. With
   // undated completions the comparison is meaningless, so it is not drawn at all.
   const comparable = r.deliveredUndated === 0;
+
+  /** Work the Venn cannot show, because a circle counts workstreams and this has none. */
+  const loose = unassigned ?? [];
+  const looseCounts = {
+    total: loose.length,
+    inFlight: loose.filter((t) => !t.done && t.startedAt).length,
+  };
   const delta = r.delivered.length - r.deliveredPrevious;
 
   return (
@@ -267,9 +274,23 @@ export function WikiRoundupSection({
             {/* ⚠️ States the unit. A reader who assumes these are tasks would read the
                 overlaps as impossible — a task holds one state, so only a workstream
                 can sit in more than one circle. */}
-            Each workstream, by what it currently contains. A workstream that is part-built
+            Each <strong className="font-semibold">workstream</strong>, by what it
+            currently contains — not a count of items. A workstream that is part-built
             sits in an overlap.
           </p>
+
+          {/* ⚠️ Without this the page contradicts itself, and on GAIA Bloom it did:
+              panel 01 read "2 in flight" while this diagram read "In flight 0", because
+              both of her in-progress tasks belong to no phase and a phase is what a
+              circle counts. Stating the gap is the fix; quietly folding loose work into
+              a circle would misdescribe the plan. */}
+          {looseCounts.total > 0 && (
+            <p className="mb-4 text-[13px] leading-relaxed text-[var(--warning-600,var(--text-3))]">
+              {looseCounts.inFlight > 0
+                ? `${looseCounts.total} item${looseCounts.total === 1 ? " is" : "s are"} not attached to a workstream — including ${looseCounts.inFlight} of the ${r.totals.inFlight} in flight — so ${looseCounts.total === 1 ? "it does" : "they do"} not appear in this diagram.`
+                : `${looseCounts.total} item${looseCounts.total === 1 ? " is" : "s are"} not attached to a workstream, so ${looseCounts.total === 1 ? "it does" : "they do"} not appear in this diagram.`}
+            </p>
+          )}
           {r.venn.items.length > 0 ? (
             <InsightVennChart
               sets={r.venn.sets.map((s, i) => ({
@@ -277,6 +298,13 @@ export function WikiRoundupSection({
                 color: (["blue", "emerald", "amber"] as const)[i],
               }))}
               items={r.venn.items}
+              unit="workstreams"
+              // The regions are fixed here and most are empty most of the time; the
+              // diagram already prints a muted 0 for each, so listing five em-dashes
+              // below it is duplication that doubles the panel's height.
+              hideEmptyRegions
+              // One panel among six, not the page's subject.
+              maxWidth={340}
             />
           ) : (
             <p className="text-[13px] text-[var(--text-4)]">

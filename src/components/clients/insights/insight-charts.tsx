@@ -212,9 +212,29 @@ export function InsightPieChart({
 export function InsightVennChart({
   sets,
   items,
+  unit = "items",
+  hideEmptyRegions = false,
+  maxWidth,
 }: {
   sets: InsightVennSet[];
   items: InsightVennItem[];
+  /**
+   * What one number in a circle counts. Charts boards count items; RoundUp counts
+   * WORKSTREAMS, and a reader arriving from a panel of item counts will otherwise read
+   * the circles as items — which is how a page ends up appearing to contradict itself.
+   */
+  unit?: string;
+  /**
+   * Drop regions with nothing in them from the list below.
+   *
+   * Off by default: on an authored board an empty region is a finding. On a derived
+   * one the regions are fixed, most are empty most of the time, and the diagram
+   * already prints a muted 0 for each — so the list repeating five em-dashes is
+   * duplication, not information.
+   */
+  hideEmptyRegions?: boolean;
+  /** Cap below the viewBox width, for a figure that is one panel among several. */
+  maxWidth?: number;
 }) {
   const setCount = sets.length >= 3 ? 3 : 2;
   const geo = vennGeometry(setCount);
@@ -226,6 +246,8 @@ export function InsightVennChart({
     byRegion.set(item.region, list);
   }
   const anyItems = items.length > 0;
+  /** Never wider than the geometry's own design size — capping up would stretch it. */
+  const vennWidth = Math.min(maxWidth ?? geo.width, geo.width);
 
   return (
     <div>
@@ -235,8 +257,16 @@ export function InsightVennChart({
           role="img"
           aria-label={`Venn diagram of ${sets.map((s) => s.label).join(", ")}`}
           preserveAspectRatio="xMidYMid meet"
-          className="block w-full min-w-[420px]"
-          style={{ aspectRatio: `${geo.width} / ${geo.height}`, ...figureScale(geo.width) }}
+          className="block w-full"
+          style={{
+            aspectRatio: `${geo.width} / ${geo.height}`,
+            // ⚠️ min-width follows the cap rather than being a fixed 420. Hardcoded, a
+            // `maxWidth` below 420 was silently overridden — the figure stayed 420 and
+            // the prop looked like it did nothing. Tying them also means a capped
+            // figure can fit a 358px phone card outright, with no scroller at all.
+            minWidth: `${Math.min(vennWidth, 420)}px`,
+            ...figureScale(vennWidth),
+          }}
         >
           {geo.circles.map((circle, i) => {
             const hex = insightColor(sets[i]?.color, i);
@@ -300,11 +330,13 @@ export function InsightVennChart({
           className="mt-2 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
           style={{ fontFamily: MONO }}
         >
-          Numbers are how many items sit in each region · named below
+          {`Numbers are how many ${unit} sit in each region · named below`}
         </p>
       )}
       <div className="mt-3 space-y-2">
-        {regionsFor(setCount).map((region) => {
+        {regionsFor(setCount)
+          .filter((region) => !hideEmptyRegions || (byRegion.get(region)?.length ?? 0) > 0)
+          .map((region) => {
           const list = byRegion.get(region) ?? [];
           return (
             <div key={region}>
