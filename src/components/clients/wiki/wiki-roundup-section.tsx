@@ -17,6 +17,7 @@
 
 import { MONO, SERIF, StatTile } from "@/components/analytics/analytics-widgets";
 import { InsightVennChart } from "@/components/clients/insights/insight-charts";
+import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
 import {
   summariseDelivery,
   type DeliveryBlock,
@@ -93,21 +94,27 @@ export function WikiRoundupSection({
   blocks,
   milestones,
   blockers,
+  unassigned,
   now,
 }: {
   /**
    * The DTO's timeline block satisfies both shapes. Typed as the intersection so the
    * section cannot be handed something that only one of the two derivations can read.
    */
-  blocks: (RoundupBlock & DeliveryBlock)[];
-  milestones: DeliveryMilestone[];
+  blocks: (RoundupBlock & DeliveryBlock & GanttBlock)[];
+  milestones: (DeliveryMilestone & GanttMilestone)[];
   blockers: DeliveryBlocker[];
+  /**
+   * Live work on no phase. ⚠️ Not decoration: on GAIA Bloom both in-progress tasks
+   * were here, so without it "ON NOW" renders empty while the team is working.
+   */
+  unassigned?: readonly import("@/lib/wiki-roundup").RoundupTask[];
   /** Injected so a test or a screenshot can pin the window. Defaults to render time. */
   now?: Date;
 }) {
   const at = now ?? new Date();
-  const r = summariseRoundup(blocks, at);
-  const d = summariseDelivery({ blocks, milestones, blockers });
+  const r = summariseRoundup(blocks, at, { unassigned });
+  const d = summariseDelivery({ blocks, milestones, blockers, unassigned });
 
   // ⚠️ "more than last week" is only sayable when BOTH weeks are measurable. With
   // undated completions the comparison is meaningless, so it is not drawn at all.
@@ -223,7 +230,38 @@ export function WikiRoundupSection({
         </Panel>
       </div>
 
-      <Panel number="04" label="WHERE THE WORK SITS" status={`${r.venn.items.length} WORKSTREAMS`}>
+      <Panel number="04" label="THE WORK TIMELINE" status={`${blocks.length} PHASES`}>
+        <div className="p-5 sm:p-6">
+          {blocks.length > 0 ? (
+            <>
+              {/* Client-facing, so no slip overlay — same call the Timeline section
+                  makes. A client seeing "behind schedule" bars is a conversation, not
+                  a status page. */}
+              <GanttChart
+                blocks={blocks}
+                milestones={milestones}
+                slippage={false}
+                emptyHint="The timeline will appear once phases are scheduled."
+              />
+              {r.totals.planned + r.totals.inFlight + r.totals.delivered >
+                blocks.reduce((sum, b) => sum + (b.tasks?.length ?? 0), 0) && (
+                <p className="mt-3 text-[12px] text-[var(--text-4)]">
+                  {/* Says WHY the bars do not add up to the figures above, rather than
+                      leaving a reader to reconcile two numbers that cannot match. */}
+                  Some work is not attached to a phase yet, so it is counted in the
+                  figures above but does not appear on this timeline.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-[13px] text-[var(--text-4)]">
+              No phases are scheduled yet, so there is no timeline to draw.
+            </p>
+          )}
+        </div>
+      </Panel>
+
+      <Panel number="05" label="WHERE THE WORK SITS" status={`${r.venn.items.length} WORKSTREAMS`}>
         <div className="p-5 sm:p-6">
           <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-3)]">
             {/* ⚠️ States the unit. A reader who assumes these are tasks would read the
@@ -249,7 +287,7 @@ export function WikiRoundupSection({
       </Panel>
 
       <Panel
-        number="05"
+        number="06"
         label="THE BIGGER PICTURE"
         status={d.percent === null ? "NO PLAN YET" : `${d.percent}% COMPLETE`}
       >

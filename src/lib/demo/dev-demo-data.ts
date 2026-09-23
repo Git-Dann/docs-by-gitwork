@@ -650,7 +650,19 @@ function wikiTimelineFromGantt(): WikiDTO["timeline"] {
       },
     };
   });
-  return { blocks, milestones: demoGanttMilestones as WikiDTO["timeline"]["milestones"] };
+  return {
+    blocks,
+    milestones: demoGanttMilestones as WikiDTO["timeline"]["milestones"],
+    // ⚠️ Live work attached to no phase — the exact shape that made RoundUp render an
+    // empty "ON NOW" on GAIA Bloom while two tasks were in progress. A demo without it
+    // cannot express the bug and therefore cannot verify the fix (§42.15).
+    unassigned: [
+      { title: "Role-specific copy under Resources", done: false, completedAt: null, startedAt: atDays(-2) },
+      { title: "Share resources at three levels", done: false, completedAt: null, startedAt: atDays(-1) },
+      { title: "School admin access to the library", done: false, completedAt: null, startedAt: null },
+      { title: "Learner resources view", done: false, completedAt: null, startedAt: null },
+    ],
+  };
 }
 
 const demoWiki: WikiDTO = {

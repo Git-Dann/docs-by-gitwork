@@ -108,6 +108,18 @@ export function summariseDelivery(input: {
   blocks: readonly DeliveryBlock[];
   milestones: readonly DeliveryMilestone[];
   blockers: readonly DeliveryBlocker[];
+  /**
+   * Live work that is not on the timeline — see `WikiTimeline.unassigned`.
+   *
+   * ⚠️ It counts toward done/total. GAIA Bloom's portal read 98% complete because six
+   * of her tasks, two of them in progress, belonged to no phase and were therefore
+   * counted nowhere. A completion figure that silently excludes live work overstates
+   * progress to the one person who cannot check it.
+   *
+   * It does NOT count toward the phase tallies: these tasks are in no phase, and
+   * inventing one would put a fake row on the client's plan.
+   */
+  unassigned?: readonly { done: boolean }[];
   /** Injected so the derivation is deterministic in a test. */
   now?: Date;
 }): DeliverySummary {
@@ -133,6 +145,10 @@ export function summariseDelivery(input: {
     else phasesNotStarted += 1;
   }
 
+  const loose = input.unassigned ?? [];
+  done += loose.filter((t) => t.done).length;
+  total += loose.length;
+
   const upcoming = input.milestones
     .filter((m) => new Date(m.date).getTime() >= now.getTime())
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -150,6 +166,9 @@ export function summariseDelivery(input: {
     // Only blockers the client has not yet answered — one they have replied to is ours
     // again, and counting it as "waiting on you" would be untrue.
     waitingOnClient: input.blockers.filter((b) => !b.blockedResponse).length,
+    // ⚠️ Still keyed on the PHASES. Loose tasks are work, not a plan — a client with
+    // six stray tasks and no timeline has not had a delivery plan built for them, and
+    // saying otherwise is the §35 mistake in the other direction.
     noTimeline: blocks.length === 0,
   };
 }

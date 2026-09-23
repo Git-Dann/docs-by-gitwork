@@ -218,3 +218,41 @@ describe("a block with no statusCounts", () => {
     expect(out.phasesNotStarted).toBe(1);
   });
 });
+
+describe("work on no phase counts toward completion", () => {
+  /**
+   * ⚠️ GAIA Bloom's portal reported 98% complete — 46 of 47 tasks across her phases —
+   * while six more, two of them in progress, belonged to no phase and were counted
+   * nowhere. The honest figure was 87%. A completion percentage that silently excludes
+   * live work overstates progress to the one person who cannot check it.
+   */
+  const phases = [
+    { id: "p", name: "Phase", progress: 98, tasks: Array.from({ length: 47 }, (_, i) => ({ done: i < 46 })) },
+  ];
+  const loose = Array.from({ length: 6 }, () => ({ done: false }));
+
+  it("was 98% and is now the true 87%", () => {
+    expect(summariseDelivery({ blocks: phases, milestones: [], blockers: [] }).percent).toBe(98);
+    expect(
+      summariseDelivery({ blocks: phases, milestones: [], blockers: [], unassigned: loose }).percent,
+    ).toBe(87);
+  });
+
+  it("counts them in done as well as total", () => {
+    const s = summariseDelivery({
+      blocks: [],
+      milestones: [],
+      blockers: [],
+      unassigned: [{ done: true }, { done: false }],
+    });
+    expect(s).toMatchObject({ done: 1, total: 2, percent: 50 });
+  });
+
+  it("does NOT invent a phase for them", () => {
+    // They are work, not a plan — a fake row on the client's phase list would be worse
+    // than the undercount it replaced.
+    const s = summariseDelivery({ blocks: [], milestones: [], blockers: [], unassigned: loose });
+    expect(s.phasesComplete + s.phasesInFlight + s.phasesNotStarted).toBe(0);
+    expect(s.noTimeline).toBe(true);
+  });
+});

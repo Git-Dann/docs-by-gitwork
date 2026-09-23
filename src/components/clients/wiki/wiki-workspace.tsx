@@ -1415,7 +1415,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           blocks={wiki!.timeline.blocks}
           milestones={wiki!.timeline.milestones}
           blockers={wiki!.blockers}
-        />
+         unassigned={wiki!.timeline.unassigned} />
       );
     }
     if (activeSection === "support") {
@@ -1427,6 +1427,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           blocks={wiki!.timeline.blocks}
           milestones={wiki!.timeline.milestones}
           blockers={wiki!.blockers}
+          unassigned={wiki!.timeline.unassigned}
         />
       );
     }
