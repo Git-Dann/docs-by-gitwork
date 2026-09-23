@@ -52,9 +52,27 @@ export function isAbsenceShaped(ev: TeamCalendarEvent): boolean {
   return ev.allDay || span >= DAY_MS;
 }
 
+/**
+ * The calendar DAY a boundary falls on, as written.
+ *
+ * ⚠️ Compare days, not instants. Google returns an all-day event's boundary as a
+ * bare date (`2026-10-05`, read as UTC midnight) and a timed out-of-office as a
+ * local datetime (`2026-10-05T00:00:00+01:00`, which is 23:00 UTC on the 4th).
+ * The same week off therefore arrives as two spans an hour apart, and an exact
+ * millisecond key never matches them — which is exactly how the first version of
+ * this shipped and did nothing.
+ *
+ * Slicing the first 10 characters takes the wall-clock date the string already
+ * encodes, which is what a person means by "I am away on the 5th", and is stable
+ * whatever offset either event was written in.
+ */
+function dayKey(value: string): string {
+  return value.slice(0, 10);
+}
+
 /** The span key two entries must share to be considered the same absence. */
 function spanKey(ev: TeamCalendarEvent): string {
-  return `${ev.userId}|${ms(ev.start)}|${ms(ev.end)}`;
+  return `${ev.userId}|${dayKey(ev.start)}|${dayKey(ev.end)}`;
 }
 
 /**

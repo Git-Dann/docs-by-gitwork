@@ -25,8 +25,11 @@ const ev = (over: Partial<TeamCalendarEvent>): TeamCalendarEvent => ({
 const hrHoliday = ev({
   id: "u1:36802551",
   summary: "Daniel Lindsay - Holiday",
-  start: "2026-10-05T00:00:00.000Z",
-  end: "2026-10-10T00:00:00.000Z",
+  // ⚠️ VERBATIM from Google: an all-day boundary is a bare date read as UTC
+  // midnight. Do NOT "tidy" these two fixtures into the same offset — that is
+  // precisely what let a version that deduped NOTHING pass its own tests.
+  start: "2026-10-05T00:00:00Z",
+  end: "2026-10-10T00:00:00Z",
   allDay: true,
   outOfOffice: false,
 });
@@ -35,8 +38,10 @@ const hrHoliday = ev({
 const ooo = ev({
   id: "u1:3hn15doocajbaa0leui59j3kk8",
   summary: "Dan Away - New York",
-  start: "2026-10-05T00:00:00.000Z",
-  end: "2026-10-10T00:00:00.000Z",
+  // VERBATIM: a timed OOO is LOCAL midnight — 23:00 UTC on the 4th, an hour off
+  // the all-day boundary above.
+  start: "2026-10-05T00:00:00+01:00",
+  end: "2026-10-10T00:00:00+01:00",
   outOfOffice: true,
 });
 
@@ -140,5 +145,26 @@ describe("⚠️ the title-length heuristic that got it backwards", () => {
     const short = { ...hrHoliday, id: "u1:s", summary: "Leave" };
     const long = { ...hrHoliday, id: "u1:l", summary: "Daniel Lindsay - Holiday" };
     expect(dedupeAbsences([short, long])[0].summary).toBe("Daniel Lindsay - Holiday");
+  });
+});
+
+describe("⚠️ the offset mismatch that made the first version a no-op", () => {
+  it("merges across UTC-midnight and BST-midnight boundaries", () => {
+    // The whole bug: Google writes an all-day boundary as UTC midnight and a timed
+    // out-of-office as LOCAL midnight. Same week off, two spans an hour apart.
+    expect(new Date(hrHoliday.start).getTime()).not.toBe(new Date(ooo.start).getTime());
+    expect(dedupeAbsences([hrHoliday, ooo])).toHaveLength(1);
+  });
+
+  it("still separates absences that are genuinely on different days", () => {
+    // Day-granularity must not become "near enough".
+    const nextDay = { ...ooo, id: "u1:next", start: "2026-10-06T00:00:00+01:00" };
+    expect(dedupeAbsences([hrHoliday, nextDay])).toHaveLength(2);
+  });
+
+  it("handles a bare YYYY-MM-DD boundary too", () => {
+    // Google sends `start.date` as a bare date on some calendars.
+    const bare = { ...hrHoliday, id: "u1:bare", start: "2026-10-05", end: "2026-10-10" };
+    expect(dedupeAbsences([bare, ooo])).toHaveLength(1);
   });
 });
