@@ -16,7 +16,7 @@ export function DemoSummaryExperience() {
     <DemoShell
       active="Portal"
       title="Client summary"
-      subtitle="Every client on one board — what moved this week, what needs looking at."
+      subtitle="Every client on one board — where each one stands, and who needs you."
     >
       <ClientSummaryBoardView />
     </DemoShell>
