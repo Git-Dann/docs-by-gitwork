@@ -4,6 +4,7 @@ import { googleClientForRefreshToken } from "@/server/google-auth";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import type { CalendarConnectionMember, TeamCalendarEvent } from "@/types/backstage";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
+import { dedupeAbsences } from "@/lib/backstage/dedupe-absences";
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
@@ -130,6 +131,7 @@ export async function getTeamCalendarEvents(
             end: endRaw ?? startRaw,
             allDay,
             meetLink,
+            outOfOffice: ev.eventType === "outOfOffice",
           });
         }
         return out;
@@ -140,5 +142,8 @@ export async function getTeamCalendarEvents(
     }),
   );
 
-  return perMember.flat();
+  // One absence booked twice (an HR sync plus a hand-made out-of-office) is one
+  // absence. Narrow by design — see dedupe-absences.ts for why this can never
+  // swallow a meeting.
+  return dedupeAbsences(perMember.flat());
 }

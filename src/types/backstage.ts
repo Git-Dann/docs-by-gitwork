@@ -181,6 +181,8 @@ export type TeamCalendarEvent = {
   /** Video-conference join link (Google Meet / hangout), null when none or the
    *  event is private. Lets the team calendar surface a "Join" affordance. */
   meetLink: string | null;
+  /** Google's own `eventType: "outOfOffice"` — the canonical "I am away" marker. */
+  outOfOffice: boolean;
 };
 
 // ─── Portal Gantt overlay (admin-only) ────────────────────────────────────
