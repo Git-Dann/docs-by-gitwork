@@ -19,8 +19,12 @@ export function useClientSummaryBoard() {
 export function useUpdateClientSummary() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { clientId: string; note?: string | null; hidden?: boolean }) =>
-      updateClientSummary(args.clientId, { note: args.note, hidden: args.hidden }),
+    mutationFn: (args: { clientId: string; note?: string | null; detail?: string | null; hidden?: boolean }) =>
+      updateClientSummary(args.clientId, {
+        note: args.note,
+        detail: args.detail,
+        hidden: args.hidden,
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }

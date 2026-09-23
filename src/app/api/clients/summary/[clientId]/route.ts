@@ -8,11 +8,17 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
-import { setClientSummaryHidden, setClientSummaryNote } from "@/server/client-summary";
+import {
+  getClientSummaryText,
+  setClientSummaryHidden,
+  setClientSummaryNote,
+} from "@/server/client-summary";
 
 const bodySchema = z.object({
-  /** Empty string clears the note — and clears its timestamp with it. */
+  /** The short line the card shows. Empty string clears it. */
   note: z.string().max(2000).nullable().optional(),
+  /** The fuller account, shown only in the record. Empty string clears it. */
+  detail: z.string().max(20000).nullable().optional(),
   hidden: z.boolean().optional(),
 });
 
@@ -24,13 +30,26 @@ export async function PATCH(
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "edit the client summary");
     const { clientId } = await params;
     const body = bodySchema.parse(await req.json());
-    if (body.note === undefined && body.hidden === undefined) {
+    if (body.note === undefined && body.detail === undefined && body.hidden === undefined) {
       return apiError("Nothing to update", 400);
     }
     let found = true;
-    if (body.note !== undefined) {
-      const trimmed = body.note?.trim() ?? "";
-      found = await setClientSummaryNote(clientId, trimmed === "" ? null : trimmed);
+    if (body.note !== undefined || body.detail !== undefined) {
+      const blank = (v: string | null | undefined) => {
+        const t = v?.trim() ?? "";
+        return t === "" ? null : t;
+      };
+      // ⚠️ Read the current prose first: a PATCH carrying only one field must not
+      // clear the other, and the shared stamp is derived from both.
+      const current = await getClientSummaryText(clientId);
+      found = await setClientSummaryNote(
+        clientId,
+        {
+          ...(body.note !== undefined ? { note: blank(body.note) } : {}),
+          ...(body.detail !== undefined ? { detail: blank(body.detail) } : {}),
+        },
+        current,
+      );
     }
     if (found && body.hidden !== undefined) {
       found = await setClientSummaryHidden(clientId, body.hidden);

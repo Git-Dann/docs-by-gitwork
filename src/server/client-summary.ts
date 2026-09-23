@@ -108,7 +108,13 @@ export async function loadClientSummaryBoard(
     }),
     prisma.workspaceClient.findMany({
       where: { id: { in: ids } },
-      select: { id: true, summaryNote: true, summaryNoteAt: true, summaryHidden: true },
+      select: {
+        id: true,
+        summaryNote: true,
+        summaryDetail: true,
+        summaryNoteAt: true,
+        summaryHidden: true,
+      },
     }),
   ]);
 
@@ -132,6 +138,7 @@ export async function loadClientSummaryBoard(
       inFlight: m.inFlight,
       planned: m.planned,
       note: f?.summaryNote ?? null,
+      detail: f?.summaryDetail ?? null,
       noteAt: f?.summaryNoteAt?.toISOString() ?? null,
     };
   });
@@ -167,13 +174,35 @@ async function updateSummaryFields(
   return count > 0;
 }
 
-export function setClientSummaryNote(clientId: string, note: string | null): Promise<boolean> {
-  // ⚠️ The stamp moves with the text and is never set by hand. A note whose age can
-  // be edited independently of its content is worse than no age at all.
-  return updateSummaryFields(clientId, {
-    summaryNote: note,
-    summaryNoteAt: note ? new Date() : null,
+/**
+ * Write the summary line and/or the fuller update.
+ *
+ * ⚠️ The stamp moves with the text and is never set by hand — an age that can be
+ * edited independently of its content is worse than no age at all. It is cleared only
+ * when BOTH fields are empty, because it means "when did anyone last write about this
+ * client", not "when was this particular box last touched".
+ */
+export function setClientSummaryNote(
+  clientId: string,
+  next: { note?: string | null; detail?: string | null },
+  current: { note: string | null; detail: string | null },
+): Promise<boolean> {
+  const note = next.note === undefined ? current.note : next.note;
+  const detail = next.detail === undefined ? current.detail : next.detail;
+  const data: { summaryNote?: string | null; summaryDetail?: string | null; summaryNoteAt: Date | null } =
+    { summaryNoteAt: note || detail ? new Date() : null };
+  if (next.note !== undefined) data.summaryNote = next.note;
+  if (next.detail !== undefined) data.summaryDetail = next.detail;
+  return updateSummaryFields(clientId, data);
+}
+
+/** The stored prose, so a partial write can preserve the field it does not touch. */
+export async function getClientSummaryText(clientId: string) {
+  const row = await prisma.workspaceClient.findUnique({
+    where: { id: clientId },
+    select: { summaryNote: true, summaryDetail: true },
   });
+  return { note: row?.summaryNote ?? null, detail: row?.summaryDetail ?? null };
 }
 
 export function setClientSummaryHidden(clientId: string, hidden: boolean): Promise<boolean> {

@@ -35,7 +35,7 @@ describe("the note is the card's content, not a footnote", () => {
      */
     const card = BOARD.slice(BOARD.indexOf("function Card("), BOARD.indexOf("export function ClientSummaryBoardView"));
     expect(card).toContain("line-clamp-2");
-    expect(card).toContain("<CardDetail");
+    expect(card, "the card should open the board's record popup").toContain("onClick={onOpen}");
     expect(card, "the card should not render figures").not.toContain("<Figure");
     expect(card, "the card should not hold the editor").not.toContain("<NoteEditor");
   });
@@ -52,7 +52,7 @@ describe("the note is the card's content, not a footnote", () => {
     // ⚠️ `toContain("<Figure")` alone passes with three of the four deleted — it was
     // written that way first, and a sabotage that removed one figure fired nothing.
     const detail = BOARD.slice(
-      BOARD.indexOf("function CardDetail("),
+      BOARD.indexOf("function BoardDetailModal("),
       BOARD.indexOf("function Card("),
     );
     for (const label of ["Done / 7d", "In flight", "To do", "Devs"]) {
@@ -188,5 +188,109 @@ describe("the portfolio card", () => {
     expect(board).toContain("setShowHidden");
     // Each hidden client must be restorable — a count with no way back is a dead end.
     expect(board).toMatch(/hiddenCards\.map\([\s\S]{0,400}hidden: false/);
+  });
+});
+
+describe("the record popup follows the house shape", () => {
+  const DETAIL = BOARD.slice(
+    BOARD.indexOf("function BoardDetailModal("),
+    BOARD.indexOf("function Card("),
+  );
+
+  /**
+   * ⚠️ DESIGN.md specifies a fixed-height two-column "list + inspector" popup for
+   * exactly this case — pick one of a list, inspect it — and says to reach for it
+   * before inventing a layout. The first cut was a single 512px column with the
+   * detail floating in ~500px of empty space: it used the height clamp and none of
+   * the shape. Measurements are in the PR; these pin the structure.
+   */
+  it("is the two-column list + inspector at max-w-3xl", () => {
+    expect(DETAIL).toContain("max-w-3xl");
+    expect(DETAIL).toMatch(/h-\[460px\]/);
+    expect(DETAIL).toMatch(/sm:grid-cols-\[minmax\(0,\s*\d+px\)_minmax\(0,1fr\)\]/);
+    expect(DETAIL, "the two columns need a hairline between them").toContain("divide-x");
+  });
+
+  it("gives each column its own scroller, so the panel never resizes", () => {
+    expect(DETAIL.split("overflow-y-auto").length - 1).toBeGreaterThanOrEqual(2);
+    expect(DETAIL, "the body height must not come from the content").not.toMatch(
+      /max-h-\[\d+vh\]/,
+    );
+  });
+
+  it("collapses to one column on a phone", () => {
+    /**
+     * ⚠️ Held as two columns at 390px the list took 260 of 356 usable pixels and the
+     * record got 96 — the client's own name truncated to 9px of visible text, which
+     * `audit:clipping` reported as TRUNCATED. The board behind the popup is the list,
+     * so dropping it below `sm` loses nothing.
+     */
+    expect(DETAIL).toMatch(/grid-cols-1/);
+    expect(DETAIL, "the list is the part that goes").toMatch(/hidden[^"]*sm:block/);
+  });
+
+  it("keeps the pinned footer INSIDE the panel when the editor opens", () => {
+    // ⚠️ A grid item's automatic minimum size is its content, so without `min-h-0`
+    // the right column grows past the 460px row and pushes the footer out of the
+    // panel. Measured: the figures sat below the dialog's own bottom edge.
+    expect(DETAIL).toMatch(/flex min-h-0 min-w-0 flex-col/);
+  });
+
+  it("lets you walk the portfolio without closing it", () => {
+    // One popup for the whole board, not one per card: the list is every client and
+    // selecting a row swaps the pane.
+    expect(DETAIL).toContain("cards.map(");
+    expect(DETAIL).toContain("onSelect(c.id)");
+  });
+
+  it("pins the figures below the writing area rather than scrolling them away", () => {
+    const body = DETAIL.slice(DETAIL.indexOf("<NoteEditor"));
+    const figures = body.indexOf("<Figure");
+    const pinned = body.lastIndexOf("shrink-0", figures);
+    expect(figures, "the figures should come after the editor").toBeGreaterThan(-1);
+    expect(pinned, "the figures should sit in a shrink-0 footer").toBeGreaterThan(-1);
+    // They must NOT be inside the scrolling region.
+    const scroller = body.indexOf("overflow-y-auto");
+    expect(scroller === -1 || scroller > figures).toBe(true);
+  });
+});
+
+describe("summary and fuller update are two fields", () => {
+  it("writes both, and the card only ever shows the short one", () => {
+    const editor = BOARD.slice(BOARD.indexOf("function NoteEditor("), BOARD.indexOf("function BoardDetailModal("));
+    expect(editor.split("<textarea").length - 1, "two fields, not one").toBe(2);
+    expect(editor).toContain("card.detail");
+    const card = BOARD.slice(
+      BOARD.indexOf("function Card("),
+      BOARD.indexOf("export function ClientSummaryBoardView"),
+    );
+    expect(card, "the fuller update belongs in the record, never on the card").not.toContain(
+      "card.detail",
+    );
+  });
+
+  it("keeps both textareas at 16px on a phone", () => {
+    const editor = BOARD.slice(BOARD.indexOf("function NoteEditor("), BOARD.indexOf("function BoardDetailModal("));
+    expect(editor.split("text-base").length - 1).toBe(2);
+  });
+
+  it("a partial write preserves the field it does not touch", () => {
+    /**
+     * ⚠️ The PATCH may carry only one of the two. Without reading the current prose
+     * first, saving a summary would blank the fuller update — silently, and only
+     * noticed by whoever wrote it.
+     */
+    const route = read("src/app/api/clients/summary/[clientId]/route.ts");
+    expect(route).toContain("getClientSummaryText(clientId)");
+    const server = read("src/server/client-summary.ts");
+    const fn = server.slice(server.indexOf("export function setClientSummaryNote"));
+    expect(fn.slice(0, 900)).toContain("next.note === undefined ? current.note");
+    expect(fn.slice(0, 900)).toContain("next.detail === undefined ? current.detail");
+  });
+
+  it("stamps on either field, and clears the stamp only when both are empty", () => {
+    const server = read("src/server/client-summary.ts");
+    const fn = server.slice(server.indexOf("export function setClientSummaryNote"));
+    expect(fn.slice(0, 900)).toContain("note || detail ? new Date() : null");
   });
 });

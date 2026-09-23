@@ -3599,7 +3599,7 @@ export async function getClientSummaryBoard(): Promise<ClientSummaryBoard> {
 
 export async function updateClientSummary(
   clientId: string,
-  patch: { note?: string | null; hidden?: boolean },
+  patch: { note?: string | null; detail?: string | null; hidden?: boolean },
 ): Promise<void> {
   await apiFetch(`/api/clients/summary/${clientId}`, {
     method: "PATCH",
