@@ -5,43 +5,43 @@
  * Pure: the arithmetic and the ordering live here so they can be proved without a
  * database. `src/server/client-summary.ts` does the fetching.
  *
- * ## Two rules this file exists to enforce
+ * ## What this is, and what it deliberately is not
  *
- * 1. **A typed note must carry its age.** The board mixes live derived figures with
- *    prose somebody wrote by hand. A three-week-old "all on track" sitting beside a
- *    figure that updated this morning reads as current, and that is the most
- *    misleading thing a page like this can do. Every note is stamped, and one past
- *    `NOTE_STALE_DAYS` is marked stale rather than quietly shown.
- * 2. **Silence is not health.** A client with no tasks, no timeline and no note is not
- *    "fine" — it is unmeasured. `attention` separates "we looked and it is good" from
- *    "we have nothing to look at", because the second needs a person and the first
- *    does not.
+ * It is a place to WRITE a summary of each project, with a few figures beside it for
+ * reference. It is **not** a status board. It carried a derived attention level —
+ * red/amber dots, "NEEDS ATTENTION", `HEALTH RED · 1 BLOCKED ON CLIENT` — and that was
+ * removed at Dan's instruction: the page exists to carry a person's own account of a
+ * client, and a machine's verdict sitting beside it competes with the thing it is for.
+ *
+ * ⚠️ Don't reintroduce a derived judgement here. If a signal is genuinely worth
+ * showing, it belongs beside the other figures as a **number**, not as a colour or a
+ * label — "3 blocked" is a fact, "HEALTH RED" is an opinion.
+ *
+ * ## The one rule that remains
+ *
+ * **A typed note must carry its age.** The board mixes prose somebody wrote by hand
+ * with figures that updated this morning. A three-week-old "all on track" reads as
+ * current, and that is the most misleading thing a page like this can do. Every note
+ * is stamped, and one past `NOTE_STALE_DAYS` is marked stale rather than shown quietly.
  */
 
 /** A note older than this is shown as stale. Two weeks: longer than a holiday, shorter
  *  than a sprint, so "nobody has looked at this recently" is a fair reading. */
 export const NOTE_STALE_DAYS = 14;
 
-export type SummaryAttention = "critical" | "watch" | "ok" | "unmeasured";
-
 export interface SummaryClientInput {
   id: string;
   slug: string;
   name: string;
   hidden: boolean;
-  /** Composite health from client-metrics: "red" | "amber" | "green" | null. */
-  health: string | null;
   devCount: number;
-  /** Open blockers — work we cannot move until the client answers. */
-  waitingOnClient: number;
-  /** Care conversations awaiting our reply. */
-  awaitingReply: number;
   /** Tasks completed in the last 7 days. */
   deliveredThisWeek: number;
   /** Started and not finished. */
   inFlight: number;
   /** Not started. */
   planned: number;
+  /** The short line the card shows. */
   note: string | null;
   /** The fuller account — detail view only, never on the card. */
   detail: string | null;
@@ -49,15 +49,6 @@ export interface SummaryClientInput {
 }
 
 export interface SummaryCard extends SummaryClientInput {
-  attention: SummaryAttention;
-  /**
-   * Why it needs attention, worst first.
-   *
-   * ⚠️ Deliberately SHORT — these are flags on a strip, not sentences. Three stacked
-   * derived sentences dominated the card and buried the thing a person had actually
-   * written, which is the content the board exists to carry.
-   */
-  reasons: string[];
   noteAgeDays: number | null;
   noteStale: boolean;
 }
@@ -72,61 +63,21 @@ function ageInDays(iso: string | null, now: Date): number | null {
   return Math.floor((now.getTime() - t) / DAY);
 }
 
-/**
- * Whether a client needs looking at, and why.
- *
- * ⚠️ `unmeasured` is not a worse `ok`. A client with nothing to measure has no signal
- * at all, and colouring that green tells Harry it is fine when nobody has checked.
- */
 export function assessClient(input: SummaryClientInput, now: Date): SummaryCard {
-  const reasons: string[] = [];
-
-  if (input.health === "red") reasons.push("Health red");
-  if (input.awaitingReply > 0) reasons.push(`${input.awaitingReply} awaiting reply`);
-  if (input.waitingOnClient > 0) reasons.push(`${input.waitingOnClient} blocked on client`);
-  if (input.health === "amber") reasons.push("Health amber");
-
-  const hasWork = input.deliveredThisWeek + input.inFlight + input.planned > 0;
-  // ⚠️ "Nothing shipped" only means something when there IS work to ship. On a client
-  // with no tasks at all it is not a finding, it is the absence of a board.
-  if (hasWork && input.deliveredThisWeek === 0 && input.inFlight === 0) {
-    reasons.push("Stalled");
-  }
-
   const noteAgeDays = ageInDays(input.noteAt, now);
   // ⚠️ Either field counts as "written about". Marking a card stale while a long
   // update sits under it, unread, would be the same lie in the other direction.
   const written = input.note !== null || input.detail !== null;
   const noteStale = written && (noteAgeDays === null || noteAgeDays > NOTE_STALE_DAYS);
-
-  const measured = hasWork || input.health !== null || input.awaitingReply > 0;
-  // ⚠️ An unmeasured card is otherwise four zeros and nothing else, which reads as
-  // "quiet" rather than "we cannot see this". Say which it is — §35's rule, on a card.
-  if (!measured) reasons.push("Nothing to read");
-
-  const attention: SummaryAttention = !measured
-    ? "unmeasured"
-    : input.health === "red" || input.awaitingReply > 0
-      ? "critical"
-      : reasons.length > 0
-        ? "watch"
-        : "ok";
-
-  return { ...input, attention, reasons, noteAgeDays, noteStale };
+  return { ...input, noteAgeDays, noteStale };
 }
 
-const RANK: Record<SummaryAttention, number> = {
-  critical: 0,
-  watch: 1,
-  unmeasured: 2,
-  ok: 3,
-};
-
 /**
- * Worst first, so a board that is mostly fine puts the exceptions at the top.
+ * Alphabetical, so the board is in the order a person can predict and find things in.
  *
- * ⚠️ `unmeasured` sorts ABOVE `ok`: a client nobody can see the state of is a job for
- * a person, and burying it under the healthy ones is how it stays invisible.
+ * ⚠️ It used to sort worst-first off the derived attention level. With that judgement
+ * gone from the page, ordering by an invisible signal would mean the cards moved for
+ * reasons nobody could see — worse than either alternative.
  */
 export function buildSummaryBoard(
   clients: readonly SummaryClientInput[],
@@ -142,27 +93,15 @@ export function buildSummaryBoard(
    */
   hiddenCards: SummaryCard[];
   hidden: number;
-  counts: Record<SummaryAttention, number>;
 } {
-  const visible = clients.filter((c) => !c.hidden);
+  const byName = (a: SummaryCard, b: SummaryCard) => a.name.localeCompare(b.name);
+  const cards = clients
+    .filter((c) => !c.hidden)
+    .map((c) => assessClient(c, now))
+    .sort(byName);
   const hiddenCards = clients
     .filter((c) => c.hidden)
     .map((c) => assessClient(c, now))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const cards = visible
-    .map((c) => assessClient(c, now))
-    .sort(
-      (a, b) =>
-        RANK[a.attention] - RANK[b.attention] ||
-        b.reasons.length - a.reasons.length ||
-        a.name.localeCompare(b.name),
-    );
-  const counts: Record<SummaryAttention, number> = {
-    critical: 0,
-    watch: 0,
-    ok: 0,
-    unmeasured: 0,
-  };
-  for (const c of cards) counts[c.attention] += 1;
-  return { cards, hiddenCards, hidden: hiddenCards.length, counts };
+    .sort(byName);
+  return { cards, hiddenCards, hidden: hiddenCards.length };
 }

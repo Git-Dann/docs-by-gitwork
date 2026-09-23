@@ -3589,7 +3589,7 @@ export interface WikiInsightBoardInput {
   }[];
 }
 
-export type { SummaryCard, SummaryAttention } from "@/lib/client-summary";
+export type { SummaryCard } from "@/lib/client-summary";
 import type { ClientSummaryBoard } from "@/server/client-summary";
 export type { ClientSummaryBoard };
 

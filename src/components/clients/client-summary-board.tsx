@@ -18,16 +18,8 @@ import { useEffect, useState } from "react";
 import { MONO, SERIF } from "@/components/analytics/analytics-widgets";
 import { Modal } from "@/components/ui/modal";
 import { useClientSummaryBoard, useUpdateClientSummary } from "@/hooks/use-client-summary";
-import { NOTE_STALE_DAYS, type SummaryAttention, type SummaryCard } from "@/lib/client-summary";
+import { NOTE_STALE_DAYS, type SummaryCard } from "@/lib/client-summary";
 
-const TONE: Record<SummaryAttention, { dot: string; label: string }> = {
-  critical: { dot: "bg-[var(--danger-500)]", label: "Needs attention" },
-  watch: { dot: "bg-[var(--warning-500)]", label: "Watch" },
-  ok: { dot: "bg-[var(--success-500)]", label: "On track" },
-  // ⚠️ Slate, never green. "Nobody has checked" is not "fine", and the whole reason
-  // this bucket exists is that colouring it green would say the opposite.
-  unmeasured: { dot: "bg-[var(--text-4)]", label: "No signal" },
-};
 
 function Figure({ value, label, muted }: { value: number; label: string; muted?: boolean }) {
   return (
@@ -269,14 +261,7 @@ function BoardDetailModal({
               <Figure value={card.planned} label="To do" muted />
               <Figure value={card.devCount} label="Devs" muted />
             </div>
-            {card.reasons.length > 0 && (
-              <p
-                className="mt-2 text-[10px] leading-relaxed tracking-[0.1em] text-[var(--text-4)] uppercase"
-                style={{ fontFamily: MONO }}
-              >
-                {card.reasons.join(" · ")}
-              </p>
-            )}
+
           </div>
 
           <div className="flex shrink-0 items-center justify-between gap-2 px-5 pt-2 pb-3">
@@ -309,7 +294,6 @@ function Card({
   index: number;
   onOpen: () => void;
 }) {
-  const tone = TONE[card.attention];
   return (
     <>
       {/* The whole card is the control — a preview you click to read. Nothing else in
@@ -330,19 +314,6 @@ function Card({
             <span className="widget-header__label--number shrink-0">
               {String(index).padStart(2, "0")}
             </span>
-            {/* The dot IS the status. Printing "NEEDS ATTENTION" beside a red dot says
-                the same thing twice and spends the only slot on the card that could
-                carry a fact — so the derived signals live on its tooltip instead, and
-                the slot carries the team size. */}
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`}
-              title={
-                card.reasons.length > 0
-                  ? `${tone.label} — ${card.reasons.join(" · ")}`
-                  : tone.label
-              }
-            />
-            <span className="sr-only">{tone.label}. </span>
             <span className="truncate">
               {" // "}
               {card.name.toUpperCase()}

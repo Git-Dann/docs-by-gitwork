@@ -3,10 +3,16 @@
  * in `src/lib/client-summary.ts`.
  *
  * ⚠️ Everything here is BATCHED. The natural shape of this page is one query per client
- * per signal, and at thirteen clients and four signals that is fifty-two round trips on
- * every load. §42.13 records the same mistake shipping in the Care HQ tile, which fired
- * a pair of queries per row and pulled a hundred conversation rows purely to count
- * them. Three grouped queries serve the whole board here.
+ * per signal, which at thirteen clients is dozens of round trips on every load. §42.13
+ * records the same mistake shipping in the Care HQ tile, which fired a pair of queries
+ * per row and pulled a hundred conversation rows purely to count them. Three grouped
+ * queries serve the whole board here.
+ *
+ * ⚠️ This loader used to also read Care's awaiting-reply queue and a per-client blocker
+ * count. Both existed ONLY to feed a derived status the page no longer shows, so they
+ * were removed rather than left running — a query whose result nothing renders is a
+ * cost with no reader. If either number is ever wanted here, bring it back as a FIGURE
+ * beside the others, not as a colour or a verdict.
  *
  * ## Scoping
  *
@@ -21,7 +27,6 @@ import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canViewClientFinancials } from "@/server/auth/effective-user";
 import { computeDistinctDevCount } from "@/server/client-metrics";
 import { listDerivedClients } from "@/server/clients";
-import { getClientQueueSummaries } from "@/server/support";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 
 const WINDOW_DAYS = 7;
@@ -58,24 +63,6 @@ async function taskMovement(clientIds: string[], since: Date) {
   return out;
 }
 
-/** Open blockers per client — work we cannot move until they answer. */
-async function blockerCounts(clientIds: string[]) {
-  const out = new Map<string, number>();
-  if (clientIds.length === 0) return out;
-  const grouped = await prisma.task.groupBy({
-    by: ["clientId"],
-    where: {
-      clientId: { in: clientIds },
-      archivedAt: null,
-      blockedAt: { not: null },
-      blockedResponse: null,
-    },
-    _count: { _all: true },
-  });
-  for (const row of grouped) if (row.clientId) out.set(row.clientId, row._count._all);
-  return out;
-}
-
 export async function loadClientSummaryBoard(
   user: EffectiveUser | null,
   now = new Date(),
@@ -88,24 +75,8 @@ export async function loadClientSummaryBoard(
   const ids = clients.map((c) => c.id);
   const since = new Date(now.getTime() - WINDOW_DAYS * 86_400_000);
 
-  const [movement, blockers, care, careLinks, flags] = await Promise.all([
+  const [movement, flags] = await Promise.all([
     taskMovement(ids, since),
-    blockerCounts(ids),
-    // Already batched across the whole workspace — see §42.9.
-    getClientQueueSummaries().catch(
-      () => ({}) as Awaited<ReturnType<typeof getClientQueueSummaries>>,
-    ),
-    /**
-     * ⚠️ `getClientQueueSummaries` is keyed by SUPPORT client id, not Portal client id.
-     * Indexing it with a WorkspaceClient id matches nothing and returns 0 awaiting for
-     * everyone — silently, and plausibly, because 0 is a perfectly ordinary answer.
-     * The same client is `wedge` in Portal and "Big Wedge Golf" in Care (§42.15), so
-     * the link is the stored `workspaceClientId` and never a name.
-     */
-    prisma.supportClient.findMany({
-      where: { workspaceClientId: { in: ids } },
-      select: { id: true, workspaceClientId: true },
-    }),
     prisma.workspaceClient.findMany({
       where: { id: { in: ids } },
       select: {
@@ -118,9 +89,6 @@ export async function loadClientSummaryBoard(
     }),
   ]);
 
-  const careIdFor = new Map(
-    careLinks.flatMap((l) => (l.workspaceClientId ? [[l.workspaceClientId, l.id] as const] : [])),
-  );
   const flagById = new Map(flags.map((f) => [f.id, f]));
   const inputs: SummaryClientInput[] = clients.map((c) => {
     const m = movement.get(c.id) ?? { delivered: 0, inFlight: 0, planned: 0 };
@@ -130,10 +98,7 @@ export async function loadClientSummaryBoard(
       slug: c.slug,
       name: c.name,
       hidden: f?.summaryHidden ?? false,
-      health: c.health?.level ?? null,
       devCount: c.devCount,
-      waitingOnClient: blockers.get(c.id) ?? 0,
-      awaitingReply: care[careIdFor.get(c.id) ?? ""]?.awaiting ?? 0,
       deliveredThisWeek: m.delivered,
       inFlight: m.inFlight,
       planned: m.planned,
