@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canViewClientFinancials } from "@/server/auth/effective-user";
+import { computeDistinctDevCount } from "@/server/client-metrics";
 import { listDerivedClients } from "@/server/clients";
 import { getClientQueueSummaries } from "@/server/support";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
@@ -73,23 +74,6 @@ async function blockerCounts(clientIds: string[]) {
   });
   for (const row of grouped) if (row.clientId) out.set(row.clientId, row._count._all);
   return out;
-}
-
-/**
- * How many PEOPLE are on these clients, counted once each.
- *
- * ⚠️ Not `sum(devCount)`. A developer routinely works across two or three clients, so
- * summing the per-client figures counts placements, not people, and a board reading
- * "31 devs" over a team of nineteen is a number nobody can reconcile against the
- * payroll. Distinct `candidateId` across open placements is the honest one.
- */
-async function distinctDevCount(clientIds: string[]): Promise<number> {
-  if (clientIds.length === 0) return 0;
-  const rows = await prisma.placement.groupBy({
-    by: ["candidateId"],
-    where: { clientId: { in: clientIds }, endDate: null },
-  });
-  return rows.length;
 }
 
 export async function loadClientSummaryBoard(
@@ -154,7 +138,11 @@ export async function loadClientSummaryBoard(
 
   const board = buildSummaryBoard(inputs, now);
   // Counted over the VISIBLE clients only, so the figure agrees with the cards below it.
-  const devTotal = await distinctDevCount(board.cards.map((c) => c.id));
+  const { workspace } = await ensureBaseRecords();
+  const devTotal = await computeDistinctDevCount(
+    workspace.id,
+    board.cards.map((c) => c.id),
+  );
   return { ...board, devTotal, generatedAt: now.toISOString() };
 }
 

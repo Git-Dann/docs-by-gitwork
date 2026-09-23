@@ -145,18 +145,42 @@ describe("the portfolio card", () => {
      * counts placements. A board reading "31 devs" over a team of nineteen is a number
      * nobody can reconcile against the payroll.
      */
-    expect(SERVER_SRC).toContain("groupBy");
-    const fn = SERVER_SRC.slice(SERVER_SRC.indexOf("async function distinctDevCount"));
+    const METRICS = read("src/server/client-metrics.ts");
+    const fn = METRICS.slice(METRICS.indexOf("export async function computeDistinctDevCount"));
     expect(fn.slice(0, 400)).toContain('by: ["candidateId"]');
-    expect(fn.slice(0, 400)).toContain("endDate: null");
     const board = BOARD.slice(BOARD.indexOf("export function ClientSummaryBoardView"));
     expect(board, "the UI must not add the per-client counts up itself").not.toMatch(
       /reduce\([\s\S]{0,80}devCount/,
     );
   });
 
+  it("uses the SAME definition of an active dev as the per-client counts", () => {
+    /**
+     * ⚠️ This was live and wrong for one deploy. The portfolio query omitted two
+     * filters the per-client counts apply — the candidate's workspace, and excluding
+     * pro-bono devs — so production reported 17 distinct people over per-client counts
+     * summing to 15: a total LARGER than its own parts. Both now build their `where`
+     * from one function, so they cannot drift apart again.
+     */
+    const METRICS = read("src/server/client-metrics.ts");
+    const shared = METRICS.slice(METRICS.indexOf("export function activeDevPlacementWhere"));
+    expect(shared.slice(0, 400)).toContain(
+      'candidate: { workspaceId, devGroup: { not: "PRO_BONO" } }',
+    );
+    expect(shared.slice(0, 400)).toContain("endDate: null");
+
+    for (const caller of ["computeDistinctDevCount", "computeClientDevCounts"]) {
+      const fn = METRICS.slice(METRICS.indexOf(`export async function ${caller}`));
+      const head = fn.slice(0, 600);
+      expect(head, `${caller} should reuse the shared where-clause`).toContain(
+        "activeDevPlacementWhere(workspaceId, clientIds)",
+      );
+      expect(head, `${caller} should not hand-roll its own filters`).not.toContain("PRO_BONO");
+    }
+  });
+
   it("counts devs over the VISIBLE clients, so it agrees with the cards below it", () => {
-    expect(SERVER_SRC).toMatch(/distinctDevCount\(board\.cards\.map/);
+    expect(SERVER_SRC).toMatch(/computeDistinctDevCount\([\s\S]{0,80}board\.cards\.map/);
   });
 
   it("opens the hidden list from the card rather than only counting it", () => {
