@@ -1123,6 +1123,14 @@ model WorkspaceClient {
   /// findFirst, so a plain index is enough.
   timelineShareToken       String?
   timelineShareEnabled     Boolean                   @default(false)
+  /// Client summary board (Portal → Summary) — a hand-written line of judgement beside
+  /// the derived figures. Stamped because prose ages and numbers do not: an unstamped
+  /// note reads as current forever.
+  summaryNote    String?   @db.Text
+  summaryNoteAt  DateTime?
+  /// Hidden from the summary board. The board still reports how many are hidden, so it
+  /// is never silently partial.
+  summaryHidden  Boolean   @default(false)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

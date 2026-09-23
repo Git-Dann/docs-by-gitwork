@@ -13,6 +13,7 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
   TaskDTO,
   TaskStatus,
@@ -2928,6 +2929,139 @@ function resolveDemoLaunchpad(
   return { launchpad: current };
 }
 
+// ─── Client summary board ────────────────────────────────────────────────────────
+
+/**
+ * Seeded so the board can actually be READ in the demo: one client in each bucket,
+ * one hidden, a fresh note and a stale one.
+ *
+ * ⚠️ A fixture of six healthy clients would verify the CSS and nothing else (§43.3) —
+ * the ordering, the "no signal" bucket and the stale-note marking are the parts most
+ * likely to be wrong, so each has a row that exercises it. The verdicts are NOT
+ * written here: `buildSummaryBoard` derives them from these figures on every read,
+ * exactly as the server does.
+ */
+const demoSummaryClients: SummaryClientInput[] = [
+  {
+    id: "cl-northwind",
+    slug: "northwind",
+    name: "Northwind Studio",
+    hidden: false,
+    health: "amber",
+    devCount: 3,
+    waitingOnClient: 2,
+    awaitingReply: 0,
+    deliveredThisWeek: 4,
+    inFlight: 3,
+    planned: 11,
+    note: "Search release slipped a week — their content team is late on copy.",
+    noteAt: atDays(-2),
+  },
+  {
+    id: "cl-cadenza",
+    slug: "cadenza",
+    name: "Cadenza",
+    hidden: false,
+    health: "red",
+    devCount: 2,
+    waitingOnClient: 0,
+    awaitingReply: 5,
+    deliveredThisWeek: 0,
+    inFlight: 0,
+    planned: 6,
+    note: "All on track, nothing to flag.",
+    // Deliberately old: this is the case the stale marker exists for — prose that
+    // reads as current sitting beside figures that say otherwise.
+    noteAt: atDays(-21),
+  },
+  {
+    id: "cl-bigwedge",
+    slug: "fairway-nine",
+    name: "Fairway Nine",
+    hidden: false,
+    health: "green",
+    devCount: 2,
+    waitingOnClient: 0,
+    awaitingReply: 0,
+    deliveredThisWeek: 6,
+    inFlight: 2,
+    planned: 8,
+    note: null,
+    noteAt: null,
+  },
+  {
+    id: "cl-orrery",
+    slug: "orrery",
+    name: "Orrery Health",
+    hidden: false,
+    health: null,
+    devCount: 0,
+    waitingOnClient: 0,
+    awaitingReply: 0,
+    deliveredThisWeek: 0,
+    inFlight: 0,
+    planned: 0,
+    note: null,
+    noteAt: null,
+  },
+  {
+    id: "cl-lantern",
+    slug: "lantern",
+    name: "Lantern Logistics",
+    hidden: false,
+    health: "green",
+    devCount: 1,
+    waitingOnClient: 1,
+    awaitingReply: 0,
+    deliveredThisWeek: 2,
+    inFlight: 1,
+    planned: 4,
+    note: "Retainer renewed to March.",
+    noteAt: atDays(-5),
+  },
+  {
+    id: "cl-freeway",
+    slug: "freeway",
+    name: "Freeway",
+    hidden: true,
+    health: "green",
+    devCount: 1,
+    waitingOnClient: 0,
+    awaitingReply: 0,
+    deliveredThisWeek: 1,
+    inFlight: 1,
+    planned: 2,
+    note: null,
+    noteAt: null,
+  },
+];
+
+/**
+ * GET the board, or PATCH one card. Writes go through the SAME rules as the server —
+ * the note's stamp moves with its text and is cleared with it — so the demo can show
+ * a note going stale-free, not merely re-render.
+ */
+function resolveDemoSummary(pathname: string, init?: { method?: string; body?: unknown }) {
+  if (pathname === "/api/clients/summary") {
+    return { ...buildSummaryBoard(demoSummaryClients, new Date()), generatedAt: atDays(0) };
+  }
+  const match = /^\/api\/clients\/summary\/([^/]+)$/.exec(pathname);
+  if (!match) return undefined;
+  const row = demoSummaryClients.find((c) => c.id === match[1]);
+  if (!row) return { error: "No such client in this workspace" };
+  const body = (typeof init?.body === "string" ? JSON.parse(init.body) : {}) as {
+    note?: string | null;
+    hidden?: boolean;
+  };
+  if (body.note !== undefined) {
+    const trimmed = body.note?.trim() ?? "";
+    row.note = trimmed === "" ? null : trimmed;
+    row.noteAt = row.note ? atDays(0) : null;
+  }
+  if (body.hidden !== undefined) row.hidden = body.hidden;
+  return { ok: true };
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -2954,6 +3088,10 @@ export function resolveDemoApi(
       return demoDeskHolidays;
     case "/api/auth/session":
       return demoSession;
+  }
+  if (pathname.startsWith("/api/clients/summary")) {
+    const result = resolveDemoSummary(pathname, init);
+    if (result !== undefined) return result;
   }
   // Launchpad — reads and writes, applied through the real status machine.
   if (pathname.includes("/launchpad")) {
