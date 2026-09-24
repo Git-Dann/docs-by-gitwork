@@ -46,7 +46,14 @@ function walk(dir: string, out: string[] = []): string[] {
 function usersOfTheClamp(): { file: string; source: string }[] {
   return walk(ROOT)
     .map((f) => ({ file: path.relative(process.cwd(), f), source: readFileSync(f, "utf8") }))
-    .filter(({ source }) => /className=\{?["'`][^"'`]*app-dialog-fixed/.test(source));
+    // ⚠️ `panelClassName` as well as `className`. The clamp now reaches some panels
+    // as a PROP on the shared <Modal>, and a matcher that only knew `className=`
+    // silently stopped covering them — which is how a dropped scroll region nearly
+    // shipped on the leave and expense forms. The count assertion below is what
+    // noticed; keep it.
+    .filter(({ source }) =>
+      /(?:panelC|c)lassName=\{?["'`][^"'`]*app-dialog-fixed/.test(source),
+    );
 }
 
 describe("app-dialog-fixed panels can always reach their content", () => {
