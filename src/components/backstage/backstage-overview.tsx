@@ -120,14 +120,16 @@ function HandoverCard({ number, onOpen }: { number: string; onOpen: (a: Backstag
   const list = useHandovers();
   const rows = list.data ?? [];
   const live = rows.filter((h) => h.status !== "ENDED");
-  const waiting = live.reduce((t, h) => t + h.openDecisions + h.openRisks, 0);
+  // Clients still to write up — the gap, not the total. A handover is "done"
+  // when every client on it says something.
+  const waiting = live.reduce((t, h) => t + Math.max(0, h.clientCount - h.writtenCount), 0);
   return (
     <Card number={number} title="HANDOVER" area="handover" onOpen={onOpen}>
-      <Figure value={list.isLoading ? "—" : waiting} unit="waiting" />
+      <Figure value={list.isLoading ? "—" : waiting} unit="to write up" />
       <p className="text-xs text-[var(--text-3)]">
         {live.length === 0
           ? "Nothing handed over"
-          : `${live.length} live · decisions and open items`}
+          : `${live.length} live · clients still to write up`}
       </p>
     </Card>
   );

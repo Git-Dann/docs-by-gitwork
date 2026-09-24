@@ -30,7 +30,9 @@ import {
   NotFoundError,
   assertAtLeastAdmin,
 } from "@/server/auth/effective-user";
+import { needsFold, planFold, type FoldItem } from "@/lib/handover/fold";
 import type {
+  HandoverClientDTO,
   HandoverDTO,
   HandoverInput,
   HandoverItemDTO,
@@ -80,6 +82,7 @@ function serializeItem(row: ItemRow): HandoverItemDTO {
 }
 
 function summarize(row: HandoverRow): HandoverSummaryDTO {
+  const clients = row.items.filter((i) => i.kind === "CLIENT");
   return {
     id: row.id,
     userId: row.userId,
@@ -88,11 +91,97 @@ function summarize(row: HandoverRow): HandoverSummaryDTO {
     startsOn: row.startsOn.toISOString(),
     endsOn: row.endsOn.toISOString(),
     status: row.status as HandoverStatus,
-    openDecisions: row.items.filter((i) => i.kind === "DECISION" && i.status !== "DONE").length,
-    openRisks: row.items.filter((i) => i.kind === "RISK" && i.status !== "DONE").length,
-    duties: row.items.filter((i) => i.kind === "DUTY").length,
+    clientCount: clients.length,
+    // "Written" means somebody has actually said something about it. A card count
+    // alone would read as progress on a board full of empty clients.
+    writtenCount: clients.filter((c) => c.detail?.trim() || c.duties?.trim() || c.other?.trim())
+      .length,
   };
 }
+
+function serializeClient(row: ItemRow): HandoverClientDTO {
+  return {
+    id: row.id,
+    clientId: row.clientId,
+    // After the fold a CLIENT row's `title` IS the client name; fall back to the
+    // denormalised column so a row written before that still reads correctly.
+    clientName: row.clientName?.trim() || row.title,
+    summary: row.detail,
+    duties: row.duties,
+    other: row.other,
+    orderKey: row.orderKey,
+  };
+}
+
+/**
+ * Reshape a handover written in the old four-list form into one entry per client.
+ *
+ * Runs on the ordinary read path, exactly like Care's activity backfill (§42.3):
+ * bounded, idempotent and SELF-TERMINATING, because it consumes every non-CLIENT
+ * row and then has nothing left to match. Deliberately not a cron and not a
+ * one-shot route — a migration that needs somebody to remember to run it is a
+ * migration that silently never runs.
+ *
+ * ⚠️ It DELETES the rows it consumes, which is what makes it terminate. Every
+ * scrap of their text is written into a client entry (or into the handover's own
+ * details) first, in ONE transaction, and `fold.ts` is unit-tested against real
+ * rows for exactly that. Do not make it non-destructive "to be safe": leaving the
+ * sources behind means it re-runs on every read for ever.
+ */
+async function applyFoldIfNeeded(row: HandoverRow, workspaceId: string): Promise<boolean> {
+  const items: FoldItem[] = row.items.map((i) => ({
+    id: i.id,
+    kind: i.kind as FoldItem["kind"],
+    clientId: i.clientId,
+    clientName: i.clientName,
+    title: i.title,
+    detail: i.detail,
+    cadence: i.cadence,
+    channel: i.channel,
+    duties: i.duties,
+    other: i.other,
+  }));
+  if (!needsFold(items)) return false;
+
+  const plan = planFold(items);
+  await prisma.$transaction(async (tx) => {
+    for (const entry of plan.entries) {
+      const data = {
+        detail: entry.detail || null,
+        duties: entry.duties || null,
+        other: entry.other || null,
+        title: entry.clientName || entry.clientId,
+        clientName: entry.clientName || null,
+      };
+      if (entry.id) {
+        await tx.handoverItem.update({ where: { id: entry.id }, data });
+      } else {
+        await tx.handoverItem.create({
+          data: {
+            workspaceId,
+            handoverId: row.id,
+            kind: "CLIENT",
+            clientId: entry.clientId,
+            orderKey: 0,
+            ...data,
+          },
+        });
+      }
+    }
+    if (plan.orphanDetails) {
+      const existing = row.details?.trim();
+      await tx.handover.update({
+        where: { id: row.id },
+        data: { details: existing ? `${existing}\n\n${plan.orphanDetails}` : plan.orphanDetails },
+      });
+    }
+    if (plan.consumedIds.length > 0) {
+      await tx.handoverItem.deleteMany({ where: { id: { in: plan.consumedIds } } });
+    }
+  });
+  return true;
+}
+
 
 export async function listHandovers(user: EffectiveUser | null): Promise<HandoverSummaryDTO[]> {
   assertAtLeastAdmin(user);
@@ -110,11 +199,20 @@ export async function getHandover(user: EffectiveUser | null, id: string): Promi
   assertAtLeastAdmin(user);
   const { workspace } = await ensureBaseRecords();
   const workspaceId = user?.workspaceId ?? workspace.id;
-  const row = await prisma.handover.findFirst({
+  let row = await prisma.handover.findFirst({
     where: { id, workspaceId },
     include: HANDOVER_INCLUDE,
   });
   if (!row) throw new NotFoundError("That handover doesn't exist.");
+
+  if (await applyFoldIfNeeded(row, workspaceId)) {
+    // Re-read rather than patching the in-memory row: the fold creates rows and
+    // deletes others, and a hand-maintained copy of that is a second source of
+    // truth one edit away from disagreeing with the database.
+    row =
+      (await prisma.handover.findFirst({ where: { id, workspaceId }, include: HANDOVER_INCLUDE })) ??
+      row;
+  }
 
   return {
     id: row.id,
@@ -124,12 +222,14 @@ export async function getHandover(user: EffectiveUser | null, id: string): Promi
     startsOn: row.startsOn.toISOString(),
     endsOn: row.endsOn.toISOString(),
     notes: row.notes,
+    details: row.details,
     status: row.status as HandoverStatus,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    items: row.items.map(serializeItem),
+    clients: row.items.filter((i) => i.kind === "CLIENT").map(serializeClient),
   };
 }
+
 
 export async function createHandover(
   user: EffectiveUser | null,
@@ -159,6 +259,7 @@ export async function createHandover(
       startsOn,
       endsOn,
       notes: input.notes?.trim() || null,
+      details: input.details?.trim() || null,
       status: input.status ?? "DRAFT",
       createdById: user?.id ?? null,
     },
@@ -183,6 +284,7 @@ export async function updateHandover(
   if (input.startsOn !== undefined) data.startsOn = dayUtc(input.startsOn);
   if (input.endsOn !== undefined) data.endsOn = dayUtc(input.endsOn);
   if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+  if (input.details !== undefined) data.details = input.details?.trim() || null;
   if (input.status !== undefined) data.status = input.status;
 
   const row = await prisma.handover.update({ where: { id }, data, include: HANDOVER_INCLUDE });
@@ -278,6 +380,8 @@ export async function updateHandoverItem(
   if (input.kind !== undefined) data.kind = input.kind;
   if (input.cadence !== undefined) data.cadence = input.cadence?.trim() || null;
   if (input.channel !== undefined) data.channel = input.channel?.trim() || null;
+  if (input.duties !== undefined) data.duties = input.duties?.trim() || null;
+  if (input.other !== undefined) data.other = input.other?.trim() || null;
   if (input.orderKey !== undefined) data.orderKey = input.orderKey;
 
   if (input.clientId !== undefined) {

@@ -935,6 +935,7 @@ export const handoverInputSchema = z
     startsOn: isoDateString,
     endsOn: isoDateString,
     notes: z.string().max(8000).nullish(),
+    details: z.string().max(20_000).nullish(),
     status: z.enum(HANDOVER_STATUSES).optional(),
   })
   .refine((v) => v.endsOn >= v.startsOn, {
@@ -947,6 +948,7 @@ export const handoverPatchSchema = z.object({
   startsOn: isoDateString.optional(),
   endsOn: isoDateString.optional(),
   notes: z.string().max(8000).nullish(),
+  details: z.string().max(20_000).nullish(),
   status: z.enum(HANDOVER_STATUSES).optional(),
 });
 
@@ -958,6 +960,10 @@ export const handoverItemInputSchema = z.object({
   ownerUserId: z.string().cuid().nullish(),
   cadence: z.string().max(120).nullish(),
   channel: z.string().max(200).nullish(),
+  // A client entry holds paragraphs, so these are generous on purpose — a 4000
+  // cap silently truncating somebody's handover note is the worst failure here.
+  duties: z.string().max(20_000).nullish(),
+  other: z.string().max(20_000).nullish(),
   status: z.enum(HANDOVER_ITEM_STATUSES).optional(),
   orderKey: z.number().int().min(0).max(10_000).optional(),
 });

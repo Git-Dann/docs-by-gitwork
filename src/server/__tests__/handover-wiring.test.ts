@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  HANDOVER_SECTION_KINDS,
   HANDOVER_ITEM_KINDS,
   HANDOVER_ITEM_STATUSES,
   HANDOVER_KIND_META,
@@ -109,7 +108,9 @@ describe("handover — the kinds are declared once", () => {
   });
 
   it("the unions are what the page and the schema agree on", () => {
-    expect([...HANDOVER_ITEM_KINDS]).toEqual(["DECISION", "RISK", "DUTY", "CLIENT", "ROUTE"]);
+    // CLIENT is the only kind the board renders now; the rest survive so an
+    // unfolded handover still parses on its way through `planFold`.
+    expect([...HANDOVER_ITEM_KINDS]).toContain("CLIENT");
     expect([...HANDOVER_ITEM_STATUSES]).toEqual(["OPEN", "DONE", "BLOCKED"]);
     expect([...HANDOVER_STATUSES]).toEqual(["DRAFT", "ACTIVE", "ENDED"]);
   });
@@ -150,55 +151,74 @@ describe("handover — the derived half is gone, and stays gone", () => {
   });
 });
 
-describe("handover — sections and routing", () => {
+describe("handover — the client board", () => {
   const detail = stripComments(read("src/components/backstage/handover-detail.tsx"));
-  const types = stripComments(read("src/types/handover.ts"));
 
-  it("ROUTE is a kind but never a section", () => {
-    // It renders as the header's "who to go to" card. Listing it as a section
-    // would give it a tab and an empty list nobody scrolls to.
-    expect([...HANDOVER_ITEM_KINDS]).toContain("ROUTE");
-    expect([...HANDOVER_SECTION_KINDS]).not.toContain("ROUTE");
-    expect(types).toMatch(/HANDOVER_SECTION_KINDS = \["DECISION", "RISK", "DUTY", "CLIENT"\]/);
+  it("the two prose cards and the client grid are all there", () => {
+    expect(detail).toContain('field="notes"');
+    expect(detail).toContain('field="details"');
+    expect(detail).toContain("<ClientCard");
+    expect(detail).toContain("<ClientPanel");
   });
 
-  it("the tab strip is driven by HANDOVER_SECTION_KINDS, not a second list", () => {
-    expect(detail).toContain("HANDOVER_SECTION_KINDS.map");
-    expect(detail).not.toMatch(/const SECTIONS(:| =)/);
+  it("the four-tab task list is gone", () => {
+    // It read as a backlog. The reader opens ONE client; they do not scan four
+    // lists for the lines that mention it.
+    expect(detail).not.toContain("HANDOVER_SECTION_KINDS");
+    expect(detail).not.toContain("ItemSection");
+    expect(detail).not.toMatch(/aria-label="Handover sections"/);
   });
 
-  it("the three header cards are all there", () => {
-    for (const card of ["<WhenCard", "<SummaryCard", "<RoutingCard"]) {
-      expect(detail, card).toContain(card);
+  it("renders nothing derived — no task counts, no Care, no status", () => {
+    for (const forbidden of ["awaiting reply", "overdue", "openTasks", "useForeman", "clientState"]) {
+      expect(detail, forbidden).not.toContain(forbidden);
     }
   });
 
-  it("the blind-spots section and the standing-rule banner are gone", () => {
-    expect(detail).not.toContain("BlindSpots");
-    expect(detail).not.toContain("StandingRule");
-    expect(detail).not.toContain("BLIND");
+  it("a client already on the board cannot be added twice", () => {
+    // Two cards for one client is two places to write, and one gets missed.
+    expect(detail).toMatch(/taken\.has\(c\.id\)/);
   });
 
-  it("rows carry no live figures and no outbound link", () => {
-    // Both were removed deliberately: the figures competed with the sentence,
-    // and the link sent the reader out of the brief mid-scan.
-    expect(detail).not.toContain("awaiting reply");
-    expect(detail).not.toContain("ArrowTopRightOnSquareIcon");
-    expect(detail).not.toMatch(/href=\{`\/app\/portal/);
-  });
-
-  it("an item opens a panel that can edit AND delete it", () => {
-    expect(detail).toContain("<ItemPanel");
-    expect(detail).toMatch(/onClick=\{\(\) => onOpen\(item\.id\)\}/);
-    expect(detail).toMatch(/update\s*\n?\s*\.mutateAsync\(\{\s*\n?\s*itemId: draft\.id/);
-    expect(detail).toContain("remove");
+  it("the popup edits all three paragraphs and can remove the client", () => {
+    for (const label of ["Where we're at", "Duties", "Anything else"]) {
+      expect(detail, label).toContain(label);
+    }
+    expect(detail).toMatch(/detail: draft\.summary/);
+    expect(detail).toMatch(/duties: draft\.duties/);
+    expect(detail).toMatch(/other: draft\.other/);
   });
 
   it("a failed delete clears the confirm rather than stranding the button", () => {
-    // §50.8: leaving it on "Delete permanently?" after a failure reads as an
-    // unresponsive button and invites a second click.
-    const block = detail.slice(detail.indexOf("Delete permanently"), detail.length);
+    // §50.8: left set, it reads "Remove this client?" for ever.
     expect(detail).toMatch(/\.catch\(\(\) => \{\s*\n?\s*setConfirmDelete\(false\);/);
-    expect(block.length).toBeGreaterThan(0);
+  });
+
+  it("the popup is the house fixed-height dialog", () => {
+    // Otherwise it resizes under the cursor between a two-line client and a
+    // two-page one — the rule DESIGN.md records for any dialog whose content varies.
+    expect(detail).toContain("app-dialog-fixed");
+  });
+});
+
+describe("handover — the fold runs on the ordinary read path", () => {
+  const server = stripComments(read("src/server/handover.ts"));
+
+  it("getHandover applies it, so nobody has to remember to", () => {
+    // A migration behind a cron or a one-shot route is a migration that silently
+    // never runs (the `jobs` worker and four other crons, docs/vps-crons.md).
+    expect(server).toMatch(/await applyFoldIfNeeded\(row, workspaceId\)/);
+  });
+
+  it("is one transaction, and deletes what it consumed", () => {
+    // Deleting is what makes it self-terminating. Writing the text first and in
+    // the same transaction is what makes that safe.
+    expect(server).toContain("prisma.$transaction");
+    expect(server).toMatch(/deleteMany\(\{ where: \{ id: \{ in: plan\.consumedIds \} \} \}\)/);
+  });
+
+  it("re-reads after folding rather than patching the row in memory", () => {
+    const block = server.slice(server.indexOf("applyFoldIfNeeded(row, workspaceId)"));
+    expect(block.slice(0, 400)).toContain("prisma.handover.findFirst");
   });
 });

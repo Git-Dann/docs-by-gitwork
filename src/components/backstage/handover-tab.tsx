@@ -181,15 +181,19 @@ function Row({ row, onOpen }: { row: HandoverSummaryDTO; onOpen: () => void }) {
       >
         {/* Only what still needs doing carries colour — a finished handover
             should read as finished at a glance. */}
-        <Badge n={row.openDecisions} label="decisions" tone={row.openDecisions > 0 ? "warn" : "quiet"} />
-        <Badge n={row.openRisks} label="open" tone={row.openRisks > 0 ? "warn" : "quiet"} />
-        <Badge n={row.duties} label="duties" tone="quiet" />
+        {/* Written-out-of-total, not a raw count: a board of empty client cards
+            is not progress, and the gap is the thing worth seeing. */}
+        <Badge
+          n={`${row.writtenCount}/${row.clientCount}`}
+          label="clients written"
+          tone={row.clientCount > 0 && row.writtenCount < row.clientCount ? "warn" : "quiet"}
+        />
       </div>
     </button>
   );
 }
 
-function Badge({ n, label, tone }: { n: number; label: string; tone: "warn" | "quiet" }) {
+function Badge({ n, label, tone }: { n: string; label: string; tone: "warn" | "quiet" }) {
   return (
     <span
       className={cn(
