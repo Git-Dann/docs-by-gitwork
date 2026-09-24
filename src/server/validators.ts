@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  HANDOVER_ITEM_KINDS,
+  HANDOVER_ITEM_STATUSES,
+  HANDOVER_STATUSES,
+} from "@/types/handover";
 import { MAX_PLATFORM_LINKS } from "@/lib/platform-links";
 import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { normalizeGithubRepo } from "@/lib/github";
@@ -918,6 +923,48 @@ export const leaveRequestInputSchema = z
   });
 
 export const absenceKindSchema = z.enum(["AWAY", "ILL", "WFH", "APPOINTMENT"]);
+
+// ─── Handover ────────────────────────────────────────────────────────────────
+// The four kinds and three statuses are declared once in @/types/handover and
+// read here, so a new kind cannot be added to the UI and silently rejected at
+// the edge (§43.1's allow-list trap, one layer down).
+export const handoverInputSchema = z
+  .object({
+    userId: z.string().cuid().optional(),
+    title: z.string().trim().min(1).max(200),
+    startsOn: isoDateString,
+    endsOn: isoDateString,
+    standingRule: z.string().max(600).nullish(),
+    notes: z.string().max(8000).nullish(),
+    status: z.enum(HANDOVER_STATUSES).optional(),
+  })
+  .refine((v) => v.endsOn >= v.startsOn, {
+    message: "The end date is before the start date.",
+    path: ["endsOn"],
+  });
+
+export const handoverPatchSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  startsOn: isoDateString.optional(),
+  endsOn: isoDateString.optional(),
+  standingRule: z.string().max(600).nullish(),
+  notes: z.string().max(8000).nullish(),
+  status: z.enum(HANDOVER_STATUSES).optional(),
+});
+
+export const handoverItemInputSchema = z.object({
+  kind: z.enum(HANDOVER_ITEM_KINDS),
+  title: z.string().trim().min(1).max(300),
+  detail: z.string().max(4000).nullish(),
+  clientId: z.string().cuid().nullish(),
+  ownerUserId: z.string().cuid().nullish(),
+  cadence: z.string().max(120).nullish(),
+  channel: z.string().max(200).nullish(),
+  status: z.enum(HANDOVER_ITEM_STATUSES).optional(),
+  orderKey: z.number().int().min(0).max(10_000).optional(),
+});
+
+export const handoverItemPatchSchema = handoverItemInputSchema.partial();
 
 export const absenceInputSchema = z
   .object({

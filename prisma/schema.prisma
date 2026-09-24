@@ -211,6 +211,10 @@ model User {
   absences                  Absence[]               @relation("AbsenceUser")
   absencesCreated           Absence[]               @relation("AbsenceCreator")
   absencesCovering          Absence[]               @relation("AbsenceCover")
+  handovers                 Handover[]              @relation("HandoverUser")
+  handoversCreated          Handover[]              @relation("HandoverCreator")
+  handoverItemsOwned        HandoverItem[]          @relation("HandoverItemOwner")
+  handoverItemsResolved     HandoverItem[]          @relation("HandoverItemResolver")
   expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
   expensesReviewed          Expense[]               @relation("ExpenseReviewer")
   clientAssignments         ClientAssignment[]
@@ -435,6 +439,8 @@ model Workspace {
   aiResponseCache             AiResponseCache[]
   leaveRequests               LeaveRequest[]
   absences                    Absence[]
+  handovers                   Handover[]
+  handoverItems               HandoverItem[]
   expenses                    Expense[]
   clientAssignments           ClientAssignment[]
   tasks                       Task[]
@@ -3922,6 +3928,101 @@ model Absence {
   @@unique([workspaceId, userId, date])
   @@index([workspaceId, date])
   @@index([coverActive])
+}
+
+/// A handover — what someone hands over when they go away, and what nobody else can decide.
+///
+/// ── Why this is not a Document ───────────────────────────────────────────────
+/// The first one of these (HAND-2026-002, July 2026) was written on the `HANDOVER`
+/// Docs template, whose sections are Cover / What was delivered / A note on
+/// credentials / Your point of contact — an END-OF-PROJECT CLIENT handover. It was
+/// the nearest shape available and it is the wrong one: it never asks who is allowed
+/// to decide what, and a Document is frozen the moment it is written, so by day three
+/// of a week away it describes a world that has moved.
+///
+/// ── Authored, deliberately ───────────────────────────────────────────────────
+/// Every row here is a human sentence. Nothing in Foundry knows that a retainer is
+/// unsigned, that a key has not been rotated, or that someone watches Discord every
+/// morning — those are the facts that matter and none of them are derivable. The page
+/// renders LIVE client state alongside this, and keeps the two visibly apart so a
+/// week-old judgement is never read as today's fact.
+model Handover {
+  id          String @id @default(cuid())
+  workspaceId String
+  userId      String // whose handover this is — the person going away
+
+  title    String
+  startsOn DateTime // day-precision UTC midnight
+  endsOn   DateTime // inclusive
+
+  /// The one rule that governs everything, stated once and always on screen.
+  /// Gitwork's, Sept 2026: "Syed decides scope and timeline. Nobody decides commercials."
+  standingRule String?
+  /// Free prose for anything the four item kinds do not fit.
+  notes        String?
+
+  status String @default("DRAFT") // DRAFT | ACTIVE | ENDED
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User           @relation("HandoverUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("HandoverCreator", fields: [createdById], references: [id])
+  items     HandoverItem[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, userId])
+}
+
+/// One line of a handover. Four kinds, ONE table — unlike the Launchpad boards
+/// (§43), which needed three, because these four genuinely share a shape: a
+/// sentence, an optional client, someone it goes to, and whether it is closed.
+/// `cadence` and `channel` are DUTY-only and null everywhere else; two nullable
+/// columns is a smaller price than a second table.
+model HandoverItem {
+  id          String @id @default(cuid())
+  workspaceId String
+  handoverId  String
+
+  /// DECISION — blocked because the standing rule says this person cannot decide it
+  /// RISK     — open and unclosed: an incident, an unrotated credential
+  /// DUTY     — recurring work with no ticket, which simply stops if nobody picks it up
+  /// CLIENT   — the one-line state of a client, in the author's own words
+  kind String
+
+  /// Loose id, not an FK — same convention as PulseScan.linkedStudyId and
+  /// Countermark.scanId. A handover must survive a client being archived.
+  clientId   String?
+  clientName String? // denormalised so a frozen handover still reads correctly
+
+  title  String
+  detail String?
+
+  /// Who it goes to. Null on a DECISION means nobody has been named yet, which is
+  /// itself the finding — that is the item most likely to stall.
+  ownerUserId String?
+
+  cadence String? // DUTY only — "every morning", "as it comes in"
+  channel String? // DUTY only — "Discord, email, Reddit"
+
+  status String @default("OPEN") // OPEN | DONE | BLOCKED
+  orderKey Int   @default(0)
+
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  handover   Handover  @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  owner      User?     @relation("HandoverItemOwner", fields: [ownerUserId], references: [id])
+  resolvedBy User?     @relation("HandoverItemResolver", fields: [resolvedById], references: [id])
+
+  @@index([handoverId, kind, orderKey])
+  @@index([workspaceId, status])
 }
 
 model Expense {

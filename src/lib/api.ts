@@ -1,5 +1,12 @@
 import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, SavedCostingConfig } from "@/types/costing";
 import type {
+  HandoverDTO,
+  HandoverInput,
+  HandoverItemDTO,
+  HandoverItemInput,
+  HandoverSummaryDTO,
+} from "@/types/handover";
+import type {
   AuditLog,
   Connection,
   Conversation,
@@ -4853,4 +4860,56 @@ export async function deleteTeamMessage(id: string): Promise<{ deleted: boolean 
 
 export async function markAllTeamMessagesRead(): Promise<{ marked: number }> {
   return apiFetch("/api/messages/read-all", { method: "POST" });
+}
+
+// ─── Handover ──────────────────────────────────────────────────────────────
+
+export function listHandovers(): Promise<HandoverSummaryDTO[]> {
+  return apiFetch("/api/backstage/handover");
+}
+
+export function getHandover(id: string): Promise<HandoverDTO> {
+  return apiFetch(`/api/backstage/handover/${id}`);
+}
+
+export function createHandover(input: HandoverInput): Promise<HandoverSummaryDTO> {
+  return apiFetch("/api/backstage/handover", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateHandover(
+  id: string,
+  input: Partial<HandoverInput>,
+): Promise<HandoverSummaryDTO> {
+  return apiFetch(`/api/backstage/handover/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteHandover(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/backstage/handover/${id}`, { method: "DELETE" });
+}
+
+export function addHandoverItem(
+  handoverId: string,
+  input: HandoverItemInput,
+): Promise<HandoverItemDTO> {
+  return apiFetch(`/api/backstage/handover/${handoverId}/items`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateHandoverItem(
+  itemId: string,
+  input: Partial<HandoverItemInput>,
+): Promise<HandoverItemDTO> {
+  return apiFetch(`/api/backstage/handover/items/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteHandoverItem(itemId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/backstage/handover/items/${itemId}`, { method: "DELETE" });
 }
