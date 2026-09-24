@@ -1,14 +1,9 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
-import {
-  ArrowTopRightOnSquareIcon,
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/24/outline";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { ArrowRightIcon, CheckCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
+import { Modal } from "@/components/ui/modal";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
 import {
@@ -19,47 +14,29 @@ import {
   useUpdateHandoverItem,
 } from "@/hooks/use-handover";
 import {
-  HANDOVER_ITEM_KINDS,
   HANDOVER_KIND_META,
-  type HandoverClientState,
+  HANDOVER_SECTION_KINDS,
   type HandoverDTO,
   type HandoverItemDTO,
-  type HandoverItemKind,
+  type HandoverSectionKind,
 } from "@/types/handover";
 
 /**
  * The handover, read.
  *
- * ── Why a segmented control and not a wall ──────────────────────────────────
- * The brief is for someone standing in the middle of a week covering for
- * someone else. They arrive with one question — "what am I allowed to do about
- * X" — and a single long document makes them scroll past four sections to find
- * it. One section at a time, counts on the tabs, so the shape of the week is
- * legible before anything is opened.
+ * ── Three cards, then one section at a time ─────────────────────────────────
+ * The header answers the three things a reader arrives with — when, what's the
+ * shape of it, and who can decide what — and then gets out of the way. It
+ * replaced a full-width banner restating a rule in prose; the routing card says
+ * the same thing with NAMES, which is the version you can act on.
  *
- * ── The rule sits above the tabs, always ────────────────────────────────────
- * It is the only thing that governs every section, so it is the only thing that
- * never scrolls away. Everything under it is an instance of it.
+ * ── Rows open ───────────────────────────────────────────────────────────────
+ * A row is one line: what it is, whose it is. Everything else — the detail, the
+ * client, the cadence, the status — lives behind a click, because a list where
+ * every row carries four lines of metadata is a wall, and the reader is
+ * scanning for one thing. The panel is also the only way to EDIT an item, which
+ * the first cut had no way to do at all.
  */
-
-type Section = HandoverItemKind | "BLIND";
-
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: "DECISION", label: "Decisions" },
-  { id: "RISK", label: "Open" },
-  { id: "DUTY", label: "Duties" },
-  { id: "CLIENT", label: "Clients" },
-  { id: "BLIND", label: "Blind spots" },
-];
-
-function daysAgo(iso: string | null): string | null {
-  if (!iso) return null;
-  const ms = Date.now() - new Date(iso).getTime();
-  const days = Math.floor(ms / 86_400_000);
-  if (days >= 1) return `${days}d`;
-  const hours = Math.max(1, Math.floor(ms / 3_600_000));
-  return `${hours}h`;
-}
 
 function formatDay(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -71,21 +48,21 @@ function formatDay(iso: string): string {
 
 export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const query = useHandover(id);
-  const [section, setSection] = useState<Section>("DECISION");
+  const [section, setSection] = useState<HandoverSectionKind>("DECISION");
+  const [openItem, setOpenItem] = useState<string | null>(null);
   const data = query.data;
 
   const counts = useMemo(() => {
-    const out: Record<Section, number> = { DECISION: 0, RISK: 0, DUTY: 0, CLIENT: 0, BLIND: 0 };
+    const out = { DECISION: 0, RISK: 0, DUTY: 0, CLIENT: 0 } as Record<HandoverSectionKind, number>;
     if (!data) return out;
-    for (const kind of HANDOVER_ITEM_KINDS) {
+    for (const kind of HANDOVER_SECTION_KINDS) {
       // Decisions and risks count what is still OPEN — a section badge is a call
-      // to action, and counting closed items would make a finished list look busy.
+      // to action, and counting closed items makes a finished list look busy.
       out[kind] =
         kind === "DECISION" || kind === "RISK"
           ? data.items.filter((i) => i.kind === kind && i.status !== "DONE").length
           : data.items.filter((i) => i.kind === kind).length;
     }
-    out.BLIND = data.clientState.filter((c) => c.thin).length;
     return out;
   }, [data]);
 
@@ -103,10 +80,29 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
     );
   }
 
+  const active = data.items.find((i) => i.id === openItem) ?? null;
+
   return (
     <div className="space-y-3">
-      <Header data={data} onBack={onBack} />
-      <StandingRule data={data} />
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]"
+        >
+          Handover
+        </button>
+        <span className="text-[var(--text-4)]">/</span>
+        <span className="min-w-0 truncate font-medium text-[var(--text-1)]" title={data.title}>
+          {data.title}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <WhenCard data={data} />
+        <SummaryCard data={data} />
+        <RoutingCard data={data} />
+      </div>
 
       <div className="widget-card">
         <div className="shrink-0 overflow-x-auto border-b border-[var(--border-2)] px-3 py-2 sm:px-4">
@@ -114,171 +110,388 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
             className="inline-flex items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
             aria-label="Handover sections"
           >
-            {SECTIONS.map((s, i) => {
-              const active = section === s.id;
-              // "Open" and "Decisions" are the two that mean somebody has to act, so
-              // they are the only badges that carry colour. A board where everything
-              // is highlighted highlights nothing.
-              const urgent = (s.id === "DECISION" || s.id === "RISK") && counts[s.id] > 0;
+            {HANDOVER_SECTION_KINDS.map((kind) => {
+              const isActive = section === kind;
+              // Only the two that mean somebody has to act carry colour. A board
+              // where everything is highlighted highlights nothing.
+              const urgent = (kind === "DECISION" || kind === "RISK") && counts[kind] > 0;
               return (
-                <Fragment key={s.id}>
-                  {i === 4 && (
-                    <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-[var(--border-2)]" />
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setSection(kind)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] transition",
+                    isActive
+                      ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
+                      : "text-[var(--text-3)] hover:text-[var(--text-1)]",
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setSection(s.id)}
-                    aria-current={active ? "page" : undefined}
+                >
+                  {HANDOVER_KIND_META[kind].tab}
+                  <span
                     className={cn(
-                      "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.09em] transition",
-                      active
-                        ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
-                        : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                      "rounded-[4px] px-1 py-px text-[10px] font-semibold tabular-nums",
+                      urgent
+                        ? "bg-[var(--warning-50)] text-[var(--warning-500)]"
+                        : isActive
+                          ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
+                          : "bg-[var(--surface-2)] text-[var(--text-4)]",
                     )}
                   >
-                    {s.label}
-                    <span
-                      className={cn(
-                        "rounded-[4px] px-1 py-px text-[10px] font-semibold tabular-nums",
-                        urgent
-                          ? "bg-[var(--warning-50)] text-[var(--warning-500)]"
-                          : active
-                            ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
-                            : "bg-[var(--surface-2)] text-[var(--text-4)]",
-                      )}
-                    >
-                      {counts[s.id]}
-                    </span>
-                  </button>
-                </Fragment>
+                    {counts[kind]}
+                  </span>
+                </button>
               );
             })}
           </nav>
         </div>
-
-        {section === "BLIND" ? (
-          <BlindSpots clients={data.clientState} asOf={data.asOf} />
-        ) : (
-          <ItemSection handoverId={id} kind={section} data={data} />
-        )}
+        <ItemSection
+          handoverId={id}
+          kind={section}
+          items={data.items.filter((i) => i.kind === section)}
+          onOpen={setOpenItem}
+        />
       </div>
+
+      <ItemPanel handoverId={id} item={active} onClose={() => setOpenItem(null)} />
     </div>
   );
 }
 
-// ── Header ───────────────────────────────────────────────────────────────────
-function Header({ data, onBack }: { data: HandoverDTO; onBack: () => void }) {
+// ── Header cards ─────────────────────────────────────────────────────────────
+function Card({
+  number,
+  title,
+  children,
+  action,
+}: {
+  number: string;
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-      <button
-        type="button"
-        onClick={onBack}
-        className="text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]"
-      >
-        Handover
-      </button>
-      <span className="text-[var(--text-4)]">/</span>
-      <span className="min-w-0 truncate font-medium text-[var(--text-1)]" title={data.title}>
-        {data.title}
-      </span>
-      <span
-        className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {formatDay(data.startsOn)} – {formatDay(data.endsOn)}
-        {data.userName ? ` · ${data.userName}` : ""}
-      </span>
+    <div className="widget-card min-h-[150px]">
+      <div className="widget-header">
+        <span className="widget-header__label">
+          <span className="widget-header__label--number">{number}</span>
+          {` // ${title}`}
+        </span>
+        {action}
+      </div>
+      <div className="flex flex-1 flex-col p-4">{children}</div>
     </div>
   );
 }
 
-// ── The rule ─────────────────────────────────────────────────────────────────
-function StandingRule({ data }: { data: HandoverDTO }) {
+/** 01 — when, and whose handover it is. Both editable in place. */
+function WhenCard({ data }: { data: HandoverDTO }) {
   const update = useUpdateHandover(data.id);
+  const team = useBackstageTeam();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(data.standingRule ?? "");
+  const [startsOn, setStartsOn] = useState(data.startsOn.slice(0, 10));
+  const [endsOn, setEndsOn] = useState(data.endsOn.slice(0, 10));
+  const [title, setTitle] = useState(data.title);
+  const [error, setError] = useState<string | null>(null);
+
+  const person = team.data?.find((m) => m.id === data.userId)?.name ?? data.userName;
 
   if (editing) {
     return (
-      <div className="widget-card p-3">
-        <textarea
-          className="app-textarea w-full"
-          rows={2}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="e.g. Syed decides scope and timeline. Nobody decides commercials."
+      <Card number="01" title="AWAY">
+        <input
+          className="app-input mb-2"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Dan away 6–13 Oct"
         />
-        <div className="mt-2 flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <input className="app-input" type="date" value={startsOn} onChange={(e) => setStartsOn(e.target.value)} />
+          <input className="app-input" type="date" value={endsOn} onChange={(e) => setEndsOn(e.target.value)} />
+        </div>
+        <div className="mt-auto flex items-center gap-2 pt-3">
           <button
             type="button"
             className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white"
             onClick={() => {
-              update.mutate({ standingRule: draft });
-              setEditing(false);
+              setError(null);
+              void update
+                .mutateAsync({ title: title.trim(), startsOn, endsOn })
+                .then(() => setEditing(false))
+                .catch(() => setError("Couldn't save that."));
             }}
           >
             Save
           </button>
           <button
             type="button"
-            className="rounded-[6px] px-3 py-1.5 text-xs text-[var(--text-3)]"
+            className="px-2 py-1.5 text-xs text-[var(--text-3)]"
             onClick={() => {
-              setDraft(data.standingRule ?? "");
+              setTitle(data.title);
+              setStartsOn(data.startsOn.slice(0, 10));
+              setEndsOn(data.endsOn.slice(0, 10));
               setEditing(false);
             }}
           >
             Cancel
           </button>
+          {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className="block w-full rounded-[10px] border border-[var(--brand-300)] bg-[var(--surface-brand)] px-4 py-3 text-left transition hover:border-[var(--brand-600)]"
+    <Card
+      number="01"
+      title="AWAY"
+      action={
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]"
+        >
+          Edit
+        </button>
+      }
     >
-      <span
-        className="block text-[10px] uppercase tracking-[0.12em] text-[var(--brand-700)]"
+      <p
+        className="text-[26px] leading-none text-[var(--text-1)]"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
+        {formatDay(data.startsOn)} – {formatDay(data.endsOn)}
+      </p>
+      <p
+        className="mt-2 text-[11px] uppercase tracking-[0.08em] text-[var(--text-3)]"
         style={{ fontFamily: "var(--font-mono)" }}
       >
-        The rule
-      </span>
-      <span className="mt-1 block text-[15px] leading-6 text-[var(--text-1)]">
-        {data.standingRule || (
-          <span className="text-[var(--text-3)]">
-            No rule set. Click to say who is allowed to decide what.
-          </span>
-        )}
-      </span>
-    </button>
+        {person ?? "Nobody named"}
+      </p>
+    </Card>
   );
 }
 
-// ── Item sections ────────────────────────────────────────────────────────────
+/** 02 — the paragraph the author types. Free prose, no structure imposed. */
+function SummaryCard({ data }: { data: HandoverDTO }) {
+  const update = useUpdateHandover(data.id);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(data.notes ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  // A save from elsewhere (or a refetch) must not be overwritten by a stale
+  // draft sitting in a card nobody is editing.
+  useEffect(() => {
+    if (!editing) setDraft(data.notes ?? "");
+  }, [data.notes, editing]);
+
+  return (
+    <Card
+      number="02"
+      title="SUMMARY"
+      action={
+        editing ? null : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]"
+          >
+            Edit
+          </button>
+        )
+      }
+    >
+      {editing ? (
+        <>
+          <textarea
+            className="app-textarea min-h-[76px] w-full flex-1"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="The shape of the week, in your own words."
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white"
+              onClick={() => {
+                setError(null);
+                void update
+                  .mutateAsync({ notes: draft })
+                  .then(() => setEditing(false))
+                  .catch(() => setError("Couldn't save that."));
+              }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="px-2 py-1.5 text-xs text-[var(--text-3)]"
+              onClick={() => {
+                setDraft(data.notes ?? "");
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+            {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
+          </div>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="-m-1 flex-1 rounded-[6px] p-1 text-left"
+        >
+          <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+            {data.notes || (
+              <span className="text-[var(--text-4)]">
+                Nothing written yet. Click to add the shape of the week.
+              </span>
+            )}
+          </p>
+        </button>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * 03 — who can decide what.
+ *
+ * Stored as ROUTE items rather than a column, so the rows are add/remove/edit
+ * through exactly the same path as everything else and the schema didn't move.
+ * This is what replaced the prose rule: `Scope & timeline → Syed` is a lookup,
+ * a paragraph is something you have to re-read and interpret.
+ */
+function RoutingCard({ data }: { data: HandoverDTO }) {
+  const routes = data.items.filter((i) => i.kind === "ROUTE");
+  const add = useAddHandoverItem(data.id);
+  const remove = useDeleteHandoverItem(data.id);
+  const team = useBackstageTeam();
+  const [adding, setAdding] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = () => {
+    const t = topic.trim();
+    if (!t) return;
+    setError(null);
+    void add
+      .mutateAsync({ kind: "ROUTE", title: t, ownerUserId: ownerUserId || null })
+      .then(() => {
+        setTopic("");
+        setOwnerUserId("");
+        setAdding(false);
+      })
+      .catch(() => setError("Couldn't add that."));
+  };
+
+  return (
+    <Card
+      number="03"
+      title="WHO TO GO TO"
+      action={
+        <button
+          type="button"
+          onClick={() => setAdding((v) => !v)}
+          className="inline-flex items-center gap-1 text-xs text-[var(--brand-700)] transition-colors hover:text-[var(--brand-800)]"
+        >
+          <PlusIcon className="h-3.5 w-3.5" /> Add
+        </button>
+      }
+    >
+      {routes.length === 0 && !adding ? (
+        <p className="text-sm text-[var(--text-4)]">
+          Nobody named yet — say who can decide what while you&rsquo;re away.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {routes.map((r) => (
+            <li key={r.id} className="group flex items-baseline gap-2 text-sm">
+              <span className="min-w-0 flex-1 truncate text-[var(--text-2)]" title={r.title}>
+                {r.title}
+              </span>
+              <ArrowRightIcon className="h-3 w-3 shrink-0 text-[var(--text-4)]" />
+              <span
+                className={cn(
+                  "shrink-0 text-[11px] uppercase tracking-[0.08em]",
+                  r.ownerName ? "text-[var(--brand-700)]" : "text-[var(--warning-500)]",
+                )}
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                {r.ownerName ?? "nobody"}
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove ${r.title}`}
+                onClick={() => void remove.mutateAsync(r.id).catch(() => setError("Couldn't remove that."))}
+                className="shrink-0 text-[var(--text-4)] opacity-0 transition hover:text-[var(--danger-500)] focus:opacity-100 group-hover:opacity-100"
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {adding ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            className="app-input min-w-[120px] flex-1"
+            placeholder="e.g. Scope & timeline"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <select
+            className="app-select w-auto"
+            value={ownerUserId}
+            onChange={(e) => setOwnerUserId(e.target.value)}
+          >
+            <option value="">Nobody</option>
+            {(team.data ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!topic.trim()}
+            className="rounded-[6px] bg-[var(--brand-700)] px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+          >
+            Add
+          </button>
+        </div>
+      ) : null}
+      {error ? <p className="mt-1 text-xs text-[var(--danger-500)]">{error}</p> : null}
+    </Card>
+  );
+}
+
+// ── Sections ─────────────────────────────────────────────────────────────────
 function ItemSection({
   handoverId,
   kind,
-  data,
+  items,
+  onOpen,
 }: {
   handoverId: string;
-  kind: HandoverItemKind;
-  data: HandoverDTO;
+  kind: HandoverSectionKind;
+  items: HandoverItemDTO[];
+  onOpen: (id: string) => void;
 }) {
   const meta = HANDOVER_KIND_META[kind];
-  const items = data.items.filter((i) => i.kind === kind);
-  const stateByClient = useMemo(() => {
-    const m = new Map<string, HandoverClientState>();
-    for (const c of data.clientState) m.set(c.clientId, c);
-    return m;
-  }, [data.clientState]);
-
   return (
     <div className="p-3 sm:p-4">
       <p className="mb-3 max-w-[70ch] text-xs leading-5 text-[var(--text-3)]">{meta.blurb}</p>
-
       {items.length === 0 ? (
         <p className="mb-3 rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-sm text-[var(--text-3)]">
           {meta.empty}
@@ -286,16 +499,10 @@ function ItemSection({
       ) : (
         <ul className="mb-3 divide-y divide-[var(--border-1)] border-y border-[var(--border-1)]">
           {items.map((item) => (
-            <ItemRow
-              key={item.id}
-              handoverId={handoverId}
-              item={item}
-              live={item.clientId ? stateByClient.get(item.clientId) : undefined}
-            />
+            <ItemRow key={item.id} handoverId={handoverId} item={item} onOpen={onOpen} />
           ))}
         </ul>
       )}
-
       <AddItem handoverId={handoverId} kind={kind} />
     </div>
   );
@@ -304,177 +511,291 @@ function ItemSection({
 function ItemRow({
   handoverId,
   item,
-  live,
+  onOpen,
 }: {
   handoverId: string;
   item: HandoverItemDTO;
-  live?: HandoverClientState;
+  onOpen: (id: string) => void;
 }) {
   const update = useUpdateHandoverItem(handoverId);
-  const remove = useDeleteHandoverItem(handoverId);
   const [error, setError] = useState<string | null>(null);
   const done = item.status === "DONE";
   const closeable = item.kind === "DECISION" || item.kind === "RISK";
 
-  const run = (fn: () => Promise<unknown>, what: string) => {
-    setError(null);
-    // Mutations here are awaited rather than fired and forgotten: a failed tick
-    // that silently does nothing reads as an unresponsive button and invites a
-    // second click (§50.8).
-    void fn().catch(() => setError(`Couldn't ${what}.`));
-  };
-
   return (
-    <li className="group flex items-start gap-3 py-2.5">
+    <li className="flex items-center gap-3">
       {closeable ? (
         <button
           type="button"
           aria-label={done ? "Reopen" : "Mark done"}
-          onClick={() =>
-            run(
-              () =>
-                update.mutateAsync({
-                  itemId: item.id,
-                  input: { status: done ? "OPEN" : "DONE" },
-                }),
-              done ? "reopen this" : "close this",
-            )
-          }
+          onClick={() => {
+            setError(null);
+            // Awaited, not fired and forgotten: a failed tick that silently does
+            // nothing reads as an unresponsive button and invites a second click.
+            void update
+              .mutateAsync({ itemId: item.id, input: { status: done ? "OPEN" : "DONE" } })
+              .catch(() => setError(done ? "Couldn't reopen this." : "Couldn't close this."));
+          }}
           className={cn(
-            "mt-0.5 shrink-0 transition",
+            "shrink-0 py-3 transition",
             done ? "text-[var(--success-500)]" : "text-[var(--text-4)] hover:text-[var(--text-2)]",
           )}
         >
           <CheckCircleIcon className="h-5 w-5" />
         </button>
       ) : (
-        <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--text-4)]" />
+        <span aria-hidden className="ml-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--text-4)]" />
       )}
-
-      <div className="min-w-0 flex-1">
-        <p
-          className={cn(
-            "text-sm leading-5",
-            done ? "text-[var(--text-4)] line-through" : "text-[var(--text-1)]",
-          )}
-        >
-          {item.title}
-        </p>
-        {item.detail ? (
-          <p className="mt-0.5 text-xs leading-5 text-[var(--text-3)]">{item.detail}</p>
-        ) : null}
-
-        <p
-          className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-          style={{ fontFamily: "var(--font-mono)" }}
-        >
-          {item.clientName ? <span>{item.clientName}</span> : null}
-          {item.cadence ? <span>· {item.cadence}</span> : null}
-          {item.channel ? <span>· {item.channel}</span> : null}
-          {item.ownerUserId ? (
-            <span className="text-[var(--brand-700)]">→ {item.ownerName ?? "assigned"}</span>
-          ) : item.kind === "DECISION" || item.kind === "DUTY" ? (
-            // No owner on a decision or a duty IS the finding — it is the item most
-            // likely to sit untouched all week. Say so rather than leaving a blank.
-            <span className="text-[var(--warning-500)]">→ nobody named</span>
-          ) : null}
-          {done && item.resolvedByName ? (
-            <span className="text-[var(--success-500)]">closed by {item.resolvedByName}</span>
-          ) : null}
-        </p>
-
-        {/* Live state, for a client note. Labelled `now` so nobody reads a derived
-            figure as part of the author's sentence. */}
-        {live ? (
-          <p
-            className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] tabular-nums text-[var(--text-4)]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            <span className="text-[var(--text-3)]">now ·</span>
-            {/* ⚠️ A thin client must NOT render "0 open". Echo has a shipped app and no
-                tasks; YourGroop tracks on a shared sheet; Freeway runs over WhatsApp. A
-                zero there reads as "nothing happening" when the truth is "we cannot see
-                this one" — the §35 mistake, printed next to somebody's judgement. */}
-            {live.thin ? <span className="text-[var(--warning-500)]">not tracked here</span> : null}
-            {live.openTasks > 0 ? <span>{live.openTasks} open</span> : null}
-            {live.overdueTasks > 0 ? (
-              <span className="text-[var(--warning-500)]">{live.overdueTasks} overdue</span>
-            ) : null}
-            {live.careAwaiting > 0 ? (
-              <span className="text-[var(--warning-500)]">
-                {live.careAwaiting} awaiting reply
-                {daysAgo(live.careOldestAwaitingAt)
-                  ? ` · longest ${daysAgo(live.careOldestAwaitingAt)}`
-                  : ""}
-              </span>
-            ) : null}
-            <a
-              href={`/app/portal/${live.slug}`}
-              className="inline-flex items-center gap-0.5 text-[var(--brand-700)] hover:underline"
-            >
-              open <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-            </a>
-          </p>
-        ) : null}
-
-        {error ? <p className="mt-1 text-xs text-[var(--danger-500)]">{error}</p> : null}
-      </div>
 
       <button
         type="button"
-        aria-label="Remove"
-        onClick={() => run(() => remove.mutateAsync(item.id), "remove this")}
-        className="mt-0.5 shrink-0 text-[var(--text-4)] opacity-0 transition hover:text-[var(--danger-500)] focus:opacity-100 group-hover:opacity-100"
+        onClick={() => onOpen(item.id)}
+        className="-mx-2 flex min-w-0 flex-1 items-center gap-3 rounded-[6px] px-2 py-2.5 text-left transition-colors hover:bg-[var(--surface-1)]"
       >
-        <TrashIcon className="h-4 w-4" />
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn(
+              "block truncate text-sm leading-5",
+              done ? "text-[var(--text-4)] line-through" : "text-[var(--text-1)]",
+            )}
+            title={item.title}
+          >
+            {item.title}
+          </span>
+          {error ? <span className="mt-0.5 block text-xs text-[var(--danger-500)]">{error}</span> : null}
+        </span>
+
+        <span
+          className="hidden shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)] sm:flex"
+          style={{ fontFamily: "var(--font-mono)" }}
+        >
+          {item.clientName ? <span>{item.clientName}</span> : null}
+          {item.ownerName ? (
+            <span className="text-[var(--brand-700)]">{item.ownerName}</span>
+          ) : item.kind === "DECISION" || item.kind === "DUTY" ? (
+            // No owner on a decision or a duty IS the finding — it is the item
+            // most likely to sit untouched all week. Say so rather than blank.
+            <span className="text-[var(--warning-500)]">nobody named</span>
+          ) : null}
+        </span>
       </button>
     </li>
   );
 }
 
 /**
- * One line and Enter. The extra fields are behind a disclosure because the
- * friction that stops a handover being written is being asked for seven fields
- * before you can record one sentence.
+ * The item, opened. Read AND edit — the first cut could only add and delete, so
+ * a typo meant deleting the line and retyping it.
  */
-function AddItem({ handoverId, kind }: { handoverId: string; kind: HandoverItemKind }) {
-  const add = useAddHandoverItem(handoverId);
+function ItemPanel({
+  handoverId,
+  item,
+  onClose,
+}: {
+  handoverId: string;
+  item: HandoverItemDTO | null;
+  onClose: () => void;
+}) {
+  const update = useUpdateHandoverItem(handoverId);
+  const remove = useDeleteHandoverItem(handoverId);
   const team = useBackstageTeam();
   const clients = useClientList({ status: "ACTIVE" });
-  const [title, setTitle] = useState("");
-  const [detail, setDetail] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [ownerUserId, setOwnerUserId] = useState("");
-  const [cadence, setCadence] = useState("");
-  const [channel, setChannel] = useState("");
-  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<HandoverItemDTO | null>(item);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const reset = () => {
-    setTitle("");
-    setDetail("");
-    setClientId("");
-    setOwnerUserId("");
-    setCadence("");
-    setChannel("");
-  };
+  useEffect(() => {
+    setDraft(item);
+    setError(null);
+    setConfirmDelete(false);
+  }, [item]);
+
+  const isDuty = draft?.kind === "DUTY";
+
+  return (
+    <Modal
+      open={Boolean(item)}
+      onClose={onClose}
+      title={item ? HANDOVER_KIND_META[item.kind].label : "ITEM"}
+      panelClassName="w-full max-w-2xl app-dialog-fixed"
+    >
+      {draft ? (
+        <Fragment>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            <Field label="What it is">
+              <textarea
+                className="app-textarea min-h-[64px] w-full"
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              />
+            </Field>
+            <Field label="Detail">
+              <textarea
+                className="app-textarea min-h-[120px] w-full"
+                value={draft.detail ?? ""}
+                onChange={(e) => setDraft({ ...draft, detail: e.target.value })}
+                placeholder="Everything the person covering needs to know."
+              />
+            </Field>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Client">
+                <select
+                  className="app-select"
+                  value={draft.clientId ?? ""}
+                  onChange={(e) => setDraft({ ...draft, clientId: e.target.value || null })}
+                >
+                  <option value="">No client</option>
+                  {(clients.data?.clients ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Goes to">
+                <select
+                  className="app-select"
+                  value={draft.ownerUserId ?? ""}
+                  onChange={(e) => setDraft({ ...draft, ownerUserId: e.target.value || null })}
+                >
+                  <option value="">Nobody yet</option>
+                  {(team.data ?? []).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {isDuty ? (
+                <>
+                  <Field label="How often">
+                    <input
+                      className="app-input"
+                      value={draft.cadence ?? ""}
+                      onChange={(e) => setDraft({ ...draft, cadence: e.target.value })}
+                      placeholder="every morning"
+                    />
+                  </Field>
+                  <Field label="Where">
+                    <input
+                      className="app-input"
+                      value={draft.channel ?? ""}
+                      onChange={(e) => setDraft({ ...draft, channel: e.target.value })}
+                      placeholder="Discord, email, Reddit"
+                    />
+                  </Field>
+                </>
+              ) : null}
+            </div>
+            {draft.status === "DONE" && draft.resolvedByName ? (
+              <p
+                className="text-[11px] uppercase tracking-[0.08em] text-[var(--success-500)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Closed by {draft.resolvedByName}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-[var(--border-2)] p-3">
+            <button
+              type="button"
+              className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              disabled={!draft.title.trim() || update.isPending}
+              onClick={() => {
+                setError(null);
+                void update
+                  .mutateAsync({
+                    itemId: draft.id,
+                    input: {
+                      title: draft.title.trim(),
+                      detail: draft.detail,
+                      clientId: draft.clientId,
+                      ownerUserId: draft.ownerUserId,
+                      cadence: draft.cadence,
+                      channel: draft.channel,
+                    },
+                  })
+                  .then(onClose)
+                  .catch(() => setError("Couldn't save that."));
+              }}
+            >
+              Save
+            </button>
+            <button type="button" onClick={onClose} className="px-2 py-1.5 text-xs text-[var(--text-3)]">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  return;
+                }
+                setError(null);
+                void remove
+                  .mutateAsync(draft.id)
+                  .then(onClose)
+                  // ⚠️ Clear the confirm on FAILURE too, or a failed delete leaves
+                  // the row stuck on "Delete permanently?" for ever, which reads
+                  // as an unresponsive button and invites a second click (§50.8).
+                  .catch(() => {
+                    setConfirmDelete(false);
+                    setError("Couldn't delete that.");
+                  });
+              }}
+              className={cn(
+                "ml-auto rounded-[6px] px-2.5 py-1.5 text-xs transition",
+                confirmDelete
+                  ? "bg-[var(--danger-50)] text-[var(--danger-500)]"
+                  : "text-[var(--text-4)] hover:text-[var(--danger-500)]",
+              )}
+            >
+              {confirmDelete ? "Delete permanently?" : "Delete"}
+            </button>
+            {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
+          </div>
+        </Fragment>
+      ) : null}
+    </Modal>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span
+        className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+/** One line and Enter. The rest is editable once it exists, in the panel. */
+function AddItem({ handoverId, kind }: { handoverId: string; kind: HandoverSectionKind }) {
+  const add = useAddHandoverItem(handoverId);
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
     const trimmed = title.trim();
     if (!trimmed) return;
     setError(null);
     void add
-      .mutateAsync({
-        kind,
-        title: trimmed,
-        detail: detail.trim() || null,
-        clientId: clientId || null,
-        ownerUserId: ownerUserId || null,
-        cadence: cadence.trim() || null,
-        channel: channel.trim() || null,
-      })
-      .then(reset)
+      .mutateAsync({ kind, title: trimmed })
+      .then(() => setTitle(""))
       .catch(() => setError("Couldn't add that."));
+  };
+
+  const placeholder: Record<HandoverSectionKind, string> = {
+    DUTY: "e.g. Monitor Fellas support on Discord, email and Reddit",
+    DECISION: "e.g. Campfire support retainer still unsigned",
+    RISK: "e.g. PollenIQ production API key not confirmed rotated",
+    CLIENT: "e.g. Wedge — premium in final prep, builds 81/82 on staging",
   };
 
   return (
@@ -482,15 +803,7 @@ function AddItem({ handoverId, kind }: { handoverId: string; kind: HandoverItemK
       <div className="flex flex-wrap items-center gap-2">
         <input
           className="app-input min-w-[220px] flex-1"
-          placeholder={
-            kind === "DUTY"
-              ? "e.g. Monitor Fellas support on Discord, email and Reddit"
-              : kind === "DECISION"
-                ? "e.g. Campfire support retainer still unsigned"
-                : kind === "RISK"
-                  ? "e.g. PollenIQ production API key not confirmed rotated"
-                  : "e.g. Wedge — premium in final prep, builds 81/82 on staging"
-          }
+          placeholder={placeholder[kind]}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
@@ -508,134 +821,8 @@ function AddItem({ handoverId, kind }: { handoverId: string; kind: HandoverItemK
         >
           <PlusIcon className="h-3.5 w-3.5" /> Add
         </button>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="shrink-0 text-xs text-[var(--text-3)] underline transition-colors hover:text-[var(--text-1)]"
-        >
-          {open ? "Fewer fields" : "More fields"}
-        </button>
       </div>
-
-      {open ? (
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input
-            className="app-input sm:col-span-2"
-            placeholder="Detail (optional)"
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-          />
-          <label className="flex flex-col gap-1">
-            <span
-              className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              Client
-            </span>
-            <select
-              className="app-select"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">No client</option>
-              {(clients.data?.clients ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span
-              className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-              style={{ fontFamily: "var(--font-mono)" }}
-            >
-              Goes to
-            </span>
-            <select
-              className="app-select"
-              value={ownerUserId}
-              onChange={(e) => setOwnerUserId(e.target.value)}
-            >
-              <option value="">Nobody yet</option>
-              {(team.data ?? []).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {kind === "DUTY" ? (
-            <>
-              <input
-                className="app-input"
-                placeholder="How often — e.g. every morning"
-                value={cadence}
-                onChange={(e) => setCadence(e.target.value)}
-              />
-              <input
-                className="app-input"
-                placeholder="Where — e.g. Discord, email, Reddit"
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-              />
-            </>
-          ) : null}
-        </div>
-      ) : null}
-
       {error ? <p className="mt-1 text-xs text-[var(--danger-500)]">{error}</p> : null}
-    </div>
-  );
-}
-
-/**
- * What Foundry cannot see.
- *
- * This section exists because the derived half is dangerous on its own. Echo has
- * a shipped app and zero tasks; YourGroop tracks on a shared sheet; Campfire runs
- * in someone else's Slack; Freeway runs over WhatsApp. Every one of those renders
- * as a clean, quiet client — indistinguishable from one with genuinely nothing
- * happening. Naming them is the difference between a useful brief and a
- * reassuring one.
- */
-function BlindSpots({ clients, asOf }: { clients: HandoverClientState[]; asOf: string }) {
-  const thin = clients.filter((c) => c.thin);
-  return (
-    <div className="p-3 sm:p-4">
-      <p className="mb-3 max-w-[70ch] text-xs leading-5 text-[var(--text-3)]">
-        Foundry holds no open tasks and no support queue for these clients. That is not the same as
-        nothing happening — work tracked on a shared sheet, in someone else&rsquo;s Slack or over
-        WhatsApp looks identical to work that has stopped. Check these by asking, not by reading.
-      </p>
-      {thin.length === 0 ? (
-        <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-sm text-[var(--text-3)]">
-          Every active client has something live in Foundry.
-        </p>
-      ) : (
-        <ul className="divide-y divide-[var(--border-1)] border-y border-[var(--border-1)]">
-          {thin.map((c) => (
-            <li key={c.clientId} className="flex items-center gap-3 py-2.5">
-              <ExclamationTriangleIcon className="h-4 w-4 shrink-0 text-[var(--warning-500)]" />
-              <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-1)]" title={c.clientName}>
-                {c.clientName}
-              </span>
-              <a
-                href={`/app/portal/${c.slug}`}
-                className="shrink-0 text-xs text-[var(--brand-700)] hover:underline"
-              >
-                Open
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p
-        className="mt-3 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        Live as of {new Date(asOf).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-      </p>
     </div>
   );
 }

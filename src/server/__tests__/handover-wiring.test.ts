@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  HANDOVER_SECTION_KINDS,
   HANDOVER_ITEM_KINDS,
   HANDOVER_ITEM_STATUSES,
   HANDOVER_KIND_META,
@@ -76,12 +77,11 @@ describe("handover — Backstage wiring", () => {
   it("the server gate is assertAtLeastAdmin on every exported entry point", () => {
     const server = stripComments(read("src/server/handover.ts"));
     const exported = server.match(/export async function \w+/g) ?? [];
-    expect(exported.length).toBeGreaterThanOrEqual(8);
-    // Every one of them must assert. `getHandoverClientState` is the one exception:
-    // it takes a workspaceId rather than a user and is only ever called from
-    // getHandover, which has already asserted.
+    expect(exported.length).toBeGreaterThanOrEqual(7);
+    // EVERY exported entry point asserts — there is no longer an exception.
+    // `getHandoverClientState` was the one, and it went with the derived half.
     const guarded = server.match(/assertAtLeastAdmin\(user\)/g) ?? [];
-    expect(guarded.length).toBe(exported.length - 1);
+    expect(guarded.length).toBe(exported.length);
   });
 });
 
@@ -109,46 +109,96 @@ describe("handover — the kinds are declared once", () => {
   });
 
   it("the unions are what the page and the schema agree on", () => {
-    expect([...HANDOVER_ITEM_KINDS]).toEqual(["DECISION", "RISK", "DUTY", "CLIENT"]);
+    expect([...HANDOVER_ITEM_KINDS]).toEqual(["DECISION", "RISK", "DUTY", "CLIENT", "ROUTE"]);
     expect([...HANDOVER_ITEM_STATUSES]).toEqual(["OPEN", "DONE", "BLOCKED"]);
     expect([...HANDOVER_STATUSES]).toEqual(["DRAFT", "ACTIVE", "ENDED"]);
   });
 });
 
-describe("handover — derived state is never frozen", () => {
+describe("handover — the derived half is gone, and stays gone", () => {
   const server = stripComments(read("src/server/handover.ts"));
+  const types = stripComments(read("src/types/handover.ts"));
 
-  it("getHandover stamps asOf from the clock, not from the row", () => {
-    expect(server).toMatch(/asOf: new Date\(\)\.toISOString\(\)/);
+  /**
+   * Live client state (overdue counts, Care queues) was computed on every read
+   * and printed beside each item. Removed 24 Sep: against real data it read
+   * `86 open · 17 overdue · 240 awaiting reply` on one line, which buried the
+   * sentence it sat under. Re-adding it here costs five queries per read for a
+   * payload no page opens, so the test names the cost rather than the style.
+   */
+  it("does not compute client state", () => {
+    expect(server).not.toContain("getHandoverClientState");
+    expect(server).not.toContain("getClientQueueSummaries");
+    expect(types).not.toContain("HandoverClientState");
   });
 
-  it("client state is recomputed inside getHandover, not stored", () => {
-    expect(server).toMatch(/clientState: await getHandoverClientState\(workspaceId\)/);
+  it("does not import Care", () => {
+    expect(server).not.toMatch(/from "@\/server\/support"/);
+  });
+
+  /**
+   * ⚠️ `Handover.standingRule` is a LIVE COLUMN that is deliberately unwritten.
+   * Dropping it is a data-losing change and the guarded `prisma db push` skips
+   * the WHOLE sync when the diff contains one (§2) — so the column stays and
+   * the code must simply not touch it.
+   */
+  it("leaves the retired standingRule column alone", () => {
     const schema = read("prisma/schema.prisma");
-    const model = schema.slice(schema.indexOf("model Handover {"), schema.indexOf("model HandoverItem {"));
-    // A stored copy would be correct exactly once. Any of these columns appearing
-    // on the model means the derived half has been frozen into the authored one.
-    expect(model).not.toMatch(/clientState|openTasks|careAwaiting|derived/i);
+    expect(schema).toContain("standingRule String?");
+    expect(server).not.toMatch(/standingRule[:=]/);
+    expect(stripComments(read("src/server/validators.ts"))).not.toContain("standingRule");
+  });
+});
+
+describe("handover — sections and routing", () => {
+  const detail = stripComments(read("src/components/backstage/handover-detail.tsx"));
+  const types = stripComments(read("src/types/handover.ts"));
+
+  it("ROUTE is a kind but never a section", () => {
+    // It renders as the header's "who to go to" card. Listing it as a section
+    // would give it a tab and an empty list nobody scrolls to.
+    expect([...HANDOVER_ITEM_KINDS]).toContain("ROUTE");
+    expect([...HANDOVER_SECTION_KINDS]).not.toContain("ROUTE");
+    expect(types).toMatch(/HANDOVER_SECTION_KINDS = \["DECISION", "RISK", "DUTY", "CLIENT"\]/);
   });
 
-  it("reuses Care's own roll-up rather than counting again", () => {
-    // Two copies of the awaiting-reply predicate would let the handover and the
-    // Care cockpit report different numbers for the same client (§42.6).
-    // ⚠️ Assert the CALL, not the identifier. `toContain("getClientQueueSummaries")`
-    // is satisfied by the import line alone, so it passed with the call replaced —
-    // caught by sabotage, and the same trap §42.15 records.
-    expect(server).toMatch(/await getClientQueueSummaries\(\)|getClientQueueSummaries\(\),/);
-    expect(server).not.toContain("replyStateWhere");
+  it("the tab strip is driven by HANDOVER_SECTION_KINDS, not a second list", () => {
+    expect(detail).toContain("HANDOVER_SECTION_KINDS.map");
+    expect(detail).not.toMatch(/const SECTIONS(:| =)/);
   });
 
-  it("links Care to Portal by workspaceClientId, never by name", () => {
-    // The same client is `wedge` in Portal and "Big Wedge Golf" in Care (§42.15).
-    expect(server).toMatch(/workspaceClientId: \{ in: clientIds \}/);
+  it("the three header cards are all there", () => {
+    for (const card of ["<WhenCard", "<SummaryCard", "<RoutingCard"]) {
+      expect(detail, card).toContain(card);
+    }
   });
 
-  it("counts live work the way every other progress calculation does", () => {
-    // Without `parentId: null, archivedAt: null` subtasks double-count and
-    // archived work resurfaces — the bug backstage-timeline.ts still carries.
-    expect(server).toMatch(/archivedAt: null,\s*\n\s*parentId: null,/);
+  it("the blind-spots section and the standing-rule banner are gone", () => {
+    expect(detail).not.toContain("BlindSpots");
+    expect(detail).not.toContain("StandingRule");
+    expect(detail).not.toContain("BLIND");
+  });
+
+  it("rows carry no live figures and no outbound link", () => {
+    // Both were removed deliberately: the figures competed with the sentence,
+    // and the link sent the reader out of the brief mid-scan.
+    expect(detail).not.toContain("awaiting reply");
+    expect(detail).not.toContain("ArrowTopRightOnSquareIcon");
+    expect(detail).not.toMatch(/href=\{`\/app\/portal/);
+  });
+
+  it("an item opens a panel that can edit AND delete it", () => {
+    expect(detail).toContain("<ItemPanel");
+    expect(detail).toMatch(/onClick=\{\(\) => onOpen\(item\.id\)\}/);
+    expect(detail).toMatch(/update\s*\n?\s*\.mutateAsync\(\{\s*\n?\s*itemId: draft\.id/);
+    expect(detail).toContain("remove");
+  });
+
+  it("a failed delete clears the confirm rather than stranding the button", () => {
+    // §50.8: leaving it on "Delete permanently?" after a failure reads as an
+    // unresponsive button and invites a second click.
+    const block = detail.slice(detail.indexOf("Delete permanently"), detail.length);
+    expect(detail).toMatch(/\.catch\(\(\) => \{\s*\n?\s*setConfirmDelete\(false\);/);
+    expect(block.length).toBeGreaterThan(0);
   });
 });
