@@ -3958,8 +3958,11 @@ model Handover {
   /// The one rule that governs everything, stated once and always on screen.
   /// Gitwork's, Sept 2026: "Syed decides scope and timeline. Nobody decides commercials."
   standingRule String?
-  /// Free prose for anything the four item kinds do not fit.
+  /// Card 01 — the handover summary, in the author's own words.
   notes        String?
+  /// Card 02 — anything that is not about one client (routing, context, what to
+  /// watch). Free prose, deliberately unstructured.
+  details      String?
 
   status String @default("DRAFT") // DRAFT | ACTIVE | ENDED
 
@@ -4006,6 +4009,14 @@ model HandoverItem {
 
   cadence String? // DUTY only — "every morning", "as it comes in"
   channel String? // DUTY only — "Discord, email, Reddit"
+
+  /// CLIENT only. A client entry is the unit Harry and Syed actually open, and it
+  /// holds three paragraphs, not a list of lines: `detail` is where the client is,
+  /// `duties` is what somebody has to keep doing, `other` is everything else.
+  /// Nothing derived ever goes in them — no task counts, no Care queues, no
+  /// Foundry status. This page is one person's account of the work.
+  duties  String?
+  other   String?
 
   status String @default("OPEN") // OPEN | DONE | BLOCKED
   orderKey Int   @default(0)

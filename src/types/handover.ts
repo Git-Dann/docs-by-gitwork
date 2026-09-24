@@ -68,6 +68,28 @@ export const HANDOVER_KIND_META: Record<
   },
 };
 
+/**
+ * A client entry — the unit Harry and Syed open.
+ *
+ * Three paragraphs, all authored. Deliberately no task counts, no Care queue,
+ * no Foundry status: this page is one person's account of the work, and a
+ * derived figure beside it either repeats what Portal already shows or
+ * contradicts it.
+ */
+export interface HandoverClientDTO {
+  /** The underlying HandoverItem id. */
+  id: string;
+  clientId: string | null;
+  clientName: string;
+  /** Where the client is. */
+  summary: string | null;
+  /** What somebody has to keep doing. */
+  duties: string | null;
+  /** Anything else — decisions pending, risks, context. */
+  other: string | null;
+  orderKey: number;
+}
+
 export interface HandoverItemDTO {
   id: string;
   kind: HandoverItemKind;
@@ -94,10 +116,12 @@ export interface HandoverDTO {
   endsOn: string;
   /** Free prose the author types — the "here's the shape of it" paragraph. */
   notes: string | null;
+  /** Card 02 — anything not about one client. */
+  details: string | null;
   status: HandoverStatus;
   createdAt: string;
   updatedAt: string;
-  items: HandoverItemDTO[];
+  clients: HandoverClientDTO[];
 }
 
 export interface HandoverSummaryDTO {
@@ -108,9 +132,10 @@ export interface HandoverSummaryDTO {
   startsOn: string;
   endsOn: string;
   status: HandoverStatus;
-  openDecisions: number;
-  openRisks: number;
-  duties: number;
+  /** How many clients have an entry. */
+  clientCount: number;
+  /** …and how many of those actually say something. */
+  writtenCount: number;
 }
 
 export interface HandoverInput {
@@ -119,6 +144,7 @@ export interface HandoverInput {
   startsOn: string;
   endsOn: string;
   notes?: string | null;
+  details?: string | null;
   status?: HandoverStatus;
 }
 
@@ -130,6 +156,15 @@ export interface HandoverItemInput {
   ownerUserId?: string | null;
   cadence?: string | null;
   channel?: string | null;
+  duties?: string | null;
+  other?: string | null;
   status?: HandoverItemStatus;
   orderKey?: number;
+}
+
+/** What the client popup edits. */
+export interface HandoverClientInput {
+  summary?: string | null;
+  duties?: string | null;
+  other?: string | null;
 }
