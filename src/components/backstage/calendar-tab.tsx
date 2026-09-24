@@ -71,6 +71,37 @@ function countryName(code: string): string {
   }
 }
 
+// Referentially stable so the state's fallback identity never changes between
+// renders. Never mutated — every writer builds a new Set (see toggleCountry).
+const EMPTY_SET: Set<string> = new Set<string>();
+
+/**
+ * Read a `localStorage` preference WITHOUT breaking hydration.
+ *
+ * ⚠️ `useState(readThing)` where `readThing` returns one value on the server and
+ * another in the browser is React error #418 — the server renders the fallback,
+ * the client's first render reads storage, the two trees disagree, and React
+ * throws away the whole server-rendered tree and re-renders on the client. It
+ * was firing on /app/backstage for anyone who had ever touched the calendar
+ * filters, which is everyone who uses it.
+ *
+ * The rule is the one `backstage-workspace.tsx` already records for
+ * `useSearchParams`: render the SAME thing on both sides, then adopt the stored
+ * value after mount. One extra render, no mismatch.
+ *
+ * The reader must be a stable module-level function — it is deliberately not a
+ * dependency, so an inline arrow would re-adopt on every render and stamp on
+ * whatever the user had just changed.
+ */
+function useStoredPreference<T>(read: () => T, fallback: T) {
+  const [value, setValue] = useState<T>(fallback);
+  useEffect(() => {
+    setValue(read());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return [value, setValue] as const;
+}
+
 function readHiddenCountries(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
@@ -245,15 +276,15 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
 
   const { isAdminOrAbove } = usePermissions();
 
-  const [hiddenCountries, setHiddenCountries] = useState<Set<string>>(readHiddenCountries);
+  const [hiddenCountries, setHiddenCountries] = useStoredPreference(readHiddenCountries, EMPTY_SET);
 
   // Day-detail column: which day is shown on the right. Defaults to today.
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
 
   // Admin-only Portal Gantt overlay.
-  const [timelineEnabled, setTimelineEnabled] = useState<boolean>(readTimelineEnabled);
-  const [timelineWeekday, setTimelineWeekday] = useState<TimelineWeekday>(readTimelineWeekday);
-  const [hiddenClients, setHiddenClients] = useState<Set<string>>(readHiddenTimelineClients);
+  const [timelineEnabled, setTimelineEnabled] = useStoredPreference(readTimelineEnabled, false);
+  const [timelineWeekday, setTimelineWeekday] = useStoredPreference<TimelineWeekday>(readTimelineWeekday, "mon");
+  const [hiddenClients, setHiddenClients] = useStoredPreference(readHiddenTimelineClients, EMPTY_SET);
   const timelineOn = isAdminOrAbove && timelineEnabled;
   const timeline = useBackstageCalendarTimeline(year, month, timelineOn);
 
@@ -320,7 +351,7 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
   // ── Google Calendar overlay ──
   const connections = useCalendarConnections();
   const connectionMembers = useMemo(() => connections.data?.members ?? [], [connections.data?.members]);
-  const [selectedCalendars, setSelectedCalendars] = useState<Set<string>>(readSelectedCalendars);
+  const [selectedCalendars, setSelectedCalendars] = useStoredPreference(readSelectedCalendars, EMPTY_SET);
   useEffect(() => {
     const self = connectionMembers.find((m) => m.isSelf);
     if (!self || hasSelectedCalendarPreference()) return;
@@ -333,7 +364,10 @@ export function CalendarTab({ number = "01" }: { number?: string }) {
       }
       return next;
     });
-  }, [connectionMembers]);
+  // `setSelectedCalendars` is a useState setter and therefore stable; ESLint
+  // cannot see that through the custom hook, so it is listed rather than
+  // silenced — listing a stable value costs nothing and keeps the rule honest.
+  }, [connectionMembers, setSelectedCalendars]);
   const selectedIds = Array.from(selectedCalendars);
   const teamEvents = useTeamCalendarEvents(year, month, selectedIds);
 
