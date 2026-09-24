@@ -42,7 +42,11 @@ export function TeamCard({
 
   return (
     <>
-      <div className="flex min-h-[150px] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white">
+      {/* Two columns from `xl`: it is already drawn as two halves, so it reads as
+          a double tile rather than a stretched one, and it is what makes the
+          bento row come out exactly full. Below `xl` the grid is two columns and
+          every card is one unit, so spanning there would leave a hole. */}
+      <div className="flex min-h-[150px] flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white xl:col-span-2">
         <div className="flex h-9 shrink-0 items-center border-b border-[var(--border-2)] px-4">
           <span className="widget-header__label">
             <span className="widget-header__label--number">{number}</span>

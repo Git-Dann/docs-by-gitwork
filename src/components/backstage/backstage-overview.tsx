@@ -8,6 +8,17 @@ import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { TeamCard } from "@/components/backstage/team-card";
 import { useBackstageAccess } from "@/components/backstage/access";
 
+/**
+ * Written out in full because Tailwind only emits classes it can find as literal
+ * text — a computed `xl:grid-cols-${n}` compiles fine and produces no CSS, so the
+ * grid would silently fall back to two columns.
+ */
+const XL_COLS: Record<number, string> = {
+  3: "xl:grid-cols-3",
+  4: "xl:grid-cols-4",
+  5: "xl:grid-cols-5",
+};
+
 export type BackstageArea = "leave" | "expenses" | "approvals" | "handover";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
@@ -19,14 +30,47 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
   let n = 0;
   const num = () => String(++n).padStart(2, "0");
 
+  /**
+   * How many COLUMN UNITS the row actually occupies, so the grid is exactly as
+   * wide as the cards that render.
+   *
+   * ⚠️ Two of these cards are permission-gated — Expenses is Super Admin and
+   * Handover is Admin — so a hard-coded five columns leaves a one- or two-column
+   * hole for everyone else, which is the gap the house card-grid rule exists to
+   * prevent. Team counts as two because it spans two from `xl`.
+   */
+  const units = 1 + 2 + (canManageExpenses ? 1 : 0) + (isAdmin ? 1 : 0);
+
+  /**
+   * Between `sm` and `xl` the grid is two columns and every card is one unit, so
+   * an ODD number of cards leaves a hole beside the last one.
+   *
+   * ⚠️ Measured, not reasoned: an Admin who is not a Super Admin renders three
+   * cards and at 768px the last row came up 374px short. The card count is not
+   * the unit count — Team is two units and one card — so this is its own sum.
+   *
+   * `max-xl` is load-bearing. Without it the span survives into the five-column
+   * row and breaks the exact fit it exists to protect.
+   */
+  const cardCount = 2 + (canManageExpenses ? 1 : 0) + (isAdmin ? 1 : 0);
+  const fillOddRow =
+    cardCount % 2 === 1 ? "sm:max-xl:[&>*:last-child]:col-span-2" : "";
+
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${XL_COLS[units]} ${fillOddRow}`}>
         <LeaveCard number={num()} onOpen={onOpen} />
         {/* Approvals + absences share one card: both are single-figure "state of
             the team today" readouts, so two boxes was noise. The approvals half
             is the entry point to the ApprovalsTab, which was built but
-            previously unreachable. */}
+            previously unreachable.
+
+            It spans TWO columns from `xl`, which is what makes the row come out
+            exact — it is already drawn as two halves, so it reads as a double
+            tile rather than a stretched one. Below `xl` the grid is two columns
+            and every card is one unit, so four cards make a clean 2x2; letting
+            it span there would push it onto a row of its own and leave a hole
+            beside Leave. */}
         <TeamCard number={num()} canApprove={canApprove} onOpen={onOpen} />
         {canManageExpenses ? <ExpensesCard number={num()} onOpen={onOpen} /> : null}
         {isAdmin ? <HandoverCard number={num()} onOpen={onOpen} /> : null}
