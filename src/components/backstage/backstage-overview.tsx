@@ -3,17 +3,18 @@
 import type { ReactNode } from "react";
 import { ArrowRightIcon, BanknotesIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { useExpenses, useLeaveAllowance } from "@/hooks/use-backstage";
+import { useHandovers } from "@/hooks/use-handover";
 import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { TeamCard } from "@/components/backstage/team-card";
 import { useBackstageAccess } from "@/components/backstage/access";
 
-export type BackstageArea = "leave" | "expenses" | "approvals";
+export type BackstageArea = "leave" | "expenses" | "approvals" | "handover";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
 // see app-overview.tsx + DESIGN.md) over the full team calendar. Cards show a
 // headline figure and open their area on click; the calendar stays visible. No tabs.
 export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) => void }) {
-  const { canManageExpenses, canApprove } = useBackstageAccess();
+  const { canManageExpenses, canApprove, isAdmin } = useBackstageAccess();
 
   let n = 0;
   const num = () => String(++n).padStart(2, "0");
@@ -28,6 +29,7 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
             previously unreachable. */}
         <TeamCard number={num()} canApprove={canApprove} onOpen={onOpen} />
         {canManageExpenses ? <ExpensesCard number={num()} onOpen={onOpen} /> : null}
+        {isAdmin ? <HandoverCard number={num()} onOpen={onOpen} /> : null}
       </div>
       <CalendarTab number={num()} />
     </div>
@@ -108,3 +110,25 @@ function ExpensesCard({ number, onOpen }: { number: string; onOpen: (a: Backstag
   );
 }
 
+
+/**
+ * Handover — the count that matters is how much is still WAITING on somebody.
+ * Total items would grow as a handover gets more thorough, which is backwards:
+ * a well-written one should read as quiet.
+ */
+function HandoverCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
+  const list = useHandovers();
+  const rows = list.data ?? [];
+  const live = rows.filter((h) => h.status !== "ENDED");
+  const waiting = live.reduce((t, h) => t + h.openDecisions + h.openRisks, 0);
+  return (
+    <Card number={number} title="HANDOVER" area="handover" onOpen={onOpen}>
+      <Figure value={list.isLoading ? "—" : waiting} unit="waiting" />
+      <p className="text-xs text-[var(--text-3)]">
+        {live.length === 0
+          ? "Nothing handed over"
+          : `${live.length} live · decisions and open items`}
+      </p>
+    </Card>
+  );
+}
