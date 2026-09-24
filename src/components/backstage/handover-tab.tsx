@@ -129,17 +129,22 @@ export function HandoverTab() {
         ) : null}
 
         {list.isLoading ? (
-          <div className="h-24 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <div className="h-[132px] animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
         ) : (list.data ?? []).length === 0 ? (
           <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-6 text-center text-sm text-[var(--text-3)]">
             No handovers yet.
           </p>
         ) : (
-          <ul className="divide-y divide-[var(--border-1)] border-y border-[var(--border-1)]">
+          /* Cards, not full-width rows. A row hover is a band the width of the
+             panel with square ends, which reads as a clipped strip rather than a
+             thing you can click — and against the card's own 10px rounding the
+             ends look cropped. A card carries its own border and radius, so the
+             hover has a shape. */
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {(list.data ?? []).map((h) => (
               <Row key={h.id} row={h} onOpen={() => setOpenId(h.id)} />
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -148,36 +153,40 @@ export function HandoverTab() {
 
 function Row({ row, onOpen }: { row: HandoverSummaryDTO; onOpen: () => void }) {
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-[var(--surface-1)]"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-[var(--text-1)]" title={row.title}>
-            {row.title}
-          </p>
-          <p
-            className="mt-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {formatRange(row.startsOn, row.endsOn)}
-            {row.userName ? ` · ${row.userName}` : ""}
-          </p>
-        </div>
-        <div
-          className="flex shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.08em]"
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex min-h-[132px] flex-col justify-between gap-3 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4 text-left transition hover:border-[var(--brand-300)] hover:shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+    >
+      <div className="min-w-0">
+        <p
+          className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}
         >
-          {/* Only what still needs doing carries colour — a finished handover
-              should read as finished at a glance. */}
-          <Badge n={row.openDecisions} label="decisions" tone={row.openDecisions > 0 ? "warn" : "quiet"} />
-          <Badge n={row.openRisks} label="open" tone={row.openRisks > 0 ? "warn" : "quiet"} />
-          <Badge n={row.duties} label="duties" tone="quiet" />
-        </div>
-      </button>
-    </li>
+          {formatRange(row.startsOn, row.endsOn)}
+          {row.userName ? ` · ${row.userName}` : ""}
+        </p>
+        {/* Two lines, then clamp — a long title must not make one card taller than
+            the ones beside it, and `title` keeps the full text reachable rather
+            than silently cut (a TRUNCATED finding under audit:clipping). */}
+        <p
+          className="mt-1.5 line-clamp-2 text-[15px] font-medium leading-6 text-[var(--text-1)]"
+          title={row.title}
+        >
+          {row.title}
+        </p>
+      </div>
+      <div
+        className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.08em]"
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {/* Only what still needs doing carries colour — a finished handover
+            should read as finished at a glance. */}
+        <Badge n={row.openDecisions} label="decisions" tone={row.openDecisions > 0 ? "warn" : "quiet"} />
+        <Badge n={row.openRisks} label="open" tone={row.openRisks > 0 ? "warn" : "quiet"} />
+        <Badge n={row.duties} label="duties" tone="quiet" />
+      </div>
+    </button>
   );
 }
 
@@ -185,7 +194,7 @@ function Badge({ n, label, tone }: { n: number; label: string; tone: "warn" | "q
   return (
     <span
       className={cn(
-        "hidden rounded-[4px] px-1.5 py-0.5 tabular-nums sm:inline",
+        "rounded-[4px] px-1.5 py-0.5 tabular-nums",
         tone === "warn"
           ? "bg-[var(--warning-50)] text-[var(--warning-500)]"
           : "bg-[var(--surface-2)] text-[var(--text-4)]",
