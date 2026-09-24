@@ -934,7 +934,6 @@ export const handoverInputSchema = z
     title: z.string().trim().min(1).max(200),
     startsOn: isoDateString,
     endsOn: isoDateString,
-    standingRule: z.string().max(600).nullish(),
     notes: z.string().max(8000).nullish(),
     status: z.enum(HANDOVER_STATUSES).optional(),
   })
@@ -947,7 +946,6 @@ export const handoverPatchSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   startsOn: isoDateString.optional(),
   endsOn: isoDateString.optional(),
-  standingRule: z.string().max(600).nullish(),
   notes: z.string().max(8000).nullish(),
   status: z.enum(HANDOVER_STATUSES).optional(),
 });

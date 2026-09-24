@@ -47,7 +47,6 @@ export function HandoverTab() {
         title: trimmed,
         startsOn,
         endsOn,
-        standingRule: null,
       })
       .then((row) => {
         setCreating(false);

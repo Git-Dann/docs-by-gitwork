@@ -1,12 +1,12 @@
 /**
- * Handover — CRUD over the authored half, plus the derived client state.
+ * Handover — CRUD over an entirely AUTHORED record.
  *
- * ── The one rule this module keeps ──────────────────────────────────────────
- * The items are AUTHORED and the client state is DERIVED, and they are never
- * merged. `getHandover` stamps `asOf` on every read so the page can say which
- * half is live. A handover whose derived figures were frozen with its prose
- * would be quietly wrong by day three, which is precisely why the July 2026
- * attempt (a Docs `HANDOVER` record) did not survive contact with a week away.
+ * ⚠️ An earlier cut computed live client state here (overdue counts, Care
+ * queues) and returned it alongside the items. Nothing renders it any more —
+ * read against real data those figures were noise beside the sentence they sat
+ * under — so it is gone rather than left costing five extra queries per read
+ * for a payload no page opens. `getHandoverClientState` and the
+ * `@/server/support` import went with it.
  *
  * ── Gate ────────────────────────────────────────────────────────────────────
  * Admin and above, for READS as well as writes. A handover routinely carries
@@ -14,6 +14,12 @@
  * — which are not developer-facing. `assertAtLeastAdmin` lets a null caller
  * (the workspace API_KEY: cron and server integrations) through, matching every
  * other Backstage module.
+ *
+ * ⚠️ `Handover.standingRule` is still a column and is no longer written or read.
+ * The "one rule, stated once at the top" banner was removed on 24 Sep — in
+ * practice it restated what the routing card now says with names, which is the
+ * answerable version. The column stays because dropping it is a data-losing
+ * change and the guarded `prisma db push` would skip the WHOLE sync (§2).
  */
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -24,9 +30,7 @@ import {
   NotFoundError,
   assertAtLeastAdmin,
 } from "@/server/auth/effective-user";
-import { getClientQueueSummaries } from "@/server/support";
 import type {
-  HandoverClientState,
   HandoverDTO,
   HandoverInput,
   HandoverItemDTO,
@@ -75,90 +79,6 @@ function serializeItem(row: ItemRow): HandoverItemDTO {
   };
 }
 
-/**
- * Live state for every active client, batched.
- *
- * Care figures come from `getClientQueueSummaries()` rather than a second count.
- * Writing our own would give the handover and the Care cockpit two numbers for
- * the same client, and a dashboard whose figures disagree with the screen it
- * links to is worse than one with no figures at all (§42.6).
- */
-export async function getHandoverClientState(workspaceId: string): Promise<HandoverClientState[]> {
-  const clients = await prisma.workspaceClient.findMany({
-    where: { workspaceId, status: "ACTIVE", hidden: false },
-    select: { id: true, name: true, slug: true },
-    orderBy: { name: "asc" },
-  });
-  if (clients.length === 0) return [];
-  const clientIds = clients.map((c) => c.id);
-  const now = new Date();
-
-  // `parentId: null, archivedAt: null` matches every other progress calculation in
-  // the app — without it subtasks double-count and archived work resurfaces.
-  const liveTasks: Prisma.TaskWhereInput = {
-    workspaceId,
-    clientId: { in: clientIds },
-    archivedAt: null,
-    parentId: null,
-    status: { not: "DONE" },
-  };
-
-  const [openRows, overdueRows, supportClients, careCounts] = await Promise.all([
-    prisma.task.groupBy({ by: ["clientId"], where: liveTasks, _count: { _all: true } }),
-    prisma.task.groupBy({
-      by: ["clientId"],
-      where: { ...liveTasks, dueDate: { lt: now } },
-      _count: { _all: true },
-    }),
-    prisma.supportClient.findMany({
-      where: { workspaceId, workspaceClientId: { in: clientIds } },
-      select: { id: true, workspaceClientId: true },
-    }),
-    getClientQueueSummaries(),
-  ]);
-
-  const open = new Map<string, number>();
-  for (const r of openRows) if (r.clientId) open.set(r.clientId, r._count._all);
-  const overdue = new Map<string, number>();
-  for (const r of overdueRows) if (r.clientId) overdue.set(r.clientId, r._count._all);
-
-  // Care is keyed by SupportClient.id; the board is keyed by WorkspaceClient.id. The
-  // link is the explicit `workspaceClientId` column and NEVER a name match — the same
-  // client is `wedge` in Portal and "Big Wedge Golf" in Care (§42.15).
-  const care = new Map<string, { awaiting: number; oldest: string | null }>();
-  for (const sc of supportClients) {
-    if (!sc.workspaceClientId) continue;
-    const summary = careCounts[sc.id];
-    if (!summary) continue;
-    const prev = care.get(sc.workspaceClientId);
-    const oldest =
-      prev?.oldest && summary.oldestAwaitingAt
-        ? prev.oldest < summary.oldestAwaitingAt
-          ? prev.oldest
-          : summary.oldestAwaitingAt
-        : (prev?.oldest ?? summary.oldestAwaitingAt);
-    care.set(sc.workspaceClientId, {
-      awaiting: (prev?.awaiting ?? 0) + summary.awaiting,
-      oldest,
-    });
-  }
-
-  return clients.map((c) => {
-    const openTasks = open.get(c.id) ?? 0;
-    const careAwaiting = care.get(c.id)?.awaiting ?? 0;
-    return {
-      clientId: c.id,
-      clientName: c.name,
-      slug: c.slug,
-      openTasks,
-      overdueTasks: overdue.get(c.id) ?? 0,
-      careAwaiting,
-      careOldestAwaitingAt: care.get(c.id)?.oldest ?? null,
-      thin: openTasks === 0 && careAwaiting === 0,
-    };
-  });
-}
-
 function summarize(row: HandoverRow): HandoverSummaryDTO {
   return {
     id: row.id,
@@ -203,14 +123,11 @@ export async function getHandover(user: EffectiveUser | null, id: string): Promi
     title: row.title,
     startsOn: row.startsOn.toISOString(),
     endsOn: row.endsOn.toISOString(),
-    standingRule: row.standingRule,
     notes: row.notes,
     status: row.status as HandoverStatus,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     items: row.items.map(serializeItem),
-    clientState: await getHandoverClientState(workspaceId),
-    asOf: new Date().toISOString(),
   };
 }
 
@@ -241,7 +158,6 @@ export async function createHandover(
       title: input.title.trim(),
       startsOn,
       endsOn,
-      standingRule: input.standingRule?.trim() || null,
       notes: input.notes?.trim() || null,
       status: input.status ?? "DRAFT",
       createdById: user?.id ?? null,
@@ -266,7 +182,6 @@ export async function updateHandover(
   if (input.title !== undefined) data.title = input.title.trim();
   if (input.startsOn !== undefined) data.startsOn = dayUtc(input.startsOn);
   if (input.endsOn !== undefined) data.endsOn = dayUtc(input.endsOn);
-  if (input.standingRule !== undefined) data.standingRule = input.standingRule?.trim() || null;
   if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
   if (input.status !== undefined) data.status = input.status;
 
