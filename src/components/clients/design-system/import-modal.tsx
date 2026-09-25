@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Modal } from "@/components/ui/modal";
 import { designTokensSchema } from "@/server/validators";
 import { useSaveClientDesignSystem } from "@/hooks/use-design-system";
 import type { DesignTokens } from "@/types/design-tokens";
@@ -45,29 +46,17 @@ export function ImportModal({ slug, onClose }: { slug: string; onClose: () => vo
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+    // Was a hand-rolled backdrop with its own `rounded-[12px]` panel and no
+    // `role="dialog"`, `aria-modal`, Escape, focus trap or focus restore — a form
+    // dialog with five focusable controls that a keyboard user could not close or
+    // stay inside. The shared primitive supplies all of it, and its `title` prop
+    // renders exactly the `NN //` widget-header this was drawing by hand.
+    <Modal
+      open
+      onClose={onClose}
+      title="·· // IMPORT DESIGN TOKENS"
+      panelClassName="app-dialog-fixed flex w-full max-w-2xl flex-col"
     >
-      <div
-        className="app-dialog-fixed flex w-full max-w-2xl flex-col overflow-hidden rounded-[12px] bg-white shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="widget-header">
-          <span className="widget-header__label">
-            <span className="widget-header__label--number">··</span>
-            {" // IMPORT DESIGN TOKENS"}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded-[4px] text-[var(--text-3)] hover:bg-[var(--surface-1)]"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
           <p className="text-[13px] text-[var(--text-3)]">
             Paste the <code style={{ fontFamily: MONO }}>design-tokens.json</code> produced by the
@@ -129,7 +118,6 @@ export function ImportModal({ slug, onClose }: { slug: string; onClose: () => vo
             {save.isPending ? "Saving…" : "Validate & import"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
