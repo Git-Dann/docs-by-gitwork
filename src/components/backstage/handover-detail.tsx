@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
+import { renderLines } from "@/lib/markdown";
 import { BackstageModal } from "@/components/backstage/modal";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
@@ -121,7 +122,7 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
           title="HANDOVER SUMMARY"
           field="notes"
           placeholder="Where things stand overall, and what matters most while you're away."
-          empty="Nothing written yet — press Edit to add the shape of it."
+          empty="Nothing written yet — click to add the shape of the week."
         />
         <ProseCard
           handover={data}
@@ -129,7 +130,7 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
           title="DETAILS"
           field="details"
           placeholder="Anything that isn't about one client — who decides what, context, things to watch."
-          empty="Nothing here yet — press Edit to add anything that isn't client-specific."
+          empty="Nothing here yet — click to add anything that isn't client-specific."
         />
       </div>
 
@@ -173,11 +174,19 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
 
 // ── Header cards ─────────────────────────────────────────────────────────────
 /**
- * A card whose whole content is one prose field. Click anywhere to edit.
+ * One prose field, at a FIXED height, read through a popup.
  *
- * The draft resets from the server value whenever the card is NOT being edited,
- * so a save from another tab (or a refetch) can't be clobbered by a stale draft
- * sitting in a card nobody is typing in.
+ * ── Why fixed, and why click-to-read ────────────────────────────────────────
+ * These two grew with whatever was typed into them. A real handover summary ran
+ * them to ~740px each, so the client board — the thing the page is actually for
+ * — started below the fold, and the two cards were different heights whenever
+ * one had more in it than the other. A card that resizes with its content is not
+ * a card; it is a document with a border.
+ *
+ * So the card is a fixed-height PREVIEW and the whole thing is the control, the
+ * same grammar the client cards and `/app/portal/summary` already use. Editing
+ * lives in the popup only — glancing at a summary should never be one stray
+ * click from a textarea.
  */
 function ProseCard({
   handover,
@@ -194,80 +203,165 @@ function ProseCard({
   placeholder: string;
   empty: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const value = handover[field];
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="widget-card group h-[300px] text-left transition hover:border-[var(--brand-500)]"
+      >
+        <div className="widget-header w-full">
+          <span className="widget-header__label">
+            <span className="widget-header__label--number">{number}</span>
+            {` // ${title}`}
+          </span>
+          <span className="widget-header__status" style={{ fontFamily: MONO }}>
+            {value?.trim() ? "READ" : "ADD"}
+          </span>
+        </div>
+        {/* ⚠️ The preview SCROLLS. It must not clip.
+            `.widget-card` is `overflow: hidden`, so anything past the fixed height
+            is unreachable — `audit:clipping` reported nine such elements on the
+            first cut. `line-clamp` does not fix it either: it ellipses INLINE
+            content, and `renderLines` emits block children (one <span class=block>
+            per typed line, plus real <ul>s), so the clamp box just hard-cuts them
+            and the sweep flags each one. A scroller is the honest answer — the
+            height stays fixed, the formatting survives, and nothing is out of
+            reach. Clicking still opens the popup for a comfortable read. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <div className="text-sm leading-6 text-[var(--text-2)]">
+            {value?.trim() ? (
+              renderLines(value, `${field}-card`)
+            ) : (
+              <span className="text-[var(--text-4)] group-hover:text-[var(--brand-700)]">{empty}</span>
+            )}
+          </div>
+        </div>
+      </button>
+
+      {open ? (
+        <ProseEditor
+          handover={handover}
+          title={title}
+          field={field}
+          placeholder={placeholder}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The prose, opened: read first, edit behind a control.
+ *
+ * Formatting is the house renderer (`renderLines`) — every line the author typed
+ * survives, `- ` and `1. ` become real lists, and `**bold**` works. It is the
+ * same subset `src/lib/markdown.tsx` draws everywhere else, which is the point:
+ * per §41 the editor must never accept syntax the renderer cannot draw, or
+ * somebody's `## heading` ships as literal hashes.
+ */
+function ProseEditor({
+  handover,
+  title,
+  field,
+  placeholder,
+  onClose,
+}: {
+  handover: HandoverDTO;
+  title: string;
+  field: "notes" | "details";
+  placeholder: string;
+  onClose: () => void;
+}) {
   const update = useUpdateHandover(handover.id);
   const value = handover[field];
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [error, setError] = useState<string | null>(null);
 
+  // A save from elsewhere (or a refetch) must not be clobbered by a stale draft
+  // sitting in a dialog nobody is typing in.
   useEffect(() => {
     if (!editing) setDraft(value ?? "");
   }, [value, editing]);
 
-  return (
-    <div className="widget-card min-h-[190px]">
-      <div className="widget-header">
-        <span className="widget-header__label">
-          <span className="widget-header__label--number">{number}</span>
-          {` // ${title}`}
-        </span>
-        {!editing ? (
+  const footer = (
+    <div className="flex flex-wrap items-center gap-2">
+      {editing ? (
+        <>
+          <button
+            type="button"
+            className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            disabled={update.isPending}
+            onClick={() => {
+              setError(null);
+              void update
+                .mutateAsync({ [field]: draft })
+                .then(() => setEditing(false))
+                .catch(() => setError("Couldn't save that."));
+            }}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Back to what is STORED, not to what was being typed.
+              setDraft(value ?? "");
+              setEditing(false);
+              setError(null);
+            }}
+            className="px-2 py-1.5 text-xs text-[var(--text-3)]"
+          >
+            Cancel
+          </button>
+          <span className="text-[11px] text-[var(--text-4)]">
+            Blank line for a paragraph · <code>- </code> for a bullet · <code>**bold**</code>
+          </span>
+        </>
+      ) : (
+        <>
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-xs text-[var(--text-3)] transition-colors hover:text-[var(--text-1)]"
+            className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[var(--brand-800)]"
           >
-            Edit
+            <PencilSquareIcon className="h-3.5 w-3.5" /> Edit
           </button>
-        ) : null}
-      </div>
-      <div className="flex flex-1 flex-col p-4">
+          <button type="button" onClick={onClose} className="px-2 py-1.5 text-xs text-[var(--text-3)]">
+            Close
+          </button>
+        </>
+      )}
+      {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
+    </div>
+  );
+
+  return (
+    <BackstageModal eyebrow="HANDOVER" title={title} onClose={onClose} footer={footer}>
+      <div className="px-6 py-5">
         {editing ? (
-          <>
-            <textarea
-              className="app-textarea min-h-[120px] w-full flex-1"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={placeholder}
-            />
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white"
-                onClick={() => {
-                  setError(null);
-                  void update
-                    .mutateAsync({ [field]: draft })
-                    .then(() => setEditing(false))
-                    .catch(() => setError("Couldn't save that."));
-                }}
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                className="px-2 py-1.5 text-xs text-[var(--text-3)]"
-                onClick={() => {
-                  setDraft(value ?? "");
-                  setEditing(false);
-                }}
-              >
-                Cancel
-              </button>
-              {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
-            </div>
-          </>
+          <textarea
+            className="app-textarea min-h-[320px] w-full"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={placeholder}
+          />
         ) : (
-          /* ⚠️ Reading is NOT a click target. This was a button, so landing on the
-             page and glancing at the summary put you one stray click from a
-             textarea. The `Edit` control in the header is the only way in — the
-             same rule the client popup now follows. */
-          <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-            {value || <span className="text-[var(--text-4)]">{empty}</span>}
-          </p>
+          <div className="text-sm leading-6 text-[var(--text-2)]">
+            {value?.trim() ? (
+              renderLines(value, `${field}-full`)
+            ) : (
+              <span className="text-[var(--text-4)]">Nothing written yet — press Edit to start.</span>
+            )}
+          </div>
         )}
       </div>
-    </div>
+    </BackstageModal>
   );
 }
 
@@ -314,9 +408,12 @@ function ClientCard({
           // ⚠️ Clamped, and the full text is NOT in a `title` — a tooltip is
           // unreachable on a phone. The popup is one click away and is the
           // recoverable path.
-          <p className="line-clamp-4 text-[14px] leading-relaxed text-[var(--text-1)]">
-            {entry.summary?.trim() || entry.duties?.trim() || entry.other?.trim()}
-          </p>
+          <div className="line-clamp-4 text-[14px] leading-relaxed text-[var(--text-1)]">
+            {renderLines(
+              entry.summary?.trim() || entry.duties?.trim() || entry.other?.trim() || "",
+              `${entry.id}-card`,
+            )}
+          </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)] group-hover:text-[var(--brand-700)]">
             Nothing written yet →
@@ -488,12 +585,17 @@ function ClientPanel({
                 >
                   {f.label}
                 </h3>
-                {/* `whitespace-pre-wrap` so the paragraph breaks the author typed
-                    survive — this is prose, and reflowing it into one block is the
-                    difference between a note and a wall. */}
-                <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-                  {f.value.trim() || <span className="text-[var(--text-4)]">Nothing written.</span>}
-                </p>
+                {/* The house renderer, not `whitespace-pre-wrap`: every line the
+                    author typed survives, `- ` and `1. ` become real lists, and
+                    `**bold**` works — the same subset drawn everywhere else, so a
+                    bullet list looks like one here and in the cards. */}
+                <div className="mt-1.5 text-sm leading-6 text-[var(--text-2)]">
+                  {f.value.trim() ? (
+                    renderLines(f.value, `${f.key}-read`)
+                  ) : (
+                    <span className="text-[var(--text-4)]">Nothing written.</span>
+                  )}
+                </div>
               </section>
             ))}
       </div>
