@@ -228,11 +228,42 @@ describe("handover — the client board", () => {
     expect(cancel).toMatch(/setDraft\(entry\);/);
   });
 
-  it("reading the header cards is not a click target", () => {
-    // The prose was wrapped in a <button>, so glancing at the summary put you one
-    // stray click from a textarea. Only the header's Edit opens it now.
-    const card = detail.slice(detail.indexOf("function ProseCard"), detail.indexOf("function ClientCard"));
-    expect(card).not.toMatch(/<button[^>]*onClick=\{\(\) => setEditing\(true\)\}[^>]*>\s*<p/);
+  it("the prose cards are a FIXED height, not a document with a border", () => {
+    // They grew with whatever was typed in. A real handover summary ran them to
+    // ~740px each, so the client board — the thing the page is for — started
+    // below the fold, and the two were different heights whenever one had more in
+    // it. `min-h-*` is the bug, not the fix: it still grows.
+    const card = detail.slice(detail.indexOf("function ProseCard"), detail.indexOf("function ProseEditor"));
+    expect(card).toMatch(/h-\[\d+px\]/);
+    expect(card).not.toMatch(/min-h-\[\d+px\]/);
+    // ⚠️ And the overflow SCROLLS. `.widget-card` is `overflow: hidden`, so a
+    // fixed height with no scroller puts the rest of the text out of reach —
+    // `audit:clipping` reported nine such elements. `line-clamp` does not fix it:
+    // it ellipses INLINE content, and `renderLines` emits block children, so the
+    // clamp box hard-cuts them and each one is flagged.
+    expect(card).toContain("overflow-y-auto");
+    expect(card).not.toMatch(/line-clamp-/);
+  });
+
+  it("the card opens a popup and CANNOT edit in place", () => {
+    const card = detail.slice(detail.indexOf("function ProseCard"), detail.indexOf("function ProseEditor"));
+    expect(card).toMatch(/onClick=\{\(\) => setOpen\(true\)\}/);
+    // Editing lives in the popup only — glancing at a summary must never be one
+    // stray click from a textarea.
+    expect(card).not.toContain("setEditing");
+    expect(card).not.toContain("<textarea");
+    expect(card).toContain("<ProseEditor");
+  });
+
+  it("prose is drawn by the house renderer everywhere it appears", () => {
+    // ⚠️ §41: the editor must never accept syntax the renderer cannot draw, or
+    // somebody's `## heading` ships as literal hashes. `renderLines` is that
+    // subset — every typed line survives, `- ` and `1. ` become real lists.
+    expect(detail).toMatch(/import \{ renderLines \} from "@\/lib\/markdown"/);
+    // Card preview, popup body, client popup and client card — all four.
+    expect((detail.match(/renderLines\(/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    // `whitespace-pre-wrap` is what it replaced: it keeps newlines and nothing else.
+    expect(detail).not.toContain("whitespace-pre-wrap");
   });
 
   it("the dates and the person can actually be changed", () => {
