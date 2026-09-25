@@ -31,11 +31,22 @@ export function BackstageModal({
   title,
   onClose,
   children,
+  footer,
 }: {
   eyebrow?: string;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /**
+   * A footer PINNED below the scroll region.
+   *
+   * Without it a caller's action row is just another child, so it sits inside
+   * the scroller and floats wherever the content ends — leaving dead space under
+   * it in a fixed-height panel and scrolling away on a long one. The leave and
+   * expense forms pass nothing and keep their footer inside their own <form>,
+   * which is how they have always worked.
+   */
+  footer?: ReactNode;
 }) {
   return (
     <Modal
@@ -71,6 +82,9 @@ export function BackstageModal({
           two live forms, caught by `dialog-fixed-height.test.ts` noticing its own
           panel count had fallen. */}
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {footer ? (
+        <div className="shrink-0 border-t border-[var(--border-2)] px-6 py-3">{footer}</div>
+      ) : null}
     </Modal>
   );
 }

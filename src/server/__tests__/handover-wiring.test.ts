@@ -153,6 +153,11 @@ describe("handover — the derived half is gone, and stays gone", () => {
 
 describe("handover — the client board", () => {
   const detail = stripComments(read("src/components/backstage/handover-detail.tsx"));
+  /** ClientPanel alone — several components in this file share state names. */
+  const panel = detail.slice(
+    detail.indexOf("function ClientPanel("),
+    detail.indexOf("function HeaderEditor("),
+  );
 
   it("the two prose cards and the client grid are all there", () => {
     expect(detail).toContain('field="notes"');
@@ -194,10 +199,69 @@ describe("handover — the client board", () => {
     expect(detail).toMatch(/\.catch\(\(\) => \{\s*\n?\s*setConfirmDelete\(false\);/);
   });
 
-  it("the popup is the house fixed-height dialog", () => {
-    // Otherwise it resizes under the cursor between a two-line client and a
-    // two-page one — the rule DESIGN.md records for any dialog whose content varies.
-    expect(detail).toContain("app-dialog-fixed");
+  it("the popups are the Backstage dialog, not a third shape", () => {
+    // `BackstageModal` is what Leave and Expenses use, and it carries
+    // `app-dialog-fixed` — so the popup cannot resize under the cursor between a
+    // two-line client and a two-page one, and it does not have to restate the
+    // clamp. Using the bare primitive here made the handover look like a
+    // different product inside the same one.
+    expect(detail).toContain("<BackstageModal");
+    expect(detail).not.toMatch(/<Modal[\s>]/);
+    const backstageModal = stripComments(read("src/components/backstage/modal.tsx"));
+    expect(backstageModal).toContain("app-dialog-fixed");
+  });
+
+  it("a popup opens READ-first, with editing behind a control", () => {
+    // Somebody covering, mid-week, looking up one client is here to read. Opening
+    // into three textareas makes the common case look like a task and puts every
+    // word one stray keystroke from being changed.
+    //
+    // ⚠️ Scoped to ClientPanel. `ProseCard` has its own `editing` state and its
+    // own `useState(false)`, so an unscoped match passed with this one flipped to
+    // `true` — it was asserting the wrong component. Same for `setDraft(entry)`,
+    // which also appears in the reset effect.
+    expect(panel).toMatch(/const \[editing, setEditing\] = useState\(false\)/);
+    expect(panel).toMatch(/onClick=\{\(\) => setEditing\(true\)\}/);
+    // Cancel restores what is STORED, not what was being typed — and it is the
+    // Cancel branch that must do it, not only the effect that runs on open.
+    const cancel = panel.slice(panel.indexOf("Save"), panel.indexOf("Remove"));
+    expect(cancel).toMatch(/setDraft\(entry\);/);
+  });
+
+  it("reading the header cards is not a click target", () => {
+    // The prose was wrapped in a <button>, so glancing at the summary put you one
+    // stray click from a textarea. Only the header's Edit opens it now.
+    const card = detail.slice(detail.indexOf("function ProseCard"), detail.indexOf("function ClientCard"));
+    expect(card).not.toMatch(/<button[^>]*onClick=\{\(\) => setEditing\(true\)\}[^>]*>\s*<p/);
+  });
+
+  it("the dates and the person can actually be changed", () => {
+    // ⚠️ The handover's own title said "set the dates" while the page had no
+    // control that could. `userId` was missing from the patch shape entirely, so
+    // who was away could never be corrected after creation.
+    expect(detail).toContain("<HeaderEditor");
+    expect(detail).toMatch(/mutateAsync\(\{ title: title\.trim\(\), userId, startsOn, endsOn \}\)/);
+    // ⚠️ `userId: z.string().cuid().optional()` appears FOUR times in validators.ts.
+    // Pin to this schema's own block or the assertion passes on somebody else's.
+    const validators = stripComments(read("src/server/validators.ts"));
+    const from = validators.indexOf("export const handoverPatchSchema");
+    const patch = validators.slice(from, validators.indexOf("});", from));
+    expect(patch).toContain("userId: z.string().cuid().optional()");
+  });
+
+  it("the date order is checked against the STORED row, not just the request", () => {
+    // A PATCH moving only the start date past a stored end date is the case a
+    // per-request `.refine()` cannot see.
+    // ⚠️ `createHandover` already carried an identical `endsOn < startsOn` throw,
+    // so an unscoped match passed with the update one deleted. Scope to updateHandover.
+    const server = stripComments(read("src/server/handover.ts"));
+    const upd = server.slice(
+      server.indexOf("export async function updateHandover("),
+      server.indexOf("export async function deleteHandover("),
+    );
+    expect(upd).toMatch(/\?\? existing\.startsOn/);
+    expect(upd).toMatch(/\?\? existing\.endsOn/);
+    expect(upd).toMatch(/if \(endsOn < startsOn\) throw new ForbiddenError/);
   });
 });
 
