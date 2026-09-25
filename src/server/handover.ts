@@ -276,13 +276,33 @@ export async function updateHandover(
   assertAtLeastAdmin(user);
   const { workspace } = await ensureBaseRecords();
   const workspaceId = user?.workspaceId ?? workspace.id;
-  const existing = await prisma.handover.findFirst({ where: { id, workspaceId }, select: { id: true } });
+  const existing = await prisma.handover.findFirst({
+    where: { id, workspaceId },
+    select: { id: true, startsOn: true, endsOn: true },
+  });
   if (!existing) throw new NotFoundError("That handover doesn't exist.");
 
   const data: Prisma.HandoverUpdateInput = {};
   if (input.title !== undefined) data.title = input.title.trim();
   if (input.startsOn !== undefined) data.startsOn = dayUtc(input.startsOn);
   if (input.endsOn !== undefined) data.endsOn = dayUtc(input.endsOn);
+
+  // ⚠️ Check the order against what the row will actually HOLD, not against what
+  // this request happens to carry. A PATCH that moves only the start date past a
+  // stored end date is the case a per-request `.refine()` cannot see, and it would
+  // leave a handover reading "6 Oct – 1 Oct".
+  const startsOn = (data.startsOn as Date | undefined) ?? existing.startsOn;
+  const endsOn = (data.endsOn as Date | undefined) ?? existing.endsOn;
+  if (endsOn < startsOn) throw new ForbiddenError("The end date is before the start date.");
+
+  if (input.userId) {
+    const member = await prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: input.userId },
+      select: { id: true },
+    });
+    if (!member) throw new ForbiddenError("That person isn't in your workspace.");
+    data.user = { connect: { id: input.userId } };
+  }
   if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
   if (input.details !== undefined) data.details = input.details?.trim() || null;
   if (input.status !== undefined) data.status = input.status;

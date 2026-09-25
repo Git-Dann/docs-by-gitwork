@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PlusIcon } from "@heroicons/react/24/outline";
+import { PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import { Modal } from "@/components/ui/modal";
+import { BackstageModal } from "@/components/backstage/modal";
+import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
 import {
   useAddHandoverItem,
@@ -49,6 +50,7 @@ function hasWords(entry: HandoverClientDTO): boolean {
 export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const query = useHandover(id);
   const [openClient, setOpenClient] = useState<string | null>(null);
+  const [editingHeader, setEditingHeader] = useState(false);
   const data = query.data;
 
   const ordered = useMemo(() => {
@@ -93,14 +95,24 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
         <span className="min-w-0 truncate font-medium text-[var(--text-1)]" title={data.title}>
           {data.title}
         </span>
-        <span
-          className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+        {/* ⚠️ This line used to be inert text, on a handover whose own title said
+            "set the dates" — there was no way to set them, or to correct who was
+            away, anywhere on the page. It is a button now. */}
+        <button
+          type="button"
+          onClick={() => setEditingHeader(true)}
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-2 py-1 text-[11px] uppercase tracking-[0.08em] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
           style={{ fontFamily: MONO }}
         >
           {formatDay(data.startsOn)} – {formatDay(data.endsOn)}
           {data.userName ? ` · ${data.userName}` : ""}
-        </span>
+          <PencilSquareIcon className="h-3.5 w-3.5" />
+        </button>
       </div>
+
+      {editingHeader ? (
+        <HeaderEditor handover={data} onClose={() => setEditingHeader(false)} />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ProseCard
@@ -109,7 +121,7 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
           title="HANDOVER SUMMARY"
           field="notes"
           placeholder="Where things stand overall, and what matters most while you're away."
-          empty="Nothing written yet. Click to add the shape of it."
+          empty="Nothing written yet — press Edit to add the shape of it."
         />
         <ProseCard
           handover={data}
@@ -117,7 +129,7 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
           title="DETAILS"
           field="details"
           placeholder="Anything that isn't about one client — who decides what, context, things to watch."
-          empty="Nothing here yet. Click to add anything that isn't client-specific."
+          empty="Nothing here yet — press Edit to add anything that isn't client-specific."
         />
       </div>
 
@@ -246,18 +258,13 @@ function ProseCard({
             </div>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            // ⚠️ `flex flex-col` is load-bearing: a <button> vertically CENTRES its
-            // content, so without it the prose floats in the middle of the card and
-            // two cards side by side start their text at different heights.
-            className="-m-1 flex flex-1 flex-col rounded-[6px] p-1 text-left"
-          >
-            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-              {value || <span className="text-[var(--text-4)]">{empty}</span>}
-            </p>
-          </button>
+          /* ⚠️ Reading is NOT a click target. This was a button, so landing on the
+             page and glancing at the summary put you one stray click from a
+             textarea. The `Edit` control in the header is the only way in — the
+             same rule the client popup now follows. */
+          <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+            {value || <span className="text-[var(--text-4)]">{empty}</span>}
+          </p>
         )}
       </div>
     </div>
@@ -321,11 +328,17 @@ function ClientCard({
 }
 
 /**
- * The client, opened. Three paragraphs and a delete.
+ * The client, opened.
  *
- * Fixed height with a scrolling body (`app-dialog-fixed`), so the popup does not
- * resize under the cursor as you move between a client with two lines and one
- * with two pages.
+ * ── Read first, edit on request ─────────────────────────────────────────────
+ * It used to open straight into three textareas. That is the wrong default by a
+ * long way: the people this page exists for — somebody covering, mid-week,
+ * looking up one client — are here to READ. Dropping them into a form makes the
+ * common case look like a task and puts every word one stray keystroke from
+ * being changed.
+ *
+ * It uses `BackstageModal`, so it is the same dialog as Leave and Expenses
+ * rather than a third shape inside one product.
  */
 function ClientPanel({
   handoverId,
@@ -338,100 +351,250 @@ function ClientPanel({
 }) {
   const update = useUpdateHandoverItem(handoverId);
   const remove = useDeleteHandoverItem(handoverId);
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<HandoverClientDTO | null>(entry);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     setDraft(entry);
+    setEditing(false);
     setError(null);
     setConfirmDelete(false);
   }, [entry]);
 
-  return (
-    <Modal
-      open={Boolean(entry)}
-      onClose={onClose}
-      title={entry ? entry.clientName.toUpperCase() : "CLIENT"}
-      panelClassName="w-full max-w-2xl app-dialog-fixed"
-    >
-      {draft ? (
-        <>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-            <PanelField
-              label="Where we're at"
-              hint="The state of play — what's shipped, what's in flight, who's involved."
-              value={draft.summary ?? ""}
-              onChange={(v) => setDraft({ ...draft, summary: v })}
-            />
-            <PanelField
-              label="Duties"
-              hint="What somebody has to keep doing while I'm away, and where."
-              value={draft.duties ?? ""}
-              onChange={(v) => setDraft({ ...draft, duties: v })}
-            />
-            <PanelField
-              label="Anything else"
-              hint="Decisions pending, risks, context — whatever doesn't fit above."
-              value={draft.other ?? ""}
-              onChange={(v) => setDraft({ ...draft, other: v })}
-            />
-          </div>
+  if (!entry || !draft) return null;
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-[var(--border-2)] p-3">
-            <button
-              type="button"
-              className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
-              disabled={update.isPending}
-              onClick={() => {
-                setError(null);
-                void update
-                  .mutateAsync({
-                    itemId: draft.id,
-                    input: { duties: draft.duties, other: draft.other, detail: draft.summary },
-                  })
-                  .then(onClose)
-                  .catch(() => setError("Couldn't save that."));
-              }}
-            >
-              Save
-            </button>
-            <button type="button" onClick={onClose} className="px-2 py-1.5 text-xs text-[var(--text-3)]">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true);
-                  return;
-                }
-                setError(null);
-                void remove
-                  .mutateAsync(draft.id)
-                  .then(onClose)
-                  // ⚠️ Clear the confirm on FAILURE too, or the button reads
-                  // "Remove this client?" for ever, which looks unresponsive and
-                  // invites a second click (§50.8).
-                  .catch(() => {
-                    setConfirmDelete(false);
-                    setError("Couldn't remove that.");
-                  });
-              }}
-              className={cn(
-                "ml-auto rounded-[6px] px-2.5 py-1.5 text-xs transition",
-                confirmDelete
-                  ? "bg-[var(--danger-50)] text-[var(--danger-500)]"
-                  : "text-[var(--text-4)] hover:text-[var(--danger-500)]",
-              )}
-            >
-              {confirmDelete ? "Remove this client?" : "Remove"}
-            </button>
-            {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
-          </div>
+  const sections = [
+    {
+      key: "summary" as const,
+      label: "Where we're at",
+      hint: "The state of play — what's shipped, what's in flight, who's involved.",
+      value: draft.summary ?? "",
+    },
+    {
+      key: "duties" as const,
+      label: "Duties",
+      hint: "What somebody has to keep doing while I'm away, and where.",
+      value: draft.duties ?? "",
+    },
+    {
+      key: "other" as const,
+      label: "Anything else",
+      hint: "Decisions pending, risks, context — whatever doesn't fit above.",
+      value: draft.other ?? "",
+    },
+  ];
+
+  const footer = (
+    <div className="flex flex-wrap items-center gap-2">
+      {editing ? (
+        <>
+          <button
+            type="button"
+            className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            disabled={update.isPending}
+            onClick={() => {
+              setError(null);
+              void update
+                .mutateAsync({
+                  itemId: draft.id,
+                  input: { duties: draft.duties, other: draft.other, detail: draft.summary },
+                })
+                .then(() => setEditing(false))
+                .catch(() => setError("Couldn't save that."));
+            }}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Back to what is STORED, not to what was being typed — a Cancel
+              // that keeps the edits is not a cancel.
+              setDraft(entry);
+              setEditing(false);
+              setError(null);
+            }}
+            className="px-2 py-1.5 text-xs text-[var(--text-3)]"
+          >
+            Cancel
+          </button>
         </>
-      ) : null}
-    </Modal>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[var(--brand-800)]"
+          >
+            <PencilSquareIcon className="h-3.5 w-3.5" /> Edit
+          </button>
+          <button type="button" onClick={onClose} className="px-2 py-1.5 text-xs text-[var(--text-3)]">
+            Close
+          </button>
+        </>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          if (!confirmDelete) {
+            setConfirmDelete(true);
+            return;
+          }
+          setError(null);
+          void remove
+            .mutateAsync(draft.id)
+            .then(onClose)
+            // ⚠️ Clear the confirm on FAILURE too, or the button reads "Remove this
+            // client?" for ever, which looks unresponsive and invites a second
+            // click (§50.8).
+            .catch(() => {
+              setConfirmDelete(false);
+              setError("Couldn't remove that.");
+            });
+        }}
+        className={cn(
+          "ml-auto rounded-[6px] px-2.5 py-1.5 text-xs transition",
+          confirmDelete
+            ? "bg-[var(--danger-50)] text-[var(--danger-500)]"
+            : "text-[var(--text-4)] hover:text-[var(--danger-500)]",
+        )}
+      >
+        {confirmDelete ? "Remove this client?" : "Remove"}
+      </button>
+      {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
+    </div>
+  );
+
+  return (
+    <BackstageModal eyebrow="CLIENT" title={entry.clientName} onClose={onClose} footer={footer}>
+      <div className="space-y-5 px-6 py-5">
+        {editing
+          ? sections.map((f) => (
+              <PanelField
+                key={f.key}
+                label={f.label}
+                hint={f.hint}
+                value={f.value}
+                onChange={(v) => setDraft({ ...draft, [f.key]: v })}
+              />
+            ))
+          : sections.map((f) => (
+              <section key={f.key}>
+                <h3
+                  className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+                  style={{ fontFamily: MONO }}
+                >
+                  {f.label}
+                </h3>
+                {/* `whitespace-pre-wrap` so the paragraph breaks the author typed
+                    survive — this is prose, and reflowing it into one block is the
+                    difference between a note and a wall. */}
+                <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
+                  {f.value.trim() || <span className="text-[var(--text-4)]">Nothing written.</span>}
+                </p>
+              </section>
+            ))}
+      </div>
+    </BackstageModal>
+  );
+}
+
+/** Title, who is away, and the dates — the things the page had no way to change. */
+function HeaderEditor({ handover, onClose }: { handover: HandoverDTO; onClose: () => void }) {
+  const update = useUpdateHandover(handover.id);
+  const team = useBackstageTeam();
+  const [title, setTitle] = useState(handover.title);
+  const [userId, setUserId] = useState(handover.userId);
+  const [startsOn, setStartsOn] = useState(handover.startsOn.slice(0, 10));
+  const [endsOn, setEndsOn] = useState(handover.endsOn.slice(0, 10));
+  const [error, setError] = useState<string | null>(null);
+
+  const badRange = Boolean(startsOn && endsOn && endsOn < startsOn);
+
+  const footer = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        disabled={!title.trim() || badRange || update.isPending}
+        className="rounded-[6px] bg-[var(--brand-700)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+        onClick={() => {
+          setError(null);
+          void update
+            .mutateAsync({ title: title.trim(), userId, startsOn, endsOn })
+            .then(onClose)
+            .catch(() => setError("Couldn't save that."));
+        }}
+      >
+        Save
+      </button>
+      <button type="button" onClick={onClose} className="px-2 py-1.5 text-xs text-[var(--text-3)]">
+        Cancel
+      </button>
+      {error ? <span className="text-xs text-[var(--danger-500)]">{error}</span> : null}
+    </div>
+  );
+
+  return (
+    <BackstageModal
+      eyebrow="HANDOVER"
+      title="Dates and who's away"
+      onClose={onClose}
+      footer={footer}
+    >
+      <div className="space-y-4 px-6 py-5">
+        <FieldLabel label="Title">
+          <input className="app-input" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </FieldLabel>
+        <FieldLabel label="Who's away">
+          <select className="app-select" value={userId} onChange={(e) => setUserId(e.target.value)}>
+            {(team.data ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </FieldLabel>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FieldLabel label="First day away">
+            <input
+              className="app-input"
+              type="date"
+              value={startsOn}
+              onChange={(e) => setStartsOn(e.target.value)}
+            />
+          </FieldLabel>
+          <FieldLabel label="Last day away">
+            <input
+              className="app-input"
+              type="date"
+              value={endsOn}
+              onChange={(e) => setEndsOn(e.target.value)}
+            />
+          </FieldLabel>
+        </div>
+        {/* Said here rather than only on the server, so the reason arrives before
+            the request does. The server refuses it either way. */}
+        {badRange ? (
+          <p className="text-xs text-[var(--danger-500)]">The last day is before the first day.</p>
+        ) : null}
+      </div>
+    </BackstageModal>
+  );
+}
+
+function FieldLabel({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span
+        className="text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+        style={{ fontFamily: MONO }}
+      >
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 

@@ -944,6 +944,9 @@ export const handoverInputSchema = z
   });
 
 export const handoverPatchSchema = z.object({
+  // Who is away. Missing from the original patch shape, which made it the one
+  // field on a handover that could never be corrected after it was created.
+  userId: z.string().cuid().optional(),
   title: z.string().trim().min(1).max(200).optional(),
   startsOn: isoDateString.optional(),
   endsOn: isoDateString.optional(),

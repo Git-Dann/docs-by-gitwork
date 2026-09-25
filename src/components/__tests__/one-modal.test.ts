@@ -121,6 +121,25 @@ describe("dialogs — one primitive, no re-rolls", () => {
     expect(src).toContain("labelledById");
   });
 
+  it("a caller's action row can be PINNED below the scroll region", () => {
+    // Without the `footer` prop an action row is just another child, so it sits
+    // inside the scroller: it floats wherever the content happens to end, leaving
+    // dead space beneath it in a fixed-height panel, and scrolls out of reach on a
+    // long one. Caught by rendering the client popup and seeing the buttons halfway
+    // up an 680px dialog.
+    const src = stripComments(read(join(process.cwd(), "src/components/backstage/modal.tsx")));
+    expect(src).toMatch(/footer\?: ReactNode/);
+    // ⚠️ Assert the scroller holds ONLY children and closes. An ordering check
+    // ("{footer} appears after overflow-y-auto") passes just as happily when the
+    // footer is NESTED inside the scroller, which is the bug — caught by sabotage.
+    expect(src).toMatch(/overflow-y-auto">\{children\}<\/div>/);
+    expect(src).toMatch(/shrink-0 border-t[^"]*">\{footer\}<\/div>/);
+    // The existing callers pass none and keep their footer inside their own form,
+    // which is how Leave and Expenses have always worked.
+    const leave = read(join(process.cwd(), "src/components/backstage/leave-request-form.tsx"));
+    expect(leave).not.toContain("footer={");
+  });
+
   it("every dialog the fixed-height clamp is on keeps a shrinkable scroll region", () => {
     // Re-stating §52.3's rule at the primitive's door: `app-dialog-fixed` makes
     // the panel overflow:hidden, so a body with no scroller puts everything past
