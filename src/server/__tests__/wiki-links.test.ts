@@ -62,17 +62,91 @@ describe("wiki links — linked work is kept SEPARATE, and is not Gantt-shaped",
     expect(fn.slice(0, 400)).toMatch(/if \(links\.length === 0\) return own;/);
   });
 
-  it("the section renders under the client's own timeline, as a table", () => {
+  it("the section renders under the client's own timeline, as the SAME chart", () => {
     expect(section).toContain("<LinkedWorkCard");
-    // Not prefixed names on the Gantt — that was the merged design.
-    expect(section).not.toMatch(/b\.source \?/);
     expect(section).toMatch(/\{\(timeline\.linked \?\? \[\]\)\.map/);
+    // The same component as the client's own plan, not a second widget that merely
+    // shows the same numbers.
+    expect(section).toMatch(/<GanttChart blocks=\{blocks\} milestones=\{\[\]\} \/>/);
+  });
+
+  it("owns its own spacing, because a parent renders it as the whole section", () => {
+    // `wiki-public-view` returns this component directly, so a bare fragment left
+    // card 01 and card 02 touching with no gap at all.
+    expect(section).toMatch(/<div className="space-y-\d">\s*\n?\s*<section className="widget-card">/);
+    expect(section).not.toMatch(/return \(\s*\n?\s*<>/);
+  });
+
+  it("says plainly when a linked board has no dates", () => {
+    // A Gantt with no bars is otherwise indistinguishable from a broken one.
+    expect(section).toMatch(/const undated = work\.blocks\.every\(\(b\) => !b\.startDate\)/);
+    expect(section).toContain("These phases have no dates yet");
   });
 
   it("shows NO TASKS YET rather than 0% on an empty board", () => {
     // "0% complete" reads as failure; nothing-yet is a different fact.
     expect(section).toMatch(/pct === null \? "NO TASKS YET"/);
     expect(section).toMatch(/work\.total === 0 \? null/);
+  });
+});
+
+describe("the Gantt tolerates a block with no dates", () => {
+  const gantt = stripComments(read("src/components/tasks/gantt-chart.tsx"));
+
+  /**
+   * ⚠️ `FeatureBlock.startDate` is optional in the schema, and a workstream that is
+   * tracked but not scheduled is the normal case. Callers used to filter undated
+   * blocks out before they reached the chart, so they vanished from the plan
+   * entirely rather than appearing as work with no date yet.
+   */
+  it("accepts nullable dates", () => {
+    expect(gantt).toMatch(/startDate: string \| null;\s*\n\s*endDate: string \| null;/);
+  });
+
+  it("an undated block contributes no stamp to the axis", () => {
+    // `new Date(null)` is the EPOCH — finite, so a `Number.isFinite` filter does not
+    // catch it, and it would drag the whole domain back to 1970.
+    expect(gantt).toMatch(/if \(b\.startDate\) stamps\.push/);
+    expect(gantt).toMatch(/b\.startDate \? \[new Date\(b\.startDate\)\.getTime\(\)\] : \[\]/);
+  });
+
+  it("undated blocks sort LAST, not to 1970", () => {
+    // ⚠️ Anchored on CODE. The first version sliced from the string "Rail order",
+    // which is a COMMENT — and `gantt` is comment-stripped, so indexOf returned -1
+    // and the slice silently started from the end of the file.
+    const sort = gantt.slice(gantt.indexOf("const ordered = useMemo"), gantt.indexOf("const allOpen"));
+    expect(sort.length, "the sort block moved").toBeGreaterThan(50);
+    // ⚠️ All FOUR sides, not "an Infinity appears somewhere". Sabotaging one of
+    // them left the other three and the assertion passed — and one unguarded side
+    // is all it takes to sort that block to 1970.
+    for (const v of ["a.startDate", "z.startDate", "a.endDate", "z.endDate"]) {
+      expect(sort, `${v} needs the Infinity fallback`).toMatch(
+        new RegExp(`${v.replace(".", "\\.")} \\? new Date\\(${v.replace(".", "\\.")}\\)\\.getTime\\(\\) : Infinity`),
+      );
+    }
+    expect((sort.match(/: Infinity/g) ?? []).length).toBe(4);
+  });
+
+  it("draws the rail row but NOT a bar", () => {
+    // A zero-width bar still paints its rounded background and hover target — a
+    // smudge at the left edge claiming the work starts there.
+    expect(gantt).toMatch(/const dated = Boolean\(b\.startDate && b\.endDate\)/);
+    expect(gantt).toMatch(/display: dated \? undefined : "none"/);
+  });
+
+  /**
+   * ⚠️ Found by rendering, not by reading. Slippage is measured from the bar's
+   * RIGHT EDGE to today, and an undated block has its edge at x=0 — so every row
+   * came out with a full-width red hatched band claiming work with no deadline was
+   * months overdue. Nothing can be late against a date that does not exist.
+   */
+  it("never marks an undated block as slipping", () => {
+    expect(gantt).toMatch(/const isSlipping = dated && slippage/);
+  });
+
+  it("the due column and tooltip say there is no date rather than inventing one", () => {
+    expect(gantt).toMatch(/b\.endDate \? fmtShort\(b\.endDate\) : "—"/);
+    expect(gantt).toContain("No dates set");
   });
 });
 

@@ -224,15 +224,21 @@ export interface WikiTimelineMilestone {
  */
 export interface WikiLinkedWork {
   source: WikiSource;
+  /**
+   * Gantt-shaped, with NULLABLE dates — which is the whole point. The chart draws
+   * a rail row for every block and a bar only where there are dates, so a
+   * workstream that is tracked but not scheduled appears as work with no date yet
+   * rather than vanishing.
+   */
   blocks: {
     id: string;
     name: string;
     color: string | null;
-    total: number;
-    done: number;
-    /** Dates when there are any — a table shows them, it just does not need them. */
     startDate: string | null;
     endDate: string | null;
+    progress: number;
+    tasks: { title: string; done: boolean }[];
+    statusCounts: Record<TaskStatus, number>;
   }[];
   /** Tasks belonging to no block at all. */
   looseTasks: { total: number; done: number };
@@ -669,7 +675,8 @@ async function loadLinkedWork(
         // own task-count fix).
         tasks: {
           where: { parentId: null, archivedAt: null },
-          select: { status: true },
+          select: { title: true, status: true },
+          orderBy: { orderKey: "asc" },
         },
       },
     }),
@@ -684,15 +691,24 @@ async function loadLinkedWork(
     }),
   ]);
 
-  const mapped = blocks.map((b) => ({
-    id: b.id,
-    name: b.name,
-    color: b.color,
-    startDate: b.startDate?.toISOString() ?? null,
-    endDate: b.endDate?.toISOString() ?? null,
-    total: b.tasks.length,
-    done: b.tasks.filter((t) => t.status === "DONE").length,
-  }));
+  const mapped = blocks.map((b) => {
+    const done = b.tasks.filter((t) => t.status === "DONE").length;
+    const counts = { BACKLOG: 0, TODO: 0, DOING: 0, IN_REVIEW: 0, UI_DONE: 0, DONE: 0 } as Record<
+      TaskStatus,
+      number
+    >;
+    for (const t of b.tasks) counts[t.status as TaskStatus] += 1;
+    return {
+      id: b.id,
+      name: b.name,
+      color: b.color,
+      startDate: b.startDate?.toISOString() ?? null,
+      endDate: b.endDate?.toISOString() ?? null,
+      progress: b.tasks.length === 0 ? 0 : Math.round((done / b.tasks.length) * 100),
+      tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+      statusCounts: counts,
+    };
+  });
 
   const looseTasks = {
     total: loose.length,
@@ -705,8 +721,8 @@ async function loadLinkedWork(
     looseTasks,
     // The client's whole board, blocks and loose work together — a total that
     // counted only blocked work would understate a client like this one.
-    total: mapped.reduce((n, b) => n + b.total, 0) + looseTasks.total,
-    done: mapped.reduce((n, b) => n + b.done, 0) + looseTasks.done,
+    total: mapped.reduce((n, b) => n + b.tasks.length, 0) + looseTasks.total,
+    done: mapped.reduce((n, b) => n + b.tasks.filter((t) => t.done).length, 0) + looseTasks.done,
   };
 }
 
