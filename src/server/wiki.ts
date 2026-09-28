@@ -177,8 +177,6 @@ export interface WikiSource {
 export interface WikiTimelineBlock {
   id: string;
   name: string;
-  /** Null for this client's own work. See WikiSource. */
-  source?: WikiSource | null;
   startDate: string;
   endDate: string;
   color: string | null;
@@ -199,8 +197,6 @@ export interface WikiTimelineBlock {
 
 /** The client-safe grain: what, whether, and when. Never who or how urgent. */
 export interface WikiTimelineTask {
-  /** Null for this client's own work. See WikiSource. */
-  source?: WikiSource | null;
   title: string;
   done: boolean;
   completedAt: string | null;
@@ -208,16 +204,46 @@ export interface WikiTimelineTask {
 }
 
 export interface WikiTimelineMilestone {
-  /** Null for this client's own work. See WikiSource. */
-  source?: WikiSource | null;
   id: string;
   name: string;
   date: string;
   color: string | null;
 }
 
+/**
+ * A linked client's delivery work, kept SEPARATE from this client's own.
+ *
+ * ⚠️ It is not loaded through `loadWikiTimeline`, and that is the whole point.
+ * That loader drops any block it cannot give a span to — no dates on the block
+ * and no due dates on its tasks — because it feeds a Gantt, and a bar with no
+ * dates cannot be drawn. YG intelligence is exactly that shape: four blocks, 66
+ * tasks, not one date between them. Merged into the Gantt it rendered as
+ * nothing at all, which read as "the link is broken".
+ *
+ * A table needs no dates, so this keeps every block and the grouping with it.
+ */
+export interface WikiLinkedWork {
+  source: WikiSource;
+  blocks: {
+    id: string;
+    name: string;
+    color: string | null;
+    total: number;
+    done: number;
+    /** Dates when there are any — a table shows them, it just does not need them. */
+    startDate: string | null;
+    endDate: string | null;
+  }[];
+  /** Tasks belonging to no block at all. */
+  looseTasks: { total: number; done: number };
+  total: number;
+  done: number;
+}
+
 export interface WikiTimeline {
   blocks: WikiTimelineBlock[];
+  /** Other clients' work, shown under this client's own. Empty unless linked. */
+  linked?: WikiLinkedWork[];
   milestones: WikiTimelineMilestone[];
   /**
    * Live work that is NOT on the timeline above, and therefore was invisible to the
@@ -618,48 +644,86 @@ async function loadWikiBlockers(clientId: string): Promise<WikiBlockerRecord[]> 
 }
 
 /**
- * Merge a linked client's delivery work into this wiki's timeline.
+ * A linked client's work, for the table under this client's timeline.
  *
- * ⚠️ Each borrowed row is TAGGED with its source, never silently pooled. A
- * merged timeline that does not say whose work is whose reads as one project and
- * is worse than showing two.
- *
- * ⚠️ And the client's OWN rows are tagged `null`, not with their own name — a
- * wiki with no links has to render exactly as it did before this existed.
+ * ⚠️ Deliberately NOT `loadWikiTimeline`. That one exists to feed a Gantt, so it
+ * drops every block it cannot date — and an undated block is the normal case for
+ * a workstream that is tracked but not scheduled. Running the linked client
+ * through it produced an empty section and looked like a broken link.
  */
-async function loadWikiTimelineMerged(
+async function loadLinkedWork(
+  source: WikiSource,
+): Promise<WikiLinkedWork> {
+  const [blocks, loose] = await Promise.all([
+    prisma.featureBlock.findMany({
+      where: { clientId: source.clientId },
+      orderBy: [{ orderKey: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        startDate: true,
+        endDate: true,
+        // Same filter as every other progress figure in the app: top-level, live.
+        // Without it subtasks and archived work inflate the counts (§ the wiki's
+        // own task-count fix).
+        tasks: {
+          where: { parentId: null, archivedAt: null },
+          select: { status: true },
+        },
+      },
+    }),
+    prisma.task.findMany({
+      where: {
+        clientId: source.clientId,
+        parentId: null,
+        archivedAt: null,
+        featureBlockId: null,
+      },
+      select: { status: true },
+    }),
+  ]);
+
+  const mapped = blocks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    color: b.color,
+    startDate: b.startDate?.toISOString() ?? null,
+    endDate: b.endDate?.toISOString() ?? null,
+    total: b.tasks.length,
+    done: b.tasks.filter((t) => t.status === "DONE").length,
+  }));
+
+  const looseTasks = {
+    total: loose.length,
+    done: loose.filter((t) => t.status === "DONE").length,
+  };
+
+  return {
+    source,
+    blocks: mapped,
+    looseTasks,
+    // The client's whole board, blocks and loose work together — a total that
+    // counted only blocked work would understate a client like this one.
+    total: mapped.reduce((n, b) => n + b.total, 0) + looseTasks.total,
+    done: mapped.reduce((n, b) => n + b.done, 0) + looseTasks.done,
+  };
+}
+
+async function loadWikiTimelineWithLinks(
   clientId: string,
   links: { linkedClientId: string; name: string }[],
 ): Promise<WikiTimeline> {
   const own = await loadWikiTimeline(clientId);
   if (links.length === 0) return own;
-
-  // One round trip per linked client, in parallel — a wiki links one or two, not
-  // fifty, and the alternative is threading an `in` through every query above.
-  const borrowed = await Promise.all(
-    links.map(async (link) => {
-      const t = await loadWikiTimeline(link.linkedClientId);
-      const source: WikiSource = { clientId: link.linkedClientId, name: link.name };
-      return {
-        blocks: t.blocks.map((b) => ({
-          ...b,
-          source,
-          tasks: b.tasks.map((task) => ({ ...task, source })),
-        })),
-        milestones: t.milestones.map((m) => ({ ...m, source })),
-        unassigned: t.unassigned.map((u) => ({ ...u, source })),
-      };
-    }),
+  const linked = await Promise.all(
+    links.map((l) => loadLinkedWork({ clientId: l.linkedClientId, name: l.name })),
   );
-
-  return {
-    ...own,
-    // Own work first, then each linked client in link order. Interleaving by date
-    // would bury the client's own plan inside somebody else's.
-    blocks: [...own.blocks, ...borrowed.flatMap((b) => b.blocks)],
-    milestones: [...own.milestones, ...borrowed.flatMap((b) => b.milestones)],
-    unassigned: [...own.unassigned, ...borrowed.flatMap((b) => b.unassigned)],
-  };
+  // ⚠️ A separate field, never merged into `blocks`. Everything that reports "how
+  // much of THIS client is done" reads `blocks` + `unassigned`, and folding
+  // another client's board into those would silently rewrite this client's
+  // progress figure on the dashboard, the Delivery page and RoundUp.
+  return { ...own, linked };
 }
 
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
@@ -929,7 +993,7 @@ async function buildDTO(
     settle(
       "timeline",
       () =>
-        loadWikiTimelineMerged(
+        loadWikiTimelineWithLinks(
           wiki.clientId,
           // `label` overrides the client's own name where somebody set one; the
           // name is the right answer almost always.

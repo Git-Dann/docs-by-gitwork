@@ -1,7 +1,7 @@
 "use client";
 
 import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
-import type { WikiTimeline } from "@/server/wiki";
+import type { WikiLinkedWork, WikiTimeline } from "@/server/wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -15,12 +15,7 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
 export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
   const blocks: GanttBlock[] = timeline.blocks.map((b) => ({
     id: b.id,
-    // ⚠️ The source goes in the NAME rather than into a new GanttChart prop.
-    // `GanttChart` is shared with the internal board and the public
-    // /timeline/[token] share, and a merged timeline that does not say whose work
-    // is whose reads as one project — so the label has to travel with the row,
-    // and the rail is where a reader is already looking.
-    name: b.source ? `${b.source.name} · ${b.name}` : b.name,
+    name: b.name,
     startDate: b.startDate,
     endDate: b.endDate,
     color: b.color,
@@ -30,7 +25,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
   }));
   const milestones: GanttMilestone[] = timeline.milestones.map((m) => ({
     id: m.id,
-    name: m.source ? `${m.source.name} · ${m.name}` : m.name,
+    name: m.name,
     date: m.date,
     color: m.color,
   }));
@@ -41,6 +36,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
       : Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
 
   return (
+    <>
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
@@ -76,5 +72,108 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
         />
       </div>
     </section>
+
+      {/* ── Linked clients, UNDER the client's own plan ─────────────────────
+          Not merged into the Gantt above. A linked workstream is usually
+          tracked but not scheduled — YG intelligence has four blocks, 66 tasks
+          and not one date — and the Gantt drops anything it cannot give a span
+          to, so merging rendered it as nothing at all and read as a broken
+          link. A table needs no dates. */}
+      {(timeline.linked ?? []).map((work, i) => (
+        <LinkedWorkCard key={work.source.clientId} work={work} index={i + 2} />
+      ))}
+    </>
+  );
+}
+
+function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }) {
+  const pct = work.total === 0 ? null : Math.round((work.done / work.total) * 100);
+  return (
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">
+            {String(index).padStart(2, "0")}
+          </span>
+          {` // ${work.source.name.toUpperCase()}`}
+        </span>
+        <span className="widget-header__status" style={{ fontFamily: MONO }}>
+          {/* ⚠️ Null, not 0%, when there is nothing to divide by — "0% complete"
+              on an empty board reads as failure rather than as no work yet. */}
+          {pct === null ? "NO TASKS YET" : `${pct}% COMPLETE`}
+        </span>
+      </div>
+      <div className="p-5 sm:p-6">
+        <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-3)]">
+          A separate workstream tracked on its own board, shown here alongside this
+          project. {work.total} {work.total === 1 ? "task" : "tasks"} in total.
+        </p>
+        {work.blocks.length === 0 && work.looseTasks.total === 0 ? (
+          <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-[13px] text-[var(--text-3)]">
+            Nothing on this board yet.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {work.blocks.map((b) => (
+              <WorkRow key={b.id} name={b.name} total={b.total} done={b.done} color={b.color} />
+            ))}
+            {work.looseTasks.total > 0 ? (
+              <WorkRow
+                name="Other work"
+                total={work.looseTasks.total}
+                done={work.looseTasks.done}
+                color={null}
+              />
+            ) : null}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function WorkRow({
+  name,
+  total,
+  done,
+  color,
+}: {
+  name: string;
+  total: number;
+  done: number;
+  color: string | null;
+}) {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[8px] border border-[var(--border-1)] px-4 py-3">
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span
+          aria-hidden
+          className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+          style={{ background: color ?? "var(--surface-2)" }}
+        />
+        <span className="min-w-0 truncate text-[14px] text-[var(--text-1)]" title={name}>
+          {name}
+        </span>
+      </span>
+      <span
+        className="shrink-0 text-[12px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
+        style={{ fontFamily: MONO }}
+      >
+        {done} / {total}
+      </span>
+      <span className="h-1.5 w-full shrink-0 rounded-full bg-[var(--surface-2)] sm:w-40">
+        <span
+          className="block h-1.5 rounded-full bg-[var(--brand-700)]"
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span
+        className="w-10 shrink-0 text-right text-[12px] whitespace-nowrap text-[var(--text-1)] tabular-nums"
+        style={{ fontFamily: MONO }}
+      >
+        {pct}%
+      </span>
+    </div>
   );
 }

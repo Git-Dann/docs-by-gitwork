@@ -17,28 +17,62 @@ const server = stripComments(read("src/server/wiki-links.ts"));
 const wiki = stripComments(read("src/server/wiki.ts"));
 const section = stripComments(read("src/components/clients/wiki/wiki-timeline-section.tsx"));
 
-describe("wiki links — the merge says whose work is whose", () => {
-  it("every borrowed row carries its source", () => {
-    // A merged timeline that does not label the rows reads as one project, which
-    // is worse than showing two.
-    const merged = wiki.slice(wiki.indexOf("async function loadWikiTimelineMerged"));
-    const body = merged.slice(0, merged.indexOf("async function loadWikiTimeline("));
-    for (const list of ["blocks", "milestones", "unassigned"]) {
-      expect(body, `${list} must be tagged`).toMatch(new RegExp(`${list}: t\\.${list}\\.map`));
-    }
-    expect(body).toMatch(/tasks: b\.tasks\.map\(\(task\) => \(\{ \.\.\.task, source \}\)\)/);
+describe("wiki links — linked work is kept SEPARATE, and is not Gantt-shaped", () => {
+  /**
+   * ⚠️ The first cut merged linked blocks into the Gantt and labelled them. It
+   * rendered NOTHING for the case it was built for: YG intelligence has four
+   * blocks, 66 tasks and not one date between them, and `loadWikiTimeline` drops
+   * every block it cannot give a span to — correctly, since it feeds a chart.
+   * Undated is the normal shape for a workstream that is tracked but not
+   * scheduled, so linked work is loaded its own way and shown as a table.
+   */
+  it("does not run linked clients through the Gantt loader", () => {
+    const fn = wiki.slice(wiki.indexOf("async function loadLinkedWork"));
+    const body = fn.slice(0, fn.indexOf("async function loadWikiTimelineWithLinks"));
+    expect(body).toContain("prisma.featureBlock.findMany");
+    // Dates are selected because a table can show them; they must not be a filter.
+    expect(body).not.toContain("loadWikiTimeline(");
   });
 
-  it("the client's OWN rows are left untagged", () => {
-    // A wiki with no links has to render exactly as it did before this existed —
-    // tagging own work would put a chip on every row of every wiki in the app.
-    const merged = wiki.slice(wiki.indexOf("async function loadWikiTimelineMerged"));
-    expect(merged.slice(0, 400)).toMatch(/if \(links\.length === 0\) return own;/);
+  it("keeps every block, dated or not", () => {
+    const fn = wiki.slice(wiki.indexOf("async function loadLinkedWork"));
+    const body = fn.slice(0, fn.indexOf("async function loadWikiTimelineWithLinks"));
+    const where = body.slice(body.indexOf("where:"), body.indexOf("orderBy:"));
+    expect(where).toContain("clientId: source.clientId");
+    expect(where).not.toMatch(/startDate|endDate|dueDate/);
   });
 
-  it("the label is shown in the Gantt rail, where the reader is looking", () => {
-    expect(section).toMatch(/b\.source \? `\$\{b\.source\.name\} · \$\{b\.name\}` : b\.name/);
-    expect(section).toMatch(/m\.source \? `\$\{m\.source\.name\} · \$\{m\.name\}` : m\.name/);
+  it("counts only top-level live tasks, like every other progress figure", () => {
+    const fn = wiki.slice(wiki.indexOf("async function loadLinkedWork"));
+    expect(fn.slice(0, 2000)).toMatch(/where: \{ parentId: null, archivedAt: null \}/);
+  });
+
+  it("linked work never joins this client's own blocks", () => {
+    // Everything that reports "how much of THIS client is done" reads `blocks` +
+    // `unassigned`. Folding another client's board into those would silently
+    // rewrite this client's progress on the dashboard, Delivery and RoundUp.
+    const fn = wiki.slice(wiki.indexOf("async function loadWikiTimelineWithLinks"));
+    const body = fn.slice(0, fn.indexOf("async function loadWikiTimeline("));
+    expect(body).toMatch(/return \{ \.\.\.own, linked \}/);
+    expect(body).not.toMatch(/blocks: \[/);
+  });
+
+  it("a wiki with no links is byte-identical to before", () => {
+    const fn = wiki.slice(wiki.indexOf("async function loadWikiTimelineWithLinks"));
+    expect(fn.slice(0, 400)).toMatch(/if \(links\.length === 0\) return own;/);
+  });
+
+  it("the section renders under the client's own timeline, as a table", () => {
+    expect(section).toContain("<LinkedWorkCard");
+    // Not prefixed names on the Gantt — that was the merged design.
+    expect(section).not.toMatch(/b\.source \?/);
+    expect(section).toMatch(/\{\(timeline\.linked \?\? \[\]\)\.map/);
+  });
+
+  it("shows NO TASKS YET rather than 0% on an empty board", () => {
+    // "0% complete" reads as failure; nothing-yet is a different fact.
+    expect(section).toMatch(/pct === null \? "NO TASKS YET"/);
+    expect(section).toMatch(/work\.total === 0 \? null/);
   });
 });
 
@@ -91,14 +125,14 @@ describe("wiki links — a second include cannot silently drop them", () => {
     expect(wiki).toMatch(/linkedClient: \{ select: \{ id: true, name: true \} \}/);
   });
 
-  it("the timeline is loaded through the MERGED loader", () => {
+  it("the timeline is loaded through the link-aware loader", () => {
     // ⚠️ Scope to the CALL. `toContain("loadWikiTimelineMerged(")` matches the
     // DECLARATION too, so it passed with the call site renamed — caught by
     // sabotage, and the same ambiguity that has bitten several of these guards.
     const from = wiki.indexOf('settle(\n      "timeline",');
     expect(from, "the timeline settle() block moved").toBeGreaterThan(-1);
     const call = wiki.slice(from, from + 500);
-    expect(call).toContain("loadWikiTimelineMerged(");
+    expect(call).toContain("loadWikiTimelineWithLinks(");
     expect(call).toMatch(/wiki\.linkedClients/);
   });
 });
