@@ -161,9 +161,24 @@ export interface WikiIntakeCommentRecord {
 }
 
 /** A feature block rendered as a Gantt bar on the wiki Timeline page. */
+/**
+ * Where a row on the timeline came from.
+ *
+ * `null` means this client's own work — the overwhelmingly common case, and the
+ * one that must stay visually unmarked so a wiki with no links looks exactly as
+ * it always did. Anything borrowed from a linked client carries its name, because
+ * a merged timeline that does not say whose work is whose is worse than two.
+ */
+export interface WikiSource {
+  clientId: string;
+  name: string;
+}
+
 export interface WikiTimelineBlock {
   id: string;
   name: string;
+  /** Null for this client's own work. See WikiSource. */
+  source?: WikiSource | null;
   startDate: string;
   endDate: string;
   color: string | null;
@@ -184,6 +199,8 @@ export interface WikiTimelineBlock {
 
 /** The client-safe grain: what, whether, and when. Never who or how urgent. */
 export interface WikiTimelineTask {
+  /** Null for this client's own work. See WikiSource. */
+  source?: WikiSource | null;
   title: string;
   done: boolean;
   completedAt: string | null;
@@ -191,6 +208,8 @@ export interface WikiTimelineTask {
 }
 
 export interface WikiTimelineMilestone {
+  /** Null for this client's own work. See WikiSource. */
+  source?: WikiSource | null;
   id: string;
   name: string;
   date: string;
@@ -598,6 +617,51 @@ async function loadWikiBlockers(clientId: string): Promise<WikiBlockerRecord[]> 
   }));
 }
 
+/**
+ * Merge a linked client's delivery work into this wiki's timeline.
+ *
+ * ⚠️ Each borrowed row is TAGGED with its source, never silently pooled. A
+ * merged timeline that does not say whose work is whose reads as one project and
+ * is worse than showing two.
+ *
+ * ⚠️ And the client's OWN rows are tagged `null`, not with their own name — a
+ * wiki with no links has to render exactly as it did before this existed.
+ */
+async function loadWikiTimelineMerged(
+  clientId: string,
+  links: { linkedClientId: string; name: string }[],
+): Promise<WikiTimeline> {
+  const own = await loadWikiTimeline(clientId);
+  if (links.length === 0) return own;
+
+  // One round trip per linked client, in parallel — a wiki links one or two, not
+  // fifty, and the alternative is threading an `in` through every query above.
+  const borrowed = await Promise.all(
+    links.map(async (link) => {
+      const t = await loadWikiTimeline(link.linkedClientId);
+      const source: WikiSource = { clientId: link.linkedClientId, name: link.name };
+      return {
+        blocks: t.blocks.map((b) => ({
+          ...b,
+          source,
+          tasks: b.tasks.map((task) => ({ ...task, source })),
+        })),
+        milestones: t.milestones.map((m) => ({ ...m, source })),
+        unassigned: t.unassigned.map((u) => ({ ...u, source })),
+      };
+    }),
+  );
+
+  return {
+    ...own,
+    // Own work first, then each linked client in link order. Interleaving by date
+    // would bury the client's own plan inside somebody else's.
+    blocks: [...own.blocks, ...borrowed.flatMap((b) => b.blocks)],
+    milestones: [...own.milestones, ...borrowed.flatMap((b) => b.milestones)],
+    unassigned: [...own.unassigned, ...borrowed.flatMap((b) => b.unassigned)],
+  };
+}
+
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   // Independent queries — run together instead of one round-trip after the other.
   const [blocks, milestones, allTasks] = await Promise.all([
@@ -744,6 +808,20 @@ async function buildDTO(
   clientId: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  /**
+   * Other clients whose delivery work is merged into this wiki's timeline.
+   *
+   * ⚠️ Optional so every existing caller of `buildDTO` compiles unchanged — but a
+   * caller that omits it gets a wiki with NO linked work rather than an error, so
+   * `WIKI_INCLUDE` is the one place that must carry it. A second include that
+   * forgets is the §47.3 defect: a narrowed select turning missing data into a
+   * plausible answer.
+   */
+  linkedClients?: {
+    linkedClientId: string;
+    label: string | null;
+    linkedClient: { id: string; name: string };
+  }[];
   intakeEnabled?: boolean;
   launchpadEnabled?: boolean;
   insightsEnabled?: boolean;
@@ -848,7 +926,20 @@ async function buildDTO(
     support,
   ] = await Promise.all([
     settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
-    settle("timeline", () => loadWikiTimeline(wiki.clientId), { blocks: [], milestones: [], unassigned: [] }),
+    settle(
+      "timeline",
+      () =>
+        loadWikiTimelineMerged(
+          wiki.clientId,
+          // `label` overrides the client's own name where somebody set one; the
+          // name is the right answer almost always.
+          (wiki.linkedClients ?? []).map((l) => ({
+            linkedClientId: l.linkedClientId,
+            name: l.label?.trim() || l.linkedClient.name,
+          })),
+        ),
+      { blocks: [], milestones: [], unassigned: [] },
+    ),
     settle("designSystem", () => loadWikiDesignSystem(wiki.clientId), null),
     settle("monitors", () => loadWikiMonitors(wiki.clientId), { enabled: false, monitors: [] }),
     settle("codeHandover", () => loadWikiCodeHandover(wiki.clientId), { enabled: false, modules: [] }),
@@ -966,6 +1057,10 @@ async function buildDTO(
  *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
  *  See CLAUDE.md §50. */
 const WIKI_INCLUDE = {
+  linkedClients: {
+    orderBy: [{ orderKey: "asc" }, { createdAt: "asc" }],
+    include: { linkedClient: { select: { id: true, name: true } } },
+  },
   client: {
     select: {
       name: true,

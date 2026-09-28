@@ -1,4 +1,5 @@
 import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, SavedCostingConfig } from "@/types/costing";
+import type { WikiLinkDTO } from "@/server/wiki-links";
 import type {
   HandoverDTO,
   HandoverInput,
@@ -4912,4 +4913,24 @@ export function updateHandoverItem(
 
 export function deleteHandoverItem(itemId: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/backstage/handover/items/${itemId}`, { method: "DELETE" });
+}
+
+// ─── Wiki: linked clients ──────────────────────────────────────────────────
+
+export function listWikiLinks(slug: string): Promise<WikiLinkDTO[]> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links`);
+}
+
+export function addWikiLink(
+  slug: string,
+  input: { linkedClientId: string; label?: string | null },
+): Promise<WikiLinkDTO> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function removeWikiLink(slug: string, id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links/${id}`, { method: "DELETE" });
 }
