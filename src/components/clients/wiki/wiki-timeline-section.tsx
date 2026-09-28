@@ -15,7 +15,12 @@ const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, mo
 export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
   const blocks: GanttBlock[] = timeline.blocks.map((b) => ({
     id: b.id,
-    name: b.name,
+    // ⚠️ The source goes in the NAME rather than into a new GanttChart prop.
+    // `GanttChart` is shared with the internal board and the public
+    // /timeline/[token] share, and a merged timeline that does not say whose work
+    // is whose reads as one project — so the label has to travel with the row,
+    // and the rail is where a reader is already looking.
+    name: b.source ? `${b.source.name} · ${b.name}` : b.name,
     startDate: b.startDate,
     endDate: b.endDate,
     color: b.color,
@@ -25,7 +30,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
   }));
   const milestones: GanttMilestone[] = timeline.milestones.map((m) => ({
     id: m.id,
-    name: m.name,
+    name: m.source ? `${m.source.name} · ${m.name}` : m.name,
     date: m.date,
     color: m.color,
   }));

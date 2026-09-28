@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WikiLinkedClients } from "@/components/clients/wiki/wiki-linked-clients";
 import {
   LockClosedIcon,
   ExclamationTriangleIcon,
@@ -238,6 +239,7 @@ export function WikiAccessSettings({
 
       {/* Full width — see the note on the masonry above. */}
       <WikiApiIntakeSettings slug={slug} />
+      <WikiLinkedClients slug={slug} clientId={wiki.clientId} />
 
       {editing && (
         <WikiUserModal

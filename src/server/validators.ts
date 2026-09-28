@@ -928,6 +928,11 @@ export const absenceKindSchema = z.enum(["AWAY", "ILL", "WFH", "APPOINTMENT"]);
 // The four kinds and three statuses are declared once in @/types/handover and
 // read here, so a new kind cannot be added to the UI and silently rejected at
 // the edge (§43.1's allow-list trap, one layer down).
+export const wikiLinkInputSchema = z.object({
+  linkedClientId: z.string().cuid(),
+  label: z.string().trim().max(80).nullish(),
+});
+
 export const handoverInputSchema = z
   .object({
     userId: z.string().cuid().optional(),
