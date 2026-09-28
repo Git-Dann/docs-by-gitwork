@@ -139,3 +139,77 @@ describe("a normal head count still leads with cost per user", () => {
     expect(body).not.toContain("There is no cost per user yet");
   });
 });
+
+/**
+ * Where the growth control lives.
+ *
+ * It was its own `04 // AS YOU GROW` card BELOW the options list. That is
+ * backwards: the slider decides what the option prices mean, so a reader met the
+ * list and only afterwards found the control that changes it. It is now the top
+ * of `03`, in two columns.
+ *
+ * ⚠️ Behavioural, not source-text: the thing that can break silently is the
+ * ORDER on the page and the case where card 03 does not render at all.
+ */
+describe("as-you-grow placement", () => {
+  /** Model with an option being priced, so card 03 renders. */
+  function withOption(): CostModel {
+    const m = model(100);
+    return {
+      ...m,
+      items: [
+        ...m.items,
+        costItem({
+          id: "opt",
+          name: "Search add-on",
+          kind: "FLAT",
+          amountMonthly: 12,
+          included: false,
+          orderKey: 2,
+        }),
+      ],
+    };
+  }
+
+  it("sits ABOVE the options list, not below it", () => {
+    const html = renderToStaticMarkup(
+      <WikiCostsSection slug="demo" model={withOption()} mode="public" />,
+    );
+    // ⚠️ Positions in the RAW HTML and anchored on the SLIDER, not on the heading
+    // beside it. The first version of this asserted where "As you grow" appeared,
+    // which is the label I added in the same change — so deleting `{growthPanel}`
+    // left the heading, the assertion, and a card with no control in it. Caught by
+    // sabotage. `type="range"` is the one thing only the panel renders.
+    const slider = html.indexOf('type="range"');
+    const options = html.indexOf("OPTIONS BEING PRICED");
+    const list = html.indexOf("Search add-on");
+    expect(slider, "the growth slider should render").toBeGreaterThan(-1);
+    expect(options, "the options card should render").toBeGreaterThan(-1);
+    expect(slider).toBeGreaterThan(options);
+    expect(list).toBeGreaterThan(slider);
+  });
+
+  it("has no separate 04 card any more", () => {
+    const body = text(
+      renderToStaticMarkup(<WikiCostsSection slug="demo" model={withOption()} mode="public" />),
+    );
+    expect(body).not.toContain("04 // ");
+  });
+
+  /**
+   * ⚠️ Card 03 only renders when there ARE options. Without its own fallback the
+   * growth control — the thing the whole page turns on — would simply vanish for
+   * a client with nothing being priced.
+   */
+  it("still renders, in its own card, when nothing is being priced", () => {
+    const body = text(renderToStaticMarkup(<WikiCostsSection slug="demo" model={model(100)} mode="public" />));
+    expect(body).not.toContain("OPTIONS BEING PRICED");
+    expect(body).toContain("AS YOU GROW");
+    // Again the SLIDER, not the heading — a card title proves nothing about
+    // whether the control inside it rendered.
+    const html = renderToStaticMarkup(
+      <WikiCostsSection slug="demo" model={model(100)} mode="public" />,
+    );
+    expect(html).toContain('type="range"');
+  });
+});

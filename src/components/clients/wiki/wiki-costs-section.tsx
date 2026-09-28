@@ -167,6 +167,176 @@ export function WikiCostsSection({
     );
   }
 
+
+  /**
+   * The growth panel's body — band picker, slider and figures — held as a value
+   * so it can render in TWO places without being duplicated or threaded through
+   * seven props.
+   *
+   * It used to be its own `04 // AS YOU GROW` card below the options. It belongs
+   * ABOVE them: the slider is the control that decides what the option prices
+   * mean, so reading the list and then discovering the control underneath it was
+   * backwards. When there are no options to price it keeps its own card, because
+   * otherwise it would have nowhere to live.
+   *
+   * ⚠️ A local const, not a component. The body closes over `scale`, `cur`,
+   * `money`, `users`, `model`, `bandIdx` and `setBandIdx`; a component would mean
+   * threading all seven, and missing one is a silent render bug rather than a
+   * compile error where a default exists.
+   */
+  const growthPanel = (
+    <>
+
+          {/*
+            This was an 11-row table behind a 620px scroller, so on a phone the per-user
+            column — the number the panel exists for — sat off the edge inside
+            `widget-card`, which is `overflow: hidden`. One band at a time, scrubbable,
+            reads at 390px with no sideways scroll at all. The shape of the curve is not
+            lost: it moves into the bars, the same relative-width idiom the table row
+            used, turned upright. Every band is still readable as a figure via the
+            disclosure at the foot — nothing was removed, only folded away.
+          */}
+          <div className="space-y-5 p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <ScaleFigure label="At" figure={users(band.users)} unit="users" />
+              <ScaleFigure
+                label="Per month"
+                figure={`${band.incomplete ? "from " : ""}${money(band.totalMonthly, cur)}`}
+              />
+              <ScaleFigure
+                label="Per user"
+                figure={`${
+                  band.incomplete && band.perUserMonthly !== null ? "from " : ""
+                }${money(band.perUserMonthly, cur, true)}`}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex h-14 items-end gap-1">
+                {scale.map((row, i) => (
+                  <button
+                    key={row.users}
+                    type="button"
+                    onClick={() => setBandIdx(i)}
+                    title={`${users(row.users)} users — ${money(row.totalMonthly, cur)} per month`}
+                    aria-label={`Price at ${users(row.users)} users`}
+                    aria-pressed={i === bandIdx}
+                    className="group flex h-full flex-1 items-end"
+                  >
+                    <span
+                      className={`block w-full rounded-sm transition-colors ${
+                        i === bandIdx
+                          ? "bg-[var(--brand-700)]"
+                          : "bg-[var(--surface-2)] group-hover:bg-[var(--brand-300)]"
+                      }`}
+                      style={{ height: `${barPct(row.totalMonthly)}%` }}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={scale.length - 1}
+                step={1}
+                value={bandIdx}
+                onChange={(e) => setBandIdx(Number(e.target.value))}
+                aria-label="User count"
+                aria-valuetext={`${users(band.users)} users`}
+                className="w-full accent-[var(--brand-700)]"
+              />
+
+              <div
+                className="flex justify-between text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+                style={{ fontFamily: MONO }}
+              >
+                <span>{users(scale[0].users)}</span>
+                <span className="text-[var(--text-4)]">bars: log scale</span>
+                <span>{users(scale[scale.length - 1].users)}</span>
+              </div>
+            </div>
+
+            <details className="group/bands">
+              <summary
+                className="cursor-pointer list-none text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase hover:text-[var(--text-2)]"
+                style={{ fontFamily: MONO }}
+              >
+                <span className="group-open/bands:hidden">All {scale.length} bands</span>
+                <span className="hidden group-open/bands:inline">Hide bands</span>
+              </summary>
+              <div className="-mx-4 mt-3">
+              <div className="overflow-x-auto">
+                <div className="min-w-[620px]">
+                  <div
+                    className="grid grid-cols-[110px_minmax(0,1fr)_150px_150px] gap-3 border-b border-[var(--border-1)] px-4 py-2 text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
+                    style={{ fontFamily: MONO }}
+                  >
+                    <span>Users</span>
+                    <span />
+                    <span className="text-right">Per month</span>
+                    <span className="text-right">Per user</span>
+                  </div>
+                  {scale.map((row) => {
+                    const isHeadline = row.users === model.headlineUsers;
+                    return (
+                      <div
+                        key={row.users}
+                        className={`grid grid-cols-[110px_minmax(0,1fr)_150px_150px] items-center gap-3 border-b border-[var(--border-1)] px-4 py-2 last:border-b-0 ${
+                          isHeadline ? "bg-[var(--brand-50)]" : ""
+                        }`}
+                      >
+                        <span
+                          className="text-[13px] text-[var(--text-2)] tabular-nums"
+                          style={{ fontFamily: MONO }}
+                        >
+                          {users(row.users)}
+                        </span>
+                        {/* A bar, not a chart: the shape of the curve is the point, and one
+                            relative bar carries it without a renderer or a library. */}
+                        <span className="block h-1.5 rounded-full bg-[var(--surface-2)]">
+                          <span
+                            className="block h-1.5 rounded-full bg-[var(--brand-700)]"
+                            style={{
+                              width: `${Math.max(
+                                2,
+                                Math.round(
+                                  (row.totalMonthly /
+                                    Math.max(...scale.map((s) => s.totalMonthly), 1)) *
+                                    100,
+                                ),
+                              )}%`,
+                            }}
+                          />
+                        </span>
+                        <span
+                          className="text-right text-[13px] whitespace-nowrap text-[var(--text-1)] tabular-nums"
+                          style={{ fontFamily: MONO }}
+                        >
+                          {row.incomplete ? "from " : ""}
+                          {money(row.totalMonthly, cur)}
+                        </span>
+                        <span
+                          className="text-right text-[13px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
+                          style={{ fontFamily: MONO }}
+                        >
+                          {/* ⚠️ "from —" is meaningless. A floor qualifies a FIGURE, so the
+                              prefix is suppressed where there is no figure — which is exactly
+                              the zero-users row this table now starts at. */}
+                          {row.incomplete && row.perUserMonthly !== null ? "from " : ""}
+                          {money(row.perUserMonthly, cur, true)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              </div>
+            </details>
+          </div>
+    </>
+  );
+
   return (
     <div className="space-y-4">
       {/* ── 01 the banner: the one number the page exists for ───────────────── */}
@@ -440,6 +610,34 @@ export function WikiCostsSection({
               NOT IN THE TOTAL
             </span>
           </div>
+
+          {/* ── As you grow, at the TOP ──────────────────────────────────────
+              The slider decides what the prices below it mean, so reading the
+              options and only then finding the control underneath was backwards.
+              Two columns from `lg`: what the control is for on the left, the
+              control itself on the right. Stacked below that — at 390px a
+              side-by-side slider and paragraph get about 170px each, which is
+              neither one thing nor the other. */}
+          <div className="grid grid-cols-1 gap-5 border-b border-[var(--border-1)] p-5 sm:p-6 lg:grid-cols-2 lg:gap-8">
+            <div className="min-w-0">
+              <h3
+                className="text-[11px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+                style={{ fontFamily: MONO }}
+              >
+                As you grow
+              </h3>
+              <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-3)]">
+                Every figure on this page moves with how many people use the product. Drag
+                through the bands to see what it costs to run at that size, and what each
+                user costs once you are there.
+              </p>
+              <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-4)]">
+                {users(SCALE_BANDS[0])} → {users(SCALE_BANDS[SCALE_BANDS.length - 1])} users.
+              </p>
+            </div>
+            <div className="min-w-0">{growthPanel}</div>
+          </div>
+
           <div className="p-5 sm:p-6">
             <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
               Costed at {users(model.headlineUsers)} users so they can be compared like
@@ -524,166 +722,24 @@ export function WikiCostsSection({
         </section>
       )}
 
-      {/* ── 04 the curve ────────────────────────────────────────────────────── */}
-      <section className="widget-card">
-        <div className="widget-header">
-          <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">{options.length ? "04" : "03"}</span>
-            {" // AS YOU GROW"}
-          </span>
-          <span className="widget-header__status" style={{ fontFamily: MONO }}>
-            {users(SCALE_BANDS[0])} → {users(SCALE_BANDS[SCALE_BANDS.length - 1])} USERS
-          </span>
-        </div>
 
-        {/*
-          This was an 11-row table behind a 620px scroller, so on a phone the per-user
-          column — the number the panel exists for — sat off the edge inside
-          `widget-card`, which is `overflow: hidden`. One band at a time, scrubbable,
-          reads at 390px with no sideways scroll at all. The shape of the curve is not
-          lost: it moves into the bars, the same relative-width idiom the table row
-          used, turned upright. Every band is still readable as a figure via the
-          disclosure at the foot — nothing was removed, only folded away.
-        */}
-        <div className="space-y-5 p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <ScaleFigure label="At" figure={users(band.users)} unit="users" />
-            <ScaleFigure
-              label="Per month"
-              figure={`${band.incomplete ? "from " : ""}${money(band.totalMonthly, cur)}`}
-            />
-            <ScaleFigure
-              label="Per user"
-              figure={`${
-                band.incomplete && band.perUserMonthly !== null ? "from " : ""
-              }${money(band.perUserMonthly, cur, true)}`}
-            />
+      {/* ⚠️ Card 03 only renders when there ARE options, so without this the growth
+          panel — the control the whole page turns on — would simply vanish on a
+          client with nothing being priced. It keeps its own card there. */}
+      {options.length === 0 && (
+        <section className="widget-card">
+          <div className="widget-header">
+            <span className="widget-header__label" style={{ fontFamily: MONO }}>
+              <span className="widget-header__label--number">03</span>
+              {" // AS YOU GROW"}
+            </span>
+            <span className="widget-header__status" style={{ fontFamily: MONO }}>
+              {users(SCALE_BANDS[0])} → {users(SCALE_BANDS[SCALE_BANDS.length - 1])} USERS
+            </span>
           </div>
-
-          <div className="space-y-2">
-            <div className="flex h-14 items-end gap-1">
-              {scale.map((row, i) => (
-                <button
-                  key={row.users}
-                  type="button"
-                  onClick={() => setBandIdx(i)}
-                  title={`${users(row.users)} users — ${money(row.totalMonthly, cur)} per month`}
-                  aria-label={`Price at ${users(row.users)} users`}
-                  aria-pressed={i === bandIdx}
-                  className="group flex h-full flex-1 items-end"
-                >
-                  <span
-                    className={`block w-full rounded-sm transition-colors ${
-                      i === bandIdx
-                        ? "bg-[var(--brand-700)]"
-                        : "bg-[var(--surface-2)] group-hover:bg-[var(--brand-300)]"
-                    }`}
-                    style={{ height: `${barPct(row.totalMonthly)}%` }}
-                  />
-                </button>
-              ))}
-            </div>
-
-            <input
-              type="range"
-              min={0}
-              max={scale.length - 1}
-              step={1}
-              value={bandIdx}
-              onChange={(e) => setBandIdx(Number(e.target.value))}
-              aria-label="User count"
-              aria-valuetext={`${users(band.users)} users`}
-              className="w-full accent-[var(--brand-700)]"
-            />
-
-            <div
-              className="flex justify-between text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
-              style={{ fontFamily: MONO }}
-            >
-              <span>{users(scale[0].users)}</span>
-              <span className="text-[var(--text-4)]">bars: log scale</span>
-              <span>{users(scale[scale.length - 1].users)}</span>
-            </div>
-          </div>
-
-          <details className="group/bands">
-            <summary
-              className="cursor-pointer list-none text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase hover:text-[var(--text-2)]"
-              style={{ fontFamily: MONO }}
-            >
-              <span className="group-open/bands:hidden">All {scale.length} bands</span>
-              <span className="hidden group-open/bands:inline">Hide bands</span>
-            </summary>
-            <div className="-mx-4 mt-3">
-            <div className="overflow-x-auto">
-              <div className="min-w-[620px]">
-                <div
-                  className="grid grid-cols-[110px_minmax(0,1fr)_150px_150px] gap-3 border-b border-[var(--border-1)] px-4 py-2 text-[10px] tracking-[0.12em] text-[var(--text-4)] uppercase"
-                  style={{ fontFamily: MONO }}
-                >
-                  <span>Users</span>
-                  <span />
-                  <span className="text-right">Per month</span>
-                  <span className="text-right">Per user</span>
-                </div>
-                {scale.map((row) => {
-                  const isHeadline = row.users === model.headlineUsers;
-                  return (
-                    <div
-                      key={row.users}
-                      className={`grid grid-cols-[110px_minmax(0,1fr)_150px_150px] items-center gap-3 border-b border-[var(--border-1)] px-4 py-2 last:border-b-0 ${
-                        isHeadline ? "bg-[var(--brand-50)]" : ""
-                      }`}
-                    >
-                      <span
-                        className="text-[13px] text-[var(--text-2)] tabular-nums"
-                        style={{ fontFamily: MONO }}
-                      >
-                        {users(row.users)}
-                      </span>
-                      {/* A bar, not a chart: the shape of the curve is the point, and one
-                          relative bar carries it without a renderer or a library. */}
-                      <span className="block h-1.5 rounded-full bg-[var(--surface-2)]">
-                        <span
-                          className="block h-1.5 rounded-full bg-[var(--brand-700)]"
-                          style={{
-                            width: `${Math.max(
-                              2,
-                              Math.round(
-                                (row.totalMonthly /
-                                  Math.max(...scale.map((s) => s.totalMonthly), 1)) *
-                                  100,
-                              ),
-                            )}%`,
-                          }}
-                        />
-                      </span>
-                      <span
-                        className="text-right text-[13px] whitespace-nowrap text-[var(--text-1)] tabular-nums"
-                        style={{ fontFamily: MONO }}
-                      >
-                        {row.incomplete ? "from " : ""}
-                        {money(row.totalMonthly, cur)}
-                      </span>
-                      <span
-                        className="text-right text-[13px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
-                        style={{ fontFamily: MONO }}
-                      >
-                        {/* ⚠️ "from —" is meaningless. A floor qualifies a FIGURE, so the
-                            prefix is suppressed where there is no figure — which is exactly
-                            the zero-users row this table now starts at. */}
-                        {row.incomplete && row.perUserMonthly !== null ? "from " : ""}
-                        {money(row.perUserMonthly, cur, true)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            </div>
-          </details>
-        </div>
-      </section>
+          {growthPanel}
+        </section>
+      )}
 
       {mode === "internal" && editing && (
         <WikiCostsEditor slug={slug} model={model} onClose={() => setEditing(false)} />
