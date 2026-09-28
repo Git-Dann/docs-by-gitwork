@@ -61,7 +61,9 @@ describe("app-dialog-fixed panels can always reach their content", () => {
 
   it("finds the panels at all (the sweep itself works)", () => {
     // Without this, a broken matcher reports "0 violations" and passes forever.
-    expect(files.length).toBeGreaterThanOrEqual(10);
+    // Ratchet: 12 before the Code module's three dialogs (CV preview, Add Dev,
+    // Edit Dev) adopted the shared panel.
+    expect(files.length).toBeGreaterThanOrEqual(15);
     expect(files.map((f) => f.file).join("\n")).toMatch(/backstage\/modal\.tsx/);
   });
 

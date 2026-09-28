@@ -4,6 +4,7 @@ import {
   ArrowLeftIcon,
   ArrowTopRightOnSquareIcon,
   EnvelopeIcon,
+  DocumentTextIcon,
   PencilIcon,
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -11,6 +12,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { CvModal } from "./cv-modal";
 import { Avatar } from "@/components/ui/avatar";
 import {
   useAddCodeClearCandidateNote,
@@ -58,6 +61,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const fxQuery = useUsdToGbpRate();
   const fxRate = canViewRates ? fxQuery.data?.rate ?? null : null;
   const [showEdit, setShowEdit] = useState(false);
+  const [showCv, setShowCv] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
   const [noteBody, setNoteBody] = useState("");
@@ -227,6 +231,15 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
               ) : null}
               {canManageCode ? (
                 <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon={<DocumentTextIcon className="h-3.5 w-3.5" />}
+                    onClick={() => setShowCv(true)}
+                  >
+                    CV
+                  </Button>
                   <Button
                     type="button"
                     variant="primary"
@@ -455,27 +468,30 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
       </WidgetCard>
 
       {/* Edit modal */}
-      {showEdit ? (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center px-4 py-8">
-          <button
-            type="button"
-            className="app-dialog-backdrop absolute inset-0"
-            aria-label="Close edit"
-            onClick={() => setShowEdit(false)}
-          />
-          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-2xl flex-col">
-            <div className="border-b border-[var(--border-2)] px-6 py-4">
-              <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                Edit {candidate.name}
-              </h3>
-              <p className="mt-1 text-sm text-[var(--text-4)]">
-                Changes apply immediately on Save.
-              </p>
-            </div>
+      <CvModal
+        open={showCv}
+        onClose={() => setShowCv(false)}
+        candidateId={candidate.id}
+        candidateName={candidate.name}
+      />
+
+      {/* The same shared <Modal> as Add Dev — this was its hand-rolled twin,
+          holding the same form with no focus trap, no Escape and a height that
+          moved with the content. */}
+      <Modal
+        open={showEdit}
+        onClose={() => setShowEdit(false)}
+        title={`01 // EDIT DEV`}
+        panelClassName="app-dialog-fixed w-full max-w-2xl"
+      >
+        <>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <p className="mb-4 text-sm text-[var(--text-4)]">
+                Editing {candidate.name}. Changes apply immediately on Save.
+              </p>
               <CandidateProfileForm value={editForm} onChange={setEditForm} />
             </div>
-            <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
               <Button type="button" variant="secondary" size="sm" onClick={() => setShowEdit(false)}>
                 Cancel
               </Button>
@@ -494,9 +510,8 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
                 Save
               </Button>
             </div>
-          </div>
-        </div>
-      ) : null}
+        </>
+      </Modal>
 
       {showDeleteConfirm ? (
         <DeleteCandidateConfirmModal
