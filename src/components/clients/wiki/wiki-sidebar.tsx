@@ -263,7 +263,7 @@ export function WikiSidebar({
         {navItem("dashboard", "Dashboard", <Squares2X2Icon />)}
         {navItem("timeline", "Timeline", <CalendarDaysIcon />)}
         {navItem("monitors", "Monitors", <BoltIcon />)}
-        {navItem("documents", "Documents", <DocumentDuplicateIcon />)}
+        {navItem("documents", "Resources", <DocumentDuplicateIcon />)}
         {navItem("intake", "Requests", <FlagIcon />)}
         {navItem("launchpad", "Launchpad", <RocketLaunchIcon />)}
         {navItem("insights", "Charts", <ChartPieIcon />)}

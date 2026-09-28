@@ -120,7 +120,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   intake: "Requests",
   launchpad: "Launchpad",
   insights: "Charts",
@@ -1012,7 +1012,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       (item) => hiddenSections.has(item.section) || !existingDocsPageSections.has(item.section),
     ),
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
-    ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
+    ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Resources" }]),
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
     ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
     ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Charts" }]),
@@ -1396,7 +1396,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} />;
     }
 
-    // ── Documents — clean list of links / Foundry docs / uploaded files.
+    // ── Resources — clean list of links / Foundry docs / uploaded files.
     if (activeSection === "documents") {
       return <DocumentsManager slug={slug} documents={wiki!.documents.documents} />;
     }
