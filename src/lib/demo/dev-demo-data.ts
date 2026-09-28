@@ -610,7 +610,16 @@ const demoLaunchpad: LaunchpadDTO = {
  * genuinely spans two Venn regions.
  */
 function wikiTimelineFromGantt(): WikiDTO["timeline"] {
-  const blocks = demoGanttBlocks.map((block, bi) => {
+  // ⚠️ Undated blocks are dropped here for the same reason `loadWikiTimeline` drops
+  // them: `WikiTimelineBlock` dates are non-null because the wiki timeline only ever
+  // carries blocks it could place in time. `GanttBlock` allows null now (a linked
+  // client's work is routinely undated), so this narrowing is what keeps the demo
+  // honest about which of the two shapes it is producing.
+  const blocks = demoGanttBlocks
+    .filter((b): b is typeof b & { startDate: string; endDate: string } =>
+      Boolean(b.startDate && b.endDate),
+    )
+    .map((block, bi) => {
     let doneSeen = 0;
     let startedOne = false;
     const tasks = block.tasks.map((t) => {

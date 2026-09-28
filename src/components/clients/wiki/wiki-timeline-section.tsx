@@ -36,7 +36,10 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
       : Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
 
   return (
-    <>
+    // ⚠️ The spacing lives HERE, not in the parents. `wiki-public-view` renders this
+    // component as the whole section body, so a bare fragment left card 01 and card
+    // 02 touching with no gap at all. One owner for the gap, every caller correct.
+    <div className="space-y-5">
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
@@ -82,12 +85,28 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
       {(timeline.linked ?? []).map((work, i) => (
         <LinkedWorkCard key={work.source.clientId} work={work} index={i + 2} />
       ))}
-    </>
+    </div>
   );
 }
 
 function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }) {
   const pct = work.total === 0 ? null : Math.round((work.done / work.total) * 100);
+  const blocks: GanttBlock[] = work.blocks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    startDate: b.startDate,
+    endDate: b.endDate,
+    color: b.color,
+    progress: b.progress,
+    tasks: b.tasks,
+    statusCounts: b.statusCounts,
+  }));
+  // ⚠️ Every block here may be undated — YG intelligence has four blocks, 66 tasks
+  // and not one date. `GanttChart` draws the rail row regardless and the bar only
+  // where there are dates, so the section reads as the same chart as the one above
+  // rather than a different widget.
+  const undated = work.blocks.every((b) => !b.startDate);
+
   return (
     <section className="widget-card">
       <div className="widget-header">
@@ -104,76 +123,35 @@ function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }
         </span>
       </div>
       <div className="p-5 sm:p-6">
-        <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-3)]">
+        <p className="app-eyebrow">{work.source.name}</p>
+        <p className="mt-2 max-w-[70ch] text-[14px] leading-relaxed text-[var(--text-2)]">
           A separate workstream tracked on its own board, shown here alongside this
-          project. {work.total} {work.total === 1 ? "task" : "tasks"} in total.
+          project. {work.total} {work.total === 1 ? "task" : "tasks"} in total
+          {work.looseTasks.total > 0
+            ? `, ${work.looseTasks.total} of them outside any phase`
+            : ""}
+          .
+          {undated && work.blocks.length > 0 ? (
+            <>
+              {" "}
+              {/* Said plainly rather than left as an empty chart: a Gantt with no bars
+                  is otherwise indistinguishable from a broken one. */}
+              <span className="text-[var(--text-3)]">
+                These phases have no dates yet, so they have no bars on the timeline.
+              </span>
+            </>
+          ) : null}
         </p>
-        {work.blocks.length === 0 && work.looseTasks.total === 0 ? (
-          <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-[13px] text-[var(--text-3)]">
-            Nothing on this board yet.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {work.blocks.map((b) => (
-              <WorkRow key={b.id} name={b.name} total={b.total} done={b.done} color={b.color} />
-            ))}
-            {work.looseTasks.total > 0 ? (
-              <WorkRow
-                name="Other work"
-                total={work.looseTasks.total}
-                done={work.looseTasks.done}
-                color={null}
-              />
-            ) : null}
-          </div>
-        )}
+        <div className="mt-4">
+          {work.blocks.length === 0 ? (
+            <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-[13px] text-[var(--text-3)]">
+              Nothing on this board yet.
+            </p>
+          ) : (
+            <GanttChart blocks={blocks} milestones={[]} />
+          )}
+        </div>
       </div>
     </section>
-  );
-}
-
-function WorkRow({
-  name,
-  total,
-  done,
-  color,
-}: {
-  name: string;
-  total: number;
-  done: number;
-  color: string | null;
-}) {
-  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[8px] border border-[var(--border-1)] px-4 py-3">
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        <span
-          aria-hidden
-          className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
-          style={{ background: color ?? "var(--surface-2)" }}
-        />
-        <span className="min-w-0 truncate text-[14px] text-[var(--text-1)]" title={name}>
-          {name}
-        </span>
-      </span>
-      <span
-        className="shrink-0 text-[12px] whitespace-nowrap text-[var(--text-3)] tabular-nums"
-        style={{ fontFamily: MONO }}
-      >
-        {done} / {total}
-      </span>
-      <span className="h-1.5 w-full shrink-0 rounded-full bg-[var(--surface-2)] sm:w-40">
-        <span
-          className="block h-1.5 rounded-full bg-[var(--brand-700)]"
-          style={{ width: `${pct}%` }}
-        />
-      </span>
-      <span
-        className="w-10 shrink-0 text-right text-[12px] whitespace-nowrap text-[var(--text-1)] tabular-nums"
-        style={{ fontFamily: MONO }}
-      >
-        {pct}%
-      </span>
-    </div>
   );
 }
