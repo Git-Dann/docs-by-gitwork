@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { embedFor } from "@/lib/wiki/embed";
-import { cn } from "@/lib/format";
 import {
   PlusIcon,
   TrashIcon,
@@ -10,6 +9,9 @@ import {
   DocumentTextIcon,
   PaperClipIcon,
   ArrowTopRightOnSquareIcon,
+  EyeIcon,
+  PencilSquareIcon,
+  PlayIcon,
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
   ChevronLeftIcon,
@@ -20,13 +22,27 @@ import {
   useCreateWikiLinkDoc,
   useUploadWikiFileDoc,
   useDeleteWikiDoc,
+  useUpdateWikiDoc,
   useAddDocToWiki,
   useLinkableWikiDocuments,
 } from "@/hooks/use-wiki";
 import type { WikiDocumentDTO } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
-const PAGE_SIZE = 8;
+// 12 a page: the grid is 4-up at xl, so 8 left a ragged final row of 4.
+const PAGE_SIZE = 12;
+
+/**
+ * Every card is exactly this tall, whatever its title does.
+ *
+ * ⚠️ The cover used to size itself to the title (`min-h-[128px]` plus a 3-line
+ * clamp), so a 2-line title and a 3-line title produced visibly different bands
+ * of colour side by side. A fixed cover plus a 2-line clamp is what makes the
+ * grid read as one set rather than as a ransom note.
+ */
+const COVER_H = 132;
 
 type Kind = "FOUNDRY" | "LINK" | "FILE";
 const KIND_META: Record<Kind, { icon: typeof LinkIcon; label: string; tint: string; color: string }> = {
@@ -88,6 +104,72 @@ function hrefFor(d: WikiDocumentDTO, fileBase: string): string {
   return d.url ?? "#";
 }
 
+type Palette = (typeof DOC_COVER_PALETTE)[number];
+
+function CardKind({
+  meta,
+  Icon,
+  palette,
+}: {
+  meta: (typeof KIND_META)[Kind];
+  Icon: (typeof KIND_META)[Kind]["icon"];
+  palette: Palette;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
+      style={{ color: palette.ink, opacity: 0.7 }}
+    >
+      <span
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px]"
+        style={{ background: meta.tint, color: meta.color }}
+      >
+        <Icon className="h-2.5 w-2.5" />
+      </span>
+      {meta.label}
+    </span>
+  );
+}
+
+function CardTitle({ doc, palette }: { doc: WikiDocumentDTO; palette: Palette }) {
+  return (
+    <span className="mt-3 block">
+      {/* ⚠️ Fixed two-line box, not `line-clamp-3`. The clamp alone still let a
+          one-line title and a three-line title produce different card heights;
+          reserving the space is what keeps the grid even. `title` keeps the full
+          text reachable, which a bare truncation would not (audit:clipping). */}
+      {/* ⚠️ The clamp is set INLINE, not via `line-clamp-2`.
+          The utility works by setting `display:-webkit-box`, and in this subtree
+          something else wins the display (measured: the computed value came back
+          `flow-root`), so the class silently stopped clamping and the title was
+          hard-cut by the fixed height, mid-word and with no ellipsis. An inline
+          style cannot lose that race. `title` keeps the full text reachable,
+          which a bare truncation would not (audit:clipping's TRUNCATED rule). */}
+      <span
+        data-resource-title=""
+        className="h-[44px] font-[family-name:var(--font-display)] text-[18px] font-normal leading-[1.2] tracking-[-0.3px]"
+        style={{
+          color: palette.ink,
+          display: "-webkit-box",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 2,
+          overflow: "hidden",
+        }}
+        title={doc.title}
+      >
+        {doc.title}
+      </span>
+      <span
+        className="mt-1.5 block truncate font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
+        style={{ color: palette.ink, opacity: 0.65 }}
+        title={metaFor(doc)}
+      >
+        {metaFor(doc)}
+      </span>
+    </span>
+  );
+}
+
 /** One card in the grid — the Docs product's gradient-cover-card, adapted to
  *  what a Wiki doc actually has (no blocks/status/ref code, so those slots
  *  are dropped rather than faked). The whole cover opens/downloads the doc;
@@ -96,79 +178,78 @@ function WikiDocCard({
   doc,
   fileBase,
   action,
+  onPlay,
 }: {
   doc: WikiDocumentDTO;
   fileBase: string;
   action?: React.ReactNode;
+  /** Present only in surfaces that can host the player dialog. */
+  onPlay?: (doc: WikiDocumentDTO) => void;
 }) {
   const meta = KIND_META[doc.kind as Kind];
   const Icon = meta.icon;
   const isFile = doc.kind === "FILE";
   const palette = docCoverPalette(doc.id);
   const OpenIcon = isFile ? ArrowDownTrayIcon : ArrowTopRightOnSquareIcon;
-  // A Loom walkthrough is the thing people actually drop in here, and a card with
-  // a title and the word "loom.com" tells you nothing about which recording it is.
+  // A Loom walkthrough is the thing people actually drop in here, and a card
+  // saying "loom.com" tells you nothing about which recording it is.
+  //
+  // ⚠️ The player is NOT mounted in the grid. Twelve third-party iframes on one
+  // page is what made previews load only some of the time — each card raced the
+  // others for Loom's embed endpoint and the losers rendered an empty box, which
+  // looked exactly like a broken card. Nothing is requested from a third party
+  // until someone asks to watch, and then it plays big in a dialog rather than
+  // in a 300px tile.
   const embed = embedFor(doc.url);
+  // Any resolvable embed previews in the dialog, not just video — a Figma file or
+  // a Google Doc is worth a look in place too. The icon says which it is.
+  const previewable = Boolean(embed);
+  const isVideo = embed?.kind === "video";
   return (
     <article className="group/wikidoc flex flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
-      {embed ? (
-        <div className="relative w-full bg-black/5" style={{ aspectRatio: String(embed.ratio) }}>
-          <iframe
-            src={embed.src}
-            title={doc.title}
-            loading="lazy"
-            // ⚠️ `allowFullScreen` but NOT `allow-same-origin`-style privileges we
-            // do not need. `referrerPolicy` keeps the client's wiki URL — which is
-            // behind a share token — out of a third party's referrer logs.
-            allowFullScreen
-            referrerPolicy="no-referrer"
-            className="absolute inset-0 h-full w-full border-0"
-          />
-        </div>
-      ) : null}
-      <a
-        href={hrefFor(doc, fileBase)}
-        target="_blank"
-        rel="noreferrer"
-        title={isFile ? "Download" : "Open"}
-        className={cn(
-          "relative flex flex-col justify-between p-4",
-          // No preview → the gradient cover carries the card. With one, it would
-          // be 128px of dead colour under the thing you came to look at.
-          embed ? "min-h-0" : "min-h-[128px]",
-        )}
-        style={{ backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
-      >
-        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: palette.ink, opacity: 0.7 }}>
-          <span
-            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px]"
-            style={{ background: meta.tint, color: meta.color }}
-          >
-            <Icon className="h-2.5 w-2.5" />
-          </span>
-          {meta.label}
-        </span>
-        <span
-          className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-[6px] bg-white/50 opacity-0 transition group-hover/wikidoc:opacity-100"
-          style={{ color: palette.ink }}
+      {previewable && onPlay ? (
+        <button
+          type="button"
+          onClick={() => onPlay(doc)}
+          title={`${isVideo ? "Play" : "Preview"} "${doc.title}"`}
+          className="relative flex w-full flex-col justify-between p-4 text-left"
+          style={{
+            height: COVER_H,
+            backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})`,
+          }}
         >
-          <OpenIcon className="h-3.5 w-3.5" />
-        </span>
-        <div className="mt-3">
-          <h3
-            className="line-clamp-3 font-[family-name:var(--font-display)] text-[18px] font-normal leading-[1.2] tracking-[-0.3px]"
+          <CardKind meta={meta} Icon={Icon} palette={palette} />
+          <span
+            className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-[6px] bg-white/60"
+            style={{ color: palette.ink }}
+            aria-hidden="true"
+          >
+            {isVideo ? <PlayIcon className="h-3.5 w-3.5" /> : <EyeIcon className="h-3.5 w-3.5" />}
+          </span>
+          <CardTitle doc={doc} palette={palette} />
+        </button>
+      ) : (
+        <a
+          href={hrefFor(doc, fileBase)}
+          target="_blank"
+          rel="noreferrer"
+          title={isFile ? "Download" : "Open"}
+          className="relative flex flex-col justify-between p-4"
+          style={{
+            height: COVER_H,
+            backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})`,
+          }}
+        >
+          <CardKind meta={meta} Icon={Icon} palette={palette} />
+          <span
+            className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-[6px] bg-white/50 opacity-0 transition group-hover/wikidoc:opacity-100"
             style={{ color: palette.ink }}
           >
-            {doc.title}
-          </h3>
-          <p
-            className="mt-1.5 truncate font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
-            style={{ color: palette.ink, opacity: 0.65 }}
-          >
-            {metaFor(doc)}
-          </p>
-        </div>
-      </a>
+            <OpenIcon className="h-3.5 w-3.5" />
+          </span>
+          <CardTitle doc={doc} palette={palette} />
+        </a>
+      )}
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
         <p className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--text-4)]">
           Added {formatAdded(doc.addedAt)}
@@ -176,6 +257,150 @@ function WikiDocCard({
         {action}
       </div>
     </article>
+  );
+}
+
+/**
+ * The player. One iframe, mounted only while the dialog is open, so the grid
+ * makes no third-party requests at all and a Loom walkthrough is watched at a
+ * usable size instead of inside a 300px tile.
+ *
+ * ⚠️ The dialog's title is a SHORT, fixed string, and the resource's own title
+ * goes in the footer where it can truncate. Passing the resource title to
+ * `<Modal title>` put a long unbreakable string into `.widget-header`'s fixed
+ * nowrap band: measured at 390px the panel gained 255px of horizontal overflow,
+ * and because a browser scrolls even an `overflow:hidden` box to reveal the
+ * element a dialog focuses on open, the whole panel shifted 256px to the left.
+ * It reads as a broken dialog, and it is invisible until measured.
+ */
+function ResourcePlayer({
+  doc,
+  onClose,
+}: {
+  doc: WikiDocumentDTO | null;
+  onClose: () => void;
+}) {
+  const embed = doc ? embedFor(doc.url) : null;
+  return (
+    <Modal
+      open={Boolean(doc && embed)}
+      onClose={onClose}
+      title="01 // PREVIEW"
+      panelClassName="w-full max-w-4xl"
+    >
+      {doc && embed ? (
+        <>
+          <div className="bg-black" style={{ aspectRatio: String(embed.ratio) }}>
+            <iframe
+              src={embed.src}
+              title={doc.title}
+              // ⚠️ `referrerPolicy` keeps the client's wiki URL — which is behind
+              // a share token — out of a third party's referrer logs.
+              allowFullScreen
+              referrerPolicy="no-referrer"
+              className="h-full w-full border-0"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--border-2)] px-4 py-2.5">
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-2)]" title={doc.title}>
+              {doc.title}
+            </span>
+            <a
+              href={doc.url ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex shrink-0 items-center gap-1.5 text-[13px] text-[var(--brand-600)] hover:underline"
+            >
+              Open on {embed.provider}
+              <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </>
+      ) : null}
+    </Modal>
+  );
+}
+
+/** Rename a resource, or repoint it at a different URL. */
+function ResourceEditor({
+  doc,
+  onClose,
+  onSave,
+  saving,
+}: {
+  doc: WikiDocumentDTO | null;
+  onClose: () => void;
+  onSave: (input: { title: string; url?: string }) => void;
+  saving: boolean;
+}) {
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTitle(doc?.title ?? "");
+    setUrl(doc?.url ?? "");
+    setError(null);
+  }, [doc]);
+
+  // A FILE has no URL to edit — its bytes are the resource — so only the title
+  // is offered rather than showing a field that cannot be saved.
+  const canEditUrl = doc?.kind === "LINK";
+
+  function submit() {
+    const t = title.trim();
+    if (!t) {
+      setError("Give it a title.");
+      return;
+    }
+    if (canEditUrl) {
+      const u = url.trim();
+      // The route validates this too; checking here means the person is told in
+      // the field rather than by a failed request.
+      if (!/^https?:\/\/\S+$/i.test(u)) {
+        setError("That does not look like a link. It needs to start with http:// or https://.");
+        return;
+      }
+      onSave({ title: t, url: u });
+      return;
+    }
+    onSave({ title: t });
+  }
+
+  return (
+    <Modal open={Boolean(doc)} onClose={onClose} title="01 // EDIT RESOURCE" panelClassName="w-full max-w-lg">
+      <div className="space-y-3 px-5 py-4">
+        <label className="block">
+          <span className="widget-data-label">Title</span>
+          <input
+            className="app-input mt-1.5"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="What this is"
+          />
+        </label>
+        {canEditUrl ? (
+          <label className="block">
+            <span className="widget-data-label">Link</span>
+            <input
+              className="app-input mt-1.5"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://www.loom.com/share/…"
+            />
+          </label>
+        ) : null}
+        {error ? <p className="text-[13px] text-[var(--danger-500)]">{error}</p> : null}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-5 py-3">
+        <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="button" variant="primary" size="sm" onClick={submit} loading={saving}>
+          Save
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -314,6 +539,7 @@ function DocumentsGrid({
   onPage,
   actionFor,
   emptyLabel,
+  onPlay,
 }: {
   docs: WikiDocumentDTO[];
   fileBase: string;
@@ -321,6 +547,7 @@ function DocumentsGrid({
   onPage: (p: number) => void;
   actionFor?: (doc: WikiDocumentDTO) => React.ReactNode;
   emptyLabel: string;
+  onPlay?: (doc: WikiDocumentDTO) => void;
 }) {
   const pages = Math.ceil(docs.length / PAGE_SIZE) || 1;
   const shown = docs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -337,7 +564,7 @@ function DocumentsGrid({
     <div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {shown.map((d) => (
-          <WikiDocCard key={d.id} doc={d} fileBase={fileBase} action={actionFor?.(d)} />
+          <WikiDocCard key={d.id} doc={d} fileBase={fileBase} action={actionFor?.(d)} onPlay={onPlay} />
         ))}
       </div>
       <Pager page={page} pages={pages} total={docs.length} onPage={onPage} />
@@ -355,6 +582,7 @@ export function DocumentsList({
   fileBase: string;
 }) {
   const { search, kind, page, setPage, filtered, selectKind, selectSearch } = useFilteredDocs(documents);
+  const [playing, setPlaying] = useState<WikiDocumentDTO | null>(null);
 
   return (
     <section className="widget-card">
@@ -378,10 +606,12 @@ export function DocumentsList({
               page={page}
               onPage={setPage}
               emptyLabel="No resources match your search."
+              onPlay={setPlaying}
             />
           </>
         )}
       </div>
+      <ResourcePlayer doc={playing} onClose={() => setPlaying(null)} />
     </section>
   );
 }
@@ -394,6 +624,9 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
   const createLink = useCreateWikiLinkDoc(slug);
   const uploadFile = useUploadWikiFileDoc(slug);
   const remove = useDeleteWikiDoc(slug);
+  const update = useUpdateWikiDoc(slug);
+  const [playing, setPlaying] = useState<WikiDocumentDTO | null>(null);
+  const [editing, setEditing] = useState<WikiDocumentDTO | null>(null);
   const addFoundry = useAddDocToWiki(slug);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -451,34 +684,47 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
           <span className="widget-header__label--number">01</span>
           {" // RESOURCES"}
         </span>
-        <div className="flex items-center gap-1.5">
+        {/* ⚠️ `.widget-header` is a fixed 36px band with `overflow: hidden`, so a
+            row that does not fit is CLIPPED, not scrolled — measured at 390px,
+            these three ran 29px past the right edge and 13px above the band, and
+            Upload was unreachable on a phone. Same defect as the Backstage
+            calendar header. The labels drop below `sm`, which takes the row from
+            ~340px to ~110px and stops it wrapping inside the band; `title` keeps
+            each one identifiable. */}
+        <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
+            title="Add Foundry doc"
             onClick={() => {
               setMode((m) => (m === "foundry" ? null : "foundry"));
               setError(null);
             }}
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
           >
-            <DocumentTextIcon className="h-3.5 w-3.5" /> Add Foundry doc
+            <DocumentTextIcon className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">Add Foundry doc</span>
           </button>
           <button
             type="button"
+            title="Add link"
             onClick={() => {
               setMode("link");
               setError(null);
             }}
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
           >
-            <PlusIcon className="h-3.5 w-3.5" /> Add link
+            <PlusIcon className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">Add link</span>
           </button>
           <button
             type="button"
+            title="Upload a file"
             disabled={uploadFile.isPending}
             onClick={() => fileInput.current?.click()}
             className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
           >
-            <ArrowUpTrayIcon className="h-3.5 w-3.5" /> {uploadFile.isPending ? "Uploading…" : "Upload"}
+            <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">{uploadFile.isPending ? "Uploading…" : "Upload"}</span>
           </button>
           <input ref={fileInput} type="file" className="hidden" onChange={onFilePicked} />
         </div>
@@ -615,23 +861,48 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
               page={page}
               onPage={setPage}
               emptyLabel="No resources match your search."
+              onPlay={setPlaying}
               actionFor={(d) => (
-                <button
-                  type="button"
-                  title="Delete"
-                  disabled={remove.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Delete "${d.title}"?`)) remove.mutate(d.id);
-                  }}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
+                <span className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    type="button"
+                    title="Edit"
+                    onClick={() => setEditing(d)}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  >
+                    <PencilSquareIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    title="Delete"
+                    disabled={remove.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Delete "${d.title}"?`)) remove.mutate(d.id);
+                    }}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </span>
               )}
             />
           </>
         )}
       </div>
+
+      <ResourcePlayer doc={playing} onClose={() => setPlaying(null)} />
+      <ResourceEditor
+        doc={editing}
+        saving={update.isPending}
+        onClose={() => setEditing(null)}
+        onSave={(input) => {
+          if (!editing) return;
+          update.mutate(
+            { id: editing.id, input },
+            { onSuccess: () => setEditing(null) },
+          );
+        }}
+      />
     </section>
   );
 }

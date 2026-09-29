@@ -850,7 +850,28 @@ const demoWiki: WikiDTO = {
     productionUrl: "https://app.northwind.co",
     stagingUrl: "https://staging.northwind.co",
   },
-  documents: { enabled: false, documents: [] },
+  // ⚠️ Seeded with the REAL shape, not a tidy one: Loom walkthroughs (what
+  // actually gets dropped in here), titles of one, two and four lines, a plain
+  // link with no preview, and a file. A fixture where every title is the same
+  // length cannot show the ragged-card defect and so cannot verify the fix.
+  documents: {
+    enabled: true,
+    documents: [
+      { id: "wd1", title: "Added a loader to the Generate Summaries button on the Application Table.", kind: "LINK", url: "https://www.loom.com/share/a1b2c3d4e5f6", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:00:00.000Z" },
+      { id: "wd2", title: "Preventing Past Date Interview Requests", kind: "LINK", url: "https://www.loom.com/share/b2c3d4e5f6a1", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:01:00.000Z" },
+      { id: "wd3", title: "Recruiter Pre-Screen Concurrency Warning Explained", kind: "LINK", url: "https://www.loom.com/share/c3d4e5f6a1b2", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:02:00.000Z" },
+      { id: "wd4", title: "Rollout", kind: "LINK", url: "https://www.loom.com/share/d4e5f6a1b2c3", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:03:00.000Z" },
+      { id: "wd5", title: "Download Single candidate cv with candidate name and Bulk Candidate CVs with company name and date of export", kind: "LINK", url: "https://www.loom.com/share/e5f6a1b2c3d4", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:04:00.000Z" },
+      { id: "wd6", title: "Brand guidelines", kind: "LINK", url: "https://docs.google.com/document/d/abc123/edit", host: "docs.google.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:05:00.000Z" },
+      { id: "wd7", title: "Displayed application statuses on the Application Stats page in the same order as the board", kind: "LINK", url: "https://www.loom.com/share/f6a1b2c3d4e5", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:06:00.000Z" },
+      { id: "wd8", title: "Onboarding pack", kind: "FILE", url: null, host: null, fileName: "northwind-onboarding.pdf", fileSize: 842_113, addedAt: "2026-09-29T09:07:00.000Z" },
+      { id: "wd9", title: "Removed candidate scores, notes, and chatbot from the Candidate Portal.", kind: "LINK", url: "https://www.loom.com/share/a1b2c3d4e5f7", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:08:00.000Z" },
+      { id: "wd10", title: "Display the Gender column in the Marketing Candidate table and properly display it on export", kind: "LINK", url: "https://www.loom.com/share/b2c3d4e5f6a2", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:09:00.000Z" },
+      { id: "wd11", title: "Statement of work", kind: "FOUNDRY", url: "/docs/demo-token", host: null, fileName: null, fileSize: null, addedAt: "2026-09-29T09:10:00.000Z" },
+      { id: "wd12", title: "Added functionality to edit the campaign slug from Campaign Settings, including validation and redirects", kind: "LINK", url: "https://www.loom.com/share/c3d4e5f6a1b3", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:11:00.000Z" },
+      { id: "wd13", title: "Design review", kind: "LINK", url: "https://www.figma.com/design/xyz/Console", host: "figma.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:12:00.000Z" },
+    ],
+  },
   codeHandover: {
     enabled: true,
     modules: [

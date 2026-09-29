@@ -87,9 +87,9 @@ describe("wiki Resources — the rename", () => {
 describe("wiki Resources — the preview", () => {
   const card = strip(read("src/components/clients/wiki/documents-section.tsx"));
 
-  it("renders an iframe only for a resolved embed", () => {
+  it("resolves an embed per card, and previews any kind, not only video", () => {
     expect(card).toMatch(/const embed = embedFor\(doc\.url\)/);
-    expect(card).toMatch(/\{embed \? \(/);
+    expect(card).toMatch(/const previewable = Boolean\(embed\)/);
   });
 
   it("keeps the client's share-token URL out of a third party's referrer log", () => {
@@ -104,7 +104,91 @@ describe("wiki Resources — the preview", () => {
     expect(embed).not.toContain("oembed");
   });
 
-  it("drops the 128px gradient cover when there is a preview above it", () => {
-    expect(card).toMatch(/embed \? "min-h-0" : "min-h-\[128px\]"/);
+  it("gives a previewable card a play affordance instead of an inline frame", () => {
+    // Replaces the original "collapse the cover when a preview sits above it"
+    // rule: there is no longer anything above it, because the frame moved into
+    // the dialog. See "the card grid" below for why.
+    expect(card).toMatch(/onPlay\(doc\)/);
+    expect(card).toMatch(/PlayIcon/);
+  });
+});
+
+describe("wiki Resources — the card grid", () => {
+  const card = strip(read("src/components/clients/wiki/documents-section.tsx"));
+
+  it("shows 12 a page", () => {
+    expect(card).toMatch(/const PAGE_SIZE = 12;/);
+  });
+
+  /**
+   * ⚠️ Every card must be the same height whatever its title does. The cover used
+   * to size itself to the title (`min-h-[128px]` + a 3-line clamp), so a 2-line
+   * and a 3-line title made visibly different bands of colour side by side —
+   * which is what Dan reported. Measured after the fix: one card height and one
+   * cover height across a 12-card grid of 1-to-4-line titles.
+   */
+  it("gives the cover a fixed height, not a minimum", () => {
+    expect(card).toMatch(/const COVER_H = \d+;/);
+    expect(card).not.toContain("min-h-[128px]");
+    // ⚠️ Assert the USE, not just the declaration. Swapping `height: COVER_H`
+    // for `minHeight: 128` leaves the const declared and this test green while
+    // the cards go ragged again — which is exactly what a sabotage run showed.
+    expect([...card.matchAll(/height: COVER_H,/g)]).toHaveLength(2);
+    expect(card).not.toMatch(/minHeight:/);
+  });
+
+  it("reserves a fixed two-line box for the title, and keeps the full text reachable", () => {
+    expect(card).toMatch(/h-\[44px\]/);
+    expect(card).toMatch(/WebkitLineClamp: 2/);
+    // A clamped title with no tooltip is a TRUNCATED finding under
+    // audit:clipping — the text is on screen nowhere and unreachable.
+    const title = card.slice(card.indexOf("data-resource-title"));
+    expect(title.slice(0, 600)).toMatch(/title=\{doc\.title\}/);
+  });
+
+  it("sets the clamp inline rather than with the utility class", () => {
+    // `line-clamp-2` works by setting `display:-webkit-box`, and in this subtree
+    // something else wins the display, so the class silently stops clamping and
+    // the title is hard-cut mid-word with no ellipsis.
+    expect(card).not.toMatch(/line-clamp-\d/);
+  });
+
+  /**
+   * ⚠️ The single most important rule here. Twelve third-party iframes racing on
+   * one page is what made previews load only some of the time, and the losers
+   * rendered an empty box that read as a broken card. The grid must request
+   * nothing from a third party until someone asks to watch.
+   */
+  it("mounts no iframe in the grid — only in the player dialog", () => {
+    const iframes = [...card.matchAll(/<iframe/g)];
+    expect(iframes).toHaveLength(1);
+    const playerStart = card.indexOf("function ResourcePlayer");
+    const playerEnd = card.indexOf("function ResourceEditor");
+    expect(playerStart).toBeGreaterThan(-1);
+    expect(card.indexOf("<iframe")).toBeGreaterThan(playerStart);
+    expect(card.indexOf("<iframe")).toBeLessThan(playerEnd);
+  });
+
+  it("keeps the share-token URL out of the provider's referrer log", () => {
+    expect(card).toContain('referrerPolicy="no-referrer"');
+  });
+
+  it("can rename a resource and repoint a link", () => {
+    expect(card).toContain("function ResourceEditor");
+    expect(card).toMatch(/useUpdateWikiDoc/);
+    // A FILE has no URL to edit — its bytes are the resource.
+    expect(card).toMatch(/canEditUrl/);
+  });
+
+  it("the demo carries the shape the defect appears in", () => {
+    // A fixture where every title is the same length cannot show ragged cards,
+    // and one with no Loom links cannot show the preview at all.
+    const demo = read("src/lib/demo/dev-demo-data.ts");
+    const block = demo.slice(demo.indexOf("documents: {"), demo.indexOf("codeHandover:"));
+    expect(block).toContain("loom.com/share/");
+    expect(block).toContain('kind: "FILE"');
+    expect(block).toContain('kind: "FOUNDRY"');
+    // More than one page's worth, so the pager is exercised.
+    expect([...block.matchAll(/id: "wd\d+"/g)].length).toBeGreaterThan(12);
   });
 });
