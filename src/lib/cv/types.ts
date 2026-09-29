@@ -23,11 +23,25 @@
  * someone widening `buildCvData` later.
  */
 
-/** One engagement. `client` is the Portal client; `project` the platform/product. */
+/**
+ * One engagement.
+ *
+ * ⚠️ **There is no client name here, on purpose.** A dev's CV goes to clients,
+ * and one client's name on a CV shown to another is a disclosure nobody asked
+ * for. Like the commercial and assessment fields above, the guarantee is
+ * structural: this type has nowhere to put a client, so a renderer cannot print
+ * one.
+ *
+ * `label` is what the row actually says — the platform or project the dev worked
+ * on. ⚠️ `Placement.projectName` is non-null free text and in the real data
+ * frequently IS the client's name ("Big Wedge Golf"), so the label is not simply
+ * the project: `engagementLabel` drops any candidate label that carries the
+ * client's name through and falls back to a neutral one. Removing the field
+ * without that guard would have leaked the name straight back.
+ */
 export interface CvEngagement {
-  client: string;
-  project: string | null;
-  /** Rendered date range, e.g. "Mar 2025 — present". Never a raw ISO string. */
+  label: string;
+  /** Rendered date range, e.g. "Mar 2025 – present". Never a raw ISO string. */
   period: string;
   /** Sorts newest-first; not printed. */
   startedAt: string;

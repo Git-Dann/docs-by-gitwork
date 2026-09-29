@@ -171,7 +171,7 @@ export function CvModal({
               ) : null}
             </>
           ) : (
-            "One page, Gitwork Document System. Rates, scores and pipeline state are never included."
+            "One page, Gitwork Document System. Client names, rates, scores and pipeline state are never included."
           )}
         </p>
         <div className="flex items-center gap-2">

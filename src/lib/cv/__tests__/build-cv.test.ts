@@ -5,11 +5,13 @@ import {
   ENGAGEMENT_PX,
   IDENTITY_PX,
   NAME_LINE_PX,
+  NEUTRAL_ENGAGEMENT_LABEL,
   SECTION_PX,
   buildCvData,
   chipRows,
   clampProse,
   displayUrl,
+  engagementLabel,
   fitToOnePage,
   monthYear,
   periodLabel,
@@ -17,8 +19,7 @@ import {
 import type { CvEngagement } from "../types";
 
 const eng = (over: Partial<CvEngagement> = {}): CvEngagement => ({
-  client: "Client",
-  project: "Platform",
+  label: "Web platform",
   period: "Jan 2024 – present",
   startedAt: "2024-01-01",
   current: true,
@@ -101,6 +102,15 @@ describe("buildCvData", () => {
     ]);
   });
 
+  it("asks for a project name when a row could only be described by the client", () => {
+    const cv = buildCvData(minimal, [
+      // projectName IS the client, so the row falls back to the neutral label.
+      { clientName: "Big Wedge Golf", projectName: "Big Wedge Golf", startDate: "2025-01-01" },
+    ]);
+    expect(cv.engagements[0].label).toBe("Client engagement");
+    expect(cv.missing).toContain("a project or platform name on 1 engagement");
+  });
+
   it("reports nothing missing on a full profile", () => {
     const cv = buildCvData(
       {
@@ -113,7 +123,7 @@ describe("buildCvData", () => {
         githubHandle: "alicef",
         linkedinUrl: "linkedin.com/in/alicef",
       },
-      [{ clientName: "Wedge", startDate: "2025-01-01", endDate: null }],
+      [{ clientName: "Wedge", projectName: "Checkout", startDate: "2025-01-01", endDate: null }],
     );
     expect(cv.missing).toEqual([]);
   });
@@ -136,19 +146,19 @@ describe("buildCvData", () => {
 
   it("sorts engagements newest first and marks open ones current", () => {
     const cv = buildCvData(minimal, [
-      { clientName: "Old", startDate: "2022-01-01", endDate: "2023-01-01" },
-      { clientName: "Now", startDate: "2025-01-01", endDate: null },
-      { clientName: "Mid", startDate: "2024-01-01", endDate: "2025-01-01" },
+      { clientName: "Old", projectName: "Billing", startDate: "2022-01-01", endDate: "2023-01-01" },
+      { clientName: "Now", projectName: "Checkout", startDate: "2025-01-01", endDate: null },
+      { clientName: "Mid", projectName: "Onboarding", startDate: "2024-01-01", endDate: "2025-01-01" },
     ]);
-    expect(cv.engagements.map((e) => e.client)).toEqual(["Now", "Mid", "Old"]);
+    expect(cv.engagements.map((e) => e.label)).toEqual(["Checkout", "Onboarding", "Billing"]);
     expect(cv.engagements.map((e) => e.current)).toEqual([true, false, false]);
   });
 
-  it("prefers the platform name over the project name for the sub-line", () => {
+  it("prefers the platform name over the project name", () => {
     const cv = buildCvData(minimal, [
-      { clientName: "Wedge", projectName: "Phase 2", clientPlatformName: "iOS app", startDate: "2025-01-01" },
+      { clientName: "Acme", projectName: "Phase 2", clientPlatformName: "iOS app", startDate: "2025-01-01" },
     ]);
-    expect(cv.engagements[0].project).toBe("iOS app");
+    expect(cv.engagements[0].label).toBe("iOS app");
   });
 
   it("gives a bare host a scheme rather than emitting a relative link", () => {
@@ -164,25 +174,80 @@ describe("buildCvData", () => {
   });
 });
 
+describe("engagementLabel — the client's name may never appear", () => {
+  it("uses the platform when it says nothing about the client", () => {
+    expect(engagementLabel("iOS app", "Phase 2", "Big Wedge Golf")).toBe("iOS app");
+  });
+
+  it("falls back to the project when there is no platform", () => {
+    expect(engagementLabel(null, "Subscriptions", "Fellas Loaded")).toBe("Subscriptions");
+  });
+
+  it("rejects a project that IS the client name", () => {
+    // The common real shape: projectName is free text and is usually just the
+    // client. Carrying it through would leak exactly what we removed.
+    expect(engagementLabel(null, "Big Wedge Golf", "Big Wedge Golf")).toBe(
+      NEUTRAL_ENGAGEMENT_LABEL,
+    );
+  });
+
+  it("rejects a project that merely CONTAINS a distinctive client word", () => {
+    // A whole-string comparison passes this straight through, which is why the
+    // test is on words.
+    expect(engagementLabel(null, "Wedge phase 2", "Big Wedge Golf")).toBe(
+      NEUTRAL_ENGAGEMENT_LABEL,
+    );
+  });
+
+  it("matches across punctuation and casing", () => {
+    expect(engagementLabel(null, "yourgroop platform", "YourGroop")).toBe(
+      NEUTRAL_ENGAGEMENT_LABEL,
+    );
+    expect(engagementLabel(null, "Fellas-Loaded app", "Fellas Loaded")).toBe(
+      NEUTRAL_ENGAGEMENT_LABEL,
+    );
+  });
+
+  it("falls through to the project when the PLATFORM carries the client name", () => {
+    expect(engagementLabel("Wedge iOS", "Scheduling", "Big Wedge Golf")).toBe("Scheduling");
+  });
+
+  it("ignores generic company words, or every label would be vetoed", () => {
+    // A client called "The Grove Group Ltd" must not veto "Group scheduling
+    // platform" on the word "group".
+    expect(engagementLabel(null, "Group scheduling platform", "The Grove Group Ltd")).toBe(
+      "Group scheduling platform",
+    );
+  });
+
+  it("ignores words of two characters or fewer", () => {
+    expect(engagementLabel(null, "Go services", "Go Digital Ltd")).toBe("Go services");
+  });
+
+  it("has a neutral label to fall back to rather than an empty row", () => {
+    expect(engagementLabel(null, null, "Acme")).toBe(NEUTRAL_ENGAGEMENT_LABEL);
+  });
+});
+
 describe("fitToOnePage", () => {
   it("never cuts current engagements", () => {
-    const current = Array.from({ length: 8 }, (_, i) => eng({ client: `C${i}`, current: true }));
+    const current = Array.from({ length: 8 }, (_, i) => eng({ label: `C${i}`, current: true }));
     const out = fitToOnePage({ summary: "", engagements: current, stack: [], linkCount: 1 });
     expect(out.engagements).toHaveLength(8);
   });
 
   it("cuts the oldest past engagements first and says how many went", () => {
     const list = [
-      eng({ client: "Now", current: true }),
+      eng({ label: "Now", current: true }),
       ...Array.from({ length: 20 }, (_, i) =>
-        eng({ client: `Past${i}`, current: false, startedAt: `${2024 - i}-01-01` }),
+        eng({ label: `Past${i}`, current: false, startedAt: `${2024 - i}-01-01` }),
       ),
     ];
     const out = fitToOnePage({ summary: "", engagements: list, stack: [], linkCount: 1 });
     expect(out.engagements.length).toBeLessThan(list.length);
-    expect(out.engagements[0].client).toBe("Now");
+    expect(out.engagements[0].label).toBe("Now");
     // The ones kept are the head of the past list, which arrives newest-first.
-    expect(out.engagements[1].client).toBe("Past0");
+    expect(out.engagements[1].label).toBe("Past0");
     expect(out.omitted.some((o) => /earlier engagements?$/.test(o))).toBe(true);
   });
 
@@ -204,7 +269,7 @@ describe("fitToOnePage", () => {
   });
 
   it("charges the identity block for a name that wraps", () => {
-    const list = Array.from({ length: 20 }, (_, i) => eng({ client: `P${i}`, current: false }));
+    const list = Array.from({ length: 20 }, (_, i) => eng({ label: `P${i}`, current: false }));
     const short = fitToOnePage({ summary: "", engagements: list, stack: [], linkCount: 1, nameLines: 1 });
     const wrapped = fitToOnePage({ summary: "", engagements: list, stack: [], linkCount: 1, nameLines: 3 });
     // Two extra name lines cost 2 x 47px, which is more than one 66px row.
@@ -216,7 +281,7 @@ describe("fitToOnePage", () => {
     // CV overflows into the footer — which is what a line-based budget did.
     const out = fitToOnePage({
       summary: "word ".repeat(400),
-      engagements: Array.from({ length: 30 }, (_, i) => eng({ client: `C${i}`, current: i < 2 })),
+      engagements: Array.from({ length: 30 }, (_, i) => eng({ label: `C${i}`, current: i < 2 })),
       stack: ["TypeScript", "Go", "Rust"],
       linkCount: 3,
       nameLines: 1,

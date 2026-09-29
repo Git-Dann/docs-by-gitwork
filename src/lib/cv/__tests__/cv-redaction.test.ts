@@ -37,9 +37,15 @@ describe("the CV cannot carry commercial or internal-assessment data", () => {
     published: false,
   } as Parameters<typeof buildCvData>[0];
 
-  const html = renderCvHtml(buildCvData(loaded, [
-    { clientName: "Wedge", startDate: "2025-01-01", endDate: null },
-  ]), { fontCss: "", markDataUri: null });
+  const html = renderCvHtml(
+    buildCvData(loaded, [
+      // A placement whose project name is the client's name, which is the common
+      // real shape and the one that leaks if the row is not guarded.
+      { clientName: "Big Wedge Golf", projectName: "Big Wedge Golf", startDate: "2025-01-01", endDate: null },
+      { clientName: "Fellas Loaded", projectName: "Subscriptions", clientPlatformName: "iOS app", startDate: "2024-01-01", endDate: "2025-01-01" },
+    ]),
+    { fontCss: "", markDataUri: null },
+  );
 
   /**
    * ⚠️ Assert against the PRINTED TEXT, not the raw HTML. The first version of
@@ -64,6 +70,11 @@ describe("the CV cannot carry commercial or internal-assessment data", () => {
     ["identity confidence", "LOW"],
     ["pipeline status", "SOURCED"],
     ["the dev group", "PRO_BONO"],
+    // Dan's call, Sept 2026: a dev's CV goes to clients, so one client's name on
+    // a CV shown to another is a disclosure nobody asked for.
+    ["a client name", "Big Wedge"],
+    ["a client name reached through the project field", "Wedge"],
+    ["another client name", "Fellas"],
   ])("never prints %s", (_label, needle) => {
     expect(text).not.toContain(needle);
   });
@@ -73,7 +84,10 @@ describe("the CV cannot carry commercial or internal-assessment data", () => {
     // assertion above.
     expect(text).toContain("Alice Fernandez");
     expect(text).toContain("React Native");
-    expect(text).toContain("Wedge");
+    // The work is still described, just not attributed: the safe platform name
+    // survives, and the row whose only label was the client falls back.
+    expect(text).toContain("iOS app");
+    expect(text).toContain("Client engagement");
   });
 
   it("the route never selects a commercial or assessment column", () => {
