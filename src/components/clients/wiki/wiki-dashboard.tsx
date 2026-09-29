@@ -56,7 +56,7 @@ const SECTION_META: Record<
 > = {
   timeline: { label: "Timeline", icon: CalendarDaysIcon },
   monitors: { label: "Monitors", icon: BoltIcon },
-  documents: { label: "Documents", icon: DocumentDuplicateIcon },
+  documents: { label: "Resources", icon: DocumentDuplicateIcon },
   intake: { label: "Requests", icon: FlagIcon },
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
   insights: { label: "Charts", icon: ChartPieIcon },
@@ -446,7 +446,7 @@ export function WikiDashboard({
         const docs = wiki.documents.documents;
         return (
           <div className="space-y-1.5">
-            <Metric value={String(docs.length)} label={docs.length === 1 ? "Document" : "Documents"} />
+            <Metric value={String(docs.length)} label={docs.length === 1 ? "Resource" : "Resources"} />
             {docs[0] && (
               <p className="truncate text-[12px] text-[var(--text-4)]">Latest: {docs[0].title}</p>
             )}
@@ -890,7 +890,7 @@ function buildFooterStats(
   if (wiki.documents.documents.length > 0) {
     stats.push({
       value: String(wiki.documents.documents.length),
-      label: wiki.documents.documents.length === 1 ? "Document" : "Documents",
+      label: wiki.documents.documents.length === 1 ? "Resource" : "Resources",
     });
   }
   if (activeMonitors.length > 0) {

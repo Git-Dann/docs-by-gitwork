@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 const SECTION_LABELS: Record<string, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   launchpad: "Launchpad",
   insights: "Charts",
   costs: "Running costs",

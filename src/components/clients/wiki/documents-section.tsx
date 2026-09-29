@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { embedFor } from "@/lib/wiki/embed";
+import { cn } from "@/lib/format";
 import {
   PlusIcon,
   TrashIcon,
@@ -104,14 +106,37 @@ function WikiDocCard({
   const isFile = doc.kind === "FILE";
   const palette = docCoverPalette(doc.id);
   const OpenIcon = isFile ? ArrowDownTrayIcon : ArrowTopRightOnSquareIcon;
+  // A Loom walkthrough is the thing people actually drop in here, and a card with
+  // a title and the word "loom.com" tells you nothing about which recording it is.
+  const embed = embedFor(doc.url);
   return (
     <article className="group/wikidoc flex flex-col overflow-hidden rounded-[10px] border border-[var(--border-2)] bg-white transition hover:border-[var(--border-1)] hover:shadow-[var(--shadow-sm)]">
+      {embed ? (
+        <div className="relative w-full bg-black/5" style={{ aspectRatio: String(embed.ratio) }}>
+          <iframe
+            src={embed.src}
+            title={doc.title}
+            loading="lazy"
+            // ⚠️ `allowFullScreen` but NOT `allow-same-origin`-style privileges we
+            // do not need. `referrerPolicy` keeps the client's wiki URL — which is
+            // behind a share token — out of a third party's referrer logs.
+            allowFullScreen
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 h-full w-full border-0"
+          />
+        </div>
+      ) : null}
       <a
         href={hrefFor(doc, fileBase)}
         target="_blank"
         rel="noreferrer"
         title={isFile ? "Download" : "Open"}
-        className="relative flex min-h-[128px] flex-col justify-between p-4"
+        className={cn(
+          "relative flex flex-col justify-between p-4",
+          // No preview → the gradient cover carries the card. With one, it would
+          // be 128px of dead colour under the thing you came to look at.
+          embed ? "min-h-0" : "min-h-[128px]",
+        )}
         style={{ backgroundImage: `linear-gradient(135deg, ${palette.from}, ${palette.to})` }}
       >
         <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: palette.ink, opacity: 0.7 }}>
@@ -219,7 +244,7 @@ function DocumentsToolbar({
         <input
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          placeholder="Search documents…"
+          placeholder="Search resources…"
           className="app-input pl-9"
         />
       </div>
@@ -336,13 +361,13 @@ export function DocumentsList({
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
           <span className="widget-header__label--number">01</span>
-          {" // DOCUMENTS"}
+          {" // RESOURCES"}
         </span>
       </div>
       <div className="space-y-4 p-6">
         {documents.length === 0 ? (
           <p className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
-            No documents yet.
+            No resources yet.
           </p>
         ) : (
           <>
@@ -352,7 +377,7 @@ export function DocumentsList({
               fileBase={fileBase}
               page={page}
               onPage={setPage}
-              emptyLabel="No documents match your search."
+              emptyLabel="No resources match your search."
             />
           </>
         )}
@@ -424,7 +449,7 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
       <div className="widget-header flex items-center justify-between">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
           <span className="widget-header__label--number">01</span>
-          {" // DOCUMENTS"}
+          {" // RESOURCES"}
         </span>
         <div className="flex items-center gap-1.5">
           <button
@@ -579,7 +604,7 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
 
         {documents.length === 0 ? (
           <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
-            No documents yet. Add a link or upload a file to get started.
+            No resources yet. Add a link or upload a file to get started.
           </p>
         ) : (
           <>
@@ -589,7 +614,7 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
               fileBase={fileBase}
               page={page}
               onPage={setPage}
-              emptyLabel="No documents match your search."
+              emptyLabel="No resources match your search."
               actionFor={(d) => (
                 <button
                   type="button"

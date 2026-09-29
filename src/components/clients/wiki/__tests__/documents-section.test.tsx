@@ -142,6 +142,6 @@ describe("DocumentsList — card grid, search, kind tabs, pagination", () => {
     render();
     typeInto(searchInput(), "nothing matches this");
     expect(cardCount()).toBe(0);
-    expect(host.textContent).toContain("No documents match your search.");
+    expect(host.textContent).toContain("No resources match your search.");
   });
 });

@@ -56,7 +56,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   intake: "Requests",
   launchpad: "Launchpad",
   insights: "Charts",
