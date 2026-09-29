@@ -93,9 +93,7 @@ export function renderCvHtml(data: CvData, assets: CvAssets): string {
           .map(
             (e) => `<li>
         <span class="arrow" aria-hidden="true">&#8594;</span>
-        <span class="work-main"><span class="work-client">${esc(e.client)}</span>${
-          e.project ? `<span class="work-project">${esc(e.project)}</span>` : ""
-        }</span>
+        <span class="work-main"><span class="work-label">${esc(e.label)}</span></span>
         <span class="work-period">${esc(e.period)}</span>
       </li>`,
           )
@@ -184,8 +182,7 @@ body {
 .work li:last-child { border-bottom: 0; padding-bottom: 0; }
 .arrow { color: ${T.signal}; font-size: 15.5px; line-height: 1.62; }
 .work-main { flex: 1 1 auto; min-width: 0; }
-.work-client { font-size: 15px; font-weight: 600; line-height: 1.35; }
-.work-project { display: block; font-size: 13px; line-height: 1.55; color: ${T.muted}; }
+.work-label { font-size: 15px; font-weight: 600; line-height: 1.35; }
 .work-period {
   flex: 0 0 auto;
   font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;

@@ -143,6 +143,61 @@ export function periodLabel(start: string, end: string | null | undefined): stri
   return from === to ? from : `${from} – ${to}`;
 }
 
+/** Lower-cased, punctuation-stripped, single-spaced — for comparing two names
+ *  that describe the same client written slightly differently. */
+function normaliseName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** The neutral label for an engagement we cannot describe without the client. */
+export const NEUTRAL_ENGAGEMENT_LABEL = "Client engagement";
+
+/**
+ * What an engagement row says, given that the client's name may never appear.
+ *
+ * Prefers the platform ("iOS app"), then the project. ⚠️ Either can carry the
+ * client's name — `projectName` is free text and in practice is often just the
+ * client ("Big Wedge Golf", "Wedge phase 2") — so a candidate label is rejected
+ * when the client's name, or any distinctive word of it, is inside it. Rejecting
+ * on a *word* rather than the whole string is what catches "Wedge phase 2"; a
+ * whole-string test would pass it straight through.
+ *
+ * Words of two characters or fewer are ignored, and so are the generic company
+ * suffixes, or a client called "The Group Ltd" would veto every label containing
+ * "the".
+ */
+const GENERIC_NAME_WORDS = new Set([
+  "the", "and", "ltd", "limited", "llp", "plc", "inc", "llc", "co", "company",
+  "group", "holdings", "labs", "studio", "studios", "digital", "technologies",
+  "tech", "solutions", "services", "global", "international",
+]);
+
+export function engagementLabel(
+  platform: string | null | undefined,
+  project: string | null | undefined,
+  client: string,
+): string {
+  const clientWords = normaliseName(client)
+    .split(" ")
+    .filter((w) => w.length > 2 && !GENERIC_NAME_WORDS.has(w));
+
+  const carriesClient = (candidate: string): boolean => {
+    const words = new Set(normaliseName(candidate).split(" "));
+    return clientWords.some((w) => words.has(w));
+  };
+
+  for (const candidate of [platform, project]) {
+    const t = candidate?.trim();
+    if (!t) continue;
+    if (carriesClient(t)) continue;
+    return t;
+  }
+  return NEUTRAL_ENGAGEMENT_LABEL;
+}
+
 /** Strips a scheme and any trailing slash for the printed form. A CV is paper. */
 export function displayUrl(raw: string): string {
   return raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
@@ -324,8 +379,9 @@ export function buildCvData(
   const engagements: CvEngagement[] = placements
     .filter((p) => p.clientName?.trim())
     .map((p) => ({
-      client: p.clientName.trim(),
-      project: p.clientPlatformName?.trim() || p.projectName?.trim() || null,
+      // The client name is read to know this is a real placement, and to veto a
+      // label that carries it. It is never carried into the CV.
+      label: engagementLabel(p.clientPlatformName, p.projectName, p.clientName),
       period: periodLabel(p.startDate, p.endDate),
       startedAt: p.startDate,
       current: !p.endDate,
@@ -361,6 +417,18 @@ export function buildCvData(
   if (!candidate.bio?.trim()) missing.push("profile summary");
   if (!engagements.length) missing.push("client engagements");
   if (stack.length <= 1) missing.push("tech stack");
+  // A row that fell back to the neutral label carries only a date range. We will
+  // not invent a descriptor for it — the brand's own rule is that nothing goes on
+  // a document unverified — so the operator is told instead, and setting a
+  // platform or project name on that placement fixes it.
+  const unlabelled = fitted.engagements.filter(
+    (e) => e.label === NEUTRAL_ENGAGEMENT_LABEL,
+  ).length;
+  if (unlabelled > 0) {
+    missing.push(
+      `a project or platform name on ${unlabelled} engagement${unlabelled === 1 ? "" : "s"}`,
+    );
+  }
   if (!candidate.location?.trim()) missing.push("location");
   if (typeof candidate.yearsExperience !== "number" || candidate.yearsExperience <= 0) {
     missing.push("years of experience");
