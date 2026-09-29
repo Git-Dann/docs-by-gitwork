@@ -10,7 +10,7 @@ import { DocumentsList } from "@/components/clients/wiki/documents-section";
  *
  * `DocumentsList` has no mutation hooks (read-only), so it renders without a
  * QueryClientProvider — this drives the real component, not a mock, across a
- * mixed FOUNDRY/LINK/FILE set that's deliberately > PAGE_SIZE (8) so both the
+ * mixed FOUNDRY/LINK/FILE set that's deliberately > PAGE_SIZE (12) so both the
  * "ALL" tab and pagination are exercised together.
  */
 
@@ -40,12 +40,12 @@ function makeDoc(id: string, kind: WikiDocumentDTO["kind"], title: string): Wiki
   };
 }
 
-// 5 FOUNDRY + 3 LINK + 4 FILE = 12 — past the 8-per-page cap on "ALL", while
+// 5 FOUNDRY + 5 LINK + 6 FILE = 16 — past the 12-per-page cap on "ALL", while
 // every single-kind tab stays on one page.
 const DOCS: WikiDocumentDTO[] = [
   ...Array.from({ length: 5 }, (_, i) => makeDoc(`fd-${i}`, "FOUNDRY", `Foundry doc ${i}`)),
-  ...Array.from({ length: 3 }, (_, i) => makeDoc(`lk-${i}`, "LINK", `Link doc ${i}`)),
-  ...Array.from({ length: 4 }, (_, i) => makeDoc(`fl-${i}`, "FILE", `File doc ${i}`)),
+  ...Array.from({ length: 5 }, (_, i) => makeDoc(`lk-${i}`, "LINK", `Link doc ${i}`)),
+  ...Array.from({ length: 6 }, (_, i) => makeDoc(`fl-${i}`, "FILE", `File doc ${i}`)),
 ];
 
 function render() {
@@ -95,26 +95,26 @@ function cardCount(): number {
 describe("DocumentsList — card grid, search, kind tabs, pagination", () => {
   it("renders one tab per kind, starting with All, each carrying its own count", () => {
     render();
-    expect(tabButton("All").textContent).toContain("12");
+    expect(tabButton("All").textContent).toContain("16");
     expect(tabButton("Foundry").textContent).toContain("5");
-    expect(tabButton("Links").textContent).toContain("3");
-    expect(tabButton("Files").textContent).toContain("4");
+    expect(tabButton("Links").textContent).toContain("5");
+    expect(tabButton("Files").textContent).toContain("6");
   });
 
-  it("caps the ALL tab at 8 cards per page", () => {
+  it("caps the ALL tab at 12 cards per page", () => {
     render();
-    expect(cardCount()).toBe(8);
-    expect(host.textContent).toContain("1–8 of 12");
+    expect(cardCount()).toBe(12);
+    expect(host.textContent).toContain("1–12 of 16");
   });
 
   it("Next/Previous page through the remaining cards without changing the filter", () => {
     render();
     act(() => pagerButton("next").dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(cardCount()).toBe(4);
-    expect(host.textContent).toContain("9–12 of 12");
+    expect(host.textContent).toContain("13–16 of 16");
 
     act(() => pagerButton("prev").dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(cardCount()).toBe(8);
+    expect(cardCount()).toBe(12);
   });
 
   it("filtering to Foundry hides Link/File docs and fits on one page", () => {
@@ -130,7 +130,7 @@ describe("DocumentsList — card grid, search, kind tabs, pagination", () => {
   it("search narrows across kinds and resets to page 1", () => {
     render();
     act(() => pagerButton("next").dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(host.textContent).toContain("9–12 of 12");
+    expect(host.textContent).toContain("13–16 of 16");
 
     typeInto(searchInput(), "File doc 2");
     expect(cardCount()).toBe(1);
