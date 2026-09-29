@@ -9,6 +9,7 @@ import {
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { Avatar } from "@/components/ui/avatar";
 import {
   useBulkUpdateCodeClearCandidates,
@@ -524,28 +525,21 @@ export function CodeClearCandidatesWorkspace() {
         )}
       </section>
 
-      {showCreateModal ? (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center px-4 py-8">
-          <button
-            type="button"
-            className="app-dialog-backdrop absolute inset-0"
-            aria-label="Close add developer modal"
-            onClick={() => setShowCreateModal(false)}
-          />
-          <div className="app-dialog-panel relative z-10 flex max-h-full w-full max-w-4xl flex-col">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--border-2)] px-6 py-4">
-              <div>
-                <h3 className="text-xl font-semibold tracking-[-0.03em] text-[var(--text-1)]">
-                  Add dev
-                </h3>
-                <p className="mt-1 text-sm text-[var(--text-4)]">
-                  Create a developer profile. Run validation later to score
-                  this dev from real signals.
-                </p>
-              </div>
-            </div>
-
+      {/* The shared <Modal>: focus trap, Escape, scroll-lock, focus restore and
+          `app-dialog-fixed`'s steady height. This was a hand-rolled panel with
+          none of that and a `max-h-full` that resized with the form's content. */}
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="01 // ADD DEV"
+        panelClassName="app-dialog-fixed w-full max-w-4xl"
+      >
+        <>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <p className="mb-4 text-sm text-[var(--text-4)]">
+                Create a developer profile. Run validation later to score this dev from
+                real signals.
+              </p>
               <CandidateProfileForm
                 value={createForm}
                 onChange={setCreateForm}
@@ -553,7 +547,7 @@ export function CodeClearCandidatesWorkspace() {
               />
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
               <Button type="button" variant="secondary" size="sm" onClick={() => setShowCreateModal(false)}>
                 Cancel
               </Button>
@@ -625,9 +619,8 @@ export function CodeClearCandidatesWorkspace() {
                 Create dev
               </Button>
             </div>
-          </div>
-        </div>
-      ) : null}
+        </>
+      </Modal>
 
     </div>
   );

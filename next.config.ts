@@ -59,6 +59,17 @@ const nextConfig: NextConfig = {
     "/api/proposals/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
     "/api/pulse/scans/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
     "/api/docs/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
+    // The dev CV prints the same way, and additionally reads the four Gitwork
+    // Document System faces off disk to inline them as data URIs. A woff2 reached
+    // by readFile at runtime is invisible to the tracer, so a standalone build
+    // would ship the route without them and every heading would render in Times.
+    "/api/codeclear/candidates/*/cv": [
+      "./node_modules/@sparticuz/chromium/**/*",
+      "./node_modules/@fontsource-variable/fraunces/files/*-latin-wght-*.woff2",
+      "./node_modules/@fontsource-variable/inter/files/*-latin-wght-normal.woff2",
+      "./node_modules/@fontsource-variable/jetbrains-mono/files/*-latin-wght-normal.woff2",
+      "./node_modules/@fontsource-variable/playfair-display/files/*-latin-wght-italic.woff2",
+    ],
   },
   images: {
     // Serve next/image output as AVIF/WebP where the browser supports it — far
