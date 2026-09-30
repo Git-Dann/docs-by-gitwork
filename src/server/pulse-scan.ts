@@ -1248,18 +1248,37 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
   const isAppStore = storeType === "app_store";
   const storeLabel = isAppStore ? "App Store" : "Google Play";
 
-  // App listed + reachable
+  // App listed + reachable.
+  //
+  // ⚠️ "The store would not serve US" is not "the app is gone". Apple rate-limits
+  // apps.apple.com and answers 429 — reproduced directly while investigating a scan that
+  // came back 0/100 — and the store path then reported FAIL: "app may be unlisted or
+  // removed". That is a false statement about a customer's live listing, caused by our
+  // own request volume, and it is the §35 rule again: we could not look, so we said it
+  // was not there.
+  //
+  // Only a status that genuinely means "this listing is not here" may FAIL. Everything
+  // else — a throttle, a 5xx, a network failure — is INCONCLUSIVE, which is excluded
+  // from both sides of the score rather than counted against the app.
+  const status = pageResult?.status ?? null;
+  const listingGone = status === 404 || status === 410;
+  const reachable = status !== null && status < 400;
   checks.push({
     category: CATEGORIES.STORE_LISTING,
     checkKey: "store_page_live",
     label: `${storeLabel} listing is live`,
-    status: pageResult && pageResult.status < 400 ? "PASS" : "FAIL",
-    detail: pageResult && pageResult.status < 400
+    status: reachable ? "PASS" : listingGone ? "FAIL" : "INCONCLUSIVE",
+    detail: reachable
       ? `${storeLabel} listing is publicly accessible.`
-      : `${storeLabel} listing returned ${pageResult?.status ?? "no response"} — app may be unlisted or removed.`,
+      : listingGone
+        ? `${storeLabel} listing returned ${status} — the app is unlisted or has been removed.`
+        : status === 429
+          ? `Not assessed — the ${storeLabel} rate-limited this scan (HTTP 429). That is a limit on how often we may ask, not a fact about the listing; re-run in a few minutes.`
+          : `Not assessed — the ${storeLabel} returned ${status ?? "no response"}, so the listing could not be read. This says nothing about whether the app is live.`,
+    evidence: status === null ? "no response" : `HTTP ${status}`,
   });
 
-  if (!pageResult || pageResult.status >= 400) {
+  if (!reachable) {
     return { checks: checks.map((c, i) => ({ ...c, sortOrder: i })), techStack: [] };
   }
 

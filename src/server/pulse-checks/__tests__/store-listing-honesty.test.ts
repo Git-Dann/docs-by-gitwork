@@ -160,3 +160,32 @@ describe("the framework is never inferred from a listing page", () => {
     expect(block).toContain('isAppStore ? "iOS" : "Android"');
   });
 });
+
+describe("a store that would not serve us is not a missing app", () => {
+  const src = readFileSync("src/server/pulse-scan.ts", "utf8");
+  const block = src.slice(src.indexOf("// App listed + reachable"), src.indexOf("// App name / title"));
+  const code = block.replace(/\/\/[^\n]*/g, "");
+
+  it("only 404/410 may FAIL — a throttle or 5xx is INCONCLUSIVE", () => {
+    // Apple rate-limits apps.apple.com and answers 429; reproduced directly. The old
+    // rule was `status < 400 ? PASS : FAIL`, so OUR request volume produced
+    // "app may be unlisted or removed" about a live listing.
+    expect(code).toContain("status === 404 || status === 410");
+    expect(code).toMatch(/listingGone \? "FAIL" : "INCONCLUSIVE"|reachable \? "PASS" : listingGone \? "FAIL" : "INCONCLUSIVE"/);
+  });
+
+  it("names the throttle rather than implying the app is gone", () => {
+    expect(block).toMatch(/429/);
+    expect(block).toMatch(/not a fact about the listing/i);
+    // The removal wording must be reachable ONLY from the 404/410 branch.
+    const removal = block.indexOf("unlisted or has been removed");
+    const goneBranch = block.indexOf("listingGone");
+    expect(removal).toBeGreaterThan(goneBranch);
+  });
+
+  it("still bails out of the remaining checks when the page was not read", () => {
+    // The 11 checks below all parse `html`; running them on an error body would
+    // invent findings about a page we never received.
+    expect(code).toContain("if (!reachable)");
+  });
+});
