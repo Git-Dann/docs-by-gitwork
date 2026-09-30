@@ -1441,18 +1441,23 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
   }
 
   // Tech stack inference for mobile
+  // ⚠️ The platform is a FACT about the storefront; the framework is not knowable from
+  // a listing page and must not be guessed.
+  //
+  // This used to read: if the marketing HTML does not contain "flutter" or "react
+  // native", assert "Swift / SwiftUI" (or "Kotlin"). A store listing never states its
+  // implementation framework, so that branch turned the absence of two strings on
+  // APPLE'S webpage into a positive claim about someone else's codebase — and put it in
+  // `techStack`, which reports read as detected fact. Measured on a real listing it
+  // asserted Swift/SwiftUI for an app whose bundle id is `com.trainerize.*`: a
+  // white-label whose binary its own publisher did not build.
+  //
+  // A named framework here is only ever kept when the page actually says so, which does
+  // happen — some listings name their stack in the description.
   const techStack: string[] = [];
-  if (isAppStore) {
-    techStack.push("iOS");
-    if (lower.includes("flutter")) techStack.push("Flutter");
-    else if (lower.includes("react native")) techStack.push("React Native");
-    else techStack.push("Swift / SwiftUI");
-  } else {
-    techStack.push("Android");
-    if (lower.includes("flutter")) techStack.push("Flutter");
-    else if (lower.includes("react native")) techStack.push("React Native");
-    else techStack.push("Kotlin");
-  }
+  techStack.push(isAppStore ? "iOS" : "Android");
+  if (lower.includes("flutter")) techStack.push("Flutter");
+  else if (lower.includes("react native")) techStack.push("React Native");
 
   return {
     checks: checks.map((c, i) => ({ ...c, sortOrder: i })),

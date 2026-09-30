@@ -164,7 +164,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       collectorExecutions.push({
         name: "url-checks",
         outcome: "NOT_APPLICABLE",
-        reason: `The scanned URL is a ${urlTargetKind === "app_store" ? "App Store" : "Google Play"} listing, so only the store-listing checks could run. Security headers, TLS, legal pages, SEO, accessibility and DNS all describe a website — scan the product's own URL to assess them.`,
+        reason: `The scanned URL is ${urlTargetKind === "app_store" ? "an App Store" : "a Google Play"} listing, so only the store-listing checks could run. Security headers, TLS, legal pages, SEO, accessibility and DNS all describe a website — scan the product's own URL to assess them.`,
       });
     } else {
       collectorCompleted("url-checks");

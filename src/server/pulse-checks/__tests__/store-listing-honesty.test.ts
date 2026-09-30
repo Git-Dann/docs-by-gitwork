@@ -135,3 +135,28 @@ describe("the gate refuses to clear a scan that ran none of its blocking control
     expect(gate.unverified).toEqual([]);
   });
 });
+
+describe("the framework is never inferred from a listing page", () => {
+  const src = readFileSync("src/server/pulse-scan.ts", "utf8");
+  const block = src.slice(src.indexOf("const techStack: string[] = [];"), src.indexOf("return {", src.indexOf("const techStack: string[] = [];")));
+
+  it("asserts no framework the page did not name", () => {
+    // A listing page never states its implementation framework. The old code read
+    // "no 'flutter' and no 'react native' in Apple's marketing HTML" as proof of
+    // Swift/SwiftUI — a positive claim about someone else's codebase, built from the
+    // absence of two strings on a page they do not control.
+    const code = block.replace(/\/\/[^\n]*/g, "");
+    expect(code).not.toContain("Swift / SwiftUI");
+    expect(code).not.toContain("Kotlin");
+  });
+
+  it("still keeps a framework the page DOES name", () => {
+    // Some listings do name their stack in the description; that is evidence.
+    expect(block).toContain('lower.includes("flutter")');
+    expect(block).toContain('lower.includes("react native")');
+  });
+
+  it("still reports the platform, which the storefront really does establish", () => {
+    expect(block).toContain('isAppStore ? "iOS" : "Android"');
+  });
+});
