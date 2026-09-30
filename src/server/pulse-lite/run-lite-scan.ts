@@ -144,14 +144,38 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // used quota and time on App Store pages, source-only platforms, prototypes,
     // and Vercel/Cloudflare checkpoints whose results were later discarded.
     const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
-    collectorCompleted("url-checks");
+    const urlTargetKind = detectUrlTargetKind(safeUrl);
+    // ⚠️ A store-listing URL takes an EARLY RETURN inside runUrlChecks: it runs the
+    // ~12 store-listing checks and none of the url-checks families — no security
+    // headers, no TLS, no legal pages, no SEO, no accessibility, no DNS. Reporting
+    // that collector COMPLETED said the opposite.
+    //
+    // The cost was not cosmetic. `launch-ready` lists url-checks in
+    // requiredCollectors, so the false COMPLETED suppressed
+    // REQUIRED_COLLECTOR_UNAVAILABLE; `unverified` stayed empty and the gate
+    // returned READY. Completeness is computed over the checks that RAN, so 12 of
+    // 12 observed reported 100% coverage. A scan of an App Store page came back
+    // "98/100 · READY · coverage 100%" having never looked at a single one of the
+    // policy's blocking controls.
+    //
+    // This is collector-health.ts's own documented failure — "absent read as
+    // complete" — with an extra step: present, and reporting the wrong thing.
+    if (urlTargetKind === "app_store" || urlTargetKind === "play_store") {
+      collectorExecutions.push({
+        name: "url-checks",
+        outcome: "NOT_APPLICABLE",
+        reason: `The scanned URL is a ${urlTargetKind === "app_store" ? "App Store" : "Google Play"} listing, so only the store-listing checks could run. Security headers, TLS, legal pages, SEO, accessibility and DNS all describe a website — scan the product's own URL to assess them.`,
+      });
+    } else {
+      collectorCompleted("url-checks");
+    }
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
     urlSurfaceIsProduction = urlResult.surfaceKind === "DEPLOYED_PRODUCT";
     urlTargetBlocked = urlResult.checks.some(
       (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
     );
-    const targetKind = detectUrlTargetKind(safeUrl);
+    const targetKind = urlTargetKind;
     if (targetKind === "app_store") executionPlatform = "IOS_APP";
     if (targetKind === "play_store") executionPlatform = "ANDROID_APP";
     const collectorPlan = buildUrlCollectorPlan(

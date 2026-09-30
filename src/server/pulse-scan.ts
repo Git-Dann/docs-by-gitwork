@@ -1196,6 +1196,49 @@ function skipChecks(
   }
 }
 
+/**
+ * The developer's real store description, fetched from the store's own metadata API.
+ *
+ * ⚠️ NOT `og:description`. Apple's is a social-card template ABOUT THE PAGE, not the
+ * app: measured on a real listing it reads "Download <app> by <seller> on the App Store.
+ * See screenshots, ratings and reviews, user tips and more games like <app>…" — 159
+ * characters, and it says "games" for a fitness app. The check that read it told Beyond
+ * Nutrition UK their description was "short" while their actual description was 1,182
+ * characters and would have passed the same threshold comfortably.
+ *
+ * So the field is read from `itunes.apple.com/lookup`, which is Apple's own canonical
+ * metadata for the listing, free and unauthenticated.
+ *
+ * Returns `null` when the description cannot be established — the caller must then SKIP
+ * rather than judge a length it never read. That is the §35 rule: "we could not look"
+ * is not "it is too short".
+ */
+export function parseAppStoreTrack(url: string): { id: string; country: string } | null {
+  const id = /\/id(\d{6,})/.exec(url)?.[1];
+  if (!id) return null;
+  // Region matters: a listing can differ per storefront, so use the one in the URL.
+  const country = /apps\.apple\.com\/([a-z]{2})\//i.exec(url)?.[1] ?? "us";
+  return { id, country };
+}
+
+export async function fetchAppStoreDescription(url: string): Promise<string | null> {
+  const track = parseAppStoreTrack(url);
+  if (!track) return null;
+  const { id, country } = track;
+  try {
+    const response = await fetchWithTimeout(
+      `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}&country=${encodeURIComponent(country)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!response.ok) return null;
+    const body = await response.json() as { results?: { description?: unknown }[] };
+    const description = body.results?.[0]?.description;
+    return typeof description === "string" && description.trim().length > 0 ? description.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_store"): Promise<{ checks: PulseScanCheckInput[]; techStack: string[] }> {
   const checks: PulseScanCheckInput[] = [];
   const pageResult = await fetchPage(url);
@@ -1233,21 +1276,34 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     evidence: ogTitle ?? undefined,
   });
 
-  // Description quality
-  const ogDesc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']{20,})["']/i)?.[1]
-    ?? html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{20,})["']/i)?.[1];
-  const descLength = ogDesc?.length ?? 0;
-  checks.push({
-    category: CATEGORIES.STORE_LISTING,
-    checkKey: "store_description",
-    label: "App description",
-    status: descLength > 200 ? "PASS" : descLength > 50 ? "WARN" : "FAIL",
-    detail: descLength > 200
-      ? "App description is detailed and complete."
-      : descLength > 50
-        ? "App description is short — a longer description improves store discovery."
-        : "No meaningful app description detected — required for store approval and discoverability.",
-  });
+  // Description quality — read the DEVELOPER'S description, never the page's og:description.
+  // See fetchAppStoreDescription for what that tag actually contains and what it cost.
+  const realDescription = isAppStore ? await fetchAppStoreDescription(url) : null;
+  if (realDescription === null) {
+    checks.push({
+      category: CATEGORIES.STORE_LISTING,
+      checkKey: "store_description",
+      label: "App description",
+      status: "SKIPPED",
+      detail: isAppStore
+        ? "Not assessed — the listing's description could not be read from Apple's metadata API, and the page's own `og:description` is a social-card summary of the page rather than the app's description, so judging its length would say nothing about the listing."
+        : "Not assessed — Google Play publishes no metadata API, and the page's `og:description` is a truncated social-card summary rather than the app's description, so its length is not evidence about the listing.",
+    });
+  } else {
+    const descLength = realDescription.length;
+    checks.push({
+      category: CATEGORIES.STORE_LISTING,
+      checkKey: "store_description",
+      label: "App description",
+      status: descLength > 200 ? "PASS" : descLength > 50 ? "WARN" : "FAIL",
+      detail: descLength > 200
+        ? `App description is detailed and complete (${descLength} characters).`
+        : descLength > 50
+          ? `App description is ${descLength} characters — short enough that it gives the store little to rank on, and a visitor little to read.`
+          : `App description is ${descLength} characters — effectively empty, and stores require a meaningful description for approval and discoverability.`,
+      evidence: `${descLength} characters`,
+    });
+  }
 
   // Screenshots (og:image count as a signal)
   const ogImages = (html.match(/<meta[^>]+property=["']og:image["']/gi) ?? []).length;
