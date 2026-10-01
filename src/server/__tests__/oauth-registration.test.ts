@@ -101,14 +101,14 @@ describe("OAuth redirect URI matching", () => {
 
   it.each([
     "http://127.0.0.1:63383/callback/desktop-session",
+    "http://localhost:63383/callback/desktop-session",
     "http://[::1]:63383/callback/desktop-session",
-  ])("accepts a registered loopback callback when only its ephemeral port changed: %s", (uri) => {
+  ])("accepts an equivalent loopback callback when its host alias or ephemeral port changed: %s", (uri) => {
     expect(isAllowedRedirectUri(client, uri)).toBe(true);
   });
 
   it.each([
     "http://127.0.0.1:63383/callback/other-session",
-    "http://localhost:63383/callback/desktop-session",
     "https://claude.ai:8443/api/mcp/auth_callback",
   ])("still rejects a callback whose host, path, or HTTPS port changed: %s", (uri) => {
     expect(isAllowedRedirectUri(client, uri)).toBe(false);

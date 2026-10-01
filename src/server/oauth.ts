@@ -97,13 +97,14 @@ export function isAllowedRedirectUri(client: OAuthClient, redirectUri: string): 
       return false;
     }
 
-    // RFC 8252 §8.4 requires exact redirect matching except for the port of a
-    // loopback callback, because desktop clients bind an ephemeral local port.
+    // RFC 8252 §8.4 permits an ephemeral loopback port. Treat the three
+    // loopback spellings as equivalent too: the production proxy normalizes
+    // 127.0.0.1 in a query value to localhost before this handler sees it.
     return client.redirectUris.some((registeredUri) => {
       try {
         const registered = new URL(registeredUri);
         return registered.protocol === "http:" &&
-          registered.hostname === requested.hostname &&
+          loopbackHosts.has(registered.hostname) &&
           registered.pathname === requested.pathname &&
           registered.search === requested.search &&
           registered.username === requested.username &&
