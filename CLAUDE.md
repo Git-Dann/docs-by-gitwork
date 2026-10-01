@@ -5918,3 +5918,138 @@ lockfile pinned 1.14.4. Fixed lockfile-only — `npm audit fix --package-lock-on
 a three-line diff, no `package.json` change. ⚠️ `--package-lock-only` matters in a Claude
 worktree: `node_modules` is a symlink into the primary checkout, and a real install there
 changes the dependencies every other running session is using.
+
+## 57. Recent Changes (October 2026) — User management: archive, not delete, and the hole that made it urgent
+
+Dan asked for a proper user-management table because people are leaving: everyone in one
+table, an inline role dropdown, and archive in the last column — retained 30 days, no access,
+hidden throughout Foundry, restorable. Reading the auth code to build it found that **removing
+someone gave them more access than they had before**, so the security fix is the foundation
+and the table sits on top of it.
+
+### 57.1 ⚠️ The hole
+
+The old Remove (`removeMember`) **deleted the `WorkspaceMember` row and kept the `User`.**
+The person's `@gitwork.co.uk` Google account usually still worked, and then:
+
+1. **Sign-in let them back in.** The jwt callback found the User, found no membership, skipped
+   auto-provisioning (the User existed) and minted a token with `role ?? "STAFF"`.
+2. **Middleware treats any valid session as authorised for every `/api/*` route** ("a valid
+   session IS sufficient authorization").
+3. **`getEffectiveUserOrNull` was a bare `catch { return null }`.** "No membership" threw
+   `UnauthorizedError`, became `null` — and `null` is how a trusted workspace-API-key caller is
+   represented: `assertCan(null, …)` passes. **~180 routes** use that pattern; **3** use
+   `requireAuthedUserOrDefault`, which resolves `null` as **the workspace owner**.
+
+The same `role ?? "STAFF"` fallback was copied into **all three sign-in paths** — web, the iOS
+token exchange (`/api/auth/mobile-callback`) and the desktop handoff (`/api/auth/desktop/start`,
+found only by sweeping for roster queries). The desktop path is the sharpest: it signs a
+long-lived token, so an archived person could have traded a not-yet-revalidated web session for
+one that outlives every session check.
+
+### 57.2 The fix — a refused identity is not "no identity"
+
+- **`RevokedAccessError` (403)**, in `effective-user.ts`. `requireAuthedUser` throws it when it
+  resolved an identity and refused it: user gone, membership gone, or archived. It re-reads the
+  membership **every request**, so it takes effect on the next call, live sessions included.
+- **`getEffectiveUserOrNull` maps ONLY `UnauthorizedError` to `null`** and rethrows everything
+  else. That also closes a second fail-open: a database blip used to return `null` too.
+- **Sign-in refuses** an existing User with no or an archived membership, in the `signIn`
+  callback (web), the mobile exchange and the desktop handoff. ⚠️ **It refuses rather than
+  re-provisions** — re-provisioning would hand a former employee a fresh STAFF membership (every
+  module, all clients, rates). Genuinely new people have no User row and provision as before.
+- **Live sessions are revalidated** every 5 minutes in the Node `jwt` callback. Returning `null`
+  makes Auth.js clear the cookie (`@auth/core` `lib/actions/session.js`). The same read refreshes
+  `token.role` / `token.permissions`, which fixes a pre-existing defect: page access was fixed at
+  sign-in, so a role change took up to 30 days (the session lifetime) to reach the middleware.
+- **Archived guests** are refused by the password path with the same response and timing as a
+  wrong password, so the form can't be used to learn an account was archived.
+- **`assertNotLastSuperAdmin` counts ACTIVE Super Admins.** Counting archived ones would let you
+  archive one and then demote the other, leaving nobody able to edit the role matrix.
+- **The team routes resolve the caller with `requireTeamAdmin`** (DB-backed), not `auth()` +
+  `session.user.role`, which is stale for a just-archived admin.
+
+### 57.3 Archive, restore, reinstate, purge
+
+`WorkspaceMember.archivedAt` + `archivedById` (additive). Pure rules in
+`src/server/auth/member-status.ts`; operations in `src/server/team.ts`.
+
+- **Archive** stamps two columns and touches nothing else. Idempotent. You can't archive
+  yourself, someone at or above your rank, or the last active Super Admin.
+- **Restore** within `ARCHIVE_RETENTION_DAYS` (30) returns role, permissions and overrides
+  exactly, because they were never changed.
+- **Reinstate by email** is the only way back after the window — sign-in now refuses a User with
+  no membership, so without it a returning hire could never use their own address again.
+- **Purge** (`GET /api/cron/member-purge`, daily 03:30) deletes **memberships, never Users**: a
+  User is referenced by tasks, leave, expenses, meetings, documents and the audit log, and
+  deleting one would erase who did what. ⚠️ **The crontab line is not installed by this PR**
+  (`docs/vps-crons.md` already records four documented crons that never ran). It is fail-safe by
+  design: `memberStatus` reports a member past the window as `expired` — no access, not
+  restorable — whether or not the purge has run.
+- **`isActiveMember` is a raw null check**: a non-null but unparseable `archivedAt` reads as
+  archived. Parsing first would have read "can't tell when" as "never archived".
+- `DELETE /api/team/members/[id]` now **archives**, so an old client or bookmark does the safe
+  thing.
+
+### 57.4 Hidden throughout Foundry — 31 decisions, not a blanket filter
+
+Every `workspaceMember.findMany` / `.count` (31 when this landed) either spreads
+`...ACTIVE_MEMBER` or carries `// includes-archived: <reason>`. **`roster-active-member.test.ts`
+fails on any that does neither.** 24 are active-only, including three that matter more than they
+look: **`cron/meet-transcripts` and `backstage-gcal` kept using a leaver's stored Google refresh
+token to read their Drive and calendar**, and `push/devices` kept pushing to their phone. The
+deliberate exceptions: the user-management list and purge (they exist to see archived rows), the
+permission-cache recompute (refreshes a cache, grants nothing), a data migration, the leave-
+history country lookup, and the first-admin bootstrap counts — where counting archived admins is
+the **fail-safe** direction, or archiving every admin would make the next sign-in a Super Admin.
+
+Historical attribution is untouched: a task an archived person completed still shows them.
+Hiding is for pickers, rosters and fan-outs, not for history.
+
+### 57.5 The table
+
+`src/components/settings/team/user-management-table.tsx`, inside Settings → Team card 04.
+Active / Archived as a segmented control; inline role dropdown offering only roles the actor may
+assign. ⚠️ **A role change resets per-person overrides** (`updateMember`), so the dropdown
+confirms first when there are any. The archive confirmation shows the person's **open task count**
+and says plainly that **their Google account is separate** — suspend it in Google Admin too, or
+they keep Gmail and any shared client Drive folders. The Edit-access modal's old "Remove from
+workspace" danger zone — which said removal was "reversible only by sending a new invite" — is
+gone; there is one archive path. "Active" was also the old signed-in marker's label; it now flags
+only the exception, "Invited", since "Active" means active-vs-archived on this table.
+
+### 57.6 The role review — findings NOT fixed here, in priority order
+
+Each is a policy decision or a larger change, recorded rather than done silently:
+
+1. **Every new `@gitwork.co.uk` sign-in is auto-provisioned as STAFF**, and STAFF's default is
+   every module, `seeAllClients`, `code.viewRates`, `docs.viewCosts`, `rateCard.view` and manage on
+   five products. A new junior or contractor sees commercial rates and every client on day one.
+   GUEST's own comment in `src/types/auth.ts` names this. Provisioning as DEVELOPER, or as a
+   pending state needing approval, is Dan's call.
+2. **113 API routes resolve no user at all** and trust any valid session from middleware. After
+   this PR an archived member's session is cleared within 5 minutes — but those routes also let
+   any *active* member of any role call them (a DEVELOPER can PATCH any client's wiki documents).
+   That is a general authorisation gap, larger than archiving.
+3. **Browser sessions carry the real workspace `API_KEY`** in the HttpOnly
+   `gitwork_api_session` cookie (12h), set on every `/app` response. It is why `null` = trusted is
+   so dangerous: everyone who has had a session has had the master key in their cookie jar.
+4. **Three duplicated sign-in/provisioning paths.** `sign-in-paths.test.ts` now finds every
+   token-minting file and requires the active check before signing, but one shared
+   `provisionOrRefuse(email)` is the real fix.
+5. **Handbook access contradicts this file.** §4 says readable by every internal user; the
+   middleware redirects anyone below Admin, and the memory notes call it Super-Admin-only.
+
+### 57.7 Verified
+
+`npm run verify` and `npx next build` — figures in the PR. Behavioural tests run the real
+`requireAuthedUser` / `getEffectiveUserOrNull` / `archiveMember` / `restoreMember` /
+`reinstateMemberByEmail` / `purgeExpiredMembers` against a mocked database and session; sweep
+tests cover the 31 roster queries and every sign-in path. Each guard was proved to discriminate
+by reverting the fix it protects.
+
+**Not verified against production.** `/app` is auth-gated with no staging, and the refusals only
+happen with a real Google sign-in. **Post-deploy, in order:** archive a test member and confirm
+their open tab is signed out within 5 minutes; sign in as them and confirm "Your access to
+Foundry has been removed"; confirm they're gone from a task assignee picker and Backstage;
+restore them and confirm their role is unchanged; then **add the `member-purge` crontab line**.

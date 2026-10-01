@@ -87,7 +87,7 @@ Run `npm install` on a fresh clone or the hook can't run and will refuse the pus
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
-## 4. Seven traps that have actually bitten people here
+## 4. Eight traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and
    will mutate the database. Use `npx next build`.
@@ -124,6 +124,14 @@ Report what `verify` actually printed. Never call something verified that you di
    extension would ship a literal `## Scope of work` to a client; Launchpad's legal drafts use
    `<Markdown>` and can head their clauses. Teach the renderer first, in the same change.
    `markdown-doc.test.ts` is the tripwire.
+8. **`null` from `getEffectiveUserOrNull` means "trusted API-key caller", and `assertCan(null)`
+   passes.** That is right for a server-to-server integration and was catastrophic everywhere
+   else: a removed member arrived *with* an identity but no membership, that became `null`, and
+   ~180 routes treated them as a full-access caller. So: **a refused identity is a
+   `RevokedAccessError`, never `null`**, and only a genuine no-identity `UnauthorizedError` maps to
+   `null`. Never write `catch { return null }` around user resolution — it also turns a database
+   blip into full access. And to take someone out, **archive, never delete**: deleting the
+   membership is what created the hole. `revoked-access.test.ts` runs the real code.
 
 ## 5. Verifying honestly
 

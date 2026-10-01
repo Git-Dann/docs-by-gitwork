@@ -7,6 +7,52 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { verifyGuestPassword } from "@/server/auth/password-login";
+import { isActiveMember } from "@/server/auth/member-status";
+
+/**
+ * How often a live session re-checks that its member is still active.
+ *
+ * Sessions last up to 30 days, and the JWT only changes at sign-in, so without
+ * this an archived person's open session would keep its role for weeks. Returning
+ * `null` from the jwt callback makes Auth.js clear the session cookie
+ * (`@auth/core` lib/actions/session.js), so on the next session read after the
+ * window, an archived member is signed out. Five minutes bounds the exposure
+ * while costing one indexed lookup per member per five minutes.
+ *
+ * ⚠️ This is the backstop, not the gate. `requireAuthedUser` re-reads the
+ * membership on EVERY request and refuses an archived member immediately; this
+ * exists for the routes that never resolve a user at all and rely on "has a valid
+ * session" from middleware.
+ */
+const MEMBER_RECHECK_MS = 5 * 60 * 1000;
+
+/**
+ * Refuse a sign-in for anyone who has been removed or archived.
+ *
+ * ⚠️ "Has a User row but no membership" is refused, not re-provisioned. That
+ * state arises when someone is removed from the workspace (the old Remove
+ * deleted the membership; the purge job does after the retention window), and
+ * their Google account usually still works. Re-provisioning them would hand a
+ * former employee a fresh STAFF membership — every module, all clients, rates —
+ * the moment they signed in. A genuinely new person has no User row at all and is
+ * still auto-provisioned as before. Bringing someone back is an explicit admin
+ * action (Restore within the window, Reinstate after it).
+ */
+async function refusedMembership(email: string): Promise<boolean> {
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      memberships: {
+        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+        select: { archivedAt: true },
+        take: 1,
+      },
+    },
+  });
+  if (!existing) return false; // brand new — auto-provisioned in the jwt callback
+  const membership = existing.memberships[0];
+  return !membership || !isActiveMember(membership);
+}
 
 // The placeholder email created by bootstrap — never a real team member
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
@@ -75,11 +121,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return true;
       }
       if (account?.provider === "google") {
-        return !!user.email?.endsWith("@gitwork.co.uk");
+        if (!user.email?.endsWith("@gitwork.co.uk")) return false;
+        // A URL (not `false`) so the login page can say what happened, instead of
+        // the generic "could not sign in" that reads like a broken Google account.
+        if (await refusedMembership(user.email)) return "/login?error=AccessRevoked";
+        return true;
       }
       return false;
     },
     async jwt({ token, user, account }) {
+      // Subsequent reads of an existing session (no `account`): revalidate that the
+      // member is still active, at most every MEMBER_RECHECK_MS. See that constant.
+      if (!account) {
+        const tokenId = typeof token.id === "string" ? token.id : null;
+        const last = typeof token.memberCheckedAt === "number" ? token.memberCheckedAt : 0;
+        if (tokenId && Date.now() - last > MEMBER_RECHECK_MS) {
+          const membership = await prisma.workspaceMember.findFirst({
+            where: { userId: tokenId, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+            select: { archivedAt: true, role: true, permissions: true },
+          });
+          // null → Auth.js clears the session cookie: signed out on this request.
+          if (!membership || !isActiveMember(membership)) return null;
+          // Refresh the role and resolved permissions the middleware gates pages on.
+          // They used to be fixed at sign-in ("matrix changes apply on their next
+          // sign-in"), and sessions last 30 days — so changing someone's role in the
+          // Team table left their page access untouched for up to a month. The
+          // `permissions` column is the resolved cache that recomputeMember keeps in
+          // step on every role, matrix or override change, so this needs no writes.
+          token.role = membership.role;
+          token.permissions = Array.isArray(membership.permissions)
+            ? (membership.permissions as unknown[]).filter((p): p is string => typeof p === "string")
+            : [];
+          token.memberCheckedAt = Date.now();
+        }
+        return token;
+      }
+
       // On first sign-in, look up or create the user in the DB
       if (account && user?.email) {
         let dbUser = await prisma.user.findUnique({
@@ -96,6 +173,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // (no Admin/Super Admin exists yet) bootstraps as Super Admin so the workspace
         // is never left without one who can edit the role matrix.
         const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(user.email);
+        // includes-archived: the first-admin bootstrap. Counting archived admins is the
+        // fail-SAFE direction — otherwise archiving every admin would make the next sign-in a
+        // Super Admin.
         const adminOrAboveCount = await prisma.workspaceMember.count({
           where: {
             workspace: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -194,6 +274,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // callback rejects tokens with an older value, forcing teammates with stale
         // sessions to sign in again so their per-user Google refresh token gets captured.
         token.sessionVersion = SESSION_VERSION;
+        token.memberCheckedAt = Date.now();
 
         // Persist the Google OAuth refresh token on the *current user* so personal dashboard
         // widgets (Calendar, Gmail, Meeting summary) only ever see the signed-in user's data.

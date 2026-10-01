@@ -6,6 +6,14 @@ import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
+import {
+  ACTIVE_MEMBER,
+  ARCHIVE_RETENTION_DAYS,
+  canRestore,
+  daysUntilPurge,
+  memberStatus,
+  purgeCutoff,
+} from "@/server/auth/member-status";
 
 export async function getWorkspace() {
   return prisma.workspace.findUniqueOrThrow({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
@@ -13,6 +21,8 @@ export async function getWorkspace() {
 
 export async function listMembers() {
   const workspace = await getWorkspace();
+  // includes-archived: this IS the user-management table. It has to see archived
+  // members to show them, count down their retention and restore them.
   const rows = await prisma.workspaceMember.findMany({
     where: {
       workspaceId: workspace.id,
@@ -25,6 +35,39 @@ export async function listMembers() {
     include: { user: { select: { id: true, name: true, email: true, avatarUrl: true, googleOAuthEmail: true } } },
     orderBy: { createdAt: "asc" },
   });
+  // Open work per person, so archiving someone shows what they still own and can be
+  // reassigned first. Top-level, not archived, not done — the same definition every
+  // other progress figure in the app uses.
+  const userIds = rows.map((r) => r.userId);
+  const open = userIds.length
+    ? await prisma.task.findMany({
+        where: {
+          workspaceId: workspace.id,
+          parentId: null,
+          archivedAt: null,
+          status: { not: "DONE" },
+          OR: [{ assignees: { some: { id: { in: userIds } } } }, { assigneeId: { in: userIds } }],
+        },
+        select: { assigneeId: true, assignees: { select: { id: true } } },
+      })
+    : [];
+  const openTasks = new Map<string, number>();
+  for (const t of open) {
+    const owners = new Set<string>(t.assignees.map((a) => a.id));
+    if (t.assigneeId) owners.add(t.assigneeId);
+    for (const id of owners) openTasks.set(id, (openTasks.get(id) ?? 0) + 1);
+  }
+
+  const archiverIds = [...new Set(rows.map((r) => r.archivedById).filter((v): v is string => !!v))];
+  const archivers = new Map<string, string>();
+  if (archiverIds.length) {
+    const people = await prisma.user.findMany({
+      where: { id: { in: archiverIds } },
+      select: { id: true, name: true, email: true },
+    });
+    for (const p of people) archivers.set(p.id, p.name ?? p.email);
+  }
+
   // Normalise `permissions` (Json column) to a string array for the UI, and surface a derived
   // `hasSignedIn` flag — without exposing the raw OAuth email field beyond the member row.
   return rows
@@ -35,6 +78,10 @@ export async function listMembers() {
       ...row,
       user,
       hasSignedIn: Boolean(googleOAuthEmail),
+      status: memberStatus(row),
+      daysUntilPurge: daysUntilPurge(row),
+      openTaskCount: openTasks.get(row.userId) ?? 0,
+      archivedByName: row.archivedById ? (archivers.get(row.archivedById) ?? null) : null,
       permissions: Array.isArray(row.permissions)
         ? (row.permissions as unknown[]).filter((p): p is string => typeof p === "string")
         : [],
@@ -42,25 +89,132 @@ export async function listMembers() {
   });
 }
 
+export interface MemberActor {
+  id: string;
+  role: string;
+}
+
 /**
- * Removes a member. Guardrail: the actor can only remove members below their own
- * role, and the last Super Admin can never be removed (workspace lock-out).
+ * Archive a member: they lose all access immediately and disappear from every
+ * roster, but nothing about them is changed, so `restoreMember` within
+ * ARCHIVE_RETENTION_DAYS brings back their role, permissions and overrides exactly.
+ *
+ * ⚠️ This replaces the old `removeMember`, which DELETED the membership. That was
+ * the unsafe operation: the person's Google account still worked, and a User with
+ * no membership was handed a STAFF session and then treated as a trusted
+ * full-access caller by every `getEffectiveUserOrNull` route. See
+ * `RevokedAccessError` in src/server/auth/effective-user.ts.
+ *
+ * Guardrails: the same rank rule as every other member edit (an Admin archives
+ * Staff/Developers/Guests; only a Super Admin archives an Admin or Super Admin);
+ * you cannot archive yourself; and you cannot archive the last ACTIVE Super Admin.
  */
-export async function removeMember(memberId: string, actorRole: string) {
+export async function archiveMember(memberId: string, actor: MemberActor) {
   const existing = await prisma.workspaceMember.findUnique({
     where: { id: memberId },
-    select: { id: true, workspaceId: true, role: true },
+    select: { id: true, workspaceId: true, role: true, userId: true, archivedAt: true },
   });
-  if (!existing) return;
+  if (!existing) return null;
+  if (existing.archivedAt) return existing; // idempotent: a second click is a no-op
 
-  if (!canManageRole(actorRole, existing.role)) {
-    throw new ForbiddenError("You can't remove a member at or above your own role.");
+  if (existing.userId === actor.id) {
+    throw new ForbiddenError("You can't archive yourself.");
+  }
+  if (!canManageRole(actor.role, existing.role)) {
+    throw new ForbiddenError("You can't archive a member at or above your own role.");
   }
   if (existing.role === "SUPER_ADMIN") {
     await assertNotLastSuperAdmin(existing.workspaceId, memberId);
   }
 
-  return prisma.workspaceMember.delete({ where: { id: memberId } });
+  return prisma.workspaceMember.update({
+    where: { id: memberId },
+    data: { archivedAt: new Date(), archivedById: actor.id },
+  });
+}
+
+/**
+ * Restore an archived member. Their role and overrides were never touched, so this
+ * is the whole operation — and it is refused once the retention window has passed,
+ * even if the purge job has not removed the row yet. That is what keeps the purge
+ * job a tidy-up rather than a security control.
+ */
+export async function restoreMember(memberId: string, actor: MemberActor) {
+  const existing = await prisma.workspaceMember.findUnique({
+    where: { id: memberId },
+    select: { id: true, role: true, archivedAt: true },
+  });
+  if (!existing) return null;
+  if (!existing.archivedAt) return existing;
+
+  if (!canManageRole(actor.role, existing.role)) {
+    throw new ForbiddenError("You can't restore a member at or above your own role.");
+  }
+  if (!canRestore(existing)) {
+    throw new ForbiddenError(
+      `This person was archived more than ${ARCHIVE_RETENTION_DAYS} days ago and can no longer be restored. Reinstate them instead.`,
+    );
+  }
+
+  const restored = await prisma.workspaceMember.update({
+    where: { id: memberId },
+    data: { archivedAt: null, archivedById: null },
+  });
+  // Their cached effective permissions are recomputed in case the role matrix
+  // changed while they were away.
+  await recomputeMember(memberId);
+  return restored;
+}
+
+/**
+ * Bring back someone whose membership has gone — archived past the window and
+ * purged, or removed before archiving existed. They have a User row and no
+ * membership, which sign-in now refuses outright (it no longer re-provisions), so
+ * this is the only way back in. Without it, a returning hire would be locked out
+ * of their own email address for good.
+ */
+export async function reinstateMemberByEmail(email: string, role: RoleId, actor: MemberActor) {
+  const workspace = await getWorkspace();
+  if (!canManageRole(actor.role, role)) {
+    throw new ForbiddenError("You can't reinstate someone into a role at or above your own.");
+  }
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    select: {
+      id: true,
+      memberships: { where: { workspaceId: workspace.id }, select: { id: true, archivedAt: true } },
+    },
+  });
+  if (!user) return { status: "not-found" as const };
+  const existing = user.memberships[0];
+  if (existing && !existing.archivedAt) return { status: "already-active" as const };
+  if (existing) return { status: "archived" as const, memberId: existing.id }; // use Restore
+
+  const member = await prisma.workspaceMember.create({
+    data: { workspaceId: workspace.id, userId: user.id, role, permissions: [] },
+  });
+  await recomputeMember(member.id);
+  return { status: "reinstated" as const, memberId: member.id };
+}
+
+/**
+ * Delete memberships archived longer than the retention window. Run daily by
+ * GET /api/cron/member-purge.
+ *
+ * ⚠️ Deletes the MEMBERSHIP, never the User. A User row is referenced by tasks,
+ * leave, expenses, meetings, documents and the audit log; deleting it would
+ * cascade through all of them and erase who did what. Removing the membership is
+ * what takes them out of the workspace; their history stays attributed.
+ *
+ * If this never runs, nobody regains access and nobody can be restored past the
+ * window (`memberStatus` reports them `expired`). It only tidies rows.
+ */
+export async function purgeExpiredMembers(now: Date = new Date()) {
+  // includes-archived: the purge job exists to find archived members.
+  const result = await prisma.workspaceMember.deleteMany({
+    where: { archivedAt: { not: null, lt: purgeCutoff(now) } },
+  });
+  return { purged: result.count };
 }
 
 export interface UpdateMemberInput {
@@ -129,17 +283,21 @@ export async function updateMember(memberId: string, input: UpdateMemberInput, a
 
 /** Throws if `memberId` is the only remaining (non-bootstrap) Super Admin. */
 async function assertNotLastSuperAdmin(workspaceId: string, memberId: string) {
+  // ⚠️ ACTIVE Super Admins only. Counting archived ones would let you archive one
+  // Super Admin and then demote or archive the other, and the guard would see "one
+  // left" when there were none — a workspace nobody can edit the role matrix of.
   const others = await prisma.workspaceMember.count({
     where: {
       workspaceId,
       role: "SUPER_ADMIN",
       id: { not: memberId },
       user: seedAccountUserWhere(),
+      ...ACTIVE_MEMBER,
     },
   });
   if (others === 0) {
     throw new Error(
-      "Can't remove the last Super Admin — promote someone else first or this workspace becomes uneditable.",
+      "Can't remove or archive the last active Super Admin — promote someone else first or this workspace becomes uneditable.",
     );
   }
 }

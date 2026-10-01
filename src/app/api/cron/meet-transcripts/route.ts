@@ -11,6 +11,7 @@ import {
   ingestMeeting,
   type CalendarCandidate,
 } from "@/server/meetings";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -57,8 +58,10 @@ export async function GET(request: NextRequest) {
 
     // Members with a stored Google refresh token (their calendar + Meet access), scoped to the
     // designated Scribe organisers so we don't auto-ingest everyone's internal standups.
+    // ACTIVE only: an archived member's stored Google refresh token must stop being used to
+    // read their Drive the moment they leave.
     const connectedMembers = await prisma.workspaceMember.findMany({
-      where: { workspaceId: workspace.id, user: { googleOAuthRefreshToken: { not: null } } },
+      where: { workspaceId: workspace.id, user: { googleOAuthRefreshToken: { not: null } }, ...ACTIVE_MEMBER },
       select: {
         user: { select: { id: true, googleOAuthRefreshToken: true, googleOAuthEmail: true } },
       },

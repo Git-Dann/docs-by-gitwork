@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { assertAtLeastAdmin } from "@/server/auth/effective-user";
 import { dispatchNotification } from "@/server/notifications";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export type TeamMessageRecipientDTO = {
   userId: string;
@@ -105,7 +106,7 @@ export async function sendTeamMessage(
   // hand-crafted request, must not create a recipient row for someone who cannot open
   // the message.
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: user.workspaceId, userId: { in: requested } },
+    where: { workspaceId: user.workspaceId, userId: { in: requested }, ...ACTIVE_MEMBER },
     select: { userId: true },
   });
   const recipientIds = members.map((m) => m.userId);

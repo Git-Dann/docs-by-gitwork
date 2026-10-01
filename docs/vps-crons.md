@@ -107,6 +107,11 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 ```cron
 0 2 * * *  /opt/apps/foundry/run-cron.sh docs-gdrive-backup   >> /tmp/foundry-cron.log 2>&1
 0 3 * * *  /opt/apps/foundry/run-cron.sh auto-archive-tasks   >> /tmp/foundry-cron.log 2>&1
+# Member purge — removes memberships archived more than 30 days ago (Oct 2026). Deletes the
+# MEMBERSHIP only, never the User, so work people did stays attributed. FAIL-SAFE if missing:
+# archiving already removes access and Restore is refused past 30 days whether or not this
+# runs, so a missing line only means archived rows linger in the Team table's Archived tab.
+30 3 * * * /opt/apps/foundry/run-cron.sh member-purge         >> /tmp/foundry-cron.log 2>&1
 0 4 * * *  /opt/apps/foundry/run-cron.sh pulse-reconcile      >> /tmp/foundry-cron.log 2>&1
 0 5 * * *  /opt/apps/foundry/run-cron.sh pulse-run-monitors   >> /tmp/foundry-cron.log 2>&1
 0 6 * * *  /opt/apps/foundry/run-cron.sh analytics-snapshot   >> /tmp/foundry-cron.log 2>&1

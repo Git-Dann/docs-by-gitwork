@@ -24,6 +24,10 @@ export type AuditAction =
   | "team.member.invited"
   | "team.member.role_changed"
   | "team.member.removed"
+  | "team.member.archived"
+  | "team.member.restored"
+  | "team.member.reinstated"
+  | "team.member.purged"
   | "team.password.reset"
   | "roles.matrix.updated"
   // Integrations

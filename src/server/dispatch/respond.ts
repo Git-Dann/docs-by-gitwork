@@ -16,6 +16,7 @@ import { resolveDispatchConfig } from "./config";
 import { gatherEvidence } from "./evidence";
 import { resolveSubject, type ClientCandidate, type PersonCandidate } from "./resolve";
 import type { DispatchConfig, DispatchResult } from "./types";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 /** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
  *  const DISABLES the excess-property check that would otherwise catch a field
@@ -144,7 +145,7 @@ async function loadCandidates(
       select: { id: true, name: true, slug: true },
     }),
     prisma.workspaceMember.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...ACTIVE_MEMBER },
       select: { user: { select: { id: true, name: true, email: true } } },
     }),
   ]);

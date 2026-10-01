@@ -130,7 +130,12 @@ function LoginForm() {
 
           {authError && (
             <p className="mt-4 rounded-[12px] px-3.5 py-3 text-[13px]" style={{ background: "rgba(225,29,72,0.08)", color: "#be123c" }}>
-              Sign-in failed. Make sure you&apos;re using your @gitwork.co.uk account.
+              {/* An archived or removed member gets their own message. The generic one
+                  tells them to use their @gitwork.co.uk account — which they are — and
+                  reads like a broken Google sign-in rather than a decision someone made. */}
+              {authError === "AccessRevoked"
+                ? "Your access to Foundry has been removed. If you think that's a mistake, ask a Foundry admin."
+                : <>Sign-in failed. Make sure you&apos;re using your @gitwork.co.uk account.</>}
             </p>
           )}
 

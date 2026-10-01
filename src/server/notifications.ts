@@ -33,6 +33,7 @@ import type { NotificationDTO } from "@/types/notifications";
 import { isWebPushEnabled, sendWebPushToUser } from "@/server/web-push";
 import { sendFoundryNotificationPush } from "@/server/push/notifications";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ async function resolveRecipients(input: DispatchInput): Promise<string[]> {
     userIds = target.userIds;
   } else {
     const members = await prisma.workspaceMember.findMany({
-      where: { workspaceId: input.workspaceId },
+      where: { workspaceId: input.workspaceId, ...ACTIVE_MEMBER },
       select: { userId: true, role: true, permissions: true },
     });
     const has = (m: (typeof members)[number], perm: string) =>
@@ -224,8 +225,10 @@ async function intersectClientScope(
   userIds: string[],
 ): Promise<string[]> {
   if (userIds.length === 0) return [];
+  // ACTIVE only. An explicit `users` target is filtered here too, so naming a leaver
+  // directly cannot route a notification to them.
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId, userId: { in: userIds } },
+    where: { workspaceId, userId: { in: userIds }, ...ACTIVE_MEMBER },
     select: { userId: true, role: true, permissions: true },
   });
   const allowed = new Set<string>();

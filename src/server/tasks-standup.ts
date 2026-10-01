@@ -32,6 +32,7 @@ import type {
   RollupRosterDTO,
   RollupDevStatus,
 } from "@/types/tasks";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // Roll-up denominator = workspace members on the canonical dev roster — a stable
 // count, independent of who currently holds assigned tasks.
@@ -552,8 +553,9 @@ export async function maybePingAllIn(workspaceId: string, workDate: Date): Promi
 /** Roll-up denominator: workspace members on the dev roster (assignment-independent).
  *  Exported so the analytics aggregator can reuse the exact same roster definition. */
 export async function getDeveloperUserIds(workspaceId: string): Promise<string[]> {
+  // ACTIVE only — a leaver must not count as "hasn't pushed a standup".
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...ACTIVE_MEMBER },
     select: { userId: true, user: { select: { email: true } } },
   });
   return members.filter((m) => DEV_EMAILS.has(m.user.email.toLowerCase())).map((m) => m.userId);

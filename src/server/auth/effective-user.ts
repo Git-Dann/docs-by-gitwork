@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { getRequestUser } from "@/server/auth/request-user";
+import { ACTIVE_MEMBER, isActiveMember } from "@/server/auth/member-status";
 import { allowedDocTypes } from "@/lib/templates";
 import type { DocumentType } from "@/types/proposal";
 import {
@@ -28,6 +29,32 @@ export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized") {
     super(message);
     this.name = "UnauthorizedError";
+  }
+}
+
+/**
+ * "We know exactly who you are, and you no longer have access."
+ *
+ * ⚠️ **This must never be mapped to `null`, and that is the whole reason it exists.**
+ * `UnauthorizedError` means "no identity at all" — which `getEffectiveUserOrNull`
+ * turns into `null`, and `null` is how a trusted workspace-API-key integration is
+ * represented: `assertCan(null, …)` passes, `requireAuthedUserOrDefault` resolves
+ * it as the workspace owner. That is correct for a server-to-server caller.
+ *
+ * It was catastrophic for a removed member. They still had a valid
+ * `@gitwork.co.uk` Google sign-in, so they arrived WITH an identity but no
+ * membership; that threw `UnauthorizedError`, became `null`, and every one of the
+ * ~180 routes using that pattern treated them as a full-access caller — and three
+ * as the owner. Removing someone gave them more access than they had before.
+ *
+ * So: an identity we resolved and refused is a different outcome, it is a 403,
+ * and nothing swallows it.
+ */
+export class RevokedAccessError extends Error {
+  status = 403;
+  constructor(message = "Your access to this workspace has been removed.") {
+    super(message);
+    this.name = "RevokedAccessError";
   }
 }
 
@@ -95,11 +122,24 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     },
   });
 
-  if (!dbUser || dbUser.memberships.length === 0) {
-    throw new UnauthorizedError("No workspace membership");
+  // ⚠️ From here on the caller HAS an identity. Every refusal below is therefore a
+  // RevokedAccessError, never an UnauthorizedError — see that class for why the
+  // difference decides whether the caller ends up with no access or with all of it.
+  if (!dbUser) {
+    // A session or mobile token for a user that no longer exists.
+    throw new RevokedAccessError();
+  }
+  if (dbUser.memberships.length === 0) {
+    // Removed from the workspace (or a pre-archive removal that deleted the row).
+    throw new RevokedAccessError();
   }
 
   const membership = dbUser.memberships[0];
+  if (!isActiveMember(membership)) {
+    // Archived. Checked here, per request, against the database — so it takes
+    // effect on the very next call, including for a session that is still live.
+    throw new RevokedAccessError();
+  }
   // Resolve effective permissions LIVE from the role matrix + this member's
   // overrides — independent of the cached `permissions` column and the JWT. This
   // makes every server-side check (the can* helpers below, field gating) correct
@@ -140,7 +180,10 @@ async function applyViewAs(req: Request, real: EffectiveUser): Promise<Effective
   if (!targetUserId || targetUserId === real.id || !isSuperAdmin(real.role)) return real;
 
   const member = await prisma.workspaceMember.findFirst({
-    where: { workspaceId: real.workspaceId, userId: targetUserId },
+    // An archived member cannot be previewed: "view as" swaps the WHOLE effective
+    // user, so a write made while previewing would be attributed to someone who
+    // no longer works here.
+    where: { workspaceId: real.workspaceId, userId: targetUserId, ...ACTIVE_MEMBER },
     include: {
       user: { select: { id: true, email: true, name: true, avatarUrl: true } },
       workspace: { select: { rolePermissions: true } },
@@ -178,8 +221,17 @@ async function applyViewAs(req: Request, real: EffectiveUser): Promise<Effective
 export async function getEffectiveUserOrNull(req: Request): Promise<EffectiveUser | null> {
   try {
     return await requireAuthedUser(req);
-  } catch {
-    return null;
+  } catch (error) {
+    // ⚠️ ONLY "there is no identity here" becomes null. This used to be a bare
+    // `catch { return null }`, which had two consequences, both fail-OPEN:
+    //   1. A removed/archived member — who has an identity — came back as null,
+    //      i.e. as a trusted full-access caller. (RevokedAccessError, above.)
+    //   2. Any transient failure (a database blip mid-lookup) also came back as
+    //      null, so an error granted access instead of denying it.
+    // Anything other than a genuine no-identity refusal now propagates and the
+    // route's `fromError` turns it into a 403/500 — closed, not open.
+    if (error instanceof UnauthorizedError) return null;
+    throw error;
   }
 }
 
