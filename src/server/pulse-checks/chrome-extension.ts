@@ -105,6 +105,49 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
     detail: `${manifest.path} parses cleanly.`,
   });
 
+  checks.push(...evaluateExtensionManifest(m, "repo"));
+  checks.push(...surfaceChecks(m, snapshot));
+  checks.push(...extensionCodeChecks(snapshot));
+  checks.push(...listingChecks(m));
+
+  return checks;
+}
+
+/**
+ * The script sources an extension's CSP actually allows.
+ *
+ * ⚠️ Parsed by DIRECTIVE. The previous checks ran three regexes over the whole policy
+ * serialised to one string, which produced FAILs on store-approved extensions:
+ * `/unsafe-eval/` matched `'wasm-unsafe-eval'` (which MV3 permits — Bitwarden, 7M users,
+ * "automatic rejection"); `/script-src[^"]*https?:\/\//` ran across directives, so an
+ * https frame-src after `script-src 'self'` read as remote script (Grammarly, 40M users);
+ * and `/unsafe-inline/` matched style-src. Only script-src — or default-src when there is
+ * none — governs what code runs.
+ */
+export function extensionScriptSources(csp: unknown): string[] {
+  const policies: string[] = typeof csp === "string"
+    ? [csp]
+    : csp && typeof csp === "object"
+      ? Object.values(csp as Record<string, unknown>).filter((v): v is string => typeof v === "string")
+      : [];
+  const sources: string[] = [];
+  for (const policy of policies) {
+    const directives = policy.split(";").map((d) => d.trim().split(/\s+/).filter(Boolean)).filter((d) => d.length > 0);
+    const script = directives.find((d) => d[0].toLowerCase() === "script-src") ?? directives.find((d) => d[0].toLowerCase() === "default-src");
+    if (script) sources.push(...script.slice(1));
+  }
+  return sources;
+}
+
+/**
+ * The checks that read only the manifest — shared by a repository scan and a Chrome Web
+ * Store listing scan (whose listing carries the published manifest). `surface` drops the
+ * two that only mean something for source: the store sets update_url itself, and the
+ * listing has its own completeness checks.
+ */
+export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "repo" | "store"): PulseScanCheckInput[] {
+  const checks: PulseScanCheckInput[] = [];
+
   // ── Manifest V3 ─────────────────────────────────────────────────────────────
   const version = Number(m.manifest_version);
   checks.push({
@@ -175,9 +218,10 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
 
   // ── Remotely-hosted code — banned outright under MV3 ────────────────────────
   const csp = JSON.stringify(m.content_security_policy ?? "");
-  const unsafeEval = /unsafe-eval/i.test(csp);
-  const unsafeInline = /unsafe-inline/i.test(csp);
-  const remoteScriptInCsp = /script-src[^"]*https?:\/\//i.test(csp);
+  const scriptSources = extensionScriptSources(m.content_security_policy).map((source) => source.toLowerCase());
+  const unsafeEval = scriptSources.includes("'unsafe-eval'");
+  const unsafeInline = scriptSources.includes("'unsafe-inline'");
+  const remoteScriptInCsp = scriptSources.some((source) => /^https?:/.test(source) || source === "*");
 
   checks.push({
     category: CATEGORIES.SECURITY,
@@ -248,7 +292,7 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
 
   // ── Update integrity ────────────────────────────────────────────────────────
   const updateUrl = typeof m.update_url === "string" ? m.update_url : "";
-  if (updateUrl && !/^https:/i.test(updateUrl)) {
+  if (surface === "repo" && updateUrl && !/^https:/i.test(updateUrl)) {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "ext_update_url_https",
@@ -276,7 +320,7 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
   if (!m.version) missingListing.push("version");
   if (!m.description) missingListing.push("description");
   const icons = m.icons as Record<string, string> | undefined;
-  if (missingListing.length > 0 || !icons) {
+  if (surface === "repo" && (missingListing.length > 0 || !icons)) {
     checks.push({
       category: CATEGORIES.STORE_LISTING,
       checkKey: "ext_listing_complete",
@@ -304,10 +348,6 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
         `API it needs but their browser lacks — which surfaces as "the extension is broken" reviews rather than an ` +
         `install-time message. Declare the oldest version you actually test.`,
   });
-
-  checks.push(...surfaceChecks(m, snapshot));
-  checks.push(...extensionCodeChecks(snapshot));
-  checks.push(...listingChecks(m));
 
   return checks;
 }
@@ -628,8 +668,11 @@ function listingChecks(m: Record<string, unknown>): PulseScanCheckInput[] {
   });
 
   // A short_name is what actually renders in the constrained toolbar/menu space.
+  // ⚠️ `__MSG_extName__` is a locale placeholder, not the name: its length says nothing
+  // about what users see, and it is how most published extensions declare their name
+  // (uBlock Origin Lite, Bitwarden, AdBlock all warned "15 characters" for it).
   const name = typeof m.name === "string" ? m.name : "";
-  if (name.length > 12) {
+  if (name.length > 12 && !name.startsWith("__MSG_")) {
     checks.push({
       category: CATEGORIES.STORE_LISTING,
       checkKey: "ext_short_name",

@@ -24,9 +24,22 @@ import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
-import { detectRepoShape } from "@/server/pulse-checks/native-repo";
+import { detectRepoShape, getRepoSnapshot } from "@/server/pulse-checks/native-repo";
+import {
+  decideRelevance,
+  emptyRelevanceSummary,
+  recordDecision,
+  relevanceRuleFor,
+  WEB_PLATFORMS,
+  type RelevanceSummary,
+  type RepoShape,
+  type ScanContext,
+} from "@/server/pulse-checks/check-relevance";
+import { featuresFromPage, featuresFromRepo } from "@/server/pulse-checks/product-features";
+import { classifyGenericRepo } from "@/server/pulse-checks/repo-kind";
+import { normalizePulsePlatform } from "@/server/pulse-checks/platform-applicability";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
-import { STORE_NAME, STORE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
+import { detectStoreTarget, STORE_NAME, STORE_PLATFORM_LABEL, storePlatformForTarget, withArticle } from "@/lib/pulse-store-url";
 import {
   buildUrlCollectorPlan,
   detectUrlTargetKind,
@@ -90,6 +103,11 @@ export interface LiteScanResult {
   executionPlatform: string | undefined;
   /** The app's name as its store lists it. Null for anything that is not a store link. */
   appName: string | null;
+  /**
+   * What the relevance gate showed and what it held back, and why — the scan's one-line
+   * "not assessed" note. Hidden checks are not in `checks` at all.
+   */
+  relevance: RelevanceSummary;
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
@@ -112,10 +130,29 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   };
   const collectorCompleted = (name: string) => collectorExecutions.push({ name, outcome: "COMPLETED" });
 
+  // ── The relevance gate (check-relevance.ts) ──────────────────────────────────
+  // Every check from every collector passes through ingest below, so this is the one
+  // place a check can be held back — no collector can route around it. The context is
+  // filled in as the scan learns what it is looking at, and always BEFORE the checks it
+  // governs are ingested.
+  const relevanceCtx: ScanContext = {
+    platform: normalizePulsePlatform(input.platform),
+    target: input.inputType === "URL" ? { kind: "website" } : { kind: "repo", shape: "none" },
+    features: new Set(),
+  };
+  const relevance = emptyRelevanceSummary();
+  const heldBack = new Set<string>();
+
   const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
     const fresh: PulseScanCheckInput[] = [];
     for (const c of applyCheckPolicy(batch, input.checkPolicy)) {
-      if (seen.has(c.checkKey)) continue;
+      if (seen.has(c.checkKey) || heldBack.has(c.checkKey)) continue;
+      const decision = decideRelevance(c, relevanceRuleFor(c.checkKey), relevanceCtx);
+      recordDecision(relevance, decision);
+      if (!decision.show) {
+        heldBack.add(c.checkKey);
+        continue;
+      }
       // Trust layer — stamp confidence + bucket centrally (covers every probe).
       const withOrder = { ...annotateTrust(c), sortOrder: order++ };
       seen.set(c.checkKey, withOrder);
@@ -152,7 +189,34 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // Classify the actual document first. Starting deploy/PageSpeed in parallel
     // used quota and time on App Store pages, source-only platforms, prototypes,
     // and Vercel/Cloudflare checkpoints whose results were later discarded.
-    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
+    const store = detectStoreTarget(safeUrl);
+    if (store) {
+      relevanceCtx.target = { kind: "store" };
+      relevanceCtx.platform = storePlatformForTarget(store);
+    }
+    // A WEBSITE of a non-web product (an iOS app's site, a CLI's docs site) is that
+    // product's public presence. The URL engine used to skip it entirely for these
+    // platforms — a website scanned as an iOS app returned one check — so it now scans
+    // the site as what it is, a marketing site, and the gate applies the product's
+    // real platform to decide which presence checks to show.
+    const SOURCE_ONLY = new Set(["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "CLI_TOOL"]);
+    const urlEnginePlatform = !store && SOURCE_ONLY.has(normalizePulsePlatform(input.platform)) ? "MARKETING_SITE" : input.platform;
+    const urlResult = await runUrlChecks(safeUrl, urlEnginePlatform, onWave, input.targetMarkets, {
+      renderJs,
+      onPageContext: (page) => {
+        const features = featuresFromPage(page.html);
+        if (page.paymentsFromOtherEvidence) features.add("payments");
+        // The website of an iOS / Android product has that app by definition.
+        if (["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE"].includes(relevanceCtx.platform)) features.add("mobile_app");
+        relevanceCtx.features = features;
+        // A URL that answers with JSON is an API, whatever the dropdown said — and is
+        // judged as one: an API scanned as "iOS app" is not asked for an About page.
+        if (/json/i.test(page.contentType ?? "")) {
+          relevanceCtx.target = { kind: "api" };
+          relevanceCtx.platform = "API_BACKEND";
+        }
+      },
+    });
     const urlTargetKind = detectUrlTargetKind(safeUrl);
     // ⚠️ A store link is an APP, and is scanned and reported as one.
     //
@@ -187,7 +251,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       collectorExecutions.push({
         name: "url-checks",
         outcome: "NOT_APPLICABLE",
-        reason: `Not part of this scan: this is an ${platformLabel}, assessed from its ${storeName} listing. The website checks (security headers, TLS, SEO, DNS) describe a website, not an app.`,
+        reason: `Not part of this scan: this is ${withArticle(platformLabel)}, assessed from its ${storeName} listing. The website checks (security headers, TLS, SEO, DNS) describe a website, not ${withArticle(platformLabel)}.`,
       });
     } else {
       collectorCompleted("url-checks");
@@ -199,11 +263,10 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
     );
     const targetKind = urlTargetKind;
-    if (targetKind === "app_store") executionPlatform = "IOS_APP";
-    if (targetKind === "play_store") executionPlatform = "ANDROID_APP";
+    if (targetKind !== "web") executionPlatform = storePlatformForTarget(targetKind);
     appName = urlResult.store?.appName ?? null;
     const collectorPlan = buildUrlCollectorPlan(
-      input.platform,
+      urlEnginePlatform,
       urlResult.surfaceKind,
       targetKind,
     );
@@ -275,6 +338,22 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       .then((shape) => { collectorCompleted("repo-shape"); return shape; })
       .catch((error) => { collectorFailed("repo-shape", error); return "none" as const; });
     executionPlatform = effectivePlatformForRepoShape(input.platform, repoShape);
+    // A repo with no specific shape is still a web app, a backend, or neither — and
+    // detection decides, not the dropdown (a Next.js repo picked as "iOS app" used to run
+    // as iOS and lose every web-source check).
+    const snapshot = await getRepoSnapshot(repo).catch(() => null);
+    let relevanceShape: RepoShape = repoShape as RepoShape;
+    if (repoShape === "none" && snapshot?.accessible) {
+      const kind = classifyGenericRepo(snapshot.paths, snapshot.files);
+      relevanceShape = kind;
+      const selected = normalizePulsePlatform(input.platform);
+      if (kind === "web" && !WEB_PLATFORMS.has(selected)) executionPlatform = "WEB_APP";
+      else if (kind === "backend" && selected !== "API_BACKEND" && !WEB_PLATFORMS.has(selected)) executionPlatform = "API_BACKEND";
+      else if (kind === "none" && !WEB_PLATFORMS.has(selected) && selected !== "API_BACKEND") executionPlatform = "OTHER";
+    }
+    relevanceCtx.target = { kind: "repo", shape: relevanceShape };
+    relevanceCtx.platform = normalizePulsePlatform(executionPlatform);
+    relevanceCtx.features = snapshot?.accessible ? featuresFromRepo(snapshot.paths, snapshot.files) : new Set();
     const [ghResult, codeResult] = await Promise.all([
       runGithubChecks(repo, input.platform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
       runCodeAgent(repo, input.platform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
@@ -329,5 +408,6 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     collectorExecutions,
     executionPlatform,
     appName,
+    relevance,
   };
 }

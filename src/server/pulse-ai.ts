@@ -5,7 +5,7 @@ import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, Disc
 import { resolveAgentPrompt } from "@/server/agent-config";
 import { dedupeGapsAgainstBlockers } from "@/server/pulse-checks/dedupe-findings";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
-import { detectStoreTarget, resolveScanPlatform, STORE_NAME, STORE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
+import { detectStoreTarget, resolveScanPlatform, STORE_NAME, STORE_PLATFORM_LABEL, withArticle } from "@/lib/pulse-store-url";
 
 export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
@@ -613,7 +613,7 @@ export async function analyseWithClaude(
   // headers and an SEO pass for an iOS app, which is the exact failure this fixes.
   const store = input.inputType === "URL" && input.inputUrl ? detectStoreTarget(input.inputUrl) : null;
   const inputRef = store
-    ? `${STORE_NAME[store]} listing of an ${STORE_PLATFORM_LABEL[store]}: ${input.inputUrl}. ` +
+    ? `${STORE_NAME[store]} listing of ${withArticle(STORE_PLATFORM_LABEL[store])}: ${input.inputUrl}. ` +
       `Only the public store listing was assessed — its ratings, screenshots, description, privacy declarations and links. ` +
       `The app's code and its binary were NOT inspected: do not report findings about them as observed, and do not recommend website fixes (security headers, TLS, SEO, cookie banners) — this is not a website.`
     : input.inputType === "URL"
@@ -624,7 +624,7 @@ export async function analyseWithClaude(
 
   const resolvedPlatform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
   const platformLabel = store
-    ? `Platform: ${resolvedPlatform} (an ${STORE_PLATFORM_LABEL[store]} — determined by the ${STORE_NAME[store]} link, not a guess)`
+    ? `Platform: ${resolvedPlatform} (${withArticle(STORE_PLATFORM_LABEL[store])} — determined by the ${STORE_NAME[store]} link, not a guess)`
     : resolvedPlatform
       ? `Platform (declared by client): ${resolvedPlatform}`
       : "Platform: not specified (assume web app)";

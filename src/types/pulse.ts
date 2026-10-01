@@ -299,6 +299,17 @@ export interface ScoreBreakdown {
     completedNames?: string[];
   };
   /**
+   * What the relevance gate kept and left out (check-relevance.ts). Checks that are not
+   * about this artefact, this platform or a feature the product has are never stored; this
+   * is the one record that they existed. Optional: scans before the gate have none.
+   */
+  relevance?: {
+    shown: number;
+    hidden: number;
+    byReason: Partial<Record<"not_this_artefact" | "not_this_platform" | "feature_absent" | "needs_evidence" | "not_applicable" | "withheld", number>>;
+    byFeature: Partial<Record<string, number>>;
+  };
+  /**
    * The release decision — READY / CONDITIONAL / BLOCKED / INCONCLUSIVE — under a
    * named, versioned policy. Optional: scans predating the gate have none, and a
    * missing value must read as "no decision was taken", never as READY.

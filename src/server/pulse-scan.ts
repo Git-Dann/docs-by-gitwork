@@ -27,17 +27,17 @@ import {
   detectUrlSurfaceKind,
   getInapplicableCategoryDetails,
   isCategoryApplicable,
-  keepApplicableChecks,
   type UrlSurfaceKind,
 } from "./pulse-checks/platform-applicability";
 import {
-  effectivePlatformForRepoShape,
   shouldRunDeepUrlChecks,
 } from "./pulse-checks/scan-execution-plan";
-import { detectStoreTarget } from "@/lib/pulse-store-url";
+import { chromeWebStoreItemId, detectStoreTarget } from "@/lib/pulse-store-url";
 import {
   buildStoreListingChecks,
+  isChromeWebStoreItemGone,
   parseAppStoreListing,
+  parseChromeWebStoreListing,
   parsePlayStoreListing,
   storeAppName,
   type StoreListing,
@@ -47,7 +47,7 @@ export const SCAN_VERSION = "pulse-v3";
 
 const FETCH_TIMEOUT_MS = 10_000;
 
-type UrlType = "web" | "app_store" | "play_store";
+type UrlType = "web" | "app_store" | "play_store" | "chrome_web_store";
 
 // One rule for what a link is, shared with the form and the gate (pulse-store-url.ts).
 function detectUrlType(url: string): UrlType {
@@ -1245,6 +1245,55 @@ export async function fetchAppStoreDescription(url: string): Promise<string | nu
   }
 }
 
+/**
+ * A Chrome Web Store listing.
+ *
+ * ⚠️ Liveness comes from the store's own data, never the HTTP status: for an item it no
+ * longer lists the store still answers 200 — a generic noindex shell at
+ * /detail/empty-title/<id> whose data block is RPC NOT_FOUND. A status-based check would
+ * report a removed extension as live (the audit's original fixture, Dark Reader's old
+ * id, is exactly that).
+ */
+async function runChromeWebStoreChecks(url: string): Promise<StoreScanResult> {
+  const itemId = chromeWebStoreItemId(url);
+  const pageResult = await fetchPage(url);
+  const html = pageResult?.html ?? "";
+  const status = pageResult?.status ?? null;
+  const gone = isChromeWebStoreItemGone(html) || status === 404 || status === 410;
+  const consent = /<title>\s*Before you continue/i.test(html) || /consent\.google\.com/i.test(pageResult?.finalUrl ?? "");
+  const listing = itemId && !gone ? parseChromeWebStoreListing(html, itemId) : null;
+
+  const live: PulseScanCheckInput = {
+    category: CATEGORIES.STORE_LISTING,
+    checkKey: "store_page_live",
+    label: "Chrome Web Store listing is live",
+    status: listing ? "PASS" : gone ? "FAIL" : "INCONCLUSIVE",
+    confidence: "HIGH",
+    detail: listing
+      ? "The Chrome Web Store lists this extension."
+      : gone
+        ? "The Chrome Web Store no longer lists this item — it was removed, unpublished, or is not offered in this region."
+        : status === 429
+          ? "Not assessed — the Chrome Web Store rate-limited this scan (HTTP 429). That is a limit on how often we may ask, not a fact about the listing; re-run in a few minutes."
+          : consent
+            ? "Not assessed — the Chrome Web Store showed a consent page instead of the listing."
+            : !itemId
+              ? "Not assessed — the link does not contain a Chrome Web Store item id."
+              : `Not assessed — the Chrome Web Store returned ${status ?? "no response"} without the listing's data, so it could not be read.`,
+    evidence: gone ? "ds:0 NOT_FOUND" : status === null ? "no response" : `HTTP ${status}`,
+  };
+  if (!listing) {
+    return { checks: [live].map((c, i) => ({ ...c, sortOrder: i })), techStack: ["Chrome extension"], storeListing: null, appName: null };
+  }
+  const checks = [live, ...buildStoreListingChecks("chrome_web_store", listing)];
+  return {
+    checks: checks.map((c, i) => ({ ...c, sortOrder: i })),
+    techStack: ["Chrome extension"],
+    storeListing: listing,
+    appName: listing.name,
+  };
+}
+
 export interface StoreScanResult {
   checks: PulseScanCheckInput[];
   techStack: string[];
@@ -1254,7 +1303,8 @@ export interface StoreScanResult {
   appName: string | null;
 }
 
-async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_store"): Promise<StoreScanResult> {
+async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_store" | "chrome_web_store"): Promise<StoreScanResult> {
+  if (storeType === "chrome_web_store") return runChromeWebStoreChecks(url);
   const checks: PulseScanCheckInput[] = [];
   const pageResult = await fetchPage(url);
 
@@ -1361,18 +1411,33 @@ function applyPlatformFilter(
  * US/EU-only product. Untagged (global) checks always pass through. With no
  * market context (markets empty) nothing is filtered.
  */
+/**
+ * Markets assumed when none were declared and none could be detected.
+ *
+ * "No market context" used to mean "every region applies", so a placeholder page was
+ * asked for a Chinese ICP licence, Singapore PDPA and Brazilian LGPD notices. The owner's
+ * rule — show only what applies — needs a default. UK, EU and US are where Gitwork's
+ * clients ship; any other region's checks appear the moment that market is declared on
+ * the scan or detected on the page. Detection still only WIDENS from here; it never
+ * narrows a declared set (see detectMarketsFromPage).
+ */
+export const DEFAULT_MARKETS: JurisdictionCode[] = ["UK", "EU", "US"];
+
 function applyJurisdictionFilter(
   checks: PulseScanCheckInput[],
   markets: JurisdictionCode[],
 ): PulseScanCheckInput[] {
-  if (markets.length === 0) return checks;
+  const assumed = markets.length === 0;
+  const effective = assumed ? DEFAULT_MARKETS : markets;
   return checks.map((check) => {
-    if (checkAppliesToMarkets(check.checkKey, markets)) return check;
+    if (checkAppliesToMarkets(check.checkKey, effective)) return check;
     const tags = CHECK_JURISDICTIONS[check.checkKey] ?? [];
     return {
       ...check,
       status: "SKIPPED" as const,
-      detail: `Not applicable to your selected markets (${markets.join(", ")}) — this requirement targets ${tags.join(", ") || "another region"}.`,
+      detail: assumed
+        ? `Not assessed — this requirement targets ${tags.join(", ") || "another region"}, and no target markets were declared or detected (Pulse assumed ${DEFAULT_MARKETS.join(", ")}). Declare the product's markets on the scan to include it.`
+        : `Not applicable to your selected markets (${markets.join(", ")}) — this requirement targets ${tags.join(", ") || "another region"}.`,
     };
   });
 }
@@ -2217,17 +2282,19 @@ export async function runUrlChecks(
      * PageSpeed. Internal scans turn it on, which is where the assessment is actually sold.
      */
     renderJs?: boolean;
+    /** Called once with the page the checks are judged on, before the first wave. */
+    onPageContext?: (page: { html: string; contentType: string | null; paymentsFromOtherEvidence: boolean }) => void;
   },
 ): Promise<{
   checks: PulseScanCheckInput[];
   techStack: string[];
   detectedMarkets: JurisdictionCode[];
   surfaceKind: UrlSurfaceKind;
-  /** Set only for an App Store / Google Play link. */
-  store?: { target: "app_store" | "play_store"; listing: StoreListing | null; appName: string | null };
+  /** Set only for a store link (App Store, Google Play, Chrome Web Store). */
+  store?: { target: "app_store" | "play_store" | "chrome_web_store"; listing: StoreListing | null; appName: string | null };
 }> {
   const urlType = detectUrlType(url);
-  if (urlType === "app_store" || urlType === "play_store") {
+  if (urlType === "app_store" || urlType === "play_store" || urlType === "chrome_web_store") {
     const result = await runMobileStoreChecks(url, urlType);
     return {
       checks: result.checks,
@@ -2379,11 +2446,30 @@ export async function runUrlChecks(
     const liveStripeWebhookStatus = paymentsApplicable && !catchAll200
       ? await headRequest(`${baseUrl}/api/webhooks/stripe`)
       : 0;
-    const liveStripeSignal = liveStripeWebhookStatus > 0 && liveStripeWebhookStatus < 500;
+    // ⚠️ A 404 is not a live route. This read `status > 0 && status < 500`, so a host
+    // answering 404 for a path it does not have — example.com, measured — was reported as
+    // running a Stripe integration, and the payments family switched on for a static page.
+    // A real webhook endpoint answers a bare HEAD with 2xx, or refuses it (400 unsigned /
+    // 401 / 405 method not allowed); nothing else is evidence it exists.
+    // And it must differ from what the host says for a path that cannot exist — a host
+    // that answers 401 to everything (an auth wall) is not running a webhook either.
+    const liveStripeSignal = liveStripeWebhookStatus !== baselineProbe.status && (
+      (liveStripeWebhookStatus >= 200 && liveStripeWebhookStatus < 300) ||
+      liveStripeWebhookStatus === 400 || liveStripeWebhookStatus === 401 ||
+      liveStripeWebhookStatus === 405 || liveStripeWebhookStatus === 415);
     const correctedPaymentSignal = repoPaymentSignal || liveStripeSignal;
     if (correctedPaymentSignal && !ctx.isPaymentEnabled) {
       ctx = { ...ctx, isPaymentEnabled: true, hasBackend: true };
     }
+
+    // Hand the page the checks will be judged on to the relevance gate, BEFORE any check
+    // is emitted: its feature decisions (no payments checks without payments) must be made
+    // from the same page, and the first wave streams shortly after this.
+    contextHints?.onPageContext?.({
+      html: contentHtml,
+      contentType: pageResult.headers["content-type"] ?? null,
+      paymentsFromOtherEvidence: correctedPaymentSignal,
+    });
 
     // Build a "does this HTML route exist?" check honestly. A real page and a
     // catch-all soft-200 are both HTML, so on a catch-all host presence can't be
@@ -5891,13 +5977,12 @@ export async function runGithubChecks(
     resolvedShape as NativePlatform,
   ) ? resolvedShape as NativePlatform : null;
   techStack.push(...nativeTechStack(nativePlatform, nativeSnapshot?.paths ?? []));
-  const effectivePlatform = effectivePlatformForRepoShape(platform, resolvedShape);
-
   return {
-    checks: keepApplicableChecks(
-      applyNativeApplicability(checks, nativePlatform),
-      effectivePlatform,
-    ).map((check, i) => ({ ...check, sortOrder: i })),
+    // No category filter here: a platform's OWN checks live in categories the coarse
+    // platform profile marked not-applicable (ext_manifest_v3 is APP_STORE, which
+    // CHROME_EXTENSION excludes), so filtering by category dropped them. The relevance
+    // gate in run-lite-scan decides per check, from what the repo actually is.
+    checks: applyNativeApplicability(checks, nativePlatform).map((check, i) => ({ ...check, sortOrder: i })),
     techStack: [...new Set(techStack)],
     // Retained for report metadata and compatibility. The live orchestrator never
     // expands a repository scan into its optional GitHub Website field.

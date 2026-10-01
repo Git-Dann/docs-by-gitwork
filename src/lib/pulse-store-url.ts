@@ -17,8 +17,11 @@
 // the two can never disagree about what a link is.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type StoreTarget = "app_store" | "play_store";
-export type StorePlatform = "IOS_APP" | "ANDROID_APP";
+export type StoreTarget = "app_store" | "play_store" | "chrome_web_store";
+export type StorePlatform = "IOS_APP" | "ANDROID_APP" | "CHROME_EXTENSION";
+
+/** A Chrome Web Store item id: 32 characters from a–p. */
+const CWS_ID = /^[a-p]{32}$/i;
 
 function parse(url: string): URL | null {
   const trimmed = (url ?? "").trim();
@@ -43,11 +46,34 @@ export function detectStoreTarget(url: string): StoreTarget | null {
   const host = parsed.hostname.toLowerCase();
   if (host === "apps.apple.com" || host === "itunes.apple.com") return "app_store";
   if (host === "play.google.com" && parsed.pathname.toLowerCase().startsWith("/store/apps")) return "play_store";
+  if (chromeWebStoreId(parsed)) return "chrome_web_store";
   return null;
 }
 
+/**
+ * The item id from a Chrome Web Store link — /detail/<slug>/<id> or /detail/<id> on
+ * chromewebstore.google.com, and the legacy chrome.google.com/webstore/detail/… form.
+ */
+function chromeWebStoreId(parsed: URL): string | null {
+  const host = parsed.hostname.toLowerCase();
+  const parts = parsed.pathname.split("/").filter(Boolean);
+  const detail = host === "chromewebstore.google.com" && parts[0] === "detail"
+    ? parts.slice(1)
+    : host === "chrome.google.com" && parts[0] === "webstore" && parts[1] === "detail"
+      ? parts.slice(2)
+      : null;
+  const id = detail?.find((part) => CWS_ID.test(part));
+  return id ? id.toLowerCase() : null;
+}
+
+/** The Chrome Web Store item id in a link, or null when it is not one. */
+export function chromeWebStoreItemId(url: string): string | null {
+  const parsed = parse(url);
+  return parsed ? chromeWebStoreId(parsed) : null;
+}
+
 export function storePlatformForTarget(target: StoreTarget): StorePlatform {
-  return target === "app_store" ? "IOS_APP" : "ANDROID_APP";
+  return target === "app_store" ? "IOS_APP" : target === "play_store" ? "ANDROID_APP" : "CHROME_EXTENSION";
 }
 
 /** IOS_APP for an App Store link, ANDROID_APP for a Google Play link, else null. */
@@ -71,11 +97,13 @@ export function resolveScanPlatform(
 export const STORE_NAME: Record<StoreTarget, string> = {
   app_store: "App Store",
   play_store: "Google Play",
+  chrome_web_store: "Chrome Web Store",
 };
 
 export const STORE_PLATFORM_LABEL: Record<StoreTarget, string> = {
   app_store: "iOS app",
   play_store: "Android app",
+  chrome_web_store: "Chrome extension",
 };
 
 /**
@@ -94,6 +122,15 @@ export function provisionalStoreProjectName(url: string): string | null {
   if (target === "app_store") {
     const slug = /\/app\/([^/]+)\/id\d+/i.exec(parsed.pathname)?.[1];
     if (!slug) return null;
+    let decoded = slug;
+    try { decoded = decodeURIComponent(slug); } catch { /* keep raw */ }
+    return titleCase(decoded.replace(/[-_]+/g, " "));
+  }
+  if (target === "chrome_web_store") {
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const slug = parts.find((part, i) => i > 0 && part !== "detail" && part !== "webstore" && !CWS_ID.test(part));
+    // "empty-title" is what the store puts in the URL for an item it no longer lists.
+    if (!slug || slug === "empty-title") return null;
     let decoded = slug;
     try { decoded = decodeURIComponent(slug); } catch { /* keep raw */ }
     return titleCase(decoded.replace(/[-_]+/g, " "));
@@ -124,7 +161,7 @@ export function isPlaceholderStoreName(name: string | null | undefined, url: str
   const value = (name ?? "").trim();
   if (!value) return true;
   const parsed = parse(url);
-  const hosts = new Set<string>(["apps.apple.com", "itunes.apple.com", "play.google.com"]);
+  const hosts = new Set<string>(["apps.apple.com", "itunes.apple.com", "play.google.com", "chromewebstore.google.com", "chrome.google.com"]);
   if (parsed) hosts.add(parsed.hostname.toLowerCase().replace(/^www\./, ""));
   if (hosts.has(value.toLowerCase())) return true;
   // ⚠️ Case-SENSITIVE against the provisional name. The slug of "Beyond Nutrition UK"
@@ -157,4 +194,9 @@ export function describeScanSubject(inputUrl: string | null | undefined, platfor
   const store = inputUrl ? detectStoreTarget(inputUrl) : null;
   if (store) return `${STORE_PLATFORM_LABEL[store]} · ${STORE_NAME[store]} listing`;
   return platform ? PULSE_PLATFORM_LABEL[platform.toUpperCase()] ?? null : null;
+}
+
+/** "an iOS app", "an Android app", "a Chrome extension". */
+export function withArticle(label: string): string {
+  return /^[aeiou]/i.test(label) ? `an ${label}` : `a ${label}`;
 }

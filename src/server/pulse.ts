@@ -1125,6 +1125,7 @@ export async function runAnalysis(
     let browserInsights: BrowserAgentInsights | null = null;
     let visualInsights: VisualAgentInsights | null = null;
     let collectorExecutions: CollectorExecution[] = [];
+    let relevance: ScoreBreakdown["relevance"] | undefined;
 
     const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
 
@@ -1151,6 +1152,7 @@ export async function runAnalysis(
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;
       collectorExecutions = lite.collectorExecutions;
+      relevance = lite.relevance;
       // A store link: file the scan under the app's own name once the listing says it.
       if (lite.appName && input.inputUrl && isPlaceholderStoreName(projectName, input.inputUrl)) {
         projectName = lite.appName;
@@ -1168,6 +1170,7 @@ export async function runAnalysis(
     const scoreBreakdown = {
       ...computeScoreBreakdown(allChecks),
       ...(collectorExecutions.length > 0 ? { collectors: collectorCoverage(collectorExecutions) } : {}),
+      ...(relevance ? { relevance } : {}),
     };
     // The release decision. Deterministic and computed from the checks and the
     // coverage above — no model output reaches it. Stored WITH its policy version,

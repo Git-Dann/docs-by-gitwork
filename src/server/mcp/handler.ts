@@ -1985,6 +1985,7 @@ const TOOLS: ToolDef[] = [
         collectors: scan.scoreBreakdown?.collectors,
         platform: scan.platform,
         name: scan.projectName,
+        relevance: scan.scoreBreakdown?.relevance,
       });
       return textResult(verdict, verdict.summary);
     },

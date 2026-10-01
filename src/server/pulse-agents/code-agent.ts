@@ -22,7 +22,6 @@ import {
   effectivePlatformForRepoShape,
   type RepoCollectorName,
 } from "@/server/pulse-checks/scan-execution-plan";
-import { keepApplicableChecks } from "@/server/pulse-checks/platform-applicability";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -183,7 +182,7 @@ export async function runCodeAgent(
   // from "this repo has no branch protection", and they need different fixes.
   if (!repo) {
     return {
-      checks: keepApplicableChecks([
+      checks: ([
         ...rest.checks,
         {
           category: CATEGORIES.CODE_QUALITY,
@@ -197,7 +196,7 @@ export async function runCodeAgent(
             : "GITHUB_TOKEN is not configured on this server, so branch protection, releases, commit " +
               "velocity and dependency alerts could not be read.",
         },
-      ], effectivePlatform),
+      ]),
       insights: { ...emptyInsights(), exposedSecrets: rest.exposedSecrets },
     };
   }
@@ -418,7 +417,8 @@ export async function runCodeAgent(
   checks.push(...rest.checks);
 
   return {
-    checks: keepApplicableChecks(checks, effectivePlatform),
+    // The relevance gate in run-lite-scan decides per check; see runGithubChecks.
+    checks,
     insights: {
       vulnerabilities,
       branchProtected,

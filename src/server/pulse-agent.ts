@@ -36,6 +36,12 @@ export interface AgentVerdict {
   status: "COMPLETED" | "FAILED";
   healthScore: number;
   summary: string;
+  /**
+   * What the relevance gate left out, and why. Only checks about THIS product are in the
+   * verdict; this says how many others existed, so a caller never reads a short list as
+   * "nothing else was looked at". Null when the scan predates the gate.
+   */
+  scope: ScoreBreakdown["relevance"] | null;
   grades: PulseGrade[];
   techStack: string[];
   /**
@@ -114,6 +120,8 @@ export function buildAgentVerdict(args: {
   platform?: string | null;
   /** The subject's name — for a store link, the app's listed name. */
   name?: string | null;
+  /** The relevance gate's summary for this scan. */
+  relevance?: ScoreBreakdown["relevance"];
 }): AgentVerdict {
   const { checks } = args;
   const bucket = (b: string) => checks.filter((c) => c.trustBucket === b);
@@ -198,6 +206,7 @@ export function buildAgentVerdict(args: {
   return {
     url: args.url,
     subject,
+    scope: args.relevance ?? null,
     status: args.status,
     healthScore: args.healthScore,
     summary: summaryParts.join(" · "),
@@ -256,6 +265,7 @@ export async function runAgentScan(input: {
       gatePolicyId: input.gatePolicyId,
       platform: lite.executionPlatform ?? null,
       name: lite.appName,
+      relevance: lite.relevance,
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Scan failed.";

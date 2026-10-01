@@ -105,14 +105,11 @@ export function buildPlatformCoverageCheck(input: {
   selectedPlatform: string;
   inputType: CoverageInputType;
   detectedShape: CoverageShape | null;
-  /** Set when the URL is an App Store / Google Play listing. */
-  storeTarget?: "app_store" | "play_store";
+  /** Set when the URL is a store listing. */
+  storeTarget?: "app_store" | "play_store" | "chrome_web_store";
 }): PulseScanCheckInput | null {
   const selected = (input.selectedPlatform ?? "").toUpperCase();
   const spec = PLATFORM_FAMILIES[selected];
-
-  // A web-shaped selection is fully served by the URL suite — nothing to report.
-  if (!spec) return null;
 
   const base = {
     category: CATEGORIES.CODE_QUALITY,
@@ -120,19 +117,39 @@ export function buildPlatformCoverageCheck(input: {
     label: "Platform-specific checks ran for this project",
   } as const;
 
+  // ── A web-type selection on a repo that is something else ──────────────────
+  // Detection wins (the iOS checks run on an iOS repo whatever was picked), but a
+  // silent override reads as a bug, so the mismatch is said once.
+  if (!spec) {
+    const detected = input.detectedShape ?? "none";
+    const detectedSpec = Object.values(PLATFORM_FAMILIES).find((family) => family.shapes.includes(detected));
+    if (input.inputType !== "GITHUB_REPO" || !detectedSpec) return null;
+    return {
+      ...base,
+      status: "WARN",
+      confidence: "HIGH",
+      detail:
+        `You selected "${selected.replace(/_/g, " ").toLowerCase()}", but this repository is ${SHAPE_LABEL[detected]}. ` +
+        `The ${detectedSpec.count} ${detectedSpec.label} checks ran instead, and web-only checks were left out — detection ` +
+        `wins over the dropdown, so the findings are about what this repo actually is. Change the selection so the report is labelled correctly.`,
+      evidence: `selected ${selected || "none"}, detected ${detected}`,
+    };
+  }
+
   // ── A store listing: the app, seen from its listing ────────────────────────
   // Said about the APP, because that is what was scanned. The earlier wording ("you
   // scanned this as …, but … none of that is visible from a URL") read as though the
   // user had picked the wrong input, when a store link is exactly the right way to
   // assess a store listing.
   if (input.inputType !== "GITHUB_REPO" && input.storeTarget) {
-    const store = input.storeTarget === "app_store" ? "App Store" : "Google Play";
+    const store = { app_store: "App Store", play_store: "Google Play", chrome_web_store: "Chrome Web Store" }[input.storeTarget];
+    const product = { app_store: "an iOS app", play_store: "an Android app", chrome_web_store: "a Chrome extension" }[input.storeTarget];
     return {
       ...base,
       status: "SKIPPED",
       confidence: "HIGH",
       detail:
-        `This is an ${spec.label} app, assessed from its ${store} listing — what the store publishes about it. ` +
+        `This is ${product}, assessed from its ${store} listing — what the store publishes about it. ` +
         `The ${spec.count} ${spec.label} checks that read the app's source (token storage, build configuration, ` +
         `release logging, permissions) need its code, which a listing does not show. To add them, scan the app's ` +
         `GitHub repository. Nothing here is a pass or a failure for those checks: they did not run.`,

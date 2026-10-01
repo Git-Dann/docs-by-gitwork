@@ -2,7 +2,7 @@ import { normalizePulsePlatform, type PulsePlatform, type UrlSurfaceKind } from 
 import type { SnapshotShape } from "./native-repo";
 import { detectStoreTarget } from "@/lib/pulse-store-url";
 
-export type UrlTargetKind = "web" | "app_store" | "play_store";
+export type UrlTargetKind = "web" | "app_store" | "play_store" | "chrome_web_store";
 export type RepoCollectorName =
   | "secret-scan"
   | "native-mobile"

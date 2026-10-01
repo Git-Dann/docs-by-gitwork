@@ -36,6 +36,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { StoreTarget } from "@/lib/pulse-store-url";
+import { evaluateExtensionManifest } from "./chrome-extension";
 
 export interface StoreRating {
   average: number;
@@ -67,6 +68,29 @@ export interface StoreListing {
   hasInAppPurchases: boolean | null;
   copyright: string | null;
   bundleId: string | null;
+  /** Chrome Web Store only — the extension-specific facts the listing publishes. */
+  extension?: ExtensionListing;
+}
+
+export interface ExtensionListing {
+  /** Item id, from the store's own data — never inferred from the URL alone. */
+  id: string;
+  users: number | null;
+  featured: boolean;
+  establishedPublisher: boolean;
+  byGoogle: boolean;
+  /** EU trader declaration: true trader, false non-trader, null not stated. */
+  trader: boolean | null;
+  legalEntity: string | null;
+  verifiedSite: string | null;
+  version: string | null;
+  /** Epoch seconds. */
+  lastUpdated: number | null;
+  size: string | null;
+  /** The published manifest.json, or null when it could not be parsed. */
+  manifest: Record<string, unknown> | null;
+  /** Data the developer declares the extension handles; [] declares none; null unknown. */
+  dataHandled: string[] | null;
 }
 
 // ── small, safe readers ──────────────────────────────────────────────────────
@@ -374,6 +398,98 @@ export function parsePlayStoreListing(html: string, url: string): StoreListing |
   };
 }
 
+// ── Chrome Web Store ─────────────────────────────────────────────────────────
+
+/** Data-handling codes in the listing's `d[7]`, verified against the rendered text. */
+const CWS_DATA_CODES: Record<number, string> = {
+  1: "Personally identifiable information",
+  2: "Health information",
+  3: "Financial and payment information",
+  4: "Authentication information",
+  5: "Personal communications",
+  6: "Location",
+  7: "Web history",
+  8: "User activity",
+  9: "Website content",
+};
+
+/** True when the page is the store's "this item does not exist" shell (RPC NOT_FOUND). */
+export function isChromeWebStoreItemGone(html: string): boolean {
+  return /AF_initDataCallback\(\{key:\s*'ds:0'[\s\S]{0,200}?data:\[5\],\s*errorHasStatus:\s*true/.test(html);
+}
+
+/**
+ * Parse a Chrome Web Store listing.
+ *
+ * The store publishes no schema.org data at all; every fact is in one positional array,
+ * the `ds:0` block of AF_initDataCallback. Field positions were verified against the
+ * rendered text of 15 live listings (see the audit, October 2026). Returns null unless
+ * that block parses AND names the same item id as the link — the store answers HTTP 200
+ * with a generic shell for a removed item, so a page that merely loads proves nothing.
+ */
+export function parseChromeWebStoreListing(html: string, itemId: string): StoreListing | null {
+  const match = /AF_initDataCallback\(\{key:\s*'ds:0'[\s\S]*?\bdata:([\s\S]*?),\s*sideChannel:/.exec(html);
+  const data = parseJson(match?.[1] ?? null);
+  if (!Array.isArray(data) || !Array.isArray(data[0])) return null;
+  const d = data as Json[];
+  const a = d[0] as Json[];
+  if (str(a[0])?.toLowerCase() !== itemId.toLowerCase()) return null;
+
+  const developer = arr(d[10]);
+  const media = arr(d[5]).map((item) => arr(item));
+  const category = str(arr(a[11])[0]);
+  const dataCodes = Array.isArray(d[7]) ? arr(d[7]).map((code) => num(code)).filter((code): code is number => code !== null) : null;
+  const declaresNone = dataCodes === null && /has disclosed that it will not collect or use your data/i.test(html);
+  const dataHandled = dataCodes && dataCodes.length > 0
+    ? dataCodes.map((code) => CWS_DATA_CODES[code] ?? `Data type ${code}`)
+    : declaresNone ? [] : null;
+
+  let manifest: Record<string, unknown> | null = null;
+  const manifestText = str(a[18]);
+  if (manifestText) manifest = obj(parseJson(manifestText));
+
+  const average = num(a[3]);
+  const count = num(a[4]);
+
+  return {
+    store: "chrome_web_store",
+    name: str(a[2]),
+    developer: str(developer[5]) ?? str(developer[7]),
+    genre: category,
+    subtitle: null,
+    description: str(d[6]),
+    shortDescription: str(a[6]),
+    rating: average !== null && count !== null && count > 0 ? { average, count } : null,
+    screenshots: { total: media.filter((item) => num(item[0]) === 1).length, byDevice: {} },
+    hasPreviewVideo: media.some((item) => num(item[0]) === 2),
+    ageRating: null,
+    privacyPolicyUrl: str(d[33]),
+    privacyDeclaration: {
+      declared: dataHandled !== null,
+      lines: dataHandled === null ? [] : dataHandled.length === 0 ? ["Declares it collects no user data"] : dataHandled,
+    },
+    dataDeletable: null,
+    hasInAppPurchases: null,
+    copyright: null,
+    bundleId: str(a[0]),
+    extension: {
+      id: str(a[0]) ?? itemId,
+      users: num(a[14]),
+      featured: a[9] === 1,
+      establishedPublisher: a[15] === 1,
+      byGoogle: a[10] === 1,
+      trader: developer[3] === 1 ? true : developer.length > 0 ? false : null,
+      legalEntity: str(developer[7]),
+      verifiedSite: str(a[7]),
+      version: str(d[13]),
+      lastUpdated: num(arr(d[14])[0]),
+      size: str(d[15]),
+      manifest,
+      dataHandled,
+    },
+  };
+}
+
 /**
  * The app's own name, for naming the scan. Uses the parsed listing, else the
  * schema.org name, else the page title with the store's suffix removed.
@@ -431,12 +547,12 @@ export function privacyPolicyOwner(listing: StoreListing): { matches: boolean; h
 
 // ── Checks ───────────────────────────────────────────────────────────────────
 
-const STORE_NAME: Record<StoreTarget, string> = { app_store: "App Store", play_store: "Google Play" };
+const STORE_NAME: Record<StoreTarget, string> = { app_store: "App Store", play_store: "Google Play", chrome_web_store: "Chrome Web Store" };
 /** As the subject of a sentence — "the App Store shows", but "Google Play shows". */
-const THE_STORE: Record<StoreTarget, string> = { app_store: "The App Store", play_store: "Google Play" };
+const THE_STORE: Record<StoreTarget, string> = { app_store: "The App Store", play_store: "Google Play", chrome_web_store: "The Chrome Web Store" };
 
 /** Minimum screenshots each store will accept for a listing to publish. */
-const MIN_SCREENSHOTS: Record<StoreTarget, number> = { app_store: 1, play_store: 2 };
+const MIN_SCREENSHOTS: Record<StoreTarget, number> = { app_store: 1, play_store: 2, chrome_web_store: 1 };
 
 function formatCount(value: number): string {
   return value.toLocaleString("en-GB");
@@ -462,6 +578,7 @@ export function buildStoreListingChecks(
   listing: StoreListing | null,
   options: { descriptionFallback?: string | null } = {},
 ): PulseScanCheckInput[] {
+  if (store === "chrome_web_store") return buildChromeWebStoreChecks(listing);
   const storeName = STORE_NAME[store];
   const isApple = store === "app_store";
   const category = CATEGORIES.STORE_LISTING;
@@ -697,6 +814,174 @@ export function buildStoreListingChecks(
       ...high,
     });
   }
+
+  return checks;
+}
+
+/** The Chrome Web Store listing checks. Separate because most keys differ from Apple/Play. */
+function buildChromeWebStoreChecks(listing: StoreListing | null): PulseScanCheckInput[] {
+  const category = CATEGORIES.STORE_LISTING;
+  const high = { confidence: "HIGH" as const, confidenceReason: "Read from the Chrome Web Store's own listing data." };
+  const ext = listing?.extension;
+
+  if (!listing || !ext) {
+    const reason =
+      "Not assessed — the Chrome Web Store page did not include its listing data (a consent page, a changed page " +
+      "format, or the item is not offered here), so this could not be read. Pulse does not guess it from the page text.";
+    const entries: Array<[string, string]> = [
+      ["store_app_title", "App name / title"],
+      ["store_description", "App description"],
+      ["store_screenshots", "Screenshots / preview assets"],
+      ["store_ratings", "Ratings & reviews"],
+      ["store_privacy_policy", "Privacy policy linked"],
+      ["cws_privacy_practices", "Privacy practices disclosed"],
+      ["store_last_updated", "Listing updated in the last 12 months"],
+    ];
+    return entries.map(([checkKey, label]) => ({ category, checkKey, label, status: "INCONCLUSIVE" as const, detail: reason }));
+  }
+
+  const checks: PulseScanCheckInput[] = [];
+  const users = ext.users !== null ? `${formatCount(ext.users)} users` : null;
+
+  checks.push({
+    category, checkKey: "store_app_title", label: "App name / title",
+    status: listing.name ? "PASS" : "WARN",
+    detail: listing.name
+      ? `Listed as "${listing.name}"${listing.developer ? `, published by ${listing.developer}` : ""}${users ? ` — ${users}` : ""}.`
+      : "The Chrome Web Store listing data carries no name.",
+    evidence: [listing.name, listing.developer, users].filter(Boolean).join(" · ") || undefined,
+    ...high,
+  });
+
+  if (listing.description) {
+    const length = listing.description.length;
+    const summary = listing.shortDescription;
+    checks.push({
+      category, checkKey: "store_description", label: "App description",
+      status: length <= 50 ? "FAIL" : length <= 200 ? "WARN" : "PASS",
+      detail: (length > 200
+        ? `Full description is ${formatCount(length)} characters.`
+        : `Full description is ${length} characters — too short to tell a visitor what the extension does.`)
+        + (summary ? ` Summary: "${summary}" (${summary.length} of the 132 characters the store allows).` : ""),
+      evidence: `${formatCount(length)} characters`,
+      ...high,
+    });
+  }
+
+  const shots = listing.screenshots.total;
+  checks.push({
+    category, checkKey: "store_screenshots", label: "Screenshots / preview assets",
+    status: shots < 1 ? "FAIL" : shots < 3 ? "WARN" : "PASS",
+    detail: shots === 0 ? "The listing shows no screenshots." : `${shots} screenshot${shots === 1 ? "" : "s"}.`,
+    evidence: `${shots}`,
+    ...high,
+  });
+
+  checks.push({
+    category, checkKey: "store_ratings", label: "Ratings & reviews",
+    status: listing.rating ? "PASS" : "WARN",
+    detail: listing.rating
+      ? `Rated ${listing.rating.average.toFixed(1)} from ${formatCount(listing.rating.count)} rating${listing.rating.count === 1 ? "" : "s"}.`
+      : "The Chrome Web Store shows no rating for this listing yet.",
+    ...high,
+  });
+
+  // Privacy policy — the store requires one only when the extension handles user data.
+  const handles = ext.dataHandled;
+  const policyStatus = listing.privacyPolicyUrl
+    ? "PASS"
+    : handles && handles.length > 0 ? "FAIL"
+      : handles && handles.length === 0 ? "SKIPPED"
+        : "INCONCLUSIVE";
+  checks.push({
+    category, checkKey: "store_privacy_policy", label: "Privacy policy linked",
+    status: policyStatus,
+    detail: policyStatus === "PASS"
+      ? `The listing links its privacy policy: ${listing.privacyPolicyUrl}`
+      : policyStatus === "FAIL"
+        ? `The extension declares it handles user data (${handles!.join(", ")}) but links no privacy policy. The Chrome Web Store requires one for any extension that handles user data.`
+        : policyStatus === "SKIPPED"
+          ? "Not required: the developer declares the extension collects no user data."
+          : "Not assessed — the listing's privacy declaration could not be read.",
+    evidence: listing.privacyPolicyUrl ?? undefined,
+    ...high,
+  });
+
+  const owner = privacyPolicyOwner(listing);
+  if (owner) {
+    const verifiedHost = (() => { try { return ext.verifiedSite ? new URL(ext.verifiedSite).hostname.replace(/^www\./, "") : null; } catch { return null; } })();
+    const matches = owner.matches || (verifiedHost !== null && (owner.host === verifiedHost || owner.host.endsWith(`.${verifiedHost}`)));
+    checks.push({
+      category, checkKey: "store_privacy_policy_owner", label: "Privacy policy belongs to the publisher",
+      status: matches ? "PASS" : "WARN",
+      confidence: "MEDIUM",
+      confidenceReason: "Compares the policy's domain with the publisher's name and verified website — a heuristic.",
+      detail: matches
+        ? `The privacy policy is hosted on ${owner.host}, which matches the publisher.`
+        : `The privacy policy is hosted on ${owner.host}, which does not match the publisher${listing.developer ? ` (${listing.developer})` : ""}. Worth opening it and checking who it names as responsible for users' data.`,
+      evidence: `${owner.host} vs ${listing.developer ?? listing.name ?? "—"}`,
+    });
+  }
+
+  checks.push({
+    category, checkKey: "store_preview_video", label: "Promo video",
+    status: listing.hasPreviewVideo ? "PASS" : "WARN",
+    detail: listing.hasPreviewVideo ? "The listing includes a promo video." : "The listing has no promo video — every media item is a still screenshot.",
+    ...high,
+  });
+
+  checks.push({
+    category, checkKey: "cws_privacy_practices", label: "Privacy practices disclosed",
+    status: handles === null ? "INCONCLUSIVE" : "PASS",
+    detail: handles === null
+      ? "Not assessed — the listing's privacy-practices section could not be read."
+      : handles.length === 0
+        ? "The developer declares the extension collects no user data."
+        : `The developer declares the extension handles: ${handles.join(", ")}.`,
+    evidence: handles ? (handles.join("; ") || "none") : undefined,
+    ...high,
+  });
+
+  // EU trader declaration — a legal status the store asks every developer to make.
+  const companyName = ext.legalEntity && /\b(inc|ltd|llc|gmbh|plc|corp|limited|s\.?a\.?|b\.?v\.?)\b/i.test(ext.legalEntity);
+  const commercial = (handles ?? []).includes("Financial and payment information") || Boolean(companyName);
+  if (ext.trader === true || (ext.trader === false && commercial)) {
+    checks.push({
+      category, checkKey: "cws_trader_status", label: "EU trader declaration",
+      status: ext.trader ? "PASS" : "WARN",
+      confidence: ext.trader ? "HIGH" : "MEDIUM",
+      confidenceReason: ext.trader ? high.confidenceReason : "Commercial signals on a listing declared non-trader — a judgement, not a rule.",
+      detail: ext.trader
+        ? `Declared as a trader${ext.legalEntity ? ` (${ext.legalEntity})` : ""}, which EU consumer law requires of businesses.`
+        : `Declared NON-trader, but the listing shows commercial signals (${companyName ? `published by ${ext.legalEntity}` : "it handles payment information"}). EU law expects a business to declare itself a trader; check the declaration in the developer dashboard.`,
+    });
+  }
+
+  checks.push({
+    category, checkKey: "cws_trust_badges", label: "Featured / Established publisher badges",
+    status: ext.featured || ext.establishedPublisher ? "PASS" : "WARN",
+    detail: ext.featured || ext.establishedPublisher
+      ? `The listing carries ${[ext.featured && "the Featured badge", ext.establishedPublisher && "the Established publisher badge"].filter(Boolean).join(" and ")}.`
+      : "The listing carries neither the Featured nor the Established publisher badge — the store's own trust signals on the listing.",
+    ...high,
+  });
+
+  if (ext.lastUpdated !== null) {
+    const ageDays = Math.floor((Date.now() / 1000 - ext.lastUpdated) / 86_400);
+    const updated = new Date(ext.lastUpdated * 1000).toISOString().slice(0, 10);
+    checks.push({
+      category, checkKey: "store_last_updated", label: "Listing updated in the last 12 months",
+      status: ageDays <= 365 ? "PASS" : "WARN",
+      detail: ageDays <= 365
+        ? `Last updated ${updated}${ext.version ? `, version ${ext.version}` : ""}.`
+        : `Last updated ${updated} — over a year ago. Browsers and store policy change faster than that; an unmaintained extension is where breakage and policy strikes come from.`,
+      evidence: [updated, ext.version, ext.size].filter(Boolean).join(" · "),
+      ...high,
+    });
+  }
+
+  // The published manifest — what the store actually distributes.
+  if (ext.manifest) checks.push(...evaluateExtensionManifest(ext.manifest, "store"));
 
   return checks;
 }

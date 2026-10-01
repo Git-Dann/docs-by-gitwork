@@ -254,6 +254,31 @@ function PillarStrip({ checks, num }: { checks: PulseScanCheckRecord[]; num: str
   );
 }
 
+const FEATURE_LABEL: Record<string, string> = {
+  payments: "payments", accounts: "user accounts", saas_multitenant: "multi-tenant SaaS", ecommerce: "a store",
+  ai_features: "AI features", sends_email: "outbound email", public_api: "a public API", marketing_content: "marketing content",
+  i18n: "multiple languages", user_content: "user content", supabase: "Supabase", firebase: "Firebase",
+  mobile_app: "a companion mobile app",
+};
+
+/** One sentence: how many checks applied, and why the rest were left out. */
+export function describeRelevance(relevance: NonNullable<NonNullable<PulseScanRecord["scoreBreakdown"]>["relevance"]>): string {
+  const parts: string[] = [];
+  const r = relevance.byReason;
+  if (r.not_this_artefact) parts.push(`${r.not_this_artefact} measure something this scan did not look at`);
+  if (r.not_this_platform) parts.push(`${r.not_this_platform} do not apply to this kind of product`);
+  if (r.feature_absent) {
+    const features = Object.entries(relevance.byFeature)
+      .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+      .map(([feature]) => FEATURE_LABEL[feature] ?? feature);
+    parts.push(`${r.feature_absent} are about ${features.join(", ")}, which Pulse did not detect`);
+  }
+  if (r.needs_evidence) parts.push(`${r.needs_evidence} catalogue controls need evidence Pulse cannot collect from outside`);
+  if (r.not_applicable) parts.push(`${r.not_applicable} reported themselves not applicable`);
+  if (r.withheld) parts.push(`${r.withheld} are withheld — Pulse cannot verify them from what it scanned, or they are being rebuilt after an audit found they could give a wrong answer`);
+  return `${relevance.shown} checks apply to this product and are shown. ${relevance.hidden} were left out: ${parts.join("; ")}.`;
+}
+
 // Best-effort tech stack: prefer the deterministically-detected stack; when none
 // (idea/URL-only/no-repo), fall back to what we CAN infer — the builder platform
 // (Lovable/Bolt/v0/Replit/Vercel…) and the AI's inferred infrastructure layers.
@@ -1576,6 +1601,15 @@ function ScoreExplainer({
               {[...new Set(breakdown.collectors.unavailable.map((item) => item.reason))].map((reason) => (
                 <p key={reason} className="text-[11px] leading-4 text-[var(--text-3)]">{reason}</p>
               ))}
+            </div>
+          )}
+
+          {/* What was LEFT OUT, and why — once, in a sentence. The checks themselves are
+              never stored: the report shows only what is about this product. */}
+          {breakdown.relevance && breakdown.relevance.hidden > 0 && (
+            <div className="mt-2.5 border-t border-[var(--border-2)] pt-2">
+              <p className="widget-data-label mb-1.5">Scoped to this product</p>
+              <p className="text-[11px] leading-4 text-[var(--text-3)]">{describeRelevance(breakdown.relevance)}</p>
             </div>
           )}
 

@@ -185,6 +185,18 @@ const STORE_POLICIES: Record<StoreTarget, GatePolicy> = {
     blockingCategories: [],
     requiredCollectors: ["store-listing"],
   },
+  chrome_web_store: {
+    id: "chrome-extension-listing",
+    version: "1.0.0",
+    label: "Chrome extension · Chrome Web Store listing",
+    description:
+      "For a Chrome extension assessed from its Chrome Web Store listing: the item is listed, it discloses its privacy practices, links a privacy policy if it handles user data, and ships Manifest V3 — the only version Chrome still runs. The extension's source is not in scope — scan its repository for that.",
+    minCoverage: 70,
+    minHealth: 60,
+    blockingKeys: ["store_page_live", "store_privacy_policy", "cws_privacy_practices", "ext_manifest_v3"],
+    blockingCategories: [],
+    requiredCollectors: ["store-listing"],
+  },
 };
 
 GATE_POLICIES.push(STORE_POLICIES.app_store, STORE_POLICIES.play_store);
