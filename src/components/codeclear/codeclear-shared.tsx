@@ -77,6 +77,9 @@ const tabItems: readonly CodeTab[] = [
   { href: "/app/codeclear/candidates", label: "Developers" },
   { href: "/app/codeclear/pipeline", label: "Pipeline" },
   { href: "/app/codeclear/devsignal", label: "DevSignal", devsignal: true },
+  // Developers whose person has been archived in Settings → Team. Derived from
+  // there, never set here — see src/server/codeclear-archived.ts.
+  { href: "/app/codeclear/archived", label: "Archived" },
 ] as const;
 
 /** Is `tab` the active one for the current path? Overview matches both /app/code

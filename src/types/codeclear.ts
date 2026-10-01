@@ -359,6 +359,9 @@ export interface CandidateListParams {
   stack: string;
   scoreMin?: number;
   scoreMax?: number;
+  /** Only developers whose person has left (archived in Settings → Team). Default is
+   *  the active roster, which excludes them. See src/server/codeclear-archived.ts. */
+  archived?: boolean;
 }
 
 export interface CandidateListResponse {
