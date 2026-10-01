@@ -290,6 +290,13 @@ export interface ScoreBreakdown {
     notApplicable: number;
     failedNames: string[];
     unavailable: { name: string; reason: string }[];
+    /** Why each failed collector failed. Optional: older scans did not record it. */
+    failedDetails?: { name: string; detail: string }[];
+    /**
+     * Which collectors completed. Optional: older scans recorded only a count, so a
+     * policy's required collector could be "not recorded" and read as present.
+     */
+    completedNames?: string[];
   };
   /**
    * The release decision — READY / CONDITIONAL / BLOCKED / INCONCLUSIVE — under a

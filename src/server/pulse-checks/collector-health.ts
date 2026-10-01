@@ -45,6 +45,10 @@ export interface CollectorCoverage {
   /** Named, so "what did you not check" has an answer rather than a count. */
   failedNames: string[];
   unavailable: { name: string; reason: string }[];
+  /** Why each failed collector failed, so a gate can say it rather than "did not run". */
+  failedDetails: { name: string; detail: string }[];
+  /** Which completed — so a required collector that never ran is not mistaken for one that did. */
+  completedNames: string[];
 }
 
 /** Scan-level coverage, so this stops living only inside one check row's evidence blob. */
@@ -53,9 +57,13 @@ export function collectorCoverage(executions: CollectorExecution[]): CollectorCo
   const skipped = executions.filter((execution) => execution.outcome === "NOT_APPLICABLE");
   return {
     completed: executions.filter((execution) => execution.outcome === "COMPLETED").length,
+    completedNames: executions.filter((execution) => execution.outcome === "COMPLETED").map((execution) => execution.name),
     failed: failed.length,
     notApplicable: skipped.length,
     failedNames: failed.map((execution) => execution.name),
+    failedDetails: failed
+      .filter((execution) => execution.detail)
+      .map((execution) => ({ name: execution.name, detail: execution.detail! })),
     unavailable: skipped
       .filter((execution) => execution.reason)
       .map((execution) => ({ name: execution.name, reason: execution.reason! })),

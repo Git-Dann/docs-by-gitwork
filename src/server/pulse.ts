@@ -19,7 +19,8 @@ import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from 
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
-import { evaluateReleaseGate, DEFAULT_GATE_POLICY } from "@/server/pulse-checks/release-decision";
+import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
+import { isPlaceholderStoreName, provisionalStoreProjectName, resolveScanPlatform } from "@/lib/pulse-store-url";
 import { diffChecks } from "@/server/pulse-checks/scan-diff";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
@@ -785,17 +786,29 @@ export async function createPulseScanRecord(input: {
       })
     : null;
 
+  // A store link decides the platform: an App Store link is an iOS app and a Google
+  // Play link an Android app, whatever the picker was left on (it defaults to "Web
+  // app"). Stored that way, so the benchmark, the AI write-up and the report all see
+  // the app the user linked rather than a website called `apps.apple.com`.
+  const platform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+  // A name Pulse made up for a store link (the store's host) becomes the readable
+  // name from the link now, and the store's own name once the listing is read. A
+  // name the user typed is left alone.
+  const projectName = input.inputType === "URL" && input.inputUrl && isPlaceholderStoreName(input.projectName, input.inputUrl)
+    ? provisionalStoreProjectName(input.inputUrl) ?? input.projectName
+    : input.projectName;
+
   const scan = await prisma.pulseScan.create({
     data: {
       workspaceId: workspace.id,
       clientId: input.clientId ?? null,
       triggeredByUserId: input.triggeredByUserId ?? null,
-      projectName: input.projectName,
+      projectName,
       inputType: input.inputType,
       inputUrl: input.inputUrl ?? null,
       inputGithubRepo: input.inputGithubRepo ?? null,
       inputDescription: input.inputDescription ?? null,
-      platform: input.platform ?? null,
+      platform: platform ?? null,
       status: "RUNNING",
       scanVersion: SCAN_VERSION,
       previousHealthScore: previousScan?.healthScore ?? null,
@@ -944,7 +957,9 @@ export async function reanalysePulseScan(
           inputUrl: existing.inputUrl,
           inputGithubRepo: existing.inputGithubRepo,
           inputDescription,
-          platform: existing.platform,
+          // Resolved, not read raw: a store scan stored before the link decided the
+          // platform carries WEB_APP, and re-analysing it as a website repeats the bug.
+          platform: (existing.inputType === "URL" ? resolveScanPlatform(existing.inputUrl, existing.platform) : existing.platform) ?? null,
           healthScore,
           techStack,
           checks,
@@ -1044,10 +1059,13 @@ export async function runAnalysis(
     // bail out early rather than corrupting results with double-writes.
     const staleScan = await prisma.pulseScan.findUnique({
       where: { id: scanId },
-      select: { status: true, startedAt: true, targetMarkets: true, workspaceId: true },
+      select: { status: true, startedAt: true, targetMarkets: true, workspaceId: true, projectName: true },
     });
     if (staleScan && staleScan.status !== "RUNNING") return;
     const workspaceId = staleScan?.workspaceId;
+    // The platform the scan RUNS and is REPORTED as. See createPulseScanRecord.
+    const platform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+    let projectName = staleScan?.projectName ?? input.projectName;
     // User-declared markets the product serves (drives compliance filtering + scorecard).
     const declaredMarkets = (Array.isArray(staleScan?.targetMarkets) ? staleScan!.targetMarkets : [])
       .filter((m): m is string => typeof m === "string")
@@ -1120,7 +1138,7 @@ export async function runAnalysis(
         inputType: input.inputType,
         url: input.inputUrl,
         githubRepo: input.inputGithubRepo,
-        platform: input.platform,
+        platform,
         includePageSpeed: true,
         checkPolicy,
         targetMarkets: declaredMarkets.length > 0 ? declaredMarkets : undefined,
@@ -1133,6 +1151,11 @@ export async function runAnalysis(
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;
       collectorExecutions = lite.collectorExecutions;
+      // A store link: file the scan under the app's own name once the listing says it.
+      if (lite.appName && input.inputUrl && isPlaceholderStoreName(projectName, input.inputUrl)) {
+        projectName = lite.appName;
+        await prisma.pulseScan.update({ where: { id: scanId }, data: { projectName } });
+      }
     }
 
     const healthScore = calculateHealthScore(allChecks);
@@ -1150,7 +1173,8 @@ export async function runAnalysis(
     // coverage above — no model output reaches it. Stored WITH its policy version,
     // so a scan read months later says which rules produced its answer rather than
     // being silently re-judged by whatever the policy has since become.
-    const gate = evaluateReleaseGate(allChecks, scoreBreakdown, DEFAULT_GATE_POLICY);
+    // Judged as what was scanned: a store link as the app it lists (release-decision.ts).
+    const gate = evaluateReleaseGate(allChecks, scoreBreakdown, resolveGatePolicy({ targetUrl: input.inputUrl }));
     scoreBreakdown.gate = gate;
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
@@ -1244,12 +1268,12 @@ export async function runAnalysis(
         const analysis = await withTimeout(
           analyseWithClaude(
             {
-              projectName: input.projectName,
+              projectName,
               inputType: input.inputType,
               inputUrl: input.inputUrl ?? null,
               inputGithubRepo: input.inputGithubRepo ?? null,
               inputDescription: input.inputDescription ?? null,
-              platform: input.platform ?? null,
+              platform: platform ?? null,
               healthScore,
               techStack,
               checks: allChecks,
@@ -1297,7 +1321,7 @@ export async function runAnalysis(
         ? withTimeout(
             generateDiscoveryKit(
               {
-                projectName: input.projectName,
+                projectName,
                 projectType: llmAnalysis!.projectClassification.type,
                 healthScore,
                 proposalHook: llmAnalysis!.proposalHook,
@@ -1316,7 +1340,7 @@ export async function runAnalysis(
       competitorScans.length > 0 && llmAnalysis !== null
         ? withTimeout(
             generateCompetitorComparison(
-              { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
+              { projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
               aiConfig,
               workspaceId,
             ),

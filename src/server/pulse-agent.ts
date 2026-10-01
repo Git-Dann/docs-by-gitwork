@@ -14,11 +14,25 @@ import { calculateHealthScore } from "@/server/pulse-scan";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage } from "@/server/pulse-checks/collector-health";
-import { evaluateReleaseGate, gatePolicyById, withScanIncomplete } from "@/server/pulse-checks/release-decision";
+import { evaluateReleaseGate, resolveGatePolicy, withScanIncomplete } from "@/server/pulse-checks/release-decision";
+import { detectStoreTarget, isPlaceholderStoreName, resolveScanPlatform, STORE_NAME, STORE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
 import type { PulseScanCheckInput, GateEvaluationRecord, ScoreBreakdown } from "@/types/pulse";
 
 export interface AgentVerdict {
   url: string;
+  /**
+   * WHAT was scanned. An App Store link is an iOS app and a Google Play link an
+   * Android app — stated here so a caller never has to infer it from the URL, and
+   * never reads an app's verdict as a website's.
+   */
+  subject: {
+    /** The platform the scan ran as (e.g. IOS_APP, ANDROID_APP, WEB_APP), or null if unknown. */
+    platform: string | null;
+    /** e.g. "iOS app · App Store listing". */
+    label: string | null;
+    /** The app's name as its store lists it, when the scan read one. */
+    name: string | null;
+  };
   status: "COMPLETED" | "FAILED";
   healthScore: number;
   summary: string;
@@ -96,6 +110,10 @@ export function buildAgentVerdict(args: {
   gatePolicyId?: string;
   /** Why the scan did not finish. Carried into both the summary and the gate. */
   failureReason?: string;
+  /** The platform the scan ran as. Resolved from the URL when omitted. */
+  platform?: string | null;
+  /** The subject's name — for a store link, the app's listed name. */
+  name?: string | null;
 }): AgentVerdict {
   const { checks } = args;
   const bucket = (b: string) => checks.filter((c) => c.trustBucket === b);
@@ -148,7 +166,17 @@ export function buildAgentVerdict(args: {
   // returns something rather than an empty list.
   const topFindings = [...confirmedIssues, ...warnings].slice(0, 5);
 
+  const store = detectStoreTarget(args.url);
+  const subject = {
+    platform: resolveScanPlatform(args.url, args.platform) ?? null,
+    label: store ? `${STORE_PLATFORM_LABEL[store]} · ${STORE_NAME[store]} listing` : null,
+    // A name Pulse invented from the link ("apps.apple.com") is not the app's name.
+    name: args.name && !(store && isPlaceholderStoreName(args.name, args.url)) ? args.name : null,
+  };
+
   const summaryParts = [
+    // Lead with what it is, for an app: a bare score reads as a website's.
+    ...(subject.label ? [subject.name ? `${subject.name} (${subject.label})` : subject.label] : []),
     args.failureReason ?? `${args.healthScore}/100`,
     `${confirmedIssues.length} confirmed issue${confirmedIssues.length !== 1 ? "s" : ""}`,
   ];
@@ -157,7 +185,7 @@ export function buildAgentVerdict(args: {
 
   // The gate is derived from the SAME checks this verdict describes, so the
   // decision and the issue lists can never tell an agent two different stories.
-  const policy = gatePolicyById(args.gatePolicyId);
+  const policy = resolveGatePolicy({ policyId: args.gatePolicyId, targetUrl: args.url });
   const evaluated = evaluateReleaseGate(
     checks,
     { ...computeScoreBreakdown(checks), collectors: args.collectors },
@@ -169,6 +197,7 @@ export function buildAgentVerdict(args: {
 
   return {
     url: args.url,
+    subject,
     status: args.status,
     healthScore: args.healthScore,
     summary: summaryParts.join(" · "),
@@ -225,6 +254,8 @@ export async function runAgentScan(input: {
       detectedMarkets: lite.detectedMarkets,
       collectors: collectorCoverage(lite.collectorExecutions),
       gatePolicyId: input.gatePolicyId,
+      platform: lite.executionPlatform ?? null,
+      name: lite.appName,
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Scan failed.";

@@ -73,7 +73,9 @@ describe("scraped page identity is bounded before it enters a prompt", () => {
     );
     // An attacker-controlled <title> was an unbounded write into the prompt.
     const capped = block.match(/\.slice\(0, 300\)/g) ?? [];
-    expect(capped.length, "page title, OG title and meta description must all be capped").toBe(3);
+    // Four: page title, OG title, meta description — and, for a store link, the listing's
+    // name + publisher line, which the app's developer writes and therefore controls.
+    expect(capped.length, "page title, OG title, meta description and store listing line must all be capped").toBe(4);
   });
 });
 

@@ -404,6 +404,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "store_screenshots", category: CATEGORIES.STORE_LISTING, label: "Screenshots / preview assets" },
   { key: "store_ratings", category: CATEGORIES.STORE_LISTING, label: "Ratings & reviews" },
   { key: "store_privacy_policy", category: CATEGORIES.STORE_LISTING, label: "Privacy policy linked" },
+  { key: "store_privacy_policy_owner", category: CATEGORIES.STORE_LISTING, label: "Privacy policy belongs to the publisher" },
   { key: "store_age_rating", category: CATEGORIES.STORE_LISTING, label: "Age / content rating" },
   { key: "store_iap_disclosed", category: CATEGORIES.STORE_LISTING, label: "In-app purchases disclosed" },
   { key: "appstore_subtitle", category: CATEGORIES.STORE_LISTING, label: "App subtitle (keyword field)" },

@@ -30,6 +30,7 @@
 
 import type { PulseScanCheckInput, ScoreBreakdown } from "@/types/pulse";
 import { CATEGORIES, type CheckCategory } from "./categories";
+import { detectStoreTarget, type StoreTarget } from "@/lib/pulse-store-url";
 
 export type ReleaseDecision = "READY" | "CONDITIONAL" | "BLOCKED" | "INCONCLUSIVE";
 
@@ -140,10 +141,72 @@ export const GATE_POLICIES: GatePolicy[] = [
   },
 ];
 
+/**
+ * An app assessed from its store listing.
+ *
+ * ⚠️ Why a store link needs its own policy. Every policy above describes a WEBSITE —
+ * they require url-checks and block on the website's privacy policy and terms. An App
+ * Store link runs none of that, so under `launch-ready` an iOS scan could only ever
+ * answer "INCONCLUSIVE — scan the product's own URL": the policy asked an iOS app to
+ * be a website, and reported it as one that had failed to load.
+ *
+ * These policies ask what a listing CAN establish, about the app it lists: the listing
+ * is live, it links a privacy policy, and it carries the store's own privacy
+ * declaration — each of which the store itself enforces, and each read from the
+ * store's structured data. They require the store-listing collector, so a listing that
+ * could not be read (a rate limit, a changed page) is INCONCLUSIVE rather than a pass.
+ *
+ * The label names the scope, because a decision is only as honest as what it covers:
+ * READY here means the LISTING meets the bar. The app's code is not in scope — the
+ * scan says so in its own coverage check and points at a repository scan.
+ */
+const STORE_POLICIES: Record<StoreTarget, GatePolicy> = {
+  app_store: {
+    id: "ios-app-listing",
+    version: "1.0.0",
+    label: "iOS app · App Store listing",
+    description:
+      "For an iOS app assessed from its App Store listing: the listing is live, it links a privacy policy, it declares its App Privacy details, and enough of it could be read to say so. The app's code is not in scope — scan its repository for that.",
+    minCoverage: 70,
+    minHealth: 60,
+    blockingKeys: ["store_page_live", "store_privacy_policy", "appstore_privacy_label"],
+    blockingCategories: [],
+    requiredCollectors: ["store-listing"],
+  },
+  play_store: {
+    id: "android-app-listing",
+    version: "1.0.0",
+    label: "Android app · Google Play listing",
+    description:
+      "For an Android app assessed from its Google Play listing: the listing is live, it links a privacy policy, it declares its Data safety section, and enough of it could be read to say so. The app's code is not in scope — scan its repository for that.",
+    minCoverage: 70,
+    minHealth: 60,
+    blockingKeys: ["store_page_live", "store_privacy_policy", "playstore_data_safety"],
+    blockingCategories: [],
+    requiredCollectors: ["store-listing"],
+  },
+};
+
+GATE_POLICIES.push(STORE_POLICIES.app_store, STORE_POLICIES.play_store);
+
 export const DEFAULT_GATE_POLICY = GATE_POLICIES[0];
 
 export function gatePolicyById(id: string | null | undefined): GatePolicy {
   return GATE_POLICIES.find((policy) => policy.id === id) ?? DEFAULT_GATE_POLICY;
+}
+
+/**
+ * The policy a scan is judged by. An explicit choice wins; otherwise a store link is
+ * judged as the app it lists, and everything else by the general launch policy.
+ *
+ * Every place a gate is evaluated must come through here — the scan, the agent verdict
+ * and the report's fallback — or the same scan would get two different answers
+ * depending on who asked.
+ */
+export function resolveGatePolicy(args: { policyId?: string | null; targetUrl?: string | null }): GatePolicy {
+  if (args.policyId) return gatePolicyById(args.policyId);
+  const store = args.targetUrl ? detectStoreTarget(args.targetUrl) : null;
+  return store ? STORE_POLICIES[store] : DEFAULT_GATE_POLICY;
 }
 
 export interface GateEvaluation {
@@ -222,13 +285,31 @@ export function evaluateReleaseGate(
 
   const unavailableCollectors = new Set((breakdown.collectors?.unavailable ?? []).map((item) => item.name));
   const failedCollectors = new Set(breakdown.collectors?.failedNames ?? []);
+  // A required collector counts as missing when it failed, was unavailable, or — where
+  // the scan recorded which collectors completed — simply is not among them. The last
+  // case is the one that used to pass: a collector the scan never ran appears in no
+  // list at all, and an absence nobody checked for reads exactly like a success.
+  const completedCollectors = breakdown.collectors?.completedNames
+    ? new Set(breakdown.collectors.completedNames)
+    : null;
   const missingRequired = policy.requiredCollectors.filter(
-    (name) => unavailableCollectors.has(name) || failedCollectors.has(name),
+    (name) =>
+      unavailableCollectors.has(name) ||
+      failedCollectors.has(name) ||
+      (completedCollectors !== null && !completedCollectors.has(name)),
   );
   if (missingRequired.length > 0) {
+    // Say WHY, in the collector's own words. A collector that ran and was refused (a
+    // store rate-limiting the scan) did not "not run", and telling a reader it did sends
+    // them looking for a configuration problem that does not exist.
+    const cause =
+      breakdown.collectors?.failedDetails?.find((item) => missingRequired.includes(item.name))?.detail
+      ?? breakdown.collectors?.unavailable.find((item) => missingRequired.includes(item.name))?.reason
+      ?? "";
+    const anyFailed = missingRequired.some((name) => failedCollectors.has(name));
     unverified.push({
       code: "REQUIRED_COLLECTOR_UNAVAILABLE",
-      summary: `This policy requires ${missingRequired.join(", ")}, which did not run. ${breakdown.collectors?.unavailable.find((item) => missingRequired.includes(item.name))?.reason ?? ""}`.trim(),
+      summary: `This policy requires ${missingRequired.join(", ")}, which ${anyFailed ? "did not complete" : "did not run"}. ${cause}`.trim(),
       checkKeys: [],
     });
   }

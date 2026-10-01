@@ -105,6 +105,8 @@ export function buildPlatformCoverageCheck(input: {
   selectedPlatform: string;
   inputType: CoverageInputType;
   detectedShape: CoverageShape | null;
+  /** Set when the URL is an App Store / Google Play listing. */
+  storeTarget?: "app_store" | "play_store";
 }): PulseScanCheckInput | null {
   const selected = (input.selectedPlatform ?? "").toUpperCase();
   const spec = PLATFORM_FAMILIES[selected];
@@ -117,6 +119,25 @@ export function buildPlatformCoverageCheck(input: {
     checkKey: "platform_family_coverage",
     label: "Platform-specific checks ran for this project",
   } as const;
+
+  // ── A store listing: the app, seen from its listing ────────────────────────
+  // Said about the APP, because that is what was scanned. The earlier wording ("you
+  // scanned this as …, but … none of that is visible from a URL") read as though the
+  // user had picked the wrong input, when a store link is exactly the right way to
+  // assess a store listing.
+  if (input.inputType !== "GITHUB_REPO" && input.storeTarget) {
+    const store = input.storeTarget === "app_store" ? "App Store" : "Google Play";
+    return {
+      ...base,
+      status: "SKIPPED",
+      confidence: "HIGH",
+      detail:
+        `This is an ${spec.label} app, assessed from its ${store} listing — what the store publishes about it. ` +
+        `The ${spec.count} ${spec.label} checks that read the app's source (token storage, build configuration, ` +
+        `release logging, permissions) need its code, which a listing does not show. To add them, scan the app's ` +
+        `GitHub repository. Nothing here is a pass or a failure for those checks: they did not run.`,
+    };
+  }
 
   // ── Scanned a URL, but the family needs source ─────────────────────────────
   if (input.inputType !== "GITHUB_REPO") {

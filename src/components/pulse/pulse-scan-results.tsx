@@ -34,7 +34,8 @@ import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
-import { evaluateReleaseGate } from "@/server/pulse-checks/release-decision";
+import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
+import { describeScanSubject, detectStoreTarget, STORE_NAME } from "@/lib/pulse-store-url";
 import { computePillarBreakdown } from "@/server/pulse-checks/pillars";
 import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -1009,12 +1010,16 @@ function AgentPanel({
   const checksFail = scan.checks.filter((c) => c.status === "FAIL").length;
   const checksPass = scan.checks.filter((c) => c.status === "PASS").length;
 
+  const storeTarget = scan.inputUrl ? detectStoreTarget(scan.inputUrl) : null;
   const slots: AgentSlot[] = [
-    // Infrastructure
+    // Infrastructure — or, for a store link, the listing: an app's scan does not
+    // describe itself as header and SEO checks it never ran.
     {
       id: "infra",
-      label: "Infrastructure",
-      description: "HTTP checks, security headers, SEO, and platform signals",
+      label: storeTarget ? "Store listing" : "Infrastructure",
+      description: storeTarget
+        ? `The ${STORE_NAME[storeTarget]} listing — ratings, screenshots, description, privacy declarations and links`
+        : "HTTP checks, security headers, SEO, and platform signals",
       status: "completed",
       summary: `${checksTotal} checks — ${checksPass} passed, ${checksFail} failed`,
     },
@@ -1965,6 +1970,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       ? evaluateReleaseGate(
         scan.checks as unknown as PulseScanCheckInput[],
         scan.scoreBreakdown ?? computeScoreBreakdown(scan.checks as unknown as PulseScanCheckInput[]),
+        // The same policy the scan was judged by — a store link as the app it lists.
+        resolveGatePolicy({ targetUrl: scan.inputUrl }),
       )
       : undefined);
 
@@ -1976,6 +1983,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     ? `Scanned ${new Date(scan.completedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`
     : `Scanned ${new Date(scan.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`;
   const heroMeta: DocumentCoverMeta[] = [];
+  // What was assessed, first: an App Store link is an iOS app and is reported as one.
+  const subject = describeScanSubject(scan.inputUrl, scan.platform);
+  if (subject) heroMeta.push({ label: "Platform", value: subject });
   if (llm?.projectClassification) {
     heroMeta.push({
       label: "Classification",

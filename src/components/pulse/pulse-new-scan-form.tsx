@@ -10,6 +10,13 @@ import { cn } from "@/lib/format";
 import { JURISDICTIONS, JURISDICTION_CODES, JURISDICTION_PRESETS } from "@/server/pulse-checks/jurisdictions";
 import type { PulseScanInputType } from "@/types/pulse";
 import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
+import {
+  detectStoreTarget,
+  provisionalStoreProjectName,
+  storePlatformForTarget,
+  STORE_NAME,
+  STORE_PLATFORM_LABEL,
+} from "@/lib/pulse-store-url";
 
 const INPUT_TYPES: Array<{ value: PulseScanInputType; label: string; placeholder: string; description: string }> = [
   {
@@ -87,6 +94,10 @@ function deriveProjectName(inputType: PulseScanInputType, value: string): string
   const v = value.trim();
   if (!v) return "";
   if (inputType === "URL") {
+    // A store link names an app, not a host — "apps.apple.com" is every iOS app.
+    // This is a placeholder; the scan replaces it with the store's own name.
+    const fromStore = provisionalStoreProjectName(v);
+    if (fromStore) return fromStore;
     try {
       const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
       return u.hostname.replace(/^www\./i, "");
@@ -236,6 +247,12 @@ export function PulseNewScanForm({
 
   const selectedType = INPUT_TYPES.find((t) => t.value === inputType)!;
 
+  // An App Store link IS an iOS app and a Google Play link an Android app. The link
+  // decides the platform, so the picker cannot leave it on "Web app" — which is how
+  // an iOS listing used to be scanned, stored and reported as a website.
+  const storeTarget = inputType === "URL" ? detectStoreTarget(inputValue) : null;
+  const effectivePlatform = storeTarget ? storePlatformForTarget(storeTarget) : platform;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -265,7 +282,7 @@ export function PulseNewScanForm({
         inputUrl: resolvedUrl,
         inputGithubRepo: inputType === "GITHUB_REPO" ? inputValue.trim() : undefined,
         inputDescription: inputType === "FREE_TEXT" ? inputValue.trim() : undefined,
-        platform,
+        platform: effectivePlatform,
         clientId: clientId || undefined,
         aiProvider: selectedProvider,
         competitorUrls: cleanedCompetitors.length > 0 ? cleanedCompetitors : undefined,
@@ -365,9 +382,11 @@ export function PulseNewScanForm({
         )}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
           <p className="text-xs text-[var(--text-4)]">
-            {derivedName
-              ? <>We&apos;ll call this <span className="font-medium text-[var(--text-2)]">{derivedName}</span> — rename it any time.</>
-              : selectedType.description}
+            {storeTarget && !projectName.trim()
+              ? <>We&apos;ll name it from its {STORE_NAME[storeTarget]} listing — rename it any time.</>
+              : derivedName
+                ? <>We&apos;ll call this <span className="font-medium text-[var(--text-2)]">{derivedName}</span> — rename it any time.</>
+                : selectedType.description}
           </p>
           {inputType === "URL" && !inputValue && (
             <button type="button" onClick={() => setInputValue("https://vercel.com")} className="text-xs text-[var(--brand-600)] hover:underline">
@@ -377,24 +396,37 @@ export function PulseNewScanForm({
         </div>
       </div>
 
-      {/* Platform — compact, secondary */}
-      <label className="flex items-center gap-2 text-sm text-[var(--text-3)]">
-        Scanning as
-        <select
-          className="app-select-compact w-auto"
-          value={platform}
-          onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
-          disabled={isPending}
-        >
-          {PLATFORM_GROUPS.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.options.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+      {/* Platform — compact, secondary. A store link fixes it: shown, not offered. */}
+      {storeTarget ? (
+        <div className="space-y-1 text-sm text-[var(--text-3)]" data-testid="store-platform">
+          <p>
+            Scanning as{" "}
+            <span className="font-medium text-[var(--text-1)]">{STORE_PLATFORM_LABEL[storeTarget]}</span>
+            {" "}· from its {STORE_NAME[storeTarget]} listing
+          </p>
+          <p className="text-xs text-[var(--text-4)]">
+            Set by the link. Pulse reads what the listing publishes; to assess the app&apos;s code, scan its GitHub repository.
+          </p>
+        </div>
+      ) : (
+        <label className="flex items-center gap-2 text-sm text-[var(--text-3)]">
+          Scanning as
+          <select
+            className="app-select-compact w-auto"
+            value={platform}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => setPlatform(e.target.value)}
+            disabled={isPending}
+          >
+            {PLATFORM_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.options.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+      )}
 
       {/* Advanced options — collapsed by default. Keeps the core form to four fields. */}
       <div className="rounded-[10px] border border-[var(--border-2)]">

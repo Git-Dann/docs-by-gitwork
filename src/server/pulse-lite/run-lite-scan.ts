@@ -26,6 +26,7 @@ import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { detectRepoShape } from "@/server/pulse-checks/native-repo";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
+import { STORE_NAME, STORE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
 import {
   buildUrlCollectorPlan,
   detectUrlTargetKind,
@@ -82,6 +83,13 @@ export interface LiteScanResult {
    * evidence JSON, where nothing but a reader of raw rows would ever find it.
    */
   collectorExecutions: CollectorExecution[];
+  /**
+   * The platform the scan actually ran as. For an App Store / Google Play link this is
+   * IOS_APP / ANDROID_APP whatever was selected — the link decides, not the picker.
+   */
+  executionPlatform: string | undefined;
+  /** The app's name as its store lists it. Null for anything that is not a store link. */
+  appName: string | null;
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
@@ -134,6 +142,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let urlSurfaceIsProduction = true;
   let shouldResolveStandards = input.inputType === "GITHUB_REPO";
   let executionPlatform = input.platform;
+  let appName: string | null = null;
 
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
@@ -145,26 +154,40 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // and Vercel/Cloudflare checkpoints whose results were later discarded.
     const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
     const urlTargetKind = detectUrlTargetKind(safeUrl);
-    // ⚠️ A store-listing URL takes an EARLY RETURN inside runUrlChecks: it runs the
-    // ~12 store-listing checks and none of the url-checks families — no security
-    // headers, no TLS, no legal pages, no SEO, no accessibility, no DNS. Reporting
-    // that collector COMPLETED said the opposite.
+    // ⚠️ A store link is an APP, and is scanned and reported as one.
     //
-    // The cost was not cosmetic. `launch-ready` lists url-checks in
-    // requiredCollectors, so the false COMPLETED suppressed
-    // REQUIRED_COLLECTOR_UNAVAILABLE; `unverified` stayed empty and the gate
-    // returned READY. Completeness is computed over the checks that RAN, so 12 of
-    // 12 observed reported 100% coverage. A scan of an App Store page came back
-    // "98/100 · READY · coverage 100%" having never looked at a single one of the
-    // policy's blocking controls.
+    // runUrlChecks takes an early return for App Store / Google Play links: it reads the
+    // listing and runs none of the website families (headers, TLS, legal pages, SEO,
+    // accessibility, DNS). Two earlier versions of this block got that wrong in opposite
+    // directions. The first recorded url-checks COMPLETED, so the website launch policy
+    // passed a scan that had run none of its checks ("98/100 · READY"). The second
+    // recorded it NOT_APPLICABLE with "scan the product's own URL" — framing an iOS scan
+    // as a website scan that had failed, and telling the user to scan something else.
     //
-    // This is collector-health.ts's own documented failure — "absent read as
-    // complete" — with an extra step: present, and reporting the wrong thing.
-    if (urlTargetKind === "app_store" || urlTargetKind === "play_store") {
+    // Now the collector that actually ran is recorded — store-listing — and the scan is
+    // judged by the iOS / Android listing policy (release-decision.ts), which requires it.
+    // The website and source collectors are recorded as not part of this scan, each with
+    // a reason written about the APP, so coverage never reads as a whole-product answer.
+    const storeTarget = urlResult.store?.target ?? null;
+    if (storeTarget) {
+      const platformLabel = STORE_PLATFORM_LABEL[storeTarget];
+      const storeName = STORE_NAME[storeTarget];
+      if (urlResult.store?.listing) {
+        collectorCompleted("store-listing");
+      } else {
+        const liveCheck = urlResult.checks.find((check) => check.checkKey === "store_page_live");
+        collectorExecutions.push({
+          name: "store-listing",
+          outcome: "ERROR",
+          detail: liveCheck && liveCheck.status !== "PASS"
+            ? (liveCheck.detail ?? `The ${storeName} listing could not be read.`).slice(0, 160)
+            : `The ${storeName} page did not include its listing data, so the listing could not be read.`,
+        });
+      }
       collectorExecutions.push({
         name: "url-checks",
         outcome: "NOT_APPLICABLE",
-        reason: `The scanned URL is ${urlTargetKind === "app_store" ? "an App Store" : "a Google Play"} listing, so only the store-listing checks could run. Security headers, TLS, legal pages, SEO, accessibility and DNS all describe a website — scan the product's own URL to assess them.`,
+        reason: `Not part of this scan: this is an ${platformLabel}, assessed from its ${storeName} listing. The website checks (security headers, TLS, SEO, DNS) describe a website, not an app.`,
       });
     } else {
       collectorCompleted("url-checks");
@@ -178,6 +201,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     const targetKind = urlTargetKind;
     if (targetKind === "app_store") executionPlatform = "IOS_APP";
     if (targetKind === "play_store") executionPlatform = "ANDROID_APP";
+    appName = urlResult.store?.appName ?? null;
     const collectorPlan = buildUrlCollectorPlan(
       input.platform,
       urlResult.surfaceKind,
@@ -188,10 +212,13 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     pending.push(ingest(urlResult.checks));
 
     // Say so when the selected platform's deep checks need source we do not have.
+    // The platform the scan RUNS as — for a store link that is iOS / Android whatever
+    // the picker said, so the report names the source family the listing cannot reach.
     const coverage = buildPlatformCoverageCheck({
-      selectedPlatform: input.platform ?? "",
+      selectedPlatform: executionPlatform ?? "",
       inputType: "URL",
       detectedShape: null,
+      storeTarget: storeTarget ?? undefined,
     });
     if (coverage) pending.push(ingest([coverage]));
 
@@ -234,7 +261,9 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // made the coverage check read "every collector completed" while half of
     // Pulse had not run.
     collectorExecutions.push(...sourceCollectorsUnavailable(
-      "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
+      storeTarget
+        ? `The ${STORE_PLATFORM_LABEL[storeTarget]}'s source was not connected, so the checks that read its code did not run. Scan the app's GitHub repository to include them.`
+        : "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
     ));
   } else {
     // GITHUB_REPO — detect the artefact, then run only its source families.
@@ -298,5 +327,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     homepageUrl,
     detectedMarkets,
     collectorExecutions,
+    executionPlatform,
+    appName,
   };
 }

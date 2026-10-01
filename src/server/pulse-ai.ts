@@ -5,6 +5,7 @@ import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, Disc
 import { resolveAgentPrompt } from "@/server/agent-config";
 import { dedupeGapsAgainstBlockers } from "@/server/pulse-checks/dedupe-findings";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
+import { detectStoreTarget, resolveScanPlatform, STORE_NAME, STORE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
 
 export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
@@ -607,16 +608,26 @@ export async function analyseWithClaude(
     );
   }
 
-  const inputRef =
-    input.inputType === "URL"
+  // A store link is an APP. Said outright, because the model otherwise reads "URL:"
+  // plus a page title and writes about a website — the report then recommends security
+  // headers and an SEO pass for an iOS app, which is the exact failure this fixes.
+  const store = input.inputType === "URL" && input.inputUrl ? detectStoreTarget(input.inputUrl) : null;
+  const inputRef = store
+    ? `${STORE_NAME[store]} listing of an ${STORE_PLATFORM_LABEL[store]}: ${input.inputUrl}. ` +
+      `Only the public store listing was assessed — its ratings, screenshots, description, privacy declarations and links. ` +
+      `The app's code and its binary were NOT inspected: do not report findings about them as observed, and do not recommend website fixes (security headers, TLS, SEO, cookie banners) — this is not a website.`
+    : input.inputType === "URL"
       ? `URL: ${input.inputUrl}`
       : input.inputType === "GITHUB_REPO"
         ? `GitHub repo: ${input.inputGithubRepo}`
         : `Description: ${input.inputDescription}`;
 
-  const platformLabel = input.platform
-    ? `Platform (declared by client): ${input.platform}`
-    : "Platform: not specified (assume web app)";
+  const resolvedPlatform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+  const platformLabel = store
+    ? `Platform: ${resolvedPlatform} (an ${STORE_PLATFORM_LABEL[store]} — determined by the ${STORE_NAME[store]} link, not a guess)`
+    : resolvedPlatform
+      ? `Platform (declared by client): ${resolvedPlatform}`
+      : "Platform: not specified (assume web app)";
 
   // Extract page identity signals from check evidence — these are the most reliable
   // classification signals and are NOT included in the check pass/fail list below.
@@ -635,6 +646,8 @@ export async function analyseWithClaude(
   const effectiveTitle = pageTitle ?? titleFromDetail;
 
   const pageIdentityLines: string[] = [];
+  const storeTitle = store ? input.checks.find((c) => c.checkKey === "store_app_title")?.detail ?? null : null;
+  if (storeTitle) pageIdentityLines.push(`Store listing: ${storeTitle.slice(0, 300)}`);
   // All three are raw tag contents lifted off the scanned page, so all three are
   // bounded. The description already was; the two titles were not, and an
   // attacker-controlled <title> is an unbounded write into the prompt.

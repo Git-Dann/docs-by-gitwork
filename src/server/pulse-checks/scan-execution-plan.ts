@@ -1,5 +1,6 @@
 import { normalizePulsePlatform, type PulsePlatform, type UrlSurfaceKind } from "./platform-applicability";
 import type { SnapshotShape } from "./native-repo";
+import { detectStoreTarget } from "@/lib/pulse-store-url";
 
 export type UrlTargetKind = "web" | "app_store" | "play_store";
 export type RepoCollectorName =
@@ -42,11 +43,9 @@ const SOURCE_ONLY_PLATFORMS = new Set<PulsePlatform>([
   "CLI_TOOL",
 ]);
 
+/** Delegates to the shared host-based rule, so the form and the scan agree (see pulse-store-url.ts). */
 export function detectUrlTargetKind(url: string): UrlTargetKind {
-  const lower = url.toLowerCase();
-  if (lower.includes("apps.apple.com") || lower.includes("itunes.apple.com")) return "app_store";
-  if (lower.includes("play.google.com/store/apps")) return "play_store";
-  return "web";
+  return detectStoreTarget(url) ?? "web";
 }
 
 /**

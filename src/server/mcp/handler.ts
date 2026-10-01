@@ -1983,6 +1983,8 @@ const TOOLS: ToolDef[] = [
         // support. The collectors come from the stored breakdown because they
         // are the one input that cannot be recovered from the checks alone.
         collectors: scan.scoreBreakdown?.collectors,
+        platform: scan.platform,
+        name: scan.projectName,
       });
       return textResult(verdict, verdict.summary);
     },

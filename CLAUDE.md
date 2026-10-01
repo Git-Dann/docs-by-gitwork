@@ -5794,3 +5794,127 @@ to yourself to check the phone notification still lands.
 ⚠️ **Another session was mid-edit on `messages-workspace.tsx`** (adding pagination to the
 list) when this landed. This change is from `origin/main` and touches the compose modal
 and the row markup; that one touches the list's data flow. They will need merging.
+
+## 56. Recent Changes (October 2026) — An iOS link is reported as an iOS app
+
+Dan, after an App Store scan of Beyond Nutrition UK came back as a website: *"when I give
+you a ios link, we report it as an ios link, when android we report android, that's why we
+have the tabs."* He was right on every count, and the cause was not one bug but the same
+missing fact at six layers.
+
+### 56.1 What a store link used to become
+
+| Layer | What it did | Why it was wrong |
+|---|---|---|
+| Form | Platform left on its default, **Web app**; name `apps.apple.com` | The link says what it is; the picker was a default |
+| Scan record | `platform: WEB_APP` stored | Benchmark segment, AI prompt and report all read it |
+| Gate | Judged by the **website** `launch-ready` policy, which requires `url-checks` | A listing runs none of them, so the only possible answer was "INCONCLUSIVE — scan the product's own URL" |
+| AI prompt | `Platform (declared by client): WEB_APP` | The write-up recommended security headers and SEO for an iOS app |
+| Coverage note | "You scanned this as … none of that is visible from a URL" | Read as though the user had picked the wrong input |
+| Store checks | Keyword searches over the whole page | See 56.3 — they passed for every app |
+
+### 56.2 One rule, used everywhere — `src/lib/pulse-store-url.ts`
+
+Framework-free, so the client form and the server import the same function and cannot
+disagree. `detectStoreTarget()` decides by **host**, never substring — the old
+`url.includes("apps.apple.com")` sent `https://example.com/?next=apps.apple.com` down the
+store path and skipped every website check on a website. `resolveScanPlatform()` lets a
+store link override the picker (the link is a fact, the picker a default) and leaves
+every other URL with the user's choice.
+
+Consumers: the form (the platform select is replaced by a fixed "Scanning as **iOS app** ·
+from its App Store listing" readout), `createPulseScanRecord` + `runAnalysis` + the AI
+re-analysis path (stored and run as IOS_APP / ANDROID_APP), `analyseWithClaude` (told it is
+an app's listing and not to recommend website fixes), the scan list (the line reads
+"iOS app · App Store listing", URL in the tooltip), the results hero (a **Platform** row),
+the agent pipeline ("Store listing", not "Infrastructure"), and the MCP verdict (new
+`subject: { platform, label, name }`, and the summary leads with it).
+
+**Naming.** A name Pulse invented — the store host, or the slug-derived provisional name —
+is replaced by the store's own name once the listing is read; a name the user typed never
+is. ⚠️ The provisional comparison is **case-sensitive**: "Beyond Nutrition UK" slug-cases to
+"Beyond Nutrition Uk", and compared case-insensitively the app's true name matched its own
+placeholder and was discarded. A test caught that, not a reading.
+
+### 56.3 The store checks measured nothing — `src/server/pulse-checks/store-listing.ts`
+
+Every store check was `lower.includes(…)` over the whole listing page. Apple's page contains
+"Ratings & Reviews" (a heading), "age" (inside "language" and "image") and "screenshot" on
+**every** listing, so those checks passed for any app that exists. The subtitle check passed
+when the title contained " - ", and Apple's title always ends " - App Store". That is how a
+listing scored 98–100 whatever the app was like.
+
+Both stores ship the listing as structured data in the page: Apple's `serialized-server-data`
+view model plus a schema.org `SoftwareApplication` block; Google's `SoftwareApplication`
+block plus labelled regions (description, screenshots, Data safety, the privacy-policy
+link). The checks now read named fields and declare **HIGH** confidence for it. Two traps,
+each with a test:
+
+- **Apple's page carries other apps' data.** The "you might also like" shelf has its own
+  subtitles; only the listing's own `lockup` is read.
+- **Apple shows the category where a subtitle would be.** A subtitle equal to the genre is
+  no subtitle — Beyond Nutrition's slot reads "Health & Fitness".
+
+⚠️ **An unreadable listing is INCONCLUSIVE, never SKIPPED.** SKIPPED means "does not apply",
+which the gate and the score both exclude — so an unreadable listing reported that way
+would pass the gate on `store_page_live` alone, having read nothing.
+
+New check `store_privacy_policy_owner` (MEDIUM, WARN-at-worst): compares the policy's
+domain with the publisher's name. It is a heuristic and its wording says so. Unsourced
+claims in the old copy ("can increase install rates by 20–35%", "this will block App Review"
+on an app that is already live) were removed.
+
+**What the real listings say**, verified against the live pages, for the record:
+
+| | iOS | Android |
+|---|---|---|
+| Publisher | BEYOND NUTRITION UK LTD | **Trainerize CBA-STUDIO** |
+| Rating | 5.0 from 11 | none shown |
+| Privacy policy | trainerize.com/privacy.aspx (≠ publisher) | trainerize.com/privacy |
+| Notable | no subtitle, no preview video, copyright "© 2026 ABC Trainerize" | short description "Fitness App", Data safety: **"Data can't be deleted"** |
+
+### 56.4 A store link is judged as the app it lists — `release-decision.ts`
+
+New policies **`ios-app-listing`** and **`android-app-listing`**: block on the listing being
+gone, on no privacy policy, and on a missing App Privacy / Data safety declaration (each
+enforced by the store itself); require the new **`store-listing`** collector. The label —
+"iOS app · App Store listing" — is the scope: READY means the *listing* meets the bar. The
+app's code is not in scope, and the coverage check says so in words about the app.
+
+`resolveGatePolicy({ policyId, targetUrl })` is the only way a policy is chosen — the scan,
+the agent verdict and the report's fallback all call it, or one scan gets two answers
+depending on who asked.
+
+Two gate fixes that apply to every policy:
+- **A required collector that was never recorded no longer reads as present.** Coverage now
+  records `completedNames`; a required collector absent from it is missing. Before, a
+  collector the scan never ran appeared in no list and was indistinguishable from success.
+- **The reason says why.** `failedDetails` carries a failed collector's own words, so a
+  rate-limited store reads "Apple rate-limited this scan (HTTP 429)", not "did not run".
+
+### 56.5 Verified / not verified
+
+`store-link-platform.test.ts` (35 tests) replaces `store-listing-honesty.test.ts`, built on
+two real listings captured 2026-09-30 (`__tests__/fixtures/*-store-beyond-nutrition.html`,
+trimmed, structure intact). Expected values were read off the live pages by hand, not from
+the code under test.
+
+**Not verified pre-merge:** the in-app form and results page (auth-gated, no staging), and a
+persisted in-app scan. Post-deploy: paste the App Store link into the new-scan form and
+confirm the readout says iOS app; run it and confirm the scan is named "Beyond Nutrition UK",
+the hero reads "Platform · iOS app · App Store listing" and the gate's policy is
+"iOS app · App Store listing"; repeat with the Google Play link.
+
+⚠️ **The page formats are not a contract.** Apple and Google can change either at will. When
+they do, the parser returns null and every check goes INCONCLUSIVE with a reason, so a format
+change degrades to "could not read the listing", never to a false pass. If a scan starts
+saying that, re-capture the fixture and update the field paths.
+
+### 56.6 Also in this change: CI's dependency audit was red on `main`
+
+`npm run audit:dependencies` (a CI step) failed for every branch: a new advisory
+(GHSA-m9gg-hp2v-232j, GHSA-f596-whhp-79r4) covers `@grpc/grpc-js` 1.14.0–1.14.4 and the
+lockfile pinned 1.14.4. Fixed lockfile-only — `npm audit fix --package-lock-only` → 1.14.5,
+a three-line diff, no `package.json` change. ⚠️ `--package-lock-only` matters in a Claude
+worktree: `node_modules` is a symlink into the primary checkout, and a real install there
+changes the dependencies every other running session is using.

@@ -16,6 +16,7 @@ import {
 import { usePulseScans, useDeletePulseScan, useMonitors } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatRelative } from "@/lib/format";
+import { describeScanSubject, detectStoreTarget } from "@/lib/pulse-store-url";
 import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/types/pulse";
 import {
   PulseScanStatusBadge,
@@ -334,8 +335,15 @@ function ScanRow({
   onToggle: () => void;
   monitor?: MonitorStatus;
 }) {
+  // A store link says what it IS — "iOS app · App Store listing" — rather than a long
+  // Apple URL that reads like any other website. The URL stays in the tooltip.
+  const storeSubject = scan.inputType === "URL" && scan.inputUrl && detectStoreTarget(scan.inputUrl)
+    ? describeScanSubject(scan.inputUrl, null)
+    : null;
   const inputLabel =
-    scan.inputType === "URL"
+    storeSubject
+      ? storeSubject
+      : scan.inputType === "URL"
       ? scan.inputUrl
       : scan.inputType === "GITHUB_REPO"
         ? githubRepoLabel(scan.inputGithubRepo)
@@ -379,7 +387,7 @@ function ScanRow({
             at /app/pulse. Measured: up to 66px of text lost in a 196px column. */}
         <p
           className="mt-0.5 truncate text-xs text-[var(--text-4)]"
-          title={[inputLabel, scan.clientName].filter(Boolean).join(" · ") || undefined}
+          title={[storeSubject ? scan.inputUrl : inputLabel, scan.clientName].filter(Boolean).join(" · ") || undefined}
         >
           {inputLabel}
           {scan.clientName && <span className="ml-2 text-[var(--text-3)]">· {scan.clientName}</span>}
