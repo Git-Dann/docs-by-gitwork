@@ -14,6 +14,7 @@
 // are returned via the redirect with ?error=...&state=... per RFC 6749 §4.1.2.1.
 
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { auth } from "@/auth";
 import {
   assertMcpEnabled,
@@ -55,11 +56,20 @@ function readParams(searchParams: URLSearchParams): Partial<Params> {
   };
 }
 
-function errorPage(message: string, status = 400) {
+function errorPage(message: string, status = 400, headers?: HeadersInit) {
   return new NextResponse(
     `<!DOCTYPE html><html><head><title>OAuth error</title></head><body style="font-family: system-ui; max-width: 540px; margin: 64px auto; padding: 0 24px;"><h1 style="font-size: 18px;">Authorization failed</h1><p>${escapeHtml(message)}</p></body></html>`,
-    { status, headers: { "content-type": "text/html; charset=utf-8" } },
+    { status, headers: { "content-type": "text/html; charset=utf-8", ...headers } },
   );
+}
+
+function redirectDiagnostic(registered: readonly string[], requested: string): string {
+  const digest = (value: string) => createHash("sha256").update(value, "utf8").digest("hex").slice(0, 12);
+  return [
+    `count=${registered.length}`,
+    `requested=${requested.length}:${digest(requested)}`,
+    `registered=${registered.map((uri) => `${uri.length}:${digest(uri)}`).join(",")}`,
+  ].join(";");
 }
 
 function escapeHtml(s: string): string {
@@ -87,7 +97,7 @@ function redirectWithError(
 
 async function validateParams(raw: Partial<Params>): Promise<
   | { ok: true; params: Params; clientName: string; clientLogoUri: string | null }
-  | { ok: false; renderInPlace: true; status: number; message: string }
+  | { ok: false; renderInPlace: true; status: number; message: string; diagnostic?: string }
   | { ok: false; renderInPlace: false; redirectUri: string; error: string; description: string; state: string | null }
 > {
   // Stage 1: errors we MUST render in-place (no trusted redirect_uri yet).
@@ -107,6 +117,7 @@ async function validateParams(raw: Partial<Params>): Promise<
       renderInPlace: true,
       status: 400,
       message: "redirect_uri does not match any registered for this client.",
+      diagnostic: redirectDiagnostic(client.redirectUris, raw.redirectUri),
     };
   }
 
@@ -176,7 +187,11 @@ export async function GET(request: Request) {
   const origin = originFrom(request);
   const v = await validateParams(readParams(url.searchParams));
   if (!v.ok) {
-    if (v.renderInPlace) return errorPage(v.message, v.status);
+    if (v.renderInPlace) {
+      return errorPage(v.message, v.status, v.diagnostic
+        ? { "x-foundry-oauth-diagnostic": v.diagnostic }
+        : undefined);
+    }
     return redirectWithError(v.redirectUri, v.error, v.description, v.state);
   }
 
@@ -222,7 +237,11 @@ export async function POST(request: Request) {
 
   const v = await validateParams(raw);
   if (!v.ok) {
-    if (v.renderInPlace) return errorPage(v.message, v.status);
+    if (v.renderInPlace) {
+      return errorPage(v.message, v.status, v.diagnostic
+        ? { "x-foundry-oauth-diagnostic": v.diagnostic }
+        : undefined);
+    }
     return redirectWithError(v.redirectUri, v.error, v.description, v.state);
   }
 
