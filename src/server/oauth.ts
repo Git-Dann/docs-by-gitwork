@@ -87,36 +87,47 @@ export async function findClientById(clientId: string): Promise<OAuthClient | nu
   return prisma.oAuthClient.findUnique({ where: { id: clientId } });
 }
 
-export function isAllowedRedirectUri(client: OAuthClient, redirectUri: string): boolean {
-  if (client.redirectUris.includes(redirectUri)) return true;
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+export function redirectUrisMatch(
+  registeredUri: string,
+  requestedUri: string,
+  options: { allowLoopbackPortChange?: boolean } = {},
+): boolean {
+  if (registeredUri === requestedUri) return true;
 
   try {
-    const requested = new URL(redirectUri);
-    const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
-    if (requested.protocol !== "http:" || !loopbackHosts.has(requested.hostname)) {
+    const registered = new URL(registeredUri);
+    const requested = new URL(requestedUri);
+    if (
+      registered.protocol !== "http:" ||
+      requested.protocol !== "http:" ||
+      !LOOPBACK_HOSTS.has(registered.hostname) ||
+      !LOOPBACK_HOSTS.has(requested.hostname)
+    ) {
       return false;
     }
 
-    // RFC 8252 §8.4 permits an ephemeral loopback port. Treat the three
-    // loopback spellings as equivalent too: the production proxy normalizes
-    // 127.0.0.1 in a query value to localhost before this handler sees it.
-    return client.redirectUris.some((registeredUri) => {
-      try {
-        const registered = new URL(registeredUri);
-        return registered.protocol === "http:" &&
-          loopbackHosts.has(registered.hostname) &&
-          registered.pathname === requested.pathname &&
-          registered.search === requested.search &&
-          registered.username === requested.username &&
-          registered.password === requested.password &&
-          registered.hash === requested.hash;
-      } catch {
-        return false;
-      }
-    });
+    return (options.allowLoopbackPortChange || registered.port === requested.port) &&
+      registered.pathname === requested.pathname &&
+      registered.search === requested.search &&
+      registered.username === requested.username &&
+      registered.password === requested.password &&
+      registered.hash === requested.hash;
   } catch {
     return false;
   }
+}
+
+export function isAllowedRedirectUri(client: OAuthClient, redirectUri: string): boolean {
+  // RFC 8252 §8.4 permits an ephemeral loopback port. Treat the three
+  // loopback spellings as equivalent too: the production proxy normalizes
+  // 127.0.0.1 in a query value to localhost before this handler sees it.
+  return client.redirectUris.some((registeredUri) => redirectUrisMatch(
+    registeredUri,
+    redirectUri,
+    { allowLoopbackPortChange: true },
+  ));
 }
 
 // ── authorization codes ────────────────────────────────────────────────────
@@ -176,7 +187,7 @@ export async function consumeAuthCode(input: {
   if (row.oauthClientId !== input.clientId) {
     throw new OAuthError("invalid_grant", "Code was issued to a different client.");
   }
-  if (row.redirectUri !== input.redirectUri) {
+  if (!redirectUrisMatch(row.redirectUri, input.redirectUri)) {
     throw new OAuthError("invalid_grant", "redirect_uri mismatch.");
   }
   if (!verifyPkce(input.codeVerifier, row.codeChallenge, row.codeChallengeMethod)) {
