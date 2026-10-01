@@ -348,7 +348,9 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       relevanceShape = kind;
       const selected = normalizePulsePlatform(input.platform);
       if (kind === "web" && !WEB_PLATFORMS.has(selected)) executionPlatform = "WEB_APP";
-      else if (kind === "backend" && selected !== "API_BACKEND" && !WEB_PLATFORMS.has(selected)) executionPlatform = "API_BACKEND";
+      // A backend is an API unless the user called it a web app / SaaS (a full-stack
+      // product whose server this is). A "marketing site" with no UI is not one.
+      else if (kind === "backend" && !["API_BACKEND", "WEB_APP", "SAAS"].includes(selected)) executionPlatform = "API_BACKEND";
       else if (kind === "none" && !WEB_PLATFORMS.has(selected) && selected !== "API_BACKEND") executionPlatform = "OTHER";
     }
     relevanceCtx.target = { kind: "repo", shape: relevanceShape };
@@ -408,6 +410,6 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     collectorExecutions,
     executionPlatform,
     appName,
-    relevance,
+    relevance: { ...relevance, target: relevanceCtx.target.kind },
   };
 }

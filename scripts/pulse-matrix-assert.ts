@@ -42,7 +42,7 @@ const hasPrefix = (key: string, prefixes: string[]) => !WEBSITE_APP_LINK_KEYS.ha
  * the repo (AEO), the repo's own GitHub metadata (Trust & Brand), and the source-depth
  * families (`*_x_*`, `*_depth_*`) that read server code — e.g. how email is SENT.
  */
-const isRepoCheckInWebCategory = (key: string) => key === "aeo_agent_instructions" || key.startsWith("github_") || /_(x|depth)_/.test(key);
+const isRepoCheckInWebCategory = (key: string) => key === "aeo_agent_instructions" || key.startsWith("aeo_repo_") || key.startsWith("github_") || /_(x|depth)_/.test(key);
 
 /** Categories that only describe a website's pages. */
 const PAGE_CATEGORIES = ["SEO", "Social & Marketing", "Missing Pages", "Trust & Brand", "AEO & AI Discoverability"];
@@ -71,7 +71,8 @@ const BY_TARGET: Record<string, Rule[]> = {
     { why: "a one-page static site gets no feature checks (no payments, accounts, SaaS, AI)", test: (_r, s) => offenders(s, (c) => FEATURE_CATEGORIES.includes(c.category)) },
   ],
   api: [
-    { why: "a JSON API is not graded on web-page content", test: (_r, s) => offenders(s, (c) => PAGE_CATEGORIES.includes(c.category) || c.category === "Accessibility") },
+    // An API's own documentation IS a question for an API, so `documentation` is allowed.
+    { why: "a JSON API is not graded on web-page content", test: (_r, s) => offenders(s, (c) => (PAGE_CATEGORIES.includes(c.category) || c.category === "Accessibility") && c.key !== "documentation") },
   ],
   "app-store": [{ why: "an App Store link reports only its listing", test: (r, s) => [...offenders(s, (c) => c.category !== "Store Listing" && !SCAN_NOTES.has(c.key)), ...(r.executionPlatform === "IOS_APP" ? [] : [`ran as ${r.executionPlatform}, not IOS_APP`])] }],
   "play-store": [{ why: "a Google Play link reports only its listing", test: (r, s) => [...offenders(s, (c) => c.category !== "Store Listing" && !SCAN_NOTES.has(c.key)), ...(r.executionPlatform === "ANDROID_APP" ? [] : [`ran as ${r.executionPlatform}, not ANDROID_APP`])] }],

@@ -6082,3 +6082,108 @@ Archiving someone in Settings → Team now also moves their developer card in Co
   the address they sign in with, cannot be linked and stays under Developers.
 - **Not changed:** an archived developer's open `Placement`s still count in Portal's dev counts
   and monthly cost. Ending placements mutates delivery data, so it was left as a decision.
+
+## 58. Recent Changes (October 2026) — Pulse shows only the checks that apply to the product
+
+Dan, after §56: *"make sure every platform in that dropdown ONLY runs the checks appropriate to
+the platform … the checks need to be contextual and only show IF related to the specific
+platform; we don't show irrelevant data or results if not needed."*
+
+### 58.1 What it measured before — with the real engine, not a reading of the code
+
+`scripts/pulse-platform-matrix.ts` runs `runLiteScan` (the core the in-app scan and MCP share)
+for **every dropdown platform against 17 real targets**: SaaS, marketing and bare websites, a
+JSON API, App Store / Google Play / Chrome Web Store listings (incl. a removed one), and iOS,
+Android, Flutter, React Native, Electron, extension, CLI, Next.js and Express repos. Before:
+
+| | |
+|---|---|
+| example.com (one static page) as Web app | **857** findings — 368 "verify manually" catalogue items, 20 payments, 30 SaaS, 21 API-quality |
+| a website scanned as iOS / Android / desktop / extension / CLI | **1** check (ssl_valid) |
+| api.github.com as Web app | graded as a website — 861 checks |
+| an iOS repo | the same **458** checks whether the dropdown said iOS, Web app or CLI |
+| a Next.js repo picked as "iOS app" | ran as iOS — every web-source check lost |
+| a Chrome Web Store link | Google's store page graded as the user's website |
+
+`scripts/pulse-matrix-assert.ts` checks every run against plain-language expectations written
+about the targets (an API is not graded on SEO; an iOS repo has no Android checks). It does NOT
+read the gate's own data — that would be the gate agreeing with itself. **Before: 432 of 902
+expectations violated.**
+
+### 58.2 One gate — `check-relevance.ts`
+
+Every check from every collector passes through `runLiteScan`'s `ingest`, and that is the one
+place a check is held back. Shown only when all hold:
+
+1. **Surface** — it measures what was scanned (website · API · store listing · repo of a shape).
+2. **Platform** — the question matters for the product type. A *website* of a non-web product is
+   its public presence: TLS, headers, privacy/terms, exposure, SEO — not SaaS, auth or checkout.
+3. **Feature** — a feature check needs the feature (`product-features.ts`: **use, not mention** —
+   Stripe.js loaded, not the word "stripe"; the product's own store link, not an apple-touch-icon).
+
+Plus: a standards-catalogue control only with an evidence-backed verdict; a SKIPPED / NOT_APPLICABLE
+row never (except `SCAN_NOTE_KEYS`); a `WITHHELD` check never. Hidden checks are not stored or
+scored; `scoreBreakdown.relevance` records how many and why, rendered as one "Scoped to this
+product" sentence.
+
+⚠️ **The rules are data** — `check-relevance-data.ts`, generated from the audit below: one rule
+per catalogued check (1,299 + the derived standards catalogue). `check-relevance.test.ts` fails
+if any catalogued key lacks one — it reads `catalogue-baseline.json`, not the registry's literal
+rows, because 156 generated checks (service-depth / operational-depth) are not literal rows and
+the first version of the test silently missed every one.
+
+### 58.3 Routing by what the artefact IS
+
+- `repo-kind.ts` — a repo with no native shape is web / backend / none from package.json deps and
+  framework entry files (never from go.mod / Cargo.toml / main.py, which name a language, not a
+  server). Detection decides the platform; the dropdown only labels it, and a mismatch is said once.
+- A website scanned as a non-web product runs the URL engine as a marketing site (presence).
+- A URL answering JSON is an API, judged as one whatever the dropdown said.
+- Markets: none declared or detected → UK, EU, US assumed; other regions only when present.
+- Gate policies by surface (`resolveGatePolicy`): store listings (§56 + **chrome-extension-listing**),
+  **source-code** for repos (was the website policy — every repo scan was permanently INCONCLUSIVE),
+  **web-presence**, **api-production**, saas-production for SaaS. Description scans get no score
+  and no verdict.
+
+### 58.4 Chrome Web Store
+
+The store publishes no schema.org data; everything is in the `ds:0` AF_initDataCallback array.
+⚠️ Liveness comes from that data, never the HTTP status — the store answers **200** for a removed
+item (`/detail/empty-title/<id>`, RPC NOT_FOUND). New checks `cws_privacy_practices`,
+`cws_trader_status`, `cws_trust_badges`, `store_last_updated`; the published manifest runs
+`evaluateExtensionManifest`. The extension CSP is now parsed by directive — `wasm-unsafe-eval`,
+an https `frame-src`, and `__MSG_` names were failing store-approved extensions (Bitwarden, Grammarly).
+
+### 58.5 The audit, and what "withheld" means
+
+Every check's code was classified (surface · platforms · feature) and challenged by an
+independent critic (267 corrections), every input path traced per platform, and **2,149 defect
+claims** raised. 1,114 (all high + medium logic) were verified adversarially: **1,107 upheld**.
+Spot-checked by hand, they hold (`legal-extended`'s `"eur"` matches `decodeURIComponent`; CI
+checks PASS a repo with no workflows; Android's SDK floor was a year stale).
+
+`WITHHELD` holds back two kinds of check, each with its reason: ones Pulse **cannot assess from
+what it scans** (GitHub branch protection "detected" by regex over a website; PagerDuty guessed
+from a homepage) and ones with a **verified high-severity wrong-verdict defect**, until fixed —
+a confident wrong answer is worse than none. Fixing one removes it.
+
+### 58.6 Result, and what is still open
+
+**After: 0 of 935 expectations violated across 187 runs** (11 platforms × 17 targets), against
+432 of 902 before. example.com as a Web app went 857 → 251 checks; a website scanned as iOS
+reports its public presence (194 checks) instead of one; a JSON API as Web app 861 → 44; an iOS
+repo is judged as iOS whatever the dropdown said (73 checks, no web or Android family).
+`npm run verify` and `npx next build` clean; 4,159 tests.
+
+⚠️ **The matrix proves the gate is consistent with plain-language expectations, not that every
+remaining check is right.** 222 checks are `WITHHELD` (unobservable, or a verified high-severity
+logic defect awaiting a fix). The fixes were proposed by an agent workflow that hit the session
+limit before its adversarial reviews finished, so **none were applied** — a fix with no completed
+review is how §44.3's regressions happened. Apply them package by package, each with a two-sided
+test, removing the key from `WITHHELD` only when its fix lands. The defect list is in the audit
+scratch data, not committed; re-derive per module when picking one up.
+
+Not verified: the in-app results page and report (auth-gated, no staging), and a live
+Chrome Web Store scan through the deployed scanner. Post-deploy, scan a Chrome Web Store link, a
+JSON API URL and a website as "iOS app", and read the "Scoped to this product" line.
+

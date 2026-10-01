@@ -610,10 +610,13 @@ const listConversationsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
+const PULSE_PLATFORMS = ["WEB_APP", "SAAS", "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "API_BACKEND", "CLI_TOOL", "OTHER"] as const;
 const pulseScanToolSchema = z.object({
-  url: z.string().url(),
+  url: z.string().url().optional(),
+  githubRepo: z.string().trim().min(3).max(200).optional(),
+  platform: z.enum(PULSE_PLATFORMS).optional(),
   targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
-});
+}).refine((value) => Boolean(value.url) !== Boolean(value.githubRepo), { message: "Pass exactly one of url or githubRepo." });
 const pulseResultToolSchema = z.object({ scanId: z.string().min(1) });
 const listPulseScansSchema = z.object({
   client: z.string().optional(),
@@ -1922,23 +1925,26 @@ const TOOLS: ToolDef[] = [
   {
     name: "pulse_scan",
     description:
-      "Run a Pulse production-readiness + security scan on a URL and return a compact verdict: " +
+      "Run a Pulse production-readiness + security scan on a URL (website, API, or App Store / Google Play / " +
+      "Chrome Web Store listing) or a GitHub repo, and return a compact verdict covering only the checks that apply " +
+      "to that product: " +
       "health score, confirmed issues, live Supabase RLS check, security/TLS/accessibility grades, " +
       "compliance gaps for target markets, and top fixes. Ideal to validate an AI-built app before shipping. " +
       "Synchronous (~15–30s). Requires the 'Manage Pulse' permission.",
     inputSchema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "The https:// URL to scan." },
+        url: { type: "string", description: "The https:// URL to scan (website, API, or a store listing link). Pass this OR githubRepo." },
+        githubRepo: { type: "string", description: "owner/repo to scan its source. Pass this OR url." },
+        platform: { type: "string", enum: [...PULSE_PLATFORMS], description: "What the product is. Optional: a store link or a repo's detected shape overrides it." },
         targetMarkets: { type: "array", items: { type: "string" }, description: "Optional jurisdiction codes the product serves (e.g. EU, UK, US, US-CA)." },
       },
-      required: ["url"],
       additionalProperties: false,
     },
     handler: async (user, args) => {
       assertCan(user, canManagePulse, "run Pulse scans");
       const parsed = pulseScanToolSchema.parse(args);
-      const verdict = await runAgentScan({ url: parsed.url, targetMarkets: parsed.targetMarkets });
+      const verdict = await runAgentScan({ url: parsed.url, githubRepo: parsed.githubRepo, platform: parsed.platform, targetMarkets: parsed.targetMarkets });
       return textResult(verdict, verdict.summary);
     },
   },
@@ -1986,6 +1992,7 @@ const TOOLS: ToolDef[] = [
         platform: scan.platform,
         name: scan.projectName,
         relevance: scan.scoreBreakdown?.relevance,
+        inputType: scan.inputType,
       });
       return textResult(verdict, verdict.summary);
     },

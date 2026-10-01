@@ -15,6 +15,7 @@ import { cn, formatDate } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
 // Report-view domain groupings are derived from the single source of truth.
 import { DOMAIN_DEFS } from "@/server/pulse-checks/categories";
+import { describeScanSubject } from "@/lib/pulse-store-url";
 
 // A shared report is immutable once the scan completes, so it's cached per token
 // (tag `pulse-report-<token>`). The share/unshare route revalidates that tag, and
@@ -164,7 +165,9 @@ function CategorySummary({ checks }: { checks: PulseScanRecord["checks"] }) {
   // Build per-category stats
   const byCategory = new Map<string, { pass: number; warn: number; fail: number }>();
   for (const check of checks) {
-    if (check.status === "SKIPPED") continue;
+    // Only verdicts. A category holding only "could not establish" rows had a total of 0,
+    // which rendered as a score of 100 on a green card — unmeasured, painted as passing.
+    if (check.status !== "PASS" && check.status !== "WARN" && check.status !== "FAIL") continue;
     const s = byCategory.get(check.category) ?? { pass: 0, warn: 0, fail: 0 };
     if (check.status === "PASS") s.pass++;
     else if (check.status === "WARN") s.warn++;
@@ -276,6 +279,15 @@ export default async function PublicReportPage({
   ];
 
   const meta: Array<{ label: string; value: string }> = [];
+  // What was assessed, and the decision — the two things a reader of a shared report most
+  // needs, and the share page used to show neither.
+  const subject = describeScanSubject(scan.inputUrl, scan.platform);
+  if (subject) meta.push({ label: "Platform", value: subject });
+  const gate = scan.scoreBreakdown?.gate;
+  if (gate) {
+    const decision = { READY: "Ready to ship", CONDITIONAL: "Ship with reservations", BLOCKED: "Blocked", INCONCLUSIVE: "Not enough evidence" }[gate.decision];
+    meta.push({ label: "Release", value: `${decision} · ${gate.policy.label}` });
+  }
   if (llm?.projectClassification?.type) {
     meta.push({
       label: "Type",

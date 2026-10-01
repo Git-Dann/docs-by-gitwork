@@ -26,6 +26,8 @@ export async function POST(
         inputGithubRepo: existing.inputGithubRepo ?? undefined,
         inputDescription: existing.inputDescription ?? undefined,
         projectName: existing.projectName,
+        // Re-run as what it was scanned as — without this a retry ran as "Other".
+        platform: existing.platform ?? undefined,
         clientId: existing.clientId ?? undefined,
       }, aiConfig)
     );

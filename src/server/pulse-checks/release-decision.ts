@@ -199,7 +199,68 @@ const STORE_POLICIES: Record<StoreTarget, GatePolicy> = {
   },
 };
 
-GATE_POLICIES.push(STORE_POLICIES.app_store, STORE_POLICIES.play_store);
+/**
+ * A source repository, judged as the code it is.
+ *
+ * Repos used to fall through to `launch-ready`, which requires the WEBSITE collector and
+ * blocks on the website's privacy and terms pages — so every repo scan of every platform
+ * was permanently INCONCLUSIVE ("url-checks did not run"), however good the code was.
+ * What stops a repository shipping is a committed secret, so that is what blocks; the
+ * collectors that read the repo are what it requires.
+ */
+const SOURCE_POLICY: GatePolicy = {
+  id: "source-code",
+  version: "1.0.0",
+  label: "Source repository",
+  description:
+    "For a codebase assessed from its repository: no committed secrets, and enough of the source read to say so. A deployed site, an API or a store listing is a separate scan.",
+  minCoverage: 70,
+  minHealth: 60,
+  blockingKeys: ["repo_secret_keys", "android_signing_credentials_committed", "supabase_rls_enforced"],
+  blockingCategories: [CATEGORIES.SECRETS_KEYS],
+  requiredCollectors: ["repo-shape", "github-checks", "code-agent"],
+};
+
+/**
+ * The public website of a product that is not a web app — an iOS app's site, a CLI's
+ * docs site. Judged on what a presence site owes its visitors (TLS, no exposed secrets,
+ * an inspectable page), not on web-app features it does not have.
+ */
+const WEB_PRESENCE_POLICY: GatePolicy = {
+  id: "web-presence",
+  version: "1.0.0",
+  label: "Public website",
+  description:
+    "For the public website of an app, extension, desktop or command-line product: served securely, nothing exposed, and readable. The product itself is a separate scan (its store listing or its repository).",
+  minCoverage: 60,
+  minHealth: 60,
+  blockingKeys: ["ssl_valid", "no_exposed_env", "no_exposed_git", "target_content_accessible"],
+  blockingCategories: [CATEGORIES.SECURITY, CATEGORIES.SECRETS_KEYS],
+  requiredCollectors: ["url-checks"],
+};
+
+/** An API endpoint (the URL answered with JSON): transport and exposure, not web pages. */
+const API_POLICY: GatePolicy = {
+  id: "api-production",
+  version: "1.0.0",
+  label: "API",
+  description:
+    "For a JSON API: served over valid TLS, no exposed secrets or data stores, and enough of it assessed to say so. Page-level legal and consent checks do not apply to an endpoint.",
+  minCoverage: 70,
+  minHealth: 60,
+  blockingKeys: ["ssl_valid", "no_exposed_env", "no_exposed_git", "supabase_rls_enforced", "no_service_role_key_exposed", "target_content_accessible"],
+  blockingCategories: [CATEGORIES.SECURITY, CATEGORIES.SECRETS_KEYS],
+  requiredCollectors: ["url-checks"],
+};
+
+GATE_POLICIES.push(STORE_POLICIES.app_store, STORE_POLICIES.play_store, STORE_POLICIES.chrome_web_store, SOURCE_POLICY, WEB_PRESENCE_POLICY, API_POLICY);
+
+const PLATFORM_DISPLAY: Record<string, string> = {
+  WEB_APP: "Web app", SAAS: "SaaS", MARKETING_SITE: "Marketing site", IOS_APP: "iOS app", ANDROID_APP: "Android app",
+  CROSS_PLATFORM_MOBILE: "Cross-platform mobile app", DESKTOP_APP: "Desktop app", CHROME_EXTENSION: "Chrome extension",
+  API_BACKEND: "API / backend", CLI_TOOL: "CLI tool", OTHER: "Project",
+};
+const NON_WEB_PLATFORMS = new Set(["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "CLI_TOOL"]);
 
 export const DEFAULT_GATE_POLICY = GATE_POLICIES[0];
 
@@ -215,10 +276,28 @@ export function gatePolicyById(id: string | null | undefined): GatePolicy {
  * and the report's fallback — or the same scan would get two different answers
  * depending on who asked.
  */
-export function resolveGatePolicy(args: { policyId?: string | null; targetUrl?: string | null }): GatePolicy {
+export function resolveGatePolicy(args: {
+  policyId?: string | null;
+  targetUrl?: string | null;
+  /** "GITHUB_REPO" selects the source policy. Omitted → treated as a URL scan. */
+  inputType?: string | null;
+  /** The platform the scan RAN as (detected for repos and store links). */
+  platform?: string | null;
+  /** True when the URL answered as an API (JSON). */
+  apiTarget?: boolean;
+}): GatePolicy {
   if (args.policyId) return gatePolicyById(args.policyId);
+  const platform = (args.platform ?? "").toUpperCase();
+  const label = PLATFORM_DISPLAY[platform];
+  if (args.inputType === "GITHUB_REPO") {
+    return label ? { ...SOURCE_POLICY, label: `${label} · source repository` } : SOURCE_POLICY;
+  }
   const store = args.targetUrl ? detectStoreTarget(args.targetUrl) : null;
-  return store ? STORE_POLICIES[store] : DEFAULT_GATE_POLICY;
+  if (store) return STORE_POLICIES[store];
+  if (args.apiTarget) return API_POLICY;
+  if (NON_WEB_PLATFORMS.has(platform)) return label ? { ...WEB_PRESENCE_POLICY, label: `${label} · public website` } : WEB_PRESENCE_POLICY;
+  if (platform === "SAAS") return gatePolicyById("saas-production");
+  return DEFAULT_GATE_POLICY;
 }
 
 export interface GateEvaluation {

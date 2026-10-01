@@ -122,6 +122,8 @@ export function buildAgentVerdict(args: {
   name?: string | null;
   /** The relevance gate's summary for this scan. */
   relevance?: ScoreBreakdown["relevance"];
+  /** URL / GITHUB_REPO / FREE_TEXT — selects the gate policy. Defaults to URL. */
+  inputType?: string;
 }): AgentVerdict {
   const { checks } = args;
   const bucket = (b: string) => checks.filter((c) => c.trustBucket === b);
@@ -193,7 +195,13 @@ export function buildAgentVerdict(args: {
 
   // The gate is derived from the SAME checks this verdict describes, so the
   // decision and the issue lists can never tell an agent two different stories.
-  const policy = resolveGatePolicy({ policyId: args.gatePolicyId, targetUrl: args.url });
+  const policy = resolveGatePolicy({
+    policyId: args.gatePolicyId,
+    targetUrl: args.url,
+    inputType: args.inputType,
+    platform: subject.platform,
+    apiTarget: args.relevance?.target === "api",
+  });
   const evaluated = evaluateReleaseGate(
     checks,
     { ...computeScoreBreakdown(checks), collectors: args.collectors },
@@ -240,21 +248,28 @@ export function buildAgentVerdict(args: {
 
 /** Run a fresh lite scan for an agent and return the compact verdict. */
 export async function runAgentScan(input: {
-  url: string;
+  url?: string;
+  githubRepo?: string;
+  platform?: string;
   targetMarkets?: string[];
   gatePolicyId?: string;
 }): Promise<AgentVerdict> {
   const markets = (input.targetMarkets ?? []).filter(isJurisdictionCode) as JurisdictionCode[];
+  const inputType = input.githubRepo ? "GITHUB_REPO" : "URL";
+  const subjectRef = input.githubRepo ?? input.url ?? "";
   try {
     const lite = await runLiteScan({
-      inputType: "URL",
+      inputType,
       url: input.url,
+      githubRepo: input.githubRepo,
+      platform: input.platform,
       includePageSpeed: false, // fast + no PSI quota; agents want a quick verdict
       targetMarkets: markets.length > 0 ? markets : undefined,
       // skipUrlGuard left false — external agents must pass the SSRF guard.
     });
     return buildAgentVerdict({
-      url: input.url,
+      url: subjectRef,
+      inputType,
       status: "COMPLETED",
       healthScore: lite.healthScore || calculateHealthScore(lite.checks),
       techStack: lite.techStack,
@@ -274,7 +289,8 @@ export async function runAgentScan(input: {
     // "nothing failed, therefore ship". Built through buildAgentVerdict so the
     // failure path cannot drift from the rules the success path obeys.
     return buildAgentVerdict({
-      url: input.url,
+      url: subjectRef,
+      inputType,
       status: "FAILED",
       healthScore: 0,
       techStack: [],

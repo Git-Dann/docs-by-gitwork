@@ -114,6 +114,9 @@ export interface RelevanceDecision {
  */
 export const SCAN_NOTE_KEYS: ReadonlySet<string> = new Set([
   "scan_collector_completeness",
+  "scan_extended_collector_completeness",
+  "repo_collector_completeness",
+  "repo_parse",
   "platform_family_coverage",
   "repo_intelligence",
   "repo_accessible",
@@ -162,11 +165,14 @@ export function decideRelevance(
   rule: RelevanceRule | null,
   ctx: ScanContext,
 ): RelevanceDecision {
-  if (rule?.surface === "META" || SCAN_NOTE_KEYS.has(check.checkKey)) return { show: true };
+  if (SCAN_NOTE_KEYS.has(check.checkKey)) return { show: true };
 
   // A check that says of itself "this does not apply" adds nothing to the report —
-  // whether or not it has a rule. (The scan's own notes are META and shown above.)
+  // whether or not it has a rule. (The scan's own notes are shown above.)
+  // ⚠️ Only SCAN_NOTE_KEYS are exempt, not every rule the audit tagged META: ten
+  // always-SKIPPED placeholders were tagged META and rode that exemption onto every report.
   if (check.status === "SKIPPED" || check.status === "NOT_APPLICABLE") return { show: false, reason: "not_applicable" };
+  if (rule?.surface === "META") return { show: true };
 
   // Withheld checks (check-relevance-data.ts WITHHELD) are never shown, whatever they say.
   if (WITHHELD[check.checkKey]) return { show: false, reason: "withheld" };
@@ -195,6 +201,8 @@ export function decideRelevance(
 
 /** A running tally of what was hidden and why — the scan's one-line "not assessed" note. */
 export interface RelevanceSummary {
+  /** What the scan turned out to be looking at — website, api, store or repo. */
+  target?: ScanTarget["kind"];
   shown: number;
   hidden: number;
   byReason: Partial<Record<HiddenReason, number>>;

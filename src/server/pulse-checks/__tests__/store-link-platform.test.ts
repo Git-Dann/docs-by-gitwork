@@ -383,7 +383,7 @@ describe("every path uses the same rule", () => {
     const pulse = src("src/server/pulse.ts");
     const run = pulse.slice(pulse.indexOf("export async function runAnalysis"));
     expect(run).toMatch(/resolveScanPlatform\(input\.inputUrl, input\.platform\)/);
-    expect(run).toMatch(/resolveGatePolicy\(\{ targetUrl: input\.inputUrl \}\)/);
+    expect(run).toMatch(/resolveGatePolicy\(\{\s*targetUrl: input\.inputUrl,/);
     expect(run).not.toContain("DEFAULT_GATE_POLICY");
     expect(run).toMatch(/isPlaceholderStoreName\(projectName, input\.inputUrl\)/);
   });
@@ -404,7 +404,7 @@ describe("every path uses the same rule", () => {
 
   it("the report's fallback gate uses the same policy as the scan", () => {
     const results = src("src/components/pulse/pulse-scan-results.tsx");
-    expect(results).toMatch(/resolveGatePolicy\(\{ targetUrl: scan\.inputUrl \}\)/);
+    expect(results).toMatch(/resolveGatePolicy\(\{\s*targetUrl: scan\.inputUrl,/);
   });
 
   it("the store branch reads structured data, and a framework only from the app's own description", () => {

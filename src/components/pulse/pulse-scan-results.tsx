@@ -1036,15 +1036,26 @@ function AgentPanel({
   const checksPass = scan.checks.filter((c) => c.status === "PASS").length;
 
   const storeTarget = scan.inputUrl ? detectStoreTarget(scan.inputUrl) : null;
+  // What this scan actually looked at. Each slot below is shown only where it can apply —
+  // a store listing has no Lighthouse run, a repo has no hosting headers, a description has
+  // no checks at all — so the panel stops advertising agents that could never run here.
+  const surface = storeTarget ? "store"
+    : scan.inputType === "GITHUB_REPO" ? "repo"
+      : scan.inputType === "FREE_TEXT" ? "description"
+        : scan.scoreBreakdown?.relevance?.target === "api" ? "api"
+          : "web";
+  const webProduct = ["WEB_APP", "SAAS", "MARKETING_SITE", "OTHER"].includes((scan.platform ?? "OTHER").toUpperCase());
   const slots: AgentSlot[] = [
-    // Infrastructure — or, for a store link, the listing: an app's scan does not
-    // describe itself as header and SEO checks it never ran.
     {
       id: "infra",
-      label: storeTarget ? "Store listing" : "Infrastructure",
-      description: storeTarget
+      label: surface === "store" ? "Store listing" : surface === "repo" ? "Repository checks" : surface === "api" ? "API checks" : "Website checks",
+      description: surface === "store" && storeTarget
         ? `The ${STORE_NAME[storeTarget]} listing — ratings, screenshots, description, privacy declarations and links`
-        : "HTTP checks, security headers, SEO, and platform signals",
+        : surface === "repo"
+          ? "The repository's source, configuration, CI and dependencies"
+          : surface === "api"
+            ? "Transport, headers, exposure and API behaviour"
+            : "HTTP checks, security headers, SEO, legal pages and exposure",
       status: "completed",
       summary: `${checksTotal} checks — ${checksPass} passed, ${checksFail} failed`,
     },
@@ -1233,7 +1244,12 @@ function AgentPanel({
     (slot) =>
       (slot.id !== "fix" || canRunFixAgent) &&
       (slot.id !== "study" || canManageStudy) &&
-      (slot.id !== "starters" || canManageStarters),
+      (slot.id !== "starters" || canManageStarters) &&
+      // Contextual: only the agents that can run against THIS scan's surface.
+      (slot.id !== "infra" || surface !== "description") &&
+      (slot.id !== "browser" || (surface === "web" && webProduct)) &&
+      (slot.id !== "deploy" || Boolean(scan.deployInsights?.platform || scan.deployInsights?.recentDeployments != null)) &&
+      (slot.id !== "monitor" || surface !== "description"),
   );
 
   return (
@@ -2005,7 +2021,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         scan.checks as unknown as PulseScanCheckInput[],
         scan.scoreBreakdown ?? computeScoreBreakdown(scan.checks as unknown as PulseScanCheckInput[]),
         // The same policy the scan was judged by — a store link as the app it lists.
-        resolveGatePolicy({ targetUrl: scan.inputUrl }),
+        resolveGatePolicy({
+          targetUrl: scan.inputUrl,
+          inputType: scan.inputType,
+          platform: scan.platform,
+          apiTarget: scan.scoreBreakdown?.relevance?.target === "api",
+        }),
       )
       : undefined);
 

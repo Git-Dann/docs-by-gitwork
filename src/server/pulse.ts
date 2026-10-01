@@ -20,7 +20,7 @@ import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-sco
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
-import { isPlaceholderStoreName, provisionalStoreProjectName, resolveScanPlatform } from "@/lib/pulse-store-url";
+import { detectStoreTarget, isPlaceholderStoreName, provisionalStoreProjectName, resolveScanPlatform } from "@/lib/pulse-store-url";
 import { diffChecks } from "@/server/pulse-checks/scan-diff";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
@@ -773,6 +773,12 @@ export async function createPulseScanRecord(input: {
              null,
   };
 
+  // A store link decides the platform: an App Store link is an iOS app and a Google
+  // Play link an Android app, whatever the picker was left on (it defaults to "Web
+  // app"). Stored that way, so the benchmark, the AI write-up and the report all see
+  // the app the user linked rather than a website called `apps.apple.com`.
+  const platform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+
   const previousScan = input.inputType !== "FREE_TEXT"
     ? await prisma.pulseScan.findFirst({
         where: {
@@ -780,17 +786,15 @@ export async function createPulseScanRecord(input: {
           status: "COMPLETED",
           ...(input.inputType === "URL" && input.inputUrl ? { inputUrl: input.inputUrl } : {}),
           ...(input.inputType === "GITHUB_REPO" && input.inputGithubRepo ? { inputGithubRepo: input.inputGithubRepo } : {}),
+          // Like for like: a scan graded as an iOS app's website is not comparable with a
+          // web-app scan of the same URL — different checks, different score.
+          ...(platform ? { platform } : {}),
         },
         orderBy: { createdAt: "desc" },
         select: { healthScore: true },
       })
     : null;
 
-  // A store link decides the platform: an App Store link is an iOS app and a Google
-  // Play link an Android app, whatever the picker was left on (it defaults to "Web
-  // app"). Stored that way, so the benchmark, the AI write-up and the report all see
-  // the app the user linked rather than a website called `apps.apple.com`.
-  const platform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
   // A name Pulse made up for a store link (the store's host) becomes the readable
   // name from the link now, and the store's own name once the listing is read. A
   // name the user typed is left alone.
@@ -1126,6 +1130,12 @@ export async function runAnalysis(
     let visualInsights: VisualAgentInsights | null = null;
     let collectorExecutions: CollectorExecution[] = [];
     let relevance: ScoreBreakdown["relevance"] | undefined;
+    // The platform the scan RAN as — detection's answer for a repo or store link.
+    let executedPlatform: string | undefined;
+    // A description has no artefact behind it: no checks, so no score and no verdict.
+    // It used to be stored as 0/100 and "INCONCLUSIVE · coverage 0%", which reads as a
+    // failed product rather than as "nothing was measured".
+    const isDescription = input.inputType === "FREE_TEXT";
 
     const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
 
@@ -1153,6 +1163,13 @@ export async function runAnalysis(
       detectedMarkets = lite.detectedMarkets;
       collectorExecutions = lite.collectorExecutions;
       relevance = lite.relevance;
+      executedPlatform = lite.executionPlatform;
+      // Store what the scan actually assessed. An iOS repo picked as "Web app" ran as iOS;
+      // filing it as WEB_APP made the report, the AI write-up and the benchmark describe a
+      // website. The selection is still visible in the coverage note.
+      if (executedPlatform && executedPlatform !== platform) {
+        await prisma.pulseScan.update({ where: { id: scanId }, data: { platform: executedPlatform } });
+      }
       // A store link: file the scan under the app's own name once the listing says it.
       if (lite.appName && input.inputUrl && isPlaceholderStoreName(projectName, input.inputUrl)) {
         projectName = lite.appName;
@@ -1177,8 +1194,14 @@ export async function runAnalysis(
     // so a scan read months later says which rules produced its answer rather than
     // being silently re-judged by whatever the policy has since become.
     // Judged as what was scanned: a store link as the app it lists (release-decision.ts).
-    const gate = evaluateReleaseGate(allChecks, scoreBreakdown, resolveGatePolicy({ targetUrl: input.inputUrl }));
-    scoreBreakdown.gate = gate;
+    if (!isDescription) {
+      scoreBreakdown.gate = evaluateReleaseGate(allChecks, scoreBreakdown, resolveGatePolicy({
+        targetUrl: input.inputUrl,
+        inputType: input.inputType,
+        platform: executedPlatform ?? platform,
+        apiTarget: relevance?.target === "api",
+      }));
+    }
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
     // Only set when AI Readiness checks actually ran (not all SKIPPED).
@@ -1205,21 +1228,23 @@ export async function runAnalysis(
     await prisma.pulseScan.update({
       where: { id: scanId },
       data: {
-        healthScore,
+        healthScore: isDescription ? null : healthScore,
         checksCompletedAt: new Date(),
         techStack: techStack as unknown as Prisma.InputJsonValue,
         agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
         detectedMarkets: detectedMarkets.length > 0 ? (detectedMarkets as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         complianceScorecard: complianceScorecard.length > 0 ? (complianceScorecard as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        scoreBreakdown: scoreBreakdown as unknown as Prisma.InputJsonValue,
+        scoreBreakdown: isDescription ? Prisma.JsonNull : (scoreBreakdown as unknown as Prisma.InputJsonValue),
       },
     });
 
     // Wave D1 — Visual Quality scan (best-effort). Kick off now so its screenshot +
     // vision call run concurrently with the AI synthesis below; awaited before the
     // final persist. URL scans only; gated to the Anthropic provider inside the agent.
+    // A web PAGE only: a screenshot critique of Apple's listing page or of a JSON response
+    // says nothing about the product.
     const visualPromise: Promise<VisualAgentInsights | null> =
-      input.inputType === "URL" && input.inputUrl
+      input.inputType === "URL" && input.inputUrl && !detectStoreTarget(input.inputUrl) && relevance?.target !== "api"
         ? runVisualAgent(input.inputUrl, aiConfig, workspaceId).catch(() => null)
         : Promise.resolve(null);
 
@@ -1276,7 +1301,7 @@ export async function runAnalysis(
               inputUrl: input.inputUrl ?? null,
               inputGithubRepo: input.inputGithubRepo ?? null,
               inputDescription: input.inputDescription ?? null,
-              platform: platform ?? null,
+              platform: executedPlatform ?? platform ?? null,
               healthScore,
               techStack,
               checks: allChecks,

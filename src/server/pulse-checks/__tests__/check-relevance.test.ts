@@ -82,6 +82,13 @@ describe("the gate shows a check only when it is about this product", () => {
     expect(decideRelevance(check("privacy_policy", "INCONCLUSIVE"), PRIVACY, ctx({})).show).toBe(true);
   });
 
+  it("a placeholder the audit tagged META is still hidden when it reports SKIPPED", () => {
+    // Ten always-SKIPPED placeholders were tagged META and rode a blanket META exemption
+    // onto every website report — caught by the measured matrix, not by a reading.
+    const meta: RelevanceRule = { surface: "META", platforms: [], presence: false, feature: null };
+    expect(decideRelevance(check("multi_region_signals", "SKIPPED"), meta, ctx({})).show).toBe(false);
+  });
+
   it("the scan's own notes are always shown, SKIPPED or not", () => {
     for (const key of SCAN_NOTE_KEYS) expect(decideRelevance(check(key, "SKIPPED"), null, ctx({})).show, key).toBe(true);
   });

@@ -164,11 +164,26 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
              null,
   };
 
+  // A monitor has no platform of its own, so re-scan as the platform this target was last
+  // scanned as — without it every monitored re-scan ran as "Other" and was graded on a
+  // different set of checks from the scan it is compared against.
+  const lastScan = await prisma.pulseScan.findFirst({
+    where: {
+      ...(monitor.inputUrl ? { inputUrl: monitor.inputUrl } : {}),
+      ...(monitor.inputGithubRepo ? { inputGithubRepo: monitor.inputGithubRepo } : {}),
+      platform: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { platform: true },
+  });
+  const platform = lastScan?.platform ?? undefined;
+
   const { scan } = await createPulseScanRecord({
     projectName: monitor.projectName,
     inputType: monitor.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
     inputUrl: monitor.inputUrl ?? undefined,
     inputGithubRepo: monitor.inputGithubRepo ?? undefined,
+    platform,
     clientId: monitor.clientId ?? undefined,
   });
 
@@ -176,6 +191,7 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
     inputType: monitor.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
     inputUrl: monitor.inputUrl ?? undefined,
     inputGithubRepo: monitor.inputGithubRepo ?? undefined,
+    platform,
     projectName: monitor.projectName,
     clientId: monitor.clientId ?? undefined,
   }, aiConfig);

@@ -304,6 +304,8 @@ export interface ScoreBreakdown {
    * is the one record that they existed. Optional: scans before the gate have none.
    */
   relevance?: {
+    /** What the scan turned out to be looking at — website, api, store or repo. */
+    target?: "website" | "api" | "store" | "repo" | "none";
     shown: number;
     hidden: number;
     byReason: Partial<Record<"not_this_artefact" | "not_this_platform" | "feature_absent" | "needs_evidence" | "not_applicable" | "withheld", number>>;
