@@ -48,9 +48,9 @@ export function CodeClearArchivedWorkspace() {
         </p>
 
         {query.isLoading ? (
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-[76px] animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+              <div key={i} className="h-[58px] animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
             ))}
           </div>
         ) : items.length === 0 ? (
@@ -61,24 +61,25 @@ export function CodeClearArchivedWorkspace() {
             />
           </div>
         ) : (
-          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((c) => (
               <Link
                 key={c.id}
                 href={`/app/codeclear/candidates/${c.id}`}
-                // Stacked and centred on purpose — declared here rather than inherited,
-                // because `.widget-card` sets its own flex-direction and silently
-                // overrode a row layout in the first version of this card.
-                className="widget-card flex-col items-center gap-2 p-4 text-center transition-shadow hover:shadow-[rgba(0,0,0,0.06)_0px_4px_16px]"
+                // One row: avatar, name, specialism. `flex-row` is explicit because
+                // `.widget-card` is `flex-direction: column` by default.
+                className="widget-card flex-row items-center gap-3 px-4 py-3 transition-shadow hover:shadow-[rgba(0,0,0,0.06)_0px_4px_16px]"
               >
-                <Avatar src={c.avatarUrl} name={c.name} size={40} />
-                <div className="w-full min-w-0">
-                  <p className="truncate font-semibold leading-snug text-[var(--text-2)]" title={c.name}>
+                <Avatar src={c.avatarUrl} name={c.name} size={32} />
+                <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                  {/* Both truncate, with the full value on hover — the name gives way
+                      first, but a long specialism can't push it off the card. */}
+                  <p className="min-w-0 truncate font-semibold text-[var(--text-2)]" title={c.name}>
                     {c.name}
                   </p>
-                  <p className="mt-0.5 truncate widget-data-label" title={c.primaryStack}>
+                  <span className="min-w-0 max-w-[50%] shrink-0 truncate widget-data-label" title={c.primaryStack}>
                     {c.primaryStack}
-                  </p>
+                  </span>
                 </div>
               </Link>
             ))}
