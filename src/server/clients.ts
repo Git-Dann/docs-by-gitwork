@@ -37,6 +37,7 @@ import {
 import { computeLaunchpadSummaries } from "@/server/launchpad";
 import { recordAuditEntry } from "@/server/audit-log";
 import type { EffectiveUser } from "@/server/auth/effective-user";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 const clientBankAccounts = (prisma as unknown as {
   clientBankAccount: Prisma.ClientBankAccountDelegate;
@@ -1130,7 +1131,7 @@ export async function setClientProductTeam(
   if (!client) return null;
   // Keep only ids that are members of this workspace, de-duped, in submitted order.
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: workspace.id, userId: { in: userIds } },
+    where: { workspaceId: workspace.id, userId: { in: userIds }, ...ACTIVE_MEMBER },
     select: { userId: true },
   });
   const valid = new Set(members.map((m) => m.userId));

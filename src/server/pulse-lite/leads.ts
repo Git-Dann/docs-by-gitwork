@@ -16,6 +16,7 @@ import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { triage } from "./public-scan";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 function notFound(message: string): Error {
   return Object.assign(new Error(message), { status: 404 });
@@ -89,7 +90,7 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
   if (!workspace) return;
 
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: workspace.id },
+    where: { workspaceId: workspace.id, ...ACTIVE_MEMBER },
     include: { user: { select: { email: true } } },
   });
   const admins = members.filter((m) => isAtLeast(m.role, "ADMIN")).map((m) => m.user.email).filter(Boolean);

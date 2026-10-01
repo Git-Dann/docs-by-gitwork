@@ -4,6 +4,7 @@
 // hard-delete so we can debug if a device re-registers).
 
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export type DeviceTokenInput = {
   userId: string;
@@ -74,8 +75,9 @@ export async function listActiveDeviceTokensForUser(userId: string): Promise<Dev
  * recipient.
  */
 export async function listActiveDeviceTokensForWorkspace(workspaceId: string): Promise<DeviceTokenRecord[]> {
+  // ACTIVE only — a leaver's phone must stop receiving client notifications.
   const memberships = await prisma.workspaceMember.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...ACTIVE_MEMBER },
     select: { userId: true },
   });
   if (memberships.length === 0) return [];

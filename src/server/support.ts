@@ -233,6 +233,7 @@ import {
   encryptScraperConfig,
   decryptScraperConfig,
 } from "@/server/support-scraper-config";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export { SENSITIVE_SCRAPER_KEYS, encryptScraperConfig, decryptScraperConfig };
 
@@ -2289,7 +2290,7 @@ export async function listWorkspaceMembers(
 ): Promise<{ id: string; name: string; email: string; role: string }[]> {
   const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
-    where: { workspaceId, user: seedAccountUserWhere() },
+    where: { workspaceId, user: seedAccountUserWhere(), ...ACTIVE_MEMBER },
     include: { user: true },
   });
   const all = rows

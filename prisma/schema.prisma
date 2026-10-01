@@ -522,11 +522,22 @@ model WorkspaceMember {
   // ── Backstage (internal ops) ───────────────────────────────────────
   countryCode         String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
   annualLeaveDays     Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays
+  /// Set when the member is archived (someone leaving). Archived members lose all
+  /// access immediately — sign-in is refused, live sessions are cleared on their
+  /// next read, and every route that resolves a user refuses them — and are hidden
+  /// from every roster in Foundry. Nothing else is touched, so restoring within the
+  /// retention window brings back their role, permissions and overrides exactly.
+  /// After ARCHIVE_RETENTION_DAYS the membership row is deleted (the User row and
+  /// everything attributed to it are kept). See src/server/auth/member-status.ts.
+  archivedAt          DateTime?
+  /// Who archived them — for the audit trail and the "archived by" column.
+  archivedById        String?
   createdAt           DateTime  @default(now())
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+  @@index([workspaceId, archivedAt])
 }
 
 model WorkspaceInvite {

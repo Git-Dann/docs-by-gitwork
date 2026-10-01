@@ -18,6 +18,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { SettingsCard } from "@/components/settings/settings-card";
+import { UserManagementTable, type ManagedMember } from "@/components/settings/team/user-management-table";
 import { cn } from "@/lib/format";
 import { useClientList } from "@/hooks/use-proposals";
 import { getRolePermissions, listMemberClients, setMemberClients } from "@/lib/api";
@@ -29,7 +30,6 @@ import {
   canManageRole,
   isAtLeast,
   isSuperAdmin,
-  roleLabel,
   type ConfigurableRoleId,
   type PermissionCategory,
   type PermissionPresetId,
@@ -47,15 +47,8 @@ interface Invite {
   acceptedBy: { name: string | null; email: string } | null;
 }
 
-interface Member {
-  id: string;
-  role: string;
-  permissions: string[];
-  createdAt: string;
-  /** True once the member has actually signed in (Google OAuth captured); false = provisioned/invited only. */
-  hasSignedIn: boolean;
-  user: { id: string; name: string | null; email: string; avatarUrl?: string | null };
-}
+/** The managed-member row — see ManagedMember for the lifecycle fields. */
+type Member = ManagedMember;
 
 /** Member avatar: profile photo when present, initial fallback otherwise. */
 function MemberAvatar({ user, size = 32 }: { user: Member["user"]; size?: number }) {
@@ -79,6 +72,7 @@ function MemberAvatar({ user, size = 32 }: { user: Member["user"]; size?: number
 export function TeamSection() {
   const { data: session } = useSession();
   const sessionRole = session?.user?.role ?? "";
+  const sessionUserId = session?.user?.id ?? null;
   const isAdmin = isAtLeast(sessionRole, "ADMIN");
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -233,7 +227,8 @@ export function TeamSection() {
             </button>
           </div>
           <p className="mt-2 text-xs text-[var(--text-4)]">
-            Anyone with the link can join using their @gitwork.co.uk Google account.
+            Anyone with the link can join using their @gitwork.co.uk Google account. They join as a
+            Developer — raise their role in Members below.
           </p>
         </SettingsCard>
       ) : null}
@@ -362,67 +357,25 @@ export function TeamSection() {
       <SettingsCard
         number="04"
         title="Members"
-        right={<span className="text-xs text-[var(--text-4)]">{members.length} people</span>}
+        right={
+          <span className="text-xs text-[var(--text-4)]">
+            {members.filter((m) => m.status === "active").length} active
+          </span>
+        }
         bodyClassName="p-0"
       >
         {loading ? (
           <p className="px-6 py-5 text-sm text-[var(--text-3)]">Loading…</p>
         ) : (
-          <div>
-            {/* Header row — edge-to-edge, no extra inset */}
-            <div className="hidden items-center gap-3 border-b border-[var(--border-2)] bg-[var(--surface-1)] px-6 py-2.5 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_80px]">
-              <span className="app-eyebrow">Member</span>
-              <span className="app-eyebrow">Role</span>
-              <span className="app-eyebrow">Access</span>
-              <span />
-            </div>
-            <div className="divide-y divide-[var(--border-2)]">
-              {sortedMembers.map((m) => (
-                <div
-                  key={m.id}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-6 py-3.5 sm:grid-cols-[minmax(0,1fr)_110px_minmax(0,220px)_80px]"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <MemberAvatar user={m.user} size={32} />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium text-[var(--text-1)]">
-                          {m.user.name ?? m.user.email}
-                        </p>
-                        <MemberStatus active={m.hasSignedIn} />
-                      </div>
-                      <p className="truncate text-xs text-[var(--text-4)]">{m.user.email}</p>
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "hidden w-fit rounded-full px-2 py-0.5 text-xs font-medium sm:inline-block",
-                      isAtLeast(m.role, "ADMIN")
-                        ? "bg-[var(--brand-50)] text-[var(--brand-700)]"
-                        : "bg-[var(--surface-2)] text-[var(--text-3)]",
-                    )}
-                  >
-                    {roleLabel(m.role)}
-                  </span>
-                  <span className="hidden truncate text-xs text-[var(--text-4)] sm:block">
-                    {accessSummary(m.role, m.permissions)}
-                  </span>
-                  {canManageRole(sessionRole, m.role) ? (
-                    <button
-                      onClick={() => setAccessMember(m)}
-                      className="flex items-center gap-1.5 justify-self-end rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                      title="Edit access"
-                    >
-                      <PencilIcon className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Edit</span>
-                    </button>
-                  ) : (
-                    <span className="hidden sm:block" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <UserManagementTable
+            members={sortedMembers}
+            actorRole={sessionRole}
+            actorUserId={sessionUserId}
+            avatar={(m) => <MemberAvatar user={m.user} size={32} />}
+            accessSummary={(m) => accessSummary(m.role, m.permissions)}
+            onEditAccess={(m) => setAccessMember(m)}
+            onChanged={load}
+          />
         )}
       </SettingsCard>
 
@@ -520,32 +473,6 @@ function accessSummary(role: string, permissions: string[]): string {
   return parts.join(" · ");
 }
 
-/**
- * Activity marker for the members table — a sanctioned 6px status dot + mono micro-label.
- * Solid green = the member has signed in (active on the platform); hollow steel ring =
- * provisioned/invited but not yet signed in. Label hides below `sm` (the dot still shows).
- */
-function MemberStatus({ active }: { active: boolean }) {
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5"
-      title={active ? "Active — has signed in" : "Invited — hasn't signed in yet"}
-    >
-      <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          active ? "bg-[var(--success-500)]" : "border-[1.5px] border-[var(--text-4)] bg-transparent",
-        )}
-      />
-      <span
-        className="hidden text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-4)] sm:inline"
-        style={{ fontFamily: "var(--font-mono)" }}
-      >
-        {active ? "Active" : "Invited"}
-      </span>
-    </span>
-  );
-}
 
 function MemberAccessModal({
   member,
@@ -630,9 +557,6 @@ function MemberAccessModal({
   }
 
   // Two-step delete: first click reveals the confirm strip, second click does it.
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function togglePermission(id: string) {
     if (isSuper) return; // Super Admin always has everything.
@@ -688,22 +612,6 @@ function MemberAccessModal({
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function confirmDelete() {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const res = await fetch(`/api/team/members/${member.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(data?.error ?? `Remove failed (${res.status})`);
-      }
-      await onSaved();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Remove failed");
-      setDeleting(false);
     }
   }
 
@@ -826,51 +734,16 @@ function MemberAccessModal({
               </div>
             ) : null}
 
-            {/* Danger zone */}
+            {/* No removal here any more. Taking someone out is Archive, in the Members
+                table — one path, with the confirmation that shows their open work and the
+                Google Admin step. This used to DELETE the membership and said it was
+                "reversible only by sending a new invite", which was the unsafe operation:
+                see RevokedAccessError in src/server/auth/effective-user.ts. */}
             {!isSelf ? (
-              <div className="rounded-[10px] border border-[var(--danger-200)] bg-[var(--danger-50)] px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--danger-700)]">
-                  Danger zone
-                </p>
-                <p className="mt-1 text-[11px] leading-tight text-[var(--text-3)]">
-                  Removes the member from this workspace. Their Foundry sign-in stops working on the
-                  next request. Reversible only by sending a new invite.
-                </p>
-                {!confirmingDelete ? (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(true)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--danger-300)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--danger-700)] transition hover:bg-[var(--danger-100)]"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5" />
-                    Remove from workspace…
-                  </button>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs font-semibold text-[var(--danger-700)]">
-                      Remove {member.user.name ?? member.user.email}?
-                    </p>
-                    <div className="flex gap-2">
-                      <Button type="button" variant="danger" size="sm" onClick={confirmDelete} loading={deleting}>
-                        Yes, remove
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setConfirmingDelete(false);
-                          setDeleteError(null);
-                        }}
-                        disabled={deleting}
-                      >
-                        Keep
-                      </Button>
-                    </div>
-                    {deleteError ? <p className="text-xs text-[var(--danger-500)]">{deleteError}</p> : null}
-                  </div>
-                )}
-              </div>
+              <p className="text-[11px] leading-tight text-[var(--text-4)]">
+                To remove {member.user.name ?? member.user.email}, use Archive in the Members table.
+                They can be restored for 30 days.
+              </p>
             ) : null}
           </div>
 

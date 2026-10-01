@@ -33,6 +33,7 @@ import type {
   ExpenseStatus,
   ExpenseCategory,
 } from "@/types/backstage";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -218,6 +219,8 @@ export async function listLeaveRequests(
 
   // Look up country codes per user in one batch — small workspace, simple query.
   const userIds = Array.from(new Set(rows.map((r) => r.userId)));
+  // includes-archived: resolving the country for EXISTING leave rows, which are history. A
+  // leaver's past leave must still render with the right holidays.
   const members = await prisma.workspaceMember.findMany({
     where: { workspaceId: user.workspaceId, userId: { in: userIds } },
     select: { userId: true, countryCode: true },
@@ -912,6 +915,7 @@ export async function listWorkspaceMembers(user: EffectiveUser): Promise<Backsta
   const now = new Date();
   const members = await prisma.workspaceMember.findMany({
     where: {
+      ...ACTIVE_MEMBER,
       workspaceId: user.workspaceId,
       user: seedAccountUserWhere(),
     },
@@ -993,6 +997,7 @@ export async function getStaffingAlerts(
   const [members, approvedLeave] = await Promise.all([
     prisma.workspaceMember.findMany({
       where: {
+        ...ACTIVE_MEMBER,
         workspaceId: user.workspaceId,
         user: seedAccountUserWhere(),
       },
@@ -1170,6 +1175,7 @@ export async function getCalendarMonth(
   const [members, leave, holidayCountries] = await Promise.all([
     prisma.workspaceMember.findMany({
       where: {
+        ...ACTIVE_MEMBER,
         workspaceId: user.workspaceId,
         user: seedAccountUserWhere(),
       },

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isAtLeast } from "@/types/auth";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // Thin Resend wrapper. Reads workspace email config from the DB on each send —
 // configuration is small and infrequent, so no cache. Returns silently on
@@ -80,7 +81,7 @@ export async function listBackstageApproverEmails(
   excludeUserId?: string,
 ): Promise<string[]> {
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...ACTIVE_MEMBER },
     include: { user: { select: { id: true, email: true } } },
   });
   return members

@@ -71,7 +71,7 @@ export async function verifyGuestPassword(
       passwordHash: true,
       memberships: {
         where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { role: true },
+        select: { role: true, archivedAt: true },
         take: 1,
       },
     },
@@ -83,6 +83,10 @@ export async function verifyGuestPassword(
 
   if (!user || !user.passwordHash || !matches) return { ok: false };
   if (!isPasswordLoginAllowed(user.memberships[0]?.role)) return { ok: false };
+  // An archived guest is refused exactly like a wrong password — same response,
+  // same timing (bcrypt already ran above), so the login form cannot be used to
+  // learn whether an account exists or has been archived.
+  if (user.memberships[0]?.archivedAt) return { ok: false };
 
   return { ok: true, userId: user.id, email: user.email, name: user.name };
 }

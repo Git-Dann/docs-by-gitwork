@@ -31,6 +31,7 @@ import type {
   TaskAttentionDTO,
 } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
@@ -734,7 +735,7 @@ export async function importTasks(
     assigneeIds.length
       ? (
           await prisma.workspaceMember.findMany({
-            where: { workspaceId: user.workspaceId, userId: { in: assigneeIds } },
+            where: { workspaceId: user.workspaceId, userId: { in: assigneeIds }, ...ACTIVE_MEMBER },
             select: { userId: true },
           })
         ).map((m) => m.userId)
@@ -1270,7 +1271,7 @@ export async function addTaskComment(
   let mentionIds: string[] = [];
   if (rawIds.length > 0) {
     const members = await prisma.workspaceMember.findMany({
-      where: { workspaceId: user.workspaceId, userId: { in: rawIds } },
+      where: { workspaceId: user.workspaceId, userId: { in: rawIds }, ...ACTIVE_MEMBER },
       select: { userId: true },
     });
     const valid = new Set(members.map((m) => m.userId));

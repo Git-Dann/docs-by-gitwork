@@ -5,6 +5,7 @@ import type { EffectiveUser } from "@/server/auth/effective-user";
 import type { CalendarConnectionMember, TeamCalendarEvent } from "@/types/backstage";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import { dedupeAbsences } from "@/lib/backstage/dedupe-absences";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
@@ -27,8 +28,10 @@ export function monthGridRange(year: number, month: number): { from: Date; to: D
 export async function listCalendarConnections(
   user: EffectiveUser,
 ): Promise<{ selfConnected: boolean; members: CalendarConnectionMember[] }> {
+  // ACTIVE only — never read a leaver's calendar with their stored token.
   const members = await prisma.workspaceMember.findMany({
     where: {
+      ...ACTIVE_MEMBER,
       workspaceId: user.workspaceId,
       user: {
         ...seedAccountUserWhere(),
@@ -65,6 +68,7 @@ export async function getTeamCalendarEvents(
 
   const members = await prisma.workspaceMember.findMany({
     where: {
+      ...ACTIVE_MEMBER,
       workspaceId: user.workspaceId,
       userId: { in: userIds },
       user: { googleOAuthRefreshToken: { not: null } },

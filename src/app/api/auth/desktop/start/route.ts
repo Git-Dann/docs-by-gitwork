@@ -16,8 +16,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
+import { isActiveMember } from "@/server/auth/member-status";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
+import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -89,7 +91,22 @@ export async function GET(request: NextRequest) {
     include: { memberships: { where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } }, take: 1 } },
   });
 
+  // ⚠️ Refuse a removed or archived member before anything is minted. This path
+  // signs a long-lived token, so without the check an archived person whose web
+  // session had not yet been revalidated could exchange it here for a desktop
+  // token that outlives the session check entirely. Mirrors `refusedMembership` in
+  // src/auth.ts and the mobile callback — `sign-in-paths.test.ts` holds all three.
+  if (dbUser) {
+    const existing = dbUser.memberships[0];
+    if (!existing || !isActiveMember(existing)) {
+      return schemeHandoff("error=revoked", "error");
+    }
+  }
+
   const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(email);
+  // includes-archived: the first-admin bootstrap. Counting archived admins is the
+  // fail-SAFE direction — otherwise archiving every admin would make the next
+  // sign-in a Super Admin.
   const adminOrAboveCount = await prisma.workspaceMember.count({
     where: {
       workspace: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -106,7 +123,7 @@ export async function GET(request: NextRequest) {
         name: session.user?.name ?? email.split("@")[0],
         memberships: {
           create: {
-            role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
+            role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
             permissions: [],
             workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
           },
@@ -127,7 +144,7 @@ export async function GET(request: NextRequest) {
   }
 
   const membership = dbUser.memberships[0];
-  const role = membership?.role ?? "STAFF";
+  const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
   const permissions = membership ? await recomputeMember(membership.id) : [];
 
   const token = await signMobileToken({ sub: dbUser.id, email: dbUser.email, role, permissions });
