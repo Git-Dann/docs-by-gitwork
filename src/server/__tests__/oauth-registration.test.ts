@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/oauth/register/route";
+import { isAllowedRedirectUri } from "@/server/oauth";
+import type { OAuthClient } from "@prisma/client";
 
 const { createClient, enabledWorkspace } = vi.hoisted(() => ({
   createClient: vi.fn(),
@@ -85,5 +87,30 @@ describe("OAuth dynamic client registration", () => {
     const response = await register(["http://127.0.0.1:49152/callback"]);
     expect(response.status).toBe(503);
     expect(createClient).not.toHaveBeenCalled();
+  });
+});
+
+describe("OAuth redirect URI matching", () => {
+  const client = {
+    redirectUris: [
+      "http://127.0.0.1:49152/callback/desktop-session",
+      "http://[::1]:49152/callback/desktop-session",
+      "https://claude.ai/api/mcp/auth_callback",
+    ],
+  } as OAuthClient;
+
+  it.each([
+    "http://127.0.0.1:63383/callback/desktop-session",
+    "http://[::1]:63383/callback/desktop-session",
+  ])("accepts a registered loopback callback when only its ephemeral port changed: %s", (uri) => {
+    expect(isAllowedRedirectUri(client, uri)).toBe(true);
+  });
+
+  it.each([
+    "http://127.0.0.1:63383/callback/other-session",
+    "http://localhost:63383/callback/desktop-session",
+    "https://claude.ai:8443/api/mcp/auth_callback",
+  ])("still rejects a callback whose host, path, or HTTPS port changed: %s", (uri) => {
+    expect(isAllowedRedirectUri(client, uri)).toBe(false);
   });
 });

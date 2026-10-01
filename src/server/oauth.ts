@@ -88,7 +88,34 @@ export async function findClientById(clientId: string): Promise<OAuthClient | nu
 }
 
 export function isAllowedRedirectUri(client: OAuthClient, redirectUri: string): boolean {
-  return client.redirectUris.includes(redirectUri);
+  if (client.redirectUris.includes(redirectUri)) return true;
+
+  try {
+    const requested = new URL(redirectUri);
+    const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+    if (requested.protocol !== "http:" || !loopbackHosts.has(requested.hostname)) {
+      return false;
+    }
+
+    // RFC 8252 §8.4 requires exact redirect matching except for the port of a
+    // loopback callback, because desktop clients bind an ephemeral local port.
+    return client.redirectUris.some((registeredUri) => {
+      try {
+        const registered = new URL(registeredUri);
+        return registered.protocol === "http:" &&
+          registered.hostname === requested.hostname &&
+          registered.pathname === requested.pathname &&
+          registered.search === requested.search &&
+          registered.username === requested.username &&
+          registered.password === requested.password &&
+          registered.hash === requested.hash;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
 }
 
 // ── authorization codes ────────────────────────────────────────────────────
