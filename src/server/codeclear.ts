@@ -14,6 +14,7 @@ import type {
 import { deriveCandidateAnalysisState } from "@/types/codeclear";
 import { computeOverallCalibre, effectiveTier } from "@/server/codeclear-scoring";
 import { normalizeToMonthly } from "@/server/rate-card";
+import { activeDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
 
 type SeedCodeClearCandidate = {
   name: string;
@@ -879,16 +880,21 @@ export async function getCodeClearStats(
   client: CodeClearDbClient,
   workspaceId: string,
 ): Promise<CodeClearStatsResponse> {
+  // Developers whose person has left are not counted — the Overview's numbers
+  // describe the current roster. See src/server/codeclear-archived.ts.
+  const active = activeDeveloperWhere(await archivedTeamEmails(workspaceId));
   const [total, byStatus, scores, recheckDue, recentActivity] = await Promise.all([
     client.candidate.count({
       where: {
         workspaceId,
+        ...active,
       },
     }),
     client.candidate.groupBy({
       by: ["status"],
       where: {
         workspaceId,
+        ...active,
       },
       _count: {
         id: true,
@@ -911,6 +917,7 @@ export async function getCodeClearStats(
     client.candidate.count({
       where: {
         workspaceId,
+        ...active,
         recheckDueAt: {
           gte: new Date(),
           lte: shiftDateByDays(30),

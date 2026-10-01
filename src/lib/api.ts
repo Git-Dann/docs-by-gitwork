@@ -918,6 +918,7 @@ export async function listCodeClearCandidates(
   if (params.sortDir) query.set("sortDir", params.sortDir);
   if (typeof params.scoreMin === "number") query.set("scoreMin", String(params.scoreMin));
   if (typeof params.scoreMax === "number") query.set("scoreMax", String(params.scoreMax));
+  if (params.archived) query.set("archived", "1");
   const qs = query.toString();
   return apiFetch<CandidateListResponse>(`/api/codeclear/candidates${qs ? `?${qs}` : ""}`);
 }

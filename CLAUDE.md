@@ -6058,3 +6058,27 @@ happen with a real Google sign-in. **Post-deploy, in order:** archive a test mem
 their open tab is signed out within 5 minutes; sign in as them and confirm "Your access to
 Foundry has been removed"; confirm they're gone from a task assignee picker and Backstage;
 restore them and confirm their role is unchanged; then **add the `member-purge` crontab line**.
+
+### 57.8 Archived members in Code (follow-up)
+
+Archiving someone in Settings → Team now also moves their developer card in Code to a new
+**Archived** tab (`/app/codeclear/archived`), reduced to name, avatar and specialism.
+
+- **Derived, never stored.** Code lists `Candidate` rows, which are not team members — the only
+  link is email. `archivedTeamEmails()` (`src/server/codeclear-archived.ts`) finds people whose
+  membership is archived **or who have a User row and no membership** (purged after 30 days, or
+  removed before archiving existed). Without the second case a developer would silently reappear
+  on the active roster the day their window ran out. Matched case-insensitively, because
+  `Candidate.email` is typed by hand.
+- **Excluded everywhere the developer list is used** — the list route defaults to the active
+  roster, so Developers, Pipeline and Overview (which all read it) drop archived developers, and
+  `getCodeClearStats` excludes them from the Overview's counts. `?archived=1` returns only them.
+- ⚠️ **Pre-existing bug fixed in the same function:** `buildCandidateWhere` set a top-level `OR`
+  for stack, search, confidence and score range, and an object literal keeps only the LAST key —
+  so combining any two filters silently dropped all but one (search + a confidence filter ignored
+  the search). Each group is now its own clause in `AND`. The builder moved to
+  `src/server/codeclear-candidate-where.ts`, since Next rejects non-route exports from `route.ts`.
+- **Known limit, stated on the page:** a developer card with no email, or one that differs from
+  the address they sign in with, cannot be linked and stays under Developers.
+- **Not changed:** an archived developer's open `Placement`s still count in Portal's dev counts
+  and monthly cost. Ending placements mutates delivery data, so it was left as a decision.
