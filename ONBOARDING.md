@@ -196,6 +196,11 @@ skipped including the additive parts**, and the live DB silently never gets your
 
 ## 7. When in doubt
 
+**Connecting a desktop MCP client?** Use a Streamable HTTP server URL, then authenticate.
+Desktop callbacks use HTTP loopback addresses; Foundry supports `127.0.0.1`, `[::1]`
+and `localhost` through its existing DCR + PKCE flow. See [MCP desktop auth](docs/mcp-desktop-auth.md)
+for setup and the old `invalid_client_metadata` registration error.
+
 Ask Dan (dan@gitwork.co.uk). Two things worth asking about rather than guessing: anything that
 changes the database schema, and anything that changes shared CSS in `globals.css` or a shared
 primitive (`widget-card`, `widget-header`, `app-table`, `<Modal>`) — a change there is never local,
