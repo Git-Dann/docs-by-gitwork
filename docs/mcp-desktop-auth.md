@@ -34,8 +34,9 @@ comes from the old registration validator, which rejected desktop IP loopback
 callbacks. Deploy the fix before retrying authentication. A fresh connection
 still requires Foundry consent and the member's existing MCP permission; no new
 permission or token type is introduced. Authorization still matches the exact
-registered redirect URI apart from a loopback host alias or port change, and token exchange
-still checks the URI bound to the single-use code and its PKCE verifier.
+registered redirect URI apart from a loopback host alias or port change. Token
+exchange accepts the same loopback host aliases but still requires the port and
+path bound to the single-use code, along with its PKCE verifier.
 
 Regression check (no database or credentials needed):
 

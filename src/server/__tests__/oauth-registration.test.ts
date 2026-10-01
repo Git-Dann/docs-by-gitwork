@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/oauth/register/route";
-import { isAllowedRedirectUri } from "@/server/oauth";
+import { isAllowedRedirectUri, redirectUrisMatch } from "@/server/oauth";
 import type { OAuthClient } from "@prisma/client";
 
 const { createClient, enabledWorkspace } = vi.hoisted(() => ({
@@ -112,5 +112,19 @@ describe("OAuth redirect URI matching", () => {
     "https://claude.ai:8443/api/mcp/auth_callback",
   ])("still rejects a callback whose host, path, or HTTPS port changed: %s", (uri) => {
     expect(isAllowedRedirectUri(client, uri)).toBe(false);
+  });
+
+  it("matches the proxy-normalized authorization callback during token exchange", () => {
+    expect(redirectUrisMatch(
+      "http://localhost:53872/callback/desktop-session",
+      "http://127.0.0.1:53872/callback/desktop-session",
+    )).toBe(true);
+  });
+
+  it("still requires the authorization callback port during token exchange", () => {
+    expect(redirectUrisMatch(
+      "http://localhost:53872/callback/desktop-session",
+      "http://127.0.0.1:63383/callback/desktop-session",
+    )).toBe(false);
   });
 });
