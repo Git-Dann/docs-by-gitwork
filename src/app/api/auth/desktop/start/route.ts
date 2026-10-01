@@ -19,6 +19,7 @@ import { signMobileToken } from "@/server/auth/mobile-jwt";
 import { isActiveMember } from "@/server/auth/member-status";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
+import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
         name: session.user?.name ?? email.split("@")[0],
         memberships: {
           create: {
-            role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
+            role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
             permissions: [],
             workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
           },
@@ -143,7 +144,7 @@ export async function GET(request: NextRequest) {
   }
 
   const membership = dbUser.memberships[0];
-  const role = membership?.role ?? "STAFF";
+  const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
   const permissions = membership ? await recomputeMember(membership.id) : [];
 
   const token = await signMobileToken({ sub: dbUser.id, email: dbUser.email, role, permissions });

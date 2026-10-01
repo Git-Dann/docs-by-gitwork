@@ -6022,11 +6022,16 @@ only the exception, "Invited", since "Active" means active-vs-archived on this t
 
 Each is a policy decision or a larger change, recorded rather than done silently:
 
-1. **Every new `@gitwork.co.uk` sign-in is auto-provisioned as STAFF**, and STAFF's default is
-   every module, `seeAllClients`, `code.viewRates`, `docs.viewCosts`, `rateCard.view` and manage on
-   five products. A new junior or contractor sees commercial rates and every client on day one.
-   GUEST's own comment in `src/types/auth.ts` names this. Provisioning as DEVELOPER, or as a
-   pending state needing approval, is Dan's call.
+1. ✅ **Resolved in the same PR (Dan's call).** Every new `@gitwork.co.uk` sign-in used to be
+   auto-provisioned as STAFF, whose default is every module, `seeAllClients`, `code.viewRates`,
+   `docs.viewCosts`, `rateCard.view` and manage on five products — so a new account saw
+   commercial rates and every client on day one. New memberships are now created as
+   **`DEFAULT_PROVISIONED_ROLE` (DEVELOPER)** on all four paths: web, iOS and desktop sign-in,
+   and invite acceptance. An Admin raises the role in Settings → Team. ⚠️ Existing members were
+   NOT changed — only what a brand-new membership starts as. The known owner emails and the
+   first-admin bootstrap still become Super Admin. `provisioned-role.test.ts` fails if any
+   path hardcodes a role again, and also pins that DEVELOPER's defaults carry none of the
+   rates/all-clients grants that made the change worth making.
 2. **113 API routes resolve no user at all** and trust any valid session from middleware. After
    this PR an archived member's session is cleared within 5 minutes — but those routes also let
    any *active* member of any role call them (a DEVELOPER can PATCH any client's wiki documents).

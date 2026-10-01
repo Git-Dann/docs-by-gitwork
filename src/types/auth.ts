@@ -70,6 +70,22 @@ export const ROLE_IDS = ["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER", "GUEST"] 
 
 export type RoleId = (typeof ROLE_IDS)[number];
 
+/**
+ * The role a person gets when Foundry creates their membership for them — a first
+ * Google sign-in on web, iOS or desktop, or accepting an invite link.
+ *
+ * ⚠️ DEVELOPER, not STAFF (Dan, Oct 2026). STAFF's default is every module,
+ * `seeAllClients`, `code.viewRates`, `docs.viewCosts` and `rateCard.view`, so any new
+ * `@gitwork.co.uk` account used to see commercial rates and every client on day one,
+ * before anyone had decided it should. DEVELOPER is the minimal internal role; an
+ * Admin raises it in Settings → Team. The first-admin bootstrap and the known owner
+ * emails still become Super Admin — that is a separate, deliberate rule.
+ *
+ * Every provisioning path reads this one constant; `provisioned-role.test.ts` fails
+ * if any of them hardcodes a role again.
+ */
+export const DEFAULT_PROVISIONED_ROLE = "DEVELOPER" as const satisfies RoleId;
+
 export interface RoleDef {
   id: RoleId;
   label: string;
@@ -117,9 +133,9 @@ export const ROLES: readonly RoleDef[] = [
     // and the only one whose default grant is NOTHING. Every other role's default is a
     // list of things it can reach; a guest starts with none and a Super Admin turns on
     // exactly what they should see. That asymmetry is the point: forgetting to restrict
-    // a guest leaves them with nothing, not with everything — which is what would
-    // happen today, since a new sign-in auto-provisions as STAFF and STAFF inherits
-    // every module id.
+    // a guest leaves them with nothing, not with everything. (A new Google sign-in
+    // used to auto-provision as STAFF, which inherits every module id; it is now
+    // DEFAULT_PROVISIONED_ROLE.)
     id: "GUEST",
     label: "Guest",
     rank: 10,

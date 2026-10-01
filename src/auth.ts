@@ -8,6 +8,7 @@ import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { verifyGuestPassword } from "@/server/auth/password-login";
 import { isActiveMember } from "@/server/auth/member-status";
+import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 /**
  * How often a live session re-checks that its member is still active.
@@ -194,12 +195,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // A password sign-in must never CREATE anything. `authorize` already proved the
         // user exists and is a guest, so reaching this with no row means the account was
-        // deleted mid-session — refuse rather than quietly re-provision them as STAFF,
+        // deleted mid-session — refuse rather than quietly re-provision them,
         // which is what the branch below would otherwise do.
         if (!dbUser && isPasswordSignIn) return token;
 
-        // Auto-provision new Gitwork team members. New members default to STAFF (whose
-        // access is whatever the role matrix grants); a Super Admin can refine their role.
+        // Auto-provision new Gitwork team members as DEFAULT_PROVISIONED_ROLE
+        // (DEVELOPER — the minimal internal role). An Admin raises it in Settings → Team.
         if (!dbUser) {
           dbUser = await prisma.user.create({
             data: {
@@ -207,7 +208,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               name: user.name ?? user.email.split("@")[0],
               memberships: {
                 create: {
-                  role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
+                  role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
                   permissions: [],
                   workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
                 },
@@ -266,7 +267,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         token.name = dbUser.name ?? token.name;
         token.email = dbUser.email ?? token.email;
-        token.role = membership?.role ?? "STAFF";
+        token.role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
         // Resolve + persist the member's effective permissions from the role matrix so
         // the JWT carries the live set (and the cached column stays in sync).
         token.permissions = membership ? await recomputeMember(membership.id) : [];

@@ -5,7 +5,7 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
-import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
+import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId, DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 import {
   ACTIVE_MEMBER,
   ARCHIVE_RETENTION_DAYS,
@@ -399,7 +399,7 @@ export async function acceptInvite(token: string, userId: string) {
   await prisma.workspaceMember.upsert({
     where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
     update: {},
-    create: { workspaceId: invite.workspaceId, userId, role: "STAFF", permissions: [] },
+    create: { workspaceId: invite.workspaceId, userId, role: DEFAULT_PROVISIONED_ROLE, permissions: [] },
   });
 
   // Only on a genuine first join (not a re-accept) — let admins know.

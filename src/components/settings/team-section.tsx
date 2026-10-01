@@ -227,7 +227,8 @@ export function TeamSection() {
             </button>
           </div>
           <p className="mt-2 text-xs text-[var(--text-4)]">
-            Anyone with the link can join using their @gitwork.co.uk Google account.
+            Anyone with the link can join using their @gitwork.co.uk Google account. They join as a
+            Developer — raise their role in Members below.
           </p>
         </SettingsCard>
       ) : null}

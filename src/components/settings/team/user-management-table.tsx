@@ -20,8 +20,7 @@ import {
   isAtLeast,
   normalizeOverrides,
   roleLabel,
-  type RoleId,
-} from "@/types/auth";
+  type RoleId, DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 export type MemberStatusValue = "active" | "archived" | "expired";
 
@@ -486,7 +485,7 @@ function ReinstatePanel({ actorRole, onDone }: { actorRole: string; onDone: () =
   const [email, setEmail] = useState("");
   const assignable = ROLES.filter((r) => canManageRole(actorRole, r.id));
   const [role, setRole] = useState<RoleId>(
-    (assignable.find((r) => r.id === "STAFF")?.id ?? assignable[assignable.length - 1]?.id ?? "STAFF") as RoleId,
+    (assignable.find((r) => r.id === DEFAULT_PROVISIONED_ROLE)?.id ?? assignable[assignable.length - 1]?.id ?? "STAFF") as RoleId,
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
