@@ -998,6 +998,13 @@ export async function updateClientRecord(
 
   const contactData = buildContactData(input);
 
+  // A person choosing a stage by hand PINS it: the CRM automation never moves a pinned stage.
+  // Only an actual change pins — a save that resends the same stage must not switch automation
+  // off as a side effect.
+  const stageChangedByHand =
+    input.leadStage !== undefined && (input.leadStage ?? null) !== (manualClient?.leadStage ?? null);
+  const stagePin = stageChangedByHand ? { leadStagePinned: true, leadStageChangedAt: new Date() } : {};
+
   const persisted = manualClient
     ? await workspaceClients.update({
         where: {
@@ -1011,6 +1018,7 @@ export async function updateClientRecord(
           slug: nextSlug,
           ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl.trim() || null } : {}),
           ...contactData,
+          ...stagePin,
         },
       })
     : await workspaceClients.create({
@@ -1199,6 +1207,10 @@ async function serializeTouchpoints(
     occurredAt: Date;
     authorId: string | null;
     createdAt: Date;
+    source: string | null;
+    direction: string | null;
+    counterpartName: string | null;
+    counterpartEmail: string | null;
   }>,
 ): Promise<ClientTouchpoint[]> {
   const authorIds = [...new Set(rows.map((r) => r.authorId).filter(Boolean))] as string[];
@@ -1208,14 +1220,22 @@ async function serializeTouchpoints(
   const nameById = new Map(authors.map((u) => [u.id, u.name]));
   return rows.map((r) => ({
     id: r.id,
-    type: r.type as TouchpointType,
+    type: r.type as ClientTouchpoint["type"],
     note: r.note,
     occurredAt: r.occurredAt.toISOString(),
     authorId: r.authorId,
     authorName: r.authorId ? nameById.get(r.authorId) ?? null : null,
     createdAt: r.createdAt.toISOString(),
+    source: (r.source as ClientTouchpoint["source"]) ?? null,
+    direction: r.direction,
+    counterpartName: r.counterpartName,
+    counterpartEmail: r.counterpartEmail,
   }));
 }
+
+/** The activity log omits stage SUGGESTIONS — those are decisions waiting on a person, shown
+ *  in their own place on the lead, and an accepted one is logged as the STAGE move it caused. */
+const ACTIVITY_WHERE = { NOT: { type: "SUGGESTION" } } as const;
 
 /** List a client's logged touchpoints (most recent first). Null when the client is unknown. */
 export async function listClientTouchpoints(slug: string): Promise<ClientTouchpoint[] | null> {
@@ -1227,7 +1247,7 @@ export async function listClientTouchpoints(slug: string): Promise<ClientTouchpo
   if (!client) return null;
   return serializeTouchpoints(
     await prisma.clientTouchpoint.findMany({
-      where: { clientId: client.id },
+      where: { clientId: client.id, ...ACTIVITY_WHERE },
       orderBy: { occurredAt: "desc" },
       take: 200,
     }),
@@ -1454,7 +1474,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
   const touchpoints = manualRecord
     ? await serializeTouchpoints(
         await prisma.clientTouchpoint.findMany({
-          where: { clientId: manualRecord.id },
+          where: { clientId: manualRecord.id, ...ACTIVITY_WHERE },
           orderBy: { occurredAt: "desc" },
           take: 200,
         }),

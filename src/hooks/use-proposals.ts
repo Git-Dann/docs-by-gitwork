@@ -272,6 +272,8 @@ export function useUpdateClient(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
+      // Setting a lead's stage by hand pins it — the CRM panel shows that state.
+      queryClient.invalidateQueries({ queryKey: ["client-crm", slug] });
       queryClient.invalidateQueries({ queryKey: ["proposal"] });
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },

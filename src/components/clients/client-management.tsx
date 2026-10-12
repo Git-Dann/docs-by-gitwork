@@ -33,6 +33,7 @@ import { useOnboardingForms } from "@/hooks/use-onboarding-forms";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import type { ClientEngagementType, ClientListItem, LeadStage } from "@/types/client";
+import { STAGE_LABEL } from "@/lib/crm/lead-stage-engine";
 import type { OnboardingLinkRecord } from "@/lib/api";
 
 type Tab = "active" | "suggested" | "leads" | "inactive" | "pending" | "onboarding";
@@ -312,21 +313,20 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
   );
 }
 
-const LEAD_STAGE_LABEL: Record<LeadStage, string> = {
-  NEW: "New",
-  CONTACTED: "Contacted",
-  QUALIFIED: "Qualified",
-  PROPOSAL_SENT: "Proposal sent",
-  WON: "Won",
-  LOST: "Lost",
-};
+const LEAD_STAGE_LABEL = STAGE_LABEL;
+/** Early stages cool, late stages warm toward Won; Lost and On hold muted. */
 const LEAD_STAGE_TONE: Record<LeadStage, string> = {
   NEW: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
   CONTACTED: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+  DISCOVERY: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
   QUALIFIED: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  SCOPING: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
   PROPOSAL_SENT: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  IN_DISCUSSION: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  CONTRACT_SENT: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
   WON: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
   LOST: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+  ON_HOLD: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 /** Short "5 Jul" style date for the cards. */

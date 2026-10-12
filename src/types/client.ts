@@ -11,30 +11,47 @@ export type WorkspaceClientStatus =
   | "LEAD"
   | "INACTIVE";
 
-/** Sales pipeline stage for a lead (status === "LEAD"). */
+/** Sales pipeline stage for a lead (status === "LEAD"). Labels, order and the rule that moves
+ *  each one live in src/lib/crm/lead-stage-engine.ts. */
 export type LeadStage =
   | "NEW"
   | "CONTACTED"
+  | "DISCOVERY"
   | "QUALIFIED"
+  | "SCOPING"
   | "PROPOSAL_SENT"
+  | "IN_DISCUSSION"
+  | "CONTRACT_SENT"
   | "WON"
-  | "LOST";
+  | "LOST"
+  | "ON_HOLD";
 
 /** How the client engagement is structured (drives end-date semantics). */
 export type ClientEngagementType = "FIXED_SCOPE" | "PHASED" | "ROLLING" | "RETAINER";
 
-/** Kind of logged touchpoint on a lead/client. */
+/** Kind of touchpoint a person can log by hand. */
 export type TouchpointType = "CALL" | "EMAIL" | "MEETING" | "NOTE";
 
-/** A logged touchpoint (the CRM activity log on a lead's detail). */
+/** Every kind of touchpoint — the hand-logged ones plus those the CRM sync writes. */
+export type TouchpointKind = TouchpointType | "SLACK" | "PROPOSAL" | "STAGE" | "SUGGESTION";
+
+/** Where a touchpoint came from. null = logged by hand. */
+export type TouchpointSource = "gmail" | "slack" | "meeting" | "document" | "system";
+
+/** A touchpoint on a lead's activity log — hand-logged, or written by the CRM sync. */
 export interface ClientTouchpoint {
   id: string;
-  type: TouchpointType;
+  type: TouchpointKind;
   note: string | null;
   occurredAt: string;
   authorId: string | null;
   authorName: string | null;
   createdAt: string;
+  source: TouchpointSource | null;
+  /** "inbound" (from them) | "outbound" (from us) | "internal" (Gitwork-only) */
+  direction: string | null;
+  counterpartName: string | null;
+  counterpartEmail: string | null;
 }
 
 /** Lead + paused-client fields, shared by the list item and the detail record. */

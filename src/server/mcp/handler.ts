@@ -81,6 +81,7 @@ import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owner";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
+import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -300,7 +301,8 @@ const WORKSPACE_CLIENT_STATUS_VALUES = [
   "INACTIVE",
   "ARCHIVED",
 ] as const;
-const LEAD_STAGE_VALUES = ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] as const;
+// One list for every stage surface — see LEAD_STAGES in lead-stage-engine.ts.
+const LEAD_STAGE_VALUES = LEAD_STAGES;
 const ENGAGEMENT_TYPE_VALUES = ["FIXED_SCOPE", "PHASED", "ROLLING", "RETAINER"] as const;
 
 // Full editable client field set — mirrors buildContactData in src/server/clients.ts so anything
@@ -651,7 +653,7 @@ const CLIENT_FIELD_PROPERTIES: Record<string, Record<string, unknown>> = {
   engagementType: { type: "string", enum: ["FIXED_SCOPE", "PHASED", "ROLLING", "RETAINER"], description: "Engagement shape. FIXED_SCOPE/PHASED have an end date; ROLLING/RETAINER are ongoing." },
   endDate: { type: "string", description: "Project/proposal end date (ISO, e.g. 2026-08-31). Applies to fixed-scope/phased work." },
   leadSource: { type: "string", description: "Where the lead came from (LEAD clients)." },
-  leadStage: { type: "string", enum: ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] },
+  leadStage: { type: "string", enum: [...LEAD_STAGES], description: "Pipeline stage. Setting it by hand pins it — the CRM automation stops moving it until resumed." },
   leadValue: { type: "number", description: "Estimated deal value (LEAD clients)." },
   leadValueCurrency: { type: "string", description: "3-letter currency code, e.g. GBP." },
   leadFollowUpAt: { type: "string", description: "ISO date to follow up (LEAD clients)." },

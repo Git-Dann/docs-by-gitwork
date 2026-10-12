@@ -4935,3 +4935,81 @@ export function addWikiLink(
 export function removeWikiLink(slug: string, id: string): Promise<{ ok: boolean }> {
   return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links/${id}`, { method: "DELETE" });
 }
+
+// ── CRM (lead automation, actions, conversion) ──────────────────────────────
+
+const crmBase = (slug: string) => `/api/clients/${encodeURIComponent(slug)}/crm`;
+const jsonInit = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export function getLeadCrm(slug: string): Promise<{ crm: import("@/types/crm").LeadCrmStatus }> {
+  return apiFetch(crmBase(slug));
+}
+
+export function updateLeadCrm(
+  slug: string,
+  input: { enabled?: boolean; emailDomains?: string[]; ownerId?: string | null; pinned?: false },
+): Promise<{ crm: import("@/types/crm").LeadCrmStatus }> {
+  return apiFetch(crmBase(slug), jsonInit("PATCH", input));
+}
+
+export function syncLeadCrmApi(slug: string): Promise<{
+  result: import("@/types/crm").CrmSyncResult;
+  crm: import("@/types/crm").LeadCrmStatus;
+}> {
+  return apiFetch(`${crmBase(slug)}/sync`, { method: "POST" });
+}
+
+export function resolveCrmSuggestion(
+  slug: string,
+  id: string,
+  action: "accept" | "dismiss",
+): Promise<{ crm: import("@/types/crm").LeadCrmStatus }> {
+  return apiFetch(`${crmBase(slug)}/suggestions/${encodeURIComponent(id)}`, jsonInit("POST", { action }));
+}
+
+export function createLeadActionApi(
+  slug: string,
+  input: { title: string; dueAt?: string | null; ownerId?: string | null },
+): Promise<{ action: import("@/types/crm").LeadActionDTO }> {
+  return apiFetch(`${crmBase(slug)}/actions`, jsonInit("POST", input));
+}
+
+export function updateLeadActionApi(
+  slug: string,
+  id: string,
+  input: {
+    title?: string;
+    dueAt?: string | null;
+    ownerId?: string | null;
+    transition?: "accept" | "dismiss" | "done" | "reopen";
+  },
+): Promise<{ action: import("@/types/crm").LeadActionDTO }> {
+  return apiFetch(`${crmBase(slug)}/actions/${encodeURIComponent(id)}`, jsonInit("PATCH", input));
+}
+
+export function deleteLeadActionApi(slug: string, id: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`${crmBase(slug)}/actions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function getConvertPreview(slug: string): Promise<{ preview: import("@/types/crm").ConvertPreview }> {
+  return apiFetch(`${crmBase(slug)}/convert`);
+}
+
+export function convertLeadApi(
+  slug: string,
+  fields: Array<"primaryContactName" | "primaryContactEmail" | "website">,
+): Promise<{ result: import("@/types/crm").ConvertResult }> {
+  return apiFetch(`${crmBase(slug)}/convert`, jsonInit("POST", { fields }));
+}
+
+export function setMyCrmMailboxApi(enabled: boolean): Promise<{ enabled: boolean; googleConnected: boolean }> {
+  return apiFetch("/api/account/crm-mailbox", jsonInit("PATCH", { enabled }));
+}
+
+export function getMyLeadActions(): Promise<{ actions: import("@/types/crm").MyLeadAction[] }> {
+  return apiFetch("/api/desk/lead-actions");
+}

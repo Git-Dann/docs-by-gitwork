@@ -126,6 +126,11 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 # after 09:00. (This file listed foreman TWICE until July 2026 — one instance, here.)
 0 9 * * *  /opt/apps/foundry/run-cron.sh foreman              >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
+# CRM sync (Oct 2026) — every lead with automation on: reads opted-in Gmail, its internal Slack
+# channel, meetings and proposals; moves the stage on facts, proposes suggestions + actions.
+# Hourly in working hours. FAIL-SAFE if missing: a lead also syncs whenever someone opens it
+# (if its last sync is >30 min old) and on "Sync now" — this line covers leads nobody opens.
+0 8-18 * * 1-5 /opt/apps/foundry/run-cron.sh crm-sync        >> /tmp/foundry-cron.log 2>&1
 
 # Backstage availability — ONE combined leave + absence Slack digest each weekday
 # morning (08:30; Mon posts a week roll-up, Tue–Fri "out today"; silent when nobody's
