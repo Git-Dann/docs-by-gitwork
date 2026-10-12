@@ -204,8 +204,6 @@ export function WikiPublicView({
           wiki={wiki}
           availableSections={availableSections}
           onSelect={setActiveSection}
-          audience="client"
-          shareToken={token}
         />
       );
     }

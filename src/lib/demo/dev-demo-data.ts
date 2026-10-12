@@ -929,6 +929,45 @@ const demoWiki: WikiDTO = {
   // something to compare against — a demo with one month would render every trend as an
   // em-dash and prove nothing about the part most likely to be wrong (a duration where
   // DOWN is good).
+  /**
+   * Today's standups. Deliberately three different shapes, because a fixture
+   * where every dev looks the same cannot show the rules: one PM push (Done
+   * today leads), one AM push (In progress leads), and one who pushed with
+   * nothing to report — which must still appear, since "pushed an empty update"
+   * is a fact and hiding it would make the card disagree with the roster.
+   */
+  standups: {
+    workDate: atDays(0),
+    devs: [
+      {
+        userId: "u-priya",
+        name: "Priya Shah",
+        amPushedAt: atDays(0),
+        pmPushedAt: atDays(0),
+        inProgress: [{ id: "t1", title: "Autocomplete tuning", parentTitle: "Search & discovery" }],
+        inReview: [{ id: "t2", title: "Filters & facets", parentTitle: null }],
+        doneToday: [{ id: "t3", title: "Search index rebuild", parentTitle: null }],
+      },
+      {
+        userId: "u-tom",
+        name: "Tom Mercer",
+        amPushedAt: atDays(0),
+        pmPushedAt: null,
+        inProgress: [{ id: "t4", title: "Payments webhook retries", parentTitle: "Payments" }],
+        inReview: [],
+        doneToday: [],
+      },
+      {
+        userId: "u-sofia",
+        name: "Sofia Oyelaran",
+        amPushedAt: atDays(0),
+        pmPushedAt: null,
+        inProgress: [],
+        inReview: [],
+        doneToday: [],
+      },
+    ],
+  },
   support: {
     enabled: true,
     linked: true,
@@ -1395,24 +1434,6 @@ const demoSlackActivity = {
   ],
 };
 
-/**
- * The CLIENT's view — their own Slack Connect channel, a different channel with
- * different people in it. Deliberately not a copy of the internal fixture: if
- * both rendered the same text, the demo could not show that the two audiences
- * read different channels, which is the whole safety property.
- */
-const demoWikiSharedSlack = {
-  configured: true,
-  channelName: "#northwind-gitwork",
-  summary: null,
-  generatedAt: null,
-  reason: "ok",
-  messages: [
-    { id: "ws1", author: "Alex Rivera", text: "Search is live on staging — have a look when you get five minutes.", ts: atDays(0) },
-    { id: "ws2", author: "Jess (Northwind)", text: "Looks great. We'll get the category copy over to you tomorrow.", ts: atDays(0) },
-    { id: "ws3", author: "Marco Bianchi", text: "Payments flow is QA'd and ready for your sign-off.", ts: atDays(-1) },
-  ],
-};
 
 // ─── Docs (dev-visible document types only: HANDOVER / REPORT / BRIEF / OTHER) ────
 
@@ -3150,9 +3171,6 @@ export function resolveDemoApi(
     return { ...demoWiki, launchpad: demoLaunchpadNow() };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
-  if (/^\/api\/wiki\/[^/]+\/slack$/.test(pathname)) {
-    return demoWikiSharedSlack;
-  }
   if (/^\/api\/clients\/[^/]+\/slack-activity$/.test(pathname)) {
     return demoSlackActivity;
   }
