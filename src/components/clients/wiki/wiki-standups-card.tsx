@@ -1,30 +1,85 @@
 "use client";
 
 /**
- * "Daily updates" — each developer's AM/PM standup for this client, so a client
- * can read what the team is doing without being in Slack.
+ * "Daily updates" — the week at a glance, then each developer's AM/PM standup
+ * side by side, so a client can see where the project is without being in Slack.
  *
- * Shown to BOTH audiences and identical for each: these are the same updates
- * the devs already push to the client's channel, rendered from Foundry's own
- * records rather than scraped back out of Slack.
+ * Shown to BOTH audiences and identical for each: the standups are the same ones
+ * the devs push to the client's channel, and the week figures are the same
+ * `summariseRoundup` call the RoundUp tile makes — so this card, that tile and the
+ * RoundUp section can never report different numbers for one week.
  *
- * ⚠️ Only devs who actually PUSHED appear. The card never derives a standup from
- * the live board — see `src/lib/wiki-standups.ts`.
+ * ⚠️ Only devs who actually PUSHED appear. See `src/lib/wiki-standups.ts`.
+ *
+ * History is a quiet row of day chips, shown only when an earlier day exists —
+ * today stays the default view, so the card reads exactly as before for anyone
+ * who never touches it.
  */
 
+import { useState } from "react";
 import {
+  columnTasks,
+  dayChipLabel,
+  deliveredDelta,
   formatPushTime,
   phaseLabel,
+  standupEmptyState,
   standupGroups,
   taskLine,
   visibleStandups,
-  type StandupDay,
+  type StandupFeed,
 } from "@/lib/wiki-standups";
+import type { RoundupSummary } from "@/lib/wiki-roundup";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+const SERIF = "var(--font-fraunces), var(--font-display), 'Times New Roman', Georgia, serif";
 
-export function WikiStandupsCard({ standups, numeral }: { standups: StandupDay; numeral: string }) {
-  const devs = visibleStandups(standups);
+function WeekFigure({ value, label, muted }: { value: number; label: string; muted?: boolean }) {
+  return (
+    <div>
+      <div
+        className={`text-[26px] leading-none ${muted ? "text-[var(--text-3)]" : "text-[var(--text-1)]"}`}
+        style={{ fontFamily: SERIF, fontWeight: 600 }}
+      >
+        {value}
+      </div>
+      <div
+        className="mt-1.5 text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+        style={{ fontFamily: MONO }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
+export function WikiStandupsCard({
+  standups,
+  roundup,
+  numeral,
+}: {
+  standups: StandupFeed;
+  /** Null when there is no plan to summarise — the strip is then omitted, not zeroed. */
+  roundup: RoundupSummary | null;
+  numeral: string;
+}) {
+  // null = today. A past day is chosen by its workDate.
+  const [picked, setPicked] = useState<string | null>(null);
+  const history = (standups.history ?? []).filter((d) => visibleStandups(d).length > 0);
+  const pastDay = picked ? (history.find((d) => d.workDate === picked) ?? null) : null;
+  const isPast = pastDay !== null;
+  const devs = visibleStandups(isPast ? pastDay : standups.today);
+  const todayCount = visibleStandups(standups.today).length;
+  const empty = standupEmptyState(standups);
+  const latest = history[0] ?? null;
+  const delta = roundup
+    ? deliveredDelta(
+        roundup.delivered.length,
+        roundup.deliveredPrevious,
+        roundup.deliveredPrevious > 0,
+      )
+    : null;
+  const anyBoardOnly = isPast && devs.some((d) => d.source === "history");
 
   return (
     <section className="widget-card">
@@ -33,38 +88,143 @@ export function WikiStandupsCard({ standups, numeral }: { standups: StandupDay; 
           <span className="widget-header__label--number">{numeral}</span>
           {" // DAILY UPDATES"}
         </span>
-        <span className="widget-header__status shrink-0" style={{ fontFamily: MONO }}>
-          {devs.length} {devs.length === 1 ? "UPDATE" : "UPDATES"}
-        </span>
+        {/* ⚠️ No "0 TODAY" on a client that has never had an update — a count
+            implies a rhythm that has not started yet. */}
+        {empty !== "never" && (
+          <span className="widget-header__status shrink-0" style={{ fontFamily: MONO }}>
+            {todayCount} TODAY
+          </span>
+        )}
       </div>
 
+      {/* ── The week — RoundUp's own figures, not a re-derivation. ── */}
+      {roundup && (
+        <div className="flex flex-wrap items-end gap-x-8 gap-y-4 border-b border-[var(--border-1)] px-5 py-4">
+          <div className="min-w-0">
+            <p
+              className="mb-2 text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+              style={{ fontFamily: MONO }}
+            >
+              This week
+            </p>
+            <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
+              <WeekFigure value={roundup.delivered.length} label="Delivered" />
+              <WeekFigure value={roundup.totals.inFlight} label="In flight" />
+              <WeekFigure value={roundup.totals.planned} label="Planned" muted />
+            </div>
+          </div>
+          <div className="min-w-0 space-y-1">
+            {delta && (
+              <p className="text-[12px] text-[var(--text-3)]" style={{ fontFamily: MONO }}>
+                {delta}
+              </p>
+            )}
+            {/* ⚠️ Undated completions cannot be placed in ANY week. Folding them
+                into "delivered this week" would inflate it; dropping them silently
+                would under-report. Saying so is the only honest option. */}
+            {roundup.deliveredUndated > 0 && (
+              <p className="text-[11px] text-[var(--text-4)]">
+                +{roundup.deliveredUndated} finished with no date recorded
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── History — a quiet chip row, only when there is an earlier day. Its
+          own scroller: .widget-card is overflow:hidden, so a row of 14 chips
+          with nowhere to scroll would be clipped, not reachable (§45.2). ── */}
+      {history.length > 0 && (
+        <div className="overflow-x-auto border-b border-[var(--border-1)] px-5 py-2.5">
+          <div role="tablist" aria-label="Choose a day" className="flex w-max items-center gap-1.5">
+            {[
+              { key: null as string | null, label: "Today" },
+              ...history.map((d) => ({
+                key: d.workDate as string | null,
+                label: dayChipLabel(d.workDate),
+              })),
+            ].map((c) => {
+              const active = c.key === picked;
+              return (
+                <button
+                  key={c.key ?? "today"}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setPicked(c.key)}
+                  className={`shrink-0 rounded-[6px] border px-2 py-1 text-[10px] tracking-[0.08em] uppercase transition-colors ${
+                    active
+                      ? "border-[var(--brand-200)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+                      : "border-transparent text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  }`}
+                  style={{ fontFamily: MONO }}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── The chosen day — one column per dev who pushed. ── */}
       <div className="p-5">
         {devs.length === 0 ? (
-          /* ⚠️ "Nobody has pushed yet today" — NOT "no activity". The team may be
-             deep in work that simply has not been reported at 10am, and a card
-             reading "no updates" on a client's own page says something harsher
-             and less true than the facts support. */
-          <p className="text-[13px] text-[var(--text-3)]">
-            No updates pushed yet today. The team posts a morning and an end-of-day update.
-          </p>
+          empty === "never" ? (
+            /* A brand-new client: say what WILL appear, not that something is missing. */
+            <p className="text-[13px] text-[var(--text-3)]">
+              Daily updates will appear here once work starts — the team posts a morning and an
+              end-of-day update on this project.
+            </p>
+          ) : (
+            /* ⚠️ "Nobody has pushed yet today" — NOT "no activity". At 10am the
+               team may be deep in work nobody has reported, and the harsher
+               sentence is also the less true one. */
+            <p className="text-[13px] text-[var(--text-3)]">
+              No updates pushed yet today.
+              {latest && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => setPicked(latest.workDate)}
+                    className="text-[var(--brand-700)] underline-offset-2 hover:underline"
+                  >
+                    See {dayChipLabel(latest.workDate)}
+                  </button>
+                </>
+              )}
+            </p>
+          )
         ) : (
-          <ul className="space-y-5">
+          <ul
+            className="grid items-start gap-4"
+            /* Columns, not a long list: auto-fit puts devs side by side and
+               collapses to one column on a phone, where side by side would be
+               unreadable. Same idiom as the dashboard's own tile grid. */
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
             {devs.map((dev) => {
-              const groups = standupGroups(dev);
+              const groups = standupGroups(dev, { past: isPast });
               const phase = phaseLabel(dev);
               const at = formatPushTime(dev.pmPushedAt ?? dev.amPushedAt);
               return (
-                <li key={dev.userId} className="min-w-0">
-                  <div className="flex items-baseline justify-between gap-3">
+                <li
+                  key={dev.userId}
+                  className="min-w-0 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3.5"
+                >
+                  <div className="flex items-baseline justify-between gap-2">
                     <span
-                      className="truncate text-[11px] tracking-[0.08em] text-[var(--text-2)] uppercase"
+                      className="truncate text-[11px] tracking-[0.08em] text-[var(--text-1)] uppercase"
                       style={{ fontFamily: MONO }}
                       title={dev.name}
                     >
                       {dev.name}
                     </span>
                     <span
-                      className="shrink-0 text-[10px] text-[var(--text-4)]"
+                      className="shrink-0 rounded-[4px] bg-[var(--brand-50)] px-1.5 py-0.5 text-[10px] text-[var(--brand-700)]"
                       style={{ fontFamily: MONO }}
                     >
                       {phase}
@@ -73,40 +233,58 @@ export function WikiStandupsCard({ standups, numeral }: { standups: StandupDay; 
                   </div>
 
                   {groups.length === 0 ? (
-                    /* They pushed, and had nothing to report. Saying so is more
-                       honest than omitting them from a list of who updated. */
-                    <p className="mt-1 text-[13px] text-[var(--text-4)]">
-                      Nothing to report on this project.
+                    <p className="mt-2 text-[12px] text-[var(--text-4)]">
+                      {dev.source === "history"
+                        ? "Nothing finished on this project that day."
+                        : "Nothing to report on this project."}
                     </p>
                   ) : (
-                    <div className="mt-2 space-y-2">
-                      {groups.map((g) => (
-                        <div key={g.label}>
-                          <p
-                            className="text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
-                            style={{ fontFamily: MONO }}
-                          >
-                            {g.label}
-                          </p>
-                          <ul className="mt-1 space-y-1">
-                            {g.tasks.map((t) => (
-                              <li
-                                key={t.id}
-                                className="flex gap-2 text-[13px] leading-5 text-[var(--text-2)]"
+                    <div className="mt-3 space-y-2.5">
+                      {groups.map((g) => {
+                        const { shown, hidden } = columnTasks(g.tasks);
+                        return (
+                          <div key={g.label}>
+                            <p
+                              className="text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase"
+                              style={{ fontFamily: MONO }}
+                            >
+                              {g.label}
+                            </p>
+                            <ul className="mt-1 space-y-0.5">
+                              {shown.map((t) => (
+                                <li
+                                  key={t.id}
+                                  className="line-clamp-2 text-[12.5px] leading-5 text-[var(--text-2)]"
+                                  title={taskLine(t)}
+                                >
+                                  {taskLine(t)}
+                                </li>
+                              ))}
+                            </ul>
+                            {hidden > 0 && (
+                              <p
+                                className="mt-0.5 text-[10px] text-[var(--text-4)]"
+                                style={{ fontFamily: MONO }}
                               >
-                                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-[var(--brand-600)]" />
-                                <span className="min-w-0">{taskLine(t)}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
+                                +{hidden} more
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </li>
               );
             })}
           </ul>
+        )}
+        {/* ⚠️ An old day with no saved copy can only show what was finished.
+            Said once, under the columns, rather than implied by empty groups. */}
+        {anyBoardOnly && (
+          <p className="mt-3 text-[11px] text-[var(--text-4)]">
+            Updates from before daily snapshots began show only the work finished that day.
+          </p>
         )}
       </div>
     </section>

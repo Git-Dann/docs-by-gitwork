@@ -7,8 +7,9 @@
 // everyone's pushed. Slack posting is best-effort/fire-and-forget — a missing
 // token or channel never fails the request (mirrors onboarding-notify.ts).
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { groupTasksForDay, type StandupGroupsFor } from "@/lib/wiki-standups";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
@@ -166,6 +167,61 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
 
 // ─── Push a daily update ────────────────────────────────────────────────────
 
+/**
+ * The per-client snapshot of what a phase reports — see `DailyUpdate.amSnapshot`.
+ * Best-effort: a failure here must never stop a standup from being pushed, so it
+ * returns `Prisma.DbNull` (no snapshot) rather than throwing.
+ */
+async function buildStandupSnapshot(
+  user: EffectiveUser,
+  workDate: Date,
+  now: Date,
+  targetFilter: Set<string> | null,
+): Promise<Prisma.InputJsonValue | typeof Prisma.DbNull> {
+  try {
+    const tasks = await listTasks(user, { assigneeId: "me", includeSubtasks: true });
+    const parentIds = Array.from(
+      new Set(tasks.map((t) => t.parentId).filter((id): id is string => Boolean(id))),
+    );
+    const parents = parentIds.length
+      ? await prisma.task.findMany({
+          where: { id: { in: parentIds }, workspaceId: user.workspaceId },
+          select: { id: true, title: true },
+        })
+      : [];
+    const parentTitle = new Map(parents.map((p) => [p.id, p.title]));
+
+    const byClient = new Map<string, typeof tasks>();
+    for (const t of tasks) {
+      if (targetFilter && !targetFilter.has(t.client.id)) continue;
+      const list = byClient.get(t.client.id) ?? [];
+      list.push(t);
+      byClient.set(t.client.id, list);
+    }
+
+    const clients: Record<string, StandupGroupsFor> = {};
+    for (const [clientId, list] of byClient) {
+      const groups = groupTasksForDay(
+        list.map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          completedAt: t.completedAt,
+          parentTitle: t.parentId ? (parentTitle.get(t.parentId) ?? null) : null,
+        })),
+        workDate,
+      );
+      if (groups.inProgress.length + groups.inReview.length + groups.doneToday.length > 0) {
+        clients[clientId] = groups;
+      }
+    }
+    return { v: 1, at: now.toISOString(), clients } as unknown as Prisma.InputJsonValue;
+  } catch (err) {
+    console.error("[tasks] standup snapshot failed — pushing without one", err);
+    return Prisma.DbNull;
+  }
+}
+
 export async function pushDailyUpdate(
   user: EffectiveUser,
   input: { phase: "AM" | "PM"; weekPlan?: string; note?: string; clientIds?: string[] },
@@ -202,8 +258,17 @@ export async function pushDailyUpdate(
     new Set([...(existing?.involvedClientIds ?? []), ...involvedClientIds]),
   );
 
+  // ⚠️ Save what this phase REPORTED, per client, so the client wiki can show a
+  // past day as it was sent rather than rebuilding it from today's board. Built
+  // with subtasks included (as the Slack post is) and the composer's client
+  // filter applied, via the same grouping rule the wiki reads back with.
+  const snapshot = await buildStandupSnapshot(user, workDate, now, targetFilter);
+
   // Persist the push log + editable fields.
-  const phaseField = input.phase === "AM" ? { amPushedAt: now } : { pmPushedAt: now };
+  const phaseField =
+    input.phase === "AM"
+      ? { amPushedAt: now, amSnapshot: snapshot }
+      : { pmPushedAt: now, pmSnapshot: snapshot };
   const row = await prisma.dailyUpdate.upsert({
     where: { userId_workDate: { userId: user.id, workDate } },
     create: {
@@ -288,7 +353,12 @@ export async function deleteStandupUpdate(
   const row = existing
     ? await prisma.dailyUpdate.update({
         where: { userId_workDate: { userId: user.id, workDate } },
-        data: phase === "AM" ? { amPushedAt: null } : { pmPushedAt: null },
+        // ⚠️ The snapshot goes with the stamp. A retracted update must not be
+        // readable from the client wiki's history afterwards.
+        data:
+          phase === "AM"
+            ? { amPushedAt: null, amSnapshot: Prisma.DbNull }
+            : { pmPushedAt: null, pmSnapshot: Prisma.DbNull },
       })
     : null;
 

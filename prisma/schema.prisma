@@ -4346,6 +4346,13 @@ model DailyUpdate {
   /// composer's client picker). Drives per-client retainer-day accrual — one day per dev per
   /// day whose update touched the client. Empty until a phase is actually pushed.
   involvedClientIds String[] @default([])
+  /// What each phase actually REPORTED, per client, saved at push time —
+  /// `{ v: 1, at, clients: { [clientId]: { inProgress, inReview, doneToday } } }`.
+  /// The client wiki's history reads this. Without it, a past day could only be
+  /// rebuilt from today's board, which describes today, not then. Cleared with
+  /// the stamp when a phase is retracted, so a withdrawn update never lingers.
+  amSnapshot  Json?
+  pmSnapshot  Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

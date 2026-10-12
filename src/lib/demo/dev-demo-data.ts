@@ -937,34 +937,82 @@ const demoWiki: WikiDTO = {
    * is a fact and hiding it would make the card disagree with the roster.
    */
   standups: {
-    workDate: atDays(0),
-    devs: [
+    today: {
+      workDate: atDays(0),
+      devs: [
+        {
+          userId: "u-priya",
+          name: "Priya Shah",
+          amPushedAt: atDays(0),
+          pmPushedAt: atDays(0),
+          inProgress: [{ id: "t1", title: "Autocomplete tuning", parentTitle: "Search & discovery" }],
+          inReview: [{ id: "t2", title: "Filters & facets", parentTitle: null }],
+          doneToday: [{ id: "t3", title: "Search index rebuild", parentTitle: null }],
+        },
+        {
+          userId: "u-tom",
+          name: "Tom Mercer",
+          amPushedAt: atDays(0),
+          pmPushedAt: null,
+          inProgress: [{ id: "t4", title: "Payments webhook retries", parentTitle: "Payments" }],
+          inReview: [],
+          doneToday: [],
+        },
+        {
+          userId: "u-sofia",
+          name: "Sofia Oyelaran",
+          amPushedAt: atDays(0),
+          pmPushedAt: null,
+          inProgress: [],
+          inReview: [],
+          doneToday: [],
+        },
+      ],
+    },
+    // History, deliberately in two shapes: a day saved at push time (what was
+    // reported, all three groups), and a day pushed BEFORE snapshots existed —
+    // where only "Done that day" can be established from the board, so the card
+    // has to say so rather than show an empty "In progress" as if it were true.
+    history: [
       {
-        userId: "u-priya",
-        name: "Priya Shah",
-        amPushedAt: atDays(0),
-        pmPushedAt: atDays(0),
-        inProgress: [{ id: "t1", title: "Autocomplete tuning", parentTitle: "Search & discovery" }],
-        inReview: [{ id: "t2", title: "Filters & facets", parentTitle: null }],
-        doneToday: [{ id: "t3", title: "Search index rebuild", parentTitle: null }],
+        workDate: atDays(-1),
+        devs: [
+          {
+            userId: "u-priya",
+            name: "Priya Shah",
+            amPushedAt: atDays(-1),
+            pmPushedAt: atDays(-1),
+            inProgress: [{ id: "t1", title: "Autocomplete tuning", parentTitle: "Search & discovery" }],
+            inReview: [],
+            doneToday: [{ id: "t5", title: "Results page skeleton", parentTitle: null }],
+            source: "reported",
+          },
+          {
+            userId: "u-tom",
+            name: "Tom Mercer",
+            amPushedAt: atDays(-1),
+            pmPushedAt: atDays(-1),
+            inProgress: [],
+            inReview: [{ id: "t6", title: "Stripe customer sync", parentTitle: "Payments" }],
+            doneToday: [{ id: "t7", title: "Refund edge cases", parentTitle: "Payments" }],
+            source: "reported",
+          },
+        ],
       },
       {
-        userId: "u-tom",
-        name: "Tom Mercer",
-        amPushedAt: atDays(0),
-        pmPushedAt: null,
-        inProgress: [{ id: "t4", title: "Payments webhook retries", parentTitle: "Payments" }],
-        inReview: [],
-        doneToday: [],
-      },
-      {
-        userId: "u-sofia",
-        name: "Sofia Oyelaran",
-        amPushedAt: atDays(0),
-        pmPushedAt: null,
-        inProgress: [],
-        inReview: [],
-        doneToday: [],
+        workDate: atDays(-4),
+        devs: [
+          {
+            userId: "u-priya",
+            name: "Priya Shah",
+            amPushedAt: atDays(-4),
+            pmPushedAt: atDays(-4),
+            inProgress: [],
+            inReview: [],
+            doneToday: [{ id: "t8", title: "Search analytics events", parentTitle: null }],
+            source: "history",
+          },
+        ],
       },
     ],
   },
