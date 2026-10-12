@@ -35,6 +35,8 @@ import {
 import { summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import { summariseRoundup } from "@/lib/wiki-roundup";
+import { footerFacts, latestWikiActivity, type FooterFact } from "@/lib/wiki-footer";
+import { GITWORK, companyDisclosureLine } from "@/lib/gitwork";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
 import { WikiStandupsCard } from "./wiki-standups-card";
@@ -155,6 +157,15 @@ function nextMilestone(wiki: WikiDTO) {
   const now = Date.now();
   const sorted = [...ms].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   return sorted.find((m) => new Date(m.date).getTime() >= now) ?? sorted[sorted.length - 1];
+}
+
+/** A milestone whose day is over — compared by calendar day, so one due today is still ahead. */
+function milestonePassed(iso: string): boolean {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return false;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return t < startOfToday.getTime();
 }
 
 function activePhase(wiki: WikiDTO) {
@@ -380,8 +391,13 @@ export function WikiDashboard({
             )}
             {milestone && (
               <p className="text-[13px] text-[var(--text-2)]">
-                <span className="text-[var(--text-4)]">Next:</span> {milestone.name} ·{" "}
-                {formatDate(milestone.date)}
+                {/* ⚠️ `nextMilestone` falls back to the LAST milestone once every one
+                    has passed. Labelling that "Next" tells a client a date that has
+                    gone is still ahead of them. */}
+                <span className="text-[var(--text-4)]">
+                  {milestonePassed(milestone.date) ? "Last:" : "Next:"}
+                </span>{" "}
+                {milestone.name} · {formatDate(milestone.date)}
               </p>
             )}
             {pct === null && !phase && (
@@ -684,7 +700,14 @@ export function WikiDashboard({
   }
 
   const teamCount = wiki.productTeam.length + wiki.team.length;
-  const footerStats = buildFooterStats(wiki, activeMonitors, worstMonitor);
+  const lastActivity = latestWikiActivity(wiki);
+  const facts = footerFacts({
+    lastActivity,
+    lastActivityLabel: lastActivity ? relativeDate(lastActivity) : null,
+    resources: wiki.documents.documents.length,
+    activeMonitors: activeMonitors.length,
+    worstMonitor,
+  });
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -860,48 +883,6 @@ export function WikiDashboard({
             ))}
           </div>
 
-          {/* Closing stat band — bookends the masthead, mirroring the Gitwork
-              brand guide's "our standard" close. Only real, available data. */}
-          {footerStats.length > 0 && (
-            <section className="mt-4 rounded-[14px] bg-[#0F172A] p-6 md:p-8">
-              <p
-                className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50"
-                style={{ fontFamily: MONO }}
-              >
-                Project overview
-              </p>
-              {/* No max-width — the previous `max-w-lg` cap forced a wrap to
-                  two lines despite the band having plenty of room to spare. */}
-              <h2
-                className="mt-2 text-[22px] leading-snug text-white md:text-[26px]"
-                style={{ fontFamily: SERIF, fontWeight: 600 }}
-              >
-                Everything about {wiki.clientName}, ready when you need it.
-              </h2>
-              <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-4">
-                {footerStats.map((stat) => (
-                  <div key={stat.label}>
-                    <div
-                      className="text-[26px] leading-none"
-                      style={{
-                        fontFamily: SERIF,
-                        fontWeight: 600,
-                        color: stat.color ?? "#ffffff",
-                      }}
-                    >
-                      {stat.value}
-                    </div>
-                    <div
-                      className="mt-1.5 text-[9.5px] uppercase tracking-[0.1em] text-white/45"
-                      style={{ fontFamily: MONO }}
-                    >
-                      {stat.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </>
       )}
 
@@ -910,39 +891,97 @@ export function WikiDashboard({
           No published sections yet.
         </p>
       )}
+
+      <WikiFooter clientName={wiki.clientName} facts={facts} />
     </div>
   );
 }
 
+const FACT_TONE: Record<NonNullable<FooterFact["tone"]>, string> = {
+  up: "#4ADE80",
+  degraded: "#FBBF24",
+  down: "#F87171",
+};
+
 /**
- * Real, available data only — a stat is omitted rather than shown as
- * zero/empty. Completion % and team size render elsewhere (the timeline
- * card and the masthead's team stack, respectively) so they're not
- * duplicated here.
+ * The dashboard's cap — a slim navy band that bookends the masthead, so the page
+ * closes rather than just stopping after the last card.
+ *
+ * Fixed navy like the masthead, so its colours are hardcoded rather than the
+ * light/dark tokens (this band never flips). Rendered for every client, a brand
+ * new one included: the readout simply has fewer facts, never zeroes.
  */
-function buildFooterStats(
-  wiki: WikiDTO,
-  activeMonitors: WikiDTO["monitors"]["monitors"],
-  worstMonitor: string | null,
-): { value: string; label: string; color?: string }[] {
-  const stats: { value: string; label: string; color?: string }[] = [];
-  if (wiki.documents.documents.length > 0) {
-    stats.push({
-      value: String(wiki.documents.documents.length),
-      label: wiki.documents.documents.length === 1 ? "Resource" : "Resources",
-    });
-  }
-  if (activeMonitors.length > 0) {
-    const STATUS: Record<string, { value: string; color?: string }> = {
-      UP: { value: "Up", color: "#4ADE80" },
-      DEGRADED: { value: "Degraded", color: "#FBBF24" },
-      DOWN: { value: "Down", color: "#F87171" },
-      UNKNOWN: { value: "—" },
-    };
-    const s = STATUS[worstMonitor ?? "UNKNOWN"];
-    stats.push({ value: s.value, label: "All systems", color: s.color });
-  }
-  return stats;
+function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFact[] }) {
+  return (
+    <footer className="mt-4 rounded-[14px] bg-[#0F172A] px-6 py-5 md:px-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45"
+            style={{ fontFamily: MONO }}
+          >
+            Knowledge Wiki
+          </p>
+          <p
+            className="mt-1 truncate text-[20px] leading-tight text-white"
+            style={{ fontFamily: SERIF, fontWeight: 600 }}
+            title={clientName}
+          >
+            {clientName}
+          </p>
+        </div>
+        {facts.length > 0 && (
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {facts.map((f) => (
+              <div key={f.label} className="flex items-baseline gap-2">
+                <dt
+                  className="text-[10px] uppercase tracking-[0.12em] text-white/45"
+                  style={{ fontFamily: MONO }}
+                >
+                  {f.label}
+                </dt>
+                <dd
+                  className="text-[12px] text-white"
+                  style={{ fontFamily: MONO, color: f.tone ? FACT_TONE[f.tone] : undefined }}
+                >
+                  {f.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 text-[12px] text-white/60 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Built and maintained by{" "}
+          <a
+            href={GITWORK.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-white transition hover:text-white/80"
+          >
+            {GITWORK.name}
+          </a>
+        </p>
+        <p>
+          Questions?{" "}
+          <a
+            href={`mailto:${GITWORK.email}`}
+            className="text-white transition hover:text-white/80"
+          >
+            {GITWORK.email}
+          </a>
+        </p>
+      </div>
+      <p
+        className="mt-3 text-[10px] leading-relaxed tracking-[0.04em] text-white/35"
+        style={{ fontFamily: MONO }}
+      >
+        {companyDisclosureLine()}
+      </p>
+    </footer>
+  );
 }
 
 /**

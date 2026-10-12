@@ -83,6 +83,14 @@ describe("a brand-new client's overview", () => {
     expect(bad).toEqual([]);
   });
 
+  it("still closes on the footer, with no zeroed facts", () => {
+    const text = render(
+      <WikiDashboard wiki={newClientWiki()} availableSections={EVERY_SECTION} onSelect={() => {}} />,
+    );
+    expect(text).toMatch(/Built and maintained by Gitwork/);
+    expect(text).not.toMatch(/Last updated|Resources?\d|Systems/);
+  });
+
   it("tells a new client daily updates are coming, without a '0 TODAY' count", () => {
     const text = render(
       <WikiStandupsCard
