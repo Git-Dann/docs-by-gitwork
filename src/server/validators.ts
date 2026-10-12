@@ -7,6 +7,7 @@ import {
 import { MAX_PLATFORM_LINKS } from "@/lib/platform-links";
 import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { normalizeGithubRepo } from "@/lib/github";
+import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -192,14 +193,7 @@ export const workspaceClientStatusSchema = z.enum([
   "INACTIVE",
 ]);
 
-export const leadStageSchema = z.enum([
-  "NEW",
-  "CONTACTED",
-  "QUALIFIED",
-  "PROPOSAL_SENT",
-  "WON",
-  "LOST",
-]);
+export const leadStageSchema = z.enum(LEAD_STAGES);
 
 export const clientEngagementTypeSchema = z.enum([
   "FIXED_SCOPE",
@@ -2225,4 +2219,35 @@ export const teamMessageCreateSchema = z.object({
   // that truncates the thing the feature exists for is worse than a long row.
   body: z.string().trim().min(1, "Write something").max(20000),
   recipientIds: z.array(z.string().min(1)).min(1, "Pick at least one person").max(200),
+});
+
+// ── CRM (lead automation, actions, conversion) ──────────────────────────────
+
+export const crmSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  emailDomains: z.array(z.string().trim().max(253)).max(20).optional(),
+  ownerId: z.string().min(1).nullable().optional(),
+  /** Only `false` is accepted — "resume automation". Pinning happens by setting a stage by hand. */
+  pinned: z.literal(false).optional(),
+});
+
+export const crmSuggestionResolveSchema = z.object({ action: z.enum(["accept", "dismiss"]) });
+
+export const leadActionCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  dueAt: z.string().trim().nullable().optional(),
+  ownerId: z.string().min(1).nullable().optional(),
+});
+
+export const leadActionUpdateSchema = z.object({
+  title: z.string().max(200).optional(),
+  dueAt: z.string().trim().nullable().optional(),
+  ownerId: z.string().min(1).nullable().optional(),
+  transition: z.enum(["accept", "dismiss", "done", "reopen"]).optional(),
+});
+
+export const crmMailboxSchema = z.object({ enabled: z.boolean() });
+
+export const crmConvertSchema = z.object({
+  fields: z.array(z.enum(["primaryContactName", "primaryContactEmail", "website"])).max(3),
 });

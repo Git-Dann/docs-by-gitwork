@@ -1798,7 +1798,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -6187,3 +6187,121 @@ Not verified: the in-app results page and report (auth-gated, no staging), and a
 Chrome Web Store scan through the deployed scanner. Post-deploy, scan a Chrome Web Store link, a
 JSON API URL and a website as "iOS app", and read the "Scoped to this product" line.
 
+## 59. Recent Changes (October 2026) — CRM: a lead pipeline that moves itself
+
+Dan's brief: *"a CRM that is almost automated — start with Valu — we base the status move on emails
+and conversations in Slack"*, widened mid-build to *"better statuses, actions and next steps, and
+convert to a full client that pulls information into a full Portal client."* Leads already had a
+stage (`LeadStage`) and an activity log (`ClientTouchpoint`); both were set by hand only, and
+"Convert to client" was a bare status flip.
+
+### 59.1 The one rule: facts move the stage, wording only suggests
+
+- **Facts** move the stage automatically. Something observably happened: an email either way, a
+  meeting, a proposal drafted / shared / accepted / declined, a contract sent / signed, or a person
+  logging a call/email/meeting by hand.
+- **Wording** — an email or Slack message that *reads* like "we're going ahead" — only ever
+  produces a **suggestion** with one click to accept. An automatic LOST from a misread reply is
+  the expensive mistake. Same for actions: anything the AI reads out of a message arrives as
+  *proposed*, never on the list until someone adds it.
+- **Internal Slack is never a fact.** Gitwork talking about a lead is not contact with the lead —
+  "we should send Valu the deck" must not move anything. It feeds suggestions and actions only.
+
+All of it is pure and unit-tested in **`src/lib/crm/lead-stage-engine.ts`** (the stage rules),
+`signals.ts` (Gmail query, direction, address parsing), `convert.ts` (main contact + conversion
+fields). The orchestrator is `src/server/crm/sync.ts`; everything the UI reads is
+`src/server/crm/service.ts`.
+
+### 59.2 The pipeline (11 stages, agreed with Dan)
+
+New · Contacted · Discovery · Qualified · Scoping · Proposal sent · In discussion · Contract out ·
+Won · Lost · On hold. Seven move on facts; **Qualified** and **On hold** are suggestion-only, as is
+a wording-based Won/Lost. The table of what moves each one is `STAGE_TRIGGER` — rendered beside the
+picker so nobody has to guess.
+
+⚠️ **`LeadStage` is a Postgres enum: add values only.** Removing or renaming one is data-losing and
+the guarded `prisma db push` skips the WHOLE sync (§2). The six original values were kept.
+
+⚠️ **`LEAD_STAGES` is the single list.** The Zod schema and MCP's tool schema read it, and
+`stage-list-single-source.test.ts` pins it to the Prisma enum. Before this there were four
+hand-typed copies (schema, Zod, MCP ×2) and a new stage would have silently 400'd.
+
+Rules a move must satisfy, each with a test: a **pinned** stage is never touched; **Won** is never
+left; ordinary progress is **forward only** (old evidence still counts, so switching automation on
+catches a lead up); leaving **Lost** needs evidence newer than the moment it was lost, and an
+unknown "since" never leaves it; leaving **On hold** needs any fresh fact; a **decline** only marks
+Lost if it is the latest proposal event and newer than the current stage. *In discussion* means
+**they** wrote after the proposal — our own chasing does not count.
+
+### 59.3 Pinning, and why accepting a suggestion is not a pin
+
+Setting the stage by hand (the picker, or MCP's `update_client`) sets `leadStagePinned` — but only
+when the value actually **changes**, so a save that resends the same stage doesn't switch
+automation off as a side effect. "Resume automation" clears it. Accepting a suggestion is a
+person's decision too, but it does **not** pin, or every accepted suggestion would freeze the lead;
+instead `leadStageChangedAt` is stamped, and that is what stops older evidence overriding it.
+
+### 59.4 Privacy — whose mailbox, and what is stored
+
+⚠️ **A mailbox is read only when its owner opts in** (`WorkspaceMember.crmMailboxEnabled`, via
+"Use my Gmail" on the lead — `PATCH /api/account/crm-mailbox` is self-only and refuses an API-key
+caller), **only for messages to/from the lead's own domains** (the Gmail query is built from
+validated domains and is never sent unscoped — `buildGmailQuery` returns null rather than an open
+search), and **only the subject and the person on their side are stored — never bodies.**
+Foundry's Gmail access is otherwise strictly per-user because a workspace-shared path once leaked
+one person's inbox to everyone (`/api/integrations/gmail`). It is per-*membership*, and the query
+spreads `ACTIVE_MEMBER`, so archiving someone stops their mailbox being read (§57).
+
+Subjects then appear on the lead's timeline for anyone who can see the lead. The opt-in copy says
+so.
+
+### 59.5 Failure model
+
+Every source (Gmail per mailbox, Slack, meetings, documents) is read independently via
+`Promise.allSettled`. A source that fails is reported in words on the lead and does **not** advance
+`crmLastSyncedAt`, so its window is re-read next time — "we couldn't look" must not become "nothing
+happened" (§35). Syncs claim the lead (`crmSyncStartedAt`, 5-minute TTL) so two can't log the same
+email twice. Dedupe is on `(source, externalId)` — the RFC **Message-ID** for email, so the same
+email in two opted-in mailboxes logs once. ⚠️ Deliberately **no unique constraint**: adding one is
+treated by `db push` as potentially data-losing (§2).
+
+The AI read is one light-tier call per sync over the last 30 days of new messages, cached on the
+message set (£0 when nothing changed), gated on `ai.generate`, attributed to the new `AiModule.CRM`,
+and validated against the messages it was actually shown — a stage we don't have, a message it
+wasn't given, a backward move or a due date past next year is dropped.
+
+### 59.6 Actions, next steps, the Desk
+
+`LeadAction` (owner, due, state `suggested | open | done | dismissed`). The **next step** is the
+earliest open action. Open actions appear on their owner's **On Your Desk → Tasks** as "Lead
+follow-ups". AI-proposed actions default to the lead's owner (`leadOwnerId`); accepting an
+unowned one gives it to whoever accepted it — an action nobody owns is an action nobody does.
+
+### 59.7 Convert to client
+
+Was a status flip. Now a two-step dialog (`ConvertLeadModal`):
+1. Fill **empty** fields from the CRM — main contact = whoever on their side emailed us most;
+   website from their domain. ⚠️ Never overwrites, and a name only travels with its own email, so
+   the record can't end up naming one person at another person's address. The server re-derives
+   the values rather than trusting the preview.
+2. **Plan delivery** from the accepted proposal via the existing Plan-review preview/seed path
+   (`previewProjectPlanFromProposal`), so nothing is created until it has been seen. A proposal
+   matched only by name is linked to the client first, because Plan review looks proposals up by
+   `clientId`.
+
+⚠️ The dialog stays mounted while open, not merely while the record is a lead — converting flips the
+status and the refetch would otherwise unmount it between step 1 and step 2.
+
+### 59.8 Verified / not verified
+
+`tsc` 0 errors; ESLint clean on every changed file; **50 new tests**, proved to discriminate by
+seven deliberate breakages (Slack as a fact, pin ignored, backward moves, Lost reopened on old
+evidence, our chasing counted as their reply, an unscoped Gmail search, conversion overwriting) —
+each caught. Schema diff is purely additive.
+
+**Not verified against live data** — `/app` is auth-gated with no staging and no local DB, and the
+sync reads real Gmail and Slack. **Post-deploy, for Valu:** open the lead → 04 Automation → switch
+it on, add Valu's email domain, press **Use my Gmail**, set the internal Slack channel in Edit
+client, then **Sync now**. Confirm the activity log fills with emails and the stage moves to where
+the history says it is. **Then add the `crm-sync` crontab line** (`docs/vps-crons.md`) — until it is
+in, leads still sync whenever someone opens them.

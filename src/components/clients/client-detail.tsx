@@ -41,6 +41,7 @@ import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientDocumentLinks } from "@/components/clients/client-document-links";
 import { ClientDocActionsModal } from "@/components/clients/client-doc-actions-modal";
+import { ConvertLeadModal, LeadCrm } from "@/components/clients/lead-crm";
 import { ClientDriveArchiveButton } from "@/components/clients/client-drive-archive-button";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -57,7 +58,6 @@ import {
   useDeleteClientPlatform,
   useRevealClientBank,
   useSetClientStatus,
-  useAddClientTouchpoint,
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
@@ -77,10 +77,7 @@ import type {
   ClientDetailRecord,
   ClientDesignRecord,
   ClientPlatformRecord,
-  ClientTouchpoint,
   ClientEngagementType,
-  LeadStage,
-  TouchpointType,
 } from "@/types/client";
 
 type EditFormState = {
@@ -156,144 +153,10 @@ function SlackGlyph({ className }: { className?: string }) {
   );
 }
 
-const LEAD_STAGE_OPTIONS: { value: LeadStage; label: string }[] = [
-  { value: "NEW", label: "New" },
-  { value: "CONTACTED", label: "Contacted" },
-  { value: "QUALIFIED", label: "Qualified" },
-  { value: "PROPOSAL_SENT", label: "Proposal sent" },
-  { value: "WON", label: "Won" },
-  { value: "LOST", label: "Lost" },
-];
-const TOUCHPOINT_LABEL: Record<TouchpointType, string> = {
-  CALL: "Call",
-  EMAIL: "Email",
-  MEETING: "Meeting",
-  NOTE: "Note",
-};
-
 const actionMenuPanel =
   "z-50 mt-1.5 w-56 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
 const actionMenuItem =
   "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] data-[focus]:text-[var(--text-1)] disabled:opacity-50";
-
-/** Lead CRM workspace — editable stage/follow-up/source/value + a touchpoint activity log.
- *  Shown on the client detail only while the client's status is LEAD. */
-function LeadWorkspace({
-  slug,
-  client,
-  touchpoints,
-}: {
-  slug: string;
-  client: ClientDetailRecord["client"];
-  touchpoints: ClientTouchpoint[];
-}) {
-  const update = useUpdateClient(slug);
-  const addTp = useAddClientTouchpoint(slug);
-  const [source, setSource] = useState(client.leadSource ?? "");
-  const [value, setValue] = useState(client.leadValue != null ? String(client.leadValue) : "");
-  const [tpType, setTpType] = useState<TouchpointType>("NOTE");
-  const [tpNote, setTpNote] = useState("");
-
-  const saveSource = () => {
-    const next = source.trim();
-    if ((client.leadSource ?? "") !== next) update.mutate({ leadSource: next || null });
-  };
-  const saveValue = () => {
-    const next = value.trim() ? Number(value) : null;
-    if ((client.leadValue ?? null) !== next) update.mutate({ leadValue: next });
-  };
-  async function log() {
-    if (tpType === "NOTE" && !tpNote.trim()) return;
-    try {
-      await addTp.mutateAsync({ type: tpType, note: tpNote.trim() || undefined });
-      setTpNote("");
-    } catch {
-      /* surfaced via mutation state */
-    }
-  }
-
-  return (
-    <section className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header__label">LEAD</span>
-      </div>
-      <div className="grid gap-6 p-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Stage</span>
-              <select
-                value={client.leadStage ?? "NEW"}
-                onChange={(e) => update.mutate({ leadStage: e.target.value as LeadStage })}
-                className="app-input"
-              >
-                {LEAD_STAGE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Next follow-up</span>
-              <input
-                type="date"
-                value={client.leadFollowUpAt ? client.leadFollowUpAt.slice(0, 10) : ""}
-                onChange={(e) => update.mutate({ leadFollowUpAt: e.target.value || null })}
-                className="app-input"
-              />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Source</span>
-              <input value={source} onChange={(e) => setSource(e.target.value)} onBlur={saveSource} className="app-input" />
-            </label>
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Est. value (£)</span>
-              <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={saveValue} type="number" min="0" className="app-input" />
-            </label>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <span className="widget-data-label">Activity</span>
-          <div className="flex items-center gap-2">
-            <select value={tpType} onChange={(e) => setTpType(e.target.value as TouchpointType)} className="app-input w-28">
-              {(Object.keys(TOUCHPOINT_LABEL) as TouchpointType[]).map((t) => (
-                <option key={t} value={t}>{TOUCHPOINT_LABEL[t]}</option>
-              ))}
-            </select>
-            <input
-              value={tpNote}
-              onChange={(e) => setTpNote(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void log(); }}
-              placeholder="Log a call, email, note…"
-              className="app-input flex-1"
-            />
-            <Button type="button" variant="primary" size="sm" onClick={() => void log()} disabled={addTp.isPending}>
-              Log
-            </Button>
-          </div>
-          <ul className="space-y-2">
-            {touchpoints.length === 0 ? (
-              <li className="text-sm text-[var(--text-4)]">No activity logged yet.</li>
-            ) : (
-              touchpoints.map((t) => (
-                <li key={t.id} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-[var(--text-2)]">{TOUCHPOINT_LABEL[t.type]}</span>
-                    <span className="widget-timestamp">{formatDate(t.occurredAt)}</span>
-                  </div>
-                  {t.note ? <p className="mt-0.5 text-[var(--text-3)]">{t.note}</p> : null}
-                  {t.authorName ? <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{t.authorName}</p> : null}
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
@@ -331,6 +194,8 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [resumeAtInput, setResumeAtInput] = useState("");
   const [pauseNoteInput, setPauseNoteInput] = useState("");
   const [statusError, setStatusError] = useState<string | null>(null);
+  // Lead → client conversion dialog.
+  const [converting, setConverting] = useState(false);
 
   if (isPending) {
     return (
@@ -540,7 +405,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </Link>
             )}
             {canManageClients && !isSuggested && client.status === "LEAD" && (
-              <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
+              <Button type="button" variant="primary" size="xs" onClick={() => setConverting(true)}>
                 <ArrowRightCircleIcon className="h-3 w-3" />
                 Convert to client
               </Button>
@@ -695,9 +560,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* Lead workspace (LEAD only) — CRM fields + touchpoint activity log. */}
-      {client.status === "LEAD" && (
-        <LeadWorkspace slug={slug} client={client} touchpoints={touchpoints} />
+      {/* Lead CRM (LEAD only) — 02 pipeline · 03 next steps · 04 automation · 05 activity. */}
+      {isLead && (
+        <LeadCrm slug={slug} client={client} touchpoints={touchpoints} canManage={canManageClients} />
       )}
 
       {!isLead && (
@@ -763,12 +628,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ── 02 // CONTACT — lead standalone (clients show Contact beside Slack above) ── */}
+      {/* ── 06 // CONTACT — lead standalone (clients show Contact beside Slack above) ── */}
       {isLead && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">{isLead ? "02" : "08"}</span>
+              <span className="widget-header__label--number">{isLead ? "06" : "08"}</span>
               {" // CONTACT"}
             </span>
             {canManageClients && (
@@ -842,16 +707,16 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* Lead-only 03 // MEETING NOTES + 04 // NOTES, side by side, equal height. */}
+      {/* Lead-only 07 // MEETING NOTES + 08 // NOTES, side by side, equal height. */}
       {isLead && (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="widget-card">
-            <MeetingNotesSection slug={slug} number="03" />
+            <MeetingNotesSection slug={slug} number="07" />
           </section>
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">04</span>
+                <span className="widget-header__label--number">08</span>
                 {" // NOTES"}
               </span>
               {canManageClients && (
@@ -1473,6 +1338,20 @@ export function ClientDetail({ slug }: { slug: string }) {
       )}
         </>
       )}
+
+      {/* ── Lead → client conversion ──
+          Kept mounted while open, NOT just while the record is a lead: converting flips the status
+          to ACTIVE and the refetch would otherwise unmount the dialog mid-flow, losing step 2
+          (the delivery plan) the moment step 1 succeeds. */}
+      {(isLead || converting) && canManageClients ? (
+        <ConvertLeadModal
+          open={converting}
+          slug={slug}
+          clientId={client.id}
+          clientName={client.name}
+          onClose={() => setConverting(false)}
+        />
+      ) : null}
 
       {/* ── Edit client modal ── */}
       {pausing && (

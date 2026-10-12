@@ -532,6 +532,10 @@ model WorkspaceMember {
   archivedAt          DateTime?
   /// Who archived them — for the audit trail and the "archived by" column.
   archivedById        String?
+  /// Opt-in: the CRM sync may read this person's Gmail, and ONLY messages to/from a lead's own
+  /// email domains. Off by default — nobody's mailbox is read until they turn it on themselves.
+  /// Per-membership, so archiving someone stops it (the sync filters on ACTIVE_MEMBER).
+  crmMailboxEnabled   Boolean   @default(false)
   createdAt           DateTime  @default(now())
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1062,13 +1066,20 @@ enum ClientEngagementType {
 }
 
 /// Sales pipeline stage for a lead (status = LEAD). Surfaced on the lead card + detail.
+/// Which stages move on facts and which are suggestions lives in src/lib/crm/lead-stage-engine.ts.
+/// ⚠️ Add values only — removing or renaming one is a data-losing change the guarded deploy skips.
 enum LeadStage {
   NEW
   CONTACTED
+  DISCOVERY
   QUALIFIED
+  SCOPING
   PROPOSAL_SENT
+  IN_DISCUSSION
+  CONTRACT_SENT
   WON
   LOST
+  ON_HOLD
 }
 
 model WorkspaceClient {
@@ -1208,6 +1219,27 @@ model WorkspaceClient {
   leadFollowUpAt           DateTime?
   leadValue                Int?
   leadValueCurrency        String?                   @default("GBP")
+  // ── CRM automation (leads) — all additive. See src/server/crm/sync.ts ──
+  /// When on, the CRM sync logs email/Slack/meeting/proposal activity and moves leadStage
+  /// on hard facts; anything read from wording becomes a suggestion. Off by default.
+  crmAutoEnabled           Boolean                   @default(false)
+  /// Set when someone changes leadStage by hand. Automation never moves a pinned stage.
+  leadStagePinned          Boolean                   @default(false)
+  /// When leadStage last changed (by hand, by automation or by an accepted suggestion).
+  /// Lets the engine refuse to override a decision with evidence that predates it.
+  leadStageChangedAt       DateTime?
+  /// Extra email domains that identify this lead, beyond website + primary contact.
+  crmEmailDomains          String[]                  @default([])
+  /// Last fully-successful sync. Only advanced when every configured source was read,
+  /// so a failed source is re-covered next run rather than silently skipped.
+  crmLastSyncedAt          DateTime?
+  /// Claim marker — stops two overlapping syncs writing the same activity twice.
+  crmSyncStartedAt         DateTime?
+  /// The last sync's problems in words (Gmail unreachable, bot not in channel…); null = clean.
+  crmLastSyncError         String?
+  /// Who owns this lead on our side — the default owner for its actions. Loose User id.
+  leadOwnerId              String?
+  leadActions              LeadAction[]
   // ── Paused / inactive (status = INACTIVE) ──
   resumeAt                 DateTime?
   pauseNote                String?
@@ -1227,15 +1259,65 @@ model ClientTouchpoint {
   clientId    String
   client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   workspaceId String
-  /// CALL | EMAIL | MEETING | NOTE
+  /// CALL | EMAIL | MEETING | NOTE (logged by hand) · SLACK | PROPOSAL | STAGE | SUGGESTION (CRM sync)
   type        String
   note        String?
   occurredAt  DateTime        @default(now())
   /// workspace User id of the author; null = system/unknown.
   authorId    String?
   createdAt   DateTime        @default(now())
+  /// Where it came from: null = logged by hand; "gmail" | "slack" | "meeting" | "document" |
+  /// "system" = written by the CRM sync.
+  source          String?
+  /// The source's own id (RFC Message-ID, Slack channel:ts, meeting id, docId:event) — the
+  /// dedupe key. Deliberately NOT a unique constraint: adding one makes `prisma db push` treat
+  /// the change as potentially data-losing, which skips the WHOLE sync (CLAUDE.md §2).
+  externalId      String?
+  /// "inbound" (from the lead) | "outbound" (from us) | "internal" (Gitwork-only)
+  direction       String?
+  /// A stage the sync SUGGESTS from wording. Never applied without a person accepting it.
+  suggestedStage  LeadStage?
+  /// "pending" | "accepted" | "dismissed" — only meaningful when suggestedStage is set.
+  suggestionState String?
+  /// The person on THEIR side of an email (sender if inbound, first recipient at their domain
+  /// if outbound). Feeds "main contact" when the lead converts to a client.
+  counterpartEmail String?
+  counterpartName  String?
 
   @@index([clientId, occurredAt])
+  @@index([clientId, source, externalId])
+}
+
+/// A sales action on a lead ("Send the revised quote", due Friday, owned by Dan). The lead's
+/// NEXT STEP is its earliest open action. Actions the AI reads out of emails/Slack arrive as
+/// state "suggested" and only become "open" when a person accepts one — same rule as stages.
+model LeadAction {
+  id          String          @id @default(cuid())
+  workspaceId String
+  clientId    String
+  client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  dueAt       DateTime?
+  /// Loose User id. Open actions surface on the owner's On Your Desk.
+  ownerId     String?
+  /// "suggested" | "open" | "done" | "dismissed"
+  state       String          @default("open")
+  /// "manual" | "ai"
+  source      String          @default("manual")
+  /// The touchpoint an AI action was read from — shown as its evidence.
+  evidenceTouchpointId String?
+  /// Dedupe key for AI actions (message id + normalised title), so a re-read never doubles one.
+  externalId  String?
+  /// One-line "why" for an AI action.
+  reason      String?
+  doneAt      DateTime?
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([clientId, state])
+  @@index([ownerId, state, dueAt])
+  @@index([clientId, externalId])
 }
 
 model ClientPlatform {
@@ -3778,6 +3860,7 @@ enum AiModule {
   MEETING
   WIKI
   EMBEDDING
+  CRM
   OTHER
 }
 
