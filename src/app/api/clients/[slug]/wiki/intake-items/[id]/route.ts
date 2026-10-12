@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server";
+import { REQUEST_MAX_TITLE } from "@/lib/wiki-request-title";
 import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
 import { deleteWikiIntakeItem, updateWikiIntakeItem } from "@/server/wiki";
 
 const patchSchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).optional(),
-  title: z.string().trim().min(1).max(180).optional(),
+  title: z.string().trim().min(1).max(REQUEST_MAX_TITLE).optional(),
   description: z.string().trim().max(10_000).optional().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
   status: z.enum(["NEW", "TRIAGED", "PROMOTED", "CLOSED"]).optional(),

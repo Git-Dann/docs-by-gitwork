@@ -19,6 +19,8 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -262,6 +264,46 @@ describe("nothing truncates without a way to read it", () => {
     for (const el of truncated) {
       const withTitle = el.hasAttribute("title") || el.closest("[title]") !== null;
       expect(withTitle, `<${el.tagName.toLowerCase()}> "${el.textContent?.slice(0, 40)}" truncates with no title`).toBe(true);
+    }
+  });
+});
+
+describe("row actions and chip alignment (reported from the Pollen wiki, Oct 2026)", () => {
+  /** The inline SVG path data — the icon's identity, independent of class names. */
+  const glyph = (btn: Element | null) => btn?.querySelector("svg")?.innerHTML ?? null;
+
+  it("Create task and Mark dealt with are not the same icon", () => {
+    const doc = render([mk()], "internal");
+    const create = doc.querySelector('[aria-label^="Create a task from"]');
+    const dealt = doc.querySelector('[aria-label^="Mark "][aria-label$="dealt with"]');
+    expect(create).not.toBeNull();
+    expect(dealt).not.toBeNull();
+    expect(glyph(create)).not.toBe(glyph(dealt));
+  });
+
+  it("Reopen is not drawn as an X — a rotated plus reads as delete", () => {
+    // Closed rows are hidden unless "Dealt with" is on, so this is read from source.
+    const src = readFileSync(
+      resolve(process.cwd(), "src/components/clients/wiki/wiki-intake-section.tsx"),
+      "utf8",
+    );
+    expect(src).not.toMatch(/<PlusIcon className="h-4 w-4 rotate-45"/);
+    expect(src).toMatch(/status === "CLOSED" \? \(\s*<ArrowUturnLeftIcon/);
+  });
+
+  it("every chip cell centres its chip instead of baseline-aligning it", () => {
+    // A truncated chip (overflow hidden) has its baseline at its bottom edge, so in a
+    // block cell it rides higher than an untruncated one. Flex + items-center removes
+    // the baseline from the question.
+    const doc = render([mk({ priority: "MEDIUM" })], "internal");
+    const row = doc.querySelector('[aria-label^="Create a task from"]')!.closest(".grid")!;
+    const chips = [...row.querySelectorAll("span.inline-block")];
+    expect(chips.length).toBeGreaterThanOrEqual(3); // category, priority, stage
+    for (const chip of chips) {
+      const cell = chip.parentElement!;
+      const cls = [...cell.classList];
+      expect(cls.some((c) => c === "flex" || c === "md:flex"), cell.outerHTML.slice(0, 120)).toBe(true);
+      expect(cls).toContain("items-center");
     }
   });
 });

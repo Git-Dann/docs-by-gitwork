@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { REQUEST_MAX_TITLE } from "@/lib/wiki-request-title";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
@@ -9,7 +10,7 @@ import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 
 const bodySchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).default("FEEDBACK"),
-  title: z.string().trim().min(1).max(180),
+  title: z.string().trim().min(1).max(REQUEST_MAX_TITLE),
   description: z.string().trim().max(10_000).optional().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).default("MEDIUM"),
   requestedBy: z.string().trim().max(120).optional().nullable(),

@@ -4,20 +4,23 @@ import { useMemo, useRef, useState } from "react";
 import {
   ArrowTopRightOnSquareIcon,
   ArrowUpTrayIcon,
+  ArrowUturnLeftIcon,
   ChatBubbleLeftIcon,
-  CheckCircleIcon,
+  CheckIcon,
   ChevronRightIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
   PaperClipIcon,
   PhotoIcon,
   PlusIcon,
+  SquaresPlusIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiIntakeItemRecord } from "@/lib/api";
 import { RequestImportModal } from "@/components/clients/wiki/request-import-modal";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
+import { REQUEST_MAX_TITLE, fitRequestTitle } from "@/lib/wiki-request-title";
 import {
   STAGE_HINT,
   STAGE_LABEL,
@@ -332,11 +335,14 @@ export function WikiIntakeSection({
     setError(null);
     // Only the categoryId is sent — the server derives the underlying type from
     // it, so the client's wording and the board's behaviour can't drift apart.
+    // A long title is moved, not refused: the first sentence becomes the title and the
+    // full text leads the description. See `fitRequestTitle`.
+    const fitted = fitRequestTitle(title, description);
     const payload = {
       categoryId,
       priority,
-      title: title.trim(),
-      description: description.trim() || null,
+      title: fitted.title,
+      description: fitted.description,
       label: label || null,
       device: device.trim() || null,
       osVersion: osVersion.trim() || null,
@@ -599,6 +605,14 @@ export function WikiIntakeSection({
               {uploadingImage ? "Uploading…" : busy ? "Adding…" : "Add"}
             </button>
           </div>
+
+          {/* Said before they press Add, so nothing about the save is a surprise. */}
+          {title.trim().length > REQUEST_MAX_TITLE && (
+            <p className="text-[12px] text-[var(--text-3)]">
+              That&rsquo;s longer than a title — we&rsquo;ll use the first sentence as the
+              title and keep everything you wrote in the description.
+            </p>
+          )}
 
           <button
             type="button"
@@ -976,7 +990,12 @@ export function WikiIntakeSection({
                           </span>
                         </button>
 
-                        <div className="hidden md:block" style={{ fontFamily: MONO }}>
+                        {/* Chip cells are flex, not block. A truncated chip is an
+                            inline-block with overflow hidden, and CSS puts THAT box's
+                            baseline at its bottom edge — so in a block cell the BUG and
+                            NEW chips rode a few pixels above the untruncated MEDIUM one.
+                            Centring in a flex box takes the baseline out of it. */}
+                        <div className="hidden min-w-0 items-center md:flex" style={{ fontFamily: MONO }}>
                           {/* A client's own category can run to "Quick Design fix (V1)",
                               which does not fit 104px — truncated, so it needs a title. */}
                           <span
@@ -987,7 +1006,7 @@ export function WikiIntakeSection({
                           </span>
                         </div>
 
-                        <div className="hidden md:block" style={{ fontFamily: MONO }}>
+                        <div className="hidden min-w-0 items-center md:flex" style={{ fontFamily: MONO }}>
                           <span
                             className={`inline-block rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${PRIORITY_STYLE[item.priority as Priority]}`}
                           >
@@ -999,7 +1018,7 @@ export function WikiIntakeSection({
                             the linked task's board column, so a client sees a request
                             move from Scheduled to In progress to Done without anybody
                             telling them. */}
-                        <div className="min-w-0">
+                        <div className="flex min-w-0 items-center">
                           <StageChip
                             stage={item.stage}
                             title={
@@ -1041,7 +1060,7 @@ export function WikiIntakeSection({
                                 aria-label={`Create a task from ${item.title}`}
                                 className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)] disabled:opacity-60"
                               >
-                                <CheckCircleIcon className="h-4 w-4" />
+                                <SquaresPlusIcon className="h-4 w-4" />
                               </button>
                             ) : (
                               <a
@@ -1079,10 +1098,14 @@ export function WikiIntakeSection({
                               }
                               className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                             >
+                              {/* Create task is the stack-plus beside this one. Both
+                                  used to be the same tick-in-a-circle, so the row showed
+                                  two identical buttons doing different things — and the
+                                  reopen glyph was a rotated plus, which reads as delete. */}
                               {item.status === "CLOSED" ? (
-                                <PlusIcon className="h-4 w-4 rotate-45" />
+                                <ArrowUturnLeftIcon className="h-4 w-4" />
                               ) : (
-                                <CheckCircleIcon className="h-4 w-4" />
+                                <CheckIcon className="h-4 w-4" />
                               )}
                             </button>
                           </div>
@@ -1271,7 +1294,7 @@ export function WikiIntakeSection({
                                 }
                                   className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] md:hidden"
                                 >
-                                  <CheckCircleIcon className="h-4 w-4" /> Create task
+                                  <SquaresPlusIcon className="h-4 w-4" /> Create task
                                 </button>
                               )}
                               {/* Delete is two-step. It used to fire on a single click
@@ -1371,8 +1394,16 @@ export function WikiIntakeSection({
                                       const saved = await updatePublic.mutateAsync({
                                         id: item.id,
                                         patch: {
-                                          title: editDraft.title.trim(),
-                                          description: editDraft.description.trim() || null,
+                                          ...(() => {
+                                            const fitted = fitRequestTitle(
+                                              editDraft.title,
+                                              editDraft.description,
+                                            );
+                                            return {
+                                              title: fitted.title,
+                                              description: fitted.description,
+                                            };
+                                          })(),
                                           priority: editDraft.priority,
                                         },
                                       });
@@ -1547,7 +1578,7 @@ export function WikiIntakeSection({
               onClick={() => void batchPromote()}
               className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
             >
-              <CheckCircleIcon className="h-3.5 w-3.5" />
+              <SquaresPlusIcon className="h-3.5 w-3.5" />
               Create tasks
             </button>
             <button

@@ -13,10 +13,12 @@
  * import it from here.
  */
 
+import { REQUEST_MAX_TITLE } from "@/lib/wiki-request-title";
+
 /** Rows accepted in a single import call. Matches the task importer rather than the
  *  public API's 200 — a person pasting their own backlog once is a different risk from
  *  an integration looping unattended. */
 export const IMPORT_MAX_ROWS = 500;
 
-/** Longest request title the store accepts. */
-export const IMPORT_MAX_TITLE = 180;
+/** Longest request title the store accepts — the same limit the add form uses. */
+export const IMPORT_MAX_TITLE = REQUEST_MAX_TITLE;
