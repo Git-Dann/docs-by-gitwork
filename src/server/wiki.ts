@@ -11,7 +11,7 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { loadClientStandups } from "@/server/wiki-standups";
-import type { StandupDay } from "@/lib/wiki-standups";
+import type { StandupFeed } from "@/lib/wiki-standups";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type {
@@ -369,10 +369,11 @@ export interface WikiDTO {
   /** The client's own Care figures — see src/server/wiki-support.ts. */
   support: WikiSupportSection;
   /**
-   * Today's pushed AM/PM developer standups for this client — see
-   * src/server/wiki-standups.ts. Only devs who actually pushed appear.
+   * Pushed AM/PM developer standups for this client — today, plus the days
+   * in the last two weeks that had one. See src/server/wiki-standups.ts. Only
+   * devs who actually pushed appear.
    */
-  standups: StandupDay;
+  standups: StandupFeed;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -1062,13 +1063,13 @@ async function buildDTO(
       daysAllowance: null,
       daysUsed: null,
     }),
-     // Today's pushed AM/PM standups. In the DTO rather than its own endpoint
-    // because it is two indexed queries against our own database — no Slack, no
+    // Pushed AM/PM standups, today and the last two weeks. In the DTO rather
+    // than its own endpoint because it is indexed queries against our own database — no Slack, no
     // external call — so it costs the page nothing and both audiences get the
     // same answer. `settle` keeps a failure here from taking the wiki down.
     settle("standups", () => loadClientStandups(wiki.clientId), {
-      workDate: new Date().toISOString(),
-      devs: [],
+      today: { workDate: new Date().toISOString(), devs: [] },
+      history: [],
     }),
   ]);
   return {

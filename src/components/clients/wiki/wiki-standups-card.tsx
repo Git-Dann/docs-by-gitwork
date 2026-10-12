@@ -10,17 +10,24 @@
  * RoundUp section can never report different numbers for one week.
  *
  * ⚠️ Only devs who actually PUSHED appear. See `src/lib/wiki-standups.ts`.
+ *
+ * History is a quiet row of day chips, shown only when an earlier day exists —
+ * today stays the default view, so the card reads exactly as before for anyone
+ * who never touches it.
  */
 
+import { useState } from "react";
 import {
   columnTasks,
+  dayChipLabel,
   deliveredDelta,
   formatPushTime,
   phaseLabel,
+  standupEmptyState,
   standupGroups,
   taskLine,
   visibleStandups,
-  type StandupDay,
+  type StandupFeed,
 } from "@/lib/wiki-standups";
 import type { RoundupSummary } from "@/lib/wiki-roundup";
 
@@ -51,15 +58,28 @@ export function WikiStandupsCard({
   roundup,
   numeral,
 }: {
-  standups: StandupDay;
+  standups: StandupFeed;
   /** Null when there is no plan to summarise — the strip is then omitted, not zeroed. */
   roundup: RoundupSummary | null;
   numeral: string;
 }) {
-  const devs = visibleStandups(standups);
+  // null = today. A past day is chosen by its workDate.
+  const [picked, setPicked] = useState<string | null>(null);
+  const history = (standups.history ?? []).filter((d) => visibleStandups(d).length > 0);
+  const pastDay = picked ? (history.find((d) => d.workDate === picked) ?? null) : null;
+  const isPast = pastDay !== null;
+  const devs = visibleStandups(isPast ? pastDay : standups.today);
+  const todayCount = visibleStandups(standups.today).length;
+  const empty = standupEmptyState(standups);
+  const latest = history[0] ?? null;
   const delta = roundup
-    ? deliveredDelta(roundup.delivered.length, roundup.deliveredPrevious, roundup.deliveredPrevious > 0)
+    ? deliveredDelta(
+        roundup.delivered.length,
+        roundup.deliveredPrevious,
+        roundup.deliveredPrevious > 0,
+      )
     : null;
+  const anyBoardOnly = isPast && devs.some((d) => d.source === "history");
 
   return (
     <section className="widget-card">
@@ -68,9 +88,13 @@ export function WikiStandupsCard({
           <span className="widget-header__label--number">{numeral}</span>
           {" // DAILY UPDATES"}
         </span>
-        <span className="widget-header__status shrink-0" style={{ fontFamily: MONO }}>
-          {devs.length} TODAY
-        </span>
+        {/* ⚠️ No "0 TODAY" on a client that has never had an update — a count
+            implies a rhythm that has not started yet. */}
+        {empty !== "never" && (
+          <span className="widget-header__status shrink-0" style={{ fontFamily: MONO }}>
+            {todayCount} TODAY
+          </span>
+        )}
       </div>
 
       {/* ── The week — RoundUp's own figures, not a re-derivation. ── */}
@@ -107,25 +131,83 @@ export function WikiStandupsCard({
         </div>
       )}
 
-      {/* ── Today — one column per dev who pushed. ── */}
+      {/* ── History — a quiet chip row, only when there is an earlier day. Its
+          own scroller: .widget-card is overflow:hidden, so a row of 14 chips
+          with nowhere to scroll would be clipped, not reachable (§45.2). ── */}
+      {history.length > 0 && (
+        <div className="overflow-x-auto border-b border-[var(--border-1)] px-5 py-2.5">
+          <div role="tablist" aria-label="Choose a day" className="flex w-max items-center gap-1.5">
+            {[
+              { key: null as string | null, label: "Today" },
+              ...history.map((d) => ({
+                key: d.workDate as string | null,
+                label: dayChipLabel(d.workDate),
+              })),
+            ].map((c) => {
+              const active = c.key === picked;
+              return (
+                <button
+                  key={c.key ?? "today"}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setPicked(c.key)}
+                  className={`shrink-0 rounded-[6px] border px-2 py-1 text-[10px] tracking-[0.08em] uppercase transition-colors ${
+                    active
+                      ? "border-[var(--brand-200)] bg-[var(--brand-50)] text-[var(--brand-700)]"
+                      : "border-transparent text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                  }`}
+                  style={{ fontFamily: MONO }}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── The chosen day — one column per dev who pushed. ── */}
       <div className="p-5">
         {devs.length === 0 ? (
-          /* ⚠️ "Nobody has pushed yet today" — NOT "no activity". At 10am the
-             team may be deep in work nobody has reported, and the harsher
-             sentence is also the less true one. */
-          <p className="text-[13px] text-[var(--text-3)]">
-            No updates pushed yet today. The team posts a morning and an end-of-day update.
-          </p>
+          empty === "never" ? (
+            /* A brand-new client: say what WILL appear, not that something is missing. */
+            <p className="text-[13px] text-[var(--text-3)]">
+              Daily updates will appear here once work starts — the team posts a morning and an
+              end-of-day update on this project.
+            </p>
+          ) : (
+            /* ⚠️ "Nobody has pushed yet today" — NOT "no activity". At 10am the
+               team may be deep in work nobody has reported, and the harsher
+               sentence is also the less true one. */
+            <p className="text-[13px] text-[var(--text-3)]">
+              No updates pushed yet today.
+              {latest && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => setPicked(latest.workDate)}
+                    className="text-[var(--brand-700)] underline-offset-2 hover:underline"
+                  >
+                    See {dayChipLabel(latest.workDate)}
+                  </button>
+                </>
+              )}
+            </p>
+          )
         ) : (
           <ul
             className="grid items-start gap-4"
             /* Columns, not a long list: auto-fit puts devs side by side and
                collapses to one column on a phone, where side by side would be
                unreadable. Same idiom as the dashboard's own tile grid. */
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
           >
             {devs.map((dev) => {
-              const groups = standupGroups(dev);
+              const groups = standupGroups(dev, { past: isPast });
               const phase = phaseLabel(dev);
               const at = formatPushTime(dev.pmPushedAt ?? dev.amPushedAt);
               return (
@@ -152,7 +234,9 @@ export function WikiStandupsCard({
 
                   {groups.length === 0 ? (
                     <p className="mt-2 text-[12px] text-[var(--text-4)]">
-                      Nothing to report on this project.
+                      {dev.source === "history"
+                        ? "Nothing finished on this project that day."
+                        : "Nothing to report on this project."}
                     </p>
                   ) : (
                     <div className="mt-3 space-y-2.5">
@@ -194,6 +278,13 @@ export function WikiStandupsCard({
               );
             })}
           </ul>
+        )}
+        {/* ⚠️ An old day with no saved copy can only show what was finished.
+            Said once, under the columns, rather than implied by empty groups. */}
+        {anyBoardOnly && (
+          <p className="mt-3 text-[11px] text-[var(--text-4)]">
+            Updates from before daily snapshots began show only the work finished that day.
+          </p>
         )}
       </div>
     </section>
