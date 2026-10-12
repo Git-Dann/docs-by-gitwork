@@ -1342,6 +1342,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           wiki={wiki!}
           availableSections={availableSections}
           onSelect={setActiveSection}
+          audience="team"
+          slug={slug}
         />
       );
     }

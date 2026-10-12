@@ -1387,6 +1387,30 @@ const demoSlackActivity = {
   messages: [
     { id: "sa1", author: "Priya", text: "Deploy to staging looks good ✅", ts: atDays(0) },
     { id: "sa2", author: "Tom", text: "Search index rebuilt overnight — much faster.", ts: atDays(0) },
+    // Tom twice, so the per-dev grouping has something to collapse, and an
+    // unresolved author, so the "unattributed" label is actually exercised — a
+    // fixture where every author is distinct and named cannot show either.
+    { id: "sa3", author: "Tom", text: "Older note nobody should see as the latest.", ts: atDays(-3) },
+    { id: "sa4", author: "Teammate", text: "Bumped the staging cert.", ts: atDays(-1) },
+  ],
+};
+
+/**
+ * The CLIENT's view — their own Slack Connect channel, a different channel with
+ * different people in it. Deliberately not a copy of the internal fixture: if
+ * both rendered the same text, the demo could not show that the two audiences
+ * read different channels, which is the whole safety property.
+ */
+const demoWikiSharedSlack = {
+  configured: true,
+  channelName: "#northwind-gitwork",
+  summary: null,
+  generatedAt: null,
+  reason: "ok",
+  messages: [
+    { id: "ws1", author: "Alex Rivera", text: "Search is live on staging — have a look when you get five minutes.", ts: atDays(0) },
+    { id: "ws2", author: "Jess (Northwind)", text: "Looks great. We'll get the category copy over to you tomorrow.", ts: atDays(0) },
+    { id: "ws3", author: "Marco Bianchi", text: "Payments flow is QA'd and ready for your sign-off.", ts: atDays(-1) },
   ],
 };
 
@@ -3126,6 +3150,9 @@ export function resolveDemoApi(
     return { ...demoWiki, launchpad: demoLaunchpadNow() };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
+  if (/^\/api\/wiki\/[^/]+\/slack$/.test(pathname)) {
+    return demoWikiSharedSlack;
+  }
   if (/^\/api\/clients\/[^/]+\/slack-activity$/.test(pathname)) {
     return demoSlackActivity;
   }

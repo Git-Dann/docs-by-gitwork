@@ -37,6 +37,7 @@ import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import { summariseRoundup } from "@/lib/wiki-roundup";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
+import { WikiSlackCard } from "./wiki-slack-card";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -280,10 +281,28 @@ export function WikiDashboard({
   wiki,
   availableSections,
   onSelect,
+  audience,
+  slug,
+  shareToken,
 }: {
   wiki: WikiDTO;
   availableSections: WikiSection[];
   onSelect: (section: WikiSection) => void;
+  /**
+   * Who is reading this overview.
+   *
+   * ⚠️ REQUIRED, with no default, on purpose. One component serves both the
+   * internal workspace and the client's public share link, so a new call site
+   * that forgets to say which it is would otherwise inherit whichever default
+   * happened to be written — and the thing that differs is Slack, which is
+   * Gitwork talking among itself about this client. Making it a compile error
+   * forces the decision.
+   */
+  audience: "team" | "client";
+  /** Portal client slug — reads the internal channel. Team audience only. */
+  slug?: string;
+  /** Wiki share token — reads the client's own shared channel. Client audience only. */
+  shareToken?: string;
 }) {
   const activeMonitors = wiki.monitors.monitors.filter((m) => m.enabled);
   const monitorSeverity: Record<string, number> = { UP: 0, UNKNOWN: 1, DEGRADED: 2, DOWN: 3 };
@@ -301,6 +320,20 @@ export function WikiDashboard({
     // page/content means the button stays hidden.
     .filter((s) => s !== "monitors" || activeMonitors.length > 0)
     .filter((s) => s !== "documents" || wiki.documents.documents.length > 0);
+
+  /**
+   * The Slack panel, when this audience gets one. Declared here rather than
+   * inline so the tile numerals below can continue the sequence past it —
+   * the `NN //` index is one run per screen, and two cards numbered `i.` is
+   * what the grammar exists to prevent.
+   */
+  const slackCard =
+    audience === "team" && slug ? (
+      <WikiSlackCard source="team" slug={slug} numeral="i" />
+    ) : audience === "client" && shareToken ? (
+      <WikiSlackCard source="client" token={shareToken} numeral="i" />
+    ) : null;
+  const numeralOffset = slackCard ? 1 : 0;
 
   const pct = overallProgress(wiki);
   const phase = activePhase(wiki);
@@ -448,7 +481,9 @@ export function WikiDashboard({
           <div className="space-y-1.5">
             <Metric value={String(docs.length)} label={docs.length === 1 ? "Resource" : "Resources"} />
             {docs[0] && (
-              <p className="truncate text-[12px] text-[var(--text-4)]">Latest: {docs[0].title}</p>
+              <p className="truncate text-[12px] text-[var(--text-4)]" title={docs[0].title}>
+                Latest: {docs[0].title}
+              </p>
             )}
           </div>
         );
@@ -796,6 +831,10 @@ export function WikiDashboard({
         </div>
       </section>
 
+      {/* Team updates — the client's Slack channel, so the wiki is the one place
+          to look. Internal audience only; see WikiSlackCard's header comment. */}
+      {slackCard && <div className="mt-4">{slackCard}</div>}
+
       {sections.length > 0 && (
         <>
           {/* Section widgets — one per page, each showing live data. Auto-fit
@@ -814,7 +853,7 @@ export function WikiDashboard({
                 section={section}
                 onSelect={onSelect}
                 wide={section === "timeline"}
-                numeral={toRomanLower(i + 1)}
+                numeral={toRomanLower(i + 1 + numeralOffset)}
               >
                 {widgetBody(section)}
               </Widget>

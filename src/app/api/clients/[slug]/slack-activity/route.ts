@@ -7,6 +7,7 @@ import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { resolveAiConfig, completeText, type WorkspaceAiFields } from "@/server/ai-provider";
 import { getSlackBotToken } from "@/server/slack/client";
+import { readSlackChannel } from "@/server/slack-channel-updates";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -22,7 +23,6 @@ type SlackMessage = {
   ts: string; // ISO8601 — converted from Slack's epoch ts
 };
 
-const SLACK_API = "https://slack.com/api";
 
 /**
  * GET /api/clients/{slug}/slack-activity
@@ -81,100 +81,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!token) return notConfigured("no_token");
     if (!channelId) return notConfigured("no_channel");
 
-    const auth = { Authorization: `Bearer ${token}` };
-
-    // 1. Channel history — cached for 2 min so multiple teammates viewing the
-    //    same client page share one Slack response per cache window.
-    const historyRes = await fetch(
-      `${SLACK_API}/conversations.history?channel=${encodeURIComponent(channelId)}&limit=40`,
-      { headers: auth, next: { revalidate: 120 } },
-    );
-    const history = (await historyRes.json()) as {
-      ok: boolean;
-      error?: string;
-      messages?: Array<{ type: string; subtype?: string; text?: string; ts: string; user?: string; bot_id?: string }>;
-    };
-
-    if (!history.ok) {
-      // Most common: the bot hasn't been invited to the channel.
-      const reason = history.error === "not_in_channel" ? "not_in_channel" : "slack_error";
-      return notConfigured(reason);
-    }
-
-    const raw = (history.messages ?? []).filter(
-      (m) => m.type === "message" && !m.subtype && (m.text ?? "").trim().length > 0,
-    );
-
-    // 2. Resolve display names — for authors AND anyone @-mentioned in the
-    //    message bodies, so we can render mentions as "@Name".
-    const mentionIds = new Set<string>();
-    for (const m of raw) {
-      for (const match of (m.text ?? "").matchAll(/<@([A-Z0-9]+)/g)) {
-        mentionIds.add(match[1]);
-      }
-    }
-    const userIds = [...new Set([
-      ...(raw.map((m) => m.user).filter(Boolean) as string[]),
-      ...mentionIds,
-    ])];
-    const nameById = new Map<string, string>();
-    await Promise.all(
-      userIds.map(async (uid) => {
-        try {
-          // Display names change rarely — cache for 1 hour per user.
-          const res = await fetch(`${SLACK_API}/users.info?user=${uid}`, { headers: auth, next: { revalidate: 3600 } });
-          const data = (await res.json()) as {
-            ok: boolean;
-            user?: {
-              name?: string; // the @username handle
-              real_name?: string;
-              profile?: { display_name?: string; real_name?: string };
-            };
-          };
-          if (data.ok && data.user) {
-            // Friendliest first: Slack display name → full name → @username handle.
-            const name =
-              data.user.profile?.display_name?.trim() ||
-              data.user.profile?.real_name?.trim() ||
-              data.user.real_name?.trim() ||
-              data.user.name?.trim();
-            if (name) nameById.set(uid, name);
-          }
-        } catch {
-          /* leave unresolved */
-        }
-      }),
-    );
-
-    // 3. Channel name (best-effort).
-    let channelName: string | null = client?.name ?? null;
-    try {
-      // Channel name changes very rarely — cache for 1 hour.
-      const infoRes = await fetch(
-        `${SLACK_API}/conversations.info?channel=${encodeURIComponent(channelId)}`,
-        { headers: auth, next: { revalidate: 3600 } },
-      );
-      const info = (await infoRes.json()) as { ok: boolean; channel?: { name?: string } };
-      if (info.ok && info.channel?.name) channelName = `#${info.channel.name}`;
-    } catch {
-      /* keep fallback */
-    }
-
-    const messages: SlackMessage[] = raw
-      .map((m) => ({
-        id: m.ts,
-        author: (m.user && nameById.get(m.user)) || (m.bot_id ? "Bot" : "Teammate"),
-        text: formatSlackText(m.text ?? "", nameById),
-        ts: new Date(Math.floor(Number(m.ts) * 1000)).toISOString(),
-      }))
-      // Oldest → newest reads naturally for a summary.
-      .reverse();
-
-    // Devs active in the channel — resolved names, generic placeholders dropped.
-    // The app shows these and focuses its on-device summary on "who did what".
-    const participants = [...new Set(
-      messages.map((m) => m.author).filter((a) => a !== "Bot" && a !== "Teammate"),
-    )];
+    const read = await readSlackChannel({
+      botToken: token,
+      channelId,
+      fallbackName: client?.name ?? null,
+    });
+    if (!read.ok) return notConfigured(read.reason);
+    const { channelName, messages, participants } = read;
 
     if (messages.length === 0) {
       return apiOk({
@@ -230,27 +143,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
   } catch (error) {
     return fromError(error);
   }
-}
-
-/// Turns Slack's mrkdwn tokens into readable text:
-/// <@U123> → @Name, <#C123|name> → #name, <url|label> → label, and unescapes
-/// &amp;/&lt;/&gt;. Used for the message bodies the app displays.
-function formatSlackText(text: string, names: Map<string, string>): string {
-  let t = text;
-  // User mentions: <@U123> or <@U123|fallback>
-  t = t.replace(/<@([A-Z0-9]+)(?:\|([^>]+))?>/g, (_m, id: string, fb: string) =>
-    "@" + (names.get(id) || fb || "someone"));
-  // Channels: <#C123|name> or <#C123>
-  t = t.replace(/<#[A-Z0-9]+(?:\|([^>]+))?>/g, (_m, name: string) => "#" + (name || "channel"));
-  // Subteam / group mentions: <!subteam^S123|@group>
-  t = t.replace(/<!subteam\^[A-Z0-9]+(?:\|([^>]+))?>/g, (_m, label: string) => label || "@group");
-  // Special mentions: <!here> <!channel> <!everyone>
-  t = t.replace(/<!(here|channel|everyone)>/g, (_m, k: string) => "@" + k);
-  // Links: <https://x|label> or <https://x>
-  t = t.replace(/<((?:https?|mailto):[^>|]+)(?:\|([^>]+))?>/g, (_m, url: string, label: string) => label || url);
-  // Unescape Slack HTML entities.
-  t = t.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-  return t;
 }
 
 function notConfigured(reason: string) {
