@@ -805,13 +805,15 @@ function describe(t: ClientTouchpoint): { icon: React.ReactNode; label: string }
   return { icon, label: manual };
 }
 
-const PAGE = 30;
+/** Activity is paged, not grown: a synced lead logs every email and Slack message, so an
+ *  open-ended list ran to hundreds of rows. Same pager as the Requests section. */
+const PAGE_SIZE = 10;
 
-function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoints: ClientTouchpoint[]; canManage: boolean }) {
+export function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoints: ClientTouchpoint[]; canManage: boolean }) {
   const addTp = useAddClientTouchpoint(slug);
   const { error: toastError } = useToast();
   const [filter, setFilter] = useState<ActivityFilter>("all");
-  const [limit, setLimit] = useState(PAGE);
+  const [page, setPage] = useState(1);
   const [tpType, setTpType] = useState<TouchpointType>("NOTE");
   const [tpNote, setTpNote] = useState("");
 
@@ -821,12 +823,18 @@ function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoi
     return c;
   }, [touchpoints]);
   const shown = touchpoints.filter((t) => matchesFilter(t, filter));
+  const totalPages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  // Clamped, not stored: a sync or a filter can shrink the list under the page you're on.
+  const currentPage = Math.min(page, totalPages);
+  const firstRow = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = shown.slice(firstRow, firstRow + PAGE_SIZE);
 
   async function log() {
     if (tpType === "NOTE" && !tpNote.trim()) return;
     try {
       await addTp.mutateAsync({ type: tpType, note: tpNote.trim() || undefined });
       setTpNote("");
+      setPage(1); // what you just logged is newest, so it's on page 1
     } catch (e) {
       toastError(errorText(e));
     }
@@ -874,7 +882,7 @@ function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoi
               aria-selected={filter === f.id}
               onClick={() => {
                 setFilter(f.id);
-                setLimit(PAGE);
+                setPage(1);
               }}
               className={cn(
                 "rounded-[6px] border px-2.5 py-1 text-[11px] font-medium transition",
@@ -892,7 +900,7 @@ function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoi
           <p className="text-sm text-[var(--text-4)]">No activity yet.</p>
         ) : (
           <ul className="divide-y divide-[var(--border-2)]">
-            {shown.slice(0, limit).map((t) => {
+            {pageRows.map((t) => {
               const d = describe(t);
               return (
                 <li key={t.id} className="flex gap-3 py-2.5">
@@ -904,7 +912,11 @@ function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoi
                       </span>
                       <span className="widget-timestamp shrink-0">{formatDate(t.occurredAt)}</span>
                     </div>
-                    {t.note ? <p className="mt-0.5 break-words text-[13px] text-[var(--text-3)]">{t.note}</p> : null}
+                    {t.note ? (
+                      <p className="mt-0.5 line-clamp-2 break-words text-[13px] text-[var(--text-3)]" title={t.note}>
+                        {t.note}
+                      </p>
+                    ) : null}
                     {t.authorName ? <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{t.authorName}</p> : null}
                   </div>
                 </li>
@@ -912,12 +924,33 @@ function ActivityCard({ slug, touchpoints, canManage }: { slug: string; touchpoi
             })}
           </ul>
         )}
-        {shown.length > limit ? (
-          <Button type="button" variant="tertiary" size="xs" onClick={() => setLimit((l) => l + PAGE)}>
-            Show {Math.min(PAGE, shown.length - limit)} more
-          </Button>
-        ) : null}
       </div>
+      {shown.length > PAGE_SIZE ? (
+        <div className="flex items-center justify-between gap-3 border-t border-[var(--border-1)] px-6 py-3">
+          <button
+            type="button"
+            disabled={currentPage <= 1}
+            onClick={() => setPage(currentPage - 1)}
+            className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-center text-[11px] text-[var(--text-4)]" style={{ fontFamily: "var(--font-mono)" }}>
+            PAGE {currentPage} OF {totalPages}
+            <span className="hidden sm:inline">
+              {" "}· {firstRow + 1}–{Math.min(firstRow + PAGE_SIZE, shown.length)} OF {shown.length}
+            </span>
+          </span>
+          <button
+            type="button"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage(currentPage + 1)}
+            className="rounded-[7px] border border-[var(--border-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
