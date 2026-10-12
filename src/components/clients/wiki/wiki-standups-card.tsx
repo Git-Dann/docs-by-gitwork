@@ -198,12 +198,17 @@ export function WikiStandupsCard({
           )
         ) : (
           <ul
-            className="grid items-start gap-4"
+            className="grid gap-4"
             /* Columns, not a long list: auto-fit puts devs side by side and
                collapses to one column on a phone, where side by side would be
-               unreadable. Same idiom as the dashboard's own tile grid. */
+               unreadable. Same idiom as the dashboard's own tile grid.
+               Every dev card is the SAME SIZE: `gridAutoRows: 1fr` sizes every
+               row to the tallest card, so a dev with a "+2 more" line no longer
+               sits taller than the others. Bounded by `columnTasks`, which caps
+               how many tasks a card shows. */
             style={{
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gridAutoRows: "1fr",
             }}
           >
             {devs.map((dev) => {

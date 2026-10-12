@@ -226,7 +226,7 @@ function Widget({
       type="button"
       onClick={() => onSelect(section)}
       className={[
-        "group relative flex flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
+        "group relative flex h-full flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
         wide ? "sm:col-span-2" : "",
       ].join(" ")}
     >
@@ -406,7 +406,9 @@ export function WikiDashboard({
                 ))}
               </div>
             )}
-            <p className="text-[13px] text-[var(--text-3)]">
+            {/* Clamped: the brand voice is free text, and on an equal-height grid one
+                long paragraph would stretch every card on the dashboard. */}
+            <p className="line-clamp-3 text-[13px] text-[var(--text-3)]" title={ds?.brandVoice ?? undefined}>
               {ds?.brandVoice
                 ? ds.brandVoice
                 : ds?.typography?.displayFont
@@ -833,12 +835,17 @@ export function WikiDashboard({
           {/* Section widgets — one per page, each showing live data. Auto-fit
               columns (not a fixed 1/2/3 breakpoint grid) so a trailing row
               with fewer cards than columns stretches to fill the width
-              instead of leaving a dangling gap; `items-start` lets each card
-              size to its own content instead of stretching to match a taller
-              sibling (e.g. the wide Timeline card) in the same row. */}
+              instead of leaving a dangling gap.
+              Every card is the SAME HEIGHT (Dan, Oct 2026 — this replaced an
+              earlier `items-start` that let each card hug its content, which
+              left a short card beside a tall one, e.g. Monitors next to the
+              wide Timeline). `gridAutoRows: 1fr` makes every row as tall as the
+              tallest card on the dashboard, not just the tallest in its row —
+              so every widget body must stay BOUNDED (truncate / line-clamp),
+              or one long value inflates every card. */}
           <div
-            className="mt-4 grid items-start gap-4"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}
+            className="mt-4 grid gap-4"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gridAutoRows: "1fr" }}
           >
             {sections.map((section, i) => (
               <Widget
