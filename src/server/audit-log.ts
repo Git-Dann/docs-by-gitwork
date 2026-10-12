@@ -48,6 +48,8 @@ export type AuditAction =
   | "foundry.proposal_draft.prepared"
   | "foundry.onboarding_link.prepared"
   | "foundry.client.activated"
+  | "foundry.client.restored"
+  | "foundry.client.purged"
   | "foundry.client.team_auto_unassigned"
   | "foundry.delivery_plan.seeded"
   | "foundry.nudge.updated"

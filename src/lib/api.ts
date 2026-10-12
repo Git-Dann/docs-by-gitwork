@@ -5013,3 +5013,29 @@ export function setMyCrmMailboxApi(enabled: boolean): Promise<{ enabled: boolean
 export function getMyLeadActions(): Promise<{ actions: import("@/types/crm").MyLeadAction[] }> {
   return apiFetch("/api/desk/lead-actions");
 }
+
+// ── Deleted clients (restore / permanent delete) ────────────────────────────
+
+export interface DeletedClient {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  deletedAt: string;
+}
+
+export function listDeletedClientsApi(): Promise<{ clients: DeletedClient[] }> {
+  return apiFetch("/api/clients/deleted");
+}
+
+export function restoreClientApi(slug: string): Promise<{ restored: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/restore`, { method: "POST" });
+}
+
+export function purgeClientApi(slug: string, confirmName: string): Promise<{ purged: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/permanent`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmName }),
+  });
+}

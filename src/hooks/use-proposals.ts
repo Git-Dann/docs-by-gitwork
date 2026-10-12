@@ -5,6 +5,9 @@ import {
   apiFetch,
   archiveProposal,
   createClient,
+  listDeletedClientsApi,
+  restoreClientApi,
+  purgeClientApi,
   createClientDesign,
   createClientDocumentLink,
   createClientPlatform,
@@ -277,6 +280,33 @@ export function useUpdateClient(slug: string) {
       queryClient.invalidateQueries({ queryKey: ["proposal"] });
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },
+  });
+}
+
+/** Deleted (hidden) clients — the Portal's Deleted tab. */
+export function useDeletedClients(enabled = true) {
+  return useQuery({
+    queryKey: ["clients", "deleted"],
+    queryFn: () => listDeletedClientsApi().then((r) => r.clients),
+    enabled,
+  });
+}
+
+export function useRestoreClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => restoreClientApi(slug),
+    // "clients" prefix covers the deleted list AND every status list the restored client rejoins.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
+  });
+}
+
+/** PERMANENT delete of an already-deleted client. Irreversible — Super Admin only on the server. */
+export function usePurgeClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; confirmName: string }) => purgeClientApi(input.slug, input.confirmName),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
   });
 }
 

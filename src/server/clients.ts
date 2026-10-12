@@ -677,7 +677,8 @@ async function loadClientCollections() {
  * same precedence is what makes `/api/documents/analytics` work (§17); here it is a
  * hazard rather than a feature, so the name is refused at creation instead.
  */
-const RESERVED_CLIENT_SLUGS = new Set(["summary", "new", "api"]);
+// "deleted" backs /api/clients/deleted — a client with that slug would be shadowed by it.
+const RESERVED_CLIENT_SLUGS = new Set(["summary", "new", "api", "deleted"]);
 
 async function assertClientSlugAvailable(
   workspaceId: string,
@@ -699,7 +700,23 @@ async function assertClientSlugAvailable(
   });
 
   if (existing && existing.id !== currentId) {
+    // A deleted client keeps its row (hidden), so its name is still taken. Say so, and say
+    // where to deal with it — "already exists" about a client nobody can see sent people
+    // looking for a record the Portal never shows.
+    if ((existing as typeof existing & { hidden?: boolean }).hidden) {
+      throw new ClientNameTakenByDeletedError(existing.name);
+    }
     throw new Error("A client with this name already exists.");
+  }
+}
+
+/** The name belongs to a deleted (hidden) client — restore it or delete it permanently. */
+export class ClientNameTakenByDeletedError extends Error {
+  status = 409;
+  constructor(name: string) {
+    super(
+      `A deleted client called “${name}” is still using this name. Restore it, or delete it permanently, from the Deleted tab in Portal.`,
+    );
   }
 }
 
@@ -1150,6 +1167,94 @@ export async function setClientProductTeam(
   });
   revalidateTag("client-collections");
   return clean;
+}
+
+export interface DeletedClientItem {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  /** When it was deleted — the row's last update, which the delete itself stamps. */
+  deletedAt: string;
+}
+
+/** Deleted (hidden) clients — what the Portal's Deleted tab lists. */
+export async function listDeletedClients(): Promise<DeletedClientItem[]> {
+  const { workspace } = await ensureBaseRecords();
+  const rows = await workspaceClients.findMany({
+    where: { workspaceId: workspace.id, hidden: true },
+    select: { id: true, name: true, slug: true, logoUrl: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    logoUrl: r.logoUrl ?? null,
+    deletedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+/** Bring a deleted client back, exactly as it was. False when there's no deleted client by that slug. */
+export async function restoreClientRecord(slug: string, actor?: EffectiveUser | null): Promise<boolean> {
+  const { workspace } = await ensureBaseRecords();
+  const existing = await workspaceClients.findFirst({
+    where: { workspaceId: workspace.id, slug, hidden: true },
+    select: { id: true, name: true },
+  });
+  if (!existing) return false;
+  await workspaceClients.update({ where: { id: existing.id }, data: { hidden: false } });
+  await recordAuditEntry({
+    workspaceId: workspace.id,
+    actorId: actor?.id ?? null,
+    action: "foundry.client.restored",
+    target: `client:${existing.id}`,
+    metadata: { clientSlug: slug, clientName: existing.name },
+  });
+  revalidateTag("client-collections");
+  return true;
+}
+
+/**
+ * PERMANENTLY delete a client that has already been deleted (hidden). Irreversible: every row
+ * that cascades from the client goes with it — tasks, wiki, platforms, designs, touchpoints,
+ * actions, bank details, onboarding answers' link — while records that only point at it
+ * (documents, meetings, Pulse scans, placements, Care records) are kept and unlinked.
+ *
+ * Only a deleted client can be purged, so it is always two deliberate steps, never one click
+ * on a live client. The name must be typed back (`confirmName`) — the guard against purging
+ * the wrong row from a list. `ClientWikiLink.linkedClient` is RESTRICT (another client's wiki
+ * linking to this one), so those links are removed first, in the same transaction: either the
+ * whole client goes or nothing does.
+ */
+export async function purgeClientRecord(
+  slug: string,
+  confirmName: string,
+  actor?: EffectiveUser | null,
+): Promise<"purged" | "not_found" | "name_mismatch"> {
+  const { workspace } = await ensureBaseRecords();
+  const existing = await workspaceClients.findFirst({
+    where: { workspaceId: workspace.id, slug, hidden: true },
+    select: { id: true, name: true },
+  });
+  if (!existing) return "not_found";
+  if (confirmName.trim().toLowerCase() !== existing.name.trim().toLowerCase()) return "name_mismatch";
+
+  await prisma.$transaction([
+    prisma.clientWikiLink.deleteMany({ where: { linkedClientId: existing.id } }),
+    prisma.workspaceClient.delete({ where: { id: existing.id } }),
+  ]);
+  // Recorded AFTER the delete succeeds, and against the id + name — the row is gone, so the
+  // audit entry is the only remaining record that this client existed and who removed it.
+  await recordAuditEntry({
+    workspaceId: workspace.id,
+    actorId: actor?.id ?? null,
+    action: "foundry.client.purged",
+    target: `client:${existing.id}`,
+    metadata: { clientSlug: slug, clientName: existing.name },
+  });
+  revalidateTag("client-collections");
+  return "purged";
 }
 
 export async function deleteClientRecord(slug: string): Promise<boolean> {

@@ -26,6 +26,7 @@ import {
   useCreateClient,
   useCreateOnboardingLink,
   useDeleteClient,
+  useDeletedClients,
   useDeleteOnboardingLink,
   useOnboardingLinks,
 } from "@/hooks/use-proposals";
@@ -35,8 +36,9 @@ import { cn, formatDate } from "@/lib/format";
 import type { ClientEngagementType, ClientListItem, LeadStage } from "@/types/client";
 import { STAGE_LABEL } from "@/lib/crm/lead-stage-engine";
 import type { OnboardingLinkRecord } from "@/lib/api";
+import { DeletedClientsList } from "@/components/clients/deleted-clients";
 
-type Tab = "active" | "suggested" | "leads" | "inactive" | "pending" | "onboarding";
+type Tab = "active" | "suggested" | "leads" | "inactive" | "pending" | "onboarding" | "deleted";
 
 /**
  * Split the ACTIVE fetch into the two tabs it feeds.
@@ -1135,6 +1137,9 @@ export function ClientManagement() {
   const inactiveQuery = useClientList({ search, status: "INACTIVE" });
   const pendingQuery = useClientList({ search, status: "PENDING_REVIEW" });
   const onboardingQuery = useOnboardingLinks();
+  // Deleted clients — only fetched for people who can manage clients (the route asserts it).
+  const deletedQuery = useDeletedClients(canManageClients);
+  const deletedCount = deletedQuery.data?.length ?? 0;
   const createClientMutation = useCreateClient();
 
   useEffect(() => {
@@ -1145,7 +1150,8 @@ export function ClientManagement() {
       requestedTab === "pending" ||
       requestedTab === "leads" ||
       requestedTab === "suggested" ||
-      requestedTab === "inactive"
+      requestedTab === "inactive" ||
+      requestedTab === "deleted"
     ) {
       setTab(requestedTab);
     }
@@ -1165,8 +1171,9 @@ export function ClientManagement() {
         : tab === "inactive"
           ? inactiveQuery
           : pendingQuery;
-  const isPending = tab === "onboarding" ? onboardingQuery.isPending : listQuery.isPending;
-  const error = tab === "onboarding" ? onboardingQuery.error : listQuery.error;
+  const isPending =
+    tab === "onboarding" ? onboardingQuery.isPending : tab === "deleted" ? false : listQuery.isPending;
+  const error = tab === "onboarding" ? onboardingQuery.error : tab === "deleted" ? null : listQuery.error;
   const data = listQuery.data;
 
   /**
@@ -1380,6 +1387,16 @@ export function ClientManagement() {
                   action — hidden from restricted developers. */}
               {canManageClients ? (
                 <>
+                  {/* Deleted — shown only when there is something in it (or you're on it),
+                      so an empty bin doesn't take a slot in the strip. */}
+                  {deletedCount > 0 || tab === "deleted" ? (
+                    <TabButton
+                      active={tab === "deleted"}
+                      onClick={() => setTab("deleted")}
+                      label="Deleted"
+                      count={deletedCount}
+                    />
+                  ) : null}
                   <TabButton
                     active={tab === "onboarding"}
                     onClick={() => setTab("onboarding")}
@@ -1417,6 +1434,8 @@ export function ClientManagement() {
           </div>
         ) : tab === "onboarding" ? (
           <OnboardingLinksList links={onboardingLinks} />
+        ) : tab === "deleted" ? (
+          <DeletedClientsList search={search} canPurge={isSuperAdmin} />
         ) : clients.length ? (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
