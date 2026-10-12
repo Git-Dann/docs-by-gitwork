@@ -682,34 +682,6 @@ export function useClientSlackActivity(slug: string, enabled = true) {
   });
 }
 
-/**
- * The client's own view of their Slack Connect channel, by wiki share token.
- *
- * ⚠️ A SEPARATE hook and a separate endpoint from `useClientSlackActivity`, not a
- * parameter on it. That one reads the INTERNAL channel; this one can only ever
- * read the shared channel, because the route it calls takes no channel argument.
- * Collapsing them into one hook with a flag would put the safety boundary in a
- * caller's argument instead of in the URL.
- */
-export function usePublicWikiSlack(token: string, enabled = true) {
-  return useQuery({
-    queryKey: ["public-wiki-slack", token],
-    queryFn: () =>
-      apiFetch<{
-        configured: boolean;
-        channelName: string | null;
-        summary: string | null;
-        generatedAt: string | null;
-        reason: string;
-        messages: Array<{ id: string; author: string; text: string; ts: string }>;
-      }>(`/api/wiki/${encodeURIComponent(token)}/slack`),
-    enabled: Boolean(token) && enabled,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    placeholderData: keepPreviousData,
-  });
-}
-
 // ─── Scribe (client meeting notes) ─────────────────────────────────────────
 
 export function useClientMeetings(slug: string, enabled = true, q = "", all = false) {
