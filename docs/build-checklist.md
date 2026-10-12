@@ -24,6 +24,16 @@ That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vite
 It needs no database, no secrets and no running server, so it works on a fresh clone
 (`npm install` first).
 
+**`audit:dependencies` gates the two trees at different levels (October 2026):** production
+dependencies fail at **high**, dev-only dependencies at **critical**. A single `--audit-level=high`
+over everything had become unpassable: `braces` (via `eslint-config-next` → `fast-glob` →
+`micromatch`) carries a high stack-exhaustion advisory affecting **every** published version, so
+there is no upgrade, and npm's only "fix" is downgrading `eslint-config-next` to 14. It is lint
+tooling, never in the runtime image, and only reachable through attacker-supplied glob patterns. A
+gate that cannot pass stops being run. When you see a high advisory, fix it with
+`npm audit fix --package-lock-only` first (patch bumps within the existing ranges); only reach for
+the split if the advisory is dev-only **and** has no fixed version.
+
 A **`pre-push` hook** (`.husky/pre-push`) runs it automatically when you push to `main`, and refuses
 the push if it fails. It deliberately does **not** fire on a feature-branch push: there, CI reports
 on the PR *before* you merge, so a local gate would only slow you down. On `main` the deploy runs
