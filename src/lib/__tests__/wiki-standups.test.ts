@@ -9,6 +9,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  columnTasks,
+  deliveredDelta,
   formatPushTime,
   hasPushed,
   phaseLabel,
@@ -179,5 +181,45 @@ describe("the loader reads the event, not just the board", () => {
   it("says nobody has pushed YET, rather than that there is no activity", () => {
     expect(CARD).toMatch(/No updates pushed yet today/);
     expect(code(CARD)).not.toMatch(/No activity/i);
+  });
+});
+
+describe("the horizontal card", () => {
+  it("reports overflow instead of silently cutting a column", () => {
+    // ⚠️ "3 shown of 7" and "3" are different claims about how much work there was.
+    const { shown, hidden } = columnTasks([1, 2, 3, 4, 5, 6, 7], 3);
+    expect(shown).toEqual([1, 2, 3]);
+    expect(hidden).toBe(4);
+    expect(columnTasks([1], 3).hidden).toBe(0);
+  });
+
+  it("never claims an improvement in a first week", () => {
+    expect(deliveredDelta(12, 0, false)).toBeNull();
+    expect(deliveredDelta(5, 2, true)).toBe("+3 vs last week");
+    expect(deliveredDelta(2, 5, true)).toBe("-3 vs last week");
+    expect(deliveredDelta(4, 4, true)).toBe("same as last week");
+  });
+
+  const CARD = code(read("src/components/clients/wiki/wiki-standups-card.tsx"));
+  const DASH = code(read("src/components/clients/wiki/wiki-dashboard.tsx"));
+
+  it("lays devs out as columns that collapse on a phone", () => {
+    expect(CARD).toMatch(/repeat\(auto-fit, minmax\(220px, 1fr\)\)/);
+  });
+
+  it("reads the same week figures as the RoundUp tile", () => {
+    // Two cards on one page must not report two different weeks.
+    expect(CARD).toContain("roundup.delivered.length");
+    expect(CARD).toContain("roundup.totals.inFlight");
+    expect(DASH).toMatch(/summariseRoundup\(wiki\.timeline\.blocks, new Date\(\), \{ unassigned: wiki\.timeline\.unassigned \}\)/);
+  });
+
+  it("omits the week strip when there is no plan, rather than zeroing it", () => {
+    expect(DASH).toMatch(/const weekRoundup = hasPlan\s*\?/);
+    expect(CARD).toMatch(/\{roundup && \(/);
+  });
+
+  it("says when finished work has no date, rather than hiding it", () => {
+    expect(CARD).toContain("roundup.deliveredUndated > 0");
   });
 });

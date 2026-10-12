@@ -317,7 +317,15 @@ export function WikiDashboard({
    * Declared above the return so the tile numerals can continue past it: the
    * `NN //` index is one run per screen.
    */
-  const standupsCard = <WikiStandupsCard standups={wiki.standups} numeral="i" />;
+  // The week strip reads the SAME summariseRoundup call the RoundUp tile makes,
+  // with the same guard: no plan means no strip, never a row of zeroes.
+  const hasPlan = wiki.timeline.blocks.length > 0 || wiki.timeline.unassigned.length > 0;
+  const weekRoundup = hasPlan
+    ? summariseRoundup(wiki.timeline.blocks, new Date(), { unassigned: wiki.timeline.unassigned })
+    : null;
+  const standupsCard = (
+    <WikiStandupsCard standups={wiki.standups} roundup={weekRoundup} numeral="i" />
+  );
   const numeralOffset = 1;
 
   const pct = overallProgress(wiki);

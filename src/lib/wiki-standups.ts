@@ -112,3 +112,37 @@ export function formatPushTime(iso: string | null): string | null {
 export function taskLine(t: StandupTask): string {
   return t.parentTitle ? `${t.parentTitle} → ${t.title}` : t.title;
 }
+
+/** How many task lines a dev's column shows before deferring to the count. */
+export const COLUMN_TASK_LIMIT = 3;
+
+/**
+ * The lines to render for one group in a column, plus how many were held back.
+ *
+ * ⚠️ The overflow is REPORTED, never silently cut. "3 shown of 7" and "3" are
+ * different claims about how much work there was, and a client reading the
+ * second would understate the week.
+ */
+export function columnTasks<T>(tasks: readonly T[], limit = COLUMN_TASK_LIMIT): {
+  shown: T[];
+  hidden: number;
+} {
+  return { shown: tasks.slice(0, limit), hidden: Math.max(0, tasks.length - limit) };
+}
+
+/**
+ * "+3 vs last week" / "same as last week" — the honest reading of a delta.
+ *
+ * ⚠️ Returns null when there is no previous window to compare against, rather
+ * than claiming "+12". A first week is not an improvement on anything.
+ */
+export function deliveredDelta(
+  delivered: number,
+  previous: number,
+  hasPrevious: boolean,
+): string | null {
+  if (!hasPrevious) return null;
+  const d = delivered - previous;
+  if (d === 0) return "same as last week";
+  return `${d > 0 ? "+" : ""}${d} vs last week`;
+}
