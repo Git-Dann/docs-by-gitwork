@@ -13,6 +13,8 @@ import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-secti
 import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
 import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
 import { WikiCostsSection } from "./wiki-costs-section";
+import { WikiEstimatesSection } from "./wiki-estimates-section";
+import { isPlannable } from "@/lib/wiki-estimates";
 import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
@@ -61,6 +63,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   launchpad: "Launchpad",
   insights: "Charts",
   costs: "Running costs",
+  estimates: "Estimates",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
@@ -130,6 +133,11 @@ export function WikiPublicView({
     // cost per user of £0.00 — a confident figure derived from nothing, which is worse
     // than the blank page it would replace.
     ...(wiki.costs.enabled && wiki.costs.items.length > 0 ? (["costs"] as const) : []),
+    // Estimates needs at least one estimate with effort in it. Enabled-and-empty would
+    // promise a timeline and show none — and a timeline of "0 weeks" is worse than none.
+    ...(wiki.estimates.enabled && wiki.estimates.estimates.some(isPlannable)
+      ? (["estimates"] as const)
+      : []),
     // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
     // "nothing to report", which reads as a broken link rather than as work not started.
     ...(wiki.roundupEnabled && wiki.timeline.blocks.length > 0 ? (["roundup"] as const) : []),
@@ -261,6 +269,17 @@ export function WikiPublicView({
     }
     if (activeSection === "costs") {
       return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
+    }
+    if (activeSection === "estimates") {
+      return (
+        <WikiEstimatesSection
+          slug={wiki.clientSlug}
+          // Only the estimates that have a timeline: a client must never land on one
+          // that reads "still being put together".
+          section={{ ...wiki.estimates, estimates: wiki.estimates.estimates.filter(isPlannable) }}
+          mode="public"
+        />
+      );
     }
     if (activeSection === "insights") {
       return (

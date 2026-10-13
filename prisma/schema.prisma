@@ -1535,6 +1535,10 @@ model ClientWiki {
   /// total when it is a subtotal.
   costsNotes          String?                @db.Text
   costItems           WikiCostItem[]
+  /// Whether the Estimates section is enabled — how long a piece of work takes with 1, 2,
+  /// 3… developers, on a calendar. Client-facing, so off until someone turns it on.
+  estimatesEnabled    Boolean                @default(false)
+  estimates           WikiEstimate[]
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -5267,6 +5271,43 @@ model WikiCostTier {
 
   @@index([itemId])
   @@map("WikiCostTier")
+}
+
+/// How much each extra developer on an estimate costs in coordination.
+/// LOW 8% · TYPICAL 15% · HIGH 25% — see COORDINATION_OVERHEAD in src/lib/wiki-estimates.ts.
+enum WikiEstimateCoordination {
+  LOW
+  TYPICAL
+  HIGH
+}
+
+/// One timeline estimate on a client's wiki: the effort per phase, and the team sizes to
+/// compare. Every duration and date is DERIVED at render (src/lib/wiki-estimates.ts) —
+/// nothing here stores a finish date, so editing a phase can never leave one stale.
+model WikiEstimate {
+  id              String                   @id @default(cuid())
+  wikiId          String
+  wiki            ClientWiki               @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title           String
+  summary         String?                  @db.Text
+  /// Null = no start agreed yet. The page plans from the next Monday and says so.
+  startDate       DateTime?                @db.Date
+  /// The team sizes compared, e.g. {1,2,3,4}. Normalised on read.
+  teamSizes       Int[]
+  /// The team size the page opens on. Null = the smallest.
+  recommendedTeam Int?
+  coordination    WikiEstimateCoordination @default(TYPICAL)
+  contingencyPct  Int                      @default(20)
+  /// `[{ id, name, effortDays, maxDevs }]`, in order. Replaced wholesale on every write —
+  /// a phase's identity is its position in the sequence, so a diff buys nothing. Parsed
+  /// defensively on read (src/server/wiki-estimates.ts).
+  phases          Json
+  orderKey        Int                      @default(0)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiEstimate")
 }
 
 model WikiInsightBoard {

@@ -14,7 +14,8 @@ import { join } from "node:path";
  * the tsc-checked four are cheap to pin and a map can be widened to `Partial<…>` by a
  * future change without anyone noticing the guard went away.
  *
- * This covers FIVE sections — `insights`, `costs`, `delivery` and `support` — which share the
+ * This covers the sections listed in SECTIONS below — `insights`, `costs`, `estimates`,
+ * `delivery`, `support` and `roundup` — which share the
  * same twelve lists. The shape-identical lists are parameterised over all three; the
  * places the three genuinely differ (each one's public `availableSections` predicate,
  * and Delivery having no server loader at all) get their own assertions at the bottom.
@@ -58,6 +59,7 @@ const SECTIONS = [
   { id: "insights", label: "Charts" },
   { id: "roundup", label: "RoundUp" },
   { id: "costs", label: "Running costs" },
+  { id: "estimates", label: "Estimates" },
   { id: "delivery", label: "Delivery" },
   { id: "support", label: "Support" },
 ] as const;
@@ -184,6 +186,13 @@ describe("wiki-public-view.tsx — each availableSections predicate has its OWN 
     // derived from nothing, which is worse than the blank page it would replace.
     expect(available).toContain("wiki.costs.enabled");
     expect(available).toContain("wiki.costs.items.length");
+  });
+
+  it("estimates — enabled AND an estimate with effort in it", () => {
+    // Enabled-and-empty would promise a timeline and show none, and "0 weeks" stated
+    // for an estimate nobody has filled in is worse than the blank page it replaces.
+    expect(available).toContain("wiki.estimates.enabled");
+    expect(available).toContain("wiki.estimates.estimates.some(isPlannable)");
   });
 
   it("roundup — enabled AND a timeline to summarise", () => {

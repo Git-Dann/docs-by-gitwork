@@ -3715,6 +3715,54 @@ export async function deleteWikiCostItemApi(slug: string, itemId: string): Promi
   return apiFetch(`/api/clients/${slug}/wiki/costs/${itemId}`, { method: "DELETE" });
 }
 
+/* ------------------------------------------------------------- wiki: estimates */
+
+export type { Estimate, EstimatePhase, WikiEstimatesSection } from "@/types/wiki-estimates";
+import type { WikiEstimatesSection as WikiEstimatesSectionT } from "@/types/wiki-estimates";
+import type { EstimateInput } from "@/server/validators";
+export type { EstimateInput };
+
+export async function setWikiEstimatesEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiEstimateApi(
+  slug: string,
+  input: EstimateInput,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiEstimateApi(
+  slug: string,
+  estimateId: string,
+  input: EstimateInput,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates/${estimateId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiEstimateApi(
+  slug: string,
+  estimateId: string,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates/${estimateId}`, { method: "DELETE" });
+}
+
 export async function setWikiInsightsEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/insights`, {
     method: "PATCH",

@@ -8,6 +8,7 @@ import { MAX_PLATFORM_LINKS } from "@/lib/platform-links";
 import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { normalizeGithubRepo } from "@/lib/github";
 import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
+import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -2251,3 +2252,39 @@ export const crmMailboxSchema = z.object({ enabled: z.boolean() });
 export const crmConvertSchema = z.object({
   fields: z.array(z.enum(["primaryContactName", "primaryContactEmail", "website"])).max(3),
 });
+
+// ─── Wiki: Estimates ───────────────────────────────────────────────────────────
+// Limits come from ESTIMATE_LIMITS so the editor and the route cannot disagree — the
+// request-title bug (src/lib/wiki-request-title.ts) was exactly a limit the form never knew.
+
+const estimatePhaseSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1, "Every phase needs a name").max(80),
+  effortDays: z
+    .number()
+    .positive("Effort must be more than zero")
+    .max(ESTIMATE_LIMITS.maxEffortDays),
+  maxDevs: z.number().int().min(1).max(ESTIMATE_LIMITS.maxTeam).nullable(),
+});
+
+export const estimateSchema = z.object({
+  title: z.string().trim().min(1, "Give the estimate a title").max(120),
+  summary: z.string().trim().max(600).nullable().optional(),
+  startDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be YYYY-MM-DD")
+    .nullable()
+    .optional(),
+  teamSizes: z
+    .array(z.number().int().min(1).max(ESTIMATE_LIMITS.maxTeam))
+    .min(1, "Compare at least one team size")
+    .max(ESTIMATE_LIMITS.maxTeamSizes),
+  recommendedTeam: z.number().int().min(1).max(ESTIMATE_LIMITS.maxTeam).nullable().optional(),
+  coordination: z.enum(["LOW", "TYPICAL", "HIGH"]),
+  contingencyPct: z.number().int().min(0).max(ESTIMATE_LIMITS.maxContingencyPct),
+  phases: z
+    .array(estimatePhaseSchema)
+    .min(1, "Add at least one phase")
+    .max(ESTIMATE_LIMITS.maxPhases),
+});
+export type EstimateInput = z.infer<typeof estimateSchema>;

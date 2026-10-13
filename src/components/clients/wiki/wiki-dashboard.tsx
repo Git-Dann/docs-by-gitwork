@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
   BanknotesIcon,
+  CalculatorIcon,
   NewspaperIcon,
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
@@ -34,6 +35,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
+import { buildEstimateReadout, planDurationParts, formatShortDate, isPlannable } from "@/lib/wiki-estimates";
 import { summariseRoundup } from "@/lib/wiki-roundup";
 import { footerFacts, latestWikiActivity, type FooterFact } from "@/lib/wiki-footer";
 import { GITWORK, companyDisclosureLine } from "@/lib/gitwork";
@@ -64,6 +66,7 @@ const SECTION_META: Record<
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
   insights: { label: "Charts", icon: ChartPieIcon },
   costs: { label: "Running costs", icon: BanknotesIcon },
+  estimates: { label: "Estimates", icon: CalculatorIcon },
   roundup: { label: "RoundUp", icon: NewspaperIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
@@ -553,6 +556,36 @@ export function WikiDashboard({
             </div>
             <p className="text-[12px] text-[var(--text-4)]">
               at {cost.headlineUsers.toLocaleString("en-GB")} users
+            </p>
+          </div>
+        );
+      }
+      case "estimates": {
+        // A real case, not the markdown-doc default (§40.1). It leads with the answer the
+        // page exists for — how long, with the team we would recommend — from the SAME
+        // engine the section uses, so the card and the page cannot disagree.
+        const estimate = wiki.estimates.estimates.find(isPlannable);
+        if (!estimate) {
+          return <p className="text-[13px] text-[var(--text-4)]">No estimates yet.</p>;
+        }
+        const now = new Date();
+        const readout = buildEstimateReadout(
+          estimate,
+          new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())),
+        );
+        const plan = readout.recommended;
+        if (!plan) {
+          return <p className="text-[13px] text-[var(--text-4)]">No estimates yet.</p>;
+        }
+        const { figure, unit } = planDurationParts(plan);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={figure} label={unit || "Duration"} />
+              <Metric value={String(plan.devs)} label={plan.devs === 1 ? "Developer" : "Developers"} />
+            </div>
+            <p className="truncate text-[12px] text-[var(--text-4)]" title={estimate.title}>
+              {estimate.title} · done by {formatShortDate(plan.end)}
             </p>
           </div>
         );
