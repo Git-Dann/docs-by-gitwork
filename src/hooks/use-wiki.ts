@@ -65,6 +65,11 @@ import {
   setWikiRoundupEnabledApi,
   setWikiInsightsEnabledApi,
   setWikiCostsEnabledApi,
+  setWikiEstimatesEnabledApi,
+  createWikiEstimateApi,
+  updateWikiEstimateApi,
+  deleteWikiEstimateApi,
+  type EstimateInput,
   updateWikiCostSettingsApi,
   createWikiCostItemApi,
   updateWikiCostItemApi,
@@ -506,6 +511,37 @@ export function useDeleteWikiCostItem(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (itemId: string) => deleteWikiCostItemApi(slug, itemId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Estimates ───────────────────────────────────────────────────────────────
+// Writes invalidate the whole wiki: the dashboard card and the section both derive from
+// the same estimate, and a patched cache entry would let them disagree.
+
+export function useSetWikiEstimatesEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiEstimatesEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSaveWikiEstimate(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { estimateId: string | null; input: EstimateInput }) =>
+      args.estimateId
+        ? updateWikiEstimateApi(slug, args.estimateId, args.input)
+        : createWikiEstimateApi(slug, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiEstimate(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (estimateId: string) => deleteWikiEstimateApi(slug, estimateId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

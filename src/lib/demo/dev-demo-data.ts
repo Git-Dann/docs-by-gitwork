@@ -1062,6 +1062,54 @@ const demoWiki: WikiDTO = {
    * lines would verify the CSS and nothing else (§43.3); these are the two states the
    * page's honesty rules exist for.
    */
+  /**
+   * Two estimates, chosen to exercise the page's two honesty rules: the second has every
+   * phase capped, so its larger teams read "no faster than 2 developers"; and it has no
+   * agreed start date, so the page must say it is planning from next Monday. A demo
+   * carrying only a well-behaved estimate would verify the CSS and nothing else (§43.3).
+   */
+  estimates: {
+    enabled: true,
+    estimates: [
+      {
+        id: "est-v1",
+        title: "Version 1 — member app",
+        summary:
+          "Accounts, booking, payments and push notifications on iOS and Android, with the admin dashboard the front desk uses.",
+        startDate: "2026-11-02",
+        teamSizes: [1, 2, 3, 4],
+        recommendedTeam: 2,
+        coordination: "TYPICAL",
+        contingencyPct: 20,
+        phases: [
+          { id: "ph-1", name: "Discovery", effortDays: 5, maxDevs: 1 },
+          { id: "ph-2", name: "Design", effortDays: 15, maxDevs: 2 },
+          { id: "ph-3", name: "Build", effortDays: 60, maxDevs: null },
+          { id: "ph-4", name: "Testing", effortDays: 12, maxDevs: 2 },
+          { id: "ph-5", name: "Store launch", effortDays: 3, maxDevs: 1 },
+        ],
+        orderKey: 0,
+        updatedAt: "2026-10-12T09:00:00.000Z",
+      },
+      {
+        id: "est-loyalty",
+        title: "Loyalty add-on",
+        summary: "Points, rewards and a referral link, added to the live app.",
+        startDate: null,
+        teamSizes: [1, 2, 3],
+        recommendedTeam: null,
+        coordination: "HIGH",
+        contingencyPct: 30,
+        phases: [
+          { id: "ph-a", name: "Rules & design", effortDays: 4, maxDevs: 1 },
+          { id: "ph-b", name: "Build", effortDays: 14, maxDevs: 2 },
+          { id: "ph-c", name: "Release", effortDays: 2, maxDevs: 1 },
+        ],
+        orderKey: 1,
+        updatedAt: "2026-10-12T09:00:00.000Z",
+      },
+    ],
+  },
   costs: {
     enabled: true,
     currency: "GBP",

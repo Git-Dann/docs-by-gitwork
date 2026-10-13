@@ -46,6 +46,8 @@ import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
 import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { loadWikiCosts } from "./wiki-costs";
+import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
+import type { WikiEstimatesSection } from "@/types/wiki-estimates";
 import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
@@ -358,6 +360,11 @@ export interface WikiDTO {
    * spots — see src/lib/wiki-costs.ts.
    */
   costs: CostModel;
+  /**
+   * How long the work takes with 1, 2, 3… developers. Stores effort, never dates — every
+   * finish date is derived at render by src/lib/wiki-estimates.ts.
+   */
+  estimates: WikiEstimatesSection;
   /**
    * Whether the Delivery section is on. There is no `delivery` DTO: the page derives
    * everything from `timeline` and `blockers`, which are already here — so a loader
@@ -1011,6 +1018,7 @@ async function buildDTO(
     taskStatuses,
     insights,
     costs,
+    estimates,
     support,
     standups,
   ] = await Promise.all([
@@ -1055,6 +1063,7 @@ async function buildDTO(
       notes: null,
       updatedAt: null,
     }),
+    settle("estimates", () => loadWikiEstimates(wiki.clientId), EMPTY_ESTIMATES),
     settle("support", () => loadWikiSupport(wiki.clientId), {
       enabled: false,
       linked: false,
@@ -1130,6 +1139,7 @@ async function buildDTO(
     launchpad,
     insights,
     costs,
+    estimates,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     roundupEnabled: wiki.roundupEnabled ?? false,
     support,
@@ -2799,6 +2809,7 @@ const SHAREABLE_SECTIONS = [
   "launchpad",
   "insights",
   "costs",
+  "estimates",
   "roundup",
   "delivery",
   "support",

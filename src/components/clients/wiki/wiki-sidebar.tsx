@@ -6,6 +6,7 @@ import { COURSE_REQUESTS_SLUGS, GOLF_DATA_SLUGS } from "@/lib/wiki-sections";
 import {
   BoltIcon,
   BookOpenIcon,
+  CalculatorIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -41,6 +42,7 @@ export type WikiSection =
   | "launchpad"
   | "insights"
   | "costs"
+  | "estimates"
   | "roundup"
   | "delivery"
   | "support"
@@ -166,6 +168,7 @@ export function WikiSidebar({
       "launchpad",
       "insights",
       "costs",
+      "estimates",
       "roundup",
       "delivery",
       "support",
@@ -268,6 +271,7 @@ export function WikiSidebar({
         {navItem("launchpad", "Launchpad", <RocketLaunchIcon />)}
         {navItem("insights", "Charts", <ChartPieIcon />)}
         {navItem("costs", "Running costs", <BanknotesIcon />)}
+        {navItem("estimates", "Estimates", <CalculatorIcon />)}
         {navItem("roundup", "RoundUp", <NewspaperIcon />)}
         {navItem("delivery", "Delivery", <ChartBarSquareIcon />)}
         {navItem("support", "Support", <LifebuoyIcon />)}

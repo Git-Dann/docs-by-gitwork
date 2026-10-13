@@ -6305,3 +6305,53 @@ it on, add Valu's email domain, press **Use my Gmail**, set the internal Slack c
 client, then **Sync now**. Confirm the activity log fills with emails and the stage moves to where
 the history says it is. **Then add the `crm-sync` crontab line** (`docs/vps-crons.md`) — until it is
 in, leads still sync whenever someone opens them.
+
+## 58. Recent Changes (October 2026) — Estimates: how long with 1, 2, 3… developers
+
+A new client-wiki section (`estimates`, label **Estimates**) that answers *"how long will
+it take, and how much faster is it with more people?"* on a calendar. Read-only for the
+client; edited by Gitwork. Same posture as Running costs: no `/api/wiki/[token]/estimates`
+route, the data rides down in the wiki DTO, and the wiring test asserts that directory does
+not exist.
+
+**What is stored is effort, never dates.** `WikiEstimate` holds the phases (name,
+developer-days, the most people the phase can use), the team sizes to compare, a start
+date (nullable), a coordination level and a contingency %. Every duration, finish date and
+calendar bar is derived at render by **`src/lib/wiki-estimates.ts`** (pure, unit-tested),
+which the section, the editor's live preview and the dashboard card all call — so they
+cannot disagree. Schema is additive: one flag, one model, one enum. Phases are JSON,
+replaced wholesale on write and parsed defensively on read.
+
+**The model, and why it is not effort ÷ developers:**
+- **Coordination.** Team throughput is `n / (1 + k·(n − 1))` — LOW 8%, TYPICAL 15%, HIGH 25%
+  per extra developer. Two developers deliver 1.74×, twelve deliver 4.5×, never n×.
+- **Phase caps.** A phase can cap how many people it uses (discovery, a store release).
+- So the curve flattens, and the page says so in words — *"No faster than 2 developers"* —
+  rather than drawing a bar that looks shorter because the arithmetic was naive.
+- Phases run in sequence, each rounded UP to whole working days.
+
+**Dates are the real calendar, Monday to Friday** (Dan, explicitly). Every date is an
+actual date stepped over weekends. ⚠️ **Durations are measured between the real start and
+finish dates**, not working-days ÷ an average month: weeks are calendar weeks (weekends
+inside the span count, because the client reads "12 weeks" against their own diary), and
+months are whole calendar months plus the remainder as a fraction of *that* month's own
+length (`calendarMonthsBetween`). The test that tells them apart is 2 Nov → 2 Jun: 7 months
+and a day by the calendar ("7½ months"), 6.997 by a 30.44-day average ("7 months" — a week
+the calendar does not have). Bank holidays and leave are NOT removed, and the page says so.
+
+**Layout — two panels, no long lists:** `01 // ESTIMATE` (the figure for the chosen team,
+the team-size switch on the same row, finish date and contingency range) and
+`02 // CALENDAR` (one row per team size, Week · Month · 6 months · Year zoom, paged). The
+calendar never scrolls sideways — the axis IS the window, and `.widget-card` is
+`overflow: hidden` (§45.2). Up to 15 developers and 8 compared sizes (`ESTIMATE_LIMITS`,
+shared by the validator and the editor).
+
+⚠️ **Calendar windows start on the Monday of the start week, not the 1st of the month.**
+Month-aligned windows put a five-week plan starting 19 Oct outside "October", so it opened
+on a six-month axis that was mostly empty. "Month" is six weeks (a month grid), so a
+five-week plan plus its contingency tail fits.
+
+**Two defects found by looking, not by testing:** the editor's columns overlapped on a
+phone — a `min-h-0` grid item in a single-column scroller lets its row shrink below its
+content (now `md:min-h-0` only) — and `audit:clipping`'s detector reported **0** for that
+overlap, because it detects clipping, not overlap. Only the screenshot caught it.
