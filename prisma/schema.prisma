@@ -1535,6 +1535,11 @@ model ClientWiki {
   /// total when it is a subtotal.
   costsNotes          String?                @db.Text
   costItems           WikiCostItem[]
+  /// The scheduled Big Wedge course-request pull (src/server/wedge-course-feed.ts):
+  /// `{ lastRunAt, lastSuccessAt, failingSince, lastError, lastCreated, lastStatusSyncAt }`.
+  /// Recorded so a broken feed is visible on the Course Requests page instead of reading
+  /// as "no golfer asked for a course" — which is how it went unnoticed for two months.
+  courseFeedStatus    Json?
   /// Whether the Estimates section is enabled — how long a piece of work takes with 1, 2,
   /// 3… developers, on a calendar. Client-facing, so off until someone turns it on.
   estimatesEnabled    Boolean                @default(false)

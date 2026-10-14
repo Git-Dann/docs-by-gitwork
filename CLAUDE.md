@@ -6355,3 +6355,68 @@ five-week plan plus its contingency tail fits.
 phone — a `min-h-0` grid item in a single-column scroller lets its row shrink below its
 content (now `md:min-h-0` only) — and `audit:clipping`'s detector reported **0** for that
 overlap, because it detects clipping, not overlap. Only the screenshot caught it.
+
+## 60. Incident (October 2026) — Wedge's course requests stopped, for the third time
+
+Big Wedge reported that new course requests were not reaching Foundry. They were right, and
+it was the third time this had been "fixed". Diagnosed against live data:
+
+- **The email route is dead, on their side.** Course requests auto-imported from "New
+  Feedback" emails into the mailbox Care reads over IMAP. That mailbox has received **no
+  mail at all since 4 Aug 2026**, in any folder. Big Wedge's app stopped sending it.
+- **The API route only ever ran by hand, on a token that had expired.** Big Wedge has a
+  proper `GET /api/v1/course-requests/`. Foundry's import from it was reachable only
+  through `/api/dev` routes, and authenticated with an admin JWT pasted onto the Care
+  "Analytics API" connector. An access JWT expires, so every previous fix lapsed. The
+  import also read that token **without decrypting it**, so once connector secrets were
+  encrypted at rest it sent `enc:{…}` as the bearer.
+- **Nothing said any of this.** A dead feed and a quiet week look identical on the board,
+  so the client noticed before we did.
+
+### 60.1 The fix — a scheduled pull that cannot expire and cannot fail quietly
+
+- **`src/server/bigwedge-api-auth.ts`** logs in for itself on every run
+  (`POST /api/v1/auth/login/`) with `BIGWEDGE_API_EMAIL` + `BIGWEDGE_API_PASSWORD`. A token
+  minted per run cannot expire between runs. Both are synced into the VPS `.env` by
+  `deploy.yml` from GitHub Actions secrets. A stored connector token is still honoured as a
+  fallback, but an expired one is **reported as expired, with the fix**, not sent to 401.
+  The import and the status sync share this one resolver.
+- **`src/server/wedge-course-feed.ts`**, run **hourly** by `GET /api/cron/wedge-course-feed`
+  (`docs/vps-crons.md`), pulls new requests and, about daily, marks the ones Big Wedge has
+  actioned as ADDED. Each run writes `ClientWiki.courseFeedStatus` (additive JSON).
+- **The outcome is visible.** The Course Requests page shows one line: a quiet "Pulled
+  from the Big Wedge app 12 min ago · 3 new", or a red **Feed down** block naming the
+  error. ⚠️ It also goes red when the last success is more than **6 hours** old. A missing
+  cron line errors nowhere, and that is exactly how Foreman and the Curator went months
+  without running (see the vps-crons doc).
+- **Admins are notified once per outage** (`clients.feed_failing`, in-app and push), on the
+  transition from working to failing. They are not notified every hour it stays down.
+- ⚠️ **A page that failed to fetch makes the whole run a failure.** The window was not
+  fully read, so `lastSuccessAt` does not advance and the next run re-reads it. Overlap is
+  free, because rows dedupe on `externalRef`.
+- `courseFeedStatus` is stripped from every public DTO (`forPublic` in `wiki.ts`, pinned by
+  a test). It is our plumbing, and its errors name our configuration.
+
+### 60.2 The importer was throwing away demand
+
+The importer used to skip any request whose course **name** matched a row already on the
+board. But each row is one golfer's submission (§45.3), so a second golfer asking for a
+course already on the board was silently dropped. That under-counted exactly the demand
+signal §45.3 built.
+
+Name matching now applies only to requests submitted **before the email route died**
+(`EMAIL_FEED_ENDED`), and only against rows from another source. That was the one case
+where the email had genuinely already filed the same submission. Everything else
+dedupes on Big Wedge's own request id. See `isDuplicateFeedRow`.
+
+### 60.3 Verified / not verified
+
+36 new tests across the status rules, the auth precedence, the runner and the banner.
+Nine deliberate sabotages, each failing the test named for it. Not verified: a live login.
+**Dan must set `BIGWEDGE_API_EMAIL` / `BIGWEDGE_API_PASSWORD`** (a Big Wedge admin
+account) as GitHub Actions secrets and re-run the deploy. Until then the page says
+**Feed down** with that instruction. That is the intended behaviour, not a bug.
+
+**Still broken, separately:** `WEDGE_COURSE_API_USER/PASSWORD` (the Golf Data console's
+login to wedge-course-backend) is also failing, and the Analytics connector has no token.
+Neither feeds course requests.

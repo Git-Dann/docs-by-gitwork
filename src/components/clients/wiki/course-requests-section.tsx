@@ -22,6 +22,7 @@ import {
   type CourseDemand,
   type DemandLevel,
 } from "@/lib/course-demand";
+import { describeFeedHealth, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
 
 // JetBrains Mono stack — used for all data labels and timestamps per DESIGN.md
 const MONO =
@@ -143,6 +144,10 @@ export interface CourseRequestsSectionProps {
   onDelete: (ids: string[]) => Promise<void>;
   onSetStatus: (ids: string[], status: string) => Promise<void>;
   readOnly?: boolean;
+  /** The scheduled Big Wedge feed's state. Internal view only — pass it and the page says,
+   *  in one line, whether new requests are actually arriving. Omit it (the client's view)
+   *  and nothing renders. */
+  feed?: CourseFeedStatus | null;
 }
 
 export function CourseRequestsSection({
@@ -152,6 +157,7 @@ export function CourseRequestsSection({
   onDelete,
   onSetStatus,
   readOnly = false,
+  feed,
 }: CourseRequestsSectionProps) {
   /** ⚠️ `UNNAMED` is not a status — it is a repair view.
    *  A course request with no name cannot be actioned: it renders as "Untitled Course"
@@ -310,6 +316,8 @@ export function CourseRequestsSection({
 
   return (
     <div>
+      {feed !== undefined && <FeedHealthLine feed={feed} />}
+
       {/* ── Count summary — mono data-label per DESIGN.md ───────────── */}
       {requests.length > 0 && (
         <div
@@ -811,6 +819,43 @@ export function CourseRequestsSection({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One line saying whether new requests are actually arriving. ⚠️ Healthy is quiet (a mono
+ * readout); failing is a tinted block that names the error — the feed was dead for two
+ * months once and the board looked exactly the same as a quiet week, which is the whole
+ * reason this exists.
+ */
+function FeedHealthLine({ feed }: { feed: CourseFeedStatus | null }) {
+  const health = describeFeedHealth(feed, new Date());
+  if (health.state === "healthy") {
+    return (
+      <p
+        className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-3)]"
+        style={{ fontFamily: MONO }}
+        data-feed-state="healthy"
+      >
+        <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success-500)]" />
+        {health.message}
+      </p>
+    );
+  }
+  return (
+    <div
+      role="status"
+      data-feed-state={health.state}
+      className="mb-3 rounded-[6px] border border-[var(--danger-500)] bg-[var(--danger-50)] px-3 py-2 text-[13px] leading-snug text-[var(--text-1)]"
+    >
+      <span
+        className="mr-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--danger-500)]"
+        style={{ fontFamily: MONO }}
+      >
+        Feed down
+      </span>
+      {health.message}
     </div>
   );
 }

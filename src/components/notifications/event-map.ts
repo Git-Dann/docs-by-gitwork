@@ -49,6 +49,7 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "backstage.expense_decided": { icon: BanknotesIcon, label: "Backstage" },
   "meetings.notes_ready": { icon: ChatBubbleLeftEllipsisIcon, label: "Scribe" },
   "clients.onboarded": { icon: UserGroupIcon, label: "Portal" },
+  "clients.feed_failing": { icon: ExclamationTriangleIcon, label: "Portal" },
   "foreman.digest": { icon: ExclamationTriangleIcon, label: "Delivery watch" },
   "team.message": { icon: ChatBubbleLeftEllipsisIcon, label: "Message" },
 };

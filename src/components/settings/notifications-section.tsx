@@ -152,6 +152,11 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "Client onboarded",
         description: "A new client completed onboarding.",
       },
+      {
+        id: "clients.feed_failing",
+        label: "Client feed failing",
+        description: "Data Foundry pulls for a client (e.g. Big Wedge course requests) stopped arriving.",
+      },
     ],
   },
   {
