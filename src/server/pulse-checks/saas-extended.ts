@@ -46,7 +46,9 @@ export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.SAAS, checkKey: "keyboard_shortcuts_ui", label: "Keyboard shortcut hints", status: hasKeyboardShortcuts ? "PASS" : "WARN", detail: hasKeyboardShortcuts ? "Keyboard shortcut signals detected." : "No keyboard shortcuts detected — power users expect keyboard shortcuts; they improve adoption and reduce churn among technical users." });
 
   // Dark mode
-  const hasDarkMode = /dark.*mode|prefers-color-scheme.*dark|dark.*theme|theme.*toggle|light.*dark.*toggle/i.test(html);
+  // Concrete dark-theme markers only: greedy .* across minified HTML passed stripe.com on
+  // "palette-light…webp … dark … toggle". Toggle wording counts when the words are adjacent.
+  const hasDarkMode = /prefers-color-scheme\s*:\s*dark|\bcolor-scheme\s*:\s*(?:light\s+)?dark\b|name=["']color-scheme["'][^>]*content=["'][^"']*\bdark\b|\bdata-(?:theme|color-mode|mode|bs-theme|theme-option)=["']dark["']|\bdata-dark-theme=|\[data-theme=["']?dark["']?\]|<html[^>]*\bclass=["'][^"']*\bdark\b|(?:\bhtml|:root)\.dark\b|\bdark:[a-z][\w-]*|\bdark[\s-](?:mode|theme)\b|\btheme[\s-]toggle\b|\b(?:toggle|switch) (?:the )?(?:theme|colou?r[\s-]?scheme|dark mode)\b|\bswitch between (?:dark and light|light and dark)\b/i.test(html);
   checks.push({ category: CATEGORIES.SAAS, checkKey: "dark_mode_supported", label: "Dark mode (prefers-color-scheme)", status: hasDarkMode ? "PASS" : "WARN", detail: hasDarkMode ? "Dark mode signals detected." : "No dark mode detected — dark mode is now a standard expectation; support prefers-color-scheme and a manual toggle." });
 
   // Bulk operations
@@ -66,7 +68,11 @@ export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.SAAS, checkKey: "community_forum_slack", label: "Community forum or Slack workspace", status: hasCommunity ? "PASS" : "WARN", detail: hasCommunity ? "Community signals detected." : "No community forum or Slack workspace — a community reduces support load, increases retention, and creates user-to-user advocacy." });
 
   // Marketplace
-  const hasMarketplace = /app.*marketplace|extension.*marketplace|plugin.*marketplace|integration.*marketplace|atlassian.*marketplace|zapier.*integration/i.test(html);
+  // Adjacent phrases, marketplace / app-directory links, and the major named directories.
+  // Greedy .* matched "app … marketplace" across a whole page (stripe.com: "Payments for
+  // marketplaces"). Plugin/extension paths must end there, so /wp-content/plugins/x.css does
+  // not count; App Store / Google Play download badges are not a marketplace listing.
+  const hasMarketplace = /\b(?:apps?|extensions?|plugins?|integrations?)\W{1,3}marketplace\b|href=["']https?:\/\/marketplace\.[a-z0-9-]+\.|href=["'][^"']*\/marketplace(?:[\/?#][^"']*)?["']|>\s*marketplace\s*<|\bapps\.shopify\.com\b|\bappexchange\b|\becosystem\.hubspot\.com\b|\bchromewebstore\.google\.com\b|\bchrome\.google\.com\/webstore\b|\bapp directory\b|\bzapier\.com\/apps\/|\bzapier\W{1,3}integrations?\b|href=["'][^"']*\/integrations(?:\/[^"']*)?["']|href=["'][^"']*\/(?:community\/plugins|plugins|extensions)\/?["']/i.test(html);
   checks.push({ category: CATEGORIES.SAAS, checkKey: "app_marketplace_listed", label: "App marketplace listing", status: hasMarketplace ? "PASS" : "WARN", detail: hasMarketplace ? "App marketplace signals detected." : "No marketplace signals — listing on Zapier, Make, HubSpot, or platform-specific marketplaces drives distribution." });
 
   // Public roadmap

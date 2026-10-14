@@ -37,7 +37,11 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   const hasProductSchema = schemaContent.includes('"product"') && (schemaContent.includes('"price"') || schemaContent.includes('"offers"'));
   checks.push({ category: CATEGORIES.SEO, checkKey: "product_schema", label: "Product schema markup", status: hasProductSchema ? "PASS" : "WARN", detail: hasProductSchema ? "Product schema with pricing detected." : "No Product schema detected — Product markup enables price, availability, and rating rich results in Google Shopping." });
 
-  const hasOrgSchema = schemaContent.includes('"organization"') || schemaContent.includes('"corporation"');
+  // Organization subtypes (schema.org) carry the same brand/knowledge-panel signal as a bare
+  // Organization: OnlineStore (MercadoLivre), NewsMediaOrganization, LocalBusiness, NGO, ...
+  // `(?!\s*:)` keeps it to string VALUES — a property name such as "sourceOrganization": is not
+  // an Organization node.
+  const hasOrgSchema = /"(?:[a-z]*organization|corporation|onlinestore|onlinebusiness|localbusiness|ngo)"(?!\s*:)/.test(schemaContent);
   checks.push({ category: CATEGORIES.SEO, checkKey: "organization_schema", label: "Organization schema markup", status: hasOrgSchema ? "PASS" : "WARN", detail: hasOrgSchema ? "Organization schema detected." : "No Organization schema — adding Organization markup improves brand knowledge panel appearance in Google and Bing." });
 
   const hasArticleSchema = schemaContent.includes('"article"') || schemaContent.includes('"blogposting"') || schemaContent.includes('"newsarticle"');
@@ -58,13 +62,16 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   const isSitemapXml = (body: string, ct: string) =>
     ct.includes("xml") || /<\?xml|<urlset|<sitemapindex|<urlset|<sitemap/i.test(body);
 
-  // Sitemap index
-  const [sitemapIndexA, sitemapIndexB] = await Promise.all([
+  // Sitemap index. WordPress core, Webflow and MDN serve their index at /sitemap.xml, so probe
+  // that too — but there only a real <sitemapindex> root counts (a plain <urlset> is not an index).
+  const isSitemapIndexXml = (body: string) => /<sitemapindex/i.test(body);
+  const [sitemapIndexA, sitemapIndexB, rootSitemapIsIndex] = await Promise.all([
     verifyFileExposure(`${httpsUrl}/sitemap_index.xml`, isSitemapXml),
     verifyFileExposure(`${httpsUrl}/sitemap-index.xml`, isSitemapXml),
+    verifyFileExposure(`${httpsUrl}/sitemap.xml`, isSitemapIndexXml),
   ]);
-  const hasSitemapIndex = sitemapIndexA || sitemapIndexB;
-  checks.push({ category: CATEGORIES.SEO, checkKey: "sitemap_index", label: "XML sitemap index", status: hasSitemapIndex ? "PASS" : "WARN", detail: hasSitemapIndex ? "Sitemap index file found." : "No sitemap index file — for large sites with multiple sitemaps, a sitemap index file is required by Google Webmaster guidelines." });
+  const hasSitemapIndex = sitemapIndexA || sitemapIndexB || rootSitemapIsIndex;
+  checks.push({ category: CATEGORIES.SEO, checkKey: "sitemap_index", label: "XML sitemap index", status: hasSitemapIndex ? "PASS" : "WARN", detail: hasSitemapIndex ? "Sitemap index file found." : "No sitemap index found at /sitemap.xml, /sitemap_index.xml or /sitemap-index.xml — an index is only needed once a site has more than one sitemap (each sitemap is capped at 50,000 URLs / 50 MB); a single sitemap is fine for smaller sites." });
 
   // Image sitemap
   const imageSitemapServed = await verifyFileExposure(`${httpsUrl}/image-sitemap.xml`, isSitemapXml);
@@ -82,10 +89,12 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   checks.push({ category: CATEGORIES.SEO, checkKey: "pagination_rel_links", label: "Pagination rel=prev/next or canonical", status: hasPaginationRel || hasPaginationCanonical ? "PASS" : "WARN", detail: hasPaginationRel ? "rel=prev/next pagination links detected." : hasPaginationCanonical ? "Paginated canonical URL detected." : "No pagination signals — for paginated content, use a canonical pointing to the first page, or rel=prev/next for Google to understand the series." });
 
   // Self-referencing canonical
-  const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);
-  const canonicalUrl = canonicalMatch?.[1] ?? "";
+  // Attribute order is free in HTML: <link href="…" rel="canonical"> (anthropic.com, webflow.com)
+  // is as valid as the rel-first form, so find the tag first, then read its href.
+  const canonicalTag = html.match(/<link\b[^>]*\brel=["']?canonical["']?[^>]*>/i)?.[0] ?? "";
+  const canonicalUrl = canonicalTag.match(/\bhref=["']([^"']+)["']/i)?.[1] ?? "";
   const hasSelfCanonical = !!canonicalUrl && (canonicalUrl.includes(ctx.hostname) || canonicalUrl.startsWith("/"));
-  checks.push({ category: CATEGORIES.SEO, checkKey: "canonical_self_referencing", label: "Self-referencing canonical on key pages", status: hasSelfCanonical ? "PASS" : "WARN", detail: hasSelfCanonical ? `Self-referencing canonical present: ${canonicalUrl}` : "No self-referencing canonical — add a canonical tag on every page pointing to itself to prevent duplicate content from URL parameters and sorting." });
+  checks.push({ category: CATEGORIES.SEO, checkKey: "canonical_self_referencing", label: "Self-referencing canonical on key pages", status: hasSelfCanonical ? "PASS" : "WARN", detail: hasSelfCanonical ? `Self-referencing canonical present: ${canonicalUrl}` : canonicalUrl ? `Canonical points to a different URL (${canonicalUrl}) rather than this page — confirm this is intentional (e.g. a deliberate cross-domain canonical).` : "No self-referencing canonical — add a canonical tag on every page pointing to itself to prevent duplicate content from URL parameters and sorting." });
 
   // Google Business Profile
   const hasGBP = /google\.com\/maps|maps\.google\.com|g\.page\/|google.*business.*profile|google.*my.*business/i.test(html);
@@ -96,9 +105,20 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   checks.push({ category: CATEGORIES.SEO, checkKey: "bing_webmaster_verified", label: "Bing Webmaster Tools verification", status: hasBingVerification ? "PASS" : "WARN", detail: hasBingVerification ? "Bing Webmaster Tools verification detected." : "No Bing verification — Bing/Edge account for ~3% of global search. Submit to Bing Webmaster Tools for additional indexing signals." });
 
   // Internal link depth (proxy: check if nav has links 2+ levels deep)
+  // Any internal page linked from a homepage <nav> is one click deep. Absolute same-host URLs
+  // count too — WordPress, Anthropic and MercadoLivre write nav links as https://host/path.
+  // Only <a href> anchors count: an SVG <use href="/icons/sprite.svg#menu"> is not a link.
   const navLinks = html.match(/<nav[^>]*>[\s\S]*?<\/nav>/gi) ?? [];
-  const deepLinks = navLinks.join("").match(/href=["']\/[^"'\/]+\/[^"'\/]+/g) ?? [];
-  checks.push({ category: CATEGORIES.SEO, checkKey: "internal_link_depth", label: "Key pages within 3 clicks of homepage", status: deepLinks.length > 0 ? "PASS" : "WARN", detail: deepLinks.length > 0 ? "Multi-level internal navigation detected — key pages appear to be within 2–3 clicks." : "No deep internal navigation links in nav — ensure important pages are reachable within 3 clicks from the homepage for optimal crawl depth." });
+  const siteHost = ctx.hostname.toLowerCase().replace(/^www\./, "");
+  const deepLinks = Array.from(navLinks.join("").matchAll(/<a\b[^>]*?\shref\s*=\s*["']([^"'#][^"']*)["']/gi)).filter((m) => {
+    try {
+      const u = new URL(m[1].replace(/&amp;/g, "&"), httpsUrl);
+      return /^https?:$/.test(u.protocol) && u.hostname.toLowerCase().replace(/^www\./, "") === siteHost && u.pathname.length > 1;
+    } catch {
+      return false;
+    }
+  });
+  checks.push({ category: CATEGORIES.SEO, checkKey: "internal_link_depth", label: "Key pages within 3 clicks of homepage", status: deepLinks.length > 0 ? "PASS" : "WARN", detail: deepLinks.length > 0 ? "Homepage navigation links to internal pages — those pages are one click from the homepage." : "No internal page links found in a <nav> element of the static homepage HTML — ensure important pages are reachable within 3 clicks from the homepage (navigation rendered only by JavaScript may be invisible to some crawlers)." });
 
   return checks;
 }

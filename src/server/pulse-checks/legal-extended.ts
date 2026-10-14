@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
+import { documentLanguage, stripNonMarketContext } from "./jurisdictions";
 
 export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, htmlLower } = ctx;
@@ -52,8 +53,27 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
 
   // ─── Regional Laws ──────────────────────────────────────────────────────────
 
+  // Market signals for the self-gated regional checks below and the EU e-commerce
+  // gate further down. Only things a site chooses market-by-market count: its ccTLD,
+  // the region of its own <html lang>, or a local-currency price in VISIBLE text. A
+  // country name in a news headline ("Singapore says…"), a URL parameter
+  // (`sid=…,cny`), a script string (`encodeURIComponent` contains "eur") or an
+  // hreflang alternate (`hreflang="en-CA"`) says nothing about the markets served.
+  // Entities decoded first so "Rs.&nbsp;499", "&#8377;499" or "$49&nbsp;CAD" still read as prices.
+  const marketText = stripNonMarketContext(html)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
+    .replace(/&#8377;|&#x20b9;/gi, "₹")
+    .replace(/&euro;|&#8364;|&#x20ac;/gi, "€")
+    .replace(/&#36;|&#x24;|&dollar;/gi, "$")
+    .toLowerCase();
+  const docLang = documentLanguage(html) ?? "";
+  const docRegion = docLang.split("-")[1] ?? "";
+
   // Brazil LGPD
-  const ptBrSignals = /\.br\b/.test(ctx.hostname) || /lang=["']pt/i.test(html) || htmlLower.includes("brasil") || htmlLower.includes("brazil") || htmlLower.includes("real") && htmlLower.includes("r\$");
+  // A CNPJ (Brazilian company registration, required on Brazilian e-commerce sites by
+  // Decreto 7.962/2013) identifies a Brazilian business even on an English .com.
+  const ptBrSignals = /\.br\b/.test(ctx.hostname) || docRegion === "br" || docLang === "pt" || /\br\$\s?\d/.test(marketText) || /\bcnpj\b|\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/.test(marketText);
   if (ptBrSignals) {
     const hasLgpd = /lgpd|lei geral|proteção de dados|autoridade nacional/i.test(html);
     checks.push({ category: CATEGORIES.LEGAL, checkKey: "lgpd_brazil", label: "Brazil LGPD compliance", status: hasLgpd ? "PASS" : "WARN", detail: hasLgpd ? "LGPD compliance reference detected." : "Brazilian market signals detected but no LGPD reference — Brazil's LGPD requires a legal basis for processing, DPO appointment, and data subject rights similar to GDPR." });
@@ -62,7 +82,9 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   }
 
   // Canada PIPEDA
-  const caSignals = /\.ca\b/.test(ctx.hostname) || /lang=["']en-ca|lang=["']fr-ca/i.test(html) || htmlLower.includes("canada") || htmlLower.includes("canadian");
+  // "CAD" only beside a price ("$49 CAD", "CAD $49", "CAD 49.99") — CAD is also software
+  // vocabulary, and "CAD 3D" / "CAD 2024" are not prices.
+  const caSignals = /\.ca\b/.test(ctx.hostname) || docRegion === "ca" || /\b(?:ca|c)\$\s?\d/.test(marketText) || /\$\s?\d[\d,.]*\s?cad\b|\bcad\s?\$\s?\d|\bcad\s?\d[\d,]*\.\d{2}\b/.test(marketText);
   if (caSignals) {
     const hasPipeda = /pipeda|quebec law 25|personal information protection|casl/i.test(html);
     checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipeda_canada", label: "Canada PIPEDA / Law 25 compliance", status: hasPipeda ? "PASS" : "WARN", detail: hasPipeda ? "PIPEDA / Canadian privacy law reference detected." : "Canadian market signals detected but no PIPEDA reference — Canada's PIPEDA and Quebec Law 25 require consent for data collection and breach notification." });
@@ -71,7 +93,9 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   }
 
   // Singapore PDPA
-  const sgSignals = /\.sg\b/.test(ctx.hostname) || htmlLower.includes("singapore") || htmlLower.includes("sgd");
+  // "Pte. Ltd." is a Singapore company form — the business stating its own identity,
+  // which a headline about Singapore cannot fake.
+  const sgSignals = /\.sg\b/.test(ctx.hostname) || docRegion === "sg" || /\bsgd\b|\bs\$\s?\d/.test(marketText) || /\bpte\.?\s+ltd\b/.test(marketText);
   if (sgSignals) {
     const hasPdpaSg = /pdpa|personal data protection act.*singapore|pdpc/i.test(html);
     checks.push({ category: CATEGORIES.LEGAL, checkKey: "pdpa_singapore", label: "Singapore PDPA compliance", status: hasPdpaSg ? "PASS" : "WARN", detail: hasPdpaSg ? "Singapore PDPA reference detected." : "Singapore market signals detected but no PDPA reference — Singapore's Personal Data Protection Act requires consent and a data protection officer." });
@@ -107,7 +131,9 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   }
 
   // China PIPL
-  const cnSignals = /\.cn\b/.test(ctx.hostname) || /lang=["']zh/i.test(html) || htmlLower.includes("china") || htmlLower.includes("chinese") || htmlLower.includes("人民币") || htmlLower.includes("cny");
+  // zh-TW / zh-HK are not mainland China. An ICP filing number ("京ICP备…") must be
+  // displayed by every site hosted in mainland China; an RMB price is local pricing.
+  const cnSignals = /\.cn\b/.test(ctx.hostname) || /^zh(?:-hans)?(?:-cn)?$/.test(docLang) || marketText.includes("人民币") || /\bcny\b/.test(marketText) || /icp[备證证]/.test(marketText) || /\brmb\s?¥?\s?\d|\d\s?rmb\b/.test(marketText);
   if (cnSignals) {
     const hasPipl = /pipl|personal information protection law.*china|个人信息保护法/i.test(html);
     checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipl_china", label: "China PIPL compliance", status: hasPipl ? "PASS" : "WARN", detail: hasPipl ? "China PIPL reference detected." : "Chinese market signals detected but no PIPL reference — China's PIPL requires separate consent for each processing purpose and a local representative for overseas processors." });
@@ -125,7 +151,8 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   }
 
   // India DPDP
-  const inSignals = /\.in\b/.test(ctx.hostname) || /lang=["']hi/i.test(html) || htmlLower.includes("india") || htmlLower.includes("indian") || htmlLower.includes("rupee") || htmlLower.includes("₹");
+  // "Rs. 499" / "INR 499" only beside an amount.
+  const inSignals = /\.in\b/.test(ctx.hostname) || docLang.split("-")[0] === "hi" || docRegion === "in" || marketText.includes("₹") || /\brs\.?\s?\d|\binr\s?\d|\d\s?inr\b/.test(marketText);
   if (inSignals) {
     const hasDpdp = /dpdp|digital personal data protection|data protection board.*india/i.test(html);
     checks.push({ category: CATEGORIES.LEGAL, checkKey: "dpdp_india", label: "India DPDP Act compliance", status: hasDpdp ? "PASS" : "WARN", detail: hasDpdp ? "India DPDP Act reference detected." : "Indian market signals detected but no DPDP reference — India's Digital Personal Data Protection Act 2023 requires consent notices in multiple languages and data subject rights." });
@@ -169,7 +196,7 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "subscription_cancellation_easy", label: "Easy cancellation (FTC click-to-cancel)", status: hasSubSignals ? (hasEasyCancellation ? "PASS" : "WARN") : "PASS", detail: hasSubSignals ? (hasEasyCancellation ? "Easy cancellation messaging detected." : "Subscription detected but no easy cancellation signal — FTC's click-to-cancel rule requires cancellation to be as easy as sign-up.") : "No subscription signals detected." });
 
   const hasVat = /incl.*vat|including.*vat|inc\. vat|tax included|\+ vat/i.test(html);
-  const hasEuSignals = /\.eu\b/.test(ctx.hostname) || /\.de\b/.test(ctx.hostname) || /\.fr\b/.test(ctx.hostname) || /\.nl\b/.test(ctx.hostname) || htmlLower.includes("european union") || htmlLower.includes("€") || htmlLower.includes("eur");
+  const hasEuSignals = /\.eu\b/.test(ctx.hostname) || /\.de\b/.test(ctx.hostname) || /\.fr\b/.test(ctx.hostname) || /\.nl\b/.test(ctx.hostname) || marketText.includes("european union") || marketText.includes("€") || marketText.includes("&euro;") || /\beur\b/.test(marketText);
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "price_vat_inclusive", label: "Prices shown inc. VAT (EU requirement)", status: hasEuSignals && isEcommerce ? (hasVat ? "PASS" : "WARN") : "PASS", detail: hasEuSignals && isEcommerce ? (hasVat ? "VAT-inclusive pricing detected." : "EU market signals with pricing detected — EU Consumer Rights Directive requires prices shown to consumers to include VAT and all taxes.") : "Not applicable — no EU e-commerce signals detected." });
 
   const hasDistanceSelling = /distance (selling|contract)|right of withdrawal|eu.*consumer|consumer.*directive/i.test(html);
@@ -182,7 +209,15 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "dmca_policy", label: "DMCA takedown procedure", status: hasDmca ? "PASS" : "WARN", detail: hasDmca ? "DMCA takedown procedure referenced." : "No DMCA procedure referenced — US platforms hosting user content should document a DMCA takedown procedure for safe harbour protection." });
 
   const hasAgeGate = /age (verification|gate|check)|you must be (18|13|16|21)|are you (18|13|16|21)|confirm.*age/i.test(html);
-  const hasAgeRestricted = htmlLower.includes("alcohol") || htmlLower.includes("gambling") || htmlLower.includes("cannabis") || htmlLower.includes("tobacco") || htmlLower.includes("adult content");
+  // Gate on what the SITE is (its <title> and meta description), not on any word in
+  // its body: theguardian.com/uk carries a "...promote gambling site..." headline and
+  // is not an age-restricted business. Retail vocabulary (wine, spirits, casino,
+  // betting, vape) is included so real age-restricted sellers are still caught.
+  const siteSummary = `${/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? ""} ${/<meta\b[^>]*\bname\s*=\s*["']description["'][^>]*>/i.exec(html)?.[0] ?? ""}`.toLowerCase();
+  // A seller whose title says nothing ("JUUL Login | JUUL") still prints the statutory
+  // or responsibility markers only age-restricted sellers carry.
+  const hasRegulatoryMarker = /contains nicotine|nicotine is (?:an? )?(?:highly )?addictive|age[- ]restricted (?:product|item|goods)|begambleaware\.org|gamble responsibly|please drink responsibly|drinkaware\.co\.uk/.test(marketText);
+  const hasAgeRestricted = hasRegulatoryMarker || /alcohol|gambling|cannabis|tobacco|adult content|casino|betting|sportsbook|\bvap(?:e|es|ing)\b|e-?cigarette|liquor|\bwines?\b|\bbeers?\b|\bspirits\b|whiske?y|\bcbd\b/.test(siteSummary);
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "age_gate", label: "Age verification / age gate", status: hasAgeRestricted ? (hasAgeGate ? "PASS" : "WARN") : "PASS", detail: hasAgeRestricted ? (hasAgeGate ? "Age verification detected." : "Age-restricted content detected but no age gate — many jurisdictions legally require age verification for alcohol, gambling, adult content, and tobacco.") : "Not applicable — no age-restricted content signals detected." });
 
   const hasB2bTerms = /service level agreement|sla|enterprise (agreement|terms)|master (service|subscription) agreement|msa\b/i.test(html);

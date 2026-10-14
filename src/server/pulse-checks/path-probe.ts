@@ -96,6 +96,10 @@ export function classifyTopicPage(probe: PathProbe, requestedPath: string, topic
   const title = headings[0];
   // The homepage served under another path is not the page, whatever its title says.
   if (homeTitle && title && title === homeTitle) return "unverified";
+  // A downloadable pack is the thing itself: anthropic.com/press-kit 307s straight to a
+  // .zip. When the requested path names the topic and the answer is an archive or PDF —
+  // not a page that could be a homepage soft-route — the asset exists.
+  if (/^application\/(zip|x-zip-compressed|pdf)\b/i.test(probe.contentType) && topic.test(requestedPath.toLowerCase().replace(/[-_/]+/g, " "))) return "present";
   if (headings.some((h) => topic.test(h))) return "present";
   if (finalPath !== requestedPath && topic.test(ownPath)) return "present";
   return "unverified";

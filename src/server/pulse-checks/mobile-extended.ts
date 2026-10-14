@@ -1,5 +1,99 @@
 import { CATEGORIES } from "./categories";
-import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
+import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
+import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, probeInconclusive, skip } from "./_types";
+
+const MAX_STYLESHEETS = 40;
+const STYLESHEET_READ_TIMEOUT_MS = 8_000;
+const STYLESHEET_READ_MAX_BYTES = 2_000_000;
+
+/**
+ * Looks for a CSS pattern in the stylesheets the page links. Media-query support
+ * (prefers-reduced-motion etc.) almost always ships in external CSS bundles, so
+ * testing the HTML alone reported it missing on github.com, linear.app and
+ * bolt.new, which all have it.
+ *
+ * Returns "unknown" when a stylesheet could not be read (network error, timeout,
+ * 403, 429, 5xx), because an unread stylesheet is not evidence of absence. A 404 or
+ * 410 stylesheet does not exist and the browser applies nothing from it, so it counts
+ * as read and empty: one stale link must not turn a real WARN into INCONCLUSIVE.
+ */
+/**
+ * true / false = the stylesheet was read (or does not exist); null = it could not be read.
+ * The read is bounded in time AND size, both covering the body: a page can link a slow
+ * or multi-megabyte stylesheet, and fetchWithTimeout's deadline ends when headers arrive.
+ * A body cut off by either bound without a match is null, never "absent".
+ */
+async function stylesheetContains(url: string, pattern: RegExp): Promise<boolean | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STYLESHEET_READ_TIMEOUT_MS);
+  const aborted = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener("abort", () => reject(new Error("stylesheet read timed out")), { once: true });
+  });
+  aborted.catch(() => {});
+  try {
+    const res = await fetchScannableUrl(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+    });
+    if (res.status === 404 || res.status === 410) return false;
+    if (!res.ok) return null;
+    // A soft-routed missing file answers 200 with the site's HTML shell. Browsers refuse to
+    // apply text/html as a stylesheet, so it contributes nothing — the same as a 404.
+    if ((res.headers.get("content-type") ?? "").toLowerCase().includes("text/html")) return false;
+    const reader = res.body?.getReader();
+    if (!reader) return false;
+    const decoder = new TextDecoder();
+    let text = "";
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+      if (pattern.test(text)) {
+        reader.cancel().catch(() => {});
+        return true;
+      }
+      if (bytes >= STYLESHEET_READ_MAX_BYTES) {
+        reader.cancel().catch(() => {});
+        return null;
+      }
+    }
+    return pattern.test(text + decoder.decode());
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function findInLinkedStylesheets(
+  html: string,
+  baseUrl: string,
+  pattern: RegExp,
+): Promise<"found" | "absent" | "unknown"> {
+  const hrefs = new Set<string>();
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    const isStyle = /\brel\s*=\s*["']?[^"'>]*\bstylesheet\b/i.test(tag) || /\bas\s*=\s*["']?style\b/i.test(tag);
+    if (!isStyle) continue;
+    const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1] ?? tag.match(/\bhref\s*=\s*([^\s"'>]+)/i)?.[1];
+    if (!href) continue;
+    try {
+      hrefs.add(new URL(href.replace(/&amp;/g, "&"), baseUrl).toString());
+    } catch {
+      /* unparseable href */
+    }
+  }
+  if (hrefs.size === 0) return "absent";
+  const urls = [...hrefs].slice(0, MAX_STYLESHEETS);
+  const results = await Promise.all(urls.map((url) => stylesheetContains(url, pattern)));
+  if (results.some((r) => r === true)) return "found";
+  if (results.some((r) => r === null) || hrefs.size > MAX_STYLESHEETS) return "unknown";
+  return "absent";
+}
 
 export async function runMobileExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const html = ctx.pageResult.html;
@@ -33,8 +127,15 @@ export async function runMobileExtended(ctx: ExtendedCheckContext): Promise<Puls
   checks.push({ category: CATEGORIES.MOBILE, checkKey: "offline_mode_capable", label: "Service worker offline support", status: hasServiceWorker ? "PASS" : "WARN", detail: hasServiceWorker ? "Service worker / offline capability signals detected." : "No service worker signals — offline support via service workers enables PWA-grade reliability and app store distribution." });
 
   // prefers-reduced-motion
-  const hasReducedMotion = /prefers-reduced-motion/i.test(html);
-  checks.push({ category: CATEGORIES.MOBILE, checkKey: "reduced_motion_css", label: "prefers-reduced-motion CSS", status: hasReducedMotion ? "PASS" : "WARN", detail: hasReducedMotion ? "prefers-reduced-motion media query detected." : "No prefers-reduced-motion CSS — users with vestibular disorders need a way to reduce animations (WCAG 2.3.3)." });
+  const reducedMotion = /prefers-reduced-motion/i.test(html)
+    ? "found"
+    : await findInLinkedStylesheets(html, ctx.pageResult.finalUrl || ctx.httpsUrl, /prefers-reduced-motion/i);
+  if (reducedMotion === "unknown") {
+    checks.push(probeInconclusive(CATEGORIES.MOBILE, "reduced_motion_css", "prefers-reduced-motion CSS", "One or more linked stylesheets could not be read, so the absence of a prefers-reduced-motion query cannot be established."));
+  } else {
+    const hasReducedMotion = reducedMotion === "found";
+    checks.push({ category: CATEGORIES.MOBILE, checkKey: "reduced_motion_css", label: "prefers-reduced-motion CSS", status: hasReducedMotion ? "PASS" : "WARN", detail: hasReducedMotion ? "prefers-reduced-motion media query detected." : "No prefers-reduced-motion CSS in the page or its linked stylesheets — users with vestibular disorders need a way to reduce animations (WCAG 2.3.3, AAA)." });
+  }
 
   // prefers-contrast
   const hasHighContrast = /prefers-contrast/i.test(html);

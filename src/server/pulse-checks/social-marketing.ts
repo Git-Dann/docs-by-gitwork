@@ -80,8 +80,16 @@ function meta(html: string, key: string): string | null {
   );
   const tag = html.match(re)?.[0];
   if (!tag) return null;
-  const content = tag.match(/content\s*=\s*["']([^"']*)["']/i)?.[1];
+  // Match the closing quote of the SAME kind, so an apostrophe inside a double-quoted
+  // value ("Don't miss…") does not truncate it.
+  const m = tag.match(/content\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+  const content = m ? (m[1] ?? m[2]) : undefined;
   return content?.trim() ?? null;
+}
+
+/** Length as a reader sees it: a character reference (&amp; &mdash; &#8217;) is one character. */
+function visibleLength(s: string): number {
+  return s.replace(/&(?:#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);/gi, "x").length;
 }
 
 /** The networks worth naming individually, and how to spot a link to one. */
@@ -107,7 +115,9 @@ function firstH1(html: string): string | null {
   const inner = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
   if (inner === undefined) return null;
   const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  return text || null;
+  // Animated headlines ship the same words several times (a mobile copy, a desktop copy and
+  // a visually-hidden copy — linear.app does all three). Count the words once.
+  return text.replace(/^(.+?)(?: \1)+$/, "$1") || null;
 }
 
 /** Every JSON-LD @type on the page, lowercased. */
@@ -117,6 +127,17 @@ function schemaTypes(html: string): Set<string> {
     for (const t of m[1].matchAll(/"([^"]+)"/g)) types.add(t[1].toLowerCase());
   }
   return types;
+}
+
+/**
+ * An Organization or one of its common subtypes — any of which can carry sameAs. Shops
+ * and local businesses usually ship LocalBusiness / OnlineStore / a *Store type rather
+ * than a bare Organization, and telling them they have "no Organization JSON-LD" is false.
+ */
+function isOrganizationType(t: string): boolean {
+  return /organization$|^(?:localbusiness|corporation|onlinestore|onlinebusiness|ngo|airline|consortium|governmentorganization|project)$|store$|business$|restaurant$/.test(
+    t,
+  );
 }
 
 const GENERIC_HEADLINES = new Set([
@@ -142,7 +163,9 @@ export async function runSocialMarketingChecks(
     return skip(CATEGORY, ALL_CHECKS, "No public web page to share.");
   }
 
-  const html = ctx.pageResult.html;
+  // A client-rendered page is parsed from the DOM the render agent adopted, when there is one;
+  // the static shell has no <h1>, no images and no links, and saying so is not a finding.
+  const html = ctx.contentHtml ?? ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
   const add = (
     checkKey: string,
@@ -167,7 +190,9 @@ export async function runSocialMarketingChecks(
   const w = Number(meta(html, "og:image:width") ?? 0);
   const h = Number(meta(html, "og:image:height") ?? 0);
   const sized = w > 0 && h > 0;
-  const bigEnough = w >= 1200 && h >= 630;
+  // Within 5% of 1200×630 is indistinguishable once a network scales it; only a
+  // genuinely smaller image gets visibly upscaled.
+  const bigEnough = w >= 1140 && h >= 598;
   add(
     "social_og_image_size",
     "Share image is large enough",
@@ -177,12 +202,12 @@ export async function runSocialMarketingChecks(
       : !sized
         ? "og:image:width / og:image:height are not declared, so the size could not be established from the page. Declaring them lets a platform lay the card out before the image downloads."
         : bigEnough
-          ? `Declared ${w}×${h} — at or above the 1200×630 that renders sharp on every major network.`
-          : `Declared ${w}×${h}, under the 1200×630 the major networks render at, so it will be upscaled and look soft. Export the image at 1200×630.`,
+          ? `Declared ${w}×${h} — at or within a few pixels of the 1200×630 Facebook recommends for sharp display on high-resolution screens.`
+          : `Declared ${w}×${h}, well under the 1200×630 Facebook recommends for high-resolution screens, so networks will upscale it and it can look soft. Export the image at 1200×630.`,
   );
 
   const ogTitle = meta(html, "og:title") ?? meta(html, "twitter:title");
-  const titleLen = ogTitle?.length ?? 0;
+  const titleLen = ogTitle ? visibleLength(ogTitle) : 0;
   add(
     "social_og_title",
     "Share headline (og:title)",
@@ -218,7 +243,9 @@ export async function runSocialMarketingChecks(
       ? "summary_large_image — posts render with the full-width image."
       : twitterCard
         ? `twitter:card is "${twitterCard}", which renders a small thumbnail. summary_large_image gives the full-width image and is the reason some links look designed and others look like a footnote.`
-        : "No twitter:card, so X falls back to a small thumbnail. Set summary_large_image.",
+        : ogImage || meta(html, "twitter:image")
+          ? "No twitter:card, so X falls back to a small thumbnail. Set summary_large_image."
+          : "No twitter:card and no share image (og:image or twitter:image), so a post of this link on X carries no image at all. Add a 1200×630 og:image and set twitter:card to summary_large_image.",
   );
 
   // ── Where the audience actually is ─────────────────────────────────────────
@@ -245,13 +272,22 @@ export async function runSocialMarketingChecks(
   // `sameAs` is what tells Google and the AI crawlers that these accounts are yours —
   // it is the difference between having profiles and being known to have them.
   const sameAs = /"sameAs"\s*:/.test(html);
+  const pageSchemaTypes = schemaTypes(html);
   add(
     "social_schema_sameas",
     "Profiles declared in structured data",
     sameAs || linked.length === 0 ? "PASS" : "WARN",
     sameAs
       ? "Organization schema declares sameAs — search engines and AI crawlers can tie the profiles to the brand."
-      : "Profiles are linked but not declared in schema.org sameAs, so a crawler cannot confirm the accounts are yours. It is a few lines in the Organization JSON-LD you already have.",
+      : linked.length === 0
+        ? "No social profiles are linked, so there is nothing to declare in sameAs."
+        : [...pageSchemaTypes].some(isOrganizationType)
+          ? "Profiles are linked but not declared in schema.org sameAs, so a crawler cannot confirm the accounts are yours. It is a few lines in the Organization JSON-LD you already have."
+          : pageSchemaTypes.size === 0
+            ? "Profiles are linked but not declared in schema.org sameAs, so a crawler cannot confirm the accounts are yours. The page has no JSON-LD yet; an Organization block with a sameAs list is what ties the profiles to the brand."
+            : // Some JSON-LD exists but no type we recognise as an Organization. The subtype
+              // list is not exhaustive (Dentist, School, Hotel…), so do not claim there is none.
+              "Profiles are linked but not declared in schema.org sameAs, so a crawler cannot confirm the accounts are yours. Add a sameAs list to the Organization (or business-type) block in your JSON-LD, or add one if the page has none; that is what ties the profiles to the brand.",
   );
 
   const shareable =
@@ -272,7 +308,14 @@ export async function runSocialMarketingChecks(
   // Alt text is an accessibility duty first; it also decides what a screen reader and
   // an AI crawler make of an image-heavy page, which is why it sits here too.
   const imgs = html.match(/<img\b[^>]*>/gi) ?? [];
-  const withAlt = imgs.filter((t) => /\balt\s*=\s*["'][^"']+["']/i.test(t)).length;
+  // An alt that is present but empty (alt="" or a bare `alt`) is how WCAG marks an image
+  // decorative — a decision made, not a description missing. Only an image with NO alt
+  // attribute is unlabelled. Quoted values are blanked first so title="alt text" cannot
+  // pass; they are blanked to "= " (not "=") so minified HTML with no space between
+  // attributes (src="x"alt="y") keeps a boundary before `alt`.
+  const withAlt = imgs.filter((t) =>
+    /\salt(?=\s*=|[\s\/>]|$)/i.test(t.replace(/=\s*("[^"]*"|'[^']*')/g, "= ")),
+  ).length;
   const coverage = imgs.length ? Math.round((withAlt / imgs.length) * 100) : 100;
   add(
     "social_image_alt_coverage",
@@ -280,7 +323,7 @@ export async function runSocialMarketingChecks(
     imgs.length === 0 || coverage >= 80 ? "PASS" : "WARN",
     imgs.length === 0
       ? "No <img> tags on the page."
-      : `${withAlt} of ${imgs.length} images have alt text (${coverage}%). Below 80% it is worth a pass — alt text is what a screen reader reads out and what an AI crawler uses to understand an image-led page.`,
+      : `${withAlt} of ${imgs.length} images carry an alt attribute (${coverage}%; an empty alt="" counts — it is how an image is marked decorative). Below 80% it is worth a pass — alt text is what a screen reader reads out and what an AI crawler uses to understand an image-led page.`,
   );
 
 
@@ -292,7 +335,7 @@ export async function runSocialMarketingChecks(
     ogType ? "PASS" : "WARN",
     ogType
       ? `og:type is "${ogType}".`
-      : "No og:type. Networks default to a generic link; declaring `website` for a marketing page or `article` for a post is what earns the richer article card, with a byline and a date.",
+      : "No og:type. Facebook treats an untyped page as `website`, so a homepage or marketing page loses nothing; on a post or report, declaring `article` (with article:published_time) is what marks it as dated, authored content rather than a generic page.",
   );
 
   const ogUrl = meta(html, "og:url");
@@ -428,13 +471,27 @@ export async function runSocialMarketingChecks(
       : "No AggregateRating markup. If you have real ratings, marking them up puts stars beside your result. Only mark up ratings you actually hold — Google penalises invented ones.",
   );
 
+  // VideoObject only matters when there is a video to describe; without one, its absence
+  // is not a gap. Players that never put an <iframe> or <video> in the server HTML
+  // (Wistia async, lite-youtube, Mux, Brightcove, JW Player, Vidyard), a player URL in a
+  // lazy-load config (YouTube/Vimeo embed, Cloudflare Stream, Dailymotion, Bunny, Twitch,
+  // Facebook video) and a declared og:video all count as a video being present. This list
+  // is not exhaustive, so the "no video" detail says what it saw, not that none exists.
+  const hasVideo =
+    /<video\b|<iframe[^>]+src\s*=\s*["'][^"']*(?:youtube(?:-nocookie)?\.com\/embed|player\.vimeo\.com|fast\.wistia\.(?:net|com)|loom\.com\/embed)/i.test(html) ||
+    /<lite-youtube\b|<lite-vimeo\b|<mux-player\b|<mux-video\b|\bwistia_(?:embed|async_)|fast\.wistia\.(?:net|com)\/embed|players\.brightcove\.net|cdn\.jwplayer\.com|play\.vidyard\.com|youtube(?:-nocookie)?\.com\\?\/embed\\?\/|player\.vimeo\.com\\?\/video|cloudflarestream\.com|videodelivery\.net|dailymotion\.com\\?\/embed|geo\.dailymotion\.com\\?\/player|iframe\.mediadelivery\.net|player\.twitch\.tv|facebook\.com\\?\/plugins\\?\/video|fast\.vidalytics\.com/i.test(html) ||
+    meta(html, "og:video") !== null ||
+    meta(html, "og:video:url") !== null ||
+    meta(html, "og:video:secure_url") !== null;
   add(
     "social_video_object_schema",
     "Video structured data",
-    hasType("videoobject") ? "PASS" : "WARN",
+    hasType("videoobject") || !hasVideo ? "PASS" : "WARN",
     hasType("videoobject")
       ? "VideoObject markup found."
-      : "No VideoObject markup. If there is a video on the page, this is what makes it eligible for the video carousel and gives it a thumbnail in results.",
+      : !hasVideo
+        ? "No embedded video player was recognised in the page HTML, so VideoObject markup is not needed here. If the page does carry a video, VideoObject markup is what makes it eligible for the video carousel."
+        : "A video is embedded but there is no VideoObject markup. That markup is what makes it eligible for the video carousel and gives it a thumbnail in results.",
   );
 
   const orgLogo = /"@type"\s*:\s*"Organization"[\s\S]{0,600}?"logo"\s*:/i.test(html);
@@ -476,7 +533,14 @@ export async function runSocialMarketingChecks(
       : "No ad-platform pixel. If you never intend to run paid social this is correct and you can ignore it — but a pixel installed today is an audience you can retarget in six months, and one installed the day you start advertising is not.",
   );
 
-  const tagManager = /googletagmanager\.com\/gtm\.js|segment\.(com|io)\/analytics\.js|analytics\.js/i.test(html);
+  // Tag managers by the loader each one requests. The GTM noscript iframe counts: it only
+  // exists alongside a container. A bare `analytics.js` does not — Google's legacy
+  // analytics.js and vendor SDKs (Iterable, etc.) share that filename and are not tag
+  // managers — but Segment's own `/analytics.js/v1/` path does, so a first-party proxied
+  // Segment still counts. `\\?/` tolerates the JSON-escaped slashes of a loader embedded in
+  // config JSON (target.com's Adobe Launch URL).
+  const tagManager =
+    /googletagmanager\.com\\?\/(?:gtm\.js|ns\.html\?id=GTM-)|\bgtm\.js\?id=|segment\.(?:com|io)\\?\/analytics\.js|\/analytics\.js\\?\/v1\\?\/|assets\.adobedtm\.com|tags\.tiqcdn\.com|\.ensighten\.com\\?\//i.test(html);
   add(
     "social_tag_manager",
     "Tag manager installed",
@@ -572,8 +636,12 @@ export async function runSocialMarketingChecks(
         : "Nothing follows the headline directly. A headline states the claim and the line under it is where the claim gets made specific — without it the page asks the visitor to scroll before it has said anything.",
   );
 
-  const pageTitle = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? null;
-  const pageTitleLen = pageTitle?.length ?? 0;
+  // Measure the title as it is displayed: whitespace collapsed and every character
+  // reference (&amp; &ndash; &middot; &#8217;) counted as one character. `&amp;` counted
+  // as five pushed abc.net.au's 58-character title over the 60 limit.
+  const pageTitle =
+    html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() ?? null;
+  const pageTitleLen = pageTitle ? visibleLength(pageTitle) : 0;
   add(
     "social_title_length",
     "Page title length",
@@ -601,14 +669,18 @@ export async function runSocialMarketingChecks(
   );
 
   const community =
-    /discord\.(gg|com\/invite)|(?:slack\.com\/join|join\.slack\.com)|t\.me\/|reddit\.com\/r\//i.test(html);
+    /discord\.(gg|com\/invite)|(?:slack\.com\/join|join\.slack\.com)|t\.me\/|reddit\.com\/r\//i.test(html) ||
+    // A forum or GitHub Discussions is a community too: wordpress.org/support/forums/,
+    // forum.squarespace.com, github.community, github.com/orgs/community/discussions.
+    // Matched only as a link target, so a JS chunk named "forum-alerts" does not count.
+    /href\s*=\s*["'](?:[^"']*\/\/(?:forums?|community|discuss)\.[^"']+|[^"']*\/forums?\/?|https?:\/\/github\.community\/?[^"']*|[^"']*github\.com\/[^"']+\/discussions\/?[^"']*)["']/i.test(html);
   add(
     "social_community_link",
     "A community to join",
     community ? "PASS" : "WARN",
     community
       ? "A community link was found."
-      : "No community link (Discord, Slack, Telegram, a subreddit). Not every product needs one — for a developer tool it is usually the highest-retention channel there is, and it costs nothing to point at.",
+      : "No community link (Discord, Slack, Telegram, a subreddit, a forum). Not every product needs one — for a developer tool it is usually the highest-retention channel there is, and it costs nothing to point at.",
   );
 
   const reviews = /g2\.com\/products|capterra\.|trustpilot\.com|producthunt\.com|getapp\.com|softwareadvice\./i.test(html);

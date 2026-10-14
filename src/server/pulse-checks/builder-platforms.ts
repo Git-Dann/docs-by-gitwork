@@ -159,12 +159,14 @@ export function evaluateBuilderChecks(input: BuilderCheckInput): PulseScanCheckI
       checkKey: "builder_sourcemaps_public",
       label: "Source maps not published alongside the bundle",
       status: "WARN",
-      confidence: "HIGH",
+      confidence: "MEDIUM",
       detail:
-        `The bundle references a public source map (${sourceMapRef[1]}), so the original source — variable names, ` +
-        `comments, unused branches, and any commented-out endpoint or key — is downloadable. That is fine on a ` +
-        `prototype and a real disclosure on a product: it turns "read the minified bundle" into "read the codebase". ` +
-        `Disable source-map upload for the production build, or restrict them to your error tracker.`,
+        `The bundle references a source map (${sourceMapRef[1]}). This scan found the reference but did not fetch the ` +
+        `file, so it has not confirmed the map is actually served — many CDNs return 403/404 for it. If it IS served, the ` +
+        `original source — variable names, comments, unused branches, and any commented-out endpoint or key — is ` +
+        `downloadable, which turns "read the minified bundle" into "read the codebase". Open the .map URL next to the ` +
+        `script yourself; if it returns the file, disable source-map upload for the production build or restrict it to ` +
+        `your error tracker.`,
       evidence: sourceMapRef[1],
     });
   }
@@ -207,7 +209,14 @@ export function evaluateBuilderChecks(input: BuilderCheckInput): PulseScanCheckI
   // hosts that mean something STRONGER than "unbranded" (a Replit workspace, a v0
   // preview) are handled above as their own checks and excluded here, so a single
   // deployment never produces two findings about the same URL.
-  const defaultHost = DEFAULT_SUBDOMAINS.find(([name, re]) => name === builder && re.test(host));
+  // The vendor's own www host (www.squarespace.com, www.wixsite.com) is the platform's
+  // marketing site, not a customer's generated subdomain. Every vendor domain in the table
+  // is two labels, so only exactly "www." + two labels is excluded: a deeper host such as
+  // www.jane.squarespace.com is still a generated default and still warns.
+  const isVendorApexWww = /^www\.[^.]+\.[^.]+$/i.test(host);
+  const defaultHost = isVendorApexWww
+    ? undefined
+    : DEFAULT_SUBDOMAINS.find(([name, re]) => name === builder && re.test(host));
   if (defaultHost && !STRONGER_HOST_FINDING.has(builder)) {
     checks.push({
       category: CATEGORIES.TRUST_BRAND,

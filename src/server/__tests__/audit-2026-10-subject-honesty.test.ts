@@ -147,3 +147,15 @@ describe("Electron pinned by electronVersion (atom/atom)", () => {
     expect(detectProjectShape(["package.json", "src/main-process/atom-application.js"], '{"name":"atom","electronVersion":"11.5.0"}')).toBe("electron");
   });
 });
+
+describe("generic repo kind ignores tooling and examples", () => {
+  it("cli/cli — an index.html under .github/ does not make a Go CLI a web app", async () => {
+    const { classifyGenericRepo } = await import("@/server/pulse-checks/repo-kind");
+    const paths = ["go.mod", "cmd/gh/main.go", ".github/extensions/terminal-mockup/assets/index.html", "docs/index.html"];
+    expect(classifyGenericRepo(paths, new Map())).toBe("none");
+  });
+  it("a real index.html at the root is still a web app", async () => {
+    const { classifyGenericRepo } = await import("@/server/pulse-checks/repo-kind");
+    expect(classifyGenericRepo(["index.html", "src/main.js"], new Map())).toBe("web");
+  });
+});

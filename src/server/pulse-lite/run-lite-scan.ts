@@ -24,6 +24,7 @@ import { runCodeAgent } from "@/server/pulse-agents/code-agent";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
+import { applyAbsencePolicy } from "@/server/pulse-checks/absence-policy";
 import { detectRepoShape, getRepoSnapshot } from "@/server/pulse-checks/native-repo";
 import {
   decideRelevance,
@@ -145,7 +146,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
 
   const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
     const fresh: PulseScanCheckInput[] = [];
-    for (const c of applyCheckPolicy(batch, input.checkPolicy)) {
+    for (const c of applyCheckPolicy(batch, input.checkPolicy).map(applyAbsencePolicy)) {
       if (seen.has(c.checkKey) || heldBack.has(c.checkKey)) continue;
       const decision = decideRelevance(c, relevanceRuleFor(c.checkKey), relevanceCtx);
       recordDecision(relevance, decision);

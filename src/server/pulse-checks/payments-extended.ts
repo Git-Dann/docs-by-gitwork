@@ -4,6 +4,21 @@ import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { ctx: pctx } = ctx;
   const html = ctx.pageResult.html;
+  // Prose a visitor can read. Scripts, styles, comments and tag markup are not payment
+  // claims: "border-collapse:separate" is not SEPA, an RSC ref "$2" or an asset hash is not
+  // a price. A tag's alt / aria-label / title text is kept, because a payment-method logo
+  // (<img alt="SEPA Direct Debit">) is a claim the visitor sees.
+  const text = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, (tag) => ` ${[...tag.matchAll(/\b(?:alt|aria-label|title)\s*=\s*["']([^"']*)["']/gi)].map((m) => m[1]).join(" ")} `)
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
+    .replace(/&pound;|&#163;|&#xa3;/gi, "£")
+    .replace(/&euro;|&#8364;|&#x20ac;/gi, "€")
+    .replace(/&dollar;|&#36;|&#x24;/gi, "$")
+    .replace(/\s+/g, " ");
   const checks: PulseScanCheckInput[] = [];
 
   if (!pctx.isPaymentEnabled) {
@@ -19,7 +34,7 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
     }));
   }
 
-  const hasSepa = /sepa|bank.*transfer|direct.*debit|iban/i.test(html);
+  const hasSepa = /\bsepa\b|\bbank[\s-]transfers?\b|\bdirect[\s-]debits?\b|\biban\b/i.test(text);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "sepa_bank_transfer", label: "SEPA / bank transfer option (EU)", status: hasSepa ? "PASS" : "WARN", detail: hasSepa ? "SEPA / bank transfer signals detected." : "No SEPA/bank transfer option — EU B2B customers often prefer bank transfer over card. SEPA Direct Debit reduces churn on annual plans." });
 
   const hasPaypal = /paypal/i.test(html);
@@ -62,7 +77,10 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasBillingSupport = /(?:billing|payment|invoice).{0,40}(?:support|help|contact)|href=["'][^"']*(?:billing|support|help|contact)[^"']*["']|mailto:/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_billing_support", label: "Billing support route is discoverable", status: hasBillingSupport ? "PASS" : "WARN", detail: hasBillingSupport ? "Billing support/contact signal detected." : "No billing support route was found on the scanned surface. Make invoice, renewal, and payment-failure help reachable before they become chargebacks." });
 
-  const hasPriceCurrency = /(?:£|€|\$|USD|EUR|GBP|AUD|CAD)\s?\d|\d+(?:\.\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD)/i.test(html);
+  // A currency then an amount, or an amount then a currency code. Not a magnitude:
+  // "$100K", "$10M ARR", "$1.5M", "$2 bn" and "$ 5 million" are claims, not prices. A
+  // single-letter suffix only counts when attached ("$49 M-F support" is still a price).
+  const hasPriceCurrency = /(?:[£€$]\s?|\b(?:USD|EUR|GBP|AUD|CAD)\s?)\d[\d,]*(?:\.\d{1,2})?(?!\d|[.,]\d|(?:k|m|bn?)\b|\s?(?:million|billion|bn)\b)|\b\d[\d,]*(?:\.\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD)\b/i.test(text);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_price_currency", label: "Prices display a currency", status: hasPriceCurrency ? "PASS" : "WARN", detail: hasPriceCurrency ? "A priced amount with a currency indicator was detected." : "No price-and-currency pairing was found on the scanned surface. Where prices are shown, make the currency explicit so international customers are not surprised at checkout." });
 
   return checks;

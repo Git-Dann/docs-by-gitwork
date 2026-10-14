@@ -191,10 +191,11 @@ export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "
         ? `The extension requests ${wildcards.join(", ")} — access to EVERY site the user visits. Chrome shows this as ` +
           `"Read and change all your data on all websites", which suppresses installs` +
           (surface === "store"
-            ? `. Some extensions genuinely need it (a password manager fills forms on any site); if this one does not, `
+            ? `. Some extensions genuinely need it (a password manager fills forms on any site). `
             : `, and it is the most common reason a Web Store review is rejected or held for justification. `) +
-          `It also means one compromised dependency in this extension can read every page the user opens. List the specific origins ` +
-          `instead, or request them at runtime with the optional_host_permissions + chrome.permissions.request flow.`
+          `It also means one compromised dependency in this extension can read every page the user opens. ` +
+          (surface === "store" ? `If this extension does not need every site, list` : `List`) +
+          ` the specific origins instead, or request them at runtime with the optional_host_permissions + chrome.permissions.request flow.`
         : `Host access is scoped to ${allHosts.length} specific origin(s) rather than all sites.`,
       evidence: wildcards.length > 0 ? wildcards.join(", ") : `${allHosts.length} scoped origin(s)`,
     });

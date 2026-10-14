@@ -144,8 +144,38 @@ export async function runApiQualityChecks(ctx: ExtendedCheckContext): Promise<Pu
     verifyFileExposure(`${httpsUrl}/openapi.json`, isOpenapiJson),
     verifyFileExposure(`${httpsUrl}/swagger.json`, isOpenapiJson),
   ]);
-  const hasOpenapiSpec = openapiServed || swaggerServed;
-  checks.push({ category: CATEGORY, checkKey: "openapi_spec_served", label: "OpenAPI 3.x spec at /openapi.json", status: hasOpenapiSpec ? "PASS" : "WARN", detail: hasOpenapiSpec ? `OpenAPI spec found at ${openapiServed ? "/openapi.json" : "/swagger.json"}.` : "No OpenAPI spec at /openapi.json or /swagger.json — serving a machine-readable OpenAPI spec enables auto-generated SDKs, Postman collections, and API gateways." });
+  // The scanned URL may itself be the spec (e.g. https://petstore3.swagger.io/api/v3/openapi.json);
+  // httpsUrl is the full URL, so the probes above append a second filename and 404.
+  const pageIsSpec = isOpenapiJson(html.slice(0, 2000), "");
+  const hasOpenapiSpec = pageIsSpec || openapiServed || swaggerServed;
+  checks.push({ category: CATEGORY, checkKey: "openapi_spec_served", label: "OpenAPI 3.x spec at /openapi.json", status: hasOpenapiSpec ? "PASS" : "WARN", detail: hasOpenapiSpec ? pageIsSpec ? "The scanned URL itself serves an OpenAPI/Swagger JSON spec." : `OpenAPI spec found at ${openapiServed ? "/openapi.json" : "/swagger.json"}.` : "No OpenAPI spec at /openapi.json or /swagger.json — serving a machine-readable OpenAPI spec enables auto-generated SDKs, Postman collections, and API gateways." });
 
-  return checks;
+  // Every documentation check above reads ONE page — the one scanned. API docs almost
+  // never live there: PostHog's rate limits are at /docs/api, Linear's at
+  // linear.app/developers/rate-limiting, Figma's webhooks and changelog at
+  // developers.figma.com. Those pages were not fetched, so a keyword missing from this
+  // page is absence of evidence, not evidence of absence — it must not be reported as
+  // "No … documentation". The PASS branch (keyword seen) is unchanged.
+  const PAGE_KEYWORD_DOC_KEYS = new Set([
+    "api_versioning_present",
+    "api_rate_limit_documented",
+    "api_auth_method_documented",
+    "api_pagination_documented",
+    "api_filtering_sorting",
+    "api_webhook_docs",
+    "api_sdk_packages",
+    "api_versioned_changelog",
+    "api_deprecation_policy",
+  ]);
+  return checks.map((check) =>
+    check.status === "WARN" && PAGE_KEYWORD_DOC_KEYS.has(check.checkKey)
+      ? {
+          ...check,
+          status: "INCONCLUSIVE" as const,
+          detail: `Not mentioned on the scanned page. Pulse did not crawl separate developer documentation (a docs site, /developers or /docs/api), so it cannot confirm this is missing. If it is: ${check.detail}`,
+          confidence: "LOW" as const,
+          confidenceReason: "Keyword absence on the scanned page only — developer documentation hosted elsewhere was not read.",
+        }
+      : check,
+  );
 }

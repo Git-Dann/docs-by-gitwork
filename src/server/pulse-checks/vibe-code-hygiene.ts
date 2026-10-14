@@ -87,25 +87,41 @@ export async function runVibeCodeHygieneChecks(
     htmlLower.includes("test@test.com") ||
     htmlLower.includes("user@user.com") ||
     htmlLower.includes("demo@demo.com");
-  const hasTodoMarker =
-    /\b(fixme:|hack:)\b/.test(htmlLower) ||
-    (htmlLower.includes("todo:") && !htmlLower.includes("todo app") && !htmlLower.includes("to-do list") && !htmlLower.includes("todos"));
-  const hasPlaceholderContent = hasLoremIpsum || hasExampleEmail || hasTodoMarker;
+  const todoIn = (s: string) =>
+    // No `\b` after the colon: that demanded a word character straight after it, so "FIXME: x"
+    // never matched. "hack:" is not used — "Growth hack:" is ordinary visible prose.
+    /\bfixme:/.test(s) ||
+    (s.includes("todo:") && !s.includes("todo app") && !s.includes("to-do list") && !s.includes("todos"));
+  // A TODO inside an inline <script>/<style> or an HTML comment is a developer note, not filler a
+  // visitor sees (www.baidu.com ships `// TODO:` inside window.__initData__). Real, but a WARN about
+  // source hygiene — not a FAIL for placeholder content. A TODO in visible text stays a FAIL.
+  // The visible text is judged on its own: a script mentioning "todos" must not hide a visible
+  // "TODO: write pricing copy".
+  const visibleLower = htmlLower
+    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/g, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ");
+  const hasVisibleTodo = todoIn(visibleLower);
+  const hasTodoMarker = hasVisibleTodo || todoIn(htmlLower);
+  const hasPlaceholderContent = hasLoremIpsum || hasExampleEmail || hasVisibleTodo;
+  const hasSourceTodoOnly = hasTodoMarker && !hasPlaceholderContent;
 
   checks.push({
     category: CATEGORY,
     checkKey: "vibe_placeholder_content",
     label: "No placeholder / filler content in production",
-    status: hasPlaceholderContent ? "FAIL" : "PASS",
+    status: hasPlaceholderContent ? "FAIL" : hasSourceTodoOnly ? "WARN" : "PASS",
     detail: hasPlaceholderContent
       ? `Placeholder content detected: ${[
           hasLoremIpsum && "lorem ipsum text",
           hasExampleEmail && "example email address",
-          hasTodoMarker && "TODO/FIXME marker",
+          hasVisibleTodo && "TODO/FIXME marker",
         ]
           .filter(Boolean)
           .join(", ")}. Strong signal of incomplete work shipped to production.`
-      : "No placeholder text, lorem ipsum, or TODO/FIXME markers detected.",
+      : hasSourceTodoOnly
+        ? "A TODO/FIXME developer comment was left in the page source (inline script, style or HTML comment). Visitors do not see it, but it is unfinished work shipped to production."
+        : "No placeholder text, lorem ipsum, or TODO/FIXME markers detected.",
   });
 
   // 2. Placeholder image services
@@ -170,10 +186,18 @@ export async function runVibeCodeHygieneChecks(
     category: CATEGORY,
     checkKey: "vibe_default_title",
     label: "Meaningful page title (not a framework default)",
-    status: isDefaultTitle ? "WARN" : "PASS",
-    detail: isDefaultTitle
-      ? `Page title is "${pageTitle || "(empty)"}" — a framework scaffold default. Every page needs a meaningful, branded title for SEO and user trust.`
-      : `Page title is set: "${pageTitle.slice(0, 60)}${pageTitle.length > 60 ? "…" : ""}".`,
+    // A non-HTML response (countries.trevorblades.com/graphql answers 204 with no body) has no
+    // title to judge — calling that a "framework scaffold default" was false.
+    status: !/text\/html|application\/xhtml/.test(pageResult.headers["content-type"] ?? "") && !/<!doctype html|<html[\s>]/.test(htmlLower)
+      ? "NOT_APPLICABLE"
+      : isDefaultTitle ? "WARN" : "PASS",
+    detail: !/text\/html|application\/xhtml/.test(pageResult.headers["content-type"] ?? "") && !/<!doctype html|<html[\s>]/.test(htmlLower)
+      ? "The response is not an HTML page, so there is no page title to assess."
+      : isDefaultTitle
+        ? pageTitle === ""
+          ? "The page has no <title> (or an empty one). Every page needs a meaningful, branded title for SEO and user trust."
+          : `Page title is "${pageTitle}" — a framework scaffold default. Every page needs a meaningful, branded title for SEO and user trust.`
+        : `Page title is set: "${pageTitle.slice(0, 60)}${pageTitle.length > 60 ? "…" : ""}".`,
   });
 
   // 5. AI-generated comment markers in source
@@ -221,19 +245,34 @@ export async function runVibeCodeHygieneChecks(
   let custom404Status: PulseScanCheckInput["status"] = "PASS";
   let custom404Detail = "Custom 404 handling confirmed.";
   try {
-    const notFoundStatus = await headRequest(`${httpsUrl}/pulse-check-nonexistent-path-404`);
+    // Drop the query and fragment but keep the scanned path: string-appending to
+    // https://www.gov.uk/?utm_source=x#top put the probe inside the fragment, so the homepage was
+    // fetched and its 200 reported as a missing 404. The path is kept so an app mounted at
+    // /app/ is probed under /app/, where its own catch-all lives.
+    const probeBase = new URL(httpsUrl);
+    probeBase.search = "";
+    probeBase.hash = "";
+    const notFoundStatus = await headRequest(`${probeBase.href.replace(/\/+$/, "")}/pulse-check-nonexistent-path-404`);
     if (notFoundStatus === 200) {
       custom404Status = "WARN";
       custom404Detail =
-        "Missing path returns 200 OK — no custom 404 page. Users reaching broken links see the homepage instead of a clear error.";
+        "A made-up path returns 200 OK instead of 404 (a soft 404). Search engines can index broken URLs as real pages, and the server gives no signal that the page does not exist.";
     } else if (notFoundStatus === 0) {
-      custom404Status = "WARN";
-      custom404Detail = "Could not verify 404 handling — request timed out.";
-    } else {
+      custom404Status = "INCONCLUSIVE";
+      custom404Detail = "Could not verify 404 handling — the request failed or timed out.";
+    } else if (notFoundStatus === 404 || notFoundStatus === 410) {
       custom404Detail = `Returns ${notFoundStatus} for unknown paths — 404 handling is in place.`;
+    } else if ([401, 403, 405, 406, 429].includes(notFoundStatus) || notFoundStatus >= 500) {
+      // A refusal (auth wall, WAF / bot protection, HEAD not allowed, rate limit) or a server error
+      // does not say how the site treats a missing page — the same answer would come back for a
+      // real one. Not evidence either way.
+      custom404Status = "INCONCLUSIVE";
+      custom404Detail = `The probe for a made-up path was answered ${notFoundStatus}, which is a refusal or server error rather than a not-found answer, so 404 handling could not be verified.`;
+    } else {
+      custom404Detail = `Returns ${notFoundStatus} (not 200) for unknown paths, so missing pages are not served as real ones.`;
     }
   } catch {
-    custom404Status = "WARN";
+    custom404Status = "INCONCLUSIVE";
     custom404Detail = "Could not verify 404 handling.";
   }
 
@@ -247,9 +286,11 @@ export async function runVibeCodeHygieneChecks(
 
   // 8. Images without alt text (basic accessibility signal)
   const imgTagMatches = htmlLower.match(/<img[^>]*>/g) ?? [];
-  const emptyAltCount = imgTagMatches.filter(
-    (tag) => tag.includes('alt=""') || tag.includes("alt=''") || !tag.includes("alt="),
-  ).length;
+  // alt="" is the correct WCAG markup for a decorative image (technique H67), not a missing alt —
+  // stripe.com marks 25 aria-hidden background images that way. Only an <img> with no alt
+  // attribute at all is missing one. `\s` before alt keeps data-alt= from counting.
+  const emptyAltCount = imgTagMatches.filter((tag) => !/\salt\s*=/.test(tag)).length;
+  const decorativeCount = imgTagMatches.filter((tag) => /\salt\s*=\s*(""|'')/.test(tag)).length;
   const totalImgs = imgTagMatches.length;
   const hasEmptyAlts = totalImgs > 2 && emptyAltCount / totalImgs > 0.6;
 
@@ -259,10 +300,10 @@ export async function runVibeCodeHygieneChecks(
     label: "Images have descriptive alt text",
     status: hasEmptyAlts ? "WARN" : "PASS",
     detail: hasEmptyAlts
-      ? `${emptyAltCount} of ${totalImgs} images are missing alt text — a common AI code generator oversight that fails WCAG 2.1 AA and harms SEO.`
+      ? `${emptyAltCount} of ${totalImgs} images have no alt attribute — screen readers fall back to the file name, which fails WCAG 2.1 (1.1.1) and harms SEO.`
       : totalImgs === 0
         ? "No images detected on the page."
-        : `${totalImgs - emptyAltCount} of ${totalImgs} images have alt text.`,
+        : `${totalImgs - emptyAltCount} of ${totalImgs} images have an alt attribute${decorativeCount > 0 ? ` (${decorativeCount} marked decorative with alt="")` : ""}.`,
   });
 
   // 9. Broken internal links (F4) — sample same-site links from the homepage and HEAD-check them.
@@ -281,19 +322,27 @@ export async function runVibeCodeHygieneChecks(
     const sample = [...internal].slice(0, 12);
     if (sample.length > 0) {
       const statuses = await Promise.all(sample.map((u) => headRequest(u)));
-      const broken = sample.filter((_, i) => {
+      // Only a definitive answer counts as broken: 404/410 or a server error. A failed or timed-out
+      // request (0), a bot-protection refusal (406 — hydrogen.shop gives Pulse's HEAD one) or a 503
+      // challenge says nothing about the link. Those are reported as unverified, never as dead
+      // (webflow.com was told 12/12 links were broken; all 12 return 200).
+      const isBroken = (s: number) => s === 404 || s === 410 || (s >= 500 && s !== 503);
+      const broken = sample.filter((_, i) => isBroken(statuses[i]));
+      const unverified = sample.filter((_, i) => {
         const s = statuses[i];
-        return s === 0 || (s >= 400 && ![401, 403, 405, 429].includes(s));
+        return !isBroken(s) && (s === 0 || (s >= 400 && ![401, 403, 405, 429].includes(s)));
       });
       checks.push({
         category: CATEGORY,
         checkKey: "vibe_broken_links",
         label: "Internal links resolve (no broken links)",
-        status: broken.length > 0 ? (broken.length > 2 ? "FAIL" : "WARN") : "PASS",
+        status: broken.length > 0 ? (broken.length > 2 ? "FAIL" : "WARN") : unverified.length > 0 ? "INCONCLUSIVE" : "PASS",
         detail: broken.length > 0
-          ? `${broken.length} of ${sample.length} sampled internal links are broken (404/error) — dead links signal unfinished navigation.`
-          : `All ${sample.length} sampled internal links resolve.`,
-        evidence: broken.length > 0 ? broken.slice(0, 5).join(", ") : undefined,
+          ? `${broken.length} of ${sample.length} sampled internal links are broken (404/410/5xx) — dead links signal unfinished navigation.${unverified.length > 0 ? ` ${unverified.length} more could not be verified (blocked or timed out).` : ""}`
+          : unverified.length > 0
+            ? `No sampled link was confirmed broken, but ${unverified.length} of ${sample.length} could not be verified (the request failed, timed out or was refused by bot protection).`
+            : `All ${sample.length} sampled internal links resolve.`,
+        evidence: broken.length > 0 ? broken.slice(0, 5).join(", ") : unverified.length > 0 ? unverified.slice(0, 5).join(", ") : undefined,
       });
     }
   } catch { /* best-effort — never break the category */ }

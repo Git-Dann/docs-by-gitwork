@@ -65,7 +65,7 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "team_management_ui", label: "Team / org management UI", status: hasTeamMgmt ? "PASS" : "WARN", detail: hasTeamMgmt ? "Team management UI signals detected." : "No team management UI detected — multi-user SaaS products need an interface to add, remove, and manage team members." });
 
   // Invite workflow
-  const hasInvite = /invite.*user|invite.*member|send.*invite|invitation.*link|invite.*email/i.test(html);
+  const hasInvite = /\binvit\w*[^<>"=]{0,30}\b(?:users?|members?|teammates?|colleagues?|collaborators?|guests?|clients?|others|people|team)\b|\bsend\w*[^<>"=]{0,15}\binvit|\binvitation links?\b|\binvite\w*[^<>"=]{0,15}\bby email\b/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "invite_workflow", label: "User invitation workflow", status: hasInvite ? "PASS" : "WARN", detail: hasInvite ? "User invitation workflow detected." : "No invite workflow detected — team products need an invitation system for controlled user onboarding." });
 
   // Permission matrix docs
@@ -97,19 +97,23 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "access_revocation_ui", label: "Account deactivation / access revocation UI", status: hasRevocation ? "PASS" : "WARN", detail: hasRevocation ? "Access revocation UI signals detected." : "No access revocation UI detected — the ability to quickly revoke access is critical for offboarding and security incident response." });
 
   // IP allowlisting
-  const hasIpRestrict = /ip.*allowlist|ip.*whitelist|ip.*restriction|allowed.*ip|restrict.*ip/i.test(html);
+  // A standalone "IP" token near allowlist/restriction wording, either order. The leading verb is
+  // allowlist/whitelist/restrict* only, so CSS `cursor-not-allowed` can never start a match.
+  const hasIpRestrict = /\bip(?:v[46])?s?\b[^<>"=]{0,30}(?:allow[- ]?list|white[- ]?list|restriction|restrict)|\b(?:allow[- ]?list\w*|white[- ]?list\w*|restrict\w*)\b[^<>"=]{0,30}\bip(?:v[46])?(?:s\b|\b)/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "ip_allowlisting", label: "IP restriction / allowlist available", status: hasIpRestrict ? "PASS" : "WARN", detail: hasIpRestrict ? "IP allowlisting signals detected." : "No IP restriction feature detected — enterprise security teams often require IP allowlisting to restrict access to corporate networks." });
 
   // SCIM provisioning
-  const hasScim = /scim|user.*provisioning|deprovisioning|just-in-time.*provisioning|jit.*provisioning|directory.*sync/i.test(html);
+  const hasScim = /\bscim\b|\busers? (?:provisioning|deprovisioning)\b|\bdeprovisioning\b|\bjust.in.time (?:user )?provisioning\b|\bjit (?:user )?provisioning\b|\bdirectory[- ]sync\w*/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "sso_scim_provisioning", label: "SCIM provisioning support", status: hasScim ? "PASS" : "WARN", detail: hasScim ? "SCIM provisioning signals detected." : "No SCIM provisioning detected — enterprise customers need SCIM to automate user provisioning and deprovisioning from their identity provider." });
 
   // MFA enforced for admins
-  const hasMfaAdmin = /mfa.*admin|admin.*mfa|mfa.*required.*admin|enforce.*mfa|mandatory.*mfa/i.test(html);
+  const hasMfaAdmin = /\b(?:mfa|2fa|two.factor|multi.factor)\b.{0,40}\badmin(?:s|istrators?)?\b|\badmin(?:s|istrators?)?\b.{0,40}\b(?:mfa|2fa|two.factor|multi.factor)\b|\b(?:enforc|requir|mandator)\w*.{0,20}\b(?:mfa|2fa|two.factor|multi.factor)\b/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "mfa_admin_enforced", label: "MFA required for admin accounts", status: hasMfaAdmin ? "PASS" : "WARN", detail: hasMfaAdmin ? "MFA enforcement for admin signals detected." : "No admin MFA enforcement signals — require MFA for admin accounts to protect against account takeover." });
 
   // Guest mode
-  const hasGuestMode = /guest.*access|view.only|read.only.*access|guest.*user|anonymous.*view|public.*share/i.test(html);
+  // Gaps are bounded and never cross markup (`<>"=`): crossorigin="anonymous"><meta name="view-…"
+  // and a Tailwind `read-only:` class are not guest-mode copy.
+  const hasGuestMode = /\bguests?\b[^<>"=]{0,30}\b(?:access|users?|roles?|seats?|accounts?)\b|\bview[- ]only\b|\bread[- ]only access\b|\banonymous(?:ly)?\b[^<>"=]{0,20}\bview(?:ing|ers?)?\b|\bpublic(?:ly)?\b[^<>"=]{0,15}\bshar(?:e|ing)\b/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "guest_anonymous_mode", label: "Guest / view-only mode", status: hasGuestMode ? "PASS" : "WARN", detail: hasGuestMode ? "Guest / view-only access signals detected." : "No guest mode detected — a view-only or guest role enables sharing with external stakeholders without giving them edit access." });
 
   // Read-only role

@@ -30,7 +30,10 @@ export async function runUsPrivacyExtended(ctx: ExtendedCheckContext): Promise<P
 
   // CCPA/CPRA "Do Not Sell or Share" link — required for businesses that sell/share
   // personal information of California residents.
-  const hasDoNotSell = /do not sell or share my personal information|do not sell my (personal )?info(rmation)?|your privacy choices/i.test(html);
+  // Sell/share variants and line-broken link text ("Do Not Sell or Share\n   My Personal
+  // Information"). Still first person ("my"), so "We do not sell your personal information"
+  // — a claim, not an opt-out — does not count.
+  const hasDoNotSell = /do\s+not\s+(?:sell|share)(?:\s*(?:\/|or|and|&amp;|&)\s*(?:sell|share))?\s+my\s+(?:personal\s+)?info(?:rmation)?|(?:your\s+)?privacy\s+choices/i.test(html);
   checks.push({
     category: CATEGORY,
     checkKey: "ccpa_do_not_sell",

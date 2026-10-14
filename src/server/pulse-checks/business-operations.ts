@@ -34,8 +34,21 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
 
   const checks: PulseScanCheckInput[] = [];
 
-  const hasPhysicalAddress = /\d{1,5}\s+[a-z0-9 ]+\s*(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i.test(html) || /p\.?o\.?\s*box\s+\d+/i.test(html) || /<footer[^>]*>[\s\S]*?\d+\s+[a-z]+ (street|road|avenue|way)/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "physical_address_footer", label: "Physical address in footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical address detected." : "No physical address detected — CAN-SPAM, UK Companies Act, and EU distance selling rules all require a physical postal address in your footer." });
+  // Street line = house number + 1-4 street words + a street suffix. Deliberately case-sensitive:
+  // the old /i form matched prose such as "3 Finding your Best" or "12 times your maximum contact".
+  // Words may start with a digit ("350 5th Ave") and the suffix may be capitalised or upper case
+  // ("548 MARKET STREET"); &nbsp; / &#160; count as spaces. Also accept an explicit
+  // registered-office / postal-address statement (covers EU "Rue du Trône 100") and a UK postcode.
+  const sp = String.raw`(?:\s|&nbsp;|&#160;)`;
+  const suffixes = "Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Court|Ct|Place|Pl|Square|Sq|Parkway|Pkwy|Terrace|Highway|Hwy";
+  const suffixAlt = `${suffixes}|${suffixes.toUpperCase()}`;
+  const streetLine = new RegExp(String.raw`\b\d{1,5}[A-Za-z]?,?${sp}+(?:[A-Z0-9][A-Za-z0-9.'-]*${sp}+){1,4}(?:${suffixAlt})\b`);
+  const hasPhysicalAddress =
+    streetLine.test(html) ||
+    /\bP\.?\s?O\.?\s*Box\s+\d+/i.test(html) ||
+    /\b(?:registered (?:office|address)|head office|our address is|mailing address|postal address)\b[^<"]{0,80}?\d/i.test(html) ||
+    /\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?)\s\d[ABD-HJLNP-UW-Z]{2}\b/.test(html);
+  checks.push({ category: CATEGORY, checkKey: "physical_address_footer", label: "Physical address in footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical address detected." : "No postal address found on the scanned page — UK companies must show their registered office address on their website and the EU e-Commerce Directive requires a geographic address to be easily accessible (a contact or legal page also satisfies this); CAN-SPAM separately requires one in commercial emails." });
 
   const hasBusinessHours = /business hours|office hours|monday.*friday|mon.*fri|9.*5|support.*hours|available.*\d+.*\d+/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "business_hours_displayed", label: "Business hours displayed", status: hasBusinessHours ? "PASS" : "WARN", detail: hasBusinessHours ? "Business hours signals detected." : "No business hours detected — displaying support availability hours reduces frustration and manages customer expectations." });
@@ -66,8 +79,19 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   const hasRopa = /records of processing|processing activities|ropa|article.*30|data.*processing.*register/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "gdpr_ropa_maintained", label: "ROPA (Records of Processing Activities)", status: hasRopa ? "PASS" : "WARN", detail: hasRopa ? "ROPA reference detected." : "No ROPA reference — GDPR Article 30 requires maintaining a record of all data processing activities. Enterprise DPOs will ask to see it." });
 
-  const hasDataRetention = /data.*retention|retention.*policy|retain.*data.*for|delete.*data.*after|data.*kept.*for/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "data_retention_schedule", label: "Data retention schedule published", status: hasDataRetention ? "PASS" : "WARN", detail: hasDataRetention ? "Data retention schedule signals detected." : "No data retention schedule — publish how long you retain different types of data; this is required for GDPR compliance and reduces deletion request handling." });
+  // Bounded phrases only: the old unbounded `.*` joined e.g. a `data-testid` attribute to a word
+  // "retention" 770KB later in minified HTML. A verb/object statement must name a duration
+  // ("for 7 years", "for as long as…"), so product copy such as "Store files for free" is not read
+  // as a retention schedule.
+  // A count must be a count of time units: "for 3rd parties" or "for one low price" is not a period.
+  const retentionUnit = String.raw`(?:hours?|days?|weeks?|months?|years?)\b`;
+  const retentionDuration = String.raw`\b(?:for|until)\s+(?:up to\s+|at least\s+|a maximum of\s+|no longer than\s+)?(?:\d+(?:\s*(?:-|–|to)\s*\d+)?\s*${retentionUnit}|(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s+(?:\(\d+\)\s+)?${retentionUnit}|as long as|(?:a |the )?(?:period|duration|length|life)\b)`;
+  const retentionObject = String.raw`(?:(?:your|the|any|all|such|our)\s+)?(?:(?:personal|customer|user|account|usage)\s+)*(?:data|information|records|logs)\b`;
+  const hasDataRetention =
+    /\bdata retention\b|\bretention (?:policy|policies|period|periods|schedule)\b|\b(?:security|storage) and retention\b|\bretention of (?:your )?(?:personal )?(?:data|information)\b|\bhow long (?:do |will |)we (?:keep|retain|store|hold)\b|\bdeleted?\b[^.<]{0,80}?\bafter\s+\d+\s*(?:day|week|month|year)s?\b|\bkept for (?:up to )?\d+\s*(?:day|week|month|year)s?\b/i.test(html) ||
+    new RegExp(String.raw`\b(?:retain|keep|store|hold)(?:s|ed|ing)?\s+${retentionObject}[^.<]{0,60}?${retentionDuration}`, "i").test(html) ||
+    new RegExp(String.raw`\b(?:data|information|records|logs)\s+(?:is|are|will be|may be|is only|are only)\s+(?:retained|kept|stored|held)\b[^.<]{0,40}?${retentionDuration}`, "i").test(html);
+  checks.push({ category: CATEGORY, checkKey: "data_retention_schedule", label: "Data retention schedule published", status: hasDataRetention ? "PASS" : "WARN", detail: hasDataRetention ? "Data retention schedule signals detected." : "No data retention schedule found on the scanned page — UK/EU GDPR (Art. 13(2)(a)) requires your privacy notice to state how long personal data is kept. If your privacy policy already states retention periods, this does not apply." });
 
   const hasVendorDueDiligence = /vendor.*assessment|supplier.*due.*diligence|third.*party.*risk|sub.processor.*review|vendor.*security/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "supplier_due_diligence", label: "Vendor / sub-processor due diligence", status: hasVendorDueDiligence ? "PASS" : "WARN", detail: hasVendorDueDiligence ? "Vendor due diligence signals detected." : "No vendor due diligence signals — document your process for assessing sub-processors; enterprise DPOs require evidence of third-party risk management." });

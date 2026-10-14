@@ -546,10 +546,18 @@ export function privacyPolicyOwner(listing: StoreListing): { matches: boolean; h
   } catch {
     return null;
   }
-  const squashedHost = host.replace(/[^a-z0-9]/g, "");
+  // On a shared code host the owner is the account path segment (github.com/gorhill/…),
+  // not the host — "github" says nothing about who the policy belongs to. Match against
+  // the owner alone; a bare code-host URL with no owner segment falls back to the host.
+  let owner = host;
+  if (/^(?:github\.com|gitlab\.com|bitbucket\.org|codeberg\.org)$/.test(host)) {
+    const segment = new URL(listing.privacyPolicyUrl).pathname.split("/")[1] ?? "";
+    if (segment) owner = segment.toLowerCase();
+  }
+  const squashedOwner = owner.replace(/[^a-z0-9]/g, "");
   const tokens = [...distinctiveTokens(listing.developer), ...distinctiveTokens(listing.name)];
   if (tokens.length === 0) return null;
-  return { matches: tokens.some((token) => squashedHost.includes(token)), host };
+  return { matches: tokens.some((token) => squashedOwner.includes(token)), host };
 }
 
 // ── Checks ───────────────────────────────────────────────────────────────────

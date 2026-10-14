@@ -485,6 +485,49 @@ describe("organizationalDomainCandidates", () => {
   });
 });
 
+describe("organizationalDomainCandidates — curated namespaces that are not on the real PSL", () => {
+  // Receivers use the real PSL. squarespace.com is NOT on it, so for
+  // www.squarespace.com the organizational domain is squarespace.com, which publishes
+  // p=reject. Stopping the ladder at the host reported "no DMARC record" for a host a
+  // receiver covers with p=reject.
+  it.each([
+    ["www.squarespace.com", ["squarespace.com"]],
+    ["www.wordpress.com", ["wordpress.com"]],
+    ["www.substack.com", ["substack.com"]],
+    ["myapp.railway.app", ["railway.app"]],
+    ["preview.vercel.sh", ["vercel.sh"]],
+    ["project.glitch.me", ["glitch.me"]],
+    ["a.myapp.railway.app", ["myapp.railway.app", "railway.app"]],
+  ])("%s falls back to the namespace receivers would retry", (host, expected) => {
+    expect(organizationalDomainCandidates(host)).toEqual(expected);
+  });
+
+  it("keeps the namespace when a deep ladder is bounded", () => {
+    const candidates = organizationalDomainCandidates("a.b.c.d.myblog.wordpress.com");
+    expect(candidates.at(-1)).toBe("wordpress.com");
+    expect(boundedDmarcCandidates(candidates).at(-1)).toBe("wordpress.com");
+  });
+
+  // The other direction: a namespace that IS a real public suffix must never be
+  // offered, or the customer is credited with the platform's own DMARC record.
+  it.each([
+    "myapp.vercel.app",
+    "shop.myshopify.com",
+    "someone.github.io",
+    "myapp.up.railway.app",
+    // The PSL lists `*.run.app`: every <x>.run.app is itself a suffix, so receivers
+    // never fall back to run.app — and _dmarc.run.app publishes p=reject, which
+    // would be a false PASS for a Cloud Run host.
+    "svc-abc-uc.a.run.app",
+    "svc-abc.run.app",
+  ])("%s never falls back to the platform's own domain", (host) => {
+    const candidates = organizationalDomainCandidates(host);
+    for (const platform of ["vercel.app", "myshopify.com", "github.io", "up.railway.app", "railway.app", "run.app"]) {
+      expect(candidates).not.toContain(platform);
+    }
+  });
+});
+
 describe("curated list integrity", () => {
   it("has no entry in both sets and no malformed entry", () => {
     for (const suffix of MULTI_LABEL_PUBLIC_SUFFIXES) {

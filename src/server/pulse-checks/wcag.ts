@@ -1,6 +1,42 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
 
+/** Blank every quoted attribute value, so text inside a value ("Intro, muted by default", class="hidden")
+ *  is never read as an attribute name. `alt="x"` becomes `alt=`. */
+export function attributeNames(tag: string): string {
+  return tag.replace(/=\s*("[^"]*"|'[^']*')/g, "=");
+}
+
+/** True when the tag carries the boolean/valued attribute `name` itself (not `data-name`, not inside a value). */
+export function hasAttribute(tag: string, name: string): boolean {
+  return new RegExp(`\\s${name}(?=[\\s>=/])`, "i").test(attributeNames(tag));
+}
+
+/** The value of attribute `name` on the tag, or null when absent. `\s` prefix so data-<name> does not count. */
+function attributeValue(tag: string, name: string): string | null {
+  const match = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>"']+))`, "i"));
+  if (!match) return null;
+  return match[1] ?? match[2] ?? match[3] ?? "";
+}
+
+/** A non-empty aria-label / aria-labelledby / (optionally) title on the tag. */
+function hasProgrammaticName(tag: string, includeTitle = false): boolean {
+  const filled = (name: string) => (attributeValue(tag, name) ?? "").trim().length > 0;
+  return filled("aria-label") || filled("aria-labelledby") || (includeTitle && filled("title"));
+}
+
+/** The tag's inline style hides it (display:none / visibility:hidden), matched at a property boundary
+ *  so a custom property such as `--m-display:none` does not count. */
+export function inlineStyleHides(tag: string): boolean {
+  const style = attributeValue(tag, "style");
+  if (!style) return false;
+  return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\b/i.test(style);
+}
+
+function isAriaHidden(tag: string): boolean {
+  return (attributeValue(tag, "aria-hidden") ?? "").trim().toLowerCase() === "true";
+}
+
 export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult } = ctx;
   const html = pageResult.html;
@@ -29,7 +65,7 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
       ["page_title_unique", "Unique page title"],
       ["language_attribute_body", "lang attribute on <html> element"],
       ["wcag22_dragging_alternative", "Dragging movements have an alternative (WCAG 2.5.7)"],
-      ["wcag22_consistent_help", "Consistent help mechanism (WCAG 3.3.6)"],
+      ["wcag22_consistent_help", "Consistent help mechanism (WCAG 3.2.6)"],
       ["accessibility_statement_eaa", "Accessibility statement (EU Accessibility Act)"],
       ["images_have_alt", "Informative images have alternative text"],
       ["buttons_have_names", "Buttons have accessible names"],
@@ -42,7 +78,15 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   // Decorative images may deliberately use alt=""; every other image needs a
   // programmatic alternative (WCAG 1.1.1).
   const images = html.match(/<img\b[^>]*>/gi) ?? [];
-  const imagesWithoutAlt = images.filter((image) => !/\balt\s*=\s*["'][^"']*["']/i.test(image));
+  // A bare `alt` is an empty alt; `data-alt` is not an alt. Images removed from the accessibility
+  // tree (aria-hidden, role=presentation/none, display:none / visibility:hidden tracking pixels)
+  // or named by a non-empty aria-label/aria-labelledby need no alt attribute.
+  const imagesWithoutAlt = images.filter((image) =>
+    !hasAttribute(image, "alt")
+    && !hasProgrammaticName(image)
+    && !isAriaHidden(image)
+    && !/^(?:presentation|none)$/i.test((attributeValue(image, "role") ?? "").trim())
+    && !inlineStyleHides(image));
   checks.push({
     category: CATEGORIES.ACCESSIBILITY, checkKey: "images_have_alt", label: "Informative images have alternative text",
     status: imagesWithoutAlt.length === 0 ? "PASS" : "FAIL",
@@ -53,6 +97,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   // Icon-only controls are especially easy to ship without an accessible name.
   const buttons = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/gi) ?? [];
   const unnamedButtons = buttons.filter((button) => {
+    // An aria-hidden button is outside the accessibility tree and needs no name; whether it is
+    // focusable is reported separately by aria_hidden_not_focusable.
+    if (isAriaHidden(button.match(/^<button\b[^>]*>/i)?.[0] ?? "")) return false;
     if (/\baria-(?:label|labelledby)\s*=|\btitle\s*=/i.test(button)) return false;
     return button.replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").trim().length === 0;
   });
@@ -64,7 +111,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   });
 
   const frames = html.match(/<iframe\b[^>]*>/gi) ?? [];
-  const untitledFrames = frames.filter((frame) => !/\btitle\s*=\s*["'][^"']+\S[^"']*["']/i.test(frame));
+  // Frames that are display:none / visibility:hidden / aria-hidden (e.g. the GTM <noscript> iframe)
+  // are never exposed to assistive technology and need no title.
+  const untitledFrames = frames.filter((frame) => !(attributeValue(frame, "title") ?? "").trim() && !isAriaHidden(frame) && !inlineStyleHides(frame));
   checks.push({
     category: CATEGORIES.ACCESSIBILITY, checkKey: "iframes_have_titles", label: "Embedded frames have descriptive titles",
     status: untitledFrames.length === 0 ? "PASS" : "WARN",
@@ -81,17 +130,31 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
     evidence: unnamedDialogs.length ? unnamedDialogs.slice(0, 3).join("\n").slice(0, 500) : undefined,
   });
 
-  const hiddenBlocks = html.match(/<([a-z][\w-]*)\b[^>]*\baria-hidden=["']true["'][^>]*>[\s\S]*?<\/\1>/gi) ?? [];
-  const hiddenFocusable = hiddenBlocks.filter((block) => /<(?:a\b[^>]*\bhref\s*=|button\b|input\b(?![^>]*\btype=["']hidden)|select\b|textarea\b)|\btabindex\s*=\s*["']?(?!-1\b)\d+/i.test(block));
+  const hiddenBlocks = html.match(/<([a-z][\w-]*)\b[^>]*\saria-hidden\s*=\s*(?:"\s*true\s*"|'\s*true\s*'|true(?=[\s/>]))[^>]*>[\s\S]*?<\/\1>/gi) ?? [];
+  const hiddenFocusable = hiddenBlocks.filter((block) => {
+    const openingTag = block.match(/^<[^>]*>/)?.[0] ?? "";
+    // A hidden / inert / display:none container takes its descendants out of the tab order too.
+    if (hasAttribute(openingTag, "hidden") || hasAttribute(openingTag, "inert") || inlineStyleHides(openingTag)) return false;
+    const focusableTags = block.match(/<(?:a\b[^>]*\bhref\s*=|button\b|input\b(?![^>]*\btype=["']hidden)|select\b|textarea\b|[a-z][\w-]*\b[^>]*\btabindex\s*=\s*["']?\d)[^>]*>/gi) ?? [];
+    return focusableTags.some((tag) => {
+      // tabindex="-1" cannot be reached with Tab.
+      if (/^-\d/.test((attributeValue(tag, "tabindex") ?? "").trim())) return false;
+      // `disabled` only removes form controls from the tab order; on <a> or a tabindex element it does nothing.
+      if (/^<(?:button|input|select|textarea)\b/i.test(tag) && hasAttribute(tag, "disabled")) return false;
+      return true;
+    });
+  });
   checks.push({
     category: CATEGORIES.ACCESSIBILITY, checkKey: "aria_hidden_not_focusable", label: "aria-hidden content contains no focusable controls",
     status: hiddenFocusable.length === 0 ? "PASS" : "FAIL",
-    detail: hiddenFocusable.length === 0 ? "No focusable control was found inside aria-hidden content." : `${hiddenFocusable.length} aria-hidden region(s) contain focusable controls. Keyboard users can land on controls that screen readers are instructed to ignore; remove the control from tab order or do not hide its parent (WCAG 4.1.2).`,
+    detail: hiddenFocusable.length === 0 ? "No focusable control was found inside aria-hidden content." : `${hiddenFocusable.length} aria-hidden region(s) contain controls that are focusable in the page markup. Unless a stylesheet hides them (display:none or visibility:hidden), keyboard users can land on controls that screen readers are instructed to ignore; remove the control from tab order or do not hide its parent (WCAG 4.1.2).`,
     evidence: hiddenFocusable.length ? hiddenFocusable.slice(0, 2).join("\n").slice(0, 500) : undefined,
   });
 
   // Skip to main content
-  const hasSkipLink = /href=["']#(main|content|skip|maincontent)/i.test(html) || /skip.*to.*main|skip.*navigation/i.test(html);
+  const hasSkipLink = /href=["']#(main|content|skip|maincontent)/i.test(html) || /skip.*to.*main|skip.*navigation/i.test(html)
+    // Any in-page anchor whose text starts with "Skip" (e.g. WordPress: href="#wp--skip-link--target">Skip to content).
+    || /<a\b[^>]*\bhref=["']#[^"']+["'][^>]*>\s*(?:<[^>]+>\s*)*skip\b/i.test(html);
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "skip_to_main_content", label: "Skip to main content link", status: hasSkipLink ? "PASS" : "WARN", detail: hasSkipLink ? "Skip to main content link detected — keyboard users can bypass repetitive navigation." : "No skip navigation link detected — add a 'Skip to main content' link as the first focusable element (WCAG 2.4.1 Bypass Blocks)." });
 
   // Image input alt
@@ -100,15 +163,35 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "image_input_alt", label: "<input type=image> has alt text", status: imgInputs.length === 0 || imgInputsWithAlt === imgInputs.length ? "PASS" : "FAIL", detail: imgInputs.length === 0 ? "No <input type=image> elements found." : imgInputsWithAlt === imgInputs.length ? "All image inputs have alt text." : `${imgInputs.length - imgInputsWithAlt} image input(s) missing alt text — WCAG 1.1.1 requires all functional images to have descriptive alternative text.` });
 
   // Video captions
-  const videoEls = html.match(/<video[^>]*>[\s\S]*?<\/video>/gi) ?? [];
+  // WCAG 1.2.2 covers media with audio. A video that is muted and offers no controls exposes no
+  // audio to the user (decorative hero loops), so there is nothing to caption — unless the page
+  // has its own mute/sound/volume control, in which case audio may be reachable and every video stays in scope.
+  const allVideoEls = html.match(/<video[^>]*>[\s\S]*?<\/video>/gi) ?? [];
+  const controlMarkup = [...buttons, ...(html.match(/<[a-z][\w-]*\b[^>]*\srole=["']button["'][^>]*>/gi) ?? [])].join("\n");
+  // Script-built players (video.js, Plyr, MediaElement, JW Player…) render their mute/volume controls at
+  // runtime, so they are absent from the HTML; an unmute/volume hook anywhere in the markup counts too.
+  const pageHasSoundControl = /\b(?:un-?mute|mute|sound|volume|audio)\b/i.test(controlMarkup)
+    || /\b(?:un-?mute|volume)\b/i.test(html)
+    || /video[.-]?js|\bvjs-|\bplyr\b|mediaelement|jwplayer|\bmux-player\b|\bmedia-chrome\b/i.test(html);
+  const videoEls = pageHasSoundControl ? allVideoEls : allVideoEls.filter((v) => {
+    const open = v.match(/<video\b[^>]*>/i)?.[0] ?? "";
+    return !(hasAttribute(open, "muted") && !hasAttribute(open, "controls"));
+  });
+  const silentVideoCount = allVideoEls.length - videoEls.length;
   const videosWithCaptions = videoEls.filter((v) => /kind=["']captions["']/i.test(v)).length;
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "video_captions", label: "Video has captions track", status: videoEls.length === 0 ? "PASS" : videosWithCaptions >= videoEls.length * 0.8 ? "PASS" : "WARN", detail: videoEls.length === 0 ? "No <video> elements detected." : videosWithCaptions >= videoEls.length ? "All videos have caption tracks." : `${videoEls.length - videosWithCaptions} video(s) missing caption track — WCAG 1.2.2 requires captions for all prerecorded video content.` });
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "video_captions", label: "Video has captions track", status: videoEls.length === 0 ? "PASS" : videosWithCaptions >= videoEls.length * 0.8 ? "PASS" : "WARN", detail: videoEls.length === 0 ? (silentVideoCount > 0 ? `${silentVideoCount} muted video(s) without a controls attribute and no mute/volume control in the page markup — these appear decorative, so captions (WCAG 1.2.2) were not required. If script adds an unmute control, the video needs captions.` : "No <video> elements detected.") : videosWithCaptions >= videoEls.length ? "All videos have caption tracks." : `${videoEls.length - videosWithCaptions} video(s) missing caption track — WCAG 1.2.2 requires captions for all prerecorded video content.` });
 
   // Form labels
-  const inputs = html.match(/<input(?![^>]+type=["'](hidden|submit|button|reset|image|checkbox|radio)["'])[^>]+id=["']([^"']+)["']/gi) ?? [];
-  const labels = html.match(/<label[^>]+for=["'][^"']+["']/gi) ?? [];
-  const hasGoodLabels = inputs.length === 0 || labels.length >= inputs.length * 0.8;
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "form_labels_present", label: "<label> for every <input>", status: hasGoodLabels ? "PASS" : "WARN", detail: hasGoodLabels ? "Form inputs appear to have associated labels." : `${inputs.length} inputs but only ${labels.length} explicit labels — WCAG 1.3.1 requires programmatic labels for all form controls.` });
+  const inputs = html.match(/<input(?![^>]+type=["'](hidden|submit|button|reset|image|checkbox|radio)["'])[^>]+id=["']([^"']+)["'][^>]*>/gi) ?? [];
+  // A <label for> only labels the input whose id it names; an input nested inside a <label> is labelled
+  // implicitly; a non-empty aria-label / aria-labelledby / title is a programmatic label as well.
+  const labelledIds = new Set(Array.from(html.matchAll(/<label\b[^>]*\sfor=["']([^"']+)["']/gi), (match) => match[1]));
+  const implicitlyLabelled = new Set((html.match(/<label\b[^>]*>[\s\S]*?<\/label>/gi) ?? []).flatMap((label) => label.match(/<input\b[^>]*>/gi) ?? []));
+  const unlabelledInputs = inputs.filter((input) => !hasProgrammaticName(input, true)
+    && !labelledIds.has(attributeValue(input, "id") ?? "")
+    && !implicitlyLabelled.has(input));
+  const hasGoodLabels = inputs.length === 0 || unlabelledInputs.length <= inputs.length * 0.2;
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "form_labels_present", label: "<label> for every <input>", status: hasGoodLabels ? "PASS" : "WARN", detail: hasGoodLabels ? "Form inputs appear to have associated labels." : `${unlabelledInputs.length} of ${inputs.length} input(s) have no matching <label for>, wrapping <label>, aria-label, aria-labelledby, or title — WCAG 1.3.1 requires programmatic labels for all form controls.` });
 
   // Form error identification
   const hasForms = /<form[^>]*>/i.test(html);
@@ -151,7 +234,10 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
 
   // prefers-reduced-motion
   const hasPrefersReducedMotion = /prefers-reduced-motion/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "prefers_reduced_motion", label: "prefers-reduced-motion CSS media query", status: hasPrefersReducedMotion ? "PASS" : "WARN", detail: hasPrefersReducedMotion ? "prefers-reduced-motion media query detected — animations respect the user's OS motion preference." : "No prefers-reduced-motion media query — users who experience motion sickness or vestibular disorders need a way to reduce animations (WCAG 2.3.3)." });
+  // Only the page HTML is read. CSS in linked or @import-ed stylesheets is not fetched, so an absence
+  // in the HTML alone is not evidence that the media query is missing.
+  const hasExternalCss = /<link\b[^>]*\srel=["']?[^"'>]*\bstylesheet\b/i.test(html) || /<link\b[^>]*\sas=["']?style\b/i.test(html) || /@import\s+(?:url\(|["'])/i.test(html);
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "prefers_reduced_motion", label: "prefers-reduced-motion CSS media query", status: hasPrefersReducedMotion ? "PASS" : hasExternalCss ? "INCONCLUSIVE" : "WARN", detail: hasPrefersReducedMotion ? "prefers-reduced-motion media query detected — animations respect the user's OS motion preference." : hasExternalCss ? "No prefers-reduced-motion media query in the page HTML; linked or imported stylesheets were not inspected, so support for the OS reduced-motion preference could not be determined (WCAG 2.3.3)." : "No prefers-reduced-motion media query — users who experience motion sickness or vestibular disorders need a way to reduce animations (WCAG 2.3.3)." });
 
   // prefers-contrast
   const hasPrefersContrast = /prefers-contrast/i.test(html);
@@ -162,12 +248,15 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "sufficient_colour_contrast", label: "No obvious low-contrast inline styles", status: hasLowContrastInline ? "WARN" : "PASS", detail: hasLowContrastInline ? "Inline colour + background styles detected — verify contrast ratios meet WCAG AA (4.5:1 for normal text, 3:1 for large text)." : "No obvious low-contrast inline styles detected — use an automated tool like Lighthouse or axe to audit colour contrast." });
 
   // Text spacing
-  const hasFixedSpacing = /letter-spacing:\s*0px|word-spacing:\s*0px|line-height:\s*1(?:\.0+)?(?:px|$)/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "text_spacing_supported", label: "Letter/word spacing not fixed", status: hasFixedSpacing ? "WARN" : "PASS", detail: hasFixedSpacing ? "Fixed letter or word spacing styles detected — WCAG 1.4.12 requires content to remain usable when letter/word/line spacing is overridden by the user." : "No problematic fixed spacing styles detected." });
+  // Authored spacing values (letter-spacing:0px is simply the default) do not fail 1.4.12. The only
+  // static signal that hinders a user override is inline !important spacing, which text-spacing
+  // bookmarklets/extensions cannot beat.
+  const hasFixedSpacing = /\bstyle\s*=\s*["'](?:[^"']*[;\s])?(?:letter-spacing|word-spacing|line-height)\s*:[^;"']*!important/i.test(html);
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "text_spacing_supported", label: "Letter/word spacing not fixed", status: hasFixedSpacing ? "WARN" : "PASS", detail: hasFixedSpacing ? "Inline !important letter/word/line spacing detected — text-spacing adjustments applied by browser extensions or bookmarklets cannot override these elements (WCAG 1.4.12)." : "No inline !important spacing that would block user text-spacing overrides detected." });
 
   // Link purpose
   const genericLinks = html.match(/>(?:click here|here|more|read more|learn more|link|go)<\/a>/gi) ?? [];
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "link_purpose_clear", label: "Links have descriptive text", status: genericLinks.length === 0 ? "PASS" : "WARN", detail: genericLinks.length === 0 ? "No generic link text detected." : `${genericLinks.length} link(s) with generic text (\"click here\", \"read more\") detected — WCAG 2.4.4 requires link text to describe the destination or purpose.` });
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "link_purpose_clear", label: "Links have descriptive text", status: genericLinks.length === 0 ? "PASS" : "WARN", detail: genericLinks.length === 0 ? "No generic link text detected." : `${genericLinks.length} link(s) with generic text (\"here\", \"read more\") detected — this meets WCAG 2.4.4 (AA) only if the surrounding sentence, paragraph or list item explains the destination; link text that describes its purpose on its own is WCAG 2.4.9 (AAA).` });
 
   // Page title
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
@@ -185,9 +274,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   const hasDragAlternative = /move (up|down)|reorder.*button|use (the )?arrow keys|keyboard.*reorder/i.test(html);
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "wcag22_dragging_alternative", label: "Dragging movements have an alternative (WCAG 2.5.7)", status: !hasDraggable ? "PASS" : hasDragAlternative ? "PASS" : "WARN", detail: !hasDraggable ? "No drag-and-drop interactions detected." : hasDragAlternative ? "Drag interactions detected with a single-pointer/keyboard alternative." : "Drag-and-drop detected but no obvious single-pointer alternative — WCAG 2.2 (2.5.7) requires any dragging movement to also be operable with a single pointer (e.g. up/down buttons)." });
 
-  // 3.3.6 Consistent Help — a help mechanism in a consistent location across pages.
+  // 3.2.6 Consistent Help — a help mechanism in a consistent location across pages.
   const hasConsistentHelp = /href=["'][^"']*(help|support|contact)[^"']*["']|intercom|crisp\.chat|zendesk|drift|help.*center|live chat|tawk\.to/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "wcag22_consistent_help", label: "Consistent help mechanism (WCAG 3.3.6)", status: hasConsistentHelp ? "PASS" : "WARN", detail: hasConsistentHelp ? "A help/contact mechanism is present — WCAG 2.2 (3.3.6) is satisfied when it appears in a consistent location across pages." : "No help/contact mechanism detected — WCAG 2.2 (3.3.6) expects a consistently located way to get help (contact link, help centre, or chat) on pages that need it." });
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "wcag22_consistent_help", label: "Consistent help mechanism (WCAG 3.2.6)", status: "PASS", detail: hasConsistentHelp ? "A help/contact mechanism is present — WCAG 2.2 (3.2.6) is satisfied when it appears in the same relative location on every page that repeats it; cross-page placement is not verified from a single page." : "Not applicable — no help/contact mechanism detected on this page. WCAG 2.2 (3.2.6) only governs where help appears when it is provided; it does not require one." });
 
   // EU Accessibility Act (in force June 2025) — a published accessibility statement.
   const hasAccessibilityStatement = /accessibility statement|accessibility commitment|href=["'][^"']*accessibility[^"']*["']|we are committed to accessibility|wcag 2\.[12]|en 301 549/i.test(html);

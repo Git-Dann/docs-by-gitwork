@@ -40,8 +40,32 @@ const AI_BOTS = [
   "gptbot", "oai-searchbot", "chatgpt-user", "claudebot", "anthropic-ai",
   "claude-web", "perplexitybot", "perplexity-user", "google-extended", "ccbot",
   "applebot-extended", "bytespider", "amazonbot", "meta-externalagent",
-  "cohere-ai", "youbot", "diffbot",
+  "cohere-ai", "youbot", "diffbot", "claude-searchbot", "claude-user",
 ];
+
+// Bots an engine uses at ANSWER time (search index, user-triggered fetch, grounding).
+// GPTBot, ClaudeBot, CCBot, Bytespider... collect training data: blocking only those opts
+// content out of model training, it does not remove the site from ChatGPT search or
+// Perplexity answers (zalando.de blocks GPTBot + ClaudeBot but not OAI-SearchBot,
+// ChatGPT-User or PerplexityBot).
+const ANSWER_BOT_ENGINE: Record<string, string> = {
+  "oai-searchbot": "ChatGPT",
+  "chatgpt-user": "ChatGPT",
+  "perplexitybot": "Perplexity",
+  "perplexity-user": "Perplexity",
+  "claude-searchbot": "Claude",
+  "claude-user": "Claude",
+  "google-extended": "Gemini",
+  "youbot": "You.com",
+};
+
+function aiBlockImpact(blockedBots: string[]): string {
+  const engines = Array.from(new Set(blockedBots.map((b) => ANSWER_BOT_ENGINE[b]).filter(Boolean)));
+  if (engines.length > 0) {
+    return `That includes answer-time bots, so pages can be left out of ${engines.join(", ")} answers. Remove the Disallow if you want AI visibility.`;
+  }
+  return "These are AI training / data-collection crawlers; the answer-time bots (OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot) are not blocked, so this opts content out of model training rather than out of AI answers.";
+}
 
 interface RobotsGroup {
   agents: string[];
@@ -103,17 +127,53 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
   //    content that matters. Content-verified so a catch-all HTML 200 doesn't count.
   const looksLikeText = (body: string, ct: string) =>
     !ct.includes("html") && body.trim().length > 10;
-  const hasLlmsTxt =
-    (await verifyFileExposure(`${httpsUrl}/llms.txt`, looksLikeText)) ||
-    (await verifyFileExposure(`${httpsUrl}/llms-full.txt`, looksLikeText));
-  checks.push({
+  // Same soft-200 guard verifyFileExposure applies (isHtmlShell in _types.ts, which is
+  // not exported): a SPA shell served as text/plain must not read as an llms.txt.
+  const looksLikeHtmlShell = (body: string) => {
+    const head = body.trimStart().slice(0, 300).toLowerCase();
+    return (
+      head.startsWith("<!doctype html") ||
+      head.startsWith("<html") ||
+      head.includes("<head") ||
+      head.includes("__next_data__") ||
+      head.includes('id="root"') ||
+      head.includes('id="__next"')
+    );
+  };
+  // A probe that got no answer (network error, timeout, 429/5xx) is not evidence the file
+  // is absent. verifyFileExposure collapses both to `false`, which a timeout turned into
+  // "No /llms.txt" (squarespace.com does publish one, via a 301 to /assets/llms.txt).
+  const probeLlms = async (path: string): Promise<"found" | "absent" | { error: string }> => {
+    try {
+      const res = await fetchWithTimeout(`${httpsUrl}${path}`, {
+        method: "GET",
+        redirect: "follow",
+        headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+      });
+      // Only 404/410 say the file is not there. 401/403 (a WAF or challenge answering
+      // Pulse's UA), 429 and 5xx say nothing about whether it exists.
+      if (res.status === 404 || res.status === 410) return "absent";
+      if (res.status !== 200) return { error: `HTTP ${res.status}` };
+      const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+      const body = (await res.text().catch(() => "")).slice(0, 2000);
+      return looksLikeText(body, ct) && !looksLikeHtmlShell(body) ? "found" : "absent";
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "request failed" };
+    }
+  };
+  const llmsProbe = await probeLlms("/llms.txt");
+  const hasLlmsTxt = llmsProbe === "found" || (await probeLlms("/llms-full.txt")) === "found";
+  if (!hasLlmsTxt && typeof llmsProbe === "object") {
+    checks.push(probeInconclusive(CATEGORY, "aeo_llms_txt", "llms.txt AI guidance file",
+      `The request for ${httpsUrl}/llms.txt did not return a usable answer (${llmsProbe.error}), so Pulse cannot say whether the file exists.`));
+  } else checks.push({
     category: CATEGORY,
     checkKey: "aeo_llms_txt",
     label: "llms.txt AI guidance file",
     status: hasLlmsTxt ? "PASS" : "WARN",
     detail: hasLlmsTxt
       ? "llms.txt found — you publish machine-readable guidance telling LLMs and answer engines which content to prioritise."
-      : "No /llms.txt. This emerging standard (like robots.txt, but for LLMs) tells ChatGPT, Claude and Perplexity what your site is and which pages matter. Add a markdown llms.txt at the site root.",
+      : "No /llms.txt. llms.txt is a proposed convention (llmstxt.org): a markdown file at the site root summarising what the site is and which pages matter, read by some AI tools and agents. It is not an official standard and answer-engine support varies, so treat it as optional.",
   });
 
   // 2. AI crawler access — many sites silently block AI bots and vanish from
@@ -143,6 +203,12 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
   if (robotsProbeError) {
     checks.push(probeInconclusive(CATEGORY, "aeo_ai_crawlers_allowed", "AI crawlers allowed in robots.txt",
       `The request for ${httpsUrl}/robots.txt did not complete (${robotsProbeError}), so crawler rules could not be read.`));
+  } else if (robotsStatus !== 200 && robotsStatus !== 404 && robotsStatus !== 410) {
+    // 401/403/429/5xx is a WAF, challenge or outage answering Pulse's UA, not "no file":
+    // zalando.de and a Vercel-challenged deployment both 403 Gitwork-Pulse while real
+    // crawlers receive rules that block AI bots. RFC 9309 also treats 5xx as full disallow.
+    checks.push(probeInconclusive(CATEGORY, "aeo_ai_crawlers_allowed", "AI crawlers allowed in robots.txt",
+      `${httpsUrl}/robots.txt answered HTTP ${robotsStatus} to Pulse, so its crawler rules could not be read.`));
   } else if (!robotsBody) {
     checks.push({
       category: CATEGORY,
@@ -170,7 +236,7 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
         checkKey: "aeo_ai_crawlers_allowed",
         label: "AI crawlers allowed in robots.txt",
         status: "WARN",
-        detail: `robots.txt explicitly blocks AI crawlers: ${blockedBots.join(", ")}. Your content won't appear in ChatGPT, Claude or Perplexity answers. Remove the Disallow if you want AI visibility.`,
+        detail: `robots.txt explicitly blocks AI crawlers: ${blockedBots.join(", ")}. ${aiBlockImpact(blockedBots)}`,
         evidence: blockedBots.join(", "),
       });
     } else {
@@ -193,7 +259,13 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
   checks.push({ category: CATEGORY, checkKey: "aeo_language_alternates", label: "Language alternatives are declared", status: alternates ? "PASS" : "WARN", detail: alternates ? "Language alternate metadata detected." : "No language alternatives found; add them when this site serves localized versions." });
   const qa = /<(?:h[2-4]|dt)[^>]*>[^<]{5,}\?<|FAQPage|\"(?:Question|Answer)\"/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "aeo_question_answer", label: "Question-and-answer content is structured", status: qa ? "PASS" : "WARN", detail: qa ? "Question-and-answer content pattern detected." : "No structured question-and-answer content found on this page." });
-  const citations = (html.match(/<a\s+[^>]*href=["']https?:\/\//gi) ?? []).length >= 2;
+  // Count links that leave the site. Absolute links back to the scanned host (48 of the
+  // Guardian homepage's absolute anchors point at www.theguardian.com) are navigation,
+  // not supporting citations.
+  const siteHost = ctx.hostname.toLowerCase().replace(/^www\./, "");
+  const citations = Array.from(html.matchAll(/<a\s+[^>]*href=["']https?:\/\/([^/"':?#]+)/gi))
+    .map((match) => match[1].toLowerCase().replace(/^www\./, ""))
+    .filter((host) => host !== siteHost && !host.endsWith(`.${siteHost}`)).length >= 2;
   checks.push({ category: CATEGORY, checkKey: "aeo_citation_links", label: "Claims include supporting links", status: citations ? "PASS" : "WARN", detail: citations ? "Multiple supporting outbound links detected." : "Few supporting links found; cite primary sources for factual content." });
   const freshness = /(?:datePublished|dateModified|<time[^>]+datetime=|last updated|published on)/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "aeo_content_freshness", label: "Content exposes a published or updated date", status: freshness ? "PASS" : "WARN", detail: freshness ? "Content date metadata detected." : "No published or updated date found; freshness is hard for answer engines to assess." });
@@ -242,14 +314,29 @@ export async function runAiAeoChecks(ctx: ExtendedCheckContext): Promise<PulseSc
     .trim();
   const wordCount = strippedText ? strippedText.split(" ").filter((w) => w.length > 1).length : 0;
   const serverRendered = wordCount >= 100;
-  checks.push({
+  // Only claim client-side rendering when the HTML shows an app shell. A short static page
+  // (example.com: ~26 words, all in the HTML) is fully readable without JS, and a WAF denial
+  // body (rakuten.co.jp: 43 bytes, "Reference #18.0e0f0317...") is not the site at all.
+  const appShell = /id=["'](?:root|__next|app|__nuxt|svelte)["']|<app-root\b|__NEXT_DATA__|<script[^>]+type=["']module["']/i.test(html);
+  // <html>/<head>/<body> are optional in HTML5 and minifiers strip them, so their absence
+  // alone does not make a body "not a page". Only a body with no HTML element at all, or
+  // one carrying an Akamai denial reference, is treated as something other than the site.
+  const hasAnyElement = /<[a-z][a-z0-9-]*(?:\s[^>]*)?\/?>/i.test(html);
+  const akamaiDenial = /Reference(?:\s|&#32;)(?:#|&#35;)[0-9a-f]+\.[0-9a-f]+/i.test(html);
+  const notAPage = !serverRendered && (!hasAnyElement || akamaiDenial);
+  if (notAPage) {
+    checks.push(probeInconclusive(CATEGORY, "aeo_content_server_rendered", "Content readable without JavaScript",
+      `The homepage response (${html.length} bytes) was not a normal HTML page — likely a bot-protection or error response — so how the real page renders could not be assessed.`));
+  } else checks.push({
     category: CATEGORY,
     checkKey: "aeo_content_server_rendered",
     label: "Content readable without JavaScript",
     status: serverRendered ? "PASS" : "WARN",
     detail: serverRendered
       ? `Server HTML contains ~${wordCount} words of readable text — crawlers that don't run JavaScript (most AI answer engines) can read your content.`
-      : `Server HTML has only ~${wordCount} words of text — the page appears to render its content client-side. AI crawlers that don't execute JavaScript will see a near-empty page. Prefer static/server rendering for key content.`,
+      : appShell
+        ? `Server HTML has only ~${wordCount} words of text and an app-shell mount point — the page appears to render its content client-side. AI crawlers that don't execute JavaScript will see a near-empty page. Prefer static/server rendering for key content.`
+        : `Server HTML has only ~${wordCount} words of text. Pulse found no sign of client-side rendering, so this looks like a genuinely short page: what is there is readable without JavaScript, but there is little for answer engines to read or cite.`,
   });
 
   // 5. Semantic HTML landmarks — machine-readable page structure vs "div soup".

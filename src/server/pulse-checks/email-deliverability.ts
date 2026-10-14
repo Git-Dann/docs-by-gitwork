@@ -226,6 +226,18 @@ export function dmarcPolicyChecks(hostname: string, applicable: ApplicableDmarc)
   };
 }
 
+/**
+ * Parent names RFC 7489 §6.6.3 discovery retries for `hostname`, most specific first,
+ * bounded. The organizational domain is defined by the Public Suffix List, so a host
+ * under a curated platform namespace that is NOT on the PSL (www.squarespace.com)
+ * falls back to that namespace (squarespace.com, p=reject). That knowledge lives in
+ * one place — `NAMESPACES_NOT_ON_PSL` in registrable-domain.ts — and is reached
+ * through `organizationalDomainCandidates`.
+ */
+export function dmarcDiscoveryCandidates(hostname: string): string[] {
+  return boundedDmarcCandidates(organizationalDomainCandidates(hostname));
+}
+
 export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { hostname } = ctx;
   const html = ctx.pageResult.html;
@@ -246,7 +258,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   // DMARC additionally needs its organizational-domain candidates (RFC 7489
   // §6.6.3) — see the section note above `resolveApplicableDmarc`. They are
   // queried in the same wave, so discovery costs no extra round trip.
-  const dmarcParentNames = boundedDmarcCandidates(organizationalDomainCandidates(hostname));
+  const dmarcParentNames = dmarcDiscoveryCandidates(hostname);
   const [[dkim, bimi, mtaSts, tlsRptLookup, spfLookup, dmarcLookup, mxLookup], dmarcParentLookups] = await Promise.all([
     Promise.all([
       resolveAllDnsRecords([
@@ -306,7 +318,12 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "mta_sts_policy", "MTA-STS enforced mail transfer", dnsFailed(mtaSts.reason)));
   } else {
     const hasMtaSts = mtaSts.records.some((r) => r.includes("v=STSv1"));
-    checks.push({ category: CATEGORY, checkKey: "mta_sts_policy", label: "MTA-STS enforced mail transfer", status: hasMtaSts ? "PASS" : "WARN", detail: hasMtaSts ? "MTA-STS policy detected — inbound email is enforced to use TLS." : "No MTA-STS policy — MTA-STS prevents SMTP downgrade attacks and ensures inbound email is delivered over encrypted connections." });
+    // RFC 7505: a lone `0 .` MX declares the domain accepts no email, so there is
+    // no inbound transfer for MTA-STS to protect.
+    const declaresNullMx = mxLookup.ok && mxLookup.records.length > 0 && mxLookup.records.every((r) => /^\s*0\s+\.\s*$/.test(r));
+    checks.push(!hasMtaSts && declaresNullMx
+      ? { category: CATEGORY, checkKey: "mta_sts_policy", label: "MTA-STS enforced mail transfer", status: "NOT_APPLICABLE", detail: `${hostname} publishes a null MX record (RFC 7505), declaring that it accepts no email, so there is no inbound mail transfer for MTA-STS to protect.` }
+      : { category: CATEGORY, checkKey: "mta_sts_policy", label: "MTA-STS enforced mail transfer", status: hasMtaSts ? "PASS" : "WARN", detail: hasMtaSts ? `MTA-STS TXT record (v=STSv1) detected — supporting senders fetch the policy from mta-sts.${hostname} before delivering inbound email over TLS.` : "No MTA-STS policy — MTA-STS prevents SMTP downgrade attacks and ensures inbound email is delivered over encrypted connections." });
   }
 
   // TLS-RPT
@@ -323,10 +340,21 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   if (!spfLookup.ok) {
     checks.push(probeInconclusive(CATEGORY, "spf_hardfail", "SPF uses -all (hardfail)", dnsFailed(spfLookup.reason)));
   } else {
-    const spf = spfRecords.find((r) => r.includes("v=spf1"));
-    const hasSpfHardfail = spf ? spf.includes("-all") : false;
-    const hasSpfSoftfail = spf ? spf.includes("~all") : false;
-    checks.push({ category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: hasSpfHardfail ? "PASS" : spf ? "WARN" : "WARN", detail: hasSpfHardfail ? "SPF -all (hardfail) configured — unauthorised senders are rejected." : hasSpfSoftfail ? "SPF uses ~all (softfail) — upgrade to -all (hardfail) to instruct receivers to reject rather than mark messages from unauthorised senders." : "No SPF record found — configure SPF to declare authorised sending servers." });
+    // RFC 7208 §3.3: a long record arrives as several quoted chunks concatenated
+    // WITHOUT a separator. The all-mechanism is matched as a whole term, so
+    // `include:spf-all.example` is not read as `-all`.
+    const spf = spfRecords
+      .map((r) => r.replace(/"\s*"/g, "").replace(/"/g, "").trim())
+      .find((r) => /^v=spf1(?:\s|$)/i.test(r));
+    const allTerm = spf?.match(/(?:^|\s)([-~?+]?all)(?=\s|$)/i)?.[1]?.toLowerCase() ?? null;
+    const hasSpfHardfail = allTerm === "-all";
+    const hasSpfSoftfail = allTerm === "~all";
+    // RFC 7208 §6.1: with no `all` mechanism, `redirect=` hands the final verdict
+    // to another record that this probe does not evaluate.
+    const spfRedirect = spf && !allTerm ? spf.match(/(?:^|\s)redirect=(\S+)/i)?.[1] ?? null : null;
+    checks.push(spfRedirect
+      ? { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: "INCONCLUSIVE", confidence: "LOW", detail: `The SPF record at ${hostname} delegates its policy with redirect=${spfRedirect}. Pulse did not evaluate that record, so whether unauthorised senders end in -all or ~all is unknown.`, evidence: spf }
+      : { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: hasSpfHardfail ? "PASS" : "WARN", detail: hasSpfHardfail ? "SPF -all (hardfail) configured — unauthorised senders are rejected." : hasSpfSoftfail ? "SPF uses ~all (softfail) — upgrade to -all (hardfail) to instruct receivers to reject rather than mark messages from unauthorised senders." : spf ? `The SPF record at ${hostname} ${allTerm ? `ends in ${allTerm}` : "has no all mechanism"} rather than -all, so receivers are not told to reject mail from unauthorised senders. End the record with -all.` : `No SPF record is published at ${hostname} — configure SPF to declare authorised sending servers. SPF is not inherited from parent domains (RFC 7208 §3.1).` });
   }
 
   // DMARC quarantine/reject — the governing policy, from the record RFC 7489
@@ -353,7 +381,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "spf_single_record", "Exactly one SPF policy is published", dnsFailed(spfLookup.reason)));
   } else {
     const publishedSpf = spfRecords.filter((record) => /\bv=spf1\b/i.test(record));
-    checks.push({ category: CATEGORY, checkKey: "spf_single_record", label: "Exactly one SPF policy is published", status: publishedSpf.length === 1 ? "PASS" : "WARN", detail: publishedSpf.length === 1 ? "Exactly one SPF policy is published, so receivers have an unambiguous sender-authorisation rule." : publishedSpf.length > 1 ? `${publishedSpf.length} SPF policies are published. Multiple SPF records cause a permanent evaluation error; merge them into one policy.` : "No SPF policy was found." });
+    checks.push({ category: CATEGORY, checkKey: "spf_single_record", label: "Exactly one SPF policy is published", status: publishedSpf.length === 1 ? "PASS" : "WARN", detail: publishedSpf.length === 1 ? "Exactly one SPF policy is published, so receivers have an unambiguous sender-authorisation rule." : publishedSpf.length > 1 ? `${publishedSpf.length} SPF policies are published. Multiple SPF records cause a permanent evaluation error; merge them into one policy.` : `No SPF policy is published at ${hostname}. SPF is not inherited from parent domains (RFC 7208 §3.1), so this name has none of its own.` });
   }
 
   // Both read the SAME applicable record as the policy check above. They used to

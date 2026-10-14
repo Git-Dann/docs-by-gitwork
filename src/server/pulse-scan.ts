@@ -11,6 +11,7 @@ import {
 } from "./pulse-checks/jurisdictions";
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
+import { parseSetCookieHeader } from "./pulse-checks/security-extended";
 import { detectSpaContext, isEmptyShell as isEmptyRenderShell, reclassifySpaChecks, staticTextWordCount } from "./pulse-lite/spa-detect";
 import { permitsEveryOrigin } from "./pulse-checks/csp-sources";
 import { analyzeHost, boundedDmarcCandidates, organizationalDomainCandidates, registrableDomain } from "./pulse-lite/registrable-domain";
@@ -91,6 +92,11 @@ async function fetchPage(url: string): Promise<FetchResult | null> {
     response.headers.forEach((value, key) => {
       headers[key.toLowerCase()] = value;
     });
+    // Headers.forEach yields each Set-Cookie separately, so the map above kept only
+    // the LAST one: www.target.com sets 11 cookies (two without SameSite) and was
+    // PASSed on `_pxhd` alone. splitSetCookieHeader parses the joined form.
+    const setCookies = response.headers.getSetCookie?.() ?? [];
+    if (setCookies.length > 1) headers["set-cookie"] = setCookies.join(", ");
     return { ok: response.ok, status: response.status, headers, html, responseTimeMs, finalUrl: response.url };
   } catch {
     return null;
@@ -134,6 +140,9 @@ async function fetchPageWithReason(url: string): Promise<{ page: FetchResult | n
     response.headers.forEach((value, key) => {
       headers[key.toLowerCase()] = value;
     });
+    // See fetchPage: keep EVERY Set-Cookie, not just the last.
+    const setCookies = response.headers.getSetCookie?.() ?? [];
+    if (setCookies.length > 1) headers["set-cookie"] = setCookies.join(", ");
     return { page: { ok: response.ok, status: response.status, headers, html, responseTimeMs, finalUrl: response.url }, failure: null };
   } catch (error) {
     return { page: null, failure: classifyFetchError(error) };
@@ -151,6 +160,92 @@ import {
   looksLikeOpenApi, looksLikeGraphqlEndpoint, looksLikeDebugTool, pageTitle, classifyTopicPage, combinePageStates,
   type PathProbe, type PageProbeState,
 } from "@/server/pulse-checks/path-probe";
+
+/**
+ * Homepage-copy detectors corrected by audit pulse-scan-3 (2026-10-14). Each earlier
+ * version missed wording that real sites use and reported the thing as absent:
+ * vercel.com "Get a Demo", www.notion.so "Request a demo", linear.app "Contact sales",
+ * bolt.new "start building for free", posthog.com "EU (Frankfurt)", www.notion.so's
+ * JSON-LD `"operatingSystem":"Web, macOS, Windows, iOS, Android"`, vercel.com linking
+ * `/help`, supabase.com linking `/legal/dpa`.
+ */
+export const DEMO_BOOKING_PATTERN =
+  /\b(?:book|schedule|request|get)\s+a\s+(?:demo|call)\b|\bbook\s+demo\b|\b(?:contact|talk\s+to)\s+(?:our\s+)?sales\b|calendly\.com|savvycal\.com|\bcal\.com\b/i;
+
+export const FREE_PLAN_PATTERN =
+  /free\s+trial|free\s+plan|free\s+tier|free\s+forever|no\s+credit\s+card\s+required|get\s+started\s+free|\b(?:start|try|use|sign\s+up|get\s+started)\b[\w\s]{0,20}?\s+for\s+free\b/i;
+
+/**
+ * Link tokens for an FAQ / help centre (`/help`, `/faq.html`, `/help-center`,
+ * `support.example.com`). Each must START a path segment (or host label) and END it,
+ * optionally via a centre/desk/portal suffix — so /blog/how-we-help-startups, /helpers,
+ * /self-help and /docs/supported-browsers are not a help centre.
+ */
+export const FAQ_LINK_TOKENS = [
+  // The trailing `.` is accepted only as a page extension or as a HOST label followed by
+  // more labels (support.example.com) — never a bare file extension, so a
+  // `<link href="/css/help.css">` stylesheet is not a help centre.
+  "(?<![^/])(?:faqs?|help|support)(?:[-_]?(?:center|centre|desk|portal))?(?:$|/|\\.(?:html?|php|aspx?)$|\\.(?=[a-z0-9-]+\\.))",
+];
+
+/**
+ * Link tokens for a careers page: a whole `careers` path segment (webflow.com's
+ * `/company/careers`) or a `careers.` host label. Not a segment merely CONTAINING the
+ * word — /money/work-and-careers, /tag/careers-advice and /blog/careers-in-tech are
+ * articles, not a jobs page.
+ */
+export const CAREERS_LINK_TOKENS = [
+  "(?<![^/])careers(?:$|/|\\.(?:html?|php|aspx?)$)",
+  "(?<=//)careers\\.",
+];
+
+/**
+ * Link tokens for a contact page: a whole `contact` / `contact-us` / `contactus` path
+ * segment. Not /features/contacts, /contact-lenses or a /css/contact.css stylesheet.
+ */
+export const CONTACT_LINK_TOKENS = [
+  "(?<![^/])contact(?:[-_]?us)?(?:$|/|\\.(?:html?|php|aspx?)$)",
+];
+
+/**
+ * Link tokens for a Data Processing Agreement / Addendum: a standalone `/dpa` segment,
+ * or `data-processing-(agreement|addendum|terms)`. Not `/privacy/data-processing` (a
+ * privacy-notice section) and not anthropic.com's `/legal/k12-dpa` — that is a US K-12
+ * student-data contract, not a GDPR Art. 28 DPA.
+ */
+export const DPA_LINK_TOKENS = [
+  "(?<![^/])dpa(?:$|/|\\.(?:pdf|html?)$)",
+  "data-processing-(?:agreement|addendum|terms)",
+];
+
+/** Takes LOWERCASED html. */
+export function hasEuDataResidencySignal(htmlLower: string): boolean {
+  return htmlLower.includes("eu-west") || htmlLower.includes("eu-central") || htmlLower.includes("europe-west") ||
+    (htmlLower.includes("gdpr") && htmlLower.includes("eu data")) ||
+    /\beu[- ](?:cloud|region|hosting|data[- ]cent(?:er|re))\b|\beu data residency\b|\bhosted in the eu\b|\beu \((?:frankfurt|ireland|dublin|paris|stockholm|amsterdam)\)/.test(htmlLower);
+}
+
+/** "link" = a Play listing is linked; "declared" = the page declares an Android app; null = neither. */
+export function googlePlaySignal(html: string): "link" | "declared" | null {
+  if (/play\.google\.com\/store\/apps/i.test(html)) return "link";
+  if (/android-app:\/\//i.test(html) || /"operatingSystem"\s*:\s*"[^"]*\bandroid\b/i.test(html)) return "declared";
+  return null;
+}
+
+/**
+ * PASS when a non-blocking font-display is in the HTML. WARN only when web fonts are
+ * declared IN the HTML without one. INCONCLUSIVE when fonts (if any) live in external
+ * stylesheets this check never reads: vercel.com and github.com both declare
+ * `font-display:swap` there and were told they had none.
+ */
+export function fontDisplayVerdict(html: string): "PASS" | "WARN" | "INCONCLUSIVE" {
+  if (
+    /font-display:\s*(?:swap|fallback|optional)/i.test(html) ||
+    /fonts\.googleapis\.com\/css[^"']*[?&;]display=(?:swap|fallback|optional)/i.test(html)
+  ) return "PASS";
+  if (/@font-face/i.test(html) || /fonts\.googleapis\.com\/css/i.test(html)) return "WARN";
+  return "INCONCLUSIVE";
+}
 
 export function isNonPageContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
@@ -455,6 +550,111 @@ const LEGAL_CONTENT_SIGNALS: Record<LegalDocKind, RegExp> = {
     /terms\s+(?:of\s+(?:service|use|sale|business)|and\s+conditions|&(?:amp;)?\s*conditions)|terms\s*&(?:amp;)?\s*conditions|conditions\s+of\s+use|allgemeine\s+gesch|nutzungsbedingungen|conditions\s+g[ée]n[ée]rales/i,
 };
 
+// ─── Audit pulse-scan-1: detectors that replaced closed substring lists ──────
+
+// AI-builder attribution a visitor actually sees: the badge script, the builder's
+// meta/OG defaults, or "Built with …" copy. A bare mention of the platform's domain
+// is not attribution: stripe.com names "lovable.dev" in a customer list, vercel.com
+// links v0.app (its own product), and bolt.new IS the platform — all three were
+// reported as carrying an AI-builder watermark.
+const AI_PLATFORM_OWN_HOSTS = ["bolt.new", "lovable.dev", "v0.dev", "v0.app", "replit.com"];
+const AI_WATERMARK_PATTERNS: RegExp[] = [
+  /\b(?:built|made|edit|created) with (?:lovable|bolt|v0)\b|\bgenerated by v0\b/i,
+  /<script\b[^>]*\bsrc=["'][^"']*(?:bolt\.new\/badge|gpteng\.co|lovable\.dev|replit\.com\/[^"']*badge)/i,
+  /<meta\b[^>]*\bcontent=["'](?:v0\.dev|v0\.app|lovable|lovable generated project|https?:\/\/lovable\.dev\/[^"']*)["']/i,
+  /\bid=["']lovable-badge["']/i,
+  /replit\.com\/badge/i,
+];
+export function hasAiPlatformWatermark(html: string, hostname = ""): boolean {
+  const host = hostname.toLowerCase().replace(/^www\./, "");
+  if (AI_PLATFORM_OWN_HOSTS.includes(host)) return false;
+  return AI_WATERMARK_PATTERNS.some((re) => re.test(html));
+}
+
+// developer.mozilla.org ships Mozilla's Glean telemetry (`data-glean-id` on every nav
+// link) and was reported as having no analytics. Vendor names stay as signals; the
+// list is just no longer six names long. ("umami" alone is a culinary word, so only
+// Umami's own script hosts count.)
+const ANALYTICS_SIGNALS = [
+  "gtag", "plausible.io", "posthog", "mixpanel", "amplitude", "_ga",
+  "googletagmanager.com", "google-analytics.com", "cdn.segment.com", "usefathom.com",
+  "matomo", "umami.is", "umami.js", "static.cloudflareinsights.com", "/_vercel/insights", "clarity.ms",
+  "heapanalytics", "hotjar", "simpleanalytics", "data-glean", "glean.js",
+];
+export function hasAnalyticsSignal(html: string): boolean {
+  const lower = html.toLowerCase();
+  return ANALYTICS_SIGNALS.some((t) => lower.includes(t));
+}
+
+// Login / signup links. The old matcher only accepted a ROOT-relative href that
+// STARTS with the token, so stripe.com (`https://dashboard.stripe.com/login`) and
+// uk.gymshark.com (`/account/login`) were told they have no login link. Anchors
+// only (a modulepreload of `/assets/login-x.js` is not a link), the token must be a
+// whole path segment within the first two (Rails/Devise `/users/sign_in` included),
+// and inert markup is ignored. When the scanned host is known, an ABSOLUTE link must be
+// this organisation's (dashboard.stripe.com from stripe.com): a "Sign in with GitHub"
+// link to github.com/login is not this product's login.
+export function hasAuthEntryLink(html: string, scannedHost = ""): boolean {
+  const re = /<a\b[^>]*?\bhref=["']([^"']+)["']/gi;
+  const markup = stripInertMarkup(html);
+  const ownHost = scannedHost.trim().toLowerCase();
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(markup)) !== null) {
+    const clean = match[1].split("#")[0].split("?")[0].toLowerCase();
+    const abs = /^(?:https?:)?\/\/([^/]+)(.*)$/.exec(clean);
+    const host = abs ? abs[1] : "";
+    if (abs && ownHost && !sameOrganisation(`https://${host}/`, ownHost)) continue;
+    const path = abs ? abs[2] : clean;
+    if (/^(?:login|signin|auth)\./.test(host)) return true;
+    const segments = path.split("/").filter(Boolean).slice(0, 2);
+    if (segments.some((s) => /^(?:log[-_]?in|sign[-_]?in|sign[-_]?up|register|auth)(?:\.\w+)?$/.test(s))) return true;
+  }
+  return false;
+}
+
+// App Store presence. headspace.com links its App Store badge through a Branch short
+// link (headspace.app.link → apps.apple.com/app/id493145008), so neither
+// apps.apple.com nor itunes.apple.com appears in the HTML; the badge image does.
+export function hasAppleAppStoreLink(html: string): boolean {
+  const lower = html.toLowerCase();
+  if (lower.includes("apps.apple.com") || lower.includes("itunes.apple.com")) return true;
+  if (/\b(?:src|srcset|alt)=["'][^"']*(?:app[-_]?store[-_]?badge|download[-_ ]on[-_ ]the[-_ ]app[-_ ]store|\/app-store\.(?:png|svg|webp))/i.test(html)) return true;
+  // apple.co is Apple's shortener for Music, Podcasts and TV as well as the App Store, so
+  // an apple.co link counts only when the link itself says it is the App Store / iOS app.
+  const shortLinks = html.matchAll(/<a\b[^>]*\bhref=["']https?:\/\/apple\.co\/[^"']*["'][^>]*>([\s\S]{0,300}?)<\/a>/gi);
+  for (const m of shortLinks) {
+    if (/app\s*store|\biphone\b|\bipad\b|\bios\b/i.test(m[1].replace(/<(?!img\b)[^>]*>/gi, " "))) return true;
+  }
+  return false;
+}
+
+// Annual billing. The old pattern (`annual|yearly|…|year.*save`) matched "annual
+// letter" on stripe.com and "Save {{amount}}" … "year" across gymshark's minified
+// i18n JSON — so its PASSes were noise. Match billing phrasing only:
+//  · "annual billing" / "billed yearly" / "pay annually";
+//  · a per-year rate anchored to a PRICE ("$99 per year", "£8/yr") — bare "per year"
+//    is prose ("5 billion requests per year");
+//  · a pricing toggle whose whole label is "Annual" / "Yearly" / "Annually",
+//    optionally "(save 20%)";
+//  · "save N%" within a short span of "annual" / "yearly", either order;
+//  · a toggle's machine value (`data-value="yearly"`).
+const ANNUAL_BILLING_SIGNAL = new RegExp(
+  [
+    /\b(?:annual(?:ly)?|yearly)\s+(?:billing|plans?|subscriptions?|pricing|payments?|commitment)\b/,
+    /\bbilled\s+(?:annually|yearly|per\s+year|every\s+year)\b/,
+    /\bpay\s+(?:annually|yearly)\b/,
+    /(?:[$£€¥]\s?\d[\d,.]*|\b\d[\d,.]*\s?(?:usd|gbp|eur))\s*(?:\/\s*|per\s+|a\s+)(?:yr|year)\b/,
+    />\s*(?:annual(?:ly)?|yearly)\s*(?:\(\s*save[^)<]{0,20}\)\s*)?</,
+    /\bsave\s+(?:up\s+to\s+)?\d{1,3}\s?%[^<]{0,40}?\b(?:annual(?:ly)?|yearly)\b/,
+    /\b(?:annual(?:ly)?|yearly)\b[^<]{0,40}?\bsave\s+(?:up\s+to\s+)?\d{1,3}\s?%/,
+    /data-value=["'](?:yearly|annual(?:ly)?)["']/,
+  ].map((re) => re.source).join("|"),
+  "i",
+);
+export function hasAnnualBillingSignal(html: string): boolean {
+  return ANNUAL_BILLING_SIGNAL.test(html);
+}
+
 /** Every `href` value in the markup, in document order. */
 export function extractHrefs(html: string): string[] {
   const out: string[] = [];
@@ -645,8 +845,67 @@ export function linksLegalDocument(html: string, kind: LegalDocKind, scannedHost
 
   // (c) The document lives on its OWN SUBDOMAIN, so the token is in the HOST and
   //     there is nothing in the path for (a) or (b) to match.
-  return linksLegalHostLabel(renderable, kind, scannedHost);
+  if (linksLegalHostLabel(renderable, kind, scannedHost)) return true;
+
+  // (d) The LINK TEXT names the terms while the href does not. stripe.com's footer reads
+  //     "Privacy and terms" (href /gb/privacy); allbirds.co.uk's "Terms of service" is an
+  //     in-page control that opens the full terms in a modal. Both took a launch-blocking
+  //     FAIL. Terms only: privacy has no observed miss of this shape.
+  return kind === "terms" && linksTermsByAnchorText(renderable, scannedHost);
 }
+
+/** Whole link text naming a terms document — never a phrase merely containing "terms". */
+const TERMS_ANCHOR_TEXT =
+  /^(?:terms(?:\s+(?:of\s+(?:service|use|sale)|(?:and|&)\s*conditions))?|terms\s*&\s*conditions|t\s*&\s*cs?|conditions\s+of\s+use|privacy\s*(?:and|&)\s*terms|terms\s*(?:and|&)\s*privacy)$/i;
+
+/**
+ * True when an `<a>` whose WHOLE visible text names the terms leads somewhere on this site.
+ *
+ * Guards, each load-bearing on a launch gate:
+ *  · whole-text match, so "Glossary of terms" or "Search terms" never qualifies;
+ *  · an off-site href must be the same organisation, so a reCAPTCHA notice's "Terms of
+ *    Service" link to Google is not this site's document;
+ *  · an href-less or `#` link counts only when it names an in-page element that EXISTS
+ *    (aria-controls / data-target / data-bs-target → an id in this document), so a
+ *    vibe-coded `<a href="#">Terms</a>` or `<a onclick="alert('Coming soon')">Terms</a>`
+ *    placeholder that leads nowhere still FAILs. A bare click handler proves nothing.
+ */
+function linksTermsByAnchorText(html: string, scannedHost?: string): boolean {
+  const host = (scannedHost ?? "").trim().toLowerCase();
+  const re = /<a\b([^>]*)>([\s\S]{0,200}?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    const attrs = match[1];
+    const text = match[2]
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!TERMS_ANCHOR_TEXT.test(text)) continue;
+    const href = attrs.match(/(?:^|\s)href\s*=\s*["']([^"']*)["']/i)?.[1]?.trim() ?? null;
+    if (href === null || href === "" || href.startsWith("#") || /^javascript:/i.test(href)) {
+      const target = attrs.match(/(?:^|\s)(?:aria-controls|data-(?:bs-)?target)\s*=\s*["']#?([^"'\s]+)["']/i)?.[1];
+      if (target && hasElementWithId(html, target)) return true;
+      continue;
+    }
+    if (/^(?:mailto|tel):/i.test(href)) continue;
+    if (!/^(?:[a-z][a-z0-9+.\-]*:)?\/\//i.test(href)) return true; // relative: this site
+    if (!host) continue;
+    try {
+      if (sameOrganisation(new URL(href, `https://${host}/`).toString(), host)) return true;
+    } catch {
+      /* an unparseable href is not evidence */
+    }
+  }
+  return false;
+}
+/** True when the document has an element whose `id` is exactly this value. */
+function hasElementWithId(html: string, id: string): boolean {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\sid\\s*=\\s*["']${escaped}["']`, "i").test(html);
+}
+
 
 /**
  * True when the page links a same-organisation host whose leading label IS the
@@ -727,6 +986,139 @@ export function linksPathContaining(html: string, tokens: string[]): boolean {
 }
 
 /**
+ * `linksPathContaining`, restricted to links into THIS organisation.
+ *
+ * ⚠️ The page-level checks that credit a linked page (FAQ, contact, careers, DPA) must
+ * not be satisfied by another company's page: a reCAPTCHA notice links
+ * support.google.com, and a subprocessor list routinely links stripe.com/legal/dpa —
+ * neither is this site's help centre or this site's DPA. Relative hrefs are this site;
+ * an absolute href counts only when it is the same organisation (registrable domain).
+ * An unknown scanned host credits relative links only.
+ */
+export function linksOwnPathContaining(html: string, tokens: string[], scannedHost: string): boolean {
+  const host = scannedHost.trim().toLowerCase();
+  const own = extractHrefs(stripInertMarkup(html)).filter((href) => {
+    if (!/^(?:[a-z][a-z0-9+.\-]*:)?\/\//i.test(href.trim())) return true;
+    if (!host) return false;
+    try {
+      return sameOrganisation(new URL(href.trim(), `https://${host}/`).toString(), host);
+    } catch {
+      return false;
+    }
+  });
+  // Re-emit as markup so the matching rule stays the one in linksPathContaining.
+  return own.length > 0 && linksPathContaining(own.map((href) => `<a href="${href.replace(/"/g, "&quot;")}">`).join(""), tokens);
+}
+
+/**
+ * True when the page links its OWN pricing / billing / plans page.
+ *
+ * ⚠️ This was a literal `href="/pricing` substring test, so cal.com — whose nav links
+ * `href="./pricing"` five times — was told it has no pricing page, as was any site that
+ * links it absolutely (`https://example.com/pricing`) or under a locale (`/en/pricing`).
+ * Resolve the href instead, and keep the same-site rule the substring test implied:
+ * another company's /pricing is not this product's.
+ */
+export function linksPricingPage(html: string, scannedUrl: string): boolean {
+  let scannedHost = "";
+  try {
+    scannedHost = new URL(scannedUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    /* relative links still count */
+  }
+  return extractHrefs(html).some((href) => {
+    let resolved: URL;
+    try {
+      resolved = new URL(href, "https://relative.invalid/");
+    } catch {
+      return false;
+    }
+    if (!/^https?:$/.test(resolved.protocol)) return false;
+    const host = resolved.hostname.toLowerCase().replace(/^www\./, "");
+    if (host !== "relative.invalid" && host !== scannedHost) return false;
+    return /^\/(?:[a-z]{2}(?:[-_][a-z]{2})?\/)?(?:pricing|billing|subscribe|checkout|plans)/i.test(resolved.pathname);
+  });
+}
+
+/**
+ * True when the response declares a resource hint of one of these `rel` kinds, in the
+ * markup OR in an HTTP `Link` header.
+ *
+ * ⚠️ Two misses, both observed live: www.gov.uk sends its preloads as a
+ * `Link: <…>; rel=preload` RESPONSE HEADER (no `<link>` tag), and www.baidu.com uses
+ * `<link rel="dns-prefetch">` — which the preconnect check's own label names but its
+ * preconnect-only regex ignored. Reads the inert-stripped markup so a commented-out
+ * `<link rel=preload>` (badssl.com) still does not count, and matches whole rel tokens
+ * so `modulepreload` is not mistaken for `preload` unless asked for.
+ */
+export function hasResourceHint(html: string, linkHeader: string | undefined, kinds: readonly string[]): boolean {
+  const alt = kinds.join("|");
+  const rel = `(?:"[^"]*(?<![\\w-])(?:${alt})(?![\\w-])[^"]*"|'[^']*(?<![\\w-])(?:${alt})(?![\\w-])[^']*'|(?:${alt})(?![\\w-]))`;
+  if (new RegExp(`<link\\b[^>]*?\\brel=${rel}`, "i").test(stripInertMarkup(html))) return true;
+  return new RegExp(`;\\s*rel=${rel}`, "i").test(linkHeader ?? "");
+}
+
+/**
+ * True when a body IS an OpenAPI / Swagger document (JSON or YAML). Stricter than
+ * `looksLikeOpenApi`, which also accepts a Swagger UI / Redoc viewer: this is applied to
+ * the scanned page itself, where a marketing page that merely mentions "swagger-ui"
+ * must not count.
+ */
+export function isOpenApiDocument(body: string): boolean {
+  // Judge the TOP-LEVEL keys when the body parses: a package.json carries
+  // `"swagger": "0.7.5"` only inside `dependencies`, while a real spec can legitimately
+  // have a schema property called `dependencies` (a package-registry API) — so a
+  // text-level "no dependencies key" rule would miss real specs.
+  const trimmed = body.trimStart();
+  if (trimmed.startsWith("{")) {
+    try {
+      const doc = JSON.parse(trimmed) as Record<string, unknown>;
+      const version = doc.openapi ?? doc.swagger;
+      const hasBody = (key: string) => typeof doc[key] === "object" && doc[key] !== null;
+      return typeof version === "string" && /^\d/.test(version) && (hasBody("info") || hasBody("paths"));
+    } catch {
+      /* truncated or not JSON — fall through to the text test */
+    }
+  }
+  // Text fallback (a body cut off mid-document): the version key must open the document,
+  // as specs conventionally write it first, so a nested dependency never qualifies.
+  const json = /^\s*\{\s*"(?:openapi|swagger)"\s*:\s*"\d/.test(body) && /"(?:info|paths)"\s*:\s*\{/.test(body);
+  const yaml = /^\s*(?:openapi|swagger)\s*:\s*["']?\d/.test(body) && /^(?:info|paths)\s*:/m.test(body);
+  return json || yaml;
+}
+
+/** True when policy text carries a maintenance date ("Last updated", "Effective date", 最終改定日 …). */
+export function policyHasMaintenanceDate(text: string): boolean {
+  return /\blast\s+(?:updated|revised|modified|amended|reviewed)\b|\beffective\s+(?:date|as\s+of|from)\b|\bdate\s+of\s+(?:last\s+)?(?:revision|update)\b|\bupdated\s+(?:on|as\s+of)\b|最終(?:改定|更新)|改定日|制定日/i.test(text);
+}
+
+/**
+ * The absolute URL of the privacy policy this page links, using the same matcher as the
+ * launch-blocking `privacy_policy` check, or null when it links none.
+ */
+export function findPrivacyPolicyHref(html: string, baseUrl: string): string | null {
+  let host = "";
+  try {
+    host = new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    /* relative-only */
+  }
+  for (const href of extractHrefs(stripInertMarkup(html))) {
+    if (!linksLegalDocument(`<a href="${href}">`, "privacy", host)) continue;
+    try {
+      const absolute = new URL(href, `${baseUrl}/`).toString();
+      // Only THIS organisation's policy: a reCAPTCHA notice linking
+      // policies.google.com/privacy ahead of the footer would otherwise have Pulse read
+      // Google's (dated) policy and credit the site with maintaining its own.
+      if (/^https?:/i.test(absolute) && host && sameOrganisation(absolute, host)) return absolute;
+    } catch {
+      /* unresolvable */
+    }
+  }
+  return null;
+}
+
+/**
  * True when the page carries a cookie-consent mechanism.
  *
  * ⚠️ This was a CLOSED VENDOR LIST (cookiebot / osano / onetrust / cookie-consent /
@@ -768,7 +1160,7 @@ const COOKIE_BANNER_COPY =
 // Match the AFFORDANCE — a decline control, or a way to manage the choice — in the
 // wordings real banners actually use. Still gated by hasBasicConsent below, so prose
 // in a privacy policy cannot satisfy it on its own.
-    export function hasGranularCookieControls(html: string): boolean {
+export function hasGranularCookieControls(html: string): boolean {
   return (
   // A decline control, however it is worded.
     /(?:reject|decline|refuse|deny)\s+(?:all\s+|additional\s+|non-essential\s+|optional\s+|analytics\s+)?cookies?/i.test(html)
@@ -790,6 +1182,110 @@ export function hasCookieConsentMechanism(html: string): boolean {
   // The copy test is gated on the page mentioning cookies at all, so a page saying
   // "manage cookies" in a blog post about baking does not qualify on its own.
   return lower.includes("cookie") && COOKIE_BANNER_COPY.test(lower);
+}
+
+/**
+ * True when the page itself CARRIES a privacy policy, not merely mentions one.
+ *
+ * This clears a launch-blocking gate, so the bar is deliberately high. A heading naming
+ * the document is required, but a blog post titled "Why your startup needs a Privacy
+ * Policy", a policy-generator's homepage or a GDPR consultancy's landing page all have
+ * that and talk about personal data too. So the VISIBLE TEXT (tags and inert markup
+ * stripped, so attribute values cannot inflate it) must also mention personal
+ * data/information at least 15 times AND contain at least two of the structural
+ * sections a real policy has. allbirds.co.uk's inline policy has 115 mentions and
+ * every section.
+ */
+const PRIVACY_POLICY_SECTIONS: RegExp[] = [
+  /\byour\s+(?:data\s+protection\s+|privacy\s+)?rights\b/i,
+  /\bdata\s+controller\b/i,
+  /\b(?:data\s+)?retention\b|\bhow\s+long\s+we\s+(?:keep|retain|store)\b/i,
+  /\bthird[-\s]part(?:y|ies)\b/i,
+  /\bopt[-\s]out\b|\bunsubscribe\b/i,
+  /\b(?:lawful|legal)\s+bas(?:is|es)\b/i,
+  /\binternational\s+(?:data\s+)?transfers?\b|\btransfers?\s+(?:of\s+)?(?:your\s+)?(?:personal\s+)?(?:data|information)\s+(?:outside|abroad|internationally)\b/i,
+];
+export function isInlinePrivacyPolicy(html: string): boolean {
+  if (!legalPageConfirms("privacy", html)) return false;
+  const text = stripInertMarkup(html).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+  if ((text.match(/personal\s+(?:data|information)/gi) ?? []).length < 15) return false;
+  // A policy speaks as the controller ("we collect your personal data"); an article ABOUT
+  // policies addresses the reader ("you collect…") or the topic. Require the controller's
+  // voice, several times, before a launch gate is cleared on inline text.
+  if ((text.match(/\bwe\s+(?:may\s+)?(?:also\s+)?(?:collect|process|use|share|store|retain|disclose|keep|hold)\s+(?:your\s+|the\s+|this\s+|such\s+)?(?:personal\s+)?(?:data|information|details)\b/gi) ?? []).length < 3) return false;
+  return PRIVACY_POLICY_SECTIONS.filter((re) => re.test(text)).length >= 2;
+}
+
+/**
+ * True when the page links the site's OWN hosted status page: a same-organisation host
+ * with "status" in a label (status.cal.com), or a host whose registrable name is exactly
+ * `<brand>status` / `<brand>-status` / `status-<brand>` (vercel.com → vercel-status.com,
+ * github.com → githubstatus.com).
+ *
+ * ⚠️ Not a substring test on the brand: cal.com linking status.calendly.com, or a git.*
+ * tool linking www.githubstatus.com, is another company's status page. Declines when the
+ * scanned host's registrable domain is unknown — guessing the brand from the first label
+ * made it "www" and credited any www.<x>status.com.
+ */
+export function linksOwnStatusPage(html: string, scannedHost: string): boolean {
+  const host = scannedHost.toLowerCase();
+  const scannedOrg = registrableDomain(host);
+  if (!scannedOrg) return false;
+  const brand = scannedOrg.split(".")[0];
+  if (brand.length < 2) return false;
+  const ownNames = new Set([`${brand}status`, `${brand}-status`, `status-${brand}`]);
+  return extractHrefs(html).some((href) => {
+    if (!/^(?:https?:)?\/\//i.test(href)) return false;
+    let linkedHost: string;
+    try {
+      linkedHost = new URL(href, `https://${host}/`).hostname.toLowerCase();
+    } catch {
+      return false;
+    }
+    if (linkedHost === host) return false;
+    const linkedOrg = registrableDomain(linkedHost);
+    if (!linkedOrg) return false;
+    if (linkedOrg === scannedOrg) {
+      const sub = linkedHost.slice(0, Math.max(0, linkedHost.length - linkedOrg.length - 1));
+      return sub.split(".").some((label) => /(?:^|-)status(?:$|-)/.test(label));
+    }
+    return ownNames.has(linkedOrg.split(".")[0]);
+  });
+}
+
+/**
+ * How many subresources this page loads from ANOTHER host that Subresource Integrity
+ * could pin: `<script src>` plus `<link rel=stylesheet|modulepreload>`. Reads quoted and
+ * unquoted attribute values (minifiers drop the quotes), and requires whitespace before
+ * the attribute so `data-src=` is not read as `src=`.
+ */
+export function countCrossOriginSubresources(html: string, pageUrl: string): number {
+  let pageHost = "";
+  try {
+    pageHost = new URL(pageUrl).hostname.toLowerCase();
+  } catch {
+    /* every absolute URL then counts as cross-origin */
+  }
+  const attr = (tag: string, name: string): string | null => {
+    const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
+    return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
+  };
+  const isCrossOrigin = (ref: string | null): boolean => {
+    if (!ref || !/^(?:https?:)?\/\//i.test(ref.trim())) return false;
+    try {
+      return new URL(ref.trim(), pageUrl).hostname.toLowerCase() !== pageHost;
+    } catch {
+      return true;
+    }
+  };
+  const markup = stripInertMarkup(html);
+  // stripInertMarkup empties <script> CONTENT, not the opening tag, so src survives.
+  const scripts = (markup.match(/<script\b[^>]*>/gi) ?? []).filter((tag) => isCrossOrigin(attr(tag, "src")));
+  const links = (markup.match(/<link\b[^>]*>/gi) ?? []).filter((tag) => {
+    const rel = (attr(tag, "rel") ?? "").toLowerCase().split(/\s+/);
+    return (rel.includes("stylesheet") || rel.includes("modulepreload")) && isCrossOrigin(attr(tag, "href"));
+  });
+  return scripts.length + links.length;
 }
 
 export function isLegalHubHref(href: string): boolean {
@@ -939,6 +1435,18 @@ export async function resolveLegalDocumentChecks(input: {
         evidence: "Linked from the scanned page",
       };
     }
+    // A privacy policy published INLINE on the scanned page is published, linked or
+    // not: allbirds.co.uk ships its whole policy in a footer modal (an href-less
+    // `<a role=button>`, `<h1>Privacy Policy</h1>`, 100+ mentions of personal
+    // information) and took a P1 FAIL. See isInlinePrivacyPolicy for the bar.
+    if (kind === "privacy" && isInlinePrivacyPolicy(renderableHtml)) {
+      return {
+        status: "PASS",
+        detail: "A privacy policy is published inline on the scanned page — a heading names it and the page carries its text.",
+        evidence: "Privacy policy heading and body text on the scanned page",
+      };
+    }
+
 
     // Probe the conventional paths for EVERY site, not only unrendered shells.
     //
@@ -2017,6 +2525,11 @@ const CDN_VENDOR_HEADERS = [
   "fly-request-id",
   "x-akamai-transformed",
   "akamai-grn",
+  // Akamai's live header is `ak-grn` (www.flipkart.com, CNAME …edgekey.net → akamaiedge.net);
+  // the `akamai-grn` spelling alone missed it and Flipkart was told it had no CDN.
+  "ak-grn",
+  // Automattic's edge-cache status header (wordpress.org/news: `x-nc: EXPIRED dca 2`).
+  "x-nc",
   "x-azure-ref",
   "x-iinfo",
   "x-sucuri-id",
@@ -2402,7 +2915,16 @@ export async function runUrlChecks(
 
   const httpsUrl = url.startsWith("http://") ? url.replace("http://", "https://") : url;
   const httpUrl = httpsUrl.replace("https://", "http://");
-  const baseUrl = httpsUrl.replace(/\/$/, "");
+  // Site-level pages (/contact, /careers, /cookie-policy, /.well-known/*) and the catch-all
+  // baseline live at the ORIGIN. Appending them to the scanned path probed
+  // www.theguardian.com/uk/careers (404) instead of /careers (200).
+  const baseUrl = (() => {
+    try {
+      return new URL(httpsUrl).origin;
+    } catch {
+      return httpsUrl.replace(/\/$/, "");
+    }
+  })();
 
   const { page: pageResult, failure: fetchFailure } = await fetchPageWithReason(httpsUrl);
 
@@ -2527,7 +3049,10 @@ export async function runUrlChecks(
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "target_content_accessible",
       label: "Target content is inspectable",
-      status: "FAIL",
+      // INCONCLUSIVE, like the 401/403 bot-wall branch above: a checkpoint means Pulse was not
+      // let in, which says nothing about the product. As FAIL it entered the release gate
+      // (`release-decision.ts` blocks on this key) as if the site were broken.
+      status: "INCONCLUSIVE",
       confidence: "HIGH",
       detail:
         "The host returned a browser/security checkpoint instead of the product. Pulse stopped before running product checks, because findings from an interstitial would be irrelevant and misleading. Allow the Pulse crawler or scan a source repository, staging URL, or exported build that is directly accessible.",
@@ -2700,8 +3225,14 @@ export async function runUrlChecks(
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "status_200",
       label: "Returns 200 OK",
-      status: pageResult.status === 200 ? "PASS" : pageResult.status < 400 ? "WARN" : "FAIL",
-      detail: `HTTP status ${pageResult.status}.`,
+      // A 2xx other than 200 is still success. countries.trevorblades.com/graphql answers a
+      // bare GET with 204 No Content, which is correct for a GraphQL endpoint given no query;
+      // a WARN there asserted a problem. Scoped to API targets: a WEBSITE homepage that serves
+      // 204 (no page at all) keeps its WARN.
+      status: pageResult.status === 200 || (String(platform ?? "").trim().toUpperCase() === "API_BACKEND" && pageResult.status >= 200 && pageResult.status < 300) ? "PASS" : pageResult.status < 400 ? "WARN" : "FAIL",
+      detail: pageResult.status !== 200 && String(platform ?? "").trim().toUpperCase() === "API_BACKEND" && pageResult.status >= 200 && pageResult.status < 300
+        ? `HTTP status ${pageResult.status} — a successful (2xx) response. An API endpoint need not return 200 to a bare GET with no query.`
+        : `HTTP status ${pageResult.status}.`,
       evidence: String(pageResult.status),
     });
 
@@ -2740,8 +3271,17 @@ export async function runUrlChecks(
       evidence: title ?? undefined,
     });
 
-    const metaDesc = pageResult.html.match(/<meta\s+name=["']description["'][^>]*content=["']([^"']*)["']/i)?.[1]?.trim()
-      ?? pageResult.html.match(/<meta\s+content=["']([^"']*)["'][^>]*name=["']description["']/i)?.[1]?.trim();
+    // Attribute order is free: bbc.co.uk writes `<meta data-rh="true" name="description" …>`,
+    // which a name-first pattern missed. Read each <meta> tag, and honour the quote that
+    // opened the value so an apostrophe inside "…" does not end it — and a raw ">" inside
+    // a quoted value ("Compare plans > pick one") does not end the tag.
+    const metaDesc = (pageResult.html.match(/<meta\b(?:"[^"]*"|'[^']*'|[^>"'])*>/gi) ?? [])
+      .filter((tag) => /\sname\s*=\s*["']?description["'\s/>]/i.test(tag))
+      .map((tag) => {
+        const m = /\scontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+        return (m?.[1] ?? m?.[2] ?? "").trim();
+      })
+      .find(Boolean);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "meta_description",
@@ -2788,30 +3328,71 @@ export async function runUrlChecks(
     // robots.txt / sitemap.xml are content-verifiable, so they stay correct on
     // catch-all hosts: a real robots.txt is text (not HTML), a sitemap is XML.
     const seoApplicable = isCategoryApplicable(platform, CATEGORIES.SEO, surfaceKind);
-    const robotsFound = seoApplicable && await fileServed(
-      `${httpsUrl.replace(/\/$/, "")}/robots.txt`,
-      (body, ct) => ct.includes("text/plain") || /user-agent:|disallow:|sitemap:/i.test(body),
-    );
+    // Root-level files live at the ORIGIN, not under the scanned path/query/fragment:
+    // "https://www.gov.uk/?utm_source=x#top" + "/robots.txt" fetched the homepage (the
+    // "#top/robots.txt" part is a fragment), and ".../posts/1/robots.txt" is not robots.txt.
+    // fetchSnippet reads at most 100 KB; probePath would read the whole body before slicing.
+    const robotsSnippet = seoApplicable ? await fetchSnippet(new URL("/robots.txt", httpsUrl).href, 8000, 100_000) : null;
+    const robotsProbe = robotsSnippet ? { ...robotsSnippet, contentType: robotsSnippet.contentType.toLowerCase() } : null;
+    const robotsFound = robotsProbe !== null && robotsProbe.status === 200 &&
+      !isHtmlShell(robotsProbe.contentType, robotsProbe.body) &&
+      (robotsProbe.contentType.includes("text/plain") || /user-agent:|disallow:|sitemap:/i.test(robotsProbe.body));
+    // A probe that never got an answer (status 0), was rate-limited (429) or hit a server
+    // error (5xx — RFC 9309 says "assume disallow", not "absent") observed nothing about
+    // whether robots.txt exists. Nor did a 401/403: that is the request being refused
+    // (vercel.app's challenge, a WAF), not the file being absent. Only 404/410 say "none".
+    const robotsUnobserved = !robotsFound && robotsProbe !== null &&
+      (robotsProbe.status === 0 || robotsProbe.status === 401 || robotsProbe.status === 403 ||
+        robotsProbe.status === 429 || robotsProbe.status >= 500);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "has_robots_txt",
       label: "robots.txt",
-      status: robotsFound ? "PASS" : "WARN",
-      detail: robotsFound ? "robots.txt found." : "No robots.txt detected.",
-      evidence: robotsFound ? "Served valid robots.txt" : "Not found (or catch-all shell)",
+      status: robotsFound ? "PASS" : robotsUnobserved ? "INCONCLUSIVE" : "WARN",
+      detail: robotsFound
+        ? "robots.txt found."
+        : robotsUnobserved
+          ? `Not established — the request for /robots.txt ${robotsProbe?.status ? `answered HTTP ${robotsProbe.status}` : "did not complete"}, so whether one exists was not observed.`
+          : "No robots.txt detected.",
+      evidence: robotsFound ? "Served valid robots.txt" : robotsUnobserved ? (robotsProbe?.status ? `HTTP ${robotsProbe.status}` : "No response") : "Not found (or catch-all shell)",
     });
 
-    const sitemapFound = seoApplicable && await fileServed(
-      `${httpsUrl.replace(/\/$/, "")}/sitemap.xml`,
-      (body, ct) => ct.includes("xml") || /<\?xml|<urlset|<sitemapindex/i.test(body),
-    );
+    // A sitemap need not live at /sitemap.xml: robots.txt `Sitemap:` lines are the standard
+    // way to declare one elsewhere (stripe.com → /sitemap/sitemap.xml). Each declared URL is
+    // still content-verified, so a declaration pointing at nothing does not pass.
+    const isSitemapXml = (body: string, ct: string) => ct.includes("xml") || /<\?xml|<urlset|<sitemapindex/i.test(body);
+    let sitemapAt = (seoApplicable && await fileServed(new URL("/sitemap.xml", httpsUrl).href, isSitemapXml))
+      ? "/sitemap.xml"
+      : "";
+    if (!sitemapAt && robotsFound && robotsProbe) {
+      const declaredSitemaps = (robotsProbe.body.match(/^[ \t]*sitemap:[ \t]*\S+/gim) ?? [])
+        .map((line) => line.replace(/^[ \t]*sitemap:[ \t]*/i, ""))
+        .slice(0, 3);
+      for (const loc of declaredSitemaps) {
+        let locUrl: string;
+        try {
+          locUrl = new URL(loc, httpsUrl).href;
+        } catch {
+          continue;
+        }
+        if (await fileServed(locUrl, isSitemapXml)) {
+          sitemapAt = locUrl;
+          break;
+        }
+      }
+    }
+    const sitemapFound = sitemapAt !== "";
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "has_sitemap",
       label: "sitemap.xml",
       status: sitemapFound ? "PASS" : "WARN",
-      detail: sitemapFound ? "sitemap.xml found." : "No sitemap detected.",
-      evidence: sitemapFound ? "Served valid sitemap.xml" : "Not found (or catch-all shell)",
+      detail: sitemapFound
+        ? sitemapAt === "/sitemap.xml"
+          ? "sitemap.xml found."
+          : `Sitemap declared in robots.txt and served at ${sitemapAt}.`
+        : "No sitemap found at /sitemap.xml or declared in robots.txt.",
+      evidence: sitemapFound ? `Served valid sitemap at ${sitemapAt}` : "Not found (or catch-all shell)",
     });
 
     // Security
@@ -2918,11 +3499,7 @@ export async function runUrlChecks(
             : "No Stripe integration detected.",
     });
 
-    const paymentLinks = ["/pricing", "/billing", "/subscribe", "/checkout", "/plans"];
-    const hasPricingPage = paymentLinks.some((path) =>
-      pageResult.html.toLowerCase().includes(`href="${path}`) ||
-      pageResult.html.toLowerCase().includes(`href='${path}`),
-    );
+    const hasPricingPage = linksPricingPage(pageResult.html, baseUrl);
     checks.push({
       category: CATEGORIES.PAYMENTS,
       checkKey: "pricing_page",
@@ -2931,11 +3508,7 @@ export async function runUrlChecks(
       detail: hasPricingPage ? "Pricing or billing page links detected." : "No pricing/billing page links found.",
     });
 
-    const authLinks = ["/login", "/signin", "/sign-in", "/signup", "/sign-up", "/auth", "/register"];
-    const hasAuth = authLinks.some((path) =>
-      pageResult.html.toLowerCase().includes(`href="${path}`) ||
-      pageResult.html.toLowerCase().includes(`href='${path}`),
-    );
+    const hasAuth = hasAuthEntryLink(pageResult.html, hostname);
     checks.push({
       category: CATEGORIES.AUTHENTICATION,
       checkKey: "auth_ui_signals",
@@ -2961,12 +3534,13 @@ export async function runUrlChecks(
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "error_monitoring",
       label: "Error monitoring",
-      status: hasErrorMonitoring ? "PASS" : "WARN",
-      detail: hasErrorMonitoring ? "Error monitoring tool detected." : "No error monitoring detected (Sentry, Bugsnag, etc.).",
+      status: hasErrorMonitoring ? "PASS" : "INCONCLUSIVE",
+      detail: hasErrorMonitoring
+        ? "Error monitoring tool detected."
+        : "No error-monitoring SDK (Sentry, Bugsnag, etc.) is referenced in the page HTML. These SDKs are normally bundled into JavaScript files or run server-side, which this check does not read, so whether the site has error monitoring could not be established.",
     });
 
-    const analyticsTools = ["gtag", "plausible.io", "posthog", "mixpanel", "amplitude", "_ga"];
-    const hasAnalytics = analyticsTools.some((t) => pageResult.html.toLowerCase().includes(t));
+    const hasAnalytics = hasAnalyticsSignal(pageResult.html);
     checks.push({
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "analytics_present",
@@ -3062,7 +3636,10 @@ export async function runUrlChecks(
     //
     // Detect the MECHANISM — a banner container named for what it is — and keep the
     // vendor names as additional signals rather than as the definition.
-    const hasCookieBanner = hasCookieConsentMechanism(pageResult.html);
+    // Read the rendered DOM too: supabase.com injects its "We use cookies… Accept / Opt out /
+    // Privacy settings" toast client-side, so the static HTML alone reported it missing.
+    const hasCookieBanner = hasCookieConsentMechanism(pageResult.html) ||
+      (contentHtml !== pageResult.html && hasCookieConsentMechanism(contentHtml));
     const hasCookieLink = ["/cookie-policy", "/cookies", "/legal/cookies"].some((p) =>
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
     );
@@ -3073,12 +3650,14 @@ export async function runUrlChecks(
       status: hasCookieBanner || hasCookieLink ? "PASS" : "WARN",
       detail: hasCookieBanner || hasCookieLink
         ? "Cookie consent or GDPR compliance mechanism detected."
-        : "No cookie consent mechanism — required for EU/UK markets and ad platform compliance.",
+        : "No cookie consent banner or cookie-settings control found in this page's markup. UK/EU rules (PECR, the ePrivacy Directive) require consent before setting non-essential cookies such as analytics or advertising; a site that sets only strictly necessary cookies needs no banner.",
     });
 
-    const hasRefundPolicy = ["/refund", "/refund-policy", "/cancellation", "/money-back", "/return-policy"].some((p) =>
-      htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
-    );
+    // Read the page's own links, any path, any host. uk.gymshark.com links
+    // `https://support.gymshark.com/en-US/article/returns-policy` from its footer and was
+    // told it had no refund policy, because only root-relative `href="/refund…"` counted.
+    // Every old prefix is still a token, so nothing that passed before stops passing.
+    const hasRefundPolicy = linksPathContaining(pageResult.html, ["refund", "return-policy", "returns-policy", "cancellation", "money-back"]);
     checks.push({
       category: CATEGORIES.LEGAL,
       checkKey: "refund_policy",
@@ -3108,17 +3687,22 @@ export async function runUrlChecks(
       "No /about page — builds team credibility and brand trust with prospects.",
     ));
 
+    // The page's own contact link outranks a guessed /contact (see linksPathContaining):
+    // www.theguardian.com links /help/contact-us and supabase.com links /contact-us — both
+    // 200 — while /contact 404s on both, and both were told users had no way to reach them.
+    // Whole segment only: /features/contacts, /contact-lenses and /css/contact.css are not it.
+    const linksContact = linksOwnPathContaining(contentHtml, CONTACT_LINK_TOKENS, hostname);
     checks.push(routePageCheck(
       "Missing Pages", "contact_page", "Contact page",
-      contactPage,
-      "/contact page found.",
+      linksContact ? "present" : contactPage,
+      linksContact ? "Contact page linked from this page." : "/contact page found.",
       "No /contact page — users need a way to reach you for support and sales inquiries.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "faq_page", "FAQ / Help page",
-      faqPage,
-      "/faq page found.",
+      linksOwnPathContaining(pageResult.html, FAQ_LINK_TOKENS, hostname) ? "present" : faqPage,
+      "FAQ or help page found.",
       "No /faq page — reduces support burden and improves onboarding.",
     ));
 
@@ -3126,7 +3710,12 @@ export async function runUrlChecks(
     // reliable in-page signal); the route probe only counts off catch-all.
     const hasStatusSignals = htmlLower.includes("statuspage") || htmlLower.includes("status.io") ||
       htmlLower.includes("betteruptime") || htmlLower.includes("uptimerobot");
-    const hasStatusPage = hasStatusSignals || statusPagePage === "present";
+    // A footer link to the site's own HOSTED status page is the status page. vercel.com links
+    // https://www.vercel-status.com and cal.com links https://status.cal.com/; both were told
+    // they had none because only an embedded widget or a same-host /status counted.
+    // See linksOwnStatusPage for why a substring brand test is not enough.
+    const linksOwnStatusHost = linksOwnStatusPage(stripInertMarkup(contentHtml), hostname);
+    const hasStatusPage = hasStatusSignals || linksOwnStatusHost || statusPagePage === "present";
     checks.push({
       category: CATEGORIES.MISSING_PAGES,
       checkKey: "status_page",
@@ -3189,7 +3778,22 @@ export async function runUrlChecks(
     );
     const hasSupportLink = ["/support", "/help", "/help-center", "/helpdesk"].some((p) =>
       htmlLower.includes(`href="${p}`) || htmlLower.includes(`href='${p}`),
-    );
+    ) || extractHrefs(stripInertMarkup(contentHtml)).some((href) => {
+      // An ABSOLUTE link to the site's own help desk. github.com's footer links
+      // https://support.github.com, which the relative-path test above can never see, so
+      // GitHub was told it offers no support channel. Same organisation only: a link to a
+      // vendor's help centre (support.google.com/recaptcha) is not this site's support.
+      if (!/^(?:https?:)?\/\//i.test(href)) return false;
+      try {
+        const url = new URL(href, httpsUrl);
+        if (!sameOrganisation(url.toString(), hostname.toLowerCase())) return false;
+        const firstLabel = url.hostname.toLowerCase().split(".")[0];
+        return ["support", "help", "helpcenter", "helpdesk"].includes(firstLabel)
+          || /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(?:support|help|help-center|helpdesk)(?:[/?#]|$)/i.test(url.pathname);
+      } catch {
+        return false;
+      }
+    });
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "support_channel",
@@ -3227,7 +3831,7 @@ export async function runUrlChecks(
     });
 
     // Mobile & Accessibility
-    const hasViewport = /name=["']viewport["']/i.test(pageResult.html);
+    const hasViewport = /name=["']?viewport(?=["'\s\/>])/i.test(pageResult.html);
     checks.push({
       category: CATEGORIES.MOBILE,
       checkKey: "viewport_meta",
@@ -3257,19 +3861,36 @@ export async function runUrlChecks(
       status: hasAriaAttributes ? "PASS" : "WARN",
       detail: hasAriaAttributes
         ? "ARIA attributes detected — indicates accessibility consideration in markup."
-        : "No ARIA attributes found — site may not be usable by screen reader users.",
+        : "No ARIA attributes in the page markup. Native HTML elements need none, so this only matters if the page builds custom controls (menus, dialogs, tabs) from generic elements — those need ARIA roles and states.",
     });
 
-    const hasResponsiveImages = pageResult.html.includes("srcset") || pageResult.html.includes("<picture") ||
-      pageResult.html.includes('loading="lazy"') || pageResult.html.includes("loading='lazy'");
+    const hasResponsiveImages = /srcset|<picture\b|\bloading=["']?lazy\b/i.test(pageResult.html);
+    // Only RASTER images can be served at the wrong size. news.ycombinator.com ships two
+    // <img> — an 18px SVG logo and a 0-width spacer GIF — and was told it "may cause poor
+    // performance and layout issues on mobile". SVGs scale; icons and spacers have
+    // nothing to make responsive. An image is "tiny" only when it declares a small
+    // dimension AND no dimension of 49px or more — a 1200x40 banner strip still counts.
+    const rasterImgTags = (pageResult.html.match(/<img\b[^>]*>/gi) ?? []).filter((img) => {
+      if (/\bsrc=["']?(?:data:image\/svg|[^"'\s>]*\.svg(?:[?#"'\s>]|$))/i.test(img)) return false;
+      const dims = [...img.matchAll(/\b(?:width|height)=["']?(\d+)(?![\d.%])/gi)].map((m) => Number(m[1]));
+      const tiny = dims.some((n) => n <= 48) && !dims.some((n) => n >= 49);
+      return !tiny;
+    });
+    // On a client-rendered shell the images have not rendered yet, so "no raster images"
+    // is unobserved, not absent: keep the WARN for reclassifySpaChecks to downgrade.
+    const noRasterImages = rasterImgTags.length === 0 && !spaShell && !isEmptyRenderShell(pageResult.html);
     checks.push({
       category: CATEGORIES.MOBILE,
       checkKey: "responsive_images",
       label: "Responsive / optimised images",
-      status: hasResponsiveImages ? "PASS" : "WARN",
+      status: hasResponsiveImages ? "PASS" : noRasterImages ? "NOT_APPLICABLE" : "WARN",
       detail: hasResponsiveImages
         ? "Responsive image patterns detected (srcset, lazy loading, picture element)."
-        : "No responsive image patterns — may cause poor performance and layout issues on mobile.",
+        : noRasterImages
+          ? "Not applicable — the served HTML has no raster <img> elements (only SVGs, icons or spacers, or none), so there is nothing to serve at different sizes."
+          : rasterImgTags.length > 0
+            ? `${rasterImgTags.length} raster image(s) in the page have no srcset, <picture> or lazy loading — may cause poor performance and layout issues on mobile.`
+            : "No responsive image patterns — may cause poor performance and layout issues on mobile.",
     });
 
     // Social sharing SEO
@@ -3320,7 +3941,13 @@ export async function runUrlChecks(
       evidence: permissions.evidence,
     });
 
-    const referrerPolicy = pageResult.headers["referrer-policy"];
+    // A <meta name="referrer"> sets the document's policy exactly as the header does.
+    // expo.dev ships `<meta name="referrer" content="origin"/>` and no header, and was told
+    // it had no Referrer-Policy at all.
+    const referrerMetaTag = pageResult.html.match(/<meta\b[^>]*\bname=["']?referrer(?=["'\s/>])[^>]*>/i)?.[0];
+    const referrerMetaPolicy = referrerMetaTag?.match(/\bcontent=["']?([a-z-]+)/i)?.[1];
+    const referrerPolicy = pageResult.headers["referrer-policy"]
+      || (referrerMetaPolicy ? `${referrerMetaPolicy} (via <meta name="referrer">)` : undefined);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "referrer_policy",
@@ -3328,7 +3955,7 @@ export async function runUrlChecks(
       status: referrerPolicy ? "PASS" : "WARN",
       detail: referrerPolicy
         ? `Referrer-Policy: ${referrerPolicy}`
-        : "No Referrer-Policy — page URLs may leak to third parties via the Referer header.",
+        : "No Referrer-Policy header or <meta name=\"referrer\"> — browsers fall back to their default (strict-origin-when-cross-origin in current Chrome, Firefox and Safari), which sends other sites only your origin, not full page URLs. Set the policy explicitly so it does not depend on browser defaults.",
       evidence: referrerPolicy ?? undefined,
     });
 
@@ -3346,8 +3973,7 @@ export async function runUrlChecks(
     });
 
     // AI platform watermark detection
-    const aiWatermarks = ["built with lovable", "made with lovable", "lovable.dev", "bolt.new", "created with bolt", "created with v0", "generated by v0", "v0.dev", "replit.com/badge"];
-    const hasAiWatermark = aiWatermarks.some((s) => htmlLower.includes(s));
+    const hasAiWatermark = hasAiPlatformWatermark(pageResult.html, new URL(httpsUrl).hostname);
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "ai_platform_origin",
@@ -3418,7 +4044,11 @@ export async function runUrlChecks(
     const isJsonFile = (body: string, ct: string) => ct.includes("json") || /^\s*[[{]/.test(body);
     const appStoreApplicable = isCategoryApplicable(platform, CATEGORIES.APP_STORE, surfaceKind);
     const [aasaFound, assetLinksFound] = ctx.isMobileApp && appStoreApplicable ? await Promise.all([
-      fileServed(`${baseUrl}/.well-known/apple-app-site-association`, isJsonFile),
+      // Apple still honours the legacy root location (github.com serves it only there,
+      // and Apple's CDN mirrors it), so fall back to it — content-verified as an AASA.
+      fileServed(`${baseUrl}/.well-known/apple-app-site-association`, isJsonFile).then((found) =>
+        found || fileServed(`${baseUrl}/apple-app-site-association`, (body, ct) =>
+          isJsonFile(body, ct) && /"(applinks|webcredentials|appclips|activitycontinuation)"/.test(body))),
       fileServed(`${baseUrl}/.well-known/assetlinks.json`, isJsonFile),
     ]) : [false, false];
     const hasAppleSmartBanner = /name=["']apple-itunes-app["']/i.test(pageResult.html);
@@ -3433,7 +4063,10 @@ export async function runUrlChecks(
       ], "Skipped — no mobile app signals detected on this project.");
     } else {
 
-    const hasAppleTouchIcon = /rel=["']apple-touch-icon["']/i.test(pageResult.html);
+    // iOS also requests /apple-touch-icon.png from the site root when no <link> names
+    // one; github.com and headspace.com both serve it there with no <link> tag.
+    const hasAppleTouchIcon = /rel=["']apple-touch-icon(?:-precomposed)?["']/i.test(pageResult.html) ||
+      (await fileServed(`${baseUrl}/apple-touch-icon.png`, (_body, ct) => ct.startsWith("image/")));
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "apple_touch_icon",
@@ -3441,10 +4074,10 @@ export async function runUrlChecks(
       status: hasAppleTouchIcon ? "PASS" : "WARN",
       detail: hasAppleTouchIcon
         ? "Apple touch icon found — app can be pinned to iOS home screen with correct branding."
-        : "No apple-touch-icon — required for iOS home screen install and Apple App Store submission.",
+        : "No apple-touch-icon (no <link rel=apple-touch-icon> and nothing served at /apple-touch-icon.png) — iOS falls back to a screenshot or generic icon when the site is added to the home screen.",
     });
 
-    const hasAppStoreLink = htmlLower.includes("apps.apple.com") || htmlLower.includes("itunes.apple.com");
+    const hasAppStoreLink = hasAppleAppStoreLink(pageResult.html);
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "apple_app_store",
@@ -3455,15 +4088,18 @@ export async function runUrlChecks(
         : "No Apple App Store signals — if targeting iOS users, consider a native app or PWA submission.",
     });
 
-    const hasGooglePlayLink = htmlLower.includes("play.google.com/store/apps");
+    const googlePlay = googlePlaySignal(pageResult.html);
+    const hasGooglePlayLink = googlePlay !== null;
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "google_play_store",
       label: "Google Play Store presence",
       status: hasGooglePlayLink ? "PASS" : "WARN",
-      detail: hasGooglePlayLink
+      detail: googlePlay === "link"
         ? "Google Play Store link detected."
-        : "No Google Play Store link — Android distribution via Play Store or TWA (Trusted Web Activity) not detected.",
+        : googlePlay === "declared"
+          ? "Android app declared on this page (structured data or an android-app:// link) — the Google Play listing itself is not linked here."
+          : "No Google Play Store link or Android app declaration on this page. If an Android app exists, linking its Play listing here helps users find it.",
     });
 
     checks.push({
@@ -3525,7 +4161,9 @@ export async function runUrlChecks(
         : "No UTF-8 charset — Chinese, Japanese, Arabic, and other non-Latin characters may render incorrectly.",
     });
 
-    const hasCcpaSignal = htmlLower.includes("do not sell") || htmlLower.includes("your privacy choices") || htmlLower.includes("opt-out of sale") || htmlLower.includes("ccpa");
+    // CPRA renamed the link "Do Not Sell or Share My Personal Information"; github.com's footer
+    // says "Do not share my personal information", which the sell-only list missed.
+    const hasCcpaSignal = htmlLower.includes("do not sell") || htmlLower.includes("do not share my personal information") || htmlLower.includes("your privacy choices") || htmlLower.includes("opt-out of sale") || htmlLower.includes("ccpa");
     checks.push({
       category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "ccpa_compliance",
@@ -3533,7 +4171,7 @@ export async function runUrlChecks(
       status: hasCcpaSignal ? "PASS" : "WARN",
       detail: hasCcpaSignal
         ? "CCPA compliance signals detected — California consumer privacy rights addressed."
-        : "No CCPA signals — required for California users (40M people). Must include a &lsquo;Do Not Sell&rsquo; opt-out link.",
+        : "No CCPA/CPRA opt-out link (\"Do Not Sell or Share My Personal Information\" or \"Your Privacy Choices\") found on this page. The link is required of businesses that meet CCPA thresholds and sell or share California residents' personal information.",
     });
 
     const currencySymbols = ["€", "£", "¥", "₹", "kr ", "chf", "sgd", "aud", "cad", "r$"];
@@ -3611,7 +4249,7 @@ export async function runUrlChecks(
         : "No JSON-LD structured data — add schema.org markup to enable rich snippets (reviews, FAQs, product details).",
     });
 
-    const hasPreloadLinks = /<link[^>]+rel=["']preload["']/i.test(pageResult.html);
+    const hasPreloadLinks = hasResourceHint(pageResult.html, pageResult.headers["link"], ["preload", "modulepreload"]);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "preload_hints",
@@ -3660,19 +4298,29 @@ export async function runUrlChecks(
 
     // ─── Additional Security ───────────────────────────────────────────────────
     const hasSri = /integrity=["'][a-z0-9+/=\-]+["']/i.test(pageResult.html);
+    // SRI pins a subresource fetched from ANOTHER host. badssl.com and www.gov.uk load every
+    // script from their own origin, so "a compromised CDN could inject malicious code" was not
+    // true of them: there is nothing third-party for SRI to pin.
+    const crossOriginSubresourceCount = countCrossOriginSubresources(pageResult.html, pageResult.finalUrl || httpsUrl);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "subresource_integrity",
       label: "Subresource Integrity (SRI)",
-      status: hasSri ? "PASS" : "WARN",
+      status: hasSri ? "PASS" : crossOriginSubresourceCount === 0 ? "NOT_APPLICABLE" : "WARN",
       detail: hasSri
         ? "SRI hashes found on external scripts — supply-chain injection attacks mitigated."
-        : "No SRI hashes — a compromised CDN could inject malicious code into your app.",
+        : crossOriginSubresourceCount === 0
+          ? "Every script and stylesheet on this page is served from its own origin, so there is no third-party resource for Subresource Integrity to pin."
+          : `No SRI hashes on the ${crossOriginSubresourceCount} script${crossOriginSubresourceCount === 1 ? "" : "s"}/stylesheet${crossOriginSubresourceCount === 1 ? "" : "s"} loaded from another host — if that host were compromised it could serve modified code to your visitors.`,
     });
 
     const setCookieHeader = pageResult.headers["set-cookie"] ?? "";
-    const lowerCookies = setCookieHeader.toLowerCase();
-    const hasSecureCookieAttrs = lowerCookies.includes("secure") && lowerCookies.includes("samesite");
+    // Judged PER COOKIE. The joined-string test let one cookie carrying Secure + SameSite
+    // pass every other cookie on the response, and a cookie merely NAMED `secure_…`
+    // satisfied the `secure` substring with no attribute at all.
+    const parsedCookies = parseSetCookieHeader(setCookieHeader);
+    const weakCookies = parsedCookies.filter((cookie) => !cookie.secure || cookie.sameSite === null);
+    const hasSecureCookieAttrs = parsedCookies.length > 0 && weakCookies.length === 0;
     // A response that sets NO cookies cannot have insecure ones. The old ternary read
     // `setCookieHeader ? "WARN" : "WARN"` — someone began drawing this distinction and
     // never finished it — so every cookie-less site was told its cookies were
@@ -3687,8 +4335,8 @@ export async function runUrlChecks(
       detail: !setsCookies
         ? "Not assessed — this response set no cookies, so there are no cookie attributes to check. If cookies are only set after sign-in, they are not visible to an unauthenticated scan."
         : hasSecureCookieAttrs
-          ? "Cookies have Secure and SameSite attributes — session hijacking risk reduced."
-          : "Cookies lack Secure or SameSite attributes — vulnerable to CSRF and session theft on mixed-content pages.",
+          ? `All ${parsedCookies.length} cookie(s) on this response set Secure and SameSite.`
+          : `Cookie(s) on this response without Secure or SameSite: ${weakCookies.map((cookie) => cookie.name).join(", ") || "unparseable Set-Cookie header"} — without Secure a cookie can travel over plain HTTP; without SameSite some browsers attach it to cross-site requests (CSRF).`,
     });
 
     // Absent ⇒ SKIPPED (the `secure_cookie_attributes` shape just above), `*` ⇒
@@ -3753,48 +4401,68 @@ export async function runUrlChecks(
     });
 
     // ─── Additional Performance ─────────────────────────────────────────────────
-    const hasPreconnect = /<link[^>]+rel=["']preconnect["']/i.test(pageResult.html);
+    const hasPreconnect = hasResourceHint(pageResult.html, pageResult.headers["link"], ["preconnect", "dns-prefetch"]);
     checks.push({
       category: CATEGORIES.PERFORMANCE,
       checkKey: "preconnect_hints",
       label: "Preconnect / DNS prefetch hints",
       status: hasPreconnect ? "PASS" : "WARN",
       detail: hasPreconnect
-        ? "Preconnect hints found — third-party connections warm up before they are needed."
-        : "No preconnect hints — add <link rel=preconnect> for fonts, CDN, and analytics origins.",
+        ? "Preconnect or DNS-prefetch hints found — third-party connections warm up before they are needed."
+        : "No preconnect or dns-prefetch hints (in the markup or a Link header) — add <link rel=preconnect> for fonts, CDN, and analytics origins.",
     });
 
-    const hasNativeLazy = /loading=["']lazy["']/i.test(pageResult.html);
+    // `loading=lazy` is valid unquoted HTML. And with no <img>/<iframe> in the served HTML
+    // (anthropic.com, zalando.de, docs.github.com/en/rest) there is nothing here to judge —
+    // anthropic.com injects its images with its own script loader.
+    const hasNativeLazy = /loading\s*=\s*["']?lazy\b/i.test(pageResult.html);
+    const hasStaticMedia = /<(img|iframe)\b/i.test(pageResult.html);
     checks.push({
       category: CATEGORIES.PERFORMANCE,
       checkKey: "native_lazy_loading",
       label: "Native image lazy loading",
-      status: hasNativeLazy ? "PASS" : "WARN",
+      status: hasNativeLazy ? "PASS" : hasStaticMedia ? "WARN" : "INCONCLUSIVE",
       detail: hasNativeLazy
         ? "loading=lazy detected — images below the fold load on demand, reducing initial page weight."
-        : "No native lazy loading — add loading=lazy to below-the-fold images to improve LCP.",
+        : hasStaticMedia
+          ? "Images or iframes are in the page HTML but none use loading=lazy — add it to below-the-fold images to cut initial page weight (never to the hero/LCP image, which should load eagerly)."
+          : "Not assessed — the served HTML contains no <img> or <iframe> elements, so there is nothing in it to lazy-load; any images on the rendered page are added by script.",
     });
 
-    const hasFontDisplaySwap = /font-display:\s*swap/i.test(pageResult.html);
+    const fontDisplay = fontDisplayVerdict(pageResult.html);
     checks.push({
       category: CATEGORIES.PERFORMANCE,
       checkKey: "font_display_swap",
       label: "Font display optimisation",
-      status: hasFontDisplaySwap ? "PASS" : "WARN",
-      detail: hasFontDisplaySwap
-        ? "font-display: swap found — text visible during web font loading (no FOIT)."
-        : "No font-display: swap — web fonts may block text render, contributing to poor CLS/LCP scores.",
+      status: fontDisplay,
+      detail: fontDisplay === "PASS"
+        ? "Non-blocking font-display (swap, fallback or optional) found — text stays visible while web fonts load (no FOIT)."
+        : fontDisplay === "WARN"
+          ? "Web fonts are declared in this page without a non-blocking font-display (swap, fallback or optional) — text may be invisible while they load, hurting LCP."
+          : "No @font-face rules or Google Fonts stylesheet in the page HTML. Any web fonts are declared in external stylesheets this check does not read, so font-display could not be assessed.",
     });
 
     const varyHeader = pageResult.headers["vary"];
+    // A missing Vary only bites when a shared cache may store the response AND it has a
+    // compressed variant. Uncompressed, or private/no-store, there is nothing to mix up.
+    const varyEncoding = pageResult.headers["content-encoding"];
+    // Bare directives only: `private="Set-Cookie"` (RFC 9111 field-qualified form) marks
+    // just those header fields private — the response itself stays shared-cacheable.
+    const varyNotShared = (pageResult.headers["cache-control"] ?? "").split(",")
+      .some((directive) => /^\s*(?:no-store|private)\s*$/i.test(directive));
+    const varyNeeded = Boolean(varyEncoding) && !varyNotShared;
     checks.push({
       category: CATEGORIES.PERFORMANCE,
       checkKey: "vary_header",
       label: "Vary header (content negotiation)",
-      status: varyHeader ? "PASS" : "WARN",
+      status: varyHeader || !varyNeeded ? "PASS" : "WARN",
       detail: varyHeader
         ? `Vary: ${varyHeader} — CDN caches serve the correct variant per request.`
-        : "No Vary header — CDN may serve wrong compression type to some clients.",
+        : !varyEncoding
+          ? "No Vary header, and none is needed for compression — this response is not content-encoded, so a cache has no compressed variant to mix up."
+          : varyNotShared
+            ? `No Vary header, but none is needed — the response is Cache-Control: ${pageResult.headers["cache-control"]}, so shared caches and CDNs do not store it.`
+            : `No Vary header on a compressed (${varyEncoding}), cacheable response — a CDN may serve the compressed body to a client that cannot decode it.`,
     });
 
     const serverTimingHeader = pageResult.headers["server-timing"];
@@ -3887,8 +4555,16 @@ export async function runUrlChecks(
       : Array<PageProbeState>(3).fill("absent");
     const accessibilityAlt: PageProbeState = legalApplicable && accessibilityPage !== "present"
       ? await pageAt("/accessibility-statement", ACCESSIBILITY_TOPIC) : "absent";
+    // supabase.com publishes at /legal/dpa and www.anthropic.com at
+    // /legal/data-processing-addendum (both 200, titled "Data Processing Addendum");
+    // each probe is content-verified against DPA_TOPIC, so a catch-all 200 cannot pass.
     const dpaAlt: PageProbeState = legalApplicable && dpaPage !== "present"
-      ? await pageAt("/data-processing-agreement", DPA_TOPIC) : "absent";
+      ? combinePageStates(...await Promise.all([
+          pageAt("/data-processing-agreement", DPA_TOPIC),
+          pageAt("/legal/dpa", DPA_TOPIC),
+          pageAt("/legal/data-processing-addendum", DPA_TOPIC),
+        ]))
+      : "absent";
     const cookiePolicyAlt: PageProbeState = legalApplicable && cookiePolicyPage !== "present"
       ? await pageAt("/cookies", COOKIE_TOPIC) : "absent";
 
@@ -3898,8 +4574,8 @@ export async function runUrlChecks(
     checks.push(routePageCheck(
       "Legal & Compliance", "accessibility_statement", "Accessibility statement",
       linksAccessibility ? "present" : combinePageStates(accessibilityPage, accessibilityAlt),
-      "Accessibility statement page found — EU Web Accessibility Directive compliance documented.",
-      "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
+      "Accessibility statement page found.",
+      "No accessibility statement found — mandatory for EU/UK public-sector sites (Web Accessibility Directive / PSBAR 2018); the European Accessibility Act requires accessibility information from in-scope consumer services such as e-commerce and banking; recommended for everyone else.",
     ));
 
     const hasCoppaSignals = ["under 13", "13 years", "children's privacy", "coppa", "child-directed", "parental consent", "age gate", "age verification"].some((s) => htmlLower.includes(s));
@@ -3915,7 +4591,7 @@ export async function runUrlChecks(
 
     checks.push(routePageCheck(
       "Legal & Compliance", "dpa_available", "Data Processing Agreement (GDPR Art. 28)",
-      combinePageStates(dpaPage, dpaAlt),
+      linksOwnPathContaining(pageResult.html, DPA_LINK_TOKENS, hostname) ? "present" : combinePageStates(dpaPage, dpaAlt),
       "DPA page found — GDPR Art. 28 processor obligations documented.",
       "No DPA available — required for B2B enterprise customers under GDPR; absence blocks EU procurement.",
     ));
@@ -3931,23 +4607,37 @@ export async function runUrlChecks(
         : "No ICP license — required for websites serving users in China; absence means ISPs can block access.",
     });
 
-    const hasPrivacyLastUpdated = htmlLower.includes("last updated") || htmlLower.includes("last revised") || htmlLower.includes("effective date") || htmlLower.includes("last modified");
+    // ⚠️ The finding is about the POLICY, but this used to read only the HOMEPAGE, so
+    // webflow.com — whose /legal/privacy opens "Effective date: March 17, 2025" — was
+    // told its policy carries no date. Read the policy the page links; when no policy
+    // could be read, say so instead of reporting a date missing from a page never seen.
+    // The homepage's own date counts only when the homepage IS the policy (an inline
+    // policy, or a privacy page scanned directly): a "Last updated 3 days ago" changelog
+    // or blog widget says nothing about the privacy policy.
+    const homepageHasPolicyDate = legalPageConfirms("privacy", contentHtml) &&
+      (htmlLower.includes("last updated") || htmlLower.includes("last revised") || htmlLower.includes("effective date") || htmlLower.includes("last modified"));
+    const privacyPolicyUrl = homepageHasPolicyDate ? null : findPrivacyPolicyHref(contentHtml, baseUrl);
+    const privacyPolicyPage = privacyPolicyUrl ? await fetchSnippet(privacyPolicyUrl, 8000, 600_000) : null;
+    const privacyPolicyRead = privacyPolicyPage !== null && privacyPolicyPage.status === 200 && legalPageConfirms("privacy", privacyPolicyPage.body);
+    const hasPrivacyLastUpdated = homepageHasPolicyDate || (privacyPolicyRead && policyHasMaintenanceDate(privacyPolicyPage?.body ?? ""));
     checks.push({
       category: CATEGORIES.LEGAL,
       checkKey: "privacy_last_updated",
       label: "Privacy policy maintenance date",
-      status: hasPrivacyLastUpdated ? "PASS" : "WARN",
+      status: hasPrivacyLastUpdated ? "PASS" : privacyPolicyRead ? "WARN" : "INCONCLUSIVE",
       detail: hasPrivacyLastUpdated
         ? "Policy maintenance date detected — shows the privacy policy is actively maintained."
-        : "No 'last updated' date in policy — regulators and users expect visible evidence of ongoing policy maintenance.",
+        : privacyPolicyRead
+          ? `The privacy policy at ${privacyPolicyUrl} was read and shows no 'last updated' or effective date — regulators and users expect visible evidence of ongoing policy maintenance.`
+          : "Not assessed — Pulse could not read a privacy policy linked from this page, so whether it carries a 'last updated' date is unknown.",
     });
 
     const linksCookiePolicy = linksPathContaining(pageResult.html, ["cookie-policy", "cookiepolicy", "cookies", "cookie"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page",
       linksCookiePolicy ? "present" : combinePageStates(cookiePolicyPage, cookiePolicyAlt),
-      "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met.",
-      "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
+      "Dedicated cookie policy page found.",
+      "No dedicated cookie policy page found (none linked, and /cookie-policy and /cookies did not serve one). UK/EU ePrivacy rules (PECR, the ePrivacy Directive) require clear information about any non-essential cookies a site sets — a dedicated page or a cookies section in the privacy policy both satisfy that, and a site that sets none needs neither.",
     ));
 
     const hasDpoContact = htmlLower.includes("dpo@") || htmlLower.includes("privacy@") || htmlLower.includes("data protection officer") || htmlLower.includes("data-protection@");
@@ -3986,7 +4676,9 @@ export async function runUrlChecks(
       altIfNeeded(pressPage, "/media", PRESS_TOPIC),
       altIfNeeded(docsPage, "/documentation", DOCS_TOPIC),
       altIfNeeded(integrationsPage, "/partners", INTEGRATIONS_TOPIC),
-      altIfNeeded(mediaKitPage, "/brand", MEDIA_KIT_TOPIC),
+      // anthropic.com has no /media-kit or /brand, but /press-kit serves its brand pack.
+      altIfNeeded(mediaKitPage, "/brand", MEDIA_KIT_TOPIC).then(async (brand) =>
+        brand === "present" ? brand : combinePageStates(brand, await altIfNeeded(mediaKitPage, "/press-kit", MEDIA_KIT_TOPIC))),
     ]);
 
     checks.push(routePageCheck(
@@ -3998,7 +4690,11 @@ export async function runUrlChecks(
 
     checks.push(routePageCheck(
       "Missing Pages", "careers_page", "Careers / jobs page",
-      combinePageStates(careersPage, careersAlt),
+      // A careers page the site itself links outranks the guessed /careers and /jobs:
+      // webflow.com links /company/careers, but the /careers probe redirects there and the
+      // response's headers overflow the HTTP client, so the guesses alone never saw it.
+      // Whole segment (or a careers.* host) only — /money/work-and-careers is a news section.
+      linksOwnPathContaining(contentHtml, CAREERS_LINK_TOKENS, hostname) ? "present" : combinePageStates(careersPage, careersAlt),
       "Careers page found.",
       "No careers page — even a simple 'we're hiring' page signals momentum and attracts talent.",
     ));
@@ -4027,6 +4723,13 @@ export async function runUrlChecks(
     // A catch-all host (200 for every unknown path) by definition has no real 404,
     // so don't follow redirects (redirect:"manual") — we want the true status of
     // the missing path, not wherever it might forward to.
+    // A 200 for the random baseline path is not always catch-all routing: www.lemonde.fr
+    // answers Pulse's probe with a Fastly "Client Challenge" page (200), while a browser gets
+    // its branded "Erreur 404" with a real 404 status.
+    const baselineChallenged = catchAll200 && (
+      detectUrlSurfaceKind(baselineProbe.body) === "ACCESS_INTERSTITIAL" ||
+      /<title>\s*client challenge\s*<\/title>/i.test(baselineProbe.body)
+    );
     let has404Page = false;
     if (!catchAll200) {
       try {
@@ -4046,9 +4749,11 @@ export async function runUrlChecks(
       category: CATEGORIES.MISSING_PAGES,
       checkKey: "custom_404_page",
       label: "Custom 404 error page",
-      status: has404Page ? "PASS" : "WARN",
+      status: has404Page ? "PASS" : baselineChallenged ? "INCONCLUSIVE" : "WARN",
       detail: has404Page
         ? "Custom 404 page detected — broken links lead to a branded error experience."
+        : baselineChallenged
+        ? "Not assessable — the request for an unknown path was answered with a bot-protection challenge page (HTTP 200), not the site's own response, so how the site handles missing pages could not be observed."
         : catchAll200
           ? "Unknown paths return 200 (catch-all routing) instead of a 404 — broken links won't surface a proper error page; ensure your SPA renders a branded not-found state for unmatched routes."
           : "No custom 404 page — broken links dump users on a raw error; a custom 404 with navigation retains them.",
@@ -4065,7 +4770,7 @@ export async function runUrlChecks(
         ["in_app_notifications", "In-app notification system"],
       ], "Skipped — no SaaS product signals detected on this project.");
     } else {
-    const hasDemoBooking = ["book a demo", "schedule a demo", "request a demo", "calendly.com", "savvycal.com", "cal.com"].some((s) => htmlLower.includes(s));
+    const hasDemoBooking = DEMO_BOOKING_PATTERN.test(htmlLower);
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "demo_booking",
@@ -4076,7 +4781,7 @@ export async function runUrlChecks(
         : "No demo booking — high-ACV SaaS needs a 'book a demo' CTA to capture enterprise leads.",
     });
 
-    const hasFreeTrial = ["free trial", "start for free", "get started free", "try for free", "free plan", "no credit card required"].some((s) => htmlLower.includes(s));
+    const hasFreeTrial = FREE_PLAN_PATTERN.test(htmlLower);
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "free_trial_cta",
@@ -4180,7 +4885,15 @@ export async function runUrlChecks(
         : "No APM detected — without transaction-level data, slow queries and N+1 problems go undetected.",
     });
 
-    const rumSignals = ["speedcurve", "web-vitals", "lux.speedcurve", "perfume.js"].some((s) => htmlLower.includes(s));
+    // ⚠️ Closed vendor list reported as absence: www.gov.uk self-hosts SpeedCurve LUX
+    // (`vendor/lux/lux-measurer-*.js`, `rum-loader-*.js`) and was told it had no RUM.
+    // Recognise self-hosted LUX and the common browser RUM agents, and say what was read.
+    const rumSignals = [
+      "speedcurve", "web-vitals", "lux.speedcurve", "perfume.js",
+      "lux-measurer", "lux-reporter", "rum-loader",
+      "datadoghq-browser-agent", "dd_rum", "js-agent.newrelic.com", "go-mpulse.net",
+      "static.cloudflareinsights.com", "_vercel/speed-insights", "ruxitagent",
+    ].some((s) => htmlLower.includes(s));
     checks.push({
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "real_user_monitoring",
@@ -4188,7 +4901,7 @@ export async function runUrlChecks(
       status: rumSignals ? "PASS" : "WARN",
       detail: rumSignals
         ? "Real User Monitoring signals detected — field Core Web Vitals being collected."
-        : "No RUM detected — lab performance data doesn't reflect real-world Core Web Vitals across user devices.",
+        : "No Real User Monitoring script recognised in the page HTML (a RUM agent bundled inside your own JavaScript is not visible to this check) — lab performance data doesn't reflect real-world Core Web Vitals across user devices.",
     });
     } // end if (ctx.hasBackend)
 
@@ -4291,7 +5004,10 @@ export async function runUrlChecks(
     } // end if (ctx.isMobileApp) — additional App Store section
 
     // ─── Additional Global Distribution ────────────────────────────────────────
-    const hasCountrySelector = /country[\s-]?selector|region[\s-]?selector|select[\s\S]{0,200}country/i.test(pageResult.html) || htmlLower.includes("country-dropdown");
+    // A locale switcher IS the region selector on most global sites: stripe.com's footer ships
+    // `locale-switcher__button` ("{country}. Choose your country") and figma.com a
+    // `localeSelectorDialog`; the country/region-selector-only pattern missed both.
+    const hasCountrySelector = /(?:country|region|locale)[\s_-]?(?:selector|switcher|picker)|select[\s\S]{0,200}country|choose your country/i.test(pageResult.html) || htmlLower.includes("country-dropdown");
     checks.push({
       category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "country_region_selector",
@@ -4303,17 +5019,24 @@ export async function runUrlChecks(
     });
 
     const hasComplianceBadge = ["soc 2", "soc2", "iso 27001", "iso27001", "gdpr compliant", "hipaa compliant", "pci dss certified"].some((s) => htmlLower.includes(s));
+    // Certifications normally live on a linked security/trust page, not the homepage:
+    // notion.so links /security and anthropic.com links trust.anthropic.com, both listing
+    // SOC 2. A link is not proof of a certificate, so it is "could not establish", not PASS.
+    const linksTrustPage = !hasComplianceBadge &&
+      linksPathContaining(contentHtml, ["security/?$", "trust/?$", "trust-center", "trust\\.", "compliance/?$"]);
     checks.push({
       category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "compliance_certifications",
       label: "Compliance certifications (SOC 2, ISO 27001)",
-      status: hasComplianceBadge ? "PASS" : "WARN",
+      status: hasComplianceBadge ? "PASS" : linksTrustPage ? "INCONCLUSIVE" : "WARN",
       detail: hasComplianceBadge
         ? "Compliance certification badge detected — enterprise trust signals present."
-        : "No compliance certifications visible — SOC 2 Type II is the minimum bar for enterprise B2B SaaS sales.",
+        : linksTrustPage
+          ? "No SOC 2 / ISO 27001 mention on this page, but it links a security or trust page — certifications are normally listed there, and that page was not checked."
+          : "No SOC 2, ISO 27001 or similar certification is mentioned on this page. Enterprise buyers commonly ask for SOC 2 Type II; if you hold one, name it on the site or link a security/trust page.",
     });
 
-    const hasEuHostingSignal = htmlLower.includes("eu-west") || htmlLower.includes("eu-central") || htmlLower.includes("europe-west") || (htmlLower.includes("gdpr") && htmlLower.includes("eu data"));
+    const hasEuHostingSignal = hasEuDataResidencySignal(htmlLower);
     checks.push({
       category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "eu_data_residency",
@@ -4422,7 +5145,24 @@ export async function runUrlChecks(
         : "No placeholder text detected in page source.",
     });
 
-    const hasHashRouting = /#\/[a-z]/i.test(pageResult.html) || htmlLower.includes("hashrouter") || htmlLower.includes("hash-router");
+    // An outbound link is not this site's router: en.wikipedia.org links
+    // stats.wikimedia.org/#/en.wikipedia.org, baidu.com links beian.mps.gov.cn/#/query/….
+    // Count `#/` only in relative URLs or in absolute URLs on the scanned host.
+    // The site's own host is the requested one OR where it redirected (example.com →
+    // www.example.co.uk): absolute `#/` links on either are this site's routes.
+    const ownHostsForHash = new Set<string>();
+    for (const u of [httpsUrl, pageResult.finalUrl]) {
+      try { if (u) ownHostsForHash.add(new URL(u).hostname.toLowerCase().replace(/^www\./, "")); } catch { /* skip */ }
+    }
+    // Protocol-relative URLs (`//stats.example.org/#/x`) are absolute too.
+    const hashRouteRe = /((?:https?:)?\/\/[^\s"'<>#]*)?#\/[a-z]/gi;
+    let hashMatch: RegExpExecArray | null;
+    let hasOwnHashRoute = false;
+    while (!hasOwnHashRoute && (hashMatch = hashRouteRe.exec(pageResult.html))) {
+      if (!hashMatch[1]) { hasOwnHashRoute = true; break; }
+      try { hasOwnHashRoute = ownHostsForHash.has(new URL(hashMatch[1], "https://relative.invalid/").hostname.toLowerCase().replace(/^www\./, "")); } catch { /* unparseable URL: not this site's route */ }
+    }
+    const hasHashRouting = hasOwnHashRoute || htmlLower.includes("hashrouter") || htmlLower.includes("hash-router");
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "no_hash_routing",
@@ -4692,9 +5432,13 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_x_powered_by",
       label: "X-Powered-By header",
-      status: xPoweredBy ? "FAIL" : "PASS",
+      // WARN, the same severity no_server_version gives a version in the Server header:
+      // one report must not rate the same disclosure two ways.
+      status: xPoweredBy ? "WARN" : "PASS",
       detail: xPoweredBy
-        ? `X-Powered-By is set to "${xPoweredBy}" — this exposes your backend technology to attackers who can target known vulnerabilities in that stack.`
+        ? /\d+\.\d+/.test(xPoweredBy)
+          ? `X-Powered-By is set to "${xPoweredBy}", which includes a version number — anyone fingerprinting the stack can look up advisories for that exact version. Remove the header (e.g. \`expose_php = Off\` for PHP, \`<httpRuntime enableVersionHeader="false">\` / removing the header in IIS for ASP.NET).`
+          : `X-Powered-By is set to "${xPoweredBy}" — this advertises your backend framework to anyone fingerprinting the stack. It is low-severity information disclosure, not a vulnerability in itself; remove the header (e.g. \`poweredByHeader: false\` in Next.js, \`app.disable("x-powered-by")\` in Express) so it is not handed out for free.`
         : "X-Powered-By header is not present — backend technology is not disclosed.",
     });
 
@@ -4704,7 +5448,10 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_server_version",
       label: "Server version not disclosed",
-      status: serverHasVersion ? "FAIL" : "PASS",
+      // Version disclosure is informational (OWASP/ZAP rate it Low) and the sibling
+      // server_header_leakage check WARNs on the very same header — one report must not
+      // show one header at two severities.
+      status: serverHasVersion ? "WARN" : "PASS",
       detail: serverHasVersion
         ? `Server header "${a3ServerHeader}" includes a version number — attackers can target known CVEs for that exact version.`
         : a3ServerHeader
@@ -4740,26 +5487,34 @@ export async function runUrlChecks(
       detail: wordCount >= 300
         ? `Page contains approximately ${wordCount.toLocaleString()} words — good content depth for SEO.`
         : wordCount >= 100
-          ? `Page contains approximately ${wordCount.toLocaleString()} words — below the recommended 300 words for indexed pages.`
-          : `Page contains only approximately ${wordCount.toLocaleString()} words — too thin for search engine indexing. Search engines prefer pages with substantial content.`,
+          ? `Page contains approximately ${wordCount.toLocaleString()} words of text — fairly thin; search engines set no minimum word count, but a short page gives them little to understand or rank it by.`
+          : `Page contains only approximately ${wordCount.toLocaleString()} words of text — very little for search engines to understand or rank the page by. (There is no minimum word count, but thin pages rarely rank.)`,
     });
 
     const a4HasH1 = /<h1[\s>]/i.test(contentHtml);
     const hasH2orH3 = /<h[23][\s>]/i.test(contentHtml);
+    // "No H1" is not "no headings": münchen.de has 72 H2/H3 headings and no H1.
+    const hasAnySubHeading = /<h[2-6][\s>]/i.test(contentHtml);
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "has_heading_hierarchy",
       label: "Heading hierarchy (H1→H2→H3)",
-      status: a4HasH1 && hasH2orH3 ? "PASS" : a4HasH1 ? "WARN" : "FAIL",
+      status: a4HasH1 && hasH2orH3 ? "PASS" : a4HasH1 || hasAnySubHeading ? "WARN" : "FAIL",
       detail: a4HasH1 && hasH2orH3
         ? "Heading hierarchy detected (H1 and sub-headings present)."
         : a4HasH1
           ? "H1 found but no H2/H3 sub-headings — add sub-headings to improve content structure and SEO."
-          : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
+          : hasAnySubHeading
+            ? "Sub-headings (H2–H6) are present but there is no H1 — add one H1 naming the page's main topic so the heading outline has a top level."
+            : "No heading tags detected — headings are critical for SEO and screen reader navigation.",
     });
 
     const imgTags = contentHtml.match(/<img[^>]*>/gi) ?? [];
-    const imgsWithAlt = imgTags.filter((img) => /\balt=/i.test(img)).length;
+    // A valueless `alt` (`<img src=x alt>`, Framer's default for decorative images) IS alt="" —
+    // a valid WCAG 1.1.1 decorative marking. `\s` before it keeps `data-alt=` from counting,
+    // and quoted VALUES are blanked first so `class="hero alt"` is not read as an attribute.
+    const imgsWithAlt = imgTags.filter((img) =>
+      /\salt(?:\s*=|(?=[\s/>]))/i.test(img.replace(/"[^"]*"|'[^']*'/g, '""'))).length;
     const altCoverage = imgTags.length > 0 ? imgsWithAlt / imgTags.length : 1;
     checks.push({
       category: CATEGORIES.ACCESSIBILITY,
@@ -4774,9 +5529,20 @@ export async function runUrlChecks(
         : `${imgsWithAlt}/${imgTags.length} images have alt attributes (${Math.round(altCoverage * 100)}%). ${altCoverage < 0.8 ? "Missing alt text fails WCAG 1.1.1 and harms screen reader users." : "Good alt text coverage."}`,
     });
 
-    const internalLinkPattern = new RegExp(`<a[^>]+href=["'](/|https?://${hostname.replace(".", "\\.")})[^"']*["']`, "gi");
-    const internalLinkMatches = contentHtml.match(internalLinkPattern) ?? [];
-    const internalLinkCount = internalLinkMatches.length;
+    // Every <a href> that resolves to this site counts. Relative hrefs ("news", "item?id=1",
+    // "./about") are internal links too — news.ycombinator.com uses only those and was told
+    // it had "Only 1 internal link". www./apex are treated as the same site.
+    const siteHost = hostname.replace(/^www\./i, "");
+    const anchorHrefs = (contentHtml.match(/<a\s[^>]*?(?<![\w-])href\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+)/gi) ?? [])
+      .map((tag) => tag.replace(/^[\s\S]*href\s*=\s*["']?/i, "").replace(/["']$/, "").trim());
+    const internalLinkCount = anchorHrefs.filter((href) => {
+      if (!href || href.startsWith("#") || /^(mailto|tel|sms|javascript|data):/i.test(href)) return false;
+      try {
+        return new URL(href, httpsUrl).hostname.replace(/^www\./i, "") === siteHost;
+      } catch {
+        return false;
+      }
+    }).length;
     checks.push({
       category: CATEGORIES.SEO,
       checkKey: "internal_links_present",
@@ -4876,15 +5642,28 @@ export async function runUrlChecks(
     });
 
     // ─── A7: SaaS / Business Signals ──────────────────────────────────────────
-    const hasAnnualBilling = /annual|yearly|per year|save\s+\d|\bsave\b.*year|year.*save/i.test(pageResult.html);
+    let hasAnnualBilling = hasAnnualBillingSignal(stripInertMarkup(pageResult.html));
+    // Plans and the monthly/yearly toggle usually live on /pricing, not the homepage
+    // (bolt.new: "Save up to 28% with yearly billing" exists only on /pricing).
+    // fetchSnippet, not probePath: probePath reads the WHOLE body before slicing it.
+    let pricingUnread = false;
+    if (!hasAnnualBilling) {
+      const pricingProbe = await fetchSnippet(`${baseUrl}/pricing`, 8000, 1_500_000);
+      hasAnnualBilling = pricingProbe.status === 200 && hasAnnualBillingSignal(stripInertMarkup(pricingProbe.body));
+      // No answer, rate-limited or a server error: /pricing — where the toggle usually is —
+      // was not read, so its absence was not observed.
+      pricingUnread = pricingProbe.status === 0 || pricingProbe.status === 429 || pricingProbe.status >= 500;
+    }
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "annual_billing_signal",
       label: "Annual billing option",
-      status: hasAnnualBilling ? "PASS" : "WARN",
+      status: hasAnnualBilling ? "PASS" : pricingUnread ? "INCONCLUSIVE" : "WARN",
       detail: hasAnnualBilling
-        ? "Annual billing option detected — cash flow and churn reduction signals present."
-        : "No annual billing signal found. Annual billing reduces churn by ~50% and improves cash flow. Most SaaS buyers expect a monthly vs annual toggle.",
+        ? "Annual billing option detected (annual/yearly pricing or a billing toggle)."
+        : pricingUnread
+          ? "Not established — no annual billing wording on this page, and /pricing (where plan toggles usually live) could not be read."
+          : "No annual billing wording (\"billed annually\", a yearly price, or a monthly/annual toggle) found on this page or at /pricing. If you offer annual plans, show the option where buyers compare prices.",
     });
 
     const hasMoneyBack = /money[\s-]back|30[\s-]day|14[\s-]day|7[\s-]day|\brefund\b/i.test(pageResult.html);
@@ -4898,18 +5677,27 @@ export async function runUrlChecks(
         : "No money-back guarantee signal. A clearly stated refund policy reduces purchase anxiety and increases conversion rates.",
     });
 
-    const hasLiveChat = /\b(intercom|crisp|tidio|drift|hubspot|freshchat|zendesk|tawk|liveagent|chatra|helpscout)\b/i.test(pageResult.html);
+    // A vendor's NAME is not its widget: figma.com PASSed on a blog slug
+    // "/blog/intercom-pioneer-ai-summit…" and bolt.new on a HubSpot customer logo. Require
+    // the widget's own loader host or API global.
+    const hasLiveChat = /widget\.intercom\.io|js\.intercomcdn\.com|intercomSettings|client\.crisp\.chat|\$crisp\b|code\.tidio\.co|js\.driftt\.com|drift\.load\(|js\.usemessages\.com|HubSpotConversations|wchat\.freshchat\.com|fcWidget|fw-cdn\.com\/\d+\/\d+\.js|fwSettings|static\.zdassets\.com|v2\.zopim\.com|\$zopim\b|embed\.tawk\.to|Tawk_API|ladesk\.com|call\.chatra\.io|ChatraID|beacon-v2\.helpscout\.net|cdn\.livechatinc\.com|__lc\.license/i.test(pageResult.html);
+    // hs-scripts.com is HubSpot's general loader: it carries analytics and forms on most
+    // HubSpot sites and injects the chat widget only when chat is switched on. Its
+    // presence neither proves nor rules out chat, so it makes the answer unknown.
+    const hubspotLoaderOnly = !hasLiveChat && /js(?:-[a-z0-9]+)?\.hs-scripts\.com/i.test(pageResult.html);
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "live_chat_signal",
       label: "Live chat / support widget",
-      status: hasLiveChat ? "PASS" : "WARN",
+      status: hasLiveChat ? "PASS" : hubspotLoaderOnly ? "INCONCLUSIVE" : "WARN",
       detail: hasLiveChat
-        ? "Live chat or support widget detected — real-time support capability present."
-        : "No live chat widget detected. Live chat can increase conversions by 20-40% and is now expected in SaaS products.",
+        ? "Live chat or support widget loader detected in the page."
+        : hubspotLoaderOnly
+          ? "Not established — the page loads HubSpot's script, which adds a chat widget at runtime only if chat is enabled in HubSpot; the static HTML does not show whether it is."
+          : "No live chat or support widget loader (Intercom, Crisp, Drift, Zendesk, Freshchat, Tawk.to and others) found in the page HTML. A widget added through a tag manager is not visible to this check.",
     });
 
-    const hasDemoBooking = /book\s+a\s+demo|schedule\s+a\s+demo|book\s+a\s+call|calendly\.com|cal\.com|book\s+demo/i.test(pageResult.html);
+    const hasDemoBooking = DEMO_BOOKING_PATTERN.test(pageResult.html);
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "demo_booking_signal",
@@ -4956,8 +5744,18 @@ export async function runUrlChecks(
     });
 
     const apiQualityApplicable = isCategoryApplicable(platform, CATEGORIES.API_QUALITY, surfaceKind);
+    // Probe the ORIGIN, not the scanned URL: `${httpsUrl}/openapi.json` asked
+    // petstore3.swagger.io for /api/v3/openapi.json/openapi.json, and any deep-link
+    // target (/docs, /?utm_source=…) probed paths under it that no server serves.
+    const openApiOrigin = (() => {
+      try {
+        return new URL(httpsUrl).origin;
+      } catch {
+        return httpsUrl;
+      }
+    })();
     const openApiProbe = apiQualityApplicable
-      ? await checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"], (p) => looksLikeOpenApi(p.body))
+      ? await checkPaths(openApiOrigin, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"], (p) => looksLikeOpenApi(p.body))
       : { statuses: [] as number[], exposedPaths: [] as string[] };
     // A bare 200 proves nothing on a catch-all host (SPA / Vercel / Next), which
     // 200s every path with the app shell — the same reason the exposed-file probes
@@ -4966,14 +5764,17 @@ export async function runUrlChecks(
     // api-quality.ts correctly WARNed on the same host, one report asserted both
     // that a spec exists and that it does not.
     // The body is now read, so a catch-all host is no longer a reason to doubt a hit.
-    const hasOpenApiEndpoint = openApiProbe.exposedPaths.length > 0;
+    // The scanned response may itself BE the spec: https://petstore3.swagger.io/api/v3/openapi.json
+    // serves {"openapi":"3.0.4",…} and was told no spec endpoint exists.
+    const scannedPageIsSpec = apiQualityApplicable && isOpenApiDocument(pageResult.html);
+    const hasOpenApiEndpoint = scannedPageIsSpec || openApiProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.API_QUALITY,
       checkKey: "openapi_endpoint",
       label: "OpenAPI spec endpoint",
       status: hasOpenApiEndpoint ? "PASS" : "WARN",
       detail: hasOpenApiEndpoint
-        ? `OpenAPI/Swagger spec served at ${openApiProbe.exposedPaths.join(", ")} — machine-readable API spec enables auto-generated SDKs and Postman imports.`
+        ? `OpenAPI/Swagger spec served at ${[...(scannedPageIsSpec ? [pageResult.finalUrl || httpsUrl] : []), ...openApiProbe.exposedPaths].join(", ")} — machine-readable API spec enables auto-generated SDKs and Postman imports.`
         : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
     });
 
@@ -5047,6 +5848,7 @@ export async function runUrlChecks(
         htmlLower,
         catchAll200,
         surfaceKind,
+        contentHtml,
         targetMarkets,
         detectedMarkets,
         effectiveMarkets,

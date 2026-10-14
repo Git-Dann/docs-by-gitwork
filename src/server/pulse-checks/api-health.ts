@@ -25,6 +25,10 @@ function extractApiPaths(source: string): string[] {
   while ((m = re.exec(source))) {
     const path = m[1].split("?")[0].replace(/\/$/, "");
     if (/[{}[\]:$]/.test(path)) continue; // templated segment — not directly probeable
+    if (/^\/api(\/v\d+(\.\d+)?)?$/i.test(path)) continue; // bare API base path ("/api/v3") — a prefix, not an endpoint
+    const before = source.slice(Math.max(0, m.index - 3), m.index);
+    const after = source.slice(m.index + m[0].length, m.index + m[0].length + 3);
+    if (/\+\s*$/.test(before) || /^\s*\+/.test(after)) continue; // concatenated fragment (base+"/api/x/"+id) — not a complete same-origin path
     found.add(path);
     if (found.size >= 12) break;
   }
@@ -37,7 +41,14 @@ function extractApiPaths(source: string): string[] {
 async function fetchScriptSnippets(httpsUrl: string, html: string): Promise<string[]> {
   const srcs = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
     .map((m) => m[1])
-    .filter((src) => !/^https?:\/\//i.test(src) || src.startsWith(httpsUrl))
+    .filter((src) => {
+      // Compare real origins: protocol-relative "//cdn.example.net/x.js" is NOT same-origin.
+      try {
+        return new URL(src, httpsUrl).origin === new URL(httpsUrl).origin;
+      } catch {
+        return false;
+      }
+    })
     .slice(0, 2);
 
   const snippets: string[] = [];
@@ -79,7 +90,7 @@ export async function runApiHealthChecks(ctx: ExtendedCheckContext): Promise<Pul
 
   const probes = await Promise.all(
     discovered.map(async (path) => {
-      const url = `${httpsUrl.replace(/\/$/, "")}${path}`;
+      const url = `${new URL(httpsUrl).origin}${path}`;
       try {
         const res = await fetchWithTimeout(url, { method: "GET" });
         const body = (await res.text().catch(() => "")).slice(0, 5000);

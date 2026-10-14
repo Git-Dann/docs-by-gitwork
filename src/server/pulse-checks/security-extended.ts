@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { restrictsFraming } from "./csp-sources";
+import { organizationalDomainCandidates } from "@/server/pulse-lite/registrable-domain";
 import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, verifyFileExposure, resolveDnsRecord, probeInconclusive, skip, platformIs } from "./_types";
 import { type PathProbe, fetchSnippet, looksLikeOpenApi, looksLikeGraphqlEndpoint } from "./path-probe";
 
@@ -571,6 +572,85 @@ export function rateLimitHeaderNames(headers: Record<string, string>): string[] 
 }
 
 /**
+ * Cookies set by bot-management services (Cloudflare, Akamai Bot Manager,
+ * HUMAN/PerimeterX, DataDome). Exact names only: `_pxhd_extra` or `my__cf_bm` is
+ * somebody else's cookie, not evidence of a bot-protection layer.
+ */
+export function isBotManagementCookie(name: string): boolean {
+  return /^(?:__cf_bm|cf_clearance|ak_bmsc|_abck|bm_sz|bm_sv|bm_mi|_px[23]?|_pxhd|_pxvid|pxcts|datadome)$/i.test(name);
+}
+
+export type DnssecZoneResult =
+  | { ok: true; signed: boolean; zone: string }
+  | { ok: false; name: string; reason: string };
+
+/**
+ * Query `name` for `type` and report whether the answer holds a record of that
+ * type OWNED BY `name`. ⚠️ The owner is compared, not just the type, because a
+ * query for a name that is a CNAME is chased to the TARGET: www.example.com CNAME'd
+ * to the signed example.com returns example.com's SOA (it would read as an unsigned
+ * apex of its own), and a www CNAME'd to someone else's signed apex returns THEIR DS
+ * (it would read as signed while its own zone is not). An entry with no owner name
+ * is kept for DS and not for SOA — Cloudflare always sends one, so neither case is
+ * expected, and the leniency matches resolveDnsRecord.
+ */
+async function hasOwnedRecord(name: string, type: "DS" | "SOA", keepUnnamed: boolean): Promise<{ ok: true; found: boolean } | { ok: false; reason: string }> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`,
+      { headers: { Accept: "application/dns-json" } },
+    );
+    if (!res.ok) return { ok: false, reason: `DNS resolver returned HTTP ${res.status}` };
+    const json = await res.json() as { Status?: number; Answer?: { name?: string; type?: number }[] };
+    const typeCode = type === "DS" ? 43 : 6;
+    // NOERROR (0) and NXDOMAIN (3) are answers; anything else is a failed lookup.
+    if (typeof json.Status === "number" && json.Status !== 0 && json.Status !== 3) {
+      return { ok: false, reason: `DNS resolver returned rcode ${json.Status} for the ${type} lookup` };
+    }
+    const want = name.toLowerCase().replace(/\.$/, "");
+    const found = (json.Answer ?? []).some((a) => a.type === typeCode
+      && (a.name === undefined ? keepUnnamed : a.name.toLowerCase().replace(/\.$/, "") === want));
+    return { ok: true, found };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "DNS lookup failed" };
+  }
+}
+
+const DNSSEC_WALK_CAP = 8;
+
+/**
+ * Find the zone that serves `hostname` and whether it is signed.
+ *
+ * A DS record exists only at a zone cut, so www.example.com has none even though
+ * example.com is signed. Walk up one label at a time and stop at the first DS
+ * (signed), or at the first name that is itself a zone apex with no DS (that zone
+ * serves the host, and it is unsigned). ⚠️ Jumping straight to the registrable
+ * domain is wrong: registrableDomain("www.hmrc.gov.uk") is "gov.uk", which is
+ * signed, while hmrc.gov.uk is a separately delegated UNSIGNED zone. The
+ * registrable domain (the last candidate) is a zone apex by definition, and with no
+ * known suffix only the hostname itself can be asked — both keep the previous
+ * behaviour of reading an empty DS answer there as unsigned. Any failed lookup is
+ * reported as a failure, never as an answer.
+ */
+export async function resolveDnssecZone(hostname: string): Promise<DnssecZoneResult> {
+  const full = [hostname, ...organizationalDomainCandidates(hostname).filter((name) => name !== hostname)];
+  // Bound the walk at the WRONG end and the terminal zone is lost, and an empty DS at
+  // an intermediate label would then be read as "unsigned". Keep the last candidate.
+  const walk = full.length > DNSSEC_WALK_CAP ? [...full.slice(0, DNSSEC_WALK_CAP - 1), full[full.length - 1]] : full;
+  for (let index = 0; index < walk.length; index += 1) {
+    const name = walk[index];
+    const ds = await hasOwnedRecord(name, "DS", true);
+    if (!ds.ok) return { ok: false, name, reason: ds.reason };
+    if (ds.found) return { ok: true, signed: true, zone: name };
+    if (index === walk.length - 1) return { ok: true, signed: false, zone: name };
+    const soa = await hasOwnedRecord(name, "SOA", false);
+    if (!soa.ok) return { ok: false, name, reason: soa.reason };
+    if (soa.found) return { ok: true, signed: false, zone: name };
+  }
+  return { ok: true, signed: false, zone: hostname };
+}
+
+/**
  * Whether this response is an API response rather than a document. `X-RateLimit-*`
  * is an API convention and `Retry-After` is a 429/503 header, so their absence on
  * a cached `text/html` page is not a finding — it is the wrong response class.
@@ -714,23 +794,33 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   // CAA DNS record. Both this and DNSSEC below conclude from an EMPTY answer, so
   // a failed lookup must not reach them — it would report a record the domain may
   // well have as missing.
-  const caa = await resolveDnsRecord(hostname, "CAA");
+  // RFC 8659 §3: a CA uses the first NON-EMPTY CAA RRset found climbing from the
+  // name toward the root, so www.flipkart.com (no CAA of its own) is restricted by
+  // flipkart.com's record. Stop at the first answer, or at the first failed lookup
+  // so a failure still reaches the INCONCLUSIVE branch below.
+  let caa = await resolveDnsRecord(hostname, "CAA");
+  let caaOwner = hostname;
+  for (const parent of organizationalDomainCandidates(hostname)) {
+    if (!caa.ok || caa.records.length > 0) break;
+    caaOwner = parent;
+    caa = await resolveDnsRecord(parent, "CAA");
+  }
   if (!caa.ok) {
     checks.push(probeInconclusive(CATEGORIES.SECURITY, "caa_dns_record", "CAA DNS record (cert authority restriction)",
       `The CAA lookup for ${hostname} did not complete (${caa.reason}).`));
   } else {
     const hasCaa = caa.records.length > 0;
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "caa_dns_record", label: "CAA DNS record (cert authority restriction)", status: hasCaa ? "PASS" : "WARN", detail: hasCaa ? `CAA record found — only authorised CAs can issue certificates for this domain.` : "No CAA record — any certificate authority can issue SSL certificates for your domain. Add a CAA record to restrict issuance to your CA." });
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "caa_dns_record", label: "CAA DNS record (cert authority restriction)", status: hasCaa ? "PASS" : "WARN", detail: hasCaa ? `CAA record found${caaOwner === hostname ? "" : ` on ${caaOwner}, which CAs apply to ${hostname}`} — only authorised CAs can issue certificates for this domain.` : "No CAA record — any certificate authority can issue SSL certificates for your domain. Add a CAA record to restrict issuance to your CA." });
   }
 
-  // DNSSEC
-  const ds = await resolveDnsRecord(hostname, "DS");
-  if (!ds.ok) {
+  // DNSSEC — asked of the zone that actually serves the host (see resolveDnssecZone).
+  const dnssec = await resolveDnssecZone(hostname);
+  if (!dnssec.ok) {
     checks.push(probeInconclusive(CATEGORIES.SECURITY, "dnssec_enabled", "DNSSEC enabled on domain",
-      `The DS lookup for ${hostname} did not complete (${ds.reason}).`));
+      `The DNSSEC lookup for ${dnssec.name} did not complete (${dnssec.reason}).`));
   } else {
-    const hasDnssec = ds.records.length > 0;
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: hasDnssec ? "PASS" : "WARN", detail: hasDnssec ? "DNSSEC DS record found — DNS responses are cryptographically signed." : "No DNSSEC detected — DNS responses are unauthenticated and vulnerable to cache poisoning attacks." });
+    const zoneNote = dnssec.zone === hostname ? "" : ` (on ${dnssec.zone}, the zone serving ${hostname})`;
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: dnssec.signed ? "PASS" : "WARN", detail: dnssec.signed ? `DNSSEC DS record found${zoneNote} — DNS responses are cryptographically signed.` : `No DNSSEC detected${zoneNote} — DNS responses are unauthenticated and vulnerable to cache poisoning attacks.` });
   }
 
   // Certificate expiry (check for Strict-Transport-Security max-age or server header)
@@ -852,10 +942,14 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "csrf_protection_signals", label: "CSRF token protection detected", status: hasCsrf ? "PASS" : "WARN", detail: hasCsrf ? "CSRF token detected in page HTML — form submissions are protected against cross-site request forgery." : "No CSRF token detected — ensure state-changing requests use CSRF protection (synchroniser tokens or SameSite cookies)." });
 
   // Bot protection
-  const hasCfBot = !!h["cf-mitigated"] || htmlLower.includes("__cf_bm") || htmlLower.includes("cf-turnstile");
+  // Bot-management services identify themselves in the cookies they SET, not in the
+  // HTML: cal.com sets Cloudflare's `__cf_bm` on its homepage and was reported as
+  // having no bot protection.
+  const botCookie = parseSetCookieHeader(h["set-cookie"] ?? "").find((cookie) => isBotManagementCookie(cookie.name));
+  const hasCfBot = !!h["cf-mitigated"] || !!botCookie || htmlLower.includes("__cf_bm") || htmlLower.includes("cf-turnstile");
   const hasRecaptcha = htmlLower.includes("recaptcha") || htmlLower.includes("hcaptcha");
   const hasBotProtection = hasCfBot || hasRecaptcha;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "bot_protection_present", label: "Bot protection (Cloudflare / reCAPTCHA)", status: hasBotProtection ? "PASS" : "WARN", detail: hasBotProtection ? "Bot protection signals detected (Cloudflare / reCAPTCHA / hCaptcha)." : "No bot protection detected — consider Cloudflare Turnstile, hCaptcha, or similar to protect forms and auth endpoints." });
+  checks.push({ category: CATEGORIES.SECURITY, checkKey: "bot_protection_present", label: "Bot protection (Cloudflare / reCAPTCHA)", status: hasBotProtection ? "PASS" : "WARN", detail: hasBotProtection ? (botCookie ? `Bot-management cookie \`${botCookie.name}\` set on this response — a bot-protection service sits in front of the site.` : "Bot protection signals detected (Cloudflare / reCAPTCHA / hCaptcha).") : "No bot protection detected — consider Cloudflare Turnstile, hCaptcha, or similar to protect forms and auth endpoints." });
 
   // SQL error exposure
   const hasSqlError = /SQL syntax|mysql_fetch|ORA-\d{5}|pg_query|You have an error in your SQL syntax/i.test(pageResult.html);
@@ -940,6 +1034,13 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   } else if (!csp) {
     checks.push(notAssessed("csp_frame_ancestors", "frame-ancestors in CSP policy",
       `Not assessed — this response sent no Content-Security-Policy header, so there is no policy that could carry frame-ancestors. See the Content-Security-Policy finding; this is the same fact, not a second one.${hasXfo ? " X-Frame-Options is set on this response and is still honoured by browsers, so framing is restricted." : " Framing is graded separately by the X-Frame-Options check."}`));
+  } else if (/^\s*(?:deny|sameorigin)\s*$/i.test(h["x-frame-options"] ?? "")) {
+    // X-Frame-Options DENY/SAMEORIGIN is honoured by every current browser when the
+    // CSP has no frame-ancestors, so framing IS restricted. WARNing on
+    // developer.mozilla.org (DENY) and theguardian.com (SAMEORIGIN) counted a
+    // working control as a gap. Same not-a-finding shape as the no-CSP branch above.
+    checks.push(notAssessed("csp_frame_ancestors", "frame-ancestors in CSP policy",
+      `Not a finding — the CSP sets no frame-ancestors directive, but X-Frame-Options: ${(h["x-frame-options"] ?? "").trim()} on this response restricts framing in every current browser. frame-ancestors is the modern, per-origin form if you ever need to allow named embedders.`));
   } else {
     checks.push({ category: CATEGORIES.SECURITY, checkKey: "csp_frame_ancestors", label: "frame-ancestors in CSP policy", status: "WARN", detail: `CSP present but it sets no frame-ancestors directive${hasXfo ? ", so framing rests on X-Frame-Options alone" : ", and no X-Frame-Options header was sent either — nothing restricts who may frame this page"}. Add frame-ancestors: it is the modern, per-origin form of clickjacking protection.` });
   }

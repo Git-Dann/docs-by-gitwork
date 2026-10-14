@@ -182,6 +182,8 @@ const CACHE_STATUS_HEADERS: readonly string[] = [
   "x-cache",
   "x-cdn-cache",
   "x-vercel-cache",
+  // WordPress.com / Automattic edge cache (wordpress.org: `x-nc: HIT dca 1`).
+  "x-nc",
 ];
 
 /**
@@ -533,7 +535,10 @@ export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Prom
     checks.push(probeInconclusive(CATEGORIES.INFRASTRUCTURE, "ipv6_dns_record", "IPv6 (AAAA) DNS record present",
       `The AAAA lookup for ${hostname} did not complete (${aaaa.reason}).`));
   } else {
-    const hasIpv6 = aaaa.records.length > 0;
+    // A DoH AAAA answer for a CNAME'd name lists the CNAME chain too — www.cbc.ca
+    // answers with two type-5 records ending at an akamaiedge.net name that has no
+    // AAAA at all. Only an IPv6 address (always contains ':') proves IPv6.
+    const hasIpv6 = aaaa.records.some((record) => record.includes(":"));
     checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "ipv6_dns_record", label: "IPv6 (AAAA) DNS record present", status: hasIpv6 ? "PASS" : "WARN", detail: hasIpv6 ? "IPv6 AAAA record found — dual-stack deployment in place." : "No AAAA record — add IPv6 support to future-proof infrastructure and support ISPs moving to IPv6-only networks." });
   }
 

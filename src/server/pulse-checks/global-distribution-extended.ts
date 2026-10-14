@@ -11,7 +11,7 @@ export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): 
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "uk_pecr_cookie_law", label: "UK PECR cookie law compliance", status: hasUkPecr ? "PASS" : "WARN", detail: hasUkPecr ? "UK PECR cookie compliance signals detected." : "No UK PECR reference — UK organisations must comply with the Privacy and Electronic Communications Regulations (PECR) for cookie consent, separate from UK GDPR." });
 
   // CNIL France
-  const isFrenchSite = /\.fr\b/.test(hostname) || /lang=["']fr/i.test(html) || html.includes("français") || html.includes("en France");
+  const isFrenchSite = /\.fr\b/.test(hostname) || /<html\b[^>]*[\s:]lang=["']?fr\b/i.test(html) || html.includes("français") || html.includes("en France");
   const hasCnil = /cnil|commission nationale de l'informatique/i.test(html);
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "cnil_france_compliant", label: "CNIL compliance signals (France)", status: isFrenchSite ? (hasCnil ? "PASS" : "WARN") : "PASS", detail: isFrenchSite ? (hasCnil ? "CNIL compliance signals detected." : "French market signals detected but no CNIL reference — France's CNIL has strict cookie consent guidance; specific banner wording is regulated.") : "Not applicable — no French market signals detected." });
 

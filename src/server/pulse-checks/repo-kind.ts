@@ -10,6 +10,7 @@
 //
 // Pure: takes the snapshot's paths and the files it already read. No I/O.
 // ─────────────────────────────────────────────────────────────────────────────
+import { isExampleOrFixturePath } from "./native-mobile";
 
 export type GenericRepoKind = "web" | "backend" | "none";
 
@@ -62,11 +63,21 @@ function dependencies(packageJson: string | undefined): Set<string> {
  * also has a server, and its web-source AND backend checks both apply — the web shape
  * admits both surfaces (see check-relevance.ts).
  */
+/** Tooling, docs, examples, fixtures and vendored code: none of it is what the repo ships. */
+function isProductExcludedPath(path: string): boolean {
+  return /(^|\/)\.[^/]+\//.test(path)
+    || /(^|\/)(node_modules|vendor|docs?|site|website)\//i.test(path)
+    || isExampleOrFixturePath(path);
+}
+
 export function classifyGenericRepo(paths: readonly string[], files: ReadonlyMap<string, string>): GenericRepoKind {
   const deps = dependencies(files.get("package.json"));
   if (WEB_DEPENDENCIES.some((name) => deps.has(name))) return "web";
-  if (paths.some((path) => /(^|\/)(index|app)\.html$/i.test(path) && !path.includes("node_modules"))) return "web";
+  // Only paths that are the product count. cli/cli (a Go CLI) was called a web app
+  // because of .github/extensions/terminal-mockup/assets/index.html.
+  const own = paths.filter((path) => !isProductExcludedPath(path));
+  if (own.some((path) => /(^|\/)(index|app)\.html$/i.test(path))) return "web";
   if (BACKEND_DEPENDENCIES.some((name) => deps.has(name))) return "backend";
-  if (paths.some((path) => BACKEND_PATHS.some((pattern) => pattern.test(path)))) return "backend";
+  if (own.some((path) => BACKEND_PATHS.some((pattern) => pattern.test(path)))) return "backend";
   return "none";
 }

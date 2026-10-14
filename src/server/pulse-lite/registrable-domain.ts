@@ -468,6 +468,28 @@ const SUFFIXES_PLATFORM = [
   "translate.goog",
 ];
 
+/**
+ * Curated platform namespaces that are NOT on the real Public Suffix List
+ * (checked against publicsuffix.org on 2026-10-14).
+ *
+ * They stay in `SUFFIXES_PLATFORM` because the labels beneath them are issued by
+ * the platform, so for apex/www advice and "whose record is this" they behave like
+ * suffixes. But DMARC receivers find the organizational domain with the PSL, so for
+ * `www.squarespace.com` the organizational domain is `squarespace.com`, whose
+ * `p=reject` record they apply. Stopping the discovery ladder at the host reported
+ * "no DMARC record found on the full discovery path" for a host covered by p=reject.
+ *
+ * ⚠️ Only add a namespace here after confirming it is absent from the PSL. `run.app`
+ * is deliberately missing: the PSL lists it as the wildcard `*.run.app`, so every
+ * `<x>.run.app` is itself a public suffix and receivers never fall back to
+ * `run.app` — including it would credit Cloud Run hosts with Google's own
+ * `_dmarc.run.app` p=reject, a false PASS. `vercel.app`, `myshopify.com` and the
+ * other real PSL entries are absent for the same reason.
+ */
+const NAMESPACES_NOT_ON_PSL: ReadonlySet<string> = new Set(
+  "squarespace.com wordpress.com substack.com railway.app vercel.sh glitch.me".split(" "),
+);
+
 /** Fast membership set for the platform namespaces, and the longest one in labels. */
 const PLATFORM_SUFFIX_SET: ReadonlySet<string> = new Set(SUFFIXES_PLATFORM);
 
@@ -976,7 +998,12 @@ export function publicSuffixOf(input: string): string | null {
  * organizationalDomainCandidates("a.b.example.com")  // ["b.example.com", "example.com"]
  * organizationalDomainCandidates("www.gov.uk")       // ["gov.uk"]
  * organizationalDomainCandidates("linear.app")       // []  (already apex)
+ * organizationalDomainCandidates("www.squarespace.com") // ["squarespace.com"]
  * ```
+ *
+ * ⚠️ For a curated namespace that is NOT on the real PSL (NAMESPACES_NOT_ON_PSL) the
+ * list ends one step past `registrableDomain()`, at the namespace itself — that is the
+ * organizational domain a PSL-reading receiver (or CA, for CAA) actually uses.
  *
  * Why this exists alongside `registrableDomain()`: a single answer has to pick
  * one interpretation of a hierarchical namespace, and for `.gov.uk` either
@@ -997,6 +1024,13 @@ export function organizationalDomainCandidates(input: string): string[] {
   const candidates: string[] = [];
   for (let take = labels.length - 1; take >= registrableLabelCount; take -= 1) {
     candidates.push(labels.slice(labels.length - take).join("."));
+  }
+  // A curated platform namespace that is NOT on the real PSL is, to a receiver, an
+  // ordinary registrable domain — see NAMESPACES_NOT_ON_PSL. It is pushed LAST because
+  // it is the organizational domain receivers retry, and `boundedDmarcCandidates`
+  // always keeps the last entry.
+  if (analysis.publicSuffix && NAMESPACES_NOT_ON_PSL.has(analysis.publicSuffix)) {
+    candidates.push(analysis.publicSuffix);
   }
   return candidates;
 }

@@ -94,7 +94,7 @@ export const HTML_RENDER_DEPENDENT_CHECK_KEYS = new Set<string>([
  * shell whose images had not rendered yet. These are reclassified too, which is the one case
  * where a non-failing status must be rewritten.
  */
-export const VACUOUS_ON_EMPTY_SHELL_KEYS = new Set<string>(["image_alt_coverage"]);
+export const VACUOUS_ON_EMPTY_SHELL_KEYS = new Set<string>(["image_alt_coverage", "social_image_alt_coverage"]);
 
 const SPA_SKIP_PREFIX =
   "Not assessable — client-rendered SPA/preview (content is JS-rendered, not in the static HTML).";
@@ -150,7 +150,9 @@ export function detectSpaContext(input: {
  * check would turn an established failure into an excuse.
  */
 /** Parsed from the page, but they establish an answer on a shell by other means (policy-path probes). */
-const SHELL_SELF_HANDLED = new Set(["privacy_policy", "terms_of_service"]);
+// `spa_client_rendered` is the check that ESTABLISHES the page is a shell — rewriting it to
+// "Not assessable" made it contradict its own finding (gitwork.co.uk, public scan).
+const SHELL_SELF_HANDLED = new Set(["privacy_policy", "terms_of_service", "spa_client_rendered"]);
 
 export function reclassifySpaChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[] {
   return checks.map((c) => {

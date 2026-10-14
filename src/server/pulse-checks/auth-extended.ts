@@ -103,7 +103,9 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "concurrent_session_policy", label: "Concurrent session limiting", status: hasConcurrentPolicy ? "PASS" : "WARN", detail: hasConcurrentPolicy ? "Concurrent session policy signals detected." : "No concurrent session policy visible — consider allowing users to control how many simultaneous sessions are allowed." });
 
   // Short-lived tokens
-  const hasShortTokens = /expires.*in.*(?:60|120|300|600|900|1800|3600)\s*(?:s|seconds)|access.*token.*expir|token.*ttl.*(?:[1-9][0-9]?(?:\s*min|h))/i.test(html);
+  // Terms must sit together in one text run: an unbounded `.*` let a 315KB span of
+  // minified state JSON ("tokens":{…} … "h") pass on flipkart.com.
+  const hasShortTokens = /expires[\s_-]*in[^<>{}]{0,20}?\b(?:60|120|300|600|900|1800|3600)\s*(?:s|seconds)\b|access[\s_-]*tokens?[^<>{}"]{0,40}expir|token[\s_-]*ttl[^<>{}]{0,20}?\b[1-9][0-9]?\s*(?:min(?:ute)?s?|h(?:ours?|rs?)?)\b/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "token_expiry_short", label: "Short-lived access tokens (< 1hr)", status: hasShortTokens ? "PASS" : "WARN", detail: hasShortTokens ? "Short-lived token expiry signals detected." : "No short token expiry signals — access tokens should expire within 15–60 minutes; use refresh tokens for long-lived sessions." });
 
   // OTP-specific checks — only relevant when OTP/magic-link auth was actually detected.
@@ -128,7 +130,9 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const hasLogout = /(?:sign|log)[\s_-]*out|end[\s_-]*session/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_logout_control", label: "Sign-out control is discoverable", status: hasLogout ? "PASS" : "WARN", detail: hasLogout ? "A sign-out/end-session control is visible." : "No sign-out control was observed. Authenticated users need an obvious way to invalidate their current session." });
 
-  const hasSecurityNotifications = /security (?:alert|notification)|new (?:device|login|sign.in).*(?:alert|email|notify)|password (?:change|reset).*(?:alert|email|notify)/i.test(html);
+  // "security alert" alone is marketing copy as often as a disclosure (notion.so: "Respond to
+  // security alerts faster"), so it needs account context, and every gap stays in one text run.
+  const hasSecurityNotifications = /(?:security|login|sign[\s-]?in) (?:alert|notification)s?[^<>]{0,60}(?:account|sign[\s-]?in|log[\s-]?in|device|password)|(?:account|sign[\s-]?in|log[\s-]?in|device|password)[^<>]{0,60}security (?:alert|notification)|new (?:device|login|sign.in)[^<>]{0,60}(?:alert|email|notif)|\b(?:alert|email|notif)\w*\s+(?:you\s+|me\s+|users\s+)?(?:when(?:ever)?|of|about|on|if|for)\b[^<>]{0,40}\bnew (?:device|login|sign[\s-]?in)|password (?:change|reset)[^<>]{0,60}(?:alert|email|notif)/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_security_notifications", label: "Security-event notifications are disclosed", status: hasSecurityNotifications ? "PASS" : "WARN", detail: hasSecurityNotifications ? "Security notification signals were found for account-sensitive events." : "No security-event notification signal was observed. Notify users about new-device sign-ins, password changes, and recovery events so account takeover is detectable." });
 
   return checks;

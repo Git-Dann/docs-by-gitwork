@@ -491,7 +491,16 @@ function apiContractChecks(
 
   const headers = response.headers;
   const contentType = headers["content-type"] ?? "";
-  const correlation = ["x-request-id", "x-correlation-id", "traceparent", "x-amzn-trace-id", "cf-ray"]
+  // 1xx/204/304 carry no content by definition (RFC 9110), so an absent Content-Type there is correct
+  // and says nothing about routes that do return a body.
+  const bodiless = response.status === 204 || response.status === 304 || (response.status >= 100 && response.status < 200);
+  // Platform/vendor per-request IDs count too: Vercel (x-vercel-id), GitHub, Netlify, AWS S3/CloudFront,
+  // Azure, Google Cloud, Fly.io and Stripe-style `request-id` all return a unique identifier per request.
+  const correlation = [
+    "x-request-id", "x-correlation-id", "traceparent", "x-amzn-trace-id", "cf-ray",
+    "request-id", "x-vercel-id", "x-github-request-id", "x-nf-request-id", "x-amz-request-id", "x-amz-cf-id",
+    "x-ms-request-id", "x-azure-ref", "x-cloud-trace-context", "fly-request-id",
+  ]
     .find((header) => Boolean(headers[header]));
   const cacheControl = headers["cache-control"] ?? "";
   const checks: PulseScanCheckInput[] = [
@@ -499,11 +508,13 @@ function apiContractChecks(
       category,
       checkKey: "api_response_content_type",
       label: "Scanned API response declares a Content-Type",
-      status: contentType ? "PASS" : "WARN",
+      status: contentType ? "PASS" : bodiless ? "SKIPPED" : "WARN",
       confidence: "HIGH",
       detail: contentType
         ? `The scanned response explicitly declares \`${contentType.slice(0, 100)}\`, so clients need not guess how to parse it.`
-        : "The scanned response has no Content-Type header. Clients and intermediaries must guess how to parse it; return an explicit media type on every API response.",
+        : bodiless
+          ? `The scanned endpoint answered ${response.status} with no body, so there was no content to label — a missing Content-Type is correct here. Scan an endpoint that returns data to assess this.`
+          : "The scanned response has no Content-Type header. Clients and intermediaries must guess how to parse it; return an explicit media type on every API response.",
       evidence: contentType || undefined,
     },
     {

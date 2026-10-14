@@ -41,6 +41,12 @@ export interface ExtendedCheckContext {
   catchAll200: boolean;
   /** Whether the fetched document is the product, a prototype bundle, or an access interstitial. */
   surfaceKind?: UrlSurfaceKind;
+  /**
+   * Body for content-parsing checks: the DOM the render agent adopted on a client-rendered
+   * site, else the static HTML. Checks that ask "is this server-rendered" must keep reading
+   * pageResult.html.
+   */
+  contentHtml?: string;
   // Jurisdiction context (optional — additive). `targetMarkets` are user-declared,
   // `detectedMarkets` are auto-detected from the page, `effectiveMarkets` is the
   // resolved set used for filtering (declared if any, else detected). Modules can
@@ -172,7 +178,7 @@ export async function resolveDnsRecord(name: string, type: string): Promise<DnsR
     );
     // A non-200 from the resolver is a failed lookup, not an empty answer.
     if (!res.ok) return { ok: false, reason: `DNS resolver returned HTTP ${res.status}` };
-    const json = await res.json() as { Status?: number; Answer?: { data: string }[] };
+    const json = await res.json() as { Status?: number; Answer?: { data: string; type?: number }[] };
     // ⚠️ A DoH resolver answers HTTP 200 for a FAILED lookup too — SERVFAIL and
     // REFUSED both arrive as 200 with an empty Answer, indistinguishable from
     // "there is no such record" unless the `Status` rcode is read. Reading only
@@ -190,7 +196,15 @@ export async function resolveDnsRecord(name: string, type: string): Promise<DnsR
     // record genuinely is not there, and callers must keep reporting absence.
     // A response with no `Status` at all is not a claim of failure — Cloudflare
     // always sends one, so treat it as answered rather than inventing an outage.
-    return { ok: true, records: (json.Answer ?? []).map((a) => a.data), ...(status !== undefined ? { status } : {}) };
+    // ⚠️ A query for a name that is a CNAME returns the CNAME record itself (type 5)
+    // in Answer, alongside or instead of the type asked for. Counting it made every
+    // CNAME'd host "have" a DS record (DNSSEC PASS on www.bbc.co.uk, whose zone is
+    // unsigned) and a CAA record (www.theguardian.com, which has none anywhere).
+    // Keep only records of the requested type; an entry with no numeric type is kept.
+    const DNS_TYPE_CODES: Record<string, number> = { A: 1, NS: 2, CNAME: 5, SOA: 6, MX: 15, TXT: 16, AAAA: 28, DS: 43, DNSKEY: 48, HTTPS: 65, CAA: 257 };
+    const wanted = DNS_TYPE_CODES[type.toUpperCase()];
+    const answers = (json.Answer ?? []).filter((a) => wanted === undefined || typeof a.type !== "number" || a.type === wanted);
+    return { ok: true, records: answers.map((a) => a.data), ...(status !== undefined ? { status } : {}) };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "DNS lookup failed" };
   }

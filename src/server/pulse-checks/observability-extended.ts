@@ -50,8 +50,12 @@ export async function runObservabilityExtended(ctx: ExtendedCheckContext): Promi
   const hasDeployFreq = /dora.*metric|deploy.*frequency|deployment.*frequency|lead.*time|change.*fail|mean.*time.*recover/i.test(html);
   checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "deployment_frequency_tracking", label: "Deployment frequency / DORA metrics tracked", status: hasDeployFreq ? "PASS" : "WARN", detail: hasDeployFreq ? "DORA metric signals detected." : "No deployment frequency tracking — DORA metrics (deploy frequency, lead time, change fail rate, MTTR) are the industry standard for engineering performance." });
 
-  const hasStatusPage = /href=["']https?:\/\/[^"']*(?:status|uptime)[^"']*["']|system status|service status/i.test(html);
-  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "public_status_page", label: "Public service status page", status: hasStatusPage ? "PASS" : "WARN", detail: hasStatusPage ? "A public status or uptime page is linked." : "No public status page was observed. Publish current component health and incident history so customers can self-diagnose outages." });
+  // A status/uptime HOST (status.x.com, githubstatus.com, vercel-status.com) or a status-like
+  // LAST path segment (/status, /en/status, /system-status, /support/systemstatus/, with an
+  // optional query) — never 'status' mid-path, as in x.com/<user>/status/<id> post links,
+  // and never the status of a customer's own record (/orders/status, /application/status).
+  const hasStatusPage = /href=["']https?:\/\/[^"'\/?#]*(?:status|uptime)[^"'\/?#]*(?:[\/?#][^"']*)?["']|href=["'](?:https?:\/\/[^"'\/]+)?(?:\/[^"'\/?#]*)*\/(?<!\/(?:orders?|account|track(?:ing)?|shipments?|deliver(?:y|ies)|payments?|applications?|claims?)\/)(?:(?:system|service)-?)?(?:status|uptime)\/?(?:[?#][^"']*)?["']|system status|service status/i.test(html);
+  checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "public_status_page", label: "Public service status page", status: hasStatusPage ? "PASS" : "WARN", detail: hasStatusPage ? "A public status or uptime page is linked." : "No link to a public status page was found on the scanned page. If you already publish one, link it from the footer; otherwise publish current component health and incident history so customers can self-diagnose outages." });
 
   const hasIncidentSubscriptions = /subscribe.{0,40}(?:incident|status|outage)|(?:incident|status) updates|notify me.{0,30}(?:incident|outage)/i.test(html);
   checks.push({ category: CATEGORIES.OBSERVABILITY, checkKey: "incident_subscriptions", label: "Customers can subscribe to incident updates", status: hasIncidentSubscriptions ? "PASS" : "WARN", detail: hasIncidentSubscriptions ? "Incident-update subscription evidence detected." : "No incident subscription mechanism was observed. Let customers opt into outage and recovery notifications instead of repeatedly checking a page." });

@@ -41,6 +41,24 @@ export function topicPageCheck(
   };
 }
 
+/**
+ * The homepage links a security page of THIS site: a relative /security or /trust path
+ * (with or without ./ or a trailing slash), the same as an absolute same-site URL, or a
+ * trust./security. subdomain of the scanned site (trust.anthropic.com). Off-site links
+ * (github.com/security, claude.com/product/claude-security) do not count, and the host
+ * must end where the scanned site's name ends, so trust.example.com.evil.net does not.
+ */
+export function linksSecurityPage(html: string, hostname: string): boolean {
+  const siteBase = hostname.replace(/^www\./i, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!siteBase) return false;
+  const re = new RegExp(
+    `href=["'](?:https?:\\/\\/(?:[a-z0-9-]+\\.)*${siteBase})?\\.?\\/(?:security|trust)\\/?["']`
+      + `|href=["']https?:\\/\\/(?:trust|security)\\.(?:[a-z0-9-]+\\.)*${siteBase}(?=[\\/:?#"'])`,
+    "i",
+  );
+  return re.test(html);
+}
+
 export async function runMissingPagesExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { httpsUrl } = ctx;
   const html = ctx.pageResult.html;
@@ -87,7 +105,7 @@ export async function runMissingPagesExtended(ctx: ExtendedCheckContext): Promis
     "No /legal hub page — a single /legal page linking to Privacy Policy, Terms, DPA, and cookie policy reduces support queries and improves trust."));
 
   checks.push(topicPageCheck({ category: MP, checkKey: "security_dedicated_page", label: "/security dedicated page" },
-    /href=["']\/security["']/i.test(html), securityState, "/security",
+    linksSecurityPage(html, ctx.hostname), securityState, "/security",
     "/security page found — dedicated security documentation is available.",
     "No /security page — enterprise buyers and security teams routinely request a dedicated security page covering certifications, pen testing, and data handling."));
 
