@@ -4,6 +4,7 @@ import { assertCron } from "@/server/auth/cron";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { prisma } from "@/lib/prisma";
 import { pingCourseBackend } from "@/server/bigwedge-course-api";
+import { checkCourseFeedWatchdog } from "@/server/wedge-course-feed";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -24,6 +25,12 @@ export async function GET(request: NextRequest) {
       select: { id: true },
     });
     if (!client) return apiOk({ pinged: false, reason: "wedge client not found" });
+
+    // Rides on this 5-minute cron to notice the HOURLY course-request feed not running at
+    // all — the one failure that run cannot report itself. Never allowed to break the ping.
+    await checkCourseFeedWatchdog(workspace.id).catch((err) =>
+      console.error("[wedge-keepwarm] course-feed watchdog failed", err),
+    );
 
     const result = await pingCourseBackend(client.id);
     return apiOk({ pinged: true, ...result });

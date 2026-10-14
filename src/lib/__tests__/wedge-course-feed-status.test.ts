@@ -24,6 +24,7 @@ const healthy: CourseFeedStatus = {
   lastError: null,
   lastCreated: 3,
   lastStatusSyncAt: "2026-10-14T01:15:00.000Z",
+  alertedDownAt: null,
 };
 
 describe("where the next pull starts", () => {

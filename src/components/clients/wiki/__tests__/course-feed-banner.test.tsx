@@ -27,6 +27,7 @@ const failing: CourseFeedStatus = {
   lastError: "Big Wedge rejected Foundry's login (Invalid credentials).",
   lastCreated: 0,
   lastStatusSyncAt: null,
+  alertedDownAt: null,
 };
 
 describe("the feed line", () => {
