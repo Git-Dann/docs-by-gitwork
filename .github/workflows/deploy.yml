@@ -107,18 +107,18 @@ jobs:
           # reads it as a fallback specifically so seals issued before the rename still
           # VERIFY rather than silently becoming UNVERIFIABLE. Drop once PROVENANCE_ is set.
           ASSAY_SIGNING_SECRET: ${{ secrets.ASSAY_SIGNING_SECRET }}
-          # The Big Wedge app API service account. Foundry logs in with these on every
+          # The Big Wedge app API service account (username or email). Foundry logs in with these on every
           # course-request pull, so the token can never expire between runs — the pasted
           # admin JWT it replaces is why Wedge's course requests kept silently stopping.
           # See src/server/bigwedge-api-auth.ts.
-          BIGWEDGE_API_EMAIL: ${{ secrets.BIGWEDGE_API_EMAIL }}
+          BIGWEDGE_API_USERNAME: ${{ secrets.BIGWEDGE_API_USERNAME }}
           BIGWEDGE_API_PASSWORD: ${{ secrets.BIGWEDGE_API_PASSWORD }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # Passed over the SSH channel, never interpolated into a logged command line.
-          envs: FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_EMAIL,BIGWEDGE_API_PASSWORD
+          envs: FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD
           script: |
             cd /opt/apps/foundry
 
@@ -153,7 +153,7 @@ jobs:
             upsert_env GITHUB_TOKEN "${FOUNDRY_GITHUB_TOKEN:-}"
             upsert_env PROVENANCE_SIGNING_SECRET "${PROVENANCE_SIGNING_SECRET:-}"
             upsert_env ASSAY_SIGNING_SECRET "${ASSAY_SIGNING_SECRET:-}"
-            upsert_env BIGWEDGE_API_EMAIL "${BIGWEDGE_API_EMAIL:-}"
+            upsert_env BIGWEDGE_API_USERNAME "${BIGWEDGE_API_USERNAME:-}"
             upsert_env BIGWEDGE_API_PASSWORD "${BIGWEDGE_API_PASSWORD:-}"
 
             docker compose pull app
