@@ -106,6 +106,11 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 
 ```cron
 0 2 * * *  /opt/apps/foundry/run-cron.sh docs-gdrive-backup   >> /tmp/foundry-cron.log 2>&1
+# Big Wedge course requests — HOURLY pull from Big Wedge's own course-requests API into the
+# Wedge wiki (Oct 2026). The only live route for them: Big Wedge's app stopped emailing the
+# mailbox Care reads in Aug 2026. If this line is missing the Course Requests page goes red
+# after 6 hours ("not arriving"), which is the point — it used to fail silently for months.
+15 * * * * /opt/apps/foundry/run-cron.sh wedge-course-feed    >> /tmp/foundry-cron.log 2>&1
 0 3 * * *  /opt/apps/foundry/run-cron.sh auto-archive-tasks   >> /tmp/foundry-cron.log 2>&1
 # Member purge — removes memberships archived more than 30 days ago (Oct 2026). Deletes the
 # MEMBERSHIP only, never the User, so work people did stays attributed. FAIL-SAFE if missing:

@@ -50,6 +50,8 @@ export const NOTIFICATION_EVENTS = [
   "meetings.notes_ready",
   // Portal / clients
   "clients.onboarded",
+  // A client data feed Foundry pulls on a schedule has stopped working (src/server/wedge-course-feed.ts)
+  "clients.feed_failing",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
   // A message a person wrote and addressed to you (src/server/team-messages.ts)
@@ -98,6 +100,10 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "backstage.expense_decided": ["inApp", "push"],
   "meetings.notes_ready": ["inApp"],
   "clients.onboarded": ["inApp"],
+  // Fires ONCE per outage (when a feed goes from healthy to failing), not every hour it
+  // stays down. A client's data silently not arriving is the failure this exists to end —
+  // Big Wedge's course requests stopped for two months and the client had to tell us.
+  "clients.feed_failing": ["inApp", "push"],
   // Directed at admins each morning — in-app feed + a native push so it lands on the phone,
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.

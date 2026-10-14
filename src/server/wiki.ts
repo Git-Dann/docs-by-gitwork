@@ -52,6 +52,7 @@ import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
 import type { LaunchpadDTO } from "@/types/launchpad";
+import { parseFeedStatus, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -317,6 +318,10 @@ export interface WikiDTO {
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
+  /** The scheduled Big Wedge course-request feed's state (src/server/wedge-course-feed.ts).
+   *  Null when it has never run — and ALWAYS null on a public read: it is our plumbing,
+   *  not the client's business, and its errors name our own configuration. */
+  courseFeed: CourseFeedStatus | null;
   intakeItems: WikiIntakeItemRecord[];
   /** Whether the Requests (client intake) section is enabled for this wiki. */
   intakeEnabled: boolean;
@@ -954,6 +959,7 @@ async function buildDTO(
     createdAt: Date;
     status: WikiEntryStatus;
   }>;
+  courseFeedStatus?: unknown;
   courseRequests?: Array<{
     id: string;
     courseName: string;
@@ -1120,6 +1126,7 @@ async function buildDTO(
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
+    courseFeed: parseFeedStatus(wiki.courseFeedStatus),
     intakeItems: (wiki.intakeItems ?? [])
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -2872,7 +2879,12 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
     include: WIKI_INCLUDE,
   });
   if (!wiki) return null;
-  return buildDTO(wiki);
+  return forPublic(await buildDTO(wiki));
+}
+
+/** Strip what only Gitwork should see from a DTO that is about to leave on a share token. */
+function forPublic(dto: WikiDTO): WikiDTO {
+  return { ...dto, courseFeed: null };
 }
 
 /**
@@ -2887,7 +2899,7 @@ export async function resolvePublicWiki(
     where: { shareToken: token, shareEnabled: true },
     include: WIKI_INCLUDE,
   });
-  if (whole) return { wiki: await buildDTO(whole), onlySection: null };
+  if (whole) return { wiki: forPublic(await buildDTO(whole)), onlySection: null };
 
   // Otherwise look for a per-section token.
   const bySection = await prisma.clientWiki.findFirst({
@@ -2901,7 +2913,7 @@ export async function resolvePublicWiki(
       : {};
   const section = Object.keys(map).find((k) => map[k] === token) ?? null;
   if (!section) return null;
-  return { wiki: await buildDTO(bySection), onlySection: section };
+  return { wiki: forPublic(await buildDTO(bySection)), onlySection: section };
 }
 
 /**

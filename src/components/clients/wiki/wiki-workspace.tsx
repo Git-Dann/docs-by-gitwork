@@ -1730,6 +1730,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 onEdit={openEditCourse}
                 onDelete={handleDeleteCourses}
                 onSetStatus={handleSetCourseStatus}
+                feed={wiki!.courseFeed ?? null}
               />
             </div>
           </section>

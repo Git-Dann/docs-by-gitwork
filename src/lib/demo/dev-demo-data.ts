@@ -744,6 +744,15 @@ const demoWiki: WikiDTO = {
   // requests extracted from feedback, and the unnamed rows a failed classifier
   // produces (§53). A demo carrying only the healthy shape cannot express the bug,
   // and so cannot verify the fix (§42.15).
+  // A healthy feed — the banner is verified separately against the failing shape.
+  courseFeed: {
+    lastRunAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+    lastSuccessAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+    failingSince: null,
+    lastError: null,
+    lastCreated: 2,
+    lastStatusSyncAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+  },
   courseRequests: [
     {
       id: "cr-1",
