@@ -122,3 +122,27 @@ describe("classifiers", () => {
     expect(classifyFetchError("weird").kind).toBe("other");
   });
 });
+
+describe("an API that answers with a JSON error is graded as an API", () => {
+  it("401 application/json (api.stripe.com/v1/charges) is not 'no page to assess'", async () => {
+    route = (url) => (new URL(url).pathname.startsWith("/v1/charges")
+      ? page(401, '{"error":{"message":"You did not provide an API key.","type":"invalid_request_error"}}', "application/json", "https://site.test/v1/charges")
+      : page(404, '{"error":{"type":"invalid_request_error"}}', "application/json"));
+    const out = await runUrlChecks("https://site.test/v1/charges", "API_BACKEND");
+    const tca = out.checks.find((c) => c.checkKey === "target_content_accessible");
+    expect(tca?.status === "FAIL" || tca?.status === "INCONCLUSIVE").toBe(false);
+    expect(out.checks.length).toBeGreaterThan(5);
+    // The API answering 401 is correct behaviour, not a failure to serve.
+    expect(out.checks.find((c) => c.checkKey === "status_200")?.status).not.toBe("FAIL");
+  });
+  it("a 401 HTML login wall is still not inspectable", async () => {
+    route = () => page(401, "<html><title>Sign in</title></html>");
+    const { tca } = await scan();
+    expect(tca?.status).toBe("INCONCLUSIVE");
+  });
+  it("a JSON 429 rate limit still stops the scan", async () => {
+    route = () => { const r = page(429, '{"error":"slow down"}', "application/json"); r.headers.set("retry-after", "30"); return r; };
+    const { tca } = await scan();
+    expect(tca?.status).toBe("INCONCLUSIVE");
+  });
+});

@@ -2980,8 +2980,14 @@ export async function runUrlChecks(
     );
   }
 
-  // An error status: the page Pulse would grade is the error page, not the product.
-  if (pageResult.status >= 400) {
+  // An error status: the page Pulse would grade is the error page, not the product —
+  // unless the product is an API. api.stripe.com/v1/charges answers 401 with JSON, a
+  // WWW-Authenticate challenge and a full security header set: that is the API working,
+  // and it is exactly what an API scan should grade. Rate limits and 5xx still stop.
+  const apiAnswered = /\bjson\b/i.test(pageResult.headers["content-type"] ?? "") &&
+    [401, 403, 404, 405].includes(pageResult.status) &&
+    !(pageResult.headers["retry-after"] || pageResult.headers["x-ratelimit-remaining"] === "0");
+  if (pageResult.status >= 400 && !apiAnswered) {
     const status = pageResult.status;
     const rateLimited = status === 429 || pageResult.headers["x-ratelimit-remaining"] === "0" || Boolean(pageResult.headers["retry-after"]);
     const shut = status === 401 || status === 403 || rateLimited;
@@ -3195,7 +3201,12 @@ export async function runUrlChecks(
     // Some hosts refuse plain HTTP entirely (connection error → status 0) while
     // HTTPS works — that's HTTPS-only, which is fine, not a warning.
     const httpRefused = redir.status === 0;
-    const enforcesHttps = redirectsToHttps || httpRefused;
+    // An API that refuses plain HTTP with a 4xx is doing better than one that redirects:
+    // a redirect lets a client send its key in clear before being bounced (Stripe's API
+    // answers http:// with 403 for exactly this reason). Websites still need the redirect.
+    const servesJson = /\bjson\b/i.test(pageResult.headers["content-type"] ?? "");
+    const apiRefusesHttp = servesJson && redir.status >= 400 && redir.status < 500;
+    const enforcesHttps = redirectsToHttps || httpRefused || apiRefusesHttp;
     checks.push({
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "http_redirect",
@@ -3205,6 +3216,8 @@ export async function runUrlChecks(
         ? "HTTP redirects to HTTPS."
         : httpRefused
         ? "Plain HTTP is not served (HTTPS-only)."
+        : apiRefusesHttp
+        ? `The API refuses plain HTTP (HTTP ${redir.status}) rather than redirecting — the safer choice for an API, since a redirect would let a client send credentials in clear first.`
         : is3xx
         ? `HTTP redirects, but not to HTTPS (→ ${redir.location || "unknown"}).`
         : "HTTP does not redirect to HTTPS.",
@@ -3229,8 +3242,13 @@ export async function runUrlChecks(
       // bare GET with 204 No Content, which is correct for a GraphQL endpoint given no query;
       // a WARN there asserted a problem. Scoped to API targets: a WEBSITE homepage that serves
       // 204 (no page at all) keeps its WARN.
-      status: pageResult.status === 200 || (String(platform ?? "").trim().toUpperCase() === "API_BACKEND" && pageResult.status >= 200 && pageResult.status < 300) ? "PASS" : pageResult.status < 400 ? "WARN" : "FAIL",
-      detail: pageResult.status !== 200 && String(platform ?? "").trim().toUpperCase() === "API_BACKEND" && pageResult.status >= 200 && pageResult.status < 300
+      // An API answering an unauthenticated request with a JSON 401/403/404/405 is
+      // behaving correctly (api.stripe.com/v1/charges: 401 + WWW-Authenticate); that is
+      // not a failure to serve.
+      status: pageResult.status === 200 || (String(platform ?? "").trim().toUpperCase() === "API_BACKEND" && pageResult.status >= 200 && pageResult.status < 300) ? "PASS" : apiAnswered ? "NOT_APPLICABLE" : pageResult.status < 400 ? "WARN" : "FAIL",
+      detail: apiAnswered
+        ? `HTTP status ${pageResult.status} with a JSON body — the API answered an unauthenticated request as it should.`
+        : pageResult.status !== 200 && String(platform ?? "").trim().toUpperCase() === "API_BACKEND" && pageResult.status >= 200 && pageResult.status < 300
         ? `HTTP status ${pageResult.status} — a successful (2xx) response. An API endpoint need not return 200 to a bare GET with no query.`
         : `HTTP status ${pageResult.status}.`,
       evidence: String(pageResult.status),

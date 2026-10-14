@@ -6504,3 +6504,63 @@ Matrix after all fixes: see the PR/commit. Tests: `uninspectable-target.test.ts`
 `audit-2026-10-live-defects.test.ts`, `github-rate-limit.test.ts`, and the TLS-RPT case in
 `probe-honesty.test.ts` — each proved to fail against the old code.
 
+
+## 62. Recent Changes (October 2026) — Pulse: every finding from 170 real scans checked against the live site
+
+A full pass before the public rollout. 85 real URLs (SaaS, news, government, e-commerce, APIs,
+store listings, broken targets) were scanned in both internal and public mode, plus 33 real repos
+across every platform family. Every non-passing finding was then checked against the live site
+with curl/dig by 42 verification agents; 205 fixes were proposed, adversarially reviewed
+(4 rejected), applied per file with two-sided tests, and reviewed again. Scratch data (corpus,
+verdicts, per-key evidence) is not committed; re-derive it with the runner pattern below.
+
+### 62.1 A 200 is not an answer — `pulse-checks/path-probe.ts`
+
+The biggest single class. vercel.com answers `/.git/config`, `/phpinfo.php` and `/backup.sql`
+with its own 2.6 MB homepage (200) while a random path 404s, so the `catchAll200` guard misses it;
+cbc.ca answers `/phpinfo.php` with a "Menu" page; github.com/telescope is a user. Pulse told
+Vercel it was leaking its git config and a database. Now every path probe reads the body:
+
+- **Exposure** (git config, phpinfo, backups, `.env.bak`, Telescope/Horizon/Clockwork, Spring
+  Actuator, Swagger UI, Prometheus, GraphQL) is reported only when the body IS the thing — the
+  file's own format or the tool's own markup (`looksLike*`).
+- **Pages** (about, careers, DPA, cookies, accessibility, security, docs …) exist only when the
+  page **names itself** in its title/h1/h2 or the URL it settled on (`classifyTopicPage`). The
+  homepage served under another path, a bot wall, or a page that doesn't say what it is →
+  `unverified` → INCONCLUSIVE, never a guess either way. 404/410 or a redirect to `/` → absent.
+- The Stripe-webhook signal no longer switches the payments family on from an HTML 200.
+
+### 62.2 What Pulse cannot see is not reported as missing — `pulse-checks/absence-policy.ts`
+
+Applied once in `runLiteScan`'s ingest, so in-app, public and MCP agree.
+- **`UNOBSERVABLE_ABSENCE` (70 keys)** — the control lives behind sign-in or on the server
+  (password reset, brute-force protection, MFA, SCIM, billing portal, DPO contact). Adverse →
+  INCONCLUSIVE; a PASS still stands.
+- **`OPTIONAL_ABSENCE` (82 keys)** — a choice, not a defect (Product Hunt badge, RTL, Server-
+  Timing, a page *naming* PECR). Adverse → NOT_APPLICABLE, so it leaves the report and the score.
+- ⚠️ A test fails if any key in either list is a release-gate blocker. A check whose adverse
+  branch also covers a real observed defect does not belong in these lists — fix the check.
+
+### 62.3 Repo shape — what the repo ships, not what it demonstrates
+
+cal.com read as React Native (a Heroku `app.json`), Supabase as Android (Flutter apps under
+`examples/`), Immich as native Android (its Flutter app is in `mobile/`), Atom as a web app
+(`electronVersion`, no electron dep), cli/cli as a web app (an `index.html` under `.github/`).
+`detectNativePlatform` now ignores example/fixture/test dirs, finds a nested Flutter app beside its
+own android/ios folder, and only counts a bare `app.json` when package.json depends on
+react-native/expo; `repo-kind.ts` ignores dot-dirs, docs and examples.
+
+### 62.4 Smaller, each verified live
+
+DMARC follows the PSL for platform namespaces (`www.squarespace.com` is covered by squarespace.com's
+p=reject); SPF `redirect=` is INCONCLUSIVE, not "no SPF"; a null-MX domain needs no MTA-STS;
+`robots.txt` 401/403/429/5xx are unread, not absent; SEPA/currency/status-page checks read visible
+text and real links, not `border-collapse:separate`, asset hashes or tweet URLs; a rate-limited or
+unreadable repo scores 0 and gates INCONCLUSIVE (`SUBJECT_UNREADABLE`); Mac App Store listings are
+labelled Mac apps.
+
+### 62.5 GitHub capacity — still open
+
+Repo scans share ONE token (5,000 REST calls/hour). Measured: ~150–250 calls per repo scan, so
+roughly 20–30 repo scans an hour across all users. A GitHub App (per-installation limits) or
+caching repo snapshots is needed before repo scans are opened widely. URL scans are unaffected.
