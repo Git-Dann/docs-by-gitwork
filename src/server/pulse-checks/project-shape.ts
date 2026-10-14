@@ -124,7 +124,10 @@ export function detectProjectShape(paths: string[], packageJson: string | null):
     anyPath(paths, /(^|\/)electron-builder\.(ya?ml|json|js|ts|cjs)$/i) ||
     anyPath(paths, /(^|\/)forge\.config\.(js|ts|cjs|mjs)$/i) ||
     anyPath(paths, /(^|\/)electron\.vite\.config\.(js|ts|cjs|mjs)$/i);
-  if (electronDep || electronConfig) return "electron";
+  // atom/atom pins its runtime with an `electronVersion` field and builds Electron
+  // itself, with no electron dependency at all.
+  const electronPinned = !!packageJson && /"electronVersion"\s*:/.test(packageJson);
+  if (electronDep || electronConfig || electronPinned) return "electron";
 
   // CLI — a `bin` entry, on a package that is not a web application. `private: true`
   // rules it out too: a private package is never published, so the publishing

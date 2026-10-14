@@ -17,7 +17,7 @@
 
 import { parseGithubRepo, safeGithubRequest } from "@/lib/github";
 import type { PulseScanCheckInput } from "@/types/pulse";
-import { detectNativePlatform, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
+import { detectNativePlatform, isExampleOrFixturePath, isVendoredPath, type NativePlatform, type RepoSnapshot } from "./native-mobile";
 import { evaluateIosChecks } from "./ios-app";
 import { evaluateIosExtendedChecks } from "./ios-app-extended";
 import { evaluateFlutterChecks } from "./flutter-app";
@@ -403,10 +403,10 @@ export function resolveSnapshotShape(
   paths: string[],
   probeFiles: Map<string, string>,
 ): SnapshotShape {
-  const platform = detectNativePlatform(paths);
+  const platform = detectNativePlatform(paths, probeFiles.get("package.json") ?? null);
   if (platform === "ios" || platform === "android" || platform === "flutter") return platform;
 
-  const shape = detectProjectShape(paths, probeFiles.get("package.json") ?? null);
+  const shape = detectProjectShape(paths.filter((p) => !isExampleOrFixturePath(p)), probeFiles.get("package.json") ?? null);
   if (shape !== null) return shape;
 
   // React Native after desktop/CLI: an Electron app can carry app.json too, and
@@ -517,7 +517,7 @@ export function __clearRepoSnapshotMemo(): void {
 export async function detectRepoPlatform(repoInput: string): Promise<NativePlatform | null> {
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return null;
-  return detectNativePlatform(snapshot.paths);
+  return detectNativePlatform(snapshot.paths, snapshot.files.get("package.json") ?? null);
 }
 
 /**
@@ -530,7 +530,7 @@ export async function runNativeMobileChecks(
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return { platform: null, checks: [] };
 
-  const platform = detectNativePlatform(snapshot.paths);
+  const platform = detectNativePlatform(snapshot.paths, snapshot.files.get("package.json") ?? null);
   if (platform === "ios") {
     return { platform, checks: [...evaluateIosChecks(snapshot), ...evaluateIosExtendedChecks(snapshot)] };
   }

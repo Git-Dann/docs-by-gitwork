@@ -30,7 +30,7 @@
 
 import type { PulseScanCheckInput, ScoreBreakdown } from "@/types/pulse";
 import { CATEGORIES, type CheckCategory } from "./categories";
-import { detectStoreTarget, type StoreTarget } from "@/lib/pulse-store-url";
+import { detectStoreTarget, storeSubjectLabel, type StoreTarget } from "@/lib/pulse-store-url";
 
 export type ReleaseDecision = "READY" | "CONDITIONAL" | "BLOCKED" | "INCONCLUSIVE";
 
@@ -43,7 +43,8 @@ export type GateReasonCode =
   | "HEALTH_BELOW_FLOOR"
   | "UNRESOLVED_FAILURES"
   | "EVIDENCE_REQUIRED"
-  | "BLOCKING_CONTROL_UNESTABLISHED";
+  | "BLOCKING_CONTROL_UNESTABLISHED"
+  | "SUBJECT_UNREADABLE";
 
 export interface GateReason {
   code: GateReasonCode;
@@ -293,7 +294,12 @@ export function resolveGatePolicy(args: {
     return label ? { ...SOURCE_POLICY, label: `${label} · source repository` } : SOURCE_POLICY;
   }
   const store = args.targetUrl ? detectStoreTarget(args.targetUrl) : null;
-  if (store) return STORE_POLICIES[store];
+  if (store) {
+    const policy = STORE_POLICIES[store];
+    // Same listing policy (privacy policy + privacy declaration are Mac App Store rules too),
+    // but it must not call a Mac app an iOS app.
+    return store === "app_store" && platform === "DESKTOP_APP" ? { ...policy, label: storeSubjectLabel(store, platform) } : policy;
+  }
   if (args.apiTarget) return API_POLICY;
   if (NON_WEB_PLATFORMS.has(platform)) return label ? { ...WEB_PRESENCE_POLICY, label: `${label} · public website` } : WEB_PRESENCE_POLICY;
   if (platform === "SAAS") return gatePolicyById("saas-production");
@@ -435,6 +441,17 @@ export function evaluateReleaseGate(
   // likewise excluded: that is what COVERAGE_BELOW_FLOOR already measures, and
   // double-counting it here would fire on any policy whose blockers outrun the scan's
   // input type.
+  // The repository itself could not be read. Every source finding is missing, so no
+  // decision about the code can be a pass OR a block — it is unknown, and says why.
+  const unreadableRepo = checks.find((check) => check.checkKey === "repo_accessible" && check.status === "FAIL");
+  if (unreadableRepo) {
+    unverified.push({
+      code: "SUBJECT_UNREADABLE",
+      summary: `The repository could not be read, so nothing about its code was assessed. ${(unreadableRepo.detail ?? "").split(". ")[0]}.`,
+      checkKeys: ["repo_accessible"],
+    });
+  }
+
   const unestablishedBlockers = checks.filter(
     (check) =>
       policy.blockingKeys.includes(check.checkKey) &&

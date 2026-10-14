@@ -70,6 +70,11 @@ export interface StoreListing {
   bundleId: string | null;
   /** Chrome Web Store only — the extension-specific facts the listing publishes. */
   extension?: ExtensionListing;
+  /**
+   * Apple only: the listing is for the Mac alone (apps.apple.com serves the Mac App Store
+   * too). From the store's own operating-system field, or every screenshot being a Mac one.
+   */
+  macOnly?: boolean;
 }
 
 export interface ExtensionListing {
@@ -272,6 +277,8 @@ export function parseAppStoreListing(html: string): StoreListing | null {
     shortDescription: null,
     rating,
     screenshots: { total, byDevice },
+    macOnly: (typeof ld?.operatingSystem === "string" && /^\s*mac\s*os/i.test(ld.operatingSystem as string))
+      || (Object.keys(byDevice).length > 0 && Object.keys(byDevice).every((d) => d === "mac")),
     hasPreviewVideo,
     ageRating,
     privacyPolicyUrl,

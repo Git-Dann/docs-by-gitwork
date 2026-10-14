@@ -141,6 +141,17 @@ async function fetchPageWithReason(url: string): Promise<{ page: FetchResult | n
 }
 
 /** Content types that are a file, not a web page — grading them as a site is meaningless. */
+export {
+  fetchSnippet, looksLikePhpInfo, looksLikeGitConfig, looksLikeSqlDump, looksLikeEnvFile, looksLikeAdminLogin,
+  looksLikeOpenApi, looksLikeGraphqlEndpoint, looksLikeDebugTool, pageTitle, classifyTopicPage, combinePageStates,
+} from "@/server/pulse-checks/path-probe";
+export type { PathProbe, PageProbeState } from "@/server/pulse-checks/path-probe";
+import {
+  fetchSnippet, looksLikePhpInfo, looksLikeGitConfig, looksLikeSqlDump, looksLikeEnvFile, looksLikeAdminLogin,
+  looksLikeOpenApi, looksLikeGraphqlEndpoint, looksLikeDebugTool, pageTitle, classifyTopicPage, combinePageStates,
+  type PathProbe, type PageProbeState,
+} from "@/server/pulse-checks/path-probe";
+
 export function isNonPageContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
   if (!ct) return false;
@@ -169,19 +180,6 @@ export async function negotiateAlpn(hostname: string, timeoutMs = 5000): Promise
       done(null);
     }
   });
-}
-
-async function headRequest(url: string): Promise<number> {
-  try {
-    const response = await fetchWithTimeout(url, {
-      method: "HEAD",
-      redirect: "follow",
-      headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-    });
-    return response.status;
-  } catch {
-    return 0;
-  }
 }
 
 // Inspect how an HTTP URL responds WITHOUT following redirects, so we can see the
@@ -1406,6 +1404,10 @@ async function runMobileStoreChecks(url: string, storeType: "app_store" | "play_
     checkKey: "store_page_live",
     label: `${storeLabel} listing is live`,
     status: reachable ? "PASS" : listingGone ? "FAIL" : "INCONCLUSIVE",
+    // The store's own 404 is a direct observation. Without HIGH the gate would not trust
+    // it, so a removed iOS/Android app read "INCONCLUSIVE" while a removed Chrome
+    // extension (which already said HIGH) read "BLOCKED" — one fact, two verdicts.
+    confidence: reachable || listingGone ? "HIGH" : "LOW",
     detail: reachable
       ? `${storeLabel} listing is publicly accessible.`
       : listingGone
@@ -2410,14 +2412,19 @@ export async function runUrlChecks(
   // certificate, a slow server or an HTTP-only site was reported as failing all of them,
   // having read nothing. "We could not look" became "it isn't there" (CLAUDE.md §35).
   // Same shape as the access-interstitial exit below: one honest finding, no guesses.
-  const notInspectable = (detail: string, evidence: string, ssl: PulseScanCheckInput["status"], sslDetail: string) => {
+  // `outcome`: FAIL when what we saw IS a defect a visitor hits too (bad certificate, no
+  // HTTPS, a 404/5xx homepage, a redirect loop, a dead server); INCONCLUSIVE when Pulse
+  // simply was not let in or was pointed at a file (sign-in, bot protection, rate limit,
+  // timeout). The first is a launch blocker; the second says nothing about the product, and
+  // reporting it as BLOCKED told OpenAI, ChatGPT and G2 their sites were broken.
+  const notInspectable = (detail: string, evidence: string, ssl: PulseScanCheckInput["status"], sslDetail: string, outcome: "FAIL" | "INCONCLUSIVE" = "FAIL") => {
     const out: PulseScanCheckInput[] = [
       { category: CATEGORIES.INFRASTRUCTURE, checkKey: "ssl_valid", label: "HTTPS / SSL certificate", status: ssl, detail: sslDetail, evidence: httpsUrl },
       {
         category: CATEGORIES.INFRASTRUCTURE,
         checkKey: "target_content_accessible",
         label: "Target content is inspectable",
-        status: "FAIL",
+        status: outcome,
         confidence: "HIGH",
         detail: `${detail} Pulse stopped before running any other check, because findings about content it could not read would be false.`,
         evidence,
@@ -2447,16 +2454,23 @@ export async function runUrlChecks(
       httpsUrl,
       failure.kind === "tls" ? "FAIL" : "INCONCLUSIVE",
       failure.kind === "tls" ? failure.detail : "Not established — the site could not be reached, so its certificate could not be checked.",
+      failure.kind === "timeout" || failure.kind === "other" ? "INCONCLUSIVE" : "FAIL",
     );
   }
 
   // An error status: the page Pulse would grade is the error page, not the product.
   if (pageResult.status >= 400) {
+    const status = pageResult.status;
+    const rateLimited = status === 429 || pageResult.headers["x-ratelimit-remaining"] === "0" || Boolean(pageResult.headers["retry-after"]);
+    const shut = status === 401 || status === 403 || rateLimited;
     return notInspectable(
-      `The URL returned HTTP ${pageResult.status}, so there is no page to assess.${pageResult.status === 401 || pageResult.status === 403 ? " It looks protected (sign-in, IP allow-list or bot protection) — scan a public URL, or the source repository." : " Check the address, or scan the site's homepage."}`,
-      `${pageResult.finalUrl || httpsUrl} → ${pageResult.status}`,
+      rateLimited
+        ? `The server is rate-limiting requests from Pulse right now (HTTP ${status}). That is a limit on how often it may be asked, not a fact about the site — re-scan in a few minutes.`
+        : `The URL returned HTTP ${status}, so there is no page to assess.${status === 401 || status === 403 ? " It looks protected (sign-in, IP allow-list or bot protection) — scan a public URL, or the source repository." : " Check the address, or scan the site's homepage."}`,
+      `${pageResult.finalUrl || httpsUrl} → ${status}`,
       "PASS",
       "HTTPS connection succeeded.",
+      shut ? "INCONCLUSIVE" : "FAIL",
     );
   }
 
@@ -2468,6 +2482,7 @@ export async function runUrlChecks(
       `${pageResult.finalUrl || httpsUrl} (${pageContentType})`,
       "PASS",
       "HTTPS connection succeeded.",
+      "INCONCLUSIVE",
     );
   }
 
@@ -2585,9 +2600,14 @@ export async function runUrlChecks(
     const paymentsApplicable = isCategoryApplicable(platform, CATEGORIES.PAYMENTS, surfaceKind);
     const repoPaymentSignal = paymentsApplicable &&
       (contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false);
-    const liveStripeWebhookStatus = paymentsApplicable && !catchAll200
-      ? await headRequest(`${baseUrl}/api/webhooks/stripe`)
-      : 0;
+    // GET, not HEAD, so the body can be read: vercel.com answers this path with its
+    // HTML homepage (200) while a random path 404s, which read as a live webhook and
+    // switched the whole payments family on for a site that takes no payments.
+    const stripeProbe = paymentsApplicable && !catchAll200
+      ? await fetchSnippet(`${baseUrl}/api/webhooks/stripe`, 4000, 4096)
+      : null;
+    const stripeIsHtml = !!stripeProbe && (/text\/html|xhtml/i.test(stripeProbe.contentType) || /^\s*(<!doctype html|<html)/i.test(stripeProbe.body));
+    const liveStripeWebhookStatus = stripeProbe && !(stripeIsHtml && stripeProbe.status >= 200 && stripeProbe.status < 300) ? stripeProbe.status : 0;
     // ⚠️ A 404 is not a live route. This read `status > 0 && status < 500`, so a host
     // answering 404 for a path it does not have — example.com, measured — was reported as
     // running a Stripe integration, and the payments family switched on for a static page.
@@ -2616,30 +2636,29 @@ export async function runUrlChecks(
     // Build a "does this HTML route exist?" check honestly. A real page and a
     // catch-all soft-200 are both HTML, so on a catch-all host presence can't be
     // determined — report SKIPPED rather than a false PASS (or a false WARN).
+    // A page check speaks only when the probe read a page that names itself (see
+    // classifyTopicPage). "Could not tell" is INCONCLUSIVE, never a guess either way.
     const routePageCheck = (
       category: CheckCategory,
       checkKey: string,
       label: string,
-      present: boolean,
+      state: PageProbeState | boolean,
       presentDetail: string,
       absentDetail: string,
-    ): PulseScanCheckInput =>
-      catchAll200
-        ? {
-            category,
-            checkKey,
-            label,
-            status: "SKIPPED",
-            detail: "Host returns 200 for unknown paths (catch-all routing), so this page's presence can't be probed reliably.",
-          }
-        : {
-            category,
-            checkKey,
-            label,
-            status: present ? "PASS" : "WARN",
-            detail: present ? presentDetail : absentDetail,
-            evidence: present ? "Status: 200" : "Not found",
-          };
+    ): PulseScanCheckInput => {
+      const st: PageProbeState = state === true ? "present" : state === false ? "absent" : state;
+      if (st === "present") return { category, checkKey, label, status: "PASS", detail: presentDetail, evidence: "Page found and names itself" };
+      if (st === "absent") return { category, checkKey, label, status: "WARN", detail: absentDetail, evidence: "Not found" };
+      return {
+        category, checkKey, label, status: "INCONCLUSIVE",
+        detail: st === "failed"
+          ? "The page probe did not complete, so whether this page exists could not be established."
+          : "The path answered, but with a page that does not name itself as this — often the site's homepage served for any path — so whether this page exists could not be established.",
+      };
+    };
+    const homeTitle = pageTitle(pageResult.html) || null;
+    const pageAt = (path: string, topic: RegExp): Promise<PageProbeState> =>
+      fetchSnippet(`${baseUrl}${path}`, 6000, 48_000).then((p) => classifyTopicPage(p, path, topic, homeTitle));
 
     const redir = await inspectRedirect(httpUrl);
     const is3xx = redir.status >= 300 && redir.status < 400;
@@ -3072,33 +3091,33 @@ export async function runUrlChecks(
 
     // Missing Pages — batch HEAD requests in parallel
     const missingPagesApplicable = isCategoryApplicable(platform, CATEGORIES.MISSING_PAGES, surfaceKind);
-    const [aboutStatus, contactStatus, faqStatus, statusPageStatus, changelogStatus] = missingPagesApplicable
+    const [aboutPage, contactPage, faqPage, statusPagePage, changelogPage] = missingPagesApplicable
       ? await Promise.all([
-          headRequest(`${baseUrl}/about`),
-          headRequest(`${baseUrl}/contact`),
-          headRequest(`${baseUrl}/faq`),
-          headRequest(`${baseUrl}/status`),
-          headRequest(`${baseUrl}/changelog`),
+          pageAt("/about", /\babout\b|our (story|team|company)|who we are|\bteam\b/i),
+          pageAt("/contact", /contact|get in touch|talk to (us|sales)/i),
+          pageAt("/faq", /\bfaqs?\b|frequently asked|help cent(er|re)|questions/i),
+          pageAt("/status", /\bstatus\b|uptime|incident|system health/i),
+          pageAt("/changelog", /change ?log|release notes|what'?s new|updates/i),
         ])
-      : [0, 0, 0, 0, 0];
+      : Array<PageProbeState>(5).fill("absent");
 
     checks.push(routePageCheck(
       "Missing Pages", "about_page", "About / Team page",
-      aboutStatus === 200,
+      aboutPage,
       "/about page found.",
       "No /about page — builds team credibility and brand trust with prospects.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "contact_page", "Contact page",
-      contactStatus === 200,
+      contactPage,
       "/contact page found.",
       "No /contact page — users need a way to reach you for support and sales inquiries.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "faq_page", "FAQ / Help page",
-      faqStatus === 200,
+      faqPage,
       "/faq page found.",
       "No /faq page — reduces support burden and improves onboarding.",
     ));
@@ -3107,7 +3126,7 @@ export async function runUrlChecks(
     // reliable in-page signal); the route probe only counts off catch-all.
     const hasStatusSignals = htmlLower.includes("statuspage") || htmlLower.includes("status.io") ||
       htmlLower.includes("betteruptime") || htmlLower.includes("uptimerobot");
-    const hasStatusPage = hasStatusSignals || (!catchAll200 && statusPageStatus === 200);
+    const hasStatusPage = hasStatusSignals || statusPagePage === "present";
     checks.push({
       category: CATEGORIES.MISSING_PAGES,
       checkKey: "status_page",
@@ -3120,7 +3139,7 @@ export async function runUrlChecks(
 
     checks.push(routePageCheck(
       "Missing Pages", "changelog", "Changelog / What's new",
-      changelogStatus === 200,
+      changelogPage,
       "/changelog page found.",
       "No changelog — users want to know what's shipping; important for retention and credibility.",
     ));
@@ -3856,26 +3875,29 @@ export async function runUrlChecks(
     });
 
     const legalApplicable = isCategoryApplicable(platform, CATEGORIES.LEGAL, surfaceKind);
-    const [accessibilityStatus, dpaStatus, cookiePolicyStatus] = legalApplicable
+    const ACCESSIBILITY_TOPIC = /accessibilit/i;
+    const DPA_TOPIC = /\bdpa\b|data processing (agreement|addendum)/i;
+    const COOKIE_TOPIC = /cookie/i;
+    const [accessibilityPage, dpaPage, cookiePolicyPage] = legalApplicable
       ? await Promise.all([
-          headRequest(`${baseUrl}/accessibility`),
-          headRequest(`${baseUrl}/dpa`),
-          headRequest(`${baseUrl}/cookie-policy`),
+          pageAt("/accessibility", ACCESSIBILITY_TOPIC),
+          pageAt("/dpa", DPA_TOPIC),
+          pageAt("/cookie-policy", COOKIE_TOPIC),
         ])
-      : [0, 0, 0];
-    const accessibilityAltStatus = legalApplicable && accessibilityStatus !== 200
-      ? await headRequest(`${baseUrl}/accessibility-statement`) : 200;
-    const dpaAltStatus = legalApplicable && dpaStatus !== 200
-      ? await headRequest(`${baseUrl}/data-processing-agreement`) : 200;
-    const cookiePolicyAltStatus = legalApplicable && cookiePolicyStatus !== 200
-      ? await headRequest(`${baseUrl}/cookies`) : 200;
+      : Array<PageProbeState>(3).fill("absent");
+    const accessibilityAlt: PageProbeState = legalApplicable && accessibilityPage !== "present"
+      ? await pageAt("/accessibility-statement", ACCESSIBILITY_TOPIC) : "absent";
+    const dpaAlt: PageProbeState = legalApplicable && dpaPage !== "present"
+      ? await pageAt("/data-processing-agreement", DPA_TOPIC) : "absent";
+    const cookiePolicyAlt: PageProbeState = legalApplicable && cookiePolicyPage !== "present"
+      ? await pageAt("/cookies", COOKIE_TOPIC) : "absent";
 
     // A link on the page outranks a HEAD on a guessed path: it is evidence we already
     // hold, and it costs nothing. See linksPathContaining for the www.gov.uk case.
     const linksAccessibility = linksPathContaining(pageResult.html, ["accessibility"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "accessibility_statement", "Accessibility statement",
-      linksAccessibility || accessibilityStatus === 200 || accessibilityAltStatus === 200,
+      linksAccessibility ? "present" : combinePageStates(accessibilityPage, accessibilityAlt),
       "Accessibility statement page found — EU Web Accessibility Directive compliance documented.",
       "No accessibility statement — required by EU Web Accessibility Directive; recommended for all public-facing SaaS.",
     ));
@@ -3893,7 +3915,7 @@ export async function runUrlChecks(
 
     checks.push(routePageCheck(
       "Legal & Compliance", "dpa_available", "Data Processing Agreement (GDPR Art. 28)",
-      dpaStatus === 200 || dpaAltStatus === 200,
+      combinePageStates(dpaPage, dpaAlt),
       "DPA page found — GDPR Art. 28 processor obligations documented.",
       "No DPA available — required for B2B enterprise customers under GDPR; absence blocks EU procurement.",
     ));
@@ -3923,7 +3945,7 @@ export async function runUrlChecks(
     const linksCookiePolicy = linksPathContaining(pageResult.html, ["cookie-policy", "cookiepolicy", "cookies", "cookie"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page",
-      linksCookiePolicy || cookiePolicyStatus === 200 || cookiePolicyAltStatus === 200,
+      linksCookiePolicy ? "present" : combinePageStates(cookiePolicyPage, cookiePolicyAlt),
       "Dedicated cookie policy page found — GDPR ePrivacy Directive requirement met.",
       "No dedicated cookie policy — GDPR and ePrivacy Directive require transparent disclosure of all cookies used.",
     ));
@@ -3940,54 +3962,64 @@ export async function runUrlChecks(
     });
 
     // ─── Additional Missing Pages (batch) ─────────────────────────────────────
-    const [blogStatus, careersStatus, pressStatus, docsStatus, integrationsStatus, mediaKitStatus] = missingPagesApplicable
+    const BLOG_TOPIC = /\bblog\b|resources|articles|insights|news/i;
+    const CAREERS_TOPIC = /careers?|jobs?|hiring|join (us|our team)|vacanc/i;
+    const PRESS_TOPIC = /\bpress\b|media|newsroom|news/i;
+    const DOCS_TOPIC = /\bdocs?\b|documentation|developer|guide|reference/i;
+    const INTEGRATIONS_TOPIC = /integrations?|partners?|apps|marketplace|ecosystem/i;
+    const MEDIA_KIT_TOPIC = /media kit|press kit|brand|logos?/i;
+    const [blogPage, careersPage, pressPage, docsPage, integrationsPage, mediaKitPage] = missingPagesApplicable
       ? await Promise.all([
-          headRequest(`${baseUrl}/blog`),
-          headRequest(`${baseUrl}/careers`),
-          headRequest(`${baseUrl}/press`),
-          headRequest(`${baseUrl}/docs`),
-          headRequest(`${baseUrl}/integrations`),
-          headRequest(`${baseUrl}/media-kit`),
+          pageAt("/blog", BLOG_TOPIC),
+          pageAt("/careers", CAREERS_TOPIC),
+          pageAt("/press", PRESS_TOPIC),
+          pageAt("/docs", DOCS_TOPIC),
+          pageAt("/integrations", INTEGRATIONS_TOPIC),
+          pageAt("/media-kit", MEDIA_KIT_TOPIC),
         ])
-      : [0, 0, 0, 0, 0, 0];
-    const blogAltStatus = missingPagesApplicable && blogStatus !== 200 ? await headRequest(`${baseUrl}/resources`) : 200;
-    const careersAltStatus = missingPagesApplicable && careersStatus !== 200 ? await headRequest(`${baseUrl}/jobs`) : 200;
-    const pressAltStatus = missingPagesApplicable && pressStatus !== 200 ? await headRequest(`${baseUrl}/media`) : 200;
-    const docsAltStatus = missingPagesApplicable && docsStatus !== 200 ? await headRequest(`${baseUrl}/documentation`) : 200;
-    const integrationsAltStatus = missingPagesApplicable && integrationsStatus !== 200 ? await headRequest(`${baseUrl}/partners`) : 200;
-    const brandKitStatus = missingPagesApplicable && mediaKitStatus !== 200 ? await headRequest(`${baseUrl}/brand`) : 200;
+      : Array<PageProbeState>(6).fill("absent");
+    const altIfNeeded = (first: PageProbeState, path: string, topic: RegExp): Promise<PageProbeState> =>
+      missingPagesApplicable && first !== "present" ? pageAt(path, topic) : Promise.resolve<PageProbeState>("absent");
+    const [blogAlt, careersAlt, pressAlt, docsAlt, integrationsAlt, brandKitAlt] = await Promise.all([
+      altIfNeeded(blogPage, "/resources", BLOG_TOPIC),
+      altIfNeeded(careersPage, "/jobs", CAREERS_TOPIC),
+      altIfNeeded(pressPage, "/media", PRESS_TOPIC),
+      altIfNeeded(docsPage, "/documentation", DOCS_TOPIC),
+      altIfNeeded(integrationsPage, "/partners", INTEGRATIONS_TOPIC),
+      altIfNeeded(mediaKitPage, "/brand", MEDIA_KIT_TOPIC),
+    ]);
 
     checks.push(routePageCheck(
       "Missing Pages", "blog_resources", "Blog / resources hub",
-      blogStatus === 200 || blogAltStatus === 200,
+      combinePageStates(blogPage, blogAlt),
       "Blog or resources page found — content marketing enabled.",
       "No blog or resources section — content marketing drives 3× more leads than outbound for SaaS.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "careers_page", "Careers / jobs page",
-      careersStatus === 200 || careersAltStatus === 200,
+      combinePageStates(careersPage, careersAlt),
       "Careers page found.",
       "No careers page — even a simple 'we're hiring' page signals momentum and attracts talent.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "press_media", "Press / media page",
-      pressStatus === 200 || pressAltStatus === 200,
+      combinePageStates(pressPage, pressAlt),
       "Press or media page found.",
       "No press page — journalists need a media kit (logo, screenshots, founder bio) to write about you.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "documentation", "Documentation / developer docs",
-      docsStatus === 200 || docsAltStatus === 200,
+      combinePageStates(docsPage, docsAlt),
       "Documentation page found.",
       "No docs page — users and developers need documentation to onboard and integrate successfully.",
     ));
 
     checks.push(routePageCheck(
       "Missing Pages", "integrations_page", "Integrations / partners page",
-      integrationsStatus === 200 || integrationsAltStatus === 200,
+      combinePageStates(integrationsPage, integrationsAlt),
       "Integrations or partners page found.",
       "No integrations page — listing integrations (Zapier, Slack, Make.com) is a top buying signal for SaaS.",
     ));
@@ -4057,34 +4089,38 @@ export async function runUrlChecks(
 
     const saasApplicable = isCategoryApplicable(platform, CATEGORIES.SAAS, surfaceKind);
     const trustApplicable = isCategoryApplicable(platform, CATEGORIES.TRUST_BRAND, surfaceKind);
-    const [apiStatus, affiliateStatus, securityPageStatus] = saasApplicable || trustApplicable
-      ? await Promise.all([
-          saasApplicable ? headRequest(`${baseUrl}/api`) : Promise.resolve(0),
-          saasApplicable ? headRequest(`${baseUrl}/affiliate`) : Promise.resolve(0),
-          trustApplicable ? headRequest(`${baseUrl}/security`) : Promise.resolve(0),
-        ])
-      : [0, 0, 0];
-    const apiAltStatus = saasApplicable && apiStatus !== 200 ? await headRequest(`${baseUrl}/api-docs`) : 200;
-    const affiliateAltStatus = saasApplicable && affiliateStatus !== 200 ? await headRequest(`${baseUrl}/referral`) : 200;
-    const trustPageStatus = trustApplicable && securityPageStatus !== 200 ? await headRequest(`${baseUrl}/trust`) : 200;
+    const API_TOPIC = /\bapi\b|developer|reference/i;
+    const AFFILIATE_TOPIC = /affiliate|referral|refer a friend|partner program/i;
+    const SECURITY_TOPIC = /security|trust|compliance/i;
+    const none = Promise.resolve<PageProbeState>("absent");
+    const [apiPage, affiliatePage, securityPage] = await Promise.all([
+      saasApplicable ? pageAt("/api", API_TOPIC) : none,
+      saasApplicable ? pageAt("/affiliate", AFFILIATE_TOPIC) : none,
+      trustApplicable ? pageAt("/security", SECURITY_TOPIC) : none,
+    ]);
+    const [apiAlt, affiliateAlt, trustAlt] = await Promise.all([
+      saasApplicable && apiPage !== "present" ? pageAt("/api-docs", API_TOPIC) : none,
+      saasApplicable && affiliatePage !== "present" ? pageAt("/referral", AFFILIATE_TOPIC) : none,
+      trustApplicable && securityPage !== "present" ? pageAt("/trust", SECURITY_TOPIC) : none,
+    ]);
 
     checks.push(routePageCheck(
       "SaaS Readiness", "api_availability", "Public API / developer access",
-      apiStatus === 200 || apiAltStatus === 200,
+      combinePageStates(apiPage, apiAlt),
       "API endpoint or documentation found.",
       "No public API detected — an API unlocks integrations, Zapier/Make.com workflows, and developer-led growth.",
     ));
 
     checks.push(routePageCheck(
       "SaaS Readiness", "affiliate_program", "Affiliate / referral program",
-      affiliateStatus === 200 || affiliateAltStatus === 200,
+      combinePageStates(affiliatePage, affiliateAlt),
       "Affiliate or referral program page found — word-of-mouth growth enabled.",
       "No affiliate or referral program — referral programs can generate 15–30% of SaaS revenue.",
     ));
 
     checks.push(routePageCheck(
       "SaaS Readiness", "security_trust_page", "Security / trust page",
-      securityPageStatus === 200 || trustPageStatus === 200,
+      combinePageStates(securityPage, trustAlt),
       "Security or trust page found — enterprise procurement friction reduced.",
       "No security page — enterprise buyers complete security questionnaires; a /security page pre-empts them.",
     ));
@@ -4369,7 +4405,7 @@ export async function runUrlChecks(
 
     checks.push(routePageCheck(
       "Trust & Brand", "media_kit", "Media kit / brand assets",
-      mediaKitStatus === 200 || brandKitStatus === 200,
+      combinePageStates(mediaKitPage, brandKitAlt),
       "Media kit or brand assets page found — journalists and partners have correct branding.",
       "No media kit — journalists and partners need logo files and brand guidelines at /media-kit.",
     ));
@@ -4502,108 +4538,120 @@ export async function runUrlChecks(
     }
 
     // ─── A2: Sensitive Path Exposure ──────────────────────────────────────────
-    async function checkPaths(baseUrl: string, paths: string[], timeoutMs = 3000): Promise<number[]> {
-      const results = await Promise.allSettled(
-        paths.map((p) =>
-          fetchScannableUrl(`${baseUrl}${p}`, {
-            method: "HEAD",
-            redirect: "follow",
-            signal: AbortSignal.timeout(timeoutMs),
-            headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-          }).then((r) => r.status).catch(() => 0),
-        ),
-      );
-      return results.map((r) => (r.status === "fulfilled" ? r.value : 0));
+    // A 200 is not exposure. vercel.com answers /.git/config, /phpinfo.php and
+    // /backup.sql with its own 2.6 MB homepage; cbc.ca answers /phpinfo.php with its
+    // menu; github.com/telescope is a user called "telescope". Each of those was told it
+    // was leaking a file it does not have. So each probe reads the start of the body and
+    // only calls it exposed when it IS the thing — the tool's own markup, a real git
+    // config, real SQL. A 200 that is something else is the site's ordinary page.
+    const readPath = (baseUrl: string, path: string, timeoutMs = 4000) =>
+      fetchSnippet(`${baseUrl}${path}`, timeoutMs);
+    async function checkPaths(baseUrl: string, paths: string[], looksExposed: (p: PathProbe, path: string) => boolean): Promise<{ statuses: number[]; exposedPaths: string[] }> {
+      const results = await Promise.all(paths.map((path) => readPath(baseUrl, path)));
+      return {
+        statuses: results.map((r) => r.status),
+        exposedPaths: paths.filter((path, i) => results[i].status === 200 && looksExposed(results[i], path)),
+      };
     }
 
-    const [adminStatuses, phpInfoStatuses, gitConfigStatus, debugStatuses, backupStatuses] = await Promise.all([
-      checkPaths(httpsUrl, ["/admin", "/wp-admin"]),
-      checkPaths(httpsUrl, ["/phpinfo.php", "/info.php"]),
-      checkPaths(httpsUrl, ["/.git/config"]).then((s) => s[0]),
-      checkPaths(httpsUrl, ["/telescope", "/__clockwork", "/horizon", "/_debug"]),
-      checkPaths(httpsUrl, ["/backup.sql", "/dump.sql", "/.env.bak", "/db.sql"]),
+    const isHtml = (p: PathProbe) => /text\/html|application\/xhtml/i.test(p.contentType) || /^\s*(<!doctype html|<html)/i.test(p.body);
+    const [adminProbe, phpInfoProbe, gitConfigProbe, debugProbe, backupProbe] = await Promise.all([
+      checkPaths(httpsUrl, ["/admin", "/wp-admin"], (p) => looksLikeAdminLogin(p.body)),
+      checkPaths(httpsUrl, ["/phpinfo.php", "/info.php"], (p) => looksLikePhpInfo(p.body)),
+      checkPaths(httpsUrl, ["/.git/config"], (p) => !isHtml(p) && looksLikeGitConfig(p.body)),
+      checkPaths(httpsUrl, ["/telescope", "/__clockwork", "/horizon", "/_debug"], (p, path) => looksLikeDebugTool(path, p)),
+      checkPaths(httpsUrl, ["/backup.sql", "/dump.sql", "/.env.bak", "/db.sql"], (p, path) => !isHtml(p) && (path.endsWith(".env.bak") ? looksLikeEnvFile(p.body) : looksLikeSqlDump(p.body))),
     ]);
+    const adminStatuses = adminProbe.statuses;
+    const phpInfoStatuses = phpInfoProbe.statuses;
+    const gitConfigStatus = gitConfigProbe.statuses[0];
+    const debugStatuses = debugProbe.statuses;
+    const backupStatuses = backupProbe.statuses;
 
-    // These are path-existence probes (HEAD → status). On a catch-all host every
-    // path returns 200, so a 200 here proves nothing — gate the "exposed" verdict
-    // on the baseline and say so, rather than flagging phantom files on an SPA.
-    const catchAllNote = catchAll200
-      ? " (Host returns 200 for any path — catch-all routing — so path-based probes are inconclusive; nothing actually exposed by status.)"
-      : "";
-
+    // A probe that failed outright leaves exposure open. A probe that answered — with
+    // the real file, or with an ordinary page — settled it, catch-all host or not,
+    // because the body was read rather than the status trusted.
     const absenceStatus = (
       exposed: boolean,
       statuses: number[],
       exposedStatus: "WARN" | "FAIL",
     ): "PASS" | "WARN" | "FAIL" | "INCONCLUSIVE" => {
       if (exposed) return exposedStatus;
-      if (catchAll200 || statuses.some((status) => status === 0)) return "INCONCLUSIVE";
+      if (statuses.some((status) => status === 0)) return "INCONCLUSIVE";
       return "PASS";
     };
+    const softRouteNote = (statuses: number[]) =>
+      statuses.some((s) => s === 200) ? " (The path answered with an ordinary page, not the file itself.)" : "";
+    const listed = (paths: string[]) => paths.join(", ");
 
-    const adminExposed = !catchAll200 && adminStatuses.some((s) => s === 200);
+    const adminExposed = adminProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_admin",
       label: "Admin panel not publicly accessible",
       status: absenceStatus(adminExposed, adminStatuses, "WARN"),
       detail: adminExposed
-        ? "An admin path (/admin or /wp-admin) returned HTTP 200 — verify it requires authentication. Exposed admin panels are prime targets for credential stuffing attacks."
+        ? `An admin sign-in page is publicly reachable at ${listed(adminProbe.exposedPaths)} — verify it is rate-limited and protected by strong authentication. Exposed admin panels are prime targets for credential stuffing.`
         : adminStatuses.some((status) => status === 0)
           ? "One or more admin-path probes failed, so public exposure could not be ruled out."
-          : "Admin paths not freely accessible." + catchAllNote,
+          : "No admin sign-in page found at /admin or /wp-admin." + softRouteNote(adminStatuses),
+      evidence: adminExposed ? `GET ${listed(adminProbe.exposedPaths)} → admin sign-in markup` : undefined,
     });
 
-    const phpInfoExposed = !catchAll200 && phpInfoStatuses.some((s) => s === 200);
+    const phpInfoExposed = phpInfoProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_phpinfo",
       label: "PHP info page not exposed",
       status: absenceStatus(phpInfoExposed, phpInfoStatuses, "FAIL"),
       detail: phpInfoExposed
-        ? "phpinfo.php or info.php returned HTTP 200 — this file exposes PHP version, server paths, loaded extensions, and environment variables to attackers."
+        ? `${listed(phpInfoProbe.exposedPaths)} serves a phpinfo() page — it exposes the PHP version, server paths, loaded extensions and environment variables.`
         : phpInfoStatuses.some((status) => status === 0)
           ? "One or more PHP-info probes failed, so exposure could not be ruled out."
-          : "No exposed PHP info pages detected." + catchAllNote,
+          : "No phpinfo() page at /phpinfo.php or /info.php." + softRouteNote(phpInfoStatuses),
+      evidence: phpInfoExposed ? `GET ${listed(phpInfoProbe.exposedPaths)} → phpinfo() output` : undefined,
     });
 
-    const gitConfigExposed = !catchAll200 && gitConfigStatus === 200;
+    const gitConfigExposed = gitConfigProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_git_config",
       label: "Git config not publicly accessible",
       status: absenceStatus(gitConfigExposed, [gitConfigStatus], "FAIL"),
       detail: gitConfigExposed
-        ? "/.git/config is publicly accessible — this reveals repository URLs, credentials, and project structure. Remove or block access immediately."
+        ? "/.git/config is publicly readable — it reveals repository URLs and sometimes credentials, and usually means the whole .git directory can be downloaded. Block /.git at the server."
         : gitConfigStatus === 0
           ? "The Git-config probe failed, so exposure could not be ruled out."
-          : "Git config not publicly accessible." + catchAllNote,
+          : "/.git/config is not publicly readable." + softRouteNote([gitConfigStatus]),
+      evidence: gitConfigExposed ? "GET /.git/config → [core] section" : undefined,
     });
 
-    const debugExposed = !catchAll200 && debugStatuses.some((s) => s === 200);
+    const debugExposed = debugProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_debug_endpoints",
       label: "Debug/monitoring endpoints not public",
       status: absenceStatus(debugExposed, debugStatuses, "WARN"),
       detail: debugExposed
-        ? "A debug endpoint (/telescope, /__clockwork, /horizon, or /_debug) returned HTTP 200 — these expose internal request logs, jobs, and performance data."
+        ? `A debug tool is publicly reachable at ${listed(debugProbe.exposedPaths)} — these expose internal request logs, jobs and performance data.`
         : debugStatuses.some((status) => status === 0)
           ? "One or more debug-endpoint probes failed, so exposure could not be ruled out."
-          : "Debug and monitoring endpoints are not publicly accessible." + catchAllNote,
+          : "No debug or monitoring tool (Telescope, Clockwork, Horizon, a debug profiler) is publicly reachable." + softRouteNote(debugStatuses),
+      evidence: debugExposed ? `GET ${listed(debugProbe.exposedPaths)} → debug-tool markup` : undefined,
     });
 
-    const backupExposed = !catchAll200 && backupStatuses.some((s) => s === 200);
+    const backupExposed = backupProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_backup",
       label: "Database backup files not exposed",
       status: absenceStatus(backupExposed, backupStatuses, "FAIL"),
       detail: backupExposed
-        ? "A database backup file (backup.sql, dump.sql, .env.bak, or db.sql) is publicly downloadable — this is a critical data breach risk."
+        ? `${listed(backupProbe.exposedPaths)} is publicly downloadable and contains ${backupProbe.exposedPaths.some((p) => p.endsWith(".env.bak")) ? "environment variables" : "SQL"} — a critical data-breach risk.`
         : backupStatuses.some((status) => status === 0)
           ? "One or more backup-file probes failed, so exposure could not be ruled out."
-          : "No exposed database backup files detected." + catchAllNote,
+          : "No database backup or .env backup is publicly downloadable." + softRouteNote(backupStatuses),
+      evidence: backupExposed ? `GET ${listed(backupProbe.exposedPaths)} → file content` : undefined,
     });
 
     // ─── A3: HTTP Protocol & Headers Quality ──────────────────────────────────
@@ -4908,35 +4956,32 @@ export async function runUrlChecks(
     });
 
     const apiQualityApplicable = isCategoryApplicable(platform, CATEGORIES.API_QUALITY, surfaceKind);
-    const openApiStatuses = apiQualityApplicable
-      ? await checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"])
-      : [];
+    const openApiProbe = apiQualityApplicable
+      ? await checkPaths(httpsUrl, ["/openapi.json", "/openapi.yaml", "/swagger.json", "/api-docs"], (p) => looksLikeOpenApi(p.body))
+      : { statuses: [] as number[], exposedPaths: [] as string[] };
     // A bare 200 proves nothing on a catch-all host (SPA / Vercel / Next), which
     // 200s every path with the app shell — the same reason the exposed-file probes
     // at :2141 consult catchAll200. Without this guard the status-only probe emitted
     // a false PASS, and because the content-verified `openapi_spec_served` in
     // api-quality.ts correctly WARNed on the same host, one report asserted both
     // that a spec exists and that it does not.
-    const hasOpenApiEndpoint = !catchAll200 && openApiStatuses.some((s) => s === 200);
+    // The body is now read, so a catch-all host is no longer a reason to doubt a hit.
+    const hasOpenApiEndpoint = openApiProbe.exposedPaths.length > 0;
     checks.push({
       category: CATEGORIES.API_QUALITY,
       checkKey: "openapi_endpoint",
       label: "OpenAPI spec endpoint",
       status: hasOpenApiEndpoint ? "PASS" : "WARN",
       detail: hasOpenApiEndpoint
-        ? "OpenAPI/Swagger spec endpoint found — machine-readable API spec enables auto-generated SDKs and Postman imports."
-        : catchAll200
-          ? "Could not establish an OpenAPI spec endpoint: this host returns 200 for paths that cannot exist, so a 200 on /openapi.json is not evidence a spec is served. Serve the spec with a JSON content type to make it verifiable."
-          : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
+        ? `OpenAPI/Swagger spec served at ${openApiProbe.exposedPaths.join(", ")} — machine-readable API spec enables auto-generated SDKs and Postman imports.`
+        : "No OpenAPI spec endpoint found. A machine-readable API spec enables auto-generated SDKs, Postman imports, and reduces integration friction.",
     });
 
     const hasGraphqlInHtml = /\bgraphql\b/i.test(pageResult.html);
-    const graphqlPathStatus = apiQualityApplicable
-      ? await checkPaths(httpsUrl, ["/graphql"]).then((s) => s[0])
-      : 0;
+    const graphqlProbe = apiQualityApplicable ? await fetchSnippet(`${httpsUrl}/graphql`) : null;
     // Same catch-all caveat: only trust the /graphql 200 when the host does not
     // 200 everything. An in-HTML mention is independent evidence and still counts.
-    const hasGraphql = hasGraphqlInHtml || (!catchAll200 && graphqlPathStatus === 200);
+    const hasGraphql = hasGraphqlInHtml || (graphqlProbe !== null && looksLikeGraphqlEndpoint(graphqlProbe));
     checks.push({
       category: CATEGORIES.API_QUALITY,
       checkKey: "graphql_signal",

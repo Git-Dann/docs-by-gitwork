@@ -182,8 +182,13 @@ export function computeScoreBreakdown(checks: PulseScanCheckInput[]): ScoreBreak
     0,
   );
   const rawScore = categoryPossible === 0 ? 0 : Math.round((categoryEarned / categoryPossible) * 100);
+  // Nothing about the subject was read: a site Pulse could not open, or a repository it
+  // could not read (no access, missing, or GitHub's rate limit). Any score from the few
+  // metadata checks that still ran would be a confident number about nothing — a
+  // rate-limited repo scored 82 before this. Same cap, same reason, for both.
   const targetContentBlocked = checks.some(
-    (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
+    (check) => (check.checkKey === "target_content_accessible" || check.checkKey === "repo_accessible")
+      && (check.status === "FAIL" || check.status === "INCONCLUSIVE"),
   );
 
   const knownAndUnknown = observedPossible + unknownWeight;
@@ -197,7 +202,7 @@ export function computeScoreBreakdown(checks: PulseScanCheckInput[]): ScoreBreak
     totalWeight: observedPossible,
     earnedWeight: observedEarned,
     byCategory: [...byCategoryAcc.values()].sort((a, b) => b.possible - a.possible),
-    capsApplied: targetContentBlocked ? [{ cap: 0, reason: "Target content was not inspectable" }] : [],
+    capsApplied: targetContentBlocked ? [{ cap: 0, reason: checks.some((c) => c.checkKey === "repo_accessible" && c.status === "FAIL") ? "The repository could not be read" : "Target content was not inspectable" }] : [],
     scoreVersion: SCORE_VERSION,
     policyVersion: POLICY_VERSION,
     completeness,

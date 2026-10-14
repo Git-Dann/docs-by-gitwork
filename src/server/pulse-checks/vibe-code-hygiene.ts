@@ -5,6 +5,7 @@ import { headRequest, fetchWithTimeout } from "./_types";
 import { detectSpaContext } from "@/server/pulse-lite/spa-detect";
 import { evaluateBuilderChecks, probeBubbleDataApi, probeBubbleVersionTest } from "./builder-platforms";
 import { fetchBundleText } from "./vibe-security";
+import { fetchSnippet } from "./path-probe";
 
 const CATEGORY = CATEGORIES.VIBE_HYGIENE;
 
@@ -328,9 +329,7 @@ export async function runVibeCodeHygieneChecks(
               return { status: res.status, body: await res.json().catch(() => null) };
             },
           }),
-          probeBubbleVersionTest({ builder, origin }, {
-            fetchStatus: async (url) => (await fetchWithTimeout(url, { headers: { "User-Agent": "Gitwork-Pulse/1.0" } })).status,
-          }),
+          probeBubbleVersionTest({ builder, origin }, { fetchPage: (url) => fetchSnippet(url) }),
         ]);
         if (dataApi.status === "fulfilled") checks.push(...dataApi.value);
         if (versionTest.status === "fulfilled") checks.push(...versionTest.value);

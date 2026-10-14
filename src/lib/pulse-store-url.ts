@@ -192,8 +192,18 @@ export const PULSE_PLATFORM_LABEL: Record<string, string> = {
  */
 export function describeScanSubject(inputUrl: string | null | undefined, platform: string | null | undefined): string | null {
   const store = inputUrl ? detectStoreTarget(inputUrl) : null;
-  if (store) return `${STORE_PLATFORM_LABEL[store]} · ${STORE_NAME[store]} listing`;
+  if (store) return storeSubjectLabel(store, platform);
   return platform ? PULSE_PLATFORM_LABEL[platform.toUpperCase()] ?? null : null;
+}
+
+/**
+ * The subject of a store scan. apps.apple.com serves the Mac App Store too, so an
+ * Apple link whose listing is macOS-only runs as DESKTOP_APP and is called a Mac app —
+ * Xcode was being reported as "iOS app".
+ */
+export function storeSubjectLabel(store: StoreTarget, platform?: string | null): string {
+  if (store === "app_store" && (platform ?? "").toUpperCase() === "DESKTOP_APP") return "Mac app · Mac App Store listing";
+  return `${STORE_PLATFORM_LABEL[store]} · ${STORE_NAME[store]} listing`;
 }
 
 /** "an iOS app", "an Android app", "a Chrome extension". */

@@ -36,6 +36,8 @@ import {
   type ExtendedCheckContext,
   type PulseScanCheckInput,
 } from "./_types";
+import { looksLikeGraphqlEndpoint } from "./path-probe";
+import { graphqlEnvelope } from "./security-extended";
 
 /** An Origin we control the shape of, used to see whether the server reflects it. */
 const PROBE_ORIGIN = "https://pulse-probe.invalid";
@@ -211,9 +213,14 @@ function corsChecks(res: ProbeResult | null, preflight: ProbeResult | null): Pul
 function errorChecks(res: ProbeResult | null, ctx: ExtendedCheckContext): PulseScanCheckInput[] {
   if (!res) return [unprobed("api_verbose_errors", "Errors do not leak stack traces or internals", "error-response")];
 
+  const contentType = (res.headers["content-type"] ?? "").toLowerCase();
+  const isHtml = contentType.includes("html") || /^\s*(<!doctype html|<html)/i.test(res.body);
+
   // A catch-all host answers 200 with its app shell for any path, so this probe
-  // never reached an error handler and cannot say anything about one.
-  if (ctx.catchAll200 && res.status === 200) {
+  // never reached an error handler and cannot say anything about one. A 200 HTML
+  // page for a path that cannot exist is the same thing on a host whose random-path
+  // check happened to 404 (soft routing under /api/).
+  if ((ctx.catchAll200 || isHtml) && res.status === 200) {
     return [{
       category: CATEGORIES.SECURITY,
       checkKey: "api_verbose_errors",
@@ -239,9 +246,16 @@ function errorChecks(res: ProbeResult | null, ctx: ExtendedCheckContext): PulseS
     [/\b(SELECT|INSERT|UPDATE|DELETE)\s+.{0,40}\s+FROM\s+["\w.]+/i, "a raw SQL statement"],
   ] as const;
 
+  // In an HTML error page, an ordinary link (`href="/app/settings-page"`) or a
+  // sentence ("select a plan from…") is not a leak. So HTML is read as its visible
+  // text, stack traces are looked for there, and paths / SQL / connection strings
+  // only count inside a <pre>/<code> block or alongside a stack trace.
+  const text = isHtml ? errorPageText(body) : body;
+  const stackFound = STACK_SIGNALS.filter(([re]) => re.test(text)).map(([, what]) => what);
+  const pathScope = !isHtml ? body : stackFound.length > 0 ? text : preformattedText(body);
   const found = [
-    ...STACK_SIGNALS.filter(([re]) => re.test(body)).map(([, what]) => what),
-    ...PATH_SIGNALS.filter(([re]) => re.test(body)).map(([, what]) => what),
+    ...stackFound,
+    ...PATH_SIGNALS.filter(([re]) => re.test(pathScope)).map(([, what]) => what),
   ];
 
   return [{
@@ -260,6 +274,29 @@ function errorChecks(res: ProbeResult | null, ctx: ExtendedCheckContext): PulseS
         `detail in the body.`,
     evidence: found.length > 0 ? found.join(", ") : undefined,
   }];
+}
+
+/** Visible text of an HTML page: no scripts, styles or tag attributes (href/src). */
+export function errorPageText(html: string): string {
+  return decodeBasicEntities(
+    html
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  );
+}
+
+/** The text inside <pre>/<code> blocks — where a framework's error page prints a trace. */
+export function preformattedText(html: string): string {
+  const out: string[] = [];
+  const re = /<(pre|code)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) out.push(decodeBasicEntities(m[2].replace(/<[^>]+>/g, " ")));
+  return out.join("\n");
+}
+
+function decodeBasicEntities(s: string): string {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
 }
 
 // ── Response headers (OWASP API4 + API8:2023) ───────────────────────────────
@@ -340,10 +377,15 @@ function graphqlChecks(res: ProbeResult | null): PulseScanCheckInput[] {
   if (!res) return [unprobed("api_graphql_introspection", "GraphQL introspection is disabled in production", "GraphQL")];
 
   // No GraphQL endpoint is not a finding — most APIs are REST.
+  // Only a response in GraphQL's own shape counts — a GraphQL error envelope, an IDE
+  // page, or a graphql content type. A homepage that mentions "GraphQL" or a
+  // "playground" (served for any path on a soft-routed host) is not an endpoint.
+  const contentType = res.headers["content-type"] ?? "";
   const isGraphql =
     res.status < 500 &&
-    (/graphql/i.test(res.headers["content-type"] ?? "") ||
-      /"data"\s*:|"errors"\s*:\s*\[|GraphQL|graphiql|__schema/i.test(res.body));
+    (/graphql/i.test(contentType) ||
+      looksLikeGraphqlEndpoint({ status: res.status, contentType, body: res.body }) ||
+      (/json/i.test(contentType) && graphqlEnvelope(res.body) !== null));
   if (!isGraphql || res.status === 404) {
     return [{
       category: CATEGORIES.SECURITY,
@@ -356,7 +398,7 @@ function graphqlChecks(res: ProbeResult | null): PulseScanCheckInput[] {
 
   // A GET that returns a playground or an introspection-shaped response means the
   // schema is readable by anyone.
-  const exposesSchema = /__schema|graphiql|apollo.*sandbox|playground/i.test(res.body);
+  const exposesSchema = /"__schema"\s*:|graphiql|apollo.{0,20}(sandbox|studio)|graphql-playground/i.test(res.body);
   return [{
     category: CATEGORIES.SECURITY,
     checkKey: "api_graphql_introspection",

@@ -47,24 +47,26 @@ async function scan() {
 beforeEach(() => { route = () => new Error("unset"); });
 
 describe("a target Pulse cannot read produces ONE finding, not hundreds", () => {
-  const cases: Array<{ name: string; route: Route; detail: RegExp; ssl: string }> = [
+  const cases: Array<{ name: string; route: Route; detail: RegExp; ssl: string; tca?: string }> = [
     { name: "expired certificate", route: () => tlsError("CERT_HAS_EXPIRED"), detail: /certificate was rejected \(CERT_HAS_EXPIRED\)/, ssl: "FAIL" },
     { name: "self-signed certificate", route: () => tlsError("DEPTH_ZERO_SELF_SIGNED_CERT"), detail: /certificate was rejected/, ssl: "FAIL" },
-    { name: "timeout", route: () => Object.assign(new Error("aborted"), { name: "AbortError" }), detail: /did not respond within/, ssl: "INCONCLUSIVE" },
+    { name: "timeout", route: () => Object.assign(new Error("aborted"), { name: "AbortError" }), detail: /did not respond within/, ssl: "INCONCLUSIVE", tca: "INCONCLUSIVE" },
     { name: "redirect loop", route: () => new Error("Too many redirects — the target could not be scanned safely."), detail: /redirected too many times/, ssl: "INCONCLUSIVE" },
     { name: "connection refused", route: () => Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }), detail: /refused or dropped/, ssl: "INCONCLUSIVE" },
     { name: "HTTP 404", route: () => page(404, "<h1>Not found</h1>"), detail: /returned HTTP 404/, ssl: "PASS" },
     { name: "HTTP 500", route: () => page(500, ""), detail: /returned HTTP 500/, ssl: "PASS" },
-    { name: "HTTP 403 (protected)", route: () => page(403, "denied"), detail: /looks protected/, ssl: "PASS" },
-    { name: "a PDF", route: () => page(200, "%PDF-1.4", "application/pdf"), detail: /serves a file \(application\/pdf\)/, ssl: "PASS" },
-    { name: "plain text", route: () => page(200, "hello", "text/plain"), detail: /serves a file \(text\/plain\)/, ssl: "PASS" },
+    { name: "HTTP 403 (protected)", route: () => page(403, "denied"), detail: /looks protected/, ssl: "PASS", tca: "INCONCLUSIVE" },
+    { name: "a PDF", route: () => page(200, "%PDF-1.4", "application/pdf"), detail: /serves a file \(application\/pdf\)/, ssl: "PASS", tca: "INCONCLUSIVE" },
+    { name: "plain text", route: () => page(200, "hello", "text/plain"), detail: /serves a file \(text\/plain\)/, ssl: "PASS", tca: "INCONCLUSIVE" },
   ];
 
   for (const c of cases) {
-    it(`${c.name}: one FAIL naming the cause, nothing invented`, async () => {
+    it(`${c.name}: one ${c.tca ?? "FAIL"} naming the cause, nothing invented`, async () => {
       route = c.route;
       const { out, tca, ssl } = await scan();
-      expect(tca?.status).toBe("FAIL");
+      // A defect a visitor hits too is a FAIL; "Pulse was not let in" (sign-in, bot wall,
+      // timeout) or "this is a file" is INCONCLUSIVE — it says nothing about the product.
+      expect(tca?.status).toBe(c.tca ?? "FAIL");
       expect(tca?.detail).toMatch(c.detail);
       expect(ssl?.status).toBe(c.ssl);
       // The defect this replaces: no control is reported as failing because it could not be read.
@@ -94,6 +96,15 @@ describe("a readable page still runs the full scan", () => {
     const { out, tca } = await scan();
     expect(tca?.status === "FAIL").toBe(false);
     expect(out.checks.length).toBeGreaterThan(50);
+  });
+});
+
+describe("rate limiting is named as such", () => {
+  it("a 429 or exhausted rate-limit header is INCONCLUSIVE and says it is a rate limit", async () => {
+    route = () => { const r = page(403, "{}", "application/json"); r.headers.set("x-ratelimit-remaining", "0"); return r; };
+    const { tca } = await scan();
+    expect(tca?.status).toBe("INCONCLUSIVE");
+    expect(tca?.detail).toMatch(/rate-limiting requests from Pulse/);
   });
 });
 

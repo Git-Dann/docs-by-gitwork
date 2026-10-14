@@ -1,6 +1,7 @@
 import { CATEGORIES } from "./categories";
 import { restrictsFraming } from "./csp-sources";
-import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, headRequest, verifyFileExposure, resolveDnsRecord, probeInconclusive, skip, platformIs, CATCH_ALL_NOTE } from "./_types";
+import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, verifyFileExposure, resolveDnsRecord, probeInconclusive, skip, platformIs } from "./_types";
+import { type PathProbe, fetchSnippet, looksLikeOpenApi, looksLikeGraphqlEndpoint } from "./path-probe";
 
 const CHECKS: Array<[string, string]> = [
   ["cross_origin_opener_policy", "Cross-Origin-Opener-Policy (COOP)"],
@@ -580,8 +581,42 @@ export function isApiResponseClass(contentType: string): boolean {
   return /json|xml|graphql|grpc|protobuf/.test(value);
 }
 
+/**
+ * Spring Boot Actuator's root answers with a HAL-style index of its own endpoints:
+ * `{"_links":{"self":{"href":".../actuator"},"health":{...}}}`. A homepage, or any
+ * other JSON, does not carry that shape.
+ */
+export function looksLikeActuator(body: string): boolean {
+  const head = body.trimStart();
+  if (!head.startsWith("{")) return false;
+  return /"_links"\s*:\s*\{/.test(head)
+    && /"(self|health|info|env|metrics|beans|heapdump)"\s*:\s*\{\s*"href"\s*:\s*"[^"]*actuator/i.test(head);
+}
+
+/**
+ * Prometheus text exposition format: `# HELP name ...` / `# TYPE name counter|gauge|...`
+ * lines followed by samples. HTML is never that, whatever words it contains.
+ */
+export function looksLikePrometheusMetrics(body: string): boolean {
+  if (/<html|<!doctype|<body/i.test(body.slice(0, 2000))) return false;
+  return /^# TYPE [a-zA-Z_:][a-zA-Z0-9_:]* (counter|gauge|histogram|summary|untyped)\s*$/m.test(body)
+    || (/^# HELP [a-zA-Z_:][a-zA-Z0-9_:]* /m.test(body) && /^[a-zA-Z_:][a-zA-Z0-9_:]*(\{[^}]*\})? -?[0-9.eE+-]+(\s+\d+)?\s*$/m.test(body));
+}
+
+/** Which GraphQL response envelope a body is, if any: `{"data":…}` or `{"errors":[…]}`. */
+export function graphqlEnvelope(body: string): "data" | "errors" | null {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body); } catch { return null; }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const obj = parsed as Record<string, unknown>;
+  if (obj.data && typeof obj.data === "object") return "data";
+  if (Array.isArray(obj.errors) && obj.errors.length > 0
+    && obj.errors.every((e) => !!e && typeof e === "object" && typeof (e as Record<string, unknown>).message === "string")) return "errors";
+  return null;
+}
+
 export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { pageResult, httpsUrl, hostname, htmlLower, catchAll200 } = ctx;
+  const { pageResult, httpsUrl, hostname, htmlLower } = ctx;
   const h = pageResult.headers;
 
   if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE")) {
@@ -706,47 +741,67 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "certificate_expiry_30d", label: "SSL cert not expiring within 30 days", status: certExpirySoon ? "WARN" : "PASS", detail: certExpirySoon ? "HSTS max-age is very short — may indicate certificate expiring soon. Verify renewal is automated (Let's Encrypt / certbot)." : "Certificate appears valid with adequate HSTS max-age." });
 
   // ── Exposed-file / endpoint probes ───────────────────────────────────────────
-  // Two failure modes to avoid on SPA / Vercel / Next.js hosts that serve their
-  // app shell (200) for ANY path:
+  // A 200 is not an exposure. Hosts soft-route unknown paths to their homepage
+  // (vercel.com answers /actuator with its 2.6 MB HTML homepage while a random path
+  // 404s, so catchAll200 is false). So:
   //   • Direct files (.env.prod, .DS_Store, composer.json, package.json) are
-  //     content-verified — a real exposure serves its own bytes, not the HTML
-  //     shell — so verifyFileExposure() rejects a soft-200.
-  //   • Endpoints (/swagger-ui, /actuator, /metrics, /graphql) can legitimately
-  //     return HTML/JSON, so content alone can't disambiguate; when the host is a
-  //     catch-all (catchAll200) these probes are inconclusive → PASS with a note.
+  //     content-verified by verifyFileExposure().
+  //   • Endpoints (/swagger-ui, /actuator, /metrics, /graphql) are read and only
+  //     called exposed when the body IS the tool: Actuator's HAL links, Swagger
+  //     UI's markup, Prometheus exposition text, a GraphQL envelope or IDE.
+  //   • A probe that failed outright (status 0) is inconclusive, never a pass.
   const isJsonBody = (body: string, ct: string) =>
     ct.includes("json") || /^\s*[[{]/.test(body);
-  const [dsStoreExposed, composerExposed, packageJsonExposed, swaggerStatus, actuatorStatus, prometheusStatus, graphqlStatus, envProdExposed, envDockerExposed] = await Promise.all([
+  const [dsStoreExposed, composerExposed, packageJsonExposed, swaggerProbe, actuatorProbe, prometheusProbe, graphqlProbe, envProdExposed, envDockerExposed] = await Promise.all([
     verifyFileExposure(`${httpsUrl}/.DS_Store`),
     verifyFileExposure(`${httpsUrl}/composer.json`, isJsonBody),
     verifyFileExposure(`${httpsUrl}/package.json`, isJsonBody),
-    headRequest(`${httpsUrl}/swagger-ui`),
-    headRequest(`${httpsUrl}/actuator`),
-    headRequest(`${httpsUrl}/metrics`),
-    headRequest(`${httpsUrl}/graphql`),
+    fetchSnippet(`${httpsUrl}/swagger-ui`),
+    fetchSnippet(`${httpsUrl}/actuator`),
+    fetchSnippet(`${httpsUrl}/metrics`),
+    fetchSnippet(`${httpsUrl}/graphql`),
     verifyFileExposure(`${httpsUrl}/.env.prod`),
     verifyFileExposure(`${httpsUrl}/.env.docker`),
   ]);
 
-  // Endpoint exposure only counts when the host is NOT a catch-all 200 host.
-  const swaggerExposed   = !catchAll200 && swaggerStatus === 200;
-  const actuatorExposed  = !catchAll200 && actuatorStatus === 200;
-  const metricsExposed   = !catchAll200 && prometheusStatus === 200;
-  const graphqlPresent   = !catchAll200 && graphqlStatus === 200;
-  const endpointNote = catchAll200 ? CATCH_ALL_NOTE : "";
+  // Exposure is decided by the body, so it holds on a catch-all host too.
+  const swaggerExposed   = swaggerProbe.status === 200 && looksLikeOpenApi(swaggerProbe.body);
+  const actuatorExposed  = actuatorProbe.status === 200 && looksLikeActuator(actuatorProbe.body);
+  const metricsExposed   = prometheusProbe.status === 200 && looksLikePrometheusMetrics(prometheusProbe.body);
+  let graphqlPresent     = graphqlProbe.status > 0 && looksLikeGraphqlEndpoint(graphqlProbe);
+  const notThe = (probe: PathProbe, what: string) =>
+    probe.status === 200
+      ? ` The path answered 200, but with something that is not ${what} (often the homepage served for any path), so it is not exposed.`
+      : "";
 
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_ds_store", label: ".DS_Store not publicly accessible", status: dsStoreExposed ? "FAIL" : "PASS", detail: dsStoreExposed ? "CRITICAL: .DS_Store file accessible — exposes directory structure and filenames to attackers." : ".DS_Store not accessible." });
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_composer_json", label: "composer.json not at web root", status: composerExposed ? "WARN" : "PASS", detail: composerExposed ? "composer.json accessible at web root — exposes PHP dependency list and potential vulnerable package versions." : "composer.json not accessible at web root." });
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_package_json_root", label: "package.json not served at root", status: packageJsonExposed ? "WARN" : "PASS", detail: packageJsonExposed ? "package.json accessible — exposes dependency list, scripts, and potentially internal tooling details." : "package.json not served at web root." });
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_swagger_open", label: "Swagger UI not open in production", status: swaggerExposed ? "WARN" : "PASS", detail: swaggerExposed ? "Swagger UI appears publicly accessible — ensure API documentation requires authentication in production." : "Swagger UI not found at /swagger-ui." + endpointNote });
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_actuator", label: "/actuator endpoints not public", status: actuatorExposed ? "FAIL" : "PASS", detail: actuatorExposed ? "CRITICAL: Spring Boot Actuator endpoint publicly accessible — exposes heap dumps, env vars, and internal metrics." : "/actuator not publicly accessible." + endpointNote });
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_prometheus_metrics", label: "/metrics endpoint not public", status: metricsExposed ? "WARN" : "PASS", detail: metricsExposed ? "/metrics endpoint is publicly accessible — may expose internal infrastructure details and business metrics." : "/metrics endpoint not publicly accessible." + endpointNote });
+  if (swaggerProbe.status === 0) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "no_exposed_swagger_open", "Swagger UI not open in production", "The request to /swagger-ui did not complete, so whether Swagger UI is public could not be established."));
+  } else {
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_swagger_open", label: "Swagger UI not open in production", status: swaggerExposed ? "WARN" : "PASS", detail: swaggerExposed ? "Swagger UI is publicly accessible at /swagger-ui — ensure API documentation requires authentication in production." : "Swagger UI not found at /swagger-ui." + notThe(swaggerProbe, "Swagger UI") });
+  }
+  if (actuatorProbe.status === 0) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "no_exposed_actuator", "/actuator endpoints not public", "The request to /actuator did not complete, so whether Spring Boot Actuator is public could not be established."));
+  } else {
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_actuator", label: "/actuator endpoints not public", status: actuatorExposed ? "FAIL" : "PASS", detail: actuatorExposed ? "CRITICAL: Spring Boot Actuator endpoint publicly accessible at /actuator (it answered with its own endpoint index) — exposes heap dumps, env vars, and internal metrics." : "/actuator not publicly accessible." + notThe(actuatorProbe, "an Actuator endpoint index") });
+  }
+  if (prometheusProbe.status === 0) {
+    checks.push(probeInconclusive(CATEGORIES.SECURITY, "no_exposed_prometheus_metrics", "/metrics endpoint not public", "The request to /metrics did not complete, so whether a metrics endpoint is public could not be established."));
+  } else {
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_prometheus_metrics", label: "/metrics endpoint not public", status: metricsExposed ? "WARN" : "PASS", detail: metricsExposed ? "/metrics serves Prometheus exposition data publicly — may expose internal infrastructure details and business metrics." : "/metrics endpoint not publicly accessible." + notThe(prometheusProbe, "Prometheus metrics") });
+  }
 
   // GraphQL introspection. The probe failing is NOT evidence that introspection is
-  // off — that inversion previously turned any timeout into a clean PASS.
-  let gqlIntrospectionOff = true;
+  // off — that inversion previously turned any timeout into a clean PASS. A GET with
+  // no query does not always identify a GraphQL server, so the POST below also counts
+  // as presence when it comes back in a GraphQL data/errors envelope.
+  let gqlIntrospectionOn = false;
   let gqlProbeError: string | null = null;
-  if (graphqlPresent) {
+  if (graphqlProbe.status === 0) {
+    gqlProbeError = "the request to /graphql did not complete";
+  } else if (graphqlPresent || graphqlProbe.status === 200 || graphqlProbe.status === 400 || graphqlProbe.status === 405) {
     try {
       const gqlRes = await fetchWithTimeout(`${httpsUrl}/graphql`, {
         method: "POST",
@@ -754,17 +809,24 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
         body: JSON.stringify({ query: "{ __schema { types { name } } }" }),
         signal: AbortSignal.timeout(5000),
       });
-      const body = await gqlRes.text();
-      gqlIntrospectionOff = !body.includes("__schema");
+      const body = (await gqlRes.text()).slice(0, 65_536);
+      const envelope = graphqlEnvelope(body);
+      if (envelope) graphqlPresent = true;
+      gqlIntrospectionOn = envelope === "data" && /"__schema"\s*:\s*\{/.test(body);
     } catch (error) {
-      gqlProbeError = error instanceof Error ? error.message : "introspection query failed";
+      // Only an HTML page at /graphql (the site's own page, served for any path)
+      // settles "no endpoint" without the POST. Anything else is unestablished.
+      const htmlPage = /html/i.test(graphqlProbe.contentType) || /^\s*(<!doctype html|<html)/i.test(graphqlProbe.body);
+      if (graphqlPresent || !htmlPage) gqlProbeError = error instanceof Error ? error.message : "introspection query failed";
     }
   }
   if (gqlProbeError) {
     checks.push(probeInconclusive(CATEGORIES.SECURITY, "no_graphql_introspection_prod", "GraphQL introspection disabled in prod",
-      `A GraphQL endpoint responded at /graphql but the introspection query did not complete (${gqlProbeError}). Re-run the scan, or send the introspection query by hand.`));
+      graphqlPresent
+        ? `A GraphQL endpoint responded at /graphql but the introspection query did not complete (${gqlProbeError}). Re-run the scan, or send the introspection query by hand.`
+        : `Whether a GraphQL endpoint exists at /graphql could not be established (${gqlProbeError}).`));
   } else {
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_graphql_introspection_prod", label: "GraphQL introspection disabled in prod", status: graphqlPresent && !gqlIntrospectionOff ? "WARN" : "PASS", detail: graphqlPresent && !gqlIntrospectionOff ? "GraphQL introspection is enabled — attackers can enumerate your entire API schema. Disable introspection in production." : "GraphQL introspection appears disabled or endpoint not present." });
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_graphql_introspection_prod", label: "GraphQL introspection disabled in prod", status: gqlIntrospectionOn ? "WARN" : "PASS", detail: gqlIntrospectionOn ? "GraphQL introspection is enabled at /graphql — attackers can enumerate your entire API schema. Disable introspection in production." : graphqlPresent ? "A GraphQL endpoint answered at /graphql, and the introspection query did not return a schema." : "No GraphQL endpoint answered at /graphql (nothing came back in GraphQL's own format)." });
   }
 
   // Source maps

@@ -1,8 +1,10 @@
 import { CATEGORIES } from "./categories";
-import { type ExtendedCheckContext, type PulseScanCheckInput, headRequest } from "./_types";
+import type { ExtendedCheckContext, PulseScanCheckInput } from "./_types";
+import { pageTitle } from "./path-probe";
+import { probeTopicPage, topicPageCheck } from "./missing-pages-extended";
 
 export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { httpsUrl, catchAll200 } = ctx;
+  const { httpsUrl } = ctx;
   const html = ctx.pageResult.html;
   const checks: PulseScanCheckInput[] = [];
 
@@ -16,11 +18,13 @@ export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<
   checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "awards_recognition", label: "Industry awards / recognition badges", status: hasAwards ? "PASS" : "WARN", detail: hasAwards ? "Awards / recognition signals detected." : "No awards or recognition signals — industry awards (Gartner Cool Vendor, G2 Leader) are powerful third-party validation." });
 
   const hasSecurityWhitepaper = /security.*whitepaper|whitepaper.*security|security.*documentation|security.*overview.*pdf|download.*security/i.test(html);
-  // Catch-all hosts 200 every path, so the route probe only counts off catch-all;
-  // the in-page signal carries it otherwise.
-  const securityDocServed = !catchAll200 && (await headRequest(`${httpsUrl}/security-whitepaper`)) === 200;
-  const hasSecurityDoc = hasSecurityWhitepaper || securityDocServed;
-  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "security_whitepaper", label: "Security whitepaper / documentation", status: hasSecurityDoc ? "PASS" : "WARN", detail: hasSecurityDoc ? "Security documentation signals detected." : "No security whitepaper — a downloadable security whitepaper is requested in almost every enterprise procurement process." });
+  // The route only counts when it answers with a page that names itself as a
+  // security/whitepaper page — a homepage served for any path is not one.
+  const whitepaperState = await probeTopicPage(httpsUrl, "/security-whitepaper", /white ?paper|\bsecurity\b/, pageTitle(html) || null);
+  checks.push(topicPageCheck({ category: CATEGORIES.TRUST_BRAND, checkKey: "security_whitepaper", label: "Security whitepaper / documentation" },
+    hasSecurityWhitepaper, whitepaperState, "/security-whitepaper",
+    "Security documentation signals detected.",
+    "No security whitepaper — a downloadable security whitepaper is requested in almost every enterprise procurement process."));
 
   const hasGithubOrg = /github\.com\/[a-z0-9-]+\/|open.*source|github.*org|our.*github/i.test(html);
   checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "github_org_public", label: "Public GitHub organisation", status: hasGithubOrg ? "PASS" : "WARN", detail: hasGithubOrg ? "Public GitHub organisation signals detected." : "No public GitHub presence — a public GitHub org with active repos demonstrates engineering quality and commitment to open source." });

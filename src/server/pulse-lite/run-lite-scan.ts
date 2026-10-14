@@ -234,9 +234,13 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // a reason written about the APP, so coverage never reads as a whole-product answer.
     const storeTarget = urlResult.store?.target ?? null;
     if (storeTarget) {
-      const platformLabel = STORE_PLATFORM_LABEL[storeTarget];
-      const storeName = STORE_NAME[storeTarget];
-      if (urlResult.store?.listing) {
+      const macApp = storeTarget === "app_store" && Boolean(urlResult.store?.listing?.macOnly);
+      const platformLabel = macApp ? "Mac app" : STORE_PLATFORM_LABEL[storeTarget];
+      const storeName = macApp ? "Mac App Store" : STORE_NAME[storeTarget];
+      const liveCheck0 = urlResult.checks.find((check) => check.checkKey === "store_page_live");
+      // A listing the store says is gone (404/410) was OBSERVED, not failed to read —
+      // recording it as a collector ERROR made a removed iOS/Android app "unknown".
+      if (urlResult.store?.listing || liveCheck0?.status === "FAIL") {
         collectorCompleted("store-listing");
       } else {
         const liveCheck = urlResult.checks.find((check) => check.checkKey === "store_page_live");
@@ -260,10 +264,12 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     detectedMarkets = urlResult.detectedMarkets;
     urlSurfaceIsProduction = urlResult.surfaceKind === "DEPLOYED_PRODUCT";
     urlTargetBlocked = urlResult.checks.some(
-      (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
+      (check) => check.checkKey === "target_content_accessible" && (check.status === "FAIL" || check.status === "INCONCLUSIVE"),
     );
     const targetKind = urlTargetKind;
     if (targetKind !== "web") executionPlatform = storePlatformForTarget(targetKind);
+    // A Mac App Store listing on an apps.apple.com link is a Mac app, not an iOS one.
+    if (targetKind === "app_store" && urlResult.store?.listing?.macOnly) executionPlatform = "DESKTOP_APP";
     appName = urlResult.store?.appName ?? null;
     const collectorPlan = buildUrlCollectorPlan(
       urlEnginePlatform,
@@ -325,7 +331,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // Pulse had not run.
     collectorExecutions.push(...sourceCollectorsUnavailable(
       storeTarget
-        ? `The ${STORE_PLATFORM_LABEL[storeTarget]}'s source was not connected, so the checks that read its code did not run. Scan the app's GitHub repository to include them.`
+        ? `The ${executionPlatform === "DESKTOP_APP" && storeTarget === "app_store" ? "Mac app" : STORE_PLATFORM_LABEL[storeTarget]}'s source was not connected, so the checks that read its code did not run. Scan the app's GitHub repository to include them.`
         : "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
     ));
   } else {
@@ -367,7 +373,11 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // WARN rather than a failure: detection wins, so the findings are still
     // correct — but the user asked for a family that did not run, and silence
     // there is indistinguishable from "we ran them and found nothing".
-    const coverage = buildPlatformCoverageCheck({
+    // ⚠️ Not when the repository could not be read: its shape is then unknown, and the
+    // note used to tell the user "this looks like a general web project" about a repo
+    // Pulse never opened. `repo_accessible` already says why nothing ran.
+    const repoUnreadable = ghResult.checks.some((c) => c.checkKey === "repo_accessible" && c.status === "FAIL");
+    const coverage = repoUnreadable ? null : buildPlatformCoverageCheck({
       selectedPlatform: input.platform ?? "",
       inputType: "GITHUB_REPO",
       detectedShape: repoShape,

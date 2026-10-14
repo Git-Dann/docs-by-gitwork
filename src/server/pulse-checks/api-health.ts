@@ -83,9 +83,9 @@ export async function runApiHealthChecks(ctx: ExtendedCheckContext): Promise<Pul
       try {
         const res = await fetchWithTimeout(url, { method: "GET" });
         const body = (await res.text().catch(() => "")).slice(0, 5000);
-        return { path, status: res.status, body };
+        return { path, status: res.status, body, contentType: (res.headers.get("content-type") ?? "").toLowerCase() };
       } catch {
-        return { path, status: 0, body: "" };
+        return { path, status: 0, body: "", contentType: "" };
       }
     }),
   );
@@ -117,18 +117,28 @@ export async function runApiHealthChecks(ctx: ExtendedCheckContext): Promise<Pul
         : "No stack traces or internal file paths detected in probed API error responses.",
   });
 
+  // A path resolves when it answers like an API: a non-HTML body (JSON etc.) with a
+  // non-404 status, or a server error. An HTML page answering an /api/ path is the
+  // site's own page served for any path (soft routing) — that is not "resolved",
+  // and it is not proof of a dead route either.
+  const isHtml = (p: { contentType: string; body: string }) =>
+    p.contentType.includes("html") || /^\s*(<!doctype html|<html)/i.test(p.body);
   const deadRefs = catchAll200 ? [] : probes.filter((p) => p.status === 404);
-  checks.push({
-    category: CATEGORY,
-    checkKey: "api_endpoint_unverified",
-    label: "No dead API references",
-    status: catchAll200 ? "SKIPPED" : deadRefs.length > 0 ? "WARN" : "PASS",
-    detail: catchAll200
-      ? "Host returns 200 for unknown paths (catch-all routing) — dead-reference detection can't be probed reliably."
+  const resolved = probes.filter((p) => p.status >= 500 || (p.status > 0 && p.status !== 404 && !isHtml(p)));
+  const unestablished = probes.filter((p) => !deadRefs.includes(p) && !resolved.includes(p));
+  checks.push(
+    catchAll200
+      ? { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "SKIPPED",
+          detail: "Host returns 200 for unknown paths (catch-all routing) — dead-reference detection can't be probed reliably." }
       : deadRefs.length > 0
-        ? `${deadRefs.length} API path(s) referenced in the app's source return 404 live: ${deadRefs.map((p) => p.path).join(", ")}. These may be renamed, removed, or unfinished routes — verify they're still meant to exist.`
-        : "All discovered API references resolved (no 404s).",
-  });
+        ? { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "WARN",
+            detail: `${deadRefs.length} API path(s) referenced in the app's source return 404 live: ${deadRefs.map((p) => p.path).join(", ")}. These may be renamed, removed, or unfinished routes — verify they're still meant to exist.` }
+        : unestablished.length > 0
+          ? { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "INCONCLUSIVE", confidence: "LOW",
+              detail: `${unestablished.length} of ${probes.length} referenced API path(s) did not answer as an API — ${unestablished.map((p) => `${p.path} (${p.status === 0 ? "request failed" : `${p.status}, HTML page`})`).join(", ")}. An HTML page for an API path is usually the site's own page served for any path, so whether those routes exist could not be established.` }
+          : { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "PASS",
+              detail: `All ${probes.length} discovered API reference(s) answered as an API (no 404s).` },
+  );
 
   return checks;
 }

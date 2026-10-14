@@ -15,7 +15,7 @@ import { rankFindings } from "@/server/pulse-checks/priority";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage } from "@/server/pulse-checks/collector-health";
 import { evaluateReleaseGate, resolveGatePolicy, withScanIncomplete } from "@/server/pulse-checks/release-decision";
-import { detectStoreTarget, isPlaceholderStoreName, resolveScanPlatform, STORE_NAME, STORE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
+import { detectStoreTarget, isPlaceholderStoreName, resolveScanPlatform, storeSubjectLabel } from "@/lib/pulse-store-url";
 import type { PulseScanCheckInput, GateEvaluationRecord, ScoreBreakdown } from "@/types/pulse";
 
 export interface AgentVerdict {
@@ -185,7 +185,7 @@ export function buildAgentVerdict(args: {
   const store = detectStoreTarget(args.url);
   const subject = {
     platform: resolveScanPlatform(args.url, args.platform) ?? null,
-    label: store ? `${STORE_PLATFORM_LABEL[store]} · ${STORE_NAME[store]} listing` : null,
+    label: store ? storeSubjectLabel(store, args.platform) : null,
     // A name Pulse invented from the link ("apps.apple.com") is not the app's name.
     name: args.name && (args.nameFromStore || !(store && isPlaceholderStoreName(args.name, args.url))) ? args.name : null,
   };

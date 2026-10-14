@@ -92,30 +92,68 @@ export function isVendoredPath(path: string): boolean {
  * be matched before the native cases or every RN app reads as native iOS. Their
  * root manifest is the discriminator.
  */
-export function detectNativePlatform(paths: string[]): NativePlatform | null {
-  // Flutter — pubspec.yaml at the root is definitive.
+/**
+ * Paths that are not the product: example apps, demos, fixtures, test projects.
+ * supabase/supabase carries a dozen Flutter and Expo examples and was scanned as an
+ * Android app; detection must look at what the repo ships, not what it demonstrates.
+ */
+export function isExampleOrFixturePath(path: string): boolean {
+  return /(^|\/)(examples?|samples?|demos?|fixtures?|__fixtures__|__tests__|tests?|e2e|templates?|playgrounds?|starters?)\//i.test(path);
+}
+
+/** A package.json that actually depends on React Native or Expo. */
+function declaresReactNative(packageJson: string | null | undefined): boolean {
+  return !!packageJson && /"(react-native|expo)"\s*:/.test(packageJson);
+}
+
+export function detectNativePlatform(allPaths: string[], rootPackageJson?: string | null): NativePlatform | null {
+  const paths = allPaths.filter((p) => !isVendoredPath(p) && !isExampleOrFixturePath(p));
+
+  // Flutter — pubspec.yaml at the root is definitive. So is one a level or two down that
+  // sits beside its own android/ or ios/ folder: immich keeps its Flutter app in mobile/,
+  // and was scanned as a native Android app because the root has no pubspec.
   if (anyPath(paths, /^pubspec\.ya?ml$/i)) return "flutter";
+  for (const p of paths) {
+    const m = /^((?:[^/]+\/){1,2})pubspec\.ya?ml$/i.exec(p);
+    if (m && paths.some((q) => q.startsWith(`${m[1]}android/`) || q.startsWith(`${m[1]}ios/`))) return "flutter";
+  }
 
   // React Native — a JS manifest plus RN-specific tooling or platform folders.
+  // ⚠️ A root app.json on its own is not evidence: Heroku uses the same file name
+  // (cal.com was scanned as a React Native app). It counts only when package.json is
+  // known to depend on react-native/expo, or when there is no package.json to read.
   const hasJsManifest = anyPath(paths, /^package\.json$/);
   if (hasJsManifest) {
-    const rnSignal =
+    const strongSignal =
       anyPath(paths, /^metro\.config\.(js|cjs|ts)$/i) ||
-      anyPath(paths, /^app\.(json|config\.(js|ts))$/i) ||
       anyPath(paths, /^(ios|android)\//i);
-    if (rnSignal) return "react-native";
+    const appConfig = anyPath(paths, /^app\.(json|config\.(js|ts))$/i);
+    const manifestKnown = rootPackageJson !== undefined && rootPackageJson !== null;
+    if (strongSignal) return "react-native";
+    if (appConfig && (!manifestKnown || declaresReactNative(rootPackageJson))) return "react-native";
   }
 
   // Native iOS — an Xcode project/workspace, or Swift sources beside an Info.plist.
   const hasXcode = anyPath(paths, /\.(xcodeproj|xcworkspace)(\/|$)/i);
   const hasSwift = anyPath(paths, /\.swift$/i);
   const hasInfoPlist = anyPath(paths, /(^|\/)Info\.plist$/i);
-  if (hasXcode || (hasSwift && hasInfoPlist)) return "ios";
+  const looksIos = hasXcode || (hasSwift && hasInfoPlist);
 
   // Native Android — Gradle plus a manifest.
   const hasGradle = anyPath(paths, /(^|\/)build\.gradle(\.kts)?$/i);
   const hasAndroidManifest = anyPath(paths, /(^|\/)AndroidManifest\.xml$/i);
-  if (hasGradle && hasAndroidManifest) return "android";
+  const looksAndroid = hasGradle && hasAndroidManifest;
+
+  // Both markers: decide by where the code actually is. iOS used to win outright, so
+  // NewPipe — an Android app with two Swift helper files — was scanned as an iOS app,
+  // failed for having no iOS test target, and the user was told their pick was wrong.
+  if (looksIos && looksAndroid) {
+    const ios = paths.filter((p) => /\.(swift|m|mm)$/i.test(p)).length;
+    const android = paths.filter((p) => /\.(kt|kts|java)$/i.test(p) && !/(^|\/)build\.gradle\.kts$/i.test(p)).length;
+    return android > ios ? "android" : "ios";
+  }
+  if (looksIos) return "ios";
+  if (looksAndroid) return "android";
 
   return null;
 }
