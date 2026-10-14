@@ -22,7 +22,7 @@ vi.mock("@/server/support-scraper-config", () => ({
   decryptScraperConfig: (c: unknown) => c,
 }));
 
-import { accessFromLoginResponse, jwtExpiry, resolveBigWedgeAccess } from "../bigwedge-api-auth";
+import { accessFromLoginResponse, jwtExpiry, loginBody, resolveBigWedgeAccess } from "../bigwedge-api-auth";
 
 const NOW = new Date("2026-10-14T12:00:00.000Z");
 function jwt(exp: number): string {
@@ -37,7 +37,7 @@ beforeEach(() => {
   db.config = null;
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
-  delete process.env.BIGWEDGE_API_EMAIL;
+  delete process.env.BIGWEDGE_API_USERNAME;
   delete process.env.BIGWEDGE_API_PASSWORD;
   delete process.env.BIGWEDGE_API_URL;
 });
@@ -55,9 +55,25 @@ describe("reading a token", () => {
   });
 });
 
+describe("the login body", () => {
+  it("⚠️ sends a username as `username` — the API validates `email` as an address and rejects it", () => {
+    expect(loginBody("foundry-svc", "pw")).toEqual({ username: "foundry-svc", password: "pw" });
+  });
+  it("sends an email as `email`", () => {
+    expect(loginBody("svc@example.com", "pw")).toEqual({ email: "svc@example.com", password: "pw" });
+  });
+  it("logs in with a username end to end", async () => {
+    process.env.BIGWEDGE_API_USERNAME = "foundry-svc";
+    process.env.BIGWEDGE_API_PASSWORD = "pw";
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ access: "fresh-token-0123456789" }), { status: 200 }));
+    await resolveBigWedgeAccess("wc1", NOW);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ username: "foundry-svc", password: "pw" });
+  });
+});
+
 describe("which credential wins", () => {
   it("logs in with the service account, even when a stored token exists", async () => {
-    process.env.BIGWEDGE_API_EMAIL = "svc@example.com";
+    process.env.BIGWEDGE_API_USERNAME = "svc@example.com";
     process.env.BIGWEDGE_API_PASSWORD = "pw";
     db.config = { apiToken: LIVE, baseUrl: "https://api.example" };
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ access: "fresh-token-0123456789" }), { status: 200 }));
@@ -68,7 +84,7 @@ describe("which credential wins", () => {
   });
 
   it("a rejected login says so, names the setting, and never echoes the password", async () => {
-    process.env.BIGWEDGE_API_EMAIL = "svc@example.com";
+    process.env.BIGWEDGE_API_USERNAME = "svc@example.com";
     process.env.BIGWEDGE_API_PASSWORD = "hunter2";
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ status: "error", message: "Invalid credentials" }), { status: 400 }),
@@ -100,6 +116,6 @@ describe("which credential wins", () => {
   it("with nothing configured, it says what to set", async () => {
     const r = await resolveBigWedgeAccess("wc1", NOW);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("BIGWEDGE_API_EMAIL");
+    if (!r.ok) expect(r.error).toContain("BIGWEDGE_API_USERNAME");
   });
 });

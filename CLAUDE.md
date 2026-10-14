@@ -6376,7 +6376,8 @@ it was the third time this had been "fixed". Diagnosed against live data:
 ### 60.1 The fix — a scheduled pull that cannot expire and cannot fail quietly
 
 - **`src/server/bigwedge-api-auth.ts`** logs in for itself on every run
-  (`POST /api/v1/auth/login/`) with `BIGWEDGE_API_EMAIL` + `BIGWEDGE_API_PASSWORD`. A token
+  (`POST /api/v1/auth/login/`) with `BIGWEDGE_API_USERNAME` (a username or an email —
+  sent as whichever field the API expects) + `BIGWEDGE_API_PASSWORD`. A token
   minted per run cannot expire between runs. Both are synced into the VPS `.env` by
   `deploy.yml` from GitHub Actions secrets. A stored connector token is still honoured as a
   fallback, but an expired one is **reported as expired, with the fix**, not sent to 401.
@@ -6413,7 +6414,7 @@ dedupes on Big Wedge's own request id. See `isDuplicateFeedRow`.
 
 36 new tests across the status rules, the auth precedence, the runner and the banner.
 Nine deliberate sabotages, each failing the test named for it. Not verified: a live login.
-**Dan must set `BIGWEDGE_API_EMAIL` / `BIGWEDGE_API_PASSWORD`** (a Big Wedge admin
+**Dan must set `BIGWEDGE_API_USERNAME` / `BIGWEDGE_API_PASSWORD`** (a Big Wedge staff
 account) as GitHub Actions secrets and re-run the deploy. Until then the page says
 **Feed down** with that instruction. That is the intended behaviour, not a bug.
 

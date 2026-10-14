@@ -8,10 +8,10 @@
  * so once secrets were encrypted at rest it sent `enc:{…}` as the bearer.)
  *
  * So Foundry now logs in for itself on every run: `POST /api/v1/auth/login/` with a
- * service account's email + password returns a fresh access token, which never has the
+ * service account's username (or email) + password returns a fresh access token, which never has the
  * chance to expire between runs. Precedence:
  *
- *   1. env `BIGWEDGE_API_EMAIL` + `BIGWEDGE_API_PASSWORD` — synced into the VPS .env by
+ *   1. env `BIGWEDGE_API_USERNAME` + `BIGWEDGE_API_PASSWORD` — synced into the VPS .env by
  *      deploy.yml from GitHub Actions secrets, so setting or rotating them needs no SSH.
  *   2. the Analytics connector's stored `apiToken` — still honoured, but checked for
  *      expiry first, so an expired one is REPORTED as expired rather than failing as a
@@ -77,6 +77,15 @@ export function jwtExpiry(token: string): Date | null {
 }
 
 /**
+ * The login body. Big Wedge's `CustomLoginRequest` takes `username` OR `email` with the
+ * password, and validates `email` as an email address — so a username sent as `email` is
+ * rejected before the password is even checked. Pick the field from the value's shape.
+ */
+export function loginBody(identifier: string, password: string): Record<string, string> {
+  return identifier.includes("@") ? { email: identifier, password } : { username: identifier, password };
+}
+
+/**
  * Pull the access token out of a login response. Big Wedge wraps responses in
  * `{ status, data }`; the schema documents a bare `{ access, refresh }`. Accept both.
  */
@@ -87,13 +96,13 @@ export function accessFromLoginResponse(json: unknown): string | null {
   return token && token.length > 10 ? token : null;
 }
 
-async function login(baseUrl: string, email: string, password: string): Promise<string | { error: string }> {
+async function login(baseUrl: string, identifier: string, password: string): Promise<string | { error: string }> {
   let res: Response;
   try {
     res = await fetch(`${baseUrl}/api/v1/auth/login/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": "Foundry/1.0" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(loginBody(identifier, password)),
       cache: "no-store",
       signal: AbortSignal.timeout(20_000),
     });
@@ -108,7 +117,7 @@ async function login(baseUrl: string, email: string, password: string): Promise<
         ? (json as { message: string }).message
         : null) ?? `HTTP ${res.status}`;
     return {
-      error: `Big Wedge rejected Foundry's login (${msg}). Check BIGWEDGE_API_EMAIL / BIGWEDGE_API_PASSWORD.`,
+      error: `Big Wedge rejected Foundry's login (${msg}). Check BIGWEDGE_API_USERNAME / BIGWEDGE_API_PASSWORD.`,
     };
   }
   const token = accessFromLoginResponse(json);
@@ -125,10 +134,10 @@ export async function resolveBigWedgeAccess(
     "",
   );
 
-  const email = process.env.BIGWEDGE_API_EMAIL?.trim();
+  const identifier = process.env.BIGWEDGE_API_USERNAME?.trim();
   const password = process.env.BIGWEDGE_API_PASSWORD?.trim();
-  if (email && password) {
-    const result = await login(baseUrl, email, password);
+  if (identifier && password) {
+    const result = await login(baseUrl, identifier, password);
     return typeof result === "string"
       ? { ok: true, baseUrl, token: result, via: "login" }
       : { ok: false, error: result.error };
@@ -140,7 +149,7 @@ export async function resolveBigWedgeAccess(
     if (exp && exp.getTime() <= now.getTime()) {
       return {
         ok: false,
-        error: `The Big Wedge token stored on the Analytics connector expired on ${exp.toISOString().slice(0, 10)}. Set BIGWEDGE_API_EMAIL and BIGWEDGE_API_PASSWORD so Foundry logs in for itself and this cannot expire again.`,
+        error: `The Big Wedge token stored on the Analytics connector expired on ${exp.toISOString().slice(0, 10)}. Set BIGWEDGE_API_USERNAME and BIGWEDGE_API_PASSWORD so Foundry logs in for itself and this cannot expire again.`,
       };
     }
     return { ok: true, baseUrl, token: stored, via: "stored-token" };
@@ -149,6 +158,6 @@ export async function resolveBigWedgeAccess(
   return {
     ok: false,
     error:
-      "Foundry has no way to log in to the Big Wedge API. Set BIGWEDGE_API_EMAIL and BIGWEDGE_API_PASSWORD (a Big Wedge admin account) in the deploy secrets.",
+      "Foundry has no way to log in to the Big Wedge API. Set BIGWEDGE_API_USERNAME and BIGWEDGE_API_PASSWORD (a Big Wedge staff account) in the deploy secrets.",
   };
 }
