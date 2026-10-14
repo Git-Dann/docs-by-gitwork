@@ -1,4 +1,5 @@
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { relevanceRuleFor } from "@/server/pulse-checks/check-relevance";
 
 // ── SPA / vibe-code preview detection ────────────────────────────────────────────
 // Lovable / Bolt / Replit (and other client-rendered builders) serve a near-empty HTML
@@ -148,10 +149,20 @@ export function detectSpaContext(input: {
  * HTML_RENDER_DEPENDENT_CHECK_KEYS above — because a blanket downgrade of a launch-blocking legal
  * check would turn an established failure into an excuse.
  */
+/** Parsed from the page, but they establish an answer on a shell by other means (policy-path probes). */
+const SHELL_SELF_HANDLED = new Set(["privacy_policy", "terms_of_service"]);
+
 export function reclassifySpaChecks(checks: PulseScanCheckInput[]): PulseScanCheckInput[] {
   return checks.map((c) => {
     const adverse = c.status === "FAIL" || c.status === "WARN";
-    const parseDependent = adverse && HTML_RENDER_DEPENDENT_CHECK_KEYS.has(c.checkKey);
+    // The hand list missed whole families — on a 2.6KB shell gitwork.co.uk was told it had
+    // no cookie consent, no GDPR notice and no DPO contact, none of which Pulse had read.
+    // Every check the relevance data classes as reading PAGE CONTENT now counts, except the
+    // two legal checks that handle a shell themselves (see the note above).
+    const parseDependent = adverse && (
+      HTML_RENDER_DEPENDENT_CHECK_KEYS.has(c.checkKey)
+      || (relevanceRuleFor(c.checkKey)?.surface === "WEB_PAGE" && !SHELL_SELF_HANDLED.has(c.checkKey))
+    );
     // Only PASS/NOT_APPLICABLE — a check already marked SKIPPED by a platform or jurisdiction
     // filter must stay out of the denominator; re-admitting it would overstate what was assessed.
     const vacuous =

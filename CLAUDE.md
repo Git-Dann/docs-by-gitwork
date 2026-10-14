@@ -6467,3 +6467,40 @@ review view, All/None per category). Edits are a **draft with Save/Discard** —
 - **Not verified visually** — settings is auth-gated. Post-deploy: tick a few checks, Save, scan a site in
   the preview, confirm "N more actionable findings" appears and the score matches an unlimited scan.
 
+## 61. Recent Changes (October 2026) — Pulse audit: what it says when it cannot look
+
+A full audit before the public rollout: the 11-platform × 17-target matrix, an edge-case harness
+(dead hosts, bad TLS, redirect loops, error pages, files, missing/empty repos, SSRF inputs), and live
+production scans of an iOS listing, a Play listing, a Chrome Web Store item, gitwork.co.uk and
+api.github.com — every suspect finding then checked by hand with curl/dig. Six defects, all the same
+family: **a probe that could not answer was reported as a finding about the product** (§35 again).
+
+- **Unreachable target → 157 FAILs.** `runUrlChecks` stamped "Could not reach the site." as FAIL on
+  ~157 controls (privacy policy, VAT, API rate limits…) for an expired cert, a timeout, a redirect loop
+  or an HTTP-only site. Now ONE `target_content_accessible` FAIL naming the cause (`classifyFetchError`:
+  tls / timeout / redirects / refused), `ssl_valid` FAIL only for a real TLS failure (INCONCLUSIVE
+  otherwise), and an HTTP-only site is told it has no HTTPS. The same exit covers an **HTTP ≥ 400**
+  response (it was grading the error page) and a **file** (PDF, text, image — `isNonPageContentType`).
+- **HTTP/2 was guessed from `alt-svc`** — absent on most HTTP/2 servers, so api.github.com was warned.
+  Now measured by TLS ALPN (`negotiateAlpn`); a failed probe is INCONCLUSIVE.
+- **An unrendered SPA shell** still produced "no cookie consent / GDPR notice / DPO contact" from a
+  2.6KB empty `<div id="root">`. `reclassifySpaChecks` now treats every adverse check whose relevance
+  surface is `WEB_PAGE` as unestablished (except `privacy_policy`/`terms_of_service`, which probe
+  policy paths themselves). gitwork.co.uk went from 90 warnings to 20, all verifiable facts.
+- **`icp_license` (China) had no jurisdiction tag**, so UK sites were warned. Tagged `CN`.
+- **Chrome Web Store:** permission list deduped; a published listing gets WARN (not "will be rejected");
+  a name read from the listing is never dropped as a placeholder (`nameFromStore`).
+- **TLS-RPT:** "no record" and "record has no destination" both fired for one missing record; an
+  `https:` `rua` (RFC 8460) was rejected. Fixed.
+- ⚠️ **GitHub rate limit.** All repo scans share ONE token — 5,000 REST calls/hour, and one repo scan
+  can spend a few hundred, so roughly 20–30 repo scans an hour. When it runs out, every call 403s and a
+  public repo was reported as "does not exist, or the token cannot see it". `githubRequest` now records
+  the limit (`githubRateLimitedUntil`) and the scan says the limit is used up and when it clears; a 403
+  that is NOT a rate limit is no longer mislabelled one. **The capacity itself is not fixed** — a GitHub
+  App (higher per-installation limits) or caching repo snapshots is the real answer before repo scans
+  are opened to many users. `codeclear-analysis.ts` has its own copy of the old 403 logic, untouched.
+
+Matrix after all fixes: see the PR/commit. Tests: `uninspectable-target.test.ts`,
+`audit-2026-10-live-defects.test.ts`, `github-rate-limit.test.ts`, and the TLS-RPT case in
+`probe-honesty.test.ts` — each proved to fail against the old code.
+

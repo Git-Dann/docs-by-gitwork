@@ -120,6 +120,12 @@ export function buildAgentVerdict(args: {
   platform?: string | null;
   /** The subject's name — for a store link, the app's listed name. */
   name?: string | null;
+  /**
+   * True when `name` was read from the store listing itself. Such a name is never a
+   * placeholder — Bitwarden's slug title-cases to exactly its real name, which the
+   * placeholder test then discarded, so the Chrome verdict reported no name at all.
+   */
+  nameFromStore?: boolean;
   /** The relevance gate's summary for this scan. */
   relevance?: ScoreBreakdown["relevance"];
   /** URL / GITHUB_REPO / FREE_TEXT — selects the gate policy. Defaults to URL. */
@@ -181,7 +187,7 @@ export function buildAgentVerdict(args: {
     platform: resolveScanPlatform(args.url, args.platform) ?? null,
     label: store ? `${STORE_PLATFORM_LABEL[store]} · ${STORE_NAME[store]} listing` : null,
     // A name Pulse invented from the link ("apps.apple.com") is not the app's name.
-    name: args.name && !(store && isPlaceholderStoreName(args.name, args.url)) ? args.name : null,
+    name: args.name && (args.nameFromStore || !(store && isPlaceholderStoreName(args.name, args.url))) ? args.name : null,
   };
 
   const summaryParts = [
@@ -280,6 +286,7 @@ export async function runAgentScan(input: {
       gatePolicyId: input.gatePolicyId,
       platform: lite.executionPlatform ?? null,
       name: lite.appName,
+      nameFromStore: true,
       relevance: lite.relevance,
     });
   } catch (error) {

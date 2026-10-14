@@ -93,6 +93,12 @@ export async function assertScannableUrl(
   const trimmed = (raw ?? "").trim();
   if (!trimmed) throw new UrlNotScannableError("Enter a URL to scan.");
 
+  // A different scheme (ftp:, file:, javascript:) is refused by name. Prefixing it with
+  // https:// turned "file:///etc/passwd" into a host lookup, so the visitor was told the
+  // domain could not be resolved — true of nothing they typed.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !/^https?:/i.test(trimmed) && !/^[^:/]+:\d+(\/|$)/.test(trimmed)) {
+    throw new UrlNotScannableError("Only http and https URLs can be scanned.");
+  }
   const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 
   let parsed: URL;

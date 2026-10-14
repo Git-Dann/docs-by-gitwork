@@ -176,20 +176,24 @@ export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "
     ? (m.content_scripts as Array<{ matches?: string[] }>).flatMap((cs) => cs.matches ?? [])
     : [];
   const allHosts = [...hostPerms, ...contentScriptMatches];
-  const wildcards = allHosts.filter((h) => /^(<all_urls>|\*:\/\/\*\/\*|https?:\/\/\*\/\*)$/i.test(h));
+  const wildcards = [...new Set(allHosts.filter((h) => /^(<all_urls>|\*:\/\/\*\/\*|https?:\/\/\*\/\*)$/i.test(h)))];
 
   if (allHosts.length > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "ext_host_permissions_scoped",
       label: "Host permissions scoped to the sites the extension needs",
-      status: wildcards.length > 0 ? "FAIL" : "PASS",
+      // A PUBLISHED listing already passed review, so "this is why reviews get rejected" is
+      // not true of it. The install warning and the blast radius still are — a WARN, said plainly.
+      status: wildcards.length > 0 ? (surface === "store" ? "WARN" : "FAIL") : "PASS",
       confidence: "HIGH",
       detail: wildcards.length > 0
         ? `The extension requests ${wildcards.join(", ")} — access to EVERY site the user visits. Chrome shows this as ` +
-          `"Read and change all your data on all websites", which suppresses installs, and it is the most common ` +
-          `reason a Web Store review is rejected or held for justification. It also means one compromised dependency ` +
-          `in this extension can read every page the user opens, including their bank. List the specific origins ` +
+          `"Read and change all your data on all websites", which suppresses installs` +
+          (surface === "store"
+            ? `. Some extensions genuinely need it (a password manager fills forms on any site); if this one does not, `
+            : `, and it is the most common reason a Web Store review is rejected or held for justification. `) +
+          `It also means one compromised dependency in this extension can read every page the user opens. List the specific origins ` +
           `instead, or request them at runtime with the optional_host_permissions + chrome.permissions.request flow.`
         : `Host access is scoped to ${allHosts.length} specific origin(s) rather than all sites.`,
       evidence: wildcards.length > 0 ? wildcards.join(", ") : `${allHosts.length} scoped origin(s)`,

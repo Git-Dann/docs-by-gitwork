@@ -147,6 +147,8 @@ export const CHECK_JURISDICTIONS: Record<string, JurisdictionCode[]> = {
   popia_south_africa: ["ZA"],
   appi_japan: ["JP"],
   pipl_china: ["CN"],
+  // A licence to host a site in mainland China. Was untagged, so a UK site was warned it lacked one.
+  icp_license: ["CN"],
   pipa_korea: ["KR"],
   dpdp_india: ["IN"],
 };

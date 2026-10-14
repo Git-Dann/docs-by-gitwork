@@ -1,5 +1,5 @@
 import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
-import { safeGithubRequest, parseGithubRepo, hasGithubToken } from "@/lib/github";
+import { safeGithubRequest, parseGithubRepo, hasGithubToken, githubRateLimitedUntil } from "@/lib/github";
 import type { PulseCheckStatus, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
 import { collectorCompletenessCheck } from "./pulse-checks/collector-health";
@@ -95,6 +95,80 @@ async function fetchPage(url: string): Promise<FetchResult | null> {
   } catch {
     return null;
   }
+}
+
+/** Why a page could not be fetched — said in words a site owner can act on. */
+export type FetchFailure =
+  | { kind: "tls"; detail: string }
+  | { kind: "timeout"; detail: string }
+  | { kind: "redirects"; detail: string }
+  | { kind: "refused"; detail: string }
+  | { kind: "other"; detail: string };
+
+export function classifyFetchError(error: unknown): FetchFailure {
+  const e = error as { name?: string; message?: string; code?: string; cause?: { code?: string; message?: string } };
+  const code = `${e?.code ?? ""} ${e?.cause?.code ?? ""}`;
+  const msg = `${e?.message ?? ""} ${e?.cause?.message ?? ""}`;
+  if (e?.name === "AbortError" || /timeout|timed out|UND_ERR_.*TIMEOUT|aborted/i.test(`${code} ${msg}`)) {
+    return { kind: "timeout", detail: `The site did not respond within ${Math.round(FETCH_TIMEOUT_MS / 1000)} seconds.` };
+  }
+  if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS|SSL|certificate/i.test(`${code} ${msg}`)) {
+    return { kind: "tls", detail: `The HTTPS connection failed: the certificate was rejected (${(e?.cause?.code ?? e?.code ?? "TLS error").toString()}).` };
+  }
+  if (/too many redirects/i.test(msg)) {
+    return { kind: "redirects", detail: "The URL redirected too many times (a redirect loop or an unusually long chain)." };
+  }
+  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN/i.test(code)) {
+    return { kind: "refused", detail: `The server refused or dropped the connection (${(e?.cause?.code ?? e?.code ?? "").toString().trim()}).` };
+  }
+  return { kind: "other", detail: `The request failed: ${msg.trim().slice(0, 140) || "unknown error"}.` };
+}
+
+async function fetchPageWithReason(url: string): Promise<{ page: FetchResult | null; failure: FetchFailure | null }> {
+  try {
+    const start = Date.now();
+    const response = await fetchWithTimeout(url, { redirect: "follow", headers: { "User-Agent": "Gitwork-Pulse/1.0" } });
+    const responseTimeMs = Date.now() - start;
+    const html = await response.text().catch(() => "");
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      headers[key.toLowerCase()] = value;
+    });
+    return { page: { ok: response.ok, status: response.status, headers, html, responseTimeMs, finalUrl: response.url }, failure: null };
+  } catch (error) {
+    return { page: null, failure: classifyFetchError(error) };
+  }
+}
+
+/** Content types that are a file, not a web page — grading them as a site is meaningless. */
+export function isNonPageContentType(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  if (!ct) return false;
+  return /^(application\/(pdf|zip|octet-stream|x-[\w.-]*(zip|tar|gzip))|image\/|video\/|audio\/|font\/|text\/(plain|csv))/.test(ct);
+}
+
+/**
+ * Which application protocol the server agrees to over TLS (ALPN): "h2", "http/1.1", or
+ * null when the probe could not complete. The host has already been fetched through the
+ * SSRF guard by this point; this connects to that same public host on 443 only.
+ */
+export async function negotiateAlpn(hostname: string, timeoutMs = 5000): Promise<string | null> {
+  const tls = await import("node:tls");
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v: string | null) => { if (!settled) { settled = true; resolve(v); } };
+    try {
+      const socket = tls.connect({ host: hostname, port: 443, servername: hostname, ALPNProtocols: ["h2", "http/1.1"] }, () => {
+        const proto = socket.alpnProtocol;
+        socket.end();
+        done(typeof proto === "string" && proto ? proto : "http/1.1");
+      });
+      socket.setTimeout(timeoutMs, () => { socket.destroy(); done(null); });
+      socket.on("error", () => done(null));
+    } catch {
+      done(null);
+    }
+  });
 }
 
 async function headRequest(url: string): Promise<number> {
@@ -2328,7 +2402,75 @@ export async function runUrlChecks(
   const httpUrl = httpsUrl.replace("https://", "http://");
   const baseUrl = httpsUrl.replace(/\/$/, "");
 
-  const pageResult = await fetchPage(httpsUrl);
+  const { page: pageResult, failure: fetchFailure } = await fetchPageWithReason(httpsUrl);
+
+  // ── Nothing to inspect: say so ONCE, then stop. ──────────────────────────────────
+  // This used to fall through to a branch that stamped "Could not reach the site." as a
+  // FAIL on ~157 controls — privacy policy, VAT number, API rate limits — so an expired
+  // certificate, a slow server or an HTTP-only site was reported as failing all of them,
+  // having read nothing. "We could not look" became "it isn't there" (CLAUDE.md §35).
+  // Same shape as the access-interstitial exit below: one honest finding, no guesses.
+  const notInspectable = (detail: string, evidence: string, ssl: PulseScanCheckInput["status"], sslDetail: string) => {
+    const out: PulseScanCheckInput[] = [
+      { category: CATEGORIES.INFRASTRUCTURE, checkKey: "ssl_valid", label: "HTTPS / SSL certificate", status: ssl, detail: sslDetail, evidence: httpsUrl },
+      {
+        category: CATEGORIES.INFRASTRUCTURE,
+        checkKey: "target_content_accessible",
+        label: "Target content is inspectable",
+        status: "FAIL",
+        confidence: "HIGH",
+        detail: `${detail} Pulse stopped before running any other check, because findings about content it could not read would be false.`,
+        evidence,
+      },
+    ];
+    return { checks: out.map((check, sortOrder) => ({ ...check, sortOrder })), techStack: [] as string[], detectedMarkets: [] as JurisdictionCode[], surfaceKind };
+  };
+
+  if (!pageResult) {
+    const failure: FetchFailure = fetchFailure ?? { kind: "other", detail: "The request failed." };
+    // An http-only site: say THAT, rather than calling a working site unreachable.
+    let httpOnly = false;
+    if (failure.kind !== "timeout" && /^https:/.test(httpsUrl)) {
+      const plain = await fetchPageWithReason(httpUrl);
+      httpOnly = Boolean(plain.page && plain.page.status < 400 && /^http:/.test(plain.page.finalUrl || httpUrl));
+    }
+    if (httpOnly) {
+      return notInspectable(
+        "The site answers over plain HTTP but not over HTTPS. Browsers mark it \"Not secure\", and anything typed into it travels unencrypted.",
+        httpUrl,
+        "FAIL",
+        "No working HTTPS — the site is served over plain HTTP only.",
+      );
+    }
+    return notInspectable(
+      failure.detail,
+      httpsUrl,
+      failure.kind === "tls" ? "FAIL" : "INCONCLUSIVE",
+      failure.kind === "tls" ? failure.detail : "Not established — the site could not be reached, so its certificate could not be checked.",
+    );
+  }
+
+  // An error status: the page Pulse would grade is the error page, not the product.
+  if (pageResult.status >= 400) {
+    return notInspectable(
+      `The URL returned HTTP ${pageResult.status}, so there is no page to assess.${pageResult.status === 401 || pageResult.status === 403 ? " It looks protected (sign-in, IP allow-list or bot protection) — scan a public URL, or the source repository." : " Check the address, or scan the site's homepage."}`,
+      `${pageResult.finalUrl || httpsUrl} → ${pageResult.status}`,
+      "PASS",
+      "HTTPS connection succeeded.",
+    );
+  }
+
+  // A file rather than a page (a PDF, an image, plain text).
+  const pageContentType = pageResult.headers["content-type"] ?? "";
+  if (isNonPageContentType(pageContentType)) {
+    return notInspectable(
+      `The URL serves a file (${pageContentType.split(";")[0]}), not a web page. Scan the site's homepage instead.`,
+      `${pageResult.finalUrl || httpsUrl} (${pageContentType})`,
+      "PASS",
+      "HTTPS connection succeeded.",
+    );
+  }
+
   if (pageResult) {
     surfaceKind = detectUrlSurfaceKind(pageResult.html);
     spaShell = detectSpaContext({
@@ -4465,16 +4607,22 @@ export async function runUrlChecks(
     });
 
     // ─── A3: HTTP Protocol & Headers Quality ──────────────────────────────────
-    const altSvcHeader = pageResult.headers["alt-svc"] ?? "";
-    const http2Detected = altSvcHeader.includes("h2") || pageResult.headers["x-firefox-spdy"] === "h2";
+    // Ask the server directly which protocol it agrees to (TLS ALPN). This used to look
+    // only for an `alt-svc` header, which most HTTP/2 servers never send — api.github.com
+    // serves HTTP/2 and was told it "could not verify HTTP/2", as a warning, on every scan.
+    const negotiated = await negotiateAlpn(new URL(pageResult.finalUrl || httpsUrl).hostname);
     checks.push({
       category: CATEGORIES.PERFORMANCE,
       checkKey: "http2_enabled",
       label: "HTTP/2 protocol",
-      status: http2Detected ? "PASS" : "WARN",
-      detail: http2Detected
-        ? "HTTP/2 detected via alt-svc header — multiplexed connections improve load performance."
-        : "Could not verify HTTP/2 support — consider upgrading for multiplexing benefits. Modern servers (Nginx 1.9.5+, Apache 2.4.17+) support HTTP/2 natively.",
+      status: negotiated === "h2" ? "PASS" : negotiated === null ? "INCONCLUSIVE" : "WARN",
+      confidence: negotiated === null ? "LOW" : "HIGH",
+      detail: negotiated === "h2"
+        ? "The server negotiates HTTP/2 — multiplexed connections improve load performance."
+        : negotiated === null
+          ? "Not established — the protocol check against the server did not complete."
+          : `The server only offers ${negotiated} — enable HTTP/2 for multiplexed connections. Modern servers (Nginx 1.9.5+, Apache 2.4.17+) and every major CDN support it.`,
+      evidence: negotiated ?? "no ALPN answer",
     });
 
     // ⚠️ The label used to be the fixed string "X-Powered-By header absent" —
@@ -5442,7 +5590,10 @@ export async function runGithubChecks(
     // Name the ACTUAL cause. "No access" and "no credentials at all" need completely
     // different fixes, and conflating them cost a full day of misdiagnosis: the token
     // was never set in prod, but the symptom looked like a scoring problem.
-    const reason = !hasGithubToken()
+    const limitedUntil = githubRateLimitedUntil();
+    const reason = limitedUntil
+      ? `GitHub's API limit for Pulse is used up until ${limitedUntil.toISOString().slice(11, 16)} UTC, so ${fullName} could not be read. This says nothing about the repository: nothing below was assessed. Re-scan after that time.`
+      : !hasGithubToken()
       ? `GITHUB_TOKEN is not configured on this server, so Pulse is calling GitHub unauthenticated — every private repository returns 404 and no repository intelligence is available. This is a server configuration problem, not a finding about ${fullName}: nothing below was assessed. Set GITHUB_TOKEN in the VPS .env (or the FOUNDRY_GITHUB_TOKEN Actions secret, which the deploy syncs) and re-scan.`
       : repoExists
         ? `Repository ${fullName} exists but its contents could not be read — Pulse's GITHUB_TOKEN lacks access. If it is a fine-grained token, add this repository to its allow-list (or set it to All repositories). Findings derived from the file tree are unavailable rather than negative.`

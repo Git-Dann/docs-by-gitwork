@@ -41,6 +41,36 @@ export function githubHeaders() {
   };
 }
 
+// ── Rate-limit awareness ──────────────────────────────────────────────────────
+// Every Pulse repo scan shares ONE token (5,000 REST calls an hour), and a single repo
+// scan can spend a couple of hundred reading files. When it runs out, GitHub answers 403
+// for everything — and `safeGithubRequest` swallows that, so a public repo used to be
+// reported as "does not exist, or the token cannot see it". Record it here, centrally,
+// so the scan can name the real cause and the time it clears.
+let rateLimitedUntil: number | null = null;
+
+/** When GitHub's REST limit for this server resets, if it is exhausted right now. */
+export function githubRateLimitedUntil(now = Date.now()): Date | null {
+  return rateLimitedUntil !== null && rateLimitedUntil > now ? new Date(rateLimitedUntil) : null;
+}
+
+/** Test seam. */
+export function __resetGithubRateLimit(): void {
+  rateLimitedUntil = null;
+}
+
+function noteRateLimit(response: Response, body: string): boolean {
+  const remaining = response.headers.get("x-ratelimit-remaining");
+  const limited = response.status === 429 || remaining === "0" || /rate limit/i.test(body);
+  if (!limited) return false;
+  const reset = Number(response.headers.get("x-ratelimit-reset"));
+  const retryAfter = Number(response.headers.get("retry-after"));
+  rateLimitedUntil = Number.isFinite(reset) && reset > 0
+    ? reset * 1000
+    : Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60_000);
+  return true;
+}
+
 export async function githubRequest<T>(path: string): Promise<T> {
   const response = await fetch(`${GITHUB_API_BASE}${path}`, {
     headers: githubHeaders(),
@@ -55,11 +85,16 @@ export async function githubRequest<T>(path: string): Promise<T> {
       throw new GitHubRequestError("GITHUB_NOT_FOUND", "GitHub resource not found.");
     }
 
-    if (response.status === 403) {
-      throw new GitHubRequestError(
-        "GITHUB_RATE_LIMITED",
-        "GitHub API is temporarily rate limited. Try again shortly or configure GITHUB_TOKEN.",
-      );
+    // A 403 is only a rate limit when GitHub says so. It used to be labelled one for EVERY
+    // 403 — including a token that simply lacks access — which sent people the wrong fix.
+    if (response.status === 403 || response.status === 429) {
+      if (noteRateLimit(response, body)) {
+        throw new GitHubRequestError(
+          "GITHUB_RATE_LIMITED",
+          "GitHub API is temporarily rate limited. Try again shortly or configure GITHUB_TOKEN.",
+        );
+      }
+      throw new GitHubRequestError("GITHUB_FORBIDDEN", "GitHub refused access to this resource.");
     }
 
     throw new GitHubRequestError("GITHUB_REQUEST_FAILED", message);

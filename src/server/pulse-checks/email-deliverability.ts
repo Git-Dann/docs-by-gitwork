@@ -367,8 +367,13 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "tls_rpt_destination", "TLS-RPT reports have a destination", dnsFailed(tlsRptLookup.reason)));
   } else {
     const tlsRpt = tlsRptRecords.find((record) => /v=TLSRPTv1/i.test(record));
-    const hasTlsDestination = Boolean(tlsRpt && /(?:^|;)\s*rua=mailto:[^;\s]+/i.test(tlsRpt));
-    checks.push({ category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: hasTlsDestination ? "PASS" : "WARN", detail: hasTlsDestination ? "TLS-RPT publishes a mailto reporting destination." : "TLS-RPT has no valid mailto reporting destination. A version tag alone cannot deliver reports about failed or downgraded TLS sessions." });
+    // RFC 8460 §3: `rua` may be mailto: OR https:. And with no TLS-RPT record at all there is
+    // no destination to judge — `tls_rpt_record` already reports the absence, so a second WARN
+    // here ("has no valid destination") contradicted it and double-counted one gap.
+    const hasTlsDestination = Boolean(tlsRpt && /(?:^|;)\s*rua=(?:mailto:|https:)[^;\s]+/i.test(tlsRpt));
+    checks.push(!tlsRpt
+      ? { category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: "NOT_APPLICABLE", detail: "No TLS-RPT record is published, so there is no reporting destination to check." }
+      : { category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: hasTlsDestination ? "PASS" : "WARN", detail: hasTlsDestination ? "TLS-RPT publishes a reporting destination." : "The TLS-RPT record has no valid rua= destination (mailto: or https:). A version tag alone cannot deliver reports about failed or downgraded TLS sessions." });
   }
 
   // Unsubscribe signal

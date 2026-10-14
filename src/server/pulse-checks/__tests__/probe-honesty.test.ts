@@ -340,8 +340,19 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
     vi.stubGlobal("fetch", dnsResponder({}));
     const checks = await runEmailDeliverabilityChecks(context());
     for (const key of EMAIL_DNS_KEYS) {
+      // No TLS-RPT record means there is no destination to judge: `tls_rpt_record` reports the
+      // absence, and a second WARN here used to contradict it ("has no valid destination").
+      if (key === "tls_rpt_destination") continue;
       expect(statusOf(checks, key), key).toBe("WARN");
     }
+    expect(statusOf(checks, "tls_rpt_destination")).toBe("NOT_APPLICABLE");
+  });
+
+  it("accepts an https: TLS-RPT destination (RFC 8460 §3) and still WARNs on a record with none", async () => {
+    vi.stubGlobal("fetch", dnsResponder({ "_smtp._tls.example.test:TXT": ['"v=TLSRPTv1; rua=https://reports.example.test/tlsrpt"'] }));
+    expect(statusOf(await runEmailDeliverabilityChecks(context()), "tls_rpt_destination")).toBe("PASS");
+    vi.stubGlobal("fetch", dnsResponder({ "_smtp._tls.example.test:TXT": ['"v=TLSRPTv1;"'] }));
+    expect(statusOf(await runEmailDeliverabilityChecks(context()), "tls_rpt_destination")).toBe("WARN");
   });
 
   it("still PASSes on real records", async () => {
