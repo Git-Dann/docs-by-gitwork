@@ -363,9 +363,12 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     relevanceCtx.target = { kind: "repo", shape: relevanceShape };
     relevanceCtx.platform = normalizePulsePlatform(executionPlatform);
     relevanceCtx.features = snapshot?.accessible ? featuresFromRepo(snapshot.paths, snapshot.files) : new Set();
+    // The collectors run as what the repo IS (executionPlatform), not what was picked:
+    // an Express API picked as "iOS app" ran 17 checks, the same repo picked as "Other"
+    // ran 101. The dropdown only labels the scan; the coverage note below says so.
     const [ghResult, codeResult] = await Promise.all([
-      runGithubChecks(repo, input.platform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
-      runCodeAgent(repo, input.platform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
+      runGithubChecks(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
+      runCodeAgent(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
     ]);
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;

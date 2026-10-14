@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 
 interface Check { key: string; category: string; status: string }
-interface Run { target: string; platform: string; executionPlatform: string | null; error: string | null; checks: Check[] }
+interface Run { target: string; inputType?: string; platform: string; executionPlatform: string | null; error: string | null; checks: Check[] }
 
 const SCAN_NOTES = new Set(["scan_collector_completeness", "platform_family_coverage", "repo_intelligence", "repo_accessible", "target_content_accessible", "spa_content_rendered_for_scan"]);
 const NON_WEB = ["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "CLI_TOOL"];
@@ -138,5 +138,24 @@ for (const run of runs) {
     }
   }
 }
+// The dropdown labels a repo scan; detection decides what runs. Every pick that resolves to
+// the same execution platform for one repo must show the same checks — an Express API
+// picked as "iOS app" once showed 17 checks against 101 for the same repo picked as "Other".
+const byRepoExec = new Map<string, { platform: string; keys: string }[]>();
+for (const run of runs) {
+  if (run.error || run.inputType !== "GITHUB_REPO") continue;
+  const k = `${run.target}::${run.executionPlatform}`;
+  const keys = shownOf(run).filter((c) => !SCAN_NOTES.has(c.key)).map((c) => c.key).sort().join(",");
+  (byRepoExec.get(k) ?? byRepoExec.set(k, []).get(k)!).push({ platform: run.platform, keys });
+}
+for (const [k, list] of byRepoExec) {
+  checked++;
+  const distinct = new Set(list.map((l) => l.keys));
+  if (distinct.size > 1) {
+    violations++;
+    console.log(`✗ ${k} the same repo and execution platform shows different checks by dropdown pick: ${list.map((l) => `${l.platform}=${l.keys.split(",").filter(Boolean).length}`).join(" ")}`);
+  }
+}
+
 console.log(`\n${runs.length} runs, ${checked} expectations checked, ${violations} violation(s).`);
 process.exit(violations > 0 ? 1 : 0);
