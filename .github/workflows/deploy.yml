@@ -147,7 +147,22 @@ jobs:
                 echo "  $key: added from CI"
               fi
               chmod 600 .env
+              # Prove the write landed. Until Oct 2026 this function printed "added from
+              # CI" over a .env it could not write (owned by root since a hand edit on
+              # 19 Sep), so every secret sync failed for weeks while reporting success.
+              if ! grep -qxF "${key}=${val}" .env; then
+                echo "::error::$key was not written to .env — the secret sync failed."
+                exit 1
+              fi
             }
+
+            # The deploy user must own .env. A hand edit as root (sudo nano .env) takes
+            # ownership away and every sync below then fails. Fix on the box with:
+            #   sudo chown deploy:deploy /opt/apps/foundry/.env && sudo chmod 600 /opt/apps/foundry/.env
+            if [ -e .env ] && [ ! -w .env ]; then
+              echo "::error::$(whoami) cannot write /opt/apps/foundry/.env (owner: $(stat -c %U .env)). Secrets from GitHub cannot be synced. Fix: sudo chown deploy:deploy /opt/apps/foundry/.env && sudo chmod 600 /opt/apps/foundry/.env"
+              exit 1
+            fi
 
             echo "Syncing managed secrets into .env"
             upsert_env GITHUB_TOKEN "${FOUNDRY_GITHUB_TOKEN:-}"

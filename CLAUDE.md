@@ -6418,6 +6418,16 @@ Nine deliberate sabotages, each failing the test named for it. Not verified: a l
 account) as GitHub Actions secrets and re-run the deploy. Until then the page says
 **Feed down** with that instruction. That is the intended behaviour, not a bug.
 
+### 60.4 ⚠️ The secret sync had been failing silently since 19 September
+
+Setting the secrets changed nothing on the box. `/opt/apps/foundry/.env` had been **owned by
+root since a hand edit on 19 Sep**, and the deploy SSHes in as `deploy`, which could only read
+it. `upsert_env` never checked its writes, so every deploy since printed "added from CI" while
+writing nothing, for every managed secret, not just these. Fixed on the box (`chown
+deploy:deploy`, `chmod 600`, original backed up under `/root`), and `deploy.yml` now refuses
+to continue if `.env` is not writable and verifies each key landed. **Never edit `.env` with
+`sudo`** — edit it as `deploy`, or set the value as a GitHub secret.
+
 **Still broken, separately:** `WEDGE_COURSE_API_USER/PASSWORD` (the Golf Data console's
 login to wedge-course-backend) is also failing, and the Analytics connector has no token.
 Neither feeds course requests.
