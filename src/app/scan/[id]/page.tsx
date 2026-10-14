@@ -121,9 +121,9 @@ export default async function PublicScanPage({ params }: { params: Promise<{ id:
           What to fix ({t.actionable.length})
         </h2>
         <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 14px" }}>
-          Ranked worst-first by severity and certainty. All of it, free.
+          Ranked worst-first by severity and certainty.{t.limited ? " The headline findings, free." : " All of it, free."}
         </p>
-        {t.actionable.length === 0 ? (
+        {t.actionable.length === 0 && t.lockedCount === 0 ? (
           <p style={{ fontSize: 14, color: "#374151" }}>Nothing reached the actionable threshold on this scan.</p>
         ) : (
           <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -156,6 +156,14 @@ export default async function PublicScanPage({ params }: { params: Promise<{ id:
               );
             })}
           </ol>
+        )}
+
+        {t.lockedCount > 0 && (
+          <p style={{ fontSize: 13, color: "#374151", marginTop: 14, padding: "10px 12px", border: "1px dashed #d1d5db", borderRadius: 10, background: "#f9fafb" }}>
+            <strong>{t.lockedCount}</strong> more actionable finding{t.lockedCount === 1 ? "" : "s"} in
+            {" "}{t.lockedByCategory.slice(0, 4).map((a) => `${a.category} (${a.count})`).join(", ")}
+            {t.lockedByCategory.length > 4 && <> and more</>}. These come with the in-depth review.
+          </p>
         )}
 
         {t.advisoryCount > 0 && (

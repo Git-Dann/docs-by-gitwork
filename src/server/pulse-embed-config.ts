@@ -2,17 +2,12 @@
  * Config for the public scanner — the /embed/pulse widget and the /production-ready
  * sales page, which are two doors to the same thing.
  *
- * ⚠️ `pulseEmbedCheckKeys` USED to live here: a picker choosing which of the 1,646
- * checks the free tier showed. It is gone, and the column is deliberately left in the
- * database rather than dropped (a drop is a data-losing schema change the guarded
- * `prisma db push` skips — CLAUDE.md §2).
- *
- * It went because the free tier stopped being a teaser. The public scan now runs every
- * deterministic check, scores the full set with `computeScoreBreakdown`, and shows every
- * triaged P1/P2 finding with its evidence — so there was no subset left to choose. The
- * picker's own help text ("these pick which checks the results email highlights") had
- * become false too: `pulse-lite/leads.ts` builds the email from `triage(allChecks)`, the
- * same triage the page shows, and never read the selection at all.
+ * ⚠️ `pulseEmbedCheckKeys` is back, with DIFFERENT semantics. The old picker filtered AND
+ * RESCORED what a visitor saw, which made the teaser score a different quantity from the
+ * paid one. It was removed when it went dead. It now limits only which findings are SHOWN
+ * in full; the score is always the full-scan number. Rule + storage shape:
+ * `src/lib/pulse-free-tier.ts`. The stored value is `{ keys: [...] }` (not a bare array) so
+ * the old curated array still sitting in the database reads as "no limit".
  *
  * The remaining workspace settings are the kill-switch (`pulseEmbedEnabled`), the
  * Turnstile keys, and the "Book a call" URL.

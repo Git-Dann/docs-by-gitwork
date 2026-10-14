@@ -6447,3 +6447,23 @@ acts once no run has happened for `STOPPED_AFTER_MINUTES`, so it can't race a li
 **Still broken, separately:** `WEDGE_COURSE_API_USER/PASSWORD` (the Golf Data console's
 login to wedge-course-backend) is also failing, and the Analytics connector has no token.
 Neither feeds course requests.
+
+## 60. Recent Changes (October 2026) — Pulse: choose what the free scan shows in full
+
+Settings → Pulse → Public embed → **02 // FREE RESULTS**. A switch ("Limit what is shown free"), then
+a grouped, searchable picker (domain → category → check, selected/total at every level, "Selected only"
+review view, All/None per category). Edits are a **draft with Save/Discard** — nothing goes live per click.
+
+- **Limit shows less, never rescores.** Findings from ticked checks are shown in full; every other
+  actionable (P1/P2) finding is **counted and named by category only** ("4 more in Security, Legal").
+  The score is always `computeScoreBreakdown` over the full scan, so free = paid. The retired picker
+  rescored the subset (one check worth 7–14 points) — do not reintroduce that.
+- **One place applies it:** `triage(checks, freeKeys)` in `pulse-lite/public-scan.ts`. The widget,
+  `/scan/[id]`, the markdown report and the results email all call it, so they cannot disagree.
+- **Default is no limit**, and shipping changed nothing. ⚠️ `Workspace.pulseEmbedCheckKeys` still held the
+  OLD curated array, so the new value is `{ keys: [...] }` and any bare array reads as "no limit" (tested).
+  `null` = no limit; `{ keys: [] }` = limit that shows nothing.
+- Pure rule + picker model: `src/lib/pulse-free-tier.ts` (`splitByFreeSet`, `buildPickerModel`).
+- **Not verified visually** — settings is auth-gated. Post-deploy: tick a few checks, Save, scan a site in
+  the preview, confirm "N more actionable findings" appears and the score matches an unlimited scan.
+

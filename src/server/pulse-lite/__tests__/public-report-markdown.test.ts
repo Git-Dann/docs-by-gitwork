@@ -36,6 +36,7 @@ function report(over: Partial<PublicReport> = {}): PublicReport {
         { checkKey: "privacy_policy", category: "Legal & Compliance", label: "Privacy Policy", status: "FAIL", detail: "No privacy policy link found.", tier: "P1" },
         { checkKey: "csp_header", category: "Security", label: "Content-Security-Policy", status: "WARN", detail: "No CSP header is sent.", tier: "P2" },
       ],
+      lockedCount: 0, lockedByCategory: [], limited: false,
       advisoryCount: 588,
       advisoryByCategory: [{ category: "SEO", count: 300 }, { category: "Accessibility", count: 288 }],
       notEstablished: [
@@ -84,7 +85,7 @@ describe("every actionable finding carries its evidence", () => {
 
   it("says so plainly when nothing is actionable, rather than omitting the section", () => {
     const md2 = renderReportMarkdown(report({
-      triage: { actionable: [], advisoryCount: 0, advisoryByCategory: [], notEstablished: [] },
+      triage: { actionable: [], lockedCount: 0, lockedByCategory: [], limited: false, advisoryCount: 0, advisoryByCategory: [], notEstablished: [] },
     }));
     expect(md2).toContain("## What to fix");
     expect(md2).toMatch(/Nothing reached the actionable threshold/);
@@ -101,7 +102,7 @@ describe("the advisory tail is stated, never dropped", () => {
 
   it("omits the section entirely when there is no tail", () => {
     const md = renderReportMarkdown(report({
-      triage: { actionable: [], advisoryCount: 0, advisoryByCategory: [], notEstablished: [] },
+      triage: { actionable: [], lockedCount: 0, lockedByCategory: [], limited: false, advisoryCount: 0, advisoryByCategory: [], notEstablished: [] },
     }));
     expect(md).not.toContain("## Advisory");
   });
@@ -120,7 +121,7 @@ describe("'could not establish' is present with its reasons", () => {
       checkKey: `k${i}`, category: "App Store", label: `Check ${i}`, reason: "Needs a repository.",
     }));
     const md = renderReportMarkdown(report({
-      triage: { actionable: [], advisoryCount: 0, advisoryByCategory: [], notEstablished: many },
+      triage: { actionable: [], lockedCount: 0, lockedByCategory: [], limited: false, advisoryCount: 0, advisoryByCategory: [], notEstablished: many },
     }));
     expect(md).toContain("## Could not be established (45)");
     expect(md).toMatch(/…and 5 more\./);
@@ -131,7 +132,7 @@ describe("the scope disclaimer is unconditional", () => {
   it("is present even on a clean scan with nothing to report", () => {
     const md = renderReportMarkdown(report({
       score: 100, band: "EXCELLENT", fail: 0, warn: 0,
-      triage: { actionable: [], advisoryCount: 0, advisoryByCategory: [], notEstablished: [] },
+      triage: { actionable: [], lockedCount: 0, lockedByCategory: [], limited: false, advisoryCount: 0, advisoryByCategory: [], notEstablished: [] },
     }));
     // A reader must never have to infer the product's boundary from silence.
     expect(md).toContain("## Scope");

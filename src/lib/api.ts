@@ -1509,7 +1509,8 @@ export async function getPulseLeadPreview(
 
 export interface PulseEmbedConfig {
   enabled: boolean;
-  checkKeys: string[];
+  /** Checks shown in full on the free tier. null = no limit. */
+  freeCheckKeys: string[] | null;
   bookingUrl: string;
   turnstileSiteKey: string | null;
   turnstileConfigured: boolean;
@@ -1521,7 +1522,7 @@ export async function getPulseEmbedConfig(): Promise<PulseEmbedConfig> {
 
 export async function updatePulseEmbedConfig(patch: {
   enabled?: boolean;
-  checkKeys?: string[];
+  freeCheckKeys?: string[] | null;
   bookingUrl?: string;
   turnstileSiteKey?: string;
   turnstileSecretKey?: string;

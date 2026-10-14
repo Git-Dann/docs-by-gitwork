@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
+import { PulseFreeTierPicker } from "@/components/pulse/pulse-free-tier-picker";
 import { ToggleSwitch } from "@/components/pulse/pulse-embed-panel";
 
 function StatusPill({ ok, okLabel, offLabel }: { ok: boolean; okLabel: string; offLabel: string }) {
@@ -36,6 +37,8 @@ export function PulseEmbedSettings() {
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
   const [previewKey, setPreviewKey] = useState(0);
   const previewRootRef = useRef<HTMLDivElement>(null);
+
+  const [freeTierError, setFreeTierError] = useState<string | null>(null);
 
   const [bookingUrlDraft, setBookingUrlDraft] = useState("");
   const [siteKeyDraft, setSiteKeyDraft] = useState("");
@@ -156,9 +159,9 @@ export function PulseEmbedSettings() {
           <div className="border-b border-[var(--border-2)] py-3">
             <p className="text-sm font-medium text-[var(--text-1)]">Free scans</p>
             <p className="widget-timestamp mt-0.5">
-              Unlimited to view — no email needed to see a result. One in-depth-review request per
-              email address. Abuse is bounded by Turnstile plus per-IP, per-host and total
-              concurrency caps (rate-limit.ts), not by withholding results.
+              No email needed to see a result. What is shown in full is set in 02 below. One in-depth-review request
+              per email address. Abuse is bounded by Turnstile plus per-IP (8/hour, 30/day), per-host (12/hour)
+              and total concurrency caps (rate-limit.ts).
             </p>
           </div>
 
@@ -173,6 +176,25 @@ export function PulseEmbedSettings() {
               />
             </label>
           </div>
+        </Widget>
+
+        <Widget
+          number="02"
+          title="FREE RESULTS"
+          status={<span className="widget-header__status">{data.freeCheckKeys === null ? "No limit" : `${data.freeCheckKeys.length} shown`}</span>}
+        >
+          <PulseFreeTierPicker
+            saved={data.freeCheckKeys}
+            saving={isPending}
+            error={freeTierError}
+            onSave={(next) => {
+              setFreeTierError(null);
+              save(
+                { freeCheckKeys: next },
+                { onError: (err) => setFreeTierError(err instanceof Error ? err.message : "Couldn't save — please try again.") },
+              );
+            }}
+          />
         </Widget>
       </div>
 

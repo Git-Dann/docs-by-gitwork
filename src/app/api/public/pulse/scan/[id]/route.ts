@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { summarise, triage, type PublicScanView } from "@/server/pulse-lite/public-scan";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,9 @@ export const dynamic = "force-dynamic";
  * therefore different quantities wearing the same units — the first client to
  * compare their free score against their paid one would have found it.
  *
+ * The workspace can also limit which findings are SHOWN in full (lib/pulse-free-tier.ts).
+ * That never touches the score — only the list.
+ *
  * Now there is ONE number: `computeScoreBreakdown` over the full scan, the same
  * function the internal report, the badge and Provenance all use.
  */
@@ -54,6 +58,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     });
     if (!lite) return apiError("Scan not found", 404);
 
+    const { freeCheckKeys } = await getPulseEmbedWorkspaceConfig();
     const checks = (lite.checks as PulseScanCheckInput[] | null) ?? [];
     const { categories, pass, warn, fail, inconclusive } = summarise(checks);
 
@@ -77,7 +82,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       inconclusive,
       categories,
       emailCaptured: lite.emailCaptured,
-      triage: triage(checks),
+      // The free-set limit lives inside triage() so every public surface applies it.
+      triage: triage(checks, freeCheckKeys ? new Set(freeCheckKeys) : null),
       // The raw ~960-row tail stays gated — it is the tail, not the report.
       checks: lite.emailCaptured ? checks : null,
       errorMessage: lite.errorMessage,

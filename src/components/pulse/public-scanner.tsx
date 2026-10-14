@@ -87,6 +87,10 @@ type View = {
    */
   triage?: {
     actionable: { checkKey: string; category: string; label: string; status: string; detail: string; tier: "P1" | "P2" }[];
+    /** Held back by the workspace's free-set limit; absent on older stored scans. */
+    lockedCount?: number;
+    lockedByCategory?: { category: string; count: number }[];
+    limited?: boolean;
     advisoryCount: number;
     advisoryByCategory: { category: string; count: number }[];
     notEstablished: { checkKey: string; category: string; label: string; reason: string }[];
@@ -805,13 +809,13 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
               {/* The FREE report: every P1/P2 finding, in full, with its evidence.
                   Falls back to the old FAIL/WARN list for a scan stored before
                   `triage` existed, so replaying an old row still renders. */}
-              {(view.triage?.actionable.length ?? findings.length) > 0 && (
+              {((view.triage?.actionable.length ?? findings.length) > 0 || (view.triage?.lockedCount ?? 0) > 0) && (
                 <div style={{ marginTop: 22 }}>
                   <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>
                     {`What to fix (${view.triage?.actionable.length ?? findings.length})`}
                   </p>
                   <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px" }}>
-                    Ranked worst-first by severity and certainty. All of it, free.
+                    {view.triage?.limited ? "Ranked worst-first. The headline findings, free." : "Ranked worst-first by severity and certainty. All of it, free."}
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {(view.triage
@@ -846,6 +850,18 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                       </div>
                     ))}
                   </div>
+
+                  {/* Findings the workspace chose not to show free: counted, and named by AREA
+                      only, so the visitor knows they exist without being handed them. */}
+                  {(view.triage?.lockedCount ?? 0) > 0 && (
+                    <p style={{ fontSize: 12, color: "#374151", marginTop: 10, marginBottom: 0, padding: "8px 10px", border: "1px dashed #d1d5db", borderRadius: 8, background: "#f9fafb" }}>
+                      <strong>{view.triage!.lockedCount}</strong> more actionable finding{view.triage!.lockedCount === 1 ? "" : "s"}
+                      {(view.triage!.lockedByCategory?.length ?? 0) > 0 && (
+                        <> in {view.triage!.lockedByCategory!.slice(0, 3).map((a) => `${a.category} (${a.count})`).join(", ")}</>
+                      )}
+                      . These come with the in-depth review.
+                    </p>
+                  )}
 
                   {/* The advisory tail — counted honestly, not hidden. This is the
                       gated half, and naming its size is what makes the gate fair. */}

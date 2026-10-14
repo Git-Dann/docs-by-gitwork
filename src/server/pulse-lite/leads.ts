@@ -135,7 +135,7 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const score = computeScoreBreakdown(allChecks).finalScore;
   // And the same triage as the page, so the email echoes the report rather than
   // inventing its own selection.
-  const { actionable, advisoryCount } = triage(allChecks);
+  const { actionable, advisoryCount, lockedCount } = triage(allChecks, config.freeCheckKeys ? new Set(config.freeCheckKeys) : null);
   // The shareable result page (Phase 3). Absolute, because this is an email.
   const reportUrl = `${(process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "")}/scan/${lead.liteScanId}`;
   const findings = actionable;
@@ -148,7 +148,9 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
             `<li><strong>${f.status === "FAIL" ? "✕" : "!"} ${escapeHtml(f.label)}</strong>${f.detail ? `<br/>${escapeHtml(f.detail)}` : ""}</li>`,
         )
         .join("")}</ul>`
-    : "<p>No issues found in the checks we ran — nice work.</p>";
+    : lockedCount > 0
+      ? ""
+      : "<p>No issues found in the checks we ran — nice work.</p>";
 
   await sendWorkspaceEmail({
     workspaceId: workspace.id,
@@ -156,8 +158,9 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
     subject: `Your Pulse results for ${lead.targetUrl}`,
     html: `<p>Thanks for scanning your site with Gitwork Pulse. Here's what we found:</p>
       <p><strong>Health score:</strong> ${score}/100</p>
-      <p><strong>Critical issues:</strong> ${criticalCount}</p>
+      ${lockedCount > 0 ? "" : `<p><strong>Critical issues:</strong> ${criticalCount}</p>`}
       ${findingsHtml}
+      ${lockedCount > 0 ? `<p>Plus ${lockedCount} more finding${lockedCount === 1 ? "" : "s"} we ranked as actionable, which come with the in-depth review.</p>` : ""}
       ${advisoryCount > 0 ? `<p>Plus ${advisoryCount} lower-priority advisory checks, which come with the in-depth review.</p>` : ""}
       <p><a href="${reportUrl}">View the full report</a> — a link you can share.</p>
       <p>Want help fixing these, or a full deep-dive across ${ADVERTISED_CHECK_COUNT_LABEL} checks?

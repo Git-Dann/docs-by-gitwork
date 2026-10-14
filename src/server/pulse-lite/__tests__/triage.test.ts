@@ -121,7 +121,7 @@ describe("'we could not establish this' is surfaced, free, with a reason", () =>
 describe("degenerate input", () => {
   it("returns an empty, well-formed triage for an empty scan", () => {
     const t = triage([]);
-    expect(t).toEqual({ actionable: [], advisoryCount: 0, advisoryByCategory: [], notEstablished: [] });
+    expect(t).toEqual({ actionable: [], lockedCount: 0, lockedByCategory: [], limited: false, advisoryCount: 0, advisoryByCategory: [], notEstablished: [] });
   });
 
   it("keeps a perfect scan's report empty rather than inventing something to say", () => {
