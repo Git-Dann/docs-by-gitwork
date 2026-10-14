@@ -6428,6 +6428,22 @@ deploy:deploy`, `chmod 600`, original backed up under `/root`), and `deploy.yml`
 to continue if `.env` is not writable and verifies each key landed. **Never edit `.env` with
 `sudo`** — edit it as `deploy`, or set the value as a GitHub secret.
 
+### 60.5 The client's Slack channel hears when it drops (`wedge-course-feed-alert.ts`)
+
+The feed posts to Big Wedge's **external** (Slack Connect) channel, because they notice
+missing requests first and the feed reads their API. Rules in `feedAlert()` (pure, tested):
+**down** after two failed hourly runs in a row (`ALERT_AFTER_FAILING_MINUTES` — one blip never
+reaches the client), after 6h without a success, or after `STOPPED_AFTER_MINUTES` with no run
+at all; **once per outage** (`courseFeedStatus.alertedDownAt` is the latch, and it only moves
+when Slack accepted the post, so a Slack outage retries rather than swallowing the alert);
+then one **recovered** message with the catch-up count. ⚠️ The wording comes from
+`clientSafeReason()`, never the raw error — those name our env vars. The "hourly run stopped"
+case cannot report itself, so a watchdog rides on the 5-minute `wedge-keepwarm` cron and only
+acts once no run has happened for `STOPPED_AFTER_MINUTES`, so it can't race a live run.
+
+**Same session:** the 3,322 Wedge requests in New submitted more than a week before 14 Oct
+2026 were moved to **Sent** at Dan's request (ids saved on the box under `/root`).
+
 **Still broken, separately:** `WEDGE_COURSE_API_USER/PASSWORD` (the Golf Data console's
 login to wedge-course-backend) is also failing, and the Analytics connector has no token.
 Neither feeds course requests.

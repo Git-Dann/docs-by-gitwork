@@ -752,6 +752,7 @@ const demoWiki: WikiDTO = {
     lastError: null,
     lastCreated: 2,
     lastStatusSyncAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+    alertedDownAt: null,
   },
   courseRequests: [
     {

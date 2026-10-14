@@ -17,11 +17,13 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { COURSE_REQUESTS_SLUGS } from "@/lib/wiki-sections";
 import {
+  STOPPED_AFTER_MINUTES,
   feedSince,
   nextFeedStatus,
   parseFeedStatus,
   type CourseFeedStatus,
 } from "@/lib/wedge-course-feed-status";
+import { applyFeedAlert } from "@/server/wedge-course-feed-alert";
 import { importBigWedgeCourseRequests } from "@/server/wiki-bigwedge-import";
 import { syncBigWedgeStatus } from "@/server/wiki-bigwedge-sync";
 import { dispatchNotification } from "@/server/notifications";
@@ -82,6 +84,9 @@ async function runOne(
     }
   }
 
+  // Tell the client's own Slack channel — once when it goes down, once when it is back.
+  status = await applyFeedAlert(client.id, status, now);
+
   await prisma.clientWiki.update({
     where: { id: wiki.id },
     data: { courseFeedStatus: status as unknown as Prisma.InputJsonValue },
@@ -132,5 +137,29 @@ function notifyFailing(workspaceId: string, clientName: string, slug: string, st
     });
   } catch (err) {
     console.error("[wedge-course-feed] could not notify admins", err);
+  }
+}
+
+/**
+ * The watchdog for the case the hourly run cannot report: the hourly run not happening.
+ * Called from the 5-minute wedge-keepwarm cron. It only acts once the feed has gone
+ * STOPPED_AFTER_MINUTES without any run, so it never races a live run into posting twice.
+ */
+export async function checkCourseFeedWatchdog(workspaceId: string, now: Date = new Date()): Promise<void> {
+  for (const slug of COURSE_REQUESTS_SLUGS) {
+    const client = await prisma.workspaceClient.findFirst({
+      where: { workspaceId, slug },
+      select: { id: true, wiki: { select: { id: true, courseFeedStatus: true } } },
+    });
+    const status = parseFeedStatus(client?.wiki?.courseFeedStatus ?? null);
+    if (!client?.wiki || !status?.lastRunAt) continue;
+    if (now.getTime() - new Date(status.lastRunAt).getTime() <= STOPPED_AFTER_MINUTES * 60_000) continue;
+    const next = await applyFeedAlert(client.id, status, now);
+    if (next !== status) {
+      await prisma.clientWiki.update({
+        where: { id: client.wiki.id },
+        data: { courseFeedStatus: next as unknown as Prisma.InputJsonValue },
+      });
+    }
   }
 }

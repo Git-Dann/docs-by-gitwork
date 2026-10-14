@@ -20,6 +20,9 @@ export interface CourseFeedStatus {
   lastCreated: number;
   /** Last time the action_taken → ADDED status pass ran. */
   lastStatusSyncAt: string | null;
+  /** When the "feed is down" message was posted to the client's Slack channel. Null once
+   *  the recovery message has gone out, or if no outage has been announced. */
+  alertedDownAt: string | null;
 }
 
 /** Where the feed was down before this fix existed — the first run backfills from here. */
@@ -41,6 +44,7 @@ export function parseFeedStatus(value: unknown): CourseFeedStatus | null {
     lastError: str("lastError"),
     lastCreated: typeof v.lastCreated === "number" ? v.lastCreated : 0,
     lastStatusSyncAt: str("lastStatusSyncAt"),
+    alertedDownAt: str("alertedDownAt"),
   };
 }
 
@@ -71,6 +75,7 @@ export function nextFeedStatus(
       lastError: null,
       lastCreated: outcome.created,
       lastStatusSyncAt: prev?.lastStatusSyncAt ?? null,
+      alertedDownAt: prev?.alertedDownAt ?? null,
     };
   }
   return {
@@ -80,6 +85,7 @@ export function nextFeedStatus(
     lastError: outcome.error,
     lastCreated: prev?.lastCreated ?? 0,
     lastStatusSyncAt: prev?.lastStatusSyncAt ?? null,
+    alertedDownAt: prev?.alertedDownAt ?? null,
   };
 }
 
@@ -152,4 +158,59 @@ export function isDuplicateFeedRow(
   const beforeEmailEnded =
     !row.submittedAt || new Date(row.submittedAt).getTime() < new Date(`${EMAIL_FEED_ENDED}T00:00:00Z`).getTime();
   return beforeEmailEnded && seen.namesFromOtherSources.has(row.courseName.trim().toLowerCase());
+}
+
+/**
+ * How long the feed must have been failing before the CLIENT's channel hears about it.
+ * The feed runs hourly, so this is two failed runs in a row: one blip — a deploy restart,
+ * a slow response — never reaches a channel Big Wedge reads.
+ */
+export const ALERT_AFTER_FAILING_MINUTES = 55;
+
+/** No run at all for this long means the hourly schedule itself has stopped. */
+export const STOPPED_AFTER_MINUTES = 125;
+
+export type FeedAlert = { kind: "down"; reason: string } | { kind: "recovered"; caughtUp: number };
+
+/**
+ * Whether to post to the client's Slack channel, and what. Exactly one "down" per outage
+ * (`alertedDownAt` is the latch) and one "recovered" when it ends. Pure.
+ *
+ * Down covers two cases: runs that are failing, AND runs that have stopped happening —
+ * the second leaves no error anywhere, so only the clock can see it.
+ */
+export function feedAlert(status: CourseFeedStatus | null, now: Date): FeedAlert | null {
+  if (!status?.lastRunAt) return null;
+  const nowMs = now.getTime();
+  const failingFor = status.failingSince ? nowMs - new Date(status.failingSince).getTime() : 0;
+  const lastOk = status.lastSuccessAt ? new Date(status.lastSuccessAt).getTime() : null;
+  const stale = lastOk !== null && nowMs - lastOk > FEED_STALE_HOURS * 3_600_000;
+  const stopped = nowMs - new Date(status.lastRunAt).getTime() > STOPPED_AFTER_MINUTES * 60_000;
+  const down =
+    Boolean(status.failingSince && failingFor >= ALERT_AFTER_FAILING_MINUTES * 60_000) || stale || stopped;
+
+  if (down && !status.alertedDownAt) {
+    return { kind: "down", reason: clientSafeReason(status, stopped) };
+  }
+  // Recovered: a success after the outage was announced.
+  if (!down && !status.failingSince && status.alertedDownAt && lastOk !== null && lastOk > new Date(status.alertedDownAt).getTime()) {
+    return { kind: "recovered", caughtUp: status.lastCreated };
+  }
+  return null;
+}
+
+/**
+ * The reason, in words a client can read in their own channel. ⚠️ Never the raw error:
+ * those name Foundry's own configuration (env var names), which is our plumbing.
+ */
+export function clientSafeReason(status: CourseFeedStatus, stoppedRunning: boolean): string {
+  if (stoppedRunning) return "Foundry's hourly check has stopped running.";
+  const e = (status.lastError ?? "").toLowerCase();
+  if (e.includes("rejected foundry's login") || e.includes("no way to log in") || e.includes("expired")) {
+    return "Foundry's login to the Big Wedge API is being refused.";
+  }
+  if (e.includes("could not reach") || e.includes("fetch failed") || e.includes("timeout") || /http 5\d\d/.test(e)) {
+    return "the Big Wedge API isn't responding.";
+  }
+  return "the Big Wedge API returned something Foundry couldn't read.";
 }
