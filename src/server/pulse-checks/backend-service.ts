@@ -21,6 +21,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
+import { isVendoredPath, sampleCoverage } from "./native-mobile";
 
 export type BackendFramework = "django" | "rails" | "laravel" | "spring" | "express" | "next" | null;
 
@@ -130,19 +131,63 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   const ctx = buildCtx(snapshot);
   const checks: PulseScanCheckInput[] = [];
 
+  // Checks whose adverse verdict is the ABSENCE of a pattern in the SAMPLED source.
+  // The web sample is capped, so on a large repository "not found" is not "not
+  // there": below the coverage threshold these self-downgrade to LOW, exactly as the
+  // web-source family's absence() does. And a repository with no server-side code or
+  // service manifest at all (a static page) has no service for them to grade.
+  const SAMPLED_ABSENCE_KEYS = new Set([
+    "svc_express_helmet",
+    "svc_express_body_limit",
+    "svc_express_rate_limit",
+    "svc_session_cookie_flags",
+    "svc_graceful_shutdown",
+    "svc_health_endpoint",
+    "svc_structured_logging",
+    "svc_request_id",
+    "svc_db_connection_pool",
+    "svc_error_tracking",
+  ]);
+  const SOURCE_FILE = /\.(js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|java|cs)$/i;
+  const sourcePaths = snapshot.paths.filter((p) => SOURCE_FILE.test(p) && !isVendoredPath(p));
+  const sourceRead = [...snapshot.files.keys()].filter((p) => SOURCE_FILE.test(p) && !isVendoredPath(p)).length;
+  const coverage = sampleCoverage(sourceRead, sourcePaths.length, snapshot.truncated);
+  const isService =
+    ctx.frameworks.size > 0 ||
+    ctx.packageJson !== "" ||
+    ctx.allConfig !== "" ||
+    sourcePaths.some((p) => /\.(py|rb|php|go|java|cs)$/i.test(p)) ||
+    // A Deno service has no package.json.
+    snapshot.paths.some((p) => /(^|\/)deno\.jsonc?$/i.test(p));
+
   const add = (
     checkKey: string,
     label: string,
     status: PulseScanCheckInput["status"],
     detail: string,
   ) => {
+    let finalStatus = status;
+    let finalDetail = detail;
+    let confidence: PulseScanCheckInput["confidence"] = "HIGH";
+    if (SAMPLED_ABSENCE_KEYS.has(checkKey) && status !== "SKIPPED") {
+      if (!isService) {
+        finalStatus = "SKIPPED";
+        finalDetail =
+          "No server-side code or service manifest was found in this repository, so this service check does not apply.";
+      } else if (status === "WARN" && coverage < 0.3) {
+        confidence = "LOW";
+        finalDetail =
+          `${detail} (Based on ${Math.round(coverage * 100)}% of this project's source files — below the threshold ` +
+          `for a confident "not present anywhere", so this is inconclusive rather than a failure.)`;
+      }
+    }
     checks.push({
-      category: status === "SKIPPED" ? CATEGORIES.INFRASTRUCTURE : CATEGORIES.SECURITY,
+      category: finalStatus === "SKIPPED" ? CATEGORIES.INFRASTRUCTURE : CATEGORIES.SECURITY,
       checkKey,
       label,
-      status,
-      confidence: "HIGH",
-      detail,
+      status: finalStatus,
+      confidence,
+      detail: finalDetail,
     });
   };
 
@@ -259,8 +304,9 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         ? "config/environments/production.rb was not read."
         : forceSsl
           ? "config.force_ssl is enabled, so Rails redirects to HTTPS and marks cookies secure."
-          : "config.force_ssl is not enabled in production. One setting turns on the HTTPS redirect, the Secure " +
-            "cookie flag and HSTS together, so leaving it off costs all three.",
+          : "config.force_ssl is not enabled in production. That one setting turns on the HTTPS redirect, the " +
+            "Secure cookie flag and HSTS together; without it those protections exist only if a TLS-terminating " +
+            "proxy or the application's own code provides them, which the Rails configuration read here does not show.",
     );
 
     const secretCommitted = snapshot.paths.some((p) => /config\/master\.key$|config\/credentials\.yml$/i.test(p));
@@ -353,27 +399,45 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   // ── Node services ──────────────────────────────────────────────────────────
   const isNode = has("express") || has("next");
   if (isNode) {
-    const helmet = /helmet|@fastify\/helmet|contentSecurityPolicy/i.test(ctx.packageJson + ctx.nodeSource);
+    // Header names count only as quoted literals (next.config headers() keys, headers.set()),
+    // not as a bare mention in a comment or log line.
+    const helmet = /helmet|@fastify\/helmet|contentSecurityPolicy|["'](Content-Security-Policy|X-Content-Type-Options)["']/i.test(
+      ctx.packageJson + ctx.nodeSource,
+    );
     add(
       "svc_express_helmet",
       "Express sets security headers",
       helmet ? "PASS" : "WARN",
       helmet
-        ? "A security-header middleware is configured."
-        : "No security-header middleware (helmet or equivalent) was found. Express sends no CSP, no " +
-          "X-Content-Type-Options and no Referrer-Policy by default, so every one of those defences is simply " +
-          "absent rather than misconfigured.",
+        ? "A security-header middleware or security-header configuration is present."
+        : "No security-header middleware (helmet or equivalent) or security-header configuration (such as " +
+          "headers() in next.config) was found. Neither Express nor Next.js sends a CSP, X-Content-Type-Options " +
+          "or Referrer-Policy by default, so unless a proxy or CDN adds them those defences are simply absent " +
+          "rather than misconfigured.",
     );
     const bodyLimit = /limit:\s*["']\d+[kmKM]b?["']|bodyLimit|maxRequestBodySize/i.test(ctx.nodeSource);
+    // body-parser / express.json() / urlencoded() cap bodies at 100kb by default, and
+    // Next.js API routes and Server Actions at 1MB. A missing explicit limit is only an
+    // exposure where a body is read with NO default cap: a multipart upload library, a
+    // raw request stream, or an App Router handler reading the body itself.
+    const uncappedBody =
+      /multer|busboy|formidable|bodyParser:\s*false|\.on\(\s*["']data["']|\b(req|request)\.(json|text|formData|arrayBuffer|blob)\(\)|\b(req|request)\.pipe\(|\.body\.getReader\(\)/i.test(
+        ctx.packageJson + ctx.nodeSource,
+      );
     add(
       "svc_express_body_limit",
       "The request body size is capped",
-      bodyLimit ? "PASS" : "WARN",
+      bodyLimit || !uncappedBody ? "PASS" : "WARN",
       bodyLimit
         ? "A request body size limit is configured."
-        : "No request body limit was found. express.json() defaults to 100kb, but a raw body parser or a file " +
-          "upload route without a cap lets one request allocate as much memory as the client cares to send — the " +
-          "cheapest denial-of-service there is against a Node process.",
+        : !uncappedBody
+          ? "No explicit body limit is set, but the body parsers in use apply a default cap (100kb for " +
+            "express.json()/body-parser, 1MB for Next.js API routes and Server Actions) and no uncapped upload " +
+            "parser or raw body read was found."
+          : "A request body is read without a size cap — an upload parser (multer, busboy, formidable), a raw " +
+            "request stream, or a route handler calling request.json()/text()/formData()/blob() — and no explicit " +
+            "limit was found. One request can then allocate as much memory as the client cares to send, the " +
+            "cheapest denial-of-service there is against a Node process.",
     );
     const rateLimit = /rate-?limit|rateLimiter|@upstash\/ratelimit|slowDown/i.test(ctx.packageJson + ctx.nodeSource);
     add(
@@ -415,7 +479,17 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
       : "No wildcard-origin-with-credentials CORS configuration was found.",
   );
 
-  const cookieFlags = /httpOnly:\s*true/i.test(all) && /sameSite/i.test(all);
+  // NextAuth/Auth.js and iron-session issue their session cookie HttpOnly + SameSite=Lax
+  // by default, so an app using them has both flags without writing either.
+  // The library vouches only for ITS cookie: an app that also writes cookies itself
+  // (res.cookie, cookies().set, a Set-Cookie header) must set the flags on those, so
+  // there the library alone does not pass.
+  const explicitFlags = /httpOnly:\s*true/i.test(all) && /sameSite/i.test(all);
+  const libraryCookie = /["']next-auth(\/[\w/-]+)?["']|["']@auth\/(core|nextjs|express)["']|["']iron-session["']/.test(
+    ctx.packageJson + all,
+  );
+  const manualCookieWrite = /\bres\.cookie\(|cookies\(\)\.set\(|\.cookies\.set\(|\bsetCookie\(|["']Set-Cookie["']/i.test(all);
+  const cookieFlags = explicitFlags || (libraryCookie && !manualCookieWrite);
   const setsCookies = /cookie|session/i.test(all);
   add(
     "svc_session_cookie_flags",
@@ -424,7 +498,10 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
     !setsCookies
       ? "No cookie or session handling was found in the configuration read."
       : cookieFlags
-        ? "Cookies are configured with HttpOnly and SameSite."
+        ? explicitFlags
+          ? "Cookies are configured with HttpOnly and SameSite."
+          : "The session cookie is issued by an auth library (NextAuth/Auth.js or iron-session) that sets HttpOnly " +
+            "and SameSite by default, and no other cookie write was found in the code read."
         : "Session cookie flags (HttpOnly, SameSite) were not found. Without HttpOnly a single XSS reads the session " +
           "token directly; without SameSite the cookie is attached to cross-site requests, which is what CSRF is.",
   );
@@ -441,7 +518,9 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "you deploy' rather than as an error anyone can reproduce.",
   );
 
-  const health = /\/health|\/healthz|\/readyz|\/_health|actuator\/health/i.test(all + snapshot.paths.join("\n"));
+  const health = /\/health|\/healthz|\/readyz|\/livez|\/_health|actuator\/health|@Get\(\s*["'`]\/?health/i.test(
+    all + snapshot.paths.join("\n"),
+  );
   add(
     "svc_health_endpoint",
     "The service exposes a health endpoint",
@@ -452,9 +531,10 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "reach its database, and a rolling deploy of a broken build completes successfully.",
   );
 
-  const structuredLogs = /pino|winston|bunyan|structlog|logback|slf4j|semantic_logger|zap\.|logrus/i.test(
-    ctx.packageJson + all,
-  );
+  // tslog defaults to "pretty" (free text); it is structured only when configured with type "json".
+  const structuredLogs =
+    /pino|winston|bunyan|structlog|logback|slf4j|semantic_logger|zap\.|logrus/i.test(ctx.packageJson + all) ||
+    (/tslog/i.test(ctx.packageJson + all) && /\btype:\s*[^,\n}]*["']json["']/i.test(all));
   add(
     "svc_structured_logging",
     "Logs are structured rather than free text",
@@ -465,7 +545,12 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "severity, so during an incident the logs are a wall of text at exactly the moment they need to be a query.",
   );
 
-  const requestId = /request-?id|correlation-?id|traceparent|x-request-id/i.test(all + ctx.nodeSource);
+  // Rails ships ActionDispatch::RequestId in its default middleware stack: every
+  // response carries X-Request-Id. Keyed on Rails::Application, not on a bare Gemfile
+  // (Sinatra/Roda apps have a Gemfile but no such middleware).
+  const requestId =
+    /Rails::Application/.test(ctx.railsProd) ||
+    /request-?id|correlation-?id|traceparent|x-request-id/i.test(all + ctx.nodeSource);
   add(
     "svc_request_id",
     "Requests carry a correlation id",
@@ -476,15 +561,27 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "cannot be tied to a specific request chain — every log line has to be matched by timestamp and guesswork.",
   );
 
-  const pool = /pool|POOL_SIZE|CONN_MAX_AGE|HikariCP|max_connections|connectionLimit/i.test(all);
+  // `kb.dataSources` (an AWS Bedrock knowledge-base field) is not a database, so
+  // "datasource" must not be followed by "s". "database" stays a substring match:
+  // databaseName, MongoDatabase and DatabaseService are real database signals, and a
+  // word boundary there would SKIP a real service.
+  const usesDb = /database|datasource(?!s)/i.test(all);
+  // Prisma, Sequelize, TypeORM, Knex, Mongoose and ActiveRecord pool connections by
+  // default, so a project using one is pooled without a pool setting being written.
+  // ActiveRecord is keyed on real Rails/AR evidence, not on a bare Gemfile (Sinatra, Jekyll).
+  const pool =
+    /Rails::Application|ActiveRecord/.test(all) ||
+    /pool|POOL_SIZE|CONN_MAX_AGE|HikariCP|max_connections|connectionLimit|@prisma\/client|PrismaClient|sequelize|typeorm|knex|mongoose/i.test(
+      ctx.packageJson + all,
+    );
   add(
     "svc_db_connection_pool",
     "Database connections are pooled",
-    !/database|DATABASE_URL|datasource/i.test(all) ? "SKIPPED" : pool ? "PASS" : "WARN",
-    !/database|DATABASE_URL|datasource/i.test(all)
+    !usesDb ? "SKIPPED" : pool ? "PASS" : "WARN",
+    !usesDb
       ? "No database configuration was read, so pooling does not apply."
       : pool
-        ? "Connection pooling is configured."
+        ? "Connection pooling is configured, explicitly or through a database client that pools by default."
         : "No connection pool configuration was found. Opening a connection per request costs a round trip each time " +
           "and exhausts the database's connection limit under load — which fails as timeouts on unrelated queries, " +
           "so it is rarely diagnosed as a pooling problem.",
@@ -496,8 +593,8 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   add(
     "svc_db_migrations_versioned",
     "Schema changes are versioned migrations",
-    !/database|DATABASE_URL|datasource/i.test(all) ? "SKIPPED" : migrations ? "PASS" : "WARN",
-    !/database|DATABASE_URL|datasource/i.test(all)
+    !usesDb ? "SKIPPED" : migrations ? "PASS" : "WARN",
+    !usesDb
       ? "No database configuration was read."
       : migrations
         ? "Schema changes are committed as versioned migrations, so the database can be rebuilt from the repository."
@@ -506,7 +603,9 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
           "environment to the same state.",
   );
 
-  const envSecrets = /^[A-Z_]*(SECRET|PASSWORD|TOKEN|API_?KEY)[A-Z_]*\s*=\s*(?!$|["']?(your|changeme|xxx|<|\$))[\w./+-]{12,}/m.test(
+  // [ \t]* not \s*: \s* crosses the newline after an EMPTY value, so `NEXTAUTH_SECRET=`
+  // followed by `GITHUB_CLIENT_ID=` read the next variable's NAME as a credential.
+  const envSecrets = /^[A-Z_]*(SECRET|PASSWORD|TOKEN|API_?KEY)[A-Z_]*[ \t]*=[ \t]*(?!$|["']?(your|changeme|xxx|<|\$))[\w./+-]{12,}/m.test(
     ctx.envExample,
   );
   add(
@@ -522,21 +621,27 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   );
 
   const lockfile = snapshot.paths.some((p) =>
-    /(package-lock\.json|yarn\.lock|pnpm-lock\.ya?ml|bun\.lockb?|poetry\.lock|Gemfile\.lock|composer\.lock|go\.sum|Cargo\.lock)$/i.test(
+    /(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.ya?ml|bun\.lockb?|poetry\.lock|Pipfile\.lock|uv\.lock|pdm\.lock|Gemfile\.lock|composer\.lock|go\.sum|Cargo\.lock|deno\.lock|gradle\.lockfile|packages\.lock\.json)$/i.test(
       p,
     ),
+  );
+  // No dependency manifest means nothing is installed, so there is nothing to lock.
+  const hasManifest = snapshot.paths.some((p) =>
+    /(^|\/)(package\.json|requirements[\w.-]*\.txt|requirements\/[\w.-]+\.txt|Pipfile|pyproject\.toml|setup\.py|setup\.cfg|Gemfile|composer\.json|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|deno\.jsonc?|[\w.-]+\.csproj)$/i.test(p),
   );
   add(
     "svc_dependency_lockfile",
     "A dependency lockfile is committed",
-    lockfile ? "PASS" : "WARN",
-    lockfile
+    !hasManifest ? "SKIPPED" : lockfile ? "PASS" : "WARN",
+    !hasManifest
+      ? "No dependency manifest was found, so there are no installed dependencies to lock."
+      : lockfile
       ? "A lockfile is committed, so every environment installs the same dependency versions."
       : "No lockfile is committed. Each install resolves versions afresh, so the build is not reproducible and a " +
         "malicious or broken release of a transitive dependency reaches production without any change here.",
   );
 
-  const errorTracking = /sentry|bugsnag|rollbar|honeybadger|airbrake|datadog|newrelic|opentelemetry/i.test(
+  const errorTracking = /sentry|bugsnag|rollbar|honeybadger|airbrake|datadog|newrelic|opentelemetry|logster|appsignal/i.test(
     ctx.packageJson + all,
   );
   add(

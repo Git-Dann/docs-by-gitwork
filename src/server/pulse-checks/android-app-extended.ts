@@ -71,6 +71,52 @@ export function stripJvmComments(source: string): string {
   return out;
 }
 
+/**
+ * True when the SQL argument of a rawQuery/execSQL call is built from a NON-constant value — by concatenation
+ * (`"… = " + id`) or by a Kotlin template (`"… = $id"`). Concatenating string literals, numbers or SCREAMING_CASE
+ * constants (`"DROP TABLE " + TABLE_NAME`) cannot be injected. Only the FIRST argument is judged: the bind-args
+ * array (`arrayOf(a + b)`, `arrayOf("$id")`) is the parameterised path, not an injection.
+ */
+/** A SCREAMING_CASE constant, optionally qualified (`TABLE_NAME`, `Contract.Entry.COLUMN_ID`). */
+const SQL_CONSTANT = /^(?:\w+\.)*[A-Z][A-Z0-9]*(?:_[A-Za-z0-9]+)*$/;
+
+export function concatenatedSql(source: string): boolean {
+  // Kotlin raw strings (`"""…"""`, often multi-line SQL) first, so a template inside one is still judged.
+  const literal = /"""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g;
+  const start = /\b(?:rawQuery|execSQL)\(\s*(?=["'])/g;
+  for (const m of source.matchAll(start)) {
+    const open = source.indexOf("(", m.index ?? 0);
+    const window = source.slice(open, open + 2000);
+    // Same-length mask so parentheses and commas inside literals do not move the argument boundaries.
+    const masked = window.replace(literal, (l) => '"' + " ".repeat(Math.max(0, l.length - 2)) + '"');
+    let depth = 0;
+    let end = window.length;
+    for (let i = 0; i < masked.length; i++) {
+      const c = masked[i];
+      if (c === "(") depth++;
+      else if (c === ")" && --depth === 0) {
+        end = i;
+        break;
+      } else if (c === "," && depth === 1) {
+        end = i;
+        break;
+      }
+    }
+    const sqlArg = window.slice(1, end);
+    // Kotlin templates: `$name` / `${expr}` interpolate a value unless it names a constant (`${Contract.TABLE}`).
+    // `\$` is an escaped dollar, not a template.
+    const templated = [...sqlArg.matchAll(literal)]
+      .filter((l) => l[0].startsWith('"'))
+      .flatMap((l) => [...l[0].matchAll(/(?<!\\)\$(?:\{([^}]*)\}|([A-Za-z_]\w*))/g)])
+      .some((t) => !SQL_CONSTANT.test((t[1] ?? t[2] ?? "").trim()));
+    if (templated) return true;
+    const args = sqlArg.replace(literal, '""');
+    const operands = [...args.matchAll(/\+\s*(""|[A-Za-z_][\w.]*|\S)/g)].map((o) => o[1]);
+    if (operands.some((op) => op !== '""' && !/^\d/.test(op) && !SQL_CONSTANT.test(op))) return true;
+  }
+  return false;
+}
+
 function buildCtx(snapshot: RepoSnapshot): Ctx {
   const src: string[] = [];
   const manifest: string[] = [];
@@ -195,7 +241,12 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
   );
 
   // ── Release build configuration ────────────────────────────────────────────
-  const minify = /minifyEnabled\s+true|isMinifyEnabled\s*=\s*true/i.test(ctx.gradle);
+  const minify =
+    // `minifyEnabled true`, Groovy's `minifyEnabled = true` and Kotlin's `isMinifyEnabled = true` (via /i).
+    /minifyEnabled\s*=?\s*true\b/i.test(ctx.gradle) ||
+    // A property-driven toggle that defaults to ON, e.g. Now in Android:
+    // `isMinifyEnabled = providers.gradleProperty("minifyWithR8").map(...).getOrElse(true)`.
+    /isMinifyEnabled\s*=\s*[^\n]*(?:\n\s*\.[^\n]*)*?(?:\.(?:getOrElse|orElse)\(\s*true\s*\)|\?:\s*true\b)/.test(ctx.gradle);
   add(
     "android_x_code_shrinking",
     "Release builds are minified and obfuscated",
@@ -304,7 +355,7 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
   );
 
   // ── Data handling ──────────────────────────────────────────────────────────
-  const rawQuery = /rawQuery\(\s*"[^"]*"\s*\+|execSQL\(\s*"[^"]*"\s*\+|rawQuery\(\s*'[^']*'\s*\+/.test(ctx.source);
+  const rawQuery = concatenatedSql(ctx.source);
   add(
     "android_x_sql_raw_query",
     "Database queries are parameterised",
@@ -324,14 +375,21 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     "Sensitive files are not written to shared storage",
     !externalStorage ? "PASS" : "WARN",
     !externalStorage
-      ? "The app does not write to shared external storage."
-      : "The app writes to shared external storage. Files there are readable by other apps and survive uninstall, " +
-        "and the APIs used are the ones scoped storage restricted from Android 10 onward — so this is both an " +
-        "exposure and a forward-compatibility problem. Use the app-specific directory for anything private.",
+      ? "The sampled source does not use shared external storage APIs."
+      : "The app uses shared external storage locations (getExternalStorageDirectory, a public directory or " +
+        "MediaStore.Downloads). Files there are readable by other apps and survive uninstall, and the legacy path " +
+        "APIs are the ones scoped storage restricted from Android 10 onward. That is expected for user-facing files " +
+        "such as downloads or exports; make sure nothing private — tokens, cached personal data, databases — goes there.",
   );
 
   const flagSecure = /FLAG_SECURE/.test(ctx.source);
-  const sensitiveUi = /password|card|cvv|otp|token|balance|iban/i.test(ctx.source);
+  // Signals of a credential or payment ENTRY screen. Bare words matched Compose `Card`, `&token=` in image URLs
+  // and YouTube PoTokens, so news readers and video players were told they "handle credentials or financial data".
+  // Layout XML is not in ctx.source, so View-based password fields are recognised by their id / binding name.
+  const sensitiveUi =
+    /PasswordVisualTransformation|PasswordTransformationMethod|KeyboardType\.(?:Number)?Password|TYPE_(?:TEXT|NUMBER)_VARIATION_PASSWORD|inputType\s*=\s*[^\n]*[Pp]assword|(?:R\.id|\bbinding)\.\w*(?:password|passcode|cvv|cvc|iban|card_?number)|\b\w*password(?:EditText|Input|Field|TextField|InputLayout|Layout|View)\b|CardInputWidget|CardMultilineWidget|CardNumberEditText|CardFormView|PaymentSheet|\b(?:cvv|cvc|iban)\b|\botp(?:Code|Input|Field|View|EditText)?\b|card_?number/i.test(
+      ctx.source,
+    );
   add(
     "android_x_screenshot_flag",
     "Sensitive screens set FLAG_SECURE",
@@ -346,7 +404,9 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     { absence: true },
   );
 
-  const debugEscape = /BuildConfig\.DEBUG\s*\|\||isDebuggable\s*\|\|/.test(ctx.source);
+  // `!BuildConfig.DEBUG || x` is TRUE in release, so it restricts (e.g. `isGone = !BuildConfig.DEBUG || !isPresent`)
+  // and is not the widening OR this check is about.
+  const debugEscape = /(?<!!\s*)BuildConfig\.DEBUG\s*\|\||(?<!!\s*)isDebuggable\s*\|\|/.test(ctx.source);
   add(
     "android_x_root_debug_detection",
     "Release builds do not ship debug-only escape hatches",

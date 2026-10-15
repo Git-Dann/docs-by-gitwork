@@ -41,8 +41,23 @@ function buildCtx(snapshot: RepoSnapshot): Ctx {
   let packageJson = "";
   let sampled = 0;
 
+  // Lockfiles enumerate every TRANSITIVE dependency, so a token in one says
+  // nothing about the project's own code — yet "jose" in pnpm-lock.yaml (via
+  // next-auth) FAILed a repo that verifies no JWTs, "regenerate" in
+  // package-lock.json (via Babel) PASSed session rotation on a repo with no
+  // sessions, and "pino" in a nested lockfile WARNed a repo with no logger.
+  // Tests are not the product either: an e2e axios client is not an outbound
+  // call, and expect(login(user)) in a spec is not a log statement.
+  const LOCKFILE =
+    /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.ya?ml|bun\.lockb?|Gemfile\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|composer\.lock|Cargo\.lock|go\.sum|Podfile\.lock|Package\.resolved|pubspec\.lock)$/i;
+  const TEST_FILE =
+    /(^|\/)(__tests__|__mocks__|tests?|spec|e2e|playwright|cypress)\/|\.(test|spec|e2e)\.[cm]?[jt]sx?$|(^|\/)test_[^/]*\.py$|_test\.(py|go)$|_spec\.rb$/i;
+  const SOURCE_FILE = /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|php|go|java|cs)$/i;
+
   for (const [path, text] of snapshot.files) {
-    if (/\.(ts|tsx|js|jsx|mjs|cjs|py|rb|php|go|java|cs)$/i.test(path)) {
+    if (LOCKFILE.test(path)) continue;
+    if (SOURCE_FILE.test(path)) {
+      if (TEST_FILE.test(path)) continue;
       src.push(text);
       sampled++;
     } else {
@@ -51,9 +66,7 @@ function buildCtx(snapshot: RepoSnapshot): Ctx {
     if (/(^|\/)package\.json$/i.test(path) && !packageJson) packageJson = text;
   }
 
-  const total = snapshot.paths.filter((p) =>
-    /\.(ts|tsx|js|jsx|mjs|cjs|py|rb|php|go|java|cs)$/i.test(p),
-  ).length;
+  const total = snapshot.paths.filter((p) => SOURCE_FILE.test(p) && !TEST_FILE.test(p)).length;
 
   return {
     source: src.join("\n"),
@@ -74,6 +87,14 @@ interface Rule {
   category: Cat;
   /** Does the subject exist at all? When false the check SKIPs with `absent`. */
   applies: (c: Ctx) => boolean;
+  /**
+   * The coarse subject, for rules whose `applies` is narrowed by a signal in the
+   * SAMPLED source (password handling, a comparison, a webhook handler, retry logic).
+   * When the coarse subject is present but the narrowing signal was not seen in a thin
+   * sample, "not applicable" is not established — the signal may sit in an unread
+   * file — so the check is INCONCLUSIVE rather than a confident SKIPPED.
+   */
+  subject?: (c: Ctx) => boolean;
   /** True when the good thing is present. */
   present: (c: Ctx) => boolean;
   /** Status when `present` is false. */
@@ -115,19 +136,51 @@ const RULES: Rule[] = [
   // ── Authentication ───────────────────────────────────────────────────────
   {
     key: "auth_x_password_hashing_modern", label: "Passwords are hashed with a memory-hard algorithm",
-    category: AUTH, applies: doesAuth, present: has(/argon2|bcrypt|scrypt|pbkdf2|password_hash|BCryptPasswordEncoder/i),
+    // Only a project that handles passwords can hash them badly. next-auth with
+    // OAuth and magic-link providers only (shadcn-ui/taxonomy) stores none, and was
+    // FAILed for "no password hashing library". The password signal covers the
+    // common short forms (pwd, passwd) and the credential strategies themselves, so a
+    // passport-local strategy comparing `user.pwd === pwd` still applies and FAILs.
+    category: AUTH,
+    subject: doesAuth,
+    applies: (c) =>
+      doesAuth(c) &&
+      (/pass(?:word|wd|phrase)|\bpwd\b|LocalStrategy|CredentialsProvider/i.test(c.source) ||
+        /argon2|bcrypt|scrypt|pbkdf2|password_hash|BCryptPasswordEncoder|\bdevise\b|has_secure_password|django\.contrib\.auth|make_password|PasswordHasher/i.test(
+          c.source + c.config + c.packageJson,
+        )),
+    // Framework auth that hashes by default counts: Devise and has_secure_password
+    // use bcrypt, Django's auth uses PBKDF2. Lockfiles are not read, so the
+    // transitive bcrypt in Gemfile.lock is not there to vouch for them.
+    present: has(/argon2|bcrypt|scrypt|pbkdf2|password_hash|BCryptPasswordEncoder|\bdevise\b|has_secure_password|django\.contrib\.auth|make_password|PasswordHasher/i),
     onMissing: "FAIL", absence: true,
     pass: "Passwords are hashed with a recognised memory-hard or iterated algorithm.",
     fail: "No password hashing library was found alongside the authentication code. A password stored with a plain digest (MD5, SHA-1, or an unsalted SHA-256) is recoverable from a database dump at commodity GPU rates — hours for the whole table, not years.",
-    absent: "This project does not appear to implement its own authentication.",
+    absent: "No password handling was found — authentication, if any, is delegated (OAuth, magic links or a hosted provider).",
   },
   {
     key: "auth_x_session_rotation", label: "The session identifier is rotated on login",
-    category: AUTH, applies: doesAuth, present: has(/regenerate|rotateSession|session\.regenerate|reset_session|newSession|cycleSession/i),
+    // Only a server-side session has an identifier to fix. A stateless-JWT API (the
+    // realworld example app) has none, and used to PASS on the Babel "regenerate"
+    // package in its lockfile. PHP's $_SESSION has no word boundary before
+    // "SESSION", so it is listed explicitly.
+    category: AUTH,
+    subject: doesAuth,
+    applies: (c) =>
+      doesAuth(c) &&
+      /express-session|cookie-session|req\.session|request\.session|\bsession\[|\$_SESSION|session_start\(|iron-session|SessionMiddleware|HttpSession|next-auth|@auth\/|lucia|\bdevise\b|django\.contrib\.(?:auth|sessions)|spring-security/i.test(
+        c.source + c.config + c.packageJson,
+      ),
+    // Frameworks that issue a fresh session at sign-in count: next-auth/Auth.js
+    // mints a new session token, Lucia creates a new session, Devise/Warden renews
+    // the Rails session, Django's login() calls cycle_key(), and Spring Security
+    // migrates the session by default. cal.com and taxonomy (both next-auth) were
+    // WARNed for session fixation they cannot have.
+    present: has(/regenerate|rotateSession|session\.regenerate|reset_session|newSession|cycleSession|cycle_key|next-auth|@auth\/|lucia|\bdevise\b|django\.contrib\.auth|spring-security/i),
     onMissing: "WARN", absence: true,
-    pass: "The session identifier is regenerated at login.",
+    pass: "The session identifier is regenerated at login, explicitly or by the auth framework.",
     fail: "No session rotation was found at the login boundary. If the session id survives authentication, an attacker who can set a victim's cookie before login — through an XSS on a subdomain, or a shared machine — holds a session that becomes authenticated when the victim signs in. This is session fixation, and it is invisible in testing because everything works.",
-    absent: "This project does not appear to implement its own authentication.",
+    absent: "No server-side session was found, so there is no session identifier to rotate.",
   },
   {
     key: "auth_x_token_expiry", label: "Access tokens carry an expiry",
@@ -141,23 +194,47 @@ const RULES: Rule[] = [
   {
     key: "auth_x_jwt_algorithm_pinned", label: "JWT verification pins the algorithm",
     category: AUTH, applies: has(/jsonwebtoken|jose\b|PyJWT|jjwt/i),
-    present: has(/algorithms\s*[:=]\s*\[|algorithm\s*[:=]\s*["']|requireAlg|setAllowedAlgorithms/i),
+    // jsonwebtoken 9 derives the allowed algorithms from the key type and refuses
+    // "none" unless it is listed (CVE-2022-23539/23540/23541), and jose's jwtVerify
+    // never accepts "none" and binds the algorithm family to the key — so an
+    // unpinned verify on either is not the attack this FAIL describes. cal.com
+    // (jsonwebtoken 9.0.0, jwt.verify(token, secretKey)) was FAILed for it.
+    present: (c) =>
+      /algorithms\s*[:=]\s*\[|algorithm\s*[:=]\s*["']|requireAlg|setAllowedAlgorithms|jwtVerify\(/i.test(
+        c.source + c.config + c.packageJson,
+      ) || /"jsonwebtoken"\s*:\s*"[\^~>=\s]*(?:9|[1-9]\d)(?:\.|")/.test(c.packageJson),
     onMissing: "FAIL", absence: true,
-    pass: "Token verification names the algorithms it will accept.",
+    pass: "Token verification restricts the accepted algorithms — explicitly, or through a library version that derives them from the key.",
     fail: "JWT verification does not pin an algorithm list. A verifier that trusts the token's own `alg` header can be handed `none`, or an HMAC token signed with the public key of an RSA pair — both turn signature verification into a formality.",
     absent: "This project does not verify JWTs.",
   },
   {
     key: "auth_x_login_rate_limit", label: "Authentication endpoints are rate-limited",
-    category: AUTH, applies: doesAuth, present: has(/rate-?limit|rateLimiter|throttle|attempt.*lock|failedAttempts|slowDown/i),
+    // Credential stuffing needs a password (or a short code) to stuff. OAuth- and
+    // magic-link-only sign-in (shadcn-ui/taxonomy) has no such endpoint to rate-limit;
+    // a local strategy using `pwd`, or an OTP/TOTP entry step, still does.
+    category: AUTH, subject: doesAuth,
+    applies: (c) => doesAuth(c) && /pass(?:word|wd|phrase)|\bpwd\b|LocalStrategy|CredentialsProvider|\b(?:totp|otp)\b/i.test(c.source),
+    present: has(/rate-?limit|rateLimiter|throttle|attempt.*lock|failedAttempts|slowDown/i),
     onMissing: "WARN", absence: true,
     pass: "Rate limiting or lockout is applied around authentication.",
     fail: "No rate limiting or lockout was found around the login path. Credential stuffing against a leaked password list is then bounded only by network speed, and it produces no signal that distinguishes it from ordinary traffic.",
-    absent: "This project does not appear to implement its own authentication.",
+    absent: "No password login was found — authentication, if any, is delegated (OAuth, magic links or a hosted provider).",
   },
   {
     key: "auth_x_timing_safe_compare", label: "Secret comparison is timing-safe",
-    category: AUTH, applies: has(/apiKey|api_key|token|secret|hmac|signature/i),
+    // Applies only where there is a comparison to judge: a constant-time helper, or
+    // an equality test on a secret-named value (including a quoted header key such as
+    // req.headers['x-hub-signature-256'] !== expected). Merely mentioning "token" or
+    // "secret" (every next-auth config) compares nothing, yet taxonomy and the
+    // realworld example were told their secrets "appear to be compared with ===".
+    category: AUTH,
+    subject: has(/apiKey|api_key|token|secret|hmac|signature/i),
+    applies: (c) =>
+      /timingSafeEqual|compare_digest|secure_compare|MessageDigest\.isEqual/i.test(c.source + c.config + c.packageJson) ||
+      /(?<!typeof\s+)\b\w*(?:secret|token|signature|hmac|digest|api_?key)(?:[\w-]*["'\x60]\s*[\])]+)?\s*(?:===?|!==?)\s*(?!null\b|undefined\b|nil\b|None\b|true\b|false\b|""|'')[\w"'\x60]|[\w)\]]\s*(?:===?|!==?)\s*(?:[\w$]+\.)*\w*(?:secret|token|signature|hmac|digest|api_?key)\b/i.test(
+        c.source,
+      ),
     present: has(/timingSafeEqual|hmac\.compare_digest|compare_digest|secure_compare|MessageDigest\.isEqual|subtle\.timingSafeEqual/i),
     onMissing: "WARN", absence: true,
     pass: "Secrets are compared with a constant-time function.",
@@ -212,7 +289,46 @@ const RULES: Rule[] = [
   {
     key: "obs_x_no_secrets_in_logs", label: "Credentials are not written to logs",
     category: OBS, applies: isService,
-    present: (c) => !/log[^\n]*\b(password|secret|token|apiKey|api_key|authorization)\b/i.test(c.source),
+    // A logging CALL whose arguments, outside string literals, carry a
+    // credential-named value. The old "log[^\n]*password" matched "login",
+    // "dialog" and "catalog" anywhere on a line, and the word inside a message
+    // ("Common passwords file ... not found"), so discourse and the realworld
+    // example FAILed for logging nothing sensitive. Interpolations ($-brace,
+    // #-brace, f-string braces) are kept; literal text is not.
+    present: (c) =>
+      !c.source.split("\n").some((line) => {
+        const call =
+          /\b(?:console\.(?:log|info|warn|error|debug|trace)|(?:Rails\.)?(?:this\.)?(?:logger|log|logging)\.(?:log|info|warn|warning|error|debug|trace|fatal|critical|exception|print\w*|fatal\w*))\b\s*\(?/i.exec(
+            line,
+          );
+        if (!call) return false;
+        // Bounded: a minified bundle is one enormous line, and a log call's arguments are short.
+        const rest = line.slice(call.index + call[0].length, call.index + call[0].length + 1000);
+        if (/\bheaders?\b[.[\s]*(?:get\s*\(\s*)?["']authorization["']/i.test(rest)) return true;
+        const args = rest.replace(
+          /(["'\x60])((?:\\.|(?!\1)[^\\])*)\1/g,
+          (_m: string, _q: string, body: string) => " " + (body.match(/[$#]?\{[^{}]*\}/g) ?? []).join(" ") + " ",
+        );
+        // Only the call's own arguments: stop at its closing parenthesis, or at a `;` that
+        // ends the statement, so `log("ok"); return token;` is not read as logging a token.
+        let depth = 0;
+        let end = args.length;
+        for (let i = 0; i < args.length; i++) {
+          const ch = args[i];
+          if (ch === "(" || ch === "[" || ch === "{") depth++;
+          else if (ch === ")" || ch === "]" || ch === "}") {
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+            depth--;
+          } else if (ch === ";" && depth === 0) {
+            end = i;
+            break;
+          }
+        }
+        return /\b\w*?(?:password|passwd|secret|token|api_?key|authorization)\b/i.test(args.slice(0, end));
+      }),
     onMissing: "FAIL",
     pass: "No log statement was found writing a credential.",
     fail: "A log statement writes a password, token, secret or authorization header. Logs are the least-protected copy of your data — shipped to third parties, retained long after the data itself, and readable by everyone with dashboard access.",
@@ -220,15 +336,29 @@ const RULES: Rule[] = [
   },
   {
     key: "obs_x_uncaught_handler", label: "Uncaught exceptions are captured",
-    category: OBS, applies: isService, present: has(/uncaughtException|unhandledRejection|sys\.excepthook|Thread\.setDefaultUncaughtExceptionHandler|recover\(\)/i),
+    // Node only: crash-on-unhandled-rejection is Node's default. Django/Flask, Go net/http
+    // and Spring already confine a request's exception to that request.
+    category: OBS, applies: (c) => isService(c) && c.packageJson !== "",
+    present: (c) =>
+      has(/uncaughtException|unhandledRejection|Sentry\.init\(|sentry_sdk\.init\(/i)(c) ||
+      // Next.js registers its own uncaughtException/unhandledRejection listeners (router-server.ts).
+      /"next"\s*:/.test(c.packageJson),
     onMissing: "WARN", absence: true,
     pass: "A process-level handler captures uncaught exceptions.",
     fail: "No uncaught-exception handler was found. In Node an unhandled rejection terminates the process by default — so a single unawaited promise takes the service down with nothing written anywhere explaining why.",
-    absent: "This does not appear to be a long-running service.",
+    absent: "This does not appear to be a long-running Node service; the unhandled-rejection crash this checks for is Node's default behaviour.",
   },
   {
     key: "obs_x_tracing", label: "Requests are traced across services",
-    category: OBS, applies: isService, present: has(/opentelemetry|@opentelemetry|jaeger|zipkin|datadog.*trace|newrelic|traceparent/i),
+    category: OBS, applies: isService,
+    // Source and the project's own package.json, plus zero-code agent wiring in config. Lockfiles
+    // list @opentelemetry/api as an optional peer of Next.js, which is not instrumentation, so
+    // config only counts launcher, env and manifest-line signals that never appear in a lockfile.
+    // Sentry performance tracing counts.
+    present: (c) =>
+      /opentelemetry|jaeger|zipkin|dd-trace|ddtrace|datadog.*trace|newrelic|traceparent|registerOTel|tracesSampleRate|traces_sample_rate/i.test(c.source) ||
+      /"(@opentelemetry\/(sdk-node|sdk-trace-[\w-]+|auto-instrumentations-node)|@vercel\/otel|dd-trace|newrelic)"\s*:/i.test(c.packageJson) ||
+      /opentelemetry-instrument\b|opentelemetry-javaagent|ddtrace-run|dd-java-agent|newrelic-admin|OTEL_EXPORTER_OTLP_\w*ENDPOINT|OTEL_TRACES_EXPORTER|DD_TRACE_ENABLED|^(opentelemetry-(sdk|distro)|ddtrace|newrelic)\b|gem\s+['"](ddtrace|datadog|opentelemetry-sdk|newrelic_rpm)['"]/im.test(c.config),
     onMissing: "WARN",
     pass: "Distributed tracing is configured.",
     fail: "No tracing instrumentation was found. With more than one service, 'the checkout was slow' cannot be attributed to a specific hop — you can see that it was slow and not where.",
@@ -236,8 +366,13 @@ const RULES: Rule[] = [
   },
   {
     key: "obs_x_metrics_endpoint", label: "The service exposes metrics",
-    category: OBS, applies: isService, present: has(/prom-client|prometheus|\/metrics|micrometer|statsd|OpenMetrics/i),
-    onMissing: "WARN",
+    category: OBS, applies: isService,
+    // SDK metric calls count as instrumentation: cal.com records
+    // metrics.distribution(...) through @sentry/nextjs, which the old pattern missed.
+    present: has(/prom-client|prometheus|\/metrics|micrometer|statsd|OpenMetrics|@opentelemetry\/(?:sdk-metrics|api-metrics)|\bmetrics\.(?:increment|distribution|gauge|count|histogram|timing)\(|dd-trace|newrelic/i),
+    // A metrics client lives in one bootstrap file; on a thin sample its absence is
+    // not established.
+    onMissing: "WARN", absence: true,
     pass: "A metrics endpoint or client is configured.",
     fail: "No metrics instrumentation was found. Error tracking tells you what broke; metrics tell you that latency has been climbing for three days. Without them, capacity and degradation are invisible until they become an outage.",
     absent: "This does not appear to be a long-running service.",
@@ -253,8 +388,8 @@ const RULES: Rule[] = [
   },
   {
     key: "obs_x_startup_config_validation", label: "Configuration is validated at startup",
-    category: OBS, applies: isService, present: has(/zod.*env|envalid|joi.*validate.*env|pydantic.*Settings|ConfigurationProperties|required.*env/i),
-    onMissing: "WARN",
+    category: OBS, applies: isService, present: has(/zod.*env|envalid|createEnv|@t3-oss\/env|joi.*validate.*env|pydantic.*Settings|ConfigurationProperties|required.*env|Missing (required )?env(ironment)?[ _-]?var|ImproperlyConfigured/i),
+    onMissing: "WARN", absence: true,
     pass: "Environment configuration is validated at boot.",
     fail: "No startup configuration validation was found. A missing or misspelled environment variable then surfaces as `undefined` deep inside a request — often as a successful call to the wrong place — rather than as a refusal to start.",
     absent: "This does not appear to be a long-running service.",
@@ -288,9 +423,23 @@ const RULES: Rule[] = [
   },
   {
     key: "api_x_idempotency", label: "State-changing requests can be retried safely",
-    category: API, applies: has(/stripe|payment|charge|order|booking|POST/i),
+    // Whole words: "order" matched every CSS "border", and case-folded "POST"
+    // matched "post", "postgres" and "Postmark", so a static tutorials site was told
+    // it could double-charge. Identifiers still count: createOrder, create_order,
+    // OrderService, paymentIntents and stripeClient are how the subject appears in code.
+    category: API,
+    applies: (c) =>
+      // "in order to" / "in charge of" are prose, not an order or a charge.
+      /\b(?:stripe|payments?|(?<!\bin\s)charges?|(?<!\bin\s)orders?|bookings?|checkout|purchases?)\b|(?:create|place|submit|cancel|refund|process|confirm)_?(?:order|payment|charge|booking|checkout|purchase)/i.test(
+        c.source + c.config + c.packageJson,
+      ) ||
+      /\b(?:Order|Payment|Charge|Booking|Checkout|Purchase)(?:Service|Controller|Intents?|Repository|Model|Status|Id)\b|\bstripe(?=[A-Z])/.test(
+        c.source + c.config + c.packageJson,
+      ),
     present: has(/idempotenc|Idempotency-Key|dedupe|requestId.*unique/i),
-    onMissing: "WARN",
+    // An absence verdict like any other: cal.com keeps its booking idempotency key
+    // in packages/lib/idempotencyKey, outside an 80-file sample of ~7,700 files.
+    onMissing: "WARN", absence: true,
     pass: "Idempotency handling is present on state-changing operations.",
     fail: "No idempotency mechanism was found. A client that retries after a timeout — which every mobile client does — can create the same order or charge twice, and the duplicate is indistinguishable from a genuine second request.",
     absent: "No state-changing operations were identified.",
@@ -305,18 +454,33 @@ const RULES: Rule[] = [
   },
   {
     key: "api_x_timeout_on_outbound", label: "Outbound calls set a timeout",
-    category: API, applies: has(/fetch\(|axios|httpx|requests\.|HttpClient|RestTemplate|http\.Get/i),
+    // Source only: "axios" in package.json is a dependency, not a call — the
+    // realworld example app's only axios use is its e2e test client.
+    category: API, subject: has(/fetch\(|axios|httpx|requests\.|HttpClient|RestTemplate|http\.Get/i),
+    applies: hasInSource(/fetch\(|axios|httpx|requests\.|HttpClient|RestTemplate|http\.Get/i),
     present: has(/timeout|AbortSignal|AbortController|setTimeout.*abort|Timeout\(/i),
     onMissing: "WARN", absence: true,
     pass: "Outbound HTTP calls set a timeout.",
-    fail: "Outbound HTTP calls were found with no timeout. Node's fetch and Python's requests both wait indefinitely by default, so one slow third party holds every request thread that touches it — the usual mechanism by which a vendor's bad day becomes your outage.",
+    fail: "Outbound HTTP calls were found with no timeout. Python's requests waits indefinitely by default and Node's fetch for up to five minutes, so one slow third party holds every request thread that touches it — the usual mechanism by which a vendor's bad day becomes your outage.",
     absent: "No outbound HTTP calls were found.",
   },
   {
     key: "api_x_retry_backoff", label: "Retries use backoff rather than immediate repetition",
-    category: API, applies: has(/retry|retries|maxAttempts/i),
-    present: has(/backoff|exponential|jitter|delay.*attempt|Math\.pow.*attempt/i),
-    onMissing: "WARN",
+    // Retry LOGIC, not the word: vercel/commerce's only "retry" is a comment saying
+    // Shopify retries webhooks, and it was told its retries had no backoff. Loop
+    // counters (retries, tries, attempts), Python range(self.retries) and retry
+    // helpers count. Code that already shows backoff applies (and passes) on its own.
+    category: API,
+    subject: has(/retry|retries|maxAttempts/i),
+    applies: (c) =>
+      /\b(?:max_?retries|max_?attempts|retry_?count|retries_?left|retries|tries|attempts?)\b\s*(?:[<>]=?|[-+]=|\+\+|--)|[<>]=?\s*(?:this\.|self\.)?(?:max_?retries|max_?attempts|retries|tries|attempts?)\b|\b(?:max_?retries|max_?attempts|retries|Retryable|withRetry|retryWhen)\b\s*[:=(]|\bretry_on\b|\bretry\s*\(|range\(\s*(?:self\.)?\w*(?:retries|attempts)\b/i.test(
+        c.source,
+      ) || /backoff|exponential|jitter|delay.*attempt|Math\.pow.*attempt|p-retry|async-retry/i.test(c.source + c.config + c.packageJson),
+    // p-retry and async-retry back off exponentially by default.
+    present: has(/backoff|exponential|jitter|delay.*attempt|Math\.pow.*attempt|p-retry|async-retry/i),
+    // Absence of backoff on a thin sample is not established: cal.com's retry
+    // loops back off with Math.pow(2, retries) in files the sample did not read.
+    onMissing: "WARN", absence: true,
     pass: "Retries use backoff.",
     fail: "Retries were found with no backoff. Immediate retries against a struggling dependency multiply the load precisely when it can least take it, turning a brief degradation into a sustained outage that outlives its original cause.",
     absent: "No retry logic was found.",
@@ -325,10 +489,23 @@ const RULES: Rule[] = [
   // ── Payments ─────────────────────────────────────────────────────────────
   {
     key: "pay_x_webhook_signature", label: "Payment webhooks verify their signature",
-    category: PAY, applies: doesPayments, present: has(/constructEvent|verifyWebhook|webhook.*signature|Stripe-Signature|verifyHeader/i),
+    category: PAY, subject: doesPayments,
+    // A webhook has to exist (in code read, or in the tree) before its verification can be judged.
+    // Provider event names count too: a handler mounted at /stripe/events is still a webhook.
+    applies: (c) =>
+      doesPayments(c) &&
+      (/webhook|checkout\.session\.completed|payment_intent\.succeeded|invoice\.paid|customer\.subscription\.|PAYMENT\.CAPTURE\.COMPLETED|subscription_payment_success/i.test(c.source) ||
+        c.paths.some((p) => /webhook/i.test(p))),
+    // No bare timingSafeEqual: it is used for API-key and CSRF comparison and says nothing about webhooks.
+    // A hand-rolled HMAC check (computing an HMAC and comparing it in constant time — the documented
+    // pattern for Lemon Squeezy and Paddle) does count, as do the providers' signature headers.
+    present: (c) =>
+      has(/constructEvent|verifyWebhook|webhook.*signature|Stripe-Signature|verifyHeader|svix-signature|verify\w*Signature|Paddle-Signature|X-Signature|PayPal-Transmission-Sig|X-Razorpay-Signature|x-paystack-signature|X-Square-Hmacsha256-Signature|X-Hub-Signature/i)(c) ||
+      (/createHmac|hmac\.new|OpenSSL::HMAC|Mac\.getInstance/i.test(c.source) &&
+        /timingSafeEqual|compare_digest|secure_compare|MessageDigest\.isEqual/i.test(c.source)),
     onMissing: "FAIL", absence: true,
     pass: "Payment webhooks verify the provider's signature before acting.",
-    fail: "A payment webhook endpoint was found with no signature verification. That endpoint is public by necessity, so anyone who knows the URL can post a forged `payment succeeded` event and receive whatever it grants — the most direct route from a URL to free product there is.",
+    fail: "Webhook handling was found in a project that takes payments, with no signature verification in the code that was read. That endpoint is public by necessity, so anyone who knows the URL can post a forged `payment succeeded` event and receive whatever it grants — the most direct route from a URL to free product there is.",
     absent: "This project does not appear to take payments.",
   },
   {
@@ -351,11 +528,17 @@ const RULES: Rule[] = [
   },
   {
     key: "pay_x_currency_explicit", label: "Amounts carry an explicit currency",
-    category: PAY, applies: doesPayments, present: has(/currency/i),
-    onMissing: "WARN",
+    category: PAY, subject: doesPayments,
+    // Only where the code sets an amount itself. Checkout by provider price ID fixes the
+    // currency on the provider's Price object, so there is nothing to specify.
+    // JS/Go/Ruby `amount:`, Python `amount=`, PHP `'amount' =>`, Java `setAmount(`.
+    applies: (c) => doesPayments(c) && /unit_amount|price_data|amount['"]?\s*(:|=>?)|setAmount\(/i.test(c.source),
+    // `(?<!con)`: "concurrency" contains "currency", and most CI workflows have a concurrency key.
+    present: hasInSource(/(?<!con)currency/i),
+    onMissing: "WARN", absence: true,
     pass: "Charges specify a currency.",
     fail: "No currency was found alongside charge amounts. A default currency is an assumption that holds until the first customer in another country, at which point the amount is charged correctly and in the wrong denomination.",
-    absent: "This project does not appear to take payments.",
+    absent: "No charge amounts are set in this project's own code (it either takes no payments or charges by provider price ID, which fixes the currency on the provider's side).",
   },
   {
     key: "pay_x_minor_units", label: "Money is handled in minor units, not floats",
@@ -445,6 +628,21 @@ export function evaluateServiceDepthChecks(snapshot: RepoSnapshot): PulseScanChe
 
   return RULES.map((rule): PulseScanCheckInput => {
     if (!rule.applies(ctx)) {
+      if (rule.subject && !soundAbsence && rule.subject(ctx)) {
+        return {
+          category: rule.category,
+          checkKey: rule.key,
+          label: rule.label,
+          status: "INCONCLUSIVE",
+          confidence: "LOW",
+          confidenceReason:
+            `Only ${ctx.sampled} of ${ctx.total} source files were read, so whether this check applies is not ` +
+            "established.",
+          detail:
+            `The code this check grades was not found in the ${ctx.sampled} of ${ctx.total} source files read. That ` +
+            "is too few to establish that it is absent, so this check is inconclusive rather than not applicable.",
+        };
+      }
       return {
         category: rule.category,
         checkKey: rule.key,

@@ -182,9 +182,13 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
 
   // ── Data at rest ───────────────────────────────────────────────────────────
   const writesFiles = /\.write\(to:|FileManager\.default\.createFile|Data\(contentsOf:/.test(ctx.swift);
-  const hasProtection = /NSFileProtection|\.completeUnlessOpen|\.completeUntilFirstUserAuthentication|\.complete\b/.test(
-    ctx.swift,
-  );
+  // A bare `.complete` matches any enum case of that name (`self.state = .complete`), which passed
+  // NetNewsWire with no protection API anywhere. Require a real file-protection API, or the
+  // app-wide default set in the entitlements (com.apple.developer.default-data-protection).
+  const hasProtection =
+    /NSFileProtection|FileProtectionType|URLFileProtection|\.completeFileProtection|\.protectionKey|\.completeUnlessOpen|\.completeUntilFirstUserAuthentication/.test(
+      `${ctx.swift}\n${ctx.entitlements}`,
+    );
   add(
     "ios_x_data_protection",
     "Files are written with a data-protection class",
@@ -284,7 +288,14 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
   );
 
   const handlesUrls = /func application\([^)]*open url|onOpenURL|NSUserActivity/.test(ctx.swift);
-  const validatesUrls = /url\.host\s*==|guard let host|components\.host|verifyHost|allowedHosts/.test(ctx.swift);
+  // kickstarter validates hosts with `url.host.map { $0.hasPrefix(host) }` against an allow-list; only
+  // matching `url.host ==` missed it. Require the host/scheme to be compared or tested, not merely read,
+  // so ordinary networking code that logs `request.url?.host` does not count as deep-link validation. Case-
+  // insensitive on `url` so `incomingURL.host ==` counts too.
+  const validatesUrls =
+    /[uU][rR][lL]\??\.host(\([^)]{0,40}\))?\s*(==|!=)|[uU][rR][lL]\??\.host(\([^)]{0,40}\))?\??\.(map|flatMap|hasPrefix|hasSuffix)\b|\.contains\(\s*\w*[uU][rR][lL]\??\.host|[uU][rR][lL]\??\.scheme\s*(==|!=)|guard let host|components\.host|verifyHost|allowedHosts/.test(
+      ctx.swift,
+    );
   add(
     "ios_x_url_scheme_validation",
     "Incoming deep links are validated before use",
@@ -347,13 +358,25 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
   );
 
   // ── Build settings ─────────────────────────────────────────────────────────
-  const dsym = /DEBUG_INFORMATION_FORMAT\s*=\s*"?dwarf-with-dsym/.test(ctx.pbxproj);
+  // Build settings commonly live in .xcconfig files, not project.pbxproj (NetNewsWire sets
+  // dwarf-with-dsym only in xcconfig/NetNewsWire_project_release.xcconfig). Read any that were fetched,
+  // and if some exist but were not read, the absence of the setting is not established. Vendored
+  // xcconfigs (Pods/Carthage) never carry the app's own release settings, so they are ignored.
+  const xcconfigPaths = snapshot.paths.filter(
+    (p) => /\.xcconfig$/i.test(p) && !/(^|\/)(Pods|Carthage|vendor|node_modules|\.build|DerivedData)\//i.test(p),
+  );
+  const xcconfigText = xcconfigPaths.map((p) => snapshot.files.get(p) ?? "").join("\n");
+  const dsym = /DEBUG_INFORMATION_FORMAT\s*=\s*"?dwarf-with-dsym/.test(`${ctx.pbxproj}\n${xcconfigText}`);
+  const unreadXcconfig = !dsym && xcconfigPaths.some((p) => !snapshot.files.has(p));
   add(
     "ios_x_crash_symbols",
     "Debug symbols are produced for crash reports",
-    !ctx.pbxproj ? "SKIPPED" : dsym ? "PASS" : "WARN",
+    !ctx.pbxproj ? "SKIPPED" : unreadXcconfig ? "INCONCLUSIVE" : dsym ? "PASS" : "WARN",
     !ctx.pbxproj
       ? "No Xcode project file was read, so build settings could not be inspected."
+      : unreadXcconfig
+        ? "The project keeps build settings in .xcconfig files that were not read, so whether the release " +
+          "configuration sets DEBUG_INFORMATION_FORMAT to dwarf-with-dsym could not be established."
       : dsym
         ? "The project produces dSYM files, so crash reports symbolicate into function names and line numbers."
         : "DEBUG_INFORMATION_FORMAT is not set to dwarf-with-dsym for the release configuration. Without a dSYM, " +
@@ -419,13 +442,15 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
         : "Too little user-facing text in the sampled source to judge localisation.",
   );
 
-  const encryption = /ITSAppUsesNonExemptEncryption/.test(ctx.plists);
+  // Projects with GENERATE_INFOPLIST_FILE declare the key as an INFOPLIST_KEY_ build setting in
+  // project.pbxproj (IceCubesApp: INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO).
+  const encryption = /ITSAppUsesNonExemptEncryption/.test(`${ctx.plists}\n${ctx.pbxproj}`);
   add(
     "ios_x_encryption_declaration",
     "The export-compliance key is declared",
     encryption ? "PASS" : "WARN",
     encryption
-      ? "ITSAppUsesNonExemptEncryption is declared in Info.plist, so uploads skip the export-compliance prompt."
+      ? "ITSAppUsesNonExemptEncryption is declared (in Info.plist or as an INFOPLIST_KEY build setting), so uploads skip the export-compliance prompt."
       : "Info.plist does not declare ITSAppUsesNonExemptEncryption. Without it, App Store Connect asks the export " +
         "compliance question on every single upload before the build can be distributed — a manual step in the " +
         "middle of every release, and a common cause of a build sitting unnoticed in 'Missing Compliance'.",

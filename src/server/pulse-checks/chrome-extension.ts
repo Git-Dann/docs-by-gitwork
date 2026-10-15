@@ -105,7 +105,38 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
     detail: `${manifest.path} parses cleanly.`,
   });
 
-  checks.push(...evaluateExtensionManifest(m, "repo"));
+  const manifestChecks = evaluateExtensionManifest(m, "repo");
+  // ⚠️ A repo can keep an MV2 base manifest beside a Chrome MV3 variant that the build merges
+  // over it — darkreader/darkreader: src/manifest.json is V2, src/manifest-chrome-mv3.json is V3
+  // (tasks/bundle-manifest.js). "This extension does not run" is false for such a repo. Only manifest.json
+  // files are read into the snapshot, so a variant is usually known by NAME only — that earns a WARN, not a PASS.
+  if (Number(m.manifest_version) < 3) {
+    const dir = manifest.path.replace(/[^/]*$/, "");
+    const sibling = (p: string) =>
+      p !== manifest.path && p.startsWith(dir) && /^manifest[^/]*\.json$/i.test(p.slice(dir.length)) &&
+      // A Firefox/Safari MV3 manifest says nothing about what the Chrome build ships.
+      !/firefox|gecko|moz|safari/i.test(p.slice(dir.length));
+    const verified =
+      [...snapshot.files.entries()].find(([p, t]) => sibling(p) && /"manifest_version"\s*:\s*3\b/.test(t))?.[0];
+    const byName = verified ? undefined : snapshot.paths.find((p) => sibling(p) && /mv3/i.test(p.slice(dir.length)));
+    const mv3Variant = verified ?? byName;
+    const i = manifestChecks.findIndex((c) => c.checkKey === "ext_manifest_v3");
+    if (mv3Variant && i >= 0) {
+      manifestChecks[i] = {
+        ...manifestChecks[i],
+        status: verified ? "PASS" : "WARN",
+        confidence: "MEDIUM",
+        detail: verified
+          ? `${manifest.path} is Manifest V2, but ${mv3Variant} beside it declares manifest_version 3 — presumably ` +
+            `the source of the Chrome build. Confirm the manifest you upload to the Web Store declares manifest_version 3.`
+          : `${manifest.path} is Manifest V2, but ${mv3Variant} beside it is named as a Manifest V3 variant (its ` +
+            `contents were not read). If the Chrome build merges it over the base, the package is V3; if it is an ` +
+            `unfinished migration, the shipped extension is still V2 and no longer runs. Confirm which.`,
+        evidence: verified ? `manifest_version 3 in ${mv3Variant}` : `MV3-named sibling ${mv3Variant}`,
+      };
+    }
+  }
+  checks.push(...manifestChecks);
   checks.push(...surfaceChecks(m, snapshot));
   checks.push(...extensionCodeChecks(snapshot));
   checks.push(...listingChecks(m));
@@ -359,10 +390,15 @@ export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "
 
 /** Every content-script source we managed to read, comments stripped. */
 function extensionSource(snapshot: RepoSnapshot): { source: string; readCount: number; total: number } {
-  const jsPaths = snapshot.paths.filter((p) => /\.(js|ts|mjs)$/i.test(p) && !isVendoredPath(p));
+  // Test suites are not shipped. darkreader/darkreader assigns innerHTML only in tests/**/*.tests.ts
+  // fixtures; counting them reported DOM injection in an extension whose shipped code has none.
+  const isShippedSource = (p: string) =>
+    /\.(js|ts|mjs)$/i.test(p) && !isVendoredPath(p) &&
+    !/(^|\/)(tests?|__tests__|e2e)\//i.test(p) && !/\.(tests?|spec)\.(js|ts|mjs)$/i.test(p);
+  const jsPaths = snapshot.paths.filter(isShippedSource);
   const read: string[] = [];
   for (const [path, text] of snapshot.files) {
-    if (/\.(js|ts|mjs)$/i.test(path) && !isVendoredPath(path)) read.push(text);
+    if (isShippedSource(path)) read.push(text);
   }
   return { source: stripCStyleComments(read.join("\n")), readCount: read.length, total: jsPaths.length };
 }
@@ -428,6 +464,15 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
   const war = m.web_accessible_resources;
   if (Array.isArray(war) && war.length > 0) {
     const openToAll = war.some((entry) =>
+      // MV2 lists bare file paths, and every one of them is reachable from any origin.
+      typeof entry === "string" ||
+      (typeof entry === "object" && entry !== null && isAllUrlsPattern((entry as Record<string, unknown>).matches) &&
+        // `use_dynamic_url` serves the file under a per-session ID instead of the fixed extension ID, so a page
+        // cannot probe for it to fingerprint the user or reach it (gorhill/uBlock MV3 sets it on every all-origin entry).
+        (entry as Record<string, unknown>).use_dynamic_url !== true),
+    );
+    const mv2Strings = war.some((entry) => typeof entry === "string");
+    const dynamicOnly = !openToAll && war.some((entry) =>
       typeof entry === "object" && entry !== null && isAllUrlsPattern((entry as Record<string, unknown>).matches),
     );
     checks.push({
@@ -440,9 +485,16 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
         ? `\`web_accessible_resources\` is exposed to every origin. Two consequences: any website can fetch those ` +
           `files, which makes the extension trivially FINGERPRINTABLE (a page probes for your resource and now knows ` +
           `the user has it installed — a well-documented deanonymisation technique); and any internal page you expose ` +
-          `becomes reachable from a hostile origin. Restrict the \`matches\` list to the sites that genuinely need ` +
-          `the resource.`
-        : `Web-accessible resources declare specific origin matches.`,
+          `becomes reachable from a hostile origin. ` +
+          (mv2Strings
+            ? `Manifest V2 lists resources as bare paths, which are open to every origin; Manifest V3's object form ` +
+              `lets you restrict \`matches\` to the sites that genuinely need each resource.`
+            : `Restrict the \`matches\` list to the sites that genuinely need the resource.`)
+        : dynamicOnly
+          ? `Web-accessible resources open to every origin all set \`use_dynamic_url\`, so they are served under a ` +
+            `per-session ID rather than the fixed extension ID — a page cannot probe a known URL to detect the ` +
+            `extension. A page still learns that session URL if the extension inserts the resource into it.`
+          : `Web-accessible resources declare specific origin matches.`,
     });
   }
 
@@ -523,8 +575,11 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
     detail: missingIcons.length === 0
       ? `Icons declared at 16, 48 and 128px.`
       : `Missing icon size(s): ${missingIcons.join(", ")}px. Chrome uses 16 in the toolbar and page favicon, 48 in ` +
-        `the extensions management page, and 128 on the Web Store listing and at install time — a missing size is ` +
-        `either scaled badly or rendered as a blank placeholder, and 128 is required for submission.`,
+        `the extensions management page, and 128 on the Web Store listing and at install time — ` +
+        (Object.keys(icons).length > 0
+          ? `a missing size is scaled from another declared icon (${Object.keys(icons).join(", ")}px), which can look soft`
+          : `with no icons declared Chrome shows a generic placeholder`) +
+        `, and 128 is required for submission.`,
     evidence: missingIcons.length > 0 ? `missing ${missingIcons.join(", ")}` : undefined,
   });
 
@@ -532,17 +587,35 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
   // but only worth saying when we can actually see the tree.
   const declaredWorker = typeof background?.service_worker === "string" ? background.service_worker : null;
   if (declaredWorker) {
-    const exists = snapshot.paths.some((p) => p.toLowerCase() === declaredWorker.toLowerCase());
-    const built = /^(dist|build|out)\//i.test(declaredWorker);
+    // The worker path is relative to the EXTENSION ROOT (the manifest's directory); a leading "/" means that
+    // root, not the repository root. gorhill/uBlock declares `/js/background.js` in
+    // platform/mv3/chromium/manifest.json and its build assembles platform/mv3/extension/js/background.js
+    // beside it — the old literal comparison against repo-root paths could never match.
+    const manifestDir = (findExtensionManifest(snapshot)?.path ?? "").replace(/[^/]*$/, "").toLowerCase();
+    const workerRel = declaredWorker.replace(/^\.?\//, "").toLowerCase();
+    const exists = snapshot.paths.some((p) => p.toLowerCase() === manifestDir + workerRel);
+    const built = /^(dist|build|out)\//i.test(workerRel);
+    // A same-named file elsewhere only counts when it is the project's own source — never a vendored copy or a
+    // test fixture, which would let a genuinely missing worker pass on a coincidental filename.
+    const elsewhere = exists || built
+      ? undefined
+      : snapshot.paths.find((p) =>
+          !isVendoredPath(p) &&
+          !/(^|\/)(examples?|samples?|fixtures?|__fixtures__|__tests__|tests?|e2e)\//i.test(p) &&
+          (p.toLowerCase() === workerRel || p.toLowerCase().endsWith(`/${workerRel}`)));
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "ext_entrypoints_resolve",
       label: "Manifest entry points resolve to real files",
-      status: exists || built ? "PASS" : "WARN",
-      confidence: built ? "MEDIUM" : "HIGH",
+      status: exists || built || elsewhere ? "PASS" : "WARN",
+      confidence: built || elsewhere ? "MEDIUM" : "HIGH",
       detail: exists
         ? `The declared service worker (\`${declaredWorker}\`) exists in the repository.`
-        : built
+        : elsewhere
+          ? `The declared service worker (\`${declaredWorker}\`) is not beside the manifest, but \`${elsewhere}\` ` +
+            `matches it — consistent with a build step that assembles the package from several directories, ` +
+            `which cannot be fully verified from source alone.`
+          : built
           ? `The service worker points at build output (\`${declaredWorker}\`), which is not committed — expected for ` +
             `a bundled extension, so this cannot be verified from source alone.`
           : `The manifest declares \`${declaredWorker}\` as its service worker and no such file exists in the ` +

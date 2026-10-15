@@ -222,7 +222,7 @@ function supplyChainChecks(ctx: CliContext): PulseScanCheckInput[] {
   });
 
   // A committed lockfile is what makes a build reproducible and auditable.
-  const hasLockfile = ctx.paths.some((p) => /^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/i.test(p));
+  const hasLockfile = ctx.paths.some((p) => /^(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/i.test(p));
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "cli_lockfile_committed",
@@ -231,9 +231,11 @@ function supplyChainChecks(ctx: CliContext): PulseScanCheckInput[] {
     confidence: "HIGH",
     detail: hasLockfile
       ? `A lockfile is committed, so CI and contributors resolve the same dependency tree.`
-      : `No lockfile committed. Every install then resolves ranges afresh, so the code your CI tests is not ` +
-        `necessarily the code you publish, and a compromised patch release of a transitive dependency is pulled in ` +
-        `silently with no diff to review. Commit the lockfile and use \`npm ci\` in CI.`,
+      : `No lockfile committed. Every CI run and contributor install then resolves dependency ranges afresh, so a ` +
+        `test run is not reproducible and a compromised patch release of a transitive dependency enters your build ` +
+        `and release environment silently, with no diff to review. (npm does not publish the lockfile, so it does ` +
+        `not pin what your users install — it protects your own CI and release machine.) Commit the lockfile and ` +
+        `use \`npm ci\` in CI.`,
   });
 
   // Secrets in source ship in the tarball.
@@ -403,6 +405,24 @@ function packagingChecks(ctx: CliContext): PulseScanCheckInput[] {
 }
 
 // ── Command-line interface contract ─────────────────────────────────────────
+/**
+ * A module-scope `try {` (column 0) whose body awaits, closed by the FIRST column-0 `}`
+ * which is followed by `catch`. Written as a scan rather than one regex: a tempered
+ * lazy pattern over a large sampled file is quadratic in the size of a long try body.
+ */
+function topLevelAwaitTryCatch(source: string): boolean {
+  const open = /^try\s*\{/gm;
+  for (const m of source.matchAll(open)) {
+    const bodyStart = (m.index ?? 0) + m[0].length;
+    const close = /^\}/m.exec(source.slice(bodyStart));
+    if (!close) return false;
+    const body = source.slice(bodyStart, bodyStart + close.index);
+    const after = source.slice(bodyStart + close.index + 1, bodyStart + close.index + 64);
+    if (/\bawait\b/.test(body) && /^\s*catch\b/.test(after)) return true;
+  }
+  return false;
+}
+
 function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const allSource = ctx.source + [...ctx.binSources.values()].join("\n");
@@ -455,7 +475,9 @@ function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
   }));
 
   // Non-zero exit on failure. This is the contract that CI and shell scripts read.
-  const exitsNonZero = /process\.exit\s*\(\s*[1-9]|process\.exitCode\s*=\s*[1-9]/.test(allSource);
+  // Any `<receiver>.exit(n)` (process.exit, this.exit in oclif, Deno.exit) or
+  // exit-hook's `gracefulExit(n)` sets a non-zero exit code.
+  const exitsNonZero = /(?:\.exit|\bgracefulExit)\s*\(\s*[1-9]|process\.exitCode\s*=\s*[1-9]/.test(allSource);
   checks.push(absence(ctx, {
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "cli_exit_codes",
@@ -523,7 +545,14 @@ function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
 
   // Unhandled promise rejections in a CLI produce a bare stack trace and, on
   // modern Node, a hard crash — with no indication of what the user did wrong.
-  const handlesRejections = /unhandledRejection|uncaughtException|\.catch\s*\(/.test(allSource);
+  // A module-scope `try {` (column 0) whose body awaits, closed by a column-0
+  // `} catch`, is the idiomatic ESM entry-point handler around top-level await
+  // (e.g. sindresorhus/np's cli-implementation.js). Indented try blocks inside
+  // functions, and module-scope `try { require("optional") } catch {}` probes, do
+  // NOT count: neither handles the CLI's own failures. Both halves stop at the FIRST column-0
+  // `}`, so a module-scope `try { await … } finally {}` cannot borrow a later, unrelated `} catch`.
+  const handlesRejections =
+    /unhandledRejection|uncaughtException|\.catch\s*\(/.test(allSource) || topLevelAwaitTryCatch(allSource);
   checks.push(absence(ctx, {
     category: CATEGORIES.OBSERVABILITY,
     checkKey: "cli_error_handling",

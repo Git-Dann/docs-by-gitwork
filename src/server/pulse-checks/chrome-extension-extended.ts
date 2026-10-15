@@ -40,7 +40,11 @@ function findManifest(snapshot: RepoSnapshot): { text: string; json: Record<stri
 function buildCtx(snapshot: RepoSnapshot): Ctx {
   const src: string[] = [];
   for (const [path, text] of snapshot.files) {
-    if (/\.(ts|js|mjs|cjs)$/i.test(path)) src.push(text);
+    if (!/\.(ts|js|mjs|cjs)$/i.test(path)) continue;
+    // Test fixtures are not shipped in the extension package; counting them made
+    // darkreader's `container.innerHTML = ...` test setup read as extension UI code.
+    if (/(^|\/)(tests?|__tests__|spec|e2e)\/|\.(test|spec|tests)\.[cm]?[jt]s$/i.test(path)) continue;
+    src.push(text);
   }
   const { text, json } = findManifest(snapshot);
   return { manifest: json, manifestText: text, source: src.join("\n"), paths: snapshot.paths };
@@ -134,7 +138,11 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
   // ── Store review requirements ──────────────────────────────────────────────
   const sensitivePerms = ["cookies", "history", "bookmarks", "downloads", "tabs", "clipboardRead", "geolocation"];
   const handlesUserData = permissions.some((p) => sensitivePerms.includes(p)) || hostPermissions.length > 0;
-  const hasPolicy = /privacy[_-]?policy|privacyPolicy/i.test(ctx.manifestText + ctx.source) ||
+  // API documentation links (chrome.privacy / browser.privacy reference pages) are not a policy.
+  const policyRe =
+    /privacy[\s_-]?(policy|url)|privacyPolicy|https?:\/\/(?!developer\.chrome\.com|developer\.mozilla\.org)[^\s'"`)]*\/privacy(?:[-_/.#?]|\b)/i;
+  const hasPolicy = policyRe.test(ctx.manifestText + ctx.source) ||
+    [...snapshot.files].some(([p, t]) => /\.(md|html?)$/i.test(p) && policyRe.test(t)) ||
     ctx.paths.some((p) => /privacy/i.test(p));
   add(
     "ext_x_privacy_policy",
@@ -148,21 +156,24 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
             .filter((p) => sensitivePerms.includes(p))
             .concat(hostPermissions)
             .slice(0, 4)
-            .join(", ")}) and no privacy policy was found. The Chrome Web Store requires a posted privacy policy for ` +
+            .join(", ")}) and no privacy policy link was found in the sampled source. The policy URL is set in the store's developer dashboard, so confirm one is posted there — the Chrome Web Store requires a posted privacy policy for ` +
           "any extension handling personal or sensitive user data, and publishes rejections on exactly this basis.",
   );
 
-  const broadHosts = hostPermissions.filter((h) => /<all_urls>|^\*:\/\/\*\//.test(h));
+  // MV2 manifests put host patterns in `permissions`; http(s)://*/* is all-sites too.
+  const broadHosts = hostPermissions.concat(permissions).filter((h) => /<all_urls>|^(\*|https?):\/\/\*\//.test(h));
+  // Only optional HOST access moves broad access to runtime; an optional `contextMenus` does not.
+  const optionalHostAccess = optionalHosts.length + optional.filter((p) => /<all_urls>|:\/\//.test(p)).length;
   add(
     "ext_x_optional_permissions",
     "Broad permissions are requested at runtime rather than at install",
-    broadHosts.length === 0 ? "PASS" : optional.length + optionalHosts.length > 0 ? "PASS" : "WARN",
+    broadHosts.length === 0 ? "PASS" : optionalHostAccess > 0 ? "PASS" : "WARN",
     broadHosts.length === 0
       ? "The extension requests no all-sites host permission at install time."
-      : optional.length + optionalHosts.length > 0
-        ? "Broad access is requested, but the extension also declares optional permissions, so at least some access " +
-          "is asked for in context."
-        : "The extension requests access to all sites at install time with no optional permissions. Chrome shows " +
+      : optionalHostAccess > 0
+        ? "Broad access is requested, but the extension also declares optional host permissions, so at least some " +
+          "site access is asked for in context."
+        : "The extension requests access to all sites at install time with no optional host permissions. Chrome shows " +
           "that as 'Read and change all your data on all websites', which is the single largest cause of install " +
           "abandonment — and store review asks for a justification that a narrower scope would avoid entirely.",
   );
@@ -292,11 +303,21 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
         "the store listing."
       : required.length === 0
         ? "All required icon sizes are declared."
-        : `Icon sizes ${required.join(", ")} are missing. Chrome scales whatever it has, so the toolbar and store ` +
-          "listing show a blurred icon — the most visible sign of an unfinished extension.",
+        : `Icon sizes ${required.join(", ")} are missing. Chrome uses 16px for the favicon and context menus, 48px ` +
+          "on the extensions management page and 128px at install and in the Web Store; for a missing size it scales " +
+          "the nearest declared icon, which can look soft.",
   );
 
-  const minVersion = typeof m.minimum_chrome_version === "string";
+  // Multi-browser repos keep the Chrome-only keys in a variant (darkreader: src/manifest-chrome-mv3.json)
+  // merged over a shared manifest.json at build time, so look across manifest*.json files.
+  const minVersion =
+    typeof m.minimum_chrome_version === "string" ||
+    [...snapshot.files].some(
+      ([p, t]) =>
+        /(^|\/)manifest[^/]*\.json$/i.test(p) &&
+        !/(^|\/)(tests?|__tests__|spec|e2e|fixtures?|__fixtures__|examples?|node_modules)\//i.test(p) &&
+        /"minimum_chrome_version"\s*:\s*"/.test(t),
+    );
   add(
     "ext_x_minimum_chrome_version",
     "A minimum browser version is declared",

@@ -93,7 +93,9 @@ function absence(
   ctx: AndroidContext,
   check: Omit<PulseScanCheckInput, "confidence">,
 ): PulseScanCheckInput {
-  const sound = ctx.coverage >= SOUND_ABSENCE_COVERAGE;
+  // A PASS means we SAW the thing — a presence finding, sound on any sample. Only a
+  // "not found" verdict depends on coverage, so only that gets the caveat and LOW.
+  const sound = check.status === "PASS" || ctx.coverage >= SOUND_ABSENCE_COVERAGE;
   return {
     ...check,
     confidence: sound ? "HIGH" : "LOW",
@@ -215,17 +217,24 @@ function componentSecurityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
 
   // Content providers are exported by default below API 17 and are a direct
   // read/write path into app data when left open.
-  const providers = (ctx.manifest.match(/<provider\b/gi) ?? []).length;
+  // Judge each <provider> on its OWN opening tag. A lazy [\s\S]*? across the whole
+  // manifest paired NewPipe's exported="false" FileProvider with a LATER activity's
+  // exported="true" — and could equally borrow a later element's permission.
+  const providerTags = ctx.manifest.match(/<provider\b[^>]*>/gi) ?? [];
+  const providers = providerTags.length;
   if (providers > 0) {
-    const exportedProvider = /<provider[\s\S]*?android:exported\s*=\s*"true"/i.test(ctx.manifest);
-    const guarded = /<provider[\s\S]*?android:(permission|readPermission|writePermission)\s*=/i.test(ctx.manifest);
+    const openProvider = providerTags.some(
+      (tag) =>
+        /android:exported\s*=\s*"true"/i.test(tag) &&
+        !/android:(permission|readPermission|writePermission)\s*=/i.test(tag),
+    );
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "android_content_provider_exposure",
       label: "Content providers are not openly exported",
-      status: exportedProvider && !guarded ? "WARN" : "PASS",
+      status: openProvider ? "WARN" : "PASS",
       confidence: "MEDIUM",
-      detail: exportedProvider && !guarded
+      detail: openProvider
         ? `A \`<provider>\` is exported with no \`android:permission\`, \`readPermission\` or \`writePermission\`. A ` +
           `content provider is a direct query interface to app data — an exported, unguarded one lets any installed ` +
           `app read (and often write) whatever it backs, with no user prompt. If it exists only to share files with ` +
@@ -469,8 +478,9 @@ function securityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
       : `The manifest does not force debuggable — Gradle controls it per build type, which is correct.`,
   });
 
-  // Backup allows the app's private data (including any plaintext prefs) to be
-  // pulled off the device over ADB on many configurations.
+  // Backup copies the app's private data (including any plaintext prefs) into the
+  // user's cloud backup and device-to-device transfers; `adb backup` extraction
+  // only applies to apps targeting below API 31.
   const allowBackup = /android:allowBackup\s*=\s*"true"/i.test(ctx.manifest);
   const explicitlyDisabled = /android:allowBackup\s*=\s*"false"/i.test(ctx.manifest);
   const backupRules = /android:(fullBackupContent|dataExtractionRules)\s*=/i.test(ctx.manifest);
@@ -478,28 +488,40 @@ function securityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
     category: CATEGORIES.SECURITY,
     checkKey: "android_backup_rules",
     label: "Backup excludes sensitive data",
-    status: explicitlyDisabled || backupRules ? "PASS" : allowBackup ? "WARN" : "WARN",
-    confidence: "HIGH",
+    status: explicitlyDisabled || backupRules ? "PASS" : "WARN",
+    confidence: explicitlyDisabled || backupRules ? "HIGH" : "MEDIUM",
     detail: explicitlyDisabled
       ? `Backup is disabled, so app-private files cannot be extracted through the backup channel.`
       : backupRules
         ? `Backup rules are declared — confirm they exclude the files holding tokens and any cached personal data.`
-        : `No \`android:allowBackup="false"\` and no backup rules. Backup defaults to ON, so app-private files — ` +
-          `including SharedPreferences XML holding any tokens — can be pulled off the device through the backup ` +
-          `channel. Either disable backup or declare dataExtractionRules that exclude the sensitive files.`,
+        : `No \`android:allowBackup="false"\` and no backup rules, so backup is ${allowBackup ? "explicitly on" : "on by default"}: ` +
+          `app-private files — including SharedPreferences XML holding any tokens — are copied into the user's cloud ` +
+          `backup and device-to-device transfers, and for apps targeting below API 31 can be extracted with \`adb backup\`. ` +
+          `If the app stores credentials or tokens, disable backup or declare dataExtractionRules that exclude those files.`,
   });
 
   // Exported components without a permission are reachable by any other app.
   const exportedTrue = (ctx.manifest.match(/android:exported\s*=\s*"true"/gi) ?? []).length;
   const permissionGuards = (ctx.manifest.match(/android:permission\s*=/gi) ?? []).length;
+  // A launcher activity MUST be exported (Android 12+ rejects an activity with an
+  // intent filter that does not declare it), so it is never itself the finding. Judge
+  // each <activity> element on its own and leave launchers out of the count.
+  const launcherExported = (ctx.manifest.match(/<(activity-alias|activity)\b[^>]*?(?:\/>|>[\s\S]*?<\/\1\s*>)/gi) ?? [])
+    .filter((el) => {
+      const openTag = /^<[^>]*>/.exec(el)?.[0] ?? "";
+      return /android:exported\s*=\s*"true"/i.test(openTag) && /android\.intent\.category\.LAUNCHER/.test(el);
+    }).length;
+  const nonLauncherExported = exportedTrue - launcherExported;
   if (exportedTrue > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "android_exported_components",
       label: "Exported components are permission-guarded",
-      status: permissionGuards === 0 ? "WARN" : "PASS",
+      status: permissionGuards === 0 && nonLauncherExported > 0 ? "WARN" : "PASS",
       confidence: "MEDIUM",
-      detail: permissionGuards === 0
+      detail: nonLauncherExported <= 0
+        ? `${exportedTrue} exported component(s), all launcher activities — those must be exported for the app to open.`
+        : permissionGuards === 0
         ? `${exportedTrue} component(s) are \`android:exported="true"\` and no \`android:permission\` guard appears ` +
           `anywhere in the manifest. An exported activity, service or receiver can be started by ANY other app on the ` +
           `device. The launcher activity must be exported; anything else usually should not be. Check each one, and ` +
@@ -729,16 +751,28 @@ function storeReadinessChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   }
 
   // Code shrinking / obfuscation off means the shipped APK is trivially readable.
-  const minifyOff = /minifyEnabled\s+false|isMinifyEnabled\s*=\s*false/i.test(ctx.gradle);
-  const minifyOn = /minifyEnabled\s+true|isMinifyEnabled\s*=\s*true/i.test(ctx.gradle);
+  // `minifyEnabled true` (Groovy call), `minifyEnabled = true` (Groovy assignment, the form Gradle
+  // now recommends) and `isMinifyEnabled = true` (Kotlin DSL; /i makes this pattern cover it) all count.
+  const minifyOff = /minifyEnabled\s*=?\s*false\b/i.test(ctx.gradle);
+  const minifyOn = /minifyEnabled\s*=?\s*true\b/i.test(ctx.gradle);
+  // `isMinifyEnabled = providers.gradleProperty("minifyWithR8")...getOrElse(true)`
+  // (nowinandroid) IS configured — from an expression we cannot evaluate statically.
+  // That is inconclusive, not "not configured".
+  // Groovy's `minifyEnabled project.hasProperty("x")` is the same case without `=`.
+  const minifyComputed =
+    !minifyOn &&
+    /\b(?:isMinifyEnabled[ \t]*=|minifyEnabled[ \t]*=?)[ \t]*(?!\(?\s*(?:true|false)\b)[A-Za-z_(]/.test(ctx.gradle);
   checks.push({
     category: CATEGORIES.APP_STORE,
     checkKey: "android_minify_enabled",
     label: "Release build is minified and shrunk",
-    status: minifyOn ? "PASS" : minifyOff ? "WARN" : "WARN",
-    confidence: minifyOn || minifyOff ? "HIGH" : "MEDIUM",
+    status: minifyOn ? "PASS" : "WARN",
+    confidence: minifyComputed ? "LOW" : minifyOn || minifyOff ? "HIGH" : "MEDIUM",
     detail: minifyOn
       ? `R8/ProGuard shrinking is enabled for release.`
+      : minifyComputed
+        ? `Release shrinking is set from a build-time expression (\`minifyEnabled\` / \`isMinifyEnabled = …\`) that cannot be evaluated ` +
+          `from source, so whether R8 runs for release could not be confirmed — check the value your release build resolves.`
       : `Release shrinking (\`minifyEnabled true\`) is ${minifyOff ? "explicitly disabled" : "not configured"}. ` +
         `Without it the APK ships larger than it needs to be and with original class and method names intact, so ` +
         `reading the app's logic — including how it talks to your API — is straightforward. Enable R8 for release.`,
@@ -820,37 +854,73 @@ function qualityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   }
 
   // Absence findings — these self-downgrade on a thin sample.
+  // `contentDescription = null` is Compose's explicit "decorative, announce nothing" — it is
+  // required on every Icon/Image, so it appears in apps that describe nothing at all and must
+  // not count as a description being set.
+  const describedCount =
+    (ctx.source.match(/contentDescription/gi) ?? []).length -
+    (ctx.source.match(/contentDescription\s*=\s*null\b|setContentDescription\s*\(\s*null\s*\)/gi) ?? []).length;
+  const described = describedCount > 0 || /semantics\s*\{/.test(ctx.source);
   checks.push(absence(ctx, {
     category: CATEGORIES.ACCESSIBILITY,
     checkKey: "android_content_descriptions",
     label: "Interactive elements have content descriptions",
-    status: /contentDescription|setContentDescription|semantics\s*\{/i.test(ctx.source) ? "PASS" : "WARN",
-    detail: /contentDescription|setContentDescription|semantics\s*\{/i.test(ctx.source)
+    status: described ? "PASS" : "WARN",
+    detail: described
       ? `Content descriptions are set, so TalkBack has something to announce.`
       : `No contentDescription or Compose semantics found. Every non-text control is then announced by TalkBack as ` +
         `"button" with no indication of what it does, which makes the app unusable with a screen reader and is a ` +
         `common accessibility-complaint trigger.`,
   }));
 
-  checks.push(absence(ctx, {
-    category: CATEGORIES.PERFORMANCE,
-    checkKey: "android_http_cache",
-    label: "HTTP responses are cached",
-    status: /\bCache\s*\(|cacheControl|OkHttpClient[\s\S]{0,200}\.cache\s*\(/i.test(ctx.source) ? "PASS" : "WARN",
-    detail: /\bCache\s*\(|cacheControl|OkHttpClient[\s\S]{0,200}\.cache\s*\(/i.test(ctx.source)
-      ? `An HTTP cache is configured on the client.`
-      : `No OkHttp cache or Cache-Control handling found, so every screen re-fetches over the network. On a weak or ` +
-        `metered connection that is felt directly as slowness, and it burns the user's data allowance re-downloading ` +
-        `content the device already had.`,
-  }));
+  // Room DAOs are a local store. In an offline-first app (nowinandroid) screens render from the
+  // device, so "every screen re-fetches" is false — but many apps keep only favourites/history in
+  // Room and fetch everything else live, so a DAO is not proof of response caching either. It makes
+  // the HTTP-cache absence inconclusive (LOW, unscored), never a PASS.
+  const httpCache = /\bCache\s*\(|cacheControl|OkHttpClient[\s\S]{0,200}\.cache\s*\(/i.test(ctx.source);
+  const localStore = /@Dao\b/.test(ctx.source) ||
+    ctx.paths.some((p) => /(^|\/)[^/]*Dao\.(kt|java)$/.test(p) && !isVendoredPath(p));
+  if (!httpCache && localStore) {
+    checks.push({
+      category: CATEGORIES.PERFORMANCE,
+      checkKey: "android_http_cache",
+      label: "HTTP responses are cached",
+      status: "WARN",
+      confidence: "LOW",
+      detail:
+        `No OkHttp cache or Cache-Control handling found, but the app persists data locally in a Room database ` +
+        `(DAOs found). If screens render from that store and sync in the background (offline-first), responses are ` +
+        `effectively cached; if Room holds only a few tables, everything else is still re-fetched on every visit. ` +
+        `This is inconclusive from source alone.`,
+    });
+  } else {
+    checks.push(absence(ctx, {
+      category: CATEGORIES.PERFORMANCE,
+      checkKey: "android_http_cache",
+      label: "HTTP responses are cached",
+      status: httpCache ? "PASS" : "WARN",
+      detail: httpCache
+        ? `An HTTP cache is configured on the client.`
+        : `No OkHttp cache or Cache-Control handling found, so every screen re-fetches over the network. On a weak or ` +
+          `metered connection that is felt directly as slowness, and it burns the user's data allowance re-downloading ` +
+          `content the device already had.`,
+    }));
+  }
 
+  // NetworkType.CONNECTED accepts cellular, so it is NOT a metered gate — only UNMETERED is, wherever it
+  // appears (a conditional `if (wifiOnly) NetworkType.UNMETERED else …` is a real, user-configurable gate).
+  // Static-import forms and DownloadManager's Wi-Fi-only / setAllowedOverMetered(false) are real gates too.
+  const meteredGate =
+    /isActiveNetworkMetered|NET_CAPABILITY_NOT_METERED|NetworkType\.UNMETERED\b|NETWORK_TYPE_UNMETERED\b|setRequiredNetworkType\s*\(\s*UNMETERED\b|setAllowedOverMetered\s*\(\s*false|setAllowedNetworkTypes\s*\(\s*(?:DownloadManager\.)?(?:Request\.)?NETWORK_WIFI\s*\)/i.test(
+      ctx.source,
+    );
   checks.push(absence(ctx, {
     category: CATEGORIES.PERFORMANCE,
     checkKey: "android_metered_network",
     label: "Large transfers respect metered connections",
-    status: /isActiveNetworkMetered|NetworkCapabilities\.NET_CAPABILITY_NOT_METERED|setRequiredNetworkType/i.test(ctx.source)
+    status: meteredGate
       ? "PASS" : "WARN",
-    detail: /isActiveNetworkMetered|NetworkCapabilities\.NET_CAPABILITY_NOT_METERED|setRequiredNetworkType/i.test(ctx.source)
+    detail: meteredGate
       ? `Metered-connection checks are present before large transfers.`
       : `No metered-network check found. Downloads and media prefetch then run identically on Wi-Fi and on cellular, ` +
         `which is what turns into "the app used all my data". Gate large transfers on ` +

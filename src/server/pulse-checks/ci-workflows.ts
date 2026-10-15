@@ -350,7 +350,15 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
 
   // ── 4. Action pinning ──────────────────────────────────────────────────────
   const thirdParty = parsed.flatMap((f) =>
-    f.uses.filter((u) => isThirdParty(u.ref)).map((u) => ({ ...u, file: name(f.path) })),
+    f.uses
+      // A reusable workflow in THIS repository referenced as owner/repo/…@ref is the
+      // repository's own code, reviewed by the same people as the caller — not an
+      // upstream supply-chain input.
+      .filter(
+        (u) =>
+          isThirdParty(u.ref) && !u.ref.toLowerCase().startsWith(`${snapshot.owner}/${snapshot.repo}/`.toLowerCase()),
+      )
+      .map((u) => ({ ...u, file: name(f.path) })),
   );
   const unpinnedExternal = thirdParty.filter((u) => !isGitHubOwned(u.ref) && !isShaPinned(u.ref));
   add(
@@ -384,26 +392,33 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
     branchPinned.length === 0
       ? "No workflow references an action by branch name."
       : `${quote([...new Set(branchPinned.map((u) => u.ref))])} track a branch. Unlike a version tag, a branch is ` +
-        "expected to change — every push to that action's default branch is deployed straight into this pipeline " +
+        "expected to change — every push to that branch is deployed straight into this pipeline " +
         "with no review, no version bump and no signal that anything changed.",
   );
 
   // ── 6. Token permissions ───────────────────────────────────────────────────
-  const withPermissions = parsed.filter((f) => /^\s*permissions:/m.test(f.body));
+  // A reusable workflow (on: workflow_call only) runs with the token its CALLER grants
+  // and cannot fall back to the repository default on its own — the caller is graded.
+  const scoped = parsed.filter((f) => !(f.triggers.length > 0 && f.triggers.every((t) => t === "workflow_call")));
+  const withPermissions = scoped.filter((f) => /^\s*permissions:/m.test(f.body));
   const writeAll = parsed.filter((f) => /permissions:\s*write-all/.test(f.body));
   add(
     "ci_token_permissions",
     "Workflows declare least-privilege token permissions",
-    writeAll.length > 0 ? "FAIL" : withPermissions.length === parsed.length ? "PASS" : "WARN",
+    writeAll.length > 0 ? "FAIL" : withPermissions.length === scoped.length ? "PASS" : "WARN",
     writeAll.length > 0
       ? `${quote(writeAll.map((f) => name(f.path)))} grant permissions: write-all, which hands every job a token ` +
         "that can push code, publish packages, edit issues and alter releases. One compromised step — a malicious " +
         "dependency in a build, a typosquatted action — inherits all of it."
-      : withPermissions.length === parsed.length
+      : scoped.length === 0
+        ? "Every workflow here is a reusable workflow (on: workflow_call only), which runs with the token its " +
+          "caller grants. Callers outside this repository are not visible to Pulse, so their permissions are " +
+          "graded where they live."
+        : withPermissions.length === scoped.length
         ? "Every workflow declares an explicit permissions block, so the GITHUB_TOKEN is scoped rather than " +
           "inheriting the repository-wide default."
-        : `${parsed.length - withPermissions.length} of ${parsed.length} workflows declare no permissions: block ` +
-          `(${quote(parsed.filter((f) => !/^\s*permissions:/m.test(f.body)).map((f) => name(f.path)))}). They fall ` +
+        : `${scoped.length - withPermissions.length} of ${scoped.length} workflows declare no permissions: block ` +
+          `(${quote(scoped.filter((f) => !/^\s*permissions:/m.test(f.body)).map((f) => name(f.path)))}). They fall ` +
           "back to the repository default, which on older repositories is read/write across the board. Add " +
           "`permissions: contents: read` at the top and widen it per job only where a job genuinely writes.",
   );
@@ -544,13 +559,21 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
   );
 
   // ── 15. Plaintext transport ────────────────────────────────────────────────
-  const httpUrls = parsed.filter((f) => /\bhttp:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(f.body));
+  // Require an actual routable host after http:// — a public domain, a public IPv4
+  // address, or a shell/expression variable (which could be anything). A bare
+  // `${VAR#http://}` prefix-strip fetches nothing, and `.local`/private/single-label
+  // hosts are service containers on the runner's own network.
+  const httpUrls = parsed.filter((f) =>
+    /\bhttp:\/\/(?!localhost\b|127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)(?:\$|\d{1,3}(?:\.\d{1,3}){3}\b|(?:[a-z0-9-]+\.)+(?!local\b|internal\b|localhost\b)[a-z]{2,}(?![\w-]|\.[a-z0-9]))/i.test(
+      f.body,
+    ),
+  );
   add(
     "ci_plaintext_downloads",
     "Build steps do not fetch over plain HTTP",
     httpUrls.length === 0 ? "PASS" : "WARN",
     httpUrls.length === 0
-      ? "No workflow fetches from a plaintext http:// URL. Localhost addresses are excluded."
+      ? "No workflow fetches from a plaintext http:// URL. Localhost, private-network and .local service addresses are excluded."
       : `${quote(httpUrls.map((f) => name(f.path)))} reference a plaintext http:// URL. Anything fetched over HTTP ` +
         "during a build can be replaced in transit by whoever controls the network path, and a build tool or " +
         "dependency substituted this way runs with the pipeline's full privileges.",
@@ -559,8 +582,60 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
   // ── 16. Unpinned container images ──────────────────────────────────────────
   const imageRefs: string[] = [];
   for (const f of parsed) {
-    for (const m of f.body.matchAll(/^\s*image:\s*["']?([^"'\s]+)["']?\s*$/gm)) {
-      if (!/@sha256:[0-9a-f]{64}/i.test(m[1])) imageRefs.push(m[1]);
+    const lines = f.body.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^(\s*)image:\s*["']?([^"'\s]+)["']?\s*$/.exec(lines[i]);
+      if (!m) continue;
+      const ref = m[2].replace(/^\[(.*)\]$/, "$1");
+      // The runner pulls container:/services: images. Under `with:` (an action or
+      // reusable-workflow input) or `matrix:`, the key may instead name the image this
+      // workflow BUILDS, but only a bare name is ambiguous. A ref with a tag, registry
+      // path or digest (alpine:3, ghcr.io/x/y) is what docker-run-style actions and
+      // `container: ${{ matrix.image }}` pull, so it stays graded.
+      let parent = "";
+      let parentIdx = -1;
+      for (let j = i - 1; j >= 0; j--) {
+        const cur = lines[j];
+        if (cur.trim() === "") continue;
+        if (cur.length - cur.trimStart().length < m[1].length) {
+          parent = cur.trim();
+          parentIdx = j;
+          break;
+        }
+      }
+      // A bare name is still graded when the context shows it is PULLED: a matrix
+      // value that a job uses as its container/image, or a `with:` input to a step
+      // whose action does not build or push images (docker-run-style actions pull a
+      // bare `alpine`, which resolves to the mutable :latest).
+      const bare = !/[:/@]/.test(ref);
+      if (bare && /^(-\s*)?matrix:/.test(parent)) {
+        if (!/(?:(?:container|image):\s*|docker\s+(?:run|pull|create)\b[^\n]*)\$\{\{\s*matrix\.image\s*\}\}/.test(f.body)) continue;
+      } else if (bare && /^(-\s*)?with:/.test(parent)) {
+        const withIndent = lines[parentIdx].length - lines[parentIdx].trimStart().length;
+        const usesOf = (line: string) => /^\s*(?:-\s*)?uses:\s*["']?([^"'\s]+)/.exec(line)?.[1] ?? "";
+        const indentOf = (line: string) => line.length - line.trimStart().length;
+        let stepUses = usesOf(lines[parentIdx]);
+        // Siblings of `with:` (same indent) above it, up to the `- ` line that opens
+        // the step; then siblings below it, up to the next step or a dedent.
+        for (let j = parentIdx - 1; !stepUses && j >= 0 && j >= parentIdx - 60; j--) {
+          const cur = lines[j];
+          if (cur.trim() === "") continue;
+          const indent = indentOf(cur);
+          if (indent > withIndent) continue;
+          stepUses = usesOf(cur);
+          if (indent < withIndent) break;
+        }
+        for (let j = parentIdx + 1; !stepUses && j < lines.length && j <= parentIdx + 60; j++) {
+          const cur = lines[j];
+          if (cur.trim() === "") continue;
+          const indent = indentOf(cur);
+          if (indent > withIndent) continue;
+          if (indent < withIndent) break;
+          stepUses = usesOf(cur);
+        }
+        if (!stepUses || /build|push|buildah|kaniko|metadata|registry|publish|ko-build|login/i.test(stepUses)) continue;
+      }
+      if (!/@sha256:[0-9a-f]{64}/i.test(ref)) imageRefs.push(ref);
     }
   }
   add(
@@ -599,8 +674,40 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
   );
 
   // ── 18. Concurrency control ────────────────────────────────────────────────
-  const deployWorkflows = parsed.filter((f) =>
-    /deploy|release|publish/i.test(name(f.path)) || /environment:/m.test(f.body),
+  // A release/publish workflow that only a tag push, a published release, a schedule
+  // or a manual dispatch can start builds per-version artefacts. Merges cannot start
+  // it, so it is not graded unless it deploys to an environment. Workflows named
+  // "deploy" or using `environment:` are always graded: two dispatches or two tags
+  // race the same way two merges do. Triggers are read from the `on:` block only,
+  // because `tags:` is also a common docker/metadata-action input. Unparsed triggers
+  // stay in.
+  const onBlock = (body: string): string => {
+    const lines = body.split("\n");
+    const start = lines.findIndex((l) => /^on:\s*$/.test(l));
+    if (start < 0) return "";
+    const out: string[] = [];
+    for (let j = start + 1; j < lines.length; j++) {
+      const cur = lines[j];
+      if (cur.trim() !== "" && !/^\s/.test(cur)) break;
+      out.push(cur);
+    }
+    return out.join("\n");
+  };
+  const tagOnlyPush = (body: string) => {
+    const on = onBlock(body);
+    return /^\s+tags:/m.test(on) && !/^\s+branches(-ignore)?:/m.test(on);
+  };
+  const branchStartable = (f: (typeof parsed)[number]) =>
+    f.triggers.length === 0 ||
+    f.triggers.some(
+      (t) =>
+        t !== "schedule" && t !== "workflow_dispatch" && t !== "release" && !(t === "push" && tagOnlyPush(f.body)),
+    );
+  const deployWorkflows = parsed.filter(
+    (f) =>
+      /deploy/i.test(name(f.path)) ||
+      /environment:/m.test(f.body) ||
+      (/release|publish/i.test(name(f.path)) && branchStartable(f)),
   );
   const withConcurrency = deployWorkflows.filter((f) => /^\s*concurrency:/m.test(f.body));
   add(
@@ -651,12 +758,48 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
   );
 
   // ── 21-26. Pipeline quality, not security ──────────────────────────────────
-  const allRuns = parsed.flatMap((f) => f.runs).join("\n");
+  const ciRuns = parsed.flatMap((f) => f.runs).join("\n");
+  // `npm test` / `yarn lint` delegate to package.json scripts, so the command that
+  // actually runs (xo, eslint, vitest…) lives there, not in the workflow. Append the
+  // body of every script a workflow really invokes. Without `run`, npm only runs a
+  // script for test/start/stop/restart: `npm ci`, `npm install` and `npm publish` are
+  // built-ins even when package.json has a script of that name. yarn/pnpm fall through
+  // to a script unless the word is a built-in, and `bun test`/`bun build` are bun's own.
+  let pkgScripts: Record<string, unknown> = {};
+  try {
+    const pkg = snapshot.files.get("package.json");
+    if (pkg) pkgScripts = (JSON.parse(pkg) as { scripts?: Record<string, unknown> }).scripts ?? {};
+  } catch {
+    pkgScripts = {};
+  }
+  const PM_BUILTINS = new Set([
+    "install", "i", "ci", "add", "remove", "rm", "publish", "audit", "pack", "link", "unlink", "exec",
+    "dlx", "x", "create", "init", "why", "info", "upgrade", "up", "update", "version", "config", "cache",
+    "rebuild", "outdated", "list", "ls", "login", "logout", "global", "import", "prune", "dedupe", "patch",
+    "set", "plugin", "workspace", "workspaces", "bin", "node",
+  ]);
+  const invokedScripts = [...ciRuns.matchAll(/\b(npm|yarn|pnpm|bun)\s+(run\s+)?([\w:.-]+)/g)]
+    .map(([, pm, run, word]) => {
+      const script = word === "t" ? "test" : word;
+      if (run) return pkgScripts[script];
+      if (pm === "npm") return /^(test|start|stop|restart)$/.test(script) ? pkgScripts[script] : undefined;
+      if (pm === "bun" && (script === "test" || script === "build")) return undefined;
+      return PM_BUILTINS.has(script) ? undefined : pkgScripts[script];
+    })
+    .filter((s): s is string => typeof s === "string");
+  const allRuns = [ciRuns, ...invokedScripts].join("\n");
   const allBodies = parsed.map((f) => f.body).join("\n");
 
-  const runsTests = /\b(npm|yarn|pnpm|bun)\s+(run\s+)?test|vitest|jest|pytest|go\s+test|cargo\s+test|rspec|phpunit|mvn\s+test|gradle\s+test|dotnet\s+test|xcodebuild\s+test|flutter\s+test/i.test(
-    allRuns,
-  );
+  // xcodebuild can take its action anywhere on a (possibly backslash-continued) command
+  // line. This regex is case-sensitive and whitespace-delimited, so `-scheme Test`,
+  // `test-results` and `build/test` are not read as the action, and a following line's
+  // `test -f` is not joined onto an uncontinued xcodebuild.
+  const xcodebuildTests = /xcodebuild\b(?:[^\n]*\\\n)*[^\n]*[ \t](?:test|test-without-building)(?=\s|$)/.test(allRuns);
+  const runsTests =
+    xcodebuildTests ||
+    /\b(npm|yarn|pnpm|bun)\s+(run\s+)?test|vitest|jest|pytest|go\s+test|cargo\s+test|(?:\$\{\{\s*env\.CARGO\s*\}\}|\$\{?CARGO\}?)\s+test\b|rspec|phpunit|mvn\s+test|gradle\s+test|dotnet\s+test|swift\s+test|flutter\s+test|manage(?:\.py)?\s+test|make\s+(?:test|tests|check|ci)\b/i.test(
+      allRuns,
+    );
   add(
     "ci_runs_tests",
     "CI runs the test suite",
@@ -667,7 +810,7 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
         "and nothing else — the failure it is least likely to catch is the one that reaches users.",
   );
 
-  const runsLint = /\b(eslint|biome|ruff|flake8|pylint|rubocop|golangci-lint|clippy|swiftlint|ktlint|detekt|phpcs|dart\s+analyze|npm\s+run\s+lint|yarn\s+lint|pnpm\s+lint)/i.test(
+  const runsLint = /\b(eslint|biome|ruff|flake8|pylint|rubocop|golangci-lint|clippy|swiftlint|ktlint|detekt|phpcs|dart\s+analyze|xo\b|stylelint|shellcheck|(npm|yarn|pnpm|bun)\s+(run\s+)?lint)/i.test(
     allRuns,
   );
   add(
@@ -707,7 +850,20 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
         "break on the Node, Python or OS version your users actually run is invisible until they hit it.",
   );
 
-  const cachesDeps = /actions\/cache@|cache:\s*['"]?(npm|yarn|pnpm|pip|maven|gradle|gem)/i.test(allBodies);
+  // Some setup actions cache with no `cache:` key at all: gradle/actions/setup-gradle
+  // (and gradle-build-action) unless cache-disabled, and actions/setup-go from v4
+  // unless `cache: false`. Read the raw text because a SHA-pinned ref carries its
+  // version only in the trailing comment.
+  const defaultCaching = parsed.some(
+    (f) =>
+      (/gradle\/(actions\/setup-gradle|gradle-build-action)@/i.test(f.body) &&
+        !/cache-disabled:\s*true/i.test(f.body)) ||
+      (/actions\/setup-go@(?:v(?:[4-9]|\d{2})\b|[0-9a-f]{40}\s+#\s*v(?:[4-9]|\d{2})\b)/i.test(f.text) &&
+        !/^\s*cache:\s*false/im.test(f.body)),
+  );
+  const cachesDeps =
+    defaultCaching ||
+    /actions\/cache@|rust-cache@|bundler-cache:\s*true|cache:\s*['"]?(npm|yarn|pnpm|pip|maven|gradle|gem)/i.test(allBodies);
   add(
     "ci_dependency_cache",
     "CI caches dependencies between runs",
@@ -718,7 +874,7 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
         "more expensive on private repositories, and fails whenever the upstream registry has a bad minute.",
   );
 
-  const scansDeps = /dependency-review-action|codeql-action|snyk|trivy|npm\s+audit|pip-audit|osv-scanner|semgrep|gitleaks|trufflehog/i.test(
+  const scansDeps = /dependency-review-action|codeql-action|snyk|trivy|npm\s+audit|yarn\s+(npm\s+)?audit|pip-audit|osv-scanner|semgrep|gitleaks|trufflehog|zizmor|cargo[\s-]audit|govulncheck|bundler?[\s-]audit|brakeman|grype|scorecard-action/i.test(
     allBodies,
   );
   add(

@@ -79,14 +79,16 @@ describe("operational-depth catalogue contract", () => {
 
   it("keeps absence findings low-confidence when repository sampling is thin", () => {
     const files = {
-      "package.json": '{"dependencies":{"express":"^5","next-auth":"^5"}}',
+      // A cookie-session dependency is what puts CSRF in scope; the CSRF middleware that
+      // would satisfy it may live in any of the 40 files that were never read.
+      "package.json": '{"dependencies":{"express":"^5","express-session":"^1"}}',
       "src/auth.ts": "app.post('/login', login);",
     };
     const snapshot = snap(files);
     snapshot.paths.push(...Array.from({ length: 40 }, (_, index) => `src/unread-${index}.ts`));
 
     const check = at(evaluateOperationalDepthChecks(snapshot), "auth_depth_csrf_state_change");
-    expect(check.status).toBe("WARN");
+    expect(check.status).toBe("INCONCLUSIVE");
     expect(check.confidence).toBe("LOW");
     expect(check.confidenceReason).toMatch(/1 of 41 source files/i);
   });

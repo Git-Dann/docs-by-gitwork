@@ -45,15 +45,15 @@ const MIN_LINES_FOR_DENSITY = 200;
 
 /**
  * The oldest React Native minor still receiving security fixes. RN maintains the
- * latest three minor series; as of July 2026 that is 0.86 (current), 0.85 and
- * 0.84 (security-only).
+ * latest three minor series; as of October 2026 that is 0.87 (current), 0.86 and
+ * 0.85 (security-only).
  *
  * Bump this line when the window moves. An app below it is carrying unpatched
  * issues in the framework AND in the bundled Hermes/JSC engine, and — because RN
  * upgrades get harder the further behind you fall — every release skipped makes
  * the eventual jump more expensive, which is the real reason apps end up stranded.
  */
-const RN_OLDEST_SUPPORTED_MINOR = 84;
+const RN_OLDEST_SUPPORTED_MINOR = 85;
 
 interface RnContext {
   /** Sampled JS/TS source with comments stripped — for "is this live code?". */
@@ -386,7 +386,11 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
 
   // New Architecture. Informational: adopting it is real work and the old one
   // still ships, so this is a WARN with the honest trade-off, not a failure.
-  const newArchOn = /newArchEnabled\s*=\s*true/i.test(ctx.gradle) || /"newArchEnabled"\s*:\s*true/i.test(ctx.appConfig);
+  // From 0.82 the New Architecture is the ONLY architecture — the legacy bridge was
+  // removed and `newArchEnabled` is ignored — so the flag's absence means nothing there.
+  const rnMinorForArch = Number(/0\.(\d+)/.exec(rnRange ?? "")?.[1] ?? -1);
+  const newArchOn = rnMinorForArch >= 82 ||
+    /newArchEnabled\s*=\s*true/i.test(ctx.gradle) || /"newArchEnabled"\s*:\s*true/i.test(ctx.appConfig);
   checks.push({
     category: CATEGORIES.PERFORMANCE,
     checkKey: "rn_new_architecture",
@@ -394,7 +398,10 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
     status: newArchOn ? "PASS" : "WARN",
     confidence: "MEDIUM",
     detail: newArchOn
-      ? `The New Architecture is enabled — Fabric rendering and TurboModules remove the asynchronous bridge.`
+      ? rnMinorForArch >= 82
+        ? `React Native 0.${rnMinorForArch} runs only on the New Architecture (the legacy bridge was removed in 0.82), ` +
+          `so Fabric rendering and TurboModules are in use whatever \`newArchEnabled\` says.`
+        : `The New Architecture is enabled — Fabric rendering and TurboModules remove the asynchronous bridge.`
       : `\`newArchEnabled\` is not set. The New Architecture replaces the asynchronous JSON bridge with direct ` +
         `synchronous access (JSI), which removes the serialise-every-message cost that shows up as jank in lists and ` +
         `gestures. It is the default for new apps and the old architecture is on a deprecation path, so this is a ` +
@@ -445,7 +452,12 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
 
   // Source maps. Without them a production stack trace is minified nonsense.
   const uploadsSourceMaps =
-    /sourcemap|sourceMap|SENTRY_.*UPLOAD|sentry-cli|upload-sourcemaps|hermesFlags/i.test(ctx.gradle + ctx.appConfig) ||
+    // Gradle comments stripped: the RN template ships `// hermesFlags = [...]` commented
+    // out, which is not a live setting. package.json scripts count — Expo apps upload
+    // maps from there (`sentry-expo-upload-sourcemaps`, `--dump-sourcemap`).
+    /sourcemap|sourceMap|SENTRY_.*UPLOAD|sentry-cli|upload-sourcemaps|hermesFlags|sentry\.gradle|@sentry\/react-native\/expo/i.test(
+      stripCStyleComments(ctx.gradle) + ctx.appConfig + JSON.stringify(ctx.pkg?.scripts ?? {}),
+    ) ||
     ctx.paths.some((p) => /sentry\.properties$/i.test(p));
   checks.push({
     category: CATEGORIES.OBSERVABILITY,
@@ -526,9 +538,9 @@ function performanceChecks(ctx: RnContext): PulseScanCheckInput[] {
     category: CATEGORIES.PERFORMANCE,
     checkKey: "rn_metered_network",
     label: "Large transfers respect metered connections",
-    status: /useNetInfo|NetInfo\.|isConnectionExpensive|type\s*===\s*['"]cellular['"]/i.test(ctx.source) ? "PASS" : "WARN",
-    detail: /useNetInfo|NetInfo\.|isConnectionExpensive|type\s*===\s*['"]cellular['"]/i.test(ctx.source)
-      ? `Connection-type checks are present before transfers.`
+    status: /isConnectionExpensive|\btype\s*[!=]==?\s*['"](?:cellular|wifi)['"]|\bcase\s+['"](?:cellular|wifi)['"]|NetInfoStateType\.(?:cellular|wifi)/i.test(ctx.source) ? "PASS" : "WARN",
+    detail: /isConnectionExpensive|\btype\s*[!=]==?\s*['"](?:cellular|wifi)['"]|\bcase\s+['"](?:cellular|wifi)['"]|NetInfoStateType\.(?:cellular|wifi)/i.test(ctx.source)
+      ? `A connection-type check (cellular / Wi-Fi / isConnectionExpensive) is present.`
       : `No NetInfo connection-type check found. Downloads, media prefetch and background sync then behave identically ` +
         `on Wi-Fi and on cellular, which is what turns into "the app used all my data". Gate large transfers on ` +
         `\`useNetInfo().type\` or \`isConnectionExpensive\`, and offer a Wi-Fi-only setting for anything bulky.`,
@@ -538,13 +550,46 @@ function performanceChecks(ctx: RnContext): PulseScanCheckInput[] {
 }
 
 // ── Quality and accessibility ───────────────────────────────────────────────
+/**
+ * The attribute text of a JSX opening tag, from just after the tag name to its
+ * closing `>`. Brace depth is tracked so a `>` inside a prop expression — an arrow
+ * function, a comparison, or a nested element like `icon={<Plus />}` — does not end
+ * the tag early and hide a label prop that follows it. Input is already bounded.
+ */
+function openingTagOf(rest: string): string {
+  let depth = 0;
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i];
+    if (ch === "{") depth++;
+    else if (ch === "}") depth = Math.max(0, depth - 1);
+    else if (ch === ">" && depth === 0 && rest[i - 1] !== "=") return rest.slice(0, i + 1);
+  }
+  return rest;
+}
+
 function qualityChecks(ctx: RnContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
 
   // Accessibility labels — a ratio, not a presence test. Presence alone passed an
   // app with 358 hardcoded font sizes and one accessible control (§34.3).
-  const touchables = (ctx.source.match(/<(TouchableOpacity|TouchableHighlight|Pressable|TouchableWithoutFeedback|Button)\b/g) ?? []).length;
-  const labelled = (ctx.source.match(/accessibilityLabel\s*=/g) ?? []).length;
+  // Labels are counted PER TOUCHABLE, on its own opening tag. `aria-label` is RN's
+  // alias for accessibilityLabel (0.71+). On <Button> only, `label=` (the common
+  // design-system prop that forwards to accessibilityLabel — Bluesky: 604 of 619) and
+  // core `title=` (announced as the name) also count; core Pressable/Touchable* ignore
+  // those props, so crediting them there would pass controls announced as just "button".
+  // A file-wide `accessibilityLabel=` count missed all of this and credited labels
+  // sitting on non-touchable Views.
+  let touchables = 0;
+  let labelled = 0;
+  for (const m of ctx.source.matchAll(/<(TouchableOpacity|TouchableHighlight|Pressable|TouchableWithoutFeedback|Button)\b/g)) {
+    touchables++;
+    const start = (m.index ?? 0) + m[0].length;
+    const openingTag = openingTagOf(ctx.source.slice(start, start + 2000));
+    const labelProp = m[1] === "Button"
+      ? /(?:\baccessibilityLabel|\baria-label|\blabel|\btitle)\s*=/
+      : /(?:\baccessibilityLabel|\baria-label)\s*=/;
+    if (labelProp.test(openingTag)) labelled++;
+  }
   if (touchables >= 5) {
     const ratio = labelled / touchables;
     checks.push(absence(ctx, {

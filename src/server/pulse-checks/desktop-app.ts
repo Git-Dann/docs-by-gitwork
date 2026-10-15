@@ -59,6 +59,9 @@ interface DesktopContext {
   sourceRaw: string;
   /** Main-process / preload sources only, where the security settings live. */
   mainSource: string;
+  /** Sampled source minus test/spec/mock files — where a handler's PRESENCE is searched, so a jest mock
+   *  of `electron` (`setPermissionRequestHandler: jest.fn()`) or a spec cannot stand in for the app's own guard. */
+  appSource: string;
   /** Rust source (Tauri) with comments stripped. */
   rust: string;
   /** All tauri.conf.json content joined. */
@@ -76,6 +79,9 @@ interface DesktopContext {
 /** Files that hold the Electron main-process security settings. */
 const MAIN_PROCESS = /(^|\/)(main|index|background|electron|app)\.(js|ts|mjs|cjs)$|(^|\/)(main|electron|background)\//i;
 const PRELOAD = /preload/i;
+/** Test suites, specs and mocks — never part of the shipped app. */
+const NOT_SHIPPED =
+  /(^|\/)(specs?|tests?|__tests__|__mocks__|mocks?|e2e|fixtures?|__fixtures__)\/|\.(test|spec|tests)\.[cm]?[jt]sx?$/i;
 
 function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): DesktopContext {
   const jsPaths = snapshot.paths.filter(
@@ -84,6 +90,7 @@ function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): Desk
   const read: string[] = [];
   const mainRead: string[] = [];
   const rustRead: string[] = [];
+  const appRead: string[] = [];
   let tauriConf = "";
   let capabilities = "";
   let packagerConfig = "";
@@ -100,6 +107,7 @@ function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): Desk
       rustRead.push(text);
     } else if (/\.(js|ts|mjs|cjs|jsx|tsx)$/i.test(path) && !isVendoredPath(path)) {
       read.push(text);
+      if (!NOT_SHIPPED.test(path)) appRead.push(text);
       if (MAIN_PROCESS.test(path) || PRELOAD.test(path)) mainRead.push(text);
     }
   }
@@ -113,6 +121,7 @@ function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): Desk
     // convention — plenty of apps put createWindow in src/app.ts or similar, and a
     // security setting missed because of a filename is a false PASS.
     mainSource: stripCStyleComments(mainRead.length > 0 ? mainRead.join("\n") : sourceRaw),
+    appSource: stripCStyleComments(appRead.join("\n")),
     rust: stripCStyleComments(rustRead.join("\n")),
     tauriConf,
     capabilities,
@@ -341,11 +350,22 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
 // ── Electron: navigation, window creation, permissions, IPC ─────────────────
 function electronNavigation(ctx: DesktopContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
-  const src = ctx.mainSource;
+  // Handler PRESENCE (will-navigate, setWindowOpenHandler, permission handlers,
+  // ipcMain) is searched across ALL sampled source: these calls live in whatever
+  // module builds the window (atom's main-process/atom-window.js, mattermost's
+  // src/app/views/*), not only in files named main/index/background. Coverage —
+  // the soundness gate for absence — is computed over all JS/TS, so the search
+  // must be too, or a sampled handler is reported missing at HIGH confidence.
+  // Test, spec and mock files are left out: a mock of `electron` or a spec is not the app's guard.
+  const src = ctx.appSource;
 
   // Navigation guard — without one, a link or a redirect can move the whole app
   // window to an attacker's page, which then inherits that window's webPreferences.
-  const hasNavGuard = /\bwill-navigate\b|\bwill-redirect\b/.test(src);
+  // A renderer <webview> also emits a DOM 'will-navigate' event, but preventDefault()
+  // has no effect on it, so that listener is not a guard and is excluded.
+  const hasNavGuard = /\bwill-navigate\b|\bwill-redirect\b/.test(
+    src.replace(/addEventListener\s*\(\s*["'`]will-(navigate|redirect)["'`]/g, ""),
+  );
   checks.push(absence(ctx, {
     category: CATEGORIES.SECURITY,
     checkKey: "electron_navigation_guard",
@@ -518,6 +538,7 @@ function electronPackaging(ctx: DesktopContext): PulseScanCheckInput[] {
   // Code signing. An unsigned desktop build is blocked by Gatekeeper and warned
   // about by SmartScreen, and cannot be notarised.
   const hasSigning =
+    anyDependency(ctx.pkg, /^(@electron\/(notarize|osx-sign|windows-sign)|electron-notarize|electron-osx-sign)$/) ||
     /\b(certificateFile|certificateSubjectName|identity|signingIdentity|notarize|osxSign|azureSignOptions|signtoolOptions|CSC_LINK)\b/i.test(ctx.packagerConfig) ||
     /\b(CSC_LINK|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|WINDOWS_CERTIFICATE)\b/.test(
       ctx.paths.filter((p) => /\.github\/workflows\//i.test(p)).join(" ") + ctx.packagerConfig,
@@ -529,7 +550,7 @@ function electronPackaging(ctx: DesktopContext): PulseScanCheckInput[] {
     status: hasSigning ? "PASS" : "WARN",
     confidence: "MEDIUM",
     detail: hasSigning
-      ? `Code-signing configuration is present in the packager config.`
+      ? `Code-signing configuration is present (packager signing config or signing/notarisation tooling).`
       : `No code-signing configuration found. An unsigned macOS build is refused by Gatekeeper ("cannot be opened ` +
         `because the developer cannot be verified") and cannot be notarised; an unsigned Windows build triggers a ` +
         `SmartScreen warning that most users will not click through. Signing is also what makes an auto-update ` +
@@ -825,7 +846,12 @@ function sharedDesktop(ctx: DesktopContext): PulseScanCheckInput[] {
   // there are no server logs to look at.
   const hasReporting =
     anyDependency(ctx.pkg, /^(@sentry\/|bugsnag|@bugsnag\/|rollbar|electron-log)/) ||
-    /crashReporter\.start|tauri-plugin-log|sentry/i.test(ctx.source + ctx.rust);
+    /crashReporter\.start|startCrashReporter|tauri-plugin-log|sentry/i.test(ctx.source + ctx.rust) ||
+    ctx.paths.some((p) =>
+      /(^|\/)crash-?reporter[^/]*\.(js|ts|mjs|cjs)$/i.test(p) &&
+      !/\.(test|spec)\.[cm]?[jt]s$|[-_]spec\.[cm]?[jt]s$/i.test(p) &&
+      !/(^|\/)(specs?|tests?|__tests__|e2e|fixtures?|__fixtures__|examples?|samples?|demos?)\//i.test(p) &&
+      !isVendoredPath(p));
   checks.push({
     category: CATEGORIES.OBSERVABILITY,
     checkKey: "desktop_crash_reporting",

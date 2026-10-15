@@ -90,7 +90,7 @@ const SHAPE_LABEL: Record<CoverageShape, string> = {
   tauri: "a Tauri desktop app",
   cli: "a CLI / published npm package",
   "chrome-extension": "a browser extension",
-  none: "a general web or service project",
+  none: "a project that matches none of Pulse's platform families",
 };
 
 /**
@@ -195,7 +195,7 @@ export function buildPlatformCoverageCheck(input: {
       `${SHAPE_LABEL[detected]}. ${detectedSpec
         ? `The ${detectedSpec.label} family ran instead — detection wins over the dropdown, so the findings above are ` +
           `about what this repo actually is, not what was selected.`
-        : `No platform-specific family applies to it, so only the generic repo checks ran.`} ` +
+        : `No platform-specific family matched it, so only the generic repo checks ran.${selected === "CLI_TOOL" ? ` (The ${spec.label} family detects npm-style packages only; a CLI written in another language, such as Rust or Go, is not covered by it.)` : ""}`} ` +
       `The ${spec.count} ${spec.label} checks did NOT run. If the ${spec.label} code lives in a different ` +
       `repository — a common split for cross-platform products — scan that one separately; if this is the right ` +
       `repo, change the selection so the report is labelled correctly.`,

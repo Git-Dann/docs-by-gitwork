@@ -303,6 +303,16 @@ export function readsRepoContents(shape: SnapshotShape): boolean {
   return shapes[shape];
 }
 
+const PLATFORM_CONFIG =
+  /(^|\/)(Info\.plist|GoogleService-Info\.plist|Podfile|Podfile\.lock|Package\.swift|Package\.resolved|\.swiftlint\.ya?ml|pubspec\.ya?ml|pubspec\.lock|analysis_options\.ya?ml|AndroidManifest\.xml|build\.gradle(\.kts)?|gradle\.properties|fvm_config\.json|\.fvmrc|google-services\.json)$|\.entitlements$|project\.pbxproj$/i;
+const CI_WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/i;
+
+/** Read priority for a config path under the cap: CI workflows, then platform build config, then the rest. */
+function configRank(path: string): number {
+  if (CI_WORKFLOW.test(path)) return 2;
+  return PLATFORM_CONFIG.test(path) ? 1 : 0;
+}
+
 /**
  * Choose which paths to read: config always, then a relevance-ranked source sample
  * for the detected platform. `source` is named generically because the same ranking
@@ -316,7 +326,28 @@ export function selectFilesToRead(
   const config = usable
     .filter((e) => CONFIG_PATTERNS.some((re) => re.test(e.path)) && !isVendoredPath(e.path))
     .map((e) => e.path)
+    // Rank before capping. In tree order a monorepo filled the 60-file cap with
+    // docker/, ~100 i18n/*.json and similar before mobile/ was reached, so immich's
+    // mobile/analysis_options.yaml and pubspec.yaml were never read and the Flutter
+    // checks reported them missing. CI workflows rank first (there are only ever a
+    // handful, and ci-workflows reads them ONLY from this list — a monorepo with more
+    // platform files than the cap must not make it report "no workflows"), then
+    // platform build config, then everything else. The sort is stable, so tree order
+    // is kept within each rank.
+    .sort((a, b) => configRank(b) - configRank(a))
     .slice(0, CONFIG_CAP);
+
+  // Renderer HTML entry — where Electron/Tauri apps most often declare their CSP <meta>. Desktop shapes
+  // only: operational-depth and service-depth consume EVERY snapshot file, so HTML must not leak into
+  // other shapes' input. Capped so a monorepo with many src/index.html files cannot crowd the fetch.
+  if (platform === "electron" || platform === "tauri") {
+    const htmlEntries = usable
+      .filter((e) => /^index\.html$|(^|\/)(static|renderer|src)\/index\.html$/i.test(e.path) && !isVendoredPath(e.path))
+      .map((e) => e.path)
+      .filter((p) => !config.includes(p))
+      .slice(0, 5);
+    config.push(...htmlEntries);
+  }
 
   const ext = SOURCE_EXTENSION[platform];
   if (!ext) return { config, source: [] };

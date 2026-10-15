@@ -64,6 +64,7 @@ const CODE_AGENT_QUERY = `
           }
         }
       }
+      tags: refs(refPrefix: "refs/tags/", first: 1) { totalCount }
       releases(last: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
         totalCount
         nodes { tagName createdAt isLatest }
@@ -125,6 +126,7 @@ interface GQLResponse {
       totalCount: number;
       nodes: { tagName: string; createdAt: string; isLatest: boolean }[];
     } | null;
+    tags?: { totalCount: number } | null;
     codeOfConduct: { name: string } | null;
     hasIssuesEnabled: boolean;
     issues: { totalCount: number } | null;
@@ -166,13 +168,17 @@ export async function runCodeAgent(
   const rest = await runRestOnlyFamilies(parsed, repoInput, effectivePlatform, resolvedShape);
 
   let data: GQLResponse | null = null;
+  // Kept so the INCONCLUSIVE detail can tell "repo does not exist / not visible"
+  // apart from "token lacks a permission" — different causes, different fixes.
+  let graphQLError = "";
   try {
     data = await githubGraphQL<GQLResponse>(CODE_AGENT_QUERY, {
       owner: parsed.owner,
       name: parsed.repo,
     });
-  } catch {
+  } catch (err) {
     data = null;
+    graphQLError = err instanceof Error ? err.message : String(err);
   }
 
   const repo = data?.repository ?? null;
@@ -189,7 +195,10 @@ export async function runCodeAgent(
           checkKey: "repo_intelligence",
           label: "GitHub repo intelligence",
           status: "INCONCLUSIVE" as const,
-          detail: hasGithubToken()
+          detail: /Could not resolve to a Repository/i.test(graphQLError)
+            ? `GitHub reports no repository ${parsed.owner}/${parsed.repo} visible to this scanner — it does not exist, ` +
+              "was renamed, or is private and outside the configured GITHUB_TOKEN's access. Repo intelligence could not be read."
+            : hasGithubToken()
             ? "Repo intelligence (branch protection, releases, commit velocity, dependency alerts) " +
               "could not be read. The configured GITHUB_TOKEN most likely lacks the permissions these " +
               "fields require — Dependabot alerts: read, and administration: read for branch protection."
@@ -307,13 +316,22 @@ export async function runCodeAgent(
 
     const names = new Set(commits.map((c) => c.author.name));
     uniqueContributors = names.size;
+    // The detail says "over last 30 days", so contributors must come from the same
+    // window: counting all 30 fetched commits credited archived flutter/gallery
+    // (last commit 2024) with "9 contributors" alongside 0 commits/week.
+    const recentContributors = new Set(recentCommits.map((c) => c.author.name)).size;
+    // history(first: 30) caps the sample. When every fetched commit is inside the
+    // window the true rate is a lower bound (cli/cli showed exactly 7/week = 30/30*7).
+    const velocitySampleCapped =
+      recentCommits.length === commits.length &&
+      (repo.defaultBranchRef?.target?.history?.totalCount ?? 0) > commits.length;
 
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "commit_velocity",
       label: "Active development velocity",
       status: commitVelocity >= 3 ? "PASS" : commitVelocity >= 1 ? "WARN" : "FAIL",
-      detail: `${commitVelocity} commits/week over last 30 days, ${uniqueContributors} contributor${uniqueContributors !== 1 ? "s" : ""}.`,
+      detail: `${velocitySampleCapped ? "At least " : ""}${commitVelocity} commits/week over last 30 days, ${recentContributors}${velocitySampleCapped ? "+" : ""} contributor${recentContributors !== 1 ? "s" : ""}.`,
     });
   } else if (!repo.isEmpty && repo.defaultBranchRef === null) {
     checks.push({
@@ -326,17 +344,28 @@ export async function runCodeAgent(
   }
 
   // ── Releases / versioning ─────────────────────────────────────────────────
-  const releaseCount = repo.releases?.totalCount ?? 0;
+  // A version tag is as pinnable as a GitHub Release (android/nowinandroid: 3 tags,
+  // 2 Releases), so count whichever is larger, as the label promises.
+  const releaseCount = Math.max(repo.releases?.totalCount ?? 0, repo.tags?.totalCount ?? 0);
+  // The tags field arrives null when GitHub could not resolve it (a partial GraphQL
+  // error). With no releases either, "no version tags" would be a claim about refs we
+  // never read, so that case is unestablished rather than a FAIL.
+  const tagsUnread = repo.tags == null;
   checks.push({
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "has_releases",
     label: "GitHub releases / version tags",
-    status: repo.releases === null ? "INCONCLUSIVE" : releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
+    status:
+      repo.releases === null || (releaseCount === 0 && tagsUnread)
+        ? "INCONCLUSIVE"
+        : releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
     detail: repo.releases === null
       ? "Release metadata could not be read."
+      : releaseCount === 0 && tagsUnread
+      ? "No GitHub releases are published, and the repository's tags could not be read, so whether it has version tags is unknown."
       : releaseCount > 0
-      ? `${releaseCount} release${releaseCount !== 1 ? "s" : ""} published — versioning history documented.`
-      : "No releases — users and integrators cannot pin to a stable version.",
+      ? `${releaseCount} published release${releaseCount !== 1 ? "s" : ""}/version tag${releaseCount !== 1 ? "s" : ""} — versioning history documented.`
+      : "No releases or version tags — users and integrators cannot pin to a stable version.",
   });
 
   // ── Issue health ───────────────────────────────────────────────────────────
@@ -403,7 +432,7 @@ export async function runCodeAgent(
     status: license ? "PASS" : "WARN",
     detail: license
       ? `Licensed under ${license.name} (${license.spdxId}).`
-      : "No license detected — code is legally all-rights-reserved by default, even in public repos.",
+      : "No license file detected by GitHub — unless a licence is granted elsewhere (e.g. stated in the README), the code is all-rights-reserved by default, even in public repos.",
   });
 
   const vulnerabilities = (vulnAlerts?.nodes ?? []).map((n) => ({

@@ -74,8 +74,27 @@ interface WebContext {
 
 const SOURCE_RE = /\.(js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|java|cs)$/i;
 
+/**
+ * Third-party libraries copied into a served static tree (e.g. djangoproject's
+ * `static/js/lib/require.js`) or shipped minified. They are not the project's own
+ * code, so a finding there must not be attributed to it. Deliberately anchored to
+ * the lib dir sitting directly in the static root (optionally under js/): Rails and
+ * Ember keep FIRST-PARTY code at `app/assets/javascripts/<app>/app/lib/`, which a
+ * looser `assets/.../lib/` match would silently drop.
+ */
+function isBundledStaticLibrary(path: string): boolean {
+  return (
+    // JS only: a `public/lib/db.php` under a PHP webroot is first-party server code.
+    (/\.(?:js|mjs|cjs)$/i.test(path) &&
+      /(^|\/)(?:static|public|wwwroot)\/(?:(?:js|javascripts?|scripts)\/)?(?:lib|libs|vendor|vendors|third[-_]?party)\//i.test(path)) ||
+    /\.min\.js$/i.test(path)
+  );
+}
+
 function buildContext(snapshot: RepoSnapshot): WebContext {
-  const sourcePaths = snapshot.paths.filter((p) => SOURCE_RE.test(p) && !isVendoredPath(p));
+  const sourcePaths = snapshot.paths.filter(
+    (p) => SOURCE_RE.test(p) && !isVendoredPath(p) && !isBundledStaticLibrary(p),
+  );
   const files = new Map<string, string>();
   let gitignore = "";
   let docsAndScripts = "";
@@ -95,7 +114,7 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
       automation += "\n" + text;
     } else if (/\.sql$/i.test(path) && !isVendoredPath(path)) sql += "\n" + text;
     else if (/(^|\/)package\.json$/i.test(path) && !path.includes("/")) pkgText = text;
-    else if (SOURCE_RE.test(path) && !isVendoredPath(path)) files.set(path, text);
+    else if (SOURCE_RE.test(path) && !isVendoredPath(path) && !isBundledStaticLibrary(path)) files.set(path, text);
   }
 
   const sourceRaw = [...files.values()].join("\n");
@@ -325,7 +344,16 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
 
   // Dynamic code execution. Presence is the finding — there is essentially no
   // benign reason for eval on a web service.
-  const evalSites = sitesMatching(ctx, /\beval\s*\(|new\s+Function\s*\(|\bexec\s*\(\s*["'`]/);
+  // `.eval(` on an arbitrary object is a method (Redis Lua EVAL, torch model.eval()),
+  // not the language's eval. Bare eval and the receivers that ARE the global/binding
+  // eval stay matched — not `self`, which in Python is any instance (`self.eval()` on a
+  // torch Module, an interpreter's own `self.eval(expr, env)`), and never a zero-argument
+  // `eval()`, which evaluates nothing. Same for `.exec("…")`: `/re/.exec("x")` is a regex match, not
+  // Python's exec.
+  const evalSites = sitesMatching(
+    ctx,
+    /(?<![\w.$])eval\s*\((?!\s*\))|\b(?:window|globalThis|top|parent|Kernel|binding|TOPLEVEL_BINDING|builtins|__builtins__)\.eval\s*\((?!\s*\))|new\s+Function\s*\(|(?<![\w.$])exec\s*\(\s*["'`]/,
+  );
   if (evalSites.count > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
@@ -334,7 +362,7 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
       status: "FAIL",
       confidence: "MEDIUM",
       detail:
-        `\`eval\`, \`new Function\` or \`exec\` on a string literal appears in ${evalSites.count} file(s). If any part ` +
+        `\`eval\` or \`new Function\` (or \`exec\` on a string) appears in ${evalSites.count} file(s). If any part ` +
         `of that string can be influenced from outside, it is arbitrary code execution in your process — with your ` +
         `database credentials and your environment. Almost every real use has a direct replacement: \`JSON.parse\` ` +
         `for data, a lookup table for dispatch, a real parser for expressions.`,
@@ -404,17 +432,29 @@ function credentialChecks(ctx: WebContext): PulseScanCheckInput[] {
   // second most common finding in AI-built repos.
   if (ctx.gitignore) {
     const coversEnv = /^\s*\*?\.?env/im.test(ctx.gitignore) || /^\s*\*\.env/im.test(ctx.gitignore);
-    const envCommitted = ctx.paths.some((p) => /(^|\/)\.env($|\.[a-z]+$)/i.test(p) && !/\.example$|\.sample$|\.template$/i.test(p));
+    const envPaths = ctx.paths.filter((p) => /(^|\/)\.env($|\.[a-z]+$)/i.test(p) && !/\.example$|\.sample$|\.template$/i.test(p));
+    // Two committed shapes whose CONTENTS we have not read and which are usually not secrets:
+    // a path the .gitignore deliberately re-includes with `!path` (cal.com's
+    // `!packages/prisma/.env` is a symlink to the ignored root .env), and `.env.test`, which
+    // frameworks such as Next.js document as safe to commit. Reported as "confirm", not "rotate".
+    const reIncluded = (p: string) =>
+      ctx.gitignore.split("\n").some((l) => l.trim().startsWith("!") && l.trim().replace(/^!\/?/, "") === p);
+    const envCommitted = envPaths.some((p) => !reIncluded(p) && !/(^|\/)\.env\.test$/i.test(p));
+    const envDeliberate = envPaths.length > 0 && !envCommitted;
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "web_gitignore_covers_env",
       label: ".gitignore excludes environment files",
-      status: envCommitted ? "FAIL" : coversEnv ? "PASS" : "WARN",
+      status: envCommitted ? "FAIL" : envDeliberate ? "WARN" : coversEnv ? "PASS" : "WARN",
       confidence: "HIGH",
       detail: envCommitted
         ? `A \`.env\` file is committed to this repository. Everything in it should be treated as public — git history ` +
           `preserves it even after deletion, and forks and clones already have it. Rotate every credential it ` +
           `contains at the provider, then add \`.env\` to .gitignore and remove it with \`git rm --cached\`.`
+        : envDeliberate
+          ? `An environment file is tracked (${envPaths.slice(0, 3).join(", ")}), but only as a test-config file or a ` +
+            `path the .gitignore deliberately re-includes — often a symlink to the ignored real file. Its contents were ` +
+            `not read: confirm it holds no live credentials.`
         : coversEnv
           ? `\`.gitignore\` covers environment files.`
           : `A \`.gitignore\` exists but has no \`.env\` rule. Nothing is exposed today, but the next person to create ` +
@@ -484,7 +524,16 @@ function frameworkDefaultChecks(ctx: WebContext): PulseScanCheckInput[] {
 
   // Debug mode. Its production cost is a full stack trace and often an
   // interactive console on every error page.
-  const debugOn = sitesMatching(ctx, /DEBUG\s*=\s*True|debug\s*=\s*True|app\.run\([^)]*debug\s*=\s*True/);
+  // A settings module that is dev/local/test BY NAME is where `DEBUG = True` belongs
+  // (djangoproject.com: settings/dev.py has it, settings/prod.py reads an env var that
+  // defaults to false). Only files that can reach production are evidence.
+  // NOT `settings_local.py` / `local_settings.py`: by convention that is the per-deployment
+  // override file, which is exactly what runs in production.
+  const DEV_ONLY_SETTINGS = /(^|\/)(?:dev|development|local|test|tests|testing|settings_(?:dev|test))\.py$/i;
+  const debugOn = sitesMatching(
+    { ...ctx, files: new Map([...ctx.files].filter(([p]) => !DEV_ONLY_SETTINGS.test(p))) },
+    /DEBUG\s*=\s*True|debug\s*=\s*True|app\.run\([^)]*debug\s*=\s*True/,
+  );
   if (debugOn.count > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
@@ -659,8 +708,12 @@ function supplyChainChecks(ctx: WebContext): PulseScanCheckInput[] {
       confidence: "HIGH",
       detail: loose.length > 0
         ? `${loose.length} dependency specifier(s) are unpinned — \`*\`, \`latest\`, or a raw git/http URL ` +
-          `(${loose.slice(0, 3).map(([k]) => k).join(", ")}). Two builds of the same commit can then produce ` +
-          `different applications, and a compromised release is pulled in with no diff to review. A raw URL is worse ` +
+          `(${loose.slice(0, 3).map(([k]) => k).join(", ")}). ` +
+          (hasLockfile
+            ? `The committed lockfile holds today's resolution, but the next lockfile refresh pulls whatever is newest, ` +
+              `so a compromised release arrives as a lockfile diff nobody reads. A raw URL is worse `
+            : `Two builds of the same commit can then produce different applications, and a compromised release is ` +
+              `pulled in with no diff to review. A raw URL is worse `) +
           `again: it has no registry integrity check at all.`
         : hasLockfile
           ? `Dependency versions are pinned and a lockfile is committed.`
@@ -693,13 +746,13 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
     ["pulse_secret_remediation", "Secret findings have a remediation path", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b[\s\S]{0,240}\b(?:revoke|rotate|redact|remediate|incident)\b/i, "The repository documents how a secret finding is contained.", "No evidence of a documented revoke, rotation, or remediation path for secret findings."],
     ["pulse_supply_chain_gate", "Supply-chain risk scanning runs in CI", /\b(?:supply[-_ ]chain|dependency[-_ ]scan|iac[-_ ]scan|artifact[-_ ]scan)\b/i, "A supply-chain risk scan is wired into delivery.", "No CI evidence of dependency, infrastructure, or artifact risk scanning."],
     ["pulse_supply_chain_inventory", "A release inventory is generated", /\b(?:sbom|software[-_ ]bill[-_ ]of[-_ ]materials|release[-_ ]inventory)\b/i, "Release inventory generation is configured.", "No evidence that a release inventory is generated for shipped artifacts."],
-    ["pulse_supply_chain_blocking", "Supply-chain risk has blocking thresholds", /\b(?:supply[-_ ]chain|dependency[-_ ]scan|iac[-_ ]scan|artifact[-_ ]scan)\b[\s\S]{0,240}\b(?:fail|block|threshold|severity|critical|high)\b/i, "Supply-chain workflow includes blocking criteria.", "No evidence that high-risk supply-chain findings block a release."],
-    ["pulse_code_flow_gate", "Code-flow analysis runs in CI", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b/i, "A code-flow analysis workflow is present.", "No CI evidence of code-flow analysis for paths that simple pattern matching cannot judge."],
-    ["pulse_code_flow_sources", "Code-flow analysis models untrusted inputs", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b[\s\S]{0,240}\b(?:source|untrusted|input|taint)\b/i, "The code-flow policy includes untrusted-input modelling.", "No evidence that code-flow analysis models untrusted inputs."],
-    ["pulse_code_flow_sinks", "Code-flow analysis protects sensitive operations", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b[\s\S]{0,240}\b(?:sink|database|shell|html|network)\b/i, "The code-flow policy includes sensitive-operation coverage.", "No evidence that code-flow analysis covers sensitive operations."],
+    ["pulse_supply_chain_blocking", "Supply-chain risk has blocking thresholds", /\b(?:supply[-_ ]chain|dependency[-_ ]scan|iac[-_ ]scan|artifact[-_ ]scan)\b[\s\S]{0,240}\b(?:fail|block|threshold|severity|critical|high)\b|\b(?:npm|yarn(?: npm)?|pnpm|bun) audit\b(?![^\n]*\|\|\s*(?:true\b|:|exit\s+0\b))[^\n]*--(?:audit-level|severity)\b|\bfail-on-severity\s*:|\bsnyk test\b(?![^\n]*\|\|\s*(?:true\b|:|exit\s+0\b))[^\n]*--severity-threshold\b|\brun:\s*(?:[|>][-+]?\s*)?(?:pip-audit|osv-scanner)\b(?![^\n]*\|\|\s*(?:true\b|:|exit\s+0\b))/i, "Supply-chain workflow includes blocking criteria.", "No evidence that high-risk supply-chain findings block a release."],
+    ["pulse_code_flow_gate", "Code-flow analysis runs in CI", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b|\bcodeql-action\/analyze\b/i, "A code-flow analysis workflow is present.", "No CI evidence of code-flow analysis for paths that simple pattern matching cannot judge."],
+    ["pulse_code_flow_sources", "Code-flow analysis models untrusted inputs", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b[\s\S]{0,240}\b(?:source|untrusted|input|taint)\b|\bcodeql-action\/analyze\b/i, "The code-flow policy includes untrusted-input modelling.", "No evidence that code-flow analysis models untrusted inputs."],
+    ["pulse_code_flow_sinks", "Code-flow analysis protects sensitive operations", /\b(?:code[-_ ]flow|data[-_ ]flow|interprocedural|query[-_ ]analysis)\b[\s\S]{0,240}\b(?:sink|database|shell|html|network)\b|\bcodeql-action\/analyze\b/i, "The code-flow policy includes sensitive-operation coverage.", "No evidence that code-flow analysis covers sensitive operations."],
     ["pulse_browser_journeys", "Browser journeys run before release", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b/i, "Browser journey tests are wired into delivery.", "No CI evidence that critical user journeys run in a real browser."],
-    ["pulse_browser_failure_evidence", "Browser failures retain diagnostic evidence", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b[\s\S]{0,240}\b(?:trace|screenshot|video|network[-_ ]log)\b/i, "Browser failures retain reproducible diagnostic evidence.", "No evidence that browser failures retain traces, screenshots, video, or network logs."],
-    ["pulse_browser_release_coverage", "Browser tests cover release-critical paths", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b[\s\S]{0,240}\b(?:login|checkout|payment|signup|onboarding|critical)\b/i, "Browser-test configuration names release-critical paths.", "No evidence that browser tests cover login, onboarding, payments, or other critical paths."],
+    ["pulse_browser_failure_evidence", "Browser failures retain diagnostic evidence", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b[\s\S]{0,240}\b(?:trace|screenshot|video|network[-_ ]log)\b(?!\s*:\s*["']?(?:off|false|never)\b)|\b(?:trace|screenshot|video)\s*:\s*["'](?:on|retain-on-failure|on-first-retry|on-all-retries|only-on-failure)["']|\bscreenshotOnRunFailure\s*:\s*true\b|\bupload-artifact\b[\s\S]{0,240}\b(?:playwright-report|blob-report|cypress\/(?:screenshots|videos))\b/i, "Browser failures retain reproducible diagnostic evidence.", "No evidence that browser failures retain traces, screenshots, video, or network logs."],
+    ["pulse_browser_release_coverage", "Browser tests cover release-critical paths", /\b(?:browser[-_ ]test|browser[-_ ]journey|end[-_ ]to[-_ ]end|e2e)\b[\s\S]{0,240}(?<![\w.-]|name:[ \t]*|(?:docker|podman|npm|az|helm|oras|auth)[ \t]+)(?:login|checkout|payment|signup|onboarding|critical)\b(?![-@\/])/i, "Browser tests name release-critical paths.", "No evidence that browser tests cover login, onboarding, payments, or other critical paths."],
     ["pulse_accessibility_assertions", "Accessibility assertions run with UI tests", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|toHaveNoViolations)\b/i, "Automated accessibility assertions run with UI tests.", "No CI evidence of automated accessibility assertions against rendered UI."],
     ["pulse_accessibility_keyboard", "UI tests verify keyboard operation", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|keyboard[-_ ]navigation|focus[-_ ]order)\b/i, "UI-test evidence includes keyboard or focus validation.", "No evidence that UI tests verify keyboard navigation or focus order."],
     ["pulse_accessibility_semantics", "UI tests verify accessible semantics", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|accessible[-_ ]name|role[-_ ]assertion|contrast[-_ ]check)\b/i, "UI-test evidence includes semantic or contrast validation.", "No evidence that UI tests verify accessible names, roles, or contrast."],
@@ -708,8 +761,21 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
     ["pulse_dynamic_security_isolation", "Dynamic security tests run against a safe target", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b[\s\S]{0,240}\b(?:staging|preview|sandbox|test[-_ ]environment)\b/i, "Dynamic security tests target an isolated environment.", "No evidence that dynamic security tests run against a safe staging, preview, sandbox, or test environment."],
   ];
 
+  // A browser-test FILE named for a critical flow (login.e2e.ts, e2e/checkout.spec.ts)
+  // is direct evidence of release-path coverage; keyword proximity in a workflow
+  // (actions/checkout, docker/login-action) is not.
+  const criticalBrowserTestPath = ctx.paths.some((p) => !isVendoredPath(p) &&
+    /(?:^|\/)(?:e2e|playwright|cypress)\/(?:[^/]+\/)*[^/]*(?:login|sign-?up|checkout|payment|onboarding)[^/]*\.[jt]sx?$|(?:login|sign-?up|checkout|payment|onboarding)[^/]*\.(?:e2e|cy)\.[jt]sx?$/i.test(p));
+  const staticAnalysisConfigPath = ctx.paths.some((p) => !isVendoredPath(p) &&
+    /(^|\/)(?:\.eslintrc(?:\.(?:js|cjs|json|ya?ml))?|eslint\.config\.[cm]?[jt]s|\.rubocop\.yml|\.?ruff\.toml|\.semgrep\.ya?ml|\.golangci\.ya?ml|\.pylintrc|\.flake8|biome\.jsonc?|phpstan\.neon(?:\.dist)?|psalm\.xml)$/i.test(p));
   for (const [checkKey, label, pattern, passDetail, warnDetail] of gates) {
-    const enabled = has(pattern);
+    const enabled = has(pattern) ||
+      (checkKey === "pulse_browser_release_coverage" && criticalBrowserTestPath) ||
+      // A checked-in analyzer config IS a reviewable static-analysis policy (discourse:
+      // .rubocop.yml + eslint.config.mjs; supabase: apps/*/eslint.config.cjs). Path-based,
+      // so it does not depend on which files the sampler happened to read. Formatter-only
+      // configs (.prettierrc, tsconfig.json) do not count.
+      (checkKey === "pulse_static_analysis_policy" && staticAnalysisConfigPath);
     checks.push(absence(ctx, {
       category: CATEGORIES.CODE_QUALITY,
       checkKey,
@@ -735,9 +801,13 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
       (/(?:permissions\s*:\s*(?:write-all|[\s\S]{0,100}\bwrite\b)|secrets\.|github\.event\.pull_request\.head)/i.test(workflow));
     checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_untrusted_privilege", label: "Untrusted CI code cannot access write privileges or secrets", status: privilegedUntrusted ? "FAIL" : "PASS", confidence: "HIGH", detail: privilegedUntrusted ? "A workflow triggered by untrusted contribution activity can access write privileges, secrets, or contributor-controlled code. Split review and privileged deployment work into separate workflows." : "No unsafe untrusted-contribution privilege pattern found in scanned workflows." });
     const mutableAction = /\buses:\s*[^\s@]+@(?![a-f0-9]{40}\b)[^\s#]+/i.test(workflow);
-    checks.push(absence(ctx, { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_actions", label: "CI actions are pinned to immutable revisions", status: mutableAction ? "WARN" : "PASS", detail: mutableAction ? "At least one CI action is referenced by a mutable tag. Pin release-critical actions to an immutable revision and review updates deliberately." : "Scanned CI action references are immutable." }));
+    const immutableActions: Omit<PulseScanCheckInput, "confidence"> = { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_actions", label: "CI actions are pinned to immutable revisions", status: mutableAction ? "WARN" : "PASS", detail: mutableAction ? "At least one CI action is referenced by a mutable tag. Pin release-critical actions to an immutable revision and review updates deliberately." : "Scanned CI action references are immutable." };
+    // A mutable ref we SAW is a presence finding: sound at any sample coverage.
+    checks.push(mutableAction ? { ...immutableActions, confidence: "HIGH" } : absence(ctx, immutableActions));
     const floatingImage = /\bimage:\s*[^\s#]+:latest\b/i.test(workflow);
-    checks.push(absence(ctx, { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_images", label: "CI container images avoid floating latest tags", status: floatingImage ? "WARN" : "PASS", detail: floatingImage ? "A CI container image uses a floating latest tag, so the same workflow can execute different code over time." : "No floating latest container image found in scanned workflows." }));
+    const immutableImages: Omit<PulseScanCheckInput, "confidence"> = { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_images", label: "CI container images avoid floating latest tags", status: floatingImage ? "WARN" : "PASS", detail: floatingImage ? "A CI container image uses a floating latest tag, so the same workflow can execute different code over time." : "No floating latest container image found in scanned workflows." };
+    // A floating tag we SAW is a presence finding: sound at any sample coverage.
+    checks.push(floatingImage ? { ...immutableImages, confidence: "HIGH" } : absence(ctx, immutableImages));
     const remoteBootstrap = /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:ba)?sh\b/i.test(workflow);
     checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_remote_shell", label: "CI does not pipe remote downloads into a shell", status: remoteBootstrap ? "FAIL" : "PASS", confidence: "HIGH", detail: remoteBootstrap ? "A workflow pipes a remote download directly into a shell. Fetch, checksum, review, and execute a pinned artifact instead." : "No remote-download-to-shell pattern found in scanned workflows." });
   }
@@ -766,7 +836,9 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
 
   const hasServer = /\b(?:express\s*\(|fastify\s*\(|createServer\s*\(|app\.(?:post|put|patch)|router\.(?:post|put|patch))\b/i.test(ctx.source);
   const bodyLimit = /\b(?:express\.json|bodyParser\.(?:json|urlencoded)|json)\s*\(\s*\{[^}]*\blimit\s*:/i.test(ctx.source);
-  if (hasServer) checks.push(absence(ctx, { category: CATEGORIES.API_QUALITY, checkKey: "pulse_request_body_limit", label: "Server request bodies have explicit size limits", status: bodyLimit ? "PASS" : "WARN", detail: bodyLimit ? "An explicit request-body limit is configured in scanned server source." : "No explicit request-body size limit found in scanned server source. Bound request parsing before allocating attacker-controlled payloads." }));
+  // body-parser (and express.json/urlencoded/raw/text, which wrap it) caps every body at 100kb when no limit is passed.
+  const defaultBodyLimit = !bodyLimit && /\b(?:express|bodyParser)\.(?:json|urlencoded|raw|text)\s*\(/.test(ctx.source);
+  if (hasServer) checks.push(absence(ctx, { category: CATEGORIES.API_QUALITY, checkKey: "pulse_request_body_limit", label: "Server request bodies have explicit size limits", status: bodyLimit || defaultBodyLimit ? "PASS" : "WARN", detail: bodyLimit ? "An explicit request-body limit is configured in scanned server source." : defaultBodyLimit ? "Request bodies are parsed with body-parser/Express defaults, which cap each body at 100kb." : "No explicit request-body size limit found in scanned server source. Bound request parsing before allocating attacker-controlled payloads." }));
   const hasUpload = /\b(?:multer|formData|fileUpload|single\s*\(|array\s*\()/.test(ctx.source);
   const uploadLimit = /\b(?:fileSize|limits\s*:|content-length|maxFileSize)\b/i.test(ctx.source);
   if (hasUpload) checks.push(absence(ctx, { category: CATEGORIES.SECURITY, checkKey: "pulse_upload_limit", label: "File uploads enforce size limits", status: uploadLimit ? "PASS" : "WARN", detail: uploadLimit ? "Upload size-limit evidence found in scanned source." : "Upload handling was found without an explicit size limit. Enforce byte limits before storage and decompression." }));

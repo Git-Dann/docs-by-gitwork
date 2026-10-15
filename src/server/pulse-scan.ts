@@ -6482,6 +6482,37 @@ export async function runGithubChecks(
 
   const names = entries.map((e) => e.name.toLowerCase());
 
+  // Root-only matching reported things as missing that live below the root
+  // (observed: tmoreton/tutorials proxy/package.json + app/MyAgent/tsconfig.json,
+  // djangoproject.com blog/migrations/, cal.com docs/api-reference/v2/openapi.json,
+  // express .github/dependabot.yml). The recursive tree is already fetched (and
+  // memoized) for the native families below, so reuse it for presence checks.
+  const treeSnapshot = await getRepoSnapshot(repoInput).catch(() => null);
+  // Vendored dependencies and example/fixture/test trees do not describe THIS project:
+  // a tsconfig.json under test/fixtures/ or a package.json under examples/ must not turn
+  // a WARN into a PASS. Same patterns as native-mobile's isVendoredPath /
+  // isExampleOrFixturePath.
+  const treePaths = treeSnapshot?.accessible
+    ? treeSnapshot.paths
+        .map((p) => p.toLowerCase())
+        .filter(
+          (p) =>
+            !/(^|\/)(node_modules|vendor|pods|carthage|\.build|deriveddata)\//.test(p) &&
+            !/(^|\/)(examples?|samples?|demos?|fixtures?|__fixtures__|__tests__|tests?|e2e|templates?|playgrounds?|starters?)\//.test(p),
+        )
+    : [];
+  const treeHas = (pred: (path: string, base: string) => boolean) =>
+    treePaths.some((p) => pred(p, p.slice(p.lastIndexOf("/") + 1)));
+  const rootPackageJson = treeSnapshot?.files.get("package.json") ?? null;
+  // Full recursive file list from the shared, memoized snapshot (the same one the
+  // native/shape families read further down, so this costs no extra API calls).
+  // Used ONLY to find files the root listing cannot see (.github/CONTRIBUTING.md,
+  // e2e/playwright.config.ts, docker/docker-compose.yml). Never use it to assert
+  // absence: a truncated tree is incomplete.
+  // Unfiltered on purpose: e2e/playwright.config.ts and .github/* must stay visible here,
+  // and each caller applies its own path exclusions.
+  const allTreePaths = (treeSnapshot?.paths ?? []).map((p) => p.toLowerCase());
+
   const hasReadme = names.some((n) => n.startsWith("readme"));
   const hasTests = names.some((n) => ["test", "tests", "__tests__", "spec", "specs"].includes(n));
   const hasLinter =
@@ -6491,14 +6522,40 @@ export async function runGithubChecks(
     names.includes(".eslintrc.js") ||
     names.includes("biome.json") ||
     names.includes(".prettierrc");
-  const hasTs = names.includes("tsconfig.json");
-  const hasEnvExample = names.includes(".env.example") || names.includes(".env.sample");
+  const hasTs = names.includes("tsconfig.json") || treeHas((_, base) => base === "tsconfig.json");
+  const hasEnvExample = [".env.example", ".env.sample", ".env.template", ".env.dist", ".env.local.example", "env.example"].some((f) => names.includes(f));
   const hasCi = names.includes(".github") || names.includes(".circleci");
   const hasLicense = names.some((n) => n.startsWith("license"));
   const hasPackageJson = names.includes("package.json");
   const hasPyProject = names.includes("pyproject.toml") || names.includes("requirements.txt");
-  const hasManifest = hasPackageJson || hasPyProject || names.includes("cargo.toml") || names.includes("go.mod");
-  const hasDockerfile = names.includes("dockerfile") || names.includes("docker-compose.yml") || names.includes("docker-compose.yaml");
+  const MANIFEST_FILES = new Set([
+    "package.json", "pyproject.toml", "requirements.txt", "cargo.toml", "go.mod", "pubspec.yaml",
+    "build.gradle", "build.gradle.kts", "pom.xml", "gemfile", "composer.json", "package.swift", "podfile", "mix.exs",
+  ]);
+  const hasManifest =
+    hasPackageJson || hasPyProject || names.includes("cargo.toml") || names.includes("go.mod") ||
+    names.some((n) => MANIFEST_FILES.has(n)) || treeHas((_, base) => MANIFEST_FILES.has(base));
+  // Container config often lives below the root (supabase: docker/docker-compose.yml,
+  // apps/studio/Dockerfile). Test/example/fixture and dot-directories (.devcontainer,
+  // .agents) are not the project's own deploy config, and a source, doc or template file
+  // merely NAMED after Dockerfiles (pkg/dockerfile.go, src/generators/dockerfile.ts,
+  // docs/dockerfile.md, Dockerfile.tmpl) is not one either.
+  const isContainerConfig = (p: string) => {
+    const base = p.slice(p.lastIndexOf("/") + 1);
+    if (base === "dockerfile" || base === "containerfile") return true;
+    if (/^(docker-)?compose(\.[^/]+)?\.ya?ml$/.test(base)) return true;
+    return (
+      /^dockerfile\.[^/]+$/.test(base) &&
+      !/\.(md|markdown|mdx|txt|rst|adoc|go|[cm]?[jt]sx?|py|rs|rb|java|kt|swift|php|cs|json|snap|ejs|hbs|mustache|tmpl|tpl|j2|jinja2?|erb)$/.test(base)
+    );
+  };
+  const hasDockerfile =
+    names.includes("dockerfile") || names.includes("docker-compose.yml") || names.includes("docker-compose.yaml") ||
+    allTreePaths.some(
+      (p) =>
+        isContainerConfig(p) &&
+        !/(^|\/)(\.[^/]+|examples?|samples?|demos?|fixtures?|__fixtures__|__tests__|tests?|e2e|templates?|vendor|node_modules)\//.test(p),
+    );
 
   // AEO & AI Discoverability (repo side) — is the codebase built to be worked on by
   // AI coding agents? An agent-instructions contract (CLAUDE.md / AGENTS.md / editor
@@ -6587,7 +6644,7 @@ export async function runGithubChecks(
       checkKey: "has_env_example",
       label: ".env.example",
       status: hasEnvExample ? "PASS" : "WARN",
-      detail: hasEnvExample ? ".env.example found." : "No .env.example file — environment setup is undocumented.",
+      detail: hasEnvExample ? ".env.example found." : "No .env.example (or .env.sample / .env.template) in the repo root. If the app reads environment variables, a committed template is the conventional copy-and-fill way to document them.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
@@ -6620,15 +6677,35 @@ export async function runGithubChecks(
   );
 
   // Additional Code Quality checks
-  const hasContributing = names.some((n) => n.startsWith("contributing"));
-  const hasCodeOfConduct = names.some((n) => n.startsWith("code_of_conduct") || n.startsWith("code-of-conduct"));
-  const hasSecurityMd = names.some((n) => n === "security.md");
+  // GitHub recognises community-health files in the root, .github/ and docs/
+  // (cli/cli and psf/requests keep CONTRIBUTING and CODE_OF_CONDUCT in .github/).
+  const inHealthDirs = (re: RegExp) =>
+    names.some((n) => re.test(n)) ||
+    allTreePaths.some((p) => /^(\.github|docs)\/[^/]+$/.test(p) && re.test(p.slice(p.indexOf("/") + 1)));
+  const hasContributing = inHealthDirs(/^contributing/);
+  const hasCodeOfConduct = inHealthDirs(/^code[_-]of[_-]conduct/);
+  // GitHub recognises SECURITY.md at the root, in .github/ or in docs/. An organisation
+  // default from a PUBLIC <owner>/.github repo can also apply (observed: immich-app/immich),
+  // but reading it would cost extra GitHub API calls on the shared quota, so it is not
+  // probed; the WARN says so rather than claiming the repo has no policy at all.
+  const hasSecurityMd =
+    names.some((n) => n === "security.md") ||
+    treeHas((p) => p === ".github/security.md" || p === "docs/security.md");
   const hasDependabot = names.includes(".github") && (() => {
     const githubDir = entries.find((e) => e.name === ".github" && e.type === "dir");
     return Boolean(githubDir);
   })();
-  const hasChangelogFile = names.some((n) => n.startsWith("changelog") || n === "history.md");
-  const hasOpenApiSpec = names.some((n) => ["openapi.yaml", "openapi.yml", "openapi.json", "swagger.yaml", "swagger.json"].includes(n));
+  const hasChangelogFile =
+    names.some((n) => n.startsWith("changelog") || n === "history.md") ||
+    // CHANGES.rst / NEWS / HISTORY.rst / RELEASES.md are standard (especially in Python).
+    // FILES only: a root news/ or releases/ DIRECTORY is site content or build output as
+    // often as it is release notes.
+    entries.some(
+      (e) => e.type === "file" && /^(changes|news|history|releases|release[-_]notes)(\.(md|rst|txt))?$/i.test(e.name),
+    );
+  const OPENAPI_FILES = ["openapi.yaml", "openapi.yml", "openapi.json", "swagger.yaml", "swagger.yml", "swagger.json"];
+  const hasOpenApiSpec =
+    names.some((n) => OPENAPI_FILES.includes(n)) || treeHas((_, base) => OPENAPI_FILES.includes(base));
   const hasEditorConfig = names.includes(".editorconfig");
   const hasGitignore = names.includes(".gitignore");
 
@@ -6645,14 +6722,16 @@ export async function runGithubChecks(
       checkKey: "has_code_of_conduct",
       label: "Code of Conduct",
       status: hasCodeOfConduct ? "PASS" : "WARN",
-      detail: hasCodeOfConduct ? "Code of Conduct found." : "No Code of Conduct — required for GitHub marketplace listings and professional open-source projects.",
+      detail: hasCodeOfConduct ? "Code of Conduct found." : "No Code of Conduct (checked the root, .github/ and docs/). Open-source projects use one to set expectations for contributor behaviour and how reports are handled.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_security_md",
       label: "SECURITY.md (vulnerability disclosure)",
       status: hasSecurityMd ? "PASS" : "WARN",
-      detail: hasSecurityMd ? "SECURITY.md found — responsible disclosure policy documented." : "No SECURITY.md — GitHub recommends this for all repos to guide vulnerability reporting.",
+      detail: hasSecurityMd
+        ? "SECURITY.md found — responsible disclosure policy documented."
+        : `No SECURITY.md in the root, .github/ or docs/. GitHub recommends one to guide vulnerability reporting. If ${parsed.owner} publishes a default SECURITY.md in a public ${parsed.owner}/.github repository, GitHub shows that on this repo's Security tab instead — Pulse does not check organisation defaults.`,
     },
     {
       category: CATEGORIES.CODE_QUALITY,
@@ -6666,7 +6745,7 @@ export async function runGithubChecks(
       checkKey: "has_changelog_file",
       label: "CHANGELOG.md",
       status: hasChangelogFile ? "PASS" : "WARN",
-      detail: hasChangelogFile ? "CHANGELOG.md found — release history documented." : "No CHANGELOG.md — users and contributors can't track what changed between versions.",
+      detail: hasChangelogFile ? "Changelog file found — release history documented in the repo." : "No CHANGELOG file in the repo root. Release notes may still be published on GitHub Releases or a website, but a versioned CHANGELOG.md keeps what changed between versions next to the code.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
@@ -6686,7 +6765,7 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_gitignore",
       label: ".gitignore",
-      status: hasGitignore ? "PASS" : "FAIL",
+      status: hasGitignore ? "PASS" : "WARN",
       detail: hasGitignore ? ".gitignore found — build artifacts and secrets excluded from version control." : "No .gitignore — secrets and build artifacts may be accidentally committed.",
     },
   );
@@ -6695,23 +6774,87 @@ export async function runGithubChecks(
   const hasDockerCompose = names.includes("docker-compose.yml") || names.includes("docker-compose.yaml");
   const hasMakefile = names.includes("makefile");
   const hasHuskyConfig = names.includes(".husky") || names.includes(".huskyrc");
-  const hasVitest = names.some((n) => n === "vitest.config.ts" || n === "vitest.config.js");
-  const hasJest = names.some((n) => n === "jest.config.js" || n === "jest.config.ts" || n === "jest.config.mjs");
-  const hasPlaywright = names.some((n) => n.startsWith("playwright.config"));
-  const hasCypress = names.some((n) => n === "cypress.json" || n === "cypress.config.js" || n === "cypress.config.ts" || n === "cypress");
+  // pre-commit (psf/requests, djangoproject.com) and lefthook (discourse) are hook managers too.
+  const hasGitHooks =
+    hasHuskyConfig ||
+    [".pre-commit-config.yaml", ".pre-commit-config.yml", "lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml", "lefthook.json"].some((f) => names.includes(f));
+  const isVitestConfig = (n: string) => /^vitest\.(config|workspace)\.(c|m)?(t|j)s$/.test(n);
+  const isJestConfig = (n: string) => /^jest\.config\.(c|m)?(t|j)s(on)?$/.test(n);
+  const hasVitest = names.some(isVitestConfig) || treeHas((_, base) => isVitestConfig(base));
+  // Jest also reads a TOP-LEVEL "jest": { ... } block in package.json (observed:
+  // mattermost/desktop). Parsed rather than regex-matched: a nested key such as
+  // peerDependenciesMeta.jest (observed: jest-community/eslint-plugin-jest) is not config,
+  // and neither is a devDependency string.
+  const hasInlineJestConfig = (() => {
+    if (!rootPackageJson) return false;
+    try {
+      const pkg = JSON.parse(rootPackageJson) as { jest?: unknown };
+      return typeof pkg.jest === "object" && pkg.jest !== null && !Array.isArray(pkg.jest);
+    } catch {
+      return false;
+    }
+  })();
+  const hasJest = names.some(isJestConfig) || treeHas((_, base) => isJestConfig(base)) || hasInlineJestConfig;
+  const notExampleOrVendored = (p: string) => !/(^|\/)(examples?|samples?|templates?|fixtures?|vendor|node_modules)\//.test(p);
+  const hasPlaywright =
+    names.some((n) => n.startsWith("playwright.config")) ||
+    allTreePaths.some((p) => /(^|\/)playwright\.config\.[cm]?[jt]s$/.test(p) && notExampleOrVendored(p));
+  const hasCypress =
+    names.some((n) => n === "cypress.json" || n === "cypress.config.js" || n === "cypress.config.ts" || n === "cypress") ||
+    allTreePaths.some((p) => /(^|\/)(cypress\.config\.[cm]?[jt]s|cypress\.json)$/.test(p) && notExampleOrVendored(p));
   const hasE2eTests = hasPlaywright || hasCypress;
   const hasDevContainer = names.includes(".devcontainer");
-  const hasRenovate = names.some((n) => n === "renovate.json" || n === ".renovaterc" || n === "renovate.json5");
+  const isRenovateConfig = (p: string) => /^(\.github\/|\.gitlab\/)?(renovate\.json5?|\.renovaterc(\.json5?)?)$/.test(p);
+  const hasRenovateConfig = names.some(isRenovateConfig) || treeHas((p) => isRenovateConfig(p));
+  // Dependabot is the other mainstream updater (observed: expressjs/express, flutter/gallery).
+  // A dependabot.yml that only lists the github-actions ecosystem bumps workflow pins, not
+  // the project's dependencies, so it needs at least one other package-ecosystem.
+  const dependabotPath = allTreePaths.includes(".github/dependabot.yml")
+    ? ".github/dependabot.yml"
+    : allTreePaths.includes(".github/dependabot.yaml")
+      ? ".github/dependabot.yaml"
+      : null;
+  // The shared snapshot does not normally carry dependabot.yml, and reading it here would
+  // cost an extra GitHub API call on the shared quota. So: if the snapshot happens to
+  // hold the file, judge its ecosystems; otherwise the config's coverage is UNKNOWN and
+  // the check says so (INCONCLUSIVE), rather than "no config" or a blind PASS.
+  let hasDependabotConfig = false;
+  let dependabotUnread = false;
+  if (!hasRenovateConfig && dependabotPath) {
+    const rawPath = treeSnapshot?.paths.find((p) => p.toLowerCase() === dependabotPath) ?? dependabotPath;
+    const yml = treeSnapshot?.files.get(rawPath) ?? null;
+    if (yml === null) {
+      dependabotUnread = true;
+    } else {
+      const active = yml.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+      hasDependabotConfig = [...active.matchAll(/package-ecosystem:\s*["']?([\w-]+)/gi)].some(
+        (m) => m[1].toLowerCase() !== "github-actions",
+      );
+    }
+  }
+  const hasRenovate = hasRenovateConfig || hasDependabotConfig;
   const hasHelmChart = names.includes("charts") || names.includes("helm");
   const hasK8s = names.includes("k8s") || names.includes("kubernetes");
   const hasInfraCode = hasHelmChart || hasK8s || names.includes("terraform") || names.includes("pulumi");
-  const hasMigrations = names.some((n) => n === "migrations" || n === "db" || n === "database" || n === "prisma");
+  // Django keeps migrations per app (blog/migrations/), Prisma under its schema dir
+  // (src/prisma/migrations/), Rails in db/migrate/, Flyway in db/migration/.
+  const hasMigrations =
+    names.some((n) => n === "migrations" || n === "db" || n === "database" || n === "prisma") ||
+    treeHas((p) =>
+      /(^|\/)(migrations|db\/migrate|db\/migration|alembic\/versions)\/.+\.(sql|py|rb|ts|js|mjs|cjs|go|php|java|kt|exs|cs|toml)$/.test(p),
+    );
   const hasSupabase = names.includes("supabase");
   const hasPrisma = names.includes("prisma");
   const hasDrizzle = names.some((n) => n === "drizzle.config.ts" || n === "drizzle.config.js");
   const hasOrmConfig = hasPrisma || hasDrizzle || hasSupabase;
   const hasMonorepo = names.some((n) => n === "pnpm-workspace.yaml" || n === "lerna.json" || n === "nx.json" || n === "turbo.json");
-  const hasCoverage = names.some((n) => n === "codecov.yml" || n === ".codecov.yml" || n === "coveralls.yml" || n.startsWith("coverage"));
+  const hasCoverage =
+    names.some(
+      (n) =>
+        n === "codecov.yml" || n === ".codecov.yml" || n === "coveralls.yml" || n.startsWith("coverage") ||
+        [".coveragerc", ".nycrc", ".nycrc.json", ".nycrc.yml", ".c8rc", ".c8rc.json", "codecov.yaml", ".codecov.yaml", ".coveralls.yml", ".slather.yml", "jacoco.gradle"].includes(n),
+    ) ||
+    allTreePaths.some((p) => /^\.github\/workflows\/[^/]*(coverage|codecov|coveralls)[^/]*\.ya?ml$/.test(p));
 
   // suppress unused variable warnings for variables that may be useful in future
   void hasDockerCompose;
@@ -6739,8 +6882,8 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_git_hooks",
       label: "Git hooks (Husky / lefthook)",
-      status: hasHuskyConfig || names.includes("lefthook.yml") || names.includes(".lefthook.yml") ? "PASS" : "WARN",
-      detail: hasHuskyConfig
+      status: hasGitHooks ? "PASS" : "WARN",
+      detail: hasGitHooks
         ? "Git hooks configured — linting and tests run before commits."
         : "No pre-commit hooks — lint errors and test failures can reach the main branch undetected.",
     },
@@ -6766,10 +6909,17 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_renovate",
       label: "Renovate / automated dependency updates",
-      status: hasRenovate ? "PASS" : "WARN",
+      status: hasRenovate ? "PASS" : dependabotUnread ? "INCONCLUSIVE" : "WARN",
+      ...(dependabotUnread && !hasRenovate
+        ? { confidence: "LOW" as const, confidenceReason: "dependabot.yml exists but its contents were not read." }
+        : {}),
       detail: hasRenovate
-        ? "Renovate config found — dependencies stay up-to-date automatically."
-        : "No Renovate config — dependencies gradually drift out of date, accumulating security debt.",
+        ? "Automated dependency updates configured (Renovate or Dependabot) — dependencies stay up-to-date automatically."
+        : dependabotUnread
+          ? `A Dependabot config (${dependabotPath}) exists, but Pulse did not read it, so it cannot confirm it covers the project's dependencies rather than only GitHub Actions pins.`
+          : dependabotPath
+            ? `No Renovate config, and ${dependabotPath} only updates GitHub Actions pins — the project's own dependencies gradually drift out of date, accumulating security debt.`
+            : "No Renovate or Dependabot config — dependencies gradually drift out of date, accumulating security debt.",
     },
     {
       category: CATEGORIES.INFRASTRUCTURE,

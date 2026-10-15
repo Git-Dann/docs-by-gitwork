@@ -14,7 +14,16 @@
 
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
-import type { RepoSnapshot } from "./native-mobile";
+import { isVendoredPath, sampleCoverage, type RepoSnapshot } from "./native-mobile";
+
+/** Below this sampled fraction, "not found" is inconclusive rather than a finding — same rule as desktop-app.ts. */
+const SOUND_ABSENCE_COVERAGE = 0.3;
+
+/** Source that ships: not vendored, not a test, spec, mock or fixture. */
+function isShippedSourcePath(path: string): boolean {
+  return !isVendoredPath(path) &&
+    !/(^|\/)(specs?|tests?|__tests__|__mocks__|mocks?|e2e|fixtures?|__fixtures__)\/|\.(test|spec|tests)\.[cm]?[jt]sx?$/i.test(path);
+}
 
 export type DesktopShape = "electron" | "tauri";
 
@@ -24,16 +33,25 @@ interface Ctx {
   tauriConf: string;
   packageJson: string;
   builderConfig: string;
+  /** Renderer HTML entry files (where an Electron CSP <meta> usually lives). */
+  html: string;
+  /** Sampled fraction of the repo's JS/TS/Rust source files (0–1). */
+  coverage: number;
 }
 
 function buildCtx(snapshot: RepoSnapshot, shape: DesktopShape): Ctx {
   const src: string[] = [];
   const tauri: string[] = [];
   const builder: string[] = [];
+  const html: string[] = [];
   let packageJson = "";
   for (const [path, text] of snapshot.files) {
-    if (/\.(ts|tsx|js|jsx|mjs|cjs|rs)$/i.test(path)) src.push(text);
-    else if (/tauri\.conf\.json$|capabilities\/.*\.(json|toml)$/i.test(path)) tauri.push(text);
+    if (/\.html?$/i.test(path)) html.push(text);
+    if (/\.(ts|tsx|js|jsx|mjs|cjs|rs)$/i.test(path)) {
+      // Tests, mocks and vendored code are not the shipped app: a jest mock of `electron`
+      // (`setPermissionRequestHandler: jest.fn()`) must not stand in for the app's own handler.
+      if (isShippedSourcePath(path)) src.push(text);
+    } else if (/tauri\.conf\.json$|capabilities\/.*\.(json|toml)$/i.test(path)) tauri.push(text);
     else if (/electron-builder\.|forge\.config\./i.test(path)) builder.push(text);
     if (/(^|\/)package\.json$/i.test(path) && !packageJson) packageJson = text;
   }
@@ -43,6 +61,12 @@ function buildCtx(snapshot: RepoSnapshot, shape: DesktopShape): Ctx {
     tauriConf: tauri.join("\n"),
     packageJson,
     builderConfig: builder.join("\n"),
+    html: html.join("\n"),
+    coverage: sampleCoverage(
+      src.length,
+      snapshot.paths.filter((p) => /\.(ts|tsx|js|jsx|mjs|cjs|rs)$/i.test(p) && isShippedSourcePath(p)).length,
+      snapshot.truncated,
+    ),
   };
 }
 
@@ -78,14 +102,21 @@ export function evaluateDesktopExtendedChecks(
     label: string,
     status: PulseScanCheckInput["status"],
     detail: string,
+    absence = false,
   ) => {
+    // An ABSENCE finding ("we looked and did not find X") is sound only when the
+    // sample is broad enough — same rule as desktop-app.ts's absence().
+    const thin = absence && status === "WARN" && ctx.coverage < SOUND_ABSENCE_COVERAGE;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey,
       label,
       status,
-      confidence: "HIGH",
-      detail,
+      confidence: thin ? "LOW" : "HIGH",
+      detail: thin
+        ? `${detail} (Based on ${Math.round(ctx.coverage * 100)}% of this project's source files — below the ` +
+          `threshold for a confident "not present anywhere", so this is inconclusive rather than a failure.)`
+        : detail,
     });
   };
 
@@ -101,6 +132,8 @@ export function evaluateDesktopExtendedChecks(
       : "No navigation guard was found. Without a will-navigate handler (Electron) or a navigation allowlist " +
         "(Tauri), a link or redirect inside the app can move the main window to any URL — and that window keeps " +
         "whatever privileges the app granted it, so a phishing page renders inside your signed application chrome.",
+    // Electron handlers live in sampled source; Tauri's allowlist is in tauri.conf.json, which is always read.
+    isElectron,
   );
 
   const windowGuard = isElectron
@@ -117,6 +150,7 @@ export function evaluateDesktopExtendedChecks(
         ? "window.open is intercepted with setWindowOpenHandler."
         : "No setWindowOpenHandler was found. Any `window.open` from loaded content then creates a real BrowserWindow " +
           "the app did not configure — which by default does not inherit the parent's hardening.",
+    true,
   );
 
   const permHandler = /setPermissionRequestHandler|setPermissionCheckHandler/.test(ctx.source);
@@ -132,6 +166,7 @@ export function evaluateDesktopExtendedChecks(
         : "No permission request handler is installed. Electron grants permission requests from loaded content by " +
           "default in some versions — meaning a page in the app can reach the camera or microphone without the " +
           "user being asked in the way a browser would ask.",
+    true,
   );
 
   const webviewTag = /webviewTag:\s*true|<webview/.test(ctx.source);
@@ -211,7 +246,9 @@ export function evaluateDesktopExtendedChecks(
           "This is the single highest-severity finding available in a desktop app.",
   );
 
-  const devtools = /openDevTools\(/.test(ctx.source);
+  // The Electron API is a METHOD (webContents.openDevTools / win.openDevTools). A bare `openDevTools(`
+  // is the app's own function — e.g. a Tauri app's user-clicked "open devtools" command wrapper.
+  const devtools = /\.openDevTools\(/.test(ctx.source);
   const devtoolsGuarded = /isDev|NODE_ENV\s*[=!]==?\s*["']development|app\.isPackaged/.test(ctx.source);
   add(
     "desk_x_devtools_release",
@@ -221,12 +258,16 @@ export function evaluateDesktopExtendedChecks(
       ? "DevTools are not opened programmatically."
       : devtoolsGuarded
         ? "DevTools are opened behind a development-only guard."
-        : "openDevTools is called with no development guard, so the developer console opens in the shipped " +
-          "application. Beyond looking unfinished, it hands any user a full inspector over the app's renderer — " +
-          "including its local storage and any in-memory tokens.",
+        : "openDevTools is called with no development guard visible in the sampled source, so the developer console " +
+          "may be reachable in the shipped application. If it is, it hands any user a full inspector over the app's " +
+          "renderer — including its local storage and any in-memory tokens.",
   );
 
-  const csp = /Content-Security-Policy|"?csp"?:/i.test(all);
+  // `"csp": null` (or ""/false) in tauri.conf.json is Tauri's way of saying NO policy — not a declared one.
+  // The left boundary stops `"devCsp"` (dev builds only) from counting as the shipped policy.
+  const csp = /Content-Security-Policy|(?<![\w$-])["']?csp["']?\s*:\s*(?!null\b|false\b|undefined\b|""|'')[\w"'{`\[]/i.test(
+    all + "\n" + ctx.html,
+  );
   add(
     "desk_x_csp_defined",
     "The renderer declares a content security policy",
@@ -235,10 +276,13 @@ export function evaluateDesktopExtendedChecks(
       ? "A content security policy is declared for the renderer."
       : "No content security policy was found. In a desktop app the renderer has more privilege than a browser tab, " +
         "so a CSP is the main remaining limit on what injected script can load and connect to once it is running.",
+    // Electron's CSP lives in sampled source/HTML; Tauri's is in tauri.conf.json, which is always read,
+    // so a Tauri `"csp": null` is an observed fact, not an absence on a sample.
+    isElectron,
   );
 
   const shellOpen = /shell\.openExternal\(/.test(ctx.source);
-  const shellValidated = /startsWith\(["']https?:|new URL\(|protocol\s*===/.test(ctx.source);
+  const shellValidated = /startsWith\(["']https?:|new URL\(|protocol\s*===|\/\^https\??:/.test(ctx.source);
   add(
     "desk_x_shell_open_external",
     "External links are opened without arbitrary shell execution",
@@ -252,15 +296,18 @@ export function evaluateDesktopExtendedChecks(
           "web page — turning a link in loaded content into code execution.",
   );
 
-  const singleInstance = /requestSingleInstanceLock|single_instance|SingleInstance/i.test(all);
+  const singleInstance = /requestSingleInstanceLock|single_instance|SingleInstance|second-instance|check_singleton/i.test(all);
   add(
     "desk_x_single_instance",
     "The app enforces a single running instance",
     singleInstance ? "PASS" : "WARN",
     singleInstance
-      ? "The app requests a single-instance lock, so a second launch focuses the existing window."
-      : "No single-instance lock was found. A second launch starts a second copy sharing the same data directory, " +
-        "which corrupts local databases and settings files that were not written to expect concurrent writers.",
+      ? "Single-instance handling was found (a single-instance lock, a second-instance handler or a singleton " +
+        "check), so a second launch is handed to the existing instance."
+      : "No single-instance lock (requestSingleInstanceLock, a second-instance handler or a Tauri single-instance " +
+        "plugin) was found. Without one, a second launch can start a second copy sharing the same data directory, " +
+        "which can corrupt local databases and settings files that were not written to expect concurrent writers.",
+    true,
   );
 
   const crashReporter = /crashReporter|sentry|bugsnag|crashpad|minidump/i.test(all);
@@ -270,8 +317,10 @@ export function evaluateDesktopExtendedChecks(
     crashReporter ? "PASS" : "WARN",
     crashReporter
       ? "A crash reporter is configured."
-      : "No crash reporter was found. A desktop crash leaves no trace you can see — unlike a server, there are no " +
-        "logs to go back to — so the only signal is a user telling you it closed.",
+      : "No crash reporter (crashReporter, Sentry, Bugsnag or Crashpad) was found. Without one, crashes on users' " +
+        "machines are not sent back to you — at most they land in a local log on the user's computer — so you " +
+        "usually learn about them only when a user reports it.",
+    true,
   );
 
   return checks;

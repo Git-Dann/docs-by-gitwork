@@ -142,12 +142,15 @@ export function evaluateCrossPlatformExtendedChecks(
     detail: string,
     opts: { absence?: boolean } = {},
   ) => {
-    const weak = opts.absence === true && !soundAbsence && status !== "PASS";
+    // Only an adverse verdict is an absence claim. SKIPPED ("no remote images at all") is a
+    // decision about applicability and must not be rewritten to INCONCLUSIVE.
+    const weak = opts.absence === true && !soundAbsence && (status === "WARN" || status === "FAIL");
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey,
       label,
-      status,
+      // Not finding a pattern in a minority sample of the source is not evidence that it is missing.
+      status: weak ? "INCONCLUSIVE" : status,
       confidence: weak ? "LOW" : "HIGH",
       ...(weak
         ? {
@@ -156,7 +159,7 @@ export function evaluateCrossPlatformExtendedChecks(
               "established.",
           }
         : {}),
-      detail,
+      detail: weak ? `Not established from the sampled source. ${detail}` : detail,
     });
   };
 
@@ -285,14 +288,15 @@ export function evaluateCrossPlatformExtendedChecks(
 
   // ── Quality signals ────────────────────────────────────────────────────────
   const nativeModules = ctx.paths.filter((p) => /(^|\/)(ios|android)\/.*\.(swift|m|mm|kt|java)$/i.test(p)).length;
+  const nativeProportionate = nativeModules <= 25 || nativeModules <= ctx.total * 0.1;
   add(
     "xp_native_module_count",
     "Native module usage is proportionate to the codebase",
-    nativeModules <= 25 ? "PASS" : "WARN",
-    nativeModules <= 25
-      ? `${nativeModules} platform-native source files — the shared codebase is doing the work, which is the point ` +
-        "of a cross-platform framework."
-      : `${nativeModules} platform-native source files sit alongside the shared code. Past a certain amount of ` +
+    nativeProportionate ? "PASS" : "WARN",
+    nativeProportionate
+      ? `${nativeModules} platform-native source files against ${ctx.total} shared source files — the shared ` +
+        "codebase is doing the work, which is the point of a cross-platform framework."
+      : `${nativeModules} platform-native source files sit alongside only ${ctx.total} shared source files. Past a certain amount of ` +
         "native glue the project carries the cost of three codebases rather than one, and every feature needs a " +
         "developer who can write all three.",
   );
@@ -377,7 +381,7 @@ export function evaluateCrossPlatformExtendedChecks(
 
   const errorBoundary = isFlutter
     ? /FlutterError\.onError|runZonedGuarded|ErrorWidget\.builder/.test(ctx.source)
-    : /ErrorBoundary|componentDidCatch|ErrorUtils\.setGlobalHandler/.test(ctx.source);
+    : /ErrorBoundary|componentDidCatch|ErrorUtils\.setGlobalHandler|setJSExceptionHandler/.test(ctx.source);
   add(
     "xp_error_boundary",
     "The UI tree has a top-level error boundary",
@@ -408,8 +412,16 @@ export function evaluateCrossPlatformExtendedChecks(
           "best, and as a visible debug affordance at worst.",
   );
 
-  const localeFormatting = /Intl\.|NumberFormat|DateFormat|toLocaleDateString|toLocaleString|intl\./i.test(ctx.source);
-  const manualFormatting = /\.split\(['"]\/['"]\)|\.getMonth\(\)\s*\+\s*1|padStart\(2, ?['"]0['"]\)/.test(ctx.source);
+  const localeFormatting = /Intl\.|NumberFormat|DateFormat|toLocaleDateString|toLocaleString|intl\.|i18n\.(?:date|number)\(/i.test(
+    ctx.source,
+  );
+  // Only date/clock-component arithmetic counts. `.split('/')` is far more often URL / AT-URI parsing and a bare
+  // `padStart(2, '0')` is usually a mm:ss duration — neither is a locale defect. A zero-padded local getHours() is a
+  // hand-built 24h clock and still counts.
+  const manualFormatting =
+    /\.get(?:UTC)?Month\(\)\s*\+\s*1|\.get(?:(?:UTC)?(?:Date|Month)|Hours)\(\)\)?\s*\.(?:toString\(\)\s*\.)?padStart\(/.test(
+      ctx.source,
+    );
   add(
     "xp_locale_formatting",
     "Dates and numbers are formatted by locale",
@@ -417,9 +429,9 @@ export function evaluateCrossPlatformExtendedChecks(
     localeFormatting
       ? "Dates and numbers are formatted through locale-aware APIs."
       : manualFormatting
-        ? "Dates are assembled by hand from their components rather than formatted by locale. That produces a " +
-          "US-ordered date for every user, and a decimal separator that is wrong across most of Europe — the kind " +
-          "of defect that reads as carelessness rather than as a bug."
+        ? "Dates are assembled by hand from their components rather than formatted by locale, so every user sees " +
+          "the same hard-coded date order whatever their locale — the kind of defect that reads as carelessness " +
+          "rather than as a bug."
         : "No date or number formatting was found in the sampled source.",
   );
 
