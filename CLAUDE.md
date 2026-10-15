@@ -279,7 +279,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
 | **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
-| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip beside Decks |
+| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip |
 | **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
 | **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
 | **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
@@ -317,8 +317,8 @@ The sidebar uses different labels from the URL routes — mapping below.
 `/app/<name>` is for a **main product** — its own sidebar item and module permission.
 Anything else gets an entry point, not a namespace:
 
-- **A feature of a product** → surfaced inside that product. Deck sits on the Docs
-  toolbar; Study sits inside Pulse; Scribe is a panel on the client detail page.
+- **A feature of a product** → surfaced inside that product. Decks are made in Docs
+  (+ New → Deck); Study sits inside Pulse; Scribe is a panel on the client detail page.
 - **An experiment or internal-only surface** → **Settings → Labs**
   (`src/components/settings/labs-panel.tsx`, Super Admin). `/edge` is the first entry.
 - **A second internal tool** → under Backstage, never a new top-level item (§10).
@@ -6682,4 +6682,19 @@ carries the app and, once saved, the artwork. Nothing in it talks to Foundry's A
   near-black (6.0:1); white would be 3.3:1 and fail AA.
 - **Adding a tool is done in the Canvas repo** (`npm run new-tool`, skills in its
   `.claude/skills/`), then rebuilt into this one.
+
+## 64. Recent Changes (October 2026) — Settings rail halved, Labs as a grid, Deck in Labs
+
+- **The settings rail went from 19 rows to 9** (`settings-shell.tsx`): Account (Profile ·
+  Notifications), Documents (Document defaults · Templates), Client forms (Onboarding ·
+  Launchpad), People & access, Integrations (Integrations · MCP), Automation (AI agents · Pulse
+  checks · Curator · Foreman), Labs, Developer, Audit & privacy (Audit log · Privacy & data).
+  Sections sharing a row show as tabs on its page. **Presentation only:** every section keeps its
+  own URL, permission and page gate, so links, bookmarks and the role matrix are untouched. A row
+  shows when you can open at least one of its sections and links to the first one you can.
+  `settings-rail.test.ts` fails if a section that renders a panel stops being reachable.
+  Analytics left the rail: it is a full page, reached from the HQ context strip.
+- **Labs is a two-column grid** with one-sentence cards; the detail lives in the docs.
+- **Deck's scratch editor (`/deck`) is a Labs card**, and the HQ strip's `· DECKS` link is gone.
+  A deck that belongs to a client is made in Docs (+ New → Deck), which is unchanged.
 
