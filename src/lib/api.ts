@@ -1,4 +1,5 @@
 import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, SavedCostingConfig } from "@/types/costing";
+import type { ReportTask } from "@/lib/standup-report";
 import type { WikiLinkDTO } from "@/server/wiki-links";
 import type {
   HandoverDTO,
@@ -3177,7 +3178,7 @@ export function pushPmUpdates(phase: DailyUpdatePhase = "PM"): Promise<{
 export interface PmUpdatePreviewDev {
   /** Developer display name (rendered as `@name`). */
   name: string;
-  tasks: Array<{ title: string; taskId: string }>;
+  tasks: ReportTask[];
   note?: string | null;
 }
 

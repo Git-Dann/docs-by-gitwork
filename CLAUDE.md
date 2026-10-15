@@ -6617,3 +6617,24 @@ refusing plain HTTP with a 4xx passes `http_redirect`.
 Repo scans share ONE token (5,000 REST calls/hour). Measured: ~150–250 calls per repo scan, so
 roughly 20–30 repo scans an hour across all users. A GitHub App (per-installation limits) or
 caching repo snapshots is needed before repo scans are opened widely. URL scans are unaffected.
+
+## 61. Recent Changes (October 2026) — The daily Slack updates report subtasks and ongoing work
+
+Asked for by a developer (Waqar): completed subtasks must appear, in-progress work must appear at
+the end of the day, and a multi-day task must still give a developer something to report. Three
+defects were behind it, all now fixed through ONE layout module, `src/lib/standup-report.ts`,
+which the per-developer card, the consolidated #updates card and the admin's review preview all
+render from:
+
+- **A subtask with no assignee belongs to whoever owns its parent** (`reportOwnerIds`). 172 of 265
+  live subtasks have no assignee (made before subtasks inherited their parent's), so both reports,
+  which select by assignee, reported those subtasks for nobody. The same rule is applied in the
+  queries (`compileDailyUpdates`, and `listTasks` when `includeSubtasks` + `assigneeId`).
+- **The #updates end-of-day card only fetched DONE-today tasks**, so a developer three days into
+  one task had nothing to show. It now reports **Done today · In progress · In review**, each under
+  a small label.
+- **A finished subtask removed its still-running parent** from "Still in progress" on the
+  per-developer card (a cross-group de-dupe). Each group now nests its own subtasks.
+
+Subtasks render under their parent as `    ↳ Subtask`. ⚠️ The indent is **non-breaking spaces**
+(`SUBTASK_PREFIX`) because Slack collapses ordinary leading spaces — a test pins it.

@@ -9,6 +9,14 @@
  * fold the rest into a "+N more" context block.
  */
 
+import {
+  SUBTASK_PREFIX,
+  groupForReport,
+  groupsToMrkdwn,
+  toRows,
+  type ReportTask,
+} from "@/lib/standup-report";
+
 export type SlackBlock = Record<string, unknown>;
 export type SlackView = Record<string, unknown>;
 
@@ -25,6 +33,9 @@ export interface StandupTaskCardInput {
   /** When set, this task is a subtask — it renders as a bullet grouped under a bold
    *  "parentTitle" heading, rather than as its own standalone line. */
   parentTitle?: string | null;
+  /** The parent's id, so a subtask nests under the right parent even when two parents
+   *  share a title. Falls back to grouping by `parentTitle` when absent. */
+  parentId?: string | null;
   blockName?: string | null;
   /** YYYY-MM-DD; overdue formatting is computed against the workdayLabel. */
   dueDate?: string | null;
@@ -155,51 +166,53 @@ function renderTaskLine(
 }
 
 /**
- * Render tasks as clean mrkdwn. Standalone (top-level) tasks each get a `• Title`
- * line; subtasks are grouped under a bold parent heading:
+ * Render tasks as clean mrkdwn. Each top-level task gets a `• Title` line, and its
+ * subtasks follow it indented with a ↳ — never as loose bullets. A subtask whose parent
+ * is not itself in this list is headed by the parent's title, so it keeps its context:
  *
- *   *Main Task Name*
- *   • Sub Task 1
- *   • Sub Task 2
+ *   • Checkout flow  · due Fri
+ *       ↳ Apple Pay button
+ *       ↳ Receipt email
+ *
+ * Layout comes from `toRows` (src/lib/standup-report.ts), the same rule the #updates
+ * card and the review preview use.
  */
 function taskListText(
   tasks: StandupTaskCardInput[],
   opts: { today: string | null; withMeta: boolean; withDescriptions?: boolean },
 ): string {
-  const standalone = tasks.filter((t) => !t.parentTitle);
-  const parentOrder: string[] = [];
-  const byParent = new Map<string, StandupTaskCardInput[]>();
-  for (const t of tasks) {
-    if (!t.parentTitle) continue;
-    if (!byParent.has(t.parentTitle)) {
-      byParent.set(t.parentTitle, []);
-      parentOrder.push(t.parentTitle);
+  const byId = new Map(tasks.map((t) => [t.taskId, t] as const));
+  const rows = toRows(
+    tasks.map((t) => ({
+      taskId: t.taskId,
+      title: t.title,
+      status: t.status ?? "DOING",
+      // No id → group by title, which is what this card did before ids were passed.
+      parentId: t.parentId ?? (t.parentTitle ? `title:${t.parentTitle}` : null),
+      parentTitle: t.parentTitle ?? null,
+    })),
+  );
+
+  const lines: string[] = [];
+  let shown = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const task = byId.get(row.taskId);
+    if (task && shown >= MAX_TASKS_PER_CARD) break;
+    if (!task) {
+      // A heading for subtasks whose parent isn't listed — only if a subtask will follow it.
+      if (shown >= MAX_TASKS_PER_CARD) break;
+      lines.push(`• ${escapeMrkdwn(row.title)}`);
+      continue;
     }
-    byParent.get(t.parentTitle)!.push(t);
+    shown += 1;
+    lines.push(
+      row.kind === "subtask" ? `${SUBTASK_PREFIX}${escapeMrkdwn(task.title)}` : renderTaskLine(task, opts),
+    );
   }
-
-  let remaining = MAX_TASKS_PER_CARD;
-  const sections: string[] = [];
-
-  const stdVisible = standalone.slice(0, remaining);
-  remaining -= stdVisible.length;
-  if (stdVisible.length > 0) {
-    sections.push(stdVisible.map((t) => renderTaskLine(t, opts)).join("\n"));
-  }
-
-  for (const parent of parentOrder) {
-    if (remaining <= 0) break;
-    const subs = byParent.get(parent)!.slice(0, remaining);
-    remaining -= subs.length;
-    const bullets = subs.map((t) => `• ${escapeMrkdwn(t.title)}`).join("\n");
-    sections.push(`*${escapeMrkdwn(parent)}*\n${bullets}`);
-  }
-
-  const total = standalone.length + [...byParent.values()].reduce((n, a) => n + a.length, 0);
-  const shown = MAX_TASKS_PER_CARD - remaining;
-  const overflow = Math.max(0, total - shown);
-  const body = sections.join("\n\n");
-  return overflow > 0 ? `${body}\n\n_+${overflow} more_` : body;
+  const overflow = Math.max(0, tasks.length - shown);
+  const body = lines.join("\n");
+  return overflow > 0 ? `${body}\n_+${overflow} more_` : body;
 }
 
 /**
@@ -361,8 +374,10 @@ export function buildRollupCard(input: {
 export interface DailyUpdateProjectDev {
   /** Developer display name — the card renders it as `@name`. */
   name: string;
-  /** This dev's tasks for THIS project (done-today for PM, in-progress for AM). */
-  tasks: Array<{ title: string; taskId: string }>;
+  /** This dev's tasks for THIS project. PM: done today + still in progress + in review
+   *  (multi-day work must show up); AM: in progress + in review. Subtasks carry their
+   *  parent so they render indented under it. */
+  tasks: ReportTask[];
   /** The dev's note ("One thing I need"), when they left one. */
   note?: string | null;
 }
@@ -379,11 +394,10 @@ const MAX_PROJECTS_PER_CARD = 18;
 
 /** Render one project's developers as a single mrkdwn block: each dev headed by
  *  `*@name*`, their tasks bulleted underneath, and their note quoted. */
-function projectDevsText(devs: DailyUpdateProjectDev[]): string {
+function projectDevsText(devs: DailyUpdateProjectDev[], phase: "AM" | "PM"): string {
   const chunks = devs.map((dev) => {
-    const taskLines = dev.tasks.length
-      ? dev.tasks.map((t) => `• ${escapeMrkdwn(t.title)}`).join("\n")
-      : "_No tasks._";
+    const groups = groupForReport(dev.tasks, phase);
+    const taskLines = groups.length ? groupsToMrkdwn(groups, escapeMrkdwn) : "_No tasks._";
     let block = `*@${escapeMrkdwn(dev.name)}*\n${taskLines}`;
     if (dev.note?.trim()) block += `\n> ${escapeMrkdwn(truncate(dev.note.trim(), 500))}`;
     return block;
@@ -445,7 +459,7 @@ export function buildDailyUpdatesCard(input: {
     });
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: projectDevsText(project.devs) },
+      text: { type: "mrkdwn", text: projectDevsText(project.devs, input.phase) },
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "View board ↗" },
@@ -465,7 +479,7 @@ export function buildDailyUpdatesCard(input: {
     const lines = otherDevs.map((d) => {
       let s = `*@${escapeMrkdwn(d.name)}*`;
       if (d.note?.trim()) s += `\n> ${escapeMrkdwn(truncate(d.note.trim(), 500))}`;
-      else s += isAm ? " — _no tasks in progress_" : " — _no tasks done today_";
+      else s += isAm ? " — _no tasks in progress_" : " — _nothing done or in progress_";
       return s;
     });
     blocks.push({ type: "header", text: { type: "plain_text", text: "Other updates", emoji: true } });
