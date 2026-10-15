@@ -6559,7 +6559,28 @@ text and real links, not `border-collapse:separate`, asset hashes or tweet URLs;
 unreadable repo scores 0 and gates INCONCLUSIVE (`SUBJECT_UNREADABLE`); Mac App Store listings are
 labelled Mac apps.
 
-### 62.5 GitHub capacity — still open
+### 62.5 The repo families, verified against the repos' own source
+
+Round one could only read 6 repos before the shared GitHub quota ran out, so the repo families
+got their own pass: 33 real public repos across every family, each non-passing finding checked by
+shallow-cloning the repo and reading the files the check reasons about. **154 false positives**
+of 295 verdicts; 256 fixes proposed and reviewed (1 rejected), applied per file and reviewed again.
+
+- Presence checks look below the root (nested tsconfig/Dockerfile/test configs/migrations, an
+  e2e/ Playwright suite) while ignoring examples, fixtures and vendored trees.
+- ⚠️ **No check may add a GitHub API call beyond the shared snapshot.** Two fixes tried (an org
+  `.github` SECURITY.md probe, a dependabot.yml read); the reviewer removed both. A file the
+  snapshot did not carry is INCONCLUSIVE, never fetched and never "missing".
+- The generic `*_depth_*` families match bare words (`queue`, `region`, `Decimal`) across a
+  concatenated sample. 15 with verified wrong verdicts and no reviewed fix are in `WITHHELD`;
+  controls that live outside a repo (runbooks, SLOs, branch rules, dunning) are in the absence
+  policy. Those families are the weakest part of Pulse and want a proper rewrite.
+- Repo collectors now run as the **detected** execution platform. An Express API picked as
+  "iOS app" ran 17 checks against 101 for the same repo picked as "Other";
+  `pulse-matrix-assert.ts` now fails if one repo + one execution platform shows different checks
+  by pick.
+
+### 62.6 GitHub capacity — still open
 
 Repo scans share ONE token (5,000 REST calls/hour). Measured: ~150–250 calls per repo scan, so
 roughly 20–30 repo scans an hour across all users. A GitHub App (per-installation limits) or

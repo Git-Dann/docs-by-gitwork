@@ -30,6 +30,15 @@ describe("optional: not having it is not a finding", () => {
   });
 });
 
+describe("an API spec is looked for on the API, not the marketing site", () => {
+  it("a website scan cannot establish a missing spec", () => {
+    expect(applyAbsencePolicy(check("openapi_spec_served", "WARN"), "website").status).toBe("INCONCLUSIVE");
+  });
+  it("an API scan's missing spec stands", () => {
+    expect(applyAbsencePolicy(check("openapi_spec_served", "WARN"), "api").status).toBe("WARN");
+  });
+});
+
 describe("everything else is untouched", () => {
   it("a check in neither list keeps its FAIL", () => {
     const c = check("ssl_valid", "FAIL", "Certificate expired");

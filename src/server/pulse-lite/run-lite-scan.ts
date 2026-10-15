@@ -146,7 +146,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
 
   const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
     const fresh: PulseScanCheckInput[] = [];
-    for (const c of applyCheckPolicy(batch, input.checkPolicy).map(applyAbsencePolicy)) {
+    for (const c of applyCheckPolicy(batch, input.checkPolicy).map((c) => applyAbsencePolicy(c, relevanceCtx.target.kind))) {
       if (seen.has(c.checkKey) || heldBack.has(c.checkKey)) continue;
       const decision = decideRelevance(c, relevanceRuleFor(c.checkKey), relevanceCtx);
       recordDecision(relevance, decision);

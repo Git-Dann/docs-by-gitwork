@@ -468,6 +468,10 @@ const LEGAL_HREF_TOKENS: Record<LegalDocKind, string> = {
     "politique[-_]?de[-_]?confidentialite",
     "confidentialite",
     "privacidad",
+    // Portuguese and Italian (mercadolivre.com.br links /privacidade and took a P1).
+    "privacidade",
+    "politica[-_]?de[-_]?privacidade",
+    "informativa[-_]?(?:sulla[-_]?)?privacy",
     "privacybeleid",
     "privacyverklaring",
     "personvern",
@@ -483,6 +487,15 @@ const LEGAL_HREF_TOKENS: Record<LegalDocKind, string> = {
     "conditions(?:[-_]?(?:of[-_]?use|generales))?",
     "agb",
     "nutzungsbedingungen",
+    // Portuguese, Spanish, French, Italian, Dutch. Bare words still need a terminator.
+    "termos(?:[-_]?(?:de[-_]?uso|e[-_]?condicoes|de[-_]?servico))?",
+    "terminos(?:[-_]?(?:y[-_]?condiciones|de[-_]?uso|de[-_]?servicio))?",
+    "condiciones[-_]?(?:de[-_]?uso|generales)",
+    "cgu",
+    "cgv",
+    "termini[-_]?(?:e[-_]?condizioni|di[-_]?(?:uso|servizio))",
+    "algemene[-_]?voorwaarden",
+    "gebruiksvoorwaarden",
     // ⚠️ `mentions-legales` is deliberately absent: it is the French IMPRINT
     // (company identification), not terms of service, so accepting it would pass
     // a site that has one and no CGV.
@@ -838,10 +851,22 @@ export function linksLegalDocument(html: string, kind: LegalDocKind, scannedHost
   //     segment: github-terms-of-service, company-privacy-policy. Restricted to the
   //     multi-word forms — see LEGAL_PREFIXABLE_TOKENS for why that matters.
   const prefixedSegment = new RegExp(
-    `href=["'](?:[^"']*/)?(?:[a-z0-9]+[-_])+(?:${LEGAL_PREFIXABLE_TOKENS[kind]})${terminator}`,
+    // `:` too: MediaWiki namespaces its pages (Wikipedia's footer links
+    // .../Policy:Privacy_policy and .../Policy:Terms_of_Use, and took a P1 for both).
+    `href=["'](?:[^"']*/)?(?:[a-z0-9]+[-_:])+(?:${LEGAL_PREFIXABLE_TOKENS[kind]})${terminator}`,
     "i",
   );
   if (prefixedSegment.test(lower)) return true;
+
+  // (b2) The multi-word form followed by a qualifier on the same segment:
+  //      cbc.ca links /terms-of-use-digital-services. At most two qualifier words, and
+  //      never a tool or sample ("privacy-policy-generator", "terms-of-service-template")
+  //      — a link to one of those is not this site's document.
+  const suffixedSegment = new RegExp(
+    `href=["'](?:[^"']*/)?(?:[a-z0-9]+[-_:])*(?:${LEGAL_PREFIXABLE_TOKENS[kind]})(?:[-_](?!(?:generator|template|example|sample|builder|tool|maker|checklist)\\b)[a-z0-9]+){1,2}${terminator}`,
+    "i",
+  );
+  if (suffixedSegment.test(lower)) return true;
 
   // (c) The document lives on its OWN SUBDOMAIN, so the token is in the HOST and
   //     there is nothing in the path for (a) or (b) to match.
@@ -856,7 +881,7 @@ export function linksLegalDocument(html: string, kind: LegalDocKind, scannedHost
 
 /** Whole link text naming a terms document — never a phrase merely containing "terms". */
 const TERMS_ANCHOR_TEXT =
-  /^(?:terms(?:\s+(?:of\s+(?:service|use|sale)|(?:and|&)\s*conditions))?|terms\s*&\s*conditions|t\s*&\s*cs?|conditions\s+of\s+use|privacy\s*(?:and|&)\s*terms|terms\s*(?:and|&)\s*privacy)$/i;
+  /^(?:terms(?:\s+(?:of\s+(?:service|use|sale)|(?:and|&)\s*conditions))?|terms\s*&\s*conditions|t\s*&\s*cs?|conditions\s+of\s+use|privacy\s*(?:and|&)\s*terms|terms\s*(?:and|&)\s*privacy|termos\s+(?:e\s+condi[çc][õo]es|de\s+uso|de\s+servi[çc]o)|t[ée]rminos\s+(?:y\s+condiciones|de\s+uso|de\s+servicio)|condiciones\s+(?:de\s+uso|generales)|allgemeine\s+gesch[äa]ftsbedingungen|agb|nutzungsbedingungen|conditions\s+g[ée]n[ée]rales(?:\s+d['’]utilisation|\s+de\s+vente)?|cgu|cgv|termini\s+(?:e\s+condizioni|di\s+(?:uso|servizio))|algemene\s+voorwaarden|gebruiksvoorwaarden|利用規約|服务条款|使用条款|用户协议|服務條款)$/i;
 
 /**
  * True when an `<a>` whose WHOLE visible text names the terms leads somewhere on this site.
@@ -882,7 +907,10 @@ function linksTermsByAnchorText(html: string, scannedHost?: string): boolean {
       .replace(/&nbsp;/gi, " ")
       .replace(/\s+/g, " ")
       .trim();
-    if (!TERMS_ANCHOR_TEXT.test(text)) continue;
+    // Japanese and Chinese compound the name onto a service ("楽天ショッピングサービス
+    // ご利用規約" on rakuten.co.jp), so for them the text must END in the term, and be short.
+    const cjkTerms = text.length <= 40 && /(?:利用規約|服务条款|使用条款|用户协议|服務條款|使用條款)$/.test(text);
+    if (!TERMS_ANCHOR_TEXT.test(text) && !cjkTerms) continue;
     const href = attrs.match(/(?:^|\s)href\s*=\s*["']([^"']*)["']/i)?.[1]?.trim() ?? null;
     if (href === null || href === "" || href.startsWith("#") || /^javascript:/i.test(href)) {
       const target = attrs.match(/(?:^|\s)(?:aria-controls|data-(?:bs-)?target)\s*=\s*["']#?([^"'\s]+)["']/i)?.[1];
@@ -1308,7 +1336,9 @@ export function isLegalHubHref(href: string): boolean {
 export function legalPageConfirms(kind: LegalDocKind, body: string): boolean {
   const signal = LEGAL_CONTENT_SIGNALS[kind];
   const renderable = stripInertMarkup(body);
-  const re = /<title[^>]*>([\s\S]{0,400}?)<\/title>|<h[1-3][^>]*>([\s\S]{0,400}?)<\/h[1-3]>/gi;
+  // h4 too: a single legal page with sections (ycombinator.com/legal/) titles them
+  // "Privacy Policy" and "Terms of Use" below the page's own "Legal" h1.
+  const re = /<title[^>]*>([\s\S]{0,400}?)<\/title>|<h[1-4][^>]*>([\s\S]{0,400}?)<\/h[1-4]>/gi;
   let match: RegExpExecArray | null;
   while ((match = re.exec(renderable)) !== null) {
     const text = (match[1] ?? match[2] ?? "").replace(/<[^>]*>/g, " ");
@@ -1316,6 +1346,8 @@ export function legalPageConfirms(kind: LegalDocKind, body: string): boolean {
   }
   return false;
 }
+
+const LEGAL_PROBE_MAX_CHARS = 2_000_000;
 
 /** Conventional paths tried when the page's own links could not be read. */
 const LEGAL_WELL_KNOWN_PATHS: Record<LegalDocKind, string[]> = {
@@ -1327,6 +1359,8 @@ export interface LegalProbeResult {
   status: number;
   contentType: string;
   body: string;
+  /** The body was cut at the read cap, so a heading past it was never seen. */
+  truncated?: boolean;
 }
 
 export interface LegalDocOutcome {
@@ -1369,6 +1403,17 @@ export async function resolveLegalDocumentChecks(input: {
   probe: (url: string) => Promise<LegalProbeResult>;
   /** Hard ceiling on fetches, shared across both documents. */
   maxProbes?: number;
+  /**
+   * The rendered DOM, fetched on demand (internal scans only). Called at most once, and
+   * only when the served markup links neither document: flipkart.com draws its whole
+   * footer with JavaScript, so "/pages/privacypolicy" is in no byte of the served HTML.
+   */
+  renderedHtml?: () => Promise<string | null>;
+  /**
+   * The page leans on scripts, so links absent from the served HTML may still be drawn
+   * in the browser. With no render to look at, "not found" cannot become FAIL.
+   */
+  linksMayBeScripted?: boolean;
 }): Promise<Record<LegalDocKind, LegalDocOutcome>> {
   let scannedHost = "";
   try {
@@ -1418,6 +1463,28 @@ export async function resolveLegalDocumentChecks(input: {
     return result;
   };
 
+  let renderedOnce: Promise<string | null> | null = null;
+  let renderedRead = false;
+  const getRendered = async (): Promise<string | null> => {
+    if (!input.renderedHtml) return null;
+    renderedOnce ??= input.renderedHtml().catch(() => null);
+    const html = await renderedOnce;
+    if (html) renderedRead = true;
+    return html ? stripInertMarkup(html) : null;
+  };
+  // "We did not find it" is only a FAIL when the links could have been seen. On a
+  // script-heavy page with no render, it is "could not establish".
+  const notFound = (kind: LegalDocKind, fail: LegalDocOutcome): LegalDocOutcome => {
+    if (!input.linksMayBeScripted || renderedRead) return fail;
+    const noun = kind === "privacy" ? "privacy policy" : "terms of service";
+    return {
+      status: "INCONCLUSIVE",
+      detail: `No ${noun} link was found in the page as served, but the page draws much of itself with JavaScript, which this scan does not run — so a footer link may exist that Pulse could not see. ${fail.detail}`,
+      evidence: fail.evidence,
+      confidence: "MEDIUM",
+    };
+  };
+
   const shellSuffix = input.unreadableShell
     ? " The page's own links could not be read: the static HTML is a client-rendered shell, so Pulse probed the conventional paths instead."
     : "";
@@ -1444,6 +1511,15 @@ export async function resolveLegalDocumentChecks(input: {
         status: "PASS",
         detail: "A privacy policy is published inline on the scanned page — a heading names it and the page carries its text.",
         evidence: "Privacy policy heading and body text on the scanned page",
+      };
+    }
+    // The served HTML has no link; the page as a browser draws it may.
+    const rendered = await getRendered();
+    if (rendered && linksLegalDocument(rendered, kind, scannedHost)) {
+      return {
+        status: "PASS",
+        detail: `A ${noun} link was found in the page once rendered — its footer is drawn by JavaScript, so the link is not in the HTML as served.`,
+        evidence: "Linked from the rendered page",
       };
     }
 
@@ -1478,14 +1554,14 @@ export async function resolveLegalDocumentChecks(input: {
     const candidates = [...hubCandidates, ...wellKnown.filter((url) => !hubCandidates.includes(url))];
 
     if (candidates.length === 0) {
-      return {
+      return notFound(kind, {
         status: "FAIL",
         detail:
           kind === "privacy"
             ? "No privacy policy link found in the page markup — required for GDPR, CCPA, and app store distribution."
             : "No terms of service link found in the page markup — required for any product collecting payments or user data.",
         evidence: "No matching link, and no legal index page to check",
-      };
+      });
     }
 
     // ⚠️ TWO KINDS OF "UNREADABLE", AND THEY DO NOT RANK THE SAME. They were one
@@ -1523,8 +1599,15 @@ export async function resolveLegalDocumentChecks(input: {
         transportFailures.push(`${url} could not be fetched`);
         continue;
       }
+      // Only 404/410 say "not here". A 401/403/429/5xx is the server refusing or failing
+      // to answer — posthog.com/privacy came back 403 to a repeated scan and was reported
+      // as having no privacy policy. That is "could not read", not "absent".
       if (result.status !== 200) {
-        checkedAndAbsent.push(`${url} → HTTP ${result.status}`);
+        if (result.status === 404 || result.status === 410 || (result.status >= 300 && result.status < 400)) {
+          checkedAndAbsent.push(`${url} → HTTP ${result.status}`);
+        } else {
+          transportFailures.push(`${url} answered HTTP ${result.status}, so it could not be read`);
+        }
         continue;
       }
       // A 200 on a host that 200s everything, or a body that is itself an empty
@@ -1575,6 +1658,20 @@ export async function resolveLegalDocumentChecks(input: {
           confidence: "HIGH",
         };
       }
+      // A legal index the page links, which in turn links the document: the visitor
+      // can reach it in two clicks (figma.com → /legal/ → /legal/tos/).
+      if (hubCandidates.includes(url) && linksLegalDocument(result.body, kind, scannedHost)) {
+        return {
+          status: "PASS",
+          detail: `The scanned page links a legal index (${url}), which links the ${noun}.`,
+          evidence: `Linked from ${url}`,
+          confidence: "MEDIUM",
+        };
+      }
+      if (result.truncated) {
+        servedButUnreadable ??= `${url} returned a page too large to read in full, and no ${noun} heading appeared in the part read`;
+        continue;
+      }
       checkedAndAbsent.push(`${url} → 200, but no ${noun} heading`);
     }
 
@@ -1608,7 +1705,7 @@ export async function resolveLegalDocumentChecks(input: {
       };
     }
 
-    return {
+    return notFound(kind, {
       status: "FAIL",
       detail:
         (kind === "privacy"
@@ -1622,7 +1719,7 @@ export async function resolveLegalDocumentChecks(input: {
           ? ` ${transportFailures.length} further candidate${transportFailures.length === 1 ? "" : "s"} could not be reached (${transportFailures.join("; ")}), so ${transportFailures.length === 1 ? "it is" : "they are"} not part of this verdict.`
           : ""),
       evidence: [...checkedAndAbsent, ...transportFailures].filter(Boolean).join("; ") || "No matching link or page",
-    };
+    });
   };
 
   return {
@@ -3099,6 +3196,7 @@ export async function runUrlChecks(
     // keeps the honest INCONCLUSIVE; adopting a DOM we failed to hydrate would turn "we could
     // not look" back into a confident finding about an empty page — the §35 disease, arrived at
     // from the opposite direction.
+    let renderAdopted = false;
     if (spaShell) {
       const rendered = contextHints?.renderJs ? await runRenderAgent(pageResult.finalUrl || httpsUrl) : null;
       const staticWords = staticTextWordCount(pageResult.html);
@@ -3108,6 +3206,7 @@ export async function runUrlChecks(
       if (adopted && rendered?.html) {
         contentHtml = rendered.html;
         spaShell = false;
+        renderAdopted = true;
       }
       checks.push(renderCoverageCheck({ rendered, staticWords, adopted, requested: Boolean(contextHints?.renderJs) }));
     }
@@ -3622,7 +3721,18 @@ export async function runUrlChecks(
       baseUrl,
       catchAll200,
       unreadableShell: spaShell,
-      probe: (probeUrl) => probePath(probeUrl, 60_000),
+      // A render is only worth its cost when the served markup has failed to show a
+      // link, so the resolver calls this lazily, and never twice.
+      renderedHtml: contextHints?.renderJs && !renderAdopted
+        ? () => runRenderAgent(pageResult.finalUrl || httpsUrl).then((r) => r?.html ?? null)
+        : undefined,
+      linksMayBeScripted: !renderAdopted && (contentHtml.match(/<script\b/gi)?.length ?? 0) >= 8,
+      // 2 MB, not 60 KB: posthog.com/privacy inlines ~700 KB of CSS before its <title>,
+      // and ycombinator.com/legal/ puts "Terms of Use" ~220 KB in. Both were reported as
+      // having no document. probePath already downloads the whole body; this is only how
+      // much of it is kept. A body cut at the cap is "could not read", never "absent".
+      probe: (probeUrl) => probePath(probeUrl, LEGAL_PROBE_MAX_CHARS)
+        .then((r) => ({ ...r, truncated: r.body.length >= LEGAL_PROBE_MAX_CHARS })),
     });
 
     checks.push({

@@ -1206,3 +1206,129 @@ describe("permissions-policy: whitespace around the `=` must not buy a PASS", ()
     }
   });
 });
+
+describe("live shapes from the October 2026 corpus", () => {
+  const base = { catchAll200: false, unreadableShell: false } as const;
+
+  it("Wikipedia's MediaWiki-namespaced footer links count (Policy:Privacy_policy, Policy:Terms_of_Use)", () => {
+    const html = `<a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Privacy_policy">Privacy policy</a>
+      <a href="https://foundation.wikimedia.org/wiki/Special:MyLanguage/Policy:Terms_of_Use">Terms of Use</a>`;
+    expect(linksLegalDocument(html, "privacy", "en.wikipedia.org")).toBe(true);
+    expect(linksLegalDocument(html, "terms", "en.wikipedia.org")).toBe(true);
+  });
+  it("a namespaced page that is not a legal document does not count", () => {
+    const html = `<a href="/wiki/Category:Privacy_law">Privacy law</a><a href="/wiki/Help:Terms">Help</a>`;
+    expect(linksLegalDocument(html, "privacy", "en.wikipedia.org")).toBe(false);
+  });
+
+  it("a page cut off at the read cap is 'could not read', never 'absent'", async () => {
+    const cut = { ...page(`<style>${"x".repeat(1000)}</style>`), truncated: true };
+    const { probe } = harness({ "https://site.test/terms": cut });
+    const r = await resolveLegalDocumentChecks({ html: "<footer></footer>", baseUrl: "https://site.test", ...base, probe });
+    expect(r.terms.status).toBe("INCONCLUSIVE");
+  });
+  it("a fully-read 200 with no terms heading is still absent", async () => {
+    const { probe } = harness({ "https://site.test/terms": page("<title>Blog</title><h1>Our blog</h1>") });
+    const r = await resolveLegalDocumentChecks({ html: "<footer></footer>", baseUrl: "https://site.test", ...base, probe });
+    expect(r.terms.status).toBe("FAIL");
+  });
+
+  it("a linked legal index that links the document passes (figma.com → /legal/ → /legal/tos/)", async () => {
+    const { probe } = harness({
+      "https://www.figma.com/legal/": page(`<title>Figma Legal</title><h1>What you can do in figma</h1><a href="https://www.figma.com/legal/tos/">Terms of Service</a><a href="/legal/privacy/">Privacy</a>`),
+    });
+    const r = await resolveLegalDocumentChecks({ html: `<a href="https://www.figma.com/legal/">Legal</a>`, baseUrl: "https://www.figma.com", ...base, probe });
+    expect(r.terms.status).toBe("PASS");
+    expect(r.terms.evidence).toContain("/legal/");
+  });
+  it("a linked legal index that links neither document does not pass", async () => {
+    const { probe } = harness({
+      "https://site.test/legal/": page(`<title>Legal</title><h1>Legal</h1><a href="/legal/impressum/">Impressum</a>`),
+    });
+    const r = await resolveLegalDocumentChecks({ html: `<a href="/legal/">Legal</a>`, baseUrl: "https://site.test", ...base, probe });
+    expect(r.terms.status).toBe("FAIL");
+  });
+});
+
+describe("localised and qualified legal links (Oct 2026 corpus)", () => {
+  it("mercadolivre.com.br: Portuguese 'Termos e condições' anchor and /privacidade", () => {
+    const html = `<a href="https://www.mercadolivre.com.br/ajuda/991">Termos e condições</a><a href="https://www.mercadolivre.com.br/privacidade">Como cuidamos da sua privacidade</a>`;
+    expect(linksLegalDocument(html, "terms", "www.mercadolivre.com.br")).toBe(true);
+    expect(linksLegalDocument(html, "privacy", "www.mercadolivre.com.br")).toBe(true);
+  });
+  it("cbc.ca: a qualified multi-word path (terms-of-use-digital-services)", () => {
+    const html = `<a href="https://cbc.radio-canada.ca/en/vision/governance/terms-of-use-digital-services">Terms of Use</a>`;
+    expect(linksLegalDocument(html, "terms", "www.cbc.ca")).toBe(true);
+  });
+  it("German, Japanese and Spanish anchor text", () => {
+    expect(linksLegalDocument(`<a href="/hilfe/123">AGB</a>`, "terms", "shop.de")).toBe(true);
+    expect(linksLegalDocument(`<a href="/info/7">利用規約</a>`, "terms", "shop.jp")).toBe(true);
+    expect(linksLegalDocument(`<a href="/ayuda/1">Términos y condiciones</a>`, "terms", "tienda.es")).toBe(true);
+  });
+  it("a policy GENERATOR or TEMPLATE link is not the site's document", () => {
+    expect(linksLegalDocument(`<a href="https://tools.example.com/privacy-policy-generator">Free tool</a>`, "privacy", "site.test")).toBe(false);
+    expect(linksLegalDocument(`<a href="/blog/terms-of-service-template">Template</a>`, "terms", "site.test")).toBe(false);
+  });
+  it("anchor text merely containing a word does not count", () => {
+    expect(linksLegalDocument(`<a href="/glossario">Glossário de termos</a>`, "terms", "site.br")).toBe(false);
+  });
+});
+
+describe("links drawn by JavaScript (flipkart.com draws its whole footer client-side)", () => {
+  const base = { baseUrl: "https://www.flipkart.com", catchAll200: false, unreadableShell: false } as const;
+  const served = `<footer><a href="/air-conditioners">Air Conditioners</a></footer>`;
+  const renderedFooter = `<footer><a href="https://www.flipkart.com/pages/terms">Terms of Use</a><a href="https://www.flipkart.com/pages/privacypolicy">Privacy Policy</a></footer>`;
+
+  it("a link found only in the rendered page passes, and the page is rendered once for both documents", async () => {
+    const { probe } = harness({});
+    const renderedHtml = vi.fn(async () => renderedFooter);
+    const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, renderedHtml });
+    expect(r.privacy.status).toBe("PASS");
+    expect(r.terms.status).toBe("PASS");
+    expect(renderedHtml).toHaveBeenCalledTimes(1);
+  });
+  it("rendered and still nothing: the FAIL stands, because the scripted links WERE seen", async () => {
+    const { probe } = harness({});
+    const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, renderedHtml: async () => served, linksMayBeScripted: true });
+    expect(r.terms.status).toBe("FAIL");
+  });
+  it("no render available on a script-heavy page: could not establish, not FAIL", async () => {
+    const { probe } = harness({});
+    const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, linksMayBeScripted: true });
+    expect(r.terms.status).toBe("INCONCLUSIVE");
+    expect(r.terms.detail).toMatch(/JavaScript/);
+  });
+  it("no render, and a page that does not lean on scripts: still FAIL", async () => {
+    const { probe } = harness({});
+    const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, linksMayBeScripted: false });
+    expect(r.terms.status).toBe("FAIL");
+  });
+  it("a served link never triggers a render", async () => {
+    const { probe } = harness({});
+    const renderedHtml = vi.fn(async () => renderedFooter);
+    await resolveLegalDocumentChecks({ html: renderedFooter, ...base, probe, renderedHtml });
+    expect(renderedHtml).not.toHaveBeenCalled();
+  });
+});
+
+describe("a refused candidate page is not an absent one, and CJK compound names", () => {
+  it("403 on every candidate (posthog.com under repeated scanning) is INCONCLUSIVE, not FAIL", async () => {
+    const forbidden = { status: 403, contentType: "text/html", body: "Forbidden" };
+    const probe = vi.fn(async () => forbidden);
+    const r = await resolveLegalDocumentChecks({ html: "<footer></footer>", baseUrl: "https://posthog.com", catchAll200: false, unreadableShell: false, probe });
+    expect(r.privacy.status).toBe("INCONCLUSIVE");
+    expect(r.terms.status).toBe("INCONCLUSIVE");
+  });
+  it("404 on every candidate is still FAIL", async () => {
+    const { probe } = harness({});
+    const r = await resolveLegalDocumentChecks({ html: "<footer></footer>", baseUrl: "https://site.test", catchAll200: false, unreadableShell: false, probe });
+    expect(r.terms.status).toBe("FAIL");
+  });
+  it("rakuten.co.jp: a service-prefixed 利用規約 anchor is the terms", () => {
+    expect(linksLegalDocument(`<a href="https://www.rakuten.co.jp/doc/info/rule/ichiba_shopping.html">楽天ショッピングサービスご利用規約</a>`, "terms", "www.rakuten.co.jp")).toBe(true);
+  });
+  it("a long sentence merely ending in 規約 does not count", () => {
+    const long = "これはとても長い説明文で、最後に利用規約という単語がたまたま入っているだけの文章です。さらに長くするために文字を追加しています利用規約";
+    expect(linksLegalDocument(`<a href="/x">${long}</a>`, "terms", "x.jp")).toBe(false);
+  });
+});

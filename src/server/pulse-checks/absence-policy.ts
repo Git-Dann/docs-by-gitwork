@@ -20,6 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PulseScanCheckInput } from "@/types/pulse";
+import type { ScanTarget } from "./check-relevance";
 
 /** Adverse only when Pulse looked and did not find it; the control sits where Pulse cannot see. */
 export const UNOBSERVABLE_ABSENCE: ReadonlySet<string> = new Set([
@@ -45,11 +46,11 @@ export const UNOBSERVABLE_ABSENCE: ReadonlySet<string> = new Set([
   "pages_depth_security_disclosure_route", "passkey_webauthn_support", "password_reset",
   "payment_checkout_provider", "payment_recurring_terms", "payment_refund_policy",
   "payments_depth_dunning_state", "payments_depth_tax_calculation", "pci_saq_evidence",
-  "pricing_comparison_table", "pulse_secret_history_scope", "pulse_secret_remediation",
-  "real_user_monitoring", "refund_policy", "saml_sso_available", "scim_user_provisioning",
-  "search_engine_verified", "security_whitepaper", "session_timeout_warning",
-  "social_consent_mode", "social_event_tracking", "sso_scim_provisioning",
-  "svc_express_rate_limit", "system_requirements_page", "tax_automation",
+  "physical_address_footer", "pricing_comparison_table", "pulse_secret_history_scope",
+  "pulse_secret_remediation", "real_user_monitoring", "refund_policy", "saml_sso_available",
+  "scim_user_provisioning", "search_engine_verified", "security_whitepaper",
+  "session_timeout_warning", "social_consent_mode", "social_event_tracking",
+  "sso_scim_provisioning", "svc_express_rate_limit", "system_requirements_page", "tax_automation",
   "timezone_locale_support", "token_expiry_short", "uptime_monitoring",
   "us_privacy_rights_request", "us_state_optout_signals", "wallet_payments",
 ]);
@@ -94,8 +95,26 @@ const OPTIONAL_DETAIL = "Optional — not having it is not a defect.";
 
 const isAdverse = (status: PulseScanCheckInput["status"]) => status === "WARN" || status === "FAIL";
 
-export function applyAbsencePolicy(check: PulseScanCheckInput): PulseScanCheckInput {
+/**
+ * Unobservable only when the scan is of a WEBSITE. linear.app, posthog.com and figma.com
+ * have public APIs, but their specs live on the API or docs host, not at the marketing
+ * site's /openapi.json — so not finding one there says nothing. Scanning the API itself,
+ * the probe hits the right host and its answer stands.
+ */
+export const UNOBSERVABLE_ON_WEBSITE: ReadonlySet<string> = new Set([
+  "openapi_endpoint", "openapi_spec_served", "graphql_signal",
+]);
+const ON_WEBSITE_DETAIL =
+  "Not established from the website. A public API's spec is usually served from the API or docs host, not the marketing site — scan the API's own URL to check it.";
+
+export function applyAbsencePolicy(
+  check: PulseScanCheckInput,
+  target?: ScanTarget["kind"],
+): PulseScanCheckInput {
   if (!isAdverse(check.status)) return check;
+  if (target === "website" && UNOBSERVABLE_ON_WEBSITE.has(check.checkKey)) {
+    return { ...check, status: "INCONCLUSIVE", detail: ON_WEBSITE_DETAIL, evidence: check.detail ? `Probe said: ${check.detail}` : check.evidence };
+  }
   if (UNOBSERVABLE_ABSENCE.has(check.checkKey)) {
     return {
       ...check,
