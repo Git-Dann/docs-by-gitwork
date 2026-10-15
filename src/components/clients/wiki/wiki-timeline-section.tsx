@@ -18,6 +18,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
     name: b.name,
     startDate: b.startDate,
     endDate: b.endDate,
+    estimated: b.estimated,
     color: b.color,
     progress: b.progress,
     tasks: b.tasks,
@@ -96,6 +97,7 @@ function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }
     name: b.name,
     startDate: b.startDate,
     endDate: b.endDate,
+    estimated: b.estimated,
     color: b.color,
     progress: b.progress,
     tasks: b.tasks,
@@ -106,6 +108,9 @@ function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }
   // where there are dates, so the section reads as the same chart as the one above
   // rather than a different widget.
   const undated = work.blocks.every((b) => !b.startDate);
+  // Some or all bars estimated from task due dates (blockSpan) — say so in words as well
+  // as in the chart's legend, since the client reads this paragraph first.
+  const anyEstimated = work.blocks.some((b) => b.estimated);
 
   return (
     <section className="widget-card">
@@ -138,6 +143,14 @@ function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }
                   is otherwise indistinguishable from a broken one. */}
               <span className="text-[var(--text-3)]">
                 These phases have no dates yet, so they have no bars on the timeline.
+              </span>
+            </>
+          ) : anyEstimated ? (
+            <>
+              {" "}
+              <span className="text-[var(--text-3)]">
+                Dashed bars have no dates of their own — they are estimated from the due
+                dates of their tasks.
               </span>
             </>
           ) : null}

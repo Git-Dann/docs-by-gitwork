@@ -6638,3 +6638,18 @@ render from:
 
 Subtasks render under their parent as `    ↳ Subtask`. ⚠️ The indent is **non-breaking spaces**
 (`SUBTASK_PREFIX`) because Slack collapses ordinary leading spaces — a test pins it.
+
+## 62. Recent Changes (October 2026) — Undated phases get an estimated bar, drawn as one
+
+YG Intelligence's linked timeline (under YourGroop's wiki) showed five phases and no bars: none had
+dates, while their tasks were due across Oct–Dec. Three of the four Gantt feeders (internal task
+board, the client's own wiki timeline, the public /timeline share) already estimated an undated
+block from its tasks' due dates — and drew the estimate **solid, as if someone had scheduled it**.
+The fourth, linked-client work, didn't estimate at all.
+
+One rule now, `blockSpan()` in **`src/lib/gantt-span.ts`**: the block's own dates when it has both;
+otherwise first → last task due date, flagged `estimated`; nothing when there are no dates anywhere.
+The chart draws an estimated bar **dashed**, marks its due date `~18 Dec`, says "Estimated from task
+due dates" in the tooltip, and adds a legend entry. A block with real dates looks exactly as before.
+⚠️ This changes how already-estimated bars look on every client's timeline — that is the point:
+an estimate must not read as a commitment.

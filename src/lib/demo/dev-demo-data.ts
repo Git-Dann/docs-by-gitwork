@@ -647,6 +647,7 @@ function wikiTimelineFromGantt(): WikiDTO["timeline"] {
       name: block.name,
       startDate: block.startDate,
       endDate: block.endDate,
+      estimated: false,
       color: block.color ?? null,
       progress: block.progress,
       tasks,

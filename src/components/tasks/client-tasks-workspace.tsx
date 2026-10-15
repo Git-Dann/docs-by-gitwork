@@ -1,5 +1,6 @@
 "use client";
 
+import { blockSpan } from "@/lib/gantt-span";
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -172,13 +173,8 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       blocks
         .map((b): GanttBlock | null => {
           const blockTasks = tasks.filter((t) => t.featureBlock?.id === b.id);
-          const dues = blockTasks
-            .map((t) => t.dueDate)
-            .filter((d): d is string => Boolean(d))
-            .sort();
-          const startDate = b.startDate ?? (dues.length ? dues[0] : null);
-          const endDate = b.endDate ?? (dues.length ? dues[dues.length - 1] : null);
-          if (!startDate || !endDate) return null;
+          const span = blockSpan(b, blockTasks.map((t) => t.dueDate));
+          if (!span) return null;
           // Shared helper, not a local loop: it also coalesces the retired UI_DONE
           // status into In Review. This was the one of the three Gantt feeders that
           // hand-rolled the count, so a legacy UI_DONE row would have incremented a
@@ -192,8 +188,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           return {
             id: b.id,
             name: b.name,
-            startDate,
-            endDate,
+            startDate: span.startDate,
+            endDate: span.endDate,
+            estimated: span.estimated,
             color: b.color,
             progress: b.progress,
             tasks: blockTasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),

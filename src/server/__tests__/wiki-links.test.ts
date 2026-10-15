@@ -83,6 +83,22 @@ describe("wiki links — linked work is kept SEPARATE, and is not Gantt-shaped",
     expect(section).toContain("These phases have no dates yet");
   });
 
+  it("⚠️ estimates bars from task due dates, with the SAME rule as every other Gantt", () => {
+    // YG Intelligence: five phases, no dates on any, tasks due Oct–Dec — and no bars.
+    const fn = wiki.slice(wiki.indexOf("async function loadLinkedWork"));
+    const body = fn.slice(0, fn.indexOf("async function loadWikiTimelineWithLinks"));
+    expect(body).toMatch(/blockSpan\(b, b\.tasks\.map\(\(t\) => t\.dueDate\)\)/);
+    expect(body).toMatch(/select: \{ title: true, status: true, dueDate: true \}/);
+    // …and the bar is drawn from it, not from the block's own (null) dates.
+    expect(body).toMatch(/startDate: span\?\.startDate \?\? null/);
+    expect(body).toMatch(/endDate: span\?\.endDate \?\? null/);
+    expect(body).toMatch(/estimated: span\?\.estimated \?\? false/);
+    for (const f of ["src/server/client-timeline.ts", "src/components/tasks/client-tasks-workspace.tsx"]) {
+      expect(read(f), f).toContain("blockSpan(");
+    }
+    expect(wiki.match(/blockSpan\(/g)?.length).toBe(2);
+  });
+
   it("shows NO TASKS YET rather than 0% on an empty board", () => {
     // "0% complete" reads as failure; nothing-yet is a different fact.
     expect(section).toMatch(/pct === null \? "NO TASKS YET"/);
@@ -145,7 +161,7 @@ describe("the Gantt tolerates a block with no dates", () => {
   });
 
   it("the due column and tooltip say there is no date rather than inventing one", () => {
-    expect(gantt).toMatch(/b\.endDate \? fmtShort\(b\.endDate\) : "—"/);
+    expect(gantt).toMatch(/b\.endDate \? `\$\{b\.estimated \? "~" : ""\}\$\{fmtShort\(b\.endDate\)\}` : "—"/);
     expect(gantt).toContain("No dates set");
   });
 });

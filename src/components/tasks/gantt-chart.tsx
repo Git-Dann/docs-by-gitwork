@@ -21,6 +21,11 @@ export type GanttBlock = {
    */
   startDate: string | null;
   endDate: string | null;
+  /**
+   * The dates were estimated from the block's task due dates, not set on the block
+   * (src/lib/gantt-span.ts). Drawn dashed and labelled, because nobody scheduled them.
+   */
+  estimated?: boolean;
   color?: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];
@@ -401,6 +406,12 @@ export function GanttChart({
             <span className="h-2 w-2 rounded-[2px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
             To do / Backlog
           </span>
+          {blocks.some((b) => b.estimated) ? (
+            <span className="inline-flex items-center gap-1.5" data-legend="estimated">
+              <span className="h-2 w-3.5 rounded-[2px] border border-dashed border-[var(--text-3)]" />
+              Dashed = dates estimated from task due dates
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -497,8 +508,9 @@ export function GanttChart({
                 const t = tone(b.color);
                 const isExpanded = expanded.has(b.id);
                 const shown = isExpanded ? b.tasks : b.tasks.slice(0, 6);
-                // "—" rather than a date, because there is not one.
-                const dueFmt = b.endDate ? fmtShort(b.endDate) : "—";
+                // "—" rather than a date, because there is not one. "~" when the date
+                // is estimated from the tasks rather than set on the block.
+                const dueFmt = b.endDate ? `${b.estimated ? "~" : ""}${fmtShort(b.endDate)}` : "—";
                 const isOpen = open.has(b.id);
                 // Slip = the gap between a block's planned end (bar right edge) and
                 // today, when the block isn't finished. No baseline needed — it's
@@ -676,7 +688,16 @@ export function GanttChart({
                         title={b.name}
                         style={{ left, width, display: dated ? undefined : "none" }}
                       >
-                        <div className={cn("h-full w-full overflow-hidden rounded-[6px]", t.bar)}>
+                        <div
+                          data-estimated={b.estimated ? "true" : undefined}
+                          className={cn(
+                            "h-full w-full overflow-hidden rounded-[6px]",
+                            t.bar,
+                            // Estimated from task due dates — nobody set these dates, so the
+                            // bar must not look like a schedule someone committed to.
+                            b.estimated && "border border-dashed border-[var(--text-3)] opacity-80",
+                          )}
+                        >
                           {b.statusCounts ? (
                             <StatusFill counts={b.statusCounts} />
                           ) : (
@@ -699,6 +720,11 @@ export function GanttChart({
                               ? `${fmtShort(b.startDate)} – ${fmtShort(b.endDate)} · ${b.progress}%`
                               : `No dates set · ${b.progress}%`}
                           </span>
+                          {b.estimated ? (
+                            <span className="mt-0.5 block text-[var(--surface-0)]/75">
+                              Estimated from task due dates
+                            </span>
+                          ) : null}
                           {b.statusCounts && statusBreakdown(b.statusCounts) ? (
                             <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
                               {statusBreakdown(b.statusCounts)}
