@@ -2866,6 +2866,21 @@ function PlatformCard({
               {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
+          {platform.renewsOn && (
+            <p
+              className="mt-0.5 truncate text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]"
+              style={{ fontFamily: "var(--font-mono), 'JetBrains Mono', monospace" }}
+              title={`${platform.renewalNote ?? "Renews"} · ${platform.renewsOn}`}
+            >
+              {platform.renewalNote ?? "Renews"} ·{" "}
+              {new Date(`${platform.renewsOn}T00:00:00Z`).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                timeZone: "UTC",
+              })}
+            </p>
+          )}
           {(platform.platformType ||
             platform.stagingUrl ||
             platform.repoUrl ||

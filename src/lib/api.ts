@@ -725,6 +725,8 @@ export async function createClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(`/api/clients/${slug}/platforms`, {
@@ -749,6 +751,8 @@ export async function updateClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(
@@ -3637,6 +3641,90 @@ export async function setWikiDeliveryEnabledApi(slug: string, enabled: boolean):
 
 export async function setWikiSupportEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/support`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/* ------------------------------------------------------------- wiki: metrics, meetings, platforms */
+
+export interface WikiMetricsPatch {
+  enabled?: boolean;
+  hiddenKeys?: string[];
+  featuredKeys?: string[];
+  apiEndpoint?: { serverUrl: string; path: string } | null;
+  /** A string sets the token, "" clears it. */
+  apiToken?: string;
+}
+
+export interface MetricEndpointOptionDTO {
+  serverUrl: string;
+  serverLabel: string;
+  path: string;
+  summary: string;
+  auth: boolean;
+}
+
+export interface MetricsRefreshResultDTO {
+  source: "care" | "api" | null;
+  fetched: string[];
+  failed: { period: string; error: string }[];
+}
+
+export async function updateWikiMetricsApi(slug: string, patch: WikiMetricsPatch): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/metrics`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function getWikiMetricEndpointsApi(
+  slug: string,
+): Promise<{ endpoints: MetricEndpointOptionDTO[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/metrics`);
+}
+
+export async function refreshWikiMetricsApi(slug: string): Promise<MetricsRefreshResultDTO> {
+  return apiFetch(`/api/clients/${slug}/wiki/metrics`, { method: "POST" });
+}
+
+export interface ShareableMeetingDTO {
+  id: string;
+  title: string;
+  startedAt: string | null;
+  shared: boolean;
+}
+
+export async function getWikiShareableMeetingsApi(
+  slug: string,
+): Promise<{ meetings: ShareableMeetingDTO[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/meetings`);
+}
+
+export async function setWikiMeetingsEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/meetings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setWikiMeetingSharedApi(
+  slug: string,
+  meetingId: string,
+  shared: boolean,
+): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/meetings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ meetingId, shared }),
+  });
+}
+
+export async function setWikiPlatformsEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/platforms`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),

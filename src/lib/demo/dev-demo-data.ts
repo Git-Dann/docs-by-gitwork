@@ -64,6 +64,13 @@ const DAY = 86_400_000;
 function atDays(days: number): string {
   return new Date(Date.now() + days * DAY).toISOString();
 }
+
+/** "YYYY-MM" of the month `offset` months from now — for the Metrics fixture. */
+function demoPeriod(offset: number): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 /** ISO for today at a fixed local hour:minute (for calendar events). */
 function todayAt(hour: number, minute = 0): string {
   const d = new Date();
@@ -1027,6 +1034,103 @@ const demoWiki: WikiDTO = {
       },
     ],
   },
+  // Metrics in the state the section is built for: a monthly Care source, six months of
+  // history so the sparklines and trends have something real to draw, one metric hidden
+  // (internal view shows it struck through; the client's copy never carries it) and the
+  // first three featured on the dashboard card.
+  metrics: {
+    enabled: true,
+    source: "care",
+    sourceLabel: "Care analytics — Fellas Loaded",
+    mode: "monthly",
+    period: demoPeriod(-1),
+    previousPeriod: demoPeriod(-2),
+    capturedAt: atDays(-3),
+    historyPeriods: [-6, -5, -4, -3, -2, -1].map(demoPeriod),
+    needsRefresh: false,
+    metrics: [
+      { key: "users.active", label: "Active users", value: 4812, unit: null, group: "Users", previous: 4410, hidden: false, featured: true, history: [3200, 3510, 3890, 4105, 4410, 4812] },
+      { key: "subs.active", label: "Active subscriptions", value: 1240, unit: null, group: "Subscriptions", previous: 1198, hidden: false, featured: true, history: [980, 1012, 1080, 1150, 1198, 1240] },
+      { key: "subs.mrr", label: "Monthly revenue", value: 11408, unit: "£", group: "Subscriptions", previous: 11021, hidden: false, featured: true, history: [8820, 9310, 9935, 10580, 11021, 11408] },
+      { key: "subs.cancelled", label: "Cancellations", value: 38, unit: null, group: "Subscriptions", previous: 44, hidden: false, featured: false, history: [51, 47, 49, 41, 44, 38] },
+      { key: "debug.queue_depth", label: "Queue depth", value: 3, unit: null, group: null, previous: 7, hidden: true, featured: false, history: [null, null, 5, 9, 7, 3] },
+    ],
+    apiEndpoint: null,
+    hasApiToken: false,
+  },
+  // Two shared meetings. The second has every action done, the first has one open — the
+  // dashboard card counts across both.
+  meetings: {
+    enabled: true,
+    meetings: [
+      {
+        id: "mtg-2",
+        title: "Northwind × Gitwork — fortnightly review",
+        startedAt: atDays(-2),
+        summary:
+          "Search is in review and on track for the end of the month. Payments retries are in progress; the client confirmed Stripe test keys are live.\n\nThe team agreed to **ship search behind a flag** first and open it to all users after a week of monitoring.",
+        decisions: [
+          "Ship search behind a feature flag before the full rollout",
+          "Move the Android release to after the payments work",
+        ],
+        actions: [
+          { id: "a-1", title: "Send the production Stripe webhook secret", owner: "Priya (Northwind)", done: false },
+          { id: "a-2", title: "Share the search analytics dashboard", owner: "Tom Mercer", done: true },
+          { id: "a-3", title: "Book the launch-readiness call", owner: "Sofia Oyelaran", done: false },
+        ],
+      },
+      {
+        id: "mtg-1",
+        title: "Kick-off: search & discovery",
+        startedAt: atDays(-16),
+        summary: "Scope for search and discovery agreed. Filters and facets come first; autocomplete follows.",
+        decisions: ["Use the existing product feed as the search index source"],
+        actions: [
+          { id: "a-4", title: "Grant read access to the product feed", owner: "Priya (Northwind)", done: true },
+        ],
+      },
+    ],
+  },
+  // Three platforms, deliberately one renewing inside a fortnight (amber on the card) and
+  // one with no renewal date at all.
+  clientPlatforms: {
+    enabled: true,
+    platforms: [
+      {
+        id: "plat-web",
+        name: "Northwind web app",
+        platformType: "Next.js",
+        url: "https://northwind.co",
+        stagingUrl: "https://staging.northwind.co",
+        repoUrl: "https://github.com/northwind/web",
+        links: [{ label: "Status page", url: "https://status.northwind.co" }],
+        renewsOn: atDays(9),
+        renewalNote: "Domain (northwind.co)",
+      },
+      {
+        id: "plat-ios",
+        name: "Northwind for iPhone",
+        platformType: "App Store",
+        url: "https://apps.apple.com/gb/app/northwind/id000000000",
+        stagingUrl: null,
+        repoUrl: null,
+        links: [],
+        renewsOn: atDays(54),
+        renewalNote: "Apple developer account",
+      },
+      {
+        id: "plat-admin",
+        name: "Admin panel",
+        platformType: "Admin Panel",
+        url: "https://admin.northwind.co",
+        stagingUrl: null,
+        repoUrl: null,
+        links: [],
+        renewsOn: null,
+        renewalNote: null,
+      },
+    ],
+  },
   support: {
     enabled: true,
     linked: true,
@@ -1415,13 +1519,13 @@ const demoClientDetail: ClientDetailRecord = {
       id: "pf1", clientId: WIKI_CLIENT.id, name: "Production web", platformType: "WEB",
       url: "https://app.northwind.co", stagingUrl: "https://staging.northwind.co",
       repoUrl: "https://github.com/northwind/app", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, links: [], createdAt: atDays(-110), updatedAt: atDays(-4),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, links: [], renewsOn: atDays(9).slice(0, 10), renewalNote: "Domain (northwind.co)", createdAt: atDays(-110), updatedAt: atDays(-4),
     },
     {
       id: "pf2", clientId: WIKI_CLIENT.id, name: "iOS app", platformType: "IOS",
       url: "https://apps.apple.com/app/northwind", stagingUrl: null,
       repoUrl: "https://github.com/northwind/ios", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, links: [], createdAt: atDays(-90), updatedAt: atDays(-9),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, links: [], renewsOn: null, renewalNote: null, createdAt: atDays(-90), updatedAt: atDays(-9),
     },
   ],
   designs: [
@@ -3269,6 +3373,16 @@ export function resolveDemoApi(
     if (result !== undefined) return result;
   }
   // Launchpad — reads and writes, applied through the real status machine.
+  // Wiki → Meetings share picker. GET only: the shared ones come from the wiki fixture,
+  // plus one unshared call, so the picker shows both states rather than an empty list.
+  if (/^\/api\/clients\/[^/]+\/wiki\/meetings$/.test(pathname) && (init?.method ?? "GET") === "GET") {
+    return {
+      meetings: [
+        ...demoWiki.meetings.meetings.map((m) => ({ id: m.id, title: m.title, startedAt: m.startedAt, shared: true })),
+        { id: "mtg-internal", title: "Internal: Northwind sprint planning", startedAt: atDays(-6), shared: false },
+      ].sort((a, b) => (a.startedAt ?? "") < (b.startedAt ?? "") ? 1 : -1),
+    };
+  }
   if (pathname.includes("/launchpad")) {
     const result = resolveDemoLaunchpad(pathname, init);
     if (result !== undefined) return result;

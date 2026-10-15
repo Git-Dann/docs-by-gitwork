@@ -23,7 +23,7 @@ const EVERY_SECTION: WikiSection[] = [
   "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights",
   "costs", "roundup", "delivery", "support", "code-handover", "design-system", "ia",
   "dev-guide", "api-docs", "architecture", "runbook", "data-model", "changelog",
-  "course-requests", "golf-data",
+  "course-requests", "golf-data", "metrics", "meetings", "platforms",
 ];
 
 function emptied<T>(v: T): T {

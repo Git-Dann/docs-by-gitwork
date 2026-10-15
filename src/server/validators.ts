@@ -282,6 +282,14 @@ export const clientPlatformCreateSchema = z.object({
   notes: z.string().trim().optional(),
   previewImageUrl: z.string().optional(),
   featuredInWiki: z.boolean().optional(),
+  /** `YYYY-MM-DD`, or "" to clear. The next thing on this platform that renews or expires. */
+  renewsOn: z
+    .string()
+    .trim()
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, "Use a date like 2026-11-30.")
+    .optional(),
+  /** What renews on that date — "Domain", "Apple developer account". */
+  renewalNote: z.string().trim().max(80).optional(),
   /**
    * Extra links a client provides beyond production/staging/repo — a ClickUp
    * board, a Figma file. Scheme-checked again server-side by

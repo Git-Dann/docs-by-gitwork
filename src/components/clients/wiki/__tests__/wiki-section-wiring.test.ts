@@ -15,7 +15,7 @@ import { join } from "node:path";
  * future change without anyone noticing the guard went away.
  *
  * This covers the sections listed in SECTIONS below — `insights`, `costs`, `estimates`,
- * `delivery`, `support` and `roundup` — which share the
+ * `delivery`, `support`, `roundup`, `metrics`, `meetings` and `platforms` — which share the
  * same twelve lists. The shape-identical lists are parameterised over all three; the
  * places the three genuinely differ (each one's public `availableSections` predicate,
  * and Delivery having no server loader at all) get their own assertions at the bottom.
@@ -62,6 +62,9 @@ const SECTIONS = [
   { id: "estimates", label: "Estimates" },
   { id: "delivery", label: "Delivery" },
   { id: "support", label: "Support" },
+  { id: "metrics", label: "Metrics" },
+  { id: "meetings", label: "Meetings" },
+  { id: "platforms", label: "Platforms" },
 ] as const;
 
 describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, label }) => {
@@ -211,6 +214,26 @@ describe("wiki-public-view.tsx — each availableSections predicate has its OWN 
     // A client following a link that promised progress must not land on "no plan yet".
     expect(available).toContain("wiki.deliveryEnabled");
     expect(available).toContain("wiki.timeline.blocks.length");
+  });
+
+  it("metrics — enabled, connected, AND at least one metric the client may see", () => {
+    // `wiki.metrics.metrics` is the client's copy, hidden ones already removed server-side,
+    // so "at least one" means at least one they are allowed to see.
+    expect(available).toContain("wiki.metrics.enabled");
+    expect(available).toContain("wiki.metrics.source");
+    expect(available).toContain("wiki.metrics.metrics.length > 0");
+  });
+
+  it("meetings — enabled AND at least one SHARED meeting", () => {
+    // Enabling shares nothing; a client must not land on an empty page that reads as
+    // "we have not talked to you".
+    expect(available).toContain("wiki.meetings.enabled");
+    expect(available).toContain("wiki.meetings.meetings.length > 0");
+  });
+
+  it("platforms — enabled AND at least one platform", () => {
+    expect(available).toContain("wiki.clientPlatforms.enabled");
+    expect(available).toContain("wiki.clientPlatforms.platforms.length > 0");
   });
 
   it("support — enabled AND a LINKED Care record, not merely the flag", () => {

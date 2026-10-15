@@ -1342,6 +1342,11 @@ model ClientPlatform {
   /// than a table because they are display-only, always read with the platform,
   /// and never queried across clients. Additive → applies via the guarded db push.
   links           Json?
+  /// The next date something on this platform renews or expires (domain, SSL certificate,
+  /// Apple/Google developer account) and what it is. Shown on the client wiki overview
+  /// when the Platforms section is on, so a lapse is seen coming.
+  renewsOn        DateTime?
+  renewalNote     String?
   /// Placements engaged on this platform — drives the scoped GitHub scan.
   placements      Placement[]
   /// Multiple credential sets ("logins") — supersedes the single username/password ciphers
@@ -1544,6 +1549,20 @@ model ClientWiki {
   /// 3… developers, on a calendar. Client-facing, so off until someone turns it on.
   estimatesEnabled    Boolean                @default(false)
   estimates           WikiEstimate[]
+  /// Whether the Metrics section is enabled — the client's own product numbers. Read from
+  /// the Care analytics connector when one exists, else from one GET endpoint picked off
+  /// the client's API Docs page (src/server/wiki-metrics.ts). Off until someone turns it on.
+  metricsEnabled      Boolean                @default(false)
+  /// `{ hiddenKeys, featuredKeys, apiEndpoint: { serverUrl, path }, apiTokenCipher }`.
+  /// The token is AES-256-GCM (src/lib/encryption.ts) and never leaves the server.
+  metricsConfig       Json?
+  metricSnapshots     WikiMetricSnapshot[]
+  /// Whether the Meetings section is enabled. Only meetings with `Meeting.sharedWithClientAt`
+  /// set ever appear in it, so enabling the section shares nothing by itself.
+  meetingsEnabled     Boolean                @default(false)
+  /// Whether the Platforms section is enabled — the client's platforms from Portal, as
+  /// links. Logins and internal notes never leave Portal.
+  platformsEnabled    Boolean                @default(false)
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -1767,6 +1786,21 @@ model ClientWikiUser {
 /// (enforced by the unique constraint). Content is a JSON blob whose shape
 /// varies by type: markdown string for guide/docs pages, structured
 /// key-value record for APP_STORE_* pages.
+/// One capture of the API-endpoint metrics source, keyed by the month it was taken in. The
+/// endpoint reports values as they are NOW, so the latest capture in a month stands for
+/// that month and earlier months are what trends compare against. (A Care connector has
+/// its own table, `SupportAnalyticsSnapshot`, and is read from there.)
+model WikiMetricSnapshot {
+  id         String     @id @default(cuid())
+  wikiId     String
+  wiki       ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  period     String // "YYYY-MM"
+  metrics    Json // AnalyticsMetric[]
+  capturedAt DateTime   @default(now())
+
+  @@unique([wikiId, period])
+}
+
 model ClientWikiPage {
   id        String       @id @default(cuid())
   wikiId    String
@@ -3971,6 +4005,9 @@ model Meeting {
   ownerUserId          String?
   owner                User?               @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   actionItems          MeetingActionItem[]
+  /// When someone chose to show this meeting in the client's wiki (Meetings section).
+  /// Null = internal only, which is the default — Scribe notes are written for us.
+  sharedWithClientAt   DateTime?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 

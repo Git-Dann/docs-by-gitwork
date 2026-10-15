@@ -77,6 +77,14 @@ import {
   type WikiCostItemInput,
   type WikiCostSettingsInput,
   setWikiSupportEnabledApi,
+  updateWikiMetricsApi,
+  getWikiMetricEndpointsApi,
+  refreshWikiMetricsApi,
+  type WikiMetricsPatch,
+  getWikiShareableMeetingsApi,
+  setWikiMeetingsEnabledApi,
+  setWikiMeetingSharedApi,
+  setWikiPlatformsEnabledApi,
   updateWikiInsightBoardApi,
   type WikiInsightBoardInput,
   setWikiIntakeCategoriesApi,
@@ -440,6 +448,66 @@ export function useSetWikiSupportEnabled(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiSupportEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiMetrics(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: WikiMetricsPatch) => updateWikiMetricsApi(slug, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** The API Docs page's GET endpoints — only fetched while the source picker is open. */
+export function useWikiMetricEndpoints(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "metric-endpoints"],
+    queryFn: () => getWikiMetricEndpointsApi(slug),
+    enabled,
+  });
+}
+
+export function useRefreshWikiMetrics(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => refreshWikiMetricsApi(slug),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiMeetingsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiMeetingsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useWikiShareableMeetings(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "shareable-meetings"],
+    queryFn: () => getWikiShareableMeetingsApi(slug),
+    enabled,
+  });
+}
+
+export function useSetWikiMeetingShared(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { meetingId: string; shared: boolean }) =>
+      setWikiMeetingSharedApi(slug, v.meetingId, v.shared),
+    // The wiki key is a prefix of the shareable-meetings key, so one invalidation
+    // refreshes both the picker and the section above it.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiPlatformsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiPlatformsEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

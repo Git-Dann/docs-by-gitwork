@@ -360,6 +360,9 @@ type PlatformInput = {
   notes?: string;
   previewImageUrl?: string;
   featuredInWiki?: boolean;
+  links?: { label?: string; url: string }[];
+  renewsOn?: string;
+  renewalNote?: string;
 };
 
 export function useCreateClientPlatform(slug: string) {

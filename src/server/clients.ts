@@ -1,3 +1,4 @@
+import { parseRenewalDate } from "@/lib/wiki-platforms";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { normalisePlatformLinks } from "@/lib/platform-links";
 import { Prisma } from "@prisma/client";
@@ -564,6 +565,8 @@ function serializeClientPlatform(platform: {
   previewImageUrl?: string | null;
   featuredInWiki?: boolean;
   links?: unknown;
+  renewsOn?: Date | null;
+  renewalNote?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -596,6 +599,9 @@ function serializeClientPlatform(platform: {
     // rows hold null, and a row written before validation tightened could hold
     // anything. Callers get a clean array or an empty one, never a surprise.
     links: normalisePlatformLinks(platform.links),
+    // Date only — the time of day carries no meaning for a renewal.
+    renewsOn: platform.renewsOn ? platform.renewsOn.toISOString().slice(0, 10) : null,
+    renewalNote: platform.renewalNote ?? null,
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };
@@ -1667,6 +1673,8 @@ export async function createClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<ClientPlatformRecord> {
   const platform = await clientPlatforms.create({
@@ -1688,6 +1696,8 @@ export async function createClientPlatform(
       // Re-normalised server-side: the form is not the gate. Anything with a
       // non-http(s) scheme is dropped rather than stored and later rendered.
       links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue,
+      renewsOn: parseRenewalDate(input.renewsOn),
+      renewalNote: input.renewalNote?.trim() || null,
     },
   });
 
@@ -1708,6 +1718,8 @@ export async function updateClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -1728,6 +1740,8 @@ export async function updateClientPlatform(
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
       ...(input.featuredInWiki !== undefined ? { featuredInWiki: input.featuredInWiki } : {}),
       ...(input.links !== undefined ? { links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue } : {}),
+      ...(input.renewsOn !== undefined ? { renewsOn: parseRenewalDate(input.renewsOn) } : {}),
+      ...(input.renewalNote !== undefined ? { renewalNote: input.renewalNote.trim() || null } : {}),
     },
   });
 

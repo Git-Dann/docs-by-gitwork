@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { COURSE_REQUESTS_SLUGS, GOLF_DATA_SLUGS } from "@/lib/wiki-sections";
 import {
+  BanknotesIcon,
   BoltIcon,
   BookOpenIcon,
   CalculatorIcon,
@@ -23,14 +24,15 @@ import {
   FlagIcon,
   GlobeAltIcon,
   LifebuoyIcon,
+  NewspaperIcon,
   PlusIcon,
+  PresentationChartLineIcon,
   RocketLaunchIcon,
   ServerStackIcon,
   Squares2X2Icon,
   TrashIcon,
+  VideoCameraIcon,
   WrenchScrewdriverIcon,
-  BanknotesIcon,
-  NewspaperIcon,
 } from "@heroicons/react/24/outline";
 
 export type WikiSection =
@@ -46,6 +48,9 @@ export type WikiSection =
   | "roundup"
   | "delivery"
   | "support"
+  | "metrics"
+  | "meetings"
+  | "platforms"
   | "code-handover"
   | "design-system"
   | "ia"
@@ -172,6 +177,9 @@ export function WikiSidebar({
       "roundup",
       "delivery",
       "support",
+      "metrics",
+      "meetings",
+      "platforms",
       "code-handover",
       "design-system",
       "ia",
@@ -275,6 +283,9 @@ export function WikiSidebar({
         {navItem("roundup", "RoundUp", <NewspaperIcon />)}
         {navItem("delivery", "Delivery", <ChartBarSquareIcon />)}
         {navItem("support", "Support", <LifebuoyIcon />)}
+        {navItem("metrics", "Metrics", <PresentationChartLineIcon />)}
+        {navItem("meetings", "Meetings", <VideoCameraIcon />)}
+        {navItem("platforms", "Platforms", <GlobeAltIcon />)}
         {navItem("code-handover", "Code Handover", <CpuChipIcon />)}
         {navItem("design-system", "Design System", <CubeTransparentIcon />)}
         {navItem("ia", "Info Architecture", <BookOpenIcon />)}

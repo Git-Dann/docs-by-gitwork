@@ -6698,3 +6698,35 @@ carries the app and, once saved, the artwork. Nothing in it talks to Foundry's A
 - **Deck's scratch editor (`/deck`) is a Labs card**, and the HQ strip's `· DECKS` link is gone.
   A deck that belongs to a client is made in Docs (+ New → Deck), which is unchanged.
 
+
+## 65. Recent Changes (October 2026) — Wiki: Metrics, Meetings and Platforms
+
+Three client-wiki sections, each with a dashboard card. All three are read-only for the client and
+off until someone turns them on. Each is offered in the client's view only when it has something on
+it (`wiki-section-wiring.test.ts` pins every predicate).
+
+- **Metrics** (`src/server/wiki-metrics.ts`, rules in `src/lib/wiki-metrics.ts`). The source is the
+  **Care analytics connector when one exists**. Otherwise it's **one GET endpoint picked off the
+  client's own API Docs page**, plus an optional token, encrypted and never sent to the browser.
+  The endpoint must be one the page documents (`setWikiMetricsConfig` refuses anything else), and
+  `getJson` still runs the SSRF guard. A page load **reads stored snapshots only**. Snapshots are
+  refreshed when someone at Gitwork opens the section and it is behind, or presses Refresh, so a
+  client's API is never called because a client looked.
+  ⚠️ Two meanings of "this month". A month-scoped adapter is shown only once the month is **over**:
+  a snapshot captured mid-month (the Care report builder can store one) is partial and never shown
+  as that month's figure. A "current" source (the generic JSON adapter or an API Docs endpoint)
+  belongs to the month it was **captured** in, whatever it was stored under. Hidden metrics are
+  **removed** from the client's copy in `forPublic`, not just flagged.
+- **Meetings** (`src/server/wiki-meetings.ts`). Only meetings with `Meeting.sharedWithClientAt` set
+  are shown, so turning the section on shares nothing by itself. It shows the summary, decisions and
+  actions. The transcript, notes text and attendees are never selected. An action turned into a task
+  is done when **the task** is done.
+- **Platforms** (`src/server/wiki-platforms.ts`). Portal's platforms as **links only**: logins,
+  credential ciphers and internal notes are never selected (Dan's call). Each platform has an
+  optional `renewsOn` + `renewalNote` (edited in Portal's platform form). The next renewals lead the
+  dashboard card: amber within 14 days, red once passed. A date more than 30 days past drops off,
+  since nobody updates the date after renewing.
+
+The DTO field is `clientPlatforms`, because `platforms` was already the changelog's platform list.
+Schema change is additive: three flags, `ClientWiki.metricsConfig`, `WikiMetricSnapshot`,
+`Meeting.sharedWithClientAt`, and `ClientPlatform.renewsOn` / `renewalNote`.

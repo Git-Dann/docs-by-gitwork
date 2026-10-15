@@ -4,13 +4,12 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
-  BanknotesIcon,
-  CalculatorIcon,
-  NewspaperIcon,
   ArrowRightIcon,
   ArrowTopRightOnSquareIcon,
+  BanknotesIcon,
   BoltIcon,
   BookOpenIcon,
+  CalculatorIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -26,17 +25,26 @@ import {
   FlagIcon,
   GlobeAltIcon,
   LifebuoyIcon,
+  NewspaperIcon,
   PhoneIcon,
+  PresentationChartLineIcon,
   RocketLaunchIcon,
   ServerStackIcon,
   Squares2X2Icon,
   UserIcon,
+  VideoCameraIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import { buildEstimateReadout, planDurationParts, formatShortDate, isPlannable } from "@/lib/wiki-estimates";
 import { summariseRoundup } from "@/lib/wiki-roundup";
+import { formatMetric, metricTrend } from "@/lib/wiki-metrics";
+import { upcomingRenewals } from "@/lib/wiki-platforms";
+import { metricsHeadline } from "./wiki-metrics-section";
+import { meetingDate, openActionCount } from "./wiki-meetings-section";
+import { RenewalLine } from "./wiki-platforms-section";
+import { TrendBadge } from "@/components/analytics/analytics-widgets";
 import { footerFacts, latestWikiActivity, type FooterFact } from "@/lib/wiki-footer";
 import { GITWORK, companyDisclosureLine } from "@/lib/gitwork";
 import type { WikiDTO } from "@/lib/api";
@@ -70,6 +78,9 @@ const SECTION_META: Record<
   roundup: { label: "RoundUp", icon: NewspaperIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
+  metrics: { label: "Metrics", icon: PresentationChartLineIcon },
+  meetings: { label: "Meetings", icon: VideoCameraIcon },
+  platforms: { label: "Platforms", icon: GlobeAltIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
@@ -672,6 +683,99 @@ export function WikiDashboard({
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-4)]">Support reporting isn&rsquo;t connected.</p>
+        );
+      }
+      case "metrics": {
+        // The client's copy already has hidden metrics removed; the internal copy flags
+        // them, so filter here too — the card must read the same to both audiences.
+        const lead = wiki.metrics.metrics.filter((m) => m.featured && !m.hidden);
+        const when = metricsHeadline(wiki.metrics);
+        if (!wiki.metrics.source || lead.length === 0) {
+          return (
+            <p className="text-[13px] text-[var(--text-4)]">
+              {wiki.metrics.source ? "No figures fetched yet." : "Not connected yet."}
+            </p>
+          );
+        }
+        return (
+          <div className="space-y-2">
+            {/* One row per metric, label left and figure right: three figures side by side
+                in a ~330px card wrap and cut their labels off ("ACTIVE SUBSCRIPTIO…"). */}
+            <ul className="space-y-2.5">
+              {lead.map((m) => (
+                <li key={m.key} className="flex items-baseline justify-between gap-3">
+                  <span
+                    className="min-w-0 truncate text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+                    style={{ fontFamily: MONO }}
+                    title={m.label}
+                  >
+                    {m.label}
+                  </span>
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    <span
+                      className="text-[24px] leading-none text-[var(--text-1)] tabular-nums"
+                      style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
+                    >
+                      {formatMetric(m.value, m.unit)}
+                    </span>
+                    <TrendBadge delta={metricTrend(m.value, m.previous)} goodWhen="neutral" compact />
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {when ? (
+              <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {when}
+              </p>
+            ) : null}
+          </div>
+        );
+      }
+      case "meetings": {
+        const latest = wiki.meetings.meetings[0];
+        if (!latest) return <p className="text-[13px] text-[var(--text-4)]">No meetings shared yet.</p>;
+        const open = openActionCount(wiki.meetings.meetings);
+        return (
+          <div className="space-y-2">
+            <div className="min-w-0">
+              <p className="truncate text-[14px] font-medium text-[var(--text-1)]" title={latest.title}>
+                {latest.title}
+              </p>
+              <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {meetingDate(latest.startedAt)}
+              </p>
+            </div>
+            <Metric value={String(open)} label={open === 1 ? "Open action" : "Open actions"} />
+          </div>
+        );
+      }
+      case "platforms": {
+        const list = wiki.clientPlatforms.platforms;
+        if (list.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No platforms recorded yet.</p>;
+        }
+        const due = upcomingRenewals(list, new Date(), 2);
+        return (
+          <div className="space-y-2">
+            {/* Renewals lead: a lapsed domain or developer account takes the app offline,
+                and this card is the overview the client actually opens. */}
+            {due.length > 0 ? (
+              <ul className="space-y-1.5">
+                {due.map((r) => (
+                  <RenewalLine key={r.platformId} r={r} />
+                ))}
+              </ul>
+            ) : (
+              <Metric value={String(list.length)} label={list.length === 1 ? "Platform" : "Platforms"} />
+            )}
+            {due.length > 0 ? (
+              <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {list.length} {list.length === 1 ? "PLATFORM" : "PLATFORMS"}
+              </p>
+            ) : list.some((p) => p.renewsOn) ? (
+              <p className="text-[12px] text-[var(--text-4)]">Nothing renews in the next 90 days.</p>
+            ) : null}
+          </div>
         );
       }
       case "course-requests": {

@@ -160,6 +160,9 @@ const WIKI_SECTION_LABEL: Record<string, string> = {
   changelog: "Changelog",
   "course-requests": "Course Requests",
   "design-system": "Design System",
+  metrics: "Metrics",
+  meetings: "Meetings",
+  platforms: "Platforms",
 };
 
 export interface WikiCardData {
