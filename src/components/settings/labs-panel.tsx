@@ -11,8 +11,9 @@ import { BadgeStudio } from "@/components/settings/labs/badge-studio";
  * namespace of their own.
  *
  * The rule this encodes: /app/<name> is for a main product. A feature of a product
- * gets an entry point inside that product (Deck sits on the Docs toolbar). An
- * experiment lives here.
+ * gets an entry point inside that product (Study sits inside Pulse). An
+ * experiment lives here, and so does Deck's scratch editor (decks that belong to a
+ * client are made in Docs).
  *
  * An entry either opens a route in a new tab (`href`) or a surface in place
  * (`panel`). The badge studio is the second kind on purpose: `/app/settings/**`
@@ -42,44 +43,44 @@ const ENTRIES: LabEntry[] = [
   {
     name: "Block gallery",
     action: "block-gallery",
-    blurb:
-      "Create one real document containing every block Docs can render, with sample content — for reviewing a design change, checking a theme, or seeing what a block actually looks like before you reach for it.",
-    note: "A normal document: same editor, same PDF, same public share. Each section is named for its registry key, so a defect leads straight to src/lib/sections/<key>.tsx. Re-running replaces the previous copy.",
+    blurb: "One real document holding every block Docs can render, for checking a design or theme change.",
+    note: "Re-running replaces the previous copy.",
   },
   {
     name: "Badge studio",
     panel: "badges",
-    blurb:
-      "The Foundry Approved marks and the Pulse score badge, with the snippet that installs each one on a client's site. Pick a mark, set the ground it will sit on, and copy.",
-    note: "Every mark has a permanent code (FA-01 … PS-04) — call them by it. Full reference: docs/badges.md.",
+    blurb: "Foundry Approved marks and the Pulse score badge, with the snippet that installs each one.",
+    note: "Codes FA-01 … PS-04. See docs/badges.md.",
   },
   {
     name: "Studio",
     href: "/app/studio",
-    blurb:
-      "Design on-brand social assets and App Store / Play Store screenshots, then batch-export at the exact size each platform needs. Moved here from the sidebar — it's a tool you open when you need it, not a product you work in daily.",
-    note: "Runs entirely in the browser; nothing is uploaded. Gated on the studio module permission.",
+    blurb: "On-brand social assets and App Store / Play Store screenshots, exported at every size.",
+    note: "Runs in the browser. Nothing is uploaded.",
+  },
+  {
+    name: "Deck",
+    href: "/deck",
+    blurb: "The slide editor on its own: build from a template, present, and save the deck as a file.",
+    note: "A client deck belongs in Docs → + New → Deck.",
   },
   {
     name: "Canvas",
     href: "/canvas",
-    blurb:
-      "Generative artwork tools: shape maker, infinite line, flow fields, contours, ridge lines, tile patterns, halftone, ASCII and gradient auras. Export SVG, PNG or text for social posts, web backgrounds and decks.",
-    note: "Like Deck, the page is the file: Save writes the app and the artwork into one .canvas.html that reopens exactly as left. Runs in the browser and holds no workspace data. Source: Git-Dann/canvas.",
+    blurb: "Thirty generative artwork tools. Export SVG, PNG or text for posts, backgrounds and decks.",
+    note: "The page is the file. Source: Git-Dann/canvas.",
   },
   {
     name: "Mission Control",
     href: "/edge",
-    blurb:
-      "A dark, chrome-free exec board built for the Corsair Xeneon Edge — client health, your desk and the day's calendar on one always-on screen. Open it fullscreen on the device and sign in once.",
-    note: "Renders as the signed-in viewer, so everything shows as you. No API key or token to distribute.",
+    blurb: "A chrome-free exec board for the Corsair Xeneon Edge: client health, your desk and the day.",
+    note: "Renders as you. No key to distribute.",
   },
   {
     name: "Provenance",
     href: "/app/provenance",
-    blurb:
-      "Strike a Countermark from a completed Pulse scan — a signed, expiring certificate of what a piece of software was found to be, and what could not be established. The register is here; the certificate itself is a public link you send to a client, insurer or acquirer.",
-    note: "Marks are UNSEALED until PROVENANCE_SIGNING_SECRET is set on the server, and say so on the certificate. Issuing needs the provenance.issue permission. See docs/provenance.md.",
+    blurb: "Strike a Countermark from a Pulse scan: a signed, expiring certificate of what was found.",
+    note: "Needs provenance.issue. See docs/provenance.md.",
   },
 ];
 
@@ -116,21 +117,17 @@ export function LabsPanel() {
       <div>
         <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-[var(--text-1)]">Labs</h2>
         <p className="mt-1.5 max-w-[64ch] text-[13.5px] leading-relaxed text-[var(--text-3)]">
-          Internal surfaces that are useful but are not products, and are deliberately kept
-          out of the sidebar.
+          Useful internal tools that aren&apos;t products, kept out of the sidebar.
         </p>
       </div>
 
-      <ul className="space-y-3">
+      <ul className="grid gap-3 md:grid-cols-2">
         {ENTRIES.map((entry) => (
-          // Every card is laid out identically regardless of how long its copy
-          // is: name + Open on one row, then blurb, then note. The previous
-          // single flex row wrapped the button onto its own line once the text
-          // block grew — so Mission Control showed Open top-right while Provenance,
-          // whose note is longer, showed it bottom-left. Both text blocks share
-          // one measure (62ch) so a long mono note can't sprawl wider than the
-          // blurb above it either.
-          <li key={entry.href ?? entry.panel ?? entry.action} className="app-card p-4">
+          // Two-up from md, every card laid out identically: name + Open on one
+          // row, a one-sentence blurb, then the mono note pinned to the bottom
+          // (mt-auto) so notes line up across a row whatever the blurb length.
+          // Keep the copy to one sentence each; the detail lives in the docs.
+          <li key={entry.href ?? entry.panel ?? entry.action} className="app-card flex flex-col p-4">
             <div className="flex items-start justify-between gap-3">
               <h3 className="min-w-0 text-[14.5px] font-semibold text-[var(--text-1)]">
                 {entry.name}
@@ -170,16 +167,16 @@ export function LabsPanel() {
                 </button>
               )}
             </div>
-            <p className="mt-1.5 max-w-[62ch] text-[13.5px] leading-relaxed text-[var(--text-3)]">
+            <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--text-3)]">
               {entry.blurb}
             </p>
             {entry.note ? (
-              <p className="mt-2 max-w-[62ch] font-mono text-[11px] leading-relaxed text-[var(--text-4)]">
+              <p className="mt-auto pt-2 font-mono text-[11px] leading-relaxed text-[var(--text-4)]">
                 {entry.note}
               </p>
             ) : null}
             {entry.action && error ? (
-              <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-[var(--danger-500)]">
+              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--danger-500)]">
                 {error}
               </p>
             ) : null}
