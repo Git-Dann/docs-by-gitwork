@@ -6657,9 +6657,9 @@ an estimate must not read as a commitment.
 
 ## 63. Recent Changes (October 2026) — Canvas: artwork tools at `/canvas`, beside Deck
 
-**Canvas** is a suite of generative artwork tools (shape maker, infinite line, flow field,
-contours, ridge lines, tile patterns, halftone, ASCII, gradient aura) served at `/canvas` and
-opened from **Settings → Labs**. It is built the same way as Deck: one static HTML file that
+**Canvas** is a suite of 30 generative artwork tools, at least five in each group (Shape, Line,
+Pattern, Type, Image, Colour), served at `/canvas` and opened from **Settings → Labs**. The list
+lives in the Canvas repo's README. It is built the same way as Deck: one static HTML file that
 carries the app and, once saved, the artwork. Nothing in it talks to Foundry's API.
 
 - **The source is NOT in this repo.** It lives in **`Git-Dann/canvas`**, which reuses Deck's
@@ -6673,7 +6673,10 @@ carries the app and, once saved, the artwork. Nothing in it talks to Foundry's A
   workspace data), `robots.ts` disallow, a `/context` row, and the Labs entry.
 - **When hosted at `/canvas` it shows `← Foundry`** (to `/app`), and a saved file never does —
   the same `servedByFoundry()` test Deck uses. It follows Foundry's light/dark setting
-  (`gitwork.theme.v1`) unless Canvas has its own choice.
+  (`gitwork.theme.v1`) live, then the OS, and has **no theme toggle of its own** (Dan's call,
+  October 2026). Don't add one back.
+- **The artboard (size, background, seed) is one setting for the file**, shared by every tool,
+  shown in its own block above the tool's settings.
 - ⚠️ **Brand exception, by Dan's request:** Canvas wears **Emergency Orange `#FF4F00`** on the
   Untitled UI v8 tokens, not Gitwork Blue. DESIGN.md records it. Text on the orange fill is
   near-black (6.0:1); white would be 3.3:1 and fail AA.
