@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import { tidyPersonName } from "@/lib/person-name";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig, SESSION_VERSION } from "./auth.config";
@@ -205,7 +206,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           dbUser = await prisma.user.create({
             data: {
               email: user.email,
-              name: user.name ?? user.email.split("@")[0],
+              name: tidyPersonName(user.name) ?? user.email.split("@")[0],
               memberships: {
                 create: {
                   role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
