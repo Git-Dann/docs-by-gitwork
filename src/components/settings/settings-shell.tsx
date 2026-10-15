@@ -17,6 +17,7 @@ import {
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
+import { segmentedTabClass, segmentedTabsClass } from "@/components/ui/segmented-tabs";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
@@ -359,7 +360,7 @@ export function SettingsShell({
           // pick-one grammar), wrapping rather than scrolling on a phone.
           <nav
             aria-label={`${activeEntry?.label} sections`}
-            className="mb-4 inline-flex max-w-full flex-wrap gap-1 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-1"
+            className={cn("mb-4", segmentedTabsClass)}
           >
             {tabs.map((tab) => {
               const active = tab.id === activeSection;
@@ -368,12 +369,7 @@ export function SettingsShell({
                   key={tab.id}
                   href={`/app/settings/${tab.id}`}
                   aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition",
-                    active
-                      ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
-                      : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-                  )}
+                  className={segmentedTabClass(active)}
                 >
                   {tab.label}
                 </Link>

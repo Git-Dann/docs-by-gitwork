@@ -136,7 +136,10 @@ export function LabsPanel() {
                 <a
                   href={entry.href}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  // noopener, NOT noreferrer: these are our own pages, and Deck's
+                  // Back link reads the referrer to return you here. Stripping it
+                  // sent Back to Docs instead.
+                  rel="noopener"
                   className="app-button app-button-secondary app-button-sm shrink-0 whitespace-nowrap"
                 >
                   Open
