@@ -6580,7 +6580,39 @@ of 295 verdicts; 256 fixes proposed and reviewed (1 rejected), applied per file 
   `pulse-matrix-assert.ts` now fails if one repo + one execution platform shows different checks
   by pick.
 
-### 62.6 GitHub capacity — still open
+### 62.6 The two launch-blocking checks, checked site by site
+
+`privacy_policy` / `terms_of_service` are the checks the release gate blocks on, so every P1 they
+raised in the final corpus was checked by hand against the live site. Wikipedia, Hacker News,
+Figma, PostHog, Mercado Livre, CBC, Zalando, Flipkart and Rakuten were all told they had no
+policy, and all publish one. Causes, each fixed with a two-sided test:
+
+- **The read cap.** posthog.com/privacy puts its `<title>` 714 KB in (inlined CSS);
+  ycombinator.com/legal/ its "Terms of Use" 224 KB in. The probe kept 60 KB. Now 2 MB, and a body
+  cut at the cap is "could not read", never "absent".
+- **A refused candidate counted as absent.** posthog.com answered a repeat scan with 403 on every
+  candidate path. Only 404/410 mean "not there"; 401/403/429/5xx are unreadable.
+- **A legal index that links the document** passes (figma.com → /legal/ → /legal/tos/).
+- **Link shapes:** MediaWiki `Policy:Privacy_policy`, qualified paths
+  (`/terms-of-use-digital-services`), Portuguese/Spanish/French/Italian/Dutch paths and anchor text,
+  and Japanese/Chinese compound names that END in 利用規約 / 服务条款 (whole-text matching stays the
+  rule for English, so "Glossary of terms" never counts). A policy *generator* or *template* link
+  never counts.
+- **Footers drawn by JavaScript** (flipkart.com has no legal link in any byte it serves). Internal
+  scans render the page when the served HTML has no link — **twice before concluding absence**,
+  because app.hubspot.com came back footer-less once under load. The free scan does not render, so
+  on a script-heavy page (8+ `<script>`) "not found" is INCONCLUSIVE, not FAIL.
+
+Still FAIL, and true: Notion, gitwork.co.uk, HubSpot's login page and wordpress.org/news link no
+terms page. **Known limitation:** Baidu's combined legal notice is "使用百度前必读" at `/duty`, a
+name no general rule recognises; it still reads as missing.
+
+Also: a connection RESET (ECONNRESET / EAI_AGAIN) is INCONCLUSIVE — badssl.com reset Pulse under
+concurrent scans — while refused connections and unknown hosts stay FAIL. An API that answers an
+unauthenticated request with JSON 401/403/404/405 is graded as an API (api.stripe.com), and an API
+refusing plain HTTP with a 4xx passes `http_redirect`.
+
+### 62.7 GitHub capacity — still open
 
 Repo scans share ONE token (5,000 REST calls/hour). Measured: ~150–250 calls per repo scan, so
 roughly 20–30 repo scans an hour across all users. A GitHub App (per-installation limits) or
