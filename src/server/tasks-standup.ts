@@ -7,6 +7,7 @@
 // everyone's pushed. Slack posting is best-effort/fire-and-forget — a missing
 // token or channel never fails the request (mirrors onboarding-notify.ts).
 
+import { reportOwnerIds, type ReportTask } from "@/lib/standup-report";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { groupTasksForDay, type StandupGroupsFor } from "@/lib/wiki-standups";
@@ -472,15 +473,11 @@ async function postStandupToSlack(
 
     // Clean list card — no per-task Slack actions, so no SlackMessageRef rows
     // to pre-mint. The single "View board" button covers "open in Foundry".
-    // Parents whose own subtasks are in this update — their subtasks render grouped
-    // under the parent heading, so we drop the standalone parent line to avoid dupes.
-    const parentIdsWithSubs = new Set(
-      mine.filter((t) => t.parentId).map((t) => t.parentId as string),
-    );
     const toCardTask = (t: TaskDTO): StandupTaskCardInput => ({
       taskId: t.id,
       title: t.title,
       parentTitle: t.parentId ? parentTitleById.get(t.parentId) ?? "Task" : null,
+      parentId: t.parentId,
       clientName: t.client.name,
       clientSlug: t.client.slug,
       blockName: t.featureBlock?.name ?? null,
@@ -488,14 +485,14 @@ async function postStandupToSlack(
       status: t.status,
       description: t.description,
     });
-    // Drop a parent line when its own subtasks are in the same update — they
-    // render grouped under the parent heading, so the standalone line is a dupe.
-    const keep = (t: TaskDTO) => !(t.parentId === null && parentIdsWithSubs.has(t.id));
-
+    // Each group lays its own subtasks out under their parent (taskListText → toRows), so
+    // a parent is never dropped from one group because its subtask finished in another.
+    // It used to be: a subtask done today removed its still-running parent from
+    // "Still in progress" altogether.
     const cardSections = groups
       .map((g) => ({
         label: g.label,
-        tasks: g.tasks.filter((t) => t.client.id === clientId && keep(t)).map(toCardTask),
+        tasks: g.tasks.filter((t) => t.client.id === clientId).map(toCardTask),
       }))
       .filter((g) => g.tasks.length > 0);
 
@@ -851,15 +848,28 @@ async function compileDailyUpdates(
     return { projects: [], otherDevs: [], devCount: 0, taskCount: 0, channel, botToken, workDate };
   }
 
-  const assigneeFilter = [
-    { assignees: { some: { id: { in: devIds } } } },
-    { assigneeId: { in: devIds } },
+  const ownedBy = (ids: string[]): Prisma.TaskWhereInput[] => [
+    { assignees: { some: { id: { in: ids } } } },
+    { assigneeId: { in: ids } },
   ];
-  // PM = done today; AM = whatever's currently in progress.
+  // A subtask nobody is assigned to belongs to whoever owns its parent (reportOwnerIds).
+  // Most live subtasks predate inheriting the parent's assignees, so without this a
+  // finished subtask is reported for nobody.
+  const assigneeFilter: Prisma.TaskWhereInput[] = [
+    ...ownedBy(devIds),
+    { assigneeId: null, assignees: { none: {} }, parent: { OR: ownedBy(devIds) } },
+  ];
+  const inFlight: Prisma.TaskWhereInput = {
+    status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] },
+    archivedAt: null,
+  };
+  // PM = what shipped today AND what is still moving — a multi-day task must still show
+  // up at the end of the day, or a dev three days into one has nothing to report.
+  // AM = what's in progress.
   const taskWhere: Prisma.TaskWhereInput =
     phase === "PM"
-      ? { status: "DONE", completedAt: { gte: workDate, lt: nextUtcDay(workDate) } }
-      : { status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] } };
+      ? { OR: [{ status: "DONE", completedAt: { gte: workDate, lt: nextUtcDay(workDate) } }, inFlight] }
+      : inFlight;
 
   const [users, updates, tasks] = await Promise.all([
     prisma.user.findMany({
@@ -877,15 +887,18 @@ async function compileDailyUpdates(
       select: { userId: true, note: true },
     }),
     prisma.task.findMany({
-      where: { workspaceId: user.workspaceId, ...taskWhere, OR: assigneeFilter },
+      where: { workspaceId: user.workspaceId, AND: [taskWhere, { OR: assigneeFilter }] },
       select: {
         id: true,
         title: true,
+        status: true,
+        parentId: true,
         assigneeId: true,
         assignees: { select: { id: true } },
+        parent: { select: { title: true, assigneeId: true, assignees: { select: { id: true } } } },
         client: { select: { id: true, name: true, slug: true } },
       },
-      orderBy: phase === "PM" ? { completedAt: "asc" } : { createdAt: "asc" },
+      orderBy: [{ completedAt: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
@@ -899,15 +912,13 @@ async function compileDailyUpdates(
   type ProjectAcc = {
     clientName: string;
     clientSlug: string;
-    devs: Map<string, { name: string; tasks: Array<{ title: string; taskId: string }> }>;
+    devs: Map<string, { name: string; tasks: ReportTask[] }>;
   };
   const projectMap = new Map<string, ProjectAcc>();
   const devsWithTasks = new Set<string>();
 
   for (const t of tasks) {
-    const ids = new Set<string>(t.assignees.map((a) => a.id));
-    if (t.assigneeId) ids.add(t.assigneeId);
-    for (const id of ids) {
+    for (const id of reportOwnerIds(t)) {
       if (!pushedSet.has(id)) continue; // dev hasn't posted this phase → skip
       const row = userById.get(id);
       if (!row) continue;
@@ -922,7 +933,13 @@ async function compileDailyUpdates(
         dev = { name: row.name?.trim() || row.email, tasks: [] };
         proj.devs.set(id, dev);
       }
-      dev.tasks.push({ title: t.title, taskId: t.id });
+      dev.tasks.push({
+        title: t.title,
+        taskId: t.id,
+        status: t.status,
+        parentId: t.parentId,
+        parentTitle: t.parent?.title ?? null,
+      });
     }
   }
 

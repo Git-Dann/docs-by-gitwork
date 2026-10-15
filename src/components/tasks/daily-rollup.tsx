@@ -1,5 +1,6 @@
 "use client";
 
+import { groupForReport } from "@/lib/standup-report";
 import { useState } from "react";
 import {
   CheckCircleIcon,
@@ -333,7 +334,7 @@ export function DailyRollup({
                 {preview.data.devCount === 1 ? "" : "s"},{" "}
                 {preview.data.taskCount} task
                 {preview.data.taskCount === 1 ? "" : "s"}{" "}
-                {phase === "AM" ? "in progress" : "done today"}. Grouped by
+                {phase === "AM" ? "in progress" : "done today or still in progress"}. Grouped by
                 project. Review before sending.
               </p>
               <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
@@ -352,16 +353,31 @@ export function DailyRollup({
                             @{d.name}
                           </p>
                           {d.tasks.length > 0 ? (
-                            <ul className="mt-0.5 space-y-0.5">
-                              {d.tasks.map((t) => (
-                                <li
-                                  key={t.taskId}
-                                  className="text-[12px] text-[var(--text-2)]"
-                                >
-                                  • {t.title}
-                                </li>
+                            // Same grouping and nesting as the Slack card (standup-report.ts),
+                            // so what is reviewed here is what gets posted.
+                            <div className="mt-0.5 space-y-1">
+                              {groupForReport(d.tasks, phase).map((g) => (
+                                <div key={g.key}>
+                                  <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
+                                    {g.label}
+                                  </p>
+                                  <ul className="space-y-0.5">
+                                    {g.rows.map((r) => (
+                                      <li
+                                        key={`${g.key}-${r.kind}-${r.taskId}`}
+                                        className={
+                                          r.kind === "subtask"
+                                            ? "pl-4 text-[12px] text-[var(--text-3)]"
+                                            : "text-[12px] text-[var(--text-2)]"
+                                        }
+                                      >
+                                        {r.kind === "subtask" ? "↳" : "•"} {r.title}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
                               ))}
-                            </ul>
+                            </div>
                           ) : (
                             <p className="mt-0.5 text-[12px] italic text-[var(--text-4)]">
                               No tasks.

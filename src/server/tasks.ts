@@ -395,7 +395,13 @@ export async function listTasks(
   }
   if (opts.assigneeId) {
     const id = opts.assigneeId === "me" ? user.id : opts.assigneeId;
-    where.OR = [{ assignees: { some: { id } } }, { assigneeId: id }];
+    const mine: Prisma.TaskWhereInput[] = [{ assignees: { some: { id } } }, { assigneeId: id }];
+    where.OR = opts.includeSubtasks
+      ? // A subtask nobody is assigned to belongs to whoever owns its parent — the same
+        // rule as reportOwnerIds (src/lib/standup-report.ts). Most live subtasks predate
+        // inheriting the parent's assignees, so without this they are reported for nobody.
+        [...mine, { assigneeId: null, assignees: { none: {} }, parent: { OR: mine } }]
+      : mine;
   }
   if (opts.sourceMeetingId) {
     const linkedItems = await prisma.meetingActionItem.findMany({
