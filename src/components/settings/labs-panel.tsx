@@ -61,6 +61,13 @@ const ENTRIES: LabEntry[] = [
     note: "Runs entirely in the browser; nothing is uploaded. Gated on the studio module permission.",
   },
   {
+    name: "Canvas",
+    href: "/canvas",
+    blurb:
+      "Generative artwork tools: shape maker, infinite line, flow fields, contours, ridge lines, tile patterns, halftone, ASCII and gradient auras. Export SVG, PNG or text for social posts, web backgrounds and decks.",
+    note: "Like Deck, the page is the file: Save writes the app and the artwork into one .canvas.html that reopens exactly as left. Runs in the browser and holds no workspace data. Source: Git-Dann/canvas.",
+  },
+  {
     name: "Mission Control",
     href: "/edge",
     blurb:

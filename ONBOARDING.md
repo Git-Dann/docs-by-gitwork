@@ -35,7 +35,7 @@ session in this repo, so you'll see them whether you want to or not.
 Every Gitwork chat/session is titled `<Name> {{Tag}}`, tag verbatim with the braces:
 
 - `{{Product}}` — Pulse · Care · Docs · Code · Studio · Portal
-- `{{Feat}}` — Deck · Starters · Wiki · DevSignal · Dispatch · RoundUp · Demo · On Your Desk ·
+- `{{Feat}}` — Deck · Canvas · Starters · Wiki · DevSignal · Dispatch · RoundUp · Demo · On Your Desk ·
   Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications
 - `{{Agent}}` — Curator · Foreman
 
