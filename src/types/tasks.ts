@@ -390,6 +390,8 @@ export type PublicTimelineBlock = {
   description: string | null;
   startDate: string;
   endDate: string;
+  /** True when the dates are estimated from task due dates (src/lib/gantt-span.ts). */
+  estimated: boolean;
   color: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];

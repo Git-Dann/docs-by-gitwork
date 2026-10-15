@@ -3,6 +3,7 @@
 // The public timeline is client-facing: feature blocks + task names + progress
 // only. No assignees, notes, priorities, or internal status chatter.
 
+import { blockSpan } from "@/lib/gantt-span";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
@@ -91,22 +92,17 @@ export async function getPublicTimeline(shareToken: string): Promise<PublicTimel
   // date range of their tasks' due dates (so undated sections still appear).
   const publicBlocks: PublicTimelineBlock[] = blocks
     .map((b) => {
-      const dues = b.tasks
-        .map((t) => t.dueDate)
-        .filter((d): d is Date => d !== null)
-        .map((d) => d.getTime())
-        .sort((a, z) => a - z);
-      const start = b.startDate ?? (dues.length ? new Date(dues[0]) : null);
-      const end = b.endDate ?? (dues.length ? new Date(dues[dues.length - 1]) : null);
-      if (!start || !end) return null;
+      const span = blockSpan(b, b.tasks.map((t) => t.dueDate));
+      if (!span) return null;
       const taskCount = b.tasks.length;
       const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
       return {
         id: b.id,
         name: b.name,
         description: b.description,
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
+        startDate: span.startDate,
+        endDate: span.endDate,
+        estimated: span.estimated,
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
         tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),

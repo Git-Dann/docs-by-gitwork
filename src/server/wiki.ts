@@ -52,6 +52,7 @@ import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
 import type { LaunchpadDTO } from "@/types/launchpad";
+import { blockSpan } from "@/lib/gantt-span";
 import { parseFeedStatus, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
@@ -198,6 +199,8 @@ export interface WikiTimelineBlock {
    */
   tasks: WikiTimelineTask[];
   statusCounts: Record<TaskStatus, number>;
+  /** True when the dates are estimated from task due dates rather than set on the block. */
+  estimated: boolean;
 }
 
 /** The client-safe grain: what, whether, and when. Never who or how urgent. */
@@ -241,6 +244,9 @@ export interface WikiLinkedWork {
     color: string | null;
     startDate: string | null;
     endDate: string | null;
+    /** Dates estimated from task due dates (blockSpan). False when set on the block,
+     *  or when there are no dates at all. */
+    estimated: boolean;
     progress: number;
     tasks: { title: string; done: boolean }[];
     statusCounts: Record<TaskStatus, number>;
@@ -695,7 +701,7 @@ async function loadLinkedWork(
         // own task-count fix).
         tasks: {
           where: { parentId: null, archivedAt: null },
-          select: { title: true, status: true },
+          select: { title: true, status: true, dueDate: true },
           orderBy: { orderKey: "asc" },
         },
       },
@@ -718,12 +724,16 @@ async function loadLinkedWork(
       number
     >;
     for (const t of b.tasks) counts[t.status as TaskStatus] += 1;
+    // Same rule as this client's own timeline: no dates on the block → estimate from its
+    // tasks' due dates. A block with neither still gets its row, with no bar.
+    const span = blockSpan(b, b.tasks.map((t) => t.dueDate));
     return {
       id: b.id,
       name: b.name,
       color: b.color,
-      startDate: b.startDate?.toISOString() ?? null,
-      endDate: b.endDate?.toISOString() ?? null,
+      startDate: span?.startDate ?? null,
+      endDate: span?.endDate ?? null,
+      estimated: span?.estimated ?? false,
       progress: b.tasks.length === 0 ? 0 : Math.round((done / b.tasks.length) * 100),
       tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
       statusCounts: counts,
@@ -807,23 +817,18 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
 
   const timelineBlocks: WikiTimelineBlock[] = blocks
     .map((b) => {
-      // Sections render once they have a span — explicit dates, or derived from
-      // the date range of their tasks' due dates (so undated sections still show).
-      const dues = b.tasks
-        .map((t) => t.dueDate)
-        .filter((d): d is Date => d !== null)
-        .map((d) => d.getTime())
-        .sort((a, z) => a - z);
-      const start = b.startDate ?? (dues.length ? new Date(dues[0]) : null);
-      const end = b.endDate ?? (dues.length ? new Date(dues[dues.length - 1]) : null);
-      if (!start || !end) return null;
+      // A span from the block's own dates, or estimated from its tasks' due dates
+      // (blockSpan — the one rule every Gantt uses).
+      const span = blockSpan(b, b.tasks.map((t) => t.dueDate));
+      if (!span) return null;
       const taskCount = b.tasks.length;
       const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
       return {
         id: b.id,
         name: b.name,
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
+        startDate: span.startDate,
+        endDate: span.endDate,
+        estimated: span.estimated,
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
         tasks: b.tasks.map((t) => ({
