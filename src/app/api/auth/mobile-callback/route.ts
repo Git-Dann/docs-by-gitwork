@@ -11,6 +11,7 @@
 // authenticated calls. Domain gate (@gitwork.co.uk) is enforced inside the
 // Google ID token verifier.
 
+import { tidyPersonName } from "@/lib/person-name";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       dbUser = await prisma.user.create({
         data: {
           email: profile.email,
-          name: profile.name ?? profile.email.split("@")[0],
+          name: tidyPersonName(profile.name) ?? profile.email.split("@")[0],
           memberships: {
             create: {
               role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,

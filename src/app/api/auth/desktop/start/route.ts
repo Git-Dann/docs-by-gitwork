@@ -11,6 +11,7 @@
 // so no server secret ever reaches the client. Public route (no API_KEY) — same as the other
 // /api/auth/* endpoints. A specific route out-prioritises the /api/auth/[...nextauth] catch-all.
 
+import { tidyPersonName } from "@/lib/person-name";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
     dbUser = await prisma.user.create({
       data: {
         email,
-        name: session.user?.name ?? email.split("@")[0],
+        name: tidyPersonName(session.user?.name) ?? email.split("@")[0],
         memberships: {
           create: {
             role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
