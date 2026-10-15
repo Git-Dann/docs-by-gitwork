@@ -6676,7 +6676,7 @@ carries the app and, once saved, the artwork. Nothing in it talks to Foundry's A
   (`gitwork.theme.v1`) live, then the OS, and has **no theme toggle of its own** (Dan's call,
   October 2026). Don't add one back.
 - **The artboard (size, background, seed) is one setting for the file**, shared by every tool,
-  shown in its own block above the tool's settings.
+  set from a dropdown in the topbar rather than from any tool's settings.
 - ⚠️ **Brand exception, by Dan's request:** Canvas wears **Emergency Orange `#FF4F00`** on the
   Untitled UI v8 tokens, not Gitwork Blue. DESIGN.md records it. Text on the orange fill is
   near-black (6.0:1); white would be 3.3:1 and fail AA.
