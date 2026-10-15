@@ -53,6 +53,7 @@ describe("a target Pulse cannot read produces ONE finding, not hundreds", () => 
     { name: "timeout", route: () => Object.assign(new Error("aborted"), { name: "AbortError" }), detail: /did not respond within/, ssl: "INCONCLUSIVE", tca: "INCONCLUSIVE" },
     { name: "redirect loop", route: () => new Error("Too many redirects — the target could not be scanned safely."), detail: /redirected too many times/, ssl: "INCONCLUSIVE" },
     { name: "connection refused", route: () => Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }), detail: /refused or dropped/, ssl: "INCONCLUSIVE" },
+    { name: "connection reset (firewall / rate limit)", route: () => Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }), detail: /dropped before the site answered/, ssl: "INCONCLUSIVE", tca: "INCONCLUSIVE" },
     { name: "HTTP 404", route: () => page(404, "<h1>Not found</h1>"), detail: /returned HTTP 404/, ssl: "PASS" },
     { name: "HTTP 500", route: () => page(500, ""), detail: /returned HTTP 500/, ssl: "PASS" },
     { name: "HTTP 403 (protected)", route: () => page(403, "denied"), detail: /looks protected/, ssl: "PASS", tca: "INCONCLUSIVE" },

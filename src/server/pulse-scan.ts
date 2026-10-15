@@ -109,6 +109,7 @@ export type FetchFailure =
   | { kind: "timeout"; detail: string }
   | { kind: "redirects"; detail: string }
   | { kind: "refused"; detail: string }
+  | { kind: "dropped"; detail: string }
   | { kind: "other"; detail: string };
 
 export function classifyFetchError(error: unknown): FetchFailure {
@@ -124,7 +125,13 @@ export function classifyFetchError(error: unknown): FetchFailure {
   if (/too many redirects/i.test(msg)) {
     return { kind: "redirects", detail: "The URL redirected too many times (a redirect loop or an unusually long chain)." };
   }
-  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN/i.test(code)) {
+  // A reset or a temporary DNS failure is a connection that did not complete — often a
+  // WAF or rate limit (badssl.com reset Pulse mid-handshake under concurrent scans and
+  // took a P1). That is "could not look", not "the site is down".
+  if (/ECONNRESET|EAI_AGAIN/i.test(code)) {
+    return { kind: "dropped", detail: `The connection was dropped before the site answered (${(e?.cause?.code ?? e?.code ?? "").toString().trim()}). That is often a firewall or rate limit, not the site being down — re-scan shortly.` };
+  }
+  if (/ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ENOTFOUND/i.test(code)) {
     return { kind: "refused", detail: `The server refused or dropped the connection (${(e?.cause?.code ?? e?.code ?? "").toString().trim()}).` };
   }
   return { kind: "other", detail: `The request failed: ${msg.trim().slice(0, 140) || "unknown error"}.` };
@@ -1463,14 +1470,24 @@ export async function resolveLegalDocumentChecks(input: {
     return result;
   };
 
-  let renderedOnce: Promise<string | null> | null = null;
+  // Rendered at most twice, and only on the negative path. A render under load can
+  // come back before the footer is drawn (app.hubspot.com did, in a corpus run of four
+  // browsers at once, and its privacy policy took a FAIL). So a link counts as absent
+  // from the rendered page only when TWO renders both returned a page without it.
+  const renders: Promise<string | null>[] = [];
   let renderedRead = false;
-  const getRendered = async (): Promise<string | null> => {
-    if (!input.renderedHtml) return null;
-    renderedOnce ??= input.renderedHtml().catch(() => null);
-    const html = await renderedOnce;
-    if (html) renderedRead = true;
-    return html ? stripInertMarkup(html) : null;
+  const renderAt = (i: number): Promise<string | null> => {
+    renders[i] ??= input.renderedHtml!().then((h) => (h ? stripInertMarkup(h) : null)).catch(() => null);
+    return renders[i];
+  };
+  const renderedLinks = async (kind: LegalDocKind): Promise<boolean> => {
+    if (!input.renderedHtml) return false;
+    const first = await renderAt(0);
+    if (first && linksLegalDocument(first, kind, scannedHost)) return true;
+    const second = await renderAt(1);
+    if (second && linksLegalDocument(second, kind, scannedHost)) return true;
+    renderedRead = Boolean(first && second);
+    return false;
   };
   // "We did not find it" is only a FAIL when the links could have been seen. On a
   // script-heavy page with no render, it is "could not establish".
@@ -1514,8 +1531,7 @@ export async function resolveLegalDocumentChecks(input: {
       };
     }
     // The served HTML has no link; the page as a browser draws it may.
-    const rendered = await getRendered();
-    if (rendered && linksLegalDocument(rendered, kind, scannedHost)) {
+    if (await renderedLinks(kind)) {
       return {
         status: "PASS",
         detail: `A ${noun} link was found in the page once rendered — its footer is drawn by JavaScript, so the link is not in the HTML as served.`,
@@ -3073,7 +3089,7 @@ export async function runUrlChecks(
       httpsUrl,
       failure.kind === "tls" ? "FAIL" : "INCONCLUSIVE",
       failure.kind === "tls" ? failure.detail : "Not established — the site could not be reached, so its certificate could not be checked.",
-      failure.kind === "timeout" || failure.kind === "other" ? "INCONCLUSIVE" : "FAIL",
+      failure.kind === "timeout" || failure.kind === "other" || failure.kind === "dropped" ? "INCONCLUSIVE" : "FAIL",
     );
   }
 

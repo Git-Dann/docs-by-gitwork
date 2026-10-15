@@ -1287,7 +1287,18 @@ describe("links drawn by JavaScript (flipkart.com draws its whole footer client-
     expect(r.terms.status).toBe("PASS");
     expect(renderedHtml).toHaveBeenCalledTimes(1);
   });
-  it("rendered and still nothing: the FAIL stands, because the scripted links WERE seen", async () => {
+  it("a first render that comes back before the footer is drawn does not produce a FAIL", async () => {
+    const { probe } = harness({});
+    const renderedHtml = vi.fn().mockResolvedValueOnce(served).mockResolvedValue(renderedFooter);
+    const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, renderedHtml, linksMayBeScripted: true });
+    expect(r.privacy.status).toBe("PASS");
+  });
+  it("a render that fails outright leaves a script-heavy page INCONCLUSIVE", async () => {
+    const { probe } = harness({});
+    const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, renderedHtml: async () => null, linksMayBeScripted: true });
+    expect(r.terms.status).toBe("INCONCLUSIVE");
+  });
+  it("rendered twice and still nothing: the FAIL stands, because the scripted links WERE seen", async () => {
     const { probe } = harness({});
     const r = await resolveLegalDocumentChecks({ html: served, ...base, probe, renderedHtml: async () => served, linksMayBeScripted: true });
     expect(r.terms.status).toBe("FAIL");
