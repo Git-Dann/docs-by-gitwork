@@ -107,6 +107,11 @@ export const UNOBSERVABLE_ON_WEBSITE: ReadonlySet<string> = new Set([
 const ON_WEBSITE_DETAIL =
   "Not established from the website. A public API's spec is usually served from the API or docs host, not the marketing site — scan the API's own URL to check it.";
 
+/** The mirror case: scanning an API host, its docs live on the product's own site. */
+export const UNOBSERVABLE_ON_API: ReadonlySet<string> = new Set(["documentation"]);
+const ON_API_DETAIL =
+  "Not established from the API host. Developer documentation is usually published on the product's own site (stripe.com/docs, not api.stripe.com) — scan that site to check it.";
+
 export function applyAbsencePolicy(
   check: PulseScanCheckInput,
   target?: ScanTarget["kind"],
@@ -114,6 +119,9 @@ export function applyAbsencePolicy(
   if (!isAdverse(check.status)) return check;
   if (target === "website" && UNOBSERVABLE_ON_WEBSITE.has(check.checkKey)) {
     return { ...check, status: "INCONCLUSIVE", detail: ON_WEBSITE_DETAIL, evidence: check.detail ? `Probe said: ${check.detail}` : check.evidence };
+  }
+  if (target === "api" && UNOBSERVABLE_ON_API.has(check.checkKey)) {
+    return { ...check, status: "INCONCLUSIVE", detail: ON_API_DETAIL, evidence: check.detail ? `Probe said: ${check.detail}` : check.evidence };
   }
   if (UNOBSERVABLE_ABSENCE.has(check.checkKey)) {
     return {

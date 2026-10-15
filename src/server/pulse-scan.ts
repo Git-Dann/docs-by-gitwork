@@ -3596,13 +3596,23 @@ export async function runUrlChecks(
 
     // Performance
     const encoding = pageResult.headers["content-encoding"];
+    // Servers do not compress small bodies (nginx's gzip_min_length, CDN thresholds around
+    // 1 KB), so an uncompressed 342-byte answer (api.stripe.com's 401) says nothing about
+    // whether compression is on.
+    const declaredLength = Number(pageResult.headers["content-length"] ?? NaN);
+    const bodyBytes = Number.isFinite(declaredLength) ? declaredLength : Buffer.byteLength(pageResult.html ?? "");
+    const tooSmallToTell = !encoding && bodyBytes < 1024;
     checks.push({
       category: CATEGORIES.PERFORMANCE,
       checkKey: "compression",
       label: "Gzip/Brotli compression",
-      status: encoding ? "PASS" : "WARN",
-      detail: encoding ? `Compression enabled (${encoding}).` : "No compression detected.",
-      evidence: encoding ?? undefined,
+      status: encoding ? "PASS" : tooSmallToTell ? "INCONCLUSIVE" : "WARN",
+      detail: encoding
+        ? `Compression enabled (${encoding}).`
+        : tooSmallToTell
+          ? `Not established — the response was only ${bodyBytes} bytes, and servers do not compress bodies that small, so its lack of compression says nothing about larger responses.`
+          : "No compression detected.",
+      evidence: encoding ?? (tooSmallToTell ? `${bodyBytes} bytes, uncompressed` : undefined),
     });
 
     const cacheControl = pageResult.headers["cache-control"];

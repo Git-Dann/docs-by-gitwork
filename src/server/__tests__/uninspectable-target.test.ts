@@ -135,6 +135,8 @@ describe("an API that answers with a JSON error is graded as an API", () => {
     expect(out.checks.length).toBeGreaterThan(5);
     // The API answering 401 is correct behaviour, not a failure to serve.
     expect(out.checks.find((c) => c.checkKey === "status_200")?.status).not.toBe("FAIL");
+    // A ~90-byte JSON answer is too small for any server to compress; that is not "no compression".
+    expect(out.checks.find((c) => c.checkKey === "compression")?.status).toBe("INCONCLUSIVE");
   });
   it("a 401 HTML login wall is still not inspectable", async () => {
     route = () => page(401, "<html><title>Sign in</title></html>");

@@ -34,6 +34,10 @@ describe("an API spec is looked for on the API, not the marketing site", () => {
   it("a website scan cannot establish a missing spec", () => {
     expect(applyAbsencePolicy(check("openapi_spec_served", "WARN"), "website").status).toBe("INCONCLUSIVE");
   });
+  it("an API host is not where its docs live", () => {
+    expect(applyAbsencePolicy(check("documentation", "WARN"), "api").status).toBe("INCONCLUSIVE");
+    expect(applyAbsencePolicy(check("documentation", "WARN"), "website").status).toBe("WARN");
+  });
   it("an API scan's missing spec stands", () => {
     expect(applyAbsencePolicy(check("openapi_spec_served", "WARN"), "api").status).toBe("WARN");
   });
