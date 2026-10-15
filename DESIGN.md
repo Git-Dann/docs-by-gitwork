@@ -1048,6 +1048,20 @@ field stays readable. `?brand=gitwork` still forces a brand at any width. Verifi
 · 1023 · 1024 · 1280 · 1440 · 1600 with `vendor/bento/scripts/verify-shell.mjs`, which is also the
 regression gate for everything above.
 
+## Canvas (the artwork tools at `/canvas`)
+
+**Canvas** is a standalone shell like Deck (`CLAUDE.md` §63): one static file, opened in its own
+window from Settings → Labs, with `← Foundry` as the way back. It keeps Foundry's instrument
+grammar — numbered `NN // SECTION` panel headers in mono caps, hairline borders, mono data labels.
+
+**It is the one sanctioned exception to "blue only".** At Dan's request its brand colour is
+**Emergency Orange `#FF4F00`**, on the Untitled UI v8 token set rather than Foundry's palette.
+The rule that keeps it accessible: text on an orange fill is near-black (6.0:1), never white
+(3.3:1, fails AA); orange text sits at `#C23A00` on light surfaces and `#FF7633` on dark.
+The exception covers Canvas's own shell only. Don't carry the orange back into Foundry's UI.
+
+The full token and component reference lives with its source, in `Git-Dann/canvas` `docs/BRAND.md`.
+
 ## Do's and Don'ts
 
 ### Do

@@ -184,6 +184,11 @@ function isDeckPath(pathname: string): boolean {
   return pathname === "/deck" || pathname.startsWith("/deck/");
 }
 
+/** The Canvas shell (public/canvas/index.html, reached at /canvas). Gated exactly like Deck. */
+function isCanvasPath(pathname: string): boolean {
+  return pathname === "/canvas" || pathname.startsWith("/canvas/");
+}
+
 export default auth(async (req) => {
   const { pathname } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
@@ -229,9 +234,10 @@ export default auth(async (req) => {
   // `/deck` rides along: it's the static Deck shell served from public/deck (see
   // next.config.ts rewrites), an internal tool, so it needs a session exactly
   // like an app page. It has no module gate — Deck holds no Foundry data, it's a
-  // local editor, so any signed-in member can open one.
+  // local editor, so any signed-in member can open one. `/canvas` is the same
+  // kind of shell (the artwork tools) and is gated the same way.
   const isAppPage = pathname === "/app" || pathname.startsWith("/app/");
-  if (isAppPage || isDeckPath(pathname)) {
+  if (isAppPage || isDeckPath(pathname) || isCanvasPath(pathname)) {
     const userAgent = req.headers.get("user-agent");
     // The unfurl/OG bypass exists so an /app entity page can render its card —
     // Deck has no metadata worth unfurling, so it never skips the session check.

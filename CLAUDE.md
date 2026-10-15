@@ -309,6 +309,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | `/demo/**` | 16 white-labelled sales demos. Public by design, noindex, **fully mock** — no demo page imports Prisma or any server module |
 | `/edge` | Corsair Xeneon kiosk board. Session-gated, chrome-free, dark-forced. Entry point now lives in **Settings → Labs** (§4a) rather than a top-level route, per the rule below |
 | `/deck` | Deck slide editor shell (static, `public/deck/index.html`, rewritten in `next.config.ts`). Session-gated. **Do not move it** — four vendored files test `location.pathname.startsWith('/deck')` and a Next rewrite does not change `location.pathname`; `foundry-doc.ts` uses that test to select DOCUMENT MODE, so `/app/deck?doc=` would boot an empty file-mode deck and stop saving |
+| `/canvas` | Canvas artwork tools shell (static, `public/canvas/index.html`, rewritten in `next.config.ts`). Session-gated like `/deck`. Built from `Git-Dann/canvas` — see §63. Reached from Settings → Labs |
 | `/app/pulse/[scanId]/report` | Printable Pulse report (in-app) |
 
 ### 4a. Where a surface belongs
@@ -1798,7 +1799,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -6653,3 +6654,29 @@ The chart draws an estimated bar **dashed**, marks its due date `~18 Dec`, says 
 due dates" in the tooltip, and adds a legend entry. A block with real dates looks exactly as before.
 ⚠️ This changes how already-estimated bars look on every client's timeline — that is the point:
 an estimate must not read as a commitment.
+
+## 63. Recent Changes (October 2026) — Canvas: artwork tools at `/canvas`, beside Deck
+
+**Canvas** is a suite of generative artwork tools (shape maker, infinite line, flow field,
+contours, ridge lines, tile patterns, halftone, ASCII, gradient aura) served at `/canvas` and
+opened from **Settings → Labs**. It is built the same way as Deck: one static HTML file that
+carries the app and, once saved, the artwork. Nothing in it talks to Foundry's API.
+
+- **The source is NOT in this repo.** It lives in **`Git-Dann/canvas`**, which reuses Deck's
+  kernel ideas (pristine capture, the data-block splice, IndexedDB recovery) rewritten for a
+  config-driven app id. Only the built shell is committed here, at `public/canvas/index.html`.
+  ⚠️ To update it: in the Canvas repo run `npm run verify`, then
+  `FOUNDRY_PUBLIC=<this repo>/public npm run build:foundry`, and commit the rebuilt shell here.
+  Same rule as Deck (§30): a change that isn't rebuilt and committed here never reaches prod.
+- **Wiring mirrors `/deck` exactly:** `next.config.ts` rewrite + 60s `Cache-Control`,
+  `isCanvasPath()` in `src/middleware.ts` (session-gated, no module gate — it holds no
+  workspace data), `robots.ts` disallow, a `/context` row, and the Labs entry.
+- **When hosted at `/canvas` it shows `← Foundry`** (to `/app`), and a saved file never does —
+  the same `servedByFoundry()` test Deck uses. It follows Foundry's light/dark setting
+  (`gitwork.theme.v1`) unless Canvas has its own choice.
+- ⚠️ **Brand exception, by Dan's request:** Canvas wears **Emergency Orange `#FF4F00`** on the
+  Untitled UI v8 tokens, not Gitwork Blue. DESIGN.md records it. Text on the orange fill is
+  near-black (6.0:1); white would be 3.3:1 and fail AA.
+- **Adding a tool is done in the Canvas repo** (`npm run new-tool`, skills in its
+  `.claude/skills/`), then rebuilt into this one.
+

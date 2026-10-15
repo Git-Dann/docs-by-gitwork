@@ -57,6 +57,7 @@ export default function ContextPage() {
               ["Pulse", "/app/pulse", `AI project validation — ${ADVERTISED_CHECK_COUNT_LABEL} checks, gap analysis, fix agent; includes an optional Study research tool (multi-agent interviews) at /app/study`, "Live"],
               ["Care", "/app/care", "Client support ops — one conversation queue per client, answered from the reply state the connectors report. The legacy /app/support dashboard still owns tickets, monthly reports and workflow rules", "Live"],
               ["Deck", "/deck", "Foundry's slide editor — a deck is one self-contained file: edit it, present it, send it. Served as a single static shell (vendor/bento) and opened in its own window from HQ + the Docs toolbar. Follows the platform's light/dark setting. Signed-in members only; holds no workspace data", "Beta"],
+              ["Canvas", "/canvas", "Generative artwork tools (shapes, line art, patterns, ASCII, halftone, gradients). A single static shell built in Git-Dann/canvas on Deck's kernel; Save writes the app and the artwork into one file. Reached from Settings → Labs. Signed-in members only; holds no workspace data", "Beta"],
               ["Pulse Overview", "/pulse-overview", "Public-facing standalone Pulse product page (not in app nav)", "Live"],
               ["Rate Card", "(settings)", "People rates used in proposal costing", "Live"],
               ["API Docs", "/api-docs", "REST API reference page", "Live"],

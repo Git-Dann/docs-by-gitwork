@@ -88,6 +88,9 @@ const nextConfig: NextConfig = {
       // is a single static shell, not a Next route, so /deck alone would 404.
       // Auth is middleware's job (it gates /deck** like an /app page).
       { source: "/deck", destination: "/deck/index.html" },
+      // Canvas (the artwork tools — built in Git-Dann/canvas to
+      // public/canvas/index.html) is the same kind of static shell.
+      { source: "/canvas", destination: "/canvas/index.html" },
     ];
   },
   async redirects() {
@@ -165,6 +168,11 @@ const nextConfig: NextConfig = {
         // beyond that. Cache-Control ONLY — /deck already matches the catch-all
         // above, so re-listing the security headers here would send each twice.
         source: "/deck/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=60, must-revalidate" }],
+      },
+      {
+        // Canvas: same reasoning as Deck — one static shell that only changes on deploy.
+        source: "/canvas/:path*",
         headers: [{ key: "Cache-Control", value: "public, max-age=60, must-revalidate" }],
       },
       {
