@@ -129,7 +129,10 @@ function SortableCard({
     <div
       ref={setNodeRef}
       data-card={id}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      // ⚠️ Translate, never Transform: `CSS.Transform` also applies the scaleX/scaleY the
+      // sorting strategy computes so cards of different widths can swap — which squashes
+      // and stretches every card the drag passes over. Cards only ever MOVE here.
+      style={{ transform: CSS.Translate.toString(transform), transition }}
       className={`${span} flex min-w-0 flex-col ${isDragging ? "relative z-10 opacity-80" : ""}`}
     >
       {editing ? (

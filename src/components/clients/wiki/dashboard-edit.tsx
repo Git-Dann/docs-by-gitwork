@@ -45,25 +45,34 @@ export function useDashboardEdit(): EditState {
   return useSyncExternalStore(subscribe, () => state, () => SERVER_STATE);
 }
 
-/** Sits beside the theme switcher. Same height and border as that control. */
+/**
+ * Sits beside the theme switcher and is built from the SAME parts — the bordered well with
+ * 2px padding, a 6px inner button, 14px icon, text-xs — so the two read as one row of
+ * controls rather than two different components side by side.
+ */
 export function DashboardEditButton() {
   const { editing, dashboardMounted } = useDashboardEdit();
   if (!dashboardMounted) return null;
   return (
-    <button
-      type="button"
-      onClick={() => dashboardEdit.setEditing(!editing)}
-      aria-pressed={editing}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] uppercase tracking-[0.08em] transition-colors ${
-        editing
-          ? "border-[var(--brand-600)] bg-[var(--brand-600)] text-white"
-          : "border-[var(--border-1)] bg-[var(--surface-0)] text-[var(--text-2)] hover:bg-[var(--surface-1)]"
-      }`}
-      style={{ fontFamily: "var(--font-mono), 'JetBrains Mono', monospace" }}
-      title={editing ? "Finish arranging the dashboard" : "Arrange your dashboard"}
-    >
-      {editing ? <CheckIcon className="h-4 w-4" /> : <PencilSquareIcon className="h-4 w-4" />}
-      {editing ? "Done" : "Edit"}
-    </button>
+    <div className="inline-flex items-center rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
+      <button
+        type="button"
+        onClick={() => dashboardEdit.setEditing(!editing)}
+        aria-pressed={editing}
+        className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-xs leading-[14px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-focus-ring)] ${
+          editing
+            ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-xs)]"
+            : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+        }`}
+        title={editing ? "Finish arranging the dashboard" : "Arrange your dashboard"}
+      >
+        {editing ? (
+          <CheckIcon className="h-3.5 w-3.5" aria-hidden="true" />
+        ) : (
+          <PencilSquareIcon className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        {editing ? "Done" : "Edit"}
+      </button>
+    </div>
   );
 }

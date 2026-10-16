@@ -127,3 +127,18 @@ describe("no gaps — a short row's last card closes it", () => {
     expect(spanClasses([1, 2])).toEqual(["md:col-span-2 lg:col-span-1", "md:col-span-2 lg:col-span-2"]);
   });
 });
+
+describe("dragging never changes a card's shape", () => {
+  it("moves cards with a translate only — no scaleX/scaleY", async () => {
+    // `CSS.Transform` carries the scale the sorting strategy computes so cards of different
+    // widths can swap, which squashed and stretched every card a drag passed over.
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(
+      join(process.cwd(), "src/components/clients/wiki/wiki-dashboard-grid.tsx"),
+      "utf8",
+    ).replace(/\/\/.*$/gm, "");
+    expect(src).toContain("CSS.Translate.toString(transform)");
+    expect(src).not.toContain("CSS.Transform.toString");
+  });
+});
