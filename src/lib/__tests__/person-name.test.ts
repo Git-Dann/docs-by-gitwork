@@ -21,4 +21,11 @@ describe("tidying a name from Google at first sign-in", () => {
       expect(readFileSync(f, "utf8"), f).toMatch(/name: tidyPersonName\(/);
     }
   });
+
+  it("⚠️ the per-visit Google-name sync uses it too, or it undoes the tidy-up", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/app/api/account/route.ts", "utf8")).toMatch(
+      /const sessionName = tidyPersonName\(session\.user\.name\)/,
+    );
+  });
 });
