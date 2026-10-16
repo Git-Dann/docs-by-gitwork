@@ -321,6 +321,11 @@ describe("detectFindings — plan drift (work happening outside the plan)", () =
     expect(kinds).not.toContain("PLAN_DRIFT");
   });
 
+  it("⚠️ a little off-plan work on a board that's mostly on its plan is not drift (PollenIQ: 6 of 71)", () => {
+    const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(4), recentDone: done(65, 6) }), CONFIG, NOW).map((x) => x.kind);
+    expect(kinds).not.toContain("PLAN_DRIFT");
+  });
+
   it("stays quiet when the planned tasks are moving", () => {
     const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(5, 2), recentDone: done(0, 30) }), CONFIG, NOW).map((x) => x.kind);
     expect(kinds).not.toContain("PLAN_DRIFT");
