@@ -23,6 +23,8 @@ const eslintConfig = [
       ".claude/**",
       // Vendored upstream app — built by its own toolchain (vendor/bento/README.md).
       "vendor/**",
+      // Third-party agent skills installed by `npx skills add` (skills-lock.json).
+      ".agents/**",
       ".next/**",
       ".next*/**",
       "out/**",
