@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { MarkdownField } from "@/components/proposals/markdown-field";
 import { useBackstageTeam } from "@/hooks/use-backstage";
 import { useClientList } from "@/hooks/use-proposals";
-import { useCreateTask, useUpdateTask, useFeatureBlocks } from "@/hooks/use-tasks";
+import { useCreateTask, useUpdateTask, useFeatureBlocks, useTasks } from "@/hooks/use-tasks";
+import { matchPlannedTasks, suggestCategory } from "@/lib/tasks/plan-match";
+import { PlanMatchList } from "@/components/tasks/plan-matches";
 import type { BackstageMember } from "@/types/backstage";
 import {
   TASK_STATUSES,
@@ -24,6 +26,12 @@ import {
 } from "@/types/tasks";
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
+/**
+ * The category select's "deliberately not on the plan" value. Distinct from "" (not chosen
+ * yet), because a new task must say where it belongs: "No category" used to be the silent
+ * default, which is how a month's work ended up outside every project's plan.
+ */
+const NOT_PLANNED = "__not_planned__";
 const EMPTY_MEMBERS: BackstageMember[] = [];
 
 /** Local (not UTC) YYYY-MM-DD for today — the default date on a new task, so
@@ -50,6 +58,9 @@ export function TaskFormModal({
   task,
   defaultClientId,
   defaultStatus,
+  defaultTitle,
+  defaultAssigneeIds,
+  skipPlanMatches = false,
   lockClient = false,
   onClose,
   onSaved,
@@ -58,6 +69,11 @@ export function TaskFormModal({
   task?: TaskDTO | null;
   defaultClientId?: string;
   defaultStatus?: TaskStatus;
+  /** Prefill (My Day's quick add hands over what was typed). */
+  defaultTitle?: string;
+  defaultAssigneeIds?: string[];
+  /** The caller already showed "Already on the board?" for this title and the user chose new. */
+  skipPlanMatches?: boolean;
   /** Hide/disable the client picker (creating from a client-scoped view). */
   lockClient?: boolean;
   onClose: () => void;
@@ -69,12 +85,12 @@ export function TaskFormModal({
   const create = useCreateTask();
   const update = useUpdateTask();
 
-  const [title, setTitle] = useState(task?.title ?? "");
+  const [title, setTitle] = useState(task?.title ?? defaultTitle ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState(task?.acceptanceCriteria ?? "");
   const [clientId, setClientId] = useState(task?.client.id ?? defaultClientId ?? "");
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
-    task?.assignees.map((a) => a.id) ?? [],
+    task?.assignees.map((a) => a.id) ?? defaultAssigneeIds ?? [],
   );
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? defaultStatus ?? "BACKLOG");
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "MEDIUM");
@@ -84,7 +100,14 @@ export function TaskFormModal({
   const [dueDate, setDueDate] = useState(
     task?.dueDate ? task.dueDate.slice(0, 10) : task ? "" : todayIso(),
   );
-  const [featureBlockId, setFeatureBlockId] = useState(task?.featureBlock?.id ?? "");
+  // Edit: the task's category, or "not on the plan". Create: nothing chosen yet.
+  const [featureBlockId, setFeatureBlockId] = useState(
+    task ? (task.featureBlock?.id ?? NOT_PLANNED) : "",
+  );
+  // Once the user picks a category themselves, suggestions stop overwriting it.
+  const [categoryTouched, setCategoryTouched] = useState(isEdit);
+  // "It's new" on the suggestion list hides it until the title changes.
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -93,10 +116,46 @@ export function TaskFormModal({
     setAssigneeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  const blocksQuery = useFeatureBlocks(clientId || null);
-  const blocks = blocksQuery.data ?? [];
-  const members = teamQuery.data ?? EMPTY_MEMBERS;
   const clients = clientsQuery.data?.clients ?? [];
+  const blocksQuery = useFeatureBlocks(clientId || null);
+  const blocks = useMemo(() => blocksQuery.data ?? [], [blocksQuery.data]);
+
+  // ── Plan-first: is this already a task? Which category does it belong in? ──────────
+  // The client's board (the same cached query the board uses). Only fetched on create.
+  const boardQuery = useTasks(
+    { clientId: clientId || undefined },
+    { enabled: !isEdit && Boolean(clientId) },
+  );
+  const deferredTitle = useDeferredValue(title);
+  const clientName = clients.find((c) => c.id === clientId)?.name;
+  const matches = useMemo(() => {
+    if (isEdit || skipPlanMatches || deferredTitle.trim() === dismissedFor) return [];
+    const open = (boardQuery.data ?? []).filter(
+      (t) => t.status !== "DONE" && !t.archivedAt && !t.parentId,
+    );
+    return matchPlannedTasks(
+      deferredTitle,
+      // A copy: these rows are the board's cached query data and must not be written to.
+      open.map((t) => ({ ...t, categoryName: t.featureBlock?.name ?? null })),
+      { ignoreWords: clientName },
+    );
+  }, [boardQuery.data, deferredTitle, dismissedFor, isEdit, skipPlanMatches, clientName]);
+  const categorySuggestion = useMemo(() => {
+    if (isEdit || blocks.length === 0) return null;
+    return suggestCategory(
+      deferredTitle,
+      blocks.map((b) => ({ id: b.id, name: b.name })),
+      (boardQuery.data ?? []).map((t) => ({ title: t.title, categoryId: t.featureBlock?.id ?? null })),
+      { ignoreWords: clientName },
+    );
+  }, [blocks, boardQuery.data, deferredTitle, isEdit, clientName]);
+  // Apply the suggestion until the user chooses for themselves. A suggestion that goes
+  // away (the title changed) clears it again, so a stale guess is never left selected.
+  useEffect(() => {
+    if (categoryTouched) return;
+    setFeatureBlockId(categorySuggestion?.categoryId ?? "");
+  }, [categorySuggestion, categoryTouched]);
+  const members = teamQuery.data ?? EMPTY_MEMBERS;
   const saving = create.isPending || update.isPending;
   const projectAssignees = useMemo(
     () =>
@@ -139,6 +198,11 @@ export function TaskFormModal({
       setError("Pick a client.");
       return;
     }
+    if (!isEdit && blocks.length > 0 && featureBlockId === "") {
+      setError("Choose the category this belongs to — or mark it as not part of the plan.");
+      return;
+    }
+    const blockId = featureBlockId && featureBlockId !== NOT_PLANNED ? featureBlockId : null;
     try {
       if (isEdit && task) {
         const saved = await update.mutateAsync({
@@ -151,7 +215,7 @@ export function TaskFormModal({
             priority,
             label: label || null,
             assigneeIds,
-            featureBlockId: featureBlockId || null,
+            featureBlockId: blockId,
             dueDate: dueDate || null,
           },
         });
@@ -166,7 +230,7 @@ export function TaskFormModal({
           priority,
           label: label || null,
           assigneeIds,
-          featureBlockId: featureBlockId || null,
+          featureBlockId: blockId,
           dueDate: dueDate || null,
         });
         onSaved?.(saved);
@@ -225,6 +289,15 @@ export function TaskFormModal({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="What needs doing?"
+              />
+              <PlanMatchList
+                className="mt-2"
+                matches={matches}
+                onDismiss={() => setDismissedFor(deferredTitle.trim())}
+                onPickedUp={(picked) => {
+                  onSaved?.(picked);
+                  onClose();
+                }}
               />
             </div>
 
@@ -289,15 +362,32 @@ export function TaskFormModal({
                   <select
                     className="app-select w-full"
                     value={featureBlockId}
-                    onChange={(e) => setFeatureBlockId(e.target.value)}
+                    onChange={(e) => {
+                      setCategoryTouched(true);
+                      setFeatureBlockId(e.target.value);
+                    }}
                   >
-                    <option value="">No category</option>
+                    {!isEdit ? (
+                      <option value="" disabled>
+                        Choose a category…
+                      </option>
+                    ) : null}
                     {blocks.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name}
                       </option>
                     ))}
+                    <option value={NOT_PLANNED}>Not part of the plan</option>
                   </select>
+                  {!categoryTouched && categorySuggestion && featureBlockId === categorySuggestion.categoryId ? (
+                    <p className="mt-1 truncate text-[11px] text-[var(--text-4)]" title={categorySuggestion.reason}>
+                      Suggested · {categorySuggestion.reason}
+                    </p>
+                  ) : featureBlockId === NOT_PLANNED && !isEdit ? (
+                    <p className="mt-1 text-[11px] text-[var(--text-4)]">
+                      Counts as unplanned work on the board.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 

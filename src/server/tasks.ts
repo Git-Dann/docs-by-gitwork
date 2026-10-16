@@ -361,7 +361,25 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number; doneWithinDays?: number; blocked?: boolean } = {},
+  opts: {
+    clientId?: string;
+    /** Several clients at once; each must still be in the caller's scope. */
+    clientIds?: string[];
+    status?: TaskStatus;
+    assigneeId?: string;
+    sourceMeetingId?: string;
+    archived?: boolean;
+    includeSubtasks?: boolean;
+    limit?: number;
+    doneWithinDays?: number;
+    blocked?: boolean;
+    /** Only tasks nobody is assigned to (neither the m-n join nor the legacy column). */
+    unassignedOnly?: boolean;
+    /** Only tasks in a category (feature block) — "on the plan". */
+    plannedOnly?: boolean;
+    /** Exclude DONE. */
+    openOnly?: boolean;
+  } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
@@ -375,7 +393,20 @@ export async function listTasks(
     await assertClientInScope(user, opts.clientId);
     where.clientId = opts.clientId;
   }
+  if (opts.clientIds) {
+    // Intersect with the caller's scope, exactly as `clientId` does — a restricted user
+    // naming a client they aren't assigned to gets nothing for it, not an error.
+    const scoped = where.clientId as { in?: string[] } | undefined;
+    const allowed = scoped?.in ? opts.clientIds.filter((id) => scoped.in!.includes(id)) : opts.clientIds;
+    where.clientId = { in: allowed.length ? allowed : ["__none__"] };
+  }
   if (opts.status) where.status = opts.status;
+  else if (opts.openOnly) where.status = { not: "DONE" };
+  if (opts.plannedOnly) where.featureBlockId = { not: null };
+  if (opts.unassignedOnly) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    where.AND = [...existingAnd, { assigneeId: null, assignees: { none: {} } }];
+  }
   // Board / list show top-level tasks only; subtasks live in the detail drawer. The standup
   // opts into subtasks so a parent's updated subtasks each appear in the Slack update.
   if (!opts.includeSubtasks) where.parentId = null;

@@ -6753,3 +6753,37 @@ ordinary card in the grid now.
   The old `gridAutoRows: 1fr` would have made every row as tall as Daily updates once it joined the
   grid. Widgets carry a `min-h-[220px]` floor instead.
 - While editing, card bodies are `pointer-events-none`, so dragging a card can't also open its section.
+
+## 67. Recent Changes (October 2026) — Plan-first tasks: pick up the plan before adding to it
+
+Dan asked why boards and projects looked empty when developers post updates every day. Measured on
+production (last 30 days): **~720 tasks completed, and 583 of them were created and closed the
+same day** — the task was the timesheet. Almost none sat in a category (Fellas 150/150 outside,
+After Desk 106/106, Wedge 203/205), while the planned tasks sat **unassigned** (Fellas 55/55,
+Wedge 48/49) so they were on nobody's "Up next". Phase progress, the Gantt and Foreman all read
+the plan, so the projects looked stalled while the work was really happening. Not a bug — the
+product made logging a fresh task the quickest answer to "what are you working on today?".
+
+- **`src/lib/tasks/plan-match.ts`** (pure) — `matchPlannedTasks` (is this already a task?),
+  `suggestCategory` (which category does a new one belong in?), `rankPlanQueue`. IDF-weighted
+  word overlap, light stemming, one-edit typo allowance; deterministic, no AI (it runs on every
+  keystroke). **Calibrated on the live boards**, and the tests are verbatim live titles. Rules
+  that each fixed a false suggestion seen on real data: generic task verbs are stopwords; a match
+  needs an EXACT shared topical word; three-plus-word drafts must share two; a one-word match
+  needs ≥0.55; platform tags (`- IOS`, `web`, `admin`…) can't carry a match; the client's own name
+  is ignored (`ignoreWords`); category suggestions use exact words only ("Back button" ≠
+  "Backlog") and a category with a topic must match on the topic.
+- **Task form** — "Already on the board?" under the title, with **Pick up** (assigns you + Doing).
+  A new task **must choose a category or "Not part of the plan"** (no more silent "No category");
+  the category is pre-selected from the title and says why. Edit mode is unchanged.
+- **My Day** — "What are you working on?" at the top checks the board as you type before opening
+  the form (`plan-quick-add.tsx`), and **From the plan** lists planned work nobody owns on your
+  clients (`MyDayDTO.fromPlan`, via `listTasks({ clientIds, plannedOnly, unassignedOnly,
+  openOnly })` — `clientIds` is intersected with the caller's scope, tested).
+- **Board strip** (`plan-health-strip.tsx`, `src/lib/tasks/plan-health.ts`) — last 30 days: done
+  work on vs. off the plan, and planned tasks untouched 21+ days. Silent on a healthy board.
+  **Sort into categories** suggests a category per unplanned task; nothing moves until applied.
+- **Foreman `PLAN_DRIFT`** — fires only when BOTH ≥5 tasks were done outside the plan in 30 days
+  AND ≥3 planned tasks are untouched 21+ days (either alone is normal).
+- ⚠️ The task form's due date still defaults to **today** (a team request for logging same-day
+  work), so a logged task can never read as late. Left as-is; worth revisiting.

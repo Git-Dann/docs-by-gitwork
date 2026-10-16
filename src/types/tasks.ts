@@ -172,6 +172,13 @@ export type MyDayDTO = {
   done: TaskDTO[];
   /** Assignee's not-yet-started work (TODO + BACKLOG) — for picking today's focus. */
   upcoming: TaskDTO[];
+  /**
+   * Planned (in a category), open tasks NOBODY is assigned to, on this developer's
+   * clients — ranked, capped at 30. What they should pick up before creating new work.
+   */
+  fromPlan: TaskDTO[];
+  /** How many such tasks exist in total (the list is capped). */
+  fromPlanTotal: number;
 };
 
 /** One dev's row in the DevOps roll-up roster. */

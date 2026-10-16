@@ -113,6 +113,12 @@ function mkTask(
     subtaskCount?: number;
     subtaskDoneCount?: number;
     commentCount?: number;
+    /** The category (feature block) it is planned in — Northwind's Gantt blocks. */
+    block?: { id: string; name: string } | null;
+    /** Planned work nobody has picked up yet. */
+    unassigned?: boolean;
+    /** Days ago it was last touched (default yesterday). */
+    touchedDaysAgo?: number;
   },
 ): TaskDTO {
   const client = byClient[partial.clientSlug];
@@ -120,9 +126,9 @@ function mkTask(
     id: partial.id,
     workspaceId: "demo-ws",
     client: { id: client.id, name: client.name, slug: client.slug },
-    assignees: [{ id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl }],
+    assignees: partial.unassigned ? [] : [{ id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl }],
     createdBy: { id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl },
-    featureBlock: null,
+    featureBlock: partial.block ?? null,
     parentId: null,
     title: partial.title,
     description: partial.description ?? null,
@@ -146,7 +152,7 @@ function mkTask(
     metadata: null,
     scribeSource: null,
     createdAt: atDays(-14),
-    updatedAt: atDays(-1),
+    updatedAt: atDays(-(partial.touchedDaysAgo ?? 1)),
   };
 }
 
@@ -164,11 +170,26 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "t10", title: "Refactor auth middleware", clientSlug: "fairway-nine", status: "BACKLOG", priority: "MEDIUM" }),
   mkTask({ id: "t11", title: "Ship v2 pricing page", clientSlug: "cadenza", status: "DONE", priority: "HIGH", completedAt: todayAt(9, 40) }),
   mkTask({ id: "t12", title: "Add e2e tests for onboarding", clientSlug: "northwind", status: "DONE", priority: "MEDIUM", completedAt: todayAt(11, 15) }),
+  // Planned work nobody has picked up — what My Day's "From the plan" offers before a dev
+  // creates something new (the October 2026 audit: planned tasks sat unassigned while the
+  // same work was logged as fresh tasks outside the plan).
+  mkTask({ id: "t13", title: "Saved searches with email alerts", clientSlug: "northwind", status: "TODO", priority: "HIGH", dueDate: atDays(4), block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
+  mkTask({ id: "t14", title: "Search results relevance tuning", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
+  mkTask({ id: "t15", title: "Weekly usage chart on the analytics dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "MEDIUM", dueDate: atDays(9), block: { id: "b3", name: "Analytics dashboard" }, unassigned: true }),
+  mkTask({ id: "t16", title: "CSV export for analytics reports", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b3", name: "Analytics dashboard" }, unassigned: true, touchedDaysAgo: 34 }),
+  mkTask({ id: "t17", title: "Haptics on primary mobile actions", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 41 }),
+  mkTask({ id: "t18", title: "Offline mode for saved lists", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 28 }),
+  // …and the same-day log that grew beside it: real work, filed in no category.
+  mkTask({ id: "t19", title: "Search filters: date range picker", clientSlug: "northwind", status: "DONE", completedAt: atDays(-3) }),
+  mkTask({ id: "t20", title: "Fix search result paging on mobile", clientSlug: "northwind", status: "DONE", completedAt: atDays(-5) }),
+  mkTask({ id: "t21", title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
 ];
 
-const doing = demoBoardTasks.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW");
-const doneToday = demoBoardTasks.filter((t) => t.status === "DONE");
-const upcoming = demoBoardTasks.filter((t) => t.status === "TODO" || t.status === "BACKLOG");
+const mine = demoBoardTasks.filter((t) => t.assignees.some((a) => a.id === DEV.id));
+const doing = mine.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW");
+const doneToday = mine.filter((t) => t.status === "DONE");
+const upcoming = mine.filter((t) => t.status === "TODO" || t.status === "BACKLOG");
+const fromPlan = demoBoardTasks.filter((t) => t.assignees.length === 0 && t.featureBlock && t.status !== "DONE");
 const overdue = demoBoardTasks.filter(
   (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "DONE",
 );
@@ -196,6 +217,8 @@ const demoMyDay: MyDayDTO = {
   doing: doing.slice(0, 2),
   done: doneToday.slice(0, 1),
   upcoming: upcoming.slice(0, 3),
+  fromPlan,
+  fromPlanTotal: fromPlan.length,
 };
 
 // ─── Attention aggregate ─────────────────────────────────────────────────────────
@@ -3470,6 +3493,20 @@ export function resolveDemoApi(
   if (pathname === "/api/backstage/absences/covers") return []; // CoverAssignmentDTO[] — ClientDevelopersSection
   if (pathname === "/api/backstage/leave") return [];
   if (pathname === "/api/backstage/alerts") return demoStaffingAlerts;
+  // BackstageMember[] — the task form's assignee picker reads it with `.filter`, so an
+  // unmapped `{}` crashed every "New task" in the demo.
+  if (pathname === "/api/backstage/team")
+    return [
+      {
+        id: DEV.id,
+        name: DEV.name,
+        email: DEV_EMAIL,
+        avatarUrl: DEV.avatarUrl,
+        role: "DEVELOPER",
+        countryCode: "GB",
+        assignedClientIds: CLIENTS.map((c) => c.id),
+      },
+    ];
 
   // Pulse (AI project validation) — 3 seeded reports.
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };

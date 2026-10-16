@@ -52,6 +52,7 @@ import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 import { TaskImportModal } from "@/components/tasks/task-import-modal";
 import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
+import { PlanHealthStrip, type PlanFilter } from "@/components/tasks/plan-health-strip";
 
 // The Gantt (day-scale axis, zoom, dependency rendering) is the heaviest of the
 // three views and only shown behind the "gantt" tab — load it on demand so the
@@ -78,6 +79,11 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
   const [view, setView] = useState<View>("board");
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  // The plan strip's "Show them": a fixed set of task ids (stale planned / unplanned).
+  const [planFilter, setPlanFilter] = useState<{ kind: PlanFilter; ids: Set<string> }>({
+    kind: null,
+    ids: new Set(),
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -155,6 +161,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     const lbl = new Set(filters.labels);
     const src = new Set(filters.sourceMeetingIds);
     return tasks.filter((t) => {
+      if (planFilter.kind && !planFilter.ids.has(t.id)) return false;
       if (q && !(t.title.toLowerCase().includes(q) || taskRef(t.id).toLowerCase().includes(q))) return false;
       if (cat.size && !cat.has(t.featureBlock?.id ?? "none")) return false;
       if (asg.size && !t.assignees.some((a) => asg.has(a.id))) return false;
@@ -163,7 +170,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       if (src.size && (!t.scribeSource || !src.has(t.scribeSource.meetingId))) return false;
       return true;
     });
-  }, [tasks, filters]);
+  }, [tasks, filters, planFilter]);
 
   // Only dated blocks become Gantt bars; undated ones are board-only groupings.
   // A section shows on the Gantt once it has a span: explicit start/end, or — when
@@ -298,6 +305,21 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           </Button>
         </div>
       </div>
+
+      {/* How much recent work landed on the plan — silent when the board is healthy. */}
+      {view !== "archived" ? (
+        <PlanHealthStrip
+          tasks={tasks}
+          blocks={blocks}
+          clientName={client.name}
+          filter={planFilter.kind}
+          onFilter={(kind, ids) => {
+            setPlanFilter({ kind, ids: new Set(ids) });
+            // The list is where these get dealt with: select, then move or close in bulk.
+            if (kind) switchView("list");
+          }}
+        />
+      ) : null}
 
       {/* Search + filters (board + list only) */}
       {view !== "gantt" && view !== "archived" ? (

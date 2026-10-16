@@ -47,6 +47,14 @@ export interface RawTask {
   dueDate: Date | null;
   startedAt: Date | null;
   assignees: RawAssignee[];
+  /** The category (feature block) it's planned in, or null for work outside the plan. */
+  featureBlockId: string | null;
+  updatedAt: Date;
+}
+/** A top-level task completed in the plan-drift window. */
+export interface RawRecentDone {
+  clientId: string;
+  planned: boolean;
 }
 export interface RawBlock {
   id: string;
@@ -68,7 +76,16 @@ export interface WorkspaceScanData {
   tasks: RawTask[]; // open (non-DONE), top-level, non-archived
   blocks: RawBlock[];
   milestones: RawMilestone[];
+  /** Top-level tasks completed in the last PLAN_DRIFT_WINDOW_DAYS days. */
+  recentDone: RawRecentDone[];
 }
+
+/** Plan drift: how far back "recent work" looks, and when a planned task counts as left alone. */
+export const PLAN_DRIFT_WINDOW_DAYS = 30;
+export const PLAN_DRIFT_STALE_DAYS = 21;
+/** Below these, drift is noise — one stray task, or two planned items parked on purpose. */
+const PLAN_DRIFT_MIN_UNPLANNED = 5;
+const PLAN_DRIFT_MIN_STALE = 3;
 
 /** Pull the minimal delivery data set for every active client in one batched pass. */
 export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceScanData> {
@@ -77,9 +94,9 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
     select: { id: true, name: true, slug: true },
   });
   const clientIds = clientRows.map((c) => c.id);
-  if (clientIds.length === 0) return { clients: [], tasks: [], blocks: [], milestones: [] };
+  if (clientIds.length === 0) return { clients: [], tasks: [], blocks: [], milestones: [], recentDone: [] };
 
-  const [taskRows, blockRows, milestoneRows] = await Promise.all([
+  const [taskRows, blockRows, milestoneRows, recentDoneRows] = await Promise.all([
     prisma.task.findMany({
       where: {
         workspaceId,
@@ -95,6 +112,8 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
         status: true,
         dueDate: true,
         startedAt: true,
+        featureBlockId: true,
+        updatedAt: true,
         assigneeId: true,
         assignee: { select: { id: true, name: true } },
         assignees: { select: { id: true, name: true } },
@@ -115,6 +134,17 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
       where: { workspaceId, clientId: { in: clientIds } },
       select: { id: true, clientId: true, name: true, date: true },
     }),
+    // Archived rows included on purpose: done work auto-archives, and it was still done.
+    prisma.task.findMany({
+      where: {
+        workspaceId,
+        clientId: { in: clientIds },
+        parentId: null,
+        status: "DONE",
+        completedAt: { gte: new Date(Date.now() - PLAN_DRIFT_WINDOW_DAYS * DAY_MS) },
+      },
+      select: { clientId: true, featureBlockId: true },
+    }),
   ]);
 
   const tasks: RawTask[] = taskRows.map((t) => {
@@ -129,6 +159,8 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
       dueDate: t.dueDate,
       startedAt: t.startedAt,
       assignees: assignees.map((a) => ({ id: a.id, name: a.name })),
+      featureBlockId: t.featureBlockId,
+      updatedAt: t.updatedAt,
     };
   });
 
@@ -149,7 +181,12 @@ export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceSca
     date: m.date,
   }));
 
-  return { clients: clientRows, tasks, blocks, milestones };
+  const recentDone: RawRecentDone[] = recentDoneRows.map((r) => ({
+    clientId: r.clientId,
+    planned: r.featureBlockId !== null,
+  }));
+
+  return { clients: clientRows, tasks, blocks, milestones, recentDone };
 }
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
@@ -210,6 +247,12 @@ export function detectFindings(
     const list = blocksByClient.get(b.clientId) ?? [];
     list.push(b);
     blocksByClient.set(b.clientId, list);
+  }
+  const recentDoneByClient = new Map<string, RawRecentDone[]>();
+  for (const d of data.recentDone) {
+    const list = recentDoneByClient.get(d.clientId) ?? [];
+    list.push(d);
+    recentDoneByClient.set(d.clientId, list);
   }
   const milestonesByClient = new Map<string, RawMilestone[]>();
   for (const m of data.milestones) {
@@ -374,6 +417,51 @@ export function detectFindings(
           href,
         ),
       );
+    }
+
+    // 5b) Plan drift ---------------------------------------------------------
+    // ⚠️ The October 2026 audit: Fellas completed 150 tasks in 30 days, none in a
+    // category, while 78 planned tasks sat untouched. Every other check here reads the
+    // PLAN, so they all said the project was quiet. Only fires when BOTH halves hold —
+    // work is happening, and it is happening outside a plan that is being left alone —
+    // because either alone is normal (a quiet week; a parked backlog).
+    {
+      const done = recentDoneByClient.get(client.id) ?? [];
+      const unplannedDone = done.filter((d) => !d.planned).length;
+      const plannedOpen = openTasks.filter((t) => t.featureBlockId);
+      const staleCutoff = startToday - PLAN_DRIFT_STALE_DAYS * DAY_MS;
+      const stale = plannedOpen.filter((t) => t.updatedAt.getTime() < staleCutoff);
+      if (unplannedDone >= PLAN_DRIFT_MIN_UNPLANNED && stale.length >= PLAN_DRIFT_MIN_STALE) {
+        const perBlock = new Map<string, number>();
+        for (const t of stale) perBlock.set(t.featureBlockId!, (perBlock.get(t.featureBlockId!) ?? 0) + 1);
+        const [topBlockId, topCount] = [...perBlock.entries()].sort((a, b) => b[1] - a[1])[0];
+        const topBlock = clientBlocks.find((b) => b.id === topBlockId);
+        const oldest = [...stale].sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())[0];
+        const evidence = [
+          `${unplannedDone} of ${done.length} tasks completed in the last ${PLAN_DRIFT_WINDOW_DAYS} days were outside the plan`,
+          `${stale.length} of ${plannedOpen.length} planned tasks untouched for ${PLAN_DRIFT_STALE_DAYS}+ days`,
+        ];
+        if (topBlock) evidence.push(`Most left alone: "${topBlock.name}" (${topCount})`);
+        evidence.push(`e.g. "${oldest.title}" — last touched ${dayspan(oldest.updatedAt, startToday)} days ago`);
+        findings.push(
+          mk(
+            "project",
+            "PLAN_DRIFT",
+            "warn",
+            client.id,
+            client.name,
+            `${client.name}'s work is happening outside its plan`,
+            evidence,
+            stale.length,
+            recommendationFor("PLAN_DRIFT", {
+              clientLabel: client.name,
+              count: stale.length,
+              blockName: topBlock?.name,
+            }),
+            href,
+          ),
+        );
+      }
     }
 
     // 6) Blind spots (info) — what Foreman can't see, called out plainly -----

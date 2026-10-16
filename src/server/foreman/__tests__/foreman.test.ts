@@ -26,7 +26,7 @@ function client(id: string, name = id): RawClient {
   return { id, name, slug: name.toLowerCase() };
 }
 function task(o: Partial<RawTask> & { clientId: string }): RawTask {
-  return { id: `t-${Math.random()}`, title: "Task", status: "TODO", dueDate: null, startedAt: null, assignees: [], ...o };
+  return { id: `t-${Math.random()}`, title: "Task", status: "TODO", dueDate: null, startedAt: null, assignees: [], featureBlockId: null, updatedAt: NOW, ...o };
 }
 function block(o: Partial<RawBlock> & { clientId: string }): RawBlock {
   return { id: `b-${Math.random()}`, name: "Block", startDate: null, endDate: null, taskTotal: 0, taskDone: 0, ...o };
@@ -35,7 +35,7 @@ function milestone(o: Partial<RawMilestone> & { clientId: string }): RawMileston
   return { id: `m-${Math.random()}`, name: "Milestone", date: NOW, ...o };
 }
 function data(p: Partial<WorkspaceScanData>): WorkspaceScanData {
-  return { clients: [], tasks: [], blocks: [], milestones: [], ...p };
+  return { clients: [], tasks: [], blocks: [], milestones: [], recentDone: [], ...p };
 }
 function byKind(findings: ReturnType<typeof detectFindings>): Map<FindingKind, (typeof findings)[number]> {
   const m = new Map<FindingKind, (typeof findings)[number]>();
@@ -256,6 +256,7 @@ describe("recommendationFor", () => {
       "MILESTONE_IMMINENT",
       "DUE_SOON_CLUSTER",
       "UNASSIGNED_WORK",
+      "PLAN_DRIFT",
       "DEV_OVERDUE",
       "DEV_STALLED",
       "DEV_OVERLOADED",
@@ -289,5 +290,50 @@ describe("sortFindings", () => {
     const sorted = sortFindings([f("info", 1), f("critical", 2), f("warn", 9), f("warn", 3)]);
     expect(sorted.map((x) => x.severity)).toEqual(["critical", "warn", "warn", "info"]);
     expect(sorted[1].metric).toBe(9); // higher metric first within warn
+  });
+});
+
+describe("detectFindings — plan drift (work happening outside the plan)", () => {
+  const acme = client("acme", "Acme");
+  const pay = block({ id: "pay", clientId: "acme", name: "Payments", taskTotal: 4 });
+  const stalePlanned = (n: number, days = 30) =>
+    Array.from({ length: n }, (_, i) =>
+      task({ id: `p${i}`, clientId: "acme", title: `Planned ${i}`, featureBlockId: "pay", updatedAt: daysAgo(days + i) }),
+    );
+  const done = (planned: number, unplanned: number) => [
+    ...Array.from({ length: planned }, () => ({ clientId: "acme", planned: true })),
+    ...Array.from({ length: unplanned }, () => ({ clientId: "acme", planned: false })),
+  ];
+
+  it("⚠️ fires when the plan is left alone while the work is done outside it", () => {
+    const f = byKind(
+      detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(3), recentDone: done(0, 150) }), CONFIG, NOW),
+    ).get("PLAN_DRIFT");
+    expect(f).toBeDefined();
+    expect(f!.metric).toBe(3);
+    expect(f!.evidence[0]).toBe("150 of 150 tasks completed in the last 30 days were outside the plan");
+    expect(f!.evidence).toContain('Most left alone: "Payments" (3)');
+    expect(f!.recommendation).toContain("Sort into categories");
+  });
+
+  it("stays quiet when the recent work went ON the plan", () => {
+    const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(5), recentDone: done(40, 4) }), CONFIG, NOW).map((x) => x.kind);
+    expect(kinds).not.toContain("PLAN_DRIFT");
+  });
+
+  it("stays quiet when the planned tasks are moving", () => {
+    const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(5, 2), recentDone: done(0, 30) }), CONFIG, NOW).map((x) => x.kind);
+    expect(kinds).not.toContain("PLAN_DRIFT");
+  });
+
+  it("a parked backlog with no recent work is not drift — nothing is happening elsewhere", () => {
+    const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: stalePlanned(10), recentDone: [] }), CONFIG, NOW).map((x) => x.kind);
+    expect(kinds).not.toContain("PLAN_DRIFT");
+  });
+
+  it("unplanned OPEN tasks don't count as stale planned work", () => {
+    const loose = Array.from({ length: 5 }, (_, i) => task({ id: `l${i}`, clientId: "acme", updatedAt: daysAgo(60) }));
+    const kinds = detectFindings(data({ clients: [acme], blocks: [pay], tasks: loose, recentDone: done(0, 20) }), CONFIG, NOW).map((x) => x.kind);
+    expect(kinds).not.toContain("PLAN_DRIFT");
   });
 });

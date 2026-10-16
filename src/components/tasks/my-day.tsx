@@ -14,6 +14,11 @@ import { cn } from "@/lib/format";
 import { useMyDay, usePushDailyUpdate, useDeleteStandupUpdate, useUpdateTask } from "@/hooks/use-tasks";
 import { TaskPriorityBadge, TaskLabelBadge } from "@/components/tasks/task-badges";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
+import { useAccount } from "@/hooks/use-account";
+import { PlanQuickAdd } from "@/components/tasks/plan-quick-add";
+
+/** "From the plan" shows this many before "Show all". */
+const FROM_PLAN_PREVIEW = 4;
 
 function timeOf(iso: string | null): string | null {
   if (!iso) return null;
@@ -34,6 +39,8 @@ export function MyDay() {
   const [pushMsg, setPushMsg] = useState<{ text: string; ok: boolean } | null>(null);
   // Task the Quick View modal is showing (null = closed).
   const [viewTask, setViewTask] = useState<TaskDTO | null>(null);
+  const [showAllPlan, setShowAllPlan] = useState(false);
+  const me = useAccount().data?.id ?? null;
   // Synchronous guard against duplicate submits — React's `disabled` prop only
   // takes effect after a re-render commits, which leaves a window for a fast
   // double-click (or a retried click after an error) to fire mutateAsync twice.
@@ -55,6 +62,11 @@ export function MyDay() {
   }
   async function markDone(task: TaskDTO) {
     await update.mutateAsync({ id: task.id, input: { status: "DONE" } });
+  }
+  /** Take a planned task nobody owns: assign it to me and start it. */
+  async function pickUp(task: TaskDTO) {
+    const assigneeIds = [...new Set([...task.assignees.map((a) => a.id), ...(me ? [me] : [])])];
+    await update.mutateAsync({ id: task.id, input: { status: "DOING", assigneeIds } });
   }
 
   function deleteUpdate(phase: "AM" | "PM") {
@@ -131,6 +143,9 @@ export function MyDay() {
       </div>
 
       <div className="widget-body space-y-5">
+        {/* Start from the plan: typing checks the board before anything new is created. */}
+        <PlanQuickAdd myTasks={[...data.doing, ...data.upcoming, ...data.done]} />
+
         {/* Doing */}
         <Group title="Doing" count={data.doing.length}>
           {data.doing.length === 0 ? (
@@ -166,6 +181,38 @@ export function MyDay() {
                 </button>
               </Row>
             ))}
+          </Group>
+        ) : null}
+
+        {/* From the plan — planned work nobody has picked up, on this dev's clients. */}
+        {(data.fromPlan?.length ?? 0) > 0 ? (
+          <Group title="From the plan" count={data.fromPlanTotal ?? data.fromPlan.length}>
+            <p className="-mt-0.5 px-1 text-[11px] text-[var(--text-4)]">
+              Planned work nobody has picked up yet. Take one before adding something new.
+            </p>
+            {(showAllPlan ? data.fromPlan : data.fromPlan.slice(0, FROM_PLAN_PREVIEW)).map((t) => (
+              <Row key={t.id} task={t} onOpen={() => setViewTask(t)} detail={t.featureBlock?.name}>
+                <button
+                  type="button"
+                  onClick={() => void pickUp(t)}
+                  disabled={update.isPending}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
+                >
+                  <ArrowRightCircleIcon className="h-4 w-4" /> Pick up
+                </button>
+              </Row>
+            ))}
+            {data.fromPlan.length > FROM_PLAN_PREVIEW ? (
+              <button
+                type="button"
+                onClick={() => setShowAllPlan((v) => !v)}
+                className="px-1 text-[11px] font-medium text-[var(--text-4)] transition hover:text-[var(--brand-700)]"
+              >
+                {showAllPlan
+                  ? "Show fewer"
+                  : `Show all ${data.fromPlan.length}${data.fromPlanTotal > data.fromPlan.length ? ` of ${data.fromPlanTotal}` : ""}`}
+              </button>
+            ) : null}
           </Group>
         ) : null}
 
@@ -264,7 +311,9 @@ export function MyDay() {
         task={viewTask}
         busy={update.isPending}
         onClose={() => setViewTask(null)}
-        onStart={(t) => start(t).then(() => setViewTask(null))}
+        onStart={(t) =>
+          (t.assignees.length === 0 ? pickUp(t) : start(t)).then(() => setViewTask(null))
+        }
         onMarkDone={(t) => markDone(t).then(() => setViewTask(null))}
       />
     </section>
@@ -581,11 +630,14 @@ function Row({
   task,
   children,
   onOpen,
+  detail,
 }: {
   task: TaskDTO;
   children: React.ReactNode;
   /** When set, the row (excluding the action button) opens the Quick View on click. */
   onOpen?: () => void;
+  /** Extra context after the client name (the category, for planned work). */
+  detail?: string | null;
 }) {
   return (
     <div
@@ -607,8 +659,14 @@ function Row({
       }`}
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-[var(--text-1)]">{task.title}</p>
-        <p className="truncate text-[11px] text-[var(--text-4)]">{task.client.name}</p>
+        <p className="truncate text-sm text-[var(--text-1)]" title={task.title}>{task.title}</p>
+        <p
+          className="truncate text-[11px] text-[var(--text-4)]"
+          title={detail ? `${task.client.name} · ${detail}` : task.client.name}
+        >
+          {task.client.name}
+          {detail ? ` · ${detail}` : ""}
+        </p>
       </div>
       <div onClick={(e) => e.stopPropagation()}>{children}</div>
     </div>
