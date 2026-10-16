@@ -58,6 +58,7 @@ import { getLaunchpadByWikiId } from "./launchpad";
 import type { LaunchpadDTO } from "@/types/launchpad";
 import { blockSpan } from "@/lib/gantt-span";
 import { parseFeedStatus, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
+import type { StoredMention } from "@/lib/wiki-mentions";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,23 @@ export interface WikiIntakeCommentRecord {
   authorKind: "TEAM" | "CLIENT";
   authorName: string;
   body: string;
+  /** People @mentioned in this reply — see src/lib/wiki-mentions.ts. */
+  mentions: StoredMention[];
   createdAt: string;
+}
+
+/** A stored `mentions` Json value, read defensively: an older reply has none, and a
+ *  malformed one must not take the thread down with it. */
+function parseStoredMentions(raw: unknown): StoredMention[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StoredMention[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const { id, name, kind } = m as Record<string, unknown>;
+    if (typeof id !== "string" || typeof name !== "string") continue;
+    out.push({ id, name, kind: kind === "TEAM" ? "TEAM" : "CLIENT" });
+  }
+  return out;
 }
 
 /** A feature block rendered as a Gantt bar on the wiki Timeline page. */
@@ -519,6 +536,7 @@ function serializeWikiIntakeItem(item: {
     authorKind: WikiIntakeCommentAuthorKind;
     authorName: string;
     body: string;
+    mentions?: unknown;
     createdAt: Date;
   }[];
 }, taskStatuses?: ReadonlyMap<string, TaskStatus>): WikiIntakeItemRecord {
@@ -553,6 +571,7 @@ function serializeWikiIntakeItem(item: {
       authorKind: c.authorKind,
       authorName: c.authorName,
       body: c.body,
+      mentions: parseStoredMentions(c.mentions),
       createdAt: c.createdAt.toISOString(),
     })),
   };
@@ -1245,7 +1264,7 @@ const WIKI_INCLUDE = {
       createdAt: true,
       updatedAt: true,
       comments: {
-        select: { id: true, authorKind: true, authorName: true, body: true, createdAt: true },
+        select: { id: true, authorKind: true, authorName: true, body: true, mentions: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -2347,6 +2366,7 @@ function serializeWikiIntakeComment(c: {
   authorKind: WikiIntakeCommentAuthorKind;
   authorName: string;
   body: string;
+  mentions?: unknown;
   createdAt: Date;
 }): WikiIntakeCommentRecord {
   return {
@@ -2354,29 +2374,57 @@ function serializeWikiIntakeComment(c: {
     authorKind: c.authorKind,
     authorName: c.authorName,
     body: c.body,
+    mentions: parseStoredMentions(c.mentions),
     createdAt: c.createdAt.toISOString(),
   };
 }
 
-/** A Gitwork team member replies on a request. Internal — no token needed;
- *  the route resolves the caller via the session and passes their identity. */
+/** Store only `{ id, name, kind }` — the email used to find someone in Slack is
+ *  never written onto a reply the client can read. */
+function storableMentions(mentions: readonly StoredMention[] | undefined): Prisma.InputJsonValue | undefined {
+  if (!mentions || mentions.length === 0) return undefined;
+  return mentions.map(({ id, name, kind }) => ({ id, name, kind }));
+}
+
+/**
+ * A Gitwork team member replies on a request. Internal — no token needed; the
+ * route resolves the caller via the session and passes their identity.
+ *
+ * Scoped to the client in the URL: the item must belong to `slug`'s wiki. Before
+ * this, any signed-in user could post onto any request by id, whatever client the
+ * route named. Returns null when it doesn't, so the route can 404.
+ */
 export async function addWikiIntakeComment(
+  slug: string,
   itemId: string,
   author: { userId: string; name: string },
   body: string,
-): Promise<WikiIntakeCommentRecord> {
+  mentions?: readonly StoredMention[],
+): Promise<(WikiIntakeCommentRecord & { wikiId: string }) | null> {
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Comment can't be empty.");
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wiki: { client: { slug } } },
+    select: { id: true, wikiId: true },
+  });
+  if (!item) return null;
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
-      intakeItemId: itemId,
+      intakeItemId: item.id,
       authorKind: "TEAM",
       authorName: author.name,
       authorUserId: author.userId,
       body: trimmed,
+      mentions: storableMentions(mentions),
     },
   });
-  return serializeWikiIntakeComment(comment);
+  return { ...serializeWikiIntakeComment(comment), wikiId: item.wikiId };
+}
+
+/** The wiki a client slug owns, if it has one — for the internal mention routes. */
+export async function wikiIdForClientSlug(slug: string): Promise<string | null> {
+  const wiki = await prisma.clientWiki.findFirst({ where: { client: { slug } }, select: { id: true } });
+  return wiki?.id ?? null;
 }
 
 /**
@@ -2398,7 +2446,12 @@ export async function addWikiIntakeComment(
 export async function addWikiIntakeCommentByToken(
   token: string,
   itemId: string,
-  input: { authorKind: WikiIntakeCommentAuthorKind; authorName: string; body: string },
+  input: {
+    authorKind: WikiIntakeCommentAuthorKind;
+    authorName: string;
+    body: string;
+    mentions?: readonly StoredMention[];
+  },
 ): Promise<WikiIntakeCommentRecord | null> {
   const authorName = input.authorName.trim();
   const body = input.body.trim();
@@ -2416,7 +2469,13 @@ export async function addWikiIntakeCommentByToken(
   if (!item) return null;
 
   const comment = await prisma.clientWikiIntakeComment.create({
-    data: { intakeItemId: item.id, authorKind: input.authorKind, authorName, body },
+    data: {
+      intakeItemId: item.id,
+      authorKind: input.authorKind,
+      authorName,
+      body,
+      mentions: storableMentions(input.mentions),
+    },
   });
   return serializeWikiIntakeComment(comment);
 }

@@ -3441,6 +3441,13 @@ import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord
 export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary };
 import type { IntakeCategory } from "@/lib/wiki-intake-categories";
 export type { IntakeCategory };
+import type { MentionPerson } from "@/lib/wiki-mentions";
+export type { MentionPerson };
+export interface WikiMentionables {
+  people: MentionPerson[];
+  /** Whether a mention will reach the client's shared Slack channel. */
+  slack: { connected: boolean; channelName: string | null };
+}
 import type {
   WikiCodeHandoverSection,
   WikiCodeModuleRecord,
@@ -3968,11 +3975,26 @@ export async function addWikiIntakeComment(
   slug: string,
   itemId: string,
   body: string,
+  mentionIds: string[] = [],
 ): Promise<WikiIntakeCommentRecord> {
   return apiFetch<WikiIntakeCommentRecord>(
     `/api/clients/${slug}/wiki/intake-items/${itemId}/comments`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body, mentionIds }),
+    },
   );
+}
+
+/** Who can be @mentioned on a client's requests (internal: the whole team). */
+export async function getWikiMentionables(slug: string): Promise<WikiMentionables> {
+  return apiFetch<WikiMentionables>(`/api/clients/${slug}/wiki/mentionables`);
+}
+
+/** Who can be @mentioned from the client's view: their people + the Gitwork people involved. */
+export async function getPublicWikiMentionables(token: string): Promise<WikiMentionables> {
+  return apiFetch<WikiMentionables>(`/api/wiki/${token}/mentionables`);
 }
 
 /** A reply on a request from the public wiki page — the signed-in wiki user
@@ -3981,10 +4003,15 @@ export async function addPublicWikiIntakeComment(
   token: string,
   itemId: string,
   body: string,
+  mentionIds: string[] = [],
 ): Promise<WikiIntakeCommentRecord> {
   return apiFetch<WikiIntakeCommentRecord>(
     `/api/wiki/${token}/intake-items/${itemId}/comments`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body, mentionIds }),
+    },
   );
 }
 

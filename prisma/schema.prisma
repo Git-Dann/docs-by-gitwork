@@ -1894,6 +1894,9 @@ model ClientWikiIntakeComment {
   authorUserId String?
   authorUser   User?                       @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
   body         String                      @db.Text
+  /// People @mentioned in this reply: [{ id, name, kind }] (src/lib/wiki-mentions.ts).
+  /// Drives highlighting and the Slack Connect notification. Null on older replies.
+  mentions     Json?
   createdAt    DateTime                    @default(now())
 
   @@index([intakeItemId, createdAt])

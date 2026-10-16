@@ -6821,3 +6821,48 @@ re-fetched, and opening the section refreshes when a month in the window is stor
 (never for months that were simply never stored). The `analytics-snapshot` cron no longer stores
 an empty month either. And Big Wedge's `total_users` / `returning_users` are **all-time** counts
 the date range does not change, so they are no longer collected per month.
+
+## 69. Recent Changes (October 2026) — Requests: a proper conversation, and @mentions to Slack
+
+Harry's read of a client's Requests page (PollenIQ): the expanded row was a description, a
+stray mono "Logged … by …" line, a trash can floating on its own, and a bare reply box.
+
+**The expanded request is two columns from `lg`.** Left: the full title (the row truncates
+it), the detail, attachments, and the **conversation** (`request-thread.tsx`) — a transcript
+with initials avatars, Gitwork/Client tags, relative times, and one composer frame (`@`
+button · hint · Reply, ⌘↵ sends). Right: a **details card** (stage, category, priority, raised
+by, logged, dev label, device, OS, their ref) with **labelled** actions — Create task / Open on
+the board, Mark dealt with, and Delete (or the client's Edit / Withdraw) behind a rule,
+confirming in place. Same component for both audiences.
+
+⚠️ **The app's global `:focus-visible` ring is unlayered CSS in `layout.tsx`**, so a Tailwind
+`outline-none` utility can't remove it. The composer's inner textarea uses an inline
+`style={{ outline: "none" }}` and the frame shows focus via `focus-within`. Anything that
+embeds a borderless field inside a framed control needs the same.
+
+**@mentions** (`src/lib/wiki-mentions.ts` pure, `src/server/wiki-intake-mentions.ts`):
+- Type `@` (never inside an email address) → an **in-flow** list under the text, not a
+  popover — the panel is inside `.widget-card` (`overflow: hidden`, §45.2). ↑↓ / ↵ / Tab / Esc.
+- Stored twice: readable `@Name` in the body, and `{ id, name, kind }` on the new
+  `ClientWikiIntakeComment.mentions` (additive Json). Highlighting and notifying read the
+  structured list, so typing "@Javed" by hand never pages anyone, and a person picked then
+  deleted from the text is dropped before sending.
+- **Who can be mentioned:** internal = every active team member + the client's people;
+  the client's side = their people + admins + devs assigned to them + anyone who has already
+  replied. Names only, never emails. Ids the caller sends are re-checked against that list
+  server-side, so the client can't page someone by guessing an id.
+- **A reply that mentions someone posts to the client's Slack Connect channel**
+  (`slackExternalChannelId`) — the one channel both sides are in. People found by
+  `users.lookupByEmail` get a real `<@U…>` ping; anyone not found is bolded. The link goes to
+  the client's **shared wiki URL** (`#intake`), never `/app`. The body is Slack-escaped
+  (a client typing `<!channel>` must not page both workspaces) and clipped to 600 chars.
+  No external channel or bot token → nothing posted, the reply still saves; the composer
+  says which ("@mentions post to #channel" / "no shared Slack channel is connected").
+  Sent with `after()`, never fails the reply.
+
+**Also fixed:** the internal reply route posted onto any request **by id, whatever client the
+URL named**. It now requires the item to belong to that slug's wiki (404 otherwise).
+
+⚠️ **Known limits:** Slack Connect users from the client's own workspace often can't be found
+by `users.lookupByEmail`, so a mentioned client is usually bolded, not pinged. Mentions only
+go to Slack — no in-app notification yet. Not verified against a live Slack workspace.
