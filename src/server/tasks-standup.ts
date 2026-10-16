@@ -16,7 +16,8 @@ import {
   type EffectiveUser,
   assertCanPublishTaskRollup,
 } from "@/server/auth/effective-user";
-import { listTasks } from "@/server/tasks";
+import { assignedClientIds, listTasks } from "@/server/tasks";
+import { rankPlanQueue } from "@/lib/tasks/plan-match";
 import { getSlackBotToken, postMessage, deleteMessage } from "@/server/slack/client";
 import {
   buildRollupCard,
@@ -151,9 +152,12 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
   const tasks = await listTasks(user, { assigneeId: "me" });
   const { doing, done, upcoming } = partition(tasks, workDate);
 
-  const row = await prisma.dailyUpdate.findUnique({
-    where: { userId_workDate: { userId: user.id, workDate } },
-  });
+  const [row, fromPlan] = await Promise.all([
+    prisma.dailyUpdate.findUnique({
+      where: { userId_workDate: { userId: user.id, workDate } },
+    }),
+    loadFromPlan(user, tasks),
+  ]);
 
   return {
     date: workDate.toISOString(),
@@ -163,6 +167,8 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
     doing,
     done,
     upcoming,
+    fromPlan: fromPlan.tasks,
+    fromPlanTotal: fromPlan.total,
   };
 }
 
@@ -173,6 +179,39 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
  * Best-effort: a failure here must never stop a standup from being pushed, so it
  * returns `Prisma.DbNull` (no snapshot) rather than throwing.
  */
+/** How many planned tasks My Day carries. The list shows a few; the rest are a click away. */
+const FROM_PLAN_LIMIT = 30;
+
+/**
+ * Planned work nobody has picked up, on the clients this developer works on.
+ *
+ * ⚠️ This is the gap the October 2026 audit found: 55 of Fellas' 55 open planned tasks and
+ * 48 of Wedge's 49 had no assignee, so they never appeared on anyone's "Up next" — and a
+ * developer's only quick way to report today's work was to create a NEW task, which is
+ * how 583 of a month's ~720 completed tasks came to be made and closed the same day,
+ * outside the plan. Showing the planned tasks where the day starts is the fix.
+ *
+ * "This developer's clients" = their explicit assignments (ClientAssignment / Code
+ * placements) plus any client they hold a task on — an admin with `seeAllClients` would
+ * otherwise be offered every client's backlog.
+ */
+async function loadFromPlan(
+  user: EffectiveUser,
+  myTasks: TaskDTO[],
+): Promise<{ tasks: TaskDTO[]; total: number }> {
+  const clientIds = new Set(await assignedClientIds(user));
+  for (const t of myTasks) clientIds.add(t.client.id);
+  if (clientIds.size === 0) return { tasks: [], total: 0 };
+  const planned = await listTasks(user, {
+    clientIds: [...clientIds],
+    unassignedOnly: true,
+    plannedOnly: true,
+    openOnly: true,
+  });
+  const ranked = rankPlanQueue(planned);
+  return { tasks: ranked.slice(0, FROM_PLAN_LIMIT), total: ranked.length };
+}
+
 async function buildStandupSnapshot(
   user: EffectiveUser,
   workDate: Date,
