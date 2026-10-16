@@ -6730,3 +6730,26 @@ it (`wiki-section-wiring.test.ts` pins every predicate).
 The DTO field is `clientPlatforms`, because `platforms` was already the changelog's platform list.
 Schema change is additive: three flags, `ClientWiki.metricsConfig`, `WikiMetricSnapshot`,
 `Meeting.sharedWithClientAt`, and `ClientPlatform.renewsOn` / `renewalNote`.
+
+## 66. Recent Changes (October 2026) — The wiki dashboard is arrangeable, per person
+
+**Edit** sits beside the theme switcher on both the internal wiki and the client's share page. It
+only appears while the dashboard is on screen (`dashboard-edit.tsx`, a small external store shared
+by the header button and the grid). In Edit mode each card gets a title line: a grab handle on the
+left, the width picker (1×1 / 2×1 / 3×1) and a hide button on the right. A Hidden tray below the
+grid brings hidden cards back, and **Reset to default** clears everything. Daily updates is an
+ordinary card in the grid now.
+
+- **Per person, in the browser (Dan's call).** `localStorage`, keyed by wiki
+  (`foundry.wiki.dashboard.v1.<wikiId>`). No server, no write route, no auth question, and every
+  read or write is wrapped so blocked storage just means the default layout. A saved layout only
+  ever ARRANGES the cards that are available: a stale id is dropped, a new section is appended,
+  so it cannot surface a section the viewer isn't meant to see (`src/lib/wiki-dashboard-layout.ts`).
+- **3 columns, every card one row tall** (2 from `md`, 1 on a phone, where widths don't apply).
+- ⚠️ **No gaps, without reordering.** Cards are packed into rows in the viewer's order. When a row
+  isn't full, its last card stretches to close it (`fillRows`, one pass for 2 columns and one for 3).
+  The width someone chose is still what's saved; a drop always lands where it was dropped.
+- ⚠️ **Rows are now as tall as their tallest card, not the tallest card on the whole dashboard.**
+  The old `gridAutoRows: 1fr` would have made every row as tall as Daily updates once it joined the
+  grid. Widgets carry a `min-h-[220px]` floor instead.
+- While editing, card bodies are `pointer-events-none`, so dragging a card can't also open its section.

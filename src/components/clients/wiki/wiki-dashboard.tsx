@@ -50,6 +50,8 @@ import { GITWORK, companyDisclosureLine } from "@/lib/gitwork";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
 import { WikiStandupsCard } from "./wiki-standups-card";
+import { WikiDashboardGrid } from "./wiki-dashboard-grid";
+import { STANDUPS_CARD } from "@/lib/wiki-dashboard-layout";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -235,13 +237,11 @@ function Widget({
   section,
   onSelect,
   children,
-  wide,
   numeral,
 }: {
   section: WikiSection;
   onSelect: (s: WikiSection) => void;
   children: ReactNode;
-  wide?: boolean;
   numeral?: string;
 }) {
   const meta = SECTION_META[section as Exclude<WikiSection, "dashboard" | "settings">];
@@ -250,10 +250,9 @@ function Widget({
     <button
       type="button"
       onClick={() => onSelect(section)}
-      className={[
-        "group relative flex h-full flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
-        wide ? "sm:col-span-2" : "",
-      ].join(" ")}
+      // `min-h-[220px]`: rows now size to their own tallest card (a row can hold the
+      // Daily updates card), so a floor keeps short cards from collapsing to a sliver.
+      className="group relative flex h-full min-h-[220px] flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]"
     >
       <div className="relative mb-3 flex items-center gap-2">
         {/* Editorial step numeral (Playfair italic) — a real section marker,
@@ -348,10 +347,9 @@ export function WikiDashboard({
   const weekRoundup = hasPlan
     ? summariseRoundup(wiki.timeline.blocks, new Date(), { unassigned: wiki.timeline.unassigned })
     : null;
-  const standupsCard = (
-    <WikiStandupsCard standups={wiki.standups} roundup={weekRoundup} numeral="i" />
+  const standupsCard = (numeral: string) => (
+    <WikiStandupsCard standups={wiki.standups} roundup={weekRoundup} numeral={numeral} />
   );
-  const numeralOffset = 1;
 
   const pct = overallProgress(wiki);
   const phase = activePhase(wiki);
@@ -986,42 +984,26 @@ export function WikiDashboard({
         </div>
       </section>
 
-      {/* Team updates — the client's Slack channel, so the wiki is the one place
-          to look. Internal audience only; see WikiSlackCard's header comment. */}
-      <div className="mt-4">{standupsCard}</div>
-
-      {sections.length > 0 && (
-        <>
-          {/* Section widgets — one per page, each showing live data. Auto-fit
-              columns (not a fixed 1/2/3 breakpoint grid) so a trailing row
-              with fewer cards than columns stretches to fill the width
-              instead of leaving a dangling gap.
-              Every card is the SAME HEIGHT (Dan, Oct 2026 — this replaced an
-              earlier `items-start` that let each card hug its content, which
-              left a short card beside a tall one, e.g. Monitors next to the
-              wide Timeline). `gridAutoRows: 1fr` makes every row as tall as the
-              tallest card on the dashboard, not just the tallest in its row —
-              so every widget body must stay BOUNDED (truncate / line-clamp),
-              or one long value inflates every card. */}
-          <div
-            className="mt-4 grid gap-4"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gridAutoRows: "1fr" }}
-          >
-            {sections.map((section, i) => (
-              <Widget
-                key={section}
-                section={section}
-                onSelect={onSelect}
-                wide={section === "timeline"}
-                numeral={toRomanLower(i + 1 + numeralOffset)}
-              >
+      {/* Every card — Daily updates included — goes through the arrangeable grid. Each
+          viewer can reorder, resize (1-3 columns, always one row tall) and hide cards for
+          themselves; see wiki-dashboard-grid.tsx. The numerals follow THEIR order, so the
+          i. ii. iii. run never reads out of sequence after a drag. */}
+      <WikiDashboardGrid
+        wikiId={wiki.id}
+        roman={toRomanLower}
+        cards={[
+          { id: STANDUPS_CARD, label: "Daily updates", render: standupsCard },
+          ...sections.map((section) => ({
+            id: section as string,
+            label: SECTION_META[section].label,
+            render: (numeral: string) => (
+              <Widget section={section} onSelect={onSelect} numeral={numeral}>
                 {widgetBody(section)}
               </Widget>
-            ))}
-          </div>
-
-        </>
-      )}
+            ),
+          })),
+        ]}
+      />
 
       {sections.length === 0 && (
         <p className="mt-8 text-center text-sm text-[var(--text-4)]">

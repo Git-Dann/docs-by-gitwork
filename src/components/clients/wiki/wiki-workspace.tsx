@@ -61,6 +61,7 @@ import {
 } from "./api-docs-page-editor";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DashboardEditButton } from "@/components/clients/wiki/dashboard-edit";
 import {
   useClientWiki,
   useUpsertWikiPage,
@@ -1941,8 +1942,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             {" // WIKI"}
           </span>
         </div>
-        {/* Same Light/Dark/System control as the rest of Foundry. */}
-        <ThemeToggle iconOnly />
+        {/* Edit (dashboard only — it renders nothing elsewhere) sits beside the same
+            Light/Dark/System control as the rest of Foundry. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <DashboardEditButton />
+          <ThemeToggle iconOnly />
+        </div>
       </div>
 
       {/* Body — stacks on mobile (nav on top), side-by-side from md up.
