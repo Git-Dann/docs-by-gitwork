@@ -96,6 +96,15 @@ export function isFinal(s: Pick<StoredSnapshot, "period" | "capturedAt">): boole
   return Number.isFinite(t) && t >= periodEnd(s.period).getTime();
 }
 
+/**
+ * A stored month that can stand as that month's figures: final AND carrying at least one
+ * number. Older adapters stored an EMPTY month when a read failed; treating that as final
+ * would show "nothing happened" for it and never fetch it again (CLAUDE.md §35).
+ */
+export function isSettled(s: StoredSnapshot): boolean {
+  return isFinal(s) && Array.isArray(s.metrics) && s.metrics.length > 0;
+}
+
 /** A generic JSON adapter reports "now"; every other adapter fetches a month. */
 export function modeForAdapter(adapterKey: string | null | undefined): MetricsMode {
   return adapterKey === "generic" ? "current" : "monthly";
@@ -172,7 +181,9 @@ export function selectMetricsView(input: {
 }): MetricsView {
   const { mode, now } = input;
   const usable =
-    mode === "monthly" ? input.snapshots.filter(isFinal) : rekeyByCapture(input.snapshots);
+    mode === "monthly"
+      ? input.snapshots.filter(isSettled)
+      : rekeyByCapture(input.snapshots.filter((s) => Array.isArray(s.metrics) && s.metrics.length > 0));
   const byPeriod = new Map(usable.map((s) => [s.period, s]));
   const sorted = [...usable].sort((a, b) => (a.period < b.period ? 1 : -1));
 
@@ -181,7 +192,12 @@ export function selectMetricsView(input: {
   if (mode === "monthly") {
     const lastComplete = addMonths(periodOf(now), -1);
     headline = sorted.find((s) => s.period <= lastComplete);
-    needsRefresh = headline?.period !== lastComplete;
+    // Also refresh when a month in the window is stored but not usable — partial or empty.
+    // A month that was never stored does not count: it may predate the client's data, and
+    // asking for it on every open would be calls that can only fail.
+    const window = new Set(Array.from({ length: HISTORY_MONTHS }, (_, i) => addMonths(lastComplete, -i)));
+    const unsettled = input.snapshots.some((s) => window.has(s.period) && !isSettled(s));
+    needsRefresh = headline?.period !== lastComplete || unsettled;
   } else {
     headline = sorted[0];
     const t = headline ? Date.parse(headline.capturedAt) : NaN;
@@ -242,7 +258,7 @@ export function selectMetricsView(input: {
  * figure taken mid-month by the report builder gets replaced by the real one.
  */
 export function periodsToFetch(snapshots: StoredSnapshot[], now: Date): string[] {
-  const finalPeriods = new Set(snapshots.filter(isFinal).map((s) => s.period));
+  const finalPeriods = new Set(snapshots.filter(isSettled).map((s) => s.period));
   const lastComplete = addMonths(periodOf(now), -1);
   return Array.from({ length: HISTORY_MONTHS }, (_, i) => addMonths(lastComplete, -i)).filter(
     (p) => !finalPeriods.has(p),

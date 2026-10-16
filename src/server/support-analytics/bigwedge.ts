@@ -42,12 +42,15 @@ export function monthRange(year: number, month: number): { from: string; to: str
  * the report also carries per-user arrays (`top_active_users`), revenue fields that read
  * as zero for a free app, and ratios whose meaning the API does not document — none of
  * which belongs on a client's page as a bare number.
+ *
+ * ⚠️ `user_growth.total_users` and `retention.returning_users` are ALL-TIME counts: the
+ * range does not change them (111,675 for August and 111,676 for September, read minutes
+ * apart). Stored per month they would draw a flat line and claim no change, so they are
+ * left out. Only figures the date range actually scopes belong in a monthly series.
  */
 const FIELDS: { key: string; label: string; group: string; path: [string, string] }[] = [
-  { key: "users_total", label: "Total users", group: "Users", path: ["user_growth", "total_users"] },
   { key: "users_new", label: "New users", group: "Users", path: ["user_growth", "new_users"] },
   { key: "users_active", label: "Active users", group: "Users", path: ["user_growth", "active_users"] },
-  { key: "users_returning", label: "Returning users", group: "Users", path: ["retention", "returning_users"] },
   { key: "users_mau", label: "Monthly active users", group: "Users", path: ["retention", "mau"] },
   { key: "rounds_played", label: "Rounds played", group: "Golf", path: ["engagement", "rounds_played"] },
   { key: "rounds_created", label: "Rounds started", group: "Golf", path: ["engagement", "rounds_created"] },

@@ -205,6 +205,59 @@ describe("what to fetch", () => {
   });
 });
 
+describe("an empty month is not a month (old adapters stored one when a read failed)", () => {
+  const empty = (period: string, capturedAt: string) => snap(period, capturedAt, []);
+
+  it("is never shown, and is fetched again", () => {
+    const snapshots = [
+      snap("2026-09", "2026-10-16T09:00:00Z", [m("users", 120)]),
+      empty("2026-08", "2026-09-03T13:00:00Z"), // final by date, but empty
+    ];
+    const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots });
+    expect(v.period).toBe("2026-09");
+    expect(v.metrics[0].previous).toBeNull();
+    expect(v.metrics[0].history.at(-2)).toBeNull();
+    expect(periodsToFetch(snapshots, NOW)).toContain("2026-08");
+  });
+
+  it("asks for a refresh even when the latest month is already in", () => {
+    // Wedge in Oct 2026: September read, July and August stored empty by the old adapter.
+    const v = selectMetricsView({
+      mode: "monthly",
+      now: NOW,
+      snapshots: [
+        snap("2026-09", "2026-10-16T09:00:00Z", [m("users", 120)]),
+        empty("2026-08", "2026-08-03T13:00:00Z"),
+        empty("2026-07", "2026-07-31T13:00:00Z"),
+      ],
+    });
+    expect(v.needsRefresh).toBe(true);
+  });
+
+  it("does not keep asking for months that were never stored", () => {
+    // Only September exists. Earlier months may predate the client's data; asking on every
+    // open would only ever fail.
+    const v = selectMetricsView({
+      mode: "monthly",
+      now: NOW,
+      snapshots: [snap("2026-09", "2026-10-16T09:00:00Z", [m("users", 120)])],
+    });
+    expect(v.needsRefresh).toBe(false);
+  });
+
+  it("is ignored by a current-mode source too", () => {
+    const v = selectMetricsView({
+      mode: "current",
+      now: NOW,
+      snapshots: [
+        snap("2026-10", "2026-10-15T11:00:00Z", []),
+        snap("2026-10", "2026-10-14T11:00:00Z", [m("users", 80)]),
+      ],
+    });
+    expect(v.metrics[0]?.value).toBe(80);
+  });
+});
+
 describe("API Docs endpoints", () => {
   const content = {
     servers: [
