@@ -7,6 +7,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DashboardEditButton } from "@/components/clients/wiki/dashboard-edit";
 
 // Session/cookie-dependent (the access lockdown) — render per request.
 export const dynamic = "force-dynamic";
@@ -107,8 +108,12 @@ export default async function PublicWikiPage({
         >
           {wiki.clientName}{" // Wiki"}
         </p>
-        {/* Same Light/Dark/System control as the rest of Foundry. */}
-        <ThemeToggle iconOnly />
+        {/* Edit (dashboard only — it renders nothing elsewhere) sits beside the same
+            Light/Dark/System control as the rest of Foundry. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <DashboardEditButton />
+          <ThemeToggle iconOnly />
+        </div>
       </header>
 
       {/* Content grows to fill the viewport so the footer stays pinned to the bottom
