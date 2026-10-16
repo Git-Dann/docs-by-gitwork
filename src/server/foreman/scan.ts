@@ -86,6 +86,12 @@ export const PLAN_DRIFT_STALE_DAYS = 21;
 /** Below these, drift is noise — one stray task, or two planned items parked on purpose. */
 const PLAN_DRIFT_MIN_UNPLANNED = 5;
 const PLAN_DRIFT_MIN_STALE = 3;
+/**
+ * …and the off-plan work has to be a real share of what was done — the same 25% the
+ * board's plan strip uses. PollenIQ did 65 of 71 tasks on its plan, so 6 stray tasks and
+ * a few parked ones are housekeeping, not drift.
+ */
+const PLAN_DRIFT_MIN_SHARE = 0.25;
 
 /** Pull the minimal delivery data set for every active client in one batched pass. */
 export async function gatherWorkspace(workspaceId: string): Promise<WorkspaceScanData> {
@@ -431,7 +437,12 @@ export function detectFindings(
       const plannedOpen = openTasks.filter((t) => t.featureBlockId);
       const staleCutoff = startToday - PLAN_DRIFT_STALE_DAYS * DAY_MS;
       const stale = plannedOpen.filter((t) => t.updatedAt.getTime() < staleCutoff);
-      if (unplannedDone >= PLAN_DRIFT_MIN_UNPLANNED && stale.length >= PLAN_DRIFT_MIN_STALE) {
+      const share = done.length === 0 ? 0 : unplannedDone / done.length;
+      if (
+        unplannedDone >= PLAN_DRIFT_MIN_UNPLANNED &&
+        share >= PLAN_DRIFT_MIN_SHARE &&
+        stale.length >= PLAN_DRIFT_MIN_STALE
+      ) {
         const perBlock = new Map<string, number>();
         for (const t of stale) perBlock.set(t.featureBlockId!, (perBlock.get(t.featureBlockId!) ?? 0) + 1);
         const [topBlockId, topCount] = [...perBlock.entries()].sort((a, b) => b[1] - a[1])[0];
