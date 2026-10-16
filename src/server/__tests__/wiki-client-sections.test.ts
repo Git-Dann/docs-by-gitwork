@@ -6,8 +6,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { db, getJson } = vi.hoisted(() => ({
+const { db, getJson, fetchMonth } = vi.hoisted(() => ({
   getJson: vi.fn(),
+  fetchMonth: vi.fn(),
   db: {
   clientWiki: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
   meeting: { findMany: vi.fn(), updateMany: vi.fn() },
@@ -25,8 +26,9 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/server/support-analytics", () => ({
   getJson: (...a: unknown[]) => getJson(...a),
   getAdapter: () => null,
-  fetchAnalyticsMonth: vi.fn(),
+  fetchAnalyticsMonth: (...a: unknown[]) => fetchMonth(...a),
 }));
+vi.mock("@/server/support-scraper-config", () => ({ decryptScraperConfig: (c: unknown) => c }));
 vi.mock("@/lib/encryption", () => ({
   encryptNullable: (v: string | null | undefined) => (v ? `enc(${v})` : null),
   decryptNullable: (v: string | null | undefined) => (v ? v.replace(/^enc\((.*)\)$/, "$1") : null),
@@ -45,6 +47,7 @@ import {
 
 beforeEach(() => {
   for (const model of Object.values(db)) for (const fn of Object.values(model)) fn.mockReset();
+  fetchMonth.mockReset();
 });
 
 describe("Meetings", () => {
@@ -211,6 +214,22 @@ describe("Metrics", () => {
     getJson.mockResolvedValue({ message: "ok", items: [] });
     const out = await refreshWikiMetrics("c1", new Date("2026-10-15T12:00:00Z"));
     expect(db.wikiMetricSnapshot.upsert).not.toHaveBeenCalled();
+    expect(out.failed[0].error).toMatch(/no numbers/);
+  });
+
+  it("a Care month with no figures is a failure, not a stored empty month", async () => {
+    // Stored empty, it would read as "nothing happened" AND count as that month's final
+    // figure — so it would never be fetched again. That is how Wedge's July and August
+    // snapshots ended up with zero metrics when its token expired.
+    db.clientWiki.findUnique.mockResolvedValue({ id: "w1", metricsConfig: null });
+    db.supportClient.findFirst.mockResolvedValue({ id: "care1", name: "Wedge" });
+    db.accountConnection.findFirst.mockResolvedValue({ scraperConfig: { adapter: "bigwedge" } });
+    db.supportAnalyticsSnapshot.findMany.mockResolvedValue([]);
+    fetchMonth.mockResolvedValue({ periodLabel: "x", metrics: [] });
+    const out = await refreshWikiMetrics("c1", new Date("2026-10-15T12:00:00Z"));
+    expect(db.supportAnalyticsSnapshot.upsert).not.toHaveBeenCalled();
+    expect(out.fetched).toEqual([]);
+    expect(out.failed).toHaveLength(6);
     expect(out.failed[0].error).toMatch(/no numbers/);
   });
 
