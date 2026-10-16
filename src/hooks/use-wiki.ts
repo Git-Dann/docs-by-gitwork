@@ -98,6 +98,8 @@ import {
   uploadPublicWikiIntakeItemImage,
   addWikiIntakeComment,
   addPublicWikiIntakeComment,
+  getWikiMentionables,
+  getPublicWikiMentionables,
 } from "@/lib/api";
 import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
 
@@ -687,15 +689,35 @@ export function useUploadPublicWikiIntakeItemImage(token: string) {
 export function useAddWikiIntakeComment(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, body }: { itemId: string; body: string }) => addWikiIntakeComment(slug, itemId, body),
+    mutationFn: ({ itemId, body, mentionIds }: { itemId: string; body: string; mentionIds?: string[] }) =>
+      addWikiIntakeComment(slug, itemId, body, mentionIds),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
 
 export function useAddPublicWikiIntakeComment(token: string) {
   return useMutation({
-    mutationFn: ({ itemId, body }: { itemId: string; body: string }) =>
-      addPublicWikiIntakeComment(token, itemId, body),
+    mutationFn: ({ itemId, body, mentionIds }: { itemId: string; body: string; mentionIds?: string[] }) =>
+      addPublicWikiIntakeComment(token, itemId, body, mentionIds),
+  });
+}
+
+/**
+ * Who can be @mentioned on a client's requests. Fetched only once a reply box is
+ * actually opened (`enabled`), and kept for five minutes — it is a roster, not a feed.
+ */
+export function useWikiMentionables(
+  opts: { mode: "internal"; slug: string } | { mode: "public"; token: string },
+  enabled: boolean,
+) {
+  const key = opts.mode === "internal" ? opts.slug : opts.token;
+  return useQuery({
+    queryKey: ["wiki-mentionables", opts.mode, key],
+    queryFn: () =>
+      opts.mode === "internal" ? getWikiMentionables(opts.slug) : getPublicWikiMentionables(opts.token),
+    enabled: enabled && Boolean(key),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 

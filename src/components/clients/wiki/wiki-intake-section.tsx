@@ -11,6 +11,7 @@ import {
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
   PaperClipIcon,
+  PencilSquareIcon,
   PhotoIcon,
   PlusIcon,
   SquaresPlusIcon,
@@ -46,7 +47,13 @@ import {
   useAddWikiIntakeComment,
   useAddPublicWikiIntakeComment,
   useImportWikiIntakeItems,
+  useWikiMentionables,
 } from "@/hooks/use-wiki";
+import { RequestThread } from "@/components/clients/wiki/request-thread";
+
+/** A full-width labelled action in a request's details card. */
+const sideBtn =
+  "inline-flex w-full items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1.5 text-left text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-60";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -191,9 +198,13 @@ export function WikiIntakeSection({
   /** Which rows are expanded. A grid row is a summary; everything the old card
    *  showed (description, screenshot, links, device/OS, replies) lives here. */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
-  const [commentError, setCommentError] = useState<{ id: string; message: string } | null>(null);
-  const [postingCommentId, setPostingCommentId] = useState<string | null>(null);
+  /** The mention roster is fetched the first time anyone opens a reply box, not on
+   *  page load — most visits never reply. */
+  const [wantMentionables, setWantMentionables] = useState(false);
+  const mentionables = useWikiMentionables(
+    isInternal ? { mode: "internal", slug } : { mode: "public", token: token ?? "" },
+    wantMentionables,
+  );
   const [categoryId, setCategoryId] = useState<string>(categories[0]?.id ?? "FEEDBACK");
   const [priority, setPriority] = useState<Priority>("MEDIUM");
   const [title, setTitle] = useState("");
@@ -376,28 +387,15 @@ export function WikiIntakeSection({
     }
   }
 
-  async function postComment(itemId: string) {
-    const body = (commentDraft[itemId] ?? "").trim();
-    if (!body) return;
-    setCommentError(null);
-    setPostingCommentId(itemId);
-    try {
-      const comment = isInternal
-        ? await addCommentInternal.mutateAsync({ itemId, body })
-        : await addCommentPublic.mutateAsync({ itemId, body });
-      if (!isInternal) {
-        setLocalItems((prev) =>
-          prev.map((i) => (i.id === itemId ? { ...i, comments: [...i.comments, comment] } : i)),
-        );
-      }
-      setCommentDraft((prev) => ({ ...prev, [itemId]: "" }));
-    } catch (err) {
-      setCommentError({
-        id: itemId,
-        message: err instanceof Error ? err.message : "Could not post that reply.",
-      });
-    } finally {
-      setPostingCommentId(null);
+  /** Throws on failure — RequestThread shows the error under its own composer. */
+  async function postComment(itemId: string, body: string, mentionIds: string[]) {
+    const comment = isInternal
+      ? await addCommentInternal.mutateAsync({ itemId, body, mentionIds })
+      : await addCommentPublic.mutateAsync({ itemId, body, mentionIds });
+    if (!isInternal) {
+      setLocalItems((prev) =>
+        prev.map((i) => (i.id === itemId ? { ...i, comments: [...(i.comments ?? []), comment] } : i)),
+      );
     }
   }
 
@@ -1112,406 +1110,377 @@ export function WikiIntakeSection({
                         )}
                       </div>
 
-                      {/* ── Expanded detail — everything the old card carried ───── */}
+                      {/* ── Expanded detail ─────────────────────────────────────
+                          Two columns from lg: what was asked and the conversation
+                          about it on the left, the facts and the actions on the right.
+                          Before this, the facts were a stray mono "Logged … by …" line
+                          and the only action was a trash can floating on its own,
+                          with nothing to say whose request it was or what else you
+                          could do with it. */}
                       {isOpen && (
-                        <div className="space-y-3 border-t border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-3 md:px-6">
-                          {item.description && (
-                            <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--text-2)]">
-                              {item.description}
-                            </p>
-                          )}
-
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                            {item.label ? (
-                              <span
-                                title="Dev label — carried onto the task when this is promoted"
-                                className="rounded-[4px] bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--text-3)]"
-                                style={{ fontFamily: MONO }}
-                              >
-                                {DEV_LABEL_LABEL[item.label as DevLabel] ?? item.label}
-                              </span>
-                            ) : null}
-                            {/* Links sent by the intake API. Storing the source link and
-                                then never showing it would defeat the point — the whole
-                                reason a client sends it is so the team can open the item
-                                in their tracker. Attachments are the client's URLs, so
-                                they open in a new tab and carry noreferrer. */}
-                            {item.externalUrl ? (
-                              <a
-                                href={item.externalUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
-                              >
-                                <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                                {item.externalRef ? `Open ${item.externalRef}` : "Open in their tracker"}
-                              </a>
-                            ) : null}
-                            {item.attachmentUrls.map((url, i) => (
-                              <a
-                                key={url}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[12px] text-[var(--text-3)] underline decoration-dotted underline-offset-2 transition hover:text-[var(--text-1)]"
-                              >
-                                <PaperClipIcon className="h-3.5 w-3.5" />
-                                Attachment {i + 1}
-                              </a>
-                            ))}
-                          </div>
-
-                          {item.hasImage ? (
-                            <button
-                              type="button"
-                              onClick={() => setViewingImageId(item.id)}
-                              className="block overflow-hidden rounded-[6px] border border-[var(--border-2)]"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={imageSrc(item.id, { thumb: true })}
-                                alt={item.imageFilename ?? "Attached screenshot"}
-                                className="h-16 w-16 object-cover transition hover:opacity-90"
-                              />
-                            </button>
-                          ) : null}
-
-                          <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-                            Logged{" "}
-                            {new Date(item.createdAt).toLocaleDateString(undefined, {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                            {item.requestedBy ? ` by ${item.requestedBy}` : ""}
-                            {item.device ? ` · ${item.device}` : ""}
-                            {item.osVersion ? ` · ${item.osVersion}` : ""}
-                            {taskMissing && isInternal ? " · task not found on the board" : ""}
-                          </p>
-
-                          {/* The client's own controls: fix or withdraw a request they
-                              raised. Only while it is still theirs to change — once
-                              PROMOTED a dev owns the task it became, and CLOSED is a
-                              record. The server enforces this; hiding the buttons just
-                              avoids offering an action that would be refused. */}
-                          {!isInternal && CLIENT_EDITABLE.includes(item.status) && (
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRowError(null);
-                                  setEditingId(editingId === item.id ? null : item.id);
-                                  setEditDraft({
-                                    title: item.title,
-                                    description: item.description ?? "",
-                                    priority: item.priority as Priority,
-                                  });
-                                }}
-                                className="rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                              >
-                                Edit
-                              </button>
-                              {/* Two-step, same as internally: a single-click delete
-                                  sitting next to Edit is one slip from losing what
-                                  they wrote. */}
-                              {confirmDeleteId === item.id ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-[7px] border border-rose-300 bg-rose-50 px-2 py-1.5">
-                                  <span className="text-[12px] font-medium text-rose-700">
-                                    Withdraw it?
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={deletePublic.isPending}
-                                    onClick={async () => {
-                                      try {
-                                        await deletePublic.mutateAsync(item.id);
-                                        setLocalItems((prev) =>
-                                          prev.filter((i) => i.id !== item.id),
-                                        );
-                                      } catch (err) {
-                                        setRowError({
-                                          id: item.id,
-                                          message:
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Could not withdraw that.",
-                                        });
+                        <div className="border-t border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-4 md:px-6">
+                          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
+                            <div className="min-w-0 space-y-4">
+                              {/* What was asked. */}
+                              {editingId === item.id ? (
+                                <div className="space-y-2.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3">
+                                  <input
+                                    value={editDraft.title}
+                                    onChange={(e) =>
+                                      setEditDraft((d) => ({ ...d, title: e.target.value }))
+                                    }
+                                    placeholder="Short title"
+                                    aria-label="Request title"
+                                    className="app-input"
+                                  />
+                                  <textarea
+                                    value={editDraft.description}
+                                    onChange={(e) =>
+                                      setEditDraft((d) => ({ ...d, description: e.target.value }))
+                                    }
+                                    rows={3}
+                                    placeholder="What happened, what should change, or any helpful context…"
+                                    aria-label="Request detail"
+                                    className="app-input resize-y py-2.5 leading-relaxed"
+                                  />
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <select
+                                      value={editDraft.priority}
+                                      onChange={(e) =>
+                                        setEditDraft((d) => ({
+                                          ...d,
+                                          priority: e.target.value as Priority,
+                                        }))
                                       }
-                                      setConfirmDeleteId(null);
-                                    }}
-                                    className="rounded-[6px] bg-rose-600 px-2 py-0.5 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
-                                  >
-                                    Withdraw
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteId(null)}
-                                    className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-                                  >
-                                    Cancel
-                                  </button>
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDeleteId(item.id)}
-                                  className="rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
-                                >
-                                  Withdraw
-                                </button>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Internal row actions that don't fit the icon strip, plus
-                              the ones a phone never sees because that strip is md+. */}
-                          {isInternal && (
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                className="rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] md:hidden"
-                                onClick={() =>
-                                  void runRowAction(item.id, "Could not update that request.", () =>
-                                    updateItem.mutateAsync({
-                                      id: item.id,
-                                      data: {
-                                        status: item.status === "CLOSED" ? "NEW" : "CLOSED",
-                                      },
-                                    }),
-                                  )
-                                }
-                              >
-                                {item.status === "CLOSED" ? "Reopen request" : "Mark dealt with"}
-                              </button>
-                              {!item.taskId && (
-                                <button
-                                  type="button"
-                                  disabled={promoteItem.isPending}
-                                  onClick={() =>
-                                  void runRowAction(item.id, "Could not create that task.", () =>
-                                    promoteItem.mutateAsync({ id: item.id }),
-                                  )
-                                }
-                                  className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)] md:hidden"
-                                >
-                                  <SquaresPlusIcon className="h-4 w-4" /> Create task
-                                </button>
-                              )}
-                              {/* Delete is two-step. It used to fire on a single click
-                                  next to the everyday buttons, which is one slip away
-                                  from destroying something a client submitted — and
-                                  unlike closing, it can't be undone. */}
-                              {confirmDeleteId === item.id ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-[7px] border border-rose-300 bg-rose-50 px-2 py-1.5">
-                                  <span className="text-[12px] font-medium text-rose-700">
-                                    Delete permanently?
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={deleteItem.isPending}
-                                    onClick={async () => {
-                                      // ⚠️ `setConfirmDeleteId(null)` must run whether or
-                                      // not the delete succeeded, or a failed delete
-                                      // leaves the row stuck on "Delete permanently?"
-                                      // with no error — which reads as an unresponsive
-                                      // button and invites a second click.
-                                      await runRowAction(
-                                        item.id,
-                                        "Could not delete that request.",
-                                        () => deleteItem.mutateAsync(item.id),
-                                      );
-                                      setConfirmDeleteId(null);
-                                    }}
-                                    className="rounded-[6px] bg-rose-600 px-2 py-0.5 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
-                                  >
-                                    Delete
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmDeleteId(null)}
-                                    className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-                                  >
-                                    Cancel
-                                  </button>
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDeleteId(item.id)}
-                                  aria-label="Delete request"
-                                  title="Delete this request permanently. Prefer 'Mark dealt with' — deleting can't be undone."
-                                  className="inline-flex items-center rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 text-[var(--text-4)] transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
-                                >
-                                  <TrashIcon className="h-4 w-4" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Inline edit — the client fixing what they wrote. Only the
-                              fields they filled in: status, promotion and the dev label
-                              are ours. */}
-                          {editingId === item.id && (
-                            <div className="space-y-2.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3">
-                              <input
-                                value={editDraft.title}
-                                onChange={(e) =>
-                                  setEditDraft((d) => ({ ...d, title: e.target.value }))
-                                }
-                                placeholder="Short title"
-                                className="app-input"
-                              />
-                              <textarea
-                                value={editDraft.description}
-                                onChange={(e) =>
-                                  setEditDraft((d) => ({ ...d, description: e.target.value }))
-                                }
-                                rows={3}
-                                placeholder="What happened, what should change, or any helpful context…"
-                                className="app-input resize-y py-2.5 leading-relaxed"
-                              />
-                              <div className="flex flex-wrap items-center gap-2">
-                                <select
-                                  value={editDraft.priority}
-                                  onChange={(e) =>
-                                    setEditDraft((d) => ({
-                                      ...d,
-                                      priority: e.target.value as Priority,
-                                    }))
-                                  }
-                                  className="app-select-compact w-auto"
-                                >
-                                  <option value="LOW">Low priority</option>
-                                  <option value="MEDIUM">Medium priority</option>
-                                  <option value="HIGH">High priority</option>
-                                </select>
-                                <button
-                                  type="button"
-                                  disabled={updatePublic.isPending || !editDraft.title.trim()}
-                                  onClick={async () => {
-                                    setRowError(null);
-                                    try {
-                                      const saved = await updatePublic.mutateAsync({
-                                        id: item.id,
-                                        patch: {
-                                          ...(() => {
-                                            const fitted = fitRequestTitle(
-                                              editDraft.title,
-                                              editDraft.description,
-                                            );
-                                            return {
+                                      aria-label="Priority"
+                                      className="app-select-compact w-auto"
+                                    >
+                                      <option value="LOW">Low priority</option>
+                                      <option value="MEDIUM">Medium priority</option>
+                                      <option value="HIGH">High priority</option>
+                                    </select>
+                                    <button
+                                      type="button"
+                                      disabled={updatePublic.isPending || !editDraft.title.trim()}
+                                      onClick={async () => {
+                                        setRowError(null);
+                                        try {
+                                          const fitted = fitRequestTitle(
+                                            editDraft.title,
+                                            editDraft.description,
+                                          );
+                                          const saved = await updatePublic.mutateAsync({
+                                            id: item.id,
+                                            patch: {
                                               title: fitted.title,
                                               description: fitted.description,
-                                            };
-                                          })(),
-                                          priority: editDraft.priority,
-                                        },
-                                      });
-                                      setLocalItems((prev) =>
-                                        prev.map((i) => (i.id === saved.id ? saved : i)),
-                                      );
-                                      setEditingId(null);
-                                    } catch (err) {
-                                      setRowError({
-                                        id: item.id,
-                                        message:
-                                          err instanceof Error
-                                            ? err.message
-                                            : "Could not save that change.",
-                                      });
-                                    }
-                                  }}
-                                  className="rounded-[7px] bg-[var(--brand-600)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
-                                >
-                                  {updatePublic.isPending ? "Saving…" : "Save changes"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingId(null);
-                                    setRowError(null);
-                                  }}
-                                  className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                                              priority: editDraft.priority,
+                                            },
+                                          });
+                                          setLocalItems((prev) =>
+                                            prev.map((i) => (i.id === saved.id ? saved : i)),
+                                          );
+                                          setEditingId(null);
+                                        } catch (err) {
+                                          setRowError({
+                                            id: item.id,
+                                            message:
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Could not save that change.",
+                                          });
+                                        }
+                                      }}
+                                      className="rounded-[6px] bg-[var(--brand-600)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
+                                    >
+                                      {updatePublic.isPending ? "Saving…" : "Save changes"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingId(null);
+                                        setRowError(null);
+                                      }}
+                                      className="px-1 text-[12px] text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {/* The full title — the row truncates it, and a request
+                                      is often a whole sentence. */}
+                                  <p className="whitespace-pre-wrap break-words text-[14px] font-semibold leading-snug text-[var(--text-1)]">
+                                    {item.title}
+                                  </p>
+                                  {item.description ? (
+                                    <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-[var(--text-2)]">
+                                      {item.description}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[12px] text-[var(--text-4)]">No further detail was added.</p>
+                                  )}
+                                </div>
+                              )}
 
-                          {/* Whatever went wrong on this row — save OR withdraw. */}
+                              {(item.externalUrl || item.attachmentUrls.length > 0 || item.hasImage) && (
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                                  {item.hasImage ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewingImageId(item.id)}
+                                      title="View screenshot"
+                                      className="block overflow-hidden rounded-[6px] border border-[var(--border-2)]"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={imageSrc(item.id, { thumb: true })}
+                                        alt={item.imageFilename ?? "Attached screenshot"}
+                                        className="h-16 w-16 object-cover transition hover:opacity-90"
+                                      />
+                                    </button>
+                                  ) : null}
+                                  {/* Links sent by the intake API — the reason a client
+                                      sends one is so the team can open the item in their
+                                      own tracker. Their URLs, so new tab + noreferrer. */}
+                                  {item.externalUrl ? (
+                                    <a
+                                      href={item.externalUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
+                                    >
+                                      <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                                      {item.externalRef ? `Open ${item.externalRef}` : "Open in their tracker"}
+                                    </a>
+                                  ) : null}
+                                  {item.attachmentUrls.map((url, i) => (
+                                    <a
+                                      key={url}
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[12px] text-[var(--text-3)] underline decoration-dotted underline-offset-2 transition hover:text-[var(--text-1)]"
+                                    >
+                                      <PaperClipIcon className="h-3.5 w-3.5" />
+                                      Attachment {i + 1}
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+
+                              <RequestThread
+                                itemTitle={item.title}
+                                comments={itemComments}
+                                mentionables={mentionables.data}
+                                mentionablesLoading={mentionables.isLoading}
+                                onOpen={() => setWantMentionables(true)}
+                                onPost={(body, mentionIds) => postComment(item.id, body, mentionIds)}
+                              />
+                            </div>
+
+                            {/* ── Details + actions ─────────────────────────────── */}
+                            <aside
+                              aria-label="Request details"
+                              className="h-fit overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)]"
+                            >
+                              <dl className="divide-y divide-[var(--border-1)] text-[12px]">
+                                {(
+                                  [
+                                    ["Stage", <StageChip key="s" stage={item.stage} />],
+                                    ["Category", displayCategory(categories, item)],
+                                    ["Priority", item.priority.charAt(0) + item.priority.slice(1).toLowerCase()],
+                                    ["Raised by", item.requestedBy ?? "—"],
+                                    [
+                                      "Logged",
+                                      new Date(item.createdAt).toLocaleDateString(undefined, {
+                                        day: "numeric",
+                                        month: "short",
+                                        year: "numeric",
+                                      }),
+                                    ],
+                                    item.label
+                                      ? ["Dev label", DEV_LABEL_LABEL[item.label as DevLabel] ?? item.label]
+                                      : null,
+                                    item.device ? ["Device", item.device] : null,
+                                    item.osVersion ? ["OS", item.osVersion] : null,
+                                    item.externalRef ? ["Their ref", item.externalRef] : null,
+                                  ] as const
+                                )
+                                  .filter((row): row is NonNullable<typeof row> => row !== null)
+                                  .map(([k, v]) => (
+                                    <div key={k} className="flex items-center justify-between gap-3 px-3 py-2">
+                                      <dt
+                                        className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-4)]"
+                                        style={{ fontFamily: MONO }}
+                                      >
+                                        {k}
+                                      </dt>
+                                      <dd
+                                        className="min-w-0 truncate text-right text-[var(--text-2)]"
+                                        title={typeof v === "string" ? v : undefined}
+                                      >
+                                        {v}
+                                      </dd>
+                                    </div>
+                                  ))}
+                                {isInternal && taskMissing && (
+                                  <p className="px-3 py-2 text-[11px] text-amber-700">
+                                    Promoted, but its task can no longer be found on the board.
+                                  </p>
+                                )}
+                              </dl>
+
+                              {/* Actions. Every one is a labelled button: an icon alone
+                                  told you nothing until you hovered it. Destructive ones
+                                  sit last, behind a rule, and confirm in place. */}
+                              {(isInternal || CLIENT_EDITABLE.includes(item.status)) && (
+                                <div className="space-y-1.5 border-t border-[var(--border-2)] bg-[var(--surface-1)] p-2">
+                                  {isInternal ? (
+                                    <>
+                                      {!item.taskId ? (
+                                        <button
+                                          type="button"
+                                          disabled={promoteItem.isPending}
+                                          onClick={() =>
+                                            void runRowAction(item.id, "Could not create that task.", () =>
+                                              promoteItem.mutateAsync({ id: item.id }),
+                                            )
+                                          }
+                                          className={sideBtn}
+                                        >
+                                          <SquaresPlusIcon className="h-4 w-4" /> Create task
+                                        </button>
+                                      ) : (
+                                        <a href={`/app/portal/${slug}/tasks`} className={sideBtn}>
+                                          <ArrowTopRightOnSquareIcon className="h-4 w-4" /> Open on the board
+                                        </a>
+                                      )}
+                                      <button
+                                        type="button"
+                                        title={
+                                          item.status === "CLOSED"
+                                            ? "Put this request back on the open list."
+                                            : "Files the request as dealt with. Any task already created from it is not affected."
+                                        }
+                                        onClick={() =>
+                                          void runRowAction(item.id, "Could not update that request.", () =>
+                                            updateItem.mutateAsync({
+                                              id: item.id,
+                                              data: { status: item.status === "CLOSED" ? "NEW" : "CLOSED" },
+                                            }),
+                                          )
+                                        }
+                                        className={sideBtn}
+                                      >
+                                        {item.status === "CLOSED" ? (
+                                          <>
+                                            <ArrowUturnLeftIcon className="h-4 w-4" /> Reopen request
+                                          </>
+                                        ) : (
+                                          <>
+                                            <CheckIcon className="h-4 w-4" /> Mark dealt with
+                                          </>
+                                        )}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setRowError(null);
+                                        setEditingId(editingId === item.id ? null : item.id);
+                                        setEditDraft({
+                                          title: item.title,
+                                          description: item.description ?? "",
+                                          priority: item.priority as Priority,
+                                        });
+                                      }}
+                                      className={sideBtn}
+                                    >
+                                      <PencilSquareIcon className="h-4 w-4" />
+                                      {editingId === item.id ? "Stop editing" : "Edit request"}
+                                    </button>
+                                  )}
+
+                                  {/* Two-step: deleting can't be undone, and a client
+                                      withdrawing loses what they wrote. */}
+                                  <div className="border-t border-[var(--border-1)] pt-1.5">
+                                    {confirmDeleteId === item.id ? (
+                                      <div className="space-y-1.5 rounded-[6px] border border-rose-300 bg-rose-50 p-2">
+                                        <p className="text-[12px] font-medium text-rose-700">
+                                          {isInternal
+                                            ? "Delete permanently? This can't be undone."
+                                            : "Withdraw this request?"}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={isInternal ? deleteItem.isPending : deletePublic.isPending}
+                                            onClick={async () => {
+                                              if (isInternal) {
+                                                // ⚠️ Clear the confirm whether or not it
+                                                // succeeded, or a failed delete leaves it
+                                                // armed with no error.
+                                                await runRowAction(
+                                                  item.id,
+                                                  "Could not delete that request.",
+                                                  () => deleteItem.mutateAsync(item.id),
+                                                );
+                                              } else {
+                                                try {
+                                                  await deletePublic.mutateAsync(item.id);
+                                                  setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
+                                                } catch (err) {
+                                                  setRowError({
+                                                    id: item.id,
+                                                    message:
+                                                      err instanceof Error ? err.message : "Could not withdraw that.",
+                                                  });
+                                                }
+                                              }
+                                              setConfirmDeleteId(null);
+                                            }}
+                                            className="rounded-[6px] bg-rose-600 px-2.5 py-1 text-[12px] font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                                          >
+                                            {isInternal ? "Delete" : "Withdraw"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfirmDeleteId(null)}
+                                            className="px-1 text-[12px] text-[var(--text-3)] transition hover:text-[var(--text-1)]"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteId(item.id)}
+                                        title={
+                                          isInternal
+                                            ? "Delete this request permanently. Prefer 'Mark dealt with' — deleting can't be undone."
+                                            : undefined
+                                        }
+                                        className={`${sideBtn} text-[var(--text-3)] hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600`}
+                                      >
+                                        <TrashIcon className="h-4 w-4" />
+                                        {isInternal ? "Delete request" : "Withdraw request"}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </aside>
+                          </div>
+
                           {rowError?.id === item.id && (
-                            <p role="alert" className="text-[12px] text-rose-600">
+                            <p role="alert" className="mt-3 text-[12px] text-rose-600">
                               {rowError.message}
                             </p>
                           )}
-
-                          {/* Reply thread — either side can add to it, so the client
-                              sees when a fix is in place without being told outside
-                              the wiki. */}
-                          <div className="space-y-2.5 border-t border-[var(--border-2)] pt-3">
-                            {itemComments.map((c) => (
-                              <div
-                                key={c.id}
-                                className="rounded-[8px] bg-[var(--surface-0)] px-3 py-2"
-                              >
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="text-[12px] font-semibold text-[var(--text-1)]">
-                                    {c.authorName}
-                                  </span>
-                                  <span
-                                    className={[
-                                      "rounded-[4px] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em]",
-                                      c.authorKind === "TEAM"
-                                        ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
-                                        : "bg-[var(--surface-2)] text-[var(--text-3)]",
-                                    ].join(" ")}
-                                    style={{ fontFamily: MONO }}
-                                  >
-                                    {c.authorKind === "TEAM" ? "Gitwork" : "Client"}
-                                  </span>
-                                  <span className="text-[11px] text-[var(--text-4)]">
-                                    {new Date(c.createdAt).toLocaleDateString(undefined, {
-                                      day: "numeric",
-                                      month: "short",
-                                    })}
-                                  </span>
-                                </div>
-                                <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--text-2)]">
-                                  {c.body}
-                                </p>
-                              </div>
-                            ))}
-                            <div className="flex items-start gap-2">
-                              <textarea
-                                value={commentDraft[item.id] ?? ""}
-                                onChange={(e) =>
-                                  setCommentDraft((prev) => ({
-                                    ...prev,
-                                    [item.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="Write a reply…"
-                                aria-label={`Reply to ${item.title}`}
-                                rows={2}
-                                className="app-input resize-y py-2 text-[13px] leading-relaxed"
-                              />
-                              <button
-                                type="button"
-                                disabled={
-                                  postingCommentId === item.id ||
-                                  !(commentDraft[item.id] ?? "").trim()
-                                }
-                                onClick={() => void postComment(item.id)}
-                                className="shrink-0 rounded-[7px] bg-[var(--brand-600)] px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60"
-                              >
-                                {postingCommentId === item.id ? "Posting…" : "Reply"}
-                              </button>
-                            </div>
-                            {commentError?.id === item.id && (
-                              <p className="text-[12px] text-rose-600">{commentError.message}</p>
-                            )}
-                          </div>
                         </div>
                       )}
                     </div>
