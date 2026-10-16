@@ -753,26 +753,40 @@ export function WikiDashboard({
           return <p className="text-[13px] text-[var(--text-4)]">No platforms recorded yet.</p>;
         }
         const due = upcomingRenewals(list, new Date(), 2);
+        // The platforms themselves, not just a count — a renewal due soon leads, then as
+        // many platforms as fit. Bounded (the card is one row tall), with the rest counted.
+        const shown = list.slice(0, due.length > 0 ? 3 : 4);
+        const more = list.length - shown.length;
         return (
-          <div className="space-y-2">
-            {/* Renewals lead: a lapsed domain or developer account takes the app offline,
-                and this card is the overview the client actually opens. */}
+          <div className="space-y-3">
             {due.length > 0 ? (
-              <ul className="space-y-1.5">
+              <ul className="space-y-1.5 border-b border-[var(--border-1)] pb-2.5">
                 {due.map((r) => (
                   <RenewalLine key={r.platformId} r={r} />
                 ))}
               </ul>
-            ) : (
-              <Metric value={String(list.length)} label={list.length === 1 ? "Platform" : "Platforms"} />
-            )}
-            {due.length > 0 ? (
-              <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-                {list.length} {list.length === 1 ? "PLATFORM" : "PLATFORMS"}
-              </p>
-            ) : list.some((p) => p.renewsOn) ? (
-              <p className="text-[12px] text-[var(--text-4)]">Nothing renews in the next 90 days.</p>
             ) : null}
+            <ul className="space-y-1.5">
+              {shown.map((p) => (
+                <li key={p.id} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate text-[13px] text-[var(--text-1)]" title={p.name}>
+                    {p.name}
+                  </span>
+                  {p.platformType ? (
+                    <span
+                      className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {p.platformType}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              {more > 0 ? `+${more} MORE · ` : ""}
+              {list.length} {list.length === 1 ? "PLATFORM" : "PLATFORMS"}
+            </p>
           </div>
         );
       }

@@ -532,7 +532,13 @@ export function ClientPlatformFormModal({
                 and squeezed every field to a stub — measured at 430px: 7 fields
                 under 120px wide and 4 labels clipped. Browser zoom does the same
                 thing, since it shrinks the viewport in CSS pixels. Stack below sm. */}
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 sm:grid-cols-[240px_1fr] sm:items-start">
+            {/* ⚠️ The row must be bounded and the fields column STRETCHED to it. With a plain
+                `sm:items-start` the fields column sized to its content, so its own
+                `overflow-y-auto` never engaged: a long form (credentials + links) spilled out
+                of the grid and ran underneath the Cancel / Save bar. `minmax(0,1fr)` caps the
+                row at the space the panel has; `sm:self-stretch` below makes the column fill
+                it and scroll. Below sm the two stack, so the grid itself scrolls instead. */}
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-y-auto px-1.5 sm:grid-cols-[240px_1fr] sm:px-0 sm:grid-rows-[minmax(0,1fr)] sm:items-start sm:overflow-visible">
               {/* Left — preview image (only for non-app-store) */}
               {!isAppStoreType ? (
                 <div>
@@ -579,7 +585,7 @@ export function ClientPlatformFormModal({
                   sat flush against its left edge (measured: 0px), so their 4px focus
                   ring was sliced off dead straight and read as a hard second border.
                   6px either side gives the ring room to paint. */}
-              <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto px-1.5">
+              <div className="min-h-0 min-w-0 space-y-4 px-1.5 sm:h-full sm:self-stretch sm:overflow-y-auto">
                 {!isAppStoreType && (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">

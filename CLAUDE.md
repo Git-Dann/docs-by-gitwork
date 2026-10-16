@@ -6787,3 +6787,29 @@ product made logging a fresh task the quickest answer to "what are you working o
   AND ≥3 planned tasks are untouched 21+ days (either alone is normal).
 - ⚠️ The task form's due date still defaults to **today** (a team request for logging same-day
   work), so a logged task can never read as late. Left as-is; worth revisiting.
+
+## 68. Recent Changes (October 2026) — Big Wedge user analytics, and platforms the client can open
+
+**Wedge's Metrics page showed nothing, for three reasons, all in `support-analytics/bigwedge.ts`.**
+It used the Analytics API connector's pasted token, which had expired; it sent
+`date_from`/`date_to`, which `overall-report` **silently ignores** (it falls back to the current
+month, so every month read as this month); and it swallowed every error and returned an empty
+month, which `refreshWikiMetrics` then **stored** as that month's figures (§35). Now:
+
+- The adapter logs in for itself through **`bigWedgeBearer()`** (`bigwedge-api-auth.ts`, shared
+  with the course feed, §60) — env service account first, a stored token only as a checked fallback.
+- It asks for `start_date`/`end_date` (end **inclusive** by day) and throws unless the response
+  says `filters.applied_filter === "custom"`.
+- It maps a curated set of fields (users, retention, rounds, scores) rather than flattening the
+  report, and leaves out a missing field instead of zeroing it.
+- A read that fails, or a month with no figures, **throws**; `refreshWikiMetrics` never stores an
+  empty snapshot. Tests are built from the live August 2026 response.
+
+⚠️ Wedge still needs **Metrics switched on** (Add New → Metrics); opening it fetches the missing
+months.
+
+**Platforms.** The Platforms dashboard card now lists the platforms (renewals due first), and each
+platform card opens a details popup (links with copy/open, renewal date) — links only, never
+logins or internal notes, which do not reach the client DTO. The Edit platform modal's fields no
+longer slide under the Cancel/Save bar: the grid's row is bounded (`sm:grid-rows-[minmax(0,1fr)]`)
+and the right column scrolls inside it.

@@ -124,6 +124,43 @@ async function login(baseUrl: string, identifier: string, password: string): Pro
   return token ?? { error: "Big Wedge accepted the login but returned no access token." };
 }
 
+/**
+ * A bearer token for the Big Wedge API: a fresh login when the service account is
+ * configured, else a stored token that is checked for expiry first. Shared by the course
+ * feed (via `resolveBigWedgeAccess`) and the Care analytics adapter, so both log in the same
+ * way and fail with the same sentence.
+ */
+export async function bigWedgeBearer(input: {
+  baseUrl: string;
+  storedToken?: string | null;
+  now?: Date;
+}): Promise<{ ok: true; token: string; via: "login" | "stored-token" } | { ok: false; error: string }> {
+  const identifier = process.env.BIGWEDGE_API_USERNAME?.trim();
+  const password = process.env.BIGWEDGE_API_PASSWORD?.trim();
+  if (identifier && password) {
+    const result = await login(input.baseUrl, identifier, password);
+    return typeof result === "string" ? { ok: true, token: result, via: "login" } : { ok: false, error: result.error };
+  }
+
+  const stored = input.storedToken?.trim();
+  if (stored) {
+    const exp = jwtExpiry(stored);
+    if (exp && exp.getTime() <= (input.now ?? new Date()).getTime()) {
+      return {
+        ok: false,
+        error: `The Big Wedge token stored on the Analytics connector expired on ${exp.toISOString().slice(0, 10)}. Set BIGWEDGE_API_USERNAME and BIGWEDGE_API_PASSWORD so Foundry logs in for itself and this cannot expire again.`,
+      };
+    }
+    return { ok: true, token: stored, via: "stored-token" };
+  }
+
+  return {
+    ok: false,
+    error:
+      "Foundry has no way to log in to the Big Wedge API. Set BIGWEDGE_API_USERNAME and BIGWEDGE_API_PASSWORD (a Big Wedge staff account) in the deploy secrets.",
+  };
+}
+
 export async function resolveBigWedgeAccess(
   workspaceClientId: string,
   now: Date = new Date(),
@@ -133,31 +170,6 @@ export async function resolveBigWedgeAccess(
     /\/$/,
     "",
   );
-
-  const identifier = process.env.BIGWEDGE_API_USERNAME?.trim();
-  const password = process.env.BIGWEDGE_API_PASSWORD?.trim();
-  if (identifier && password) {
-    const result = await login(baseUrl, identifier, password);
-    return typeof result === "string"
-      ? { ok: true, baseUrl, token: result, via: "login" }
-      : { ok: false, error: result.error };
-  }
-
-  const stored = connector?.apiToken?.trim();
-  if (stored) {
-    const exp = jwtExpiry(stored);
-    if (exp && exp.getTime() <= now.getTime()) {
-      return {
-        ok: false,
-        error: `The Big Wedge token stored on the Analytics connector expired on ${exp.toISOString().slice(0, 10)}. Set BIGWEDGE_API_USERNAME and BIGWEDGE_API_PASSWORD so Foundry logs in for itself and this cannot expire again.`,
-      };
-    }
-    return { ok: true, baseUrl, token: stored, via: "stored-token" };
-  }
-
-  return {
-    ok: false,
-    error:
-      "Foundry has no way to log in to the Big Wedge API. Set BIGWEDGE_API_USERNAME and BIGWEDGE_API_PASSWORD (a Big Wedge staff account) in the deploy secrets.",
-  };
+  const bearer = await bigWedgeBearer({ baseUrl, storedToken: connector?.apiToken, now });
+  return bearer.ok ? { ok: true, baseUrl, token: bearer.token, via: bearer.via } : bearer;
 }

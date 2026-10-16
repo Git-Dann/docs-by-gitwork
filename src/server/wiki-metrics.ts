@@ -232,6 +232,11 @@ export async function refreshWikiMetrics(
       const [y, m] = period.split("-").map(Number);
       try {
         const snap = await fetchAnalyticsMonth(config, y, m);
+        // ⚠️ Never stored empty: an empty month would read as "nothing happened" and
+        // would count as that month's FINAL figure, so it would never be fetched again.
+        if (snap.metrics.length === 0) {
+          throw new Error("The connector answered, but returned no numbers for this month.");
+        }
         await prisma.supportAnalyticsSnapshot.upsert({
           where: { clientId_period: { clientId: care.careId, period } },
           create: { clientId: care.careId, period, metrics: snap.metrics as object, capturedAt: now },
