@@ -40,6 +40,11 @@ export async function GET(request: NextRequest) {
         // server-side job before passing it to the analytics adapter.
         const config = (decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}) as AnalyticsConnectionConfig;
         const snapshot = await runAnalytics(config, year, month);
+        // ⚠️ Never store an empty month: it reads as "nothing happened", and once the month
+        // ends it would count as that month's final figures (CLAUDE.md §35).
+        if (snapshot.metrics.length === 0) {
+          throw new Error("The connector answered, but returned no numbers for this month.");
+        }
         await prisma.supportAnalyticsSnapshot.upsert({
           where: { clientId_period: { clientId: conn.clientId, period } },
           create: { clientId: conn.clientId, period, metrics: snapshot.metrics as object },

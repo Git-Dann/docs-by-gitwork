@@ -59,13 +59,11 @@ describe("the month asked for", () => {
 });
 
 describe("what is shown", () => {
-  it("maps the report to labelled user metrics, skipping revenue, arrays and unclear ratios", () => {
+  it("maps the report to labelled monthly metrics, skipping all-time counts, revenue, arrays and unclear ratios", () => {
     const m = metricsFromReport(AUGUST);
     expect(m.map((x) => `${x.label}=${x.value}`)).toEqual([
-      "Total users=111675",
       "New users=8466",
       "Active users=7837",
-      "Returning users=20741",
       "Monthly active users=7646",
       "Rounds played=21399",
       "Rounds started=25010",
@@ -75,8 +73,8 @@ describe("what is shown", () => {
   });
 
   it("leaves a missing field out rather than reporting it as zero", () => {
-    const m = metricsFromReport({ data: { user_growth: { total_users: 10 } } });
-    expect(m).toEqual([{ key: "users_total", label: "Total users", value: 10, group: "Users" }]);
+    const m = metricsFromReport({ data: { user_growth: { new_users: 10 } } });
+    expect(m).toEqual([{ key: "users_new", label: "New users", value: 10, group: "Users" }]);
   });
 });
 

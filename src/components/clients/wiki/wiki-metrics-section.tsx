@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowPathIcon, EyeIcon, EyeSlashIcon, StarIcon } from "@heroicons/react/24/outline";
 import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
-import { AreaSparkline, MONO, StatTile, TrendBadge } from "@/components/analytics/analytics-widgets";
+import { AreaSparkline, MONO, SERIF, TrendBadge } from "@/components/analytics/analytics-widgets";
 import {
   FEATURED_MAX,
   formatMetric,
@@ -57,26 +57,76 @@ export function metricsHeadline(m: Pick<WikiMetricsSection, "mode" | "period" | 
   return periodLabel(m.period);
 }
 
-function MetricTile({ metric }: { metric: WikiMetric }) {
-  const raw = metric.history.filter((v): v is number => v !== null);
+/** "Sep 2026" → "SEP 26": short enough for the two ends of a card's chart. */
+function shortPeriod(period: string): string {
+  const [y, m] = period.split("-");
+  const label = periodLabel(period).split(" ")[0]?.slice(0, 3) ?? m;
+  return `${label} ${y.slice(2)}`.toUpperCase();
+}
+
+/**
+ * One metric as a graph card: figure, label and change on top, the last six months drawn
+ * full-width along the bottom INSIDE the card, with the first and last month named so the
+ * line reads as a span of time rather than decoration.
+ */
+function MetricTile({ metric, periods }: { metric: WikiMetric; periods: string[] }) {
+  const known = metric.history
+    .map((v, i) => ({ v, period: periods[i] }))
+    .filter((p): p is { v: number; period: string } => p.v !== null && Boolean(p.period));
+  const raw = known.map((p) => p.v);
   // Drawn against its own range, not from zero: 4,410 → 4,812 is the story, and from zero
   // it reads as a flat line along the bottom.
   const floor = raw.length ? Math.min(...raw) : 0;
   const points = raw.map((v) => v - floor);
   return (
-    <div className="min-w-0">
-      <StatTile
-        label={metric.label}
-        figure={formatMetric(metric.value, metric.unit)}
-        // Neutral: a rising number is good for "users" and bad for "cancellations", and the
-        // adapter does not say which this is — so the arrow is told to colour neither.
-        sub={<TrendBadge delta={metricTrend(metric.value, metric.previous)} goodWhen="neutral" />}
-      />
-      {points.length >= 2 ? (
-        <div className="mt-1 h-6 px-1" aria-hidden>
-          <AreaSparkline points={points} height={24} />
+    <div className="flex min-w-0 flex-col overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)]">
+      <div className="px-3.5 pt-3">
+        <div
+          className="truncate tabular-nums text-[var(--text-1)]"
+          style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em" }}
+          title={formatMetric(metric.value, metric.unit)}
+        >
+          {formatMetric(metric.value, metric.unit)}
         </div>
-      ) : null}
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <span
+            className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
+            style={{ fontFamily: MONO }}
+            title={metric.label}
+          >
+            {metric.label}
+          </span>
+          {/* Neutral: a rising number is good for "users" and bad for "cancellations", and
+              the adapter does not say which this is — so the arrow is told to colour neither. */}
+          <span className="shrink-0 text-xs text-[var(--text-3)]">
+            <TrendBadge delta={metricTrend(metric.value, metric.previous)} goodWhen="neutral" />
+          </span>
+        </div>
+      </div>
+      {/* The chart band is always the same height, so every card in a row lines up. */}
+      <div className="mt-auto pt-3">
+        {points.length >= 2 ? (
+          <>
+            <div className="h-12" aria-hidden>
+              <AreaSparkline points={points} height={48} />
+            </div>
+            <div
+              className="flex justify-between border-t border-[var(--border-1)] px-3.5 py-1.5 text-[9px] tracking-[0.08em] text-[var(--text-4)]"
+              style={{ fontFamily: MONO }}
+            >
+              <span>{shortPeriod(known[0].period)}</span>
+              <span>{shortPeriod(known[known.length - 1].period)}</span>
+            </div>
+          </>
+        ) : (
+          <p
+            className="flex h-[73px] items-center justify-center border-t border-[var(--border-1)] px-3.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+            style={{ fontFamily: MONO }}
+          >
+            Trend after two months
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -130,7 +180,7 @@ export function WikiMetricsSectionView({
                 ) : null}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {rows.map((m) => (
-                    <MetricTile key={m.key} metric={m} />
+                    <MetricTile key={m.key} metric={m} periods={metrics.historyPeriods} />
                   ))}
                 </div>
               </div>

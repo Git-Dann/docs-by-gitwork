@@ -6813,3 +6813,11 @@ platform card opens a details popup (links with copy/open, renewal date) — lin
 logins or internal notes, which do not reach the client DTO. The Edit platform modal's fields no
 longer slide under the Cancel/Save bar: the grid's row is bounded (`sm:grid-rows-[minmax(0,1fr)]`)
 and the right column scrolls inside it.
+
+**Follow-up (same day).** Metric tiles are now graph cards: the six-month line sits inside the
+card, with the first and last month named. Two more data rules: an **empty** stored month is
+never treated as settled (`isSettled` in `src/lib/wiki-metrics.ts`) — it is not shown, it is
+re-fetched, and opening the section refreshes when a month in the window is stored but unusable
+(never for months that were simply never stored). The `analytics-snapshot` cron no longer stores
+an empty month either. And Big Wedge's `total_users` / `returning_users` are **all-time** counts
+the date range does not change, so they are no longer collected per month.
