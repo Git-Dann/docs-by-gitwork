@@ -239,6 +239,10 @@ export interface ClientPlatformRecord {
   links: PlatformLink[];
   /** When true, this platform's prod + staging URLs surface as buttons in the wiki header. */
   featuredInWiki: boolean;
+  /** `YYYY-MM-DD` — the next thing on this platform that renews or expires. */
+  renewsOn: string | null;
+  /** What renews then — "Domain", "Apple developer account". */
+  renewalNote: string | null;
   createdAt: string;
   updatedAt: string;
 }

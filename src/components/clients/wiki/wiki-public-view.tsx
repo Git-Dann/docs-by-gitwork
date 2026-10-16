@@ -17,6 +17,9 @@ import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { isPlannable } from "@/lib/wiki-estimates";
 import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
+import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
+import { WikiMeetingsSectionView } from "@/components/clients/wiki/wiki-meetings-section";
+import { WikiPlatformsSectionView } from "@/components/clients/wiki/wiki-platforms-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
@@ -67,6 +70,9 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
+  metrics: "Metrics",
+  meetings: "Meetings",
+  platforms: "Platforms",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -147,6 +153,16 @@ export function WikiPublicView({
     // Support needs a LINKED Care record, not merely the flag — an unlinked section would
     // show "not connected", which is our problem to fix, not theirs to read.
     ...(wiki.support.enabled && wiki.support.linked ? (["support"] as const) : []),
+    // Each needs more than its flag: an enabled page with nothing on it would read to the
+    // client as a broken link. Metrics here are already the client's copy (hidden ones
+    // removed server-side), so "at least one" means at least one they are allowed to see.
+    ...(wiki.metrics.enabled && wiki.metrics.source && wiki.metrics.metrics.length > 0
+      ? (["metrics"] as const)
+      : []),
+    ...(wiki.meetings.enabled && wiki.meetings.meetings.length > 0 ? (["meetings"] as const) : []),
+    ...(wiki.clientPlatforms.enabled && wiki.clientPlatforms.platforms.length > 0
+      ? (["platforms"] as const)
+      : []),
     ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
       ? (["code-handover"] as const)
       : []),
@@ -253,6 +269,15 @@ export function WikiPublicView({
           blockers={wiki.blockers}
          unassigned={wiki.timeline.unassigned} />
       );
+    }
+    if (activeSection === "metrics") {
+      return <WikiMetricsSectionView metrics={wiki.metrics} />;
+    }
+    if (activeSection === "meetings") {
+      return <WikiMeetingsSectionView meetings={wiki.meetings} />;
+    }
+    if (activeSection === "platforms") {
+      return <WikiPlatformsSectionView platforms={wiki.clientPlatforms} />;
     }
     if (activeSection === "support") {
       return <WikiSupportSectionView support={wiki.support} />;

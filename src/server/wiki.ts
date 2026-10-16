@@ -47,6 +47,10 @@ import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code"
 import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
+import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
+import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
+import { loadWikiPlatforms } from "./wiki-platforms";
+import { EMPTY_PLATFORMS, type WikiPlatformsSection } from "@/lib/wiki-platforms";
 import type { WikiEstimatesSection } from "@/types/wiki-estimates";
 import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
@@ -386,6 +390,12 @@ export interface WikiDTO {
   roundupEnabled: boolean;
   /** The client's own Care figures — see src/server/wiki-support.ts. */
   support: WikiSupportSection;
+  /** The client's own product numbers — see src/server/wiki-metrics.ts. */
+  metrics: WikiMetricsSection;
+  /** Meetings someone chose to share — see src/server/wiki-meetings.ts. */
+  meetings: WikiMeetingsSection;
+  /** The client's platforms as links, with renewal dates — see src/server/wiki-platforms.ts. */
+  clientPlatforms: WikiPlatformsSection;
   /**
    * Pushed AM/PM developer standups for this client — today, plus the days
    * in the last two weeks that had one. See src/server/wiki-standups.ts. Only
@@ -1032,6 +1042,9 @@ async function buildDTO(
     estimates,
     support,
     standups,
+    metrics,
+    meetings,
+    clientPlatforms,
   ] = await Promise.all([
     settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
     settle(
@@ -1091,6 +1104,10 @@ async function buildDTO(
       today: { workDate: new Date().toISOString(), devs: [] },
       history: [],
     }),
+    // Stored snapshots only — never a call to the client's API on a page load.
+    settle("metrics", () => loadWikiMetrics(wiki.clientId), EMPTY_METRICS),
+    settle("meetings", () => loadWikiMeetings(wiki.clientId), EMPTY_MEETINGS),
+    settle("platforms", () => loadWikiPlatforms(wiki.clientId), EMPTY_PLATFORMS),
   ]);
   return {
     id: wiki.id,
@@ -1156,6 +1173,9 @@ async function buildDTO(
     roundupEnabled: wiki.roundupEnabled ?? false,
     support,
     standups,
+    metrics,
+    meetings,
+    clientPlatforms,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -2825,6 +2845,9 @@ const SHAREABLE_SECTIONS = [
   "roundup",
   "delivery",
   "support",
+  "metrics",
+  "meetings",
+  "platforms",
   "code-handover",
   "design-system",
   "ia",
@@ -2889,7 +2912,9 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
 
 /** Strip what only Gitwork should see from a DTO that is about to leave on a share token. */
 function forPublic(dto: WikiDTO): WikiDTO {
-  return { ...dto, courseFeed: null };
+  // Hidden metrics and the metrics endpoint/token state are Gitwork's settings, not the
+  // client's data — removed here, not merely flagged, so they never reach the browser.
+  return { ...dto, courseFeed: null, metrics: forPublicMetrics(dto.metrics) };
 }
 
 /**

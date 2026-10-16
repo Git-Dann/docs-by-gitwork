@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState, type ComponentType, type SVGProps } from "react";
 import {
   BanknotesIcon,
-  CalculatorIcon,
-  NewspaperIcon,
   BoltIcon,
   BookOpenIcon,
+  CalculatorIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -22,10 +21,14 @@ import {
   DocumentDuplicateIcon,
   DocumentTextIcon,
   FlagIcon,
+  GlobeAltIcon,
   LifebuoyIcon,
+  NewspaperIcon,
+  PresentationChartLineIcon,
   RocketLaunchIcon,
   ServerStackIcon,
   Squares2X2Icon,
+  VideoCameraIcon,
   WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiSection } from "./wiki-sidebar";
@@ -45,6 +48,9 @@ const SECTION_ICON: Record<WikiSection, IconType> = {
   roundup: NewspaperIcon,
   delivery: ChartBarSquareIcon,
   support: LifebuoyIcon,
+  metrics: PresentationChartLineIcon,
+  meetings: VideoCameraIcon,
+  platforms: GlobeAltIcon,
   "code-handover": CpuChipIcon,
   "design-system": CubeTransparentIcon,
   ia: BookOpenIcon,

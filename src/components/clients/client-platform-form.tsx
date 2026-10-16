@@ -20,6 +20,9 @@ type PlatformInput = {
   featuredInWiki: boolean;
   /** Extra client-provided links (ClickUp board, Figma file …). */
   links: PlatformLink[];
+  /** `YYYY-MM-DD` or "" — the next renewal/expiry on this platform. */
+  renewsOn: string;
+  renewalNote: string;
 };
 
 const PLATFORM_TYPES = [
@@ -452,6 +455,8 @@ export function ClientPlatformFormModal({
     previewImageUrl: platform?.previewImageUrl ?? "",
     links: platform?.links ?? [],
     featuredInWiki: platform?.featuredInWiki ?? false,
+    renewsOn: platform?.renewsOn ?? "",
+    renewalNote: platform?.renewalNote ?? "",
   });
 
   // App store listing fields — parsed from notes JSON on edit
@@ -794,6 +799,35 @@ export function ClientPlatformFormModal({
                     />
                   </>
                 )}
+
+                {/* Shared by both field sets: a store listing renews too (the
+                    developer account). Shown on the client wiki overview when the
+                    Platforms section is on, so a lapse is seen coming. */}
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                      What renews
+                    </span>
+                    <input
+                      value={form.renewalNote}
+                      onChange={(e) => set("renewalNote", e.target.value)}
+                      className="app-input"
+                      placeholder="Domain, SSL certificate, Apple developer account…"
+                      maxLength={80}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
+                      Renews on
+                    </span>
+                    <input
+                      value={form.renewsOn}
+                      onChange={(e) => set("renewsOn", e.target.value)}
+                      className="app-input"
+                      type="date"
+                    />
+                  </label>
+                </div>
 
                 {error ? <p className="text-sm text-rose-700">{error}</p> : null}
               </div>

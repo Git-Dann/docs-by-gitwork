@@ -28,17 +28,20 @@ export function getAdapter(key: string | undefined): AnalyticsAdapter | null {
 }
 
 /**
- * Fetch a month's analytics for a connection and merge in the previous month's
- * values (matched by metric key) so the report can render trends. The previous
- * month is best-effort — if it fails, current values are returned without trends.
+ * One month from a connection, with the connection's own checks applied (known adapter,
+ * base URL, token). Used by `runAnalytics` and by the client wiki's Metrics section, so a
+ * misconfigured connector fails the same way in both.
  */
-export async function runAnalytics(
+export async function fetchAnalyticsMonth(
   config: AnalyticsConnectionConfig,
   year: number,
   month: number,
-  /** Previous month's stored metrics (from a snapshot) — used for trends if present. */
-  prevSnapshot?: Array<{ key: string; value: number }>,
 ): Promise<AnalyticsSnapshot> {
+  const { adapter, ctx } = resolveContext(config, year, month);
+  return adapter.fetchMonth(ctx);
+}
+
+function resolveContext(config: AnalyticsConnectionConfig, year: number, month: number) {
   const adapter = getAdapter(config.adapter);
   if (!adapter) throw new Error(`Unknown analytics adapter: ${config.adapter ?? "(none)"}`);
 
@@ -59,6 +62,22 @@ export async function runAnalytics(
     year,
     month,
   };
+  return { adapter, ctx };
+}
+
+/**
+ * Fetch a month's analytics for a connection and merge in the previous month's
+ * values (matched by metric key) so the report can render trends. The previous
+ * month is best-effort — if it fails, current values are returned without trends.
+ */
+export async function runAnalytics(
+  config: AnalyticsConnectionConfig,
+  year: number,
+  month: number,
+  /** Previous month's stored metrics (from a snapshot) — used for trends if present. */
+  prevSnapshot?: Array<{ key: string; value: number }>,
+): Promise<AnalyticsSnapshot> {
+  const { adapter, ctx } = resolveContext(config, year, month);
   const current = await adapter.fetchMonth(ctx);
 
   // Previous calendar month for trend comparison.
