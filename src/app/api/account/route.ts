@@ -7,6 +7,7 @@
  * update. Avatar URL is the one piece of identity the user can override locally.
  */
 
+import { tidyPersonName } from "@/lib/person-name";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
@@ -23,7 +24,11 @@ export async function GET() {
     const session = await auth();
     if (!session?.user?.id) return apiError("Not authenticated", 401);
 
-    const sessionName = session.user.name?.trim() || "";
+    // Tidied the same way as at first sign-in (tidyPersonName), because this GET copies the
+    // Google profile name back onto the record on every visit — without it, an all-lowercase
+    // Google name ("ali asghar") overwrote the corrected one the next time that person opened
+    // Foundry.
+    const sessionName = tidyPersonName(session.user.name) ?? "";
     const sessionEmail = session.user.email?.trim() || "";
 
     // Look up the User row. If it's missing for any reason (e.g. the DB was reset after the
