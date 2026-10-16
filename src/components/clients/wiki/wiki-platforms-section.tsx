@@ -5,10 +5,18 @@
  *
  * Links only: logins and internal notes are never loaded into the wiki DTO
  * (src/server/wiki-platforms.ts). Edited in Portal → client → 10 // PLATFORMS; this page
- * only reads.
+ * only reads. Clicking a card opens its details — every link written out in full with a
+ * copy button, and what renews when.
  */
 
-import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
+import { useState } from "react";
+import {
+  ArrowTopRightOnSquareIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ClipboardDocumentIcon,
+} from "@heroicons/react/24/outline";
+import { Modal } from "@/components/ui/modal";
 import { MONO, SERIF } from "@/components/analytics/analytics-widgets";
 import {
   renewalPhrase,
@@ -71,24 +79,41 @@ function LinkButton({ href, label }: { href: string; label: string }) {
   );
 }
 
-function PlatformCard({ p, now }: { p: WikiPlatform; now: Date }) {
-  const links = [
+/** Every link a platform has, labelled, in the order the card and the popup show them. */
+export function platformLinks(p: WikiPlatform): { href: string; label: string }[] {
+  return [
     p.url ? { href: p.url, label: "Production" } : null,
     p.stagingUrl ? { href: p.stagingUrl, label: "Staging" } : null,
     p.repoUrl ? { href: p.repoUrl, label: "Repository" } : null,
     ...p.links.map((l) => ({ href: l.url, label: l.label })),
   ].filter((x): x is { href: string; label: string } => Boolean(x));
+}
+
+function PlatformCard({ p, now, onOpen }: { p: WikiPlatform; now: Date; onOpen: () => void }) {
+  const links = platformLinks(p);
   const renewal = upcomingRenewals([p], now, 1)[0] ?? null;
 
   return (
-    <div className="min-w-0 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)] p-4">
+    // The card opens its details on click — except when the click was on one of its own
+    // links, which open the link instead. A div with an explicit button inside rather than
+    // a <button> wrapper, because links cannot be nested inside a button.
+    <div
+      className="group min-w-0 cursor-pointer rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)] p-4 transition-colors hover:border-[var(--brand-500)]"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a,button")) return;
+        onOpen();
+      }}
+    >
       <div className="flex items-start justify-between gap-2">
-        <p
-          className="min-w-0 break-words text-[17px] leading-snug text-[var(--text-1)]"
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-w-0 break-words text-left text-[17px] leading-snug text-[var(--text-1)] hover:text-[var(--brand-700)]"
           style={{ fontFamily: SERIF, fontWeight: 600 }}
+          aria-label={`${p.name} — details`}
         >
           {p.name}
-        </p>
+        </button>
         {p.platformType ? (
           <span
             className="shrink-0 rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]"
@@ -117,7 +142,127 @@ function PlatformCard({ p, now }: { p: WikiPlatform; now: Date }) {
           ) : null}
         </p>
       ) : null}
+      <p
+        className="mt-3 inline-flex items-center gap-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] group-hover:text-[var(--brand-700)]"
+        style={{ fontFamily: MONO }}
+        aria-hidden
+      >
+        Details <ChevronRightIcon className="h-3 w-3" />
+      </p>
     </div>
+  );
+}
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // Clipboard blocked — the URL is on screen to select by hand.
+        }
+      }}
+      className="shrink-0 rounded-[6px] p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+      aria-label={copied ? `${label} copied` : `Copy ${label}`}
+      title={copied ? "Copied" : "Copy"}
+    >
+      {copied ? (
+        <CheckIcon className="h-4 w-4 text-[var(--success-500)]" />
+      ) : (
+        <ClipboardDocumentIcon className="h-4 w-4" />
+      )}
+    </button>
+  );
+}
+
+/** A platform's details: every link in full with copy, and its renewal. Fixed height (§46). */
+function PlatformDetails({ p, now, onClose }: { p: WikiPlatform; now: Date; onClose: () => void }) {
+  const links = platformLinks(p);
+  const renewal = p.renewsOn ? (upcomingRenewals([p], now, 1)[0] ?? null) : null;
+  return (
+    <Modal open onClose={onClose} title="PLATFORM" panelClassName="app-dialog-fixed w-full max-w-lg">
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <h3
+            className="min-w-0 break-words text-[22px] leading-snug text-[var(--text-1)]"
+            style={{ fontFamily: SERIF, fontWeight: 600 }}
+          >
+            {p.name}
+          </h3>
+          {p.platformType ? (
+            <span
+              className="mt-1 shrink-0 rounded-[4px] bg-[var(--surface-1)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]"
+              style={{ fontFamily: MONO }}
+            >
+              {p.platformType}
+            </span>
+          ) : null}
+        </div>
+
+        <div>
+          <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+            Links
+          </p>
+          {links.length === 0 ? (
+            <p className="text-[13px] text-[var(--text-4)]">No links recorded.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border-1)] rounded-[8px] border border-[var(--border-1)]">
+              {links.map((l) => (
+                <li key={`${l.label}-${l.href}`} className="flex items-center gap-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] text-[var(--text-1)]">{l.label}</p>
+                    <p
+                      className="truncate text-[12px] text-[var(--text-3)]"
+                      style={{ fontFamily: MONO }}
+                      title={l.href}
+                    >
+                      {l.href.replace(/^https?:\/\//, "")}
+                    </p>
+                  </div>
+                  <CopyButton value={l.href} label={l.label} />
+                  <a
+                    href={l.href}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="shrink-0 rounded-[6px] p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+                    aria-label={`Open ${l.label}`}
+                    title="Open"
+                  >
+                    <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {p.renewsOn ? (
+          <div>
+            <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              Renewal
+            </p>
+            <p className="text-[13px] text-[var(--text-2)]">
+              {p.renewalNote ?? "Renews"} · {renewalDate(p.renewsOn)}
+              {renewal ? (
+                <span className={`ml-1.5 text-[12px] ${TONE_CLASS[renewalTone(renewal.days)]}`} style={{ fontFamily: MONO }}>
+                  {renewal.days < 0 ? `due ${renewalPhrase(renewal.days)}` : renewalPhrase(renewal.days)}
+                </span>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 justify-end border-t border-[var(--border-1)] px-5 py-3">
+        <button type="button" onClick={onClose} className="app-button app-button-utility app-button-xs">
+          Close
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -129,6 +274,8 @@ export function WikiPlatformsSectionView({
   now?: Date;
 }) {
   const due = upcomingRenewals(platforms.platforms, now, 6);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = platforms.platforms.find((p) => p.id === openId) ?? null;
   return (
     <div className="space-y-4">
       {due.length > 0 ? (
@@ -161,11 +308,12 @@ export function WikiPlatformsSectionView({
         ) : (
           <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3">
             {platforms.platforms.map((p) => (
-              <PlatformCard key={p.id} p={p} now={now} />
+              <PlatformCard key={p.id} p={p} now={now} onOpen={() => setOpenId(p.id)} />
             ))}
           </div>
         )}
       </section>
+      {open ? <PlatformDetails p={open} now={now} onClose={() => setOpenId(null)} /> : null}
     </div>
   );
 }
