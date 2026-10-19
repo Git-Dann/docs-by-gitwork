@@ -60,6 +60,7 @@ import {
   LaunchpadUploadError,
 } from "@/lib/launchpad/files";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
+import { deleteStoredUpload, placeUpload, readStoredUpload } from "./blob-storage";
 import type {
   LaunchpadAnswers,
   LaunchpadDTO,
@@ -730,19 +731,30 @@ export async function attachLaunchpadItemFile(
     );
   }
 
-  await prisma.launchpadItemFile.create({
-    data: {
-      kitId: ctx.kit.id,
-      itemId,
-      filename: verdict.filename,
-      mime: verdict.mime,
-      size: upload.bytes.byteLength,
-      bytes: bytesForPrisma(upload.bytes),
-      uploadedByKind: by.kind,
-      uploadedByName: by.name,
-    },
-    select: { id: true },
+  const placed = await placeUpload(`launchpad/${ctx.kit.id}`, {
+    bytes: upload.bytes,
+    contentType: verdict.mime,
   });
+  try {
+    await prisma.launchpadItemFile.create({
+      data: {
+        kitId: ctx.kit.id,
+        itemId,
+        filename: verdict.filename,
+        mime: verdict.mime,
+        size: upload.bytes.byteLength,
+        bytes: placed.bytes ? bytesForPrisma(placed.bytes) : null,
+        storageKey: placed.storageKey,
+        uploadedByKind: by.kind,
+        uploadedByName: by.name,
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    // No row points at the object, so nothing could ever serve or delete it.
+    await deleteStoredUpload(placed.storageKey);
+    throw err;
+  }
 
   await applyFileEvidence(ctx.kit, itemId, current + 1, by.name);
   return getLaunchpadByWikiId(wikiId);
@@ -761,7 +773,11 @@ export async function deleteLaunchpadItemFile(
   const files = ctx.kit.files.filter((f) => f.itemId === itemId);
   if (!files.some((f) => f.id === fileId)) return null;
 
-  await prisma.launchpadItemFile.delete({ where: { id: fileId }, select: { id: true } });
+  const removed = await prisma.launchpadItemFile.delete({
+    where: { id: fileId },
+    select: { id: true, storageKey: true },
+  });
+  await deleteStoredUpload(removed.storageKey);
   await applyFileEvidence(ctx.kit, itemId, files.length - 1, by.name);
   return getLaunchpadByWikiId(wikiId);
 }
@@ -809,10 +825,12 @@ export async function getLaunchpadItemFile(
       itemId,
       kit: { wikiId, ...(opts.requireEnabled ? { wiki: { launchpadEnabled: true } } : {}) },
     },
-    select: { bytes: true, mime: true, filename: true },
+    select: { bytes: true, storageKey: true, mime: true, filename: true },
   });
   if (!row) return null;
-  return { bytes: Buffer.from(row.bytes), mime: row.mime, filename: row.filename };
+  const bytes = await readStoredUpload({ storageKey: row.storageKey, bytes: row.bytes });
+  if (!bytes) return null;
+  return { bytes, mime: row.mime, filename: row.filename };
 }
 
 // ─── Doc writes ───────────────────────────────────────────────────────────────
