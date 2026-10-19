@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { WikiMarkdown } from "@/lib/wiki-markdown";
 import type { WikiSection } from "./wiki-sidebar";
 
 // ─── Section hints ────────────────────────────────────────────────────────────
@@ -116,143 +117,8 @@ const BLOCKS: Array<{
 ];
 
 // ─── Markdown renderer ────────────────────────────────────────────────────────
-
-function renderMarkdown(md: string): string {
-  if (!md.trim())
-    return "<p class='text-[var(--text-4)] italic'>Nothing to preview yet.</p>";
-
-  const lines = md
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .split("\n");
-
-  const out: string[] = [];
-  let inUl = false;
-  let inOl = false;
-  let inCode = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // fenced code block
-    if (line.trim().startsWith("```")) {
-      if (!inCode) {
-        if (inUl) { out.push("</ul>"); inUl = false; }
-        if (inOl) { out.push("</ol>"); inOl = false; }
-        out.push(
-          '<pre class="overflow-x-auto rounded-[6px] bg-[var(--surface-1)] p-3 text-[12.5px] font-mono my-3"><code>',
-        );
-        inCode = true;
-      } else {
-        out.push("</code></pre>");
-        inCode = false;
-      }
-      continue;
-    }
-    if (inCode) {
-      out.push(line + "\n");
-      continue;
-    }
-
-    // blockquote / callout
-    if (/^&gt; /.test(line)) {
-      if (inUl) { out.push("</ul>"); inUl = false; }
-      if (inOl) { out.push("</ol>"); inOl = false; }
-      out.push(
-        `<blockquote class="my-3 border-l-[3px] border-[var(--brand-500)] bg-[var(--surface-0)] px-4 py-2.5 rounded-r-[6px] text-sm text-[var(--text-2)]">${inlineFormat(line.slice(5))}</blockquote>`,
-      );
-      continue;
-    }
-
-    // close open lists if line doesn't match
-    const isBullet = /^(\s*[-*])\s/.test(line);
-    const isOrdered = /^\d+\.\s/.test(line);
-    if (!isBullet && inUl) { out.push("</ul>"); inUl = false; }
-    if (!isOrdered && inOl) { out.push("</ol>"); inOl = false; }
-
-    // headings
-    if (/^### /.test(line)) {
-      out.push(
-        `<h3 class="mt-5 mb-1.5 text-[15px] font-semibold text-[var(--text-1)]">${inlineFormat(line.slice(4))}</h3>`,
-      );
-    } else if (/^## /.test(line)) {
-      out.push(
-        `<h2 class="mt-6 mb-2 text-[17px] font-semibold text-[var(--text-1)] border-b border-[rgba(0,0,0,0.07)] pb-1.5">${inlineFormat(line.slice(3))}</h2>`,
-      );
-    } else if (/^# /.test(line)) {
-      out.push(
-        `<h1 class="mt-4 mb-3 text-[20px] font-bold text-[var(--text-1)]">${inlineFormat(line.slice(2))}</h1>`,
-      );
-    } else if (/^---$/.test(line.trim())) {
-      out.push('<hr class="my-5 border-[rgba(0,0,0,0.09)]" />');
-    } else if (isBullet) {
-      if (!inUl)
-        out.push('<ul class="my-2 ml-4 list-disc space-y-1 text-sm text-[var(--text-2)]">');
-      inUl = true;
-      out.push(`<li>${inlineFormat(line.replace(/^\s*[-*]\s/, ""))}</li>`);
-    } else if (isOrdered) {
-      if (!inOl)
-        out.push('<ol class="my-2 ml-4 list-decimal space-y-1 text-sm text-[var(--text-2)]">');
-      inOl = true;
-      out.push(`<li>${inlineFormat(line.replace(/^\d+\.\s/, ""))}</li>`);
-    } else if (/^\|.+\|$/.test(line)) {
-      if (i === 0 || !/^\|.+\|$/.test(lines[i - 1])) {
-        out.push(
-          '<div class="overflow-x-auto my-4"><table class="min-w-full text-sm border-collapse border border-[rgba(0,0,0,0.1)] rounded-[6px]">',
-        );
-      }
-      const cells = line
-        .split("|")
-        .slice(1, -1)
-        .map((c) => c.trim());
-      const isHeader =
-        lines[i + 1]?.trim().startsWith("|---") ||
-        lines[i + 1]?.trim().startsWith("| ---");
-      const isSep = /^\|\s*[-:]+\s*(\|\s*[-:]+\s*)+\|$/.test(line.trim());
-      if (isSep) {
-        // skip separator rows
-      } else if (isHeader) {
-        out.push(
-          `<thead><tr>${cells.map((c) => `<th class="border border-[rgba(0,0,0,0.08)] px-3 py-2 text-left font-semibold text-[var(--text-1)] bg-[var(--surface-0)]">${inlineFormat(c)}</th>`).join("")}</tr></thead><tbody>`,
-        );
-      } else {
-        out.push(
-          `<tr>${cells.map((c) => `<td class="border border-[rgba(0,0,0,0.08)] px-3 py-2 text-[var(--text-2)]">${inlineFormat(c)}</td>`).join("")}</tr>`,
-        );
-        if (!/^\|.+\|$/.test(lines[i + 1] ?? "")) {
-          out.push("</tbody></table></div>");
-        }
-      }
-    } else if (line.trim() === "") {
-      out.push("");
-    } else {
-      out.push(
-        `<p class="my-1.5 text-sm leading-6 text-[var(--text-2)]">${inlineFormat(line)}</p>`,
-      );
-    }
-  }
-
-  if (inUl) out.push("</ul>");
-  if (inOl) out.push("</ol>");
-  if (inCode) out.push("</code></pre>");
-
-  return out.join("\n");
-}
-
-function inlineFormat(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(
-      /`(.+?)`/g,
-      '<code class="rounded bg-[var(--surface-1)] px-1 py-px text-[12px] font-mono text-[var(--brand-700)]">$1</code>',
-    )
-    .replace(
-      /\[(.+?)\]\((.+?)\)/g,
-      '<a href="$2" target="_blank" rel="noreferrer" class="text-[var(--brand-700)] underline hover:no-underline">$1</a>',
-    );
-}
+// Rendered as React elements by `src/lib/wiki-markdown.tsx` — never as an HTML string. Wiki pages
+// reach the client's public share page, so links go through the shared `safeUrl` allow-list.
 
 // ─── Word count ───────────────────────────────────────────────────────────────
 
@@ -442,10 +308,7 @@ export const WikiPageEditor = forwardRef<WikiPageEditorHandle, Props>(
     // ── Read-only view ──────────────────────────────────────────────────────────
     if (readOnly) {
       return (
-        <div
-          className="min-h-[200px]"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(initialContent) }}
-        />
+        <WikiMarkdown className="min-h-[200px]" content={initialContent} />
       );
     }
 
@@ -569,9 +432,9 @@ export const WikiPageEditor = forwardRef<WikiPageEditorHandle, Props>(
             />
           </div>
         ) : (
-          <div
+          <WikiMarkdown
             className="min-h-[480px] rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white p-6"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(editContent) }}
+            content={editContent}
           />
         )}
       </div>

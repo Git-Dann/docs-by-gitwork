@@ -4015,6 +4015,59 @@ export async function addPublicWikiIntakeComment(
   );
 }
 
+/** Where a reply lives: the internal wiki (by client slug) or the shared one (by token). */
+export type WikiCommentScope = { slug: string } | { token: string };
+
+function wikiCommentUrl(scope: WikiCommentScope, itemId: string, commentId: string): string {
+  const base =
+    "slug" in scope ? `/api/clients/${scope.slug}/wiki` : `/api/wiki/${encodeURIComponent(scope.token)}`;
+  return `${base}/intake-items/${encodeURIComponent(itemId)}/comments/${encodeURIComponent(commentId)}`;
+}
+
+/** Edit your own reply. */
+export async function editWikiIntakeComment(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  body: string,
+  mentionIds: string[] = [],
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(wikiCommentUrl(scope, itemId, commentId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body, mentionIds }),
+  });
+}
+
+/** Delete a reply (soft — the thread shows "Reply deleted"). Returns the blanked record. */
+export async function deleteWikiIntakeComment(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(wikiCommentUrl(scope, itemId, commentId), { method: "DELETE" });
+}
+
+/** Attach a screenshot to your own reply. */
+export function uploadWikiIntakeCommentImage(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  file: File,
+): Promise<WikiIntakeCommentRecord> {
+  return postImageFile(`${wikiCommentUrl(scope, itemId, commentId)}/image`, file);
+}
+
+/** The URL a reply's screenshot is served from (`thumb` → the small preview). */
+export function wikiIntakeCommentImageSrc(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  opts: { thumb?: boolean } = {},
+): string {
+  return `${wikiCommentUrl(scope, itemId, commentId)}/image${opts.thumb ? "?thumb=1" : ""}`;
+}
+
 export async function deleteWikiIntakeItemApi(slug: string, id: string): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/intake-items/${id}`, { method: "DELETE" });
 }
@@ -4914,6 +4967,85 @@ export async function approvePublicLaunchpadDocApi(
     headers: jsonHeaders,
     body: JSON.stringify({ approved }),
   });
+}
+
+// ── Per-client requirements (internal only — no token counterpart) ───────────
+
+export interface LaunchpadCustomItemInput {
+  label: string;
+  helper?: string | null;
+  hint?: string | null;
+  ownedByClient?: boolean | null;
+}
+
+export async function addLaunchpadCustomItemApi(
+  slug: string,
+  moduleId: string,
+  input: LaunchpadCustomItemInput,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/custom-items`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ moduleId, ...input }),
+  });
+}
+
+export async function updateLaunchpadCustomItemApi(
+  slug: string,
+  itemId: string,
+  patch: Partial<LaunchpadCustomItemInput>,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(
+    `/api/clients/${slug}/wiki/launchpad/custom-items/${encodeURIComponent(itemId)}`,
+    { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(patch) },
+  );
+}
+
+export async function removeLaunchpadCustomItemApi(
+  slug: string,
+  itemId: string,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(
+    `/api/clients/${slug}/wiki/launchpad/custom-items/${encodeURIComponent(itemId)}`,
+    { method: "DELETE" },
+  );
+}
+
+// ── Requirement files (both audiences) ───────────────────────────────────────
+// No Content-Type header on the upload: the browser sets the multipart boundary.
+
+function launchpadFilesBase(scope: { slug: string } | { token: string }, itemId: string): string {
+  const item = encodeURIComponent(itemId);
+  return "slug" in scope
+    ? `/api/clients/${scope.slug}/wiki/launchpad/items/${item}/files`
+    : `/api/wiki/${scope.token}/launchpad/items/${item}/files`;
+}
+
+/** Where a file downloads from — used as a plain `<a href>`, served as an attachment. */
+export function launchpadFileUrl(
+  scope: { slug: string } | { token: string },
+  itemId: string,
+  fileId: string,
+): string {
+  return `${launchpadFilesBase(scope, itemId)}/${encodeURIComponent(fileId)}`;
+}
+
+export async function uploadLaunchpadFileApi(
+  scope: { slug: string } | { token: string },
+  itemId: string,
+  file: File,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(launchpadFilesBase(scope, itemId), { method: "POST", body: form });
+}
+
+export async function deleteLaunchpadFileApi(
+  scope: { slug: string } | { token: string },
+  itemId: string,
+  fileId: string,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(launchpadFileUrl(scope, itemId, fileId), { method: "DELETE" });
 }
 
 // ── Templates (Settings → Launchpad) ─────────────────────────────────────────

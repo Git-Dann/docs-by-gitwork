@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { AtSymbolIcon } from "@heroicons/react/24/outline";
+import { AtSymbolIcon, PaperClipIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import type { MentionPerson, WikiIntakeCommentRecord, WikiMentionables } from "@/lib/api";
 import {
   activeMentionQuery,
@@ -84,6 +84,225 @@ function CommentBody({ comment }: { comment: WikiIntakeCommentRecord }) {
   );
 }
 
+/** Same ceiling the upload route enforces — checked here first so a too-big file is
+ *  refused before the reply is sent, not after. */
+export const REPLY_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const REPLY_IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif";
+
+/** Hover/focus actions on a reply: only rendered for one the viewer may change. */
+function ReplyActions({
+  comment,
+  onEdit,
+  onDelete,
+}: {
+  comment: WikiIntakeCommentRecord;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  if (!comment.canEdit && !comment.canDelete) return null;
+  return (
+    // Revealed on hover, but always present for keyboard users (focus-within) — the
+    // reveal is a visual default, never a gate.
+    <span className="ml-auto flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+      {comment.canEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-[4px] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+        >
+          Edit
+        </button>
+      ) : null}
+      {comment.canDelete ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-[4px] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--danger-50)] hover:text-[var(--danger-500)]"
+        >
+          Delete
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+/** One reply in the transcript — read, edit in place, or confirm a delete. */
+function ReplyItem({
+  comment,
+  imageSrc,
+  onViewImage,
+  onEdit,
+  onDelete,
+}: {
+  comment: WikiIntakeCommentRecord;
+  imageSrc?: (commentId: string, opts?: { thumb?: boolean }) => string;
+  onViewImage?: (src: string) => void;
+  onEdit?: (commentId: string, body: string, mentionIds: string[]) => Promise<void>;
+  onDelete?: (commentId: string) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"read" | "edit" | "confirm-delete">("read");
+  const [draft, setDraft] = useState(comment.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      setMode("read");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That didn't work — try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (comment.deleted) {
+    return (
+      <li className="flex gap-2.5">
+        <Avatar name={comment.authorName} kind={comment.authorKind} />
+        <p className="min-w-0 flex-1 self-center text-[12px] italic text-[var(--text-4)]">
+          Reply deleted · {comment.authorName}
+        </p>
+      </li>
+    );
+  }
+
+  return (
+    <li className="group flex gap-2.5">
+      <Avatar name={comment.authorName} kind={comment.authorKind} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="text-[12px] font-semibold text-[var(--text-1)]">{comment.authorName}</span>
+          <KindTag kind={comment.authorKind} />
+          <time
+            dateTime={comment.createdAt}
+            title={new Date(comment.createdAt).toLocaleString()}
+            className="text-[11px] text-[var(--text-4)]"
+            style={{ fontFamily: MONO }}
+          >
+            {formatCommentTime(comment.createdAt)}
+          </time>
+          {comment.editedAt ? (
+            <span
+              className="text-[11px] text-[var(--text-4)]"
+              title={`Edited ${new Date(comment.editedAt).toLocaleString()}`}
+              style={{ fontFamily: MONO }}
+            >
+              · edited
+            </span>
+          ) : null}
+          {mode === "read" ? (
+            <ReplyActions
+              comment={comment}
+              onEdit={() => {
+                setDraft(comment.body);
+                setMode("edit");
+              }}
+              onDelete={() => setMode("confirm-delete")}
+            />
+          ) : null}
+        </div>
+
+        {mode === "edit" ? (
+          <div className="mt-1.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] focus-within:border-[var(--brand-500)] focus-within:shadow-[0_0_0_3px_var(--brand-focus-ring)]">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setMode("read");
+                }
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onEdit && draft.trim()) {
+                  e.preventDefault();
+                  void run(() =>
+                    onEdit(comment.id, draft.trim(), mentionsInBody(draft, comment.mentions ?? []).map((m) => m.id)),
+                  );
+                }
+              }}
+              aria-label="Edit reply"
+              rows={3}
+              autoFocus
+              className="block w-full resize-y rounded-t-[8px] border-0 bg-transparent px-3 py-2.5 text-[13px] leading-relaxed text-[var(--text-1)] focus:ring-0"
+              style={{ outline: "none" }}
+            />
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--border-1)] px-2 py-1.5">
+              <button
+                type="button"
+                onClick={() => setMode("read")}
+                className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy || !draft.trim() || !onEdit}
+                onClick={() =>
+                  onEdit &&
+                  void run(() =>
+                    // Keep the people already mentioned whose @Name is still in the text;
+                    // editing never pages anyone new (the server sends nothing on edit).
+                    onEdit(comment.id, draft.trim(), mentionsInBody(draft, comment.mentions ?? []).map((m) => m.id)),
+                  )
+                }
+                className="rounded-[6px] bg-[var(--brand-600)] px-3 py-1 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <CommentBody comment={comment} />
+        )}
+
+        {comment.hasImage && imageSrc ? (
+          <button
+            type="button"
+            onClick={() => onViewImage?.(imageSrc(comment.id))}
+            title={comment.imageFilename ?? "View screenshot"}
+            className="mt-1.5 block overflow-hidden rounded-[6px] border border-[var(--border-2)]"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageSrc(comment.id, { thumb: true })}
+              alt={comment.imageFilename ?? "Screenshot attached to this reply"}
+              className="h-16 w-16 object-cover transition hover:opacity-90"
+            />
+          </button>
+        ) : null}
+
+        {mode === "confirm-delete" ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px]" role="group" aria-label="Confirm delete">
+            <span className="text-[var(--text-2)]">Delete this reply?</span>
+            <button
+              type="button"
+              disabled={busy || !onDelete}
+              onClick={() => onDelete && void run(() => onDelete(comment.id))}
+              className="rounded-[6px] border border-[var(--danger-500)] bg-[var(--danger-50)] px-2.5 py-1 font-semibold text-[var(--danger-500)] transition disabled:opacity-50"
+            >
+              {busy ? "Deleting…" : "Delete"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("read")}
+              className="rounded-[6px] px-2.5 py-1 font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : null}
+        {error ? (
+          <p role="alert" className="mt-1 text-[12px] text-rose-600">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 /**
  * A request's conversation: the replies as a transcript, and a composer that can
  * @mention people. A mention is posted to the client's shared Slack channel; the
@@ -97,6 +316,10 @@ export function RequestThread({
   mentionablesLoading,
   onOpen,
   onPost,
+  onEdit,
+  onDelete,
+  imageSrc,
+  onViewImage,
 }: {
   itemTitle: string;
   comments: WikiIntakeCommentRecord[];
@@ -104,8 +327,18 @@ export function RequestThread({
   mentionablesLoading: boolean;
   /** Called on first focus — the roster is only fetched once someone starts a reply. */
   onOpen: () => void;
-  onPost: (body: string, mentionIds: string[]) => Promise<void>;
+  /** Posts the reply, then attaches `image` to it when one was chosen. Throws if the
+   *  reply was not saved; resolves to a warning string when it was saved but something
+   *  after it (the screenshot) failed. */
+  onPost: (body: string, mentionIds: string[], image: File | null) => Promise<string | void>;
+  onEdit?: (commentId: string, body: string, mentionIds: string[]) => Promise<void>;
+  onDelete?: (commentId: string) => Promise<void>;
+  /** Where a reply's screenshot is served — omit to hide reply screenshots entirely. */
+  imageSrc?: (commentId: string, opts?: { thumb?: boolean }) => string;
+  onViewImage?: (src: string) => void;
 }) {
+  const [image, setImage] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<MentionPerson[]>([]);
   const [caret, setCaret] = useState(0);
@@ -164,10 +397,12 @@ export function RequestThread({
     setPosting(true);
     setError(null);
     try {
-      await onPost(body, mentionsInBody(body, picked).map((p) => p.id));
+      const warning = await onPost(body, mentionsInBody(body, picked).map((p) => p.id), image);
+      if (warning) setError(warning);
       setDraft("");
       setPicked([]);
       setCaret(0);
+      setImage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not post that reply.");
     } finally {
@@ -226,24 +461,14 @@ export function RequestThread({
       ) : (
         <ol className="space-y-3">
           {comments.map((c) => (
-            <li key={c.id} className="flex gap-2.5">
-              <Avatar name={c.authorName} kind={c.authorKind} />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                  <span className="text-[12px] font-semibold text-[var(--text-1)]">{c.authorName}</span>
-                  <KindTag kind={c.authorKind} />
-                  <time
-                    dateTime={c.createdAt}
-                    title={new Date(c.createdAt).toLocaleString()}
-                    className="text-[11px] text-[var(--text-4)]"
-                    style={{ fontFamily: MONO }}
-                  >
-                    {formatCommentTime(c.createdAt)}
-                  </time>
-                </div>
-                <CommentBody comment={c} />
-              </div>
-            </li>
+            <ReplyItem
+              key={c.id}
+              comment={c}
+              imageSrc={imageSrc}
+              onViewImage={onViewImage}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
           ))}
         </ol>
       )}
@@ -318,6 +543,52 @@ export function RequestThread({
           >
             <AtSymbolIcon className="h-4 w-4" />
           </button>
+          {imageSrc ? (
+            <>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                title="Attach a screenshot"
+                aria-label="Attach a screenshot"
+                className="rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+              >
+                <PaperClipIcon className="h-4 w-4" />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept={REPLY_IMAGE_ACCEPT}
+                className="hidden"
+                aria-label="Screenshot file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  e.target.value = "";
+                  if (!file) return;
+                  if (file.size > REPLY_IMAGE_MAX_BYTES) {
+                    setError("That image is over 8MB — compress it and try again.");
+                    return;
+                  }
+                  setError(null);
+                  setImage(file);
+                }}
+              />
+            </>
+          ) : null}
+          {image ? (
+            <span className="inline-flex min-w-0 max-w-[180px] items-center gap-1 rounded-[4px] bg-[var(--surface-1)] py-0.5 pl-1.5 pr-0.5 text-[11px] text-[var(--text-2)]">
+              <span className="truncate" title={image.name}>
+                {image.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setImage(null)}
+                aria-label="Remove screenshot"
+                className="rounded-[3px] p-0.5 text-[var(--text-4)] transition hover:text-[var(--text-1)]"
+              >
+                <XMarkIcon className="h-3 w-3" />
+              </button>
+            </span>
+          ) : null}
           <span
             className="min-w-0 flex-1 text-[11px] text-[var(--text-4)]"
             style={{ fontFamily: MONO }}

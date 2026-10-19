@@ -18,7 +18,8 @@ import {
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
-import type { WikiIntakeItemRecord } from "@/lib/api";
+import type { WikiCommentScope, WikiIntakeCommentRecord, WikiIntakeItemRecord } from "@/lib/api";
+import { wikiIntakeCommentImageSrc } from "@/lib/api";
 import { RequestImportModal } from "@/components/clients/wiki/request-import-modal";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
 import { REQUEST_MAX_TITLE, fitRequestTitle } from "@/lib/wiki-request-title";
@@ -46,6 +47,9 @@ import {
   useDeletePublicWikiIntakeItem,
   useAddWikiIntakeComment,
   useAddPublicWikiIntakeComment,
+  useEditWikiIntakeComment,
+  useDeleteWikiIntakeComment,
+  useUploadWikiIntakeCommentImage,
   useImportWikiIntakeItems,
   useWikiMentionables,
 } from "@/hooks/use-wiki";
@@ -192,6 +196,10 @@ export function WikiIntakeSection({
   const deletePublic = useDeletePublicWikiIntakeItem(token ?? "");
   const addCommentInternal = useAddWikiIntakeComment(slug);
   const addCommentPublic = useAddPublicWikiIntakeComment(token ?? "");
+  const commentScope: WikiCommentScope = isInternal ? { slug } : { token: token ?? "" };
+  const editCommentMutation = useEditWikiIntakeComment(commentScope);
+  const deleteCommentMutation = useDeleteWikiIntakeComment(commentScope);
+  const uploadCommentImage = useUploadWikiIntakeCommentImage(commentScope);
   const importItems = useImportWikiIntakeItems(slug);
 
   const [localItems, setLocalItems] = useState(items);
@@ -215,7 +223,8 @@ export function WikiIntakeSection({
   const [image, setImage] = useState<File | null>(null);
   const [showMoreFields, setShowMoreFields] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [viewingImageId, setViewingImageId] = useState<string | null>(null);
+  /** The screenshot open in the viewer — a request's own or one attached to a reply. */
+  const [viewingImageSrc, setViewingImageSrc] = useState<string | null>(null);
   /** Which row's delete is armed — see the two-step delete in the actions below. */
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   /** Which of their own requests the client is editing, and the draft values. */
@@ -388,7 +397,12 @@ export function WikiIntakeSection({
   }
 
   /** Throws on failure — RequestThread shows the error under its own composer. */
-  async function postComment(itemId: string, body: string, mentionIds: string[]) {
+  async function postComment(
+    itemId: string,
+    body: string,
+    mentionIds: string[],
+    image: File | null,
+  ): Promise<string | void> {
     const comment = isInternal
       ? await addCommentInternal.mutateAsync({ itemId, body, mentionIds })
       : await addCommentPublic.mutateAsync({ itemId, body, mentionIds });
@@ -397,6 +411,39 @@ export function WikiIntakeSection({
         prev.map((i) => (i.id === itemId ? { ...i, comments: [...(i.comments ?? []), comment] } : i)),
       );
     }
+    if (image) {
+      // The reply is already saved; a failed upload is reported, the text is not lost.
+      try {
+        const withImage = await uploadCommentImage.mutateAsync({ itemId, commentId: comment.id, file: image });
+        replaceLocalComment(itemId, withImage);
+      } catch (err) {
+        // Not a throw: the reply exists, so the composer must clear rather than invite a
+        // second, duplicate post. The warning is shown under it instead.
+        return `Reply posted, but the screenshot didn't upload: ${err instanceof Error ? err.message : "unknown error"}`;
+      }
+    }
+  }
+
+  /** The shared page holds its own copy of the list — patch it from the server's record. */
+  function replaceLocalComment(itemId: string, comment: WikiIntakeCommentRecord) {
+    if (isInternal) return;
+    setLocalItems((prev) =>
+      prev.map((i) =>
+        i.id === itemId ? { ...i, comments: (i.comments ?? []).map((c) => (c.id === comment.id ? comment : c)) } : i,
+      ),
+    );
+  }
+
+  async function editComment(itemId: string, commentId: string, body: string, mentionIds: string[]) {
+    replaceLocalComment(itemId, await editCommentMutation.mutateAsync({ itemId, commentId, body, mentionIds }));
+  }
+
+  async function deleteComment(itemId: string, commentId: string) {
+    replaceLocalComment(itemId, await deleteCommentMutation.mutateAsync({ itemId, commentId }));
+  }
+
+  function commentImageSrc(itemId: string, commentId: string, opts: { thumb?: boolean } = {}) {
+    return wikiIntakeCommentImageSrc(commentScope, itemId, commentId, opts);
   }
 
   /**
@@ -1229,7 +1276,7 @@ export function WikiIntakeSection({
                                   {item.hasImage ? (
                                     <button
                                       type="button"
-                                      onClick={() => setViewingImageId(item.id)}
+                                      onClick={() => setViewingImageSrc(imageSrc(item.id))}
                                       title="View screenshot"
                                       className="block overflow-hidden rounded-[6px] border border-[var(--border-2)]"
                                     >
@@ -1276,7 +1323,11 @@ export function WikiIntakeSection({
                                 mentionables={mentionables.data}
                                 mentionablesLoading={mentionables.isLoading}
                                 onOpen={() => setWantMentionables(true)}
-                                onPost={(body, mentionIds) => postComment(item.id, body, mentionIds)}
+                                onPost={(body, mentionIds, image) => postComment(item.id, body, mentionIds, image)}
+                                onEdit={(commentId, body, mentionIds) => editComment(item.id, commentId, body, mentionIds)}
+                                onDelete={(commentId) => deleteComment(item.id, commentId)}
+                                imageSrc={(commentId, opts) => commentImageSrc(item.id, commentId, opts)}
+                                onViewImage={setViewingImageSrc}
                               />
                             </div>
 
@@ -1628,10 +1679,10 @@ export function WikiIntakeSection({
         />
       )}
 
-      {viewingImageId ? (
+      {viewingImageSrc ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setViewingImageId(null)}
+          onClick={() => setViewingImageSrc(null)}
         >
           <div
             className="relative max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[10px] bg-[var(--surface-0)] shadow-lg"
@@ -1643,7 +1694,7 @@ export function WikiIntakeSection({
               </span>
               <button
                 type="button"
-                onClick={() => setViewingImageId(null)}
+                onClick={() => setViewingImageSrc(null)}
                 aria-label="Close"
                 className="rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)]"
               >
@@ -1653,7 +1704,7 @@ export function WikiIntakeSection({
             <div className="bg-[var(--surface-1)] p-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={imageSrc(viewingImageId)}
+                src={viewingImageSrc}
                 alt="Attached screenshot"
                 className="mx-auto max-h-[70vh] w-auto rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)]"
               />

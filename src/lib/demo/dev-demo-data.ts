@@ -28,8 +28,15 @@ import { GITWORK } from "@/lib/gitwork";
 import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
 import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
 import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
+import {
+  addCustomItem,
+  newCustomItemId,
+  removeCustomItem,
+  updateCustomItem,
+} from "@/lib/launchpad/custom-items";
+import { LAUNCHPAD_FILE_MAX_PER_ITEM, sanitizeLaunchpadFilename } from "@/lib/launchpad/files";
 import { renderLegalDoc } from "@/lib/launchpad/legal/render";
-import type { LaunchpadDTO, LaunchpadItemState } from "@/types/launchpad";
+import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
@@ -513,6 +520,31 @@ function demoLaunchpadItem(
 const DEMO_LAUNCHPAD_ITEMS: LaunchpadItemState[] = [
   demoLaunchpadItem("brand_assets", "PROVIDED", {
     link: "https://drive.google.com/drive/folders/northwind-brand",
+    files: [
+      {
+        id: "lpf-demo-logo",
+        filename: "northwind-logo-pack.pdf",
+        mime: "application/pdf",
+        size: 1_842_000,
+        uploadedByKind: "client",
+        uploadedByName: "Priya Shah",
+        uploadedAt: atDays(-4),
+      },
+    ],
+  }),
+  // A requirement added for THIS client only (§43.5) — provided by an upload alone.
+  demoLaunchpadItem("custom-demo-insurance", "PROVIDED", {
+    files: [
+      {
+        id: "lpf-demo-insurance",
+        filename: "PI-certificate-2026.pdf",
+        mime: "application/pdf",
+        size: 248_000,
+        uploadedByKind: "client",
+        uploadedByName: "Priya Shah",
+        uploadedAt: atDays(-2),
+      },
+    ],
   }),
   demoLaunchpadItem("existing_accounts_access", "PROVIDED"),
   demoLaunchpadItem("tone_and_content", "NEEDED", {
@@ -566,7 +598,19 @@ const DEMO_PRIVACY_ANSWERS = {
   children: false,
 };
 
-const demoLaunchpadStructure = getDefaultLaunchpadStructure();
+/** The real default template plus one per-client requirement, so the demo shows
+ *  the "This client only" Edit/Remove row on an actual custom item. */
+const demoLaunchpadStructure: LaunchpadStructure =
+  addCustomItem(
+    getDefaultLaunchpadStructure(),
+    "foundations",
+    {
+      label: "Professional indemnity certificate",
+      helper: "Your current PI insurance certificate — the retailer contract asks us to hold a copy.",
+      ownedByClient: true,
+    },
+    "custom-demo-insurance",
+  ) ?? getDefaultLaunchpadStructure();
 
 /** One doc in each state, so the demo shows all three badges + the red banner. */
 const demoLaunchpad: LaunchpadDTO = {
@@ -959,7 +1003,7 @@ const demoWiki: WikiDTO = {
   intakeItems: [
     { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, label: "FRONTEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "REVIEWING", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-4), updatedAt: atDays(-2), comments: [] },
     { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "NEW", hasImage: false, imageFilename: null, device: "iPhone 15 Pro", osVersion: "iOS 18.1", createdAt: atDays(-1), updatedAt: atDays(-1), comments: [] },
-    { id: "wi3", type: "TASK", title: "Let a household share one subscription across 4 profiles", description: "Finance have signed off the pricing. Needs profile switching in the account area.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: "LIN-4471", label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: "https://linear.app/example/issue/LIN-4471", attachmentUrls: [], source: "api", taskId: "t-demo-3", taskStatus: "DOING", stage: "IN_PROGRESS", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-11), updatedAt: atDays(-1), comments: [{ id: "wc1", authorKind: "TEAM", authorName: "Harry Bell", body: "Picked this up this morning — profile switching is in, the billing split is next.", mentions: [], createdAt: atDays(-1) }, { id: "wc2", authorKind: "CLIENT", authorName: "Marcus Webb", body: "Great — @Harry Bell can the split land before the finance review on Friday?", mentions: [{ id: "team:u-harry", name: "Harry Bell", kind: "TEAM" }], createdAt: atDays(0) }] },
+    { id: "wi3", type: "TASK", title: "Let a household share one subscription across 4 profiles", description: "Finance have signed off the pricing. Needs profile switching in the account area.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: "LIN-4471", label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: "https://linear.app/example/issue/LIN-4471", attachmentUrls: [], source: "api", taskId: "t-demo-3", taskStatus: "DOING", stage: "IN_PROGRESS", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-11), updatedAt: atDays(-1), comments: [{ id: "wc1", authorKind: "TEAM", authorName: "Harry Bell", body: "Picked this up this morning — profile switching is in, the billing split is next.", mentions: [], createdAt: atDays(-1), editedAt: null, deleted: false, hasImage: false, imageFilename: null, canEdit: true, canDelete: true }, { id: "wc2", authorKind: "CLIENT", authorName: "Marcus Webb", body: "Great — @Harry Bell can the split land before the finance review on Friday?", mentions: [{ id: "team:u-harry", name: "Harry Bell", kind: "TEAM" }], createdAt: atDays(0), editedAt: null, deleted: false, hasImage: false, imageFilename: null, canEdit: false, canDelete: true }, { id: "wc3", authorKind: "CLIENT", authorName: "Marcus Webb", body: "", mentions: [], createdAt: atDays(0), editedAt: null, deleted: true, hasImage: false, imageFilename: null, canEdit: false, canDelete: false }] },
     { id: "wi4", type: "DESIGN", title: "Episode cards are unreadable in bright sunlight", description: "The grey-on-grey metadata line fails contrast outdoors.", priority: "MEDIUM", status: "PROMOTED", requestedBy: "Priya Shah", externalRef: null, label: "UI_UX", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-4", taskStatus: "DONE", stage: "DONE", hasImage: false, imageFilename: null, device: "iPad Air", osVersion: "iPadOS 18.0", createdAt: atDays(-19), updatedAt: atDays(-3), comments: [] },
     { id: "wi5", type: "BUG", title: "Search returns nothing for titles with an apostrophe", description: "“Grey’s Anatomy” returns 0 results; “Greys Anatomy” works.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: null, label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-5", taskStatus: "BACKLOG", stage: "SCHEDULED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-6), updatedAt: atDays(-5), comments: [] },
     { id: "wi6", type: "FEEDBACK", title: "Downloads should keep working on a plane", description: "Offline playback asks to sign in again once the device loses signal.", priority: "LOW", status: "CLOSED", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "CLOSED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-27), updatedAt: atDays(-20), comments: [] },
@@ -3163,14 +3207,93 @@ function resolveDemoLaunchpad(
   pathname: string,
   init?: { method?: string; body?: unknown },
 ): unknown {
-  const match = /\/launchpad(?:\/(items|docs)\/([^/]+))?(?:\/(modules|answers))?$/.exec(pathname);
-  if (!match) return undefined;
   const current = demoLaunchpadNow();
-  const [, kind, id] = match;
   const body =
     typeof init?.body === "string"
       ? (JSON.parse(init.body) as Record<string, unknown>)
       : {};
+
+  // Per-client requirements, through the REAL custom-item rules.
+  const custom = /\/launchpad\/custom-items(?:\/([^/]+))?$/.exec(pathname);
+  if (custom) {
+    const itemId = custom[1] ? decodeURIComponent(custom[1]) : null;
+    const input = body as {
+      moduleId?: string;
+      label?: string;
+      helper?: string | null;
+      ownedByClient?: boolean | null;
+    };
+    const next = !itemId
+      ? addCustomItem(
+          current.structure,
+          input.moduleId ?? "",
+          { label: input.label ?? "", helper: input.helper, ownedByClient: input.ownedByClient },
+          newCustomItemId(current.structure),
+        )
+      : init?.method === "DELETE"
+        ? removeCustomItem(current.structure, itemId)
+        : updateCustomItem(current.structure, itemId, input);
+    // The demo interceptor always answers 200, so a refused edit returns the kit
+    // unchanged rather than an `error` the caller would read as a success.
+    if (!next) return { launchpad: current };
+    return { launchpad: recomputeDemoLaunchpad({ ...current, structure: next }) };
+  }
+
+  // Files on a requirement. The demo keeps metadata only (a download link 404s on
+  // the demo — there is no server behind it; the client has already run the real
+  // upload verdict on the bytes) but runs the REAL status rule.
+  const files = /\/launchpad\/items\/([^/]+)\/files(?:\/([^/]+))?$/.exec(pathname);
+  if (files) {
+    const itemId = decodeURIComponent(files[1]);
+    const fileId = files[2] ? decodeURIComponent(files[2]) : null;
+    const existing = current.items.find((i) => i.itemId === itemId);
+    let list = existing?.files ?? [];
+    if (init?.method === "DELETE" && fileId) {
+      list = list.filter((f) => f.id !== fileId);
+    } else {
+      const file = init?.body instanceof FormData ? init.body.get("file") : null;
+      if (!(file instanceof File) || list.length >= LAUNCHPAD_FILE_MAX_PER_ITEM) {
+        return { launchpad: current };
+      }
+      list = [
+        ...list,
+        {
+          id: `lpf-demo-${Date.now()}`,
+          filename: sanitizeLaunchpadFilename(file.name),
+          mime: file.type || "application/octet-stream",
+          size: file.size,
+          uploadedByKind: "team",
+          uploadedByName: "Priya Shah",
+          uploadedAt: atDays(0),
+        },
+      ];
+    }
+    const values = applyItemPatch(
+      {
+        status: existing?.status ?? "NEEDED",
+        link: existing?.link ?? null,
+        note: existing?.note ?? null,
+        ownedByClient: existing?.ownedByClient ?? null,
+      },
+      {},
+      { fileCount: list.length, filesChanged: true },
+    );
+    const nextItem: LaunchpadItemState = {
+      itemId,
+      ...values,
+      updatedBy: "Priya Shah",
+      updatedAt: atDays(0),
+      files: list,
+    };
+    const items = existing
+      ? current.items.map((i) => (i.itemId === itemId ? nextItem : i))
+      : [...current.items, nextItem];
+    return { launchpad: recomputeDemoLaunchpad({ ...current, items }) };
+  }
+
+  const match = /\/launchpad(?:\/(items|docs)\/([^/]+))?(?:\/(modules|answers))?$/.exec(pathname);
+  if (!match) return undefined;
+  const [, kind, id] = match;
 
   if (kind === "items" && id) {
     const itemId = decodeURIComponent(id);
@@ -3183,8 +3306,10 @@ function resolveDemoLaunchpad(
         ownedByClient: existing?.ownedByClient ?? null,
       },
       body as Parameters<typeof applyItemPatch>[1],
+      { fileCount: existing?.files?.length ?? 0 },
     );
     const nextItem: LaunchpadItemState = {
+      ...existing,
       itemId,
       ...nextValues,
       updatedBy: "Priya Shah",
@@ -3446,8 +3571,49 @@ export function resolveDemoApi(
           .filter((id) => names[id])
           .map((id) => ({ id, ...names[id] })),
         createdAt: new Date().toISOString(),
+        editedAt: null,
+        deleted: false,
+        hasImage: false,
+        imageFilename: null,
+        // Your own reply — so Edit/Delete can be tried on it straight away.
+        canEdit: true,
+        canDelete: true,
       };
       item?.comments.push(comment);
+      return comment;
+    }
+  }
+  // Edit / delete a reply, and attach a screenshot to one. Applied to the fixture, and
+  // gated on the reply's own canEdit/canDelete exactly like the real routes, so the demo
+  // shows a reply you may not touch staying untouched.
+  {
+    const m = /^\/api\/(?:clients\/[^/]+\/wiki|wiki\/[^/]+)\/intake-items\/([^/]+)\/comments\/([^/]+)(\/image)?$/.exec(pathname);
+    if (m && init?.method && init.method !== "GET") {
+      const item = demoWiki.intakeItems.find((i) => i.id === decodeURIComponent(m[1]));
+      const comment = item?.comments.find((c) => c.id === decodeURIComponent(m[2]));
+      if (!comment) return { error: "Reply not found" };
+      if (m[3] && init.method === "POST") {
+        if (!comment.canEdit) return comment;
+        const file = init.body instanceof FormData ? init.body.get("file") : null;
+        Object.assign(comment, { hasImage: true, imageFilename: file instanceof File ? file.name : "screenshot.png" });
+        return comment;
+      }
+      if (init.method === "PATCH" && comment.canEdit) {
+        const payload = JSON.parse(String(init.body ?? "{}")) as { body?: string };
+        Object.assign(comment, { body: (payload.body ?? comment.body).trim(), editedAt: new Date().toISOString() });
+      }
+      if (init.method === "DELETE" && comment.canDelete) {
+        Object.assign(comment, {
+          body: "",
+          mentions: [],
+          deleted: true,
+          editedAt: null,
+          hasImage: false,
+          imageFilename: null,
+          canEdit: false,
+          canDelete: false,
+        });
+      }
       return comment;
     }
   }
