@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { ChevronRightIcon, RocketLaunchIcon } from "@heroicons/react/24/outline";
+import { ChevronRightIcon, PlusIcon, RocketLaunchIcon } from "@heroicons/react/24/outline";
 import { useToast } from "@/components/ui/toast";
 import {
   enabledModulesOf,
@@ -21,7 +21,16 @@ import {
 } from "@/lib/launchpad/structure";
 import { isFieldVisible } from "@/lib/onboarding/structure";
 import { fieldIdSet } from "@/lib/launchpad/structure";
+import { isCustomItem } from "@/lib/launchpad/custom-items";
+import { launchpadFileUrl, type LaunchpadCustomItemInput } from "@/lib/api";
 import {
+  useAddLaunchpadCustomItem,
+  useDeleteLaunchpadFile,
+  useDeletePublicLaunchpadFile,
+  useRemoveLaunchpadCustomItem,
+  useUpdateLaunchpadCustomItem,
+  useUploadLaunchpadFile,
+  useUploadPublicLaunchpadFile,
   useApproveLaunchpadDoc,
   useApprovePublicLaunchpadDoc,
   useSaveLaunchpadAnswers,
@@ -32,7 +41,8 @@ import {
   useUpdatePublicLaunchpadDoc,
   useUpdatePublicLaunchpadItem,
 } from "@/hooks/use-launchpad";
-import { LaunchpadFieldRenderer } from "./launchpad-field";
+import { LaunchpadFieldRenderer, type LaunchpadFileControls } from "./launchpad-field";
+import { CustomItemForm } from "./launchpad-custom-item-form";
 import { LaunchpadDocPanel } from "./launchpad-doc-panel";
 import type { OnboardingAnswerValue, OnboardingFieldDef } from "@/types/onboarding";
 import type { LaunchpadDTO, LaunchpadDocKey, LaunchpadFieldDef } from "@/types/launchpad";
@@ -255,6 +265,72 @@ function ModuleToggles({
   );
 }
 
+// ─── Custom item actions (internal only) ──────────────────────────────────────
+
+/** The Edit / Remove row on a requirement Gitwork added for this client. Remove
+ *  confirms in place — it only drops the requirement from this client's kit (their
+ *  status, link and files are kept), but a stray click should still cost two. */
+function CustomItemActions({
+  confirming,
+  busy,
+  onEdit,
+  onRemove,
+  onCancelRemove,
+}: {
+  confirming: boolean;
+  busy: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+  onCancelRemove: () => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span
+        className="rounded-[4px] border border-[var(--border-1)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--text-4)]"
+        style={{ fontFamily: MONO }}
+      >
+        This client only
+      </span>
+      {confirming ? (
+        <>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRemove}
+            className="text-[11px] font-semibold text-[var(--danger-500)] hover:underline"
+          >
+            Remove from this client?
+          </button>
+          <button
+            type="button"
+            onClick={onCancelRemove}
+            className="text-[11px] text-[var(--text-3)] hover:underline"
+          >
+            Keep
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-[11px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:underline"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-[11px] text-[var(--text-3)] hover:text-[var(--danger-500)] hover:underline"
+          >
+            Remove
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── The section ──────────────────────────────────────────────────────────────
 
 export function LaunchpadSection({
@@ -289,6 +365,19 @@ export function LaunchpadSection({
   const approveInternal = useApproveLaunchpadDoc(slug);
   const approvePublic = useApprovePublicLaunchpadDoc(token ?? "");
   const setModules = useSetLaunchpadModules(slug);
+  const addCustom = useAddLaunchpadCustomItem(slug);
+  const updateCustom = useUpdateLaunchpadCustomItem(slug);
+  const removeCustom = useRemoveLaunchpadCustomItem(slug);
+  const uploadInternal = useUploadLaunchpadFile(slug);
+  const uploadPublic = useUploadPublicLaunchpadFile(token ?? "");
+  const deleteFileInternal = useDeleteLaunchpadFile(slug);
+  const deleteFilePublic = useDeletePublicLaunchpadFile(token ?? "");
+
+  /** Which module has its "Add requirement" form open, and which custom item is
+   *  being edited. Internal view only. */
+  const [addingTo, setAddingTo] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const busy =
     updateItemInternal.isPending ||
@@ -299,7 +388,12 @@ export function LaunchpadSection({
     docPublic.isPending ||
     approveInternal.isPending ||
     approvePublic.isPending ||
-    setModules.isPending;
+    setModules.isPending ||
+    addCustom.isPending ||
+    updateCustom.isPending ||
+    removeCustom.isPending ||
+    deleteFileInternal.isPending ||
+    deleteFilePublic.isPending;
 
   /** One error path for every write — a silent failure on a checklist is worse than
    *  on most surfaces, because the client believes they have told us something. */
@@ -362,6 +456,57 @@ export function LaunchpadSection({
         .catch(report);
     },
     [isInternal, approveInternal, approvePublic, applyResult, report, toast],
+  );
+
+  /** Files for one requirement — upload, download and remove, for either audience.
+   *  `onUpload` rethrows so the item can show the reason inline next to the button. */
+  const fileControlsFor = useCallback(
+    (itemId: string): LaunchpadFileControls => {
+      const scope = isInternal ? { slug } : { token: token ?? "" };
+      return {
+        hrefFor: (fileId) => launchpadFileUrl(scope, itemId, fileId),
+        onUpload: async (file) => {
+          const result = isInternal
+            ? await uploadInternal.mutateAsync({ itemId, file })
+            : await uploadPublic.mutateAsync({ itemId, file });
+          applyResult(result);
+        },
+        onDelete: (fileId) => {
+          const run = isInternal
+            ? deleteFileInternal.mutateAsync({ itemId, fileId })
+            : deleteFilePublic.mutateAsync({ itemId, fileId });
+          run.then(applyResult).catch(report);
+        },
+      };
+    },
+    [
+      isInternal,
+      slug,
+      token,
+      uploadInternal,
+      uploadPublic,
+      deleteFileInternal,
+      deleteFilePublic,
+      applyResult,
+      report,
+    ],
+  );
+
+  const submitNewItem = useCallback(
+    async (moduleId: string, item: LaunchpadCustomItemInput) => {
+      await addCustom.mutateAsync({ moduleId, item });
+      setAddingTo(null);
+      toast.success("Requirement added for this client.");
+    },
+    [addCustom, toast],
+  );
+
+  const submitEdit = useCallback(
+    async (itemId: string, item: LaunchpadCustomItemInput) => {
+      await updateCustom.mutateAsync({ itemId, patch: item });
+      setEditing(null);
+    },
+    [updateCustom],
   );
 
   const itemStates = useMemo(
@@ -443,7 +588,9 @@ export function LaunchpadSection({
           return status === "PROVIDED" || status === "NA";
         }).length;
 
-        if (visible.length === 0) return null;
+        // An empty module still renders internally, so the team can add the first
+        // requirement to it.
+        if (visible.length === 0 && !isInternal) return null;
 
         return (
           <section key={module.id} className="widget-card">
@@ -483,19 +630,86 @@ export function LaunchpadSection({
                */}
               {checklist.length > 0 ? (
                 <div className="grid items-start gap-2 xl:grid-cols-2">
-                  {checklist.map((field) => (
-                    <LaunchpadFieldRenderer
-                      key={field.id}
-                      field={field}
-                      answers={launchpad.answers}
-                      itemState={itemStates.get(field.id)}
-                      setAnswer={setAnswer}
-                      patchItem={patchItem}
-                      readOnly={false}
-                      audience={isInternal ? "team" : "client"}
-                    />
-                  ))}
+                  {checklist.map((field) => {
+                    const custom = isInternal && isCustomItem(field);
+                    if (custom && editing === field.id) {
+                      return (
+                        <CustomItemForm
+                          key={field.id}
+                          initial={{
+                            label: field.label,
+                            helper: field.helper ?? null,
+                            ownedByClient: field.ownedByClient ?? null,
+                          }}
+                          submitLabel="Save"
+                          busy={updateCustom.isPending}
+                          onSubmit={(item) => submitEdit(field.id, item)}
+                          onCancel={() => setEditing(null)}
+                        />
+                      );
+                    }
+                    return (
+                      <LaunchpadFieldRenderer
+                        key={field.id}
+                        field={field}
+                        answers={launchpad.answers}
+                        itemState={itemStates.get(field.id)}
+                        setAnswer={setAnswer}
+                        patchItem={patchItem}
+                        readOnly={false}
+                        audience={isInternal ? "team" : "client"}
+                        fileControls={fileControlsFor(field.id)}
+                        customActions={
+                          custom ? (
+                            <CustomItemActions
+                              confirming={confirmRemove === field.id}
+                              busy={busy}
+                              onEdit={() => {
+                                setConfirmRemove(null);
+                                setEditing(field.id);
+                              }}
+                              onRemove={() => {
+                                if (confirmRemove !== field.id) {
+                                  setConfirmRemove(field.id);
+                                  return;
+                                }
+                                setConfirmRemove(null);
+                                removeCustom
+                                  .mutateAsync(field.id)
+                                  .then(() => toast.success("Requirement removed."))
+                                  .catch(report);
+                              }}
+                              onCancelRemove={() => setConfirmRemove(null)}
+                            />
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
                 </div>
+              ) : null}
+
+              {isInternal ? (
+                addingTo === module.id ? (
+                  <CustomItemForm
+                    submitLabel="Add requirement"
+                    busy={addCustom.isPending}
+                    onSubmit={(item) => submitNewItem(module.id, item)}
+                    onCancel={() => setAddingTo(null)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(null);
+                      setAddingTo(module.id);
+                    }}
+                    className="app-button app-button-tertiary app-button-xs"
+                  >
+                    <PlusIcon className="h-3.5 w-3.5" />
+                    Add requirement
+                  </button>
+                )
               ) : null}
 
               {/* The plain inputs, behind a disclosure. Collapsed by default with a

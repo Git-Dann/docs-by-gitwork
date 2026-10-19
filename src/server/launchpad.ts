@@ -44,9 +44,26 @@ import {
   resolvePrefill,
   type PrefillSource,
 } from "@/lib/launchpad/prefill";
+import {
+  addCustomItem,
+  carryCustomItems,
+  customItemsOf,
+  newCustomItemId,
+  removeCustomItem,
+  updateCustomItem,
+  type CustomItemInput,
+  type CustomItemPatch,
+} from "@/lib/launchpad/custom-items";
+import {
+  classifyLaunchpadUpload,
+  LAUNCHPAD_FILE_MAX_PER_ITEM,
+  LaunchpadUploadError,
+} from "@/lib/launchpad/files";
+import { bytesForPrisma } from "@/lib/prisma-bytes";
 import type {
   LaunchpadAnswers,
   LaunchpadDTO,
+  LaunchpadItemFileState,
   LaunchpadDocKey,
   LaunchpadDocState,
   LaunchpadItemState,
@@ -56,11 +73,30 @@ import type {
 
 // ─── Row shapes ───────────────────────────────────────────────────────────────
 
+/**
+ * File METADATA only — never `bytes`. Every kit read goes through this include, and
+ * loading up to 10 MB per file to render a checklist would be the N×10 MB read the
+ * Requests screenshot select already learned to avoid.
+ */
+const fileMetaSelect = {
+  id: true,
+  itemId: true,
+  filename: true,
+  mime: true,
+  size: true,
+  uploadedByKind: true,
+  uploadedByName: true,
+  createdAt: true,
+} as const satisfies Prisma.LaunchpadItemFileSelect;
+
 const kitInclude = {
   items: true,
   docs: true,
+  files: { select: fileMetaSelect, orderBy: { createdAt: "asc" } },
   template: { select: { name: true } },
-} satisfies Prisma.ClientLaunchpadInclude;
+} as const satisfies Prisma.ClientLaunchpadInclude;
+
+type FileMetaRow = Prisma.LaunchpadItemFileGetPayload<{ select: typeof fileMetaSelect }>;
 
 type KitRow = Prisma.ClientLaunchpadGetPayload<{ include: typeof kitInclude }>;
 
@@ -79,7 +115,32 @@ function answersFor(kit: { answers: Prisma.JsonValue | null }): LaunchpadAnswers
   return isPlainObject(kit.answers) ? (kit.answers as LaunchpadAnswers) : {};
 }
 
-function serializeItem(row: KitRow["items"][number]): LaunchpadItemState {
+function serializeFile(row: FileMetaRow): LaunchpadItemFileState {
+  return {
+    id: row.id,
+    filename: row.filename,
+    mime: row.mime,
+    size: row.size,
+    uploadedByKind: row.uploadedByKind === "client" ? "client" : "team",
+    uploadedByName: row.uploadedByName,
+    uploadedAt: row.createdAt.toISOString(),
+  };
+}
+
+function filesByItem(files: FileMetaRow[]): Map<string, LaunchpadItemFileState[]> {
+  const out = new Map<string, LaunchpadItemFileState[]>();
+  for (const f of files) {
+    const list = out.get(f.itemId) ?? [];
+    list.push(serializeFile(f));
+    out.set(f.itemId, list);
+  }
+  return out;
+}
+
+function serializeItem(
+  row: KitRow["items"][number],
+  files: LaunchpadItemFileState[] = [],
+): LaunchpadItemState {
   return {
     itemId: row.itemId,
     status: row.status,
@@ -88,6 +149,7 @@ function serializeItem(row: KitRow["items"][number]): LaunchpadItemState {
     ownedByClient: row.ownedByClient,
     updatedBy: row.updatedBy,
     updatedAt: row.updatedAt.toISOString(),
+    files,
   };
 }
 
@@ -123,7 +185,8 @@ function serializeDoc(
 function serializeKit(kit: KitRow, enabled: boolean): LaunchpadDTO {
   const structure = structureFor(kit);
   const answers = answersFor(kit);
-  const items = kit.items.map(serializeItem);
+  const files = filesByItem(kit.files);
+  const items = kit.items.map((row) => serializeItem(row, files.get(row.itemId) ?? []));
   const docsByKey = new Map(kit.docs.map((d) => [d.docKey, d]));
 
   // Only the docs the ENABLED modules actually ask for — a kit with Website off
@@ -250,9 +313,23 @@ export async function assignLaunchpad(
 ): Promise<LaunchpadDTO | null> {
   const wikiId = await wikiIdForClient(clientId);
   const template = await resolveAssignableTemplate(input.templateId);
-  const structure = template
+  const fromTemplate = template
     ? normalizeStructure(template.structure)
     : getDefaultLaunchpadStructure();
+
+  // Re-assigning replaces the snapshot — so the custom requirements Gitwork added
+  // for THIS client are carried across onto the new one rather than silently
+  // destroyed (`carryCustomItems`). A first assign has nothing to carry.
+  const previous = await prisma.clientLaunchpad.findUnique({
+    where: { wikiId },
+    select: { structureSnapshot: true },
+  });
+  const structure = carryCustomItems(
+    previous && isLaunchpadStructure(previous.structureSnapshot)
+      ? (previous.structureSnapshot as unknown as LaunchpadStructure)
+      : null,
+    fromTemplate,
+  );
 
   // Only accept module ids that exist and are actually toggleable — an alwaysOn
   // module is on regardless, and storing it would make the list lie about intent.
@@ -480,6 +557,9 @@ export async function updateLaunchpadItem(
       ownedByClient: existing?.ownedByClient ?? null,
     },
     patch,
+    // Uploaded files are evidence too: clearing the link on an item that still has
+    // files must not revert it to NEEDED.
+    { fileCount: ctx.kit.files.filter((f) => f.itemId === itemId).length },
   );
 
   await prisma.launchpadItem.upsert({
@@ -523,6 +603,216 @@ export async function saveLaunchpadAnswers(
     });
   }
   return getLaunchpadByWikiId(wikiId);
+}
+
+// ─── Per-client requirements (structure edits) ────────────────────────────────
+//
+// INTERNAL ONLY. These write into the kit's own `structureSnapshot` and never the
+// master template. There is deliberately no token route for any of them: the client
+// answers what is asked of them; they do not change what is asked.
+
+/** A kit can hold this many custom requirements — far beyond any real engagement,
+ *  and a ceiling on how large a snapshot a misbehaving script can grow. */
+export const MAX_CUSTOM_ITEMS = 60;
+
+/** The kit a structure edit targets. Unlike `kitForWrite` this does not require the
+ *  section to be ENABLED — the team may prepare a kit before switching it on. */
+async function kitForStructureEdit(
+  wikiId: string,
+): Promise<{ kit: KitRow; structure: LaunchpadStructure } | null> {
+  const loaded = await loadKit(wikiId);
+  if (!loaded?.kit) return null;
+  return { kit: loaded.kit, structure: structureFor(loaded.kit) };
+}
+
+async function writeSnapshot(kitId: string, structure: LaunchpadStructure): Promise<void> {
+  await prisma.clientLaunchpad.update({
+    where: { id: kitId },
+    data: { structureSnapshot: structure as unknown as Prisma.InputJsonValue },
+  });
+}
+
+/** Add a requirement to one module of ONE client's kit. Null when there is no kit
+ *  or the module isn't in it. */
+export async function addLaunchpadCustomItem(
+  wikiId: string,
+  moduleId: string,
+  input: CustomItemInput,
+): Promise<LaunchpadDTO | null> {
+  const ctx = await kitForStructureEdit(wikiId);
+  if (!ctx) return null;
+  if (customItemsOf(ctx.structure).length >= MAX_CUSTOM_ITEMS) {
+    throw new LaunchpadUploadError(
+      `This Launchpad already has ${MAX_CUSTOM_ITEMS} added requirements — remove one first.`,
+    );
+  }
+  const next = addCustomItem(ctx.structure, moduleId, input, newCustomItemId(ctx.structure));
+  if (!next) return null;
+  await writeSnapshot(ctx.kit.id, next);
+  return getLaunchpadByWikiId(wikiId);
+}
+
+/** Edit a custom requirement's copy. Null when the id isn't a custom item in this
+ *  kit — a template item is never edited per client. */
+export async function updateLaunchpadCustomItem(
+  wikiId: string,
+  itemId: string,
+  patch: CustomItemPatch,
+): Promise<LaunchpadDTO | null> {
+  const ctx = await kitForStructureEdit(wikiId);
+  if (!ctx) return null;
+  const next = updateCustomItem(ctx.structure, itemId, patch);
+  if (!next) return null;
+  await writeSnapshot(ctx.kit.id, next);
+  return getLaunchpadByWikiId(wikiId);
+}
+
+/**
+ * Remove a custom requirement from this client's snapshot. Its `LaunchpadItem` row
+ * and its files are deliberately KEPT — "stop reading, don't delete", the rule a
+ * template re-assign already follows — so an accidental remove loses nothing the
+ * client sent us.
+ */
+export async function removeLaunchpadCustomItem(
+  wikiId: string,
+  itemId: string,
+): Promise<LaunchpadDTO | null> {
+  const ctx = await kitForStructureEdit(wikiId);
+  if (!ctx) return null;
+  const next = removeCustomItem(ctx.structure, itemId);
+  if (!next) return null;
+  await writeSnapshot(ctx.kit.id, next);
+  return getLaunchpadByWikiId(wikiId);
+}
+
+// ─── Item files ───────────────────────────────────────────────────────────────
+
+export interface LaunchpadUploader {
+  kind: "team" | "client";
+  name: string | null;
+}
+
+/**
+ * Attach a file to one requirement.
+ *
+ * The item must be a `checklist_item` in the kit's OWN snapshot (same rule as
+ * `updateLaunchpadItem`), the section must be on, and the bytes must pass
+ * `classifyLaunchpadUpload` — which decides the stored type from the content, never
+ * the uploader's claim. Anything wrong with the file is a `LaunchpadUploadError`
+ * (400), never a 500.
+ *
+ * Uploading counts as providing the item exactly as pasting a link does: it runs
+ * through `applyItemPatch` with the file as evidence, so a NEEDED item moves to
+ * PROVIDED and an explicit status the client set is left alone.
+ */
+export async function attachLaunchpadItemFile(
+  wikiId: string,
+  itemId: string,
+  upload: { filename: string | null; bytes: Uint8Array },
+  by: LaunchpadUploader,
+): Promise<LaunchpadDTO | null> {
+  const ctx = await kitForWrite(wikiId);
+  if (!ctx) return null;
+  const def = fieldsById(ctx.structure).get(itemId);
+  if (!def || def.type !== "checklist_item") return null;
+
+  const verdict = classifyLaunchpadUpload({
+    filename: upload.filename,
+    size: upload.bytes.byteLength,
+    head: upload.bytes.subarray(0, 512),
+  });
+  if (!verdict.ok) throw new LaunchpadUploadError(verdict.error);
+
+  const current = ctx.kit.files.filter((f) => f.itemId === itemId).length;
+  if (current >= LAUNCHPAD_FILE_MAX_PER_ITEM) {
+    throw new LaunchpadUploadError(
+      `This requirement already has ${LAUNCHPAD_FILE_MAX_PER_ITEM} files — remove one first, or share a folder link.`,
+    );
+  }
+
+  await prisma.launchpadItemFile.create({
+    data: {
+      kitId: ctx.kit.id,
+      itemId,
+      filename: verdict.filename,
+      mime: verdict.mime,
+      size: upload.bytes.byteLength,
+      bytes: bytesForPrisma(upload.bytes),
+      uploadedByKind: by.kind,
+      uploadedByName: by.name,
+    },
+    select: { id: true },
+  });
+
+  await applyFileEvidence(ctx.kit, itemId, current + 1, by.name);
+  return getLaunchpadByWikiId(wikiId);
+}
+
+/** Remove one file. Removing the last piece of evidence on a PROVIDED item reverts
+ *  it to NEEDED, the same as clearing its link. */
+export async function deleteLaunchpadItemFile(
+  wikiId: string,
+  itemId: string,
+  fileId: string,
+  by: LaunchpadUploader,
+): Promise<LaunchpadDTO | null> {
+  const ctx = await kitForWrite(wikiId);
+  if (!ctx) return null;
+  const files = ctx.kit.files.filter((f) => f.itemId === itemId);
+  if (!files.some((f) => f.id === fileId)) return null;
+
+  await prisma.launchpadItemFile.delete({ where: { id: fileId }, select: { id: true } });
+  await applyFileEvidence(ctx.kit, itemId, files.length - 1, by.name);
+  return getLaunchpadByWikiId(wikiId);
+}
+
+async function applyFileEvidence(
+  kit: KitRow,
+  itemId: string,
+  fileCount: number,
+  updatedBy: string | null,
+): Promise<void> {
+  const existing = kit.items.find((i) => i.itemId === itemId);
+  const next = applyItemPatch(
+    {
+      status: existing?.status ?? "NEEDED",
+      link: existing?.link ?? null,
+      note: existing?.note ?? null,
+      ownedByClient: existing?.ownedByClient ?? null,
+    },
+    {},
+    { fileCount, filesChanged: true },
+  );
+  await prisma.launchpadItem.upsert({
+    where: { kitId_itemId: { kitId: kit.id, itemId } },
+    create: { kitId: kit.id, itemId, ...next, updatedBy },
+    update: { ...next, updatedBy },
+  });
+}
+
+/**
+ * One file's bytes for download. Scoped to the kit AND the item, so a file id from
+ * another client's kit can never be fetched through this one's URL.
+ *
+ * `requireEnabled` is true on the client-facing path: a switched-off section must
+ * not keep serving what was uploaded to it.
+ */
+export async function getLaunchpadItemFile(
+  wikiId: string,
+  itemId: string,
+  fileId: string,
+  opts: { requireEnabled: boolean },
+): Promise<{ bytes: Buffer; mime: string; filename: string } | null> {
+  const row = await prisma.launchpadItemFile.findFirst({
+    where: {
+      id: fileId,
+      itemId,
+      kit: { wikiId, ...(opts.requireEnabled ? { wiki: { launchpadEnabled: true } } : {}) },
+    },
+    select: { bytes: true, mime: true, filename: true },
+  });
+  if (!row) return null;
+  return { bytes: Buffer.from(row.bytes), mime: row.mime, filename: row.filename };
 }
 
 // ─── Doc writes ───────────────────────────────────────────────────────────────
@@ -726,7 +1016,7 @@ export async function computeLaunchpadSummaries(
     const completeness = computeCompleteness(
       structure,
       kit.enabledModules,
-      kit.items.map(serializeItem),
+      kit.items.map((row) => serializeItem(row)),
       answers,
     );
     out.set(row.clientId, {
