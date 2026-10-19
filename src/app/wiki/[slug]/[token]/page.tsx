@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { resolvePublicWiki } from "@/server/wiki";
+import { applyCommentViewer, resolvePublicWiki } from "@/server/wiki";
+import { publicCommentViewer } from "@/server/wiki-comment-viewer";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 import { auth } from "@/auth";
 import type { Metadata } from "next";
@@ -81,7 +82,7 @@ export default async function PublicWikiPage({
     redirect(`/wiki/${resolved.wiki.clientSlug}/${token}`);
   }
 
-  const { wiki, onlySection } = resolved;
+  const { onlySection } = resolved;
 
   // Hard lockdown: the public wiki is viewable only by (a) a logged-in
   // Gitwork/Foundry staff member, or (b) an authenticated client user with a
@@ -89,14 +90,20 @@ export default async function PublicWikiPage({
   // which authenticates by email and routes back here (?next).
   const session = await auth();
   const isStaff = Boolean(session?.user?.id);
+  const cookieStore = await cookies();
+  const cookieValue = cookieStore.get(wikiAccessCookieName(resolved.wiki.id))?.value;
   if (!isStaff) {
-    const cookieStore = await cookies();
-    const cookieValue = cookieStore.get(wikiAccessCookieName(wiki.id))?.value;
-    const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);
+    const unlocked = await verifyWikiAccessCookie(resolved.wiki.id, cookieValue);
     if (!unlocked) {
       redirect(`/portal/login?next=${encodeURIComponent(`/wiki/${slug}/${token}`)}`);
     }
   }
+  // Which replies this viewer may edit or delete (their own) — decided here, on the
+  // server, so the author ids never reach the page.
+  const wiki = await applyCommentViewer(
+    resolved.wiki,
+    await publicCommentViewer(resolved.wiki.id, cookieValue),
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">

@@ -52,6 +52,8 @@ export const NOTIFICATION_EVENTS = [
   "clients.onboarded",
   // A client data feed Foundry pulls on a schedule has stopped working (src/server/wedge-course-feed.ts)
   "clients.feed_failing",
+  // You were @mentioned in a reply on a client's request (src/server/wiki-intake-reply-notify.ts)
+  "wiki.request_mention",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
   // A message a person wrote and addressed to you (src/server/team-messages.ts)
@@ -104,6 +106,9 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // stays down. A client's data silently not arriving is the failure this exists to end —
   // Big Wedge's course requests stopped for two months and the client had to tell us.
   "clients.feed_failing": ["inApp", "push"],
+  // Directed at one person, by name, in a conversation a client may be waiting on —
+  // the same weight as being @mentioned on a task.
+  "wiki.request_mention": ["inApp", "push"],
   // Directed at admins each morning — in-app feed + a native push so it lands on the phone,
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.

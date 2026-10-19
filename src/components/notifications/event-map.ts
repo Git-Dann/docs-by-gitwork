@@ -50,6 +50,7 @@ export const EVENT_META: Record<NotificationEvent, EventMeta> = {
   "meetings.notes_ready": { icon: ChatBubbleLeftEllipsisIcon, label: "Scribe" },
   "clients.onboarded": { icon: UserGroupIcon, label: "Portal" },
   "clients.feed_failing": { icon: ExclamationTriangleIcon, label: "Portal" },
+  "wiki.request_mention": { icon: AtSymbolIcon, label: "Requests" },
   "foreman.digest": { icon: ExclamationTriangleIcon, label: "Delivery watch" },
   "team.message": { icon: ChatBubbleLeftEllipsisIcon, label: "Message" },
 };

@@ -4015,6 +4015,59 @@ export async function addPublicWikiIntakeComment(
   );
 }
 
+/** Where a reply lives: the internal wiki (by client slug) or the shared one (by token). */
+export type WikiCommentScope = { slug: string } | { token: string };
+
+function wikiCommentUrl(scope: WikiCommentScope, itemId: string, commentId: string): string {
+  const base =
+    "slug" in scope ? `/api/clients/${scope.slug}/wiki` : `/api/wiki/${encodeURIComponent(scope.token)}`;
+  return `${base}/intake-items/${encodeURIComponent(itemId)}/comments/${encodeURIComponent(commentId)}`;
+}
+
+/** Edit your own reply. */
+export async function editWikiIntakeComment(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  body: string,
+  mentionIds: string[] = [],
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(wikiCommentUrl(scope, itemId, commentId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body, mentionIds }),
+  });
+}
+
+/** Delete a reply (soft — the thread shows "Reply deleted"). Returns the blanked record. */
+export async function deleteWikiIntakeComment(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(wikiCommentUrl(scope, itemId, commentId), { method: "DELETE" });
+}
+
+/** Attach a screenshot to your own reply. */
+export function uploadWikiIntakeCommentImage(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  file: File,
+): Promise<WikiIntakeCommentRecord> {
+  return postImageFile(`${wikiCommentUrl(scope, itemId, commentId)}/image`, file);
+}
+
+/** The URL a reply's screenshot is served from (`thumb` → the small preview). */
+export function wikiIntakeCommentImageSrc(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  opts: { thumb?: boolean } = {},
+): string {
+  return `${wikiCommentUrl(scope, itemId, commentId)}/image${opts.thumb ? "?thumb=1" : ""}`;
+}
+
 export async function deleteWikiIntakeItemApi(slug: string, id: string): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/intake-items/${id}`, { method: "DELETE" });
 }

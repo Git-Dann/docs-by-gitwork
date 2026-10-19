@@ -157,6 +157,11 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "Client feed failing",
         description: "Data Foundry pulls for a client (e.g. Big Wedge course requests) stopped arriving.",
       },
+      {
+        id: "wiki.request_mention",
+        label: "Mentioned on a request",
+        description: "You were @mentioned in a reply on a client's wiki request.",
+      },
     ],
   },
   {
