@@ -49,7 +49,6 @@ import {
   useAddPublicWikiIntakeComment,
   useEditWikiIntakeComment,
   useDeleteWikiIntakeComment,
-  useUploadWikiIntakeCommentImage,
   useImportWikiIntakeItems,
   useWikiMentionables,
 } from "@/hooks/use-wiki";
@@ -199,7 +198,6 @@ export function WikiIntakeSection({
   const commentScope: WikiCommentScope = isInternal ? { slug } : { token: token ?? "" };
   const editCommentMutation = useEditWikiIntakeComment(commentScope);
   const deleteCommentMutation = useDeleteWikiIntakeComment(commentScope);
-  const uploadCommentImage = useUploadWikiIntakeCommentImage(commentScope);
   const importItems = useImportWikiIntakeItems(slug);
 
   const [localItems, setLocalItems] = useState(items);
@@ -403,24 +401,16 @@ export function WikiIntakeSection({
     mentionIds: string[],
     image: File | null,
   ): Promise<string | void> {
+    // The screenshot goes up WITH the reply, in one request: the server can then accept
+    // a screenshot-only reply, and a failed upload fails the whole post (the composer
+    // keeps the draft and the file) rather than leaving a half-posted reply behind.
     const comment = isInternal
-      ? await addCommentInternal.mutateAsync({ itemId, body, mentionIds })
-      : await addCommentPublic.mutateAsync({ itemId, body, mentionIds });
+      ? await addCommentInternal.mutateAsync({ itemId, body, mentionIds, image })
+      : await addCommentPublic.mutateAsync({ itemId, body, mentionIds, image });
     if (!isInternal) {
       setLocalItems((prev) =>
         prev.map((i) => (i.id === itemId ? { ...i, comments: [...(i.comments ?? []), comment] } : i)),
       );
-    }
-    if (image) {
-      // The reply is already saved; a failed upload is reported, the text is not lost.
-      try {
-        const withImage = await uploadCommentImage.mutateAsync({ itemId, commentId: comment.id, file: image });
-        replaceLocalComment(itemId, withImage);
-      } catch (err) {
-        // Not a throw: the reply exists, so the composer must clear rather than invite a
-        // second, duplicate post. The warning is shown under it instead.
-        return `Reply posted, but the screenshot didn't upload: ${err instanceof Error ? err.message : "unknown error"}`;
-      }
     }
   }
 

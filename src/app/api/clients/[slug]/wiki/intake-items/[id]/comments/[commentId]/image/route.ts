@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { requireAuthedUser } from "@/server/auth/effective-user";
+import { getEffectiveUserOrNull, requireAuthedUser } from "@/server/auth/effective-user";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { attachWikiIntakeCommentImage, getWikiIntakeCommentImageBytes } from "@/server/wiki";
 import { internalCommentViewer } from "@/server/wiki-comment-viewer";
 import { imageResponse, readReplyImageUpload } from "@/server/wiki-reply-image-upload";
@@ -14,6 +15,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuthedUser(req);
     const { slug, id, commentId } = await params;
+    await assertClientAccessBySlug(user, slug);
     const upload = await readReplyImageUpload(req);
     if (!upload.ok) return upload.response;
     const comment = await attachWikiIntakeCommentImage(
@@ -35,6 +37,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { slug, id, commentId } = await params;
+    // Scoped like the request's own screenshot: only people who can see this client.
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const thumb = new URL(req.url).searchParams.get("thumb") === "1";
     return imageResponse(await getWikiIntakeCommentImageBytes({ slug }, id, commentId, thumb ? "thumb" : "full"));
   } catch (err) {

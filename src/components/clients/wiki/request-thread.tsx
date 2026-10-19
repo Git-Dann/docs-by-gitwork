@@ -65,6 +65,8 @@ function KindTag({ kind }: { kind: "TEAM" | "CLIENT" }) {
 }
 
 function CommentBody({ comment }: { comment: WikiIntakeCommentRecord }) {
+  // A screenshot-only reply has no text — render no empty paragraph above the image.
+  if (!comment.body.trim()) return null;
   const parts = splitMentions(comment.body, comment.mentions ?? []);
   return (
     <p className="mt-1 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[var(--text-2)]">
@@ -82,6 +84,11 @@ function CommentBody({ comment }: { comment: WikiIntakeCommentRecord }) {
       )}
     </p>
   );
+}
+
+/** A reply needs words, a screenshot, or both — mirrors the server's rule. */
+export function canSendReply(draft: string, image: File | null): boolean {
+  return draft.trim().length > 0 || image !== null;
 }
 
 /** Same ceiling the upload route enforces — checked here first so a too-big file is
@@ -327,9 +334,9 @@ export function RequestThread({
   mentionablesLoading: boolean;
   /** Called on first focus — the roster is only fetched once someone starts a reply. */
   onOpen: () => void;
-  /** Posts the reply, then attaches `image` to it when one was chosen. Throws if the
-   *  reply was not saved; resolves to a warning string when it was saved but something
-   *  after it (the screenshot) failed. */
+  /** Posts the reply with `image` (when one was chosen) in the same request — so the
+   *  text may be empty when there is a screenshot. Throws if the reply was not saved;
+   *  may resolve to a warning string to show under the composer. */
   onPost: (body: string, mentionIds: string[], image: File | null) => Promise<string | void>;
   onEdit?: (commentId: string, body: string, mentionIds: string[]) => Promise<void>;
   onDelete?: (commentId: string) => Promise<void>;
@@ -393,7 +400,7 @@ export function RequestThread({
 
   async function submit() {
     const body = draft.trim();
-    if (!body || posting) return;
+    if (!canSendReply(body, image) || posting) return;
     setPosting(true);
     setError(null);
     try {
@@ -603,7 +610,7 @@ export function RequestThread({
           </span>
           <button
             type="button"
-            disabled={posting || !draft.trim()}
+            disabled={posting || !canSendReply(draft, image)}
             onClick={() => void submit()}
             className="rounded-[6px] bg-[var(--brand-600)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:cursor-not-allowed disabled:opacity-50"
           >

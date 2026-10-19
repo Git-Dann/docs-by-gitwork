@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { attachWikiIntakeItemImage, getWikiIntakeItemImageBytes } from "@/server/wiki";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +30,9 @@ async function resolveClientId(slug: string): Promise<string | null> {
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string; id: string }> }) {
   try {
     const { slug, id } = await params;
+    // A screenshot is client data: a developer scoped to other clients must not be
+    // able to read (or overwrite) it by guessing a slug. API-key callers (null) pass.
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const clientId = await resolveClientId(slug);
     if (!clientId) return apiError("Client not found", 404);
     const form = await req.formData();
@@ -57,6 +62,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string; id: string }> }) {
   try {
     const { slug, id } = await params;
+    // A screenshot is client data: a developer scoped to other clients must not be
+    // able to read (or overwrite) it by guessing a slug. API-key callers (null) pass.
+    await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const clientId = await resolveClientId(slug);
     if (!clientId) return apiError("Client not found", 404);
     const thumb = new URL(req.url).searchParams.get("thumb") === "1";

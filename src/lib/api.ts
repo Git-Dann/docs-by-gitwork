@@ -3976,15 +3976,9 @@ export async function addWikiIntakeComment(
   itemId: string,
   body: string,
   mentionIds: string[] = [],
+  image: File | null = null,
 ): Promise<WikiIntakeCommentRecord> {
-  return apiFetch<WikiIntakeCommentRecord>(
-    `/api/clients/${slug}/wiki/intake-items/${itemId}/comments`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body, mentionIds }),
-    },
-  );
+  return postWikiReply(`/api/clients/${slug}/wiki/intake-items/${itemId}/comments`, body, mentionIds, image);
 }
 
 /** Who can be @mentioned on a client's requests (internal: the whole team). */
@@ -4004,15 +3998,35 @@ export async function addPublicWikiIntakeComment(
   itemId: string,
   body: string,
   mentionIds: string[] = [],
+  image: File | null = null,
 ): Promise<WikiIntakeCommentRecord> {
-  return apiFetch<WikiIntakeCommentRecord>(
-    `/api/wiki/${token}/intake-items/${itemId}/comments`,
-    {
+  return postWikiReply(`/api/wiki/${token}/intake-items/${itemId}/comments`, body, mentionIds, image);
+}
+
+/**
+ * Post a reply. With a screenshot the reply and image go up in ONE multipart request,
+ * so the text may be empty (a screenshot-only reply) and a failed upload never leaves
+ * an empty reply behind. Without one it is the plain JSON post.
+ */
+async function postWikiReply(
+  url: string,
+  body: string,
+  mentionIds: string[],
+  image: File | null,
+): Promise<WikiIntakeCommentRecord> {
+  if (!image) {
+    return apiFetch<WikiIntakeCommentRecord>(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body, mentionIds }),
-    },
-  );
+    });
+  }
+  const form = new FormData();
+  form.append("body", body);
+  form.append("mentionIds", JSON.stringify(mentionIds));
+  form.append("file", image);
+  // No Content-Type: the browser sets the multipart boundary itself.
+  return apiFetch<WikiIntakeCommentRecord>(url, { method: "POST", body: form });
 }
 
 /** Where a reply lives: the internal wiki (by client slug) or the shared one (by token). */

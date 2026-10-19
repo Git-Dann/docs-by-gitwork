@@ -693,16 +693,38 @@ export function useUploadPublicWikiIntakeItemImage(token: string) {
 export function useAddWikiIntakeComment(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, body, mentionIds }: { itemId: string; body: string; mentionIds?: string[] }) =>
-      addWikiIntakeComment(slug, itemId, body, mentionIds),
+    mutationFn: ({
+      itemId,
+      body,
+      mentionIds,
+      image,
+    }: {
+      itemId: string;
+      body: string;
+      mentionIds?: string[];
+      /** Sent in the same request, so a screenshot-only reply is allowed. */
+      image?: File | null;
+    }) =>
+      addWikiIntakeComment(slug, itemId, body, mentionIds, image ?? null),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
 
 export function useAddPublicWikiIntakeComment(token: string) {
   return useMutation({
-    mutationFn: ({ itemId, body, mentionIds }: { itemId: string; body: string; mentionIds?: string[] }) =>
-      addPublicWikiIntakeComment(token, itemId, body, mentionIds),
+    mutationFn: ({
+      itemId,
+      body,
+      mentionIds,
+      image,
+    }: {
+      itemId: string;
+      body: string;
+      mentionIds?: string[];
+      /** Sent in the same request, so a screenshot-only reply is allowed. */
+      image?: File | null;
+    }) =>
+      addPublicWikiIntakeComment(token, itemId, body, mentionIds, image ?? null),
   });
 }
 

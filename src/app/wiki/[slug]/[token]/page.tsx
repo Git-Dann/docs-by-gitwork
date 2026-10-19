@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { applyCommentViewer, resolvePublicWiki } from "@/server/wiki";
+import { backfillCommentAuthors } from "@/server/wiki-intake-comment-backfill";
 import { publicCommentViewer } from "@/server/wiki-comment-viewer";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 import { auth } from "@/auth";
@@ -98,6 +99,9 @@ export default async function PublicWikiPage({
       redirect(`/portal/login?next=${encodeURIComponent(`/wiki/${slug}/${token}`)}`);
     }
   }
+  // Old client replies predate author stamping; tie the unambiguous ones to their
+  // author first so the permissions below can see them. Bounded, this wiki only.
+  await backfillCommentAuthors(resolved.wiki.id);
   // Which replies this viewer may edit or delete (their own) — decided here, on the
   // server, so the author ids never reach the page.
   const wiki = await applyCommentViewer(

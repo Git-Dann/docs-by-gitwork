@@ -2484,14 +2484,17 @@ export async function addWikiIntakeComment(
   author: { userId: string; name: string; isAdmin?: boolean },
   body: string,
   mentions?: readonly StoredMention[],
+  image?: ReplyImageInput | null,
 ): Promise<(WikiIntakeCommentRecord & { wikiId: string }) | null> {
   const trimmed = body.trim();
-  if (!trimmed) throw new Error("Comment can't be empty.");
+  // Words, a screenshot, or both — a screenshot-only reply is a real reply.
+  if (!trimmed && !image) throw new Error("Comment can't be empty.");
   const item = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wiki: { client: { slug } } },
     select: { id: true, wikiId: true },
   });
   if (!item) return null;
+  const imageData = await replyImageData(image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
       intakeItemId: item.id,
@@ -2499,7 +2502,8 @@ export async function addWikiIntakeComment(
       authorName: author.name,
       authorUserId: author.userId,
       body: trimmed,
-      mentions: storableMentions(mentions),
+      mentions: trimmed ? storableMentions(mentions) : undefined,
+      ...imageData,
     },
     select: COMMENT_ROW_SELECT,
   });
@@ -2542,11 +2546,13 @@ export async function addWikiIntakeCommentByToken(
     mentions?: readonly StoredMention[];
     authorWikiUserId?: string | null;
     authorUserId?: string | null;
+    /** A screenshot sent with the reply. With one, the text may be empty. */
+    image?: ReplyImageInput | null;
   },
 ): Promise<WikiIntakeCommentRecord | null> {
   const authorName = input.authorName.trim();
   const body = input.body.trim();
-  if (!authorName || !body) return null;
+  if (!authorName || (!body && !input.image)) return null;
 
   const wikiId = await resolveWikiIdByPublicToken(token);
   if (!wikiId) return null;
@@ -2559,13 +2565,15 @@ export async function addWikiIntakeCommentByToken(
   });
   if (!item) return null;
 
+  const imageData = await replyImageData(input.image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
       intakeItemId: item.id,
       authorKind: input.authorKind,
       authorName,
       body,
-      mentions: storableMentions(input.mentions),
+      mentions: body ? storableMentions(input.mentions) : undefined,
+      ...imageData,
       // A client reply is owned by the wiki user who wrote it; a staff preview reply by
       // the Foundry user. Never both.
       authorWikiUserId: input.authorKind === "CLIENT" ? (input.authorWikiUserId ?? null) : null,
@@ -2597,6 +2605,21 @@ export class CommentForbiddenError extends Error {
  * comment id from another client 404s rather than being editable through this one.
  */
 export type CommentScope = { slug: string } | { token: string };
+
+/** A screenshot sent in the same request as a new reply. */
+export type ReplyImageInput = { bytes: Buffer; mime: string; filename: string | null };
+
+/** Transcode a reply's screenshot into the columns it is stored in (nothing when absent). */
+async function replyImageData(image: ReplyImageInput | null | undefined) {
+  if (!image) return {};
+  const transcoded = await transcodeIntakeImage(image.bytes, image.mime);
+  return {
+    image: bytesForPrisma(transcoded.bytes),
+    thumb: bytesForPrisma(transcoded.thumb),
+    mime: transcoded.mime,
+    filename: image.filename,
+  };
+}
 
 async function findScopedComment(scope: CommentScope, itemId: string, commentId: string) {
   let wikiWhere: Prisma.ClientWikiIntakeItemWhereInput;

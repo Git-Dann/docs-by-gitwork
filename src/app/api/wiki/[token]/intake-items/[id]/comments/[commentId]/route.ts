@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { deleteWikiIntakeComment, editWikiIntakeComment, resolveWikiIdByPublicToken } from "@/server/wiki";
 import { wikiAccessCookieName } from "@/server/wiki-access";
+import { backfillCommentAuthors } from "@/server/wiki-intake-comment-backfill";
 import { resolveMentions } from "@/server/wiki-intake-mentions";
 import { publicCommentViewer } from "@/server/wiki-comment-viewer";
 import { MAX_MENTIONS_PER_COMMENT } from "@/lib/wiki-mentions";
@@ -16,6 +17,8 @@ const patchSchema = z.object({
 
 async function viewerFor(req: NextRequest, token: string) {
   const wikiId = await resolveWikiIdByPublicToken(token);
+  // Same lazy stamping as the page load, so a reply the page offered to edit can be.
+  if (wikiId) await backfillCommentAuthors(wikiId);
   const viewer = await publicCommentViewer(
     wikiId,
     wikiId ? req.cookies.get(wikiAccessCookieName(wikiId))?.value : null,
