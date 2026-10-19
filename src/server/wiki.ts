@@ -27,6 +27,7 @@ import type {
 import type { DesignTokens } from "@/types/design-tokens";
 import { buildTaskStatusCounts, type TaskLabel, type TaskStatus } from "@/types/tasks";
 import { deriveRequestStage, type RequestStage } from "@/lib/wiki-request-stage";
+import { commentPermissions, type CommentViewer } from "@/lib/wiki-comment-permissions";
 import {
   resolveIntakeCategories,
   typeForCategory,
@@ -171,6 +172,17 @@ export interface WikiIntakeCommentRecord {
   /** People @mentioned in this reply — see src/lib/wiki-mentions.ts. */
   mentions: StoredMention[];
   createdAt: string;
+  /** When the author last edited it, or null. */
+  editedAt: string | null;
+  /** Soft-deleted: body, mentions and image are blanked server-side — render "Reply deleted". */
+  deleted: boolean;
+  /** A screenshot is attached — bytes are served by the comment image route. */
+  hasImage: boolean;
+  imageFilename: string | null;
+  /** Whether the CURRENT viewer may edit / delete this reply. Always false as built;
+   *  set per request by `applyCommentViewer` (src/lib/wiki-comment-permissions.ts). */
+  canEdit: boolean;
+  canDelete: boolean;
 }
 
 /** A stored `mentions` Json value, read defensively: an older reply has none, and a
@@ -531,14 +543,7 @@ function serializeWikiIntakeItem(item: {
   osVersion?: string | null;
   createdAt: Date;
   updatedAt: Date;
-  comments?: {
-    id: string;
-    authorKind: WikiIntakeCommentAuthorKind;
-    authorName: string;
-    body: string;
-    mentions?: unknown;
-    createdAt: Date;
-  }[];
+  comments?: SerializableComment[];
 }, taskStatuses?: ReadonlyMap<string, TaskStatus>): WikiIntakeItemRecord {
   const taskStatus = item.taskId ? (taskStatuses?.get(item.taskId) ?? null) : null;
   return {
@@ -566,14 +571,7 @@ function serializeWikiIntakeItem(item: {
     osVersion: item.osVersion ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
-    comments: (item.comments ?? []).map((c) => ({
-      id: c.id,
-      authorKind: c.authorKind,
-      authorName: c.authorName,
-      body: c.body,
-      mentions: parseStoredMentions(c.mentions),
-      createdAt: c.createdAt.toISOString(),
-    })),
+    comments: (item.comments ?? []).map((c) => serializeWikiIntakeComment(c)),
   };
 }
 
@@ -1264,7 +1262,19 @@ const WIKI_INCLUDE = {
       createdAt: true,
       updatedAt: true,
       comments: {
-        select: { id: true, authorKind: true, authorName: true, body: true, mentions: true, createdAt: true },
+        // No `image`/`thumb` — same reason as the item's own image above.
+        select: {
+          id: true,
+          authorKind: true,
+          authorName: true,
+          body: true,
+          mentions: true,
+          createdAt: true,
+          editedAt: true,
+          deletedAt: true,
+          mime: true,
+          filename: true,
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -2361,22 +2371,96 @@ export async function deleteWikiIntakeItem(id: string): Promise<void> {
   }
 }
 
-function serializeWikiIntakeComment(c: {
+/** The comment columns the serializer reads. Image bytes are never among them. */
+interface SerializableComment {
   id: string;
   authorKind: WikiIntakeCommentAuthorKind;
   authorName: string;
   body: string;
   mentions?: unknown;
   createdAt: Date;
-}): WikiIntakeCommentRecord {
+  editedAt?: Date | null;
+  deletedAt?: Date | null;
+  mime?: string | null;
+  filename?: string | null;
+}
+
+/**
+ * ⚠️ A deleted reply keeps its row (so the thread keeps its shape) but its body,
+ * mentions and image are blanked HERE, on the server — never sent to a browser and
+ * hidden with CSS, where anyone could read them in the network tab.
+ */
+export function serializeWikiIntakeComment(c: SerializableComment): WikiIntakeCommentRecord {
+  const deleted = Boolean(c.deletedAt);
   return {
     id: c.id,
     authorKind: c.authorKind,
     authorName: c.authorName,
-    body: c.body,
-    mentions: parseStoredMentions(c.mentions),
+    body: deleted ? "" : c.body,
+    mentions: deleted ? [] : parseStoredMentions(c.mentions),
     createdAt: c.createdAt.toISOString(),
+    editedAt: !deleted && c.editedAt ? c.editedAt.toISOString() : null,
+    deleted,
+    hasImage: !deleted && Boolean(c.mime),
+    imageFilename: deleted ? null : (c.filename ?? null),
+    canEdit: false,
+    canDelete: false,
   };
+}
+
+/** The columns a comment's ownership is decided on — see commentPermissions. */
+const COMMENT_OWNERSHIP_SELECT = {
+  id: true,
+  authorKind: true,
+  authorUserId: true,
+  authorWikiUserId: true,
+  deletedAt: true,
+} as const satisfies Prisma.ClientWikiIntakeCommentSelect;
+
+/** Every column the serializer reads, plus ownership — never the image bytes. */
+const COMMENT_ROW_SELECT = {
+  ...COMMENT_OWNERSHIP_SELECT,
+  authorName: true,
+  body: true,
+  mentions: true,
+  createdAt: true,
+  editedAt: true,
+  mime: true,
+  filename: true,
+} as const satisfies Prisma.ClientWikiIntakeCommentSelect;
+
+/**
+ * Mark which replies the current viewer may edit or delete. The wiki DTO is built
+ * without knowing who is looking, so this runs once per request on the way out — one
+ * indexed read for the comment owners, and the author ids never leave the server.
+ */
+export async function applyCommentViewer<T extends { intakeItems: WikiIntakeItemRecord[] }>(
+  dto: T,
+  viewer: CommentViewer,
+): Promise<T> {
+  if (!viewer) return dto;
+  const ids = dto.intakeItems.flatMap((i) => (i.comments ?? []).map((c) => c.id));
+  if (ids.length === 0) return dto;
+  const owners = await prisma.clientWikiIntakeComment.findMany({
+    where: { id: { in: ids } },
+    select: COMMENT_OWNERSHIP_SELECT,
+  });
+  const byId = new Map(owners.map((o) => [o.id, commentPermissions(o, viewer)]));
+  return {
+    ...dto,
+    intakeItems: dto.intakeItems.map((item) => ({
+      ...item,
+      comments: (item.comments ?? []).map((c) => ({ ...c, ...(byId.get(c.id) ?? { canEdit: false, canDelete: false }) })),
+    })),
+  };
+}
+
+/** Serialize one comment row for the viewer who just acted on it. */
+function serializeForViewer(
+  row: SerializableComment & { authorUserId: string | null; authorWikiUserId: string | null },
+  viewer: CommentViewer,
+): WikiIntakeCommentRecord {
+  return { ...serializeWikiIntakeComment(row), ...commentPermissions({ ...row, deletedAt: row.deletedAt ?? null }, viewer) };
 }
 
 /** Store only `{ id, name, kind }` — the email used to find someone in Slack is
@@ -2397,7 +2481,7 @@ function storableMentions(mentions: readonly StoredMention[] | undefined): Prism
 export async function addWikiIntakeComment(
   slug: string,
   itemId: string,
-  author: { userId: string; name: string },
+  author: { userId: string; name: string; isAdmin?: boolean },
   body: string,
   mentions?: readonly StoredMention[],
 ): Promise<(WikiIntakeCommentRecord & { wikiId: string }) | null> {
@@ -2417,8 +2501,10 @@ export async function addWikiIntakeComment(
       body: trimmed,
       mentions: storableMentions(mentions),
     },
+    select: COMMENT_ROW_SELECT,
   });
-  return { ...serializeWikiIntakeComment(comment), wikiId: item.wikiId };
+  const viewer: CommentViewer = { kind: "team", userId: author.userId, isAdmin: Boolean(author.isAdmin) };
+  return { ...serializeForViewer(comment, viewer), wikiId: item.wikiId };
 }
 
 /** The wiki a client slug owns, if it has one — for the internal mention routes. */
@@ -2442,6 +2528,9 @@ export async function wikiIdForClientSlug(slug: string): Promise<string | null> 
  * that isn't theirs — same non-distinguishing failure as the rest of the
  * token-scoped functions, so a caller can't use the error to probe for id
  * existence.
+ *
+ * `authorWikiUserId` / `authorUserId` stamp WHO wrote it, so they can edit or delete
+ * it later (see commentPermissions). The route passes whichever identity it verified.
  */
 export async function addWikiIntakeCommentByToken(
   token: string,
@@ -2451,6 +2540,8 @@ export async function addWikiIntakeCommentByToken(
     authorName: string;
     body: string;
     mentions?: readonly StoredMention[];
+    authorWikiUserId?: string | null;
+    authorUserId?: string | null;
   },
 ): Promise<WikiIntakeCommentRecord | null> {
   const authorName = input.authorName.trim();
@@ -2475,9 +2566,149 @@ export async function addWikiIntakeCommentByToken(
       authorName,
       body,
       mentions: storableMentions(input.mentions),
+      // A client reply is owned by the wiki user who wrote it; a staff preview reply by
+      // the Foundry user. Never both.
+      authorWikiUserId: input.authorKind === "CLIENT" ? (input.authorWikiUserId ?? null) : null,
+      authorUserId: input.authorKind === "TEAM" ? (input.authorUserId ?? null) : null,
     },
+    select: COMMENT_ROW_SELECT,
   });
-  return serializeWikiIntakeComment(comment);
+  const viewer: CommentViewer =
+    input.authorKind === "CLIENT" && input.authorWikiUserId
+      ? { kind: "client", wikiUserId: input.authorWikiUserId }
+      : null;
+  return serializeForViewer(comment, viewer);
+}
+
+// ─── Editing, deleting and attaching to a reply ─────────────────────────────
+
+/** Thrown when the viewer may not touch this reply — the route maps it to 403. */
+export class CommentForbiddenError extends Error {
+  readonly status = 403;
+  constructor(message = "You can only change your own replies.") {
+    super(message);
+    this.name = "CommentForbiddenError";
+  }
+}
+
+/**
+ * Where a comment is looked up: by client slug (internal, session-authed) or by the
+ * public wiki token. Either way the comment must sit on a request in THAT wiki — a
+ * comment id from another client 404s rather than being editable through this one.
+ */
+export type CommentScope = { slug: string } | { token: string };
+
+async function findScopedComment(scope: CommentScope, itemId: string, commentId: string) {
+  let wikiWhere: Prisma.ClientWikiIntakeItemWhereInput;
+  if ("slug" in scope) {
+    wikiWhere = { wiki: { client: { slug: scope.slug } } };
+  } else {
+    const wikiId = await resolveWikiIdByPublicToken(scope.token);
+    if (!wikiId) return null;
+    wikiWhere = { wikiId, wiki: { intakeEnabled: true } };
+  }
+  return prisma.clientWikiIntakeComment.findFirst({
+    where: { id: commentId, intakeItemId: itemId, intakeItem: wikiWhere },
+    select: { ...COMMENT_ROW_SELECT, intakeItem: { select: { wikiId: true } } },
+  });
+}
+
+/** Edit a reply's text. Mentions are re-resolved by the route and replaced wholesale. */
+export async function editWikiIntakeComment(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  viewer: CommentViewer,
+  body: string,
+  mentions?: readonly StoredMention[],
+): Promise<WikiIntakeCommentRecord | null> {
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Comment can't be empty.");
+  const row = await findScopedComment(scope, itemId, commentId);
+  if (!row) return null;
+  if (!commentPermissions(row, viewer).canEdit) throw new CommentForbiddenError();
+  const updated = await prisma.clientWikiIntakeComment.update({
+    where: { id: row.id },
+    data: { body: trimmed, mentions: storableMentions(mentions) ?? Prisma.DbNull, editedAt: new Date() },
+    select: COMMENT_ROW_SELECT,
+  });
+  return serializeForViewer(updated, viewer);
+}
+
+/**
+ * Soft-delete a reply. The row stays so the conversation reads in order ("Reply
+ * deleted" between two replies, not a reply that seems to answer nothing), but the
+ * text, mentions and screenshot are cleared from the database too — deleting means
+ * gone, not hidden.
+ */
+export async function deleteWikiIntakeComment(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  viewer: CommentViewer,
+): Promise<WikiIntakeCommentRecord | null> {
+  const row = await findScopedComment(scope, itemId, commentId);
+  if (!row) return null;
+  if (!commentPermissions(row, viewer).canDelete) throw new CommentForbiddenError();
+  const updated = await prisma.clientWikiIntakeComment.update({
+    where: { id: row.id },
+    data: {
+      deletedAt: new Date(),
+      body: "",
+      mentions: Prisma.DbNull,
+      image: null,
+      thumb: null,
+      mime: null,
+      filename: null,
+    },
+    select: COMMENT_ROW_SELECT,
+  });
+  return serializeForViewer(updated, viewer);
+}
+
+/** Attach (or replace) the screenshot on a reply. Only someone who may edit the reply. */
+export async function attachWikiIntakeCommentImage(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  viewer: CommentViewer,
+  bytes: Buffer,
+  mime: string,
+  filename: string | null,
+): Promise<WikiIntakeCommentRecord | null> {
+  const row = await findScopedComment(scope, itemId, commentId);
+  if (!row) return null;
+  if (!commentPermissions(row, viewer).canEdit) throw new CommentForbiddenError();
+  const transcoded = await transcodeIntakeImage(bytes, mime);
+  const updated = await prisma.clientWikiIntakeComment.update({
+    where: { id: row.id },
+    data: {
+      image: bytesForPrisma(transcoded.bytes),
+      thumb: bytesForPrisma(transcoded.thumb),
+      mime: transcoded.mime,
+      filename,
+    },
+    select: COMMENT_ROW_SELECT,
+  });
+  return serializeForViewer(updated, viewer);
+}
+
+/** Serve a reply's screenshot — the full image, or its thumb. Never for a deleted reply. */
+export async function getWikiIntakeCommentImageBytes(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  variant: "full" | "thumb" = "full",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  const found = await findScopedComment(scope, itemId, commentId);
+  if (!found || found.deletedAt) return null;
+  const row = await prisma.clientWikiIntakeComment.findUnique({
+    where: { id: found.id },
+    select: { image: true, thumb: true, mime: true },
+  });
+  if (!row || !row.mime || !row.image) return null;
+  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
+  return { bytes: Buffer.from(row.image), mime: row.mime };
 }
 
 async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {

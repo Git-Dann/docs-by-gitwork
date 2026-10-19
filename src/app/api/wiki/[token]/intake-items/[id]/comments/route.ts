@@ -6,6 +6,7 @@ import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-acces
 import { auth } from "@/auth";
 import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 import { notifyIntakeMentions, resolveMentions } from "@/server/wiki-intake-mentions";
+import { emailRaiserOnTeamReply, notifyTeamMentionsOnRequest } from "@/server/wiki-intake-reply-notify";
 import { MAX_MENTIONS_PER_COMMENT } from "@/lib/wiki-mentions";
 
 const bodySchema = z.object({
@@ -35,16 +36,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         staffName: staff?.user?.name ?? staff?.user?.email,
       }) ?? "Client wiki";
     const authorKind: "TEAM" | "CLIENT" = staff && !clientUser ? "TEAM" : "CLIENT";
+    const staffUserId = authorKind === "TEAM" ? (staff?.user?.id ?? null) : null;
 
     // A Gitwork user previewing the page picks from the same public list the client
     // sees — what can be mentioned here never depends on who is looking.
     const mentions = wikiId ? await resolveMentions(wikiId, "public", mentionIds ?? []) : [];
-    const comment = await addWikiIntakeCommentByToken(token, id, { authorKind, authorName, body, mentions });
+    const comment = await addWikiIntakeCommentByToken(token, id, {
+      authorKind,
+      authorName,
+      body,
+      mentions,
+      // Stamped so the author can edit or delete their own reply later.
+      authorWikiUserId: clientUser?.id ?? null,
+      authorUserId: staffUserId,
+    });
     if (!comment) return apiError("Invalid wiki token or request", 404);
-    if (wikiId && mentions.length > 0) {
-      after(() =>
-        notifyIntakeMentions({ wikiId, itemId: id, author: authorName, body: comment.body, mentions }),
-      );
+    if (wikiId) {
+      after(async () => {
+        await Promise.allSettled([
+          mentions.length > 0
+            ? notifyIntakeMentions({ wikiId, itemId: id, author: authorName, body: comment.body, mentions })
+            : Promise.resolve(),
+          notifyTeamMentionsOnRequest({
+            wikiId,
+            itemId: id,
+            authorUserId: staffUserId,
+            authorName,
+            body: comment.body,
+            mentions,
+          }),
+          // Only a Gitwork reply emails the client. A client replying on their own
+          // request has nobody to tell by email — they wrote it.
+          authorKind === "TEAM"
+            ? emailRaiserOnTeamReply({ wikiId, itemId: id, authorName, body: comment.body })
+            : Promise.resolve(),
+        ]);
+      });
     }
     return apiOk(comment, { status: 201 });
   } catch (err) {

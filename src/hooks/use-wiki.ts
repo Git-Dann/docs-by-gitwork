@@ -98,6 +98,10 @@ import {
   uploadPublicWikiIntakeItemImage,
   addWikiIntakeComment,
   addPublicWikiIntakeComment,
+  editWikiIntakeComment,
+  deleteWikiIntakeComment,
+  uploadWikiIntakeCommentImage,
+  type WikiCommentScope,
   getWikiMentionables,
   getPublicWikiMentionables,
 } from "@/lib/api";
@@ -699,6 +703,40 @@ export function useAddPublicWikiIntakeComment(token: string) {
   return useMutation({
     mutationFn: ({ itemId, body, mentionIds }: { itemId: string; body: string; mentionIds?: string[] }) =>
       addPublicWikiIntakeComment(token, itemId, body, mentionIds),
+  });
+}
+
+/** Internal scope refetches the wiki; the shared page has no query and patches its own
+ *  local list from the returned record instead (see WikiIntakeSection). */
+function useInvalidateCommentScope(scope: WikiCommentScope) {
+  const queryClient = useQueryClient();
+  return () =>
+    "slug" in scope ? queryClient.invalidateQueries({ queryKey: ["client-wiki", scope.slug] }) : undefined;
+}
+
+export function useEditWikiIntakeComment(scope: WikiCommentScope) {
+  const invalidate = useInvalidateCommentScope(scope);
+  return useMutation({
+    mutationFn: (v: { itemId: string; commentId: string; body: string; mentionIds?: string[] }) =>
+      editWikiIntakeComment(scope, v.itemId, v.commentId, v.body, v.mentionIds),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteWikiIntakeComment(scope: WikiCommentScope) {
+  const invalidate = useInvalidateCommentScope(scope);
+  return useMutation({
+    mutationFn: (v: { itemId: string; commentId: string }) => deleteWikiIntakeComment(scope, v.itemId, v.commentId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUploadWikiIntakeCommentImage(scope: WikiCommentScope) {
+  const invalidate = useInvalidateCommentScope(scope);
+  return useMutation({
+    mutationFn: (v: { itemId: string; commentId: string; file: File }) =>
+      uploadWikiIntakeCommentImage(scope, v.itemId, v.commentId, v.file),
+    onSuccess: invalidate,
   });
 }
 

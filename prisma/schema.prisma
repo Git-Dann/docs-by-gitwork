@@ -1898,6 +1898,22 @@ model ClientWikiIntakeComment {
   /// People @mentioned in this reply: [{ id, name, kind }] (src/lib/wiki-mentions.ts).
   /// Drives highlighting and the Slack Connect notification. Null on older replies.
   mentions     Json?
+  /// The signed-in client wiki user (ClientWikiUser.id) who wrote a CLIENT reply.
+  /// A loose id, not a relation: it is what lets that person edit or delete their own
+  /// reply from the shared wiki. Null on older replies and on staff replies, so those
+  /// can never be edited from the client's side.
+  authorWikiUserId String?
+  /// Set when the author edits the reply — rendered as "edited".
+  editedAt     DateTime?
+  /// Soft delete: the row stays so the thread keeps its shape ("Reply deleted"), but
+  /// the body, mentions and image are never sent to a browser once this is set.
+  deletedAt    DateTime?
+  /// Optional screenshot on the reply — same storage and lifecycle as the request's own
+  /// image (ClientWikiIntakeItem.image/thumb/mime/filename).
+  image        Bytes?
+  thumb        Bytes?
+  mime         String?
+  filename     String?
   createdAt    DateTime                    @default(now())
 
   @@index([intakeItemId, createdAt])

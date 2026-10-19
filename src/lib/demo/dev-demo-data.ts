@@ -1003,7 +1003,7 @@ const demoWiki: WikiDTO = {
   intakeItems: [
     { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, label: "FRONTEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "REVIEWING", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-4), updatedAt: atDays(-2), comments: [] },
     { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "NEW", hasImage: false, imageFilename: null, device: "iPhone 15 Pro", osVersion: "iOS 18.1", createdAt: atDays(-1), updatedAt: atDays(-1), comments: [] },
-    { id: "wi3", type: "TASK", title: "Let a household share one subscription across 4 profiles", description: "Finance have signed off the pricing. Needs profile switching in the account area.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: "LIN-4471", label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: "https://linear.app/example/issue/LIN-4471", attachmentUrls: [], source: "api", taskId: "t-demo-3", taskStatus: "DOING", stage: "IN_PROGRESS", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-11), updatedAt: atDays(-1), comments: [{ id: "wc1", authorKind: "TEAM", authorName: "Harry Bell", body: "Picked this up this morning — profile switching is in, the billing split is next.", mentions: [], createdAt: atDays(-1) }, { id: "wc2", authorKind: "CLIENT", authorName: "Marcus Webb", body: "Great — @Harry Bell can the split land before the finance review on Friday?", mentions: [{ id: "team:u-harry", name: "Harry Bell", kind: "TEAM" }], createdAt: atDays(0) }] },
+    { id: "wi3", type: "TASK", title: "Let a household share one subscription across 4 profiles", description: "Finance have signed off the pricing. Needs profile switching in the account area.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: "LIN-4471", label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: "https://linear.app/example/issue/LIN-4471", attachmentUrls: [], source: "api", taskId: "t-demo-3", taskStatus: "DOING", stage: "IN_PROGRESS", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-11), updatedAt: atDays(-1), comments: [{ id: "wc1", authorKind: "TEAM", authorName: "Harry Bell", body: "Picked this up this morning — profile switching is in, the billing split is next.", mentions: [], createdAt: atDays(-1), editedAt: null, deleted: false, hasImage: false, imageFilename: null, canEdit: true, canDelete: true }, { id: "wc2", authorKind: "CLIENT", authorName: "Marcus Webb", body: "Great — @Harry Bell can the split land before the finance review on Friday?", mentions: [{ id: "team:u-harry", name: "Harry Bell", kind: "TEAM" }], createdAt: atDays(0), editedAt: null, deleted: false, hasImage: false, imageFilename: null, canEdit: false, canDelete: true }, { id: "wc3", authorKind: "CLIENT", authorName: "Marcus Webb", body: "", mentions: [], createdAt: atDays(0), editedAt: null, deleted: true, hasImage: false, imageFilename: null, canEdit: false, canDelete: false }] },
     { id: "wi4", type: "DESIGN", title: "Episode cards are unreadable in bright sunlight", description: "The grey-on-grey metadata line fails contrast outdoors.", priority: "MEDIUM", status: "PROMOTED", requestedBy: "Priya Shah", externalRef: null, label: "UI_UX", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-4", taskStatus: "DONE", stage: "DONE", hasImage: false, imageFilename: null, device: "iPad Air", osVersion: "iPadOS 18.0", createdAt: atDays(-19), updatedAt: atDays(-3), comments: [] },
     { id: "wi5", type: "BUG", title: "Search returns nothing for titles with an apostrophe", description: "“Grey’s Anatomy” returns 0 results; “Greys Anatomy” works.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: null, label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-5", taskStatus: "BACKLOG", stage: "SCHEDULED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-6), updatedAt: atDays(-5), comments: [] },
     { id: "wi6", type: "FEEDBACK", title: "Downloads should keep working on a plane", description: "Offline playback asks to sign in again once the device loses signal.", priority: "LOW", status: "CLOSED", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "CLOSED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-27), updatedAt: atDays(-20), comments: [] },
@@ -3571,8 +3571,49 @@ export function resolveDemoApi(
           .filter((id) => names[id])
           .map((id) => ({ id, ...names[id] })),
         createdAt: new Date().toISOString(),
+        editedAt: null,
+        deleted: false,
+        hasImage: false,
+        imageFilename: null,
+        // Your own reply — so Edit/Delete can be tried on it straight away.
+        canEdit: true,
+        canDelete: true,
       };
       item?.comments.push(comment);
+      return comment;
+    }
+  }
+  // Edit / delete a reply, and attach a screenshot to one. Applied to the fixture, and
+  // gated on the reply's own canEdit/canDelete exactly like the real routes, so the demo
+  // shows a reply you may not touch staying untouched.
+  {
+    const m = /^\/api\/(?:clients\/[^/]+\/wiki|wiki\/[^/]+)\/intake-items\/([^/]+)\/comments\/([^/]+)(\/image)?$/.exec(pathname);
+    if (m && init?.method && init.method !== "GET") {
+      const item = demoWiki.intakeItems.find((i) => i.id === decodeURIComponent(m[1]));
+      const comment = item?.comments.find((c) => c.id === decodeURIComponent(m[2]));
+      if (!comment) return { error: "Reply not found" };
+      if (m[3] && init.method === "POST") {
+        if (!comment.canEdit) return comment;
+        const file = init.body instanceof FormData ? init.body.get("file") : null;
+        Object.assign(comment, { hasImage: true, imageFilename: file instanceof File ? file.name : "screenshot.png" });
+        return comment;
+      }
+      if (init.method === "PATCH" && comment.canEdit) {
+        const payload = JSON.parse(String(init.body ?? "{}")) as { body?: string };
+        Object.assign(comment, { body: (payload.body ?? comment.body).trim(), editedAt: new Date().toISOString() });
+      }
+      if (init.method === "DELETE" && comment.canDelete) {
+        Object.assign(comment, {
+          body: "",
+          mentions: [],
+          deleted: true,
+          editedAt: null,
+          hasImage: false,
+          imageFilename: null,
+          canEdit: false,
+          canDelete: false,
+        });
+      }
       return comment;
     }
   }
