@@ -16,6 +16,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addLaunchpadCustomItemApi,
+  deleteLaunchpadFileApi,
+  removeLaunchpadCustomItemApi,
+  updateLaunchpadCustomItemApi,
+  uploadLaunchpadFileApi,
+  type LaunchpadCustomItemInput,
   approveLaunchpadDocApi,
   approvePublicLaunchpadDocApi,
   assignLaunchpadApi,
@@ -129,6 +135,51 @@ export function useApproveLaunchpadDoc(slug: string) {
   });
 }
 
+/** Per-client requirements — internal only, written into THIS client's snapshot. */
+export function useAddLaunchpadCustomItem(slug: string) {
+  const refresh = useWikiRefresh(slug);
+  return useMutation({
+    mutationFn: (input: { moduleId: string; item: LaunchpadCustomItemInput }) =>
+      addLaunchpadCustomItemApi(slug, input.moduleId, input.item),
+    onSuccess: refresh,
+  });
+}
+
+export function useUpdateLaunchpadCustomItem(slug: string) {
+  const refresh = useWikiRefresh(slug);
+  return useMutation({
+    mutationFn: (input: { itemId: string; patch: Partial<LaunchpadCustomItemInput> }) =>
+      updateLaunchpadCustomItemApi(slug, input.itemId, input.patch),
+    onSuccess: refresh,
+  });
+}
+
+export function useRemoveLaunchpadCustomItem(slug: string) {
+  const refresh = useWikiRefresh(slug);
+  return useMutation({
+    mutationFn: (itemId: string) => removeLaunchpadCustomItemApi(slug, itemId),
+    onSuccess: refresh,
+  });
+}
+
+export function useUploadLaunchpadFile(slug: string) {
+  const refresh = useWikiRefresh(slug);
+  return useMutation({
+    mutationFn: (input: { itemId: string; file: File }) =>
+      uploadLaunchpadFileApi({ slug }, input.itemId, input.file),
+    onSuccess: refresh,
+  });
+}
+
+export function useDeleteLaunchpadFile(slug: string) {
+  const refresh = useWikiRefresh(slug);
+  return useMutation({
+    mutationFn: (input: { itemId: string; fileId: string }) =>
+      deleteLaunchpadFileApi({ slug }, input.itemId, input.fileId),
+    onSuccess: refresh,
+  });
+}
+
 // ─── Client-facing (by wiki share token) ─────────────────────────────────────
 //
 // No cache invalidation: the public wiki is server-rendered from the token, so the
@@ -153,6 +204,20 @@ export function useUpdatePublicLaunchpadDoc(token: string) {
   return useMutation({
     mutationFn: (input: { docKey: string; patch: LaunchpadDocPatch }) =>
       updatePublicLaunchpadDocApi(token, input.docKey, input.patch),
+  });
+}
+
+export function useUploadPublicLaunchpadFile(token: string) {
+  return useMutation({
+    mutationFn: (input: { itemId: string; file: File }) =>
+      uploadLaunchpadFileApi({ token }, input.itemId, input.file),
+  });
+}
+
+export function useDeletePublicLaunchpadFile(token: string) {
+  return useMutation({
+    mutationFn: (input: { itemId: string; fileId: string }) =>
+      deleteLaunchpadFileApi({ token }, input.itemId, input.fileId),
   });
 }
 

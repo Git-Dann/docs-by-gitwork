@@ -111,6 +111,15 @@ export interface LaunchpadFieldDef {
    * onboarding having been used.
    */
   prefillKey?: string;
+  /**
+   * `checklist_item` only — added by Gitwork for THIS client, written into the
+   * kit's own snapshot, never the master template. Only these are editable or
+   * removable from the wiki, and only these are carried across a template
+   * re-assign. Paired with the `custom-` id prefix (see
+   * `src/lib/launchpad/custom-items.ts`); the template schema has no such key, so a
+   * template can never mint one.
+   */
+  custom?: boolean;
 }
 
 export interface LaunchpadModule {
@@ -146,6 +155,18 @@ export const LAUNCHPAD_DOC_STATUSES: readonly LaunchpadDocStatus[] = [
   "APPROVED",
 ] as const;
 
+/** A file attached to one requirement. Metadata only — the bytes are served by
+ *  their own route with `Content-Disposition: attachment`. */
+export interface LaunchpadItemFileState {
+  id: string;
+  filename: string;
+  mime: string;
+  size: number;
+  uploadedByKind: "team" | "client";
+  uploadedByName: string | null;
+  uploadedAt: string;
+}
+
 /** One requirement's tracked state. */
 export interface LaunchpadItemState {
   itemId: string;
@@ -156,6 +177,9 @@ export interface LaunchpadItemState {
   ownedByClient: boolean | null;
   updatedBy: string | null;
   updatedAt: string;
+  /** Files uploaded against this requirement, oldest first. Optional so a cached
+   *  DTO from before uploads existed still renders. */
+  files?: LaunchpadItemFileState[];
 }
 
 /** One legal doc's state. `body` is the resolved markdown the reader sees —

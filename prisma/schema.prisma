@@ -2259,6 +2259,7 @@ model ClientLaunchpad {
   answers           Json?
   items             LaunchpadItem[]
   docs              LaunchpadDoc[]
+  files             LaunchpadItemFile[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -2288,6 +2289,32 @@ model LaunchpadItem {
 
   @@unique([kitId, itemId])
   @@index([kitId, status])
+}
+
+/// A file attached to one requirement (an app icon, a signed contract, a logo
+/// pack). Bytes live in Postgres `bytea`, the same posture as the Requests
+/// screenshot (`ClientWikiIntakeItem.image`), until blob storage lands. Keyed on
+/// the kit + the snapshot `itemId` (not the LaunchpadItem row) for the same reason
+/// LaunchpadItem is: a requirement removed from the snapshot stops being read, and
+/// its files are kept rather than deleted.
+model LaunchpadItemFile {
+  id             String          @id @default(cuid())
+  kitId          String
+  kit            ClientLaunchpad @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  /// The snapshot field id this file belongs to.
+  itemId         String
+  /// Sanitised display name, used in Content-Disposition on download.
+  filename       String
+  /// Canonical type derived from the sniffed bytes, never the uploader's claim.
+  mime           String
+  size           Int
+  bytes          Bytes
+  /// "team" | "client" — who uploaded it.
+  uploadedByKind String
+  uploadedByName String?
+  createdAt      DateTime        @default(now())
+
+  @@index([kitId, itemId])
 }
 
 /// A fillable boilerplate legal doc. Deliberately NOT a `Document` record: these

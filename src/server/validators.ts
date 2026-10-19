@@ -2031,6 +2031,33 @@ export const launchpadItemPatchSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
 
+/**
+ * A requirement Gitwork adds to ONE client's kit (written into that kit's snapshot,
+ * never the template). The same copy fields and limits a template `checklist_item`
+ * carries (`launchpadFieldSchema`), and nothing else: no `id` (the server mints a
+ * `custom-` id), no `type` (always a requirement), no `showIf`/`prefillKey`.
+ */
+const launchpadCustomItemFields = {
+  label: z.string().trim().min(1, "Give the requirement a name.").max(200),
+  helper: z.string().trim().max(1000).nullable().optional(),
+  hint: z.string().trim().max(500).nullable().optional(),
+  ownedByClient: z.boolean().nullable().optional(),
+};
+
+export const launchpadCustomItemCreateSchema = z.object({
+  moduleId: z.string().trim().min(1).max(64),
+  ...launchpadCustomItemFields,
+});
+
+export const launchpadCustomItemPatchSchema = z
+  .object({
+    label: launchpadCustomItemFields.label.optional(),
+    helper: launchpadCustomItemFields.helper,
+    hint: launchpadCustomItemFields.hint,
+    ownedByClient: launchpadCustomItemFields.ownedByClient,
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
+
 export const launchpadAnswersSchema = z.object({
   answers: z.record(z.string().trim().min(1).max(64), z.unknown()),
 });

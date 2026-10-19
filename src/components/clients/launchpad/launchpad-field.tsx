@@ -10,18 +10,30 @@
  * types onboarding has no concept of are handled here.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowDownTrayIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowUpTrayIcon,
   CheckCircleIcon,
   MinusCircleIcon,
+  PaperClipIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
+import {
+  classifyLaunchpadUpload,
+  formatFileSize,
+  LAUNCHPAD_FILE_ACCEPT,
+  LAUNCHPAD_FILE_MAX_PER_ITEM,
+  LAUNCHPAD_SNIFF_BYTES,
+} from "@/lib/launchpad/files";
 import { FieldRenderer, Field, TextInput } from "@/components/onboarding/field-renderer";
 import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import type { OnboardingAnswerValue, OnboardingFieldDef } from "@/types/onboarding";
 import type {
   LaunchpadAnswers,
   LaunchpadFieldDef,
+  LaunchpadItemFileState,
   LaunchpadItemState,
   LaunchpadItemStatus,
 } from "@/types/launchpad";
@@ -113,6 +125,133 @@ function StatusPicker({
   );
 }
 
+// ─── Files on a requirement ───────────────────────────────────────────────────
+
+/** What a checklist item needs to show and change its files. Absent → no file UI
+ *  (e.g. a read-only render). */
+export interface LaunchpadFileControls {
+  hrefFor: (fileId: string) => string;
+  onUpload: (file: File) => Promise<void>;
+  onDelete: (fileId: string) => void;
+}
+
+function ItemFiles({
+  files,
+  controls,
+  readOnly,
+}: {
+  files: LaunchpadItemFileState[];
+  controls: LaunchpadFileControls;
+  readOnly: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const full = files.length >= LAUNCHPAD_FILE_MAX_PER_ITEM;
+
+  const pick = async (file: File) => {
+    setError(null);
+    // The same rule the server runs, checked first so a wrong file is explained
+    // here rather than after a 10 MB round trip. The server still decides.
+    const head = new Uint8Array(await file.slice(0, LAUNCHPAD_SNIFF_BYTES).arrayBuffer());
+    const verdict = classifyLaunchpadUpload({ filename: file.name, size: file.size, head });
+    if (!verdict.ok) {
+      setError(verdict.error);
+      return;
+    }
+    setUploading(true);
+    try {
+      await controls.onUpload(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed — please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {files.length > 0 ? (
+        <ul className="space-y-1">
+          {files.map((f) => (
+            <li
+              key={f.id}
+              className="flex min-w-0 items-center gap-2 rounded-[6px] border border-[var(--border-1)] bg-[var(--surface-0)] px-2 py-1.5"
+            >
+              <PaperClipIcon className="h-3.5 w-3.5 shrink-0 text-[var(--text-4)]" />
+              <a
+                href={controls.hrefFor(f.id)}
+                download={f.filename}
+                title={`${f.filename} · ${formatFileSize(f.size)}${f.uploadedByName ? ` · ${f.uploadedByName}` : ""}`}
+                className="min-w-0 flex-1 truncate text-xs text-[var(--text-1)] hover:underline"
+              >
+                {f.filename}
+              </a>
+              <span
+                className="shrink-0 text-[10px] uppercase tracking-wide text-[var(--text-4)]"
+                style={{ fontFamily: MONO }}
+              >
+                {formatFileSize(f.size)}
+              </span>
+              <a
+                href={controls.hrefFor(f.id)}
+                download={f.filename}
+                aria-label={`Download ${f.filename}`}
+                className="shrink-0 rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+              >
+                <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+              </a>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  onClick={() => controls.onDelete(f.id)}
+                  aria-label={`Remove ${f.filename}`}
+                  className="shrink-0 rounded-[4px] p-1 text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--danger-500)]"
+                >
+                  <XMarkIcon className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!readOnly && !full ? (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            accept={LAUNCHPAD_FILE_ACCEPT}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void pick(file);
+            }}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="app-button app-button-tertiary app-button-xs"
+          >
+            <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+            {uploading ? "Uploading…" : "Upload a file"}
+          </button>
+        </>
+      ) : null}
+
+      {error ? (
+        <p className="text-xs text-[var(--danger-500)]" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── checklist_item ───────────────────────────────────────────────────────────
 
 function ChecklistItem({
@@ -121,12 +260,16 @@ function ChecklistItem({
   onPatch,
   readOnly,
   audience,
+  fileControls,
+  customActions,
 }: {
   field: LaunchpadFieldDef;
   state: LaunchpadItemState | undefined;
   onPatch: (patch: LaunchpadItemPatch) => void;
   readOnly: boolean;
   audience: "client" | "team";
+  fileControls?: LaunchpadFileControls;
+  customActions?: ReactNode;
 }) {
   const status = state?.status ?? "NEEDED";
   const ownedByClient = state?.ownedByClient ?? field.ownedByClient ?? null;
@@ -174,6 +317,7 @@ function ChecklistItem({
           {field.helper ? (
             <p className="mt-1 text-xs leading-relaxed text-[var(--text-3)]">{field.helper}</p>
           ) : null}
+          {customActions}
         </div>
         <StatusPicker
           value={status}
@@ -245,6 +389,10 @@ function ChecklistItem({
           <p className="text-xs text-[var(--danger-500)]" role="alert">
             {linkError}
           </p>
+        ) : null}
+
+        {fileControls ? (
+          <ItemFiles files={state?.files ?? []} controls={fileControls} readOnly={readOnly} />
         ) : null}
 
         {showNote || note ? (
@@ -351,6 +499,11 @@ export interface LaunchpadFieldRendererProps {
   readOnly: boolean;
   /** Who is reading — only copy differs, never the facts or the controls. */
   audience: "client" | "team";
+  /** `checklist_item` only — file upload/download/remove. */
+  fileControls?: LaunchpadFileControls;
+  /** `checklist_item` only — the Edit/Remove row on a requirement added for this
+   *  client (internal view only). */
+  customActions?: ReactNode;
 }
 
 export function LaunchpadFieldRenderer({
@@ -361,6 +514,8 @@ export function LaunchpadFieldRenderer({
   patchItem,
   readOnly,
   audience,
+  fileControls,
+  customActions,
 }: LaunchpadFieldRendererProps) {
   if (field.type === "checklist_item") {
     return (
@@ -370,6 +525,8 @@ export function LaunchpadFieldRenderer({
         onPatch={(patch) => patchItem(field.id, patch)}
         readOnly={readOnly}
         audience={audience}
+        fileControls={fileControls}
+        customActions={customActions}
       />
     );
   }
