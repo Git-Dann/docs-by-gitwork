@@ -6918,3 +6918,51 @@ discriminate by breaking the code. **Not verified live**: no real database, Rese
 round-trip. Post-deploy: post a reply mentioning a teammate (bell + push) and confirm the raiser gets
 an email; add a one-off requirement to a client and upload a PDF against it; open a shared wiki page
 and check it still reads the same.
+
+## 71. Recent Changes (October 2026) — Wiki follow-ups, round two
+
+Six items left open by §70.
+
+- **Screenshots are scoped to the client.** The internal request-screenshot and reply-screenshot
+  routes (GET and POST) call `assertClientAccessBySlug`. A developer with no assignment, placement or
+  `seeAllClients` gets 403. API-key callers keep access. Belonging to the wiki was already enforced
+  and still is (404). ⚠️ The reply *list* and *post* routes still don't check client access. They
+  share the general gap in §57.6 (2).
+- **A reply can be just a screenshot.** Both reply routes accept one multipart request (`body`,
+  `mentionIds`, `file`) as well as JSON. Text OR image is required. With neither, the route returns
+  400. `readReplyInput` is in `src/server/wiki-reply-image-upload.ts`. Because the image now travels
+  with the reply, a failed upload fails the post and keeps the draft. The reply email reads "sent a
+  screenshot on…".
+- **Older client replies become editable, conservatively.** `backfillCommentAuthors(wikiId)`
+  (`src/server/wiki-intake-comment-backfill.ts`) stamps `authorWikiUserId` on unstamped client replies
+  older than 2026-10-20. It does so ONLY when the stored author matches exactly one wiki user **of
+  that wiki** by exact name or email. Ambiguous replies stay read-only. The permission rule
+  (`wiki-comment-permissions.ts`) is unchanged and still id-only.
+  ⚠️ This is the one place display-name matching is accepted. It is limited to historical rows,
+  because new rows carry the id. It runs lazily on the shared wiki load and on the public
+  edit/delete route, capped at 200 per call.
+- **The course-feedback scan reaches older conversations.** `scanFeedback` pages newest-first
+  until it has 150 *candidates*, with excluded rows not counting toward that. A row is excluded if
+  it was imported, or seen with no newer customer message. Capped at 10 pages, so anything past
+  1,500 settled rows is still not reached in that run.
+- **Uploads can live in object storage** (`src/server/blob-storage.ts`, `docs/blob-storage.md`).
+  This covers request screenshots, reply screenshots and Launchpad files.
+  - The default `postgres` driver changes nothing.
+  - `BLOB_STORAGE_DRIVER=s3` plus `BLOB_S3_*` sends new uploads to a bucket. The row keeps only
+    `storageKey`. SigV4 is signed by hand with no AWS SDK, and tested against AWS's published
+    vectors.
+  - Reads follow the ROW, not the driver: a keyed row needs the S3 vars even after switching back.
+  - A misconfiguration throws at first use, and the driver never falls back silently.
+  - Additive schema: `storageKey` on three models, and `LaunchpadItemFile.bytes` is now optional.
+  - ⚠️ Cascading deletes (whole wiki/client/kit) leave objects in the bucket, and there is no
+    cleanup sweep. Nothing migrates existing rows.
+  - `deploy.yml` syncs the six `BLOB_*` secrets when they are set.
+- **Data, not done from here.** The ~389 junk "Untitled Course" rows (§53) were already gone: the
+  200 newest of Wedge's 292 New requests have no unnamed row. The MCP can't filter on an empty name,
+  so older statuses were not checked. Wedge **Metrics** still needs switching on by hand (Add New →
+  Metrics), because no MCP tool toggles wiki sections.
+
+Not verified against a real database, browser or bucket. **Post-deploy:**
+- Post a screenshot-only reply from the app and from the shared page.
+- Open a screenshot as a developer not assigned to that client and expect 403.
+- Confirm Edit appears on a client's old reply that matches their name.

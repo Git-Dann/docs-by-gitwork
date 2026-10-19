@@ -2499,7 +2499,7 @@ export async function addWikiIntakeComment(
     select: { id: true, wikiId: true },
   });
   if (!item) return null;
-  const imageData = await replyImageData(image);
+  const imageData = await replyImageData(item.id, image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
       intakeItemId: item.id,
@@ -2570,7 +2570,7 @@ export async function addWikiIntakeCommentByToken(
   });
   if (!item) return null;
 
-  const imageData = await replyImageData(input.image);
+  const imageData = await replyImageData(item.id, input.image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
       intakeItemId: item.id,
@@ -2615,15 +2615,15 @@ export type CommentScope = { slug: string } | { token: string };
 export type ReplyImageInput = { bytes: Buffer; mime: string; filename: string | null };
 
 /** Transcode a reply's screenshot into the columns it is stored in (nothing when absent). */
-async function replyImageData(image: ReplyImageInput | null | undefined) {
+/** A screenshot posted WITH a reply goes through the same storage layer as one
+ *  attached afterwards — the row's columns by default, object storage with only
+ *  `storageKey` when configured. The reply id doesn't exist yet, so the key is
+ *  namespaced under its request. */
+async function replyImageData(itemId: string, image: ReplyImageInput | null | undefined) {
   if (!image) return {};
   const transcoded = await transcodeIntakeImage(image.bytes, image.mime);
-  return {
-    image: bytesForPrisma(transcoded.bytes),
-    thumb: bytesForPrisma(transcoded.thumb),
-    mime: transcoded.mime,
-    filename: image.filename,
-  };
+  const placed = await placeIntakeImage(`wiki-intake-comment/${itemId}`, transcoded);
+  return { ...placed, mime: transcoded.mime, filename: image.filename };
 }
 
 async function findScopedComment(scope: CommentScope, itemId: string, commentId: string) {
