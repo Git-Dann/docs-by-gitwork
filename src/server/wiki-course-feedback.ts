@@ -81,6 +81,7 @@ async function scanFeedback(supportClientId: string) {
       subject: true,
       preview: true,
       receivedAt: true,
+      lastInboundAt: true,
       messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
     },
     orderBy: { receivedAt: "desc" },
@@ -91,9 +92,66 @@ async function scanFeedback(supportClientId: string) {
     customerLabel: c.customerLabel,
     subject: c.subject,
     receivedAt: c.receivedAt,
+    lastInboundAt: c.lastInboundAt ?? null,
     // Real request text is the first message body; subject/preview is just the title.
     text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
   }));
+}
+
+/** Why the classifier declined a conversation — the `verdict` stored on a seen row. */
+export type CourseFeedbackSeenVerdict =
+  | "not_course"
+  | "no_named_course"
+  | "rejected_name"
+  | "duplicate_name";
+
+interface ImportState {
+  /** The wiki's id — null when the client has no wiki yet (nothing can be recorded). */
+  wikiId: string | null;
+  /** Conversations already turned into a course request. */
+  imported: Set<string>;
+  /** Conversations the classifier already declined → when it did. */
+  seen: Map<string, Date>;
+}
+
+/**
+ * One read of the wiki's import bookkeeping: what was imported (by source conversation)
+ * and what the classifier already looked at and declined.
+ */
+async function loadImportState(workspaceClientId: string): Promise<ImportState> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId: workspaceClientId },
+    select: {
+      id: true,
+      courseRequests: { select: { sourceConversationId: true } },
+      courseFeedbackSeen: { select: { conversationId: true, seenAt: true } },
+    },
+  });
+  return {
+    wikiId: wiki?.id ?? null,
+    imported: new Set(
+      (wiki?.courseRequests ?? [])
+        .map((r) => r.sourceConversationId)
+        .filter((id): id is string => !!id),
+    ),
+    seen: new Map((wiki?.courseFeedbackSeen ?? []).map((r) => [r.conversationId, r.seenAt])),
+  };
+}
+
+/**
+ * Has the classifier already declined this conversation, with nothing new since?
+ *
+ * A customer message newer than the verdict re-opens it: the golfer may have replied
+ * with the course name the first message lacked. `lastInboundAt` null with a seen row
+ * means no newer evidence — stay declined.
+ */
+export function isSettledAsSeen(
+  seenAt: Date | undefined,
+  lastInboundAt: Date | null | undefined,
+): boolean {
+  if (!seenAt) return false;
+  if (!lastInboundAt) return true;
+  return lastInboundAt.getTime() <= seenAt.getTime();
 }
 
 async function alreadyImportedIds(workspaceClientId: string): Promise<Set<string>> {
@@ -153,6 +211,7 @@ interface FeedbackItem {
   customerLabel: string;
   subject: string;
   receivedAt: Date;
+  lastInboundAt?: Date | null;
   text: string;
 }
 
@@ -333,10 +392,13 @@ export async function runCourseFeedbackImport(
   const support = await resolveSupportClient(workspaceClientId);
   if (!support) return { created: [], skipped: 0, scanned: 0, aiUsed: false };
 
-  const already = await alreadyImportedIds(workspaceClientId);
+  const state = await loadImportState(workspaceClientId);
+  const already = state.imported;
 
   let items: FeedbackItem[];
   if (opts.conversationIds?.length) {
+    // ⚠️ Explicit selection ignores the seen list: an operator who ticked a row the
+    // classifier declined is overruling it, and is about to name the course themselves.
     const ids = opts.conversationIds.filter((id) => !already.has(id));
     items = await fetchConvoBodies(support.id, ids);
   } else {
@@ -344,6 +406,9 @@ export async function runCourseFeedbackImport(
     const needles = (opts.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
     items = all.filter((c) => {
       if (already.has(c.id)) return false;
+      // Already judged and declined, with no new customer message since → don't pay to
+      // re-classify it on every sync forever.
+      if (isSettledAsSeen(state.seen.get(c.id), c.lastInboundAt)) return false;
       if (needles.length === 0) return true;
       const hay = `${c.subject} ${c.text}`.toLowerCase();
       return needles.some((n) => hay.includes(n));
@@ -409,10 +474,18 @@ export async function runCourseFeedbackImport(
   const batchNames = new Set<string>();
 
   const created: CourseRequestRecord[] = [];
+  /**
+   * Declined items to remember. ⚠️ Only items with a REAL verdict `v` go in here. An item
+   * whose chunk failed (no verdict) is skipped by the name check below too, but must be
+   * re-classified next sync, so it is never recorded — "we could not classify it" is not
+   * "it is not a course request" (§53.3).
+   */
+  const declined: DeclinedItem[] = [];
   let skipped = 0;
   for (const c of items) {
     const v = verdicts.get(c.id);
     if (onlyCourse && v && !v.isCourseRequest) {
+      declined.push({ id: c.id, verdict: "not_course", reason: null });
       skipped++;
       continue;
     }
@@ -428,11 +501,19 @@ export async function runCourseFeedbackImport(
           `[course-feedback] rejected extracted name ${JSON.stringify(name)} ` +
             `(${verdict.reason}) for conversation ${c.id} — not imported.`,
         );
+        if (v) {
+          declined.push({
+            id: c.id,
+            verdict: verdict.reason === "empty" ? "no_named_course" : "rejected_name",
+            reason: verdict.reason === "empty" ? null : `${verdict.reason}: ${name.slice(0, 200)}`,
+          });
+        }
         skipped++;
         continue;
       }
       const norm = name.toLowerCase();
       if (existingNames.has(norm) || batchNames.has(norm)) {
+        declined.push({ id: c.id, verdict: "duplicate_name", reason: name.slice(0, 200) });
         skipped++;
         continue;
       }
@@ -450,7 +531,41 @@ export async function runCourseFeedbackImport(
       }),
     );
   }
+  await recordSeen(state.wikiId, declined);
   return { created, skipped, scanned: items.length, aiUsed };
+}
+
+interface DeclinedItem {
+  id: string;
+  verdict: CourseFeedbackSeenVerdict;
+  reason: string | null;
+}
+
+/**
+ * Remember declined conversations so the next sync skips them. Upsert, because a
+ * conversation re-opened by a new customer message and declined again must move its
+ * `seenAt` forward. Best-effort: a failure here costs one re-classification, never the
+ * import that already happened.
+ */
+async function recordSeen(wikiId: string | null, declined: DeclinedItem[]): Promise<void> {
+  if (!wikiId || declined.length === 0) return;
+  const now = new Date();
+  const results = await Promise.allSettled(
+    declined.map((d) =>
+      prisma.wikiCourseFeedbackSeen.upsert({
+        where: { wikiId_conversationId: { wikiId, conversationId: d.id } },
+        create: { wikiId, conversationId: d.id, verdict: d.verdict, reason: d.reason, seenAt: now },
+        update: { verdict: d.verdict, reason: d.reason, seenAt: now },
+      }),
+    ),
+  );
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    console.error(
+      `[course-feedback] could not record ${failed} of ${declined.length} declined ` +
+        `conversation(s) as seen — they will be re-classified next sync.`,
+    );
+  }
 }
 
 /**

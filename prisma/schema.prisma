@@ -1566,6 +1566,7 @@ model ClientWiki {
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
+  courseFeedbackSeen  WikiCourseFeedbackSeen[]
   intakeItems         ClientWikiIntakeItem[]
   wikiUsers           ClientWikiUser[]
   monitors            WikiMonitor[]
@@ -1998,6 +1999,29 @@ model ClientCourseRequest {
   @@index([wikiId])
   @@index([wikiId, externalRef])
   @@map("ClientCourseRequest")
+}
+
+/// A Care "New Feedback" conversation the course-request classifier has already
+/// judged and DECLINED to import (not a course request, no course named, a name the
+/// golfer never wrote, or a duplicate). Without it a declined item is re-fetched and
+/// re-classified on every sync forever, because `sourceConversationId` only exists on
+/// rows that were created. Written ONLY when the classifier returned a real verdict —
+/// never when it failed or did not run (CLAUDE.md §53.3). A new customer message after
+/// `seenAt` makes the conversation eligible again.
+model WikiCourseFeedbackSeen {
+  id             String     @id @default(cuid())
+  wikiId         String
+  wiki           ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  /// SupportConversation id (loose, no FK — same convention as sourceConversationId).
+  conversationId String
+  /// "not_course" | "no_named_course" | "rejected_name" | "duplicate_name"
+  verdict        String
+  reason         String?
+  seenAt         DateTime   @default(now())
+
+  @@unique([wikiId, conversationId])
+  @@index([wikiId])
+  @@map("WikiCourseFeedbackSeen")
 }
 
 enum CourseRequestStatus {
