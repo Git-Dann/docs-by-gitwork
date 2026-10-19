@@ -20,6 +20,11 @@ import { checkCourseName } from "@/lib/wiki-course-name";
 const FEEDBACK_SUBJECT = "New Feedback";
 const PREVIEW_LEN = 240;
 const SCAN_LIMIT = 150;
+// The scan pages newest-first until it has SCAN_LIMIT *candidates* (not yet imported,
+// not already declined). Without paging, 150 newer settled rows hid every older
+// unseen one forever. Hard cap so a huge settled inbox can't make one sync unbounded.
+const SCAN_PAGE = 150;
+const SCAN_MAX_PAGES = 10;
 // AI extraction batching — one completion per chunk, chunks run in parallel.
 const AI_CHUNK = 25;
 const AI_TEXT_CAP = 700;
@@ -67,35 +72,68 @@ async function resolveSupportClient(workspaceClientId: string) {
  * Bounded scan of "New Feedback" conversations + their first message body.
  * The `preview` column here is just the subject, so the request text only lives
  * in the message body — fetched via the indexed [conversationId, createdAt]
- * lookup, capped at SCAN_LIMIT rows (cheap for a single call).
+ * lookup.
+ *
+ * ⚠️ The SCAN_LIMIT cap applies to CANDIDATES, not raw rows. `exclude` drops rows
+ * already imported or already declined (with nothing new since), and the scan keeps
+ * paging newest-first until it has SCAN_LIMIT candidates, runs out of rows, or hits
+ * SCAN_MAX_PAGES. Capping raw rows meant that once the 150 newest were all settled,
+ * older unseen conversations were never reached. With no `exclude` (the operator
+ * picker, which shows imported rows flagged) this is simply the SCAN_LIMIT newest.
  */
-async function scanFeedback(supportClientId: string) {
-  const convos = await prisma.supportConversation.findMany({
-    where: {
-      clientId: supportClientId,
-      subject: { contains: FEEDBACK_SUBJECT, mode: "insensitive" },
-    },
-    select: {
-      id: true,
-      customerLabel: true,
-      subject: true,
-      preview: true,
-      receivedAt: true,
-      lastInboundAt: true,
-      messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
-    },
-    orderBy: { receivedAt: "desc" },
-    take: SCAN_LIMIT,
-  });
-  return convos.map((c) => ({
-    id: c.id,
-    customerLabel: c.customerLabel,
-    subject: c.subject,
-    receivedAt: c.receivedAt,
-    lastInboundAt: c.lastInboundAt ?? null,
-    // Real request text is the first message body; subject/preview is just the title.
-    text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
-  }));
+async function scanFeedback(
+  supportClientId: string,
+  exclude: (c: { id: string; lastInboundAt: Date | null }) => boolean = () => false,
+) {
+  const out: Array<{
+    id: string;
+    customerLabel: string;
+    subject: string;
+    receivedAt: Date;
+    lastInboundAt: Date | null;
+    text: string;
+  }> = [];
+  const visited = new Set<string>();
+  for (let page = 0; page < SCAN_MAX_PAGES && out.length < SCAN_LIMIT; page++) {
+    const convos = await prisma.supportConversation.findMany({
+      where: {
+        clientId: supportClientId,
+        subject: { contains: FEEDBACK_SUBJECT, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        customerLabel: true,
+        subject: true,
+        preview: true,
+        receivedAt: true,
+        lastInboundAt: true,
+        messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
+      },
+      // `id` tiebreaker keeps skip-based paging stable when receivedAt ties.
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      skip: page * SCAN_PAGE,
+      take: SCAN_PAGE,
+    });
+    for (const c of convos) {
+      // A row inserted mid-scan shifts the window; never take one twice.
+      if (visited.has(c.id)) continue;
+      visited.add(c.id);
+      const lastInboundAt = c.lastInboundAt ?? null;
+      if (exclude({ id: c.id, lastInboundAt })) continue;
+      out.push({
+        id: c.id,
+        customerLabel: c.customerLabel,
+        subject: c.subject,
+        receivedAt: c.receivedAt,
+        lastInboundAt,
+        // Real request text is the first message body; subject/preview is just the title.
+        text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
+      });
+      if (out.length >= SCAN_LIMIT) break;
+    }
+    if (convos.length < SCAN_PAGE) break;
+  }
+  return out;
 }
 
 /** Why the classifier declined a conversation — the `verdict` stored on a seen row. */
@@ -402,13 +440,15 @@ export async function runCourseFeedbackImport(
     const ids = opts.conversationIds.filter((id) => !already.has(id));
     items = await fetchConvoBodies(support.id, ids);
   } else {
-    const all = await scanFeedback(support.id);
+    // Excluded inside the scan, so the cap counts only real candidates: already
+    // imported, or already judged and declined with no new customer message since
+    // (don't pay to re-classify it on every sync forever).
+    const all = await scanFeedback(
+      support.id,
+      (c) => already.has(c.id) || isSettledAsSeen(state.seen.get(c.id), c.lastInboundAt),
+    );
     const needles = (opts.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
     items = all.filter((c) => {
-      if (already.has(c.id)) return false;
-      // Already judged and declined, with no new customer message since → don't pay to
-      // re-classify it on every sync forever.
-      if (isSettledAsSeen(state.seen.get(c.id), c.lastInboundAt)) return false;
       if (needles.length === 0) return true;
       const hay = `${c.subject} ${c.text}`.toLowerCase();
       return needles.some((n) => hay.includes(n));

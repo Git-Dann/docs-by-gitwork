@@ -60,6 +60,7 @@ import type { LaunchpadDTO } from "@/types/launchpad";
 import { blockSpan } from "@/lib/gantt-span";
 import { parseFeedStatus, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
 import type { StoredMention } from "@/lib/wiki-mentions";
+import { deleteStoredUpload, placeUpload, readStoredUpload } from "./blob-storage";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -2155,7 +2156,9 @@ export async function deleteWikiIntakeItemByShareToken(
 ): Promise<ClientIntakeMutation> {
   const found = await findClientMutableItem(token, itemId);
   if (!found.ok) return found;
+  const keys = await intakeItemStorageKeys(found.item.id);
   const row = await prisma.clientWikiIntakeItem.delete({ where: { id: found.item.id } });
+  await Promise.all(keys.map((k) => deleteStoredUpload(k)));
   return { ok: true, item: serializeWikiIntakeItem(row) };
 }
 
@@ -2365,7 +2368,9 @@ export async function deleteWikiIntakeItem(id: string): Promise<void> {
       type: true, status: true, priority: true, taskId: true,
     },
   });
+  const keys = await intakeItemStorageKeys(id);
   await prisma.clientWikiIntakeItem.delete({ where: { id } });
+  await Promise.all(keys.map((k) => deleteStoredUpload(k)));
   if (row) {
     void deliverIntakeWebhook({ wikiId: row.wikiId, event: "request.deleted", item: row });
   }
@@ -2484,14 +2489,17 @@ export async function addWikiIntakeComment(
   author: { userId: string; name: string; isAdmin?: boolean },
   body: string,
   mentions?: readonly StoredMention[],
+  image?: ReplyImageInput | null,
 ): Promise<(WikiIntakeCommentRecord & { wikiId: string }) | null> {
   const trimmed = body.trim();
-  if (!trimmed) throw new Error("Comment can't be empty.");
+  // Words, a screenshot, or both — a screenshot-only reply is a real reply.
+  if (!trimmed && !image) throw new Error("Comment can't be empty.");
   const item = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wiki: { client: { slug } } },
     select: { id: true, wikiId: true },
   });
   if (!item) return null;
+  const imageData = await replyImageData(item.id, image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
       intakeItemId: item.id,
@@ -2499,7 +2507,8 @@ export async function addWikiIntakeComment(
       authorName: author.name,
       authorUserId: author.userId,
       body: trimmed,
-      mentions: storableMentions(mentions),
+      mentions: trimmed ? storableMentions(mentions) : undefined,
+      ...imageData,
     },
     select: COMMENT_ROW_SELECT,
   });
@@ -2542,11 +2551,13 @@ export async function addWikiIntakeCommentByToken(
     mentions?: readonly StoredMention[];
     authorWikiUserId?: string | null;
     authorUserId?: string | null;
+    /** A screenshot sent with the reply. With one, the text may be empty. */
+    image?: ReplyImageInput | null;
   },
 ): Promise<WikiIntakeCommentRecord | null> {
   const authorName = input.authorName.trim();
   const body = input.body.trim();
-  if (!authorName || !body) return null;
+  if (!authorName || (!body && !input.image)) return null;
 
   const wikiId = await resolveWikiIdByPublicToken(token);
   if (!wikiId) return null;
@@ -2559,13 +2570,15 @@ export async function addWikiIntakeCommentByToken(
   });
   if (!item) return null;
 
+  const imageData = await replyImageData(item.id, input.image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
       intakeItemId: item.id,
       authorKind: input.authorKind,
       authorName,
       body,
-      mentions: storableMentions(input.mentions),
+      mentions: body ? storableMentions(input.mentions) : undefined,
+      ...imageData,
       // A client reply is owned by the wiki user who wrote it; a staff preview reply by
       // the Foundry user. Never both.
       authorWikiUserId: input.authorKind === "CLIENT" ? (input.authorWikiUserId ?? null) : null,
@@ -2598,6 +2611,21 @@ export class CommentForbiddenError extends Error {
  */
 export type CommentScope = { slug: string } | { token: string };
 
+/** A screenshot sent in the same request as a new reply. */
+export type ReplyImageInput = { bytes: Buffer; mime: string; filename: string | null };
+
+/** Transcode a reply's screenshot into the columns it is stored in (nothing when absent). */
+/** A screenshot posted WITH a reply goes through the same storage layer as one
+ *  attached afterwards — the row's columns by default, object storage with only
+ *  `storageKey` when configured. The reply id doesn't exist yet, so the key is
+ *  namespaced under its request. */
+async function replyImageData(itemId: string, image: ReplyImageInput | null | undefined) {
+  if (!image) return {};
+  const transcoded = await transcodeIntakeImage(image.bytes, image.mime);
+  const placed = await placeIntakeImage(`wiki-intake-comment/${itemId}`, transcoded);
+  return { ...placed, mime: transcoded.mime, filename: image.filename };
+}
+
 async function findScopedComment(scope: CommentScope, itemId: string, commentId: string) {
   let wikiWhere: Prisma.ClientWikiIntakeItemWhereInput;
   if ("slug" in scope) {
@@ -2609,7 +2637,7 @@ async function findScopedComment(scope: CommentScope, itemId: string, commentId:
   }
   return prisma.clientWikiIntakeComment.findFirst({
     where: { id: commentId, intakeItemId: itemId, intakeItem: wikiWhere },
-    select: { ...COMMENT_ROW_SELECT, intakeItem: { select: { wikiId: true } } },
+    select: { ...COMMENT_ROW_SELECT, storageKey: true, intakeItem: { select: { wikiId: true } } },
   });
 }
 
@@ -2650,6 +2678,7 @@ export async function deleteWikiIntakeComment(
   const row = await findScopedComment(scope, itemId, commentId);
   if (!row) return null;
   if (!commentPermissions(row, viewer).canDelete) throw new CommentForbiddenError();
+  const previousKey = row.storageKey;
   const updated = await prisma.clientWikiIntakeComment.update({
     where: { id: row.id },
     data: {
@@ -2660,9 +2689,11 @@ export async function deleteWikiIntakeComment(
       thumb: null,
       mime: null,
       filename: null,
+      storageKey: null,
     },
     select: COMMENT_ROW_SELECT,
   });
+  await deleteStoredUpload(previousKey);
   return serializeForViewer(updated, viewer);
 }
 
@@ -2680,16 +2711,15 @@ export async function attachWikiIntakeCommentImage(
   if (!row) return null;
   if (!commentPermissions(row, viewer).canEdit) throw new CommentForbiddenError();
   const transcoded = await transcodeIntakeImage(bytes, mime);
+  const previousKey = row.storageKey;
+  const placed = await placeIntakeImage(`wiki-intake-comment/${row.id}`, transcoded);
   const updated = await prisma.clientWikiIntakeComment.update({
     where: { id: row.id },
-    data: {
-      image: bytesForPrisma(transcoded.bytes),
-      thumb: bytesForPrisma(transcoded.thumb),
-      mime: transcoded.mime,
-      filename,
-    },
+    data: { ...placed, mime: transcoded.mime, filename },
     select: COMMENT_ROW_SELECT,
   });
+  // The replaced screenshot, if it was in object storage — only now the row no longer points at it.
+  if (previousKey !== placed.storageKey) await deleteStoredUpload(previousKey);
   return serializeForViewer(updated, viewer);
 }
 
@@ -2704,11 +2734,9 @@ export async function getWikiIntakeCommentImageBytes(
   if (!found || found.deletedAt) return null;
   const row = await prisma.clientWikiIntakeComment.findUnique({
     where: { id: found.id },
-    select: { image: true, thumb: true, mime: true },
+    select: INTAKE_IMAGE_SELECT,
   });
-  if (!row || !row.mime || !row.image) return null;
-  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
-  return { bytes: Buffer.from(row.image), mime: row.mime };
+  return readIntakeImage(row, variant);
 }
 
 async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {
@@ -2763,17 +2791,27 @@ export async function promoteWikiIntakeItemToTask(
 
   // Carry the request's screenshot over to the task so the dev picking it up
   // sees it immediately, instead of having to go dig it up in the wiki.
-  if (item.image && item.mime) {
-    await prisma.taskAttachment.create({
-      data: {
-        taskId: task.id,
-        uploadedById: userId,
-        image: item.image,
-        thumb: item.thumb,
-        mime: item.mime,
-        filename: item.filename,
-      },
-    });
+  // Task attachments stay in Postgres, so an image in object storage is fetched and
+  // copied in rather than shared by key (deleting the request must not break the task).
+  if ((item.image || item.storageKey) && item.mime) {
+    const [image, thumb] = item.storageKey
+      ? await Promise.all([
+          readStoredUpload({ storageKey: item.storageKey, bytes: null }),
+          readStoredUpload({ storageKey: item.storageKey, bytes: null }, "thumb"),
+        ])
+      : [item.image, item.thumb];
+    if (image) {
+      await prisma.taskAttachment.create({
+        data: {
+          taskId: task.id,
+          uploadedById: userId,
+          image: bytesForPrisma(image),
+          thumb: thumb ? bytesForPrisma(thumb) : null,
+          mime: item.mime,
+          filename: item.filename,
+        },
+      });
+    }
   }
 
   const updated = await prisma.clientWikiIntakeItem.update({
@@ -2864,6 +2902,63 @@ async function transcodeIntakeImageUnsafe(
   return { bytes: storedBytes, thumb, mime: storedMime };
 }
 
+/**
+ * Where a transcoded screenshot's bytes go: the row's image/thumb columns (the
+ * default `postgres` driver) or object storage with only `storageKey` on the row.
+ * The result spreads straight into the row update.
+ */
+async function placeIntakeImage(
+  namespace: string,
+  transcoded: { bytes: Buffer; thumb: Buffer; mime: string },
+): Promise<{ image: Uint8Array<ArrayBuffer> | null; thumb: Uint8Array<ArrayBuffer> | null; storageKey: string | null }> {
+  const placed = await placeUpload(namespace, {
+    bytes: transcoded.bytes,
+    thumb: transcoded.thumb,
+    contentType: transcoded.mime,
+  });
+  return {
+    image: placed.bytes ? bytesForPrisma(placed.bytes) : null,
+    thumb: placed.thumb ? bytesForPrisma(placed.thumb) : null,
+    storageKey: placed.storageKey,
+  };
+}
+
+const INTAKE_IMAGE_SELECT = {
+  image: true,
+  thumb: true,
+  mime: true,
+  storageKey: true,
+} as const satisfies Prisma.ClientWikiIntakeItemSelect & Prisma.ClientWikiIntakeCommentSelect;
+
+/** A request's or reply's screenshot, from object storage or its columns. */
+async function readIntakeImage(
+  row: { image: Uint8Array | null; thumb: Uint8Array | null; mime: string | null; storageKey: string | null } | null,
+  variant: "full" | "thumb",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  if (!row || !row.mime || (!row.image && !row.storageKey)) return null;
+  const bytes = await readStoredUpload({ storageKey: row.storageKey, bytes: row.image, thumb: row.thumb }, variant);
+  if (!bytes) return null;
+  // A thumb is always a server-generated JPEG; with no thumb the full image is
+  // served under the same label, exactly as the column reads always did.
+  return variant === "thumb" ? { bytes, mime: "image/jpeg" } : { bytes, mime: row.mime };
+}
+
+/**
+ * Object-storage keys held by a request and its replies — read BEFORE the request is
+ * deleted, because the cascade takes the replies with it and the bucket is not part
+ * of the database transaction.
+ */
+async function intakeItemStorageKeys(itemId: string): Promise<string[]> {
+  const [item, comments] = await Promise.all([
+    prisma.clientWikiIntakeItem.findUnique({ where: { id: itemId }, select: { storageKey: true } }),
+    prisma.clientWikiIntakeComment.findMany({
+      where: { intakeItemId: itemId, storageKey: { not: null } },
+      select: { storageKey: true },
+    }),
+  ]);
+  return [item?.storageKey, ...comments.map((c) => c.storageKey)].filter((k): k is string => !!k);
+}
+
 /** Attach (or replace) a screenshot on a request — internal, workspace-authed path. */
 export async function attachWikiIntakeItemImage(
   clientId: string,
@@ -2874,19 +2969,18 @@ export async function attachWikiIntakeItemImage(
 ): Promise<WikiIntakeItemRecord> {
   const item = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wiki: { clientId } },
-    select: { id: true },
+    select: { id: true, storageKey: true },
   });
   if (!item) throw new Error("Wiki intake item not found");
   const transcoded = await transcodeIntakeImage(bytes, mime);
+  const previousKey = item.storageKey;
+  const placed = await placeIntakeImage(`wiki-intake-item/${itemId}`, transcoded);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: {
-      image: bytesForPrisma(transcoded.bytes),
-      thumb: bytesForPrisma(transcoded.thumb),
-      mime: transcoded.mime,
-      filename,
-    },
+    data: { ...placed, mime: transcoded.mime, filename },
   });
+  // The replaced screenshot, if it was in object storage — only now the row no longer points at it.
+  if (previousKey !== placed.storageKey) await deleteStoredUpload(previousKey);
   return serializeWikiIntakeItem(row);
 }
 
@@ -2910,19 +3004,18 @@ export async function attachWikiIntakeItemImageByToken(
   if (!wiki || !wiki.intakeEnabled) return null;
   const item = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wikiId: wiki.id },
-    select: { id: true },
+    select: { id: true, storageKey: true },
   });
   if (!item) return null;
   const transcoded = await transcodeIntakeImage(bytes, mime);
+  const previousKey = item.storageKey;
+  const placed = await placeIntakeImage(`wiki-intake-item/${itemId}`, transcoded);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: {
-      image: bytesForPrisma(transcoded.bytes),
-      thumb: bytesForPrisma(transcoded.thumb),
-      mime: transcoded.mime,
-      filename,
-    },
+    data: { ...placed, mime: transcoded.mime, filename },
   });
+  // The replaced screenshot, if it was in object storage — only now the row no longer points at it.
+  if (previousKey !== placed.storageKey) await deleteStoredUpload(previousKey);
   return serializeWikiIntakeItem(row);
 }
 
@@ -2934,11 +3027,9 @@ export async function getWikiIntakeItemImageBytes(
 ): Promise<{ bytes: Buffer; mime: string } | null> {
   const row = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wiki: { clientId } },
-    select: { image: true, thumb: true, mime: true },
+    select: INTAKE_IMAGE_SELECT,
   });
-  if (!row || !row.mime || !row.image) return null;
-  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
-  return { bytes: Buffer.from(row.image), mime: row.mime };
+  return readIntakeImage(row, variant);
 }
 
 /** Serve a request's screenshot — public, token-authed path. */
@@ -2954,11 +3045,9 @@ export async function getWikiIntakeItemImageBytesByToken(
   const wiki = { id: wikiId };
   const row = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wikiId: wiki.id },
-    select: { image: true, thumb: true, mime: true },
+    select: INTAKE_IMAGE_SELECT,
   });
-  if (!row || !row.mime || !row.image) return null;
-  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
-  return { bytes: Buffer.from(row.image), mime: row.mime };
+  return readIntakeImage(row, variant);
 }
 
 /** Toggle public sharing. Mints a share token on first enable. */

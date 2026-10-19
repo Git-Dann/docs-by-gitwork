@@ -1,5 +1,4 @@
 import { NextRequest, after } from "next/server";
-import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { addWikiIntakeCommentByToken, resolveWikiIdByPublicToken } from "@/server/wiki";
 import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-access";
@@ -7,19 +6,19 @@ import { auth } from "@/auth";
 import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
 import { notifyIntakeMentions, resolveMentions } from "@/server/wiki-intake-mentions";
 import { emailRaiserOnTeamReply, notifyTeamMentionsOnRequest } from "@/server/wiki-intake-reply-notify";
-import { MAX_MENTIONS_PER_COMMENT } from "@/lib/wiki-mentions";
+import { readReplyInput } from "@/server/wiki-reply-image-upload";
 
-const bodySchema = z.object({
-  body: z.string().trim().min(1).max(10_000),
-  /** Ids from the mention picker. Re-checked against this wiki's PUBLIC directory,
-   *  so a client can only page the people they can see in the picker. */
-  mentionIds: z.array(z.string().max(80)).max(MAX_MENTIONS_PER_COMMENT * 2).optional(),
-});
-
+/**
+ * Post a reply from the shared wiki. JSON `{ body, mentionIds }`, or multipart with a
+ * `file` screenshot (then `body` may be empty). Mention ids are re-checked against this
+ * wiki's PUBLIC directory, so a client can only page the people they can see.
+ */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string; id: string }> }) {
   try {
     const { token, id } = await params;
-    const { body, mentionIds } = bodySchema.parse(await req.json());
+    const input = await readReplyInput(req);
+    if (!input.ok) return input.response;
+    const { body, mentionIds, image } = input;
 
     // Same identity resolution as the sibling intake-items route — no typed
     // name field, since every route into the public wiki is authenticated as
@@ -49,6 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       // Stamped so the author can edit or delete their own reply later.
       authorWikiUserId: clientUser?.id ?? null,
       authorUserId: staffUserId,
+      image,
     });
     if (!comment) return apiError("Invalid wiki token or request", 404);
     if (wikiId) {

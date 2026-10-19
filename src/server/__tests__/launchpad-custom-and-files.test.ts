@@ -17,6 +17,7 @@ const db = vi.hoisted(() => ({
   files: [] as Row[],
   templateStructure: null as unknown,
   calls: [] as string[],
+  failFileCreate: false,
 }));
 
 function kitView() {
@@ -74,12 +75,15 @@ vi.mock("@/lib/prisma", () => ({
     },
     launchpadItemFile: {
       create: vi.fn(async (args: { data: Row }) => {
+        if (db.failFileCreate) throw new Error("db write failed");
         const row = { id: `f${db.files.length + 1}`, createdAt: new Date(), ...args.data };
         db.files.push(row);
         return { id: row.id };
       }),
       delete: vi.fn(async (args: { where: { id: string } }) => {
+        const removed = db.files.find((f) => f.id === args.where.id);
         db.files = db.files.filter((f) => f.id !== args.where.id);
+        return removed;
       }),
       findFirst: vi.fn(async (args: { where: { id: string; itemId: string } }) =>
         db.files.find((f) => f.id === args.where.id && f.itemId === args.where.itemId) ?? null,
@@ -133,11 +137,13 @@ import {
   assignLaunchpad,
   attachLaunchpadItemFile,
   deleteLaunchpadItemFile,
+  getLaunchpadItemFile,
   removeLaunchpadCustomItem,
   updateLaunchpadCustomItem,
   updateLaunchpadItem,
 } from "@/server/launchpad";
 import { LAUNCHPAD_FILE_MAX_PER_ITEM } from "@/lib/launchpad/files";
+import { __setBlobStoreForTests, type BlobStore } from "@/server/blob-storage";
 import { POST as tokenUpload } from "@/app/api/wiki/[token]/launchpad/items/[itemId]/files/route";
 
 const PDF = new TextEncoder().encode("%PDF-1.7\nhello");
@@ -163,6 +169,8 @@ beforeEach(() => {
   db.items = [];
   db.files = [];
   db.calls = [];
+  db.failFileCreate = false;
+  __setBlobStoreForTests(null);
   db.templateStructure = getDefaultLaunchpadStructure();
 });
 
@@ -329,5 +337,60 @@ describe("the client cannot change WHAT is asked — only answer it", () => {
         /addLaunchpadCustomItem|updateLaunchpadCustomItem|removeLaunchpadCustomItem|assignLaunchpad|structureSnapshot/,
       );
     }
+  });
+});
+
+describe("requirement file storage (src/server/blob-storage.ts)", () => {
+  function bucket(): BlobStore & { objects: Map<string, Buffer> } {
+    const objects = new Map<string, Buffer>();
+    return {
+      objects,
+      put: async (k, b) => void objects.set(k, Buffer.from(b)),
+      get: async (k) => objects.get(k) ?? null,
+      delete: async (k) => void objects.delete(k),
+    };
+  }
+
+  it("by default keeps the bytes in the row, exactly as before", async () => {
+    vi.stubEnv("BLOB_STORAGE_DRIVER", "");
+    await attachLaunchpadItemFile("w1", "brand_assets", { filename: "a.pdf", bytes: PDF }, { kind: "team", name: null });
+    expect(Buffer.from(db.files[0].bytes as Uint8Array)).toEqual(Buffer.from(PDF));
+    expect(db.files[0].storageKey).toBeNull();
+    const file = await getLaunchpadItemFile("w1", "brand_assets", "f1", { requireEnabled: false });
+    expect(file).toEqual({ bytes: Buffer.from(PDF), mime: "application/pdf", filename: "a.pdf" });
+    vi.unstubAllEnvs();
+  });
+
+  it("with object storage: bytes go to the bucket, the row holds only the key, and download reads it back", async () => {
+    const store = bucket();
+    __setBlobStoreForTests({ driver: "s3", store });
+    await attachLaunchpadItemFile("w1", "brand_assets", { filename: "a.pdf", bytes: PDF }, { kind: "team", name: null });
+    const row = db.files[0];
+    expect(row.bytes).toBeNull();
+    expect(row.storageKey).toMatch(/^launchpad\/k1\//);
+    expect(store.objects.get(row.storageKey as string)).toEqual(Buffer.from(PDF));
+
+    const file = await getLaunchpadItemFile("w1", "brand_assets", "f1", { requireEnabled: false });
+    expect(file!.bytes).toEqual(Buffer.from(PDF));
+
+    await deleteLaunchpadItemFile("w1", "brand_assets", "f1", { kind: "team", name: null });
+    expect(store.objects.size).toBe(0);
+  });
+
+  it("an old row with bytes in the column still downloads after switching to object storage", async () => {
+    await attachLaunchpadItemFile("w1", "brand_assets", { filename: "a.pdf", bytes: PDF }, { kind: "team", name: null });
+    __setBlobStoreForTests({ driver: "s3", store: bucket() });
+    const file = await getLaunchpadItemFile("w1", "brand_assets", "f1", { requireEnabled: false });
+    expect(file!.bytes).toEqual(Buffer.from(PDF));
+  });
+
+  it("removes the uploaded object when the row could not be written", async () => {
+    const store = bucket();
+    __setBlobStoreForTests({ driver: "s3", store });
+    db.failFileCreate = true;
+    await expect(
+      attachLaunchpadItemFile("w1", "brand_assets", { filename: "a.pdf", bytes: PDF }, { kind: "team", name: null }),
+    ).rejects.toThrow("db write failed");
+    expect(store.objects.size).toBe(0);
   });
 });

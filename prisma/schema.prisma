@@ -1863,6 +1863,10 @@ model ClientWikiIntakeItem {
   thumb       Bytes?
   mime        String?
   filename    String?
+  /// Set when the screenshot lives in object storage (src/server/blob-storage.ts):
+  /// the full image is at this key and its thumb at `<key>.thumb`, and image/thumb
+  /// above are null. Null → the bytes are in image/thumb, as they always were.
+  storageKey  String?
   /// Free-text device/OS context supplied with the report (e.g. "iPhone 14 Pro" /
   /// "iOS 17.4") — both optional, filled in on the Add Request form.
   device      String?
@@ -1914,6 +1918,9 @@ model ClientWikiIntakeComment {
   thumb        Bytes?
   mime         String?
   filename     String?
+  /// Object-storage key when the screenshot lives in a bucket — same rule as
+  /// ClientWikiIntakeItem.storageKey.
+  storageKey   String?
   createdAt    DateTime                    @default(now())
 
   @@index([intakeItemId, createdAt])
@@ -2324,7 +2331,10 @@ model LaunchpadItemFile {
   /// Canonical type derived from the sniffed bytes, never the uploader's claim.
   mime           String
   size           Int
-  bytes          Bytes
+  /// The file's bytes — null when it lives in object storage (`storageKey` set).
+  bytes          Bytes?
+  /// Object-storage key (src/server/blob-storage.ts). Null → the bytes are above.
+  storageKey     String?
   /// "team" | "client" — who uploaded it.
   uploadedByKind String
   uploadedByName String?
