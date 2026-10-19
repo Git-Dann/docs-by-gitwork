@@ -170,3 +170,36 @@ describe("RequestThread — screenshots", () => {
     expect(onPost).toHaveBeenCalledWith("See attached", [], file);
   });
 });
+
+describe("RequestThread — screenshot-only replies", () => {
+  function attach(file: File) {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    Object.defineProperty(input, "files", { value: [file], configurable: true });
+    act(() => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
+  it("keeps Reply disabled with neither text nor a screenshot", () => {
+    renderThread([]);
+    expect(buttons("Reply")[0].disabled).toBe(true);
+  });
+
+  it("enables Reply for a screenshot with no text, and posts it with an empty body", async () => {
+    const onPost = vi.fn(async () => {});
+    renderThread([], { onPost });
+    const file = new File(["png"], "shot.png", { type: "image/png" });
+    attach(file);
+    const send = buttons("Reply")[0];
+    expect(send.disabled).toBe(false);
+    click(send);
+    await flush();
+    expect(onPost).toHaveBeenCalledWith("", [], file);
+  });
+
+  it("renders a screenshot-only reply as just the screenshot, with no empty paragraph", () => {
+    const host = renderThread([reply({ body: "", hasImage: true, imageFilename: "shot.png" })]);
+    expect(host.querySelector("ol p.whitespace-pre-wrap")).toBeNull();
+    expect(host.querySelector("ol img")).not.toBeNull();
+  });
+});

@@ -97,11 +97,17 @@ export function buildTeamReplyEmail(input: {
   body: string;
   link: string | null;
 }): { subject: string; html: string; text: string } {
-  const body =
-    input.body.length > REPLY_EMAIL_BODY_LIMIT ? `${input.body.slice(0, REPLY_EMAIL_BODY_LIMIT)}…` : input.body;
+  // A screenshot-only reply has no text. Say what was sent rather than quoting nothing.
+  const screenshotOnly = !input.body.trim();
+  const body = screenshotOnly
+    ? "Sent a screenshot — open the conversation to see it."
+    : input.body.length > REPLY_EMAIL_BODY_LIMIT
+      ? `${input.body.slice(0, REPLY_EMAIL_BODY_LIMIT)}…`
+      : input.body;
+  const verb = screenshotOnly ? "sent a screenshot on" : "replied to";
   // Subjects are plain text, but a CR/LF in one is header injection territory.
   const flat = (s: string) => s.replace(/[\r\n]+/g, " ").trim();
-  const subject = flat(`${input.authorName} replied to "${input.itemTitle}"`).slice(0, 200);
+  const subject = flat(`${input.authorName} ${verb} "${input.itemTitle}"`).slice(0, 200);
 
   const e = escapeHtml;
   const bodyHtml = e(body).replace(/\r?\n/g, "<br>");
@@ -111,13 +117,13 @@ export function buildTeamReplyEmail(input: {
 
   const html = `<!doctype html><html><body style="font-family:Inter,Arial,sans-serif;color:#0F172A;line-height:1.5">
 <p style="margin:0 0 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748B">${e(input.clientName)} · Requests</p>
-<p style="margin:0 0 16px"><strong>${e(input.authorName)}</strong> replied to <strong>${e(input.itemTitle)}</strong></p>
+<p style="margin:0 0 16px"><strong>${e(input.authorName)}</strong> ${verb} <strong>${e(input.itemTitle)}</strong></p>
 <blockquote style="margin:0;padding:12px 16px;border-left:3px solid #1D4ED8;background:#F8FAFC">${bodyHtml}</blockquote>
 ${action}
 </body></html>`;
 
   const text = [
-    `${input.authorName} replied to "${input.itemTitle}"`,
+    `${input.authorName} ${verb} "${input.itemTitle}"`,
     "",
     body,
     "",
