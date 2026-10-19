@@ -156,7 +156,13 @@ export function PortalLoginForm({ next }: { next: string | null }) {
         setSubmitting(false);
         return;
       }
-      const data = (await res.json()) as { wikis: PortalWiki[] };
+      const data = (await res.json()) as { wikis: PortalWiki[]; staff?: boolean };
+      // A Gitwork address: this is the client form, so send them to the team sign-in
+      // (or straight into the app when their session is still live).
+      if (data.staff) {
+        window.location.assign(isStaffAuthed ? "/app" : "/login");
+        return;
+      }
       routeTo(data.wikis ?? []);
       if ((data.wikis?.length ?? 0) > 1) setSubmitting(false);
     } catch {
