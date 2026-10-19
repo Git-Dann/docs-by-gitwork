@@ -3118,9 +3118,8 @@ in the place a reader looks first. **"Save as snippet"** was removed from the bl
 - **Short-label fields are still the old `InlineTextArea`.** Route B's scope was prose fields; those
   45 fields still show literal `**asterisks**`. The Numbered-list command correctly stays inert on
   them (a field only lights the commands it declares).
-- **There is a FOURTH Markdown renderer** — `src/components/clients/wiki/wiki-page-editor.tsx`,
-  using `dangerouslySetInnerHTML`. It escapes `& < >` up front so it is not obviously unsafe, but
-  the client intake API (§40.1) writes into that surface and nothing holds it to the other three.
+- ~~There is a FOURTH Markdown renderer~~ — **fixed October 2026 (§70)**: wiki pages now render
+  as React elements through `src/lib/wiki-markdown.tsx`, sharing `renderInline` + `safeUrl`.
 - **The cover editor still shows every field always.** Making fields addable/removable — across all
   blocks, not just the cover — is an open design question, not a coded decision.
 
@@ -6866,3 +6865,56 @@ URL named**. It now requires the item to belong to that slug's wiki (404 otherwi
 ⚠️ **Known limits:** Slack Connect users from the client's own workspace often can't be found
 by `users.lookupByEmail`, so a mentioned client is usually bolded, not pinged. Mentions only
 go to Slack — no in-app notification yet. Not verified against a live Slack workspace.
+
+## 70. Recent Changes (October 2026) — Wiki follow-ups: replies, a real XSS, Launchpad, course requests
+
+Eight items from the wiki backlog, built in parallel and merged as one change.
+
+**Requests (§69 follow-ups).**
+- **Team mentions notify in Foundry**: event `wiki.request_mention` (in-app + push) to each `team:`
+  person mentioned, never the author. Runs beside the Slack post, after the reply is saved.
+- **The client is emailed when Gitwork replies** (`src/server/wiki-intake-reply-notify.ts`, pure
+  rules in `src/lib/wiki-intake-reply-notify.ts`). The raiser is found by matching `requestedBy`
+  to the wiki's `ClientWikiUser`s (email, then name); ambiguous or no match → no email. Never to
+  `@gitwork.co.uk` / `@gitwork.io`, never for a client-authored reply, link only when sharing is on.
+- **Edit / delete / screenshot on replies.** `ClientWikiIntakeComment` gained `authorWikiUserId`,
+  `editedAt`, `deletedAt`, `image`, `thumb`, `mime`, `filename` (additive). Rules in
+  `src/lib/wiki-comment-permissions.ts`: staff edit/delete their own (admins may delete, not
+  rewrite); a client may change only a reply carrying **their own wiki user id** — never matched by
+  display name, so replies posted before this change stay read-only for clients. Delete is soft but
+  erases the body, mentions and image. Edits don't re-notify.
+
+**⚠️ A real XSS on the client's public wiki, fixed.** `wiki-page-editor.tsx`'s old string renderer
+escaped `& < >` but wrote link URLs straight into `href` and didn't escape quotes, so
+`[x](javascript:…)` produced a live link and `[x](https://a/"onmouseover="…)` broke out of the
+attribute — on `/wiki/[slug]/[token]`, which the client intake API writes into. It now renders React
+elements via `src/lib/wiki-markdown.tsx` (headings, tables, fenced code, callouts, nested + numbered
+lists), reusing `renderInline` + `safeUrl` from `markdown.tsx` (`renderInline` gained an optional
+class-options argument; defaults unchanged). A test sweeps `src/components/clients/wiki` for
+`dangerouslySetInnerHTML`. Fenced code no longer doubles every newline.
+
+**Launchpad.**
+- **Per-client requirements** (§43.5's "next change"): internal-only routes under
+  `/api/clients/[slug]/wiki/launchpad/custom-items` add/edit/remove `custom: true` checklist items
+  (`custom-<uuid>` ids) in **that client's snapshot only**. Template items stay structurally fixed
+  (409). Re-assigning a template **carries custom items across**. No token route can change
+  structure (tested). Cap 60. Rules in `src/lib/launchpad/custom-items.ts`.
+- **File uploads on requirements**: `LaunchpadItemFile` (bytea, metadata-only selects). pdf, images
+  (no SVG), docx/xlsx/pptx, txt/csv; **extension AND magic bytes must agree**, 10 MB, 10 per item,
+  400 on anything bad (`src/lib/launchpad/files.ts`). Downloads are attachments with `nosniff` and
+  `CSP: default-src 'none'; sandbox`; client downloads need the full unlock, not just the share link.
+  An upload counts as providing the item (`applyItemPatch`'s third argument).
+
+**Course requests.**
+- **Declined feedback is remembered**: `WikiCourseFeedbackSeen` (additive). Recorded only for a real
+  classifier verdict (`not_course` / `no_named_course` / `rejected_name` / `duplicate_name`), never
+  when it failed or didn't run (§53.3). Re-classified when the customer writes again
+  (`lastInboundAt > seenAt`). Operator selection ignores it. Closes §53.7's known gap.
+- **Phone layout**: below `sm` each request (and each Added course) is a stacked card; the table is
+  unchanged from `sm` up. Status control and actions are shared render functions so they can't drift.
+
+**Verified:** `npm run verify` and `npx next build` — figures in the PR. Every agent proved its tests
+discriminate by breaking the code. **Not verified live**: no real database, Resend, Slack or upload
+round-trip. Post-deploy: post a reply mentioning a teammate (bell + push) and confirm the raiser gets
+an email; add a one-off requirement to a client and upload a PDF against it; open a shared wiki page
+and check it still reads the same.
