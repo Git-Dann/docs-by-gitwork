@@ -908,9 +908,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [pageSavedLabel, setPageSavedLabel] = useState<string | null>(null);
   const editorRef = useRef<WikiPageEditorHandle>(null);
 
-  // Reset editor state when switching sections
+  // Reset editor state when switching sections. The mode itself is chosen further down,
+  // once the wiki has loaded (it depends on whether the page has been written).
   useEffect(() => {
-    setPageMode(activeSection === "api-docs" ? "preview" : "edit");
     setPageSavedLabel(null);
   }, [activeSection]);
 
@@ -930,6 +930,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }, []);
 
   const { data: wiki, isPending } = useClientWiki(slug);
+  const wikiLoaded = Boolean(wiki);
+
+  // A doc page opens READ, formatted — reading is the common case, and opening in the editor
+  // showed the team raw Markdown (`# Runbook`, `**bold**`) every time. An unwritten page opens
+  // in the editor, because there is nothing to read yet. Decided once per section, and again
+  // when the wiki first arrives — deliberately not on every refetch, or saving would throw the
+  // editor back to the read view mid-edit.
+  useEffect(() => {
+    const type = SECTION_TO_TYPE[activeSection];
+    const saved = type ? wiki?.pages.find((p) => p.type === type) : undefined;
+    const written =
+      typeof saved?.content === "string" ? saved.content.trim().length > 0 : saved !== undefined;
+    setPageMode(activeSection === "api-docs" || written ? "preview" : "edit");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, wikiLoaded]);
 
   // If the restored section isn't available for this client (e.g. a deleted page or
   // a Wedge-only section on another client), fall back to the dashboard once loaded.
@@ -1901,6 +1916,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           >
             {pageSavedLabel ?? ""}
           </span>
+          <div className="flex items-center gap-2">
+          {/* The everyday action, visible: Edit to change the page, Done to read it back. */}
+          <button
+            type="button"
+            onClick={() => setPageMode(pageMode === "edit" ? "preview" : "edit")}
+            className="app-button app-button-secondary app-button-xs inline-flex items-center gap-1.5"
+          >
+            {pageMode === "edit" ? <EyeIcon className="h-4 w-4" /> : <PencilSquareIcon className="h-4 w-4" />}
+            {pageMode === "edit" ? "Done" : "Edit"}
+          </button>
           <ActionMenu
             items={[
               {
@@ -1934,6 +1959,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               },
             ]}
           />
+          </div>
         </div>
 
         {/* Widget card */}

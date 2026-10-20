@@ -456,8 +456,12 @@ export function GanttChart({
                         height: HEADER_ROW_1,
                         fontFamily: "var(--font-mono)",
                       }}
+                      // A part-quarter at the edge of the chart can be ~40px wide, which cut
+                      // "Q1 2027" to "Q1 2…" with nothing to recover it. Short form when narrow,
+                      // and the full label always on hover.
+                      title={q.label}
                     >
-                      {q.label}
+                      {q.w < 64 ? q.label.replace(/ (\d{2})(\d{2})$/, " '$2") : q.label}
                     </div>
                   ))}
                 </div>

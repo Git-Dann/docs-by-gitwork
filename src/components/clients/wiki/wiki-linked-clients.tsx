@@ -26,7 +26,9 @@ export function WikiLinkedClients({ slug, clientId }: { slug: string; clientId: 
   const [choice, setChoice] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const rows = links.data ?? [];
+  // A malformed response must not take the whole Settings page down with `.map is not a
+  // function` — the demo's catch-all answered `{}` here and blanked Settings.
+  const rows = Array.isArray(links.data) ? links.data : [];
   const taken = new Set(rows.map((r) => r.linkedClientId));
   // Never offer this client itself: linking a wiki to its own client would double
   // every block, task and milestone on its own timeline, and the numbers would

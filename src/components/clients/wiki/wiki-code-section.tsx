@@ -348,16 +348,19 @@ function VersionView({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          // Wraps, and is never narrower than its label + date: below that the Download
+          // group drops to its own line instead. Unbounded, a phone crushed the date into a
+          // one-word column that ran under the Download button and hid the Current badge.
+          className="flex min-w-[180px] flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left"
         >
           <ChevronRightIcon className={`h-4 w-4 shrink-0 text-[var(--text-4)] transition-transform ${open ? "rotate-90" : ""}`} />
           <span className="text-[14px] font-semibold text-[var(--text-1)]" style={{ fontFamily: MONO }}>{version.label}</span>
           {version.isCurrent && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--brand-700)]">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--brand-700)]">
               <StarSolid className="h-3 w-3" /> Current
             </span>
           )}
-          <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+          <span className="whitespace-nowrap text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
             {version.files.length} file{version.files.length === 1 ? "" : "s"} · {fmtDate(version.createdAt)}
           </span>
         </button>

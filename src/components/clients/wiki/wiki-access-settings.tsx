@@ -560,6 +560,8 @@ function ShareLinkRow({
       <p
         className="min-w-0 flex-1 truncate rounded-[7px] border border-[var(--border-1)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]"
         style={{ fontFamily: MONO }}
+        // Ellipsed on a phone — the full link has to be readable somewhere besides the clipboard.
+        title={`${origin}${href}`}
       >
         {origin}
         {href}
