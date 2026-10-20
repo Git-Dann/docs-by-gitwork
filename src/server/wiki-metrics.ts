@@ -28,6 +28,7 @@ import { decryptNullable, encryptNullable } from "@/lib/encryption";
 import {
   type MetricsMode,
   type MetricValue,
+  type MonthToDateView,
   type StoredSnapshot,
   type WikiMetric,
   endpointUrl,
@@ -61,6 +62,8 @@ export interface WikiMetricsSection {
   metrics: WikiMetric[];
   historyPeriods: string[];
   needsRefresh: boolean;
+  /** The month still running ("October so far"), for a source that offers it. */
+  monthToDate: MonthToDateView | null;
   /** Internal only — stripped from the client's copy by `forPublicMetrics`. */
   apiEndpoint: { serverUrl: string; path: string } | null;
   hasApiToken: boolean;
@@ -77,6 +80,7 @@ export const EMPTY_METRICS: WikiMetricsSection = {
   metrics: [],
   historyPeriods: [],
   needsRefresh: false,
+  monthToDate: null,
   apiEndpoint: null,
   hasApiToken: false,
 };
@@ -89,6 +93,9 @@ export function forPublicMetrics(m: WikiMetricsSection): WikiMetricsSection {
   return {
     ...m,
     metrics: m.metrics.filter((x) => !x.hidden),
+    monthToDate: m.monthToDate
+      ? { ...m.monthToDate, metrics: m.monthToDate.metrics.filter((x) => !x.hidden) }
+      : null,
     apiEndpoint: null,
     hasApiToken: false,
   };
@@ -146,7 +153,9 @@ export async function loadWikiMetrics(
   let sourceLabel: string;
   let mode: MetricsMode;
   let snapshots: StoredSnapshot[];
+  let monthToDate = false;
   if (care) {
+    monthToDate = getAdapter(care.adapterKey ?? undefined)?.monthToDate === true;
     source = "care";
     mode = modeForAdapter(care.adapterKey);
     sourceLabel = `Care analytics — ${getAdapter(care.adapterKey ?? undefined)?.label ?? care.careName}`;
@@ -180,6 +189,7 @@ export async function loadWikiMetrics(
     now,
     hiddenKeys: cfg.hiddenKeys,
     featuredKeys: cfg.featuredKeys,
+    monthToDate,
   });
   return { ...base, source, sourceLabel, mode, ...view };
 }
@@ -224,7 +234,12 @@ export async function refreshWikiMetrics(
       }),
     );
     // "current" adapters report now, so there is exactly one thing to fetch: this month.
-    const targets = mode === "monthly" ? periodsToFetch(existing, now) : [periodOf(now)];
+    const targets =
+      mode === "monthly"
+        ? periodsToFetch(existing, now, {
+            monthToDate: getAdapter(care.adapterKey ?? undefined)?.monthToDate === true,
+          })
+        : [periodOf(now)];
     const result: MetricsRefreshResult = { source: "care", fetched: [], failed: [] };
     // One at a time: these are calls to the client's own API, and six in parallel on
     // every refresh is a burst nobody asked for.

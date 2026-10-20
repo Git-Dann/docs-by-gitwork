@@ -14,6 +14,11 @@
  *   capture is shown "as of" its date, and a trend compares it with the last capture taken
  *   in the month before.
  *
+ * - **so far** — a monthly adapter can opt in (`monthToDate`) to also show the month still
+ *   running, as its own block labelled "so far". It is never the headline, never compared
+ *   with a whole month and never drawn on a sparkline, for the reason above: half a month
+ *   beside a whole one reads as a fall that did not happen.
+ *
  * ⚠️ A missing figure is null, never 0. "We have no figure" and "the figure is zero" are
  * different facts, and only one of them is something to tell a client.
  */
@@ -147,6 +152,65 @@ export function rekeyByCapture(snapshots: StoredSnapshot[]): StoredSnapshot[] {
   return [...latest.values()];
 }
 
+/** One figure of the month still running. Deliberately no `previous` and no `history`. */
+export interface MonthToDateMetric {
+  key: string;
+  label: string;
+  value: number;
+  unit: string | null;
+  group: string | null;
+  hidden: boolean;
+}
+
+export interface MonthToDateView {
+  /** "YYYY-MM" — the current month. */
+  period: string;
+  /** ISO — when it was read. The figures are as of this moment. */
+  capturedAt: string;
+  metrics: MonthToDateMetric[];
+}
+
+/**
+ * The running month's capture, when there is one worth showing: this month, not final, and
+ * carrying numbers. Anything older than this month is a partial capture of a month that has
+ * since ended — that is a figure to be REPLACED, not shown as "so far".
+ */
+export function selectMonthToDate(
+  snapshots: StoredSnapshot[],
+  now: Date,
+  hiddenKeys: string[] = [],
+): MonthToDateView | null {
+  const period = periodOf(now);
+  const snap = snapshots.find(
+    (s) => s.period === period && !isFinal(s) && Array.isArray(s.metrics) && s.metrics.length > 0,
+  );
+  if (!snap) return null;
+  const hidden = new Set(hiddenKeys);
+  const seen = new Set<string>();
+  const metrics: MonthToDateMetric[] = [];
+  for (const m of snap.metrics) {
+    if (!m || typeof m.key !== "string" || !Number.isFinite(m.value) || seen.has(m.key)) continue;
+    seen.add(m.key);
+    metrics.push({
+      key: m.key,
+      label: m.label || m.key,
+      value: m.value,
+      unit: m.unit ?? null,
+      group: m.group ?? null,
+      hidden: hidden.has(m.key),
+    });
+  }
+  return metrics.length ? { period, capturedAt: snap.capturedAt, metrics } : null;
+}
+
+/** True when the running month has no capture, or one older than CURRENT_STALE_MS. */
+export function monthToDateStale(snapshots: StoredSnapshot[], now: Date): boolean {
+  const period = periodOf(now);
+  const snap = snapshots.find((s) => s.period === period);
+  const t = snap ? Date.parse(snap.capturedAt) : NaN;
+  return !Number.isFinite(t) || now.getTime() - t > CURRENT_STALE_MS;
+}
+
 export interface MetricsView {
   /** The month the figures belong to ("monthly") or were captured in ("current"). */
   period: string | null;
@@ -156,6 +220,8 @@ export interface MetricsView {
   historyPeriods: string[];
   /** True when a refresh would show something newer than what is stored. */
   needsRefresh: boolean;
+  /** The month still running — only for a monthly adapter that opted in. */
+  monthToDate: MonthToDateView | null;
 }
 
 const EMPTY_VIEW = (needsRefresh: boolean): MetricsView => ({
@@ -165,6 +231,7 @@ const EMPTY_VIEW = (needsRefresh: boolean): MetricsView => ({
   metrics: [],
   historyPeriods: [],
   needsRefresh,
+  monthToDate: null,
 });
 
 /**
@@ -178,8 +245,13 @@ export function selectMetricsView(input: {
   now: Date;
   hiddenKeys?: string[];
   featuredKeys?: string[];
+  /** Also show the month still running (monthly mode only). */
+  monthToDate?: boolean;
 }): MetricsView {
   const { mode, now } = input;
+  const withMtd = mode === "monthly" && input.monthToDate === true;
+  const monthToDate = withMtd ? selectMonthToDate(input.snapshots, now, input.hiddenKeys) : null;
+  const mtdStale = withMtd && monthToDateStale(input.snapshots, now);
   const usable =
     mode === "monthly"
       ? input.snapshots.filter(isSettled)
@@ -203,7 +275,7 @@ export function selectMetricsView(input: {
     const t = headline ? Date.parse(headline.capturedAt) : NaN;
     needsRefresh = !headline || !Number.isFinite(t) || now.getTime() - t > CURRENT_STALE_MS;
   }
-  if (!headline) return EMPTY_VIEW(true);
+  if (!headline) return { ...EMPTY_VIEW(true), monthToDate };
 
   const prevPeriod = addMonths(headline.period, -1);
   const prev = byPeriod.get(prevPeriod) ?? null;
@@ -248,7 +320,8 @@ export function selectMetricsView(input: {
     capturedAt: headline.capturedAt,
     metrics,
     historyPeriods,
-    needsRefresh,
+    needsRefresh: needsRefresh || mtdStale,
+    monthToDate,
   };
 }
 
@@ -257,12 +330,18 @@ export function selectMetricsView(input: {
  * months that has no FINAL snapshot. A partial one is fetched again — that is how the
  * figure taken mid-month by the report builder gets replaced by the real one.
  */
-export function periodsToFetch(snapshots: StoredSnapshot[], now: Date): string[] {
+export function periodsToFetch(
+  snapshots: StoredSnapshot[],
+  now: Date,
+  opts: { monthToDate?: boolean } = {},
+): string[] {
   const finalPeriods = new Set(snapshots.filter(isSettled).map((s) => s.period));
   const lastComplete = addMonths(periodOf(now), -1);
-  return Array.from({ length: HISTORY_MONTHS }, (_, i) => addMonths(lastComplete, -i)).filter(
+  const months = Array.from({ length: HISTORY_MONTHS }, (_, i) => addMonths(lastComplete, -i)).filter(
     (p) => !finalPeriods.has(p),
   );
+  // The running month first: it is the one someone opened the page to see.
+  return opts.monthToDate && monthToDateStale(snapshots, now) ? [periodOf(now), ...months] : months;
 }
 
 /** A GET endpoint on the client's API Docs page that can be called as-is. */

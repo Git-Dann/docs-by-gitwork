@@ -7253,3 +7253,18 @@ or drop an image into it. The team, the client (wherever they may edit), and Cla
   - On the right: the selected item's settings. A dropdown column's options are edited as chips
     you can remove one at a time.
   - Every change still saves as it's made.
+
+## 74. Recent Changes (October 2026) — Big Wedge revenue on Metrics, and "so far this month"
+
+The Big Wedge adapter now maps a
+**Revenue** group from the same report: Premium subscribers, monthly / yearly subscriptions and
+**MRR**. ⚠️ The counts are subscriptions **active during** the range, not started in it, and `mrr`
+spreads a yearly plan over 12. It reconciles exactly: 5 × 5.45 + 5 × 29.99 / 12 = 39.75 for 1–20
+Oct, including a test yearly sub from August that is still active. No currency comes back, so money
+figures carry **no symbol** rather than a guessed £. **"Revenue this month"** (cash taken, yearly
+counted in full) is mapped from `revenue.cash_revenue`, which Big Wedge's report does **not** have
+yet. It appears the day they add it. Adapters can opt in with `monthToDate: true` (only Big Wedge
+does) to show the running month as its own **"<Month> so far"** card above the whole-month figures.
+It has no trend and no sparkline, is never the headline, and is refetched when it is more than 6h
+old. Its range ends today. On the 1st the partial month is replaced by the final one, by the
+existing `isFinal` rule.

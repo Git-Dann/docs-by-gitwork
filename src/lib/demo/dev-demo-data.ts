@@ -1219,6 +1219,18 @@ const demoWiki: WikiDTO = {
       { key: "subs.cancelled", label: "Cancellations", value: 38, unit: null, group: "Subscriptions", previous: 44, hidden: false, featured: false, history: [51, 47, 49, 41, 44, 38] },
       { key: "debug.queue_depth", label: "Queue depth", value: 3, unit: null, group: null, previous: 7, hidden: true, featured: false, history: [null, null, 5, 9, 7, 3] },
     ],
+    // The month still running, with the hidden metric in it too — the client's copy must
+    // drop it from here as well as from the whole-month figures.
+    monthToDate: {
+      period: demoPeriod(0),
+      capturedAt: atDays(0),
+      metrics: [
+        { key: "users.active", label: "Active users", value: 2960, unit: null, group: "Users", hidden: false },
+        { key: "subs.active", label: "Active subscriptions", value: 1251, unit: null, group: "Subscriptions", hidden: false },
+        { key: "subs.mrr", label: "Monthly revenue", value: 11502, unit: "£", group: "Subscriptions", hidden: false },
+        { key: "debug.queue_depth", label: "Queue depth", value: 2, unit: null, group: null, hidden: true },
+      ],
+    },
     apiEndpoint: null,
     hasApiToken: false,
   },
