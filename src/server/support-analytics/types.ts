@@ -56,6 +56,8 @@ export interface AnalyticsFetchContext {
   year: number;
   /** 1–12. */
   month: number;
+  /** The moment of the fetch — lets an adapter end the running month's range today. */
+  now?: Date;
   /** Firebase adapter — service-account JSON + metric specs from the connection. */
   serviceAccountJson?: string;
   firebaseMetrics?: FirebaseMetricSpec[];
@@ -73,6 +75,11 @@ export interface AnalyticsAdapter {
   requiresToken: boolean;
   /** One-line hint shown under the connector form. */
   hint?: string;
+  /**
+   * Also fetch the month still running and show it, labelled "so far", beside the last
+   * complete month. Off by default: it is one more call to the client's API per refresh.
+   */
+  monthToDate?: boolean;
   fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot>;
 }
 

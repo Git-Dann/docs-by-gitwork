@@ -15,6 +15,7 @@ import {
   readMetricsConfig,
   rekeyByCapture,
   selectMetricsView,
+  selectMonthToDate,
   type StoredSnapshot,
 } from "@/lib/wiki-metrics";
 
@@ -318,5 +319,59 @@ describe("config and formatting", () => {
     expect(formatMetric(3410, "£")).toBe("£3,410");
     expect(formatMetric(62, "%")).toBe("62%");
     expect(formatMetric(12, "min")).toBe("12 min");
+  });
+});
+
+describe("the month still running (\"October so far\")", () => {
+  const SNAPS = [
+    snap("2026-10", "2026-10-15T09:00:00Z", [m("mrr", 39.75), m("users", 40)]),
+    snap("2026-09", "2026-10-02T09:00:00Z", [m("users", 120)]),
+  ];
+
+  it("is shown beside the last complete month — never AS it", () => {
+    const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots: SNAPS, monthToDate: true });
+    expect(v.period).toBe("2026-09");
+    expect(v.metrics.map((x) => x.key)).toEqual(["users"]);
+    expect(v.monthToDate?.period).toBe("2026-10");
+    expect(v.monthToDate?.metrics.map((x) => `${x.key}=${x.value}`)).toEqual(["mrr=39.75", "users=40"]);
+  });
+
+  it("is off unless the source opts in, and never for a 'current' source", () => {
+    expect(selectMetricsView({ mode: "monthly", now: NOW, snapshots: SNAPS }).monthToDate).toBeNull();
+    expect(selectMetricsView({ mode: "current", now: NOW, snapshots: SNAPS, monthToDate: true }).monthToDate).toBeNull();
+  });
+
+  it("⚠️ a partial capture of a month that has ENDED is not 'so far' — it is waiting to be replaced", () => {
+    const v = selectMonthToDate([snap("2026-09", "2026-09-20T09:00:00Z")], NOW);
+    expect(v).toBeNull();
+  });
+
+  it("is shown even before any whole month has been fetched", () => {
+    const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots: [SNAPS[0]], monthToDate: true });
+    expect(v.period).toBeNull();
+    expect(v.monthToDate?.metrics).toHaveLength(2);
+  });
+
+  it("carries the hidden flag, so the client's copy can drop it", () => {
+    const v = selectMonthToDate(SNAPS, NOW, ["mrr"]);
+    expect(v?.metrics.find((x) => x.key === "mrr")?.hidden).toBe(true);
+  });
+
+  it("is fetched first when missing or older than six hours, and not otherwise", () => {
+    const fresh = [snap("2026-10", "2026-10-15T10:00:00Z"), ...SNAPS.slice(1)];
+    expect(periodsToFetch(fresh, NOW, { monthToDate: true })[0]).not.toBe("2026-10");
+    expect(periodsToFetch(SNAPS.slice(1), NOW, { monthToDate: true })[0]).toBe("2026-10");
+    const stale = [snap("2026-10", "2026-10-15T05:00:00Z"), ...SNAPS.slice(1)];
+    expect(periodsToFetch(stale, NOW, { monthToDate: true })[0]).toBe("2026-10");
+    // Without the opt-in the running month is never fetched.
+    expect(periodsToFetch(SNAPS.slice(1), NOW)).not.toContain("2026-10");
+  });
+
+  it("a stale running month makes the section ask for a refresh", () => {
+    const stale = [snap("2026-10", "2026-10-15T05:00:00Z"), ...SNAPS.slice(1)];
+    // September is final and complete, so only the running month can be what is behind.
+    const base = selectMetricsView({ mode: "monthly", now: NOW, snapshots: stale });
+    expect(base.needsRefresh).toBe(false);
+    expect(selectMetricsView({ mode: "monthly", now: NOW, snapshots: stale, monthToDate: true }).needsRefresh).toBe(true);
   });
 });

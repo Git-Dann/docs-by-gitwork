@@ -12,7 +12,7 @@ vi.mock("@/server/support-analytics/types", async (orig) => ({
 }));
 vi.mock("@/server/bigwedge-api-auth", () => ({ bigWedgeBearer: (...a: unknown[]) => bearer(...a) }));
 
-import { bigwedgeAdapter, metricsFromReport, monthRange } from "@/server/support-analytics/bigwedge";
+import { bigwedgeAdapter, currencyUnit, metricsFromReport, monthRange } from "@/server/support-analytics/bigwedge";
 
 /** Trimmed from the real response for August 2026. */
 const AUGUST = {
@@ -59,7 +59,7 @@ describe("the month asked for", () => {
 });
 
 describe("what is shown", () => {
-  it("maps the report to labelled monthly metrics, skipping all-time counts, revenue, arrays and unclear ratios", () => {
+  it("maps the report to labelled monthly metrics, skipping all-time counts, arrays and unclear ratios", () => {
     const m = metricsFromReport(AUGUST);
     expect(m.map((x) => `${x.label}=${x.value}`)).toEqual([
       "New users=8466",
@@ -69,12 +69,85 @@ describe("what is shown", () => {
       "Rounds started=25010",
       "Scores entered=301204",
       "Rounds per active user=2.73",
+      // August's report has no `mrr` and no subscription counts, so only this one shows.
+      "Premium subscribers=2",
     ]);
   });
 
   it("leaves a missing field out rather than reporting it as zero", () => {
     const m = metricsFromReport({ data: { user_growth: { new_users: 10 } } });
     expect(m).toEqual([{ key: "users_new", label: "New users", value: 10, group: "Users" }]);
+  });
+});
+
+/**
+ * October 2026, 1st–20th, as the live API returned it on Premium's launch day. Reconciles to
+ * the plan prices Big Wedge confirmed: 5 × 5.45 + 5 × 29.99 / 12 = 39.75 (one of the yearly
+ * subs is a test account from August, still active — hence Syed's "real customers" 37.25).
+ */
+const OCTOBER_SO_FAR = {
+  status: "success",
+  data: {
+    user_growth: { new_users: 49, total_users: 112121, active_users: 165 },
+    business_growth: { premium_users: 10, free_vs_premium_ratio: { free_pct: 99.9, premium_pct: 0.1 }, user_churn_rate: 0 },
+    revenue: { monthly_revenue: 39.75, mrr: 39.75, arpu: 3.98, active_monthly_subs: 5, active_yearly_subs: 5 },
+    engagement: { rounds_created: 183, rounds_played: 73, avg_rounds_per_user: 1.11, score_entries: 1243 },
+    retention: { returning_users: 20838, dau: 165, mau: 7931 },
+  },
+  filters: { start_date: "2026-10-01T00:00:00Z", end_date: "2026-10-20T00:00:00Z", applied_filter: "custom" },
+};
+
+describe("revenue", () => {
+  const revenue = (json: unknown) =>
+    metricsFromReport(json).filter((m) => m.group === "Revenue").map((m) => `${m.label}=${m.value}${m.unit ?? ""}`);
+
+  it("is its own group: subscribers, the two plan counts, and MRR", () => {
+    expect(revenue(OCTOBER_SO_FAR)).toEqual([
+      "Premium subscribers=10",
+      "Monthly subscriptions=5",
+      "Yearly subscriptions=5",
+      "MRR=39.75",
+    ]);
+  });
+
+  it("⚠️ has no currency symbol when the report names no currency — never a guessed £", () => {
+    for (const m of metricsFromReport(OCTOBER_SO_FAR)) expect(m.unit, m.key).toBeUndefined();
+  });
+
+  it("puts the report's currency on money figures only", () => {
+    const withCurrency = {
+      ...OCTOBER_SO_FAR,
+      data: { ...OCTOBER_SO_FAR.data, revenue: { ...OCTOBER_SO_FAR.data.revenue, currency: "gbp" } },
+    };
+    const m = metricsFromReport(withCurrency);
+    expect(m.find((x) => x.key === "revenue_mrr")?.unit).toBe("£");
+    expect(m.find((x) => x.key === "subs_monthly")?.unit).toBeUndefined();
+    expect(currencyUnit("USD")).toBe("$");
+    expect(currencyUnit("AUD")).toBe("AUD");
+    expect(currencyUnit("")).toBeUndefined();
+  });
+
+  it("shows cash taken in the month (yearly counted in full) once the report carries it", () => {
+    expect(revenue(OCTOBER_SO_FAR)).not.toContain(expect.stringMatching(/^Revenue this month/));
+    const withCash = {
+      ...OCTOBER_SO_FAR,
+      data: { ...OCTOBER_SO_FAR.data, revenue: { ...OCTOBER_SO_FAR.data.revenue, cash_revenue: 176.2 } },
+    };
+    expect(revenue(withCash)).toContain("Revenue this month=176.2");
+  });
+});
+
+describe("the month still running", () => {
+  it("ends its range TODAY, not on a day that has not happened", () => {
+    const now = new Date("2026-10-20T14:00:00Z");
+    expect(monthRange(2026, 10, now)).toEqual({ from: "2026-10-01", to: "2026-10-20" });
+    // A finished month is unaffected, and so is the last day of the running one.
+    expect(monthRange(2026, 9, now)).toEqual({ from: "2026-09-01", to: "2026-09-30" });
+    expect(monthRange(2026, 10, new Date("2026-10-31T09:00:00Z"))).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+  });
+
+  it("the adapter opts in to showing it", () => {
+    expect(bigwedgeAdapter.monthToDate).toBe(true);
   });
 });
 

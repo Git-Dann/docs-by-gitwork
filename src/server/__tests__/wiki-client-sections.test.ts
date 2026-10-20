@@ -151,6 +151,21 @@ describe("Metrics", () => {
     expect(pub.hasApiToken).toBe(false);
   });
 
+  it("⚠️ a hidden metric is removed from the running month too, not just the whole months", () => {
+    const pub = forPublicMetrics({
+      ...base,
+      monthToDate: {
+        period: "2026-10",
+        capturedAt: "2026-10-20T12:00:00Z",
+        metrics: [
+          { key: "a", label: "A", value: 1, unit: null, group: null, hidden: false },
+          { key: "secret", label: "S", value: 2, unit: null, group: null, hidden: true },
+        ],
+      },
+    });
+    expect(pub.monthToDate?.metrics.map((m) => m.key)).toEqual(["a"]);
+  });
+
   it("the token never appears in the section, only whether one is set", async () => {
     db.clientWiki.findUnique.mockResolvedValue({
       id: "w1",

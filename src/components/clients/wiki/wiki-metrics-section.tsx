@@ -21,6 +21,8 @@ import {
   formatMetric,
   metricTrend,
   periodLabel,
+  type MonthToDateMetric,
+  type MonthToDateView,
   type WikiMetric,
 } from "@/lib/wiki-metrics";
 import type { WikiMetricsSection } from "@/server/wiki-metrics";
@@ -131,6 +133,84 @@ function MetricTile({ metric, periods }: { metric: WikiMetric; periods: string[]
   );
 }
 
+function groupBy<T extends { group: string | null }>(rows: T[]): [string, T[]][] {
+  const out = new Map<string, T[]>();
+  for (const m of rows) {
+    const g = m.group ?? "";
+    out.set(g, [...(out.get(g) ?? []), m]);
+  }
+  return [...out.entries()];
+}
+
+function GroupLabel({ children }: { children: string }) {
+  return (
+    <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+      {children}
+    </p>
+  );
+}
+
+/** "As of 20 Oct, 14:05" — a running month is only true as of a moment. */
+function asOf(iso: string): string {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `As of ${day}, ${time}`;
+}
+
+/**
+ * A figure from the month still running. No trend and no sparkline on purpose: compared with
+ * a whole month, part of one always reads as a fall.
+ */
+function SoFarTile({ metric }: { metric: MonthToDateMetric }) {
+  const text = formatMetric(metric.value, metric.unit);
+  return (
+    <div className="min-w-0 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3">
+      <div
+        className="truncate tabular-nums text-[var(--text-1)]"
+        style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1, letterSpacing: "-0.02em" }}
+        title={text}
+      >
+        {text}
+      </div>
+      <span
+        className="mt-1.5 block truncate text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
+        style={{ fontFamily: MONO }}
+        title={metric.label}
+      >
+        {metric.label}
+      </span>
+    </div>
+  );
+}
+
+function MonthToDateCard({ n, view }: { n: string; view: MonthToDateView }) {
+  const rows = view.metrics.filter((m) => !m.hidden);
+  const month = periodLabel(view.period).split(" ")[0] ?? periodLabel(view.period);
+  if (rows.length === 0) return null;
+  return (
+    <section className="widget-card">
+      <Header n={n} label={`${month.toUpperCase()} SO FAR`} status={asOf(view.capturedAt).toUpperCase()} />
+      <div className="space-y-5 p-5">
+        {groupBy(rows).map(([group, ms]) => (
+          <div key={group || "_"}>
+            {group ? <GroupLabel>{group}</GroupLabel> : null}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {ms.map((m) => (
+                <SoFarTile key={m.key} metric={m} />
+              ))}
+            </div>
+          </div>
+        ))}
+        <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+          {month} is still running, so these are not compared with whole months. The final
+          figures replace them once it ends.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export function WikiMetricsSectionView({
   metrics,
   slug,
@@ -141,20 +221,18 @@ export function WikiMetricsSectionView({
   editable?: boolean;
 }) {
   const visible = metrics.metrics.filter((m) => !m.hidden);
-  const groups = useMemo(() => {
-    const out = new Map<string, WikiMetric[]>();
-    for (const m of visible) {
-      const g = m.group ?? "";
-      out.set(g, [...(out.get(g) ?? []), m]);
-    }
-    return [...out.entries()];
-  }, [visible]);
+  const groups = useMemo(() => groupBy<WikiMetric>(visible), [visible]);
   const headline = metricsHeadline(metrics);
+  const soFar =
+    metrics.monthToDate && metrics.monthToDate.metrics.some((m) => !m.hidden) ? metrics.monthToDate : null;
+  // Numbered in the order they render, so the sequence never skips.
+  const num = (i: number) => String(i + (soFar ? 1 : 0)).padStart(2, "0");
 
   return (
     <div className="space-y-4">
+      {soFar ? <MonthToDateCard n="01" view={soFar} /> : null}
       <section className="widget-card">
-        <Header n="01" label="METRICS" status={headline ?? undefined} />
+        <Header n={num(1)} label="METRICS" status={headline ?? undefined} />
         {!metrics.source ? (
           <p className="p-8 text-center text-sm text-[var(--text-4)]">
             {/* Never an empty chart — that would read as "nothing happened". */}
@@ -170,14 +248,7 @@ export function WikiMetricsSectionView({
           <div className="space-y-5 p-5">
             {groups.map(([group, rows]) => (
               <div key={group || "_"}>
-                {group ? (
-                  <p
-                    className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
-                    style={{ fontFamily: MONO }}
-                  >
-                    {group}
-                  </p>
-                ) : null}
+                {group ? <GroupLabel>{group}</GroupLabel> : null}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {rows.map((m) => (
                     <MetricTile key={m.key} metric={m} periods={metrics.historyPeriods} />
@@ -197,12 +268,12 @@ export function WikiMetricsSectionView({
         )}
       </section>
 
-      {editable && slug ? <MetricsSettings metrics={metrics} slug={slug} /> : null}
+      {editable && slug ? <MetricsSettings n={num(2)} metrics={metrics} slug={slug} /> : null}
     </div>
   );
 }
 
-function MetricsSettings({ metrics, slug }: { metrics: WikiMetricsSection; slug: string }) {
+function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetricsSection; slug: string }) {
   const refresh = useRefreshWikiMetrics(slug);
   const update = useUpdateWikiMetrics(slug);
 
@@ -217,7 +288,15 @@ function MetricsSettings({ metrics, slug }: { metrics: WikiMetricsSection; slug:
 
   const failed = refresh.data?.failed ?? [];
   const featured = metrics.metrics.filter((m) => m.featured).map((m) => m.key);
-  const hidden = metrics.metrics.filter((m) => m.hidden).map((m) => m.key);
+  // A figure that only exists in the running month (Revenue, the month it launched) still
+  // has to be hideable — otherwise the first anyone could hide it is after the client saw it.
+  const wholeMonthKeys = new Set(metrics.metrics.map((m) => m.key));
+  const runningOnly = (metrics.monthToDate?.metrics ?? []).filter((m) => !wholeMonthKeys.has(m.key));
+  const rows: { key: string; label: string; value: number; unit: string | null; hidden: boolean; featured: boolean; canFeature: boolean }[] = [
+    ...metrics.metrics.map((m) => ({ ...m, canFeature: true })),
+    ...runningOnly.map((m) => ({ ...m, featured: false, canFeature: false })),
+  ];
+  const hidden = rows.filter((m) => m.hidden).map((m) => m.key);
 
   function toggleHidden(key: string) {
     const next = hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key];
@@ -237,7 +316,7 @@ function MetricsSettings({ metrics, slug }: { metrics: WikiMetricsSection; slug:
 
   return (
     <section className="widget-card">
-      <Header n="02" label="SETTINGS" status="GITWORK ONLY" />
+      <Header n={n} label="SETTINGS" status="GITWORK ONLY" />
       <div className="space-y-5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 text-[13px] text-[var(--text-2)]">
@@ -285,7 +364,7 @@ function MetricsSettings({ metrics, slug }: { metrics: WikiMetricsSection; slug:
 
         {metrics.source !== "care" ? <ApiSourcePicker metrics={metrics} slug={slug} /> : null}
 
-        {metrics.metrics.length > 0 ? (
+        {rows.length > 0 ? (
           <div>
             <p
               className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
@@ -294,7 +373,7 @@ function MetricsSettings({ metrics, slug }: { metrics: WikiMetricsSection; slug:
               What the client sees · ★ leads the dashboard card (up to {FEATURED_MAX})
             </p>
             <ul className="divide-y divide-[var(--border-1)] rounded-[8px] border border-[var(--border-1)]">
-              {metrics.metrics.map((m) => (
+              {rows.map((m) => (
                 <li key={m.key} className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className={`truncate text-[13px] ${m.hidden ? "text-[var(--text-4)] line-through" : "text-[var(--text-1)]"}`} title={m.label}>
@@ -307,10 +386,16 @@ function MetricsSettings({ metrics, slug }: { metrics: WikiMetricsSection; slug:
                   <button
                     type="button"
                     onClick={() => toggleFeatured(m.key)}
-                    disabled={m.hidden || update.isPending}
+                    disabled={m.hidden || !m.canFeature || update.isPending}
                     className="rounded-[6px] p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-1)] disabled:opacity-40"
                     aria-label={m.featured ? `Stop featuring ${m.label}` : `Feature ${m.label} on the dashboard`}
-                    title={m.featured ? "Featured on the dashboard" : "Feature on the dashboard"}
+                    title={
+                      !m.canFeature
+                        ? "Can be featured once a whole month has it"
+                        : m.featured
+                          ? "Featured on the dashboard"
+                          : "Feature on the dashboard"
+                    }
                   >
                     {m.featured ? (
                       <StarSolid className="h-4 w-4 text-[var(--brand-600)]" />
