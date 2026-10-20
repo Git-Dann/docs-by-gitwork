@@ -7313,3 +7313,24 @@ title. The rest sit underneath as a small breakdown, e.g. **12 Subscriptions** o
 yearly". Each part stays its own metric for trends, hiding and history. A card left with one visible
 part renders as a plain metric. Big Wedge's Premium subscribers (`premium_users`, the total), monthly
 and yearly counts share the `subs` card.
+
+## 75. Recent Changes (October 2026) — The wiki sidebar is grouped
+
+The sidebar had grown to 28 possible sections in one flat list, one row per feature as each shipped.
+Measured on production (17 wikis): most clients show 2–6 sections, Wedge shows 13 and After Desk 9.
+Sections now sit in five groups — **Overview · Working together · Numbers · Product · Docs &
+handover** — with Dashboard alone at the top and Settings pinned at the foot.
+
+- **One map:** `SECTION_GROUP` in `src/lib/wiki-section-groups.ts` is read by the sidebar *and* the
+  "+ Add New" picker. `wiki-section-groups.test.ts` fails if a section is in no group, or if the
+  sidebar renders a `navItem` inside a different `group(...)` than the map says. **Adding a section
+  means adding it to the map and putting its `navItem` in the matching group.**
+- **Headings only above 6 items** (`GROUP_HEADINGS_ABOVE`): on a three-item wiki they would add more
+  rows than they organise, so a short sidebar stays flat.
+- **Groups fold on desktop**, remembered per browser (`foundry.wiki.sidebar.collapsed.v1`, guarded).
+  The group holding the open section is never folded. Below `md` the sidebar is a horizontal strip:
+  no headings, and a folded group's items still show (`contents md:hidden`).
+- **Add New** is grouped the same way, with a one-line description per section (`SECTION_BLURB`).
+- ⚠️ Row spacing is a flex `gap`, not `space-y`: the groups are `display: contents` wrappers, and
+  margins from `space-y` do not reach through them.
+- Same component on the client's share page, so both views get the groups.
