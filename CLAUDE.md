@@ -7349,3 +7349,24 @@ clipping audit plus screenshots. Fixed:
 - **Settings could crash** with `rows.map is not a function` when the linked-clients response wasn't
   an array (the demo's catch-all returns `{}`). Now guarded. With it fixed, the audit found the
   share link ellipsed with no title, so it has one now.
+
+## 76. Recent Changes (October 2026) — Wiki: one Docs row, EMPTY markers, a phone picker, numbering
+
+From the wiki layout review (Dan: "do all 4").
+
+- **The six doc pages are one "Docs" row** (`docsRow()` in `wiki-sidebar.tsx`, list in
+  `DOC_PAGE_SECTIONS`), with **tabs** on the page (`wiki-doc-tabs.tsx`, on both the internal wiki
+  and the share link). Each page keeps its own section id, so `#runbook` links and per-page shares
+  still work. A single-page share shows no tabs, because the other pages weren't shared.
+- **What the client can't see is marked EMPTY.** The share page's visibility rules moved verbatim into
+  `clientVisibleSections()` (`src/lib/wiki-client-visibility.ts`). The share page calls it, and the
+  internal wiki marks every section it leaves out as EMPTY (muted, with a tooltip) and drops the
+  "shared" globe from them. One rule, so the marker can't disagree with what the client is shown.
+  The wiring tests now read the rules from that module.
+- **Phones get a section picker on the internal wiki too** (`WikiMobileNav`, previously share-link
+  only), replacing a sideways strip that hid most of a full wiki. It uses the sidebar's groups and
+  order, Docs as one entry, EMPTY markers, and **Add New** inside it. It now uses theme colours (it
+  hard-coded white).
+- **Numbering:** Design System's Overview is 01 (it was 00). Requests' "Action needed" block is a real
+  `01 // ACTION NEEDED` card, and the Requests cards follow on via `firstNumber`. Monitors' "client
+  preview" (every monitor listed twice) is folded behind **Show what the client sees**.
