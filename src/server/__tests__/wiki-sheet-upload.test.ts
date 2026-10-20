@@ -32,7 +32,7 @@ describe("shrinkToFit", () => {
   it("re-encodes an oversized screenshot to fit, keeping its pixels", async () => {
     const sharp = (await import("sharp")).default;
     // Noise doesn't compress, so this PNG is well over the 10 MB storage limit.
-    const png = await sharp({ create: { width: 2600, height: 2400, channels: 3, noise: { type: "gaussian", mean: 128, sigma: 60 } } })
+    const png = await sharp({ create: { width: 2600, height: 2400, channels: 3, background: "#000", noise: { type: "gaussian", mean: 128, sigma: 60 } } })
       .png({ compressionLevel: 0 })
       .toBuffer();
     expect(png.length).toBeGreaterThan(SHEET_IMAGE_MAX_BYTES);
