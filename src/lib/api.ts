@@ -3991,6 +3991,28 @@ export async function bulkWikiSheetRowsApi(
   return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("PATCH", input));
 }
 
+/** Team only: reorder rows. `order` may be partial; unmentioned rows keep their order after it. */
+export async function reorderWikiSheetRowsApi(slug: string, sheetId: string, order: string[]): Promise<WikiSheetT> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/rows`, jsonInit("PUT", { order }));
+}
+
+/** Team only: one row's height in px (null = auto). A client's resizes stay in their browser. */
+export async function setWikiSheetRowHeightApi(
+  slug: string,
+  sheetId: string,
+  rowId: string,
+  height: number | null,
+): Promise<{ saved: boolean; height?: number | null }> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/rows/${rowId}`, jsonInit("PATCH", { height }));
+}
+
+/** Who can be picked into a person column, for this side (§73.1). Never carries an email. */
+export async function getWikiSheetPeopleApi(
+  target: SheetsTarget,
+): Promise<{ people: { id: string; name: string; kind: "TEAM" | "CLIENT" }[] }> {
+  return apiFetch(`${sheetsBase(target)}/people`);
+}
+
 /* ----------------------------------------------------------- wiki: comparisons */
 
 export type {

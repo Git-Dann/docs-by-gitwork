@@ -27,7 +27,7 @@ import {
   type SheetColumnInputT,
   type SheetsTarget,
 } from "@/lib/api";
-import { useSheetsRefresh } from "@/hooks/use-wiki-sheets";
+import { useSheetPeople, useSheetsRefresh } from "@/hooks/use-wiki-sheets";
 import { useFeatureBlocks } from "@/hooks/use-tasks";
 import { COLUMN_TYPES, COLUMN_TYPE_LABEL, SHEET_LIMITS } from "@/lib/wiki-sheets";
 import type { SheetColumnType, WikiSheet, WikiSheetsSection } from "@/types/wiki-sheets";
@@ -80,7 +80,6 @@ export function WikiSheetsSectionView({
   clientId,
   section,
   mode,
-  people,
 }: {
   slug: string;
   /** The share token — required for the client's (public) mode. */
@@ -88,11 +87,12 @@ export function WikiSheetsSectionView({
   clientId?: string;
   section: WikiSheetsSection;
   mode: "internal" | "public";
-  people: string[];
 }) {
   const target: SheetsTarget = mode === "internal" ? { mode, slug } : { mode, token: token ?? "" };
   const refresh = useSheetsRefresh(target);
   const sheets = section.sheets;
+  // The person picker's list is only fetched when some sheet has a person column.
+  const people = useSheetPeople(target, sheets.some((s) => s.columns.some((c) => c.type === "person")));
   const [activeId, setActiveId] = useState<string | null>(sheets[0]?.id ?? null);
   const active = sheets.find((s) => s.id === activeId) ?? sheets[0] ?? null;
   const [creating, setCreating] = useState(false);

@@ -18,7 +18,8 @@ export type SheetColumnType =
   | "select"
   | "checkbox"
   | "link"
-  | "person";
+  | "person"
+  | "media";
 
 export interface SheetColumn {
   /** Stable within one sheet so cells can key on it. Not a database id. */
@@ -33,12 +34,55 @@ export interface SheetColumn {
   clientEditable: boolean;
 }
 
-/** A stored value. Strings for text-like types and dates (`YYYY-MM-DD`). */
-export type SheetCellValue = string | number | boolean;
+/**
+ * A person picked from the client's directory (§73.1). The id is opaque and the same
+ * vocabulary the @mention picker uses: `team:<userId>` · `client:<wikiUserId>` ·
+ * `contact:primary`. Never carries an email. A person cell may also hold plain text —
+ * values typed before the picker existed, and pasted names that matched nobody.
+ */
+export interface SheetPerson {
+  id: string;
+  name: string;
+  kind: "TEAM" | "CLIENT";
+}
+
+/** One link in a `media` cell: an image, a video or a file elsewhere. Never fetched by us. */
+export interface SheetMediaItem {
+  url: string;
+  title?: string;
+}
+
+/**
+ * A stored value. Strings for text-like types and dates (`YYYY-MM-DD`); a person cell
+ * holds a `SheetPerson` (or legacy plain text); a media cell holds a list of links.
+ */
+export type SheetCellValue = string | number | boolean | SheetPerson | SheetMediaItem[];
 
 export type SheetCells = Record<string, SheetCellValue>;
 
 export type SheetActorKind = "TEAM" | "CLIENT";
+
+/** Someone on a linked task, as the Board column shows them. Never an email or a user id. */
+export interface SheetTaskPerson {
+  /** Team copy: full name. Client copy: first name + last initial ("Priya S."). */
+  name: string;
+  initials: string;
+}
+
+/**
+ * The live task behind a row (§73.1) — read from the board on every load, never stored on
+ * the row (§47.2). Null when the row isn't on the board, or its task has gone.
+ */
+export interface SheetRowTask {
+  /** Team copy only; null in the client's copy. */
+  title: string | null;
+  assignees: SheetTaskPerson[];
+  /** `YYYY-MM-DD`, or null. */
+  dueDate: string | null;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
 
 export interface WikiSheetRow {
   id: string;
@@ -53,6 +97,8 @@ export interface WikiSheetRow {
   stage: RequestStage | null;
   /** Team copy only: who the linked task is assigned to. Always [] in the client's copy. */
   assignees: string[];
+  /** The linked task, live (§73.1). Cut down for the client by `forPublicSheets`. */
+  task: SheetRowTask | null;
   createdByKind: SheetActorKind;
   createdByName: string | null;
   /** Team copy only; always null in the client's copy (ownership is resolved server-side). */
@@ -65,6 +111,8 @@ export interface WikiSheetRow {
   mine: boolean;
   updatedByKind: SheetActorKind | null;
   updatedByName: string | null;
+  /** Row height in px set by the team (§73.1). Null = auto (single line). */
+  height: number | null;
   deletedAt: string | null;
   updatedAt: string;
 }

@@ -17,12 +17,19 @@
  */
 
 import { deriveRequestStage, type RequestStage, type WikiTaskStatus } from "@/lib/wiki-request-stage";
+import { safeSheetLink } from "@/lib/wiki-sheet-links";
+import { LAYOUT_LIMITS, clampColumnWidth } from "@/lib/wiki-sheet-layout";
+import { MEDIA_LIMITS, coerceMedia, isMediaList, mediaTitle } from "@/lib/wiki-sheet-media";
 import type {
   SheetCells,
   SheetCellValue,
   SheetColumn,
   SheetColumnType,
+  SheetMediaItem,
+  SheetPerson,
 } from "@/types/wiki-sheets";
+
+export { safeSheetLink };
 
 export const SHEET_LIMITS = {
   maxColumns: 40,
@@ -39,8 +46,11 @@ export const SHEET_LIMITS = {
   maxPerson: 120,
   /** One paste / one MCP call. */
   maxBatch: 500,
-  minWidth: 60,
-  maxWidth: 640,
+  minWidth: LAYOUT_LIMITS.minWidth,
+  maxWidth: LAYOUT_LIMITS.maxWidth,
+  minRowHeight: LAYOUT_LIMITS.minRowHeight,
+  maxRowHeight: LAYOUT_LIMITS.maxRowHeight,
+  maxMedia: MEDIA_LIMITS.maxItems,
 } as const;
 
 export const COLUMN_TYPES: readonly SheetColumnType[] = [
@@ -52,6 +62,7 @@ export const COLUMN_TYPES: readonly SheetColumnType[] = [
   "checkbox",
   "link",
   "person",
+  "media",
 ];
 
 export const COLUMN_TYPE_LABEL: Record<SheetColumnType, string> = {
@@ -63,6 +74,7 @@ export const COLUMN_TYPE_LABEL: Record<SheetColumnType, string> = {
   checkbox: "Checkbox",
   link: "Link",
   person: "Person",
+  media: "Images & video",
 };
 
 /** How a value is written, per type — shown in MCP descriptions and the add-column menu. */
@@ -74,7 +86,9 @@ export const COLUMN_TYPE_FORMAT: Record<SheetColumnType, string> = {
   select: "one of the column's options (matched without case)",
   checkbox: 'true/false (also "yes"/"no", "1"/"0", "x", "✓")',
   link: "an http(s) URL; a bare domain gets https:// added",
-  person: `a name, up to ${SHEET_LIMITS.maxPerson} characters`,
+  person:
+    "a person on this client's list — their name or email, matched exactly (unknown or ambiguous is refused)",
+  media: `image/video links: a URL, several separated by spaces, an array of URLs, or {url, title} objects (up to ${MEDIA_LIMITS.maxItems})`,
 };
 
 /** Default grid widths, by type. */
@@ -86,11 +100,70 @@ export const DEFAULT_WIDTH: Record<SheetColumnType, number> = {
   select: 150,
   checkbox: 90,
   link: 200,
-  person: 150,
+  person: 170,
+  media: 220,
 };
 
 export function columnWidth(column: SheetColumn): number {
   return column.width ?? DEFAULT_WIDTH[column.type];
+}
+
+/**
+ * The bounds an AUTOMATIC width stays inside, per type (§73.1). A short ref column of
+ * "01, 02, 03" comes out at the floor rather than a flat 200px; a column of paragraphs
+ * stops at its cap and the rest wraps or truncates. A width the team set by hand is
+ * not bound by these — only by the 60–600px limits.
+ */
+export const AUTO_WIDTH_BOUNDS: Record<SheetColumnType, { min: number; max: number }> = {
+  text: { min: 64, max: 320 },
+  long_text: { min: 140, max: 360 },
+  number: { min: 64, max: 140 },
+  date: { min: 96, max: 130 },
+  select: { min: 80, max: 220 },
+  checkbox: { min: 64, max: 120 },
+  link: { min: 120, max: 280 },
+  person: { min: 120, max: 220 },
+  media: { min: 150, max: 300 },
+};
+
+/** px per character: body text at 13px, the mono caps header at 10px with letter-spacing. */
+const BODY_CHAR = 7.2;
+const HEAD_CHAR = 7.6;
+/** Cell padding (px-2) and a little air. */
+const CELL_PAD = 22;
+
+/** What a value takes up on screen, in characters (plus fixed extras per type, in px). */
+function valueExtent(column: SheetColumn, value: SheetCellValue | undefined): number {
+  if (value === undefined || value === null) return 0;
+  if (column.type === "checkbox") return 18;
+  if (column.type === "media") {
+    const items = Array.isArray(value) ? value : [];
+    // One chip: icon + a title clipped at 160px. Two fit before "+N".
+    return Math.min(2, items.length) * 150 + (items.length > 2 ? 24 : 0);
+  }
+  const text = cellText(column, value);
+  // Long text measures its first line only — it wraps or truncates past the cap anyway.
+  const line = column.type === "long_text" ? (text.split("\n")[0] ?? "") : text;
+  const extra = column.type === "select" ? 16 : column.type === "person" ? 26 : 0;
+  return Math.min(line.length, 80) * BODY_CHAR + extra;
+}
+
+/**
+ * An automatic column width, estimated from the header and a sample of values by character
+ * count — deterministic, no DOM, so it is the same on the server, in a test and on every
+ * screen. The widest of (header, values) plus padding, inside the type's bounds. The grid
+ * uses it for every column without a saved width, and double-click auto-fit uses it too.
+ */
+export function estimateColumnWidth(
+  column: SheetColumn,
+  values: readonly (SheetCellValue | undefined)[],
+  opts: { headerExtra?: number; sample?: number } = {},
+): number {
+  const bounds = AUTO_WIDTH_BOUNDS[column.type];
+  const header = column.title.length * HEAD_CHAR + (opts.headerExtra ?? 0);
+  let widest = header;
+  for (const v of values.slice(0, opts.sample ?? 200)) widest = Math.max(widest, valueExtent(column, v));
+  return Math.round(Math.min(bounds.max, Math.max(bounds.min, widest + CELL_PAD)));
 }
 
 /* ─────────────────────────────────────────────────────────────── ids ── */
@@ -137,20 +210,60 @@ export function parseSheetDate(raw: string): string | null {
   return null;
 }
 
-/** A link we will render as an `<a href>`: protocol allow-list, never a blocklist (§43.4). */
-export function safeSheetLink(raw: string): string | null {
-  const s = raw.trim();
-  if (!s) return null;
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(s) ? s : /^[\w-]+(\.[\w-]+)+([/?#].*)?$/.test(s) ? `https://${s}` : null;
-  if (!withScheme) return null;
-  try {
-    const url = new URL(withScheme);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    if (!url.hostname) return null;
-    return clip(url.toString(), SHEET_LIMITS.maxLink);
-  } catch {
-    return null;
-  }
+/* ─────────────────────────────────────────────────────────── people ── */
+
+/** `team:<id>` · `client:<id>` · `contact:primary` — the @mention picker's vocabulary. */
+const PERSON_ID = /^(team|client|contact):[A-Za-z0-9_-]{1,80}$/;
+
+export function isSheetPerson(value: unknown): value is SheetPerson {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    PERSON_ID.test(v.id) &&
+    typeof v.name === "string" &&
+    v.name.trim() !== "" &&
+    (v.kind === "TEAM" || v.kind === "CLIENT")
+  );
+}
+
+/** Two initials for a chip: "Priya Shah" → "PS", "harry@x.com" → "H". */
+export function personInitials(name: string): string {
+  const words = name.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  const letters = words.length > 1 ? [words[0][0], words[words.length - 1][0]] : [words[0]?.[0] ?? "?"];
+  return letters.join("").toUpperCase();
+}
+
+/** A directory entry; the server's carries an email, the browser's never does. */
+export interface PersonEntry extends SheetPerson {
+  email?: string | null;
+}
+
+export type PersonMatch =
+  | { ok: true; person: SheetPerson }
+  | { ok: false; reason: "none" | "ambiguous"; matches: SheetPerson[] };
+
+/**
+ * Find ONE person by email or by name, exactly and without case. Never a fuzzy guess:
+ * putting the wrong name in a cell is worse than saying "who did you mean?".
+ */
+export function resolvePersonRef(people: readonly PersonEntry[], text: string): PersonMatch {
+  const key = text.replace(/\s+/g, " ").trim().toLowerCase();
+  const strip = ({ id, name, kind }: PersonEntry): SheetPerson => ({ id, name, kind });
+  if (!key) return { ok: false, reason: "none", matches: [] };
+  const byEmail = people.filter((p) => p.email && p.email.trim().toLowerCase() === key);
+  const hits = byEmail.length ? byEmail : people.filter((p) => p.name.replace(/\s+/g, " ").trim().toLowerCase() === key);
+  if (hits.length === 1) return { ok: true, person: strip(hits[0]) };
+  return { ok: false, reason: hits.length ? "ambiguous" : "none", matches: hits.map(strip) };
+}
+
+/** Value equality for cells (objects and lists included) — the grid's "did it change?". */
+export function sameCellValue(a: SheetCellValue | null | undefined, b: SheetCellValue | null | undefined): boolean {
+  const x = a ?? null;
+  const y = b ?? null;
+  if (x === y) return true;
+  if (typeof x !== "object" || typeof y !== "object" || x === null || y === null) return false;
+  return JSON.stringify(x) === JSON.stringify(y);
 }
 
 /**
@@ -165,6 +278,14 @@ export function coerceCellValue(column: Pick<SheetColumn, "type" | "options" | "
     return { ok: true, value: null };
   }
   const label = column.title ? `"${column.title}"` : "This column";
+  if (column.type === "media") return coerceMedia(raw, label);
+  if (column.type === "person" && raw && typeof raw === "object") {
+    if (!isSheetPerson(raw)) return { ok: false, error: `${label} takes a person from the list.` };
+    return {
+      ok: true,
+      value: { id: raw.id, name: clip(raw.name.replace(/\s+/g, " ").trim(), SHEET_LIMITS.maxPerson), kind: raw.kind },
+    };
+  }
   switch (column.type) {
     case "text":
     case "long_text":
@@ -234,6 +355,9 @@ export function coerceCellValue(column: Pick<SheetColumn, "type" | "options" | "
 /** A cell's value as plain text — the grid's display, search, export and task description. */
 export function cellText(column: Pick<SheetColumn, "type">, value: SheetCellValue | undefined): string {
   if (value === undefined || value === null) return "";
+  if (isMediaList(value)) return value.map((m) => m.url).join(" ");
+  if (isSheetPerson(value)) return value.name;
+  if (typeof value === "object") return "";
   if (column.type === "checkbox") return value === true ? "TRUE" : "FALSE";
   if (column.type === "date" && typeof value === "string") {
     const [y, m, d] = value.split("-");
@@ -288,9 +412,7 @@ export function parseSheetColumns(raw: unknown): SheetColumn[] {
       clientEditable: r.clientEditable !== false,
     };
     if (type === "select") col.options = cleanOptions(r.options);
-    if (typeof r.width === "number" && Number.isFinite(r.width)) {
-      col.width = Math.round(Math.min(SHEET_LIMITS.maxWidth, Math.max(SHEET_LIMITS.minWidth, r.width)));
-    }
+    if (typeof r.width === "number" && Number.isFinite(r.width)) col.width = clampColumnWidth(r.width);
     out.push(col);
     if (out.length >= SHEET_LIMITS.maxColumns) break;
   }
@@ -446,6 +568,8 @@ export interface ImportPlan {
   /** Cells that could not be stored, in words, for the preview. */
   problems: string[];
   skippedColumns: string[];
+  /** Pasted names in person columns that matched nobody (or several people) — kept as text. */
+  unmatchedPeople: number;
 }
 
 /**
@@ -457,8 +581,15 @@ export interface ImportPlan {
 export function planImport(
   grid: string[][],
   columns: readonly SheetColumn[],
-  opts: { firstRowHeaders: boolean; allowNewColumns: boolean; isEditable?: (c: SheetColumn) => boolean },
+  opts: {
+    firstRowHeaders: boolean;
+    allowNewColumns: boolean;
+    isEditable?: (c: SheetColumn) => boolean;
+    /** The person directory. A pasted name matching exactly one person becomes that person. */
+    people?: readonly PersonEntry[];
+  },
 ): ImportPlan {
+  let unmatchedPeople = 0;
   const problems: string[] = [];
   const skippedColumns: string[] = [];
   const newColumns: SheetColumn[] = [];
@@ -507,7 +638,18 @@ export function planImport(
     mapping.forEach((colId, c) => {
       if (!colId) return;
       const col = all.find((x) => x.id === colId)!;
-      const res = coerceCellValue(col, line[c] ?? "");
+      const text = line[c] ?? "";
+      if (col.type === "person" && text.trim()) {
+        // A name that matches exactly one person becomes that person; anything else is kept
+        // as plain text (and counted, so the preview can say so) rather than guessed.
+        const hit = opts.people ? resolvePersonRef(opts.people, text) : null;
+        if (hit?.ok) {
+          cells[colId] = hit.person;
+          return;
+        }
+        unmatchedPeople += 1;
+      }
+      const res = coerceCellValue(col, text);
       if (res.ok) {
         if (res.value !== null) cells[colId] = res.value;
       } else if (problems.length < 20) {
@@ -519,7 +661,7 @@ export function planImport(
   if (body.length > SHEET_LIMITS.maxBatch) {
     problems.push(`Only the first ${SHEET_LIMITS.maxBatch} rows of a paste are imported.`);
   }
-  return { newColumns, mapping, rows, problems, skippedColumns };
+  return { newColumns, mapping, rows, problems, skippedColumns, unmatchedPeople };
 }
 
 /** Spreadsheet formula injection: a cell starting = + - @ would run when the CSV is opened. */
@@ -590,7 +732,13 @@ export function rowTaskDescription(
   const lines: string[] = [];
   for (const col of sheet.columns) {
     if (col.id === title?.id) continue;
-    const text = cellText(col, cells[col.id]);
+    const value = cells[col.id];
+    if (isMediaList(value) && value.length) {
+      // Media goes on the task as real links, each under its tidy title.
+      lines.push(`**${col.title}:**\n${value.map((m) => `- [${markdownText(mediaTitle(m))}](${m.url.replace(/\(/g, "%28").replace(/\)/g, "%29")})`).join("\n")}`);
+      continue;
+    }
+    const text = cellText(col, value);
     if (!text) continue;
     lines.push(col.type === "long_text" ? `**${col.title}:**\n${text}` : `**${col.title}:** ${text}`);
   }
@@ -628,7 +776,18 @@ export function shouldNotifyClientEdit(lastNotifiedAt: Date | null, now: Date): 
 
 /* ──────────────────────────────────────────────────────────── search ── */
 
-/** All of a row's cell text, for the fuzzy search. */
+/** A title inside `[…]` must not close the link early. */
+function markdownText(text: string): string {
+  return text.replace(/[[\]]/g, "");
+}
+
+/** All of a row's cell text, for the fuzzy search. Media is searched by its titles. */
 export function rowSearchText(columns: readonly SheetColumn[], cells: SheetCells): string {
-  return columns.map((c) => cellText(c, cells[c.id])).filter(Boolean).join(" ");
+  return columns
+    .map((c) => {
+      const v = cells[c.id];
+      return isMediaList(v) ? v.map((m: SheetMediaItem) => mediaTitle(m)).join(" ") : cellText(c, v);
+    })
+    .filter(Boolean)
+    .join(" ");
 }

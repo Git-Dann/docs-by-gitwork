@@ -1577,9 +1577,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           slug={slug}
           clientId={wiki!.clientId}
           section={wiki!.sheets}
-          mode="internal"
-          people={[...wiki!.team, ...wiki!.productTeam].map((m) => m.name).filter(Boolean)}
-        />
+          mode="internal"        />
       );
     }
     if (activeSection === "comparisons") {

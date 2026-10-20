@@ -182,7 +182,9 @@ export const AUDIT = () => {
       let titled = false
       let t = el
       for (let up = 0; up < 3 && t; up++, t = t.parentElement) {
-        if (t.title || t.getAttribute('aria-label')) { titled = true; break }
+        // `data-full-text` = the Sheets grid's own hover tooltip (§73.1), which shows
+        // this exact text faster than a native title can. Empty doesn't count.
+        if (t.title || t.getAttribute('aria-label') || (t.getAttribute('data-full-text') || '').trim()) { titled = true; break }
       }
       const recoverable = titled || el.matches('input, textarea, select')
       if (!recoverable) {
@@ -319,10 +321,11 @@ if (!isCli) {
 /**
  * Self-test fixture. A detector that never fires is worse than no detector, so
  * `--self-test` renders deliberately broken markup and asserts every kind fires
- * AND that the seven lookalikes stay quiet: a scrollable parent, a scrollable code
+ * AND that the eight lookalikes stay quiet: a scrollable parent, a scrollable code
  * block, a screen-reader-only node, content inside a CLOSED <details>, a sticky
  * element merely below the fold, text whose full value is on a titled WRAPPER, and
- * an inline child of an ellipsed box. All four of the last were real false-positive
+ * an inline child of an ellipsed box, and a value carrying its full text for a custom
+ * tooltip in `data-full-text` (the Sheets grid, §73.1). The four before it were real false-positive
  * sources found by a full wiki sweep. Run it after touching the rules above.
  */
 const SELF_TEST_HTML = `<!doctype html>
@@ -345,6 +348,8 @@ const SELF_TEST_HTML = `<!doctype html>
 <div class="ellipsed">this label is far too long to fit inside its box</div>
 <div title="the whole label, available on hover"><div class="ellipsed">fine: titled wrapper makes this readable</div></div>
 <div class="ellipsed" title="#14B8A6 rgb(20, 184, 166)">#14B8A6 <span>fine: inline child of an ellipsed box</span></div>
+<div class="ellipsed" data-full-text="the whole value, shown by a custom hover tooltip">fine: data-full-text makes this readable on hover</div>
+<div class="ellipsed" data-full-text="">an empty data-full-text recovers nothing and must still be reported</div>
 <div class="fixedoff">fixed below the fold</div>
 <div class="sr">announcement, must be ignored</div>
 <div class="clipbox"><details><summary>Read as a list</summary><div class="toowide">fine: inside a closed disclosure</div></details></div>

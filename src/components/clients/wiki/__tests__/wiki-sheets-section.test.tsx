@@ -15,7 +15,14 @@ import React, { act } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { WikiSheet, WikiSheetRow } from "@/types/wiki-sheets";
 
-const calls = vi.hoisted(() => ({ cells: [] as unknown[][], bulk: [] as unknown[][] }));
+const calls = vi.hoisted(() => ({
+  cells: [] as unknown[][],
+  bulk: [] as unknown[][],
+  reorder: [] as unknown[][],
+  heights: [] as unknown[][],
+  widths: [] as unknown[][],
+  reorderFails: false,
+}));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
 vi.mock("@/hooks/use-tasks", () => ({ useFeatureBlocks: () => ({ data: [] }) }));
@@ -33,8 +40,26 @@ vi.mock("@/lib/api", () => ({
   deleteWikiSheetApi: vi.fn(),
   removeWikiSheetColumnApi: vi.fn(),
   updateWikiSheetApi: vi.fn(),
-  updateWikiSheetColumnApi: vi.fn(),
+  updateWikiSheetColumnApi: vi.fn(async (...args: unknown[]) => {
+    calls.widths.push(args);
+    return {};
+  }),
   setWikiSheetsEnabledApi: vi.fn(),
+  reorderWikiSheetRowsApi: vi.fn(async (...args: unknown[]) => {
+    calls.reorder.push(args);
+    if (calls.reorderFails) throw new Error("server said no");
+    return {};
+  }),
+  setWikiSheetRowHeightApi: vi.fn(async (...args: unknown[]) => {
+    calls.heights.push(args);
+    return { saved: true };
+  }),
+  getWikiSheetPeopleApi: vi.fn(async () => ({
+    people: [
+      { id: "client:u-priya", name: "Priya Shah", kind: "CLIENT" },
+      { id: "team:u-sam", name: "Sam Okafor", kind: "TEAM" },
+    ],
+  })),
 }));
 
 import { WikiSheetsSectionView } from "../wiki-sheets-section";
@@ -57,6 +82,8 @@ function r(id: string, cells: WikiSheetRow["cells"], over: Partial<WikiSheetRow>
     taskId: null,
     stage: null,
     assignees: [],
+    task: null,
+    height: null,
     createdByKind: "TEAM",
     createdByName: null,
     createdByWikiUserId: null,
@@ -112,7 +139,6 @@ function mount(mode: "internal" | "public", s: WikiSheet = sheet()) {
           clientId: "c1",
           section: { enabled: true, sheets: [s] },
           mode,
-          people: ["Priya Shah"],
         }),
       ),
     );
@@ -125,6 +151,15 @@ afterEach(() => {
   document.body.innerHTML = "";
   calls.cells = [];
   calls.bulk = [];
+  calls.reorder = [];
+  calls.heights = [];
+  calls.widths = [];
+  calls.reorderFails = false;
+  try {
+    window.localStorage.clear();
+  } catch {
+    /* jsdom without storage */
+  }
 });
 
 const cell = (row: number, col: number) =>

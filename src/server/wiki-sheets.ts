@@ -37,6 +37,7 @@ import {
   uniqueColumnTitle,
   newSheetColumnId,
   cleanOptions,
+  isSheetPerson,
 } from "@/lib/wiki-sheets";
 import type {
   SheetActorKind,
@@ -44,11 +45,15 @@ import type {
   SheetCellValue,
   SheetColumn,
   SheetColumnType,
+  SheetRowTask,
   WikiSheet,
   WikiSheetRow,
   WikiSheetsSection,
 } from "@/types/wiki-sheets";
 import { dispatchNotification } from "@/server/notifications";
+import { sheetPeopleDirectory } from "@/server/wiki-intake-mentions";
+import { clampColumnWidth, clampRowHeight, mergeRowOrder } from "@/lib/wiki-sheet-layout";
+import { deriveRowTask, publicRowTask, taskAssignees } from "@/lib/wiki-sheet-board";
 
 /* ───────────────────────────────────────────────────────── errors ── */
 
@@ -85,6 +90,7 @@ const ROW_SELECT = {
   createdByWikiUserId: true,
   updatedByKind: true,
   updatedByName: true,
+  height: true,
   deletedAt: true,
   updatedAt: true,
 } as const satisfies Prisma.WikiSheetRowSelect;
@@ -110,24 +116,40 @@ type RowRecord = Prisma.WikiSheetRowGetPayload<{ select: typeof ROW_SELECT }>;
 interface TaskInfo {
   status: TaskStatus;
   assignees: string[];
+  task: SheetRowTask;
 }
 
-/** One query for every linked task's status and assignee names. */
+const TASK_PERSON = { name: true, email: true } as const satisfies Prisma.UserSelect;
+
+/**
+ * ONE query for every linked task on the page — status, title, dates and assignees (the
+ * join plus the legacy single assignee, which `taskAssignees` falls back to as tasks.ts
+ * does). No N+1, and nothing else from the task is selected, so nothing else can leak.
+ */
+const TASK_SELECT = {
+  id: true,
+  title: true,
+  status: true,
+  dueDate: true,
+  updatedAt: true,
+  startedAt: true,
+  completedAt: true,
+  assignees: { select: TASK_PERSON },
+  assignee: { select: TASK_PERSON },
+} as const satisfies Prisma.TaskSelect;
+
 async function loadTaskInfo(taskIds: readonly (string | null)[]): Promise<Map<string, TaskInfo>> {
   const ids = [...new Set(taskIds.filter((id): id is string => Boolean(id)))];
   if (ids.length === 0) return new Map();
-  const tasks = await prisma.task.findMany({
-    where: { id: { in: ids } },
-    select: {
-      id: true,
-      status: true,
-      assignees: { select: { name: true, email: true } },
-    },
-  });
+  const tasks = await prisma.task.findMany({ where: { id: { in: ids } }, select: TASK_SELECT });
   return new Map(
     tasks.map((t) => [
       t.id,
-      { status: t.status, assignees: t.assignees.map((a) => a.name?.trim() || a.email) },
+      {
+        status: t.status,
+        assignees: taskAssignees({ assignees: t.assignees ?? [], assignee: t.assignee ?? null }),
+        task: deriveRowTask({ ...t, assignees: t.assignees ?? [], assignee: t.assignee ?? null }),
+      },
     ]),
   );
 }
@@ -145,12 +167,14 @@ function serializeRow(row: RowRecord, columns: SheetColumn[], tasks: Map<string,
     taskId: row.taskId,
     stage: deriveSheetRowStage(row.taskId, task?.status ?? null),
     assignees: task?.assignees ?? [],
+    task: task?.task ?? null,
     createdByKind: kind(row.createdByKind) ?? "TEAM",
     createdByName: row.createdByName,
     createdByWikiUserId: row.createdByWikiUserId,
     mine: false,
     updatedByKind: kind(row.updatedByKind),
     updatedByName: row.updatedByName,
+    height: clampRowHeight(row.height),
     deletedAt: row.deletedAt?.toISOString() ?? null,
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -215,7 +239,14 @@ export function forPublicSheets(section: WikiSheetsSection): WikiSheetsSection {
       ...s,
       rows: s.rows
         .filter((r) => !r.deletedAt)
-        .map((r) => ({ ...r, assignees: [], createdByWikiUserId: null, mine: false })),
+        .map((r) => ({
+          ...r,
+          assignees: [],
+          // Stage, first name + last initial, due date, when it moved — nothing else (§73.1).
+          task: publicRowTask(r.task),
+          createdByWikiUserId: null,
+          mine: false,
+        })),
     })),
   };
 }
@@ -372,6 +403,32 @@ export function cellsFromInput(
   return { set, clear };
 }
 
+/**
+ * A person picked into a cell must be on THIS side's list for THIS client (§73.1): the team
+ * picks from the team members who can see the client plus the client's people; a client
+ * picks from the restricted list their own page sees. The id is checked against that list
+ * and the stored name/kind are taken from it, never from the request — so a client can't
+ * inject an arbitrary id, or a real id under a made-up name. Plain-text person values (from
+ * before the picker, or an unmatched paste) are left as text. Mutates `cellsList` in place.
+ */
+export async function verifyPeople(
+  key: { clientId: string } | { wikiId: string },
+  side: "team" | "client",
+  cellsList: SheetCells[],
+): Promise<void> {
+  const picked = cellsList.flatMap((cells) =>
+    Object.entries(cells).filter(([, v]) => isSheetPerson(v)).map(([k]) => ({ cells, k })),
+  );
+  if (picked.length === 0) return;
+  const byId = new Map((await sheetPeopleDirectory(key, side)).map((p) => [p.id, p]));
+  for (const { cells, k } of picked) {
+    const v = cells[k] as { id: string; name: string };
+    const hit = byId.get(v.id);
+    if (!hit) throw new SheetError(`"${v.name}" isn't someone who can be picked on this sheet.`);
+    cells[k] = { id: hit.id, name: hit.name, kind: hit.kind };
+  }
+}
+
 export async function createWikiSheet(
   clientId: string,
   input: SheetInput & { rows?: Record<string, unknown>[] },
@@ -391,6 +448,7 @@ export async function createWikiSheet(
   }
   // Validate every row before writing anything — all or nothing.
   const rows = (input.rows ?? []).map((r) => cellsFromInput(columns, r, { byTitle: true }).set);
+  await verifyPeople({ clientId }, "team", rows);
   const last = await prisma.wikiSheet.findFirst({
     where: { wikiId: wiki.id },
     orderBy: { orderKey: "desc" },
@@ -518,7 +576,7 @@ export async function updateSheetColumn(
   }
   if (patch.width !== undefined) {
     if (patch.width === null) delete after.width;
-    else after.width = patch.width;
+    else after.width = clampColumnWidth(patch.width);
   }
   if (patch.clientEditable !== undefined) after.clientEditable = patch.clientEditable;
 
@@ -617,6 +675,7 @@ export async function addSheetRows(
   const sheet = await getSheetRecord({ clientId }, sheetId);
   const columns = parseSheetColumns(sheet.columns);
   const cells = rows.map((r) => cellsFromInput(columns, r, { byTitle: opts.byTitle }).set);
+  await verifyPeople({ clientId }, "team", cells);
   const rowIds = await insertRows(sheet, cells, actor);
   return { sheet: await getWikiSheet({ clientId }, sheet.id), rowIds };
 }
@@ -656,7 +715,26 @@ export async function updateSheetRowCells(
   const sheet = await getSheetRecord({ clientId }, sheetId);
   await getRow(sheet.id, rowId);
   const { set, clear } = cellsFromInput(parseSheetColumns(sheet.columns), patch, opts);
+  await verifyPeople({ clientId }, "team", [set]);
   await mergeCells(rowId, set, clear, actor);
+}
+
+/**
+ * Team: set one row's height (null = back to auto). Layout, not content — it doesn't
+ * count as an edit, so it leaves who-last-edited alone. There is no client equivalent:
+ * a client's resizes live in their own browser (§73.1).
+ */
+export async function setSheetRowHeight(
+  clientId: string,
+  sheetId: string,
+  rowId: string,
+  height: number | null,
+): Promise<number | null> {
+  const sheet = await getSheetRecord({ clientId }, sheetId);
+  await getRow(sheet.id, rowId);
+  const value = clampRowHeight(height);
+  await prisma.wikiSheetRow.updateMany({ where: { id: rowId, sheetId: sheet.id }, data: { height: value } });
+  return value;
 }
 
 /** Team: soft-delete or restore rows. */
@@ -682,18 +760,30 @@ export async function setSheetRowsDeleted(
   return res.count;
 }
 
-export async function reorderSheetRows(clientId: string, sheetId: string, order: string[]): Promise<void> {
+/**
+ * Team only: reorder rows. `order` may be partial (the live rows, or just those shown); the
+ * rows it doesn't mention keep their relative order after it, so nothing is stranded with
+ * a colliding key. Ids from another sheet are ignored. Only rows whose position actually
+ * changed are written. There is deliberately no client route for this (§73.1).
+ */
+export async function reorderSheetRows(clientId: string, sheetId: string, order: string[]): Promise<string[]> {
   const sheet = await getSheetRecord({ clientId }, sheetId);
-  const owned = await prisma.wikiSheetRow.findMany({
-    where: { sheetId: sheet.id, id: { in: order } },
-    select: { id: true },
+  const current = await prisma.wikiSheetRow.findMany({
+    where: { sheetId: sheet.id },
+    orderBy: ROW_ORDER,
+    select: { id: true, orderKey: true },
   });
-  const ids = new Set(owned.map((r) => r.id));
-  await prisma.$transaction(
-    order
-      .filter((id) => ids.has(id))
-      .map((id, i) => prisma.wikiSheetRow.update({ where: { id }, data: { orderKey: i + 1 } })),
+  const next = mergeRowOrder(
+    current.map((r) => r.id),
+    order,
   );
+  const keyOf = new Map(current.map((r) => [r.id, r.orderKey]));
+  const writes = next
+    .map((id, i) => ({ id, key: i + 1 }))
+    .filter(({ id, key }) => keyOf.get(id) !== key)
+    .map(({ id, key }) => prisma.wikiSheetRow.updateMany({ where: { id, sheetId: sheet.id }, data: { orderKey: key } }));
+  if (writes.length) await prisma.$transaction(writes);
+  return next;
 }
 
 /* ─────────────────────────────────────────────────── client writes ── */
@@ -720,6 +810,7 @@ export async function clientUpdateCells(
   const { set, clear } = cellsFromInput(parseSheetColumns(sheet.columns), patch, {
     editable: (c) => clientCanEditColumn(sheet, c),
   });
+  await verifyPeople({ wikiId: writer.wikiId }, "client", [set]);
   await mergeCells(rowId, set, clear, clientActor(writer));
   await notifyClientEdit(sheet, writer, "edited");
 }
@@ -736,6 +827,7 @@ export async function clientAddRows(
   const cells = rows.map(
     (r) => cellsFromInput(columns, r, { editable: (c) => c.clientEditable }).set,
   );
+  await verifyPeople({ wikiId: writer.wikiId }, "client", cells);
   const ids = await insertRows(sheet, cells, clientActor(writer));
   await notifyClientEdit(sheet, writer, "added rows to");
   return ids;

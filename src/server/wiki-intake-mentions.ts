@@ -8,6 +8,7 @@
  * message still reads correctly. No channel or no bot token → nothing is posted,
  * the reply is still saved. Never throws into the caller.
  */
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
@@ -35,22 +36,64 @@ interface DirectoryEntry extends MentionPerson {
  * actually involved — admins, developers assigned to this client, and anyone who
  * has already replied on its requests — never the whole staff list.
  */
-export type MentionAudience = "internal" | "public";
+export type MentionAudience = "internal" | "public" | "clientTeam";
 
-async function directory(wikiId: string, audience: MentionAudience): Promise<DirectoryEntry[]> {
-  const wiki = await prisma.clientWiki.findUnique({
-    where: { id: wikiId },
-    select: {
-      clientId: true,
-      client: { select: { workspaceId: true, primaryContactName: true, primaryContactEmail: true } },
-      wikiUsers: { select: { id: true, name: true, email: true } },
-    },
-  });
+/*
+ * "clientTeam" = the Sheets person picker on the team's side (§73.1): the active team
+ * members who can actually SEE this client — Super Admins, `seeAllClients` holders, people
+ * assigned to it, and developers placed on it in Code — plus the client's own people. A
+ * person picked into a sheet should be someone who can open it.
+ */
+
+const DIRECTORY_SELECT = {
+  id: true,
+  clientId: true,
+  client: { select: { workspaceId: true, primaryContactName: true, primaryContactEmail: true } },
+  wikiUsers: { select: { id: true, name: true, email: true } },
+} as const satisfies Prisma.ClientWikiSelect;
+
+async function directory(
+  key: string | { wikiId: string } | { clientId: string },
+  audience: MentionAudience,
+): Promise<DirectoryEntry[]> {
+  const where = typeof key === "string" ? { id: key } : "wikiId" in key ? { id: key.wikiId } : { clientId: key.clientId };
+  let wiki = await prisma.clientWiki.findUnique({ where, select: DIRECTORY_SELECT });
+  if (!wiki && typeof key === "object" && "clientId" in key) {
+    // No wiki yet (a sheet being created with its first rows): the team, no client users.
+    const client = await prisma.workspaceClient.findUnique({
+      where: { id: key.clientId },
+      select: { workspaceId: true, primaryContactName: true, primaryContactEmail: true },
+    });
+    if (client) wiki = { id: "", clientId: key.clientId, client, wikiUsers: [] };
+  }
   if (!wiki) return [];
+  const wikiId = wiki.id;
   const workspaceId = wiki.client.workspaceId;
 
-  let teamFilter = {};
-  if (audience === "public") {
+  let teamFilter: Prisma.WorkspaceMemberWhereInput = {};
+  if (audience === "clientTeam") {
+    const [assigned, placed] = await Promise.all([
+      prisma.clientAssignment.findMany({ where: { clientId: wiki.clientId }, select: { userId: true } }),
+      prisma.placement.findMany({
+        where: { endDate: null, clientId: wiki.clientId, candidate: { workspaceId } },
+        select: { candidate: { select: { email: true } } },
+      }),
+    ]);
+    const placedEmails = placed
+      .map((p) => p.candidate.email?.trim().toLowerCase())
+      .filter((e): e is string => Boolean(e));
+    const ids = assigned.map((a) => a.userId);
+    teamFilter = {
+      OR: [
+        { role: "SUPER_ADMIN" },
+        { permissions: { array_contains: ["seeAllClients"] } },
+        { userId: { in: ids.length ? ids : ["__none__"] } },
+        ...(placedEmails.length
+          ? [{ user: { OR: placedEmails.map((email) => ({ email: { equals: email, mode: "insensitive" as const } })) } }]
+          : []),
+      ],
+    };
+  } else if (audience === "public") {
     const [assigned, commenters] = await Promise.all([
       prisma.clientAssignment.findMany({ where: { clientId: wiki.clientId }, select: { userId: true } }),
       prisma.clientWikiIntakeComment.findMany({
@@ -93,6 +136,24 @@ async function directory(wikiId: string, audience: MentionAudience): Promise<Dir
   }
   out.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "CLIENT" ? -1 : 1));
   return out;
+}
+
+/**
+ * The Sheets person directory (§73.1) — the same people, the same opaque ids, as the
+ * @mention picker. "team" is the team's side of a client (`clientTeam`), "client" the
+ * restricted list the client's own page sees (`public`). Carries emails, so it is SERVER
+ * ONLY: the routes send `sheetPeopleForBrowser`, never this.
+ */
+export async function sheetPeopleDirectory(
+  key: { wikiId: string } | { clientId: string },
+  side: "team" | "client",
+): Promise<DirectoryEntry[]> {
+  return directory(key, side === "team" ? "clientTeam" : "public");
+}
+
+/** What a browser may hold: id, name, kind. Never an email. */
+export function sheetPeopleForBrowser(entries: readonly DirectoryEntry[]): MentionPerson[] {
+  return entries.map(({ id, name, kind }) => ({ id, name, kind }));
 }
 
 /** The mention picker's list. Never includes an email. */

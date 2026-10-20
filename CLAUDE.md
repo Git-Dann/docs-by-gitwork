@@ -7108,3 +7108,109 @@ client's share page in a browser. Post-deploy:
 1. Add New → Sheets, create one from a template and paste in a few rows from Google Sheets.
 2. Send a row to the board, move its task to Doing, and reload to confirm it reads In progress.
 3. On the share link as a client user, edit a cell and confirm a locked column refuses the edit.
+
+### 73.1 Reorder, resize, people, media, and the Board column as a tracker
+
+Harry's Google-Sheets list, plus a developer's "image/video links like Luke's doc". All of it
+goes through the same pure rules as §73: `src/lib/wiki-sheet-layout.ts` (order, sizes),
+`wiki-sheet-media.ts` (media), `wiki-sheet-board.ts` (the tracker), and `wiki-sheets.ts`.
+
+- **Drag to reorder rows (team only).** A handle in the first column (hover to see it), or
+  Alt+↑/↓ from a cell. dnd-kit, vertical only. Optimistic, saved through the existing
+  `PUT …/rows`, rolled back with a notice on failure. **Disabled while a search or a filter
+  is on**, with a tooltip saying why: the order of a filtered subset is ambiguous.
+  `reorderSheetRows` now takes a partial order and keeps unmentioned rows after it
+  (`mergeRowOrder`), and writes only rows that moved. There is no client route: the token
+  rows route has no `PUT`, and a test asserts it.
+- **Resize by dragging grid lines.** A column header's right edge and a row's bottom edge
+  are `role="separator"` handles with aria-labels. Pointer capture (mouse and touch),
+  rAF-throttled, a live guide line, saved once per pointer-up (debounced 350ms). Columns
+  60–600px, rows 28–300px. Double-click a column edge to fit; a row edge to go back to auto.
+  A row with a height wraps its text; an auto row stays one line.
+  - **The team's sizes are for everyone:** column `width` in the column JSON, and
+    `WikiSheetRow.height Int?` (additive).
+  - **A client's sizes stay in their browser** (`localStorage`, per sheet, try/catch). The
+    client's cell route is `.strict()`, so `height` or `width` in the body is a 400, not a
+    silent drop.
+  - The ≥240px rule for pinning (§73) uses the *live* width, so it still holds after a resize.
+- **Automatic column widths** (`estimateColumnWidth`, pure, from character counts). A column
+  with no saved width sizes to its header and its first 200 values, inside per-type bounds
+  (`AUTO_WIDTH_BOUNDS`). A "01, 02, 03" ref column comes out at 64px, not 400. Long text is
+  capped at 360px. A saved width always wins. Double-click auto-fit uses the same helper over
+  every row.
+- **Fast tooltip for cut-off values.** A native `title` waits ~1s and the browser owns that
+  delay. Text cells carry `data-full-text`, and a portalled `role="tooltip"` appears after
+  150ms (measured 153–158ms in the page), at once when moving between cells. It shows only
+  when the value is actually truncated, never on touch, and hides on scroll or a key.
+  `aria-describedby` is set on the cell.
+  - ⚠️ Its state is a tiny external store (`createTipStore`), **not** grid state. Keeping it
+    in `useState` re-rendered every row and added ~100ms (measured 240–270ms before the change).
+  - `audit-clipping`'s TRUNCATED rule now accepts a non-empty `data-full-text`, with a
+    self-test lookalike for it and one for an empty value.
+- **A real people picker.** Person cells store `{ id, name, kind }`, with ids like the
+  @mention picker's (`team:` / `client:` / `contact:primary`). Old free-text values still
+  render and can be replaced by picking.
+  - **One directory**, `sheetPeopleDirectory` in `wiki-intake-mentions.ts`:
+    - The team's side is the new `clientTeam` audience: active members (`ACTIVE_MEMBER`) who can
+      see this client, i.e. Super Admin, `seeAllClients`, assigned, or placed in Code by email.
+      It also includes the client's people.
+    - The client's side is the mention picker's restricted list.
+  - Served by `GET …/sheets/people` on both sides. The token route uses the hardened writer
+    resolve. Emails never reach the browser.
+  - **Every pick is re-checked on the server** (`verifyPeople`). An id not on that side's list
+    is a 400. The stored name/kind come from the directory, never the request.
+  - Headless UI Combobox with `anchor`; it is `static` in a cell, so it is open as soon as you edit.
+  - MCP and paste take a name or an email and need exactly one match. Over MCP, an ambiguous or
+    unknown name is an error. In a paste it is kept as text and counted in the preview.
+- **Media cells** (`media` type): up to 10 `{ url, title? }` per cell.
+  - Chips show a kind icon and a tidy title (never the raw URL), plus "+N".
+  - Click a chip for the viewer (`.app-dialog-fixed`, ←/→, Esc). Images use `<img>`. YouTube,
+    Vimeo and Loom play in a sandboxed iframe; `.mp4`/`.webm`/`.mov` use `<video>`. Drive,
+    Figma and unknown links get "Open in new tab". There is always an "Open original" link.
+  - ⚠️ **An embed URL is built, never passed through.** The host is matched exactly or as a
+    subdomain, so `youtube.com.evil.com` is not YouTube. The id is format-checked, and the
+    player URL is fixed origin + id. The viewer also refuses any embed outside `EMBED_ORIGINS`.
+  - URLs go through `safeSheetLink`, now in `wiki-sheet-links.ts` and shared with the `link`
+    type. Nothing is fetched, by the server or the browser, until someone opens the viewer.
+  - Paste a URL into a selected media cell to add it.
+  - CSV writes the URLs and paste splits them. Sent rows get `- [title](url)` lines.
+  - **CSP:** no change was needed. `next.config.ts` sets only `frame-ancestors`, and no
+    `frame-src`, `img-src` or `media-src`, so these embeds load as they are.
+- **The Board column is a live tracker.** It shows the stage chip, assignee avatars + first
+  name ("Unassigned" when nobody is on it), the due date (amber when overdue by
+  `getTaskAttention`'s rule) and when it last moved. All of it is derived at read (§47.2) from
+  **one** batched task query (`TASK_SELECT`, join + legacy `assignee` fallback). Hover or tap
+  opens a popover with the details; the team also gets "Open on board".
+  - **What the client sees, deliberately:** stage, first name + last initial, due date, when it
+    moved. Not the task title, emails, ids, priority, estimates, comments, subtasks or the board
+    link. `publicRowTask` builds the client's copy field by field, so a new field can't leak by
+    default. A test asserts none of those strings reach the public DTO.
+  - Filter by assignee (team and client), plus a summary strip of counts by stage.
+    A count is a click-to-filter.
+- **MCP:**
+  - New `reorder_sheet_rows`, which takes an `order` or a `move: { row, before|after }`.
+  - `update_sheet_column` takes `width`, and `update_sheet_rows` takes `height`.
+  - Person cells resolve by name or email; media takes a URL, an array, or `{url,title}`.
+  - `get_sheet` returns names, `{url,title,kind}`, and a `task: { stage, assignees, dueDate,
+    updatedAt }` per row. `list_sheets` returns `byStage` counts.
+
+**Verified:** `npm run verify` exits 0 (tsc + lint 0 errors, 6737 tests, `audit:ui` 0
+findings), and `npx next build` is clean. Twenty-two sabotages each failed the tests named for
+them. Driven headlessly at `/demo/wiki#sheets` at 390 · 768 · 1280×620 · 1440 with real
+pointer events across 22 states: 0 clipping findings, 0 page overflow, and 0 console errors
+apart from the sandbox proxy blocking the demo's external image.
+- Drag moved a row and the move survived the refetch.
+- A column went 245→325px with a live guide. A row went 64→104px and back to auto on double-click.
+- The Ref column auto-fit to 64px.
+- The picker stored a structured person.
+- The popover, the filters and the viewer all fit at every width.
+
+**Not verified:**
+- A real database.
+- A real YouTube, Vimeo or Loom player loading (the sandbox has no outbound network).
+- The client's share page with a real wiki login.
+
+Post-deploy:
+1. Drag a row, then reload.
+2. Pick a person on the share link as a client.
+3. Open a YouTube link in the viewer.

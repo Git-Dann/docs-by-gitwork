@@ -5506,6 +5506,8 @@ model WikiSheetRow {
   /// "TEAM" | "CLIENT" — who last changed a cell.
   updatedByKind       String?
   updatedByName       String?
+  /// Row height in px, set by the team dragging the row's edge. Null = auto. (§73.1)
+  height              Int?
   /// Soft delete: a client can't silently erase history, and the team can restore.
   deletedAt           DateTime?
   createdAt           DateTime  @default(now())
