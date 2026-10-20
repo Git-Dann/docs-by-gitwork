@@ -7234,3 +7234,22 @@ or drop an image into it. The team, the client (wherever they may edit), and Cla
   through the SSRF guard, with a hard 10 MB read cap. With `row` + `column`, the image is
   appended to that media cell; the row and column are checked before anything is stored.
 - ⚠️ Removing an image from a cell leaves its bytes stored. There's no cleanup sweep.
+
+### 73.3 Bulk edit, and Sheet settings as a two-pane popup
+
+- **Bulk edit.** When rows are selected, the batch bar now floats at the bottom of the page, like
+  the task board's (`data-sheet-batch-bar`). It's portalled to `body`, because `.widget-card` is
+  `overflow: hidden`.
+  - **Set field** picks a column, then a value: a dropdown option, ticked or not, a person, or
+    typed text, number or date. **Clear** empties the column instead.
+  - The value goes into every selected live row through the grid's own `saveCell`, up to 6
+    saves at once. The same coercion and permission rules apply as for a single cell.
+  - The client is offered only the columns they're allowed to edit. Media columns aren't
+    offered.
+  - Claude already does this with `update_sheet_rows`.
+- **Sheet settings** used to be one long scroll of identical column rows. It's now the standard
+  fixed-height two-column popup:
+  - On the left: "Sheet", then every column with its type.
+  - On the right: the selected item's settings. A dropdown column's options are edited as chips
+    you can remove one at a time.
+  - Every change still saves as it's made.

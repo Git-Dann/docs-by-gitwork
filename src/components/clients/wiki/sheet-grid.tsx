@@ -44,6 +44,8 @@ import {
   ArrowUpTrayIcon,
   Bars2Icon,
   CheckIcon,
+  ChevronDownIcon,
+  PencilSquareIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
   PlusIcon,
@@ -1304,6 +1306,36 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   const sendable = selectedRows.filter((r) => !r.deletedAt && (!r.taskId || r.stage === "REVIEWING"));
   const deletable = selectedRows.filter((r) => !r.deletedAt && canDelete(r));
   const restorable = selectedRows.filter((r) => r.deletedAt);
+  // Bulk set (§73.3): one value into one column across the selected rows, through the same
+  // per-cell save the grid uses, so the same coercion and permission rules apply.
+  const liveSelected = selectedRows.filter((r) => !r.deletedAt);
+  const setableColumns = columns.filter((c) => canEditCol(c) && c.type !== "media");
+  const bulkSet = async (column: SheetColumn, raw: CommitValue) => {
+    const targets = rows.filter((r) => selected.has(r.id) && !r.deletedAt);
+    if (busy || targets.length === 0) return;
+    const check = coerceCellValue(column, raw);
+    if (!check.ok) {
+      setNotice(check.error);
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    let ok = 0;
+    let failed = 0;
+    const queue = [...targets];
+    const worker = async () => {
+      for (let r = queue.shift(); r; r = queue.shift()) {
+        if (await saveCell(r, column, raw)) ok += 1;
+        else failed += 1;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
+    setBusy(false);
+    const shownValue = check.value === null ? "cleared" : `set to ${cellText(column, check.value)}`;
+    setNotice(
+      `"${column.title}" ${shownValue} on ${ok} row${ok === 1 ? "" : "s"}${failed ? ` · ${failed} couldn't be saved` : ""}.`,
+    );
+  };
 
   // Drop selections whose rows have gone (§50.8: a stale selection makes every button a no-op).
   useEffect(() => {
@@ -1357,157 +1389,166 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
         </p>
       )}
 
-      {/* Toolbar — or, while rows are selected, the batch bar in its place. */}
+      {/* Toolbar. While rows are selected, the batch bar floats at the bottom (as on the task board). */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-1)] px-3 py-2.5">
-        {selected.size > 0 ? (
-          <>
-            <span className="text-[11px] tracking-[0.08em] text-[var(--text-2)] uppercase" style={{ fontFamily: MONO }}>
+        <label className="relative flex min-w-[180px] flex-1 items-center sm:max-w-[280px]">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 h-4 w-4 text-[var(--text-4)]" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setLimit(CHUNK);
+            }}
+            placeholder="Search rows"
+            aria-label="Search rows"
+            className="app-input h-8 w-full py-0 pl-8 text-base sm:text-[13px]"
+          />
+        </label>
+        <select
+          value={stage}
+          onChange={(e) => setStage(e.target.value as StageFilter)}
+          aria-label="Filter by board stage"
+          className="app-input app-select-chevron h-8 w-auto py-0 pr-8 pl-2 text-base sm:text-[13px]"
+        >
+          <option value="all">All stages</option>
+          <option value="none">Not on board</option>
+          {stagesPresent.map((s) => (
+            <option key={s} value={s}>
+              {STAGE_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        {assignees.length > 0 && (
+          <select
+            value={assignee}
+            onChange={(e) => {
+              setAssignee(e.target.value);
+              setLimit(CHUNK);
+            }}
+            aria-label="Filter by who is on it"
+            className="app-input app-select-chevron h-8 w-auto max-w-[180px] py-0 pr-8 pl-2 text-base sm:text-[13px]"
+          >
+            <option value="all">Anyone</option>
+            {assignees.map((a) => (
+              <option key={a} value={a}>
+                {a === UNASSIGNED ? "Unassigned" : a}
+              </option>
+            ))}
+          </select>
+        )}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canAddRows && (
+            <button
+              type="button"
+              className="app-button app-button-primary app-button-xs"
+              disabled={busy || live.length >= SHEET_LIMITS.maxRows}
+              onClick={() => void addRow()}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Add row
+            </button>
+          )}
+          {internal && (
+            <button
+              type="button"
+              className="app-button app-button-secondary app-button-xs"
+              disabled={columns.length >= SHEET_LIMITS.maxColumns}
+              onClick={() => setAddColOpen(true)}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              Column
+            </button>
+          )}
+          {canAddRows && (
+            <button type="button" className="app-button app-button-secondary app-button-xs" onClick={() => setImportOpen(true)}>
+              <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+              Paste
+            </button>
+          )}
+          <button type="button" className="app-button app-button-secondary app-button-xs" onClick={() => void copyTsv()} title="Copy the rows shown, ready to paste into Google Sheets">
+            <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+            Copy
+          </button>
+          <button type="button" className="app-button app-button-secondary app-button-xs" onClick={downloadCsv}>
+            <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+            CSV
+          </button>
+        </div>
+      </div>
+      {selected.size > 0 &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="toolbar"
+            aria-label="Selected rows"
+            data-sheet-batch-bar
+            className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-[12px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.30)]"
+          >
+            <span className="shrink-0 text-[11px] tracking-[0.08em] text-[var(--text-2)] uppercase" style={{ fontFamily: MONO }}>
               {selected.size} selected
             </span>
-            {canSend && sendable.length > 0 && (
-              <>
-                {internal && featureBlocks && featureBlocks.length > 0 && (
-                  <select
-                    value={blockId}
-                    onChange={(e) => setBlockId(e.target.value)}
-                    aria-label="Category on the board"
-                    className="app-input app-select-chevron h-8 w-auto max-w-[200px] py-0 pr-8 pl-2 text-base sm:text-[13px]"
+            <span className="h-5 w-px shrink-0 bg-[var(--border-1)]" aria-hidden />
+            {setableColumns.length > 0 && liveSelected.length > 0 && (
+              <BulkSetMenu columns={setableColumns} people={people} count={liveSelected.length} disabled={busy} onApply={bulkSet} />
+            )}
+              {canSend && sendable.length > 0 && (
+                <>
+                  {internal && featureBlocks && featureBlocks.length > 0 && (
+                    <select
+                      value={blockId}
+                      onChange={(e) => setBlockId(e.target.value)}
+                      aria-label="Category on the board"
+                      className="app-input app-select-chevron h-8 w-auto max-w-[200px] py-0 pr-8 pl-2 text-base sm:text-[13px]"
+                    >
+                      <option value="">No category</option>
+                      {featureBlocks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    className="app-button app-button-primary app-button-xs"
+                    disabled={busy}
+                    onClick={() => void bulk("send", sendable.map((r) => r.id))}
                   >
-                    <option value="">No category</option>
-                    {featureBlocks.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <button
-                  type="button"
-                  className="app-button app-button-primary app-button-xs"
-                  disabled={busy}
-                  onClick={() => void bulk("send", sendable.map((r) => r.id))}
-                >
-                  Send {sendable.length} to board
-                </button>
-              </>
-            )}
-            {deletable.length > 0 && (
-              <button
-                type="button"
-                className="app-button app-button-secondary app-button-xs"
-                disabled={busy}
-                onClick={() => {
-                  if (window.confirm(`Remove ${deletable.length} row${deletable.length === 1 ? "" : "s"}?${internal ? " You can restore them." : ""}`)) {
-                    void bulk("delete", deletable.map((r) => r.id));
-                  }
-                }}
-              >
-                Remove {deletable.length}
-              </button>
-            )}
-            {internal && restorable.length > 0 && (
-              <button
-                type="button"
-                className="app-button app-button-secondary app-button-xs"
-                disabled={busy}
-                onClick={() => void bulk("restore", restorable.map((r) => r.id))}
-              >
-                Restore {restorable.length}
-              </button>
-            )}
-            <button type="button" className="app-button app-button-tertiary app-button-xs" onClick={() => setSelected(new Set())}>
-              Clear
-            </button>
-          </>
-        ) : (
-          <>
-            <label className="relative flex min-w-[180px] flex-1 items-center sm:max-w-[280px]">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 h-4 w-4 text-[var(--text-4)]" />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setLimit(CHUNK);
-                }}
-                placeholder="Search rows"
-                aria-label="Search rows"
-                className="app-input h-8 w-full py-0 pl-8 text-base sm:text-[13px]"
-              />
-            </label>
-            <select
-              value={stage}
-              onChange={(e) => setStage(e.target.value as StageFilter)}
-              aria-label="Filter by board stage"
-              className="app-input app-select-chevron h-8 w-auto py-0 pr-8 pl-2 text-base sm:text-[13px]"
-            >
-              <option value="all">All stages</option>
-              <option value="none">Not on board</option>
-              {stagesPresent.map((s) => (
-                <option key={s} value={s}>
-                  {STAGE_LABEL[s]}
-                </option>
-              ))}
-            </select>
-            {assignees.length > 0 && (
-              <select
-                value={assignee}
-                onChange={(e) => {
-                  setAssignee(e.target.value);
-                  setLimit(CHUNK);
-                }}
-                aria-label="Filter by who is on it"
-                className="app-input app-select-chevron h-8 w-auto max-w-[180px] py-0 pr-8 pl-2 text-base sm:text-[13px]"
-              >
-                <option value="all">Anyone</option>
-                {assignees.map((a) => (
-                  <option key={a} value={a}>
-                    {a === UNASSIGNED ? "Unassigned" : a}
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              {canAddRows && (
-                <button
-                  type="button"
-                  className="app-button app-button-primary app-button-xs"
-                  disabled={busy || live.length >= SHEET_LIMITS.maxRows}
-                  onClick={() => void addRow()}
-                >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                  Add row
-                </button>
+                    Send {sendable.length} to board
+                  </button>
+                </>
               )}
-              {internal && (
+              {deletable.length > 0 && (
                 <button
                   type="button"
                   className="app-button app-button-secondary app-button-xs"
-                  disabled={columns.length >= SHEET_LIMITS.maxColumns}
-                  onClick={() => setAddColOpen(true)}
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`Remove ${deletable.length} row${deletable.length === 1 ? "" : "s"}?${internal ? " You can restore them." : ""}`)) {
+                      void bulk("delete", deletable.map((r) => r.id));
+                    }
+                  }}
                 >
-                  <PlusIcon className="h-3.5 w-3.5" />
-                  Column
+                  Remove {deletable.length}
                 </button>
               )}
-              {canAddRows && (
-                <button type="button" className="app-button app-button-secondary app-button-xs" onClick={() => setImportOpen(true)}>
-                  <ArrowUpTrayIcon className="h-3.5 w-3.5" />
-                  Paste
+              {internal && restorable.length > 0 && (
+                <button
+                  type="button"
+                  className="app-button app-button-secondary app-button-xs"
+                  disabled={busy}
+                  onClick={() => void bulk("restore", restorable.map((r) => r.id))}
+                >
+                  Restore {restorable.length}
                 </button>
               )}
-              <button type="button" className="app-button app-button-secondary app-button-xs" onClick={() => void copyTsv()} title="Copy the rows shown, ready to paste into Google Sheets">
-                <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                Copy
+              <button type="button" className="app-button app-button-tertiary app-button-xs" onClick={() => setSelected(new Set())}>
+                Clear
               </button>
-              <button type="button" className="app-button app-button-secondary app-button-xs" onClick={downloadCsv}>
-                <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                CSV
-              </button>
-            </div>
-          </>
+          </div>,
+          document.body,
         )}
-      </div>
 
       {(notice || save.kind === "error") && (
         <p
@@ -2569,5 +2610,162 @@ function RowEditDialog({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* ───────────────────────────────────────────────────── bulk set ── */
+
+/**
+ * "Set field" on the floating batch bar: pick a column, then a value, and it goes into every
+ * selected row. Opens upward from the bar (portalled to body, so nothing clips it).
+ */
+function BulkSetMenu({
+  columns,
+  people,
+  count,
+  disabled,
+  onApply,
+}: {
+  columns: SheetColumn[];
+  people: SheetPerson[];
+  count: number;
+  disabled: boolean;
+  onApply: (column: SheetColumn, raw: CommitValue) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [column, setColumn] = useState<SheetColumn | null>(null);
+  const [draft, setDraft] = useState("");
+  const [filter, setFilter] = useState("");
+  const close = () => {
+    setOpen(false);
+    setColumn(null);
+    setDraft("");
+    setFilter("");
+  };
+  const apply = async (raw: CommitValue) => {
+    if (!column) return;
+    const c = column;
+    close();
+    await onApply(c, raw);
+  };
+  const item =
+    "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]";
+  const people2 = people.filter((p) => p.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => (open ? close() : setOpen(true))}
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[7px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+        data-bulk-set
+      >
+        <PencilSquareIcon className="h-3.5 w-3.5" />
+        Set field
+        <ChevronDownIcon className="h-3 w-3 text-[var(--text-4)]" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" onClick={close} />
+          <div
+            role="menu"
+            className="absolute bottom-[calc(100%+8px)] left-0 z-50 max-h-[60vh] w-[260px] overflow-y-auto rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.16)]"
+          >
+            {!column ? (
+              <>
+                <p className="px-2.5 pt-1 pb-1.5 text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase" style={{ fontFamily: MONO }}>
+                  Set a column on {count} row{count === 1 ? "" : "s"}
+                </p>
+                {columns.map((c) => (
+                  <button key={c.id} type="button" role="menuitem" className={item} onClick={() => setColumn(c)}>
+                    <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                    <span className="shrink-0 text-[10px] tracking-[0.06em] text-[var(--text-4)] uppercase" style={{ fontFamily: MONO }}>
+                      {COLUMN_TYPE_LABEL[c.type]}
+                    </span>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="mb-1 flex w-full items-center gap-1 px-2.5 py-1 text-[11px] text-[var(--text-3)] hover:text-[var(--text-1)]"
+                  onClick={() => {
+                    setColumn(null);
+                    setDraft("");
+                  }}
+                >
+                  ← {column.title}
+                </button>
+                {column.type === "select" &&
+                  (column.options ?? []).map((o) => (
+                    <button key={o} type="button" role="menuitem" className={item} onClick={() => void apply(o)}>
+                      {o}
+                    </button>
+                  ))}
+                {column.type === "checkbox" && (
+                  <>
+                    <button type="button" role="menuitem" className={item} onClick={() => void apply(true)}>
+                      Ticked
+                    </button>
+                    <button type="button" role="menuitem" className={item} onClick={() => void apply(false)}>
+                      Not ticked
+                    </button>
+                  </>
+                )}
+                {column.type === "person" && (
+                  <>
+                    <input
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                      placeholder="Find a person"
+                      aria-label="Find a person"
+                      className="app-input mb-1 h-8 w-full py-0 text-base sm:text-[13px]"
+                      autoFocus
+                    />
+                    {people2.map((p) => (
+                      <button key={`${p.kind}:${p.id}`} type="button" role="menuitem" className={item} onClick={() => void apply(p as unknown as CommitValue)}>
+                        <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                        <span className="text-[10px] text-[var(--text-4)]">{p.kind === "TEAM" ? "Gitwork" : "Client"}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
+                {!["select", "checkbox", "person"].includes(column.type) && (
+                  <form
+                    className="flex gap-1.5 p-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void apply(draft);
+                    }}
+                  >
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      type={column.type === "date" ? "date" : column.type === "number" ? "text" : "text"}
+                      inputMode={column.type === "number" ? "decimal" : undefined}
+                      placeholder={COLUMN_TYPE_LABEL[column.type]}
+                      aria-label={`Value for ${column.title}`}
+                      className="app-input h-8 min-w-0 flex-1 py-0 text-base sm:text-[13px]"
+                      autoFocus
+                    />
+                    <button type="submit" className="app-button app-button-primary app-button-xs" disabled={!draft.trim()}>
+                      Apply
+                    </button>
+                  </form>
+                )}
+                <div className="mt-1 border-t border-[var(--border-1)] pt-1">
+                  <button type="button" role="menuitem" className={`${item} text-[var(--danger-500)]`} onClick={() => void apply(null)}>
+                    Clear {column.title}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
