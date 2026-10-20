@@ -236,9 +236,12 @@ export function MediaViewer({
     <Modal open onClose={onClose} title="MEDIA" panelClassName="app-dialog-fixed w-full max-w-4xl">
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--surface-1)] p-3 sm:p-4">{body}</div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-[var(--border-1)] px-4 py-3">
-        <MediaIcon kind={kind} />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-1)]" title={title}>
-          {title}
+        {/* Its own line on a phone, so the title isn't squeezed to three letters by the controls. */}
+        <span className="flex min-w-0 basis-full items-center gap-2 sm:flex-1 sm:basis-0">
+          <MediaIcon kind={kind} />
+          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-1)]" title={title}>
+            {title}
+          </span>
         </span>
         {items.length > 1 && (
           <span className="flex items-center gap-1">

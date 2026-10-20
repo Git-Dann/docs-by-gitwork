@@ -27,7 +27,7 @@
  * The team's resizes are saved for everyone; a client's stay in their own browser.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -111,7 +111,7 @@ import { MediaChips, MediaListEditor, MediaViewer } from "./sheet-media";
 
 /** Rows rendered at once; "Show more" adds this many. 2,000 live inputs would be slow. */
 const CHUNK = 200;
-const BOARD_W = 236;
+const BOARD_W = 252;
 /** Height of an auto (single-line) row. */
 const AUTO_ROW_H = 36;
 /** Persist a resize this long after the last pointer-up on the same column/row. */
@@ -332,6 +332,69 @@ function CellPopover({
  * The truncated-value tooltip: portalled to <body> (the grid's scroller and `.widget-card`
  * would clip it — §45.2), below the cell or above when there's no room, ≤420px and wrapping.
  */
+type TipState = { anchor: HTMLElement; text: string } | null;
+
+/**
+ * The tooltip's state, outside React state. `aria-describedby` is set on the cell directly
+ * (and removed on hide), so screen readers get the same link a re-render would have given.
+ * Scroll or any key hides it.
+ */
+function createTipStore(id: string) {
+  let state: TipState = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let warmUntil = 0;
+  const subs = new Set<() => void>();
+  const emit = () => subs.forEach((f) => f());
+  const set = (next: TipState) => {
+    if (state?.anchor && state.anchor !== next?.anchor) state.anchor.removeAttribute("aria-describedby");
+    state = next;
+    if (next) next.anchor.setAttribute("aria-describedby", id);
+    emit();
+  };
+  const hide = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    if (state) warmUntil = Date.now() + 300;
+    if (state) set(null);
+  };
+  const onAway = () => hide();
+  return {
+    id,
+    get: () => state,
+    subscribe: (f: () => void) => {
+      subs.add(f);
+      return () => subs.delete(f);
+    },
+    showSoon: (anchor: HTMLElement, text: string) => {
+      if (timer) clearTimeout(timer);
+      const warm = state !== null || Date.now() < warmUntil;
+      timer = setTimeout(() => {
+        timer = null;
+        set({ anchor, text });
+      }, warm ? 0 : 150);
+    },
+    hide,
+    listen: () => {
+      window.addEventListener("scroll", onAway, true);
+      window.addEventListener("keydown", onAway, true);
+      return () => {
+        window.removeEventListener("scroll", onAway, true);
+        window.removeEventListener("keydown", onAway, true);
+      };
+    },
+    dispose: () => {
+      if (timer) clearTimeout(timer);
+      if (state) set(null);
+    },
+  };
+}
+
+function CellTooltipHost({ store }: { store: ReturnType<typeof createTipStore> }) {
+  const tip = useSyncExternalStore(store.subscribe, store.get, () => null);
+  useEffect(() => (tip ? store.listen() : undefined), [tip, store]);
+  return tip ? <CellTooltip id={store.id} anchor={tip.anchor} text={tip.text} /> : null;
+}
+
 function CellTooltip({ id, anchor, text }: { id: string; anchor: HTMLElement; text: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -674,43 +737,23 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   /* ── the truncated-value tooltip (§73.1) ──
    * A native `title` waits ~1s and the browser owns that delay. This one appears after
    * 150ms — instantly when moving between cells while one is showing — and only when the
-   * value is actually cut off. Mouse only: on touch the phone layout shows the full text. */
-  const [tip, setTip] = useState<{ text: string; anchor: HTMLElement; key: string } | null>(null);
-  const tipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tipWarmUntil = useRef(0);
-  const hideTip = useCallback(() => {
-    if (tipTimer.current) clearTimeout(tipTimer.current);
-    setTip((t) => {
-      if (t) tipWarmUntil.current = Date.now() + 300;
-      return null;
-    });
-  }, []);
-  const onCellPointerEnter = (e: React.PointerEvent<HTMLElement>, key: string) => {
+   * value is actually cut off. Mouse only: on touch the phone layout shows the full text.
+   * Its state lives in a tiny store OUTSIDE the grid's React state: showing a tooltip must
+   * not re-render 200 rows of cells (measured: that alone added ~100ms in dev). */
+  const tipId = `sheet-tip-${sheet.id}`;
+  const tips = useMemo(() => createTipStore(tipId), [tipId]);
+  useEffect(() => () => tips.dispose(), [tips]);
+  const onCellPointerEnter = (e: React.PointerEvent<HTMLElement>) => {
     if (e.pointerType !== "mouse" || editing) return;
     const cell = e.currentTarget;
     const inner = cell.querySelector<HTMLElement>("[data-cell-content] [data-full-text]");
     const text = inner?.dataset.fullText?.trim();
-    if (tipTimer.current) clearTimeout(tipTimer.current);
     if (!inner || !text || (inner.scrollWidth <= inner.clientWidth + 1 && inner.scrollHeight <= inner.clientHeight + 1)) {
-      setTip(null);
+      tips.hide();
       return;
     }
-    const warm = Date.now() < tipWarmUntil.current;
-    tipTimer.current = setTimeout(() => setTip({ text, anchor: cell, key }), warm ? 0 : 150);
+    tips.showSoon(cell, text);
   };
-  useEffect(() => {
-    if (!tip) return;
-    window.addEventListener("scroll", hideTip, true);
-    window.addEventListener("keydown", hideTip, true);
-    return () => {
-      window.removeEventListener("scroll", hideTip, true);
-      window.removeEventListener("keydown", hideTip, true);
-    };
-  }, [tip, hideTip]);
-  useEffect(() => () => {
-    if (tipTimer.current) clearTimeout(tipTimer.current);
-  }, []);
-  const tipId = `sheet-tip-${sheet.id}`;
 
   /* ── layout: widths, heights (§73.1) ──
    * The team's resizes are saved for everyone (column JSON `width`, `WikiSheetRow.height`);
@@ -1723,9 +1766,8 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                           onFocus={() => setActive({ rowId: row.id, col: ci })}
                           onKeyDown={(e) => onCellKey(e, row, ci)}
                           onPaste={(e) => onCellPaste(e, row, ci)}
-                          onPointerEnter={(e) => onCellPointerEnter(e, key)}
-                          onPointerLeave={hideTip}
-                          aria-describedby={tip?.key === key ? tipId : undefined}
+                          onPointerEnter={onCellPointerEnter}
+                          onPointerLeave={tips.hide}
                           className={`relative flex min-w-0 border-l border-[var(--border-1)] text-[13px] text-[var(--text-1)] outline-none ${
                             wrap ? "items-start overflow-hidden py-1.5" : "min-h-[36px] items-center"
                           } ${
@@ -1859,7 +1901,9 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                       </span>
                       {rest.length > 0 && (
                         <dl className="mt-1.5 grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 text-[13px]">
-                          {rest.slice(0, 6).map((c) => (
+                          {/* Six plain values at most, but a media column always shows — its chips are
+                              the only way to the viewer on a phone. */}
+                          {[...rest.filter((c) => c.type !== "media").slice(0, 6), ...rest.filter((c) => c.type === "media")].map((c) => (
                             <div key={c.id} className="contents">
                               <dt
                                 className="truncate text-[10px] tracking-[0.08em] text-[var(--text-3)] uppercase leading-5"
@@ -1976,7 +2020,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
           }}
         />
       )}
-      {tip && <CellTooltip id={tipId} anchor={tip.anchor} text={tip.text} />}
+      <CellTooltipHost store={tips} />
       {viewer && <MediaViewer items={viewer.items} start={viewer.index} onClose={() => setViewer(null)} />}
     </section>
   );
@@ -2073,7 +2117,7 @@ function BoardCell({
           <StageChip stage={row.stage} />
           {first ? (
             <span className="flex min-w-0 items-center gap-1">
-              <span className="flex shrink-0 -space-x-1.5">
+              <span className="flex shrink-0 -space-x-1">
                 {task.assignees.slice(0, 2).map((a) => (
                   <TaskAvatar key={a.name} person={a} />
                 ))}

@@ -127,6 +127,9 @@ export function PersonPicker({
         />
         <ComboboxOptions
           anchor="bottom start"
+          // In a cell the editor only exists while editing, so its list is simply open — a
+          // focus-to-open rule can miss an autofocus that lands before the handler is attached.
+          static={variant === "cell"}
           data-person-options
           onPointerDown={() => {
             picking.current = true;
