@@ -10,7 +10,14 @@
 
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { checkSheetImage, isSheetFileKey, sheetFileUrl, SHEET_IMAGE_MAX_BYTES } from "@/lib/wiki-sheet-files";
+import {
+  SHEET_IMAGE_INPUT_MAX_BYTES,
+  SHEET_IMAGE_MAX_BYTES,
+  checkSheetImage,
+  isSheetFileKey,
+  parseDriveFileId,
+  sheetFileUrl,
+} from "@/lib/wiki-sheet-files";
 import { placeUpload, readStoredUpload } from "@/server/blob-storage";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import { SheetError, type ClientWriter, type SheetActor, type SheetScope } from "@/server/wiki-sheets";
@@ -28,16 +35,88 @@ async function sheetFor(scope: SheetScope, sheetId: string) {
   return sheet;
 }
 
+/**
+ * Re-encode an oversized image as JPEG so it fits SHEET_IMAGE_MAX_BYTES: full resolution first,
+ * then lower quality, then a 4096px cap. A full-resolution screenshot keeps its pixels in the
+ * common case (12–20 MB PNG → 2–4 MB JPEG).
+ */
+export async function shrinkToFit(file: { bytes: Uint8Array; filename: string }): Promise<{ bytes: Uint8Array; filename: string }> {
+  const sharp = (await import("sharp")).default;
+  const filename = file.filename.replace(/\.[A-Za-z0-9]+$/, "") + ".jpg";
+  const attempts: { quality: number; maxSide?: number }[] = [
+    { quality: 90 },
+    { quality: 80 },
+    { quality: 80, maxSide: 4096 },
+    { quality: 72, maxSide: 3000 },
+  ];
+  let last: Uint8Array = file.bytes;
+  for (const a of attempts) {
+    let img = sharp(Buffer.from(file.bytes), { limitInputPixels: 100_000_000 }).rotate().flatten({ background: "#ffffff" });
+    if (a.maxSide) img = img.resize({ width: a.maxSide, height: a.maxSide, fit: "inside", withoutEnlargement: true });
+    last = new Uint8Array(await img.jpeg({ quality: a.quality, mozjpeg: true }).toBuffer());
+    if (last.length <= SHEET_IMAGE_MAX_BYTES) break;
+  }
+  return { bytes: last, filename };
+}
+
+/**
+ * Fetch an image from Google Drive as the given user (their own Google sign-in, read-only), so
+ * a private Gitwork file can be attached without changing its sharing. Used by MCP.
+ */
+export async function fetchImageFromDrive(userId: string, ref: string): Promise<{ bytes: Uint8Array; filename: string }> {
+  const fileId = parseDriveFileId(ref);
+  if (!fileId) throw new SheetError("That isn't a Google Drive file link or id.", 400);
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { googleOAuthRefreshToken: true } });
+  if (!user?.googleOAuthRefreshToken) {
+    throw new SheetError("Your Google account isn't connected to Foundry — sign out and back in to Foundry, then try again.", 400);
+  }
+  // Lazy: google-auth pulls in the NextAuth config, which the upload path otherwise never needs.
+  const { googleClientForRefreshToken } = await import("@/server/google-auth");
+  const client = googleClientForRefreshToken(user.googleOAuthRefreshToken);
+  if (!client) throw new SheetError("Google sign-in isn't configured on this server.", 500);
+  const { google } = await import("googleapis");
+  const drive = google.drive({ version: "v3", auth: client });
+  let meta: { name?: string | null; mimeType?: string | null; size?: string | null };
+  try {
+    meta = (await drive.files.get({ fileId, fields: "name,mimeType,size", supportsAllDrives: true })).data;
+  } catch (err) {
+    const status = (err as { code?: number }).code;
+    throw new SheetError(
+      status === 404
+        ? "Drive can't find that file, or your Google account can't see it."
+        : `Couldn't read that file from Drive${status ? ` (HTTP ${status})` : ""}.`,
+      400,
+    );
+  }
+  if (meta.mimeType && !meta.mimeType.startsWith("image/")) {
+    throw new SheetError(`"${meta.name ?? "That file"}" isn't an image (${meta.mimeType}).`, 400);
+  }
+  if (meta.size && Number(meta.size) > SHEET_IMAGE_INPUT_MAX_BYTES) {
+    throw new SheetError(`"${meta.name ?? "That file"}" is over 24 MB.`, 400);
+  }
+  const res = await drive.files.get({ fileId, alt: "media", supportsAllDrives: true }, { responseType: "arraybuffer" });
+  const bytes = new Uint8Array(res.data as ArrayBuffer);
+  if (bytes.length > SHEET_IMAGE_INPUT_MAX_BYTES) throw new SheetError("Images can be up to 24 MB.", 400);
+  return { bytes, filename: meta.name ?? "image" };
+}
+
 /** Store one image against a sheet and return the media item a cell holds. */
 export async function saveSheetImage(
   scope: SheetScope,
   sheetId: string,
-  file: { bytes: Uint8Array; filename: string },
+  input: { bytes: Uint8Array; filename: string },
   actor: SheetActor,
 ): Promise<SheetMediaItem & { size: number }> {
   const sheet = await sheetFor(scope, sheetId);
+  let file = input;
+  const first = checkSheetImage(file.bytes, file.filename);
+  if (!first.ok) throw new SheetError(first.error, 400);
+  // Only after the bytes are known to be PNG/JPEG/GIF/WebP does sharp see them — sharp would
+  // also render an SVG, which is exactly what the sniff exists to keep out.
+  if (file.bytes.length > SHEET_IMAGE_MAX_BYTES) file = await shrinkToFit(file);
   const check = checkSheetImage(file.bytes, file.filename);
   if (!check.ok) throw new SheetError(check.error, 400);
+  if (file.bytes.length > SHEET_IMAGE_MAX_BYTES) throw new SheetError("That image is too large to store, even shrunk.", 400);
   const placed = await placeUpload("wiki-sheet-files", { bytes: file.bytes, contentType: check.mime });
   const key = randomBytes(20).toString("hex");
   await prisma.wikiSheetFile.create({
@@ -78,7 +157,7 @@ export async function readImageForm(req: Request): Promise<{ bytes: Uint8Array; 
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
   if (!file || typeof file === "string") throw new SheetError("Attach an image as `file`.", 400);
-  if (file.size > SHEET_IMAGE_MAX_BYTES) throw new SheetError("Images can be up to 10 MB.", 400);
+  if (file.size > SHEET_IMAGE_INPUT_MAX_BYTES) throw new SheetError("Images can be up to 24 MB.", 400);
   return { bytes: new Uint8Array(await file.arrayBuffer()), filename: file.name || "image" };
 }
 
@@ -101,9 +180,9 @@ export async function fetchImageFromUrl(url: string): Promise<{ bytes: Uint8Arra
     const { done, value } = await reader.read();
     if (done) break;
     total += value.length;
-    if (total > SHEET_IMAGE_MAX_BYTES) {
+    if (total > SHEET_IMAGE_INPUT_MAX_BYTES) {
       await reader.cancel().catch(() => undefined);
-      throw new SheetError("Images can be up to 10 MB.", 400);
+      throw new SheetError("Images can be up to 24 MB.", 400);
     }
     chunks.push(value);
   }

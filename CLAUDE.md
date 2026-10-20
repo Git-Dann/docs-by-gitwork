@@ -7268,3 +7268,30 @@ does) to show the running month as its own **"<Month> so far"** card above the w
 It has no trend and no sparkline, is never the headline, and is refetched when it is more than 6h
 old. Its range ends today. On the 1st the partial month is replaced by the final one, by the
 existing `isFinal` rule.
+
+### 73.4 Images dropped into a Claude chat go straight into a sheet
+
+- **The limit is Claude's, not ours.** In a chat, Claude can see an image you drop in, but it
+  can't pass the image's bytes to a tool. Its only options were base64, which is hundreds of
+  thousands of characters for a screenshot, or a public link. The dropped file is in Claude's
+  code sandbox, so MCP now hands the sandbox a link to send it to.
+- **`get_sheet_upload_link`** returns a signed link (`/api/wiki/sheet-upload/[ticket]`), valid
+  for 30 minutes, with a ready `curl -F file=@…` command.
+  - The ticket is stateless: HMAC over `{client, sheet, row?, column?, issuer, expiry}`, signed
+    with the same secret as wiki-access cookies (`src/server/wiki-sheet-upload-ticket.ts`). It
+    can't be re-pointed at another sheet. It stays valid for its 30 minutes, so one link covers a
+    batch of uploads.
+  - The route takes up to 10 files per request and runs the same save path as every other upload.
+  - With a row and a media column, the images are appended to that cell. The cell is read at
+    upload time, so nothing added in the meantime is overwritten.
+  - ⚠️ **Claude's sandbox must be allowed to reach `foundry.gitwork.co.uk`** (claude.ai settings,
+    code execution network access). If it isn't, the curl is blocked and the tool tells Claude to
+    say so.
+- **`upload_sheet_image` takes `driveFile`**: a Drive link or file id, read with the caller's own
+  stored Google sign-in (`drive.readonly`). So a private Gitwork file can be attached without
+  changing its sharing.
+- **Big images are shrunk rather than refused.** Uploads are accepted up to 24 MB. Anything over
+  the 10 MB storage limit is re-encoded as JPEG at full resolution, then at lower quality, then
+  capped at 4096px (`shrinkToFit`).
+  - ⚠️ Sharp runs only after the byte sniff has confirmed PNG, JPEG, GIF or WebP, because sharp
+    would also render an SVG.

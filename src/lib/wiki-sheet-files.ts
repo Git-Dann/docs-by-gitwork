@@ -10,7 +10,33 @@
  *    that shape — no other relative URL becomes a media value.
  */
 
+/** The most we STORE per image. Anything bigger is re-encoded down to fit (server side). */
 export const SHEET_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * The most we ACCEPT per upload. A full-resolution screenshot is often 12–20 MB as PNG; it is
+ * taken and shrunk to fit SHEET_IMAGE_MAX_BYTES rather than refused. Under nginx's 25M cap.
+ */
+export const SHEET_IMAGE_INPUT_MAX_BYTES = 24 * 1024 * 1024;
+
+/**
+ * A Google Drive file id from a share link (`/file/d/<id>/…`, `open?id=<id>`, `uc?id=<id>`) or
+ * a bare id. Null for anything else, so a non-Drive URL is never taken for an id.
+ */
+export function parseDriveFileId(raw: string): string | null {
+  const s = raw.trim();
+  if (/^[A-Za-z0-9_-]{20,200}$/.test(s)) return s;
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  if (host !== "drive.google.com" && host !== "docs.google.com") return null;
+  const path = /\/d\/([A-Za-z0-9_-]{20,200})/.exec(u.pathname)?.[1];
+  const id = path ?? u.searchParams.get("id");
+  return id && /^[A-Za-z0-9_-]{20,200}$/.test(id) ? id : null;
+}
 
 export const SHEET_IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp";
 
@@ -57,7 +83,7 @@ export type ImageCheck =
 /** Is this upload an image we keep? Extension and content must agree. */
 export function checkSheetImage(bytes: Uint8Array, filename: string): ImageCheck {
   if (bytes.length === 0) return { ok: false, error: "That file is empty." };
-  if (bytes.length > SHEET_IMAGE_MAX_BYTES) return { ok: false, error: "Images can be up to 10 MB." };
+  if (bytes.length > SHEET_IMAGE_INPUT_MAX_BYTES) return { ok: false, error: "Images can be up to 24 MB." };
   const kind = sniffImage(bytes.subarray(0, 16));
   if (!kind) return { ok: false, error: "Only PNG, JPEG, GIF or WebP images can be uploaded." };
   const ext = /\.([a-z0-9]+)$/i.exec(filename.trim())?.[1]?.toLowerCase();

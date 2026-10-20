@@ -49,8 +49,9 @@ import {
   updateWikiSheet,
   type SheetActor,
 } from "@/server/wiki-sheets";
-import { fetchImageFromUrl, saveSheetImage } from "@/server/wiki-sheet-files";
-import { SHEET_IMAGE_MAX_BYTES } from "@/lib/wiki-sheet-files";
+import { fetchImageFromDrive, fetchImageFromUrl, saveSheetImage } from "@/server/wiki-sheet-files";
+import { UPLOAD_TICKET_TTL_MS, issueUploadTicket } from "@/server/wiki-sheet-upload-ticket";
+import { SHEET_IMAGE_INPUT_MAX_BYTES } from "@/lib/wiki-sheet-files";
 import type { SheetCellValue, SheetColumn, SheetColumnType, WikiSheet, WikiSheetRow } from "@/types/wiki-sheets";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -138,19 +139,27 @@ const cellsArg = z.record(
   z.string(),
   z.union([z.string().max(SHEET_LIMITS.maxLongText), z.number(), z.boolean(), z.null(), mediaArg]),
 );
+const uploadLinkSchema = z.object({
+  client: z.string().min(1),
+  sheet: z.string().min(1),
+  row: z.string().min(1).optional(),
+  column: z.string().min(1).optional(),
+});
+
 const uploadImageSchema = z
   .object({
     client: z.string().min(1),
     sheet: z.string().min(1),
-    imageBase64: z.string().max(Math.ceil((SHEET_IMAGE_MAX_BYTES * 4) / 3) + 200).optional(),
+    imageBase64: z.string().max(Math.ceil((SHEET_IMAGE_INPUT_MAX_BYTES * 4) / 3) + 200).optional(),
     imageUrl: z.string().url().max(SHEET_LIMITS.maxLink).optional(),
+    driveFile: z.string().trim().min(1).max(SHEET_LIMITS.maxLink).optional(),
     filename: z.string().trim().min(1).max(120).optional(),
     title: z.string().max(120).optional(),
     row: z.string().min(1).optional(),
     column: z.string().min(1).optional(),
   })
-  .refine((v) => Boolean(v.imageBase64) !== Boolean(v.imageUrl), {
-    message: "Give exactly one of imageBase64 or imageUrl.",
+  .refine((v) => [v.imageBase64, v.imageUrl, v.driveFile].filter(Boolean).length === 1, {
+    message: "Give exactly one of driveFile, imageUrl or imageBase64.",
   });
 
 /** Base64 (optionally a data: URL) → bytes. Garbage decodes to bytes the image check refuses. */
@@ -674,11 +683,71 @@ export function buildSheetTools({ resolveClient, textResult }: SheetToolDeps): S
       },
     },
     {
+      name: "get_sheet_upload_link",
+      description:
+        "Use this when the user has DROPPED IMAGES INTO THE CHAT and wants them in a sheet. You can see a dropped " +
+        "image but cannot pass its bytes to a tool, so: call this, then upload the files from your code sandbox " +
+        "(they are in the uploads folder, e.g. /mnt/user-data/uploads) with the returned curl command — one or more " +
+        "-F file=@<path> per request, up to 10. Give row + column (a media column) to append the images to that " +
+        "cell; without them the response lists {url, title} items to place with update_sheet_rows. Images over " +
+        "10 MB are re-encoded to fit. The link works for 30 minutes and only for this sheet. If the request is " +
+        "blocked by your sandbox's network policy, tell the user to allow foundry.gitwork.co.uk in Claude's " +
+        "settings (Capabilities → code execution network access). Requires 'Manage clients'.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          client: CLIENT,
+          sheet: SHEET,
+          row: { type: "string", description: "Row id or exact title-cell text to attach the images to." },
+          column: { type: "string", description: "Media column title to attach to (with row)." },
+        },
+        required: ["client", "sheet"],
+        additionalProperties: false,
+      },
+      handler: async (user, args) => {
+        assertCan(user, canManageClients, "upload sheet images");
+        const parsed = uploadLinkSchema.parse(args);
+        const resolved = await resolveClient(user, parsed.client);
+        const sheet = await resolveSheet(resolved.id, parsed.sheet);
+        let target: { row: WikiSheetRow; column: SheetColumn } | null = null;
+        if (parsed.row || parsed.column) {
+          if (!parsed.row || !parsed.column) throw new SheetError("Give both row and column, or neither.", 400);
+          const column = findColumn(sheet.columns, parsed.column);
+          if (!column) throw new SheetError(`No column "${parsed.column}" in "${sheet.title}".`, 400);
+          if (column.type !== "media") throw new SheetError(`"${column.title}" isn't a media column.`, 400);
+          target = { row: resolveRow(sheet, parsed.row), column };
+        }
+        const ticket = issueUploadTicket({
+          c: resolved.id,
+          s: sheet.id,
+          ...(target ? { r: target.row.id, k: target.column.id } : {}),
+          n: actorOf(user).name,
+          u: user.id,
+        });
+        const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "");
+        const url = `${base}/api/wiki/sheet-upload/${ticket}`;
+        return textResult(
+          {
+            url,
+            method: "POST multipart/form-data, field name: file (repeat for several, max 10 per request, 24 MB each)",
+            curl: `curl -sS -X POST ${JSON.stringify(url)} -F "file=@/path/to/image1.png" -F "file=@/path/to/image2.png"`,
+            expiresInMinutes: UPLOAD_TICKET_TTL_MS / 60000,
+            attachesTo: target ? { row: target.row.id, column: target.column.title } : null,
+          },
+          target
+            ? `Upload link ready — files posted to it are appended to "${target.column.title}" on that row of "${sheet.title}".`
+            : `Upload link ready for "${sheet.title}". The response lists the stored {url, title} items to place.`,
+        );
+      },
+    },
+    {
       name: "upload_sheet_image",
       description:
-        "Upload an image (PNG, JPEG, GIF or WebP, up to 10 MB) into a sheet and, optionally, attach it to a row's " +
-        "media cell. Give the image as imageBase64 (raw or a data: URL) or as imageUrl (a public http(s) link we " +
-        "fetch once). With row + column, the image is APPENDED to that media cell (column must be a media column); " +
+        "Upload an image (PNG, JPEG, GIF or WebP, up to 24 MB — anything over 10 MB is re-encoded as JPEG to fit) " +
+        "into a sheet and, optionally, attach it to a row's media cell. Give the image ONE way: driveFile (a Google " +
+        "Drive share link or file id — fetched with YOUR Google sign-in, so private Gitwork files work without changing " +
+        "their sharing; prefer this for anything in Drive), imageUrl (a public http(s) link we fetch once), or " +
+        "imageBase64 (raw or a data: URL; only for small images). With row + column, the image is APPENDED to that media cell (column must be a media column); " +
         "without them, it returns the stored {url, title} to use in add_sheet_rows / update_sheet_rows. " +
         "Requires 'Manage clients'.",
       inputSchema: {
@@ -687,6 +756,7 @@ export function buildSheetTools({ resolveClient, textResult }: SheetToolDeps): S
           client: CLIENT,
           sheet: SHEET,
           imageBase64: { type: "string", description: "The image bytes, base64 (a data:image/...;base64, prefix is fine)." },
+          driveFile: { type: "string", description: "A Google Drive share link or file id. Read with your own Google sign-in, so private files work." },
           imageUrl: { type: "string", description: "A public http(s) URL of the image, fetched once and stored." },
           filename: { type: "string", description: "File name, e.g. 'checkout-bug.png'." },
           title: { type: "string", description: "Title shown on the chip (defaults to the file name)." },
@@ -710,9 +780,11 @@ export function buildSheetTools({ resolveClient, textResult }: SheetToolDeps): S
           if (column.type !== "media") throw new SheetError(`"${column.title}" isn't a media column.`, 400);
           target = { row: resolveRow(sheet, parsed.row), column };
         }
-        const file = parsed.imageUrl
-          ? await fetchImageFromUrl(parsed.imageUrl)
-          : { bytes: decodeBase64Image(parsed.imageBase64 ?? ""), filename: parsed.filename ?? "image" };
+        const file = parsed.driveFile
+          ? await fetchImageFromDrive(user.id, parsed.driveFile)
+          : parsed.imageUrl
+            ? await fetchImageFromUrl(parsed.imageUrl)
+            : { bytes: decodeBase64Image(parsed.imageBase64 ?? ""), filename: parsed.filename ?? "image" };
         if (parsed.filename) file.filename = parsed.filename;
         const stored = await saveSheetImage({ clientId: resolved.id }, sheet.id, file, actorOf(user));
         const item = { url: stored.url, title: parsed.title?.trim() || stored.title };

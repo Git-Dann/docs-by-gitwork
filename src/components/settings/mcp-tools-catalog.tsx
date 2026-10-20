@@ -221,9 +221,15 @@ const TOOLS: Tool[] = [
     examples: ["Set the pricing page's priority to High and tick Copy ready."],
   },
   {
+    name: "get_sheet_upload_link",
+    blurb:
+      "A 30-minute upload link for one sheet (optionally one row's media cell), so images dropped into a Claude chat can be sent from Claude's sandbox. Requires 'Manage clients'.",
+    examples: ["Attach the screenshots I just dropped to the map bug row."],
+  },
+  {
     name: "upload_sheet_image",
     blurb:
-      "Upload an image (PNG, JPEG, GIF or WebP, up to 10 MB) to a sheet — from base64 or a public link — and attach it to a row's media cell. Requires 'Manage clients'.",
+      "Upload one image to a sheet — from a Google Drive file (your own sign-in), a public link or base64 — and attach it to a row's media cell. Requires 'Manage clients'.",
     examples: ["Attach this screenshot to the checkout bug row's Screenshots column."],
   },
   {
