@@ -54,6 +54,8 @@ export const NOTIFICATION_EVENTS = [
   "clients.feed_failing",
   // You were @mentioned in a reply on a client's request (src/server/wiki-intake-reply-notify.ts)
   "wiki.request_mention",
+  // A client edited one of their wiki Sheets (src/server/wiki-sheets.ts) — at most once per sheet per 15 min
+  "wiki.sheet_client_edit",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
   // A message a person wrote and addressed to you (src/server/team-messages.ts)
@@ -109,6 +111,8 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // Directed at one person, by name, in a conversation a client may be waiting on —
   // the same weight as being @mentioned on a task.
   "wiki.request_mention": ["inApp", "push"],
+  // A client changed a shared sheet. In-app only: it is a heads-up, debounced per sheet, not a page.
+  "wiki.sheet_client_edit": ["inApp"],
   // Directed at admins each morning — in-app feed + a native push so it lands on the phone,
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.

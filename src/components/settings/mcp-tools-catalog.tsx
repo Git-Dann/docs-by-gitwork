@@ -169,9 +169,76 @@ const TOOLS: Tool[] = [
     examples: ["Delete the old v1 plans table from Speakify's wiki."],
   },
   {
+    name: "list_sheets",
+    blurb:
+      "List a client's wiki Sheets — the spreadsheets the client edits in their wiki — with columns, row counts, how many rows are on the dev board or done, and what the client may do.",
+    examples: ["What sheets does Northwind have?"],
+  },
+  {
+    name: "get_sheet",
+    blurb:
+      "Read one sheet in full — every row's cells by column title, plus where each row's task has got to on the board (derived live).",
+    examples: ["Show me Northwind's Content to build sheet and what's done."],
+  },
+  {
+    name: "create_sheet",
+    blurb:
+      "Create a sheet on a client's wiki — typed columns (text, long text, number, date, dropdown, checkbox, link, person), optional rows, and what the client may do (edit, add rows, send to the board). Up to 40 columns and 2,000 rows. Requires 'Manage clients'.",
+    examples: ["Make a 'Content to build' sheet for Speakify with Item, Type, Priority and Link columns."],
+  },
+  {
+    name: "update_sheet",
+    blurb:
+      "Rename a sheet, change its description or title column, or change whether the client can edit, add rows or send rows to the board. Requires 'Manage clients'.",
+    examples: ["Let Northwind send rows from their content sheet to the board."],
+  },
+  {
+    name: "add_sheet_columns",
+    blurb: "Add typed columns to a sheet. Requires 'Manage clients'.",
+    examples: ["Add a 'Wanted by' date column to Speakify's sheet."],
+  },
+  {
+    name: "update_sheet_column",
+    blurb:
+      "Rename, retype, change the options of, lock for the client, or move a column — existing values are converted, and any that can't be are reported. Requires 'Manage clients'.",
+    examples: ["Make Priority a dropdown of Low, Medium, High."],
+  },
+  {
+    name: "remove_sheet_column",
+    blurb: "Remove a column from a sheet. Requires 'Manage clients'.",
+    examples: ["Drop the old Notes column."],
+  },
+  {
+    name: "add_sheet_rows",
+    blurb: "Add rows to a sheet, cells by column title. All-or-nothing. Requires 'Manage clients'.",
+    examples: ["Add these five pages to Northwind's content sheet."],
+  },
+  {
+    name: "update_sheet_rows",
+    blurb:
+      "Change cells in many rows at once — rows by id or by their title cell, only the named cells change. All-or-nothing. Requires 'Manage clients'.",
+    examples: ["Set the pricing page's priority to High and tick Copy ready."],
+  },
+  {
+    name: "delete_sheet_rows",
+    blurb: "Remove rows from a sheet (they can be restored), or restore removed ones. Requires 'Manage clients'.",
+    examples: ["Remove the old homepage test row."],
+  },
+  {
+    name: "send_sheet_rows_to_board",
+    blurb:
+      "Turn sheet rows into tasks on the client's dev board, optionally in a category; the sheet then shows each task's progress. Safe to repeat — a row already on the board isn't sent twice. Requires 'Manage clients'.",
+    examples: ["Send the three High-priority rows on Northwind's sheet to the board under Website."],
+  },
+  {
+    name: "delete_sheet",
+    blurb: "Delete a sheet and all its rows from a client's wiki. Requires 'Manage clients'.",
+    examples: ["Delete the old launch checklist sheet."],
+  },
+  {
     name: "enable_wiki_section",
     blurb:
-      "Switch one of a client's optional wiki sections on or off — comparisons, charts, running costs, estimates, delivery, support, RoundUp, meetings, platforms, metrics. Content is kept when off. Requires 'Manage clients'.",
+      "Switch one of a client's optional wiki sections on or off — comparisons, sheets, charts, running costs, estimates, delivery, support, RoundUp, meetings, platforms, metrics. Content is kept when off. Requires 'Manage clients'.",
     examples: ["Turn on the Comparisons section for Speakify.", "Hide Running costs on Big Wedge's wiki."],
   },
   {

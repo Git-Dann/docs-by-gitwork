@@ -162,6 +162,11 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         label: "Mentioned on a request",
         description: "You were @mentioned in a reply on a client's wiki request.",
       },
+      {
+        id: "wiki.sheet_client_edit",
+        label: "Client edited a sheet",
+        description: "A client changed one of their wiki Sheets (at most once per sheet every 15 minutes).",
+      },
     ],
   },
   {

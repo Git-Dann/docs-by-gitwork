@@ -16,6 +16,7 @@ import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { isPlannable } from "@/lib/wiki-estimates";
 import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
+import { WikiSheetsSectionView } from "./wiki-sheets-section";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
@@ -70,6 +71,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   costs: "Running costs",
   estimates: "Estimates",
   comparisons: "Comparisons",
+  sheets: "Sheets",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
@@ -151,6 +153,11 @@ export function WikiPublicView({
     // would promise a comparison and show a blank grid.
     ...(wiki.comparisons.enabled && wiki.comparisons.comparisons.some(isPublishableComparison)
       ? (["comparisons"] as const)
+      : []),
+    // Sheets needs a sheet with columns. Enabled-and-empty would invite the client to a grid
+    // with nothing in it — and the server already sends nothing while the section is off.
+    ...(wiki.sheets.enabled && wiki.sheets.sheets.some((s) => s.columns.length > 0)
+      ? (["sheets"] as const)
       : []),
     // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
     // "nothing to report", which reads as a broken link rather than as work not started.
@@ -302,6 +309,17 @@ export function WikiPublicView({
     }
     if (activeSection === "costs") {
       return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
+    }
+    if (activeSection === "sheets") {
+      return (
+        <WikiSheetsSectionView
+          slug={wiki.clientSlug}
+          token={token}
+          section={{ ...wiki.sheets, sheets: wiki.sheets.sheets.filter((s) => s.columns.length > 0) }}
+          mode="public"
+          people={[...wiki.team, ...wiki.productTeam].map((m) => m.name).filter(Boolean)}
+        />
+      );
     }
     if (activeSection === "comparisons") {
       return (

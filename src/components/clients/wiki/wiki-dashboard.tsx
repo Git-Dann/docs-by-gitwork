@@ -11,6 +11,7 @@ import {
   BookOpenIcon,
   CalculatorIcon,
   TableCellsIcon,
+  ViewColumnsIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -80,6 +81,7 @@ const SECTION_META: Record<
   costs: { label: "Running costs", icon: BanknotesIcon },
   estimates: { label: "Estimates", icon: CalculatorIcon },
   comparisons: { label: "Comparisons", icon: TableCellsIcon },
+  sheets: { label: "Sheets", icon: ViewColumnsIcon },
   roundup: { label: "RoundUp", icon: NewspaperIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
@@ -598,6 +600,32 @@ export function WikiDashboard({
             </div>
             <p className="truncate text-[12px] text-[var(--text-4)]" title={estimate.title}>
               {estimate.title} · done by {formatShortDate(plan.end)}
+            </p>
+          </div>
+        );
+      }
+      case "sheets": {
+        // A real case, not the markdown-doc default (§52.1). It leads with what is on the
+        // board and how far it has got, because that is the reason the sheet lives here
+        // rather than in a Google Sheet.
+        const sheets = wiki.sheets.sheets;
+        const rows = sheets.flatMap((s) => s.rows.filter((r) => !r.deletedAt));
+        if (sheets.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No sheets yet.</p>;
+        }
+        const onBoard = rows.filter((r) => r.stage).length;
+        const done = rows.filter((r) => r.stage === "DONE").length;
+        const names = sheets.map((s) => s.title);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(rows.length)} label={rows.length === 1 ? "Row" : "Rows"} />
+              <Metric value={String(onBoard)} label="On the board" />
+              <Metric value={String(done)} label="Done" />
+            </div>
+            <p className="truncate text-[12px] text-[var(--text-4)]" title={names.join(" · ")}>
+              {names.slice(0, 3).join(" · ")}
+              {names.length > 3 ? ` +${names.length - 3}` : ""}
             </p>
           </div>
         );

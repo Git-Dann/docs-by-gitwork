@@ -3860,6 +3860,137 @@ export async function deleteWikiEstimateApi(
   return apiFetch(`/api/clients/${slug}/wiki/estimates/${estimateId}`, { method: "DELETE" });
 }
 
+/* ---------------------------------------------------------------- wiki: sheets */
+
+import type {
+  SheetCellValue as SheetCellValueT,
+  SheetColumnType as SheetColumnTypeT,
+  WikiSheet as WikiSheetT,
+  WikiSheetsSection as WikiSheetsSectionT,
+} from "@/types/wiki-sheets";
+
+/**
+ * Who is writing: the team (internal routes, by client slug) or the client (public routes,
+ * by share token). Structure calls exist only for the team — there is no public route for
+ * them, so a client call to one can only 404.
+ */
+export type SheetsTarget = { mode: "internal"; slug: string } | { mode: "public"; token: string };
+
+function sheetsBase(target: SheetsTarget, sheetId?: string): string {
+  const root =
+    target.mode === "internal" ? `/api/clients/${target.slug}/wiki/sheets` : `/api/wiki/${target.token}/sheets`;
+  return sheetId ? `${root}/${sheetId}` : root;
+}
+
+// `jsonInit` is declared once further down (the CRM block) and reused here.
+
+export interface SheetColumnInputT {
+  id?: string;
+  title: string;
+  type?: SheetColumnTypeT;
+  options?: string[];
+  width?: number;
+  clientEditable?: boolean;
+}
+
+export async function setWikiSheetsEnabledApi(slug: string, enabled: boolean): Promise<WikiSheetsSectionT> {
+  return apiFetch(sheetsBase({ mode: "internal", slug }), jsonInit("PATCH", { enabled }));
+}
+
+export async function createWikiSheetApi(
+  slug: string,
+  input: {
+    title: string;
+    description?: string | null;
+    columns: SheetColumnInputT[];
+    titleColumnId?: string | null;
+    rows?: Record<string, SheetCellValueT | null>[];
+    clientCanEdit?: boolean;
+    clientCanAddRows?: boolean;
+    clientCanSendToBoard?: boolean;
+  },
+): Promise<{ sheet: WikiSheetT; section: WikiSheetsSectionT }> {
+  return apiFetch(sheetsBase({ mode: "internal", slug }), jsonInit("POST", input));
+}
+
+export async function updateWikiSheetApi(
+  slug: string,
+  sheetId: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    titleColumnId?: string | null;
+    clientCanEdit?: boolean;
+    clientCanAddRows?: boolean;
+    clientCanSendToBoard?: boolean;
+  },
+): Promise<WikiSheetT> {
+  return apiFetch(sheetsBase({ mode: "internal", slug }, sheetId), jsonInit("PATCH", patch));
+}
+
+export async function deleteWikiSheetApi(slug: string, sheetId: string): Promise<void> {
+  await apiFetch(sheetsBase({ mode: "internal", slug }, sheetId), { method: "DELETE" });
+}
+
+export async function addWikiSheetColumnsApi(
+  slug: string,
+  sheetId: string,
+  columns: SheetColumnInputT[],
+): Promise<WikiSheetT> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/columns`, jsonInit("POST", { columns }));
+}
+
+export async function updateWikiSheetColumnApi(
+  slug: string,
+  sheetId: string,
+  columnId: string,
+  patch: {
+    title?: string;
+    type?: SheetColumnTypeT;
+    options?: string[];
+    width?: number | null;
+    clientEditable?: boolean;
+    position?: number;
+  },
+): Promise<{ sheet: WikiSheetT; cleared: number }> {
+  return apiFetch(
+    `${sheetsBase({ mode: "internal", slug }, sheetId)}/columns/${columnId}`,
+    jsonInit("PATCH", patch),
+  );
+}
+
+export async function removeWikiSheetColumnApi(slug: string, sheetId: string, columnId: string): Promise<WikiSheetT> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/columns/${columnId}`, { method: "DELETE" });
+}
+
+/** Team or client: add rows. Cells keyed by column id. */
+export async function addWikiSheetRowsApi(
+  target: SheetsTarget,
+  sheetId: string,
+  rows: Record<string, SheetCellValueT | null>[],
+): Promise<{ rowIds?: string[] }> {
+  return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("POST", { rows }));
+}
+
+/** Team or client: change some cells of one row (merged per cell). */
+export async function updateWikiSheetCellsApi(
+  target: SheetsTarget,
+  sheetId: string,
+  rowId: string,
+  cells: Record<string, SheetCellValueT | null>,
+): Promise<void> {
+  await apiFetch(`${sheetsBase(target, sheetId)}/rows/${rowId}`, jsonInit("PATCH", { cells }));
+}
+
+/** Team: delete / restore / send. Client: delete (own rows) / send (if allowed). */
+export async function bulkWikiSheetRowsApi(
+  target: SheetsTarget,
+  sheetId: string,
+  input: { action: "delete" | "restore" | "send"; rowIds: string[]; featureBlockId?: string | null },
+): Promise<{ count?: number; results?: { rowId: string; taskId: string; created: boolean }[] }> {
+  return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("PATCH", input));
+}
+
 /* ----------------------------------------------------------- wiki: comparisons */
 
 export type {

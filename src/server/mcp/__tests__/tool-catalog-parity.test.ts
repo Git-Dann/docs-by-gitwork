@@ -24,12 +24,16 @@ import { join } from "node:path";
 const ROOT = process.cwd();
 
 /** Every `name: "..."` at a tool-entry's indentation. */
-function toolNames(relative: string): string[] {
+function toolNames(relative: string, indent = 4): string[] {
   const src = readFileSync(join(ROOT, relative), "utf8");
-  return [...src.matchAll(/^ {4}name: "([a-z_]+)",$/gm)].map((m) => m[1]).sort();
+  return [...src.matchAll(new RegExp(`^ {${indent}}name: "([a-z_]+)",$`, "gm"))].map((m) => m[1]).sort();
 }
 
-const handler = toolNames("src/server/mcp/handler.ts");
+// The Sheets tools live in their own module (a factory spread into TOOLS), one level deeper.
+const handler = [
+  ...toolNames("src/server/mcp/handler.ts"),
+  ...toolNames("src/server/mcp/sheet-tools.ts", 6),
+].sort();
 const catalog = toolNames("src/components/settings/mcp-tools-catalog.tsx");
 
 describe("MCP tool lists agree", () => {
@@ -123,5 +127,40 @@ describe("comparison tools are registered and their writers gated", () => {
       const block = src.slice(start, end === -1 ? undefined : end);
       expect(block, `${name} is not gated`).toContain("assertCan(user, canManageClients");
     }
+  });
+});
+
+describe("sheet tools are registered and their writers gated", () => {
+  const WRITERS = [
+    "create_sheet",
+    "update_sheet",
+    "add_sheet_columns",
+    "update_sheet_column",
+    "remove_sheet_column",
+    "add_sheet_rows",
+    "update_sheet_rows",
+    "delete_sheet_rows",
+    "send_sheet_rows_to_board",
+    "delete_sheet",
+  ];
+
+  it.each(["list_sheets", "get_sheet", ...WRITERS])("%s", (name) => {
+    expect(handler).toContain(name);
+  });
+
+  it("every writer asserts 'Manage clients' — a sheet is something the client reads and edits", () => {
+    const src = readFileSync(join(ROOT, "src/server/mcp/sheet-tools.ts"), "utf8");
+    for (const name of WRITERS) {
+      const start = src.indexOf(`name: "${name}",`);
+      expect(start, `${name} not found`).toBeGreaterThan(-1);
+      const end = src.indexOf('      name: "', start + 20);
+      const block = src.slice(start, end === -1 ? undefined : end);
+      expect(block, `${name} is not gated`).toContain("assertCan(user, canManageClients");
+    }
+  });
+
+  it("sheets can be switched on and off with enable_wiki_section", () => {
+    const src = readFileSync(join(ROOT, "src/server/mcp/handler.ts"), "utf8");
+    expect(src).toContain("  sheets: setWikiSheetsEnabled,");
   });
 });

@@ -10,6 +10,8 @@ import { normalizeGithubRepo } from "@/lib/github";
 import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
+import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
+import type { SheetColumnType } from "@/types/wiki-sheets";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -2363,4 +2365,79 @@ export type ComparisonInput = z.infer<typeof comparisonSchema>;
 
 export const comparisonOrderSchema = z.object({
   order: z.array(z.string().min(1).max(64)).max(CMP.maxTables),
+});
+
+// ─── Wiki: Sheets ──────────────────────────────────────────────────────────────
+// Limits and value types come from SHEET_LIMITS / coerceCellValue in src/lib/wiki-sheets.ts,
+// shared with the grid and the MCP tools. These schemas check SHAPE; each cell value is
+// coerced (and refused with a sentence) per column type on the server.
+
+const sheetColumnTypeSchema = z.enum(
+  COLUMN_TYPES as readonly [SheetColumnType, ...SheetColumnType[]],
+);
+const sheetCellValueSchema = z.union([z.string().max(SHT.maxLongText), z.number(), z.boolean(), z.null()]);
+const sheetCellsSchema = z.record(z.string().max(80), sheetCellValueSchema);
+
+export const sheetColumnInputSchema = z.object({
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid column id").optional(),
+  title: z.string().trim().min(1, "Every column needs a title").max(SHT.maxColumnTitle),
+  type: sheetColumnTypeSchema.optional(),
+  options: z.array(z.string().trim().max(SHT.maxOption)).max(SHT.maxOptions).optional(),
+  width: z.number().int().min(SHT.minWidth).max(SHT.maxWidth).optional(),
+  clientEditable: z.boolean().optional(),
+});
+
+const sheetPermissionFields = {
+  clientCanEdit: z.boolean().optional(),
+  clientCanAddRows: z.boolean().optional(),
+  clientCanSendToBoard: z.boolean().optional(),
+};
+
+export const sheetCreateSchema = z.object({
+  title: z.string().trim().min(1, "Give the sheet a title").max(SHT.maxTitle),
+  description: z.string().trim().max(SHT.maxDescription).nullable().optional(),
+  columns: z
+    .array(sheetColumnInputSchema)
+    .max(SHT.maxColumns, `A sheet can have at most ${SHT.maxColumns} columns`),
+  titleColumnId: z.string().max(64).nullable().optional(),
+  rows: z.array(sheetCellsSchema).max(SHT.maxBatch).optional(),
+  ...sheetPermissionFields,
+});
+
+export const sheetUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(SHT.maxTitle).optional(),
+  description: z.string().trim().max(SHT.maxDescription).nullable().optional(),
+  titleColumnId: z.string().max(64).nullable().optional(),
+  ...sheetPermissionFields,
+});
+
+export const sheetColumnPatchSchema = z.object({
+  title: z.string().trim().min(1).max(SHT.maxColumnTitle).optional(),
+  type: sheetColumnTypeSchema.optional(),
+  options: z.array(z.string().trim().max(SHT.maxOption)).max(SHT.maxOptions).optional(),
+  width: z.number().int().min(SHT.minWidth).max(SHT.maxWidth).nullable().optional(),
+  clientEditable: z.boolean().optional(),
+  position: z.number().int().min(0).max(SHT.maxColumns).optional(),
+});
+
+export const sheetAddColumnsSchema = z.object({
+  columns: z.array(sheetColumnInputSchema).min(1).max(SHT.maxColumns),
+});
+
+export const sheetAddRowsSchema = z.object({
+  rows: z.array(sheetCellsSchema).min(1).max(SHT.maxBatch),
+});
+
+export const sheetCellPatchSchema = z.object({
+  cells: sheetCellsSchema,
+});
+
+export const sheetRowsBulkSchema = z.object({
+  action: z.enum(["delete", "restore", "send"]),
+  rowIds: z.array(z.string().min(1).max(64)).min(1).max(SHT.maxBatch),
+  featureBlockId: z.string().max(64).nullable().optional(),
+});
+
+export const sheetOrderSchema = z.object({
+  order: z.array(z.string().min(1).max(64)).max(SHT.maxRows),
 });
