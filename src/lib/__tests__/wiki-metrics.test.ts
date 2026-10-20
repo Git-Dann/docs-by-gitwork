@@ -15,7 +15,9 @@ import {
   readMetricsConfig,
   rekeyByCapture,
   selectMetricsView,
+  readMetricCard,
   selectMonthToDate,
+  tilesFor,
   type StoredSnapshot,
 } from "@/lib/wiki-metrics";
 
@@ -394,5 +396,42 @@ describe("money keeps its pence", () => {
     const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots: snaps, monthToDate: true });
     expect(v.metrics[0].money).toBe(true);
     expect(v.monthToDate?.metrics[0].money).toBe(true);
+  });
+});
+
+describe("several metrics in one card", () => {
+  const subs = (part: string) => ({ id: "subs", title: "Subscriptions", part });
+  const row = (key: string, card: ReturnType<typeof subs> | null = null) => ({ key, card });
+
+  it("groups by card where the first of them stood, in order, everything else untouched", () => {
+    const t = tilesFor([row("users"), row("total", subs("Total")), row("mrr"), row("monthly", subs("Monthly")), row("yearly", subs("Yearly"))]);
+    expect(t.map((x) => (x.kind === "single" ? x.metric.key : `${x.title}:${x.parts.map((p) => p.key).join("+")}`))).toEqual([
+      "users",
+      "Subscriptions:total+monthly+yearly",
+      "mrr",
+    ]);
+  });
+
+  it("⚠️ a card left with ONE part is just that metric — a lone 'Monthly' says nothing", () => {
+    const t = tilesFor([row("monthly", subs("Monthly"))]);
+    expect(t).toEqual([{ kind: "single", metric: row("monthly", subs("Monthly")) }]);
+  });
+
+  it("a malformed stored card is ignored, not trusted", () => {
+    expect(readMetricCard({ id: "subs", title: "Subscriptions", part: "Total" })).toEqual(subs("Total"));
+    expect(readMetricCard({ id: "", title: "x", part: "y" })).toBeNull();
+    expect(readMetricCard({ id: "subs", title: 3, part: "y" })).toBeNull();
+    expect(readMetricCard("subs")).toBeNull();
+  });
+
+  it("the card survives into both views", () => {
+    const card = { id: "subs", title: "Subscriptions", part: "Total" };
+    const snaps: StoredSnapshot[] = [
+      { period: "2026-10", capturedAt: "2026-10-15T09:00:00Z", metrics: [{ key: "t", label: "T", value: 12, card }] },
+      { period: "2026-09", capturedAt: "2026-10-02T09:00:00Z", metrics: [{ key: "t", label: "T", value: 1, card }] },
+    ];
+    const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots: snaps, monthToDate: true });
+    expect(v.metrics[0].card).toEqual(card);
+    expect(v.monthToDate?.metrics[0].card).toEqual(card);
   });
 });

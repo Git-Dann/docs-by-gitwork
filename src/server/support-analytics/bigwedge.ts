@@ -52,7 +52,14 @@ export function monthRange(year: number, month: number, now: Date = new Date()):
  * apart). Stored per month they would draw a flat line and claim no change, so they are
  * left out. Only figures the date range actually scopes belong in a monthly series.
  */
-const FIELDS: { key: string; label: string; group: string; path: [string, string]; money?: boolean }[] = [
+const FIELDS: {
+  key: string;
+  label: string;
+  group: string;
+  path: [string, string];
+  money?: boolean;
+  card?: { id: string; title: string; part: string };
+}[] = [
   { key: "users_new", label: "New users", group: "Users", path: ["user_growth", "new_users"] },
   { key: "users_active", label: "Active users", group: "Users", path: ["user_growth", "active_users"] },
   { key: "users_mau", label: "Monthly active users", group: "Users", path: ["retention", "mau"] },
@@ -65,9 +72,11 @@ const FIELDS: { key: string; label: string; group: string; path: [string, string
   // are subscriptions ACTIVE during the range, not ones started in it, and `mrr` is their
   // monthly value with a yearly plan spread over 12. One yearly sub from August reads 2.50 in
   // August, again in September, and is still inside October's 39.75 (5 × 5.45 + 5 × 29.99 / 12).
-  { key: "premium_subscribers", label: "Premium subscribers", group: "Revenue", path: ["business_growth", "premium_users"] },
-  { key: "subs_monthly", label: "Monthly subscriptions", group: "Revenue", path: ["revenue", "active_monthly_subs"] },
-  { key: "subs_yearly", label: "Yearly subscriptions", group: "Revenue", path: ["revenue", "active_yearly_subs"] },
+  // One card: "Subscriptions — 12 Total | 6 Monthly | 6 Yearly". `premium_users` is Big Wedge's
+  // own count of everyone on Premium (12 = 6 + 6 on launch day), so it is the total.
+  { key: "premium_subscribers", label: "Premium subscribers", group: "Revenue", path: ["business_growth", "premium_users"], card: { id: "subs", title: "Subscriptions", part: "Total" } },
+  { key: "subs_monthly", label: "Monthly subscriptions", group: "Revenue", path: ["revenue", "active_monthly_subs"], card: { id: "subs", title: "Subscriptions", part: "Monthly" } },
+  { key: "subs_yearly", label: "Yearly subscriptions", group: "Revenue", path: ["revenue", "active_yearly_subs"], card: { id: "subs", title: "Subscriptions", part: "Yearly" } },
   { key: "revenue_mrr", label: "MRR", group: "Revenue", path: ["revenue", "mrr"], money: true },
   // Cash actually taken in the range, a yearly plan counted IN FULL in the month it is paid.
   // The report does not carry it yet (requested from Big Wedge, Oct 2026). When it does, this
@@ -144,6 +153,7 @@ export function metricsFromReport(json: unknown): AnalyticsMetric[] {
     const value = section && typeof section === "object" ? (section as Record<string, unknown>)[f.path[1]] : undefined;
     if (typeof value === "number" && Number.isFinite(value)) {
       const m: AnalyticsMetric = { key: f.key, label: f.label, value, group: f.group };
+      if (f.card) m.card = f.card;
       if (f.money) {
         m.money = true;
         if (money) m.unit = money;

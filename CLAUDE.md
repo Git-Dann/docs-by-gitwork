@@ -7306,3 +7306,10 @@ change it if they change their prices. If the day-before read fails, the total i
 zeroed. Big Wedge's own `cash_revenue` replaces the estimate outright when it exists. It doesn't count
 a yearly renewal 12 months on, refunds or plan changes. Money figures carry `money: true` and always
 show two decimals (47.70, never 47.7).
+
+**One card, several metrics.** A metric can name a `card: { id, title, part }`, and metrics sharing an
+id render as one tile (`tilesFor`). The **first** part is the headline figure, labelled with the card
+title. The rest sit underneath as a small breakdown, e.g. **12 Subscriptions** over "6 monthly · 6
+yearly". Each part stays its own metric for trends, hiding and history. A card left with one visible
+part renders as a plain metric. Big Wedge's Premium subscribers (`premium_users`, the total), monthly
+and yearly counts share the `subs` card.

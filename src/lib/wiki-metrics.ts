@@ -34,6 +34,29 @@ export interface MetricValue {
   group?: string | null;
   /** A sum of money — always shown to two decimals (47.70, never 47.7). */
   money?: boolean;
+  /**
+   * Shown in ONE card with the other metrics that name the same `id` — "Monthly" and
+   * "Yearly" side by side under "Subscriptions". Each stays its own metric underneath, so
+   * it still trends, hides and charts on its own.
+   */
+  card?: MetricCard | null;
+}
+
+export interface MetricCard {
+  id: string;
+  /** The card's label, e.g. "Subscriptions". */
+  title: string;
+  /** This metric's caption inside it, e.g. "Monthly". */
+  part: string;
+}
+
+/** A stored `card`, or null when it is missing or malformed. */
+export function readMetricCard(raw: unknown): MetricCard | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  return typeof c.id === "string" && c.id && typeof c.title === "string" && typeof c.part === "string"
+    ? { id: c.id, title: c.title, part: c.part }
+    : null;
 }
 
 export interface StoredSnapshot {
@@ -51,6 +74,7 @@ export interface WikiMetric {
   unit: string | null;
   group: string | null;
   money?: boolean;
+  card?: MetricCard | null;
   /** The comparison figure, or null when there is none to compare honestly with. */
   previous: number | null;
   /** Hidden by Gitwork — internal view only; stripped from the client's copy. */
@@ -163,6 +187,7 @@ export interface MonthToDateMetric {
   unit: string | null;
   group: string | null;
   money?: boolean;
+  card?: MetricCard | null;
   hidden: boolean;
 }
 
@@ -202,6 +227,7 @@ export function selectMonthToDate(
       unit: m.unit ?? null,
       group: m.group ?? null,
       money: m.money === true,
+      card: readMetricCard(m.card),
       hidden: hidden.has(m.key),
     });
   }
@@ -311,6 +337,7 @@ export function selectMetricsView(input: {
     unit: m.unit ?? null,
     group: m.group ?? null,
     money: m.money === true,
+    card: readMetricCard(m.card),
     previous: prevByKey.has(m.key) ? prevByKey.get(m.key)! : null,
     hidden: hidden.has(m.key),
     featured: featured.has(m.key),
@@ -425,4 +452,35 @@ export function periodLabel(period: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+/** One tile on the page: a single metric, or several that share a card. */
+export type MetricTileGroup<T> =
+  | { kind: "single"; metric: T }
+  | { kind: "card"; id: string; title: string; parts: T[] };
+
+/**
+ * Metrics laid out as tiles, in the order they come. Metrics naming the same card become one
+ * tile where the first of them stood. A card with only one visible part is just that metric —
+ * a "Subscriptions" card holding a lone "Monthly" would hide what the number is.
+ */
+export function tilesFor<T extends { card?: MetricCard | null }>(metrics: T[]): MetricTileGroup<T>[] {
+  const out: MetricTileGroup<T>[] = [];
+  const cards = new Map<string, { kind: "card"; id: string; title: string; parts: T[] }>();
+  for (const m of metrics) {
+    const c = m.card;
+    if (!c) {
+      out.push({ kind: "single", metric: m });
+      continue;
+    }
+    const held = cards.get(c.id);
+    if (held) {
+      held.parts.push(m);
+      continue;
+    }
+    const tile = { kind: "card" as const, id: c.id, title: c.title, parts: [m] };
+    cards.set(c.id, tile);
+    out.push(tile);
+  }
+  return out.map((t) => (t.kind === "card" && t.parts.length === 1 ? { kind: "single", metric: t.parts[0] } : t));
 }
