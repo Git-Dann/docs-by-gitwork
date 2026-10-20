@@ -21,6 +21,7 @@ import {
   formatMetric,
   metricTrend,
   periodLabel,
+  tilesFor,
   type MonthToDateMetric,
   type MonthToDateView,
   type WikiMetric,
@@ -184,6 +185,59 @@ function SoFarTile({ metric }: { metric: MonthToDateMetric }) {
   );
 }
 
+/**
+ * Several metrics in ONE card — "12 Subscriptions" as the figure, "6 monthly · 6 yearly"
+ * underneath as supporting detail. The first part is the headline (it is listed first by the
+ * adapter); the rest break it down. Each part is still its own metric underneath.
+ */
+function CardTile({
+  title,
+  parts,
+}: {
+  title: string;
+  parts: { key: string; value: number; unit: string | null; money?: boolean; part: string; previous?: number | null }[];
+}) {
+  const [main, ...rest] = parts;
+  const text = formatMetric(main.value, main.unit, main.money);
+  const breakdown = rest.map((p) => `${formatMetric(p.value, p.unit, p.money)} ${p.part.toLowerCase()}`).join(" · ");
+  return (
+    <div className="flex min-w-0 flex-col rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3">
+      <div
+        className="truncate tabular-nums text-[var(--text-1)]"
+        style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1, letterSpacing: "-0.02em" }}
+        title={text}
+      >
+        {text}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <span
+          className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
+          style={{ fontFamily: MONO }}
+          title={title}
+        >
+          {title}
+        </span>
+        {/* A whole month carries a change; the running month never does (half a month
+            against a whole one always reads as a fall). */}
+        {main.previous !== undefined ? (
+          <span className="shrink-0 text-xs text-[var(--text-3)]">
+            <TrendBadge delta={metricTrend(main.value, main.previous ?? null)} goodWhen="neutral" />
+          </span>
+        ) : null}
+      </div>
+      {breakdown ? (
+        <p
+          className="mt-2 truncate border-t border-[var(--border-1)] pt-2 text-[11px] tabular-nums text-[var(--text-3)]"
+          style={{ fontFamily: MONO }}
+          title={breakdown}
+        >
+          {breakdown}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function MonthToDateCard({ n, view }: { n: string; view: MonthToDateView }) {
   const rows = view.metrics.filter((m) => !m.hidden);
   const month = periodLabel(view.period).split(" ")[0] ?? periodLabel(view.period);
@@ -196,9 +250,17 @@ function MonthToDateCard({ n, view }: { n: string; view: MonthToDateView }) {
           <div key={group || "_"}>
             {group ? <GroupLabel>{group}</GroupLabel> : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {ms.map((m) => (
-                <SoFarTile key={m.key} metric={m} />
-              ))}
+              {tilesFor(ms).map((t) =>
+                t.kind === "single" ? (
+                  <SoFarTile key={t.metric.key} metric={t.metric} />
+                ) : (
+                  <CardTile
+                    key={t.id}
+                    title={t.title}
+                    parts={t.parts.map((m) => ({ ...m, part: m.card?.part ?? m.label }))}
+                  />
+                ),
+              )}
             </div>
           </div>
         ))}
@@ -250,9 +312,17 @@ export function WikiMetricsSectionView({
               <div key={group || "_"}>
                 {group ? <GroupLabel>{group}</GroupLabel> : null}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {rows.map((m) => (
-                    <MetricTile key={m.key} metric={m} periods={metrics.historyPeriods} />
-                  ))}
+                  {tilesFor(rows).map((t) =>
+                    t.kind === "single" ? (
+                      <MetricTile key={t.metric.key} metric={t.metric} periods={metrics.historyPeriods} />
+                    ) : (
+                      <CardTile
+                        key={t.id}
+                        title={t.title}
+                        parts={t.parts.map((m) => ({ ...m, part: m.card?.part ?? m.label }))}
+                      />
+                    ),
+                  )}
                 </div>
               </div>
             ))}

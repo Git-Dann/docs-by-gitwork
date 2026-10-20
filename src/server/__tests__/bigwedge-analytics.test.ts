@@ -117,6 +117,13 @@ describe("revenue", () => {
     ]);
   });
 
+  it("total, monthly and yearly share ONE Subscriptions card, in that order", () => {
+    const parts = metricsFromReport(OCTOBER_SO_FAR)
+      .filter((m) => m.card?.id === "subs")
+      .map((m) => `${m.card!.part}=${m.value}`);
+    expect(parts).toEqual(["Total=10", "Monthly=5", "Yearly=5"]);
+  });
+
   it("⚠️ has no currency symbol when the report names no currency — never a guessed £", () => {
     for (const m of metricsFromReport(OCTOBER_SO_FAR)) expect(m.unit, m.key).toBeUndefined();
   });

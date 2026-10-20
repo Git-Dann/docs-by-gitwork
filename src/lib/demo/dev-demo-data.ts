@@ -1226,8 +1226,11 @@ const demoWiki: WikiDTO = {
       capturedAt: atDays(0),
       metrics: [
         { key: "users.active", label: "Active users", value: 2960, unit: null, group: "Users", hidden: false },
-        { key: "subs.active", label: "Active subscriptions", value: 1251, unit: null, group: "Subscriptions", hidden: false },
-        { key: "subs.mrr", label: "Monthly revenue", value: 11502, unit: "£", group: "Subscriptions", hidden: false },
+        // Three metrics in one card, the way Big Wedge's Subscriptions card renders.
+        { key: "subs.active", label: "Active subscriptions", value: 1251, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Total" } },
+        { key: "subs.monthly", label: "Monthly subscriptions", value: 1004, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Monthly" } },
+        { key: "subs.yearly", label: "Yearly subscriptions", value: 247, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Yearly" } },
+        { key: "subs.mrr", label: "Monthly revenue", value: 11502, unit: "£", group: "Subscriptions", money: true, hidden: false },
         { key: "debug.queue_depth", label: "Queue depth", value: 2, unit: null, group: null, hidden: true },
       ],
     },
