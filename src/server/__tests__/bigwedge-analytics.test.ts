@@ -12,7 +12,14 @@ vi.mock("@/server/support-analytics/types", async (orig) => ({
 }));
 vi.mock("@/server/bigwedge-api-auth", () => ({ bigWedgeBearer: (...a: unknown[]) => bearer(...a) }));
 
-import { bigwedgeAdapter, currencyUnit, metricsFromReport, monthRange } from "@/server/support-analytics/bigwedge";
+import {
+  bigwedgeAdapter,
+  currencyUnit,
+  dayBeforeMonth,
+  estimateRevenueTaken,
+  metricsFromReport,
+  monthRange,
+} from "@/server/support-analytics/bigwedge";
 
 /** Trimmed from the real response for August 2026. */
 const AUGUST = {
@@ -134,6 +141,67 @@ describe("revenue", () => {
       data: { ...OCTOBER_SO_FAR.data, revenue: { ...OCTOBER_SO_FAR.data.revenue, cash_revenue: 176.2 } },
     };
     expect(revenue(withCash)).toContain("Revenue this month=176.2");
+  });
+});
+
+describe("revenue taken — the total MRR cannot give", () => {
+  /** The day before October: only the August test yearly sub was active (live, 20 Oct). */
+  const SEP_30 = { status: "success", data: { revenue: { active_monthly_subs: 0, active_yearly_subs: 1, mrr: 2.5 } } };
+  const octCtx = { ...ctx, month: 10, now: new Date("2026-10-20T14:00:00Z") };
+
+  it("monthly plans paid once each, NEW yearly plans paid in full", () => {
+    // Live counts at 17:29 on launch day: 6 monthly, 6 yearly active, 1 yearly already on 30 Sep.
+    expect(estimateRevenueTaken({ monthly: 6, yearly: 6 }, { monthly: 0, yearly: 1 })).toBe(182.65);
+  });
+
+  it("⚠️ a yearly sub from an earlier month is not counted again", () => {
+    // September: the one August yearly sub is active in the month AND the day before it.
+    expect(estimateRevenueTaken({ monthly: 0, yearly: 1 }, { monthly: 0, yearly: 1 })).toBe(0);
+  });
+
+  it("never goes negative when subscriptions lapse", () => {
+    expect(estimateRevenueTaken({ monthly: 0, yearly: 1 }, { monthly: 0, yearly: 3 })).toBe(0);
+  });
+
+  it("the day before a month rolls back over a year end", () => {
+    expect(dayBeforeMonth(2026, 10)).toBe("2026-09-30");
+    expect(dayBeforeMonth(2027, 1)).toBe("2026-12-31");
+  });
+
+  it("reads the day before the month, and sits beside MRR labelled as an estimate", async () => {
+    getJson.mockResolvedValueOnce(OCTOBER_SO_FAR).mockResolvedValueOnce(SEP_30);
+    const snap = await bigwedgeAdapter.fetchMonth(octCtx);
+    expect(getJson.mock.calls[1][0]).toBe(
+      "https://apiv1.bigwedgegolf.com/api/v1/analytics/overall-report/?start_date=2026-09-30&end_date=2026-09-30",
+    );
+    const keys = snap.metrics.map((m) => m.key);
+    expect(keys.indexOf("revenue_cash")).toBe(keys.indexOf("revenue_mrr") + 1);
+    const total = snap.metrics.find((m) => m.key === "revenue_cash")!;
+    // 5 × 5.45 + (5 − 1) × 29.99 — Syed's "real customers only" sum.
+    expect(total).toMatchObject({ label: "Revenue this month (est.)", value: 147.21, money: true });
+  });
+
+  it("uses Big Wedge's own figure once the report carries it, and asks for nothing more", async () => {
+    getJson.mockResolvedValueOnce({
+      ...OCTOBER_SO_FAR,
+      data: { ...OCTOBER_SO_FAR.data, revenue: { ...OCTOBER_SO_FAR.data.revenue, cash_revenue: 150 } },
+    });
+    const snap = await bigwedgeAdapter.fetchMonth(octCtx);
+    expect(getJson).toHaveBeenCalledTimes(1);
+    expect(snap.metrics.find((m) => m.key === "revenue_cash")).toMatchObject({ label: "Revenue this month", value: 150 });
+  });
+
+  it("⚠️ leaves the total OUT when the day before cannot be read — the month still loads", async () => {
+    getJson.mockResolvedValueOnce(OCTOBER_SO_FAR).mockRejectedValueOnce(new Error("503"));
+    const snap = await bigwedgeAdapter.fetchMonth(octCtx);
+    expect(snap.metrics.some((m) => m.key === "revenue_cash")).toBe(false);
+    expect(snap.metrics.some((m) => m.key === "revenue_mrr")).toBe(true);
+  });
+
+  it("money figures are flagged so they keep their pence", () => {
+    const m = metricsFromReport(OCTOBER_SO_FAR);
+    expect(m.find((x) => x.key === "revenue_mrr")?.money).toBe(true);
+    expect(m.find((x) => x.key === "subs_monthly")?.money).toBeUndefined();
   });
 });
 

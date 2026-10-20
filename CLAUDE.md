@@ -7295,3 +7295,14 @@ does) to show the running month as its own **"<Month> so far"** card above the w
 It has no trend and no sparkline, is never the headline, and is refetched when it is more than 6h
 old. Its range ends today. On the 1st the partial month is replaced by the final one, by the
 existing `isFinal` rule.
+
+**Total revenue (same day).** MRR spreads a yearly plan over 12, so it can't answer "what did we
+take". The adapter now adds **"Revenue this month (est.)"**: each monthly plan active in the month ×
+5.45, plus yearly plans **new** in the month × 29.99 in full. "New" means active in the month minus
+active on the day before it started, which takes one more report read. A yearly sub from an earlier
+month is in both counts and cancels out, which also drops the August test sub. Big Wedge's API has
+**no prices anywhere**, so `BIG_WEDGE_PLAN_PRICES` in `bigwedge.ts` is the only place they live:
+change it if they change their prices. If the day-before read fails, the total is **left out**, not
+zeroed. Big Wedge's own `cash_revenue` replaces the estimate outright when it exists. It doesn't count
+a yearly renewal 12 months on, refunds or plan changes. Money figures carry `money: true` and always
+show two decimals (47.70, never 47.7).

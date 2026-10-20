@@ -70,10 +70,55 @@ const FIELDS: { key: string; label: string; group: string; path: [string, string
   { key: "subs_yearly", label: "Yearly subscriptions", group: "Revenue", path: ["revenue", "active_yearly_subs"] },
   { key: "revenue_mrr", label: "MRR", group: "Revenue", path: ["revenue", "mrr"], money: true },
   // Cash actually taken in the range, a yearly plan counted IN FULL in the month it is paid.
-  // The report does not carry it yet (requested from Big Wedge, Oct 2026). Read here so it
-  // appears the day it is added; until then it is simply absent, never shown as zero.
+  // The report does not carry it yet (requested from Big Wedge, Oct 2026). When it does, this
+  // wins; until then `estimateRevenueTaken` works it out from the counts and the plan prices.
   { key: "revenue_cash", label: "Revenue this month", group: "Revenue", path: ["revenue", "cash_revenue"], money: true },
 ];
+
+/**
+ * Big Wedge's plan prices. Its API carries NO prices or payment amounts anywhere (checked
+ * against the full OpenAPI schema, Oct 2026), so they live here — confirmed by Syed on launch
+ * day, 20 Oct 2026. ⚠️ Change them here if Big Wedge changes its prices; nothing else will.
+ */
+export const BIG_WEDGE_PLAN_PRICES = { monthly: 5.45, yearly: 29.99 } as const;
+
+/** The report's subscription counts, or null when it does not carry both. */
+function subCounts(json: unknown): { monthly: number; yearly: number } | null {
+  const r = (json as { data?: { revenue?: Record<string, unknown> } })?.data?.revenue;
+  const m = r?.active_monthly_subs;
+  const y = r?.active_yearly_subs;
+  return typeof m === "number" && Number.isFinite(m) && typeof y === "number" && Number.isFinite(y)
+    ? { monthly: m, yearly: y }
+    : null;
+}
+
+/**
+ * What was taken in the month, a yearly plan counted IN FULL — the total MRR cannot give.
+ *
+ *   monthly plans: every one ACTIVE in the month paid once in it            × 5.45
+ *   yearly plans:  only the ones NEW this month paid in it (in full)        × 29.99
+ *
+ * "New" is active in the month minus active on the day BEFORE it started: the report counts
+ * subscriptions active during a range, so a yearly sub from an earlier month is in both and
+ * cancels out. That is also what drops the test yearly sub from August from October's total.
+ *
+ * ⚠️ An estimate, labelled as one. A yearly plan's renewal 12 months on is not counted (it was
+ * already active the day before), nor are refunds or a mid-month plan change. Big Wedge's own
+ * `cash_revenue`, once it exists, replaces this outright.
+ */
+export function estimateRevenueTaken(
+  month: { monthly: number; yearly: number },
+  dayBefore: { monthly: number; yearly: number },
+): number {
+  const newYearly = Math.max(0, month.yearly - dayBefore.yearly);
+  const total = month.monthly * BIG_WEDGE_PLAN_PRICES.monthly + newYearly * BIG_WEDGE_PLAN_PRICES.yearly;
+  return Math.round(total * 100) / 100;
+}
+
+/** "YYYY-MM-DD" of the day before the 1st of the month. */
+export function dayBeforeMonth(year: number, month: number): string {
+  return new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10);
+}
 
 /** £ / $ / € for the report's `revenue.currency`, the code itself for anything else. */
 export function currencyUnit(code: unknown): string | undefined {
@@ -99,7 +144,10 @@ export function metricsFromReport(json: unknown): AnalyticsMetric[] {
     const value = section && typeof section === "object" ? (section as Record<string, unknown>)[f.path[1]] : undefined;
     if (typeof value === "number" && Number.isFinite(value)) {
       const m: AnalyticsMetric = { key: f.key, label: f.label, value, group: f.group };
-      if (f.money && money) m.unit = money;
+      if (f.money) {
+        m.money = true;
+        if (money) m.unit = money;
+      }
       out.push(m);
     }
   }
@@ -127,6 +175,35 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
   const metrics = metricsFromReport(report);
   if (metrics.length === 0) {
     throw new Error("Big Wedge's analytics report answered but carried none of the expected figures.");
+  }
+
+  // The total taken, when Big Wedge does not report it itself. Needs one more read — the day
+  // before the month — and if that read fails the figure is LEFT OUT, never guessed: the rest
+  // of the month is still good.
+  const counts = subCounts(report);
+  if (counts && !metrics.some((m) => m.key === "revenue_cash")) {
+    try {
+      const day = dayBeforeMonth(ctx.year, ctx.month);
+      const before = subCounts(
+        await getJson<unknown>(`${base}/api/v1/analytics/overall-report/?start_date=${day}&end_date=${day}`, bearer.token),
+      );
+      if (before) {
+        const mrrAt = metrics.findIndex((m) => m.key === "revenue_mrr");
+        const unit = metrics[mrrAt]?.unit;
+        const total: AnalyticsMetric = {
+          key: "revenue_cash",
+          label: "Revenue this month (est.)",
+          value: estimateRevenueTaken(counts, before),
+          group: "Revenue",
+          money: true,
+          ...(unit ? { unit } : {}),
+        };
+        // Beside MRR, so the two are read together.
+        metrics.splice(mrrAt >= 0 ? mrrAt + 1 : metrics.length, 0, total);
+      }
+    } catch {
+      // Omitted, not zeroed (§35).
+    }
   }
   return { periodLabel: monthLabel(ctx.year, ctx.month), metrics };
 }

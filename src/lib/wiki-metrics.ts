@@ -32,6 +32,8 @@ export interface MetricValue {
   value: number;
   unit?: string | null;
   group?: string | null;
+  /** A sum of money — always shown to two decimals (47.70, never 47.7). */
+  money?: boolean;
 }
 
 export interface StoredSnapshot {
@@ -48,6 +50,7 @@ export interface WikiMetric {
   value: number;
   unit: string | null;
   group: string | null;
+  money?: boolean;
   /** The comparison figure, or null when there is none to compare honestly with. */
   previous: number | null;
   /** Hidden by Gitwork — internal view only; stripped from the client's copy. */
@@ -159,6 +162,7 @@ export interface MonthToDateMetric {
   value: number;
   unit: string | null;
   group: string | null;
+  money?: boolean;
   hidden: boolean;
 }
 
@@ -197,6 +201,7 @@ export function selectMonthToDate(
       value: m.value,
       unit: m.unit ?? null,
       group: m.group ?? null,
+      money: m.money === true,
       hidden: hidden.has(m.key),
     });
   }
@@ -305,6 +310,7 @@ export function selectMetricsView(input: {
     value: m.value,
     unit: m.unit ?? null,
     group: m.group ?? null,
+    money: m.money === true,
     previous: prevByKey.has(m.key) ? prevByKey.get(m.key)! : null,
     hidden: hidden.has(m.key),
     featured: featured.has(m.key),
@@ -401,10 +407,13 @@ export function metricTrend(value: number, previous: number | null) {
 }
 
 /** "1,240" / "£3,410" / "62%" — the unit sits where the adapter says. */
-export function formatMetric(value: number, unit: string | null): string {
-  const n = Number.isInteger(value)
-    ? value.toLocaleString("en-GB")
-    : value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+export function formatMetric(value: number, unit: string | null, money = false): string {
+  const n = money
+    ? // Money keeps its pence: 47.70, not 47.7.
+      value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : Number.isInteger(value)
+      ? value.toLocaleString("en-GB")
+      : value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
   if (!unit) return n;
   return /^[£$€]$/.test(unit) ? `${unit}${n}` : `${n}${unit === "%" ? "" : " "}${unit}`;
 }

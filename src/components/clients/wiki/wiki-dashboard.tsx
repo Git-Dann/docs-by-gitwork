@@ -772,7 +772,7 @@ export function WikiDashboard({
                       className="text-[24px] leading-none text-[var(--text-1)] tabular-nums"
                       style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
                     >
-                      {formatMetric(m.value, m.unit)}
+                      {formatMetric(m.value, m.unit, m.money)}
                     </span>
                     <TrendBadge delta={metricTrend(m.value, m.previous)} goodWhen="neutral" compact />
                   </span>

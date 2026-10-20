@@ -21,6 +21,8 @@ export interface AnalyticsMetric {
   unit?: string;
   /** Optional section grouping, e.g. "Subscriptions" / "Players". */
   group?: string;
+  /** A sum of money — shown to two decimals. */
+  money?: boolean;
 }
 
 /** A single month's snapshot for one connection. */

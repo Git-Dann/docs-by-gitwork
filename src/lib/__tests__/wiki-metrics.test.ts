@@ -375,3 +375,24 @@ describe("the month still running (\"October so far\")", () => {
     expect(selectMetricsView({ mode: "monthly", now: NOW, snapshots: stale, monthToDate: true }).needsRefresh).toBe(true);
   });
 });
+
+describe("money keeps its pence", () => {
+  it("47.70, never 47.7 — and whole pounds still show .00", () => {
+    expect(formatMetric(47.7, null, true)).toBe("47.70");
+    expect(formatMetric(182.65, "£", true)).toBe("£182.65");
+    expect(formatMetric(1234, null, true)).toBe("1,234.00");
+    // Everything else is unchanged.
+    expect(formatMetric(47.7, null)).toBe("47.7");
+    expect(formatMetric(12, null)).toBe("12");
+  });
+
+  it("the money flag survives into the view, the running month included", () => {
+    const snaps: StoredSnapshot[] = [
+      { period: "2026-10", capturedAt: "2026-10-15T09:00:00Z", metrics: [{ key: "mrr", label: "MRR", value: 47.7, money: true }] },
+      { period: "2026-09", capturedAt: "2026-10-02T09:00:00Z", metrics: [{ key: "mrr", label: "MRR", value: 2.5, money: true }] },
+    ];
+    const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots: snaps, monthToDate: true });
+    expect(v.metrics[0].money).toBe(true);
+    expect(v.monthToDate?.metrics[0].money).toBe(true);
+  });
+});
