@@ -17,6 +17,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     clientWiki: { findUnique: vi.fn(async () => db.wiki) },
     clientAssignment: { findMany: vi.fn(async () => [{ userId: "u-dev" }]) },
+    placement: { findMany: vi.fn(async () => [{ candidate: { email: "Placed@Gitwork.co.uk" } }]) },
     clientWikiIntakeComment: { findMany: vi.fn(async () => []) },
     workspaceMember: {
       findMany: vi.fn(async (args: { where: unknown }) => {
@@ -32,7 +33,13 @@ vi.mock("@/server/slack/client", () => ({
   postMessage: post,
 }));
 
-import { listMentionables, notifyIntakeMentions, resolveMentions } from "../wiki-intake-mentions";
+import {
+  listMentionables,
+  notifyIntakeMentions,
+  resolveMentions,
+  sheetPeopleDirectory,
+  sheetPeopleForBrowser,
+} from "../wiki-intake-mentions";
 
 const WIKI = {
   clientId: "c1",
@@ -161,5 +168,30 @@ describe("notifyIntakeMentions", () => {
         mentions: [{ id: "team:u-harry", name: "Harry Brown", kind: "TEAM", email: null }],
       }),
     ).resolves.toEqual({ posted: false, reason: "error" });
+  });
+});
+
+describe("the Sheets person directory (§73.1)", () => {
+  it("the team's side is limited to members who can SEE this client, and only active ones", async () => {
+    await sheetPeopleDirectory({ clientId: "c1" }, "team");
+    const where = JSON.stringify(db.memberWhere);
+    expect(where).toContain('"archivedAt":null'); // ACTIVE_MEMBER — an archived leaver is never offered
+    expect(where).toContain('"role":"SUPER_ADMIN"');
+    expect(where).toContain('"array_contains":["seeAllClients"]');
+    expect(where).toContain('"in":["u-dev"]'); // assigned to this client
+    expect(where).toContain("placed@gitwork.co.uk"); // placed on it in Code, matched by email
+  });
+
+  it("the client's side is the mention picker's restricted list, never the whole team", async () => {
+    await sheetPeopleDirectory({ wikiId: "wiki-1" }, "client");
+    const where = JSON.stringify(db.memberWhere);
+    expect(where).toContain('"role":{"in":["SUPER_ADMIN","ADMIN"]}');
+    expect(where).not.toContain("seeAllClients");
+  });
+
+  it("the browser gets ids and names, never emails", async () => {
+    const people = sheetPeopleForBrowser(await sheetPeopleDirectory({ clientId: "c1" }, "team"));
+    expect(JSON.stringify(people)).not.toMatch(/@/);
+    expect(people.map((p) => p.id)).toContain("client:wu1");
   });
 });

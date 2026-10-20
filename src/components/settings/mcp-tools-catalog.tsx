@@ -177,7 +177,7 @@ const TOOLS: Tool[] = [
   {
     name: "get_sheet",
     blurb:
-      "Read one sheet in full — every row's cells by column title, plus where each row's task has got to on the board (derived live).",
+      "Read one sheet in full — every row's cells by column title, plus where each row's task has got to on the board — stage, who is on it, due date, when it last moved (all derived live).",
     examples: ["Show me Northwind's Content to build sheet and what's done."],
   },
   {
@@ -200,7 +200,7 @@ const TOOLS: Tool[] = [
   {
     name: "update_sheet_column",
     blurb:
-      "Rename, retype, change the options of, lock for the client, or move a column — existing values are converted, and any that can't be are reported. Requires 'Manage clients'.",
+      "Rename, retype, change the options of, lock for the client, resize (width in px) or move a column — existing values are converted, and any that can't be are reported. Requires 'Manage clients'.",
     examples: ["Make Priority a dropdown of Low, Medium, High."],
   },
   {
@@ -210,14 +210,21 @@ const TOOLS: Tool[] = [
   },
   {
     name: "add_sheet_rows",
-    blurb: "Add rows to a sheet, cells by column title. All-or-nothing. Requires 'Manage clients'.",
+    blurb:
+      "Add rows to a sheet, cells by column title — a person by name or email (must match exactly one person on the client's list), images/videos as links. All-or-nothing. Requires 'Manage clients'.",
     examples: ["Add these five pages to Northwind's content sheet."],
   },
   {
     name: "update_sheet_rows",
     blurb:
-      "Change cells in many rows at once — rows by id or by their title cell, only the named cells change. All-or-nothing. Requires 'Manage clients'.",
+      "Change cells (or a row's height) in many rows at once — rows by id or by their title cell, only the named cells change. All-or-nothing. Requires 'Manage clients'.",
     examples: ["Set the pricing page's priority to High and tick Copy ready."],
+  },
+  {
+    name: "reorder_sheet_rows",
+    blurb:
+      "Put a sheet's rows in a new order, or move one row before or after another — rows by id or their title cell. Requires 'Manage clients'.",
+    examples: ["Move the gift card checkout row above the pricing page."],
   },
   {
     name: "delete_sheet_rows",

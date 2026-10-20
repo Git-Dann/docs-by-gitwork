@@ -9,6 +9,8 @@
  * "scheduled") and one soft-deleted row the team can restore.
  */
 
+import { mergeRowOrder, clampRowHeight } from "@/lib/wiki-sheet-layout";
+import { nameInitials } from "@/lib/wiki-sheet-board";
 import {
   SHEET_LIMITS,
   cleanOptions,
@@ -22,6 +24,8 @@ import {
 import type {
   SheetCellValue,
   SheetColumn,
+  SheetPerson,
+  SheetRowTask,
   WikiSheet,
   WikiSheetRow,
   WikiSheetsSection,
@@ -36,7 +40,9 @@ const COLS: SheetColumn[] = [
   { id: "c-ref", title: "Reference", type: "link", clientEditable: true },
   { id: "c-copy", title: "Copy ready", type: "checkbox", clientEditable: true },
   { id: "c-words", title: "Words", type: "number", clientEditable: true },
+  { id: "c-ref-no", title: "Ref", type: "text", clientEditable: true },
   { id: "c-owner", title: "Owner", type: "person", clientEditable: true },
+  { id: "c-media", title: "Media", type: "media", clientEditable: true },
   { id: "c-notes", title: "Notes", type: "long_text", clientEditable: true },
   { id: "c-estimate", title: "Our estimate (days)", type: "number", clientEditable: false },
 ];
@@ -48,13 +54,26 @@ type Seed = {
   by?: "TEAM" | "CLIENT";
   deleted?: boolean;
   assignees?: string[];
+  due?: string;
+  height?: number;
 };
 
+/** The demo's person directory — the same ids `/sheets/people` serves below (§73.1). */
+export const DEMO_SHEET_PEOPLE: SheetPerson[] = [
+  { id: "client:u-priya", name: "Priya Shah", kind: "CLIENT" },
+  { id: "client:u-marcus", name: "Marcus Webb", kind: "CLIENT" },
+  { id: "team:u-harry", name: "Harry Bell", kind: "TEAM" },
+  { id: "team:u-sam", name: "Sam Okafor", kind: "TEAM" },
+  { id: "team:u-lena", name: "Lena Hartmann", kind: "TEAM" },
+];
+const PRIYA = DEMO_SHEET_PEOPLE[0];
+const SAM = DEMO_SHEET_PEOPLE[3];
+
 const SEED: Seed[] = [
-  { cells: { "c-item": "Membership pricing page", "c-type": "Page", "c-priority": "High", "c-due": "2026-11-03", "c-ref": "https://northwind.example/pricing-draft", "c-copy": true, "c-words": 650, "c-owner": "Priya Shah", "c-notes": "Three plans side by side. Annual toggle defaults to monthly.", "c-estimate": 3 }, stage: "DONE", taskId: "demo-sheet-task-1", by: "CLIENT", assignees: ["Javed Khan"] },
-  { cells: { "c-item": "Class timetable filters", "c-type": "Feature", "c-priority": "High", "c-due": "2026-11-10", "c-copy": false, "c-owner": "Tom Riley", "c-notes": "Filter by studio, instructor and class length.", "c-estimate": 5 }, stage: "IN_PROGRESS", taskId: "demo-sheet-task-2", by: "CLIENT", assignees: ["Waqar Ali"] },
-  { cells: { "c-item": "Instructor bio pages", "c-type": "Content", "c-priority": "Medium", "c-due": "2026-11-14", "c-ref": "https://docs.google.com/document/d/northwind-bios", "c-copy": true, "c-words": 1800, "c-owner": "Priya Shah", "c-estimate": 2 }, stage: "IN_REVIEW", taskId: "demo-sheet-task-3", by: "TEAM", assignees: ["Sian Woolridge"] },
-  { cells: { "c-item": "Gift card checkout", "c-type": "Feature", "c-priority": "Medium", "c-due": "2026-11-28", "c-notes": "Needs Stripe gift card product set up on their account first.", "c-estimate": 4 }, stage: "SCHEDULED", taskId: "demo-sheet-task-4", by: "CLIENT" },
+  { cells: { "c-item": "Membership pricing page", "c-type": "Page", "c-priority": "High", "c-due": "2026-11-03", "c-ref": "https://northwind.example/pricing-draft", "c-copy": true, "c-words": 650, "c-ref-no": "01", "c-owner": PRIYA, "c-media": [{ url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Fronalpstock_big.jpg/640px-Fronalpstock_big.jpg", title: "Pricing hero mock" }, { url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }, { url: "https://www.loom.com/share/0123456789abcdef0123456789abcdef" }, { url: "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view" }], "c-notes": "Three plans side by side. Annual toggle defaults to monthly.", "c-estimate": 3 }, stage: "DONE", taskId: "demo-sheet-task-1", by: "CLIENT", assignees: ["Javed Khan"], due: "2026-11-03" },
+  { cells: { "c-item": "Class timetable filters", "c-type": "Feature", "c-priority": "High", "c-due": "2026-11-10", "c-copy": false, "c-ref-no": "02", "c-owner": "Tom Riley", "c-notes": "Filter by studio, instructor and class length — and remember the saved filters a member set last time, across the app and the site, so a regular never has to set them twice.", "c-estimate": 5 }, stage: "IN_PROGRESS", taskId: "demo-sheet-task-2", by: "CLIENT", assignees: ["Waqar Ali", "Sian Woolridge"], due: "2026-10-01" },
+  { cells: { "c-item": "Instructor bio pages", "c-type": "Content", "c-priority": "Medium", "c-due": "2026-11-14", "c-ref": "https://docs.google.com/document/d/northwind-bios", "c-copy": true, "c-words": 1800, "c-ref-no": "03", "c-owner": SAM, "c-media": [{ url: "https://vimeo.com/76979871" }], "c-estimate": 2 }, stage: "IN_REVIEW", taskId: "demo-sheet-task-3", by: "TEAM", assignees: ["Sian Woolridge"], due: "2026-12-01", height: 64 },
+  { cells: { "c-item": "Gift card checkout", "c-type": "Feature", "c-priority": "Medium", "c-due": "2026-11-28", "c-ref-no": "04", "c-notes": "Needs Stripe gift card product set up on their account first.", "c-estimate": 4 }, stage: "SCHEDULED", taskId: "demo-sheet-task-4", by: "CLIENT" },
   { cells: { "c-item": "Fix: waitlist email sends twice", "c-type": "Fix", "c-priority": "High", "c-owner": "Tom Riley", "c-estimate": 1 }, stage: "REVIEWING", taskId: "demo-sheet-task-missing", by: "CLIENT" },
   { cells: { "c-item": "Studio locations map", "c-type": "Page", "c-priority": "Low", "c-due": "2026-12-05", "c-ref": "https://northwind.example/locations", "c-copy": false, "c-words": 300 }, by: "CLIENT" },
   { cells: { "c-item": "Blog: 5 stretches before spin", "c-type": "Content", "c-priority": "Low", "c-copy": true, "c-words": 900, "c-owner": "Priya Shah" }, by: "CLIENT" },
@@ -66,6 +85,20 @@ const SEED: Seed[] = [
   { cells: { "c-item": "Old homepage hero test", "c-type": "Page", "c-priority": "Low" }, by: "CLIENT", deleted: true },
 ];
 
+/** A live-looking task for a linked row — absent for the one whose task "has gone". */
+function seedTask(seed: Seed): SheetRowTask | null {
+  if (!seed.taskId || seed.stage === "REVIEWING" || !seed.stage) return null;
+  const names = seed.assignees ?? [];
+  return {
+    title: typeof seed.cells["c-item"] === "string" ? seed.cells["c-item"] : null,
+    assignees: names.map((name) => ({ name, initials: nameInitials(name) })),
+    dueDate: seed.due ?? null,
+    updatedAt: "2026-10-18T15:30:00.000Z",
+    startedAt: seed.stage === "SCHEDULED" ? null : "2026-10-10T09:00:00.000Z",
+    completedAt: seed.stage === "DONE" ? "2026-10-17T16:00:00.000Z" : null,
+  };
+}
+
 function seedRow(seed: Seed, i: number): WikiSheetRow {
   return {
     id: `demo-sheet-row-${i + 1}`,
@@ -74,6 +107,8 @@ function seedRow(seed: Seed, i: number): WikiSheetRow {
     taskId: seed.taskId ?? null,
     stage: seed.stage ?? null,
     assignees: seed.assignees ?? [],
+    task: seedTask(seed),
+    height: seed.height ?? null,
     createdByKind: seed.by ?? "TEAM",
     createdByName: seed.by === "CLIENT" ? "Priya Shah" : "Harry Brown",
     createdByWikiUserId: seed.by === "CLIENT" ? "demo-wiki-user-priya" : null,
@@ -140,6 +175,10 @@ export function resolveDemoSheets(
   method: string,
   body: Record<string, unknown> | undefined,
 ): unknown {
+  // The person picker's list (§73.1), on either side.
+  if (/^\/api\/(clients\/[^/]+\/wiki|wiki\/[^/]+)\/sheets\/people$/.test(pathname)) {
+    return { people: DEMO_SHEET_PEOPLE };
+  }
   const m = /^\/api\/clients\/[^/]+\/wiki\/sheets(?:\/([^/]+))?(?:\/(columns|rows)(?:\/([^/]+))?)?$/.exec(pathname);
   if (!m) return undefined;
   const [, sheetId, sub, subId] = m;
@@ -224,6 +263,7 @@ export function resolveDemoSheets(
       else delete after.options;
       if (typeof body.clientEditable === "boolean") after.clientEditable = body.clientEditable;
       if (typeof body.width === "number") after.width = body.width;
+      if (body.width === null) delete after.width;
       let cleared = 0;
       for (const row of sheet.rows) {
         if (!(before.id in row.cells)) continue;
@@ -244,6 +284,9 @@ export function resolveDemoSheets(
   if (subId) {
     const row = sheet.rows.find((r) => r.id === subId);
     if (!row) return { error: "Row not found" };
+    if (method === "PATCH" && body && "height" in body) {
+      row.height = clampRowHeight(typeof body.height === "number" ? body.height : null);
+    }
     if (method === "PATCH" && body?.cells && typeof body.cells === "object") {
       for (const [colId, raw] of Object.entries(body.cells as Record<string, unknown>)) {
         const col = sheet.columns.find((c) => c.id === colId);
@@ -259,6 +302,17 @@ export function resolveDemoSheets(
       touch(sheet);
     }
     return { saved: true };
+  }
+  // Reorder (team only — the demo is the team's view), applied so the move survives the refetch.
+  if (method === "PUT" && Array.isArray(body?.order)) {
+    const order = mergeRowOrder(
+      sheet.rows.map((r) => r.id),
+      body.order as string[],
+    );
+    const pos = new Map(order.map((id, i) => [id, i + 1]));
+    for (const r of sheet.rows) r.orderKey = pos.get(r.id) ?? r.orderKey;
+    sheet.rows.sort((a, b) => Number(Boolean(a.deletedAt)) - Number(Boolean(b.deletedAt)) || a.orderKey - b.orderKey);
+    return touch(sheet);
   }
   if (method === "POST" && Array.isArray(body?.rows)) {
     const ids: string[] = [];

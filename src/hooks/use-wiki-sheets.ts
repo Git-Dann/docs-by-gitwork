@@ -13,8 +13,27 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { setWikiSheetsEnabledApi, type SheetsTarget } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getWikiSheetPeopleApi, setWikiSheetsEnabledApi, type SheetsTarget } from "@/lib/api";
+import type { SheetPerson } from "@/types/wiki-sheets";
+
+const NO_PEOPLE: SheetPerson[] = [];
+
+/**
+ * Who can be picked into a person column (§73.1). The client's list needs the wiki login
+ * (it's for editing), so a read-only visitor gets an empty list — and a 401 is not retried.
+ */
+export function useSheetPeople(target: SheetsTarget, enabled = true): SheetPerson[] {
+  const key = target.mode === "internal" ? target.slug : target.token;
+  const q = useQuery({
+    queryKey: ["wiki-sheet-people", target.mode, key],
+    queryFn: () => getWikiSheetPeopleApi(target),
+    enabled: enabled && Boolean(key),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  return q.data?.people ?? NO_PEOPLE;
+}
 
 export function useSheetsRefresh(target: SheetsTarget): () => void {
   const queryClient = useQueryClient();

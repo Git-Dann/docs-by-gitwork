@@ -2375,7 +2375,31 @@ export const comparisonOrderSchema = z.object({
 const sheetColumnTypeSchema = z.enum(
   COLUMN_TYPES as readonly [SheetColumnType, ...SheetColumnType[]],
 );
-const sheetCellValueSchema = z.union([z.string().max(SHT.maxLongText), z.number(), z.boolean(), z.null()]);
+// A picked person (id checked against the directory on the server, §73.1) and a media
+// list (each URL re-checked by the safe-link rule) are the two non-scalar shapes.
+const sheetPersonValueSchema = z
+  .object({
+    id: z.string().max(100),
+    name: z.string().max(SHT.maxPerson),
+    kind: z.enum(["TEAM", "CLIENT"]),
+  })
+  .strict();
+const sheetMediaValueSchema = z
+  .array(
+    z.union([
+      z.string().max(SHT.maxLink),
+      z.object({ url: z.string().max(SHT.maxLink), title: z.string().max(200).optional() }).strict(),
+    ]),
+  )
+  .max(SHT.maxMedia);
+const sheetCellValueSchema = z.union([
+  z.string().max(SHT.maxLongText),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  sheetPersonValueSchema,
+  sheetMediaValueSchema,
+]);
 const sheetCellsSchema = z.record(z.string().max(80), sheetCellValueSchema);
 
 export const sheetColumnInputSchema = z.object({
@@ -2428,9 +2452,25 @@ export const sheetAddRowsSchema = z.object({
   rows: z.array(sheetCellsSchema).min(1).max(SHT.maxBatch),
 });
 
-export const sheetCellPatchSchema = z.object({
-  cells: sheetCellsSchema,
-});
+/**
+ * A CLIENT's cell edit. `.strict()` on purpose: a client's resizes are local to their own
+ * browser (§73.1), so a `height` (or anything else) in the body is refused with a 400, not
+ * quietly dropped.
+ */
+export const sheetCellPatchSchema = z
+  .object({
+    cells: sheetCellsSchema,
+  })
+  .strict();
+
+/** The TEAM's row edit: cells, the row's height (null = auto), or both. */
+export const sheetRowPatchSchema = z
+  .object({
+    cells: sheetCellsSchema.optional(),
+    height: z.number().int().min(SHT.minRowHeight).max(SHT.maxRowHeight).nullable().optional(),
+  })
+  .strict()
+  .refine((b) => b.cells !== undefined || b.height !== undefined, "Nothing to change.");
 
 export const sheetRowsBulkSchema = z.object({
   action: z.enum(["delete", "restore", "send"]),

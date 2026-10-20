@@ -316,9 +316,7 @@ export function WikiPublicView({
           slug={wiki.clientSlug}
           token={token}
           section={{ ...wiki.sheets, sheets: wiki.sheets.sheets.filter((s) => s.columns.length > 0) }}
-          mode="public"
-          people={[...wiki.team, ...wiki.productTeam].map((m) => m.name).filter(Boolean)}
-        />
+          mode="public"        />
       );
     }
     if (activeSection === "comparisons") {

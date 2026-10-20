@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 58 tools", tools.length === 58, `got ${tools.length}`);
+    check("returns 59 tools", tools.length === 59, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -98,6 +98,7 @@ console.log("tools/list");
       "remove_sheet_column",
       "add_sheet_rows",
       "update_sheet_rows",
+      "reorder_sheet_rows",
       "delete_sheet_rows",
       "send_sheet_rows_to_board",
       "delete_sheet",
