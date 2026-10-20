@@ -45,6 +45,10 @@ jobs:
 
       - name: Typecheck
         run: npx tsc --noEmit
+        env:
+          # The default Node heap stopped being enough for a full `tsc` on the runner in Oct
+          # 2026 (OOM, exit 134, on main and every PR). Same headroom the build step has.
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Lint
         run: npm run lint
