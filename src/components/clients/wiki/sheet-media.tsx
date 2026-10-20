@@ -46,7 +46,7 @@ import {
   type MediaKind,
 } from "@/lib/wiki-sheet-media";
 import type { SheetMediaItem } from "@/types/wiki-sheets";
-import { SHEET_IMAGE_ACCEPT, SHEET_IMAGE_MAX_BYTES } from "@/lib/wiki-sheet-files";
+import { SHEET_IMAGE_ACCEPT, SHEET_IMAGE_INPUT_MAX_BYTES } from "@/lib/wiki-sheet-files";
 
 /**
  * How this grid uploads an image (§73.2) — provided by `SheetGrid` for its own sheet and
@@ -309,8 +309,8 @@ export function MediaListEditor({
     if (!images.length) return setError("Only PNG, JPEG, GIF or WebP images can be uploaded.");
     const room = MEDIA_LIMITS.maxItems - latest.current.length;
     if (room <= 0) return setError(`${label} holds at most ${MEDIA_LIMITS.maxItems} items per cell.`);
-    const big = images.find((f) => f.size > SHEET_IMAGE_MAX_BYTES);
-    if (big) return setError(`"${big.name}" is over 10 MB.`);
+    const big = images.find((f) => f.size > SHEET_IMAGE_INPUT_MAX_BYTES);
+    if (big) return setError(`"${big.name}" is over 24 MB.`);
     setError(null);
     for (const f of images.slice(0, room)) {
       setUploading((n) => n + 1);
@@ -444,7 +444,7 @@ export function MediaListEditor({
         </div>
       )}
       {upload && items.length < MEDIA_LIMITS.maxItems && (
-        <p className="text-[11px] text-[var(--text-4)]">Paste a link, or upload, paste or drop an image (up to 10 MB).</p>
+        <p className="text-[11px] text-[var(--text-4)]">Paste a link, or upload, paste or drop an image (big ones are shrunk to fit).</p>
       )}
       {error && <p className="text-[12px] text-[var(--danger-500)]">{error}</p>}
     </div>

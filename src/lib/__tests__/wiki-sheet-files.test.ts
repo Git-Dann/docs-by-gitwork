@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  SHEET_IMAGE_MAX_BYTES,
+  SHEET_IMAGE_INPUT_MAX_BYTES,
   checkSheetImage,
+  parseDriveFileId,
   cleanImageName,
   parseSheetFileUrl,
   sheetFileUrl,
@@ -27,7 +28,7 @@ describe("checkSheetImage — the bytes decide", () => {
   it("refuses a wrong image extension, an empty file and an oversized one", () => {
     expect(checkSheetImage(JPEG, "x.png").ok).toBe(false);
     expect(checkSheetImage(new Uint8Array(), "x.png").ok).toBe(false);
-    const big = new Uint8Array(SHEET_IMAGE_MAX_BYTES + 1);
+    const big = new Uint8Array(SHEET_IMAGE_INPUT_MAX_BYTES + 1);
     big.set(PNG);
     expect(checkSheetImage(big, "x.png").ok).toBe(false);
   });
@@ -62,5 +63,19 @@ describe("the upload URL is accepted in exactly one shape", () => {
   it("a media cell still refuses any other relative URL and javascript:", () => {
     expect(coerceMedia(["/app/settings"]).ok).toBe(false);
     expect(coerceMedia(["javascript:alert(1)"]).ok).toBe(false);
+  });
+});
+
+describe("parseDriveFileId", () => {
+  const ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345";
+  it("reads share links, open?id= links and bare ids", () => {
+    expect(parseDriveFileId(`https://drive.google.com/file/d/${ID}/view?usp=sharing`)).toBe(ID);
+    expect(parseDriveFileId(`https://drive.google.com/open?id=${ID}`)).toBe(ID);
+    expect(parseDriveFileId(ID)).toBe(ID);
+  });
+  it("never takes another host's URL for a Drive file", () => {
+    expect(parseDriveFileId(`https://evil.example/file/d/${ID}/view`)).toBeNull();
+    expect(parseDriveFileId("https://drive.google.com.evil.example/file/d/x")).toBeNull();
+    expect(parseDriveFileId("short")).toBeNull();
   });
 });
