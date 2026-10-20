@@ -1567,6 +1567,10 @@ model ClientWiki {
   /// Pro, the client vs competitors). Client-facing, so off until someone turns it on.
   comparisonsEnabled  Boolean                @default(false)
   comparisons         WikiComparison[]
+  /// Whether the Sheets section is enabled — client-editable spreadsheets whose rows can be
+  /// sent to the task board. Off until someone turns it on.
+  sheetsEnabled       Boolean                @default(false)
+  sheets              WikiSheet[]
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -5455,6 +5459,61 @@ model WikiComparison {
 
   @@index([wikiId])
   @@map("WikiComparison")
+}
+
+/// A client-editable spreadsheet in the wiki (CLAUDE.md §73). Columns are JSON (typed,
+/// parsed defensively by src/lib/wiki-sheets.ts); rows are their own table because the
+/// client and the team edit them concurrently, cell by cell.
+model WikiSheet {
+  id                   String         @id @default(cuid())
+  wikiId               String
+  wiki                 ClientWiki     @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title                String
+  description          String?        @db.Text
+  orderKey             Int            @default(0)
+  /// `[{ id, title, type, options?, width?, clientEditable }]`, in display order.
+  columns              Json
+  /// Column whose value becomes a task title when a row is sent to the board.
+  titleColumnId        String?
+  clientCanEdit        Boolean        @default(true)
+  clientCanAddRows     Boolean        @default(true)
+  clientCanSendToBoard Boolean        @default(false)
+  /// Last time the team was notified of client edits on this sheet (debounce).
+  clientNotifiedAt     DateTime?
+  rows                 WikiSheetRow[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiSheet")
+}
+
+/// One row of a WikiSheet. `cells` is `{ [columnId]: value }`, merged per cell on write so
+/// two people editing different cells never clobber each other. `taskId` is a loose id
+/// (like ClientWikiIntakeItem.taskId) — the row's stage is derived from the task at read.
+model WikiSheetRow {
+  id                  String    @id @default(cuid())
+  sheetId             String
+  sheet               WikiSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  orderKey            Float     @default(0)
+  cells               Json
+  taskId              String?
+  /// "TEAM" | "CLIENT"
+  createdByKind       String    @default("TEAM")
+  createdByName       String?
+  createdByWikiUserId String?
+  createdByUserId     String?
+  /// "TEAM" | "CLIENT" — who last changed a cell.
+  updatedByKind       String?
+  updatedByName       String?
+  /// Soft delete: a client can't silently erase history, and the team can restore.
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@index([taskId])
+  @@map("WikiSheetRow")
 }
 
 model WikiInsightBoard {

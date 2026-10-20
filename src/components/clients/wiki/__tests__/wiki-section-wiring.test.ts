@@ -66,7 +66,11 @@ const SECTIONS = [
   { id: "meetings", label: "Meetings" },
   { id: "platforms", label: "Platforms" },
   { id: "comparisons", label: "Comparisons" },
+  { id: "sheets", label: "Sheets" },
 ] as const;
+
+/** Sections the CLIENT can write to — they have a token route, under the hardened posture. */
+const CLIENT_WRITABLE = new Set<string>(["sheets"]);
 
 describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, label }) => {
   const sidebar = read("components/clients/wiki/wiki-sidebar.tsx");
@@ -238,6 +242,12 @@ describe("wiki-public-view.tsx — each availableSections predicate has its OWN 
     expect(available).toContain("wiki.comparisons.comparisons.some(isPublishableComparison)");
   });
 
+  it("sheets — enabled AND a sheet with at least one column", () => {
+    // Enabled-and-empty would invite the client to edit a grid with nothing in it.
+    expect(available).toContain("wiki.sheets.enabled");
+    expect(available).toContain("wiki.sheets.sheets.some((s) => s.columns.length > 0)");
+  });
+
   it("platforms — enabled AND at least one platform", () => {
     expect(available).toContain("wiki.clientPlatforms.enabled");
     expect(available).toContain("wiki.clientPlatforms.platforms.length > 0");
@@ -259,6 +269,7 @@ describe("there is no client-facing write route, and there must not be one", () 
     // the full `resolvePublicWiki` → cookie → belongs → rate-limit posture first, not a
     // quiet `route.ts`.
     for (const { id } of SECTIONS) {
+      if (CLIENT_WRITABLE.has(id)) continue;
       expect(existsSync(join(ROOT, `app/api/wiki/[token]/${id}`)), `${id} route exists`).toBe(
         false,
       );
@@ -306,5 +317,59 @@ describe("comparisons — the client's copy carries no drafts", () => {
     expect(read("server/wiki.ts")).toContain(
       'settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS)',
     );
+  });
+});
+
+describe("sheets — the one section the client writes to, and how", () => {
+  // Unlike every other section above, a client edits Sheets, so it DOES have a token route —
+  // and that route must carry the full hardened posture, not a quiet `route.ts`.
+  const routes = [
+    "app/api/wiki/[token]/sheets/[sheetId]/rows/route.ts",
+    "app/api/wiki/[token]/sheets/[sheetId]/rows/[rowId]/route.ts",
+  ];
+
+  it.each(routes)("%s exists and resolves the writer + rate-limits before any write", (rel) => {
+    const src = read(rel);
+    expect(src).toContain("resolveSheetsWriter(req, token)");
+    expect(src).toContain("assertSheetsWriteRate(req)");
+    // The resolve and the rate limit come before the body is even parsed.
+    expect(src.indexOf("resolveSheetsWriter(")).toBeLessThan(src.indexOf("await req.json()"));
+    expect(src.indexOf("assertSheetsWriteRate(")).toBeLessThan(src.indexOf("await req.json()"));
+  });
+
+  it("there is no client route for structure (columns or sheets)", () => {
+    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets/[sheetId]/columns"))).toBe(false);
+    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets/route.ts"))).toBe(false);
+    expect(existsSync(join(ROOT, "app/api/wiki/[token]/sheets/[sheetId]/route.ts"))).toBe(false);
+  });
+
+  it("the writer resolver checks the cookie, the section flag and the share link's section", () => {
+    const src = read("server/wiki-sheets-access.ts");
+    expect(src).toContain("resolvePublicWiki(token)");
+    expect(src).toContain("resolveWikiAccessUser(wiki.id, cookieValue)");
+    expect(src).toContain("sheetsEnabled");
+    expect(src).toContain('onlySection !== "sheets"');
+  });
+
+  it("the client's copy is cut down by forPublicSheets, and the section loads through settle()", () => {
+    const wiki = read("server/wiki.ts");
+    const fn = wiki.slice(wiki.indexOf("function forPublic("), wiki.indexOf("export async function resolvePublicWiki"));
+    expect(fn).toContain("sheets: forPublicSheets(dto.sheets)");
+    expect(wiki).toContain('settle("sheets", () => loadWikiSheets(wiki.clientId), EMPTY_SHEETS)');
+  });
+
+  it("the internal routes all go through resolveInternalSheets (Manage clients + client access)", () => {
+    const dir = join(ROOT, "app/api/clients/[slug]/wiki/sheets");
+    const files = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith("route.ts"));
+    expect(files.length).toBeGreaterThanOrEqual(6);
+    for (const f of files) {
+      const src = readFileSync(join(dir, f), "utf8");
+      const handlers = src.match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? [];
+      const gates = src.match(/await resolveInternalSheets\(req, slug,/g) ?? [];
+      expect(gates.length, `${f}: every handler must resolve the internal writer`).toBe(handlers.length);
+    }
+    const access = read("server/wiki-sheets-access.ts");
+    expect(access).toContain("assertCan(user, canManageClients, action)");
+    expect(access).toContain("assertClientAccessBySlug(user, slug)");
   });
 });

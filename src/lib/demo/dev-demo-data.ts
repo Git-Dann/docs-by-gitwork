@@ -38,6 +38,7 @@ import { LAUNCHPAD_FILE_MAX_PER_ITEM, sanitizeLaunchpadFilename } from "@/lib/la
 import { renderLegalDoc } from "@/lib/launchpad/legal/render";
 import { comparisonLimitError, parseComparisonContent } from "@/lib/wiki-comparisons";
 import type { WikiComparison } from "@/types/wiki-comparisons";
+import { demoSheets, resolveDemoSheets } from "@/lib/demo/demo-sheets";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff } from "@/types/pulse";
@@ -1347,6 +1348,7 @@ const demoWiki: WikiDTO = {
    * carrying only a well-behaved estimate would verify the CSS and nothing else (§43.3).
    */
   comparisons: { enabled: true, comparisons: demoComparisons },
+  sheets: demoSheets,
   estimates: {
     enabled: true,
     estimates: [
@@ -3714,6 +3716,15 @@ export function resolveDemoApi(
       return comment;
     }
   }
+  // Sheets — every internal Sheets write is applied to the fixture (src/lib/demo/demo-sheets.ts).
+  {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const body = (typeof init?.body === "string" ? JSON.parse(init.body) : init?.body) as
+      | Record<string, unknown>
+      | undefined;
+    const handled = resolveDemoSheets(pathname, method, body);
+    if (handled !== undefined) return handled;
+  }
   // Comparisons — writes are applied to the fixture, so an edit survives the refetch that
   // follows it. A demo where saving changes nothing verifies the CSS and nothing else (§43.3).
   {
@@ -3777,6 +3788,7 @@ export function resolveDemoApi(
       // A copy: the fixture is mutated by writes, and React Query's structural sharing would
       // otherwise compare the cache against the very object that changed and see no change.
       comparisons: JSON.parse(JSON.stringify(demoWiki.comparisons)) as WikiDTO["comparisons"],
+      sheets: JSON.parse(JSON.stringify(demoSheets)) as WikiDTO["sheets"],
     };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).

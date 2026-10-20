@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { applyCommentViewer, resolvePublicWiki } from "@/server/wiki";
 import { backfillCommentAuthors } from "@/server/wiki-intake-comment-backfill";
 import { publicCommentViewer } from "@/server/wiki-comment-viewer";
+import { applySheetViewer } from "@/server/wiki-sheets";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 import { auth } from "@/auth";
 import type { Metadata } from "next";
@@ -23,6 +24,7 @@ const SECTION_LABELS: Record<string, string> = {
   costs: "Running costs",
   estimates: "Estimates",
   comparisons: "Comparisons",
+  sheets: "Sheets",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
@@ -105,9 +107,12 @@ export default async function PublicWikiPage({
   await backfillCommentAuthors(resolved.wiki.id);
   // Which replies this viewer may edit or delete (their own) — decided here, on the
   // server, so the author ids never reach the page.
-  const wiki = await applyCommentViewer(
-    resolved.wiki,
-    await publicCommentViewer(resolved.wiki.id, cookieValue),
+  const viewer = await publicCommentViewer(resolved.wiki.id, cookieValue);
+  // Which sheet rows this viewer added (and so may remove) — also decided here, so client
+  // user ids never reach the page.
+  const wiki = await applySheetViewer(
+    await applyCommentViewer(resolved.wiki, viewer),
+    viewer?.kind === "client" ? viewer.wikiUserId : null,
   );
 
   return (

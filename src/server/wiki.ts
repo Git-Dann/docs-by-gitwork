@@ -50,6 +50,7 @@ import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
 import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
+import { EMPTY_SHEETS, forPublicSheets, loadWikiSheets } from "./wiki-sheets";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
 import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
@@ -57,6 +58,7 @@ import { loadWikiPlatforms } from "./wiki-platforms";
 import { EMPTY_PLATFORMS, type WikiPlatformsSection } from "@/lib/wiki-platforms";
 import type { WikiEstimatesSection } from "@/types/wiki-estimates";
 import type { WikiComparisonsSection } from "@/types/wiki-comparisons";
+import type { WikiSheetsSection } from "@/types/wiki-sheets";
 import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
@@ -420,6 +422,13 @@ export interface WikiDTO {
    * carries only publishable tables, and none at all while the section is off.
    */
   comparisons: WikiComparisonsSection;
+  /**
+   * Sheets — client-editable spreadsheets whose rows can be sent to the task board. Each
+   * row's board stage is derived from its task at read (src/lib/wiki-sheets.ts), never
+   * stored. The client's copy (`forPublicSheets`) drops deleted rows and assignee names,
+   * and is empty while the section is off.
+   */
+  sheets: WikiSheetsSection;
   /**
    * Whether the Delivery section is on. There is no `delivery` DTO: the page derives
    * everything from `timeline` and `blockers`, which are already here — so a loader
@@ -1069,6 +1078,7 @@ async function buildDTO(
     costs,
     estimates,
     comparisons,
+    sheets,
     support,
     standups,
     metrics,
@@ -1118,6 +1128,7 @@ async function buildDTO(
     }),
     settle("estimates", () => loadWikiEstimates(wiki.clientId), EMPTY_ESTIMATES),
     settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS),
+    settle("sheets", () => loadWikiSheets(wiki.clientId), EMPTY_SHEETS),
     settle("support", () => loadWikiSupport(wiki.clientId), {
       enabled: false,
       linked: false,
@@ -1200,6 +1211,7 @@ async function buildDTO(
     costs,
     estimates,
     comparisons,
+    sheets,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     roundupEnabled: wiki.roundupEnabled ?? false,
     support,
@@ -3235,6 +3247,7 @@ const SHAREABLE_SECTIONS = [
   "costs",
   "estimates",
   "comparisons",
+  "sheets",
   "roundup",
   "delivery",
   "support",
@@ -3316,6 +3329,9 @@ function forPublic(dto: WikiDTO): WikiDTO {
     comparisons: dto.comparisons.enabled
       ? { enabled: true, comparisons: dto.comparisons.comparisons.filter(isPublishableComparison) }
       : { enabled: false, comparisons: [] },
+    // Deleted rows and who on our team holds each task stay on the server; nothing at all
+    // leaves while the section is off.
+    sheets: forPublicSheets(dto.sheets),
   };
 }
 

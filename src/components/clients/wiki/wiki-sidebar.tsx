@@ -9,6 +9,7 @@ import {
   BookOpenIcon,
   CalculatorIcon,
   TableCellsIcon,
+  ViewColumnsIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -47,6 +48,7 @@ export type WikiSection =
   | "costs"
   | "estimates"
   | "comparisons"
+  | "sheets"
   | "roundup"
   | "delivery"
   | "support"
@@ -177,6 +179,7 @@ export function WikiSidebar({
       "costs",
       "estimates",
       "comparisons",
+      "sheets",
       "roundup",
       "delivery",
       "support",
@@ -284,6 +287,7 @@ export function WikiSidebar({
         {navItem("costs", "Running costs", <BanknotesIcon />)}
         {navItem("estimates", "Estimates", <CalculatorIcon />)}
         {navItem("comparisons", "Comparisons", <TableCellsIcon />)}
+        {navItem("sheets", "Sheets", <ViewColumnsIcon />)}
         {navItem("roundup", "RoundUp", <NewspaperIcon />)}
         {navItem("delivery", "Delivery", <ChartBarSquareIcon />)}
         {navItem("support", "Support", <LifebuoyIcon />)}

@@ -71,6 +71,8 @@ import {
   type ComparisonContent,
 } from "@/lib/wiki-comparisons";
 import type { WikiComparison } from "@/types/wiki-comparisons";
+import { setWikiSheetsEnabled } from "@/server/wiki-sheets";
+import { buildSheetTools } from "@/server/mcp/sheet-tools";
 import { setWikiInsightsEnabled } from "@/server/wiki-insights";
 import { setWikiEstimatesEnabled } from "@/server/wiki-estimates";
 import {
@@ -894,6 +896,7 @@ function projectComparison(table: WikiComparison) {
 /** The wiki sections that can be switched on and off, and the server function for each. */
 const WIKI_SECTION_TOGGLES = {
   comparisons: setWikiComparisonsEnabled,
+  sheets: setWikiSheetsEnabled,
   insights: setWikiInsightsEnabled,
   costs: setWikiCostsEnabled,
   estimates: setWikiEstimatesEnabled,
@@ -1882,6 +1885,8 @@ const TOOLS: ToolDef[] = [
       return textResult({ deleted: true, id: table.id }, `Deleted "${table.title}" from ${resolved.name}.`);
     },
   },
+  // Sheets — client-editable spreadsheets linked to the task board (src/server/mcp/sheet-tools.ts).
+  ...buildSheetTools({ resolveClient, textResult }),
   {
     name: "enable_wiki_section",
     description:
