@@ -86,9 +86,9 @@ function MetricTile({ metric, periods }: { metric: WikiMetric; periods: string[]
         <div
           className="truncate tabular-nums text-[var(--text-1)]"
           style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em" }}
-          title={formatMetric(metric.value, metric.unit)}
+          title={formatMetric(metric.value, metric.unit, metric.money)}
         >
-          {formatMetric(metric.value, metric.unit)}
+          {formatMetric(metric.value, metric.unit, metric.money)}
         </div>
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <span
@@ -163,7 +163,7 @@ function asOf(iso: string): string {
  * a whole month, part of one always reads as a fall.
  */
 function SoFarTile({ metric }: { metric: MonthToDateMetric }) {
-  const text = formatMetric(metric.value, metric.unit);
+  const text = formatMetric(metric.value, metric.unit, metric.money);
   return (
     <div className="min-w-0 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3">
       <div
@@ -292,7 +292,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
   // has to be hideable — otherwise the first anyone could hide it is after the client saw it.
   const wholeMonthKeys = new Set(metrics.metrics.map((m) => m.key));
   const runningOnly = (metrics.monthToDate?.metrics ?? []).filter((m) => !wholeMonthKeys.has(m.key));
-  const rows: { key: string; label: string; value: number; unit: string | null; hidden: boolean; featured: boolean; canFeature: boolean }[] = [
+  const rows: { key: string; label: string; value: number; unit: string | null; money?: boolean; hidden: boolean; featured: boolean; canFeature: boolean }[] = [
     ...metrics.metrics.map((m) => ({ ...m, canFeature: true })),
     ...runningOnly.map((m) => ({ ...m, featured: false, canFeature: false })),
   ];
@@ -380,7 +380,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
                       {m.label}
                     </p>
                     <p className="truncate text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }} title={m.key}>
-                      {formatMetric(m.value, m.unit)} · {m.key}
+                      {formatMetric(m.value, m.unit, m.money)} · {m.key}
                     </p>
                   </div>
                   <button
