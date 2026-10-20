@@ -221,6 +221,12 @@ const TOOLS: Tool[] = [
     examples: ["Set the pricing page's priority to High and tick Copy ready."],
   },
   {
+    name: "upload_sheet_image",
+    blurb:
+      "Upload an image (PNG, JPEG, GIF or WebP, up to 10 MB) to a sheet — from base64 or a public link — and attach it to a row's media cell. Requires 'Manage clients'.",
+    examples: ["Attach this screenshot to the checkout bug row's Screenshots column."],
+  },
+  {
     name: "reorder_sheet_rows",
     blurb:
       "Put a sheet's rows in a new order, or move one row before or after another — rows by id or their title cell. Requires 'Manage clients'.",

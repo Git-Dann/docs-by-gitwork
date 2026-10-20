@@ -5518,6 +5518,26 @@ model WikiSheetRow {
   @@map("WikiSheetRow")
 }
 
+/// An image uploaded into a Sheet's media cell (§73.2). Addressed by `key`, a 160-bit
+/// random capability; the cell stores `/api/wiki/files/<key>/<name>`. Loose ids, no FK:
+/// a row edit that drops the link leaves the bytes (cheap; images are capped at 10 MB).
+model WikiSheetFile {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  wikiId         String
+  sheetId        String
+  filename       String
+  mime           String
+  size           Int
+  bytes          Bytes?
+  storageKey     String?
+  uploadedByKind String
+  uploadedByName String?
+  createdAt      DateTime @default(now())
+
+  @@index([sheetId])
+}
+
 model WikiInsightBoard {
   id        String               @id @default(cuid())
   wikiId    String

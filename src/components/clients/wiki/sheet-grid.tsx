@@ -59,6 +59,7 @@ import {
   updateWikiSheetCellsApi,
   updateWikiSheetColumnApi,
   type SheetsTarget,
+  uploadSheetImageApi,
 } from "@/lib/api";
 import { fuzzySearch } from "@/lib/fuzzy-search";
 import {
@@ -107,7 +108,7 @@ import type {
   WikiSheetRow,
 } from "@/types/wiki-sheets";
 import { PersonPicker, PersonValue } from "./sheet-person";
-import { MediaChips, MediaListEditor, MediaViewer } from "./sheet-media";
+import { MediaChips, MediaListEditor, MediaViewer, SheetImageUploadContext } from "./sheet-media";
 
 /** Rows rendered at once; "Show more" adds this many. 2,000 live inputs would be slow. */
 const CHUNK = 200;
@@ -1328,7 +1329,12 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
       : null;
   const mobileRow = mobileRowId ? rows.find((r) => r.id === mobileRowId) ?? null : null;
 
+  const uploadImage = useCallback(
+    (file: File) => uploadSheetImageApi(target, sheet.id, file),
+    [target, sheet.id],
+  );
   return (
+    <SheetImageUploadContext.Provider value={uploadImage}>
     <section className="widget-card" aria-label={sheet.title}>
       <div className="widget-header gap-3">
         <span
@@ -2023,6 +2029,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
       <CellTooltipHost store={tips} />
       {viewer && <MediaViewer items={viewer.items} start={viewer.index} onClose={() => setViewer(null)} />}
     </section>
+    </SheetImageUploadContext.Provider>
   );
 }
 

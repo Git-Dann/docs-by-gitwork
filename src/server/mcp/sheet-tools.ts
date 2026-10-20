@@ -49,6 +49,8 @@ import {
   updateWikiSheet,
   type SheetActor,
 } from "@/server/wiki-sheets";
+import { fetchImageFromUrl, saveSheetImage } from "@/server/wiki-sheet-files";
+import { SHEET_IMAGE_MAX_BYTES } from "@/lib/wiki-sheet-files";
 import type { SheetCellValue, SheetColumn, SheetColumnType, WikiSheet, WikiSheetRow } from "@/types/wiki-sheets";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -136,6 +138,28 @@ const cellsArg = z.record(
   z.string(),
   z.union([z.string().max(SHEET_LIMITS.maxLongText), z.number(), z.boolean(), z.null(), mediaArg]),
 );
+const uploadImageSchema = z
+  .object({
+    client: z.string().min(1),
+    sheet: z.string().min(1),
+    imageBase64: z.string().max(Math.ceil((SHEET_IMAGE_MAX_BYTES * 4) / 3) + 200).optional(),
+    imageUrl: z.string().url().max(SHEET_LIMITS.maxLink).optional(),
+    filename: z.string().trim().min(1).max(120).optional(),
+    title: z.string().max(120).optional(),
+    row: z.string().min(1).optional(),
+    column: z.string().min(1).optional(),
+  })
+  .refine((v) => Boolean(v.imageBase64) !== Boolean(v.imageUrl), {
+    message: "Give exactly one of imageBase64 or imageUrl.",
+  });
+
+/** Base64 (optionally a data: URL) → bytes. Garbage decodes to bytes the image check refuses. */
+export function decodeBase64Image(raw: string): Uint8Array {
+  const body = raw.trim().replace(/^data:[^;,]*;base64,/i, "").replace(/\s+/g, "");
+  if (!body || !/^[A-Za-z0-9+/_-]+=*$/.test(body)) throw new SheetError("imageBase64 isn't valid base64.", 400);
+  return new Uint8Array(Buffer.from(body, body.includes("-") || body.includes("_") ? "base64url" : "base64"));
+}
+
 const ref = z.object({ client: z.string().min(1), sheet: z.string().min(1) });
 const permissionArgs = {
   clientCanEdit: z.boolean().optional(),
@@ -646,6 +670,64 @@ export function buildSheetTools({ resolveClient, textResult }: SheetToolDeps): S
         return textResult(
           { updated: planned.map((p) => p.row.id) },
           `Updated ${planned.length} row${planned.length === 1 ? "" : "s"} in "${sheet.title}".`,
+        );
+      },
+    },
+    {
+      name: "upload_sheet_image",
+      description:
+        "Upload an image (PNG, JPEG, GIF or WebP, up to 10 MB) into a sheet and, optionally, attach it to a row's " +
+        "media cell. Give the image as imageBase64 (raw or a data: URL) or as imageUrl (a public http(s) link we " +
+        "fetch once). With row + column, the image is APPENDED to that media cell (column must be a media column); " +
+        "without them, it returns the stored {url, title} to use in add_sheet_rows / update_sheet_rows. " +
+        "Requires 'Manage clients'.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          client: CLIENT,
+          sheet: SHEET,
+          imageBase64: { type: "string", description: "The image bytes, base64 (a data:image/...;base64, prefix is fine)." },
+          imageUrl: { type: "string", description: "A public http(s) URL of the image, fetched once and stored." },
+          filename: { type: "string", description: "File name, e.g. 'checkout-bug.png'." },
+          title: { type: "string", description: "Title shown on the chip (defaults to the file name)." },
+          row: { type: "string", description: "Row id or exact title-cell text to attach to." },
+          column: { type: "string", description: "Media column title to attach to." },
+        },
+        required: ["client", "sheet"],
+        additionalProperties: false,
+      },
+      handler: async (user, args) => {
+        assertCan(user, canManageClients, "upload sheet images");
+        const parsed = uploadImageSchema.parse(args);
+        const resolved = await resolveClient(user, parsed.client);
+        const sheet = await resolveSheet(resolved.id, parsed.sheet);
+        // Resolve the target before storing anything, so a bad row/column stores nothing.
+        let target: { row: WikiSheetRow; column: SheetColumn } | null = null;
+        if (parsed.row || parsed.column) {
+          if (!parsed.row || !parsed.column) throw new SheetError("Give both row and column, or neither.", 400);
+          const column = findColumn(sheet.columns, parsed.column);
+          if (!column) throw new SheetError(`No column "${parsed.column}" in "${sheet.title}".`, 400);
+          if (column.type !== "media") throw new SheetError(`"${column.title}" isn't a media column.`, 400);
+          target = { row: resolveRow(sheet, parsed.row), column };
+        }
+        const file = parsed.imageUrl
+          ? await fetchImageFromUrl(parsed.imageUrl)
+          : { bytes: decodeBase64Image(parsed.imageBase64 ?? ""), filename: parsed.filename ?? "image" };
+        if (parsed.filename) file.filename = parsed.filename;
+        const stored = await saveSheetImage({ clientId: resolved.id }, sheet.id, file, actorOf(user));
+        const item = { url: stored.url, title: parsed.title?.trim() || stored.title };
+        if (target) {
+          const existing = target.row.cells[target.column.id];
+          const items = [...(isMediaList(existing) ? existing : []), item];
+          await updateSheetRowCells(resolved.id, sheet.id, target.row.id, { [target.column.title]: items }, actorOf(user), {
+            byTitle: true,
+          });
+        }
+        return textResult(
+          { ...item, size: stored.size, attachedTo: target ? { row: target.row.id, column: target.column.title } : null },
+          target
+            ? `Uploaded "${item.title}" and attached it to "${target.column.title}" in "${sheet.title}".`
+            : `Uploaded "${item.title}" to "${sheet.title}". Put {"url": "${item.url}"} in a media cell to show it.`,
         );
       },
     },

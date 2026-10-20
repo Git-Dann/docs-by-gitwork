@@ -14,6 +14,7 @@
  *      `<iframe src>`.
  */
 
+import { parseSheetFileUrl } from "@/lib/wiki-sheet-files";
 import { safeSheetLink } from "@/lib/wiki-sheet-links";
 import type { SheetMediaItem } from "@/types/wiki-sheets";
 
@@ -41,7 +42,14 @@ function onHost(host: string, domain: string): boolean {
   return h === domain || h.endsWith(`.${domain}`);
 }
 
+/** A media item's URL as stored: an http(s) link, or exactly an uploaded image's path (§73.2). */
+export function safeMediaUrl(raw: string): string | null {
+  if (parseSheetFileUrl(raw)) return raw.trim();
+  return safeSheetLink(raw);
+}
+
 function parse(url: string): URL | null {
+  if (parseSheetFileUrl(url)) return new URL(url.trim(), "https://upload.invalid");
   const safe = safeSheetLink(url);
   if (!safe) return null;
   try {
@@ -177,7 +185,7 @@ export function coerceMedia(raw: unknown, label = "This column"): MediaCoerce {
       if (typeof item === "string") continue;
       return { ok: false, error: `${label} takes links with a "url".` };
     }
-    const url = safeSheetLink(urlRaw);
+    const url = safeMediaUrl(urlRaw);
     if (!url) {
       const shown = urlRaw.trim().length > 40 ? `${urlRaw.trim().slice(0, 40)}…` : urlRaw.trim();
       return { ok: false, error: `${label} takes http(s) links — "${shown}" isn't one.` };
