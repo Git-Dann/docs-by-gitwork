@@ -7370,3 +7370,28 @@ From the wiki layout review (Dan: "do all 4").
 - **Numbering:** Design System's Overview is 01 (it was 00). Requests' "Action needed" block is a real
   `01 // ACTION NEEDED` card, and the Requests cards follow on via `firstNumber`. Monitors' "client
   preview" (every monitor listed twice) is folded behind **Show what the client sees**.
+
+## 77. Recent Changes (October 2026) — Wiki Settings, simplified, with copy-paste sign-in details
+
+A full pass on the client wiki's Settings (`wiki-access-settings.tsx`).
+
+- **One column, numbered in render order.** Cards are now 01 Access, 02 Request categories (only
+  while Requests is on), 03 API intake, 04 Linked clients. Numbers come from a counter
+  (`next()`), and the categories and linked-clients panels take `n`. It used to be a masonry
+  layout reading 01, 03, 04, 02, with two cards both numbered 05.
+- **Access is one card:** the wiki link on one side, who can sign in on the other. Neither works
+  without the other. The per-page share list only shows while the whole-wiki link is off; with it
+  on, the list was ~25 identical "Included in the full-wiki link" rows. The link's unfurl preview
+  is folded.
+- **Copy sign-in details** (`src/lib/wiki-invite.ts`): a paste-ready message with the wiki link,
+  email and password. ⚠️ The password is stored hashed, so it's only known at the moment it's set.
+  Adding a user (a password is generated up front) or resetting one ends on a "copy this now"
+  screen that includes it. The per-user **Copy details** says it was "sent to you separately". No
+  link (wiki not shared) means no message, and the button explains why.
+- **API intake** shows the on/off, the main endpoint and **Copy everything for their developer**
+  up front. The integration guide, keys and webhook fold away.
+- The **Appearance** card is gone (the header has the same switch). The user dialog is the shared
+  `<Modal>` (off `one-modal.test.ts`'s hand-rolled list), and the hard-coded white is now tokens.
+- ⚠️ The Access card's grid needs `grid-cols-1`. Without it the single narrow-screen column is
+  an implicit `auto` track sized to its widest content, and the link panel ran 183px past the
+  edge of a phone, clipped by the card. The clipping audit caught it.

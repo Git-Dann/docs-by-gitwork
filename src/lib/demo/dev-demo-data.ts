@@ -1088,7 +1088,11 @@ const demoWiki: WikiDTO = {
       },
     ],
   },
-  users: [],
+  // Two client users, so Settings → Access shows the list and its "Copy details" action.
+  users: [
+    { id: "wu-priya", email: "priya@northwind.co", name: "Priya Nair", createdAt: atDays(-40) },
+    { id: "wu-ops", email: "ops@northwind.co", name: null, createdAt: atDays(-6) },
+  ],
   launchpad: demoLaunchpad,
   intakeEnabled: true,
   intakeCategories: DEFAULT_INTAKE_CATEGORIES,

@@ -58,7 +58,6 @@ const KNOWN_HAND_ROLLED = [
   "src/components/clients/wiki/course-api-intake-modal.tsx",
   "src/components/clients/wiki/course-feedback-import-modal.tsx",
   "src/components/clients/wiki/course-request-form.tsx",
-  "src/components/clients/wiki/wiki-access-settings.tsx",
   "src/components/clients/wiki/wiki-intake-section.tsx",
   "src/components/clients/wiki/wiki-workspace.tsx",
   "src/components/settings/agents-panel.tsx",
