@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
@@ -1256,10 +1256,19 @@ function TeamAvatar({
   avatarUrl: string | null;
 }) {
   const [failed, setFailed] = useState(false);
+  // ⚠️ On a server-rendered page the image can fail BEFORE React attaches onError — the
+  // event has already fired, so the handler never runs and the broken image (with its
+  // alt text spilling out) stays. Check once on mount whether it already failed.
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth === 0) setFailed(true);
+  }, [avatarUrl]);
   if (avatarUrl && !failed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
+        ref={imgRef}
         src={avatarUrl}
         alt={name}
         onError={() => setFailed(true)}
