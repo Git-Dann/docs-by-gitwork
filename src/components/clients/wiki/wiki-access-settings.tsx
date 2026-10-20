@@ -14,7 +14,6 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   ArrowPathIcon,
-  GlobeAltIcon,
   ArrowTopRightOnSquareIcon,
 } from "@heroicons/react/24/outline";
 import type { WikiDTO, WikiUserSummary } from "@/lib/api";
@@ -33,12 +32,14 @@ import {
   useRevokeIntakeKey,
 } from "@/hooks/use-wiki";
 import type { WikiSection } from "./wiki-sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { WikiIntakeCategoriesPanel } from "./wiki-intake-categories-panel";
+import { Modal } from "@/components/ui/modal";
+import { wikiInviteText } from "@/lib/wiki-invite";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
 const inputCls =
-  "w-full rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]";
+  "w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 text-sm text-[var(--text-1)] outline-none transition focus:border-[var(--brand-500)] focus:ring-2 focus:ring-[var(--brand-100)]";
 const labelCls =
   "mb-1.5 block text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]";
 
@@ -107,6 +108,65 @@ export function WikiAccessSettings({
   slug: string;
   availableSections: WikiSection[];
 }) {
+  // Cards are numbered in the order they render, so the sequence never skips — Request
+  // categories only exists while Requests is on, and it used to leave a gap (and two 05s).
+  let n = 0;
+  const next = () => String(++n).padStart(2, "0");
+
+  return (
+    // One column, top to bottom in the order you set a client up: who can get in, what they can
+    // raise, what systems push in, which other clients' work shows. The old two/three-column
+    // masonry left a short card beside a long one and shuffled the numbering.
+    <div className="w-full space-y-5">
+      <WikiAccessCard wiki={wiki} slug={slug} availableSections={availableSections} n={next()} />
+      {wiki.intakeEnabled ? (
+        <WikiIntakeCategoriesPanel
+          slug={slug}
+          categories={wiki.intakeCategories}
+          isDefault={wiki.intakeCategoriesAreDefault}
+          n={next()}
+        />
+      ) : null}
+      <WikiApiIntakeSettings slug={slug} n={next()} />
+      <WikiLinkedClients slug={slug} clientId={wiki.clientId} n={next()} />
+    </div>
+  );
+}
+
+/** The whole-wiki link as the client opens it, or null while the wiki isn't shared. */
+function wikiLinkFor(wiki: WikiDTO, slug: string): string | null {
+  if (!(wiki.shareEnabled && wiki.shareToken)) return null;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/wiki/${slug}/${wiki.shareToken}`;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 01 // ACCESS — the link and the people who can use it, in one card, because neither works
+ * without the other: users can't sign in until the wiki is shared, and a shared wiki is locked
+ * to its users.
+ */
+function WikiAccessCard({
+  wiki,
+  slug,
+  availableSections,
+  n,
+}: {
+  wiki: WikiDTO;
+  slug: string;
+  availableSections: WikiSection[];
+  n: string;
+}) {
+  const setShare = useSetWikiShare(slug);
+  const sectionShare = useSetWikiSectionShare(slug);
   const createUser = useCreateWikiUser(slug);
   const updateUser = useUpdateWikiUser(slug);
   const deleteUser = useDeleteWikiUser(slug);
@@ -114,144 +174,231 @@ export function WikiAccessSettings({
   // null = closed; "new" = add form; otherwise the user being edited.
   const [editing, setEditing] = useState<WikiUserSummary | "new" | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const users = wiki.users ?? [];
-  // Client sign-in needs a shared surface to land on — either the whole wiki OR
-  // any shared section (e.g. Design System). With users added but nothing shared,
-  // sign-in fails ("no workspace found").
-  const wikiShared =
-    (wiki.shareEnabled && Boolean(wiki.shareToken)) ||
-    Object.keys(wiki.pageShares ?? {}).length > 0;
+  const wikiOn = wiki.shareEnabled && Boolean(wiki.shareToken);
+  const pageShares = (wiki.pageShares ?? {}) as Record<string, string>;
+  const anyPageShared = Object.keys(pageShares).length > 0;
+  const link = wikiLinkFor(wiki, slug);
+  const shareable = availableSections.filter((s): s is WikiSection => Boolean(SHARE_SECTION_LABELS[s]));
+
+  function flash(key: string) {
+    setCopied(key);
+    setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+  }
 
   return (
-    // Fills the content area. It used to be `mx-auto max-w-5xl`, which on a wide
-    // screen centred a 1024px column and left a dead gap down BOTH sides — and
-    // Settings was the only wiki section that capped its width, so it didn't even
-    // match the pages either side of it.
-    <div className="w-full space-y-5">
-      {/* Masonry for the COMPACT panels — a third column from 2xl so extra width
-          becomes another card rather than three very wide ones. The API panel is
-          deliberately NOT in here: it carries endpoint URLs, a type legend and a
-          curl block, none of which survive a half-width column (long URLs wrapped
-          mid-token). It spans the full width below instead. */}
-      <div className="columns-1 gap-5 lg:columns-2 2xl:columns-3 [&>*]:mb-5 [&>*]:break-inside-avoid">
-        <section className="widget-card">
-        <div className="widget-header flex items-center justify-between">
-          <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">01</span>
-            {" // CLIENT ACCESS"}
-          </span>
-          <button
-            type="button"
-            onClick={() => setEditing("new")}
-            className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
-          >
-            <PlusIcon className="h-3.5 w-3.5" /> Add user
-          </button>
-        </div>
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">{n}</span>
+          {" // ACCESS"}
+        </span>
+        <span className="widget-header__status inline-flex items-center gap-1 shrink-0" style={{ fontFamily: MONO }}>
+          <LockClosedIcon className="h-3 w-3" /> SIGN-IN REQUIRED
+        </span>
+      </div>
 
-        <div className="space-y-5 p-6">
-          <div className="flex items-start gap-3 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
-            <LockClosedIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text-3)]" />
-            <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
-              The public wiki link is <strong>locked</strong>. Clients sign in with one of the
-              email/password accounts below. Gitwork staff signed into Foundry can always view it
-              without these credentials.
-            </p>
-          </div>
-
-          {users.length > 0 && !wikiShared && (
-            <div className="flex items-start gap-3 rounded-[10px] border border-amber-300 bg-amber-50 p-4">
-              <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-              <p className="text-[13px] leading-relaxed text-amber-800">
-                This wiki isn&apos;t shared yet, so these users <strong>can&apos;t sign in</strong>{" "}
-                — the portal login reports &ldquo;no workspace found&rdquo;. Turn on{" "}
-                <strong>Share entire wiki</strong> in the Sharing panel below to let them in.
+      {/* grid-cols-1 is not optional: without it the single narrow-screen column is an
+          implicit `auto` track, sized to its widest content rather than the card — the link
+          panel ran up to 183px past the edge of a phone, clipped by the card. */}
+      <div className="grid grid-cols-1 gap-px bg-[var(--border-1)] lg:grid-cols-2">
+        {/* ── The link ── */}
+        <div className="min-w-0 space-y-4 bg-[var(--surface-0)] p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--text-1)]">Wiki link</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-4)]">
+                One link to every page. Clients sign in with an account from &ldquo;Who can sign
+                in&rdquo;; anyone signed in to Foundry can always open it.
               </p>
             </div>
-          )}
+            <ShareToggle on={wikiOn} disabled={setShare.isPending} onClick={() => void setShare.mutateAsync(!wikiOn)} />
+          </div>
 
-          {/* User list */}
-          {users.length === 0 ? (
-            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
-              No client users yet. Until you add one, only Gitwork staff can open the link.
+          {wikiOn && wiki.shareToken ? (
+            <ShareLinkRow
+              href={`/wiki/${slug}/${wiki.shareToken}`}
+              copied={copied === "wiki"}
+              onCopy={async () => {
+                if (link && (await copyText(link))) flash("wiki");
+              }}
+            />
+          ) : null}
+
+          {/* Per-page links only matter while the whole-wiki link is off — on, every page is
+              already in it, and listing ~25 rows of "included" said nothing. */}
+          {wikiOn ? (
+            <p className="text-[12px] text-[var(--text-4)]">
+              Every page is in the wiki link. Turn it off to share pages one at a time.
             </p>
           ) : (
-            <ul className="divide-y divide-[var(--border-1)] overflow-hidden rounded-[10px] border border-[var(--border-1)]">
-              {users.map((u) => (
-                <li key={u.id} className="flex items-center gap-3 bg-white px-4 py-3">
-                  <UserCircleIcon className="h-8 w-8 shrink-0 text-[var(--text-4)]" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-[var(--text-1)]">
-                      {u.email}
+            <details className="group" open={anyPageShared}>
+              <summary
+                className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)] hover:text-[var(--text-2)] [&::-webkit-details-marker]:hidden"
+                style={{ fontFamily: MONO }}
+              >
+                <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
+                Share single pages instead{anyPageShared ? ` · ${Object.keys(pageShares).length} shared` : ""}
+              </summary>
+              {shareable.length === 0 ? (
+                <p className="mt-3 text-[13px] text-[var(--text-4)]">No shareable pages yet.</p>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {shareable.map((section) => {
+                    const token = pageShares[section];
+                    const on = Boolean(token);
+                    return (
+                      <li key={section}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[13px] text-[var(--text-2)]">{SHARE_SECTION_LABELS[section]}</span>
+                          <ShareToggle
+                            on={on}
+                            disabled={sectionShare.isPending}
+                            onClick={() => void sectionShare.mutateAsync({ section, enabled: !on })}
+                          />
+                        </div>
+                        {on && token ? (
+                          <ShareLinkRow
+                            href={`/wiki/${slug}/${token}`}
+                            copied={copied === section}
+                            onCopy={async () => {
+                              if (await copyText(`${window.location.origin}/wiki/${slug}/${token}`)) flash(section);
+                            }}
+                          />
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </details>
+          )}
+        </div>
+
+        {/* ── Who can sign in ── */}
+        <div className="min-w-0 space-y-4 bg-[var(--surface-0)] p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--text-1)]">Who can sign in</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-4)]">
+                Each client gets their own email and password.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditing("new")}
+              className="app-button app-button-secondary app-button-xs inline-flex shrink-0 items-center gap-1.5"
+            >
+              <PlusIcon className="h-3.5 w-3.5" /> Add user
+            </button>
+          </div>
+
+          {users.length > 0 && !wikiOn && !anyPageShared ? (
+            <div className="flex items-start gap-2.5 rounded-[8px] border border-amber-300 bg-amber-50 p-3">
+              <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <p className="text-[12px] leading-relaxed text-amber-800">
+                Nothing is shared yet, so these people <strong>can&apos;t sign in</strong>. Turn on
+                the wiki link.
+              </p>
+            </div>
+          ) : null}
+
+          {users.length === 0 ? (
+            <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-4)]">
+              No client users yet — only Gitwork staff can open the link.
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--border-1)] overflow-hidden rounded-[8px] border border-[var(--border-1)]">
+              {users.map((u) => {
+                const invite = wikiInviteText({ clientName: wiki.clientName, link, email: u.email, name: u.name });
+                return (
+                  <li key={u.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-2.5">
+                    <UserCircleIcon className="h-7 w-7 shrink-0 text-[var(--text-4)]" />
+                    <div className="min-w-[160px] flex-1">
+                      <div className="truncate text-[13px] font-medium text-[var(--text-1)]" title={u.email}>
+                        {u.email}
+                      </div>
+                      <div className="truncate text-[11px] text-[var(--text-4)]">
+                        {u.name ? `${u.name} · ` : ""}Added {formatDate(u.createdAt)}
+                      </div>
                     </div>
-                    <div className="truncate text-[12px] text-[var(--text-4)]">
-                      {u.name ? `${u.name} · ` : ""}Added {formatDate(u.createdAt)}
-                    </div>
-                  </div>
-                  {confirmingDelete === u.id ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] text-[var(--text-4)]">Remove?</span>
-                      <button
-                        type="button"
-                        disabled={deleteUser.isPending}
-                        onClick={async () => {
-                          await deleteUser.mutateAsync(u.id);
-                          setConfirmingDelete(null);
-                        }}
-                        className="rounded-[6px] bg-rose-600 px-2.5 py-1 text-[12px] font-medium text-white transition hover:bg-rose-700 disabled:opacity-50"
-                      >
-                        Yes
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingDelete(null)}
-                        className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-                      >
-                        No
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditing(u)}
-                        title="Edit"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                      >
-                        <PencilSquareIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingDelete(u.id)}
-                        title="Remove"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                </li>
-              ))}
+                    {confirmingDelete === u.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] text-[var(--text-4)]">Remove?</span>
+                        <button
+                          type="button"
+                          disabled={deleteUser.isPending}
+                          onClick={async () => {
+                            await deleteUser.mutateAsync(u.id);
+                            setConfirmingDelete(null);
+                          }}
+                          className="rounded-[6px] bg-[var(--danger-500)] px-2.5 py-1 text-[12px] font-medium text-white disabled:opacity-50"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDelete(null)}
+                          className="rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={!invite}
+                          onClick={async () => {
+                            if (invite && (await copyText(invite))) flash(`invite-${u.id}`);
+                          }}
+                          title={
+                            invite
+                              ? "Copy a ready-to-send message with the link and their email. The password isn't stored, so it says it was sent separately — use Edit → Reset & generate for one to include."
+                              : "Turn on the wiki link first — there's nowhere for them to sign in yet."
+                          }
+                          className="inline-flex h-8 items-center gap-1 rounded-[6px] px-2 text-[12px] font-medium text-[var(--brand-700)] hover:bg-[var(--surface-1)] disabled:cursor-not-allowed disabled:text-[var(--text-4)] disabled:opacity-60"
+                        >
+                          {copied === `invite-${u.id}` ? <CheckIcon className="h-4 w-4" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
+                          {copied === `invite-${u.id}` ? "Copied" : "Copy details"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditing(u)}
+                          title="Edit or reset password"
+                          aria-label={`Edit ${u.email}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                        >
+                          <PencilSquareIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDelete(u.id)}
+                          title="Remove"
+                          aria-label={`Remove ${u.email}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--danger-500)]"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
-      </section>
-
-        <WikiSharePanel wiki={wiki} slug={slug} availableSections={availableSections} />
-
-        <WikiAppearanceCard />
       </div>
 
-      {/* Full width — see the note on the masonry above. */}
-      <WikiApiIntakeSettings slug={slug} />
-      <WikiLinkedClients slug={slug} clientId={wiki.clientId} />
-
-      {editing && (
+      {editing ? (
         <WikiUserModal
           mode={editing === "new" ? "create" : "edit"}
           user={editing === "new" ? null : editing}
           busy={createUser.isPending || updateUser.isPending}
+          clientName={wiki.clientName}
+          link={link}
           onClose={() => setEditing(null)}
           onSubmit={async ({ email, name, password }) => {
             if (editing === "new") {
@@ -262,38 +409,14 @@ export function WikiAccessSettings({
                 data: { email, name, ...(password ? { password } : {}) },
               });
             }
-            setEditing(null);
           }}
         />
-      )}
-    </div>
-  );
-}
-
-
-// Appearance — surfaces the shared Light/Dark/System control inside the wiki settings (the same
-// preference the header toggle and the rest of Foundry use; synced via localStorage + data-theme).
-function WikiAppearanceCard() {
-  return (
-    <section className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          <span className="widget-header__label--number">04</span>
-          {" // APPEARANCE"}
-        </span>
-      </div>
-      <div className="space-y-4 p-6">
-        <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
-          Switch the wiki between light and dark. This preference is shared across Foundry and the
-          public client wiki, and follows your device when set to System.
-        </p>
-        <ThemeToggle />
-      </div>
+      ) : null}
     </section>
   );
 }
 
-function WikiApiIntakeSettings({ slug }: { slug: string }) {
+function WikiApiIntakeSettings({ slug, n }: { slug: string; n: string }) {
   const { data, isPending } = useCourseIngest(slug, true);
   const setIngest = useSetCourseIngest(slug);
   const [copied, setCopied] = useState<string | null>(null);
@@ -303,7 +426,7 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const courseEndpoint = token ? `${origin}/api/public/course-requests/${token}` : "";
   const wikiItemsEndpoint = token ? `${origin}/api/public/wiki-items/${token}` : "";
-  const intakePagePath = `/app/portal/${slug}/wiki`;
+  const intakePagePath = `/app/portal/${slug}/wiki#intake`;
   // Shows the full field set the API accepts, including the ones added with the
   // intake API (externalUrl, attachmentUrls, status) — a client only sends what
   // they can see documented. Friendly values on purpose: "Feature request" and
@@ -314,37 +437,65 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
   const busy = setIngest.isPending;
 
   async function copy(key: string, text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await copyText(text)) {
       setCopied(key);
       setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
-    } catch {
-      /* clipboard unavailable */
     }
   }
+
+  const endpoints = [
+    { key: "items", label: "Create — bug / feedback / feature request", method: "POST", value: wikiItemsEndpoint },
+    // Update + list shipped with the intake API (docs/client-intake-api.md).
+    // Listed here because a client can't discover an endpoint that isn't shown.
+    { key: "update", label: "Update one — their ref or ours", method: "PATCH", value: `${wikiItemsEndpoint}/{ref}` },
+    { key: "list", label: "List what we hold", method: "GET", value: `${wikiItemsEndpoint}?items=1` },
+    { key: "courses", label: "Wedge course requests", method: "POST", value: courseEndpoint },
+    { key: "image", label: "Attach a screenshot (multipart `file`)", method: "POST", value: token ? `${origin}/api/wiki/${token}/intake-items/{id}/image` : "" },
+  ];
+  // Everything an integrator needs in one paste, so it isn't five separate copies.
+  const handover = token
+    ? [
+        "Foundry intake API",
+        "Docs: docs/client-intake-api.md",
+        "",
+        ...endpoints.map((e) => `${e.label}\n${e.method} ${e.value}`),
+      ].join("\n\n")
+    : "";
+
+  const folding = (label: string, body: React.ReactNode) => (
+    <details className="group rounded-[8px] border border-[var(--border-1)]">
+      <summary
+        className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3 text-[11px] uppercase tracking-[0.06em] text-[var(--text-3)] hover:text-[var(--text-1)] [&::-webkit-details-marker]:hidden"
+        style={{ fontFamily: MONO }}
+      >
+        <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
+        {label}
+      </summary>
+      <div className="space-y-4 border-t border-[var(--border-1)] p-4">{body}</div>
+    </details>
+  );
 
   return (
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          <span className="widget-header__label--number">02</span>
+          <span className="widget-header__label--number">{n}</span>
           {" // API INTAKE"}
         </span>
+        <span className="widget-header__status shrink-0" style={{ fontFamily: MONO }}>
+          {isPending ? "" : token ? "ON" : "OFF"}
+        </span>
       </div>
-      <div className="space-y-5 p-6">
+      <div className="space-y-4 p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="max-w-[70ch]">
-            <p className="text-sm font-medium text-[var(--text-1)]">Client wiki intake API</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-4)]">
-              Give this client-scoped token to a trusted external system so it can push bugs,
-              feedback, feature requests, or Wedge course requests into this wiki/client — and
-              keep their status in sync. Items stay on the Wiki Requests page until an Admin
-              promotes them. Send the integrator{" "}
-              <span style={{ fontFamily: MONO }}>docs/client-intake-api.md</span>.
+            <p className="text-[13px] leading-relaxed text-[var(--text-3)]">
+              Lets a client&rsquo;s own system push bugs, feedback and requests straight into{" "}
+              <a href={intakePagePath} className="text-[var(--brand-700)] hover:underline">Requests</a>, and keep their
+              status in sync.
             </p>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--danger-500)]">
-              Send this token only — never the workspace API key, which grants access to every
-              client&rsquo;s data.
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--danger-500)]">
+              Send them this token only — never the workspace API key, which opens every client&rsquo;s data.
             </p>
           </div>
           <ShareToggle
@@ -358,149 +509,92 @@ function WikiApiIntakeSettings({ slug }: { slug: string }) {
         </div>
 
         {isPending ? (
-          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
-            Loading intake settings…
-          </p>
-        ) : !token ? (
-          <div className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center">
-            <p className="mb-3 text-[13px] text-[var(--text-4)]">API intake is off.</p>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setIngest.mutate({ enabled: true })}
-              className="inline-flex items-center rounded-[6px] bg-[var(--brand-700)] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[var(--brand-800)] disabled:opacity-60"
-            >
-              {busy ? "Enabling…" : "Enable API intake"}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            <div className="overflow-hidden rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)]">
-              <div className="grid gap-px bg-[var(--border-1)] md:grid-cols-3">
-                {[
-                  { label: "1 // CLIENT PUSHES", value: "Bug, feedback, or task JSON" },
-                  { label: "2 // FOUNDRY ROUTES", value: "Token locks it to this Wiki" },
-                  { label: "3 // TEAM TRIAGES", value: "Wiki Requests → promote later" },
-                ].map((step) => (
-                  <div key={step.label} className="bg-white p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--brand-700)]" style={{ fontFamily: MONO }}>{step.label}</p>
-                    <p className="mt-1 text-[13px] font-medium text-[var(--text-1)]">{step.value}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-1)] bg-white px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-1)]">Where bugs, feedback, and tasks appear</p>
-                  <p className="mt-0.5 text-[12px] text-[var(--text-4)]">
-                    Every accepted item appears on the client Wiki <strong>Requests</strong> page first. Clients can add items, but only Admin/Super Admin users can promote them into Dev tasks later.
-                  </p>
-                </div>
-                <a
-                  href={intakePagePath}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[7px] bg-[var(--brand-700)] px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-800)]"
-                >
-                  Open Wiki requests
-                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-                </a>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
-              {[
-                { label: "BUG", title: "Creates a bug card", copy: "Use for defects, regressions, or reproducible issues." },
-                { label: "FEEDBACK", title: "Creates a feedback card", copy: "Use for client/customer comments or product suggestions." },
-                { label: "TASK", title: "Creates a task card", copy: "Use for small requested work items that need triage." },
-                { label: "DESIGN", title: "Creates a design card", copy: "Use for design edits or visual changes for the designer to pick up." },
-              ].map((item) => (
-                <div key={item.label} className="rounded-[10px] border border-[var(--border-1)] bg-white p-4">
-                  <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--brand-700)]">{item.label}</span>
-                  <p className="mt-2 text-[13px] font-semibold text-[var(--text-1)]">{item.title}</p>
-                  <p className="mt-1 text-[12px] leading-5 text-[var(--text-4)]">{item.copy}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Two-up on lg now the panel is full width — each row is a short
-                label plus one URL, so a single tall column just wasted the space. */}
-            <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
-            {[
-              { key: "items", label: "Create — bug / feedback / feature request (POST)", method: "POST", value: wikiItemsEndpoint },
-              // Update + list shipped with the intake API (docs/client-intake-api.md).
-              // Listed here because a client can't discover an endpoint that isn't shown.
-              { key: "update", label: "Update one — their ref or ours (PATCH)", method: "PATCH", value: `${wikiItemsEndpoint}/{ref}` },
-              { key: "list", label: "List what we hold (GET)", method: "GET", value: `${wikiItemsEndpoint}?items=1` },
-              { key: "courses", label: "Wedge course requests (POST)", method: "POST", value: courseEndpoint },
-              { key: "image", label: "Attach a screenshot (POST · multipart `file`)", method: "POST", value: token ? `${origin}/api/wiki/${token}/intake-items/{id}/image` : "" },
-              { key: "check", label: "Connectivity check (GET)", method: "GET", value: wikiItemsEndpoint },
-            ].map((row) => (
-              <div key={row.key}>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">
-                    {row.label}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void copy(row.key, row.value)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]"
-                  >
-                    {copied === row.key ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
-                    {copied === row.key ? "Copied" : "Copy"}
-                  </button>
-                </div>
-                <div className="break-all rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-3 py-2 text-[12px] text-[var(--text-2)]" style={{ fontFamily: MONO }}>
-                  <span className="text-[var(--text-4)]">{row.method} </span>{row.value}
-                </div>
-              </div>
-            ))}
-            </div>
-
+          <p className="text-[13px] text-[var(--text-4)]">Loading…</p>
+        ) : !token ? null : (
+          <>
             <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Example bug push</span>
-                <button type="button" onClick={() => void copy("example", example)} className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]">
-                  {copied === "example" ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
-                  {copied === "example" ? "Copied" : "Copy"}
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">
+                  Create a request (POST)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void copy("handover", handover)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]"
+                  title="Every endpoint and the docs path, ready to send to their developer"
+                >
+                  {copied === "handover" ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                  {copied === "handover" ? "Copied" : "Copy everything for their developer"}
                 </button>
               </div>
-              <pre className="overflow-x-auto rounded-[8px] border border-[rgba(0,0,0,0.1)] bg-[#0f1115] px-3 py-2.5 text-[11.5px] leading-5 text-[#d6deeb]" style={{ fontFamily: MONO }}>{example}</pre>
-              <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-4)]">
-                Required: <span style={{ fontFamily: MONO }}>title</span>. Optional: <span style={{ fontFamily: MONO }}>type</span>, <span style={{ fontFamily: MONO }}>description</span>, <span style={{ fontFamily: MONO }}>priority</span>, <span style={{ fontFamily: MONO }}>status</span>, <span style={{ fontFamily: MONO }}>requestedBy</span>, <span style={{ fontFamily: MONO }}>externalRef</span>, <span style={{ fontFamily: MONO }}>externalUrl</span>, and <span style={{ fontFamily: MONO }}>attachmentUrls</span>. Send one object or {`{"items":[…]}`} for a batch of up to 200. Sending the same <span style={{ fontFamily: MONO }}>externalRef</span> twice is deduped, so retries are safe.
-              </p>
+              <div className="break-all rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-3 py-2 text-[12px] text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+                {wikiItemsEndpoint}
+              </div>
             </div>
 
-            <IntakeKeysField slug={slug} />
+            {folding("Integration guide — every endpoint, an example and the fields", (
+              <>
+                <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
+                  {endpoints.map((row) => (
+                    <div key={row.key}>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">{row.label}</span>
+                        <button type="button" onClick={() => void copy(row.key, row.value)} className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]">
+                          {copied === row.key ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                          {copied === row.key ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                      <div className="break-all rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-3 py-2 text-[12px] text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+                        <span className="text-[var(--text-4)]">{row.method} </span>{row.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Example bug push</span>
+                    <button type="button" onClick={() => void copy("example", example)} className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]">
+                      {copied === "example" ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                      {copied === "example" ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <pre className="overflow-x-auto rounded-[8px] border border-[var(--border-1)] bg-[#0f1115] px-3 py-2.5 text-[11.5px] leading-5 text-[#d6deeb]" style={{ fontFamily: MONO }}>{example}</pre>
+                </div>
+                <p className="text-[12px] leading-5 text-[var(--text-4)]">
+                  Only <span style={{ fontFamily: MONO }}>title</span> is required. <span style={{ fontFamily: MONO }}>type</span> takes Bug,
+                  Feedback, Task or Design; <span style={{ fontFamily: MONO }}>priority</span> Low, Medium or High. Send one object or{" "}
+                  {`{"items":[…]}`} for up to 200. Sending the same <span style={{ fontFamily: MONO }}>externalRef</span> twice is
+                  deduped, so retries are safe. Every item lands on Requests first; only an Admin can promote it to a task.
+                </p>
+              </>
+            ))}
 
-            <IntakeWebhookField slug={slug} />
+            {folding("Advanced — per-integrator keys and status webhook", (
+              <>
+                <IntakeKeysField slug={slug} />
+                <IntakeWebhookField slug={slug} />
+              </>
+            ))}
 
-            <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--text-4)]">Clean mapping</p>
-              <dl className="mt-3 grid gap-3 text-[12px] md:grid-cols-2">
-                <div><dt className="font-semibold text-[var(--text-2)]">title</dt><dd className="text-[var(--text-4)]">Request title shown in the Wiki intake list; the type prefix is only added if promoted to a task.</dd></div>
-                <div><dt className="font-semibold text-[var(--text-2)]">description</dt><dd className="text-[var(--text-4)]">Task description for reproduction steps or context.</dd></div>
-                <div><dt className="font-semibold text-[var(--text-2)]">priority</dt><dd className="text-[var(--text-4)]">Maps to LOW, MEDIUM, or HIGH on the task.</dd></div>
-                <div><dt className="font-semibold text-[var(--text-2)]">externalRef</dt><dd className="text-[var(--text-4)]">Stored for dedupe so repeat pushes do not create duplicates.</dd></div>
-              </dl>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 border-t border-[var(--border-1)] pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-1)] pt-4">
               {confirmDisable ? (
                 <>
-                  <span className="text-[12px] text-[var(--text-3)]">Disable intake? The current token stops working immediately.</span>
+                  <span className="text-[12px] text-[var(--text-3)]">Turn intake off? The token stops working immediately.</span>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setConfirmDisable(false)} className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-[13px] font-medium text-[var(--text-2)] hover:bg-[var(--surface-1)]">Keep</button>
-                    <button type="button" disabled={busy} onClick={() => { setIngest.mutate({ enabled: false }); setConfirmDisable(false); }} className="rounded-[6px] bg-red-600 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-red-700 disabled:opacity-60">Disable</button>
+                    <button type="button" onClick={() => setConfirmDisable(false)} className="app-button app-button-secondary app-button-xs">Keep</button>
+                    <button type="button" disabled={busy} onClick={() => { setIngest.mutate({ enabled: false }); setConfirmDisable(false); }} className="rounded-[6px] bg-[var(--danger-500)] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-60">Turn off</button>
                   </div>
                 </>
               ) : (
                 <>
-                  <button type="button" onClick={() => setConfirmDisable(true)} className="text-[12px] font-medium text-red-600 hover:text-red-700">Disable intake</button>
-                  <button type="button" disabled={busy} onClick={() => setIngest.mutate({ enabled: true, rotate: true })} className="rounded-[6px] border border-[var(--border-2)] bg-white px-3.5 py-1.5 text-[13px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-60">
+                  <span className="text-[12px] text-[var(--text-4)]">Leaked? Rotate it — the old token stops working.</span>
+                  <button type="button" disabled={busy} onClick={() => setIngest.mutate({ enabled: true, rotate: true })} className="app-button app-button-secondary app-button-xs disabled:opacity-60">
                     {busy ? "Working…" : "Rotate token"}
                   </button>
                 </>
               )}
             </div>
-          </div>
+          </>
         )}
       </div>
     </section>
@@ -546,167 +640,51 @@ function ShareLinkRow({
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return (
     <div className="mt-2.5 space-y-2">
-      {/* Smart preview — the actual unfurl card recipients will see. */}
-      <div className="overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`${href}/opengraph-image`}
-          alt="Link preview"
-          loading="lazy"
-          className="block aspect-[1200/630] w-full object-cover"
-        />
-      </div>
       <div className="flex items-center gap-2">
-      <p
-        className="min-w-0 flex-1 truncate rounded-[7px] border border-[var(--border-1)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]"
-        style={{ fontFamily: MONO }}
-        // Ellipsed on a phone — the full link has to be readable somewhere besides the clipboard.
-        title={`${origin}${href}`}
-      >
-        {origin}
-        {href}
-      </p>
-      <button
-        type="button"
-        onClick={onCopy}
-        className="inline-flex shrink-0 items-center gap-1 rounded-[7px] bg-[var(--brand-600)] px-2.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
-      >
-        {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
-        {copied ? "Copied" : "Copy"}
-      </button>
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex shrink-0 items-center justify-center rounded-[7px] border border-[var(--border-2)] bg-white px-2.5 py-1.5 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-        title="Open"
-      >
-        <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
-      </a>
+        <p
+          className="min-w-0 flex-1 truncate rounded-[7px] border border-[var(--border-1)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--text-3)]"
+          style={{ fontFamily: MONO }}
+          // Ellipsed on a phone — the full link has to be readable somewhere besides the clipboard.
+          title={`${origin}${href}`}
+        >
+          {origin}
+          {href}
+        </p>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="inline-flex shrink-0 items-center gap-1 rounded-[7px] bg-[var(--brand-600)] px-2.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+        >
+          {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex shrink-0 items-center justify-center rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+          title="Open"
+          aria-label="Open the link"
+        >
+          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+        </a>
       </div>
+      {/* The unfurl card a recipient sees when the link is pasted — folded, because it is a
+          340px image to check once, not something to scroll past every visit. */}
+      <details className="group">
+        <summary
+          className="cursor-pointer list-none text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)] hover:text-[var(--text-2)] [&::-webkit-details-marker]:hidden"
+          style={{ fontFamily: MONO }}
+        >
+          <span aria-hidden className="mr-1.5 inline-block transition-transform group-open:rotate-90">›</span>
+          Preview when pasted
+        </summary>
+        <div className="mt-2 overflow-hidden rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`${href}/opengraph-image`} alt="Link preview" loading="lazy" className="block aspect-[1200/630] w-full object-cover" />
+        </div>
+      </details>
     </div>
-  );
-}
-
-function WikiSharePanel({
-  wiki,
-  slug,
-  availableSections,
-}: {
-  wiki: WikiDTO;
-  slug: string;
-  availableSections: WikiSection[];
-}) {
-  const setShare = useSetWikiShare(slug);
-  const sectionShare = useSetWikiSectionShare(slug);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const wikiOn = wiki.shareEnabled && Boolean(wiki.shareToken);
-  const pageShares = (wiki.pageShares ?? {}) as Record<string, string>;
-  const shareable = availableSections.filter(
-    (s): s is WikiSection => Boolean(SHARE_SECTION_LABELS[s]),
-  );
-
-  async function copy(key: string, href: string) {
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}${href}`);
-      setCopied(key);
-      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
-    } catch {
-      /* clipboard unavailable */
-    }
-  }
-
-  return (
-    <section className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          <span className="widget-header__label--number">03</span>
-          {" // SHARING"}
-        </span>
-      </div>
-
-      <div className="space-y-5 p-6">
-        {/* Global */}
-        <div>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <GlobeAltIcon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--text-3)]" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--text-1)]">Share entire wiki</p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--text-4)]">
-                  One public link covering every page — Dashboard, Timeline, docs, changelog &amp;
-                  client sections.
-                </p>
-              </div>
-            </div>
-            <ShareToggle
-              on={wikiOn}
-              disabled={setShare.isPending}
-              onClick={() => void setShare.mutateAsync(!wikiOn)}
-            />
-          </div>
-          {wikiOn && wiki.shareToken && (
-            <ShareLinkRow
-              href={`/wiki/${slug}/${wiki.shareToken}`}
-              copied={copied === "wiki"}
-              onCopy={() => copy("wiki", `/wiki/${slug}/${wiki.shareToken}`)}
-            />
-          )}
-        </div>
-
-        <div className="h-px bg-[var(--border-1)]" />
-
-        {/* Individual pages */}
-        <div>
-          <p
-            className="mb-3 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]"
-            style={{ fontFamily: MONO }}
-          >
-            Or share individual pages
-          </p>
-          {shareable.length === 0 ? (
-            <p className="text-[13px] text-[var(--text-4)]">No shareable pages yet.</p>
-          ) : (
-            <ul className="space-y-3">
-              {shareable.map((section) => {
-                const token = pageShares[section];
-                const on = Boolean(token);
-                return (
-                  <li key={section}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[13px] text-[var(--text-2)]">
-                        {SHARE_SECTION_LABELS[section]}
-                      </span>
-                      {wikiOn ? (
-                        <span className="text-[11px] text-[var(--text-4)]">
-                          Included in the full-wiki link
-                        </span>
-                      ) : (
-                        <ShareToggle
-                          on={on}
-                          disabled={sectionShare.isPending}
-                          onClick={() =>
-                            void sectionShare.mutateAsync({ section, enabled: !on })
-                          }
-                        />
-                      )}
-                    </div>
-                    {!wikiOn && on && token && (
-                      <ShareLinkRow
-                        href={`/wiki/${slug}/${token}`}
-                        copied={copied === section}
-                        onCopy={() => copy(section, `/wiki/${slug}/${token}`)}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -714,112 +692,119 @@ function WikiUserModal({
   mode,
   user,
   busy,
+  clientName,
+  link,
   onClose,
   onSubmit,
 }: {
   mode: "create" | "edit";
   user: WikiUserSummary | null;
   busy: boolean;
+  clientName: string;
+  link: string | null;
   onClose: () => void;
   onSubmit: (input: { email: string; name: string; password?: string }) => Promise<void>;
 }) {
   const [email, setEmail] = useState(user?.email ?? "");
   const [name, setName] = useState(user?.name ?? "");
-  const [password, setPassword] = useState("");
+  // A new user gets a generated password up front — the usual case is "make an account and
+  // send it", so starting with one saves a click and a weak hand-typed password.
+  const [password, setPassword] = useState(() => (mode === "create" ? generatePassword() : ""));
   const [error, setError] = useState<string | null>(null);
-  const [reveal, setReveal] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [reveal, setReveal] = useState(mode === "create");
+  const [copied, setCopied] = useState<"password" | "invite" | null>(null);
+  // After saving, the dialog stays open on the one screen where the password is still known.
+  const [saved, setSaved] = useState<{ email: string; name: string; password: string | null } | null>(null);
 
-  function handleGenerate() {
-    const pw = generatePassword();
-    setPassword(pw);
-    setReveal(true);
-    setCopied(false);
-  }
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(password);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable — the field is visible to copy manually */
-    }
+  function flash(k: "password" | "invite") {
+    setCopied(k);
+    setTimeout(() => setCopied(null), 1500);
   }
 
   async function handleSave() {
     setError(null);
-    if (!email.trim()) {
-      setError("Email is required.");
-      return;
-    }
-    if (mode === "create" && password.trim().length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (mode === "edit" && password.length > 0 && password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
+    if (!email.trim()) return setError("Email is required.");
+    if (mode === "create" && password.trim().length < 8) return setError("Password must be at least 8 characters.");
+    if (mode === "edit" && password.length > 0 && password.length < 8) return setError("Password must be at least 8 characters.");
     try {
       await onSubmit({ email: email.trim(), name: name.trim(), password: password || undefined });
+      setSaved({ email: email.trim(), name: name.trim(), password: password || null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     }
   }
 
+  const invite = saved
+    ? wikiInviteText({ clientName, link, email: saved.email, name: saved.name, password: saved.password })
+    : null;
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title={saved ? (mode === "create" ? "User added" : "User saved") : mode === "create" ? "Add client user" : "Edit user"}
+      panelClassName="w-full max-w-md"
     >
-      <div
-        className="w-full max-w-md rounded-[16px] border border-[rgba(0,0,0,0.08)] bg-white p-6 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.35)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          className="text-lg text-[var(--text-1)]"
-          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-        >
-          {mode === "create" ? "Add client user" : "Edit user"}
-        </h2>
-        <div className="mt-5 space-y-4">
+      {saved ? (
+        <div className="space-y-4 p-5">
+          {invite ? (
+            <>
+              <p className="text-[13px] text-[var(--text-3)]">
+                {saved.password
+                  ? "Copy this and send it to them — it's the only time the password can be shown."
+                  : "Copy this and send it to them. The password wasn't changed, so it says it was sent separately."}
+              </p>
+              <pre className="whitespace-pre-wrap break-words rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3 text-[12px] leading-5 text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+                {invite}
+              </pre>
+            </>
+          ) : (
+            <p className="text-[13px] text-[var(--text-3)]">
+              Saved. The wiki link is off, so there&rsquo;s nowhere for them to sign in yet — turn it on, then
+              use <strong>Copy details</strong> next to their name.
+              {saved.password ? " Copy the password now; it can't be shown again." : ""}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {!invite && saved.password ? (
+              <button type="button" onClick={async () => { if (await copyText(saved.password!)) flash("password"); }} className="app-button app-button-secondary app-button-sm">
+                {copied === "password" ? "Copied" : "Copy password"}
+              </button>
+            ) : null}
+            {invite ? (
+              <button type="button" onClick={async () => { if (await copyText(invite)) flash("invite"); }} className="app-button app-button-primary app-button-sm inline-flex items-center gap-1.5">
+                {copied === "invite" ? <CheckIcon className="h-4 w-4" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
+                {copied === "invite" ? "Copied" : "Copy sign-in details"}
+              </button>
+            ) : null}
+            <button type="button" onClick={onClose} className="app-button app-button-secondary app-button-sm">
+              Done
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 p-5">
           <div>
-            <label className={labelCls} style={{ fontFamily: MONO }}>
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="off"
-              className={inputCls}
-            />
+            <label className={labelCls} style={{ fontFamily: MONO }}>Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" className={inputCls} />
           </div>
           <div>
-            <label className={labelCls} style={{ fontFamily: MONO }}>
-              Name (optional)
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="off"
-              className={inputCls}
-            />
+            <label className={labelCls} style={{ fontFamily: MONO }}>Name (optional)</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" className={inputCls} />
           </div>
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className={labelCls.replace("mb-1.5 ", "")} style={{ fontFamily: MONO }}>
-                Password
-              </label>
+              <label className={labelCls.replace("mb-1.5 ", "")} style={{ fontFamily: MONO }}>Password</label>
               <button
                 type="button"
-                onClick={handleGenerate}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)]"
+                onClick={() => {
+                  setPassword(generatePassword());
+                  setReveal(true);
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand-700)] hover:text-[var(--brand-800)]"
               >
                 <ArrowPathIcon className="h-3.5 w-3.5" />
-                {mode === "edit" ? "Reset & generate" : "Generate"}
+                {mode === "edit" ? "Reset & generate" : "New password"}
               </button>
             </div>
             <div className="relative">
@@ -827,70 +812,38 @@ function WikiUserModal({
                 type={reveal ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={
-                  mode === "edit" ? "Leave blank to keep current" : "At least 8 characters"
-                }
+                placeholder={mode === "edit" ? "Leave blank to keep current" : "At least 8 characters"}
                 autoComplete="new-password"
                 className={`${inputCls} ${password ? "pr-16" : ""}`}
                 style={reveal ? { fontFamily: MONO, letterSpacing: "0.04em" } : undefined}
               />
-              {password && (
+              {password ? (
                 <div className="absolute inset-y-0 right-1.5 flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setReveal((v) => !v)}
-                    title={reveal ? "Hide" : "Show"}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                  >
-                    {reveal ? (
-                      <EyeSlashIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
+                  <button type="button" onClick={() => setReveal((v) => !v)} title={reveal ? "Hide" : "Show"} className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]">
+                    {reveal ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    title="Copy password"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                  >
-                    {copied ? (
-                      <CheckIcon className="h-4 w-4 text-emerald-600" />
-                    ) : (
-                      <ClipboardDocumentIcon className="h-4 w-4" />
-                    )}
+                  <button type="button" onClick={async () => { if (await copyText(password)) flash("password"); }} title="Copy password" className="inline-flex h-7 w-7 items-center justify-center rounded-[6px] text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]">
+                    {copied === "password" ? <CheckIcon className="h-4 w-4 text-[var(--success-500)]" /> : <ClipboardDocumentIcon className="h-4 w-4" />}
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
-            {mode === "edit" && (
-              <p className="mt-1 text-[11px] text-[var(--text-4)]">
-                Generating a new password replaces the old one when you save — send the client the
-                new one.
-              </p>
-            )}
+            <p className="mt-1 text-[11px] text-[var(--text-4)]">
+              {mode === "create"
+                ? "Generated for you. After saving you'll get the sign-in details to copy."
+                : "A new password replaces the old one when you save — you'll get the details to send."}
+            </p>
           </div>
-          {error && <p className="text-[13px] text-rose-600">{error}</p>}
+          {error ? <p className="text-[13px] text-[var(--danger-500)]">{error}</p> : null}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="app-button app-button-secondary app-button-sm">Cancel</button>
+            <button type="button" onClick={handleSave} disabled={busy} className="app-button app-button-primary app-button-sm disabled:opacity-50">
+              {busy ? "Saving…" : mode === "create" ? "Add user" : "Save"}
+            </button>
+          </div>
         </div>
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-[8px] border border-[var(--border-2)] px-4 py-2 text-sm text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={busy}
-            className="rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--brand-700)] disabled:opacity-50"
-          >
-            {busy ? "Saving…" : mode === "create" ? "Add user" : "Save"}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }
 

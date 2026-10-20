@@ -18,7 +18,7 @@ import { useAddWikiLink, useRemoveWikiLink, useWikiLinks } from "@/hooks/use-wik
  * tidiness: a symmetric link would put this client's whole plan in front of
  * anyone holding the other one's public share token.
  */
-export function WikiLinkedClients({ slug, clientId }: { slug: string; clientId: string }) {
+export function WikiLinkedClients({ slug, clientId, n = "01" }: { slug: string; clientId: string; n?: string }) {
   const links = useWikiLinks(slug);
   const clients = useClientList({ status: "ACTIVE" });
   const add = useAddWikiLink(slug);
@@ -41,7 +41,7 @@ export function WikiLinkedClients({ slug, clientId }: { slug: string; clientId: 
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">05</span>
+          <span className="widget-header__label--number">{n}</span>
           {" // LINKED CLIENTS"}
         </span>
       </div>
