@@ -46,6 +46,41 @@ import {
   type CostItemInput,
 } from "@/server/wiki-costs";
 import { buildCostReadout } from "@/lib/wiki-costs";
+import {
+  createWikiComparison,
+  deleteWikiComparison,
+  loadWikiComparisons,
+  setWikiComparisonsEnabled,
+  updateWikiComparison,
+} from "@/server/wiki-comparisons";
+import {
+  COMPARISON_LIMITS,
+  addColumns as addComparisonColumns,
+  addRows as addComparisonRows,
+  cellToText as comparisonCellToText,
+  cellsByTitle as comparisonCellsByTitle,
+  comparisonLimitError,
+  findColumn as findComparisonColumn,
+  findRow as findComparisonRow,
+  isPublishable as isPublishableComparison,
+  parseCellValue as parseComparisonCellValue,
+  parseComparisonContent,
+  removeColumn as removeComparisonColumn,
+  setCell as setComparisonCell,
+  updateColumn as updateComparisonColumn,
+  type ComparisonContent,
+} from "@/lib/wiki-comparisons";
+import type { WikiComparison } from "@/types/wiki-comparisons";
+import { setWikiInsightsEnabled } from "@/server/wiki-insights";
+import { setWikiEstimatesEnabled } from "@/server/wiki-estimates";
+import {
+  setWikiDeliveryEnabled,
+  setWikiRoundupEnabled,
+  setWikiSupportEnabled,
+} from "@/server/wiki-support";
+import { setWikiMeetingsEnabled } from "@/server/wiki-meetings";
+import { setWikiPlatformsEnabled } from "@/server/wiki-platforms";
+import { setWikiMetricsConfig } from "@/server/wiki-metrics";
 import { listStarters, getStarterBySlug, recordStarterUsage } from "@/server/starters";
 import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
@@ -661,6 +696,225 @@ const CLIENT_FIELD_PROPERTIES: Record<string, Record<string, unknown>> = {
   pauseNote: { type: "string", description: "Why the client is paused (INACTIVE)." },
 };
 
+// ── Comparisons (wiki comparison tables) ────────────────────────────────────
+// Every write goes through the same pure helpers the in-wiki editor uses
+// (src/lib/wiki-comparisons.ts), so a table Claude writes obeys the same limits and the same
+// cell vocabulary as one edited by hand.
+
+const COMPARISON_VALUE_RULES =
+  "Cell values: 'yes' (also y/true/included/✓) = included; 'no' (also n/false/not included/x/✕/-) " +
+  "= not included; 'partial' (also partly/limited/◐) = partly included; 'none' or '' = blank (not " +
+  "stated — which is different from 'no'); anything else is stored as a short text value, at most " +
+  `${COMPARISON_LIMITS.maxText} characters (e.g. '10 GB', '£9/mo').`;
+
+const COMPARISON_TOOL_RULES =
+  `A table has at most ${COMPARISON_LIMITS.maxColumns} columns and ${COMPARISON_LIMITS.maxRows} rows. ` +
+  "Columns are plans, releases or products (e.g. Free / Premium / Pro, or the client vs competitors); " +
+  "a column can be FEATURED (highlight: true) to mark the recommended plan or the client's own product. " +
+  "Rows are features; a row with group: true is a heading band and has no cells. Row cells are an " +
+  "object keyed by COLUMN TITLE. " +
+  COMPARISON_VALUE_RULES;
+
+const COMPARISON_COLUMNS_JSON = {
+  type: "array",
+  description:
+    `Column titles, or {title, subtitle?, highlight?} objects. At most ${COMPARISON_LIMITS.maxColumns}.`,
+  items: {
+    anyOf: [
+      { type: "string" },
+      {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          subtitle: { type: "string", description: "Small line under the title, e.g. a price." },
+          highlight: { type: "boolean", description: "Feature this column." },
+        },
+        required: ["title"],
+        additionalProperties: false,
+      },
+    ],
+  },
+};
+
+const COMPARISON_ROWS_JSON = {
+  type: "array",
+  description: "Rows in order: features, and group headings (group: true).",
+  items: {
+    type: "object",
+    properties: {
+      label: { type: "string", description: "Feature name, or the group heading." },
+      group: { type: "boolean", description: "true = a group heading band (no cells)." },
+      note: { type: "string", description: "Optional small note under the feature name." },
+      cells: {
+        type: "object",
+        description: "Values keyed by column TITLE, e.g. {\"Free\": \"no\", \"Pro\": \"yes\"}.",
+        additionalProperties: { type: ["string", "boolean", "null"] },
+      },
+    },
+    required: ["label"],
+    additionalProperties: false,
+  },
+};
+
+const comparisonColumnArgSchema = z.union([
+  z.string().trim().min(1).max(COMPARISON_LIMITS.maxColumnTitle),
+  z.object({
+    title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxColumnTitle),
+    subtitle: z.string().trim().max(COMPARISON_LIMITS.maxColumnSubtitle).optional(),
+    highlight: z.boolean().optional(),
+  }),
+]);
+const comparisonCellValueSchema = z.union([z.string().max(200), z.boolean(), z.null()]);
+const comparisonRowArgSchema = z.object({
+  label: z.string().trim().max(COMPARISON_LIMITS.maxLabel),
+  group: z.boolean().optional(),
+  note: z.string().trim().max(COMPARISON_LIMITS.maxNote).optional(),
+  cells: z.record(z.string(), comparisonCellValueSchema).optional(),
+});
+const clientOnlySchema = z.object({ client: z.string().min(1) });
+const comparisonRefSchema = z.object({ client: z.string().min(1), table: z.string().min(1) });
+const createComparisonToolSchema = z.object({
+  client: z.string().min(1),
+  title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxTableTitle),
+  description: z.string().trim().max(COMPARISON_LIMITS.maxDescription).optional(),
+  columns: z.array(comparisonColumnArgSchema).min(1).max(COMPARISON_LIMITS.maxColumns),
+  rows: z.array(comparisonRowArgSchema).max(COMPARISON_LIMITS.maxRows).optional(),
+});
+const updateComparisonToolSchema = comparisonRefSchema.extend({
+  title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxTableTitle).optional(),
+  description: z.string().trim().max(COMPARISON_LIMITS.maxDescription).nullable().optional(),
+  columns: z.array(comparisonColumnArgSchema).max(COMPARISON_LIMITS.maxColumns).optional(),
+  rows: z.array(comparisonRowArgSchema).max(COMPARISON_LIMITS.maxRows).optional(),
+});
+const addComparisonColumnsToolSchema = comparisonRefSchema.extend({
+  columns: z.array(comparisonColumnArgSchema).min(1).max(COMPARISON_LIMITS.maxColumns),
+});
+const renameComparisonColumnToolSchema = comparisonRefSchema.extend({
+  column: z.string().min(1),
+  title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxColumnTitle).optional(),
+  subtitle: z.string().trim().max(COMPARISON_LIMITS.maxColumnSubtitle).optional(),
+  highlight: z.boolean().optional(),
+});
+const removeComparisonColumnToolSchema = comparisonRefSchema.extend({ column: z.string().min(1) });
+const addComparisonRowsToolSchema = comparisonRefSchema.extend({
+  rows: z.array(comparisonRowArgSchema).min(1).max(COMPARISON_LIMITS.maxRows),
+  after: z.string().min(1).optional(),
+});
+const setComparisonCellsToolSchema = comparisonRefSchema.extend({
+  cells: z
+    .array(z.object({ row: z.string().min(1), column: z.string().min(1), value: comparisonCellValueSchema }))
+    .min(1)
+    .max(2000),
+});
+
+function columnArg(c: z.infer<typeof comparisonColumnArgSchema>) {
+  return typeof c === "string" ? { title: c } : c;
+}
+
+/** Rows as an agent writes them (cells by column title) → the stored shape. */
+function appendComparisonRows(
+  content: ComparisonContent,
+  rows: z.infer<typeof comparisonRowArgSchema>[],
+  at?: number,
+): ComparisonContent {
+  return addComparisonRows(
+    content,
+    rows.map((r) => ({
+      kind: r.group ? ("group" as const) : ("row" as const),
+      label: r.label,
+      note: r.note,
+      cells: r.group ? {} : comparisonCellsByTitle(content, r.cells),
+    })),
+    at,
+  );
+}
+
+/** By id, else by exact title (case-insensitive). Ambiguity is an error, never a guess. */
+async function resolveComparison(clientId: string, ref: string): Promise<WikiComparison> {
+  const { comparisons } = await loadWikiComparisons(clientId);
+  const byId = comparisons.find((t) => t.id === ref);
+  if (byId) return byId;
+  const hits = comparisons.filter((t) => t.title.trim().toLowerCase() === ref.trim().toLowerCase());
+  if (hits.length === 1) return hits[0];
+  if (hits.length > 1) throw new Error(`"${ref}" matches ${hits.length} tables — pass the table id.`);
+  throw new Error(
+    `No comparison table "${ref}". Tables: ${comparisons.map((t) => t.title).join(", ") || "(none)"}.`,
+  );
+}
+
+async function saveComparisonContent(
+  clientId: string,
+  table: WikiComparison,
+  content: ComparisonContent,
+): Promise<WikiComparison> {
+  return updateWikiComparison(clientId, table.id, {
+    title: table.title,
+    description: table.description,
+    columns: content.columns,
+    rows: content.rows,
+  });
+}
+
+/** What an agent reads: cells keyed by column title, in words. */
+function projectComparison(table: WikiComparison) {
+  const dupes = new Set(
+    table.columns
+      .map((c) => c.title.toLowerCase())
+      .filter((t, i, all) => all.indexOf(t) !== i),
+  );
+  const keyOf = (c: { id: string; title: string }) =>
+    dupes.has(c.title.toLowerCase()) ? `${c.title} (${c.id})` : c.title;
+  return {
+    id: table.id,
+    title: table.title,
+    description: table.description,
+    columns: table.columns.map((c) => ({
+      id: c.id,
+      title: c.title,
+      ...(c.subtitle ? { subtitle: c.subtitle } : {}),
+      ...(c.highlight ? { featured: true } : {}),
+    })),
+    rows: table.rows.map((r) =>
+      r.kind === "group"
+        ? { id: r.id, group: true, label: r.label }
+        : {
+            id: r.id,
+            label: r.label,
+            ...(r.note ? { note: r.note } : {}),
+            cells: Object.fromEntries(
+              table.columns
+                .filter((c) => r.cells[c.id])
+                .map((c) => [keyOf(c), comparisonCellToText(r.cells[c.id])]),
+            ),
+          },
+    ),
+  };
+}
+
+/** The wiki sections that can be switched on and off, and the server function for each. */
+const WIKI_SECTION_TOGGLES = {
+  comparisons: setWikiComparisonsEnabled,
+  insights: setWikiInsightsEnabled,
+  costs: setWikiCostsEnabled,
+  estimates: setWikiEstimatesEnabled,
+  delivery: setWikiDeliveryEnabled,
+  support: setWikiSupportEnabled,
+  roundup: setWikiRoundupEnabled,
+  meetings: setWikiMeetingsEnabled,
+  platforms: setWikiPlatformsEnabled,
+  metrics: (clientId: string, enabled: boolean) => setWikiMetricsConfig(clientId, { enabled }),
+} as const satisfies Record<string, (clientId: string, enabled: boolean) => Promise<void>>;
+
+const TOGGLEABLE_WIKI_SECTIONS = Object.keys(WIKI_SECTION_TOGGLES) as [
+  keyof typeof WIKI_SECTION_TOGGLES,
+  ...(keyof typeof WIKI_SECTION_TOGGLES)[],
+];
+const enableWikiSectionToolSchema = z.object({
+  client: z.string().min(1),
+  section: z.enum(TOGGLEABLE_WIKI_SECTIONS),
+  enabled: z.boolean(),
+});
+
 const TOOLS: ToolDef[] = [
   {
     name: "list_clients",
@@ -1266,6 +1520,394 @@ const TOOLS: ToolDef[] = [
         { enabled: model.enabled, currency: model.currency, headlineUsers: model.headlineUsers, notes: model.notes },
         `${resolved.name} running costs — ${model.enabled ? "on" : "off"}, ${model.currency}, ` +
           `headline ${model.headlineUsers} users.`,
+      );
+    },
+  },
+  {
+    name: "list_comparisons",
+    description:
+      "List a client's wiki comparison tables (the Comparisons section — plan tables like Free vs " +
+      "Premium vs Pro, or the client's product against competitors). Returns each table's id, title, " +
+      "column titles and row counts, and whether the section is switched on for the client.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = clientOnlySchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const section = await loadWikiComparisons(resolved.id);
+      const tables = section.comparisons.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        columns: t.columns.map((c) => c.title),
+        featured: t.columns.filter((c) => c.highlight).map((c) => c.title),
+        featureRows: t.rows.filter((r) => r.kind === "row").length,
+        groups: t.rows.filter((r) => r.kind === "group").length,
+        publishable: isPublishableComparison(t),
+      }));
+      return textResult(
+        { client: { id: resolved.id, slug: resolved.slug, name: resolved.name }, enabled: section.enabled, tables },
+        `${resolved.name} — ${tables.length} comparison table${tables.length === 1 ? "" : "s"}; ` +
+          `section is ${section.enabled ? "on" : "off"}.`,
+      );
+    },
+  },
+  {
+    name: "get_comparison",
+    description:
+      "Get one comparison table in full — columns (with ids) and every row with its cells. Cells are " +
+      "keyed by COLUMN TITLE and read as 'yes', 'no', 'partial', a short text value, or are absent " +
+      "when blank. Identify the table by id or exact title.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title (see list_comparisons)." },
+      },
+      required: ["client", "table"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = comparisonRefSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      return textResult(
+        projectComparison(table),
+        `"${table.title}" — ${table.columns.length} columns, ${table.rows.length} rows.`,
+      );
+    },
+  },
+  {
+    name: "create_comparison",
+    description:
+      "Create a comparison table on a client's wiki. " +
+      COMPARISON_TOOL_RULES +
+      " Turns the Comparisons section on if it is off, so the table is visible on the client's " +
+      "wiki. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        title: { type: "string", description: "Table title, e.g. 'What's in each plan'." },
+        description: { type: "string", description: "Optional one-line description shown under it." },
+        columns: COMPARISON_COLUMNS_JSON,
+        rows: COMPARISON_ROWS_JSON,
+      },
+      required: ["client", "title", "columns"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = createComparisonToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      let content = addComparisonColumns({ columns: [], rows: [] }, parsed.columns.map(columnArg));
+      content = appendComparisonRows(content, parsed.rows ?? []);
+      const section = await loadWikiComparisons(resolved.id);
+      if (!section.enabled) await setWikiComparisonsEnabled(resolved.id, true);
+      const table = await createWikiComparison(resolved.id, {
+        title: parsed.title,
+        description: parsed.description ?? null,
+        columns: content.columns,
+        rows: content.rows,
+      });
+      return textResult(
+        projectComparison(table),
+        `Created "${table.title}" on ${resolved.name} with ${table.columns.length} columns and ` +
+          `${table.rows.length} rows${section.enabled ? "" : " (Comparisons section switched on)"}.`,
+      );
+    },
+  },
+  {
+    name: "update_comparison",
+    description:
+      "Rename a comparison table or change its description, and/or REPLACE its columns and/or rows " +
+      "wholesale. Passing `columns` replaces the column list — a column whose title matches an " +
+      "existing one keeps its cells; cells under dropped columns are deleted. Passing `rows` replaces " +
+      "every row. To add without replacing, use add_comparison_columns / add_comparison_rows. " +
+      COMPARISON_TOOL_RULES +
+      " Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        title: { type: "string", description: "New title." },
+        description: { type: ["string", "null"], description: "New description; null or '' clears it." },
+        columns: COMPARISON_COLUMNS_JSON,
+        rows: COMPARISON_ROWS_JSON,
+      },
+      required: ["client", "table"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = updateComparisonToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      let content: ComparisonContent = { columns: table.columns, rows: table.rows };
+      if (parsed.columns) {
+        const wanted = parsed.columns.map(columnArg);
+        const limit = comparisonLimitError({ columns: wanted, rows: [] });
+        if (limit) throw new Error(limit);
+        // Keep a column's id (and so its cells) when its title survives the replacement.
+        const used = new Set<string>();
+        const columns = wanted.map((w) => {
+          const prev = table.columns.find(
+            (c) => !used.has(c.id) && c.title.trim().toLowerCase() === w.title.trim().toLowerCase(),
+          );
+          if (prev) {
+            used.add(prev.id);
+            return {
+              id: prev.id,
+              title: w.title,
+              ...(w.subtitle ? { subtitle: w.subtitle } : {}),
+              ...(w.highlight ? { highlight: true } : {}),
+            };
+          }
+          return addComparisonColumns({ columns: [], rows: [] }, [w]).columns[0];
+        });
+        content = parseComparisonContent(columns, content.rows);
+      }
+      if (parsed.rows) content = appendComparisonRows({ columns: content.columns, rows: [] }, parsed.rows);
+      const saved = await updateWikiComparison(resolved.id, table.id, {
+        title: parsed.title ?? table.title,
+        description:
+          parsed.description === undefined ? table.description : parsed.description || null,
+        columns: content.columns,
+        rows: content.rows,
+      });
+      return textResult(projectComparison(saved), `Updated "${saved.title}" on ${resolved.name}.`);
+    },
+  },
+  {
+    name: "add_comparison_columns",
+    description:
+      "Append columns to a comparison table (existing cells are untouched). At most 45 columns per " +
+      "table — the call is refused, and nothing is changed, if it would go past that. Requires the " +
+      "'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        columns: COMPARISON_COLUMNS_JSON,
+      },
+      required: ["client", "table", "columns"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = addComparisonColumnsToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const content = addComparisonColumns(table, parsed.columns.map(columnArg));
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      return textResult(
+        projectComparison(saved),
+        `Added ${parsed.columns.length} column${parsed.columns.length === 1 ? "" : "s"} to "${saved.title}" ` +
+          `(${saved.columns.length}/${COMPARISON_LIMITS.maxColumns}).`,
+      );
+    },
+  },
+  {
+    name: "rename_comparison_column",
+    description:
+      "Rename one column of a comparison table, and optionally set its subtitle (e.g. a price) or " +
+      "whether it is FEATURED (highlighted — e.g. 'our client' or the recommended plan). The column " +
+      "is matched by id or current title. Cells are kept. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        column: { type: "string", description: "Column id or current title." },
+        title: { type: "string", description: "New title (omit to keep)." },
+        subtitle: { type: "string", description: "New subtitle; '' clears it." },
+        highlight: { type: "boolean", description: "Feature (highlight) this column, or not." },
+      },
+      required: ["client", "table", "column"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = renameComparisonColumnToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const col = findComparisonColumn(table, parsed.column);
+      const content = updateComparisonColumn(table, col.id, {
+        ...(parsed.title !== undefined ? { title: parsed.title } : {}),
+        ...(parsed.subtitle !== undefined ? { subtitle: parsed.subtitle } : {}),
+        ...(parsed.highlight !== undefined ? { highlight: parsed.highlight } : {}),
+      });
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      const now = saved.columns.find((c) => c.id === col.id);
+      return textResult(projectComparison(saved), `Column "${col.title}" is now "${now?.title ?? col.title}".`);
+    },
+  },
+  {
+    name: "remove_comparison_column",
+    description:
+      "Remove one column from a comparison table, with every cell under it. Matched by id or title. " +
+      "Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        column: { type: "string", description: "Column id or title." },
+      },
+      required: ["client", "table", "column"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = removeComparisonColumnToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const col = findComparisonColumn(table, parsed.column);
+      const saved = await saveComparisonContent(resolved.id, table, removeComparisonColumn(table, col.id));
+      return textResult(projectComparison(saved), `Removed the column "${col.title}" from "${saved.title}".`);
+    },
+  },
+  {
+    name: "add_comparison_rows",
+    description:
+      "Append feature rows and/or group headings to a comparison table, with their cells keyed by " +
+      "COLUMN TITLE. Pass `after` (a row label or id) to insert after that row instead of at the end. " +
+      COMPARISON_TOOL_RULES +
+      " Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        rows: COMPARISON_ROWS_JSON,
+        after: { type: "string", description: "Insert after this row (label or id). Default: the end." },
+      },
+      required: ["client", "table", "rows"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = addComparisonRowsToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const at = parsed.after
+        ? table.rows.findIndex((r) => r.id === findComparisonRow(table, parsed.after!).id) + 1
+        : undefined;
+      const content = appendComparisonRows(table, parsed.rows, at);
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      return textResult(
+        projectComparison(saved),
+        `Added ${parsed.rows.length} row${parsed.rows.length === 1 ? "" : "s"} to "${saved.title}" ` +
+          `(${saved.rows.length}/${COMPARISON_LIMITS.maxRows}).`,
+      );
+    },
+  },
+  {
+    name: "set_comparison_cells",
+    description:
+      "Set many cells at once. Each entry names a row (label or id), a column (title or id) and a " +
+      "value. " +
+      COMPARISON_VALUE_RULES +
+      " All entries are checked before anything is saved: one unknown row or column, or a group " +
+      "heading as the row, refuses the whole batch. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        cells: {
+          type: "array",
+          description: "Up to 2000 cells.",
+          items: {
+            type: "object",
+            properties: {
+              row: { type: "string", description: "Row label or id." },
+              column: { type: "string", description: "Column title or id." },
+              value: { type: ["string", "boolean", "null"], description: "yes / no / partial / none / short text." },
+            },
+            required: ["row", "column", "value"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["client", "table", "cells"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = setComparisonCellsToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      let content: ComparisonContent = { columns: table.columns, rows: table.rows };
+      for (const entry of parsed.cells) {
+        const row = findComparisonRow(content, entry.row);
+        const col = findComparisonColumn(content, entry.column);
+        content = setComparisonCell(content, row.id, col.id, parseComparisonCellValue(entry.value));
+      }
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      return textResult(
+        projectComparison(saved),
+        `Set ${parsed.cells.length} cell${parsed.cells.length === 1 ? "" : "s"} in "${saved.title}".`,
+      );
+    },
+  },
+  {
+    name: "delete_comparison",
+    description:
+      "Delete a comparison table from a client's wiki. Cannot be undone. Requires the 'Manage " +
+      "clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+      },
+      required: ["client", "table"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = comparisonRefSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      await deleteWikiComparison(resolved.id, table.id);
+      return textResult({ deleted: true, id: table.id }, `Deleted "${table.title}" from ${resolved.name}.`);
+    },
+  },
+  {
+    name: "enable_wiki_section",
+    description:
+      "Switch one of a client's optional wiki sections on or off — whether it appears on their wiki " +
+      "(and on a shared client link). Sections: " +
+      TOGGLEABLE_WIKI_SECTIONS.join(", ") +
+      ". Turning one off keeps its content, so turning it back on restores it. Requires the 'Manage " +
+      "clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        section: { type: "string", enum: [...TOGGLEABLE_WIKI_SECTIONS], description: "Which section." },
+        enabled: { type: "boolean", description: "true = show it, false = hide it." },
+      },
+      required: ["client", "section", "enabled"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "change wiki sections");
+      const parsed = enableWikiSectionToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      await WIKI_SECTION_TOGGLES[parsed.section](resolved.id, parsed.enabled);
+      return textResult(
+        { section: parsed.section, enabled: parsed.enabled },
+        `${resolved.name} — ${parsed.section} is now ${parsed.enabled ? "on" : "off"}.`,
       );
     },
   },

@@ -163,6 +163,7 @@ const WIKI_SECTION_LABEL: Record<string, string> = {
   metrics: "Metrics",
   meetings: "Meetings",
   platforms: "Platforms",
+  comparisons: "Comparisons",
 };
 
 export interface WikiCardData {

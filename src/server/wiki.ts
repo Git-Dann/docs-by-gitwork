@@ -48,11 +48,14 @@ import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code"
 import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
 import { loadWikiCosts } from "./wiki-costs";
 import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
+import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
+import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
 import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
 import { loadWikiPlatforms } from "./wiki-platforms";
 import { EMPTY_PLATFORMS, type WikiPlatformsSection } from "@/lib/wiki-platforms";
 import type { WikiEstimatesSection } from "@/types/wiki-estimates";
+import type { WikiComparisonsSection } from "@/types/wiki-comparisons";
 import type { CostModel } from "@/types/wiki-costs";
 import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
@@ -410,6 +413,12 @@ export interface WikiDTO {
    * finish date is derived at render by src/lib/wiki-estimates.ts.
    */
   estimates: WikiEstimatesSection;
+  /**
+   * Comparison tables — Free vs Premium vs Pro, the client against competitors. Columns and
+   * rows are parsed defensively on read (src/lib/wiki-comparisons.ts). The client's copy
+   * carries only publishable tables, and none at all while the section is off.
+   */
+  comparisons: WikiComparisonsSection;
   /**
    * Whether the Delivery section is on. There is no `delivery` DTO: the page derives
    * everything from `timeline` and `blockers`, which are already here — so a loader
@@ -1058,6 +1067,7 @@ async function buildDTO(
     insights,
     costs,
     estimates,
+    comparisons,
     support,
     standups,
     metrics,
@@ -1106,6 +1116,7 @@ async function buildDTO(
       updatedAt: null,
     }),
     settle("estimates", () => loadWikiEstimates(wiki.clientId), EMPTY_ESTIMATES),
+    settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS),
     settle("support", () => loadWikiSupport(wiki.clientId), {
       enabled: false,
       linked: false,
@@ -1187,6 +1198,7 @@ async function buildDTO(
     insights,
     costs,
     estimates,
+    comparisons,
     deliveryEnabled: wiki.deliveryEnabled ?? false,
     roundupEnabled: wiki.roundupEnabled ?? false,
     support,
@@ -3221,6 +3233,7 @@ const SHAREABLE_SECTIONS = [
   "insights",
   "costs",
   "estimates",
+  "comparisons",
   "roundup",
   "delivery",
   "support",
@@ -3293,7 +3306,16 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
 function forPublic(dto: WikiDTO): WikiDTO {
   // Hidden metrics and the metrics endpoint/token state are Gitwork's settings, not the
   // client's data — removed here, not merely flagged, so they never reach the browser.
-  return { ...dto, courseFeed: null, metrics: forPublicMetrics(dto.metrics) };
+  return {
+    ...dto,
+    courseFeed: null,
+    metrics: forPublicMetrics(dto.metrics),
+    // A table drafted while the section is off, or one with no columns or features yet,
+    // is Gitwork's work in progress — it does not leave the server.
+    comparisons: dto.comparisons.enabled
+      ? { enabled: true, comparisons: dto.comparisons.comparisons.filter(isPublishableComparison) }
+      : { enabled: false, comparisons: [] },
+  };
 }
 
 /**

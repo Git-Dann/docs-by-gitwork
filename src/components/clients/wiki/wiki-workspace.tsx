@@ -38,6 +38,7 @@ import { WikiInsightsSectionView } from "@/components/clients/insights/insights-
 import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
 import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiEstimatesSection } from "./wiki-estimates-section";
+import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
 import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
@@ -86,6 +87,7 @@ import {
   useSetWikiInsightsEnabled,
   useSetWikiCostsEnabled,
   useSetWikiEstimatesEnabled,
+  useSetWikiComparisonsEnabled,
   useSetWikiRoundupEnabled,
   useSetWikiSupportEnabled,
   useUpdateWikiMetrics,
@@ -135,6 +137,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   insights: "Charts",
   costs: "Running costs",
   estimates: "Estimates",
+  comparisons: "Comparisons",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
@@ -160,6 +163,7 @@ const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   insights: "CHARTS",
   costs: "RUNNING COSTS",
   estimates: "ESTIMATES",
+  comparisons: "COMPARISONS",
   roundup: "ROUNDUP",
   delivery: "DELIVERY",
   support: "SUPPORT",
@@ -861,7 +865,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "roundup", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "comparisons", "roundup", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -946,6 +950,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setInsightsEnabled = useSetWikiInsightsEnabled(slug);
   const setCostsEnabled = useSetWikiCostsEnabled(slug);
   const setEstimatesEnabled = useSetWikiEstimatesEnabled(slug);
+  const setComparisonsEnabled = useSetWikiComparisonsEnabled(slug);
   const setRoundupEnabled = useSetWikiRoundupEnabled(slug);
   const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
   const setSupportEnabled = useSetWikiSupportEnabled(slug);
@@ -998,6 +1003,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const insightsOn = wiki.insights.enabled;
   const costsOn = wiki.costs.enabled;
   const estimatesOn = wiki.estimates.enabled;
+  const comparisonsOn = wiki.comparisons.enabled;
   const roundupOn = wiki.roundupEnabled ?? false;
   const deliveryOn = wiki.deliveryEnabled;
   const supportOn = wiki.support.enabled;
@@ -1019,6 +1025,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(insightsOn ? (["insights"] as const) : []),
     ...(costsOn ? (["costs"] as const) : []),
     ...(estimatesOn ? (["estimates"] as const) : []),
+    ...(comparisonsOn ? (["comparisons"] as const) : []),
     ...(roundupOn ? (["roundup"] as const) : []),
     ...(deliveryOn ? (["delivery"] as const) : []),
     ...(supportOn ? (["support"] as const) : []),
@@ -1047,6 +1054,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Charts" }]),
     ...(costsOn ? [] : [{ section: "costs" as WikiSection, label: "Running costs" }]),
     ...(estimatesOn ? [] : [{ section: "estimates" as WikiSection, label: "Estimates" }]),
+    ...(comparisonsOn ? [] : [{ section: "comparisons" as WikiSection, label: "Comparisons" }]),
     ...(roundupOn ? [] : [{ section: "roundup" as WikiSection, label: "RoundUp" }]),
     ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
     ...(supportOn ? [] : [{ section: "support" as WikiSection, label: "Support" }]),
@@ -1117,6 +1125,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (section === "estimates") {
       await setEstimatesEnabled.mutateAsync(true);
       setActiveSection("estimates");
+      return;
+    }
+    if (section === "comparisons") {
+      await setComparisonsEnabled.mutateAsync(true);
+      setActiveSection("comparisons");
       return;
     }
     if (section === "roundup") {
@@ -1209,6 +1222,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "estimates") ?? "dashboard");
       return;
     }
+    if (section === "comparisons") {
+      await setComparisonsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "comparisons") ?? "dashboard");
+      return;
+    }
     if (section === "roundup") {
       await setRoundupEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "roundup") ?? "dashboard");
@@ -1262,6 +1280,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "insights" &&
       section !== "costs" &&
       section !== "estimates" &&
+      section !== "comparisons" &&
       section !== "roundup" &&
       section !== "delivery" &&
       section !== "support" &&
@@ -1282,6 +1301,8 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               ? " The cost lines are kept, so re-adding it restores the whole model."
               : section === "estimates"
                 ? " The estimates are kept, so re-adding it brings every one back."
+                : section === "comparisons"
+                ? " The tables are kept, so re-adding it brings every one back."
                 : section === "metrics"
                   ? " The source, hidden metrics and stored figures are kept, so re-adding it restores them."
                   : section === "meetings"
@@ -1528,6 +1549,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     }
     if (activeSection === "estimates") {
       return <WikiEstimatesSection slug={slug} section={wiki!.estimates} mode="internal" />;
+    }
+    if (activeSection === "comparisons") {
+      return (
+        <WikiComparisonsSectionView slug={slug} section={wiki!.comparisons} mode="internal" />
+      );
     }
     if (activeSection === "insights") {
       return (
@@ -1973,6 +1999,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "insights" ||
                 s === "costs" ||
                 s === "estimates" ||
+                s === "comparisons" ||
                 s === "roundup" ||
                 s === "delivery" ||
                 s === "support" ||

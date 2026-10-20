@@ -15,6 +15,8 @@ import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-sec
 import { WikiCostsSection } from "./wiki-costs-section";
 import { WikiEstimatesSection } from "./wiki-estimates-section";
 import { isPlannable } from "@/lib/wiki-estimates";
+import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
+import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { WikiRoundupSection } from "./wiki-roundup-section";
 import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
 import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
@@ -67,6 +69,7 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   insights: "Charts",
   costs: "Running costs",
   estimates: "Estimates",
+  comparisons: "Comparisons",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",
@@ -143,6 +146,11 @@ export function WikiPublicView({
     // promise a timeline and show none — and a timeline of "0 weeks" is worse than none.
     ...(wiki.estimates.enabled && wiki.estimates.estimates.some(isPlannable)
       ? (["estimates"] as const)
+      : []),
+    // Comparisons needs a table with columns and at least one feature row. Enabled-and-empty
+    // would promise a comparison and show a blank grid.
+    ...(wiki.comparisons.enabled && wiki.comparisons.comparisons.some(isPublishableComparison)
+      ? (["comparisons"] as const)
       : []),
     // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
     // "nothing to report", which reads as a broken link rather than as work not started.
@@ -294,6 +302,18 @@ export function WikiPublicView({
     }
     if (activeSection === "costs") {
       return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
+    }
+    if (activeSection === "comparisons") {
+      return (
+        <WikiComparisonsSectionView
+          slug={wiki.clientSlug}
+          section={{
+            ...wiki.comparisons,
+            comparisons: wiki.comparisons.comparisons.filter(isPublishableComparison),
+          }}
+          mode="public"
+        />
+      );
     }
     if (activeSection === "estimates") {
       return (

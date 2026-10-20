@@ -22,6 +22,7 @@ const SECTION_LABELS: Record<string, string> = {
   insights: "Charts",
   costs: "Running costs",
   estimates: "Estimates",
+  comparisons: "Comparisons",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",

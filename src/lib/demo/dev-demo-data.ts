@@ -36,6 +36,8 @@ import {
 } from "@/lib/launchpad/custom-items";
 import { LAUNCHPAD_FILE_MAX_PER_ITEM, sanitizeLaunchpadFilename } from "@/lib/launchpad/files";
 import { renderLegalDoc } from "@/lib/launchpad/legal/render";
+import { comparisonLimitError, parseComparisonContent } from "@/lib/wiki-comparisons";
+import type { WikiComparison } from "@/types/wiki-comparisons";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff } from "@/types/pulse";
@@ -750,6 +752,100 @@ function wikiTimelineFromGantt(): WikiDTO["timeline"] {
   };
 }
 
+/**
+ * Comparisons — two tables chosen for the two scales the section has to look right at: a
+ * three-plan release table (fits the card, with group bands and a featured column) and a
+ * twelve-column competitor table (scrolls, with the feature column pinned). A demo with
+ * only the small one would never show the scroller, the edge cue or the phone's
+ * compare-two view (§43.3).
+ */
+function demoComparison(
+  id: string,
+  title: string,
+  description: string,
+  orderKey: number,
+  columns: { title: string; subtitle?: string; highlight?: boolean }[],
+  rows: (string | [string, ...string[]] | { group: string })[],
+): WikiComparison {
+  const cols = columns.map((c, i) => ({ id: `${id}-c${i + 1}`, ...c }));
+  const value = (v: string) =>
+    v === "y" ? { state: "yes" } : v === "n" ? { state: "no" } : v === "p" ? { state: "partial" } : v === "" ? { state: "none" } : { state: "text", text: v };
+  const parsed = parseComparisonContent(
+    cols,
+    rows.map((r, i) =>
+      typeof r === "object" && !Array.isArray(r)
+        ? { id: `${id}-r${i + 1}`, kind: "group", label: r.group, cells: {} }
+        : {
+            id: `${id}-r${i + 1}`,
+            kind: "row",
+            label: Array.isArray(r) ? r[0] : r,
+            cells: Object.fromEntries(
+              (Array.isArray(r) ? r.slice(1) : []).map((v, ci) => [cols[ci]?.id ?? "", value(v)]),
+            ),
+          },
+    ),
+  );
+  return { id, title, description, orderKey, ...parsed, updatedAt: "2026-10-19T09:00:00.000Z" };
+}
+
+const demoComparisons: WikiComparison[] = [
+  demoComparison(
+    "cmp-plans",
+    "What's in each plan — v2.0",
+    "The member app's three plans after the October release.",
+    0,
+    [
+      { title: "Free", subtitle: "£0" },
+      { title: "Premium", subtitle: "£6.99/mo", highlight: true },
+      { title: "Pro", subtitle: "£12.99/mo" },
+    ],
+    [
+      { group: "Booking" },
+      ["Book classes", "y", "y", "y"],
+      ["Waitlist auto-join", "n", "y", "y"],
+      ["Book for a friend", "n", "p", "y"],
+      ["Advance booking window", "3 days", "14 days", "30 days"],
+      { group: "Training" },
+      ["Workout library", "p", "y", "y"],
+      ["Personal plans", "n", "y", "y"],
+      ["Coach messaging", "n", "n", "y"],
+      { group: "Account" },
+      ["Family members", "1", "2", "5"],
+      ["Priority support", "n", "p", "y"],
+    ],
+  ),
+  demoComparison(
+    "cmp-market",
+    "Northwind vs the market",
+    "Where the member app stands against the studios' usual alternatives.",
+    1,
+    [
+      { title: "Northwind", highlight: true },
+      { title: "ClassPass" },
+      { title: "Mindbody" },
+      { title: "Glofox" },
+      { title: "TeamUp" },
+      { title: "Momence" },
+      { title: "Arbox" },
+      { title: "Zingfit" },
+      { title: "Peloton" },
+      { title: "Strava" },
+      { title: "Fitbod" },
+      { title: "Gymshark Training" },
+    ],
+    [
+      ["Class booking", "y", "y", "y", "y", "y", "y", "y", "y", "p", "n", "n", "n"],
+      ["Native iOS & Android", "y", "y", "y", "y", "p", "p", "y", "p", "y", "y", "y", "y"],
+      ["Waitlists", "y", "y", "y", "y", "y", "y", "y", "y", "n", "n", "n", "n"],
+      ["Apple Watch", "y", "n", "n", "n", "n", "n", "n", "n", "y", "y", "y", "p"],
+      ["Workout plans", "y", "n", "p", "p", "n", "n", "p", "n", "y", "p", "y", "y"],
+      ["Studio branding", "y", "n", "p", "y", "p", "y", "y", "y", "n", "n", "n", "n"],
+      ["Family accounts", "y", "n", "p", "p", "n", "n", "p", "n", "y", "y", "n", "n"],
+      ["Monthly price", "£6.99", "£19+", "£129+", "£110+", "£99", "£79", "£89", "Quote", "£12.99", "£8.99", "£12.99", "Free"],
+    ],
+  ),
+];
+
 const demoWiki: WikiDTO = {
   id: "wiki-northwind",
   clientId: WIKI_CLIENT.id,
@@ -1250,6 +1346,7 @@ const demoWiki: WikiDTO = {
    * agreed start date, so the page must say it is planning from next Monday. A demo
    * carrying only a well-behaved estimate would verify the CSS and nothing else (§43.3).
    */
+  comparisons: { enabled: true, comparisons: demoComparisons },
   estimates: {
     enabled: true,
     estimates: [
@@ -3617,9 +3714,70 @@ export function resolveDemoApi(
       return comment;
     }
   }
+  // Comparisons — writes are applied to the fixture, so an edit survives the refetch that
+  // follows it. A demo where saving changes nothing verifies the CSS and nothing else (§43.3).
+  {
+    const m = /^\/api\/clients\/[^/]+\/wiki\/comparisons(?:\/([^/]+))?$/.exec(pathname);
+    if (m) {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = (typeof init?.body === "string" ? JSON.parse(init.body) : init?.body) as
+        | Record<string, unknown>
+        | undefined;
+      const section = demoWiki.comparisons;
+      const write = (target: WikiComparison, b: Record<string, unknown>): WikiComparison => {
+        const content = parseComparisonContent(b.columns, b.rows);
+        if (comparisonLimitError(content)) return target;
+        return {
+          ...target,
+          title: typeof b.title === "string" ? b.title : target.title,
+          description: typeof b.description === "string" ? b.description : null,
+          ...content,
+          updatedAt: new Date().toISOString(),
+        };
+      };
+      if (!m[1]) {
+        if (method === "PATCH" && body) section.enabled = body.enabled === true;
+        if (method === "PUT" && Array.isArray(body?.order)) {
+          const order = body.order as string[];
+          section.comparisons.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        }
+        if (method === "POST" && body) {
+          const created = write(
+            {
+              id: `cmp-${Date.now().toString(36)}`,
+              title: "",
+              description: null,
+              columns: [],
+              rows: [],
+              orderKey: section.comparisons.length,
+              updatedAt: "",
+            },
+            body,
+          );
+          section.comparisons.push(created);
+          return { comparison: created, section };
+        }
+        return section;
+      }
+      const i = section.comparisons.findIndex((c) => c.id === m[1]);
+      if (i === -1) return { deleted: false };
+      if (method === "DELETE") {
+        section.comparisons.splice(i, 1);
+        return { deleted: true };
+      }
+      if (method === "PATCH" && body) section.comparisons[i] = write(section.comparisons[i], body);
+      return section.comparisons[i];
+    }
+  }
   // Client wiki — GET /api/clients/{slug}/wiki (exact; sub-paths are mutations → benign).
   if (/^\/api\/clients\/[^/]+\/wiki$/.test(pathname)) {
-    return { ...demoWiki, launchpad: demoLaunchpadNow() };
+    return {
+      ...demoWiki,
+      launchpad: demoLaunchpadNow(),
+      // A copy: the fixture is mutated by writes, and React Query's structural sharing would
+      // otherwise compare the cache against the very object that changed and see no change.
+      comparisons: JSON.parse(JSON.stringify(demoWiki.comparisons)) as WikiDTO["comparisons"],
+    };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
   if (/^\/api\/clients\/[^/]+\/slack-activity$/.test(pathname)) {

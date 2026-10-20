@@ -97,3 +97,31 @@ describe("running-cost tools are registered", () => {
     }
   });
 });
+
+describe("comparison tools are registered and their writers gated", () => {
+  const WRITERS = [
+    "create_comparison",
+    "update_comparison",
+    "add_comparison_columns",
+    "rename_comparison_column",
+    "remove_comparison_column",
+    "add_comparison_rows",
+    "set_comparison_cells",
+    "delete_comparison",
+    "enable_wiki_section",
+  ];
+
+  it.each(["list_comparisons", "get_comparison", ...WRITERS])("%s", (name) => {
+    expect(handler).toContain(name);
+  });
+
+  it("every writer asserts 'Manage clients' — a table is something the client reads", () => {
+    const src = readFileSync(join(ROOT, "src/server/mcp/handler.ts"), "utf8");
+    for (const name of WRITERS) {
+      const start = src.indexOf(`name: "${name}",`);
+      const end = src.indexOf('    name: "', start + 20);
+      const block = src.slice(start, end === -1 ? undefined : end);
+      expect(block, `${name} is not gated`).toContain("assertCan(user, canManageClients");
+    }
+  });
+});

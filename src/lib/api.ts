@@ -3860,6 +3860,71 @@ export async function deleteWikiEstimateApi(
   return apiFetch(`/api/clients/${slug}/wiki/estimates/${estimateId}`, { method: "DELETE" });
 }
 
+/* ----------------------------------------------------------- wiki: comparisons */
+
+export type {
+  ComparisonCell,
+  ComparisonColumn,
+  ComparisonRow,
+  WikiComparison,
+  WikiComparisonsSection,
+} from "@/types/wiki-comparisons";
+import type {
+  WikiComparison as WikiComparisonT,
+  WikiComparisonsSection as WikiComparisonsSectionT,
+} from "@/types/wiki-comparisons";
+import type { ComparisonInput } from "@/server/validators";
+export type { ComparisonInput };
+
+export async function setWikiComparisonsEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<WikiComparisonsSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiComparisonApi(
+  slug: string,
+  input: ComparisonInput,
+): Promise<{ comparison: WikiComparisonT; section: WikiComparisonsSectionT }> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiComparisonApi(
+  slug: string,
+  comparisonId: string,
+  input: ComparisonInput,
+): Promise<WikiComparisonT> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons/${comparisonId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiComparisonApi(slug: string, comparisonId: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/comparisons/${comparisonId}`, { method: "DELETE" });
+}
+
+export async function reorderWikiComparisonsApi(
+  slug: string,
+  order: string[],
+): Promise<WikiComparisonsSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order }),
+  });
+}
+
 export async function setWikiInsightsEnabledApi(slug: string, enabled: boolean): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/insights`, {
     method: "PATCH",
