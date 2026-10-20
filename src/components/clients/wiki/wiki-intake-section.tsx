@@ -175,6 +175,7 @@ export function WikiIntakeSection({
   items,
   mode,
   categories = DEFAULT_INTAKE_CATEGORIES,
+  firstNumber = 1,
 }: {
   slug: string;
   token?: string;
@@ -182,7 +183,10 @@ export function WikiIntakeSection({
   mode: "internal" | "public";
   /** The client's own categories — defaults to the built-in four. */
   categories?: IntakeCategory[];
+  /** The first card's number — 2 when an "01 // ACTION NEEDED" card sits above. */
+  firstNumber?: number;
 }) {
+  const num = (i: number) => String(firstNumber + i).padStart(2, "0");
   const isInternal = mode === "internal";
   const createInternal = useCreateWikiIntakeItem(slug);
   const createPublic = useCreatePublicWikiIntakeItem(token ?? "");
@@ -581,7 +585,7 @@ export function WikiIntakeSection({
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">01</span>
+            <span className="widget-header__label--number">{num(0)}</span>
             {" // LOG A REQUEST"}
           </span>
         </div>
@@ -755,7 +759,7 @@ export function WikiIntakeSection({
       <section className="widget-card">
         <div className="widget-header">
           <span className="widget-header__label" style={{ fontFamily: MONO }}>
-            <span className="widget-header__label--number">02</span>
+            <span className="widget-header__label--number">{num(1)}</span>
             {" // REQUESTS"}
           </span>
           {filteredItems.length > 0 && (

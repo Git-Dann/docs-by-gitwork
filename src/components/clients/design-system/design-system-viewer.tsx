@@ -1089,7 +1089,8 @@ function Hero({
     <section className="widget-card overflow-hidden">
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">00</span>
+          {/* Always the first card, so 01 — the numbered sections below follow on from 02. */}
+          <span className="widget-header__label--number">01</span>
           {" // OVERVIEW"}
         </span>
         <span className="widget-header__status" style={{ fontFamily: mono }}>
@@ -1420,12 +1421,12 @@ export function DesignSystemViewer({
       <Hero tokens={tokens} gradientCss={gradientCss} clientLogoUrl={clientLogoUrl} intro={content.intro} />
       {/* Jump nav — sticks under the page band while you scroll. Near-opaque
           surface + elevation shadow so it stays legible over the colour swatches. */}
-      <nav className="sticky top-2 z-20 flex flex-wrap items-center gap-1 rounded-[10px] border border-[rgba(0,0,0,0.1)] bg-[rgba(250,250,249,0.97)] px-2 py-1.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.3)] backdrop-blur-md">
+      <nav className="sticky top-2 z-20 flex flex-wrap items-center gap-1 rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1.5 shadow-[0_8px_24px_-10px_rgba(0,0,0,0.3)]">
         {sections.map((s) => (
           <a
             key={s.title}
             href={`#${sectionId(s.title)}`}
-            className="rounded-[6px] px-2 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)] transition hover:bg-white hover:text-[var(--brand-700)]"
+            className="rounded-[6px] px-2 py-1 text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
             style={{ fontFamily: mono }}
           >
             {s.title}
@@ -1433,7 +1434,7 @@ export function DesignSystemViewer({
         ))}
       </nav>
       {sections.map((s, i) => (
-        <Section key={s.title} id={sectionId(s.title)} n={i + 1} title={s.title} intro={s.intro} status={s.status}>
+        <Section key={s.title} id={sectionId(s.title)} n={i + 2} title={s.title} intro={s.intro} status={s.status}>
           {s.node}
         </Section>
       ))}

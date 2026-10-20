@@ -179,15 +179,18 @@ describe("wiki-dashboard.tsx — the card says something true about each section
   });
 });
 
-describe("wiki-public-view.tsx — each availableSections predicate has its OWN second condition", () => {
+// The rule moved out of wiki-public-view.tsx into a shared module (Oct 2026) so the internal
+// wiki can mark what the client can't see with the SAME predicates. The share page calls it.
+describe("wiki-client-visibility.ts — each availableSections predicate has its OWN second condition", () => {
+  it("the share page builds its nav from this rule, not its own copy", () => {
+    expect(read("components/clients/wiki/wiki-public-view.tsx")).toContain("clientVisibleSections(wiki)");
+  });
+
   // All three are gated on more than their enabled flag, and each one's second half is
   // the load-bearing part: enabled-alone would land a client on a page that reads as a
   // broken link. They are asserted separately because the conditions genuinely differ —
   // parameterising them would only pin the flag they share.
-  const available = declBlock(
-    read("components/clients/wiki/wiki-public-view.tsx"),
-    "const availableSections",
-  );
+  const available = declBlock(read("lib/wiki-client-visibility.ts"), "const availableSections");
 
   it("costs — enabled AND at least one priced line", () => {
     // Enabled-and-empty would state a cost per user of £0.00 — a confident figure

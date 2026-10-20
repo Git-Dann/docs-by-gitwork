@@ -101,8 +101,9 @@ describe("the public view will not show an empty Launchpad", () => {
   it("requires enabled AND assigned before listing the section", () => {
     // An enabled-but-unassigned kit would land the client on a blank page, which
     // reads as a broken link rather than as work we have not set up yet.
-    const publicView = read("components/clients/wiki/wiki-public-view.tsx");
-    expect(publicView).toContain("wiki.launchpad?.enabled && wiki.launchpad.assigned");
+    // The rule lives in the shared visibility module the share page calls.
+    const rule = read("lib/wiki-client-visibility.ts");
+    expect(rule).toContain("wiki.launchpad?.enabled && wiki.launchpad.assigned");
   });
 });
 

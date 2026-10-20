@@ -462,13 +462,21 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
           </ul>
         )}
 
+        {/* The client's live board, folded away: open it, every monitor was on the page twice —
+            once to manage above, once again here. One click shows exactly what they see. */}
         {monitors.length > 0 && (
-          <>
-            <p className="pt-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-              Client preview
-            </p>
-            <MonitorStatusBoard monitors={monitors} />
-          </>
+          <details className="group pt-2">
+            <summary
+              className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)] hover:text-[var(--text-2)] [&::-webkit-details-marker]:hidden"
+              style={{ fontFamily: MONO }}
+            >
+              <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
+              Show what the client sees
+            </summary>
+            <div className="pt-3">
+              <MonitorStatusBoard monitors={monitors} />
+            </div>
+          </details>
         )}
       </div>
     </section>

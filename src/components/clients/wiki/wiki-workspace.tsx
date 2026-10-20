@@ -28,6 +28,10 @@ import {
   OPTIONAL_DOC_SECTIONS,
 } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
+import { WikiDocTabs } from "./wiki-doc-tabs";
+import { WikiMobileNav } from "./wiki-mobile-nav";
+import { clientVisibleSections } from "@/lib/wiki-client-visibility";
+import { isDocPageSection } from "@/lib/wiki-section-groups";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
@@ -1098,6 +1102,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       : (Object.keys(wiki.pageShares ?? {}) as WikiSection[])
   ).filter((section) => section !== "settings");
 
+  // Switched on, but with nothing in it — so the client's link leaves it out. The same rule
+  // the share page uses, so the EMPTY marker can never disagree with what the client sees.
+  // Settings and Golf Data are internal by design, not empty, so they are never marked.
+  const clientSees = new Set(clientVisibleSections(wiki));
+  const emptySections = availableSections.filter(
+    (s) => s !== "settings" && s !== "golf-data" && !clientSees.has(s),
+  );
+  const docTabSections = availableSections.filter(isDocPageSection);
+
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
     if (!type) return null;
@@ -1615,6 +1628,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               items={wiki!.intakeItems}
               mode="internal"
               categories={wiki!.intakeCategories}
+              firstNumber={wiki!.blockers.length > 0 ? 2 : 1}
             />
           ) : (
             /**
@@ -1908,6 +1922,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     return (
       <>
+        <WikiDocTabs
+          sections={docTabSections}
+          active={activeSection}
+          titles={SECTION_TITLES}
+          onSelect={setActiveSection}
+        />
         {/* Page-level action bar — folded into a 3-dot menu */}
         <div className="mb-4 flex h-9 items-center justify-between gap-2">
           <span
@@ -2035,8 +2055,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       {/* Body — stacks on mobile (nav on top), side-by-side from md up.
           min-h-0 lets the columns own their scroll so the sidebar stays in view. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-        {/* Sidebar / mobile top-nav — pinned in view; its list scrolls internally */}
-        <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
+        {/* Phone: one section picker (the same one the client's link uses) instead of a
+            sideways strip that hid most of a full wiki's sections. */}
+        <div className="shrink-0 border-b border-[var(--border-1)] px-3 md:hidden">
+          <WikiMobileNav
+            sections={availableSections}
+            active={activeSection}
+            titles={SECTION_TITLES}
+            onSelect={setActiveSection}
+            addable={addableSections}
+            onAdd={(section) => void handleAddSection(section)}
+            emptySections={emptySections}
+          />
+        </div>
+        {/* Sidebar — pinned in view from md up; its list scrolls internally */}
+        <div className="hidden shrink-0 px-2 md:block md:border-r md:border-[var(--border-1)]">
           <WikiSidebar
             slug={slug}
             active={activeSection}
@@ -2067,6 +2100,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             )}
             onDeleteSection={confirmDeletePage}
             isDeletingSection={deletePage.isPending}
+            emptySections={emptySections}
           />
         </div>
 

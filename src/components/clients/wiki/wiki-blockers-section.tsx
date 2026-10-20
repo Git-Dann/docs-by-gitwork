@@ -24,23 +24,30 @@ export function WikiBlockersSection({
   if (blockers.length === 0) return null;
 
   return (
-    <section className="mb-6">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
-        <h3 className="text-sm font-semibold text-[var(--text-1)]">Action needed from you</h3>
-        <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700">
-          {blockers.length}
+    // A numbered card like everything else on the page — it used to sit above "01 // LOG A
+    // REQUEST" as a bare heading, the one unnumbered block in the section. It takes 01 and the
+    // Requests cards follow on (`firstNumber` on WikiIntakeSection).
+    <section className="widget-card mb-4">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">01</span>
+          {" // ACTION NEEDED"}
+        </span>
+        <span className="widget-header__status shrink-0 text-[var(--danger-500)]" style={{ fontFamily: MONO }}>
+          {blockers.length} WAITING ON {mode === "public" ? "YOU" : "THE CLIENT"}
         </span>
       </div>
-      <p className="mb-3 text-[13px] text-[var(--text-3)]">
-        {mode === "public"
-          ? "We're waiting on these to move forward. Reply below and we'll pick the work back up."
-          : "Blocked tasks waiting on the client. Manage the block on the task itself; the client replies here."}
-      </p>
-      <div className="flex flex-col gap-2.5">
-        {blockers.map((b) => (
-          <BlockerCard key={b.taskId} blocker={b} mode={mode} token={token} />
-        ))}
+      <div className="p-5">
+        <p className="mb-3 text-[13px] text-[var(--text-3)]">
+          {mode === "public"
+            ? "We're waiting on these to move forward. Reply below and we'll pick the work back up."
+            : "Blocked tasks waiting on the client. Manage the block on the task itself; the client replies here."}
+        </p>
+        <div className="flex flex-col gap-2.5">
+          {blockers.map((b) => (
+            <BlockerCard key={b.taskId} blocker={b} mode={mode} token={token} />
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -76,7 +83,7 @@ function BlockerCard({
   }
 
   return (
-    <article className="rounded-[10px] border border-[var(--border-2)] bg-white p-3.5">
+    <article className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {blocker.category ? (

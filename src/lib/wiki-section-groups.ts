@@ -62,6 +62,17 @@ export const SECTION_GROUP = {
 export type GroupedWikiSection = keyof typeof SECTION_GROUP;
 
 /**
+ * The six single-page doc sections. In the sidebar they collapse into ONE "Docs" row, with tabs
+ * on the page to move between them — six rows for six short pages was the heaviest part of the
+ * sidebar (After Desk: 5 of its 9 rows). Each keeps its own section id underneath.
+ */
+export const DOC_PAGE_SECTIONS = ["ia", "dev-guide", "api-docs", "architecture", "runbook", "data-model"] as const satisfies readonly GroupedWikiSection[];
+export type DocPageSection = (typeof DOC_PAGE_SECTIONS)[number];
+export function isDocPageSection(section: string): section is DocPageSection {
+  return (DOC_PAGE_SECTIONS as readonly string[]).includes(section);
+}
+
+/**
  * A short flat list reads faster than a grouped one: headings over a three-item sidebar would
  * add more rows than they organise. Groups appear once the list is longer than this.
  */

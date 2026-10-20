@@ -10,7 +10,9 @@ import {
   SECTION_BLURB,
   SECTION_GROUP,
   WIKI_SECTION_GROUPS,
+  DOC_PAGE_SECTIONS,
   groupAddable,
+  isDocPageSection,
 } from "@/lib/wiki-section-groups";
 
 const sidebar = readFileSync(join(process.cwd(), "src/components/clients/wiki/wiki-sidebar.tsx"), "utf8");
@@ -38,9 +40,19 @@ describe("every section has exactly one home", () => {
 
   it("the sidebar renders each section inside the group the map says — so Add New and the sidebar agree", () => {
     for (const g of WIKI_SECTION_GROUPS) {
-      const expected = Object.entries(SECTION_GROUP).filter(([, v]) => v === g.id).map(([k]) => k).sort();
+      // The six doc pages are ONE "Docs" row (docsRow), not six navItems.
+      const expected = Object.entries(SECTION_GROUP)
+        .filter(([k, v]) => v === g.id && !isDocPageSection(k))
+        .map(([k]) => k)
+        .sort();
       expect(idsInGroup(g.id).sort(), g.id).toEqual(expected);
     }
+  });
+
+  it("the six doc pages are filed under Docs & handover, and rendered as the one Docs row there", () => {
+    for (const d of DOC_PAGE_SECTIONS) expect(SECTION_GROUP[d], d).toBe("docs");
+    const start = sidebar.indexOf(`{group("docs", [`);
+    expect(sidebar.slice(start, sidebar.indexOf("])}", start))).toContain("docsRow()");
   });
 
   it("Dashboard and Settings stay outside every group", () => {

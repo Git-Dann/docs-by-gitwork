@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { WikiDTO } from "@/lib/api";
-import { WikiSidebar, COURSE_REQUESTS_SLUGS, type WikiSection } from "./wiki-sidebar";
+import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiMobileNav } from "./wiki-mobile-nav";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
@@ -31,6 +31,9 @@ import { DesignSystemViewer } from "@/components/clients/design-system/design-sy
 import { MonitorStatusBoard } from "./monitors-section";
 import { DocumentsList } from "./documents-section";
 import { apiFetch } from "@/lib/api";
+import { clientVisibleSections } from "@/lib/wiki-client-visibility";
+import { isDocPageSection } from "@/lib/wiki-section-groups";
+import { WikiDocTabs } from "./wiki-doc-tabs";
 
 type WikiPageType =
   | "IA_GUIDE"
@@ -50,14 +53,6 @@ const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   "data-model": "DATA_MODEL",
 };
 
-const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
-  IA_GUIDE: "ia",
-  DEV_API_GUIDE: "dev-guide",
-  API_DOCS: "api-docs",
-  ARCHITECTURE: "architecture",
-  RUNBOOK: "runbook",
-  DATA_MODEL: "data-model",
-};
 
 const SECTION_TITLES: Record<WikiSection, string> = {
   dashboard: "Dashboard",
@@ -108,86 +103,9 @@ export function WikiPublicView({
   /** The share token from the URL — used to authenticate mutations on the public view. */
   token: string;
 }) {
-  // The public portal only surfaces sections that have real content. Empty doc
-  // pages and the privately-managed Design System are hidden so the client never
-  // lands on a blank or dead-end page (per Dan, June 2026).
-  const hiddenSections = new Set(wiki.hiddenSections ?? []);
-  const existingDocSections = wiki.pages
-    .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
-    .filter((section): section is WikiSection => {
-      if (!section) return false;
-      return !hiddenSections.has(section);
-    });
-  const hasTimeline =
-    wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0;
-  const availableSections: WikiSection[] = [
-    // Dashboard is always the public landing — a visual overview that links into
-    // whatever sections exist below.
-    "dashboard",
-    ...(hasTimeline ? (["timeline"] as const) : []),
-    ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
-      ? (["monitors"] as const)
-      : []),
-    ...(wiki.documents.enabled && wiki.documents.documents.length > 0
-      ? (["documents"] as const)
-      : []),
-    // Requests shows when intake is on OR there are dev-raised blockers to action.
-    ...(wiki.intakeEnabled || wiki.blockers.length > 0 ? (["intake"] as const) : []),
-    // Launchpad shows once it is switched on AND a template is assigned — an
-    // enabled-but-unassigned kit would land the client on an empty page, which
-    // reads as a broken link rather than as work we have not set up yet.
-    ...(wiki.launchpad?.enabled && wiki.launchpad.assigned ? (["launchpad"] as const) : []),
-    // Enabled AND has boards. An enabled-but-empty section lands a client on a blank
-    // page that reads as a broken link — the same predicate code-handover uses.
-    ...(wiki.insights.enabled && wiki.insights.boards.length > 0 ? (["insights"] as const) : []),
-    // Running costs needs at least one priced line. Enabled-and-empty would state a
-    // cost per user of £0.00 — a confident figure derived from nothing, which is worse
-    // than the blank page it would replace.
-    ...(wiki.costs.enabled && wiki.costs.items.length > 0 ? (["costs"] as const) : []),
-    // Estimates needs at least one estimate with effort in it. Enabled-and-empty would
-    // promise a timeline and show none — and a timeline of "0 weeks" is worse than none.
-    ...(wiki.estimates.enabled && wiki.estimates.estimates.some(isPlannable)
-      ? (["estimates"] as const)
-      : []),
-    // Comparisons needs a table with columns and at least one feature row. Enabled-and-empty
-    // would promise a comparison and show a blank grid.
-    ...(wiki.comparisons.enabled && wiki.comparisons.comparisons.some(isPublishableComparison)
-      ? (["comparisons"] as const)
-      : []),
-    // Sheets needs a sheet with columns. Enabled-and-empty would invite the client to a grid
-    // with nothing in it — and the server already sends nothing while the section is off.
-    ...(wiki.sheets.enabled && wiki.sheets.sheets.some((s) => s.columns.length > 0)
-      ? (["sheets"] as const)
-      : []),
-    // RoundUp needs a breakdown to summarise. Enabled-and-empty would land a client on
-    // "nothing to report", which reads as a broken link rather than as work not started.
-    ...(wiki.roundupEnabled && wiki.timeline.blocks.length > 0 ? (["roundup"] as const) : []),
-    // Delivery needs a timeline to describe, or the client lands on "no plan yet" from a
-    // link that promised progress.
-    ...(wiki.deliveryEnabled && wiki.timeline.blocks.length > 0 ? (["delivery"] as const) : []),
-    // Support needs a LINKED Care record, not merely the flag — an unlinked section would
-    // show "not connected", which is our problem to fix, not theirs to read.
-    ...(wiki.support.enabled && wiki.support.linked ? (["support"] as const) : []),
-    // Each needs more than its flag: an enabled page with nothing on it would read to the
-    // client as a broken link. Metrics here are already the client's copy (hidden ones
-    // removed server-side), so "at least one" means at least one they are allowed to see.
-    ...(wiki.metrics.enabled && wiki.metrics.source && wiki.metrics.metrics.length > 0
-      ? (["metrics"] as const)
-      : []),
-    ...(wiki.meetings.enabled && wiki.meetings.meetings.length > 0 ? (["meetings"] as const) : []),
-    ...(wiki.clientPlatforms.enabled && wiki.clientPlatforms.platforms.length > 0
-      ? (["platforms"] as const)
-      : []),
-    ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
-      ? (["code-handover"] as const)
-      : []),
-    ...(wiki.designSystem ? (["design-system"] as const) : []),
-    ...existingDocSections,
-    ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
-    ...(COURSE_REQUESTS_SLUGS.includes(wiki.clientSlug)
-      ? (["course-requests"] as const)
-      : []),
-  ];
+  // Which sections the client sees — one rule, shared with the internal wiki's
+  // "not shown to client" marker (`src/lib/wiki-client-visibility.ts`).
+  const availableSections: WikiSection[] = clientVisibleSections(wiki);
   // Whole-wiki share opens on the Dashboard (the headline overview); per-page
   // shares open on their one section; a ?section= deep-link opens on that section
   // when it exists (else falls back to the Dashboard).
@@ -270,6 +188,7 @@ export function WikiPublicView({
               items={wiki.intakeItems}
               mode="public"
               categories={wiki.intakeCategories}
+              firstNumber={wiki.blockers.length > 0 ? 2 : 1}
             />
           ) : null}
         </>
@@ -407,24 +326,40 @@ export function WikiPublicView({
     }
 
     const page = getPage(activeSection);
+    // Tabs between the doc pages the client can see. Not on a single-page share: the other
+    // pages were not shared, so offering them would be offering links that go nowhere.
+    const docTabs = (
+      <WikiDocTabs
+        sections={onlySection ? [] : availableSections.filter(isDocPageSection)}
+        active={activeSection}
+        titles={SECTION_TITLES}
+        onSelect={setActiveSection}
+      />
+    );
     if (activeSection === "api-docs") {
       return (
-        <ApiDocsReference
-          content={normalizeApiDocsContent(page?.content, page?.title ?? SECTION_TITLES[activeSection])}
-        />
+        <>
+          {docTabs}
+          <ApiDocsReference
+            content={normalizeApiDocsContent(page?.content, page?.title ?? SECTION_TITLES[activeSection])}
+          />
+        </>
       );
     }
     const existingContent = typeof page?.content === "string" ? page.content : "";
     return (
-      <WikiPageEditor
-        section={activeSection}
-        title={page?.title ?? SECTION_TITLES[activeSection]}
-        content={existingContent}
-        isNew={page === null}
-        onSave={async () => {}}
-        mode={"preview" as const}
-        readOnly
-      />
+      <>
+        {docTabs}
+        <WikiPageEditor
+          section={activeSection}
+          title={page?.title ?? SECTION_TITLES[activeSection]}
+          content={existingContent}
+          isNew={page === null}
+          onSave={async () => {}}
+          mode={"preview" as const}
+          readOnly
+        />
+      </>
     );
   }
 

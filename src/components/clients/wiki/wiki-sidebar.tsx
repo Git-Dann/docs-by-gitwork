@@ -9,6 +9,8 @@ import {
   SECTION_GROUP,
   WIKI_SECTION_GROUPS,
   groupAddable,
+  DOC_PAGE_SECTIONS,
+  isDocPageSection,
   type GroupedWikiSection,
   type WikiSectionGroupId,
 } from "@/lib/wiki-section-groups";
@@ -25,14 +27,11 @@ import {
   ChartPieIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  CircleStackIcon,
   ClockIcon,
-  CodeBracketIcon,
   Cog6ToothIcon,
   CpuChipIcon,
   CubeTransparentIcon,
   DocumentDuplicateIcon,
-  DocumentTextIcon,
   FlagIcon,
   GlobeAltIcon,
   LifebuoyIcon,
@@ -40,11 +39,9 @@ import {
   PlusIcon,
   PresentationChartLineIcon,
   RocketLaunchIcon,
-  ServerStackIcon,
   Squares2X2Icon,
   TrashIcon,
   VideoCameraIcon,
-  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 
 export type WikiSection =
@@ -110,6 +107,12 @@ interface Props {
   deletableSections?: WikiSection[];
   onDeleteSection?: (section: WikiSection) => void;
   isDeletingSection?: boolean;
+  /**
+   * Sections switched on but with nothing in them, so the client's link leaves them out
+   * (`clientVisibleSections`). Marked EMPTY on the internal sidebar so the team can tell a
+   * section the client sees from one they don't.
+   */
+  emptySections?: WikiSection[];
 }
 
 export function WikiSidebar({
@@ -124,6 +127,7 @@ export function WikiSidebar({
   deletableSections = [],
   onDeleteSection,
   isDeletingSection = false,
+  emptySections = [],
 }: Props) {
   const [addOpen, setAddOpen] = useState(false);
   // Groups the reader folded away, remembered per browser. A per-person convenience, so it
@@ -242,29 +246,38 @@ export function WikiSidebar({
 
   const deletable = new Set(deletableSections);
   const shared = new Set(sharedSections);
+  const empty = new Set(emptySections);
   const navItem = (
     section: WikiSection,
     label: string,
     icon: ReactNode,
+    /** Highlight this row for any of these sections too (the Docs row covers six pages). */
+    activeFor?: WikiSection[],
   ) => {
     if (!visibleSections.has(section)) return null;
-    const isActive = active === section;
-    const isShared = shared.has(section);
-    const canDelete = deletable.has(section) && Boolean(onDeleteSection);
+    const isActive = active === section || Boolean(activeFor?.includes(active));
+    const isEmpty = empty.has(section);
+    // An empty section is left off the client's link, so a globe on it would be a lie.
+    const isShared = shared.has(section) && !isEmpty;
+    const canDelete = deletable.has(section) && Boolean(onDeleteSection) && !activeFor;
     // Only reserve right padding when there's a trailing control, so labels keep
     // the maximum width and avoid truncating where they'd otherwise fit.
-    const hasTrailing = isShared || canDelete;
+    const hasTrailing = isShared || canDelete || isEmpty;
     return (
       <div key={section} className="group relative flex w-auto shrink-0 items-center md:w-full">
         <button
           type="button"
           onClick={() => onSelect(section)}
+          title={isEmpty ? `${label} — nothing in it yet, so the client's link leaves it out` : undefined}
           className={[
             "flex min-w-0 flex-1 items-center gap-2.5 whitespace-nowrap rounded-[6px] py-2 pl-3 text-left text-sm transition-colors",
-            hasTrailing ? "pr-8" : "pr-3",
+            // EMPTY is wider than the globe/trash icons, so it reserves more room.
+            isEmpty ? "pr-14" : hasTrailing ? "pr-8" : "pr-3",
             isActive
               ? "bg-[var(--brand-50)] font-semibold text-[var(--brand-700)] md:border-l-2 md:border-[var(--brand-700)] md:rounded-l-none"
-              : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
+              : isEmpty
+                ? "text-[var(--text-4)] hover:bg-[var(--surface-1)] hover:text-[var(--text-2)]"
+                : "text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
           ].join(" ")}
         >
           <span className="h-4 w-4 shrink-0">{icon}</span>
@@ -280,6 +293,19 @@ export function WikiSidebar({
             {label}
           </span>
         </button>
+
+        {isEmpty && (
+          <span
+            aria-hidden
+            className={[
+              "pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-[var(--text-4)]",
+              canDelete ? "opacity-0 md:opacity-100 md:group-hover:opacity-0" : "",
+            ].join(" ")}
+            style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.08em" }}
+          >
+            EMPTY
+          </span>
+        )}
 
         {/* Share indicator — pinned flush to the sidebar's right edge so every
             globe sits in one clean column. Hidden on hover (desktop) where the
@@ -309,9 +335,20 @@ export function WikiSidebar({
     );
   };
 
+  const docSectionsShown: WikiSection[] = DOC_PAGE_SECTIONS.filter((x) => visibleSections.has(x));
+  /** One "Docs" row for whichever doc pages exist; opens the one you're on, else the first. */
+  const docsRow = () => {
+    if (docSectionsShown.length === 0) return null;
+    const target = docSectionsShown.includes(active) ? active : docSectionsShown[0];
+    return navItem(target, "Docs", <BookOpenIcon />, docSectionsShown);
+  };
+
   // Headings only pay for themselves on a long list; a short one stays flat (see
   // GROUP_HEADINGS_ABOVE). Settings and Dashboard sit outside the groups.
-  const navCount = [...visibleSections].filter((x) => x !== "settings" && x !== "dashboard").length;
+  const navCount =
+    [...visibleSections].filter(
+      (x) => x !== "settings" && x !== "dashboard" && !isDocPageSection(x),
+    ).length + (DOC_PAGE_SECTIONS.some((x) => visibleSections.has(x)) ? 1 : 0);
   const grouped = navCount > GROUP_HEADINGS_ABOVE;
 
   /**
@@ -387,12 +424,9 @@ export function WikiSidebar({
         {group("docs", [
           navItem("design-system", "Design System", <CubeTransparentIcon />),
           navItem("code-handover", "Code Handover", <CpuChipIcon />),
-          navItem("ia", "Info Architecture", <BookOpenIcon />),
-          navItem("dev-guide", "Developer Guide", <CodeBracketIcon />),
-          navItem("api-docs", "API Docs", <ServerStackIcon />),
-          navItem("architecture", "Architecture", <DocumentTextIcon />),
-          navItem("runbook", "Runbook", <WrenchScrewdriverIcon />),
-          navItem("data-model", "Data Model", <CircleStackIcon />),
+          // The six doc pages share ONE row; the page itself has tabs between them. Each
+          // page keeps its own section id, so hash links and per-page shares still work.
+          docsRow(),
         ])}
 
         {hasAddItems && (
