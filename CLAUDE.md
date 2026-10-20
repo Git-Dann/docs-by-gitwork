@@ -7214,3 +7214,23 @@ Post-deploy:
 1. Drag a row, then reload.
 2. Pick a person on the share link as a client.
 3. Open a YouTube link in the viewer.
+
+### 73.2 Image uploads in media cells (and Claude can attach them)
+
+A media cell can now hold uploaded images, not just links. **Upload** in the cell editor, or paste
+or drop an image into it. The team, the client (wherever they may edit), and Claude via
+**`upload_sheet_image`** all use the same save path (`src/server/wiki-sheet-files.ts`).
+- **Images only, decided by the bytes** (`src/lib/wiki-sheet-files.ts`): PNG, JPEG, GIF and WebP,
+  up to 10 MB. SVG and HTML are refused. The stored type comes from the sniffed bytes, never from
+  the uploader.
+- **An upload is a media item like any link.** The cell stores `/api/wiki/files/<key>/<name>`.
+  `safeMediaUrl` accepts exactly that relative shape and no other relative URL.
+- **The 160-bit random key is the credential**, like a share link. The image is served by
+  `GET /api/wiki/files/[key]/[name]` (under the public `/api/wiki`), with `nosniff` and
+  `CSP: default-src 'none'; sandbox`.
+- **Storage:** new model `WikiSheetFile` (additive, loose ids). It follows `blob-storage.ts`, so
+  the bytes go to Postgres or to the bucket.
+- **MCP:** `upload_sheet_image` takes either `imageBase64` or `imageUrl`. A URL is fetched once,
+  through the SSRF guard, with a hard 10 MB read cap. With `row` + `column`, the image is
+  appended to that media cell; the row and column are checked before anything is stored.
+- ⚠️ Removing an image from a cell leaves its bytes stored. There's no cleanup sweep.

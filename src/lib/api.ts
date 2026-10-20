@@ -3864,6 +3864,7 @@ export async function deleteWikiEstimateApi(
 
 import type {
   SheetCellValue as SheetCellValueT,
+  SheetMediaItem as SheetMediaItemT,
   SheetColumnType as SheetColumnTypeT,
   WikiSheet as WikiSheetT,
   WikiSheetsSection as WikiSheetsSectionT,
@@ -4011,6 +4012,19 @@ export async function getWikiSheetPeopleApi(
   target: SheetsTarget,
 ): Promise<{ people: { id: string; name: string; kind: "TEAM" | "CLIENT" }[] }> {
   return apiFetch(`${sheetsBase(target)}/people`);
+}
+
+/** Upload an image into a sheet's media cell (§73.2). Returns the item the cell stores. */
+export async function uploadSheetImageApi(target: SheetsTarget, sheetId: string, file: File): Promise<SheetMediaItemT> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${sheetsBase(target, sheetId)}/files`, { method: "POST", body: form });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : `Upload failed (${res.status}).`);
+  }
+  const item = data as { url: string; title?: string };
+  return item.title ? { url: item.url, title: item.title } : { url: item.url };
 }
 
 /* ----------------------------------------------------------- wiki: comparisons */

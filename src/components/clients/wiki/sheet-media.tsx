@@ -16,7 +16,7 @@
  * never the user's URL — and is refused unless it starts with an allow-listed origin.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownIcon,
   ArrowTopRightOnSquareIcon,
@@ -31,6 +31,7 @@ import {
   SwatchIcon,
   TrashIcon,
   VideoCameraIcon,
+  ArrowUpTrayIcon,
 } from "@heroicons/react/24/outline";
 import { MONO } from "@/components/analytics/analytics-widgets";
 import { Modal } from "@/components/ui/modal";
@@ -45,6 +46,14 @@ import {
   type MediaKind,
 } from "@/lib/wiki-sheet-media";
 import type { SheetMediaItem } from "@/types/wiki-sheets";
+import { SHEET_IMAGE_ACCEPT, SHEET_IMAGE_MAX_BYTES } from "@/lib/wiki-sheet-files";
+
+/**
+ * How this grid uploads an image (§73.2) — provided by `SheetGrid` for its own sheet and
+ * side (team or client). Absent → no Upload button, links only.
+ */
+export type SheetImageUpload = (file: File) => Promise<SheetMediaItem>;
+export const SheetImageUploadContext = createContext<SheetImageUpload | null>(null);
 
 const KIND_ICON: Record<MediaKind, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   image: PhotoIcon,
@@ -287,7 +296,35 @@ export function MediaListEditor({
 }) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(0);
+  const upload = useContext(SheetImageUploadContext);
+  const fileInput = useRef<HTMLInputElement>(null);
   const items = useMemo(() => [...value], [value]);
+  // Uploads land after the user may have edited the list, so read the latest list on landing.
+  const latest = useRef(items);
+  latest.current = items;
+  const uploadFiles = async (files: File[]) => {
+    if (!upload) return;
+    const images = files.filter((f) => f.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(f.name));
+    if (!images.length) return setError("Only PNG, JPEG, GIF or WebP images can be uploaded.");
+    const room = MEDIA_LIMITS.maxItems - latest.current.length;
+    if (room <= 0) return setError(`${label} holds at most ${MEDIA_LIMITS.maxItems} items per cell.`);
+    const big = images.find((f) => f.size > SHEET_IMAGE_MAX_BYTES);
+    if (big) return setError(`"${big.name}" is over 10 MB.`);
+    setError(null);
+    for (const f of images.slice(0, room)) {
+      setUploading((n) => n + 1);
+      try {
+        const item = await upload(f);
+        onChange([...latest.current, item]);
+        latest.current = [...latest.current, item];
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Upload failed.");
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  };
   const add = () => {
     const res = coerceMedia([...items, ...draft.split(/\s+/).filter(Boolean)], label);
     if (!res.ok) return setError(res.error);
@@ -303,7 +340,27 @@ export function MediaListEditor({
     onChange(next);
   };
   return (
-    <div className="space-y-2" data-media-editor>
+    <div
+      className="space-y-2"
+      data-media-editor
+      onPaste={(e) => {
+        const files = Array.from(e.clipboardData?.files ?? []);
+        if (upload && files.length) {
+          e.preventDefault();
+          void uploadFiles(files);
+        }
+      }}
+      onDragOver={(e) => {
+        if (upload && e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        const files = Array.from(e.dataTransfer.files ?? []);
+        if (upload && files.length) {
+          e.preventDefault();
+          void uploadFiles(files);
+        }
+      }}
+    >
       {items.length > 0 && (
         <ul className="space-y-1.5">
           {items.map((m, i) => {
@@ -357,7 +414,37 @@ export function MediaListEditor({
           <button type="button" className="app-button app-button-secondary app-button-xs" disabled={!draft.trim()} onClick={add}>
             Add
           </button>
+          {upload && (
+            <>
+              <button
+                type="button"
+                className="app-button app-button-secondary app-button-xs inline-flex items-center gap-1"
+                disabled={uploading > 0}
+                onClick={() => fileInput.current?.click()}
+                data-media-upload
+              >
+                <ArrowUpTrayIcon className="h-3.5 w-3.5" />
+                {uploading > 0 ? "Uploading…" : "Upload"}
+              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                accept={SHEET_IMAGE_ACCEPT}
+                multiple
+                hidden
+                aria-label="Upload images"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  void uploadFiles(files);
+                }}
+              />
+            </>
+          )}
         </div>
+      )}
+      {upload && items.length < MEDIA_LIMITS.maxItems && (
+        <p className="text-[11px] text-[var(--text-4)]">Paste a link, or upload, paste or drop an image (up to 10 MB).</p>
       )}
       {error && <p className="text-[12px] text-[var(--danger-500)]">{error}</p>}
     </div>

@@ -329,3 +329,12 @@ describe("§73.1 — people, media, order, sizes and the live task", () => {
     expect(store.columnPatches[0]).toMatchObject({ columnId: "item", patch: { width: 240 } });
   });
 });
+
+describe("decodeBase64Image", () => {
+  it("decodes raw base64 and a data URL, and refuses junk", async () => {
+    const { decodeBase64Image } = await import("@/server/mcp/sheet-tools");
+    expect(Array.from(decodeBase64Image("iVBORw0KGgo="))).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(decodeBase64Image("data:image/png;base64,iVBORw0KGgo=").length).toBe(8);
+    expect(() => decodeBase64Image("not base64!!")).toThrow(/base64/);
+  });
+});
