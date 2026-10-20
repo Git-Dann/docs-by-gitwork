@@ -7334,3 +7334,18 @@ handover** — with Dashboard alone at the top and Settings pinned at the foot.
 - ⚠️ Row spacing is a flex `gap`, not `space-y`: the groups are `display: contents` wrappers, and
   margins from `space-y` do not reach through them.
 - Same component on the client's share page, so both views get the groups.
+
+**Layout review (same day).** Every section of `/demo/wiki` was swept at 1440 · 820 · 390 with the
+clipping audit plus screenshots. Fixed:
+- **Doc pages open READ, formatted.** They always opened in the editor, so the team saw raw
+  Markdown (`# Runbook`, `**bold**`). A written page now opens formatted, with a visible
+  **Edit / Done** button; an unwritten page still opens in the editor. The mode is decided per
+  section and once when the wiki loads, never on refetch, or saving would bounce you out of the editor.
+- **Code Handover on a phone.** The version row's label, Current badge and date could shrink to
+  nothing, crushing the date into a one-word column under the Download button. The row now wraps
+  with a `min-w-[180px]` floor, so the Download group drops to its own line instead.
+- **Timeline quarter labels.** A part-quarter at the chart edge (~40px) cut "Q1 2027" to "Q1 2…".
+  Narrow bands show "Q1 '27", with the full label in a tooltip.
+- **Settings could crash** with `rows.map is not a function` when the linked-clients response wasn't
+  an array (the demo's catch-all returns `{}`). Now guarded. With it fixed, the audit found the
+  share link ellipsed with no title, so it has one now.
