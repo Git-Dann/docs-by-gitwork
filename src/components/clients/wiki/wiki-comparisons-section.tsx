@@ -420,7 +420,7 @@ function ComparisonCard({
         <ComparisonLegend
           trailing={
             view.content.columns.length > 5 ? (
-              <span className="sm:ml-auto">Scroll sideways for all {view.content.columns.length}</span>
+              <span className="hidden sm:ml-auto sm:inline">Scroll sideways for all {view.content.columns.length}</span>
             ) : undefined
           }
         />
@@ -456,12 +456,17 @@ function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void 
 
 /* ───────────────────────────────────────────────── table + phone view ── */
 
-/** The columns a phone compares by default: featured ones first, then the leftmost. */
+/**
+ * The columns a phone compares by default: the featured one and the leftmost other one
+ * (Northwind vs its first competitor; Free vs the recommended plan), shown in table order.
+ */
 export function defaultCompareColumns(columns: { id: string; highlight?: boolean }[]): [string, string] {
   const featured = columns.filter((c) => c.highlight).map((c) => c.id);
   const rest = columns.filter((c) => !c.highlight).map((c) => c.id);
-  const order = [...rest.slice(0, 1), ...featured, ...rest.slice(1)];
-  return [order[0] ?? "", order[1] ?? order[0] ?? ""];
+  const picked = [...featured.slice(0, 1), ...rest, ...featured.slice(1)].slice(0, 2);
+  const ids = columns.map((c) => c.id);
+  picked.sort((x, y) => ids.indexOf(x) - ids.indexOf(y));
+  return [picked[0] ?? "", picked[1] ?? picked[0] ?? ""];
 }
 
 function TableBody({

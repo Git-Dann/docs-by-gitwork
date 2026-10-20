@@ -207,6 +207,9 @@ export function ComparisonTable({
   const addWidth = 56;
   const tableWidth = layout.minTableWidth + (editing ? addWidth : 0);
   const change = (next: ComparisonContent) => onChange?.(next);
+  // A note field only when a row has a note or someone asked for one — two inputs on every
+  // row doubles the editor's height for something most features never need.
+  const [notesOpen, setNotesOpen] = useState<Set<string>>(() => new Set());
   const span = columns.length + 1 + (editing ? 1 : 0);
 
   return (
@@ -358,14 +361,17 @@ export function ComparisonTable({
                             placeholder="Feature name"
                             onChange={(e) => change(updateRow(content, row.id, { label: e.target.value }))}
                           />
+                          {(row.note || notesOpen.has(row.id)) && (
                           <input
                             aria-label="Note"
                             className={`${FIELD} text-[13px] text-[var(--text-3)] sm:text-[12px]`}
                             value={row.note ?? ""}
                             maxLength={COMPARISON_LIMITS.maxNote}
                             placeholder="Note (optional)"
+                            autoFocus={!row.note && notesOpen.has(row.id)}
                             onChange={(e) => change(updateRow(content, row.id, { note: e.target.value }))}
                           />
+                          )}
                         </div>
                         <RowMenu
                           row={row}
@@ -374,6 +380,7 @@ export function ComparisonTable({
                           content={content}
                           onChange={change}
                           onNotice={onNotice}
+                          onAddNote={() => setNotesOpen((prev) => new Set(prev).add(row.id))}
                         />
                       </div>
                     ) : (
@@ -726,6 +733,7 @@ function RowMenu({
   content,
   onChange,
   onNotice,
+  onAddNote,
 }: {
   row: ComparisonRow;
   first: boolean;
@@ -733,6 +741,7 @@ function RowMenu({
   content: ComparisonContent;
   onChange: (next: ComparisonContent) => void;
   onNotice?: (message: string) => void;
+  onAddNote?: () => void;
 }) {
   const index = content.rows.findIndex((r) => r.id === row.id);
   const insert = (kind: "row" | "group") => {
@@ -762,6 +771,13 @@ function RowMenu({
             Move down
           </button>
         </MenuItem>
+        {onAddNote && !row.note && (
+          <MenuItem>
+            <button type="button" className={menuItem} onClick={onAddNote}>
+              Add a note
+            </button>
+          </MenuItem>
+        )}
         <MenuItem>
           <button type="button" className={menuItem} onClick={() => insert("row")}>
             Insert feature below

@@ -7003,6 +7003,13 @@ is **no** `/api/wiki/[token]/comparisons` route (the wiring test asserts it).
   roundup, meetings, platforms, metrics). Cells are written **by column title**. Writers need
   'Manage clients'; the parity test pins it. Creating a table switches the section on.
 
+**Verified:** `npm run verify` green (6525 tests, `audit:ui` 0 findings), `next build` clean.
+Driven headlessly at `/demo/wiki#comparisons` (the demo applies writes to its fixture, so an
+edit survives the refetch) at 390 · 768 · 1280×620 · 1440 in view and edit mode: 0 clipping
+findings, 0 page overflow, 0 console errors; the feature column stays put while scrolling
+sideways, cell cycle → SAVED, rename survives Done, column menus open inside the viewport.
+Fourteen sabotages each failed the test named for them.
+
 **Not verified:** a real database. Post-deploy: Add New → Comparisons, create from a template,
 add a 6th column and confirm it scrolls with the feature column pinned, then open the share link
 on a phone and check the compare-two view.

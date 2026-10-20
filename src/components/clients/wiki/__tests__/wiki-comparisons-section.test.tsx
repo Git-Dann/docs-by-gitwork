@@ -193,9 +193,9 @@ describe("editing", () => {
 });
 
 describe("defaultCompareColumns", () => {
-  it("leftmost plus the featured one, else the first two", () => {
+  it("the featured one plus the leftmost other, in table order; else the first two", () => {
     expect(defaultCompareColumns([{ id: "a" }, { id: "b" }, { id: "c", highlight: true }])).toEqual(["a", "c"]);
     expect(defaultCompareColumns([{ id: "a" }, { id: "b" }, { id: "c" }])).toEqual(["a", "b"]);
-    expect(defaultCompareColumns([{ id: "a", highlight: true }, { id: "b" }])).toEqual(["b", "a"]);
+    expect(defaultCompareColumns([{ id: "a", highlight: true }, { id: "b" }, { id: "c" }])).toEqual(["a", "b"]);
   });
 });
