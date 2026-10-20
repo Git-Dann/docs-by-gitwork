@@ -78,6 +78,7 @@ const SHARE_SECTION_LABELS: Partial<Record<WikiSection, string>> = {
   insights: "Charts",
   costs: "Running costs",
   estimates: "Estimates",
+  comparisons: "Comparisons",
   roundup: "RoundUp",
   delivery: "Delivery",
   support: "Support",

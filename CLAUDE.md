@@ -6966,3 +6966,50 @@ Not verified against a real database, browser or bucket. **Post-deploy:**
 - Post a screenshot-only reply from the app and from the shared page.
 - Open a screenshot as a developer not assigned to that client and expect 403.
 - Confirm Edit appears on a client's old reply that matches their name.
+
+## 72. Recent Changes (October 2026) — Comparison tables in the wiki
+
+A client-wiki section, **Comparisons** (id `comparisons`): feature tables — Free vs Premium vs
+Pro for a release, or the client's product against competitors. Built by Gitwork, read-only for
+the client. Same posture as Charts and Estimates: the tables ride down in the wiki DTO and there
+is **no** `/api/wiki/[token]/comparisons` route (the wiring test asserts it).
+
+- **Data.** `ClientWiki.comparisonsEnabled` + `WikiComparison` (additive). `columns` and `rows`
+  are JSON, replaced wholesale on every write and re-parsed on the way in and out by
+  `parseComparisonContent` (`src/lib/wiki-comparisons.ts`, pure): an unknown cell state reads as
+  blank, text is clipped, cells for a deleted column are dropped, ids are made unique. A cell is
+  `yes · partial · no · text · none`; **`none` (blank, "not stated") is not `no`**.
+- **One set of rules.** Limits (`COMPARISON_LIMITS`: 45 columns, 300 rows, 40 tables), the cell
+  vocabulary and every edit (`addColumns`, `removeColumn`, `setCell`, …) live in that file and are
+  used by the Zod schema, the editor, the server and the MCP tools — so a table Claude writes
+  obeys exactly what the editor does. Reads clip silently (a stored table must render); writes
+  past a limit are refused with a sentence.
+- **Layout.** 2–5 columns share the card width; 6+ get a fixed ~120px each and scroll inside
+  the table's **own** scroller, which holds header and body together (§45.2), with the feature
+  column and header row sticky and an edge shadow when there is more. On a phone the default is
+  a **compare-two** view (featured + leftmost column, pickable), the full table one tap away.
+  ✕ is muted grey, not red. Every glyph has its meaning in words; a legend sits under each table.
+- **Editing in place**, not in a dialog — a 45-column table does not fit one, and what is edited
+  is what the client sees. Edit per table: click a header to rename (Enter commits, Escape
+  cancels), `⋯` menus for columns/rows (feature, move, delete with confirm), click a cell to
+  cycle ✓ → ◐ → ✕ → blank, type (or the pencil) to write a value. Autosaves 800ms after the last
+  change, keeping its own draft so a refetch never overwrites typing. Menus use `anchor` (§55).
+- **Client's copy.** `forPublic` sends nothing while the section is off and only publishable
+  tables (a column and a labelled feature row) while it is on; the public predicate is the same.
+- **MCP:** `list_comparisons`, `get_comparison`, `create_comparison`, `update_comparison`,
+  `add_comparison_columns`, `rename_comparison_column`, `remove_comparison_column`,
+  `add_comparison_rows`, `set_comparison_cells` (all-or-nothing), `delete_comparison`, and a
+  general **`enable_wiki_section`** (comparisons, insights, costs, estimates, delivery, support,
+  roundup, meetings, platforms, metrics). Cells are written **by column title**. Writers need
+  'Manage clients'; the parity test pins it. Creating a table switches the section on.
+
+**Verified:** `npm run verify` green (6525 tests, `audit:ui` 0 findings), `next build` clean.
+Driven headlessly at `/demo/wiki#comparisons` (the demo applies writes to its fixture, so an
+edit survives the refetch) at 390 · 768 · 1280×620 · 1440 in view and edit mode: 0 clipping
+findings, 0 page overflow, 0 console errors; the feature column stays put while scrolling
+sideways, cell cycle → SAVED, rename survives Done, column menus open inside the viewport.
+Fourteen sabotages each failed the test named for them.
+
+**Not verified:** a real database. Post-deploy: Add New → Comparisons, create from a template,
+add a 6th column and confirm it scrolls with the feature column pinned, then open the share link
+on a phone and check the compare-two view.

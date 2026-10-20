@@ -1563,6 +1563,10 @@ model ClientWiki {
   /// Whether the Platforms section is enabled — the client's platforms from Portal, as
   /// links. Logins and internal notes never leave Portal.
   platformsEnabled    Boolean                @default(false)
+  /// Whether the Comparisons section is enabled — feature/plan comparison tables (Free vs
+  /// Pro, the client vs competitors). Client-facing, so off until someone turns it on.
+  comparisonsEnabled  Boolean                @default(false)
+  comparisons         WikiComparison[]
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
@@ -5430,6 +5434,27 @@ model WikiEstimate {
 
   @@index([wikiId])
   @@map("WikiEstimate")
+}
+
+/// One comparison table on a client's wiki — up to 45 columns (plans, releases, competitors)
+/// against a list of features. Read-only for the client. Columns and rows are JSON, replaced
+/// wholesale on every write and parsed defensively on read (src/lib/wiki-comparisons.ts).
+model WikiComparison {
+  id          String     @id @default(cuid())
+  wikiId      String
+  wiki        ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title       String
+  description String?    @db.Text
+  orderKey    Int        @default(0)
+  /// `[{ id, title, subtitle?, highlight? }]`, in display order.
+  columns     Json
+  /// `[{ id, kind: "row" | "group", label, note?, cells: { [columnId]: { state, text? } } }]`.
+  rows        Json
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiComparison")
 }
 
 model WikiInsightBoard {

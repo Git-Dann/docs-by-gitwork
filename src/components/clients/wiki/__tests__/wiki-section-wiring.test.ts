@@ -15,7 +15,7 @@ import { join } from "node:path";
  * future change without anyone noticing the guard went away.
  *
  * This covers the sections listed in SECTIONS below — `insights`, `costs`, `estimates`,
- * `delivery`, `support`, `roundup`, `metrics`, `meetings` and `platforms` — which share the
+ * `delivery`, `support`, `roundup`, `metrics`, `meetings`, `platforms` and `comparisons` — which share the
  * same twelve lists. The shape-identical lists are parameterised over all three; the
  * places the three genuinely differ (each one's public `availableSections` predicate,
  * and Delivery having no server loader at all) get their own assertions at the bottom.
@@ -65,6 +65,7 @@ const SECTIONS = [
   { id: "metrics", label: "Metrics" },
   { id: "meetings", label: "Meetings" },
   { id: "platforms", label: "Platforms" },
+  { id: "comparisons", label: "Comparisons" },
 ] as const;
 
 describe.each(SECTIONS)("$label — the twelve parallel allow-lists", ({ id, label }) => {
@@ -231,6 +232,12 @@ describe("wiki-public-view.tsx — each availableSections predicate has its OWN 
     expect(available).toContain("wiki.meetings.meetings.length > 0");
   });
 
+  it("comparisons — enabled AND a table with columns and a feature row", () => {
+    // Enabled-and-empty would promise a comparison and land the client on a blank grid.
+    expect(available).toContain("wiki.comparisons.enabled");
+    expect(available).toContain("wiki.comparisons.comparisons.some(isPublishableComparison)");
+  });
+
   it("platforms — enabled AND at least one platform", () => {
     expect(available).toContain("wiki.clientPlatforms.enabled");
     expect(available).toContain("wiki.clientPlatforms.platforms.length > 0");
@@ -282,3 +289,22 @@ function grepServer(needle: string): string[] {
     .filter((rel) => /\.tsx?$/.test(rel))
     .filter((rel) => readFileSync(join(dir, rel), "utf8").includes(needle));
 }
+
+describe("comparisons — the client's copy carries no drafts", () => {
+  it("forPublic strips every table while the section is off, and unpublishable ones while on", () => {
+    // A table drafted with the section off, or one with no columns or features yet, is
+    // Gitwork's work in progress; the public view filters too, but the DTO must not even
+    // carry it to the browser.
+    const wiki = read("server/wiki.ts");
+    const fn = wiki.slice(wiki.indexOf("function forPublic("), wiki.indexOf("export async function resolvePublicWiki"));
+    expect(fn).toContain("dto.comparisons.enabled");
+    expect(fn).toContain("filter(isPublishableComparison)");
+    expect(fn).toContain("{ enabled: false, comparisons: [] }");
+  });
+
+  it("the section is loaded through settle(), so one bad table cannot take the wiki down (§50.2)", () => {
+    expect(read("server/wiki.ts")).toContain(
+      'settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS)',
+    );
+  });
+});

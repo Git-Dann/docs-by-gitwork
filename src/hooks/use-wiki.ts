@@ -66,6 +66,12 @@ import {
   setWikiInsightsEnabledApi,
   setWikiCostsEnabledApi,
   setWikiEstimatesEnabledApi,
+  setWikiComparisonsEnabledApi,
+  createWikiComparisonApi,
+  updateWikiComparisonApi,
+  deleteWikiComparisonApi,
+  reorderWikiComparisonsApi,
+  type ComparisonInput,
   createWikiEstimateApi,
   updateWikiEstimateApi,
   deleteWikiEstimateApi,
@@ -608,6 +614,52 @@ export function useSaveWikiEstimate(slug: string) {
       args.estimateId
         ? updateWikiEstimateApi(slug, args.estimateId, args.input)
         : createWikiEstimateApi(slug, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Comparisons ─────────────────────────────────────────────────────────────
+// Writes invalidate the whole wiki: the dashboard card and the section both read the same
+// tables. The table editor keeps its own draft while editing, so a refetch landing mid-edit
+// never overwrites what someone is typing.
+
+export function useSetWikiComparisonsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiComparisonsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useCreateWikiComparison(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ComparisonInput) => createWikiComparisonApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiComparison(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { comparisonId: string; input: ComparisonInput }) =>
+      updateWikiComparisonApi(slug, args.comparisonId, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiComparison(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (comparisonId: string) => deleteWikiComparisonApi(slug, comparisonId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useReorderWikiComparisons(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (order: string[]) => reorderWikiComparisonsApi(slug, order),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }

@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 35 tools", tools.length === 35, `got ${tools.length}`);
+    check("returns 46 tools", tools.length === 46, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -79,6 +79,17 @@ console.log("tools/list");
       "set_cost_line",
       "delete_cost_line",
       "set_running_costs_settings",
+      "list_comparisons",
+      "get_comparison",
+      "create_comparison",
+      "update_comparison",
+      "add_comparison_columns",
+      "rename_comparison_column",
+      "remove_comparison_column",
+      "add_comparison_rows",
+      "set_comparison_cells",
+      "delete_comparison",
+      "enable_wiki_section",
       "list_wiki",
       "get_wiki_page",
       "upsert_wiki_page",

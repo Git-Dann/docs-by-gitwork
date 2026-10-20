@@ -9,6 +9,7 @@ import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-t
 import { normalizeGithubRepo } from "@/lib/github";
 import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
+import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -2323,3 +2324,43 @@ export const estimateSchema = z.object({
     .max(ESTIMATE_LIMITS.maxPhases),
 });
 export type EstimateInput = z.infer<typeof estimateSchema>;
+
+// ─── Wiki: Comparisons ─────────────────────────────────────────────────────────
+// Limits come from COMPARISON_LIMITS, shared with the editor and the MCP tools. Columns and
+// rows are replaced wholesale on every write; the server re-parses them with
+// parseComparisonContent, so a cell keyed on a column that is not in `columns` is dropped.
+
+const comparisonCellSchema = z.object({
+  state: z.enum(["yes", "no", "partial", "text", "none"]),
+  text: z.string().trim().max(CMP.maxText, `A cell holds at most ${CMP.maxText} characters`).optional(),
+});
+
+const comparisonColumnSchema = z.object({
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid column id"),
+  title: z.string().trim().min(1, "Every column needs a title").max(CMP.maxColumnTitle),
+  subtitle: z.string().trim().max(CMP.maxColumnSubtitle).optional(),
+  highlight: z.boolean().optional(),
+});
+
+const comparisonRowSchema = z.object({
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid row id"),
+  kind: z.enum(["row", "group"]),
+  // Empty is allowed: a row the editor has just added and nobody has named yet.
+  label: z.string().trim().max(CMP.maxLabel),
+  note: z.string().trim().max(CMP.maxNote).optional(),
+  cells: z.record(z.string(), comparisonCellSchema),
+});
+
+export const comparisonSchema = z.object({
+  title: z.string().trim().min(1, "Give the table a title").max(CMP.maxTableTitle),
+  description: z.string().trim().max(CMP.maxDescription).nullable().optional(),
+  columns: z
+    .array(comparisonColumnSchema)
+    .max(CMP.maxColumns, `A comparison can have at most ${CMP.maxColumns} columns`),
+  rows: z.array(comparisonRowSchema).max(CMP.maxRows, `A comparison can have at most ${CMP.maxRows} rows`),
+});
+export type ComparisonInput = z.infer<typeof comparisonSchema>;
+
+export const comparisonOrderSchema = z.object({
+  order: z.array(z.string().min(1).max(64)).max(CMP.maxTables),
+});

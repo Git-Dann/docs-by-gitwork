@@ -110,6 +110,71 @@ const TOOLS: Tool[] = [
     ],
   },
   {
+    name: "list_comparisons",
+    blurb:
+      "List a client's wiki comparison tables — plan tables (Free vs Premium vs Pro) or the product against competitors — with their columns and row counts.",
+    examples: ["What comparison tables does Northwind have?"],
+  },
+  {
+    name: "get_comparison",
+    blurb: "Read one comparison table in full — every feature row and what each column includes.",
+    examples: ["Show me what's in each of Speakify's plans."],
+  },
+  {
+    name: "create_comparison",
+    blurb:
+      "Create a comparison table on a client's wiki — up to 45 columns, features as rows, group headings, a featured column, and cells as yes / no / partial / a short value like '10 GB'. Requires 'Manage clients'.",
+    examples: [
+      "Make a Free vs Premium vs Pro table for Speakify's v2 release.",
+      "Compare Big Wedge against Golfshot, 18Birdies and Hole19 on these features.",
+    ],
+  },
+  {
+    name: "update_comparison",
+    blurb:
+      "Rename a comparison table, change its description, or replace its columns or rows wholesale (columns that keep their title keep their cells). Requires 'Manage clients'.",
+    examples: ["Rename Speakify's plan table to 'What's in v2.1'."],
+  },
+  {
+    name: "add_comparison_columns",
+    blurb: "Add columns to a comparison table — a new plan, release or competitor. Up to 45 in total. Requires 'Manage clients'.",
+    examples: ["Add Strava as a column to Northwind's competitor table."],
+  },
+  {
+    name: "rename_comparison_column",
+    blurb:
+      "Rename a column, set its subtitle (e.g. a price), or feature it as the recommended plan or the client's own product. Requires 'Manage clients'.",
+    examples: ["Feature the Premium column and give it the subtitle £6.99/mo."],
+  },
+  {
+    name: "remove_comparison_column",
+    blurb: "Remove a column, and every cell under it, from a comparison table. Requires 'Manage clients'.",
+    examples: ["Drop Competitor B from the table."],
+  },
+  {
+    name: "add_comparison_rows",
+    blurb:
+      "Add features or group headings to a comparison table, with what each column includes. Requires 'Manage clients'.",
+    examples: ["Add 'Offline mode' — yes on Pro, partial on Premium, no on Free."],
+  },
+  {
+    name: "set_comparison_cells",
+    blurb:
+      "Set many cells at once — yes, no, partial, blank, or a short value like '£9/mo'. All-or-nothing: one unknown row or column refuses the batch. Requires 'Manage clients'.",
+    examples: ["Mark Apple Watch support as yes for Northwind and Peloton, no for the rest."],
+  },
+  {
+    name: "delete_comparison",
+    blurb: "Delete a comparison table from a client's wiki. Requires 'Manage clients'.",
+    examples: ["Delete the old v1 plans table from Speakify's wiki."],
+  },
+  {
+    name: "enable_wiki_section",
+    blurb:
+      "Switch one of a client's optional wiki sections on or off — comparisons, charts, running costs, estimates, delivery, support, RoundUp, meetings, platforms, metrics. Content is kept when off. Requires 'Manage clients'.",
+    examples: ["Turn on the Comparisons section for Speakify.", "Hide Running costs on Big Wedge's wiki."],
+  },
+  {
     name: "list_wiki",
     blurb:
       "Overview of a client's wiki — which pages exist, which of the 11 page types are still empty, and section counts (changelog, monitors, docs, requests, team).",

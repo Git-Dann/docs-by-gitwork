@@ -10,6 +10,7 @@ import {
   BoltIcon,
   BookOpenIcon,
   CalculatorIcon,
+  TableCellsIcon,
   CalendarDaysIcon,
   ChartBarIcon,
   ChartBarSquareIcon,
@@ -39,6 +40,7 @@ import { summariseDelivery } from "@/lib/wiki-delivery";
 import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
 import { buildEstimateReadout, planDurationParts, formatShortDate, isPlannable } from "@/lib/wiki-estimates";
 import { summariseRoundup } from "@/lib/wiki-roundup";
+import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
 import { formatMetric, metricTrend } from "@/lib/wiki-metrics";
 import { upcomingRenewals } from "@/lib/wiki-platforms";
 import { metricsHeadline } from "./wiki-metrics-section";
@@ -77,6 +79,7 @@ const SECTION_META: Record<
   insights: { label: "Charts", icon: ChartPieIcon },
   costs: { label: "Running costs", icon: BanknotesIcon },
   estimates: { label: "Estimates", icon: CalculatorIcon },
+  comparisons: { label: "Comparisons", icon: TableCellsIcon },
   roundup: { label: "RoundUp", icon: NewspaperIcon },
   delivery: { label: "Delivery", icon: ChartBarSquareIcon },
   support: { label: "Support", icon: LifebuoyIcon },
@@ -595,6 +598,33 @@ export function WikiDashboard({
             </div>
             <p className="truncate text-[12px] text-[var(--text-4)]" title={estimate.title}>
               {estimate.title} · done by {formatShortDate(plan.end)}
+            </p>
+          </div>
+        );
+      }
+      case "comparisons": {
+        // A real case, not the markdown-doc default (§52.1). It names what is being
+        // compared — the first table and its columns — rather than counting rows.
+        const tables = wiki.comparisons.comparisons.filter(isPublishableComparison);
+        const first = tables[0];
+        if (!first) {
+          return <p className="text-[13px] text-[var(--text-4)]">No comparisons yet.</p>;
+        }
+        const titles = first.columns.map((c) => c.title);
+        const shown = titles.slice(0, 4).join(" · ");
+        const more = titles.length > 4 ? ` +${titles.length - 4}` : "";
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(tables.length)} label={tables.length === 1 ? "Table" : "Tables"} />
+              <Metric value={String(first.columns.length)} label={first.columns.length === 1 ? "Column" : "Columns"} />
+            </div>
+            <p className="truncate text-[13px] text-[var(--text-2)]" title={first.title}>
+              {first.title}
+            </p>
+            <p className="truncate text-[12px] text-[var(--text-4)]" title={titles.join(" · ")}>
+              {shown}
+              {more}
             </p>
           </div>
         );
