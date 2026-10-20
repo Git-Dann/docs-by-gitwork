@@ -67,7 +67,9 @@ import type {
 /** Rows rendered at once; "Show more" adds this many. 2,000 live inputs would be slow. */
 const CHUNK = 200;
 const SELECT_W = 44;
-const BOARD_W = 150;
+const BOARD_W = 172;
+/** The least width of data a viewer must see between the pinned columns before we pin. */
+const MIN_DATA_WINDOW = 240;
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
 type StageFilter = "all" | "none" | RequestStage;
@@ -119,7 +121,7 @@ export function StageChip({ stage }: { stage: RequestStage | null }) {
   return (
     <span
       title={STAGE_HINT[stage]}
-      className={`inline-flex items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase ${STAGE_STYLE[stage]}`}
+      className={`inline-flex shrink-0 items-center rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] whitespace-nowrap uppercase ${STAGE_STYLE[stage]}`}
       style={{ fontFamily: MONO }}
     >
       {STAGE_LABEL[stage]}
@@ -427,6 +429,24 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   const [notice, setNotice] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef(new Map<string, HTMLElement>());
+  const wasActiveOnPress = useRef(false);
+  // Pin the first column and Board only when there's room left for the data between them.
+  // At 768px the wiki's content column is ~440px — pinned, 44 + 200 + 150px of fixed
+  // columns left ~44px of window onto the data, so every other column was unreachable
+  // behind them (found by the headless check, not by any test). Unpinned, it all scrolls.
+  const [pin, setPin] = useState(true);
+  const pinnedWidth = SELECT_W + (columns[0] ? columnWidth(columns[0]) : 0) + BOARD_W;
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const check = () => {
+      if (el.clientWidth > 0) setPin(el.clientWidth >= pinnedWidth + MIN_DATA_WINDOW);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pinnedWidth]);
 
   const canEditCol = useCallback(
     (c: SheetColumn) => internal || clientCanEditColumn(sheet, c),
@@ -502,7 +522,14 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
 
   const focusCell = useCallback((rowId: string, col: number) => {
     setActive({ rowId, col });
-    requestAnimationFrame(() => cellRefs.current.get(`${rowId}:${col}`)?.focus());
+    requestAnimationFrame(() => {
+      const el = cellRefs.current.get(`${rowId}:${col}`);
+      if (!el) return;
+      // scrollIntoView honours the scroller's scroll-padding (clear of the pinned columns);
+      // focus()'s own scroll does not, so it is told not to.
+      el.focus({ preventScroll: true });
+      el.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    });
   }, []);
 
   const move = useCallback(
@@ -916,6 +943,15 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
             ref={gridRef}
             data-sheet-scroller
             className="hidden max-h-[min(70vh,720px)] overflow-auto sm:block"
+            // A cell scrolled into view (by focus, arrow keys or a click) must land clear of
+            // the pinned columns and header, not underneath them — otherwise on a narrow
+            // window the cell you moved to is hidden by the very columns meant to orient you.
+            style={{
+              scrollPaddingLeft: pin ? pinnedWidth - BOARD_W : 0,
+              scrollPaddingRight: pin ? BOARD_W : 0,
+              scrollPaddingTop: 40,
+            }}
+            data-pinned={pin || undefined}
           >
             <div role="grid" aria-label={sheet.title} aria-rowcount={visible.length + 1} style={{ minWidth }}>
               <div
@@ -923,7 +959,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                 className="sticky top-0 z-20 grid border-b border-[var(--border-1)] bg-[var(--surface-1)]"
                 style={{ gridTemplateColumns: gridTemplate }}
               >
-                <div role="columnheader" className="sticky left-0 z-10 flex items-center justify-center bg-[var(--surface-1)] px-2 py-2">
+                <div role="columnheader" className={`${pin ? "sticky left-0" : ""} z-10 flex items-center justify-center bg-[var(--surface-1)] px-2 py-2`}>
                   {selectable.length > 0 && (
                     <input
                       type="checkbox"
@@ -940,9 +976,9 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                     role="columnheader"
                     title={`${c.title} · ${COLUMN_TYPE_LABEL[c.type]}${!canEditCol(c) ? " · read-only" : ""}`}
                     className={`flex min-w-0 items-center gap-1.5 border-l border-[var(--border-1)] px-2 py-2 text-[10px] font-semibold tracking-[0.1em] text-[var(--text-3)] uppercase ${
-                      ci === 0 ? "sticky z-10 bg-[var(--surface-1)]" : ""
+                      ci === 0 && pin ? "sticky z-10 bg-[var(--surface-1)]" : ""
                     } ${c.type === "number" ? "justify-end" : ""}`}
-                    style={{ fontFamily: MONO, ...(ci === 0 ? { left: SELECT_W } : {}) }}
+                    style={{ fontFamily: MONO, ...(ci === 0 && pin ? { left: SELECT_W } : {}) }}
                   >
                     <span className="truncate">{c.title}</span>
                     {c.id === titleCol?.id && internal && <span className="shrink-0 text-[var(--text-4)]">· title</span>}
@@ -955,7 +991,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                 ))}
                 <div
                   role="columnheader"
-                  className="sticky right-0 z-10 border-l border-[var(--border-1)] bg-[var(--surface-1)] px-2 py-2 text-[10px] font-semibold tracking-[0.1em] text-[var(--text-3)] uppercase"
+                  className={`${pin ? "sticky right-0" : ""} z-10 border-l border-[var(--border-1)] bg-[var(--surface-1)] px-2 py-2 text-[10px] font-semibold tracking-[0.1em] text-[var(--text-3)] uppercase`}
                   style={{ fontFamily: MONO }}
                 >
                   Board
@@ -983,7 +1019,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                   >
                     <div
                       role="gridcell"
-                      className={`sticky left-0 z-[5] flex items-center justify-between gap-1 px-2 ${isSel ? "bg-[var(--surface-1)]" : "bg-[var(--surface-0)]"}`}
+                      className={`${pin ? "sticky left-0" : ""} z-[5] flex items-center justify-between gap-1 px-2 ${isSel ? "bg-[var(--surface-1)]" : "bg-[var(--surface-0)]"}`}
                     >
                       {(internal || row.mine || (canSend && !row.taskId)) ? (
                         <input
@@ -1018,19 +1054,27 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                             if (el) cellRefs.current.set(key, el);
                             else cellRefs.current.delete(key);
                           }}
+                          // Spreadsheet behaviour: the first click selects, a click on the
+                          // already-selected cell edits. Whether it was selected is read at
+                          // mousedown — by click time onFocus has already made it active, so
+                          // checking then would turn every single click into an edit.
+                          onMouseDown={() => {
+                            wasActiveOnPress.current = isActive && !isEditing;
+                          }}
                           onClick={() => {
-                            if (isActive && !isEditing) startEdit(row, ci);
+                            if (wasActiveOnPress.current) startEdit(row, ci);
                             else setActive({ rowId: row.id, col: ci });
+                            wasActiveOnPress.current = false;
                           }}
                           onDoubleClick={() => startEdit(row, ci)}
                           onFocus={() => setActive({ rowId: row.id, col: ci })}
                           onKeyDown={(e) => onCellKey(e, row, ci)}
                           className={`relative flex min-h-[36px] min-w-0 items-center border-l border-[var(--border-1)] text-[13px] text-[var(--text-1)] outline-none ${
-                            ci === 0 ? `sticky z-[5] font-medium ${isSel ? "bg-[var(--surface-1)]" : "bg-[var(--surface-0)]"}` : ""
+                            ci === 0 ? `${pin ? "sticky" : ""} z-[5] font-medium ${isSel ? "bg-[var(--surface-1)]" : "bg-[var(--surface-0)]"}` : ""
                           } ${isEditing && (c.type !== "select" && c.type !== "long_text") ? "p-0" : "px-2"} ${
                             isActive ? "ring-2 ring-inset ring-[var(--brand-600,#1D4ED8)]" : ""
                           } ${editable ? "cursor-cell" : "cursor-default text-[var(--text-2)]"}`}
-                          style={ci === 0 ? { left: SELECT_W } : undefined}
+                          style={ci === 0 && pin ? { left: SELECT_W } : undefined}
                         >
                           {isEditing && editing ? (
                             c.type === "select" || c.type === "long_text" ? (
@@ -1074,7 +1118,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                     })}
                     <div
                       role="gridcell"
-                      className={`sticky right-0 z-[5] flex min-w-0 items-center gap-1.5 border-l border-[var(--border-1)] px-2 ${isSel ? "bg-[var(--surface-1)]" : "bg-[var(--surface-0)]"}`}
+                      className={`${pin ? "sticky right-0" : ""} z-[5] flex min-w-0 items-center gap-1.5 border-l border-[var(--border-1)] px-2 ${isSel ? "bg-[var(--surface-1)]" : "bg-[var(--surface-0)]"}`}
                     >
                       <BoardCell
                         row={row}

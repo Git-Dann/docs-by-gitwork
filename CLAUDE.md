@@ -1799,7 +1799,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -7013,3 +7013,98 @@ Fourteen sabotages each failed the test named for them.
 **Not verified:** a real database. Post-deploy: Add New → Comparisons, create from a template,
 add a 6th column and confirm it scrolls with the feature column pinned, then open the share link
 on a phone and check the compare-two view.
+
+## 73. Recent Changes (October 2026) — Sheets: a client-editable spreadsheet linked to the task board
+
+Harry's ask: the team and clients keep lists of things to build in Google Sheets, with links
+everywhere, and none of it reaches the board. **Sheets** (section id `sheets`) is a typed grid in
+the client's wiki that **the client edits themselves**. Any row can be **sent to the dev board**,
+and the row then shows how far that task has got.
+
+- **Data.** `ClientWiki.sheetsEnabled` + `WikiSheet` (typed `columns` JSON, `titleColumnId`, and
+  three client permissions: `clientCanEdit`, `clientCanAddRows`, and `clientCanSendToBoard`, which
+  defaults OFF). `WikiSheetRow` is its own table, not JSON on the sheet, because both sides edit
+  rows at once. It holds `cells` JSON, a loose `taskId`, who created it and last edited it, and
+  `deletedAt`. Rows are soft-deleted, so a client can't silently erase history and the team can
+  restore them. All additive.
+- **One set of rules**, in `src/lib/wiki-sheets.ts` (pure). The grid, server, Zod and MCP all use:
+  - `coerceCellValue`, one rule per type for text, long text, number, date, select, checkbox, link
+    and person. It accepts what a Google Sheets paste carries (UK `DD/MM/YYYY`, `£1,200`, `TRUE`)
+    and refuses anything else with a sentence.
+  - The limits: 40 columns, 2,000 rows, 40 sheets, 500 rows per batch.
+  - Paste parsing (RFC 4180 quoting, tab or comma) and CSV/TSV export. CSV neutralises `=`/`+`/`-`/`@`
+    formula injection.
+  - The client-permission predicates.
+  - ⚠️ Links use a **protocol allow-list**. `javascript://host/%0a…` has a hostname, so the
+    hostname check alone does not stop it. A test covers exactly that case.
+- **Stage is derived, never stored (§47.2).** `deriveSheetRowStage` reuses `deriveRequestStage`.
+  The loader batch-reads the linked tasks in one query. A `taskId` whose task is gone reads
+  REVIEWING, never Scheduled, and the team may send that row again.
+- **Cells merge per cell in SQL** (`cells || patch - cleared`, in `mergeCells`), never as a
+  whole-row replace. So the client and the team editing different cells of one row both land. If
+  they edit the same cell, the last write wins. The grid keeps optimistic rows plus a `pending`
+  overlay, so a refetch can't undo a save that is still in flight.
+- **Client writes** go through `/api/wiki/[token]/sheets/[sheetId]/rows(/[rowId])`.
+  - They use Launchpad's hardened posture (`wiki-sheets-access.ts`): token → section on → a
+    per-section share link must be FOR sheets → wiki-access cookie or a Gitwork session → per-IP
+    rate limit.
+  - Everything is enforced in `src/server/wiki-sheets.ts`: only client-editable columns of
+    client-editable sheets, rows only if allowed, deleting only rows *they* added (by wiki user id),
+    and sending only if allowed.
+  - There is **no** client route for columns or sheets, and the wiring test asserts that.
+  - "Rows you added" is decided on the server for the page (`applySheetViewer`, like
+    `applyCommentViewer`). `forPublicSheets` strips client user ids, assignees and deleted rows,
+    and sends nothing while the section is off.
+- **Internal routes** are under `/api/clients/[slug]/wiki/sheets/…`. Every handler goes through
+  `resolveInternalSheets`, which requires 'Manage clients' **and** `assertClientAccessBySlug` (§71).
+  A test counts handlers against gates.
+- **Send to board.** It creates a BACKLOG task titled from the title column, with the other cells
+  as `**Column:** value` lines plus a link back. It can optionally go in a category (feature
+  block). It is **idempotent**: a row with a live task returns that task. The stamp is guarded on
+  the `taskId` that was read, so two concurrent sends can't both create a task. A client send
+  notifies the team (`tasks.client_request`). A row with an empty title cell is refused.
+- **Notifications.** A client edit triggers `wiki.sheet_client_edit` (in-app). It is limited to
+  **once per sheet per 15 minutes**, claimed with a conditional update so concurrent edits can't
+  both send one.
+- **Grid** (`sheet-grid.tsx`):
+  - It has its own scroller holding the header and the rows (§45.2). The header is sticky, and the
+    first column and Board are pinned.
+  - Keyboard: arrows, Tab/Shift-Tab and Enter work as in a spreadsheet. Typing starts editing,
+    Escape cancels and Delete clears.
+  - Dropdowns and long text open in portalled popovers (§55).
+  - Inputs are 16px on a phone. Below `sm` each row is a card, edited in a dialog.
+  - The toolbar has fuzzy search, a stage filter, Paste (preview first, `.app-dialog-fixed`), Copy
+    (TSV for Google Sheets) and CSV. When rows are selected it is replaced by a batch bar: send,
+    remove, restore.
+  - Team view only: an amber dot marks a row last edited by the client.
+- ⚠️ **Two defects the headless check found and no test did.** Both now have tests:
+  - **The pinned columns hid the data.** At 768px the wiki's content column is ~440px, and 44 +
+    200 + 172px of pinned columns left almost nothing for the data, so every other column was
+    unreachable behind them. Now the columns pin only when there's ≥240px of data window
+    (`MIN_DATA_WINDOW`, measured with a ResizeObserver). `scroll-padding` keeps a focused cell
+    clear of the pins.
+  - **One click opened the editor.** `onFocus` had already marked the cell active by the time
+    `onClick` ran. Whether the cell was already selected is now read on mousedown.
+  - ⚠️ The jsdom test for the click bug **passed with the bug in place** until mousedown, focus and
+    click were split into separate `act()` calls. A single `act` batches them, so the click sees
+    the state from before the focus.
+- **MCP** (`src/server/mcp/sheet-tools.ts`, a factory spread into `TOOLS`): `list_sheets`,
+  `get_sheet`, `create_sheet`, `update_sheet`, `add_sheet_columns`, `update_sheet_column`,
+  `remove_sheet_column`, `add_sheet_rows`, `update_sheet_rows`, `delete_sheet_rows`,
+  `send_sheet_rows_to_board` and `delete_sheet`, plus `sheets` in `enable_wiki_section`.
+  - Cells are addressed by column title. Rows are addressed by id or by the exact text of the title
+    cell, and an ambiguous match is an error.
+  - `update_sheet_rows` validates every row and value before writing anything.
+  - The parity test now reads `sheet-tools.ts` too, at 6-space indentation.
+
+**Verified:** `npm run verify` and `npx next build`, with the figures in the commit. Fourteen
+sabotages each failed the tests named for them. Driven headlessly at `/demo/wiki#sheets` (the demo
+applies writes to its fixture, `src/lib/demo/demo-sheets.ts`) at 390 · 768 · 1280×620 · 1440, in
+view, text editing, dropdown, phone row dialog and paste dialog: 0 clipping findings and 0 page
+overflow. Pinned columns never cover a cell, and a typed value survives the save.
+
+**Not verified:** a real database (the `$executeRaw` merge has only run against a mock), and the
+client's share page in a browser. Post-deploy:
+1. Add New → Sheets, create one from a template and paste in a few rows from Google Sheets.
+2. Send a row to the board, move its task to Doing, and reload to confirm it reads In progress.
+3. On the share link as a client user, edit a cell and confirm a locked column refuses the edit.

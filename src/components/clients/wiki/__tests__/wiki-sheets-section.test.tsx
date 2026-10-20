@@ -146,7 +146,8 @@ describe("layout", () => {
     expect(rows.length).toBe(4); // header + 3
     // Both the header and the body rows are inside this one scroller (not a nested one).
     for (const row of rows) {
-      let el: Element | null = row.parentElement;
+      // Self included: a row that scrolls on its own desyncs from the rest just the same.
+      let el: Element | null = row;
       while (el && !(el as HTMLElement).dataset?.sheetScroller) {
         expect((el as HTMLElement).className ?? "").not.toMatch(/overflow-(x-)?auto/);
         el = el.parentElement;
@@ -157,6 +158,31 @@ describe("layout", () => {
     expect(cell(1, 0).className).toContain("sticky");
     const board = rows[1].querySelectorAll('[role="gridcell"]');
     expect(board[board.length - 1].className).toContain("sticky right-0");
+  });
+
+  it("a narrow window un-pins the columns rather than hiding the data behind them", () => {
+    // 440px is the wiki's content column at a 768px viewport: pinned, 44 + 200 + 150px of
+    // fixed columns would leave ~44px for everything else.
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const g = globalThis as { ResizeObserver?: unknown };
+    const prevRO = g.ResizeObserver;
+    g.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+    };
+    Object.defineProperty(proto, "clientWidth", { configurable: true, get: () => 440 });
+    try {
+      mount("internal");
+      expect(cell(1, 0).className.split(/\s+/)).not.toContain("sticky");
+      const rows = host.querySelectorAll('[data-sheet-scroller] [role="row"]');
+      const board = rows[1].querySelectorAll('[role="gridcell"]');
+      expect(board[board.length - 1].className).not.toContain("sticky right-0");
+    } finally {
+      if (desc) Object.defineProperty(proto, "clientWidth", desc);
+      else delete proto.clientWidth;
+      g.ResizeObserver = prevRO;
+    }
   });
 
   it("a phone gets cards, not the grid", () => {
@@ -201,6 +227,24 @@ describe("keyboard", () => {
     });
     expect(calls.cells).toHaveLength(1);
     expect(calls.cells[0]).toEqual([{ mode: "internal", slug: "northwind" }, "s1", "r2", { item: "Z" }]);
+  });
+
+  it("the first click selects a cell; a click on the selected cell edits it", () => {
+    mount("internal");
+    const c = cell(2, 0);
+    // Three separate acts, as a browser delivers them: each discrete event re-renders before
+    // the next. One act would batch them, the click would see the pre-focus state, and the
+    // test would pass with the bug in place (it did — checked by sabotage).
+    const press = () => {
+      act(() => void c.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+      act(() => c.focus()); // focus lands on mousedown, before click — the trap
+      act(() => void c.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    };
+    press();
+    expect(c.getAttribute("aria-selected")).toBe("true");
+    expect(c.querySelector("input")).toBeNull();
+    press();
+    expect(c.querySelector("input")).not.toBeNull();
   });
 
   it("Escape cancels and sends nothing", () => {

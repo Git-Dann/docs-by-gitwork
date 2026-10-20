@@ -84,7 +84,8 @@ describe("coerceCellValue — one rule per type, shared by the grid, the server 
   it("links: http(s) only — an allow-list, so javascript:/data:/vbscript:/file: never become an href", () => {
     expect(safeSheetLink("https://example.com/a")).toBe("https://example.com/a");
     expect(safeSheetLink("example.com/pricing")).toBe("https://example.com/pricing");
-    for (const bad of ["javascript:alert(1)", "data:text/html,<b>x</b>", "vbscript:msgbox", "file:///etc/passwd", "not a url"]) {
+    // `javascript://host/%0a…` HAS a hostname, so only the protocol allow-list stops it.
+    for (const bad of ["javascript:alert(1)", "javascript://example.com/%0aalert(1)", "ftp://example.com/x", "data:text/html,<b>x</b>", "vbscript:msgbox", "file:///etc/passwd", "not a url"]) {
       expect(safeSheetLink(bad), bad).toBeNull();
       expect(coerceCellValue(col("link"), bad).ok, bad).toBe(false);
     }
