@@ -442,3 +442,82 @@ describe("the truncation tooltip", () => {
     expect(c.getAttribute("aria-describedby")).toBe(tip.id);
   });
 });
+
+/* §73.3 — bulk set from the floating bar, and the two-pane settings dialog. */
+
+const withPlatform = () =>
+  sheet({
+    columns: [
+      { id: "item", title: "Item", type: "text", clientEditable: true },
+      { id: "platform", title: "Platform", type: "select", options: ["iOS", "Android", "Flutter"], clientEditable: true },
+      { id: "lukes", title: "Luke's notes", type: "long_text", clientEditable: false },
+    ],
+  });
+const click = (el: Element | null | undefined) =>
+  act(() => {
+    (el as HTMLElement).click();
+  });
+const byText = (root: ParentNode, sel: string, text: string) =>
+  [...root.querySelectorAll<HTMLElement>(sel)].find((b) => b.textContent?.trim().startsWith(text));
+
+describe("bulk set from the floating batch bar", () => {
+  it("floats at the bottom of the page and sets one column on every selected row", async () => {
+    mount("internal", withPlatform());
+    click(host.querySelector('input[aria-label="Select all rows shown"]'));
+    const bar = document.body.querySelector<HTMLElement>("[data-sheet-batch-bar]")!;
+    expect(bar).toBeTruthy();
+    expect(host.contains(bar)).toBe(false); // portalled, so the card can't clip it
+    expect(bar.className).toContain("fixed");
+    click(bar.querySelector("[data-bulk-set]"));
+    click(byText(document.body, '[role="menuitem"]', "Platform"));
+    click(byText(document.body, '[role="menuitem"]', "iOS"));
+    await wait(20);
+    const writes = calls.cells.map((c) => [c[2], c[3]]);
+    expect(writes).toEqual(
+      expect.arrayContaining([
+        ["r1", { platform: "iOS" }],
+        ["r2", { platform: "iOS" }],
+        ["r3", { platform: "iOS" }],
+      ]),
+    );
+    expect(writes).toHaveLength(3);
+  });
+
+  it("offers the client only the columns they may edit", () => {
+    mount("public", withPlatform());
+    click(host.querySelector('input[aria-label="Select all rows shown"]'));
+    const bar = document.body.querySelector<HTMLElement>("[data-sheet-batch-bar]");
+    expect(bar).toBeTruthy();
+    click(bar!.querySelector("[data-bulk-set]"));
+    const items = [...document.body.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent);
+    expect(items.some((t) => t?.startsWith("Platform"))).toBe(true);
+    expect(items.some((t) => t?.startsWith("Luke's notes"))).toBe(false);
+  });
+
+  it("goes away when the selection is cleared", () => {
+    mount("internal", withPlatform());
+    click(host.querySelector('input[aria-label="Select all rows shown"]'));
+    click(byText(document.body, "[data-sheet-batch-bar] button", "Clear"));
+    expect(document.body.querySelector("[data-sheet-batch-bar]")).toBeNull();
+  });
+});
+
+describe("sheet settings", () => {
+  it("is a two-pane popup: sheet first, then one column at a time", () => {
+    mount("internal", withPlatform());
+    click(document.body.querySelector('button[aria-label="Sheet settings: Content to build"]'));
+    const nav = document.body.querySelector<HTMLElement>('nav[aria-label="Settings sections"]')!;
+    expect([...nav.querySelectorAll("button")].map((b) => b.title || b.textContent?.trim())).toEqual([
+      "Sheet",
+      "Item",
+      "Platform",
+      "Luke's notes",
+    ]);
+    expect(document.body.textContent).toContain("What the client can do");
+    expect(document.body.querySelector('input[aria-label^="Add an option"]')).toBeNull();
+    click(byText(nav, "button", "Platform"));
+    expect(document.body.textContent).toContain("Options · 3");
+    expect(document.body.querySelector('button[aria-label="Remove option iOS"]')).toBeTruthy();
+    expect(document.body.textContent).not.toContain("What the client can do");
+  });
+});

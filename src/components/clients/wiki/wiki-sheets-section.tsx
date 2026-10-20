@@ -311,6 +311,13 @@ function NewSheetDialog({
 }
 
 /** Team: rename, title column, the client's permissions, columns (type / options / lock / order), delete. */
+type SettingsPane = { kind: "sheet" } | { kind: "column"; id: string };
+
+/**
+ * Sheet settings — the standard two-column popup (DESIGN.md): pick on the left (the sheet
+ * itself, then each column), edit on the right. Fixed height, so moving between columns
+ * never resizes the box. Every change saves as it's made.
+ */
 function SheetSettingsDialog({
   slug,
   sheet,
@@ -324,8 +331,7 @@ function SheetSettingsDialog({
   onChanged: () => void;
   onDeleted: () => void;
 }) {
-  const [title, setTitle] = useState(sheet.title);
-  const [description, setDescription] = useState(sheet.description ?? "");
+  const [pane, setPane] = useState<SettingsPane>({ kind: "sheet" });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -339,104 +345,78 @@ function SheetSettingsDialog({
     }
   };
   const patchSheet = (p: Parameters<typeof updateWikiSheetApi>[2]) => run(() => updateWikiSheetApi(slug, sheet.id, p));
+  const colIndex = pane.kind === "column" ? sheet.columns.findIndex((c) => c.id === pane.id) : -1;
+  const column = colIndex >= 0 ? sheet.columns[colIndex] : null;
+
+  const railItem = (active: boolean) =>
+    `flex w-full min-w-0 items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] ${
+      active ? "bg-[var(--brand-50,rgba(29,78,216,0.08))] text-[var(--brand-600,#1D4ED8)]" : "text-[var(--text-2)] hover:bg-[var(--surface-1)]"
+    }`;
 
   return (
-    <Modal open onClose={onClose} title="SHEET SETTINGS" panelClassName="app-dialog-fixed w-full max-w-2xl">
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-[12px] text-[var(--text-3)]">
-            Title
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={() => title.trim() && title !== sheet.title && void patchSheet({ title: title.trim() })}
-              maxLength={SHEET_LIMITS.maxTitle}
-              className="app-input mt-1 w-full text-base sm:text-sm"
-            />
-          </label>
-          <label className="block text-[12px] text-[var(--text-3)]">
-            Task title comes from
-            <select
-              value={sheet.titleColumnId ?? ""}
-              onChange={(e) => void patchSheet({ titleColumnId: e.target.value || null })}
-              className="app-input app-select-chevron mt-1 w-full pr-9 text-base sm:text-sm"
-            >
-              <option value="">First text column</option>
-              {sheet.columns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-[12px] text-[var(--text-3)] sm:col-span-2">
-            Description (the client sees this)
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={() => description !== (sheet.description ?? "") && void patchSheet({ description: description.trim() || null })}
-              maxLength={SHEET_LIMITS.maxDescription}
-              className="app-input mt-1 min-h-[64px] w-full py-2 text-base leading-6 sm:text-sm"
-            />
-          </label>
-        </div>
-
-        <fieldset className="space-y-2">
-          <legend className="text-[10px] tracking-[0.1em] text-[var(--text-3)] uppercase" style={{ fontFamily: MONO }}>
-            What the client can do
-          </legend>
-          {(
-            [
-              ["clientCanEdit", "Edit cells (in columns marked editable below)"],
-              ["clientCanAddRows", "Add rows"],
-              ["clientCanSendToBoard", "Send rows to the task board"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-2 text-[13px] text-[var(--text-2)]">
-              <input
-                type="checkbox"
-                checked={sheet[key]}
-                onChange={(e) => void patchSheet({ [key]: e.target.checked })}
-                className="h-4 w-4"
-              />
-              {label}
-            </label>
-          ))}
-        </fieldset>
-
-        <div>
-          <p className="mb-2 text-[10px] tracking-[0.1em] text-[var(--text-3)] uppercase" style={{ fontFamily: MONO }}>
-            Columns
+    <Modal open onClose={onClose} title="SHEET SETTINGS" panelClassName="app-dialog-fixed w-full max-w-3xl">
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[220px_minmax(0,1fr)] sm:grid-rows-1">
+        <nav
+          aria-label="Settings sections"
+          className="flex min-h-0 gap-1 overflow-x-auto border-b border-[var(--border-1)] p-2 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:border-r sm:border-b-0"
+        >
+          <button type="button" className={`${railItem(pane.kind === "sheet")} shrink-0 sm:shrink`} onClick={() => setPane({ kind: "sheet" })}>
+            <Cog6ToothIcon className="h-4 w-4 shrink-0" />
+            <span className="truncate">Sheet</span>
+          </button>
+          <p className="hidden px-2.5 pt-3 pb-1 text-[10px] tracking-[0.1em] text-[var(--text-4)] uppercase sm:block" style={{ fontFamily: MONO }}>
+            Columns · {sheet.columns.length}
           </p>
-          <ul className="divide-y divide-[var(--border-1)] rounded-[8px] border border-[var(--border-1)]">
-            {sheet.columns.map((c, i) => (
-              <ColumnSettingsRow
-                key={c.id}
-                column={c}
-                first={i === 0}
-                last={i === sheet.columns.length - 1}
-                onPatch={(p) =>
-                  run(async () => {
-                    const res = await updateWikiSheetColumnApi(slug, sheet.id, c.id, p);
-                    setNotice(
-                      res.cleared > 0
-                        ? `${res.cleared} value${res.cleared === 1 ? "" : "s"} in "${c.title}" didn't fit the new type and were cleared.`
-                        : null,
-                    );
-                  })
+          {sheet.columns.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              title={c.title}
+              className={`${railItem(pane.kind === "column" && pane.id === c.id)} shrink-0 sm:shrink`}
+              onClick={() => {
+                setNotice(null);
+                setPane({ kind: "column", id: c.id });
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{c.title}</span>
+              <span className="hidden shrink-0 text-[10px] tracking-[0.06em] text-[var(--text-4)] uppercase sm:inline" style={{ fontFamily: MONO }}>
+                {COLUMN_TYPE_LABEL[c.type]}
+              </span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+          {pane.kind === "sheet" || !column ? (
+            <SheetGeneralPane key={sheet.id} sheet={sheet} onPatch={patchSheet} />
+          ) : (
+            <ColumnPane
+              key={column.id}
+              column={column}
+              first={colIndex === 0}
+              last={colIndex === sheet.columns.length - 1}
+              onPatch={(p) =>
+                run(async () => {
+                  const res = await updateWikiSheetColumnApi(slug, sheet.id, column.id, p);
+                  setNotice(
+                    res.cleared > 0
+                      ? `${res.cleared} value${res.cleared === 1 ? "" : "s"} in "${column.title}" didn't fit the new type and were cleared.`
+                      : null,
+                  );
+                })
+              }
+              onMove={(d) => run(() => updateWikiSheetColumnApi(slug, sheet.id, column.id, { position: colIndex + d }))}
+              onRemove={() => {
+                if (window.confirm(`Remove the column "${column.title}"? Its values will no longer show.`)) {
+                  setPane({ kind: "sheet" });
+                  void run(() => removeWikiSheetColumnApi(slug, sheet.id, column.id));
                 }
-                onMove={(d) => run(() => updateWikiSheetColumnApi(slug, sheet.id, c.id, { position: i + d }))}
-                onRemove={() => {
-                  if (window.confirm(`Remove the column "${c.title}"? Its values will no longer show.`)) {
-                    void run(() => removeWikiSheetColumnApi(slug, sheet.id, c.id));
-                  }
-                }}
-              />
-            ))}
-          </ul>
+              }}
+            />
+          )}
+          {notice && <p className="mt-4 text-[12px] text-[var(--warning-500)]">{notice}</p>}
+          {error && <p className="mt-4 text-[12px] text-[var(--danger-500)]">{error}</p>}
         </div>
-        {notice && <p className="text-[12px] text-[var(--warning-500)]">{notice}</p>}
-        {error && <p className="text-[12px] text-[var(--danger-500)]">{error}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border-1)] px-4 py-3">
         <button
@@ -454,7 +434,8 @@ function SheetSettingsDialog({
         >
           Delete sheet
         </button>
-        <button type="button" className="app-button app-button-primary app-button-sm ml-auto" onClick={onClose}>
+        <span className="ml-auto hidden text-[11px] text-[var(--text-4)] sm:inline">Changes save as you make them.</span>
+        <button type="button" className="app-button app-button-primary app-button-sm max-sm:ml-auto" onClick={onClose}>
           Done
         </button>
       </div>
@@ -462,7 +443,84 @@ function SheetSettingsDialog({
   );
 }
 
-function ColumnSettingsRow({
+function PaneLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-1.5 text-[10px] tracking-[0.1em] text-[var(--text-3)] uppercase" style={{ fontFamily: MONO }}>
+      {children}
+    </p>
+  );
+}
+
+function SheetGeneralPane({ sheet, onPatch }: { sheet: WikiSheet; onPatch: (p: Parameters<typeof updateWikiSheetApi>[2]) => void }) {
+  const [title, setTitle] = useState(sheet.title);
+  const [description, setDescription] = useState(sheet.description ?? "");
+  return (
+    <div className="space-y-5">
+      <label className="block">
+        <PaneLabel>Title</PaneLabel>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => title.trim() && title !== sheet.title && onPatch({ title: title.trim() })}
+          maxLength={SHEET_LIMITS.maxTitle}
+          className="app-input w-full text-base sm:text-sm"
+        />
+      </label>
+      <label className="block">
+        <PaneLabel>Description · the client sees this</PaneLabel>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={() => description !== (sheet.description ?? "") && onPatch({ description: description.trim() || null })}
+          maxLength={SHEET_LIMITS.maxDescription}
+          className="app-input min-h-[72px] w-full py-2 text-base leading-6 sm:text-sm"
+        />
+      </label>
+      <label className="block">
+        <PaneLabel>Task title comes from</PaneLabel>
+        <select
+          value={sheet.titleColumnId ?? ""}
+          onChange={(e) => onPatch({ titleColumnId: e.target.value || null })}
+          className="app-input app-select-chevron w-full pr-9 text-base sm:text-sm"
+        >
+          <option value="">First text column</option>
+          {sheet.columns.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </select>
+      </label>
+      <fieldset>
+        <PaneLabel>What the client can do</PaneLabel>
+        <div className="divide-y divide-[var(--border-1)] rounded-[8px] border border-[var(--border-1)]">
+          {(
+            [
+              ["clientCanEdit", "Edit cells", "Only in columns set to “Client can edit”."],
+              ["clientCanAddRows", "Add rows", "New rows are marked as theirs."],
+              ["clientCanSendToBoard", "Send rows to the task board", "Each send notifies the team."],
+            ] as const
+          ).map(([key, label, hint]) => (
+            <label key={key} className="flex cursor-pointer items-start gap-3 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={sheet[key]}
+                onChange={(e) => onPatch({ [key]: e.target.checked })}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="block text-[13px] text-[var(--text-1)]">{label}</span>
+                <span className="block text-[12px] text-[var(--text-3)]">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    </div>
+  );
+}
+
+function ColumnPane({
   column,
   first,
   last,
@@ -478,23 +536,35 @@ function ColumnSettingsRow({
   onRemove: () => void;
 }) {
   const [title, setTitle] = useState(column.title);
-  const [options, setOptions] = useState((column.options ?? []).join(", "));
+  const [draftOption, setDraftOption] = useState("");
+  const options = column.options ?? [];
+  const addOption = () => {
+    const next = draftOption
+      .split(/[,\n]/)
+      .map((o) => o.trim())
+      .filter((o) => o && !options.includes(o));
+    setDraftOption("");
+    if (next.length) onPatch({ options: [...options, ...next] });
+  };
   return (
-    <li className="space-y-2 p-2.5">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-5">
+      <label className="block">
+        <PaneLabel>Column title</PaneLabel>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => title.trim() && title !== column.title && onPatch({ title: title.trim() })}
-          aria-label="Column title"
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
           maxLength={SHEET_LIMITS.maxColumnTitle}
-          className="app-input h-8 min-w-[140px] flex-1 py-0 text-base sm:text-[13px]"
+          className="app-input w-full text-base sm:text-sm"
         />
+      </label>
+      <label className="block">
+        <PaneLabel>Type</PaneLabel>
         <select
           value={column.type}
           onChange={(e) => onPatch({ type: e.target.value as SheetColumnType })}
-          aria-label="Column type"
-          className="app-input app-select-chevron h-8 w-auto py-0 pr-8 pl-2 text-base sm:text-[13px]"
+          className="app-input app-select-chevron w-full pr-9 text-base sm:text-sm"
         >
           {COLUMN_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -502,39 +572,74 @@ function ColumnSettingsRow({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 text-[12px] text-[var(--text-3)]">
-          <input
-            type="checkbox"
-            checked={column.clientEditable}
-            onChange={(e) => onPatch({ clientEditable: e.target.checked })}
-            className="h-4 w-4"
-          />
-          Client edits
-        </label>
-        <div className="ml-auto flex items-center gap-1">
-          <button type="button" className="app-button app-button-tertiary app-button-xs" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${column.title} left`}>
-            ←
-          </button>
-          <button type="button" className="app-button app-button-tertiary app-button-xs" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${column.title} right`}>
-            →
-          </button>
-          <button type="button" className="app-button app-button-tertiary app-button-xs text-[var(--danger-500)]" onClick={onRemove}>
-            Remove
-          </button>
-        </div>
-      </div>
+      </label>
       {column.type === "select" && (
-        <input
-          value={options}
-          onChange={(e) => setOptions(e.target.value)}
-          onBlur={() =>
-            onPatch({ options: options.split(/[,\n]/).map((o) => o.trim()).filter(Boolean) })
-          }
-          aria-label={`Options for ${column.title}`}
-          placeholder="Options, comma-separated"
-          className="app-input h-8 w-full py-0 text-base sm:text-[13px]"
-        />
+        <div>
+          <PaneLabel>Options · {options.length}</PaneLabel>
+          {options.length > 0 && (
+            <ul className="mb-2 flex flex-wrap gap-1.5">
+              {options.map((o, i) => (
+                <li
+                  key={o}
+                  className="inline-flex items-center gap-1 rounded-[4px] bg-[var(--surface-1)] py-0.5 pr-0.5 pl-2 text-[12px] text-[var(--text-2)] ring-1 ring-[var(--border-1)]"
+                >
+                  {o}
+                  <button
+                    type="button"
+                    aria-label={`Remove option ${o}`}
+                    className="rounded-[3px] px-1 text-[var(--text-4)] hover:text-[var(--danger-500)]"
+                    onClick={() => onPatch({ options: options.filter((_, k) => k !== i) })}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-1.5">
+            <input
+              value={draftOption}
+              onChange={(e) => setDraftOption(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addOption();
+                }
+              }}
+              placeholder="Add an option (Enter)"
+              aria-label={`Add an option to ${column.title}`}
+              className="app-input h-8 min-w-0 flex-1 py-0 text-base sm:text-[13px]"
+            />
+            <button type="button" className="app-button app-button-secondary app-button-xs" disabled={!draftOption.trim()} onClick={addOption}>
+              Add
+            </button>
+          </div>
+        </div>
       )}
-    </li>
+      <label className="flex cursor-pointer items-start gap-3 rounded-[8px] border border-[var(--border-1)] px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={column.clientEditable}
+          onChange={(e) => onPatch({ clientEditable: e.target.checked })}
+          className="mt-0.5 h-4 w-4 shrink-0"
+        />
+        <span className="min-w-0">
+          <span className="block text-[13px] text-[var(--text-1)]">Client can edit</span>
+          <span className="block text-[12px] text-[var(--text-3)]">Off makes this column read-only on the client&apos;s page.</span>
+        </span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border-1)] pt-4">
+        <PaneLabel>Position</PaneLabel>
+        <button type="button" className="app-button app-button-secondary app-button-xs" disabled={first} onClick={() => onMove(-1)}>
+          ← Move left
+        </button>
+        <button type="button" className="app-button app-button-secondary app-button-xs" disabled={last} onClick={() => onMove(1)}>
+          Move right →
+        </button>
+        <button type="button" className="app-button app-button-tertiary app-button-xs ml-auto text-[var(--danger-500)]" onClick={onRemove}>
+          Remove column
+        </button>
+      </div>
+    </div>
   );
 }
