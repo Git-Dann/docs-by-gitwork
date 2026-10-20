@@ -6,6 +6,7 @@
  * design-system `shareToken`).
  */
 
+import { publicTeamAvatarUrl } from "@/lib/wiki-team-avatar";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
@@ -3330,7 +3331,7 @@ export async function resolvePublicWiki(
     where: { shareToken: token, shareEnabled: true },
     include: WIKI_INCLUDE,
   });
-  if (whole) return { wiki: forPublic(await buildDTO(whole)), onlySection: null };
+  if (whole) return { wiki: withPublicAvatars(forPublic(await buildDTO(whole)), token), onlySection: null };
 
   // Otherwise look for a per-section token.
   const bySection = await prisma.clientWiki.findFirst({
@@ -3344,7 +3345,17 @@ export async function resolvePublicWiki(
       : {};
   const section = Object.keys(map).find((k) => map[k] === token) ?? null;
   if (!section) return null;
-  return { wiki: forPublic(await buildDTO(bySection)), onlySection: section };
+  return { wiki: withPublicAvatars(forPublic(await buildDTO(bySection)), token), onlySection: section };
+}
+
+/**
+ * Point uploaded team photos at the wiki-scoped avatar route. The signed-in route
+ * 401s for a client, which showed every uploaded photo as a broken image on the share
+ * link (src/lib/wiki-team-avatar.ts). Team lists are the only avatars in the DTO.
+ */
+function withPublicAvatars(dto: WikiDTO, token: string): WikiDTO {
+  const fix = (m: WikiTeamMember): WikiTeamMember => ({ ...m, avatarUrl: publicTeamAvatarUrl(token, m.avatarUrl) });
+  return { ...dto, team: dto.team.map(fix), productTeam: dto.productTeam.map(fix) };
 }
 
 /**
