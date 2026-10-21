@@ -24,9 +24,18 @@ type Row = {
 
 let rows: Row[] = [];
 
+/** Just enough of each call's shape for the mock — no `any`, no cast. */
+type UpsertArgs = {
+  where: { token: string };
+  update: { wikiId: string; clientWikiUserId: string };
+  create: { token: string; wikiId: string; clientWikiUserId: string };
+};
+type FindManyArgs = { where: { wikiId: string; failedAt: null } };
+type DeleteManyArgs = { where: { clientWikiUserId: string; token: string } };
+
 const prismaMock = {
   clientDeviceToken: {
-    upsert: vi.fn(async ({ where, update, create }: never extends never ? any : never) => {
+    upsert: vi.fn(async ({ where, update, create }: UpsertArgs) => {
       const existing = rows.find((r) => r.token === where.token);
       if (existing) {
         Object.assign(existing, {
@@ -45,10 +54,10 @@ const prismaMock = {
       rows.push(row);
       return row;
     }),
-    findMany: vi.fn(async ({ where }: never extends never ? any : never) =>
+    findMany: vi.fn(async ({ where }: FindManyArgs) =>
       rows.filter((r) => r.wikiId === where.wikiId && r.failedAt === null),
     ),
-    deleteMany: vi.fn(async ({ where }: never extends never ? any : never) => {
+    deleteMany: vi.fn(async ({ where }: DeleteManyArgs) => {
       const before = rows.length;
       rows = rows.filter(
         (r) => !(r.clientWikiUserId === where.clientWikiUserId && r.token === where.token),
