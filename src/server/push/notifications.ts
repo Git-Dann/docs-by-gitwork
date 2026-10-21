@@ -21,6 +21,11 @@ import {
   APNS_MAX_PAYLOAD_BYTES,
 } from "./apns";
 import {
+  fanOutToDevices,
+  type DeviceStore,
+  type FanOutResult,
+} from "./transport";
+import {
   listActiveDeviceTokensForUser,
   listActiveDeviceTokensForWorkspace,
   markDeviceTokenFailed,
@@ -246,111 +251,31 @@ async function resolveAudience(
 }
 
 /**
- * Sends to one device, and on `BadDeviceToken` retries the OTHER APNs gateway once.
- *
- * ⚠️ A device token is only valid on the gateway it was minted for, and the CLIENT
- * decides which environment it reports at registration — from a value it infers, which
- * it can get wrong. It did: the iOS app matched the provisioning profile's
- * `aps-environment` with an exact string requiring a single tab, while real profiles
- * use two, so the match always failed and every build fell back to reporting
- * "sandbox". A production build's token then went to the sandbox gateway, Apple said
- * BadDeviceToken, and the row was soft-deleted as dead — when it was perfectly good and
- * merely sent to the wrong address.
- *
- * Trusting the client's self-report is the fragile part, so this stops depending on it:
- * if the other gateway accepts the token, the send succeeded and the stored environment
- * is corrected, so the next send goes straight there. A token is only declared dead when
- * BOTH gateways reject it, which is the only evidence that actually means dead.
+ * The staff audience's write-backs. The sending itself — including the
+ * dual-gateway retry and the environment correction — lives in `transport.ts`,
+ * shared with the client-device path. See that file's header for why there is
+ * exactly one copy of it.
  */
-async function sendToDevice(
-  device: DeviceTokenRecord,
-  payload: ApnsPayload,
-  collapseId: string,
-): Promise<ApnsSendResult> {
-  const first = await sendApns({
-    deviceToken: device.token,
-    environment: device.environment,
-    payload,
-    collapseId,
-  });
-  if (first.ok || first.reason !== "BadDeviceToken") return first;
-
-  const other = device.environment === "production" ? "sandbox" : "production";
-  const retry = await sendApns({
-    deviceToken: device.token,
-    environment: other,
-    payload,
-    collapseId,
-  });
-  if (retry.ok) {
-    await correctDeviceEnvironment(device.token, other);
-    console.warn(
-      `[push] device ${device.id} was registered as ${device.environment} but is ${other} — corrected`,
-    );
-  }
-  return retry;
-}
+const staffDeviceStore: DeviceStore = {
+  markUsed: markDeviceTokenUsed,
+  markFailed: markDeviceTokenFailed,
+  correctEnvironment: correctDeviceEnvironment,
+};
 
 async function fanOut(
   devices: DeviceTokenRecord[],
   payload: ApnsPayload,
   collapseId: string,
-): Promise<{ sent: number; failed: number; skipped: boolean; reasons: ApnsFailureReason[] }> {
-  // Parallel send — APNs handles concurrent connections fine, and each open
-  // HTTP/2 session is independent. For a 2-3 person team this is <10 devices
-  // typically; we'd batch differently at higher fan-out.
-  const results = await Promise.all(
-    devices.map(async (device) => {
-      const result = await sendToDevice(device, payload, collapseId);
-      await handleResult(device, result);
-      return result;
-    }),
+): Promise<FanOutResult> {
+  return await fanOutToDevices(
+    devices.map((d) => ({
+      id: d.id,
+      token: d.token,
+      environment: d.environment,
+      ownerId: d.userId,
+    })),
+    staffDeviceStore,
+    payload,
+    collapseId,
   );
-
-  const sent = results.filter((r) => r.ok).length;
-  const failed = results.length - sent;
-  // The reason has to travel with the counts. Collapsing every failure to "it failed"
-  // is what let a SERVER credential problem (InvalidProviderToken — our own APNs key
-  // rejected by Apple) be reported to the user as a dead device token, sending them to
-  // re-install the app when nothing about their phone was wrong.
-  const reasons = [...new Set(results.flatMap((r) => (r.ok ? [] : [r.reason])))];
-  return { sent, failed, skipped: false, reasons };
-}
-
-async function handleResult(device: DeviceTokenRecord, result: ApnsSendResult): Promise<void> {
-  if (result.ok) {
-    await markDeviceTokenUsed(device.token);
-    return;
-  }
-
-  // Soft-delete only on definitive "this token is dead" responses.
-  // Transient errors (TooManyRequests, ServiceUnavailable, NetworkError) leave
-  // the token alone for the next attempt.
-  switch (result.reason) {
-    case "BadDeviceToken":
-    case "Unregistered":
-    case "DeviceTokenNotForTopic":
-      await markDeviceTokenFailed(device.token);
-      console.warn(
-        `[push] soft-deleted device ${device.id} for user ${device.userId}: ${result.reason} (status ${result.status})`,
-      );
-      break;
-    case "BadTopic":
-    case "TopicDisallowed":
-    case "InvalidProviderToken":
-    // ⚠️ NOT transient, which is where this used to fall. Retrying re-sends the
-    // identical oversized payload, so it fails forever — and `shrinkToFit` should
-    // have made it unreachable, which makes seeing it a bug report, not a blip.
-    case "PayloadTooLarge":
-      // Configuration issue — log loudly but don't kill the device row, the
-      // tokens themselves are fine, our env is wrong.
-      console.error(
-        `[push] APNs configuration error: ${result.reason} (status ${result.status})`,
-      );
-      break;
-    default:
-      console.warn(
-        `[push] transient APNs failure for device ${device.id}: ${result.reason} (status ${result.status})`,
-      );
-  }
 }
