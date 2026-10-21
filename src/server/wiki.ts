@@ -52,6 +52,7 @@ import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
 import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
 import { EMPTY_SHEETS, forPublicSheets, loadWikiSheets } from "./wiki-sheets";
 import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
+import { clientVisibleSections } from "@/lib/wiki-client-visibility";
 import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
 import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
 import { loadWikiPlatforms } from "./wiki-platforms";
@@ -368,6 +369,18 @@ export interface WikiDTO {
    *  Null when it has never run — and ALWAYS null on a public read: it is our plumbing,
    *  not the client's business, and its errors name our own configuration. */
   courseFeed: CourseFeedStatus | null;
+  /**
+   * The sections a CLIENT can see, in the order their rail shows them.
+   *
+   * ⚠️ Present only on the client's copy (`forPublic`); the team's copy leaves it
+   * undefined, because staff see a different and wider set (`availableSections` in
+   * `wiki-workspace.tsx`). A reader must not treat an absent list as "no sections".
+   *
+   * It exists so a second reader of this wiki — the iOS app — stops reimplementing
+   * `clientVisibleSections` and drifting from it. It had: a different order, and two
+   * predicates that disagreed.
+   */
+  visibleSections?: string[];
   intakeItems: WikiIntakeItemRecord[];
   /** Whether the Requests (client intake) section is enabled for this wiki. */
   intakeEnabled: boolean;
@@ -3320,7 +3333,7 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
 function forPublic(dto: WikiDTO): WikiDTO {
   // Hidden metrics and the metrics endpoint/token state are Gitwork's settings, not the
   // client's data — removed here, not merely flagged, so they never reach the browser.
-  return {
+  const trimmed: WikiDTO = {
     ...dto,
     courseFeed: null,
     metrics: forPublicMetrics(dto.metrics),
@@ -3333,6 +3346,19 @@ function forPublic(dto: WikiDTO): WikiDTO {
     // leaves while the section is off.
     sheets: forPublicSheets(dto.sheets),
   };
+
+  // ⚠️ Computed on the TRIMMED copy, never on `dto`. The predicates read the very
+  // arrays this function filters — `metrics.metrics.length`,
+  // `comparisons.comparisons`, `sheets.sheets` — so computing it first would list a
+  // section whose content has since been removed from the client's copy, which is
+  // exactly the blank page the predicates exist to prevent.
+  //
+  // Sending the list at all is what stops a second reader of this wiki inventing its
+  // own answer. The iOS app mirrored `clientVisibleSections` by hand and had already
+  // drifted: a different order, and two predicates that disagreed (`metrics` without
+  // its `source` check, `estimates` without `isPlannable`). One list, from the one
+  // function, and a client sees the same sections in the same order wherever they look.
+  return { ...trimmed, visibleSections: clientVisibleSections(trimmed) };
 }
 
 /**
