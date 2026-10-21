@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { loginPortalUser, WIKI_ACCESS_COOKIE_MAX_AGE } from "@/server/wiki-access";
+import {
+  isGitworkTeamLogin,
+  loginPortalUser,
+  WIKI_ACCESS_COOKIE_MAX_AGE,
+} from "@/server/wiki-access";
 import { z } from "zod";
-import { isGitworkStaffEmail } from "@/lib/staff-email";
 
 const bodySchema = z.object({
   email: z.string().min(1),
@@ -18,14 +21,22 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = bodySchema.parse(await req.json());
-    // A Gitwork team address never signs in here. The front door (`/` → /portal/login)
+    // A Gitwork TEAM MEMBER never signs in here. The front door (`/` → /portal/login)
     // leads with this CLIENT form, so a team member whose Google session had lapsed —
     // with a password manager that remembered a client login made for testing — was
     // logged into that client's wiki and landed on it every time they came back.
     // Team members belong in the app; staff already see every wiki through it. Checked
-    // before the password, so no client cookie is ever set for a team address. The
-    // domain is public, so answering early reveals nothing about any account.
-    if (isGitworkStaffEmail(email)) {
+    // before the password, so no client cookie is ever set for a team address.
+    //
+    // ⚠️ MEMBERSHIP, not the domain. This used to refuse anything ending
+    // @gitwork.co.uk, which also refused a client wiki account deliberately
+    // CREATED on that domain — `claude@gitwork.co.uk`, made to test the client
+    // portal, could never sign in anywhere, and the app reported it as a wiki
+    // that had not been shared. Nobody could tell the two apart, because by
+    // domain they are identical. A `ClientWikiUser` that is not a
+    // `WorkspaceMember` is not a team member, whatever its address says, and
+    // the original concern does not apply to it.
+    if (await isGitworkTeamLogin(email)) {
       return apiOk({ staff: true, wikis: [] });
     }
     const wikis = await loginPortalUser(email, password);
