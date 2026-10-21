@@ -70,6 +70,12 @@ export interface DispatchInput {
    *  attendees who were on the call (relevant regardless of client attribution). Unioned
    *  with the target set; the actor is still excluded. */
   alwaysUserIds?: string[];
+  /**
+   * A Block Kit layout for the Slack channel post (only used when the event routes to
+   * `slack`). `title` + `body` stay the plain-text fallback Slack shows in notifications and
+   * the in-app/push copy — so they must still read well on their own.
+   */
+  slackBlocks?: unknown[];
 }
 
 /** Same unread group within this window is incremented rather than re-created. */
@@ -155,7 +161,11 @@ async function postToSlackChannel(input: DispatchInput): Promise<void> {
     lines.push(`<${base}${input.actionUrl}|Open in Foundry>`);
   }
 
-  const res = await postMessage(token, { channel: channel.trim(), text: lines.join("\n") });
+  const res = await postMessage(token, {
+    channel: channel.trim(),
+    text: lines.join("\n"),
+    ...(input.slackBlocks?.length ? { blocks: input.slackBlocks } : {}),
+  });
   if (!res.ok) console.warn("[notifications] slack post failed", { event: input.event, error: res.error });
 }
 

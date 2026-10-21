@@ -7417,6 +7417,21 @@ checked **4 Aug**, still showing UP), Fellas had no monitor, and a failing check
 - **Cards + suggestions:** the internal Monitors list is cards (2-up md, 3-up xl when there's more
   than one). "From this client's Platforms" offers one-click monitors for Platform URLs nothing
   watches (`src/lib/monitor-suggestions.ts`). Admin and login paths become the site root.
+- **Unstable** (added same day): 3 of the last 6 checks failing alerts as **Incident: Degraded**, which
+  two-in-a-row never would for a service failing every other check (Google's London outage left
+  some services "intermittently erroring"). It clears only after a full clean window, so flapping
+  gives one alert and one "stable again". Failures before `alertClearedAt` don't count. Fields
+  `alertKind` / `alertClearedAt`.
+- **Every minute while failing:** `checkEveryMs` re-checks a failing monitor (or one with an open
+  alert) every minute instead of its interval, and the cron is now `* * * * *`. That gives a
+  down alert in ~6 min and a recovery notice within a minute.
+- **Slack layout like GitHub Status** (`alertBlocks`): an "Incident: Down/Degraded/Resolved" line,
+  linked title, description, every service on the client with ✅/🔴/🟠/🟡, an Open in Foundry
+  button, and a footer. Capped under Slack's 50 blocks. `DispatchInput.slackBlocks` carries it;
+  title and body stay the plain-text fallback.
+- ⚠️ **`NEXT_PUBLIC_APP_URL` on the VPS was `https://foundry.gitwork.tech`, a domain that doesn't
+  resolve.** That broke every "Open in Foundry" Slack link, email links and the DocuSeal webhook
+  address. It's now `https://foundry.gitwork.co.uk` (21 Oct 2026; backup in `/root`).
 - **Fellas** now has three monitors: production API (`/api/feed/categories/`, which reads from the
   DB, not just the web server), website and analytics. Its API has no health endpoint.
 - ⚠️ **Found while doing this:** Fellas' `/api/analytics/*` endpoints answer without auth,

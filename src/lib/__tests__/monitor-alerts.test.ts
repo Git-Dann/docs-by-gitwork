@@ -7,6 +7,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ALERT_AFTER_FAILURES,
+  alertBlocks,
+  checkEveryMs,
+  incidentHeading,
   alertMessage,
   formatDuration,
   isStale,
@@ -19,16 +22,22 @@ import { normaliseTarget, suggestMonitors } from "@/lib/monitor-suggestions";
 import { DEFAULT_EVENT_ROUTING } from "@/server/notification-events";
 
 const t = (min: number) => new Date(Date.UTC(2026, 9, 20, 14, min));
-const fresh: AlertState = { failStreak: 0, downSince: null, alertedDownAt: null };
+const fresh: AlertState = { failStreak: 0, downSince: null, alertedDownAt: null, alertKind: null, alertClearedAt: null };
 
-/** Run a sequence of check results, collecting the alerts it produced. */
+/**
+ * Run a sequence of check results the way the server does — each check sees the statuses since
+ * the last alert cleared — collecting the alerts it produced.
+ */
 function run(statuses: ProbeStatus[]) {
   let state = fresh;
+  let sinceClear: ProbeStatus[] = [];
   const alerts: string[] = [];
   statuses.forEach((st, i) => {
-    const r = nextAlertState(state, st, t(i * 5));
+    const r = nextAlertState(state, st, t(i * 5), sinceClear);
     state = r.state;
-    if (r.alert) alerts.push(r.alert.kind === "down" ? `down@${i}` : `recovered@${i}:${Math.round(r.alert.downForMs / 60000)}m`);
+    sinceClear = r.state.alertClearedAt && r.alert && (r.alert.kind === "recovered" || r.alert.kind === "stable") ? [] : [...sinceClear, st];
+    const a = r.alert;
+    if (a) alerts.push(a.kind === "recovered" || a.kind === "stable" ? `${a.kind}@${i}:${Math.round(a.downForMs / 60000)}m` : `${a.kind}@${i}`);
   });
   return { alerts, state };
 }
@@ -43,6 +52,7 @@ describe("down and recovered", () => {
     s = nextAlertState(s, "DOWN", t(0)).state;
     const second = nextAlertState(s, "DOWN", t(5));
     expect(second.alert).toEqual({ kind: "down", since: t(0), failures: 2 });
+    expect(second.state.alertKind).toBe("down");
   });
 
   it("⚠️ ONCE per outage — an hour down is one message, not twelve", () => {
@@ -69,6 +79,39 @@ describe("down and recovered", () => {
   });
 });
 
+describe("unstable — the shape Google's London outage took", () => {
+  it("⚠️ a service failing every other check alerts as unstable, which two-in-a-row never would", () => {
+    expect(run(["DOWN", "UP", "DOWN", "UP", "DOWN"]).alerts).toEqual(["flaky@4"]);
+  });
+
+  it("⚠️ ONE unstable and ONE stable-again, however long it flaps — not a message every check", () => {
+    const flap = ["DOWN", "UP", "DOWN", "UP", "DOWN", "UP", "DOWN", "UP", "DOWN", "UP"] as ProbeStatus[];
+    const settle = ["UP", "UP", "UP", "UP", "UP", "UP"] as ProbeStatus[];
+    expect(run([...flap, ...settle]).alerts).toEqual(["flaky@4", "stable@14:70m"]);
+  });
+
+  it("stays open until a whole window passes", () => {
+    expect(run(["DOWN", "UP", "DOWN", "UP", "DOWN", "UP", "UP", "UP", "UP", "UP"]).alerts).toEqual(["flaky@4"]);
+  });
+
+  it("escalates once to down if an unstable service then fails twice in a row", () => {
+    expect(run(["DOWN", "UP", "DOWN", "UP", "DOWN", "DOWN", "DOWN", "UP"]).alerts).toEqual([
+      "flaky@4",
+      "down@5",
+      "recovered@7:35m",
+    ]);
+  });
+
+  it("⚠️ failures already reported and recovered are not re-counted into a new 'unstable'", () => {
+    // Hard down, back up, then ONE blip — the old failures must not make that a flaky alert.
+    expect(run(["DOWN", "DOWN", "DOWN", "UP", "DOWN", "UP"]).alerts).toEqual(["down@1", "recovered@3:15m"]);
+  });
+
+  it("two failures in six is not unstable", () => {
+    expect(run(["DOWN", "UP", "UP", "DOWN", "UP", "UP"]).alerts).toEqual([]);
+  });
+});
+
 describe("the messages", () => {
   const ctx = { clientName: "Fellas Loaded", monitorName: "Production API", target: "https://api.fellasloaded.com/api/feed/categories/" };
 
@@ -78,6 +121,12 @@ describe("the messages", () => {
     expect(m.body).toContain("Failing since 14:05 UTC (2 checks in a row) · HTTP 503");
     const noCode = alertMessage(ctx, { kind: "down", since: t(5), failures: 2 }, { statusCode: null, error: "ECONNREFUSED" });
     expect(noCode.body).toContain("ECONNREFUSED");
+  });
+
+  it("unstable says how many of how many", () => {
+    const m = alertMessage(ctx, { kind: "flaky", since: t(0), failures: 3, of: 6 }, { statusCode: 502, error: null });
+    expect(m.title).toBe("🟠 Fellas Loaded — Production API is unstable");
+    expect(m.body).toContain("3 of the last 6 checks failed, since 14:00 UTC · latest: HTTP 502");
   });
 
   it("recovered says how long", () => {
@@ -156,5 +205,75 @@ describe("suggestions from Platforms", () => {
   it("skips what's already monitored, however the URL was written", () => {
     expect(suggestMonitors([{ name: "Web", url: "https://fellasloaded.com" }], ["https://fellasloaded.com/"])).toEqual([]);
     expect(normaliseTarget("https://Example.com/a/")).toBe(normaliseTarget("https://example.com/a"));
+  });
+});
+
+describe("checking faster while something is failing", () => {
+  const healthy = { intervalMinutes: 5, lastStatus: "UP", failStreak: 0, alertKind: null };
+
+  it("a healthy monitor keeps its own interval", () => {
+    expect(checkEveryMs(healthy)).toBe(5 * 60000);
+    expect(checkEveryMs({ ...healthy, intervalMinutes: 15 })).toBe(15 * 60000);
+  });
+
+  it("⚠️ every minute from the first failure, until any open alert has cleared", () => {
+    expect(checkEveryMs({ ...healthy, lastStatus: "DOWN", failStreak: 1 })).toBe(60000);
+    // Passing again but an 'unstable' alert is still open — keep watching closely.
+    expect(checkEveryMs({ ...healthy, alertKind: "flaky" })).toBe(60000);
+  });
+
+  it("the cron runs every minute, so a failing monitor really is re-checked that often", () => {
+    const crons = readFileSync(join(process.cwd(), "docs/vps-crons.md"), "utf8");
+    expect(crons).toMatch(/^\* \* \* \* \* \/opt\/apps\/foundry\/run-cron\.sh wiki-monitors/m);
+  });
+});
+
+describe("the Slack post — laid out like GitHub Status", () => {
+  const blocks = alertBlocks({
+    heading: incidentHeading("down"),
+    title: "Fellas Loaded — Production API is down",
+    url: "https://foundry.gitwork.co.uk/app/portal/fellas-loaded/wiki#monitors",
+    description: "Failing since 14:05 UTC (2 checks in a row) · HTTP 503",
+    services: [
+      { name: "Production API", state: "down" },
+      { name: "Website", state: "up" },
+      { name: "Analytics <beta>", state: "slow" },
+    ],
+    footer: "Foundry uptime monitoring",
+  }) as { type: string; text?: { text: string }; elements?: { text?: string; url?: string; type: string }[] }[];
+
+  it("leads with the incident line, then the title as a link", () => {
+    expect(blocks[0].text?.text).toBe("*Incident: Down*");
+    expect(blocks[1].text?.text).toBe("*<https://foundry.gitwork.co.uk/app/portal/fellas-loaded/wiki#monitors|Fellas Loaded — Production API is down>*");
+  });
+
+  it("lists every service on the client with its status, like GitHub's components", () => {
+    const rows = blocks.filter((b) => b.type === "context").map((b) => b.elements?.[0].text);
+    expect(rows).toContain(":red_circle:  Production API — down");
+    expect(rows).toContain(":white_check_mark:  Website");
+    // Escaped, so a monitor name can't inject Slack markup.
+    expect(rows).toContain(":large_yellow_circle:  Analytics &lt;beta&gt; — slow");
+  });
+
+  it("has an Open in Foundry button and a footer", () => {
+    const actions = blocks.find((b) => b.type === "actions");
+    expect(actions?.elements?.[0].url).toContain("/app/portal/fellas-loaded/wiki#monitors");
+    expect(blocks.at(-1)?.elements?.[0].text).toBe("Foundry uptime monitoring");
+  });
+
+  it("headings for every kind of update", () => {
+    expect(incidentHeading("flaky")).toBe("Incident: Degraded");
+    expect(incidentHeading("recovered")).toBe("Incident: Resolved");
+    expect(incidentHeading("stable")).toBe("Incident: Resolved");
+    expect(incidentHeading("stalled")).toBe("Monitoring: Stopped");
+  });
+
+  it("⚠️ stays under Slack's 50-block cap however many services a client has", () => {
+    const many = alertBlocks({
+      heading: "x", title: "x", url: "https://x", description: "x", footer: "x",
+      services: Array.from({ length: 80 }, (_, i) => ({ name: `svc ${i}`, state: "up" as const })),
+    });
+    expect(many.length).toBeLessThanOrEqual(50);
+    expect(JSON.stringify(many)).toContain("+60 more");
   });
 });

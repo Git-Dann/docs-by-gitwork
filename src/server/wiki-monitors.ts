@@ -11,7 +11,18 @@ import type { WikiMonitor, WikiMonitorStatus, WikiMonitorType } from "@prisma/cl
 import { prisma } from "@/lib/prisma";
 import { runProbe, type MonitorStatus } from "./wiki-monitors/index";
 import { dispatchNotification } from "@/server/notifications";
-import { alertMessage, isStale, nextAlertState, staleMessage, type ProbeStatus } from "@/lib/monitor-alerts";
+import {
+  WINDOW,
+  alertBlocks,
+  alertMessage,
+  checkEveryMs,
+  incidentHeading,
+  isStale,
+  nextAlertState,
+  staleMessage,
+  type ProbeStatus,
+  type ServiceRow,
+} from "@/lib/monitor-alerts";
 import { suggestMonitors, type MonitorSuggestion } from "@/lib/monitor-suggestions";
 
 // ─── DTOs ───────────────────────────────────────────────────────────────────
@@ -265,10 +276,28 @@ export async function loadMonitorSuggestions(clientId: string): Promise<MonitorS
 export async function runMonitorCheck(monitor: WikiMonitor): Promise<void> {
   const result = await runProbe(monitor);
   const now = new Date();
+  // The checks before this one, since the last alert cleared — the "3 of the last 6" window.
+  // Filtered by alertClearedAt so an outage already reported and recovered isn't re-counted.
+  const recent = await prisma.wikiMonitorCheck.findMany({
+    where: {
+      monitorId: monitor.id,
+      ...(monitor.alertClearedAt ? { checkedAt: { gt: monitor.alertClearedAt } } : {}),
+    },
+    orderBy: { checkedAt: "desc" },
+    take: WINDOW - 1,
+    select: { status: true },
+  });
   const { state, alert } = nextAlertState(
-    { failStreak: monitor.failStreak, downSince: monitor.downSince, alertedDownAt: monitor.alertedDownAt },
+    {
+      failStreak: monitor.failStreak,
+      downSince: monitor.downSince,
+      alertedDownAt: monitor.alertedDownAt,
+      alertKind: monitor.alertKind === "down" || monitor.alertKind === "flaky" ? monitor.alertKind : null,
+      alertClearedAt: monitor.alertClearedAt,
+    },
     result.status as ProbeStatus,
     now,
+    recent.reverse().map((c) => c.status as ProbeStatus),
   );
   await prisma.$transaction([
     prisma.wikiMonitorCheck.create({
@@ -291,6 +320,8 @@ export async function runMonitorCheck(monitor: WikiMonitor): Promise<void> {
         failStreak: state.failStreak,
         downSince: state.downSince,
         alertedDownAt: state.alertedDownAt,
+        alertKind: state.alertKind,
+        alertClearedAt: state.alertClearedAt,
         // Checked again, so the watchdog may speak up again if checks ever stop.
         staleAlertedAt: null,
       },
@@ -308,6 +339,32 @@ async function monitorOwner(wikiId: string) {
   return wiki?.client ?? null;
 }
 
+function appBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? "https://foundry.gitwork.co.uk").replace(/\/+$/, "");
+}
+
+/** Every monitor on the wiki with its status as of now — the post's services list. */
+async function serviceRows(wikiId: string): Promise<ServiceRow[]> {
+  const now = new Date();
+  const monitors = await prisma.wikiMonitor.findMany({
+    where: { wikiId, enabled: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { name: true, lastStatus: true, alertKind: true, enabled: true, lastCheckedAt: true, createdAt: true, intervalMinutes: true },
+  });
+  return monitors.map((m) => ({
+    name: m.name,
+    state: isStale(m, now)
+      ? "stale"
+      : m.lastStatus === "DOWN"
+        ? "down"
+        : m.alertKind === "flaky"
+          ? "flaky"
+          : m.lastStatus === "DEGRADED"
+            ? "slow"
+            : "up",
+  }));
+}
+
 async function sendMonitorAlert(
   monitor: WikiMonitor,
   alert: NonNullable<ReturnType<typeof nextAlertState>["alert"]>,
@@ -321,15 +378,26 @@ async function sendMonitorAlert(
       alert,
       detail,
     );
+    const actionUrl = `/app/portal/${client.slug}/wiki#monitors`;
     dispatchNotification({
       event: "clients.monitor_alert",
       workspaceId: client.workspaceId,
       title,
       body,
-      actionUrl: `/app/portal/${client.slug}/wiki#monitors`,
+      actionUrl,
       target: { kind: "admins" },
       groupKey: `clients.monitor_alert:${monitor.id}`,
       count: 1,
+      slackBlocks: alertBlocks({
+        heading: incidentHeading(alert.kind),
+        // The emoji leads the plain-text title (notifications, push); the post has its own
+        // status line, so the linked title drops it — as GitHub Status's does.
+        title: title.replace(/^\S+\s+/, ""),
+        url: `${appBaseUrl()}${actionUrl}`,
+        description: body,
+        services: await serviceRows(monitor.wikiId),
+        footer: "Foundry uptime monitoring · re-checked every minute while anything is failing",
+      }),
     });
   } catch (err) {
     // An alert that fails to send must never break the check that found the outage.
@@ -369,13 +437,23 @@ export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ s
       list.map((m) => ({ clientName: m.wiki.client.name, monitorName: m.name, lastCheckedAt: m.lastCheckedAt })),
       now,
     );
+    const actionUrl = `/app/portal/${list[0].wiki.client.slug}/wiki#monitors`;
     try {
       dispatchNotification({
         event: "clients.monitor_alert",
         workspaceId,
         title,
         body,
-        actionUrl: `/app/portal/${list[0].wiki.client.slug}/wiki#monitors`,
+        actionUrl,
+        slackBlocks: alertBlocks({
+          heading: incidentHeading("stalled"),
+          title: title.replace(/^\S+\s+/, ""),
+          url: `${appBaseUrl()}${actionUrl}`,
+          description:
+            "These monitors have not been checked recently, so their status can't be trusted. The wiki-monitors job may have stopped.",
+          services: list.map((m) => ({ name: `${m.wiki.client.name} — ${m.name}`, state: "stale" as const })),
+          footer: "Foundry uptime monitoring · watchdog",
+        }),
         target: { kind: "admins" },
         groupKey: "clients.monitor_alert:stale",
         count: list.length,
@@ -403,9 +481,9 @@ export async function runDueMonitors(): Promise<{ checked: number; pruned: numbe
       orderBy: { lastCheckedAt: "asc" },
     })
   ).filter(
-    (m) =>
-      !m.lastCheckedAt ||
-      now - m.lastCheckedAt.getTime() >= m.intervalMinutes * 60 * 1000,
+    // Every minute while failing, its own interval otherwise (checkEveryMs). The cron runs
+    // every minute so a failing monitor is actually picked up that often.
+    (m) => !m.lastCheckedAt || now - m.lastCheckedAt.getTime() >= checkEveryMs(m),
   );
 
   const BATCH = 5;

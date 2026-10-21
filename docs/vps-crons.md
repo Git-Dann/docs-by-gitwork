@@ -119,7 +119,7 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 30 3 * * * /opt/apps/foundry/run-cron.sh member-purge         >> /tmp/foundry-cron.log 2>&1
 0 4 * * *  /opt/apps/foundry/run-cron.sh pulse-reconcile      >> /tmp/foundry-cron.log 2>&1
 0 5 * * *  /opt/apps/foundry/run-cron.sh pulse-run-monitors   >> /tmp/foundry-cron.log 2>&1
-*/5 * * * * /opt/apps/foundry/run-cron.sh wiki-monitors      >> /tmp/foundry-cron.log 2>&1
+* * * * * /opt/apps/foundry/run-cron.sh wiki-monitors      >> /tmp/foundry-cron.log 2>&1
 0 6 * * *  /opt/apps/foundry/run-cron.sh analytics-snapshot   >> /tmp/foundry-cron.log 2>&1
 0 7 * * *  /opt/apps/foundry/run-cron.sh embed-conversations  >> /tmp/foundry-cron.log 2>&1
 0 8 * * *  /opt/apps/foundry/run-cron.sh support-sync         >> /tmp/foundry-cron.log 2>&1
@@ -192,7 +192,9 @@ they're independent, but the crontab otherwise staggers one job per hour.)
 - **All 17 `/api/cron/*` routes are accounted for above**, and that is the property to
   preserve — if you add a route, add a line here in the same PR. Two were missing until
   July 2026 (`retention`, `wedge-keepwarm`) and `foreman` was listed twice.
-- **`wiki-monitors` is on the box since 21 Oct 2026** (`*/5 * * * *`). It had been the one
+- **`wiki-monitors` is on the box since 21 Oct 2026**, every minute (`* * * * *`). Healthy
+  monitors still check on their own interval (each self-throttles); a FAILING one is re-checked
+  every minute, so an outage is confirmed in ~1 min and recovery seen within a minute. It had been the one
   deliberate omission since the July migration, and the cost of leaving it half-configured
   was exactly what this note predicted: every monitor kept showing its last result (UP, from
   4 Aug) for 2½ months while nothing checked anything, and Fellas Loaded went down with Google
