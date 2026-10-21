@@ -54,6 +54,17 @@ describe("Settings", () => {
     expect(src).not.toContain("Included in the full-wiki link");
   });
 
+  it("every fold starts closed", () => {
+    expect(src).toContain("<details");
+    expect(src).not.toMatch(/<details[^>]*\bopen\b/);
+  });
+
+  it("API intake and Linked clients sit side by side in one grid", () => {
+    const grid = src.slice(src.indexOf("xl:grid-cols-2"), src.indexOf("</div>", src.indexOf("xl:grid-cols-2")));
+    expect(grid).toContain("<WikiApiIntakeSettings");
+    expect(grid).toContain("<WikiLinkedClients");
+  });
+
   it("the user dialog is the shared Modal, not a hand-rolled overlay", () => {
     expect(src).toContain("<Modal");
     expect(src).not.toContain('className="fixed inset-0 z-50');

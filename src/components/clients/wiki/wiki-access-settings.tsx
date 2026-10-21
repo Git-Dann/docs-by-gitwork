@@ -127,8 +127,13 @@ export function WikiAccessSettings({
           n={next()}
         />
       ) : null}
-      <WikiApiIntakeSettings slug={slug} n={next()} />
-      <WikiLinkedClients slug={slug} clientId={wiki.clientId} n={next()} />
+      {/* Side by side from xl — both are short once their folds are shut. xl, not lg: at lg
+          the content column is ~700px beside the sidebar, too narrow for two cards of URLs.
+          items-start so a card opening its folds doesn't stretch the one beside it. */}
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+        <WikiApiIntakeSettings slug={slug} n={next()} />
+        <WikiLinkedClients slug={slug} clientId={wiki.clientId} n={next()} />
+      </div>
     </div>
   );
 }
@@ -234,7 +239,9 @@ function WikiAccessCard({
               Every page is in the wiki link. Turn it off to share pages one at a time.
             </p>
           ) : (
-            <details className="group" open={anyPageShared}>
+            <details className="group">
+              {/* Closed by default like every fold here — the count in the summary says when
+                  pages are shared, so nothing is hidden by keeping it shut. */}
               <summary
                 className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)] hover:text-[var(--text-2)] [&::-webkit-details-marker]:hidden"
                 style={{ fontFamily: MONO }}
@@ -534,7 +541,9 @@ function WikiApiIntakeSettings({ slug, n }: { slug: string; n: string }) {
 
             {folding("Integration guide — every endpoint, an example and the fields", (
               <>
-                <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
+                {/* One column: this card is half width from xl, and two columns of URLs in
+                    half a page wrap mid-token. */}
+                <div className="grid gap-y-4">
                   {endpoints.map((row) => (
                     <div key={row.key}>
                       <div className="mb-1.5 flex items-center justify-between">
