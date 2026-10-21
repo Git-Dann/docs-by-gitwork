@@ -101,9 +101,40 @@ function readConfig(): ApnsConfig | null {
   const isProduction = process.env.APNS_PRODUCTION === "true";
 
   if (!keyId || !teamId || !bundleId || !authKeyPem) {
+    warnUnconfiguredOnce([
+      !keyId && "APNS_KEY_ID",
+      !teamId && "APNS_TEAM_ID",
+      !bundleId && "APNS_BUNDLE_ID",
+      !authKeyPem && "APNS_AUTH_KEY",
+    ].filter((v): v is string => Boolean(v)));
     return null;
   }
   return { keyId, teamId, bundleId, authKeyPem, isProduction };
+}
+
+let warnedUnconfigured = false;
+
+/**
+ * Says so, once, when push is asked for and cannot happen.
+ *
+ * ⚠️ Every sender here already treats an unconfigured gateway as a quiet skip,
+ * which is right — a notification must never fail the work that triggered it.
+ * But quiet at BOTH ends means a server with no APNs config looks exactly like a
+ * server with nothing to send: no push ever arrives and nothing anywhere says
+ * why. That is the shape of defect this codebase keeps paying for — a missing
+ * secret that only reveals itself as a feature that silently does nothing
+ * (§35's GITHUB_TOKEN, §60's course feed).
+ *
+ * Once per process, so a busy standup morning does not fill the log.
+ */
+function warnUnconfiguredOnce(missing: string[]): void {
+  if (warnedUnconfigured) return;
+  warnedUnconfigured = true;
+  console.warn(
+    `[push] APNs is not configured — every push will be skipped. Missing: ${missing.join(", ")}. ` +
+      `The single-line vars sync from GitHub Actions secrets; APNS_AUTH_KEY is a multi-line PEM and ` +
+      `is set by hand in /opt/apps/foundry/.env.`,
+  );
 }
 
 // ─── Provider token (JWT) cache ─────────────────────────────────────────────

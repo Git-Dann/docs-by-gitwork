@@ -119,6 +119,10 @@ jobs:
           # them all together. Because an unset secret is a no-op below, removing one
           # here never removes it from .env; switch back by setting the driver secret
           # to "postgres".
+          APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
+          APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
+          APNS_BUNDLE_ID: ${{ secrets.APNS_BUNDLE_ID }}
+          APNS_PRODUCTION: ${{ secrets.APNS_PRODUCTION }}
           BLOB_STORAGE_DRIVER: ${{ secrets.BLOB_STORAGE_DRIVER }}
           BLOB_S3_BUCKET: ${{ secrets.BLOB_S3_BUCKET }}
           BLOB_S3_REGION: ${{ secrets.BLOB_S3_REGION }}
@@ -182,6 +186,19 @@ jobs:
             upsert_env ASSAY_SIGNING_SECRET "${ASSAY_SIGNING_SECRET:-}"
             upsert_env BIGWEDGE_API_USERNAME "${BIGWEDGE_API_USERNAME:-}"
             upsert_env BIGWEDGE_API_PASSWORD "${BIGWEDGE_API_PASSWORD:-}"
+            # ⚠️ APNs. Until now these were only ever set by hand on the box, which
+            # is exactly how GITHUB_TOKEN went missing in production for months
+            # (§35) — and a missing APNs config makes EVERY push silently no-op,
+            # staff and client alike, with nothing anywhere saying so.
+            #
+            # APNS_AUTH_KEY is deliberately NOT here: it is a multi-line PEM, and
+            # `upsert_env` writes `KEY=value` on one line and verifies with
+            # `grep -qxF`. Syncing it would corrupt the .env and then fail the
+            # verification. It stays a hand-set value on the box.
+            upsert_env APNS_KEY_ID "${APNS_KEY_ID:-}"
+            upsert_env APNS_TEAM_ID "${APNS_TEAM_ID:-}"
+            upsert_env APNS_BUNDLE_ID "${APNS_BUNDLE_ID:-}"
+            upsert_env APNS_PRODUCTION "${APNS_PRODUCTION:-}"
             upsert_env BLOB_STORAGE_DRIVER "${BLOB_STORAGE_DRIVER:-}"
             upsert_env BLOB_S3_BUCKET "${BLOB_S3_BUCKET:-}"
             upsert_env BLOB_S3_REGION "${BLOB_S3_REGION:-}"
