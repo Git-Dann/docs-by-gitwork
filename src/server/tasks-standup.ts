@@ -27,6 +27,7 @@ import {
   type StandupTaskCardInput,
 } from "@/server/slack/blocks";
 import { assertDailyUpdateCooldown } from "@/server/slack-cooldown";
+import { notifyClientsOfStandup } from "@/server/push/client-notifications";
 import { TEAM_ROSTER } from "@/server/team-roster";
 import type {
   TaskDTO,
@@ -338,6 +339,23 @@ export async function pushDailyUpdate(
       return { posted: 0, failures: [] as string[] };
     },
   );
+
+  // Tell the client's own phones, once per client per phase per day. Slack
+  // already carries this to clients who have a Connect channel linked; this is
+  // for the ones who live in the app instead.
+  //
+  // ⚠️ `involvedClientIds`, not `mergedInvolved` — the merged list unions what an
+  // earlier phase recorded, so it would push an afternoon update to a client this
+  // developer did no afternoon work for.
+  //
+  // ⚠️ Fire-and-forget, exactly like the Slack post and the all-in ping below. A
+  // developer's standup must never fail because a client's phone did.
+  void notifyClientsOfStandup({
+    workspaceId: user.workspaceId,
+    clientIds: involvedClientIds,
+    phase: input.phase,
+    workDate,
+  }).catch((err) => console.error("[tasks] client standup push failed", err));
 
   // If this PM push is the one that completes the whole dev roster, nudge the lead once.
   if (input.phase === "PM" && !prior?.pmPushedAt) {

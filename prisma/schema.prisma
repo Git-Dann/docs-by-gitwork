@@ -1786,9 +1786,73 @@ model ClientWikiUser {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  devices ClientDeviceToken[]
+
   @@unique([wikiId, email])
   @@index([wikiId])
   @@map("ClientWikiUser")
+}
+
+/// A client's phone, registered from the Foundry app after they sign in to their
+/// portal. The twin of `DeviceToken`, which belongs to a `User` — a member of the
+/// Gitwork workspace.
+///
+/// ⚠️ A SEPARATE TABLE ON PURPOSE. The obvious alternative is to make
+/// `DeviceToken.userId` nullable and add a second owner column, and that is the
+/// wrong trade: the staff push path is live, and loosening a required FK (with
+/// `onDelete: Cascade`, which is what stops a leaver's phone being pushed to) so it
+/// can also hold a different kind of principal would put every existing query one
+/// forgotten null-check away from pushing a client's update to the wrong device.
+/// The transport is shared instead — see `push/transport.ts`.
+model ClientDeviceToken {
+  id               String         @id @default(cuid())
+  clientWikiUserId String
+  clientWikiUser   ClientWikiUser @relation(fields: [clientWikiUserId], references: [id], onDelete: Cascade)
+  /// Denormalised from the owner so a per-wiki fan-out is one indexed read rather
+  /// than a join through every client user on every send.
+  wikiId           String
+  token            String         @unique // APNs device token (hex)
+  platform         String // "ios"
+  environment      String // "sandbox" | "production"
+  appBuild         String?
+  appVersion       String?
+  createdAt        DateTime       @default(now())
+  lastUsedAt       DateTime       @default(now())
+  /// Set when APNs says the token is dead. Soft-deleted, like the staff table, so a
+  /// reinstall can resurrect it and so "this device used to be here" stays visible.
+  failedAt         DateTime?
+
+  @@index([wikiId, failedAt])
+  @@index([clientWikiUserId])
+  @@index([token])
+}
+
+/// One record per push already sent to a client, so the same thing is never sent
+/// twice.
+///
+/// ⚠️ This is the whole reason a client is not buried. Every developer pushes their
+/// own standup, so a client with five active developers would otherwise get ten
+/// alerts a day and turn notifications off in the first week. The FIRST developer to
+/// push a phase sends the client one digest; the rest write nothing, because the
+/// unique key below is taken.
+///
+/// Written BEFORE the push is sent, so the insert itself is the guard and two
+/// simultaneous standups cannot both win — the same trick as `DispatchExchange`.
+model ClientPushReceipt {
+  id          String   @id @default(cuid())
+  /// Loose id, deliberately no FK: this is a log, and it must survive the wiki row
+  /// it describes rather than being cascaded away with it.
+  wikiId      String
+  /// What was sent, e.g. `standup:AM:2026-10-21`. Opaque to the schema on purpose —
+  /// a new kind of client push needs no migration, only a new key prefix.
+  key         String
+  sentAt      DateTime @default(now())
+  /// How many devices it actually reached. 0 is a real and common answer — nobody on
+  /// that client has the app yet — and is NOT a failure.
+  deviceCount Int      @default(0)
+
+  @@unique([wikiId, key])
+  @@index([wikiId, sentAt])
 }
 
 /// A single page/section within a ClientWiki. One row per type per wiki
