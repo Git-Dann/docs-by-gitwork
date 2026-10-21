@@ -97,7 +97,7 @@ function readConfig(): ApnsConfig | null {
   const keyId = process.env.APNS_KEY_ID;
   const teamId = process.env.APNS_TEAM_ID;
   const bundleId = process.env.APNS_BUNDLE_ID;
-  const authKeyPem = process.env.APNS_AUTH_KEY;
+  const authKeyPem = normalisePem(process.env.APNS_AUTH_KEY);
   const isProduction = process.env.APNS_PRODUCTION === "true";
 
   if (!keyId || !teamId || !bundleId || !authKeyPem) {
@@ -109,7 +109,64 @@ function readConfig(): ApnsConfig | null {
     ].filter((v): v is string => Boolean(v)));
     return null;
   }
+
+  // ⚠️ PRESENT IS NOT USABLE, and this cost a fortnight of missing pushes.
+  // A `.env` holds one line per variable, so pasting a `.p8` straight in
+  // leaves `APNS_AUTH_KEY=-----BEGIN PRIVATE KEY-----` and strands the key
+  // body on the lines below as malformed entries the parser drops. The
+  // variable is then SET, non-empty, and worthless — so the check above
+  // passed, nothing warned, and signing failed per push instead.
+  //
+  // Exactly §35's shape one layer in: "we have a value" read as "we have a
+  // working value". The shape is checked here, where it can still be said.
+  if (!isCompletePem(authKeyPem)) {
+    warnUnusableKeyOnce(describePemProblem(authKeyPem));
+    return null;
+  }
+
   return { keyId, teamId, bundleId, authKeyPem, isProduction };
+}
+
+/**
+ * The PEM as the signer needs it: real newlines.
+ *
+ * A `.env` cannot carry a literal newline inside a value, so the only forms
+ * that survive the file are a `\n`-escaped single line and a quoted block.
+ * Both are accepted and normalised here rather than each caller guessing —
+ * and `\r` goes too, because a key pasted from Windows or from a browser
+ * carries them and they break the base64 body.
+ */
+function normalisePem(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const text = raw
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\r\\n|\\n/g, "\n")
+    .replace(/\r/g, "");
+  return text.length ? text : undefined;
+}
+
+/** A PEM with a header, a footer and something between them. */
+function isCompletePem(pem: string): boolean {
+  const begin = /-----BEGIN [A-Z ]*PRIVATE KEY-----/.exec(pem);
+  const end = /-----END [A-Z ]*PRIVATE KEY-----/.exec(pem);
+  if (!begin || !end || end.index <= begin.index) return false;
+  const body = pem.slice(begin.index + begin[0].length, end.index).replace(/\s+/g, "");
+  // A P-256 key is ~200 base64 characters; anything far short of that is a
+  // fragment, not a key.
+  return body.length >= 100 && /^[A-Za-z0-9+/=]+$/.test(body);
+}
+
+/** What is wrong with it, in words — never any of the key itself. */
+function describePemProblem(pem: string): string {
+  const hasBegin = /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(pem);
+  const hasEnd = /-----END [A-Z ]*PRIVATE KEY-----/.test(pem);
+  if (hasBegin && !hasEnd) {
+    return "it is the PEM header with no key body — the .p8 was pasted into .env as multiple lines, " +
+      "so only its first line was kept";
+  }
+  if (!hasBegin) return "it carries no PEM header";
+  return "its body is too short to be a signing key";
 }
 
 let warnedUnconfigured = false;
@@ -127,6 +184,26 @@ let warnedUnconfigured = false;
  *
  * Once per process, so a busy standup morning does not fill the log.
  */
+let warnedUnusableKey = false;
+
+/**
+ * Says so, once, when the key is there and cannot sign.
+ *
+ * ⚠️ Deliberately a SEPARATE message from `warnUnconfiguredOnce`. "Nobody set
+ * this up" and "this is set up wrong" have different fixes, and collapsing
+ * them sends whoever reads the log to add a secret that is already there.
+ * That conflation is what §35 records costing a day.
+ */
+function warnUnusableKeyOnce(problem: string): void {
+  if (warnedUnusableKey) return;
+  warnedUnusableKey = true;
+  console.warn(
+    `[push] APNS_AUTH_KEY is set but cannot sign — every push will be skipped, because ${problem}. ` +
+      `Store the .p8 as ONE line with literal \\n between its lines, or quote the whole block. ` +
+      `Set it as the deploy user in /opt/apps/foundry/.env — never with sudo (CLAUDE.md §60.4).`,
+  );
+}
+
 function warnUnconfiguredOnce(missing: string[]): void {
   if (warnedUnconfigured) return;
   warnedUnconfigured = true;
