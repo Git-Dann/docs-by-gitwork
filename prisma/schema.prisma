@@ -1711,6 +1711,10 @@ model WikiMonitor {
   alertedDownAt   DateTime?
   /// When the watchdog reported this monitor as no longer being checked; cleared by the next check.
   staleAlertedAt  DateTime?
+  /// What the open alert is about — "down" (2 in a row) or "flaky" (3 of the last 6). Null = none open.
+  alertKind       String?
+  /// When the last alert cleared. Failures before it never count toward a new one.
+  alertClearedAt  DateTime?
   checks          WikiMonitorCheck[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
