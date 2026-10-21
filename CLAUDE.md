@@ -7395,3 +7395,30 @@ A full pass on the client wiki's Settings (`wiki-access-settings.tsx`).
 - ⚠️ The Access card's grid needs `grid-cols-1`. Without it the single narrow-screen column is
   an implicit `auto` track sized to its widest content, and the link panel ran 183px past the
   edge of a phone, clipped by the card. The clipping audit caught it.
+
+## 78. Recent Changes (October 2026) — Uptime monitors alert, and say when they've stopped
+
+Fellas Loaded went down with Google Cloud (20 Oct 2026) and the client told us first. Three things
+were wrong, all ours: the `wiki-monitors` cron had never been put on the VPS (every monitor last
+checked **4 Aug**, still showing UP), Fellas had no monitor, and a failing check alerted nobody.
+
+- **Cron:** `*/5 * * * * run-cron.sh wiki-monitors` is on the box (`docs/vps-crons.md`).
+- **Alerts** (`src/lib/monitor-alerts.ts`, pure): **down** after `ALERT_AFTER_FAILURES` (2)
+  failed checks in a row, **once** per outage (`WikiMonitor.alertedDownAt` is the latch), and
+  **back up** with the downtime. A blip that never alerted recovers silently. DEGRADED (slow) never
+  pages; UNKNOWN changes nothing. Event `clients.monitor_alert` →
+  `["inApp","push","slack"]`, posting to `Workspace.channelRoutes["clients.monitor_alert"]` (set
+  to Gitwork's ops channel, `C07L9N75DTR`).
+- **Watchdog:** `checkMonitorsWatchdog()` runs from the every-minute **`jobs`** worker, a different
+  cron from the one it watches, so the two can't stop together. A monitor not checked for
+  max(3× interval, 30 min) is reported once (`staleAlertedAt`); the next check clears it.
+- **No stale UP:** the DTO carries `stale`. A stale monitor shows "Not checking" / "Last checked …",
+  internally and on the client's board, never its last result.
+- **Cards + suggestions:** the internal Monitors list is cards (2-up md, 3-up xl when there's more
+  than one). "From this client's Platforms" offers one-click monitors for Platform URLs nothing
+  watches (`src/lib/monitor-suggestions.ts`). Admin and login paths become the site root.
+- **Fellas** now has three monitors: production API (`/api/feed/categories/`, which reads from the
+  DB, not just the web server), website and analytics. Its API has no health endpoint.
+- ⚠️ **Found while doing this:** Fellas' `/api/analytics/*` endpoints answer without auth,
+  including `trials/export/`, a CSV of ~5,650 customer emails. Reported to Dan to lock down in
+  the Fellas codebase.

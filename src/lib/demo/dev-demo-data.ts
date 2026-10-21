@@ -1001,19 +1001,19 @@ const demoWiki: WikiDTO = {
         id: "mon1", name: "Marketing site", type: "HTTP", target: "https://northwind.co", method: "GET",
         expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5,
         status: "UP", checkedAt: atDays(0), latencyMs: 142, statusCode: 200, error: null,
-        uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140),
+        uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140), stale: false,
       },
       {
         id: "mon2", name: "API", type: "HTTP", target: "https://api.northwind.co/health", method: "GET",
         expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5,
         status: "UP", checkedAt: atDays(0), latencyMs: 88, statusCode: 200, error: null,
-        uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]),
+        uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]), stale: false,
       },
       {
         id: "mon3", name: "Web app", type: "HTTP", target: "https://app.northwind.co", method: "GET",
         expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5,
         status: "DEGRADED", checkedAt: atDays(0), latencyMs: 1340, statusCode: 200, error: null,
-        uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]),
+        uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]), stale: false,
       },
     ],
   },
@@ -3647,6 +3647,16 @@ export function resolveDemoApi(
         ...demoWiki.meetings.meetings.map((m) => ({ id: m.id, title: m.title, startedAt: m.startedAt, shared: true })),
         { id: "mtg-internal", title: "Internal: Northwind sprint planning", startedAt: atDays(-6), shared: false },
       ].sort((a, b) => (a.startedAt ?? "") < (b.startedAt ?? "") ? 1 : -1),
+    };
+  }
+  // Monitors → "From this client's Platforms". Two URLs nothing watches yet, so the
+  // one-click suggestions render (the catch-all's `{}` would hide the block entirely).
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/suggestions$/.test(pathname)) {
+    return {
+      suggestions: [
+        { name: "Admin panel", target: "https://admin.northwind.co/" },
+        { name: "Status page", target: "https://status.northwind.co/" },
+      ],
     };
   }
   if (pathname.includes("/launchpad")) {

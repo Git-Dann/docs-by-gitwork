@@ -10,6 +10,9 @@
 import type { WikiMonitor, WikiMonitorStatus, WikiMonitorType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runProbe, type MonitorStatus } from "./wiki-monitors/index";
+import { dispatchNotification } from "@/server/notifications";
+import { alertMessage, isStale, nextAlertState, staleMessage, type ProbeStatus } from "@/lib/monitor-alerts";
+import { suggestMonitors, type MonitorSuggestion } from "@/lib/monitor-suggestions";
 
 // ─── DTOs ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +45,11 @@ export interface WikiMonitorDTO {
   avgLatencyMs: number | null;
   /** Recent checks oldest→newest, for the status bar strip. */
   history: WikiMonitorHistoryPoint[];
+  /**
+   * Not checked recently enough to trust `status`. Shown as "Not checked since …" rather than
+   * the last result — a monitor whose checker stopped kept showing UP for 2½ months (Aug–Oct 2026).
+   */
+  stale: boolean;
 }
 
 /** Retention window for check history + the widest uptime window. */
@@ -105,6 +113,7 @@ async function buildMonitorDTO(m: WikiMonitor): Promise<WikiMonitorDTO> {
     uptime: { d1, d7, d30 },
     avgLatencyMs:
       latencyAgg._avg.latencyMs != null ? Math.round(latencyAgg._avg.latencyMs) : null,
+    stale: isStale(m, new Date()),
     history: recent
       .reverse()
       .map((c) => ({
@@ -233,11 +242,34 @@ export async function checkMonitorNow(clientId: string, monitorId: string): Prom
   return fresh ? buildMonitorDTO(fresh) : null;
 }
 
+/** Monitors worth adding — the client's Platform URLs that nothing is watching yet. */
+export async function loadMonitorSuggestions(clientId: string): Promise<MonitorSuggestion[]> {
+  const [platforms, wiki] = await Promise.all([
+    prisma.clientPlatform.findMany({
+      where: { clientId },
+      orderBy: { createdAt: "asc" },
+      // URL and name only — never logins or notes.
+      select: { name: true, url: true },
+    }),
+    prisma.clientWiki.findUnique({
+      where: { clientId },
+      select: { monitors: { select: { target: true } } },
+    }),
+  ]);
+  return suggestMonitors(platforms, wiki?.monitors.map((m) => m.target) ?? []);
+}
+
 // ─── Probing ────────────────────────────────────────────────────────────────
 
-/** Probe one monitor, persist the check, and update its denormalised state. */
+/** Probe one monitor, persist the check, update its state, and alert on an outage or recovery. */
 export async function runMonitorCheck(monitor: WikiMonitor): Promise<void> {
   const result = await runProbe(monitor);
+  const now = new Date();
+  const { state, alert } = nextAlertState(
+    { failStreak: monitor.failStreak, downSince: monitor.downSince, alertedDownAt: monitor.alertedDownAt },
+    result.status as ProbeStatus,
+    now,
+  );
   await prisma.$transaction([
     prisma.wikiMonitorCheck.create({
       data: {
@@ -252,13 +284,111 @@ export async function runMonitorCheck(monitor: WikiMonitor): Promise<void> {
       where: { id: monitor.id },
       data: {
         lastStatus: result.status as WikiMonitorStatus,
-        lastCheckedAt: new Date(),
+        lastCheckedAt: now,
         lastLatencyMs: result.latencyMs,
         lastStatusCode: result.statusCode,
         lastError: result.error,
+        failStreak: state.failStreak,
+        downSince: state.downSince,
+        alertedDownAt: state.alertedDownAt,
+        // Checked again, so the watchdog may speak up again if checks ever stop.
+        staleAlertedAt: null,
       },
     }),
   ]);
+  if (alert) await sendMonitorAlert(monitor, alert, { statusCode: result.statusCode, error: result.error });
+}
+
+/** Who and where to tell: the monitor's client, for the message and the link back. */
+async function monitorOwner(wikiId: string) {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { id: wikiId },
+    select: { client: { select: { name: true, slug: true, workspaceId: true } } },
+  });
+  return wiki?.client ?? null;
+}
+
+async function sendMonitorAlert(
+  monitor: WikiMonitor,
+  alert: NonNullable<ReturnType<typeof nextAlertState>["alert"]>,
+  detail: { statusCode: number | null; error: string | null },
+): Promise<void> {
+  try {
+    const client = await monitorOwner(monitor.wikiId);
+    if (!client) return;
+    const { title, body } = alertMessage(
+      { clientName: client.name, monitorName: monitor.name, target: monitor.target },
+      alert,
+      detail,
+    );
+    dispatchNotification({
+      event: "clients.monitor_alert",
+      workspaceId: client.workspaceId,
+      title,
+      body,
+      actionUrl: `/app/portal/${client.slug}/wiki#monitors`,
+      target: { kind: "admins" },
+      groupKey: `clients.monitor_alert:${monitor.id}`,
+      count: 1,
+    });
+  } catch (err) {
+    // An alert that fails to send must never break the check that found the outage.
+    console.error("[wiki-monitors] could not send alert", err);
+  }
+}
+
+/**
+ * The watchdog for the failure a check can never report: checks not running at all. Called
+ * from the every-minute `jobs` worker — a different cron from the one it watches, so the two
+ * cannot stop together. Says so ONCE per stale monitor (`staleAlertedAt`), grouped per
+ * workspace; the next successful check clears the latch.
+ */
+export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ stale: number }> {
+  const candidates = await prisma.wikiMonitor.findMany({
+    where: { enabled: true, staleAlertedAt: null },
+    select: {
+      id: true,
+      name: true,
+      enabled: true,
+      lastCheckedAt: true,
+      createdAt: true,
+      intervalMinutes: true,
+      wiki: { select: { client: { select: { name: true, slug: true, workspaceId: true } } } },
+    },
+  });
+  const stale = candidates.filter((m) => isStale(m, now));
+  if (stale.length === 0) return { stale: 0 };
+
+  const byWorkspace = new Map<string, typeof stale>();
+  for (const m of stale) {
+    const ws = m.wiki.client.workspaceId;
+    byWorkspace.set(ws, [...(byWorkspace.get(ws) ?? []), m]);
+  }
+  for (const [workspaceId, list] of byWorkspace) {
+    const { title, body } = staleMessage(
+      list.map((m) => ({ clientName: m.wiki.client.name, monitorName: m.name, lastCheckedAt: m.lastCheckedAt })),
+      now,
+    );
+    try {
+      dispatchNotification({
+        event: "clients.monitor_alert",
+        workspaceId,
+        title,
+        body,
+        actionUrl: `/app/portal/${list[0].wiki.client.slug}/wiki#monitors`,
+        target: { kind: "admins" },
+        groupKey: "clients.monitor_alert:stale",
+        count: list.length,
+      });
+    } catch (err) {
+      console.error("[wiki-monitors] could not send watchdog alert", err);
+    }
+  }
+  await prisma.wikiMonitor.updateMany({
+    where: { id: { in: stale.map((m) => m.id) } },
+    data: { staleAlertedAt: now },
+  });
+  return { stale: stale.length };
 }
 
 /**

@@ -158,6 +158,11 @@ const EVENT_GROUPS: { module: string; events: { id: NotificationEvent; label: st
         description: "Data Foundry pulls for a client (e.g. Big Wedge course requests) stopped arriving.",
       },
       {
+        id: "clients.monitor_alert",
+        label: "Uptime monitor alert",
+        description: "A client's monitored service went down or came back, or monitoring stopped checking.",
+      },
+      {
         id: "wiki.request_mention",
         label: "Mentioned on a request",
         description: "You were @mentioned in a reply on a client's wiki request.",

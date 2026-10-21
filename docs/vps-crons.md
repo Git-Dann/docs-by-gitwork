@@ -119,6 +119,7 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 30 3 * * * /opt/apps/foundry/run-cron.sh member-purge         >> /tmp/foundry-cron.log 2>&1
 0 4 * * *  /opt/apps/foundry/run-cron.sh pulse-reconcile      >> /tmp/foundry-cron.log 2>&1
 0 5 * * *  /opt/apps/foundry/run-cron.sh pulse-run-monitors   >> /tmp/foundry-cron.log 2>&1
+*/5 * * * * /opt/apps/foundry/run-cron.sh wiki-monitors      >> /tmp/foundry-cron.log 2>&1
 0 6 * * *  /opt/apps/foundry/run-cron.sh analytics-snapshot   >> /tmp/foundry-cron.log 2>&1
 0 7 * * *  /opt/apps/foundry/run-cron.sh embed-conversations  >> /tmp/foundry-cron.log 2>&1
 0 8 * * *  /opt/apps/foundry/run-cron.sh support-sync         >> /tmp/foundry-cron.log 2>&1
@@ -191,15 +192,14 @@ they're independent, but the crontab otherwise staggers one job per hour.)
 - **All 17 `/api/cron/*` routes are accounted for above**, and that is the property to
   preserve — if you add a route, add a line here in the same PR. Two were missing until
   July 2026 (`retention`, `wedge-keepwarm`) and `foreman` was listed twice.
-- **`wiki-monitors` is the one deliberate omission.** It exists in `vercel.json` at
-  `0 1 * * *` (daily 01:00 — this file used to describe it as "sub-daily", which was
-  simply wrong) and it is not wired on the box — so client uptime monitoring is **not
-  currently running** from the crontab. Note that if the Vercel crons *are* still firing,
-  it is the one job Vercel is running that the box is not. That is a decision, not
-  an oversight: adopt it by adding
-  `*/5 * * * * /opt/apps/foundry/run-cron.sh wiki-monitors >> /tmp/foundry-cron.log 2>&1`,
-  or drop the route. Leaving it half-configured is the one option to avoid, because the
-  Wiki UI implies monitoring is active.
+- **`wiki-monitors` is on the box since 21 Oct 2026** (`*/5 * * * *`). It had been the one
+  deliberate omission since the July migration, and the cost of leaving it half-configured
+  was exactly what this note predicted: every monitor kept showing its last result (UP, from
+  4 Aug) for 2½ months while nothing checked anything, and Fellas Loaded went down with Google
+  Cloud with the client telling us first. Now a monitor alerts Slack
+  (`channelRoutes["clients.monitor_alert"]`) after two failed checks, and a watchdog in the
+  every-minute `jobs` worker alerts if monitors stop being checked — so this job silently
+  stopping is itself reported.
 - Apart from `wedge-keepwarm` (5-minutely) and `jobs` (every minute), everything is daily
   or weekly — the box staggers roughly one job per hour so no two heavy runs collide.
 - The **DB backup** is the weekly `db-backup.sh` above; the Fasthosts panel also runs a

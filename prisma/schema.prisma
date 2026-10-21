@@ -1703,6 +1703,14 @@ model WikiMonitor {
   lastLatencyMs   Int?
   lastStatusCode  Int?
   lastError       String?
+  /// Consecutive DOWN checks. An alert fires at 2 — one failed check is a blip (src/lib/monitor-alerts.ts).
+  failStreak      Int                @default(0)
+  /// First failing check of the current outage — the "down since" in alerts.
+  downSince       DateTime?
+  /// When this outage's DOWN alert went out — the once-per-outage latch; cleared on recovery.
+  alertedDownAt   DateTime?
+  /// When the watchdog reported this monitor as no longer being checked; cleared by the next check.
+  staleAlertedAt  DateTime?
   checks          WikiMonitorCheck[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt

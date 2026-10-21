@@ -4491,6 +4491,12 @@ export async function deleteWikiMonitorApi(slug: string, id: string): Promise<vo
   await apiFetch(`/api/clients/${slug}/wiki/monitors/${id}`, { method: "DELETE" });
 }
 
+export async function getWikiMonitorSuggestionsApi(
+  slug: string,
+): Promise<{ suggestions: { name: string; target: string }[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/monitors/suggestions`);
+}
+
 export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {
   return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors/${id}/run`, { method: "POST" });
 }
