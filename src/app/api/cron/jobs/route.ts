@@ -4,6 +4,7 @@ import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
 import { drainJobs } from "@/server/jobs/runner";
 import { enqueueJob } from "@/server/jobs/queue";
+import { checkMonitorsWatchdog } from "@/server/wiki-monitors";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -55,7 +56,16 @@ export async function GET(request: NextRequest) {
     // ── Drain the queue ──
     const drain = await drainJobs({ limit: DRAIN_LIMIT });
 
-    return apiOk({ reconciled, ...drain });
+    // ── Uptime-monitor watchdog ──
+    // Here, not in the wiki-monitors cron it watches: if that cron stops, a check of its own
+    // could never say so. Monitors went unchecked for 2½ months (Aug–Oct 2026) unnoticed.
+    // A failure here must not fail the job worker.
+    const monitors = await checkMonitorsWatchdog().catch((err) => {
+      console.error("[jobs] monitor watchdog failed", err);
+      return { stale: 0 };
+    });
+
+    return apiOk({ reconciled, ...drain, staleMonitors: monitors.stale });
   } catch (error) {
     return fromError(error);
   }

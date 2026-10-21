@@ -7,6 +7,7 @@ import {
   useUpdateWikiMonitor,
   useDeleteWikiMonitor,
   useRunWikiMonitor,
+  useWikiMonitorSuggestions,
 } from "@/hooks/use-wiki";
 import type { WikiMonitorDTO, MonitorInput } from "@/lib/api";
 
@@ -36,7 +37,10 @@ const SEVERITY: Record<Status, number> = { UP: 0, UNKNOWN: 1, DEGRADED: 2, DOWN:
 function overall(monitors: WikiMonitorDTO[]): Status {
   const active = monitors.filter((m) => m.enabled);
   if (active.length === 0) return "UNKNOWN";
-  return active.reduce<Status>((worst, m) => (SEVERITY[m.status] > SEVERITY[worst] ? m.status : worst), "UP");
+  return active.reduce<Status>(
+    (worst, m) => (SEVERITY[shownStatus(m)] > SEVERITY[worst] ? shownStatus(m) : worst),
+    "UP",
+  );
 }
 
 function fmtUptime(v: number | null): string {
@@ -52,6 +56,17 @@ function relTime(iso: string | null): string {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
+}
+
+/**
+ * What to show for a monitor. A stale one is NOT shown as its last result: monitors kept
+ * reading UP for 2½ months while nothing was checking them (Aug–Oct 2026).
+ */
+function shownStatus(m: WikiMonitorDTO): Status {
+  return m.stale ? "UNKNOWN" : m.status;
+}
+function statusLabel(m: WikiMonitorDTO): string {
+  return m.stale ? "Not checking" : META[m.status].label;
 }
 
 /** The recent-status bar strip (oldest → newest). */
@@ -82,7 +97,7 @@ function HistoryStrip({ history }: { history: WikiMonitorDTO["history"] }) {
   );
 }
 
-function StatusPill({ status }: { status: Status }) {
+function StatusPill({ status, label }: { status: Status; label?: string }) {
   const m = META[status];
   return (
     <span
@@ -90,7 +105,7 @@ function StatusPill({ status }: { status: Status }) {
       style={{ background: m.bg, color: m.color }}
     >
       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: DOT[status] }} />
-      {m.label}
+      {label ?? m.label}
     </span>
   );
 }
@@ -119,7 +134,9 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
             {ov === "UP"
               ? "All systems operational"
               : ov === "UNKNOWN"
-                ? "Monitoring not started yet"
+                ? visible.some((m) => m.stale)
+                  ? "Status not checked recently"
+                  : "Monitoring not started yet"
                 : ov === "DEGRADED"
                   ? "Some systems degraded"
                   : "Service disruption"}
@@ -141,13 +158,13 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: DOT[m.status] }} />
+                      <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: DOT[shownStatus(m)] }} />
                       <span className="truncate text-[15px] font-medium text-[var(--text-1)]" title={m.name}>
                         {m.name}
                       </span>
                     </div>
                   </div>
-                  <StatusPill status={m.status} />
+                  <StatusPill status={shownStatus(m)} label={statusLabel(m)} />
                 </div>
 
                 <div className="mt-3">
@@ -161,9 +178,11 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
                   <span>
                     <span style={{ fontFamily: MONO }}>{fmtLatency(m.avgLatencyMs)}</span> avg
                   </span>
-                  <span>Checked {relTime(m.checkedAt)}</span>
+                  <span className={m.stale ? "font-medium text-[var(--warning-500)]" : undefined}>
+                    {m.stale ? `Last checked ${relTime(m.checkedAt)}` : `Checked ${relTime(m.checkedAt)}`}
+                  </span>
                 </div>
-                {m.status === "DOWN" && m.error && (
+                {!m.stale && m.status === "DOWN" && m.error && (
                   <p className="mt-1.5 text-[12px] text-rose-600">{m.error}</p>
                 )}
               </li>
@@ -198,7 +217,7 @@ const EMPTY_FORM: FormState = {
 };
 
 const inputCls =
-  "w-full rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-[14px] text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]";
+  "w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 text-[14px] text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]";
 
 export function MonitorsManager({ slug, monitors }: { slug: string; monitors: WikiMonitorDTO[] }) {
   const create = useCreateWikiMonitor(slug);
@@ -278,8 +297,8 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
 
       <div className="space-y-3 p-6">
         <p className="text-[13px] text-[var(--text-4)]">
-          Checks run automatically on each monitor&apos;s interval. Clients see the live board with
-          uptime and response time.
+          Checks run every few minutes. If one fails twice in a row, Gitwork&apos;s ops channel on
+          Slack gets an alert, and another when it&apos;s back up. Clients see the live board.
         </p>
 
         {editing && (
@@ -401,36 +420,80 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
           </div>
         )}
 
+        <MonitorSuggestions
+          slug={slug}
+          onAdd={async (sug) => {
+            await create.mutateAsync({
+              name: sug.name,
+              type: "HTTP",
+              target: sug.target,
+              method: "GET",
+              expectedStatus: null,
+              keyword: null,
+              degradedMs: null,
+              intervalMinutes: 5,
+            });
+          }}
+        />
+
         {monitors.length === 0 && !editing ? (
           <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
             No monitors yet. Add one to start tracking uptime.
           </p>
         ) : (
-          <ul className="divide-y divide-[rgba(0,0,0,0.06)] overflow-hidden rounded-[12px] border border-[rgba(0,0,0,0.08)]">
+          /* Cards, so a client with several monitors reads at a glance — 2-up from md, 3-up from
+             xl. A single monitor keeps the full width rather than a lone card in a corner. */
+          <ul className={`grid grid-cols-1 gap-3 ${monitors.length > 1 ? "md:grid-cols-2 xl:grid-cols-3" : ""}`}>
             {monitors.map((m) => (
-              <li key={m.id} className="flex items-center gap-3 bg-white px-4 py-3">
-                <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[m.status] }} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[14px] font-medium text-[var(--text-1)]" title={m.name}>
-                      {m.name}
-                    </span>
-                    {!m.enabled && <span className="text-[11px] text-[var(--text-4)]">(paused)</span>}
+              <li
+                key={m.id}
+                className="flex min-w-0 flex-col rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: DOT[shownStatus(m)] }} />
+                      <span className="truncate text-[14px] font-medium text-[var(--text-1)]" title={m.name}>
+                        {m.name}
+                      </span>
+                    </div>
+                    {/* Truncates, so it carries the full target on hover — a container URL is
+                        routinely longer than the card. */}
+                    <p className="mt-0.5 truncate text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }} title={m.target}>
+                      {m.type} · {m.target}
+                    </p>
                   </div>
-                  {/* Truncates, so it carries the full target on hover — a
-                      container URL is routinely longer than the row. */}
-                  <p
-                    className="truncate text-[12px] text-[var(--text-4)]"
-                    style={{ fontFamily: MONO }}
-                    title={m.target}
-                  >
-                    {m.type} · {m.target} · {fmtUptime(m.uptime.d30)} · {fmtLatency(m.latencyMs)}
-                  </p>
+                  {m.enabled ? (
+                    <StatusPill status={shownStatus(m)} label={statusLabel(m)} />
+                  ) : (
+                    <span className="shrink-0 text-[11px] text-[var(--text-4)]">Paused</span>
+                  )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+
+                <div className="mt-3">
+                  <HistoryStrip history={m.history} />
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-4)]">
+                  <span>
+                    <span style={{ fontFamily: MONO }}>{fmtUptime(m.uptime.d30)}</span> · 30d
+                  </span>
+                  <span>
+                    <span style={{ fontFamily: MONO }}>{fmtLatency(m.latencyMs)}</span>
+                  </span>
+                  <span className={m.stale ? "font-medium text-[var(--warning-500)]" : undefined}>
+                    {m.stale ? `Last checked ${relTime(m.checkedAt)}` : `Checked ${relTime(m.checkedAt)}`}
+                  </span>
+                </div>
+                {!m.stale && m.status === "DOWN" && m.error ? (
+                  <p className="mt-1.5 break-words text-[12px] text-[var(--danger-500)]">{m.error}</p>
+                ) : null}
+
+                <div className="mt-auto flex items-center justify-end gap-1 pt-3">
                   <button
                     type="button"
                     title="Check now"
+                    aria-label={`Check ${m.name} now`}
                     disabled={run.isPending}
                     onClick={() => run.mutate(m.id)}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-40"
@@ -440,6 +503,7 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
                   <button
                     type="button"
                     title="Edit"
+                    aria-label={`Edit ${m.name}`}
                     onClick={() => openEdit(m)}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                   >
@@ -448,11 +512,12 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
                   <button
                     type="button"
                     title="Delete"
+                    aria-label={`Delete ${m.name}`}
                     disabled={remove.isPending}
                     onClick={() => {
                       if (window.confirm(`Delete monitor "${m.name}"?`)) remove.mutate(m.id);
                     }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--danger-500)] disabled:opacity-40"
                   >
                     <TrashIcon className="h-4 w-4" />
                   </button>
@@ -480,5 +545,52 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The client's Platform URLs nothing is watching yet, one click each. Renders nothing when
+ * there is nothing to suggest, so a fully covered client sees no extra block.
+ */
+function MonitorSuggestions({
+  slug,
+  onAdd,
+}: {
+  slug: string;
+  onAdd: (s: { name: string; target: string }) => Promise<void>;
+}) {
+  const { data } = useWikiMonitorSuggestions(slug);
+  const [adding, setAdding] = useState<string | null>(null);
+  const suggestions = data?.suggestions ?? [];
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="rounded-[10px] border border-dashed border-[var(--border-2)] p-3">
+      <p className="mb-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+        From this client&apos;s Platforms — not monitored yet
+      </p>
+      <ul className="flex flex-wrap gap-2">
+        {suggestions.map((sug) => (
+          <li key={sug.target} className="min-w-0 max-w-full">
+            <button
+              type="button"
+              disabled={adding !== null}
+              onClick={async () => {
+                setAdding(sug.target);
+                try {
+                  await onAdd(sug);
+                } finally {
+                  setAdding(null);
+                }
+              }}
+              title={sug.target}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1.5 text-[12px] text-[var(--text-2)] transition hover:border-[var(--brand-500)] hover:text-[var(--brand-700)] disabled:opacity-50"
+            >
+              <PlusIcon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{adding === sug.target ? "Adding…" : sug.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

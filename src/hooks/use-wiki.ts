@@ -39,6 +39,7 @@ import {
   updateWikiMonitorApi,
   deleteWikiMonitorApi,
   runWikiMonitorApi,
+  getWikiMonitorSuggestionsApi,
   setWikiMonitorsEnabledApi,
   setWikiIntakeEnabledApi,
   setWikiCodeEnabledApi,
@@ -971,6 +972,14 @@ export function useDeleteWikiMonitor(slug: string) {
   return useMutation({
     mutationFn: (id: string) => deleteWikiMonitorApi(slug, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** Platform URLs nothing monitors yet. Refetched when the wiki changes (a monitor was added). */
+export function useWikiMonitorSuggestions(slug: string) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "monitor-suggestions"],
+    queryFn: () => getWikiMonitorSuggestionsApi(slug),
   });
 }
 

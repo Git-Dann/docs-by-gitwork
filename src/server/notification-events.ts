@@ -52,6 +52,8 @@ export const NOTIFICATION_EVENTS = [
   "clients.onboarded",
   // A client data feed Foundry pulls on a schedule has stopped working (src/server/wedge-course-feed.ts)
   "clients.feed_failing",
+  // A client's uptime monitor went down / came back, or monitors stopped being checked (src/server/wiki-monitors.ts)
+  "clients.monitor_alert",
   // You were @mentioned in a reply on a client's request (src/server/wiki-intake-reply-notify.ts)
   "wiki.request_mention",
   // A client edited one of their wiki Sheets (src/server/wiki-sheets.ts) — at most once per sheet per 15 min
@@ -108,6 +110,10 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // stays down. A client's data silently not arriving is the failure this exists to end —
   // Big Wedge's course requests stopped for two months and the client had to tell us.
   "clients.feed_failing": ["inApp", "push"],
+  // A client's service is down (or back), or monitoring itself has stopped. Fellas Loaded was
+  // down with Google Cloud in Oct 2026 and the client told us first. Posts to
+  // channelRoutes["clients.monitor_alert"] (Gitwork's ops channel) as well as admins' devices.
+  "clients.monitor_alert": ["inApp", "push", "slack"],
   // Directed at one person, by name, in a conversation a client may be waiting on —
   // the same weight as being @mentioned on a task.
   "wiki.request_mention": ["inApp", "push"],
