@@ -24,10 +24,11 @@ export const dynamic = "force-dynamic";
  * is where contact details are asked for, rather than before the visitor has been
  * shown anything.
  *
- * Deliberately NOT a paywall unlock: it records a warm lead and hands the request to
- * the team. Nothing here runs an AI pipeline on demand — an anonymous caller must
- * never be able to spend tokens. `importLeadToFoundry` (authenticated, admin) is
- * still the only path that starts a full scan.
+ * Unlocking records the lead and emails the visitor their full report, which runs a
+ * full scan with an AI pass (pulse-lite/report-delivery.ts). That is the one place an
+ * anonymous caller spends tokens, so it is bounded several ways: Turnstile and the
+ * honeypot here, the per-IP limits on starting a scan, one unlock per scan (claimed
+ * atomically), one per email address, and a daily ceiling (FULL_REPORTS_PER_DAY).
  *
  * Same gate stack as starting a scan — kill-switch, honeypot, Turnstile — because
  * this is an unauthenticated write.

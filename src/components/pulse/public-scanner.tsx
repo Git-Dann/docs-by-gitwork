@@ -413,6 +413,8 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
   const isEmbed = variant === "embed";
   const [url, setUrl] = useState("");
   const [capture, setCapture] = useState<CaptureValues>(EMPTY_CAPTURE);
+  // Set when "Unlock" is pressed with a problem in the form, so every field says what it is.
+  const [captureTried, setCaptureTried] = useState(false);
   const [scanId, setScanId] = useState<string | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -692,7 +694,8 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
    * anonymous caller must never be able to spend AI tokens.
    */
   const sendEnquiry = useCallback(async () => {
-    if (!scanId || !captureComplete(capture) || enquirySending) return;
+    if (!scanId || enquirySending) return;
+    if (!captureComplete(capture)) { setCaptureTried(true); return; }
     setEnquirySending(true);
     setEnquiryError(null);
     try {
@@ -1079,7 +1082,9 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
               {done && (() => {
                 const lockedCount = view.emailCaptured ? 0 : (view.triage?.lockedCount ?? 0);
                 const ready = captureComplete(capture);
-                const blocked = enquirySending || !ready || awaitingVerification;
+                // Only sending and verifying disable the button. An incomplete form stays
+                // clickable and, when pressed, says what is wrong under each field.
+                const blocked = enquirySending || awaitingVerification;
                 return (
                 <div style={{ marginTop: 22, background: NAVY_GRADIENT, borderRadius: 12, padding: 20 }}>
                   {enquirySent || view.emailCaptured ? (
@@ -1114,6 +1119,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                         onChange={setCapture}
                         onSubmit={sendEnquiry}
                         disabled={enquirySending}
+                        showAllErrors={captureTried}
                         idPrefix="pulse-capture"
                         describedBy={enquiryError ? "pulse-enquiry-error" : undefined}
                       />
@@ -1127,7 +1133,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                           padding: "12px 20px",
                           borderRadius: 10,
                           border: "none",
-                          background: blocked ? "rgba(255,255,255,0.35)" : "white",
+                          background: blocked || !ready ? "rgba(255,255,255,0.35)" : "white",
                           color: "#111827",
                           fontSize: 14,
                           fontWeight: 700,

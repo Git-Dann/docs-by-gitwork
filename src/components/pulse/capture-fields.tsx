@@ -1,11 +1,13 @@
 "use client";
 
-import { CAPTURE_LIMITS, PRIVACY_URL, TERMS_URL } from "@/lib/pulse-capture";
+import { useState } from "react";
+import { CAPTURE_LIMITS, PRIVACY_URL, TERMS_URL, captureFieldErrors, parseCapture, suggestEmail, type CaptureField } from "@/lib/pulse-capture";
 
 /**
  * The unlock form's fields — name, business, email and the terms checkbox — shared by
  * the scanner widget and the shareable report page, which both draw it on the navy
- * gate card. The rules behind it live in lib/pulse-capture.ts.
+ * gate card. The rules behind it live in lib/pulse-capture.ts, and the server applies
+ * the same ones, so nothing the form accepts is then refused.
  */
 export interface CaptureValues {
   name: string;
@@ -16,9 +18,9 @@ export interface CaptureValues {
 
 export const EMPTY_CAPTURE: CaptureValues = { name: "", business: "", email: "", termsAccepted: false };
 
-/** True once every field is filled and the terms are ticked. */
+/** True once every field is valid and the terms are ticked: the same rule the server applies. */
 export function captureComplete(v: CaptureValues): boolean {
-  return Boolean(v.name.trim() && v.business.trim() && v.email.trim() && v.termsAccepted);
+  return parseCapture(v).ok;
 }
 
 const FIELD: React.CSSProperties = {
@@ -33,6 +35,8 @@ const FIELD: React.CSSProperties = {
   background: "rgba(255,255,255,0.06)",
   color: "white",
 };
+const FIELD_INVALID: React.CSSProperties = { ...FIELD, border: "1px solid #f87171" };
+const ERROR: React.CSSProperties = { margin: "4px 2px 0", fontSize: 12.5, color: "#fca5a5", lineHeight: 1.4 };
 
 export function CaptureFields({
   values,
@@ -41,6 +45,7 @@ export function CaptureFields({
   disabled,
   idPrefix,
   describedBy,
+  showAllErrors = false,
 }: {
   values: CaptureValues;
   onChange: (next: CaptureValues) => void;
@@ -48,54 +53,99 @@ export function CaptureFields({
   disabled: boolean;
   idPrefix: string;
   describedBy?: string;
+  /** Set after a submit attempt, so every field says what is wrong, not only ones left. */
+  showAllErrors?: boolean;
 }) {
+  // A field's problem shows once the visitor has left it, never while they are typing
+  // the first character of it.
+  const [touched, setTouched] = useState<Partial<Record<CaptureField, boolean>>>({});
+  const [triedEnter, setTriedEnter] = useState(false);
+  const errors = captureFieldErrors(values);
+  const show = (f: CaptureField) => (showAllErrors || triedEnter || touched[f]) && errors[f];
   const set = (patch: Partial<CaptureValues>) => onChange({ ...values, ...patch });
-  const enter = (e: React.KeyboardEvent) => { if (e.key === "Enter") onSubmit(); };
+  const leave = (f: CaptureField) => () => setTouched((t) => ({ ...t, [f]: true }));
+  const enter = (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter") return;
+    if (parseCapture(values).ok) onSubmit();
+    else setTriedEnter(true);
+  };
+  const suggestion = errors.email ? null : suggestEmail(values.email);
+  const ids = (f: CaptureField) => [show(f) ? `${idPrefix}-${f}-error` : null, describedBy].filter(Boolean).join(" ") || undefined;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-        <input
-          type="text"
-          autoComplete="name"
-          placeholder="Your name"
-          aria-label="Your name"
-          maxLength={CAPTURE_LIMITS.name}
-          value={values.name}
-          onChange={(e) => set({ name: e.target.value })}
-          onKeyDown={enter}
-          disabled={disabled}
-          aria-describedby={describedBy}
-          style={FIELD}
-        />
-        <input
-          type="text"
-          autoComplete="organization"
-          placeholder="Business name"
-          aria-label="Business name"
-          maxLength={CAPTURE_LIMITS.business}
-          value={values.business}
-          onChange={(e) => set({ business: e.target.value })}
-          onKeyDown={enter}
-          disabled={disabled}
-          aria-describedby={describedBy}
-          style={FIELD}
-        />
+        <div>
+          <input
+            type="text"
+            autoComplete="name"
+            placeholder="Your name"
+            aria-label="Your name"
+            maxLength={CAPTURE_LIMITS.name}
+            value={values.name}
+            onChange={(e) => set({ name: e.target.value })}
+            onBlur={leave("name")}
+            onKeyDown={enter}
+            disabled={disabled}
+            aria-invalid={show("name") ? true : undefined}
+            aria-describedby={ids("name")}
+            style={show("name") ? FIELD_INVALID : FIELD}
+          />
+          {show("name") && <p id={`${idPrefix}-name-error`} style={ERROR}>{errors.name}</p>}
+        </div>
+        <div>
+          <input
+            type="text"
+            autoComplete="organization"
+            placeholder="Business name"
+            aria-label="Business name"
+            maxLength={CAPTURE_LIMITS.business}
+            value={values.business}
+            onChange={(e) => set({ business: e.target.value })}
+            onBlur={leave("business")}
+            onKeyDown={enter}
+            disabled={disabled}
+            aria-invalid={show("business") ? true : undefined}
+            aria-describedby={ids("business")}
+            style={show("business") ? FIELD_INVALID : FIELD}
+          />
+          {show("business") && <p id={`${idPrefix}-business-error`} style={ERROR}>{errors.business}</p>}
+        </div>
       </div>
-      <input
-        type="email"
-        inputMode="email"
-        autoComplete="email"
-        placeholder="you@company.com"
-        aria-label="Your email address"
-        maxLength={CAPTURE_LIMITS.email}
-        value={values.email}
-        onChange={(e) => set({ email: e.target.value })}
-        onKeyDown={enter}
-        disabled={disabled}
-        aria-describedby={describedBy}
-        style={FIELD}
-      />
+      <div>
+        <input
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="you@company.com"
+          aria-label="Your email address"
+          maxLength={CAPTURE_LIMITS.email}
+          value={values.email}
+          onChange={(e) => set({ email: e.target.value })}
+          onBlur={leave("email")}
+          onKeyDown={enter}
+          disabled={disabled}
+          aria-invalid={show("email") ? true : undefined}
+          aria-describedby={ids("email")}
+          style={show("email") ? FIELD_INVALID : FIELD}
+        />
+        {show("email") && <p id={`${idPrefix}-email-error`} style={ERROR}>{errors.email}</p>}
+        {suggestion && (
+          <p style={{ ...ERROR, color: "#d1d5db" }}>
+            Did you mean{" "}
+            <button
+              type="button"
+              onClick={() => set({ email: suggestion })}
+              style={{ background: "none", border: 0, padding: 0, color: "white", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+            >
+              {suggestion}
+            </button>
+            ?
+          </p>
+        )}
+      </div>
       <label
         htmlFor={`${idPrefix}-terms`}
         style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: "#d1d5db", lineHeight: 1.5, cursor: "pointer" }}
@@ -106,6 +156,8 @@ export function CaptureFields({
           checked={values.termsAccepted}
           onChange={(e) => set({ termsAccepted: e.target.checked })}
           disabled={disabled}
+          aria-invalid={show("terms") ? true : undefined}
+          aria-describedby={ids("terms")}
           style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0, accentColor: "#6B52FF" }}
         />
         <span>
@@ -120,6 +172,7 @@ export function CaptureFields({
           , and to being emailed my report.
         </span>
       </label>
+      {show("terms") && <p id={`${idPrefix}-terms-error`} style={ERROR}>{errors.terms}</p>}
     </div>
   );
 }

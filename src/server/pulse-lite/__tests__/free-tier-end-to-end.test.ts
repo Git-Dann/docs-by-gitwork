@@ -43,6 +43,7 @@ vi.mock("@/lib/prisma", () => ({
     pulseLead: {
       findUnique: vi.fn(async () => ({ id: "l1", liteScanId: "s1", email: "v@x.com", targetUrl: "https://example.com" })),
       update: vi.fn(async () => ({})),
+      count: vi.fn(async () => 0),
     },
     workspaceMember: { findMany: vi.fn(async () => []) },
     workspace: { findFirst: vi.fn(async () => ({ id: "w1" })) },

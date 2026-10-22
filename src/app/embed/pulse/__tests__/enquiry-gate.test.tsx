@@ -183,16 +183,32 @@ describe("the in-depth review is the gate", () => {
     expect(host.querySelector('input[type="checkbox"]')).not.toBeNull();
   });
 
-  it("will not submit until name, business, email and the terms are all given", async () => {
-    stubFetch();
+  it("will not submit until name, business, email and the terms are all given, and says what is missing", async () => {
+    const { calls } = stubFetch();
     render();
     await settle();
     startScan();
     await settle(6);
     fillCapture({ name: "Sam Buyer", business: "Acme", email: "buyer@acme.test" });
-    expect(unlockButton().disabled).toBe(true);   // terms not ticked
-    fillCapture({ terms: true });
-    expect(unlockButton().disabled).toBe(false);
+    // The button stays clickable, so a visitor can find out why; pressing it sends nothing.
+    await act(async () => { unlockButton().dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await settle(2);
+    expect(calls.find((c) => c.url.includes("/enquiry"))).toBeUndefined();
+    expect(host.textContent).toMatch(/Please agree to the terms/);
+  });
+
+  it("refuses a link in the name and a malformed email before anything is sent", async () => {
+    const { calls } = stubFetch();
+    render();
+    await settle();
+    startScan();
+    await settle(6);
+    fillCapture({ name: "Win at https://phish.example", business: "Acme", email: "buyer@acme..test", terms: true });
+    await act(async () => { unlockButton().dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await settle(2);
+    expect(calls.find((c) => c.url.includes("/enquiry"))).toBeUndefined();
+    expect(host.textContent).toMatch(/without a web address/);
+    expect(host.textContent).toMatch(/Enter a valid email address/);
   });
 
   it("posts name, business, email and terms to the enquiry endpoint, without starting a scan", async () => {
@@ -299,8 +315,8 @@ describe("Turnstile tokens are single-use", () => {
 
   it("both enquiry buttons refuse to submit before a token exists", () => {
     // Submitting without one always fails server-side, which reads as a broken form.
-    expect(source).toMatch(/enquirySending \|\| !ready \|\| awaitingVerification/);
-    expect(enquirySource).toMatch(/sending \|\| !captureComplete\(capture\) \|\| awaitingVerification/);
+    expect(source).toMatch(/const blocked = enquirySending \|\| awaitingVerification/);
+    expect(enquirySource).toMatch(/disabled=\{sending \|\| awaitingVerification\}/);
     expect(enquirySource).toMatch(/const awaitingVerification = Boolean\(turnstileSiteKey\) && !token/);
   });
 

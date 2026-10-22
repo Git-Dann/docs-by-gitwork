@@ -37,6 +37,8 @@ export function ScanEnquiry({
 }) {
   const [capture, setCapture] = useState<CaptureValues>(EMPTY_CAPTURE);
   const [honeypot, setHoneypot] = useState("");
+  // Set when the button is pressed with a problem in the form, so every field says what it is.
+  const [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(alreadyEnquired);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,8 @@ export function ScanEnquiry({
   const [token, setToken] = useState<string | null>(null);
 
   const send = useCallback(async () => {
-    if (!captureComplete(capture) || sending) return;
+    if (sending) return;
+    if (!captureComplete(capture)) { setTried(true); return; }
     setSending(true);
     setError(null);
     try {
@@ -127,6 +130,7 @@ export function ScanEnquiry({
         onChange={setCapture}
         onSubmit={send}
         disabled={sending}
+        showAllErrors={tried}
         idPrefix="scan-capture"
         describedBy={error ? "scan-enquiry-error" : undefined}
       />
@@ -145,7 +149,7 @@ export function ScanEnquiry({
         <button
           type="button"
           onClick={send}
-          disabled={sending || !captureComplete(capture) || awaitingVerification}
+          disabled={sending || awaitingVerification}
           style={{
             flex: "0 0 auto",
             padding: "12px 22px",
@@ -155,7 +159,7 @@ export function ScanEnquiry({
             color: "#111827",
             fontSize: 14,
             fontWeight: 700,
-            cursor: sending || !captureComplete(capture) || awaitingVerification ? "default" : "pointer",
+            cursor: sending || awaitingVerification ? "default" : "pointer",
           }}
         >
           {sending ? "Sending…" : awaitingVerification ? "Verifying…" : lockedCount > 0 ? "Unlock the full report" : "Email me the full report"}

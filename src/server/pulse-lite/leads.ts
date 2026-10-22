@@ -18,6 +18,9 @@ function notFound(message: string): Error {
   return Object.assign(new Error(message), { status: 404 });
 }
 
+/** Full reports sent automatically per 24 hours. PULSE_FULL_REPORTS_PER_DAY overrides. */
+export const FULL_REPORTS_PER_DAY = Number(process.env.PULSE_FULL_REPORTS_PER_DAY) || 100;
+
 /** Thrown when an email has already claimed its one lifetime free unlock. */
 export class EmailAlreadyUsedError extends Error {
   status = 409;
@@ -66,10 +69,18 @@ export async function capturePulseLead(params: {
     },
     select: { id: true },
   });
-  await prisma.pulseLiteScan.update({
-    where: { id: lite.id },
+  // Claim the scan only if nobody else has in the meantime. Two submissions racing for
+  // one scan would otherwise both create a lead, and each would start a paid full scan.
+  const claimed = await prisma.pulseLiteScan.updateMany({
+    where: { id: lite.id, emailCaptured: false },
     data: { emailCaptured: true, leadId: lead.id },
   });
+  if (claimed.count === 0) {
+    await prisma.pulseLead.delete({ where: { id: lead.id } }).catch(() => {});
+    const winner = await prisma.pulseLiteScan.findUnique({ where: { id: lite.id }, select: { leadId: true } });
+    if (winner?.leadId) return { leadId: winner.leadId, created: false };
+    throw notFound("Scan not found.");
+  }
 
   return { leadId: lead.id, created: true };
 }
@@ -127,6 +138,21 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
 async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
   if (!lead) return;
+
+  // Each report is a full scan with an AI pass, paid for, started by an anonymous visitor.
+  // Unlocks are already bounded (Turnstile, per-IP scan limits, one per scan, one per email),
+  // but a ceiling per day means a bad day costs a known amount. Past it the lead is still
+  // captured and the team still told; the report can be run by hand from the leads list.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const today = await prisma.pulseLead.count({ where: { termsAcceptedAt: { gte: since }, id: { not: leadId } } });
+  if (today >= FULL_REPORTS_PER_DAY) {
+    console.error(`[pulse] daily report limit (${FULL_REPORTS_PER_DAY}) reached; lead ${leadId} not sent`);
+    await prisma.pulseLead
+      .update({ where: { id: leadId }, data: { reportError: `Daily limit of ${FULL_REPORTS_PER_DAY} reports reached. Run the full scan from the leads list.` } })
+      .catch(() => {});
+    return;
+  }
+
   // Loaded here, not at the top: delivery runs the full scan, which pulls in the AI
   // pipeline, and this file is imported by the public routes, which must stay light.
   const { deliverFullReport } = await import("./report-delivery");
