@@ -1504,6 +1504,21 @@ export async function importPulseLead(leadId: string): Promise<{ scanId: string 
   return apiFetch<{ scanId: string }>(`/api/pulse/leads/${leadId}/import`, { method: "POST" });
 }
 
+export async function updatePulseLead(
+  leadId: string,
+  patch: { name?: string; business?: string; email?: string },
+): Promise<{ updated: boolean }> {
+  return apiFetch(`/api/pulse/leads/${leadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deletePulseLead(leadId: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/pulse/leads/${leadId}`, { method: "DELETE" });
+}
+
 export async function getPulseLeadPreview(
   leadId: string,
 ): Promise<import("@/server/pulse-lite/leads-admin").PulseLeadPreview> {

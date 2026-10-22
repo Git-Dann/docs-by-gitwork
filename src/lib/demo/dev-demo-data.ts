@@ -4021,6 +4021,19 @@ function demoPulseLeads(now: number) {
       createdAt: ago(60 * 26), importedScanId: null, importedScanStatus: null,
       report: { state: "failed" as const, sentAt: null, error: "No report was sent; it was probably interrupted by a server restart." },
     },
+    // Enough more to need a second page.
+    ...[
+      ["Maya Chen", "Fernleaf", "fernleaf.test", 83], ["Tom Hughes", "Brightwater Legal", "brightwater.test", 67],
+      ["Aisha Bello", "Kora Foods", "korafoods.test", 91], ["Liam Walsh", "Peak Lettings", "peaklettings.test", 58],
+      ["Nina Kowalski", "Saltmarsh", "saltmarsh.test", 76], ["Owen Price", "Ridgeline Bikes", "ridgeline.test", 49],
+      ["Grace Mensah", "Atlas Physio", "atlasphysio.test", 88], ["Ravi Shah", "Copper Kettle", "copperkettle.test", 71],
+      ["Ellie Ford", "Tidewater", "tidewater.test", 64],
+    ].map(([name, business, site, score], i) => ({
+      id: `lead-x${i}`, email: `${String(name).split(" ")[0].toLowerCase()}@${site}`, name: String(name), business: String(business),
+      targetUrl: `https://${site}/`, healthScore: Number(score), source: i % 3 === 0 ? "production-ready" : "gitwork.co.uk", criticalCount: i % 4,
+      createdAt: ago(60 * 24 * (i + 2)), importedScanId: `demo-x${i}`, importedScanStatus: "COMPLETED",
+      report: { state: "sent" as const, sentAt: ago(60 * 24 * (i + 2) - 6), error: null },
+    })),
   ];
 }
 

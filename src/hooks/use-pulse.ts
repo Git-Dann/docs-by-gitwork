@@ -32,6 +32,8 @@ import {
   listPulseLeads,
   importPulseLead,
   getPulseLeadPreview,
+  updatePulseLead,
+  deletePulseLead,
   getPulseEmbedConfig,
   updatePulseEmbedConfig,
 } from "@/lib/api";
@@ -412,6 +414,26 @@ export function useImportPulseLead() {
       queryClient.invalidateQueries({ queryKey: ["pulse-leads"] });
       queryClient.invalidateQueries({ queryKey: ["pulse-scans"] });
     },
+  });
+}
+
+export function useUpdatePulseLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ leadId, patch }: { leadId: string; patch: { name?: string; business?: string; email?: string } }) =>
+      updatePulseLead(leadId, patch),
+    onSuccess: (_d, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-lead-preview", leadId] });
+    },
+  });
+}
+
+export function useDeletePulseLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deletePulseLead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pulse-leads"] }),
   });
 }
 
