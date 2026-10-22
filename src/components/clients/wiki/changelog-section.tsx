@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import {
   PlusIcon,
   TrashIcon,
   PencilSquareIcon,
   ClipboardDocumentIcon,
   CheckIcon,
+  EllipsisHorizontalIcon,
+  ArrowUturnLeftIcon,
 } from "@heroicons/react/24/outline";
 import type { ChangelogEntryRecord } from "@/lib/api";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -193,6 +197,66 @@ function groupByVersion(entries: ChangelogEntryRecord[]): VersionGroup[] {
 type FilterPlatform = "ALL" | "IOS" | "ANDROID" | "FIRESTICK" | "WEB";
 type StatusFilter = "ALL" | "PENDING" | "APPROVED";
 
+const GHOST_BTN =
+  "inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-50";
+
+/** The platform's pick-one control (DESIGN.md — Care views, wiki doc tabs). */
+function Segmented({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; count?: number; tone?: "warn" }[];
+}) {
+  return (
+    <div className="max-w-full overflow-x-auto">
+      <div
+        role="tablist"
+        aria-label={label}
+        className="inline-flex min-w-max gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+      >
+        {options.map((o) => {
+          const on = o.value === value;
+          const warn = o.tone === "warn" && (o.count ?? 0) > 0;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => onChange(o.value)}
+              className={[
+                "inline-flex items-center gap-1.5 whitespace-nowrap rounded-[6px] px-3 py-1.5 text-[11px] uppercase tracking-[0.05em] transition-colors",
+                on
+                  ? "bg-[var(--surface-0)] font-semibold text-[var(--brand-700)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                  : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+              ].join(" ")}
+              style={{ fontFamily: MONO }}
+            >
+              {warn && <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+              {o.label}
+              {o.count !== undefined && (
+                <span
+                  className={[
+                    "rounded-[4px] px-1 text-[10px] tabular-nums",
+                    warn ? "bg-amber-100 text-amber-800" : "bg-[var(--surface-2,rgba(0,0,0,0.05))] text-[var(--text-3)]",
+                  ].join(" ")}
+                >
+                  {o.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   entries: ChangelogEntryRecord[];
   /**
@@ -230,6 +294,8 @@ export function ChangelogSection({
   >({});
   /** Version currently being processed (delete / status toggle) */
   const [processingVersion, setProcessingVersion] = useState<string | null>(null);
+  /** Version whose Delete was clicked once — the second click deletes. */
+  const [confirmDeleteVersion, setConfirmDeleteVersion] = useState<string | null>(null);
   /** Version where the copy was just triggered — shows a brief ✓ */
   const [copiedVersion, setCopiedVersion] = useState<string | null>(null);
 
@@ -243,15 +309,17 @@ export function ChangelogSection({
 
   const groups = groupByVersion(entries);
 
-  // Apply both filters
-  const filtered = groups.filter((g) => {
-    const matchesPlatform =
-      platformFilter === "ALL" ||
-      g.entries.some((e) => e.platform === platformFilter);
-    const matchesStatus =
-      statusFilter === "ALL" || g.status === statusFilter;
-    return matchesPlatform && matchesStatus;
-  });
+  // Apply both filters. Status counts are taken AFTER the platform filter, so the number
+  // on "Pending" is always the number of cards that clicking it will show.
+  const onPlatform = groups.filter(
+    (g) => platformFilter === "ALL" || g.entries.some((e) => e.platform === platformFilter),
+  );
+  const statusCounts: Record<StatusFilter, number> = {
+    ALL: onPlatform.length,
+    PENDING: onPlatform.filter((g) => g.status === "PENDING").length,
+    APPROVED: onPlatform.filter((g) => g.status === "APPROVED").length,
+  };
+  const filtered = onPlatform.filter((g) => statusFilter === "ALL" || g.status === statusFilter);
 
   function getActivePlatform(group: VersionGroup): string {
     const saved = activePlatformByVersion[group.version];
@@ -296,47 +364,31 @@ export function ChangelogSection({
 
   return (
     <div>
-      {/* ── Filter bar ─────────────────────────────────────────── */}
-      <div className="mb-5 flex flex-wrap items-center gap-1">
-        {/* Platform tabs */}
-        {platformFilterTabs.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPlatformFilter(p)}
-            className={[
-              "rounded-full px-3 py-1 text-xs font-medium transition",
-              platformFilter === p
-                ? "bg-[var(--text-1)] text-[var(--surface-0)]"
-                : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-            ].join(" ")}
-          >
-            {PLATFORM_LABELS[p] ?? p}
-          </button>
-        ))}
-
-        {/* Status filter — pushed to the right */}
-        <div className="ml-auto flex gap-1">
-          {(["ALL", "PENDING", "APPROVED"] as StatusFilter[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={[
-                "rounded-full px-3 py-1 text-xs font-medium transition",
-                statusFilter === s
-                  ? s === "APPROVED"
-                    ? "bg-emerald-600 text-white"
-                    : s === "PENDING"
-                    ? "bg-amber-500 text-white"
-                    : "bg-[var(--text-1)] text-[var(--surface-0)]"
-                  : "border border-[var(--border-2)] text-[var(--text-3)] hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]",
-              ].join(" ")}
-            >
-              {s === "ALL" ? "All" : s === "PENDING" ? "Pending" : "Approved"}
-            </button>
-          ))}
-        </div>
+      {/* ── Filter bar ─────────────────────────────────────────────
+          Two segmented controls (the platform's pick-one control, DESIGN.md). Status
+          carries counts so "1 pending" is visible without clicking — a pending release is
+          the thing someone needs to act on, and it used to be a grey pill among grey pills. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+        {platformFilterTabs.length > 2 ? (
+          <Segmented
+            label="Platform"
+            value={platformFilter}
+            onChange={(v) => setPlatformFilter(v as FilterPlatform)}
+            options={platformFilterTabs.map((p) => ({ value: p, label: PLATFORM_LABELS[p] ?? p }))}
+          />
+        ) : (
+          <span />
+        )}
+        <Segmented
+          label="Status"
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as StatusFilter)}
+          options={[
+            { value: "ALL", label: "All", count: statusCounts.ALL },
+            { value: "PENDING", label: "Pending", count: statusCounts.PENDING, tone: "warn" },
+            { value: "APPROVED", label: "Approved", count: statusCounts.APPROVED },
+          ]}
+        />
       </div>
 
       {/* ── Timeline ───────────────────────────────────────────── */}
@@ -429,90 +481,116 @@ export function ChangelogSection({
                         </span>
                       </div>
 
-                      {/* Right actions */}
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <span className="text-[11px] text-[var(--text-4)]">
+                      {/* Right: date + status, then the actions. The status is a label
+                          now, not a hidden toggle — approving has its own button below. */}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
                           {dateStr}
                         </span>
-
-                        {/* Status badge — clickable to toggle */}
-                        {!readOnly ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleToggle(group)}
-                            disabled={isProcessing}
-                            title={
-                              isApproved
-                                ? "Mark as pending"
-                                : "Approve this release"
-                            }
-                            className={[
-                              "rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition disabled:opacity-50",
-                              isApproved
-                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                : "bg-amber-50 text-amber-700 hover:bg-amber-100",
-                            ].join(" ")}
-                            style={{ fontFamily: MONO }}
-                          >
-                            {isApproved ? "✓ Approved" : "● Pending"}
-                          </button>
-                        ) : (
-                          <span
-                            className={[
-                              "rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]",
-                              isApproved
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-amber-50 text-amber-700",
-                            ].join(" ")}
-                            style={{ fontFamily: MONO }}
-                          >
-                            {isApproved ? "✓ Approved" : "● Pending"}
-                          </span>
-                        )}
-
-                        {/* Copy button — copies active platform body */}
-                        {activeEntry?.body && (
-                          <button
-                            type="button"
-                            onClick={() => void handleCopy(group)}
-                            title="Copy release notes (App Store–ready)"
-                            className="rounded p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                          >
-                            {isCopied ? (
-                              <CheckIcon className="h-3.5 w-3.5 text-emerald-600" />
-                            ) : (
-                              <ClipboardDocumentIcon className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        )}
-
-                        {/* Edit button */}
-                        {!readOnly && onEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(group.version)}
-                            disabled={isProcessing}
-                            className="rounded p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-50"
-                            title="Edit this version"
-                          >
-                            <PencilSquareIcon className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-
-                        {/* Delete button */}
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(group)}
-                            disabled={isProcessing}
-                            className="rounded p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                            title="Delete this version"
-                          >
-                            <TrashIcon className="h-3.5 w-3.5" />
-                          </button>
-                        )}
+                        <span
+                          className={[
+                            "rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]",
+                            isApproved
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-amber-50 text-amber-700",
+                          ].join(" ")}
+                          style={{ fontFamily: MONO }}
+                        >
+                          {isApproved ? "✓ Approved" : "● Pending"}
+                        </span>
                       </div>
                     </div>
+
+                    {/* ── Actions ─────────────────────────────── */}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1">
+                      {activeEntry?.body && (
+                        <button
+                          type="button"
+                          onClick={() => void handleCopy(group)}
+                          title="Copy this platform's notes, ready to paste into the store"
+                          className={GHOST_BTN}
+                        >
+                          {isCopied ? (
+                            <CheckIcon className="h-3.5 w-3.5 text-emerald-600" />
+                          ) : (
+                            <ClipboardDocumentIcon className="h-3.5 w-3.5" />
+                          )}
+                          {isCopied ? "Copied" : `Copy ${hasMultiplePlatforms ? `${PLATFORM_LABELS[activePlatform] ?? activePlatform} notes` : "notes"}`}
+                        </button>
+                      )}
+                      {!readOnly && onEdit && (
+                        <button
+                          type="button"
+                          onClick={() => onEdit(group.version)}
+                          disabled={isProcessing}
+                          className={GHOST_BTN}
+                        >
+                          <PencilSquareIcon className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                      )}
+                      {!readOnly && (
+                        <Menu>
+                          <MenuButton
+                            aria-label={`More actions for v${group.version}`}
+                            disabled={isProcessing}
+                            className={`${GHOST_BTN} px-1.5`}
+                          >
+                            <EllipsisHorizontalIcon className="h-4 w-4" />
+                          </MenuButton>
+                          <MenuItems anchor="bottom start" className={`${menuPanel} w-48`}>
+                            {isApproved && (
+                              <MenuItem>
+                                <button type="button" onClick={() => void handleToggle(group)} className={`${menuItem} gap-2`}>
+                                  <ArrowUturnLeftIcon className="h-3.5 w-3.5" />
+                                  Mark as pending
+                                </button>
+                              </MenuItem>
+                            )}
+                            <MenuItem>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteVersion(group.version)}
+                                className={`${menuItem} gap-2 text-red-600`}
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                                Delete version…
+                              </button>
+                            </MenuItem>
+                          </MenuItems>
+                        </Menu>
+                      )}
+                    </div>
+
+                    {/* Delete asks once more, in place. It removes every platform's notes
+                        for the version, so it was too easy as a lone bin icon. */}
+                    {confirmDeleteVersion === group.version && (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-[8px] border border-red-200 bg-red-50 px-3 py-2">
+                        <span className="text-[12px] text-red-700">
+                          Delete v{group.version} for {hasMultiplePlatforms ? "every platform" : "good"}?
+                        </span>
+                        <span className="ml-auto flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteVersion(null)}
+                            className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium text-[var(--text-2)] hover:bg-white"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isProcessing}
+                            onClick={() => {
+                              setConfirmDeleteVersion(null);
+                              void handleDelete(group);
+                            }}
+                            className="rounded-[6px] bg-red-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      </div>
+                    )}
 
                     {/* ── Platform tabs (multi-platform only) ─── */}
                     {hasMultiplePlatforms && (
@@ -536,7 +614,7 @@ export function ChangelogSection({
                               }
                               className={[
                                 "rounded-[4px] px-2.5 py-1 text-[11px] font-semibold transition",
-                                isActive ? "opacity-100" : "opacity-35 hover:opacity-60",
+                                isActive ? "opacity-100" : "opacity-60 hover:opacity-100",
                               ].join(" ")}
                               style={{
                                 background: isActive ? pColor.bg : "transparent",
@@ -558,6 +636,29 @@ export function ChangelogSection({
                       <p className="mt-2 text-[12px] italic text-[var(--text-4)]">
                         No notes for this platform.
                       </p>
+                    )}
+
+                    {/* ── Approve ─────────────────────────────── The action a pending
+                        release is waiting for, so it is a real button with a sentence, not a
+                        status pill that happened to be clickable. */}
+                    {!readOnly && !isApproved && (
+                      <div className="-mx-4 -mb-3.5 mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-b-[10px] border-t border-amber-200 bg-amber-50 px-4 py-2.5">
+                        <span className="text-[12px] text-amber-800">
+                          Waiting for approval
+                          {hasMultiplePlatforms
+                            ? ` — check the notes for ${group.entries.length === 2 ? "both" : `all ${group.entries.length}`} platforms first.`
+                            : "."}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggle(group)}
+                          disabled={isProcessing}
+                          className="ml-auto inline-flex items-center gap-1.5 rounded-[6px] bg-emerald-600 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          <CheckIcon className="h-3.5 w-3.5" />
+                          {isProcessing ? "Approving…" : "Approve release"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

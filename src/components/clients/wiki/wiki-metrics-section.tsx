@@ -18,13 +18,16 @@ import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import { AreaSparkline, MONO, SERIF, TrendBadge } from "@/components/analytics/analytics-widgets";
 import {
   FEATURED_MAX,
+  SO_FAR,
   formatMetric,
+  headlineTileIndexes,
+  metricPeriodOptions,
   metricTrend,
+  metricsAt,
   periodLabel,
   tilesFor,
-  type MonthToDateMetric,
-  type MonthToDateView,
-  type WikiMetric,
+  type MetricTileGroup,
+  type PeriodMetric,
 } from "@/lib/wiki-metrics";
 import type { WikiMetricsSection } from "@/server/wiki-metrics";
 import {
@@ -68,28 +71,32 @@ function shortPeriod(period: string): string {
 }
 
 /**
- * One metric as a graph card: figure, label and change on top, the last six months drawn
- * full-width along the bottom INSIDE the card, with the first and last month named so the
- * line reads as a span of time rather than decoration.
+ * One metric as a card: figure, label and change on top, its trend drawn full-width along
+ * the bottom INSIDE the card with the first and last month named, so the line reads as a
+ * span of time rather than decoration. `size="lg"` is the headline row.
+ *
+ * The running month has no change and no line, on purpose: part of a month against a whole
+ * one always reads as a fall.
  */
-function MetricTile({ metric, periods }: { metric: WikiMetric; periods: string[] }) {
-  const known = metric.history
-    .map((v, i) => ({ v, period: periods[i] }))
-    .filter((p): p is { v: number; period: string } => p.v !== null && Boolean(p.period));
-  const raw = known.map((p) => p.v);
+function MetricTile({ metric, size = "md" }: { metric: PeriodMetric; size?: "md" | "lg" }) {
+  const known = metric.history;
+  const raw = known.map((p) => p.value);
   // Drawn against its own range, not from zero: 4,410 → 4,812 is the story, and from zero
   // it reads as a flat line along the bottom.
   const floor = raw.length ? Math.min(...raw) : 0;
   const points = raw.map((v) => v - floor);
+  const text = formatMetric(metric.value, metric.unit, metric.money);
+  const lg = size === "lg";
+  const soFar = metric.previous === undefined;
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)]">
-      <div className="px-3.5 pt-3">
+      <div className={lg ? "px-4 pt-4" : "px-3.5 pt-3"}>
         <div
           className="truncate tabular-nums text-[var(--text-1)]"
-          style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em" }}
-          title={formatMetric(metric.value, metric.unit, metric.money)}
+          style={{ fontFamily: SERIF, fontSize: lg ? 44 : 30, lineHeight: 1, letterSpacing: "-0.02em" }}
+          title={text}
         >
-          {formatMetric(metric.value, metric.unit, metric.money)}
+          {text}
         </div>
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <span
@@ -101,35 +108,41 @@ function MetricTile({ metric, periods }: { metric: WikiMetric; periods: string[]
           </span>
           {/* Neutral: a rising number is good for "users" and bad for "cancellations", and
               the adapter does not say which this is — so the arrow is told to colour neither. */}
-          <span className="shrink-0 text-xs text-[var(--text-3)]">
-            <TrendBadge delta={metricTrend(metric.value, metric.previous)} goodWhen="neutral" />
-          </span>
+          {!soFar ? (
+            <span className="shrink-0 text-xs text-[var(--text-3)]">
+              <TrendBadge delta={metricTrend(metric.value, metric.previous ?? null)} goodWhen="neutral" />
+            </span>
+          ) : null}
         </div>
       </div>
-      {/* The chart band is always the same height, so every card in a row lines up. */}
-      <div className="mt-auto pt-3">
-        {points.length >= 2 ? (
-          <>
-            <div className="h-12" aria-hidden>
-              <AreaSparkline points={points} height={48} />
-            </div>
-            <div
-              className="flex justify-between border-t border-[var(--border-1)] px-3.5 py-1.5 text-[9px] tracking-[0.08em] text-[var(--text-4)]"
+      {soFar ? (
+        <div className={lg ? "pb-4" : "pb-3"} />
+      ) : (
+        // The chart band is always the same height, so every card in a row lines up.
+        <div className="mt-auto pt-3">
+          {points.length >= 2 ? (
+            <>
+              <div className={lg ? "h-16" : "h-12"} aria-hidden>
+                <AreaSparkline points={points} height={lg ? 64 : 48} />
+              </div>
+              <div
+                className="flex justify-between border-t border-[var(--border-1)] px-3.5 py-1.5 text-[9px] tracking-[0.08em] text-[var(--text-4)]"
+                style={{ fontFamily: MONO }}
+              >
+                <span>{shortPeriod(known[0].period)}</span>
+                <span>{shortPeriod(known[known.length - 1].period)}</span>
+              </div>
+            </>
+          ) : (
+            <p
+              className={`flex ${lg ? "h-[89px]" : "h-[73px]"} items-center justify-center border-t border-[var(--border-1)] px-3.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]`}
               style={{ fontFamily: MONO }}
             >
-              <span>{shortPeriod(known[0].period)}</span>
-              <span>{shortPeriod(known[known.length - 1].period)}</span>
-            </div>
-          </>
-        ) : (
-          <p
-            className="flex h-[73px] items-center justify-center border-t border-[var(--border-1)] px-3.5 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
-            style={{ fontFamily: MONO }}
-          >
-            Trend after two months
-          </p>
-        )}
-      </div>
+              Trend after two months
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -160,51 +173,22 @@ function asOf(iso: string): string {
 }
 
 /**
- * A figure from the month still running. No trend and no sparkline on purpose: compared with
- * a whole month, part of one always reads as a fall.
- */
-function SoFarTile({ metric }: { metric: MonthToDateMetric }) {
-  const text = formatMetric(metric.value, metric.unit, metric.money);
-  return (
-    <div className="min-w-0 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3">
-      <div
-        className="truncate tabular-nums text-[var(--text-1)]"
-        style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1, letterSpacing: "-0.02em" }}
-        title={text}
-      >
-        {text}
-      </div>
-      <span
-        className="mt-1.5 block truncate text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
-        style={{ fontFamily: MONO }}
-        title={metric.label}
-      >
-        {metric.label}
-      </span>
-    </div>
-  );
-}
-
-/**
  * Several metrics in ONE card — "12 Subscriptions" as the figure, "6 monthly · 6 yearly"
  * underneath as supporting detail. The first part is the headline (it is listed first by the
  * adapter); the rest break it down. Each part is still its own metric underneath.
  */
-function CardTile({
-  title,
-  parts,
-}: {
-  title: string;
-  parts: { key: string; value: number; unit: string | null; money?: boolean; part: string; previous?: number | null }[];
-}) {
+function CardTile({ title, parts, size = "md" }: { title: string; parts: PeriodMetric[]; size?: "md" | "lg" }) {
   const [main, ...rest] = parts;
+  const lg = size === "lg";
   const text = formatMetric(main.value, main.unit, main.money);
-  const breakdown = rest.map((p) => `${formatMetric(p.value, p.unit, p.money)} ${p.part.toLowerCase()}`).join(" · ");
+  const breakdown = rest
+    .map((p) => `${formatMetric(p.value, p.unit, p.money)} ${(p.card?.part ?? p.label).toLowerCase()}`)
+    .join(" · ");
   return (
-    <div className="flex min-w-0 flex-col rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3">
+    <div className={`flex min-w-0 flex-col rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] ${lg ? "px-4 py-4" : "px-3.5 py-3"}`}>
       <div
         className="truncate tabular-nums text-[var(--text-1)]"
-        style={{ fontFamily: SERIF, fontSize: 30, lineHeight: 1, letterSpacing: "-0.02em" }}
+        style={{ fontFamily: SERIF, fontSize: lg ? 44 : 30, lineHeight: 1, letterSpacing: "-0.02em" }}
         title={text}
       >
         {text}
@@ -217,8 +201,7 @@ function CardTile({
         >
           {title}
         </span>
-        {/* A whole month carries a change; the running month never does (half a month
-            against a whole one always reads as a fall). */}
+        {/* A whole month carries a change; the running month never does. */}
         {main.previous !== undefined ? (
           <span className="shrink-0 text-xs text-[var(--text-3)]">
             <TrendBadge delta={metricTrend(main.value, main.previous ?? null)} goodWhen="neutral" />
@@ -227,8 +210,8 @@ function CardTile({
       </div>
       {breakdown ? (
         <p
-          className="mt-2 truncate border-t border-[var(--border-1)] pt-2 text-[11px] tabular-nums text-[var(--text-3)]"
-          style={{ fontFamily: MONO }}
+          className="mt-auto truncate border-t border-[var(--border-1)] pt-2 text-[11px] tabular-nums text-[var(--text-3)]"
+          style={{ fontFamily: MONO, marginTop: 12 }}
           title={breakdown}
         >
           {breakdown}
@@ -238,40 +221,68 @@ function CardTile({
   );
 }
 
-function MonthToDateCard({ n, view }: { n: string; view: MonthToDateView }) {
-  const rows = view.metrics.filter((m) => !m.hidden);
-  const month = periodLabel(view.period).split(" ")[0] ?? periodLabel(view.period);
-  if (rows.length === 0) return null;
-  return (
-    <section className="widget-card">
-      <Header n={n} label={`${month.toUpperCase()} SO FAR`} status={asOf(view.capturedAt).toUpperCase()} />
-      <div className="space-y-5 p-5">
-        {groupBy(rows).map(([group, ms]) => (
-          <div key={group || "_"}>
-            {group ? <GroupLabel>{group}</GroupLabel> : null}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {tilesFor(ms).map((t) =>
-                t.kind === "single" ? (
-                  <SoFarTile key={t.metric.key} metric={t.metric} />
-                ) : (
-                  <CardTile
-                    key={t.id}
-                    title={t.title}
-                    parts={t.parts.map((m) => ({ ...m, part: m.card?.part ?? m.label }))}
-                  />
-                ),
-              )}
-            </div>
-          </div>
-        ))}
-        <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-          {month} is still running, so these are not compared with whole months. The final
-          figures replace them once it ends.
-        </p>
-      </div>
-    </section>
+function Tile({ tile, size }: { tile: MetricTileGroup<PeriodMetric>; size?: "md" | "lg" }) {
+  return tile.kind === "single" ? (
+    <MetricTile metric={tile.metric} size={size} />
+  ) : (
+    <CardTile title={tile.title} parts={tile.parts} size={size} />
   );
 }
+
+const tileKey = (t: MetricTileGroup<PeriodMetric>) => (t.kind === "single" ? t.metric.key : `card:${t.id}`);
+
+/** The platform's pick-one control (DESIGN.md — Care views, wiki doc tabs). Scrolls on a phone. */
+function Segmented({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string; title?: string }[];
+}) {
+  return (
+    <div className="flex min-w-0 max-w-full items-center gap-2">
+      <span className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+        {label}
+      </span>
+      <div className="min-w-0 overflow-x-auto">
+        <div
+          role="tablist"
+          aria-label={label}
+          className="inline-flex min-w-max gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+        >
+          {options.map((o) => {
+            const on = o.value === value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                title={o.title}
+                onClick={() => onChange(o.value)}
+                className={[
+                  "whitespace-nowrap rounded-[6px] px-3 py-1.5 text-[11px] uppercase tracking-[0.05em] transition-colors",
+                  on
+                    ? "bg-[var(--surface-0)] font-semibold text-[var(--brand-700)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                    : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+                ].join(" ")}
+                style={{ fontFamily: MONO }}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const GRID = "grid gap-3 sm:grid-cols-2 xl:grid-cols-4";
 
 export function WikiMetricsSectionView({
   metrics,
@@ -282,65 +293,121 @@ export function WikiMetricsSectionView({
   slug?: string;
   editable?: boolean;
 }) {
-  const visible = metrics.metrics.filter((m) => !m.hidden);
-  const groups = useMemo(() => groupBy<WikiMetric>(visible), [visible]);
-  const headline = metricsHeadline(metrics);
-  const soFar =
-    metrics.monthToDate && metrics.monthToDate.metrics.some((m) => !m.hidden) ? metrics.monthToDate : null;
-  // Numbered in the order they render, so the sequence never skips.
-  const num = (i: number) => String(i + (soFar ? 1 : 0)).padStart(2, "0");
+  // ── Time frame ── The running month first (it is what someone opened the page to see),
+  // then each whole month already stored. Choosing one needs no fetch.
+  const periods = useMemo(() => metricPeriodOptions(metrics), [metrics]);
+  const [picked, setPicked] = useState<string | null>(null);
+  const period = picked && periods.some((p) => p.value === picked) ? picked : (periods[0]?.value ?? null);
+  const soFar = period === SO_FAR;
+  const rows = useMemo(() => (period ? metricsAt(metrics, period) : []), [metrics, period]);
+
+  // ── Filter ── "All" leads with the headline row and lists the rest underneath; a group
+  // shows every figure in that group, and nothing else.
+  const groupNames = useMemo(() => [...new Set(rows.map((m) => m.group ?? ""))].filter(Boolean), [rows]);
+  const [pickedGroup, setPickedGroup] = useState("ALL");
+  const group = pickedGroup === "ALL" || groupNames.includes(pickedGroup) ? pickedGroup : "ALL";
+
+  const tiles = useMemo(() => tilesFor(rows), [rows]);
+  const featured = metrics.metrics.filter((m) => m.featured).map((m) => m.key);
+  const headIdx = useMemo(() => (group === "ALL" ? headlineTileIndexes(tiles, featured) : []), [tiles, featured, group]);
+  const headline = headIdx.map((i) => tiles[i]);
+  const rest = tiles.filter((t, i) => !headIdx.includes(i) && (group === "ALL" || tileGroup(t) === group));
+
+  const periodOption = periods.find((p) => p.value === period);
+  const whenLabel = soFar && metrics.monthToDate ? asOf(metrics.monthToDate.capturedAt) : (periodOption?.label ?? "");
+  const prevPeriod = !soFar && period ? metrics.historyPeriods[metrics.historyPeriods.indexOf(period) - 1] : undefined;
+  const footnote = soFar
+    ? `${metrics.monthToDate ? periodLabel(metrics.monthToDate.period).split(" ")[0] : "This month"} is still running, so these are not compared with whole months. The final figures replace them once it ends.`
+    : `${prevPeriod ? `Changes are against ${periodLabel(prevPeriod)}.` : "Nothing earlier to compare with yet."} Lines show up to six months to ${periodOption?.label ?? "this month"}.`;
+
+  let n = 0;
+  const num = () => String(++n).padStart(2, "0");
+
+  const empty = !metrics.source
+    ? "Product metrics aren’t connected for this client yet."
+    : rows.length === 0
+      ? metrics.metrics.length > 0 || metrics.monthToDate
+        ? "Every metric is hidden. Show one below to put it here."
+        : "No figures have been fetched yet."
+      : null;
 
   return (
     <div className="space-y-4">
-      {soFar ? <MonthToDateCard n="01" view={soFar} /> : null}
-      <section className="widget-card">
-        <Header n={num(1)} label="METRICS" status={headline ?? undefined} />
-        {!metrics.source ? (
-          <p className="p-8 text-center text-sm text-[var(--text-4)]">
-            {/* Never an empty chart — that would read as "nothing happened". */}
-            Product metrics aren&rsquo;t connected for this client yet.
-          </p>
-        ) : visible.length === 0 ? (
-          <p className="p-8 text-center text-sm text-[var(--text-4)]">
-            {metrics.period
-              ? "Every metric is hidden. Show one below to put it here."
-              : "No figures have been fetched yet."}
-          </p>
-        ) : (
-          <div className="space-y-5 p-5">
-            {groups.map(([group, rows]) => (
-              <div key={group || "_"}>
-                {group ? <GroupLabel>{group}</GroupLabel> : null}
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {tilesFor(rows).map((t) =>
-                    t.kind === "single" ? (
-                      <MetricTile key={t.metric.key} metric={t.metric} periods={metrics.historyPeriods} />
-                    ) : (
-                      <CardTile
-                        key={t.id}
-                        title={t.title}
-                        parts={t.parts.map((m) => ({ ...m, part: m.card?.part ?? m.label }))}
-                      />
-                    ),
-                  )}
+      {!empty ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <Segmented
+            label="Period"
+            value={period ?? ""}
+            onChange={setPicked}
+            options={periods.map((p) => ({ value: p.value, label: p.short, title: p.label }))}
+          />
+          {groupNames.length > 1 ? (
+            <Segmented
+              label="Show"
+              value={group}
+              onChange={setPickedGroup}
+              options={[{ value: "ALL", label: "All" }, ...groupNames.map((g) => ({ value: g, label: g }))]}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {empty ? (
+        <section className="widget-card">
+          <Header n={num()} label="METRICS" />
+          {/* Never an empty chart — that would read as "nothing happened". */}
+          <p className="p-8 text-center text-sm text-[var(--text-4)]">{empty}</p>
+        </section>
+      ) : (
+        <>
+          {headline.length > 0 ? (
+            <section className="widget-card">
+              <Header n={num()} label="HEADLINE" status={whenLabel.toUpperCase()} />
+              <div className="p-5">
+                <div className={GRID}>
+                  {headline.map((t) => (
+                    <Tile key={tileKey(t)} tile={t} size="lg" />
+                  ))}
                 </div>
               </div>
-            ))}
-            <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
-              {metrics.previousPeriod
-                ? `Compared with ${periodLabel(metrics.previousPeriod)}.`
-                : "Nothing earlier to compare with yet."}
-              {metrics.mode === "monthly"
-                ? " Figures are for whole months, shown once the month is over."
-                : ""}
-            </p>
-          </div>
-        )}
-      </section>
+            </section>
+          ) : null}
 
-      {editable && slug ? <MetricsSettings n={num(2)} metrics={metrics} slug={slug} /> : null}
+          {rest.length > 0 ? (
+            <section className="widget-card">
+              <Header
+                n={num()}
+                label={group === "ALL" ? "ALL METRICS" : group.toUpperCase()}
+                status={headline.length > 0 ? undefined : whenLabel.toUpperCase()}
+              />
+              <div className="space-y-5 p-5">
+                {groupBy(rest.map((t) => ({ t, group: tileGroup(t) || null }))).map(([g, ts]) => (
+                  <div key={g || "_"}>
+                    {g && group === "ALL" ? <GroupLabel>{g}</GroupLabel> : null}
+                    <div className={GRID}>
+                      {ts.map(({ t }) => (
+                        <Tile key={tileKey(t)} tile={t} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <p className="px-1 text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+            {footnote}
+          </p>
+        </>
+      )}
+
+      {editable && slug ? <MetricsSettings n={num()} metrics={metrics} slug={slug} /> : null}
     </div>
   );
+}
+
+function tileGroup(t: MetricTileGroup<PeriodMetric>): string {
+  return (t.kind === "single" ? t.metric.group : t.parts[0]?.group) ?? "";
 }
 
 function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetricsSection; slug: string }) {
@@ -440,7 +507,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
               className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
               style={{ fontFamily: MONO }}
             >
-              What the client sees · ★ leads the dashboard card (up to {FEATURED_MAX})
+              What the client sees · ★ leads the headline row and the dashboard card (up to {FEATURED_MAX})
             </p>
             <ul className="divide-y divide-[var(--border-1)] rounded-[8px] border border-[var(--border-1)]">
               {rows.map((m) => (

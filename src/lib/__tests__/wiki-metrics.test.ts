@@ -18,7 +18,13 @@ import {
   readMetricCard,
   selectMonthToDate,
   tilesFor,
+  headlineTileIndexes,
+  metricPeriodOptions,
+  metricsAt,
+  HEADLINE_COUNT,
+  SO_FAR,
   type StoredSnapshot,
+  type WikiMetric,
 } from "@/lib/wiki-metrics";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
@@ -433,5 +439,85 @@ describe("several metrics in one card", () => {
     const v = selectMetricsView({ mode: "monthly", now: NOW, snapshots: snaps, monthToDate: true });
     expect(v.metrics[0].card).toEqual(card);
     expect(v.monthToDate?.metrics[0].card).toEqual(card);
+  });
+});
+
+describe("choosing a period on the page", () => {
+  const P = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09"];
+  const m = (key: string, group: string, history: (number | null)[], extra: Partial<WikiMetric> = {}): WikiMetric => ({
+    key,
+    label: key,
+    value: history[history.length - 1] ?? 0,
+    unit: null,
+    group,
+    previous: null,
+    hidden: false,
+    featured: false,
+    history,
+    ...extra,
+  });
+  const src = {
+    historyPeriods: P,
+    metrics: [
+      m("users_new", "Users", [10, 20, 30, 40, 50]),
+      m("users_active", "Users", [null, null, 5, 6, 7]),
+      m("rounds", "Golf", [1, 2, 3, 4, 5]),
+      m("secret", "Golf", [9, 9, 9, 9, 9], { hidden: true }),
+    ],
+    monthToDate: {
+      period: "2026-10",
+      capturedAt: "2026-10-22T09:00:00Z",
+      metrics: [{ key: "users_new", label: "New users", value: 12, unit: null, group: "Users", hidden: false }],
+    },
+  };
+
+  it("offers the running month first, then whole months newest first", () => {
+    const opts = metricPeriodOptions(src);
+    expect(opts.map((o) => o.value)).toEqual([SO_FAR, "2026-09", "2026-08", "2026-07", "2026-06", "2026-05"]);
+    expect(opts[0].short).toBe("Oct so far");
+    expect(opts[1]).toMatchObject({ label: "September 2026", short: "Sep" });
+  });
+
+  it("a past month shows that month's figure, compared with the month before, line up to it", () => {
+    const rows = metricsAt(src, "2026-07");
+    const u = rows.find((r) => r.key === "users_new")!;
+    expect(u).toMatchObject({ value: 30, previous: 20 });
+    expect(u.history.map((h) => h.period)).toEqual(["2026-05", "2026-06", "2026-07"]);
+  });
+
+  it("⚠️ a metric with no figure that month is left out, never shown as 0", () => {
+    expect(metricsAt(src, "2026-06").some((r) => r.key === "users_active")).toBe(false);
+  });
+
+  it("⚠️ a hidden metric never appears, in any period", () => {
+    for (const o of metricPeriodOptions(src)) expect(metricsAt(src, o.value).some((r) => r.key === "secret")).toBe(false);
+  });
+
+  it("the running month carries no comparison at all", () => {
+    expect(metricsAt(src, SO_FAR)[0].previous).toBeUndefined();
+  });
+});
+
+describe("the headline row", () => {
+  const t = (key: string, group: string) => ({ kind: "single" as const, metric: { key, group } });
+  const tiles = [t("u1", "Users"), t("u2", "Users"), t("u3", "Users"), t("g1", "Golf"), t("g2", "Golf"), t("r1", "Revenue")];
+
+  it("with nothing featured, takes one from each group in turn — not four user counts", () => {
+    expect(headlineTileIndexes(tiles, []).map((i) => tiles[i].metric.key)).toEqual(["u1", "g1", "r1", "u2"]);
+  });
+
+  it("★ picks lead, in the order chosen, and the rest fill to four", () => {
+    expect(headlineTileIndexes(tiles, ["r1", "g2"]).map((i) => tiles[i].metric.key)).toEqual(["r1", "g2", "u1", "g1"]);
+  });
+
+  it("a card counts once, found by any of its parts", () => {
+    const withCard = [{ kind: "card" as const, id: "subs", title: "Subs", parts: [{ key: "s_total", group: "Revenue" }, { key: "s_m", group: "Revenue" }] }, ...tiles];
+    expect(headlineTileIndexes(withCard, ["s_m"])[0]).toBe(0);
+  });
+
+  it("never more than four, and never a duplicate", () => {
+    const idx = headlineTileIndexes(tiles, ["u1", "u1", "u2", "u3", "g1", "g2"]);
+    expect(idx).toHaveLength(HEADLINE_COUNT);
+    expect(new Set(idx).size).toBe(HEADLINE_COUNT);
   });
 });
