@@ -17,9 +17,9 @@ import { avatarResponse } from "@/server/avatar-response";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return new Response("Unauthorized", { status: 401 });
   const { id } = await params;
-  return avatarResponse(id);
+  return avatarResponse(id, req);
 }
