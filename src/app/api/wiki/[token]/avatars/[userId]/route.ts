@@ -59,7 +59,7 @@ export async function GET(
     const onTeam = (client?.productTeamUserIds ?? []).includes(userId) || placed > 0;
     if (!onTeam) return notFound();
 
-    return avatarResponse(userId);
+    return avatarResponse(userId, req);
   } catch {
     return notFound();
   }
