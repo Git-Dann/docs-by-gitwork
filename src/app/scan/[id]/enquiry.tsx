@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { TurnstileBox } from "@/components/pulse/turnstile-box";
-import { CaptureFields, EMPTY_CAPTURE, UNLOCKED_HEADING, captureComplete, deliveryNote, unlockCopy, type CaptureValues } from "@/components/pulse/capture-fields";
+import { CaptureFields, EMPTY_CAPTURE, Honeypot, UNLOCKED_HEADING, captureComplete, deliveryNote, unlockCopy, type CaptureValues } from "@/components/pulse/capture-fields";
 
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
 
@@ -136,16 +136,7 @@ export function ScanEnquiry({
       />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         {/* Off-screen honeypot — real visitors never fill it. */}
-        <input
-          type="text"
-          name="company"
-          tabIndex={-1}
-          autoComplete="off"
-          aria-hidden="true"
-          value={honeypot}
-          onChange={(e) => setHoneypot(e.target.value)}
-          style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
-        />
+        <Honeypot value={honeypot} onChange={setHoneypot} />
         <button
           type="button"
           onClick={send}

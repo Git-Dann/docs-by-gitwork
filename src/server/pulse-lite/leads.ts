@@ -53,7 +53,13 @@ export async function capturePulseLead(params: {
   if (!lite) throw notFound("Scan not found.");
   if (lite.emailCaptured && lite.leadId) return { leadId: lite.leadId, created: false };
 
-  const existingForEmail = await prisma.pulseLead.findFirst({ where: { email: params.email }, select: { id: true } });
+  // One report per email address. Only leads that went through the unlock form count:
+  // leads from before it existed never agreed to the terms or got a report, and counting
+  // them refused those same people when they came back to get one.
+  const existingForEmail = await prisma.pulseLead.findFirst({
+    where: { email: params.email, termsAcceptedAt: { not: null } },
+    select: { id: true },
+  });
   if (existingForEmail) throw new EmailAlreadyUsedError();
 
   const lead = await prisma.pulseLead.create({

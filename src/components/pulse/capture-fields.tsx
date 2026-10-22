@@ -16,6 +16,30 @@ export interface CaptureValues {
   termsAccepted: boolean;
 }
 
+/**
+ * The off-screen honeypot. Named so that no browser's autofill guesses it is a name,
+ * company, email or address field: the old name, "company", was autofilled with the
+ * visitor's business and got real people refused as bots. See honeypotTripped.
+ */
+export function Honeypot({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="text"
+      name="pulse-hp-confirm"
+      id="pulse-hp-confirm"
+      tabIndex={-1}
+      autoComplete="off"
+      data-1p-ignore="true"
+      data-lpignore="true"
+      data-form-type="other"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
+      aria-hidden="true"
+    />
+  );
+}
+
 export const EMPTY_CAPTURE: CaptureValues = { name: "", business: "", email: "", termsAccepted: false };
 
 /** True once every field is valid and the terms are ticked: the same rule the server applies. */

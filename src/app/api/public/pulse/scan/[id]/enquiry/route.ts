@@ -1,6 +1,6 @@
 import { after, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { parseCapture } from "@/lib/pulse-capture";
+import { honeypotTripped, parseCapture } from "@/lib/pulse-capture";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { capturePulseLead, notifyLeadOfScanResult } from "@/server/pulse-lite/leads";
 import { clientIpFrom } from "@/server/pulse-lite/rate-limit";
@@ -49,7 +49,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       turnstileToken?: string;
     };
 
-    if (body.honeypot) return apiError("Couldn't send that enquiry.", 400);
+    // Autofill can fill the hidden field with something the visitor also typed for real;
+    // that is not a bot (honeypotTripped).
+    if (honeypotTripped(body.honeypot, [body.name, body.business, body.email])) {
+      return apiError("Couldn't send that enquiry.", 400);
+    }
 
     const ip = clientIpFrom(request.headers);
     await assertValidTurnstileToken(body.turnstileToken, ip, config.turnstileSecretKey);

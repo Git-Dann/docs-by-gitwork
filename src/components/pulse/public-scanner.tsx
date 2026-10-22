@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
-import { CaptureFields, EMPTY_CAPTURE, UNLOCKED_HEADING, captureComplete, deliveryNote, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
+import { CaptureFields, EMPTY_CAPTURE, Honeypot, UNLOCKED_HEADING, captureComplete, deliveryNote, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
 import { DEFAULT_BOOKING_URL, isPulseScanSource, type PulseScanSource } from "@/server/pulse-embed-config";
 
 /**
@@ -394,20 +394,6 @@ export function LockedFindings({
 
 /** Off-screen honeypot input — real visitors never see or fill it; naive bots that
  * fill every field will, and the server rejects the request when it's non-empty. */
-function Honeypot({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <input
-      type="text"
-      name="company"
-      tabIndex={-1}
-      autoComplete="off"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
-      aria-hidden="true"
-    />
-  );
-}
 
 export function PublicScanner({ variant = "embed", defaultSource, checkCountLabel }: PublicScannerProps) {
   const isEmbed = variant === "embed";

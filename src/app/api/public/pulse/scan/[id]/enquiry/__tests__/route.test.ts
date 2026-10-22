@@ -44,6 +44,19 @@ beforeEach(() => {
 });
 
 describe("unlocking a report", () => {
+  it("lets through a visitor whose browser autofilled the hidden field with their company", async () => {
+    // What happened to Harry: Chrome filled the honeypot with "Gitwork Group Ltd".
+    const res = await post({ ...body, business: "Gitwork Group Ltd", honeypot: "Gitwork Group Ltd" });
+    expect(res.status).toBe(201);
+    expect(capture).toHaveBeenCalled();
+  });
+
+  it("still refuses a bot that fills the hidden field with something of its own", async () => {
+    const res = await post({ ...body, honeypot: "http://spam.example" });
+    expect(res.status).toBe(400);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
   it("refuses a submission without the terms agreed, and records nothing", async () => {
     const res = await post({ ...body, termsAccepted: false });
     expect(res.status).toBe(400);

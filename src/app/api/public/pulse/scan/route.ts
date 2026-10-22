@@ -1,4 +1,5 @@
 import { after, NextRequest } from "next/server";
+import { honeypotTripped } from "@/lib/pulse-capture";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       turnstileToken?: string;
     };
 
-    if (body.honeypot) return apiError("Couldn't start the scan.", 400);
+    if (honeypotTripped(body.honeypot, [body.url])) return apiError("Couldn't start the scan.", 400);
 
     const ip = clientIpFrom(request.headers);
     await assertValidTurnstileToken(body.turnstileToken, ip, config.turnstileSecretKey);

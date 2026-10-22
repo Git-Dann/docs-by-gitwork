@@ -22,6 +22,15 @@ beforeEach(() => {
 });
 
 describe("two people unlocking one scan at the same moment", () => {
+  it("counts only leads that agreed to the terms towards the one-per-email limit", async () => {
+    db.pulseLiteScan.findUnique.mockResolvedValueOnce({ id: "lite", targetUrl: "https://a.test", healthScore: 80, emailCaptured: false, leadId: null });
+    db.pulseLead.findFirst.mockResolvedValue(null);
+    db.pulseLead.create.mockResolvedValue({ id: "lead-1" });
+    db.pulseLiteScan.updateMany.mockResolvedValue({ count: 1 });
+    await capturePulseLead({ liteScanId: "lite", email: "a@b.test" });
+    expect(db.pulseLead.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { email: "a@b.test", termsAcceptedAt: { not: null } } }));
+  });
+
   it("lets only the first claim it, and the second gets the first's lead, not a new paid scan", async () => {
     db.pulseLiteScan.findUnique
       .mockResolvedValueOnce({ id: "lite", targetUrl: "https://a.test", healthScore: 80, emailCaptured: false, leadId: null })

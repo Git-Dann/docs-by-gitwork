@@ -99,3 +99,19 @@ describe("the form's field-by-field errors", () => {
     expect(parseCapture({ name: 42, business: { a: 1 }, email: ["a@b.co"], termsAccepted: true }).ok).toBe(false);
   });
 });
+
+import { honeypotTripped } from "@/lib/pulse-capture";
+
+describe("the honeypot", () => {
+  it("is not tripped when empty, or when autofill copied a real field into it", () => {
+    expect(honeypotTripped("", ["a"])).toBe(false);
+    expect(honeypotTripped(undefined, ["a"])).toBe(false);
+    expect(honeypotTripped("  Gitwork Group Ltd ", ["Harry Brown", "gitwork group ltd", "h@b.co"])).toBe(false);
+    expect(honeypotTripped("harry@b.co", ["Harry", "Acme", "Harry@B.co"])).toBe(false);
+  });
+
+  it("is tripped by anything else", () => {
+    expect(honeypotTripped("buy now", ["Harry", "Acme", "h@b.co"])).toBe(true);
+    expect(honeypotTripped("x", [])).toBe(true);
+  });
+});

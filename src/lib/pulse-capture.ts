@@ -135,3 +135,19 @@ export function captureFieldErrors(input: CaptureInput): Partial<Record<CaptureF
   if (input.termsAccepted !== true) out.terms = "Please agree to the terms and conditions to continue.";
   return out;
 }
+
+/**
+ * True when the hidden honeypot field looks filled by a bot rather than by the browser.
+ *
+ * ⚠️ Browsers autofill hidden fields. The honeypot used to be named "company", beside the
+ * real "Business name" field, and Chrome (which ignores autocomplete="off") filled it with
+ * the visitor's company, so a real person using autofill was refused as a bot. The field
+ * is now named so no autofill heuristic matches it, and as a second line, a honeypot whose
+ * value is one the visitor also typed into a real field is autofill, not a bot. Turnstile
+ * is what actually stops bots; the honeypot only catches the crudest.
+ */
+export function honeypotTripped(honeypot: unknown, realFields: unknown[]): boolean {
+  const hp = typeof honeypot === "string" ? honeypot.trim().toLowerCase() : "";
+  if (!hp) return false;
+  return !realFields.some((v) => typeof v === "string" && v.trim().toLowerCase() === hp);
+}
