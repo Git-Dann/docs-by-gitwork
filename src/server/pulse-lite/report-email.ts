@@ -218,3 +218,108 @@ export function renderReportEmail(input: ReportEmailInput): { subject: string; h
 
   return { subject: `Your Pulse report for ${site}`, html };
 }
+
+// Where a scan was started, in words. Unknown values (old leads said "embed") print as-is.
+const SOURCE_LABELS: Record<string, string> = {
+  "gitwork.co.uk": "The scanner on gitwork.co.uk",
+  "production-ready": "The /production-ready sales page",
+  "foundry-demo": "A Foundry demo",
+  embed: "The embedded scanner",
+};
+
+export interface LeadEmailInput {
+  name: string | null;
+  business: string | null;
+  email: string;
+  targetUrl: string;
+  /** The free scan's score. The full report they are sent rescans, so it can differ. */
+  score: number | null;
+  /** Where the scan came from: the embed on gitwork.co.uk, the sales page, … */
+  source: string | null;
+  /** Foundry's Pulse page, where leads are listed and can be imported. */
+  foundryUrl: string;
+  logoUrl: string;
+}
+
+/**
+ * The team's "new lead" email, in the same design as the report the lead is sent, so the
+ * two read as one system. Leads with who they are, then what they scanned, then the two
+ * things someone will actually do: reply to them, or open them in Foundry.
+ */
+export function renderLeadEmail(input: LeadEmailInput): { subject: string; html: string } {
+  const site = host(input.targetUrl);
+  const who = input.name?.trim() || input.email;
+  const first = input.name?.trim().split(/\s+/)[0] ?? null;
+  const subject = `New Pulse lead: ${who}${input.business ? `, ${input.business}` : ""} (${site})`;
+
+  const row = (k: string, v: string) => `
+    <tr>
+      <td style="padding:10px 0;border-top:1px solid ${RULE};width:110px;vertical-align:top;">${label(k)}</td>
+      <td style="padding:10px 0;border-top:1px solid ${RULE};font-family:${BODY};font-size:14px;line-height:1.5;color:${TEXT};">${v}</td>
+    </tr>`;
+  const link = (href: string, text: string) =>
+    `<a href="${esc(href)}" style="color:${SIGNAL};text-decoration:none;">${esc(text)}</a>`;
+  const button = (href: string, text: string, bg: string, fg: string) =>
+    `<td bgcolor="${bg}" style="background-color:${bg};border-radius:999px;"><a href="${esc(href)}" style="display:inline-block;padding:12px 22px;border-radius:999px;color:${fg};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">${esc(text)}</a></td>`;
+  const mailto = `mailto:${input.email}?subject=${encodeURIComponent(`Your Pulse report for ${site}`)}`;
+
+  const html = `<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><title>${esc(subject)}</title></head>
+<body bgcolor="${PAPER}" style="margin:0;padding:0;background-color:${PAPER};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAPER}" style="background-color:${PAPER};">
+<tr><td align="center" style="padding:32px 16px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+    <tr><td style="padding:0 0 22px 0;border-bottom:1px solid ${RULE};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="vertical-align:middle;"><img src="${esc(input.logoUrl)}" width="120" height="25" alt="Gitwork" style="display:block;border:0;width:120px;height:auto;"></td>
+        <td align="right" style="vertical-align:middle;">${label("Pulse lead")}</td>
+      </tr></table>
+    </td></tr>
+
+    <tr><td style="padding:34px 0 0 0;">
+      <div>${label("New lead", SIGNAL)}</div>
+      <h1 style="margin:12px 0 0 0;font-family:${DISPLAY};font-size:32px;line-height:1.1;font-weight:700;letter-spacing:-0.018em;color:${TEXT};">${esc(who)}${input.business ? ` <span style="font-style:italic;color:${SIGNAL};">from ${esc(input.business)}</span>` : ""}.</h1>
+      <p style="margin:14px 0 0 0;font-family:${BODY};font-size:16px;line-height:1.5;font-weight:300;color:${MUTED};">Unlocked their Pulse report for <strong style="font-weight:600;color:${TEXT};">${esc(site)}</strong>. The full report is on its way to them now.</p>
+    </td></tr>
+
+    <tr><td style="padding:26px 0 0 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+        <tr><td style="padding:22px 24px 12px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:top;">
+              <div style="font-family:${DISPLAY};font-size:48px;line-height:1;font-weight:700;letter-spacing:-0.03em;color:${SIGNAL};">${input.score ?? "&ndash;"}</div>
+              <div style="padding-top:8px;">${label("Free scan score / 100")}</div>
+            </td>
+          </tr></table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;">
+            ${input.name ? row("Name", esc(input.name)) : ""}
+            ${input.business ? row("Business", esc(input.business)) : ""}
+            ${row("Email", link(`mailto:${input.email}`, input.email))}
+            ${row("Site", link(input.targetUrl, input.targetUrl))}
+            ${input.source ? row("Came from", esc(SOURCE_LABELS[input.source] ?? input.source)) : ""}
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td style="padding:22px 0 0 0;">
+      <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+        ${button(mailto, first ? `Email ${first}` : "Email them", INK, PAPER)}
+        <td style="width:10px;"></td>
+        ${button(input.foundryUrl, "Open in Foundry", SIGNAL, WHITE)}
+      </tr></table>
+      <p style="margin:14px 0 30px 0;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">The report they are sent comes from a full scan, so its score can differ from the free scan's.</p>
+    </td></tr>
+
+    <tr><td style="padding:0;border-top:1px solid ${RULE};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
+        <td>${label("Foundry")}</td>
+        <td align="right">${label("Gitwork Pulse")}</td>
+      </tr></table>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+  return { subject, html };
+}

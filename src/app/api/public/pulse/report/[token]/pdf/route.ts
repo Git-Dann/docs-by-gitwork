@@ -17,7 +17,7 @@ import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
-import { launchHeadlessBrowser } from "@/server/headless-browser";
+import { renderPulseReportPdf } from "@/server/pulse-report-pdf";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
     } else {
       let pending = inFlight.get(key);
       if (!pending) {
-        pending = render(`${originFrom(request)}/report/${token}?print=1`).finally(() => inFlight.delete(key));
+        pending = renderPulseReportPdf(`${originFrom(request)}/report/${token}?print=1`).finally(() => inFlight.delete(key));
         inFlight.set(key, pending);
       }
       pdf = await pending;
@@ -65,21 +65,5 @@ export async function GET(request: NextRequest, context: { params: Promise<{ tok
     });
   } catch (error) {
     return fromError(error);
-  }
-}
-
-async function render(target: string): Promise<Buffer> {
-  const browser = await launchHeadlessBrowser();
-  try {
-    const page = await browser.newPage();
-    await page.goto(target, { waitUntil: "networkidle0", timeout: 45_000 });
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "12mm", bottom: "16mm", left: "0mm", right: "0mm" },
-    });
-    return Buffer.from(pdf);
-  } finally {
-    await browser.close();
   }
 }

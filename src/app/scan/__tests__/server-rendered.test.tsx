@@ -95,7 +95,7 @@ describe("the free report is fully present in the HTML", () => {
 
   it("states the advisory tail rather than hiding it", () => {
     expect(html).toContain("588");
-    expect(html).toMatch(/lower-priority advisory checks/);
+    expect(html).toMatch(/lower-priority checks that didn(&apos;|'|&#x27;)t pass/);
   });
 
   it("renders 'could not establish' with its reason", () => {

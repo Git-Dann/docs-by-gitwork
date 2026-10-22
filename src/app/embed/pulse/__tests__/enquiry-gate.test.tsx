@@ -148,7 +148,8 @@ describe("the free report needs no email", () => {
     expect(host.textContent).toContain("Content-Security-Policy");
     // Assert the findings-block advisory line specifically. A bare /588/ also matched
     // the CTA copy below, so it did not prove this line rendered at all.
-    expect(host.textContent).toMatch(/588\s*lower-priority\s*advisory checks/i);
+    expect(host.textContent).toMatch(/588\s*lower-priority\s*checks that didn't pass/i);
+    expect(host.textContent).toMatch(/in your full report/);
     expect(host.textContent).toMatch(/What to fix \(2\)/);
   });
 });
@@ -241,7 +242,8 @@ describe("held-back findings are blurred, and only their shape is in the page", 
     startScan();
     await settle(6);
     expect(host.textContent).toMatch(/3\s*more findings in Security \(3\)/);
-    expect(host.textContent).toMatch(/Unlock 3 more findings/);
+    expect(host.textContent).toMatch(/Unlock your full report/);
+    expect(host.textContent).toMatch(/3 more findings to fix, and the results of all \d+ checks we ran/);
     const blurred = [...host.querySelectorAll<HTMLElement>("div")].filter((d) => d.style.filter === "blur(5px)" && !d.dataset.locked);
     expect(blurred).toHaveLength(2);
     // The category breakdown is blurred too while findings are held back.

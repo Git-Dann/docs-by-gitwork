@@ -1749,6 +1749,12 @@ h2, h3, h4, h5 {
   @page docpage {
     margin: 0;
   }
+  @page pulsepage {
+    margin: 12mm 0 14mm;
+  }
+  @page pulsepage:first {
+    margin-top: 0;
+  }
 
   html,
   body {
@@ -1767,6 +1773,46 @@ h2, h3, h4, h5 {
   .app-subtle-panel,
   .app-table-shell {
     box-shadow: none !important;
+  }
+
+  /* Pulse report (/report/[token], rendered to PDF for "Export PDF" and the report a visitor
+     is emailed). Its own page: no side margins, so the report uses the full width instead of
+     sitting in a white frame inside a narrower column; a top/bottom margin on every page but
+     the first, so continuation pages breathe while the dark cover still meets the top edge.
+     White, not gray-50, because the page margin is always white. */
+  .pulse-report {
+    page: pulsepage;
+    background: #fff !important;
+    /* Block, not flex: Chrome ignores break-inside inside a flex column. */
+    display: block !important;
+  }
+  .pulse-report .max-w-3xl {
+    max-width: none !important;
+  }
+  .pulse-report .bg-gray-50 {
+    background: #fff !important;
+  }
+  /* Cards flow across pages (keeping a whole card together leaves half-empty pages), but
+     a heading never sits alone at the foot of a page and a row is never cut in half. */
+  .pulse-report .widget-card {
+    box-shadow: none !important;
+  }
+  .pulse-report .widget-header {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .pulse-report .divide-y > *,
+  .pulse-report .grid > * {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .pulse-report-cta {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  html:has(.pulse-report),
+  body:has(.pulse-report) {
+    background: #fff !important;
   }
 
   /* Full-bleed cream document. The page inset (breathing room) is padding on the section wrapper,

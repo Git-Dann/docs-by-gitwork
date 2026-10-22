@@ -9,7 +9,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
+import { sendWorkspaceEmail } from "@/server/email";
+import { renderLeadEmail } from "./report-email";
 import { isAtLeast } from "@/types/auth";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
@@ -101,21 +102,18 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
   const admins = members.filter((m) => isAtLeast(m.role, "ADMIN")).map((m) => m.user.email).filter(Boolean);
   if (admins.length === 0) return;
 
-  const score = lead.healthScore ?? "—";
-  const res = await sendWorkspaceEmail({
-    workspaceId: workspace.id,
-    to: admins,
-    subject: `New Pulse lead — ${lead.email}`,
-    html: `<p>A new lead just ran the public Pulse scanner.</p>
-      <ul>
-        ${lead.name ? `<li><strong>Name:</strong> ${escapeHtml(lead.name)}</li>` : ""}
-        ${lead.business ? `<li><strong>Business:</strong> ${escapeHtml(lead.business)}</li>` : ""}
-        <li><strong>Email:</strong> ${escapeHtml(lead.email)}</li>
-        <li><strong>Scanned:</strong> ${escapeHtml(lead.targetUrl)}</li>
-        <li><strong>Health score:</strong> ${score}/100</li>
-      </ul>
-      <p>Open Foundry → Pulse to import this lead into a full AI scan + proposal.</p>`,
+  const base = (process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "");
+  const { subject, html } = renderLeadEmail({
+    name: lead.name,
+    business: lead.business,
+    email: lead.email,
+    targetUrl: lead.targetUrl,
+    score: lead.healthScore,
+    source: lead.source,
+    foundryUrl: `${base}/app/pulse`,
+    logoUrl: `${base}/email/gitwork-wordmark-ink.png`,
   });
+  const res = await sendWorkspaceEmail({ workspaceId: workspace.id, to: admins, subject, html });
   if (res.ok) {
     await prisma.pulseLead.update({ where: { id: leadId }, data: { notifiedAt: new Date() } }).catch(() => {});
   }

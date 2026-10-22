@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
-import { CaptureFields, EMPTY_CAPTURE, captureComplete, type CaptureValues } from "./capture-fields";
+import { CaptureFields, EMPTY_CAPTURE, captureComplete, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
 import { DEFAULT_BOOKING_URL, isPulseScanSource, type PulseScanSource } from "@/server/pulse-embed-config";
 
 /**
@@ -962,11 +962,11 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   {(view.triage?.advisoryCount ?? 0) > 0 && (
                     <p style={{ fontSize: 12, color: "#6b7280", marginTop: 10, marginBottom: 0 }}>
                       Plus <strong style={{ color: "#374151" }}>{view.triage!.advisoryCount}</strong> lower-priority
-                      advisory checks
+                      checks that didn&apos;t pass
                       {view.triage!.advisoryByCategory.length > 0 && (
-                        <> — mostly {view.triage!.advisoryByCategory.slice(0, 3).map((a) => a.category).join(", ")}</>
+                        <>, mostly in {listAreas(view.triage!.advisoryByCategory.slice(0, 3).map((a) => a.category))}</>
                       )}
-                      . Those come with the in-depth review.
+                      . They&apos;re all in your full report.
                     </p>
                   )}
                 </div>
@@ -1021,14 +1021,10 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   ) : (
                     <>
                       <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 6px" }}>
-                        {lockedCount > 0
-                          ? `Unlock ${lockedCount} more finding${lockedCount === 1 ? "" : "s"}`
-                          : "Get your full report by email"}
+                        {unlockCopy(lockedCount, view.pass + view.warn + view.fail + (view.inconclusive ?? 0)).heading}
                       </p>
                       <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
-                        {lockedCount > 0
-                          ? "Tell us who you are and we'll show every finding here and email you the full report, at no charge."
-                          : "Tell us who you are and we'll email you the full report, at no charge."}
+                        {unlockCopy(lockedCount, view.pass + view.warn + view.fail + (view.inconclusive ?? 0)).body}
                       </p>
                       <CaptureFields
                         values={capture}

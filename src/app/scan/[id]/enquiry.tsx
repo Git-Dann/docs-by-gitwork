@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { TurnstileBox } from "@/components/pulse/turnstile-box";
-import { CaptureFields, EMPTY_CAPTURE, captureComplete, type CaptureValues } from "@/components/pulse/capture-fields";
+import { CaptureFields, EMPTY_CAPTURE, captureComplete, unlockCopy, type CaptureValues } from "@/components/pulse/capture-fields";
 
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
 
@@ -21,6 +21,7 @@ export function ScanEnquiry({
   scanId,
   alreadyEnquired,
   lockedCount,
+  measured,
   bookingUrl,
   targetHost,
   turnstileSiteKey,
@@ -28,6 +29,8 @@ export function ScanEnquiry({
   scanId: string;
   alreadyEnquired: boolean;
   lockedCount: number;
+  /** Checks that ran on this site, for the unlock card's "all N checks". */
+  measured: number;
   bookingUrl: string;
   targetHost: string;
   turnstileSiteKey: string | null;
@@ -113,12 +116,10 @@ export function ScanEnquiry({
   return (
     <div>
       <p style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: "white", margin: "0 0 8px" }}>
-        {lockedCount > 0
-          ? `Unlock ${lockedCount} more finding${lockedCount === 1 ? "" : "s"}`
-          : "Get your full report by email"}
+        {unlockCopy(lockedCount, measured).heading}
       </p>
       <p style={{ fontSize: 14, color: "#9ca3af", margin: "0 0 18px", lineHeight: 1.6 }}>
-        Tell us who you are and we&apos;ll show every finding here and email you the full report, at no charge.
+        {unlockCopy(lockedCount, measured).body}
       </p>
       <CaptureFields
         values={capture}

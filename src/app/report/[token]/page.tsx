@@ -303,7 +303,7 @@ export default async function PublicReportPage({
     // on a short report it still sits at the foot of the viewport instead of
     // leaving the page background showing beneath it. `print:min-h-0` stops the
     // 100vh floor forcing blank space when this page is rendered to PDF.
-    <div className="flex min-h-screen flex-col bg-gray-50 print:min-h-0">
+    <div className="pulse-report flex min-h-screen flex-col bg-gray-50 print:min-h-0">
       <div className="flex-1">
       <div className="mx-auto max-w-3xl">
         {/* ═══════════════════════ COVER ═══════════════════════ */}
@@ -561,7 +561,7 @@ export default async function PublicReportPage({
           padded column: as a rounded card it left the page's light background
           visible around and below it. Square corners, edge-to-edge, and last
           child of the flex column so it always closes the page. */}
-      <div className="bg-gray-900 px-4 py-8 text-center sm:px-6">
+      <div className="pulse-report-cta bg-gray-900 px-4 py-8 text-center sm:px-6">
         <div className="mx-auto max-w-3xl">
           <p className="text-sm font-semibold text-white">Want to act on this report?</p>
           <p className="mt-1 text-sm text-gray-400">

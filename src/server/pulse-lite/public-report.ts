@@ -128,9 +128,9 @@ export function renderReportMarkdown(r: PublicReport): string {
   if (r.triage.lockedCount > 0) {
     const byCat = r.triage.lockedByCategory.slice(0, 6).map((a) => `${a.category} (${a.count})`).join(", ");
     lines.push(
-      `## Further findings in the in-depth review`,
+      `## Further findings in the full report`,
       ``,
-      `${r.triage.lockedCount} more finding${r.triage.lockedCount === 1 ? "" : "s"} ranked as actionable ${r.triage.lockedCount === 1 ? "is" : "are"} included in the in-depth review: ${byCat}.`,
+      `${r.triage.lockedCount} more finding${r.triage.lockedCount === 1 ? "" : "s"} ranked as actionable ${r.triage.lockedCount === 1 ? "is" : "are"} in the full report: ${byCat}.`,
       ``,
     );
   }
@@ -141,7 +141,7 @@ export function renderReportMarkdown(r: PublicReport): string {
       `## Advisory`,
       ``,
       `${r.triage.advisoryCount} further lower-priority checks did not pass. `
-        + `Largest groups: ${byCat}. These are included in the in-depth review.`,
+        + `Largest groups: ${byCat}. These are in the full report.`,
       ``,
     );
   }
@@ -170,8 +170,8 @@ export function renderReportMarkdown(r: PublicReport): string {
       + `attempt authorisation, or run the site's JavaScript. Anything requiring a repository, `
       + `a session or a rendered page is reported above as not established rather than guessed.`,
     ``,
-    `Produced by Gitwork Pulse. The in-depth review — what these findings mean, the order to `
-      + `address them in, and an implementation brief — is available on request.`,
+    `Produced by Gitwork Pulse. The full report, with every check and its evidence, is emailed `
+      + `once you unlock it.`,
     ``,
   );
 

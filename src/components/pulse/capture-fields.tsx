@@ -123,3 +123,28 @@ export function CaptureFields({
     </div>
   );
 }
+
+/**
+ * The unlock card's words, shared by the widget and the /scan page so they can't drift.
+ *
+ * It used to lead with the held-back count ("Unlock 6 more findings"), which undersold
+ * it: those are only the top-priority findings. Unlocking gets the full report, which
+ * covers every check run on the site, so the heading names the report and the count of
+ * checks says how much is in it.
+ */
+export function unlockCopy(lockedCount: number, measured: number): { heading: string; body: string } {
+  const checks = measured > 0 ? `all ${measured} checks we ran` : "every check we ran";
+  const findings = lockedCount > 0
+    ? `${lockedCount} more finding${lockedCount === 1 ? "" : "s"} to fix, and the results of ${checks}, with the evidence for each.`
+    : `The results of ${checks}, with the evidence for each.`;
+  return {
+    heading: "Unlock your full report",
+    body: `${findings} Tell us who you are and we'll email it to you, at no charge.`,
+  };
+}
+
+/** "A, B and C": an English list for short runs of area names. */
+export function listAreas(names: string[]): string {
+  if (names.length <= 1) return names.join("");
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}

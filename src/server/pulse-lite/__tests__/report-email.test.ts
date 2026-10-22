@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { renderReportEmail, type ReportEmailInput } from "@/server/pulse-lite/report-email";
+import { renderLeadEmail, renderReportEmail, type ReportEmailInput } from "@/server/pulse-lite/report-email";
 
 const base: ReportEmailInput = {
   name: "Sam Buyer",
@@ -73,5 +73,34 @@ describe("the report email", () => {
     const { html: h } = renderReportEmail({ ...base, name: "<script>x</script>", findings: [{ ...base.findings[0], label: "<img src=x onerror=1>" }] });
     expect(h).not.toContain("<script>x");
     expect(h).not.toContain("<img src=x");
+  });
+});
+
+describe("the team's new-lead email", () => {
+  const lead = renderLeadEmail({
+    name: "Sam Buyer", business: "Acme", email: "sam@acme.test", targetUrl: "https://www.acme.test/",
+    score: 72, source: "production-ready",
+    foundryUrl: "https://foundry.gitwork.co.uk/app/pulse", logoUrl: "https://foundry.gitwork.co.uk/email/gitwork-wordmark-ink.png",
+  });
+
+  it("names who, from where, and what they scanned in the subject", () => {
+    expect(lead.subject).toBe("New Pulse lead: Sam Buyer, Acme (acme.test)");
+    expect(lead.subject).not.toMatch(/[—–]/);
+  });
+
+  it("offers the two things someone will do: reply, or open it in Foundry", () => {
+    expect(lead.html).toContain('href="mailto:sam@acme.test?subject=');
+    expect(lead.html).toContain("Email Sam");
+    expect(lead.html).toContain('href="https://foundry.gitwork.co.uk/app/pulse"');
+  });
+
+  it("says where the lead came from in words, and uses bgcolor for every fill", () => {
+    expect(lead.html).toContain("The /production-ready sales page");
+    expect(lead.html).not.toMatch(/[;"]background:/);
+  });
+
+  it("escapes what the visitor typed", () => {
+    const evil = renderLeadEmail({ ...{ name: "<script>x</script>", business: null, email: "a@b.test", targetUrl: "https://a.test", score: null, source: null, foundryUrl: "https://f", logoUrl: "https://l" } });
+    expect(evil.html).not.toContain("<script>x");
   });
 });

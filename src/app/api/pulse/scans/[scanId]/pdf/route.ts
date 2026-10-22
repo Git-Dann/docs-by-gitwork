@@ -10,7 +10,7 @@ import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
-import { launchHeadlessBrowser } from "@/server/headless-browser";
+import { renderPulseReportPdf } from "@/server/pulse-report-pdf";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { requireScanAccess } from "@/server/pulse";
 
@@ -33,30 +33,15 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sca
     }
 
     const target = `${originFrom(request)}/report/${scan.shareToken}?print=1`;
-    // Shared launcher — resolves the native Alpine Chromium in production. This
-    // route previously launched @sparticuz's Lambda binary directly, which can't
-    // run on musl and failed with "Navigating frame was detached".
-    const browser = await launchHeadlessBrowser();
-
-    try {
-      const page = await browser.newPage();
-      await page.goto(target, { waitUntil: "networkidle0", timeout: 45_000 });
-      const pdf = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "12mm", bottom: "16mm", left: "0mm", right: "0mm" },
-      });
-      const filename = `${scan.projectName ?? "pulse-report"}-pulse-report.pdf`.replace(/[^\w.\-]+/g, "-");
-      return new Response(Buffer.from(pdf), {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${filename}"`,
-          "Cache-Control": "no-store",
-        },
-      });
-    } finally {
-      await browser.close();
-    }
+    const pdf = await renderPulseReportPdf(target);
+    const filename = `${scan.projectName ?? "pulse-report"}-pulse-report.pdf`.replace(/[^\w.\-]+/g, "-");
+    return new Response(new Uint8Array(pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
   } catch (error) {
     return fromError(error);
   }

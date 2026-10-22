@@ -5,6 +5,7 @@ import { getPublicReport, renderReportMarkdown } from "@/server/pulse-lite/publi
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import { ScanEnquiry } from "./enquiry";
 import { LockedFindings } from "@/components/pulse/public-scanner";
+import { listAreas } from "@/components/pulse/capture-fields";
 
 /**
  * PUBLIC result page for a free Pulse scan — `/scan/<id>`.
@@ -165,11 +166,11 @@ export default async function PublicScanPage({ params }: { params: Promise<{ id:
 
         {t.advisoryCount > 0 && (
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 14 }}>
-            Plus <strong style={{ color: "#374151" }}>{t.advisoryCount}</strong> lower-priority advisory checks
+            Plus <strong style={{ color: "#374151" }}>{t.advisoryCount}</strong> lower-priority checks that didn&apos;t pass
             {t.advisoryByCategory.length > 0 && (
-              <> — largest groups {t.advisoryByCategory.slice(0, 4).map((a) => `${a.category} (${a.count})`).join(", ")}</>
+              <>, mostly in {listAreas(t.advisoryByCategory.slice(0, 4).map((a) => `${a.category} (${a.count})`))}</>
             )}
-            . Those come with the in-depth review.
+            . They&apos;re all in your full report.
           </p>
         )}
       </section>
@@ -206,6 +207,7 @@ export default async function PublicScanPage({ params }: { params: Promise<{ id:
           scanId={report.id}
           alreadyEnquired={report.enquired}
           lockedCount={report.enquired ? 0 : t.lockedCount}
+          measured={report.measured}
           bookingUrl={bookingUrl}
           targetHost={report.targetHost}
           turnstileSiteKey={turnstileSiteKey}
