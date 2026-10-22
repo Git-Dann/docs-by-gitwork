@@ -148,3 +148,14 @@ export function listAreas(names: string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
+
+/**
+ * What a visitor is told once they unlock. The report is not sent yet at that moment: a full
+ * scan runs first, which usually takes a few minutes, and a first email from a new sender
+ * often lands in spam or promotions. Saying both up front is what stops "it never came".
+ */
+export const UNLOCKED_HEADING = "Unlocked. Your full report is on its way.";
+export function deliveryNote(site: string, email?: string | null): string {
+  const to = email?.trim() ? ` to ${email.trim()}` : "";
+  return `We're running a full scan of ${site} and will email your report${to}. It usually arrives within a few minutes, but can take up to an hour. If it isn't in your inbox, check your spam or promotions folder.`;
+}

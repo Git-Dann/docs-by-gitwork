@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
-import { CaptureFields, EMPTY_CAPTURE, captureComplete, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
+import { CaptureFields, EMPTY_CAPTURE, UNLOCKED_HEADING, captureComplete, deliveryNote, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
 import { DEFAULT_BOOKING_URL, isPulseScanSource, type PulseScanSource } from "@/server/pulse-embed-config";
 
 /**
@@ -1085,11 +1085,11 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   {enquirySent || view.emailCaptured ? (
                     <div style={{ textAlign: "center" }}>
                       <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
-                        {enquirySent ? "Unlocked. Your full report will be in your inbox in a few minutes." : "This report is unlocked."}
+                        {enquirySent ? UNLOCKED_HEADING : "This report is unlocked."}
                       </p>
                       <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
                         {enquirySent
-                          ? <>We&apos;ve emailed the full report for {view.targetUrl}{capture.email.trim() ? <> to {capture.email.trim()}</> : null}. Want help fixing it? Grab a slot.</>
+                          ? <>{deliveryNote(view.targetUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""), capture.email)} Want help fixing it? Grab a slot.</>
                           : <>Every finding is shown above. Want help fixing them? Grab a slot.</>}
                       </p>
                       <a

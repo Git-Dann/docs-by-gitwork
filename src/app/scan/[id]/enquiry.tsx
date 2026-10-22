@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { TurnstileBox } from "@/components/pulse/turnstile-box";
-import { CaptureFields, EMPTY_CAPTURE, captureComplete, unlockCopy, type CaptureValues } from "@/components/pulse/capture-fields";
+import { CaptureFields, EMPTY_CAPTURE, UNLOCKED_HEADING, captureComplete, deliveryNote, unlockCopy, type CaptureValues } from "@/components/pulse/capture-fields";
 
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
 
@@ -95,11 +95,12 @@ export function ScanEnquiry({
     return (
       <div>
         <p style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: "white", margin: "0 0 6px" }}>
-          {alreadyEnquired ? "This report is unlocked." : "Unlocked. Your full report will be in your inbox in a few minutes."}
+          {alreadyEnquired ? "This report is unlocked." : UNLOCKED_HEADING}
         </p>
         <p style={{ fontSize: 14, color: "#9ca3af", margin: "0 0 16px", lineHeight: 1.6 }}>
-          Every finding for {targetHost} is shown above, and we&apos;ve emailed you the full report. Want
-          help fixing it? Grab a slot.
+          {alreadyEnquired
+            ? <>Every finding for {targetHost} is shown above. Want help fixing it? Grab a slot.</>
+            : <>{deliveryNote(targetHost)} Want help fixing it? Grab a slot.</>}
         </p>
         <a
           href={bookingUrl}
