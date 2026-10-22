@@ -217,6 +217,86 @@ function ScoreRing({ score }: { score: number | null }) {
   );
 }
 
+/**
+ * A results section, closed by default. The full result is long (a breakdown across ~20
+ * areas, the findings, what could not be assessed) and nobody scrolls it; collapsed, the
+ * whole result fits on a screen with the unlock card in view, and each section says what
+ * is inside before it is opened. Native <details>, so it needs no script, works from the
+ * keyboard and announces itself to a screen reader.
+ */
+export function ResultSection({
+  title,
+  meta,
+  tone,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  tone?: "warn" | "fail";
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const dot = tone === "fail" ? "#dc2626" : tone === "warn" ? "#d97706" : null;
+  return (
+    <details className="pulse-acc" open={defaultOpen || undefined} style={{ border: "1px solid #eceef2", borderRadius: 12, background: "#ffffff" }}>
+      <style>{`.pulse-acc>summary::-webkit-details-marker{display:none}.pulse-acc>summary{list-style:none}.pulse-acc[open] .pulse-acc-chev{transform:rotate(180deg)}.pulse-acc>summary:focus-visible{outline:2px solid ${ACCENT};outline-offset:2px;border-radius:12px}`}</style>
+      <summary style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer", userSelect: "none" }}>
+        {dot && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: dot, flexShrink: 0 }} />}
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", flex: 1, minWidth: 0 }}>{title}</span>
+        {meta && <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{meta}</span>}
+        <svg className="pulse-acc-chev" aria-hidden="true" width="14" height="14" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, transition: "transform 160ms ease" }}>
+          <path d="M5 7.5l5 5 5-5" stroke="#6b7280" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div style={{ padding: "0 14px 14px" }}>{children}</div>
+    </details>
+  );
+}
+
+/**
+ * What the scan is doing while it runs. A scan that produces no checks for a while used to
+ * show a ring of dashes and "0 done", which reads as stuck; this says what is being looked
+ * at, how long it has taken, and, past ~20 seconds, that some sites are slow to answer.
+ * The steps are the scan's real order, approximated by time: the server streams checks in
+ * waves, not per step, so the bar is honest about being indeterminate.
+ */
+const SCAN_STEPS = [
+  "Fetching your homepage",
+  "Checking HTTPS and security headers",
+  "Reading DNS and email records",
+  "Checking legal pages, SEO and performance",
+  "Putting your score together",
+];
+function ScanProgress({ checks }: { checks: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const step = SCAN_STEPS[Math.min(SCAN_STEPS.length - 1, checks > 0 ? 3 + (elapsed > 30 ? 1 : 0) : Math.floor(elapsed / 4))];
+  return (
+    <div style={{ width: "100%", maxWidth: 360, marginTop: 12 }}>
+      <style>{`@keyframes pulse-scan-bar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}@media (prefers-reduced-motion:reduce){.pulse-scan-bar{animation:none!important;transform:none!important;width:100%!important;opacity:.4}}`}</style>
+      <div style={{ height: 4, borderRadius: 999, background: "#eef0f4", overflow: "hidden" }}>
+        <div className="pulse-scan-bar" style={{ width: "40%", height: "100%", borderRadius: 999, background: ACCENT, animation: "pulse-scan-bar 1.4s ease-in-out infinite" }} />
+      </div>
+      <p style={{ fontSize: 12.5, color: "#374151", margin: "10px 0 0", fontWeight: 600 }}>
+        {step}…
+        <span style={{ color: "#9ca3af", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}> {elapsed}s</span>
+      </p>
+      <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+        {checks > 0
+          ? `${checks} checks done so far.`
+          : elapsed >= 20
+            ? "This site is slow to answer some requests. Still working; it can take up to a minute."
+            : "Most sites take 10 to 20 seconds."}
+      </p>
+    </div>
+  );
+}
+
 function CategoryTile({ cat }: { cat: CategorySummary }) {
   const total = cat.pass + cat.warn + cat.fail;
   // ⚠️ A category where nothing resolved used to render 100% and a full green bar — a perfect
@@ -854,11 +934,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   <span style={{ color: "#dc2626" }}>✕ {view.fail}</span>
                   <span style={{ color: "#9ca3af", fontWeight: 500 }}>{view.totalChecks} checks</span>
                 </div>
-                {running && (
-                  <p style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>
-                    Running checks live… {view.totalChecks} done
-                  </p>
-                )}
+                {running && <ScanProgress checks={view.totalChecks} />}
               </div>
 
               {/* Category tiles (fill in live).
@@ -867,13 +943,17 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   embedded iframe is a wall rather than a summary. `summarise` already
                   sorts worst-first, so the cap shows the categories that actually need
                   attention and names the remainder honestly. */}
+              <div style={{ marginTop: 22, display: "flex", flexDirection: "column", gap: 8 }}>
               {view.categories.length > 0 && (
-                <>
+                <ResultSection
+                  title="Breakdown by area"
+                  meta={locked ? `${view.categories.length} areas · locked` : `${view.categories.length} areas`}
+                >
                   {/* While findings are held back, the category breakdown is part of what
                       unlocking buys: shown blurred, so the visitor sees there is a full
                       breakdown without reading it. */}
                   {locked && (
-                    <p style={{ marginTop: 18, marginBottom: 0, fontSize: 12.5, color: "#374151", textAlign: "center" }}>
+                    <p style={{ marginTop: 0, marginBottom: 0, fontSize: 12.5, color: "#374151" }}>
                       🔒 Your breakdown across {view.categories.length} areas unlocks with the full report.
                     </p>
                   )}
@@ -881,7 +961,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                     aria-hidden={locked || undefined}
                     data-locked={locked ? "true" : undefined}
                     style={{
-                      marginTop: locked ? 10 : 18,
+                      marginTop: locked ? 10 : 0,
                       display: "grid",
                       gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
                       gap: 10,
@@ -893,21 +973,26 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                     ))}
                   </div>
                   {view.categories.length > 8 && (
-                    <p style={{ marginTop: 10, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
-                      +{view.categories.length - 8} more categories checked — see the full report.
+                    <p style={{ marginTop: 10, marginBottom: 0, fontSize: 12, color: "#6b7280" }}>
+                      +{view.categories.length - 8} more areas checked, all in your full report.
                     </p>
                   )}
-                </>
+                </ResultSection>
               )}
 
               {/* The FREE report: every P1/P2 finding, in full, with its evidence.
                   Falls back to the old FAIL/WARN list for a scan stored before
                   `triage` existed, so replaying an old row still renders. */}
               {((view.triage?.actionable.length ?? findings.length) > 0 || (view.triage?.lockedCount ?? 0) > 0) && (
-                <div style={{ marginTop: 22 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>
-                    {`What to fix (${view.triage?.actionable.length ?? findings.length})`}
-                  </p>
+                <ResultSection
+                  title="What to fix"
+                  tone={(view.triage?.actionable ?? findings).some((f) => f.status === "FAIL") ? "fail" : "warn"}
+                  meta={(() => {
+                    const shown = view.triage?.actionable.length ?? findings.length;
+                    const held = view.emailCaptured ? 0 : (view.triage?.lockedCount ?? 0);
+                    return held > 0 ? `${shown} shown · ${held} locked` : `${shown} finding${shown === 1 ? "" : "s"}`;
+                  })()}
+                >
                   <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px" }}>
                     {view.triage?.limited ? "Ranked worst-first. The headline findings, free." : "Ranked worst-first by severity and certainty. All of it, free."}
                   </p>
@@ -969,7 +1054,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                       . They&apos;re all in your full report.
                     </p>
                   )}
-                </div>
+                </ResultSection>
               )}
 
               {/* What the scan could NOT establish. Sits with the findings deliberately: a
@@ -977,17 +1062,15 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   and passed. Client-rendered pages are the common case here — their content is
                   not in the static HTML, so a scanner cannot read it without running the app. */}
               {done && unresolved > 0 && (
-                <div style={{ marginTop: 14, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, background: "#f9fafb" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-                    {`${unresolved} check${unresolved === 1 ? "" : "s"} couldn't be assessed`}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                <ResultSection title="Couldn't be assessed" meta={`${unresolved} check${unresolved === 1 ? "" : "s"}`}>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: 0, lineHeight: 1.55 }}>
                     {clientRendered
-                      ? "This site renders its content with JavaScript, so the content and SEO checks can't read it from the page source. They're reported as inconclusive rather than failed — and they're not counted in the score either way."
+                      ? "This site renders its content with JavaScript, so the content and SEO checks can't read it from the page source. They're reported as inconclusive rather than failed, and they're not counted in the score either way."
                       : "These ran without reaching a verdict, so they're excluded from the score rather than counted as passes."}
-                  </div>
-                </div>
+                  </p>
+                </ResultSection>
               )}
+              </div>
 
               {/* THE GATE. The score, the free findings and the not-established list are
                   free. Name, business, email and agreement to the terms unlock the held-back

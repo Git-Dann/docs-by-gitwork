@@ -3099,6 +3099,10 @@ model PulseLead {
   name              String?
   business          String?
   termsAcceptedAt   DateTime?
+  // The visitor's report email: when it went, or why it didn't. Shown on the leads list
+  // so "did they get it?" has an answer without reading server logs.
+  reportSentAt      DateTime?
+  reportError       String?
 
   @@index([email])
   @@index([createdAt])

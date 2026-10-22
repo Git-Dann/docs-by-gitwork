@@ -3929,7 +3929,18 @@ export function resolveDemoApi(
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
-  if (pathname === "/api/pulse/leads") return { leads: [] };
+  if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };
+  {
+    const lp = pathname.match(/^\/api\/pulse\/leads\/([^/]+)\/preview$/);
+    if (lp) {
+      const lead = demoPulseLeads(Date.now()).find((l) => l.id === lp[1]) ?? demoPulseLeads(Date.now())[0];
+      return {
+        id: lead.id, email: lead.email, name: lead.name, business: lead.business, source: lead.source,
+        createdAt: lead.createdAt, targetUrl: lead.targetUrl, healthScore: lead.healthScore,
+        checks: demoLeadChecks,
+      };
+    }
+  }
   if (pathname === "/api/pulse/monitors") return { monitors: [] };
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
   if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
@@ -3985,3 +3996,40 @@ export function resolveDemoApi(
 
   return {};
 }
+
+
+// ─── Pulse leads (public scanner) ─────────────────────────────────────────────
+// One per report state, so the demo shows what each looks like on the leads list.
+function demoPulseLeads(now: number) {
+  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+  return [
+    {
+      id: "lead-sent", email: "sam@northwind.test", name: "Sam Okafor", business: "Northwind Studio",
+      targetUrl: "https://northwind.test/", healthScore: 72, source: "gitwork.co.uk", criticalCount: 2,
+      createdAt: ago(95), importedScanId: "demo-northwind", importedScanStatus: "COMPLETED",
+      report: { state: "sent" as const, sentAt: ago(91), error: null },
+    },
+    {
+      id: "lead-preparing", email: "priya@lumen.test", name: "Priya Anand", business: "Lumen Health",
+      targetUrl: "https://www.lumen.test/", healthScore: 88, source: "production-ready", criticalCount: 0,
+      createdAt: ago(2), importedScanId: "demo-lumen", importedScanStatus: "RUNNING",
+      report: { state: "preparing" as const, sentAt: null, error: null },
+    },
+    {
+      id: "lead-failed", email: "ops@harbour.test", name: null, business: null,
+      targetUrl: "https://harbour.test/", healthScore: 41, source: "gitwork.co.uk", criticalCount: 6,
+      createdAt: ago(60 * 26), importedScanId: null, importedScanStatus: null,
+      report: { state: "failed" as const, sentAt: null, error: "No report was sent; it was probably interrupted by a server restart." },
+    },
+  ];
+}
+
+const demoLeadChecks = [
+  { checkKey: "csp_header", category: "Security", label: "Content-Security-Policy", status: "FAIL", detail: "No Content-Security-Policy header." },
+  { checkKey: "privacy_policy", category: "Legal & Compliance", label: "Privacy Policy", status: "FAIL", detail: "No privacy policy link found on the page." },
+  { checkKey: "x_frame_options", category: "Security", label: "X-Frame-Options header", status: "WARN", detail: "No X-Frame-Options header and no CSP frame-ancestors directive." },
+  { checkKey: "sitemap_xml", category: "SEO", label: "sitemap.xml", status: "WARN", detail: "No sitemap found at /sitemap.xml or declared in robots.txt." },
+  { checkKey: "hsts_header", category: "Security", label: "HSTS header", status: "PASS", detail: "max-age=31536000" },
+  { checkKey: "ssl_valid", category: "Security", label: "SSL certificate", status: "PASS", detail: "Valid, expires in 74 days." },
+  { checkKey: "meta_description", category: "SEO", label: "Meta description", status: "INCONCLUSIVE", detail: "The page renders with JavaScript, so its content isn't in the page source." },
+];

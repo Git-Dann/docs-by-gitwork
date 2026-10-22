@@ -5,6 +5,7 @@
  * body — the file's own format, the tool's own markup, or a page that names itself.
  */
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
+import { assertHostResponding, recordTimeout } from "./host-breaker";
 
 /** What a sensitive-path probe saw: the status, and the first few KB of what came back. */
 export interface PathProbe { status: number; contentType: string; body: string; finalUrl?: string }
@@ -17,12 +18,13 @@ export async function fetchSnippet(url: string, timeoutMs = 4000, maxBytes = 16_
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    assertHostResponding(url);
     const res = await fetchScannableUrl(url, {
       method: "GET",
       redirect: "follow",
       signal: controller.signal,
       headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-    });
+    }).catch((e) => { if (controller.signal.aborted) recordTimeout(url); throw e; });
     let body = "";
     const reader = res.body?.getReader();
     if (reader) {

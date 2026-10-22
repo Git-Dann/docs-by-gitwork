@@ -3,6 +3,7 @@ import type { CheckCategory } from "./categories";
 import type { JurisdictionCode } from "./jurisdictions";
 import type { UrlSurfaceKind } from "./platform-applicability";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
+import { assertHostResponding, recordTimeout } from "./host-breaker";
 
 export type { PulseScanCheckInput };
 
@@ -64,10 +65,15 @@ export const CATCH_ALL_NOTE =
 const FETCH_TIMEOUT_MS = 8_000;
 
 export async function fetchWithTimeout(url: string, options?: RequestInit): Promise<Response> {
+  // Skip a host that has stopped answering (host-breaker.ts) rather than wait it out again.
+  assertHostResponding(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     return await fetchScannableUrl(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (controller.signal.aborted) recordTimeout(url);
+    throw e;
   } finally {
     clearTimeout(timer);
   }

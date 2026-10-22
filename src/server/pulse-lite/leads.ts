@@ -137,6 +137,12 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
     liteScanId: lead.liteScanId,
   });
   // Say why when it does not go. A send that fails quietly is how "the emails aren't
-  // triggering" went unnoticed.
+  // triggering" went unnoticed. Recorded on the lead too, for the leads list.
   if (!res.ok) console.error(`[pulse] report for lead ${leadId} not sent: ${res.error}`);
+  await prisma.pulseLead
+    .update({
+      where: { id: leadId },
+      data: res.ok ? { reportSentAt: new Date(), reportError: null } : { reportError: res.error.slice(0, 500) },
+    })
+    .catch(() => {});
 }

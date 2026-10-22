@@ -9,6 +9,7 @@
  */
 
 import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
+import { PulseLeadsPanel } from "@/components/pulse/pulse-leads-panel";
 import { DemoShell } from "@/components/demo/demo-shell";
 
 export function DemoPulse() {
@@ -19,6 +20,7 @@ export function DemoPulse() {
       subtitle="Validate and audit client projects — from prompt to production."
     >
       <PulseScanListView />
+      <div className="mt-6"><PulseLeadsPanel /></div>
     </DemoShell>
   );
 }

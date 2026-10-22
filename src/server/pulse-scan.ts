@@ -44,9 +44,12 @@ import {
   type StoreListing,
 } from "./pulse-checks/store-listing";
 
+import { assertHostResponding, recordTimeout } from "./pulse-checks/host-breaker";
+
 export const SCAN_VERSION = "pulse-v3";
 
 const FETCH_TIMEOUT_MS = 10_000;
+
 
 type UrlType = "web" | "app_store" | "play_store" | "chrome_web_store";
 
@@ -69,11 +72,21 @@ async function fetchWithTimeout(
   options?: RequestInit,
   /** Passed through to the SSRF-guarded transport. See fetchScannableUrl's options. */
   guard?: { followRedirects?: boolean },
+  /** False for the page being scanned itself: it must always be fetched, even if other
+   *  paths on its host have stopped answering. */
+  useBreaker = true,
 ): Promise<Response> {
+  // A host that has already timed out twice in this window is not asked again
+  // (host-breaker.ts): its probes fail fast instead of each waiting the full timeout.
+  if (useBreaker) assertHostResponding(url);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, FETCH_TIMEOUT_MS);
   try {
     return await fetchScannableUrl(url, { ...options, signal: controller.signal }, {}, guard);
+  } catch (e) {
+    if (timedOut && useBreaker) recordTimeout(url);
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -85,7 +98,7 @@ async function fetchPage(url: string): Promise<FetchResult | null> {
     const response = await fetchWithTimeout(url, {
       redirect: "follow",
       headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-    });
+    }, undefined, false);
     const responseTimeMs = Date.now() - start;
     const html = await response.text().catch(() => "");
     const headers: Record<string, string> = {};

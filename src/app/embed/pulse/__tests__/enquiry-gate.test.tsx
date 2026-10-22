@@ -150,7 +150,20 @@ describe("the free report needs no email", () => {
     // the CTA copy below, so it did not prove this line rendered at all.
     expect(host.textContent).toMatch(/588\s*lower-priority\s*checks that didn't pass/i);
     expect(host.textContent).toMatch(/in your full report/);
-    expect(host.textContent).toMatch(/What to fix \(2\)/);
+    expect(host.textContent).toMatch(/What to fix\s*2 findings/);
+  });
+
+  it("puts the long sections in collapsed accordions, closed by default", async () => {
+    stubFetch();
+    render();
+    await settle();
+    startScan();
+    await settle(6);
+    const sections = [...host.querySelectorAll("details.pulse-acc")];
+    expect(sections.map((d) => d.querySelector("summary")?.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining("What to fix")]),
+    );
+    for (const d of sections) expect((d as HTMLDetailsElement).open).toBe(false);
   });
 });
 
