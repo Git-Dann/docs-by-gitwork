@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { decryptNullable, encryptNullable } from "@/lib/encryption";
+import { storeSmtpPassword } from "@/server/smtp-password";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { recordAuditEntry } from "@/server/audit-log";
@@ -216,7 +217,7 @@ export async function PUT(request: NextRequest) {
     if (body.emailSmtpHost) data.emailSmtpHost = body.emailSmtpHost;
     if (body.emailSmtpPort !== undefined) data.emailSmtpPort = body.emailSmtpPort;
     if (body.emailSmtpUser) data.emailSmtpUser = body.emailSmtpUser;
-    if (body.emailSmtpPassword) data.emailSmtpPassword = body.emailSmtpPassword;
+    if (body.emailSmtpPassword) data.emailSmtpPassword = storeSmtpPassword(body.emailSmtpPassword);
 
     // Verify-and-stamp pass. When the operator clicks "Save & verify" we run
     // auth.test against the token they just pasted (or the existing one) and,

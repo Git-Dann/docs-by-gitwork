@@ -1002,7 +1002,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   {enquirySent || view.emailCaptured ? (
                     <div style={{ textAlign: "center" }}>
                       <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
-                        {enquirySent ? "Unlocked. Your full report is on its way." : "This report is unlocked."}
+                        {enquirySent ? "Unlocked. Your full report will be in your inbox in a few minutes." : "This report is unlocked."}
                       </p>
                       <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
                         {enquirySent

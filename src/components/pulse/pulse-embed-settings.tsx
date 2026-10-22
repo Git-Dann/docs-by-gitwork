@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { usePulseEmbedConfig, useSetPulseEmbedConfig } from "@/hooks/use-pulse";
 import { cn } from "@/lib/format";
+import { sendPulseSampleReport } from "@/lib/api";
 import { PulseFreeTierPicker } from "@/components/pulse/pulse-free-tier-picker";
 import { ToggleSwitch } from "@/components/pulse/pulse-embed-panel";
 
@@ -39,6 +40,22 @@ export function PulseEmbedSettings() {
   const previewRootRef = useRef<HTMLDivElement>(null);
 
   const [freeTierError, setFreeTierError] = useState<string | null>(null);
+  const [sampleUrl, setSampleUrl] = useState("");
+  const [sampleSending, setSampleSending] = useState(false);
+  const [sampleResult, setSampleResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function sendSample() {
+    setSampleSending(true);
+    setSampleResult(null);
+    try {
+      const res = await sendPulseSampleReport(sampleUrl.trim() || undefined);
+      setSampleResult({ ok: true, message: `Scanning ${res.targetUrl}. The report email goes to ${res.to} in a few minutes.` });
+    } catch (err) {
+      setSampleResult({ ok: false, message: err instanceof Error ? err.message : "Couldn't start the sample." });
+    } finally {
+      setSampleSending(false);
+    }
+  }
 
   const [bookingUrlDraft, setBookingUrlDraft] = useState("");
   const [siteKeyDraft, setSiteKeyDraft] = useState("");
@@ -159,10 +176,43 @@ export function PulseEmbedSettings() {
           <div className="border-b border-[var(--border-2)] py-3">
             <p className="text-sm font-medium text-[var(--text-1)]">Free scans</p>
             <p className="widget-timestamp mt-0.5">
-              No email needed to see a result. What is shown in full is set in 02 below. One in-depth-review request
-              per email address. Abuse is bounded by Turnstile plus per-IP (8/hour, 30/day), per-host (12/hour)
-              and total concurrency caps (rate-limit.ts).
+              No email needed to see a result. What is shown in full is set in 02 below; the rest is blurred until
+              the visitor gives their name, business and email and agrees to the terms. They are then emailed the
+              full Pulse report as a PDF link, a few minutes later. One unlock per email address. Abuse is bounded
+              by Turnstile plus per-IP (8/hour, 30/day), per-host (12/hour) and total concurrency caps.
             </p>
+          </div>
+
+          <div className="border-b border-[var(--border-2)] py-3">
+            <p className="text-sm font-medium text-[var(--text-1)]">See what visitors receive</p>
+            <p className="widget-timestamp mt-0.5">
+              Runs the full scan on a site and emails you the report exactly as a visitor gets it.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                value={sampleUrl}
+                onChange={(e) => setSampleUrl(e.target.value)}
+                placeholder="https://gitwork.co.uk/"
+                aria-label="Site to scan for the sample"
+                className="app-input min-w-[220px] flex-1 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => void sendSample()}
+                disabled={sampleSending}
+                className="app-button app-button-secondary px-3 py-2 text-sm disabled:opacity-40"
+              >
+                {sampleSending ? "Starting…" : "Email me a sample report"}
+              </button>
+            </div>
+            {sampleResult ? (
+              <p
+                role="status"
+                className={cn("mt-2 text-xs leading-relaxed", sampleResult.ok ? "text-[var(--success-500)]" : "text-[var(--danger-500)]")}
+              >
+                {sampleResult.message}
+              </p>
+            ) : null}
           </div>
 
           <div className="pt-3">

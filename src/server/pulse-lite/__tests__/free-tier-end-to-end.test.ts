@@ -58,6 +58,12 @@ vi.mock("@/server/email", () => ({
   sendWorkspaceEmail: vi.fn(async (a: { html: string; to: string[] }) => { if (a.to[0] === "v@x.com") sent.push({ html: a.html }); return { ok: true }; }),
 }));
 vi.mock("@/server/proposals", () => ({ DEFAULT_WORKSPACE_SLUG: "default" }));
+// The visitor's report is the FULL scan, delivered by report-delivery (tested there).
+// Here we only check the unlock hands it the right person, site and free scan.
+const delivered: Array<Record<string, unknown>> = [];
+vi.mock("@/server/pulse-lite/report-delivery", () => ({
+  deliverFullReport: vi.fn(async (a: Record<string, unknown>) => { delivered.push(a); return { ok: true, scanId: "full1" }; }),
+}));
 
 import { GET } from "@/app/api/public/pulse/scan/[id]/route";
 import { getPublicReport, renderReportMarkdown } from "@/server/pulse-lite/public-report";
@@ -70,18 +76,15 @@ const call = async () => {
 const SURFACES = async () => {
   const api = (await call()).text;
   const md = renderReportMarkdown((await getPublicReport("s1"))!);
-  sent.length = 0;
-  await notifyLeadOfScanResult("l1");
-  await vi.waitFor(() => expect(sent.length).toBeGreaterThan(0));
-  return { api, md, email: sent[0].html };
+  return { api, md };
 };
 
 beforeEach(() => { freeCheckKeys = null; captured = false; sent.length = 0; });
 
 describe("no limit (the default, and what is live today)", () => {
   it("every surface shows every finding with its evidence and says nothing is locked", async () => {
-    const { api, md, email } = await SURFACES();
-    for (const text of [api, md, email]) for (const d of Object.values(SECRET_DETAILS)) expect(text).toContain(d);
+    const { api, md } = await SURFACES();
+    for (const text of [api, md]) for (const d of Object.values(SECRET_DETAILS)) expect(text).toContain(d);
     expect(JSON.parse(api).data?.triage?.lockedCount ?? JSON.parse(api).triage.lockedCount).toBe(0);
     expect(md).not.toMatch(/in-depth review: /);
   });
@@ -118,9 +121,10 @@ describe("limited to one check", () => {
   });
 
   it("the visitor who unlocked gets the FULL report by email — that is what they asked for", async () => {
-    const { email } = await SURFACES();
-    for (const d of Object.values(SECRET_DETAILS)) expect(email).toContain(d);
-    expect(email).not.toContain("more findings");
+    delivered.length = 0;
+    await notifyLeadOfScanResult("l1");
+    await vi.waitFor(() => expect(delivered.length).toBe(1));
+    expect(delivered[0]).toMatchObject({ to: "v@x.com", targetUrl: "https://example.com", liteScanId: "s1" });
   });
 
   it("once unlocked, every surface shows everything", async () => {
@@ -145,9 +149,8 @@ describe("limited to one check", () => {
 describe("limit that shows nothing", () => {
   it("never says 'no issues' while findings exist — it says they are held back", async () => {
     freeCheckKeys = [];
-    const { md, email } = await SURFACES();
+    const { md } = await SURFACES();
     expect(md).not.toContain("Nothing reached the actionable threshold");
-    expect(email).not.toContain("No issues found");
     expect(md).toContain("3 more findings");
   });
 });

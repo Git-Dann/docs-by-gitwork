@@ -31,8 +31,8 @@ export interface ReportEmailInput {
   findings: ReportEmailFinding[];
   advisoryCount: number;
   notEstablishedCount: number;
-  /** How many checks applied to the site: what the attached PDF lists. */
-  checkCount: number;
+  /** The full report as a PDF (public, token-gated). The one link in the email. */
+  reportPdfUrl: string;
   bookingUrl: string;
   /** Absolute URL of the ink wordmark (public/email/gitwork-wordmark-ink.png). */
   logoUrl: string;
@@ -85,14 +85,14 @@ function label(text: string, color = MUTED): string {
 function pill(text: string, strong: boolean): string {
   const bg = strong ? INK : SIGNAL_TINT;
   const fg = strong ? WHITE : SIGNAL;
-  return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background:${bg};color:${fg};font-family:${MONO};font-size:10px;font-weight:600;letter-spacing:0.1em;">${text}</span>`;
+  return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background-color:${bg};color:${fg};font-family:${MONO};font-size:10px;font-weight:600;letter-spacing:0.1em;">${text}</span>`;
 }
 
 function findingCard(f: ReportEmailFinding, index: number): string {
   const result = f.status === "FAIL" ? "FAILING" : "WARNING";
   return `
   <tr><td style="padding:0 0 12px 0;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
       <tr><td style="padding:20px 22px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
           <td style="vertical-align:top;width:34px;font-family:${DISPLAY};font-style:italic;font-size:22px;line-height:1.2;color:${SIGNAL};">${index + 1}.</td>
@@ -126,10 +126,10 @@ export function renderReportEmail(input: ReportEmailInput): { subject: string; h
 
   const extras: string[] = [];
   if (input.advisoryCount > 0) {
-    extras.push(`${input.advisoryCount} lower-priority check${input.advisoryCount === 1 ? "" : "s"} also did not pass. Every one is in the attached PDF.`);
+    extras.push(`${input.advisoryCount} lower-priority check${input.advisoryCount === 1 ? "" : "s"} also did not pass. Every one is in your full report.`);
   }
   if (input.notEstablishedCount > 0) {
-    extras.push(`${input.notEstablishedCount} check${input.notEstablishedCount === 1 ? "" : "s"} could not be established from outside your site. They are in the attached PDF and are not counted in the score either way.`);
+    extras.push(`${input.notEstablishedCount} check${input.notEstablishedCount === 1 ? "" : "s"} could not be established from outside your site. They are listed in your full report and are not counted in the score either way.`);
   }
 
   const html = `<!doctype html>
@@ -137,8 +137,8 @@ export function renderReportEmail(input: ReportEmailInput): { subject: string; h
 <meta name="color-scheme" content="light only"><title>Your Pulse report for ${esc(site)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;1,700&family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 </head>
-<body style="margin:0;padding:0;background:${PAPER};">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAPER};">
+<body bgcolor="${PAPER}" style="margin:0;padding:0;background-color:${PAPER};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAPER}" style="background-color:${PAPER};">
 <tr><td align="center" style="padding:32px 16px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
 
@@ -156,7 +156,7 @@ export function renderReportEmail(input: ReportEmailInput): { subject: string; h
     </td></tr>
 
     <tr><td style="padding:28px 0 0 0;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
         <tr><td style="padding:24px 24px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
             <td style="vertical-align:top;padding:0 16px 0 0;">
@@ -180,21 +180,22 @@ export function renderReportEmail(input: ReportEmailInput): { subject: string; h
     ${extras.length > 0 ? `<tr><td style="padding:10px 0 0 0;">${extras.map((e) => `<p style="margin:0 0 8px 0;font-family:${BODY};font-size:13px;line-height:1.55;color:${MUTED};">${esc(e)}</p>`).join("")}</td></tr>` : ""}
 
     <tr><td style="padding:22px 0 0 0;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
         <tr><td style="padding:18px 22px;">
-          <div>${label("Attached", SIGNAL)}</div>
-          <p style="margin:8px 0 0 0;font-family:${BODY};font-size:14px;line-height:1.55;color:${TEXT};"><strong style="font-weight:600;">Your full report, as a PDF.</strong> All ${input.checkCount} checks that applied to your site, grouped by area, with what we observed for each one.</p>
+          <div>${label("Your full report", SIGNAL)}</div>
+          <p style="margin:8px 0 16px 0;font-family:${BODY};font-size:14px;line-height:1.55;color:${TEXT};">Every check we ran on your site, with what we observed and what to do about it, as a PDF.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${INK}" style="background-color:${INK};border-radius:999px;"><a href="${esc(input.reportPdfUrl)}" style="display:inline-block;padding:12px 22px;border-radius:999px;color:${PAPER};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">Open your report (PDF) &rarr;</a></td></tr></table>
         </td></tr>
       </table>
     </td></tr>
 
     <tr><td style="padding:26px 0 0 0;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${INK};border-radius:14px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${INK}" style="background-color:${INK};border-radius:14px;">
         <tr><td style="padding:28px 26px;">
           <div>${label("Next step", PAPER)}</div>
           <div style="margin-top:10px;font-family:${DISPLAY};font-size:25px;line-height:1.2;font-weight:700;letter-spacing:-0.012em;color:${PAPER};">AI got you to a prototype. We get you to production.</div>
           <p style="margin:12px 0 22px 0;font-family:${BODY};font-size:14px;line-height:1.6;color:#B9B5AF;">Book a 30 minute audit, at no charge. We will walk through these findings with you and tell you what it takes to fix them.</p>
-          <a href="${esc(input.bookingUrl)}" style="display:inline-block;padding:13px 24px;border-radius:999px;background:${SIGNAL};color:${WHITE};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">Book your audit &rarr;</a>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${SIGNAL}" style="background-color:${SIGNAL};border-radius:999px;"><a href="${esc(input.bookingUrl)}" style="display:inline-block;padding:13px 24px;border-radius:999px;color:${WHITE};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">Book your audit &rarr;</a></td></tr></table>
         </td></tr>
       </table>
     </td></tr>
@@ -205,7 +206,7 @@ export function renderReportEmail(input: ReportEmailInput): { subject: string; h
       <p style="margin:18px 0 0 0;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">${esc(DELIVERY_LINE)}</p>
       <p style="margin:10px 0 0 0;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">This is an automated check of one public URL at one point in time. It reads responses, headers, HTML and DNS. It does not sign in, test payments or run your app, so it is not a full security audit.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
-        <td>${label("gitwork.co.uk")}</td>
+        <td><a href="https://gitwork.co.uk" style="color:${MUTED};text-decoration:none;">${label("gitwork.co.uk")}</a></td>
         <td align="right">${label("Gitwork Pulse")}</td>
       </tr></table>
     </td></tr>

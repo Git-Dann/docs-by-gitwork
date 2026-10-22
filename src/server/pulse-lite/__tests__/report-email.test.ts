@@ -15,7 +15,7 @@ const base: ReportEmailInput = {
   ],
   advisoryCount: 40,
   notEstablishedCount: 3,
-  checkCount: 228,
+  reportPdfUrl: "https://foundry.gitwork.co.uk/api/public/pulse/report/tok123/pdf",
   bookingUrl: "https://example.com/book",
   logoUrl: "https://foundry.gitwork.co.uk/email/gitwork-wordmark-ink.png",
 };
@@ -50,10 +50,19 @@ describe("the report email", () => {
     expect(h).not.toMatch(/[—–]/);
   });
 
-  it("points to the attached PDF and does not link to the online report", () => {
-    expect(text).toContain("Your full report, as a PDF.");
-    expect(text).toContain("All 228 checks");
+  it("paints the dark card and the button with bgcolor, which Gmail keeps", () => {
+    // Gmail dropped the CSS background on the CTA, leaving cream text and a white
+    // button label on white. bgcolor attributes survive every client.
+    expect(html).toContain('bgcolor="#0C0C18"');
+    expect(html).toMatch(/<td bgcolor="#6B52FF"[^>]*><a href=/);
+    expect(html).not.toMatch(/[;"]background:/);
+  });
+
+  it("links the full report as a PDF, and nothing else on Foundry", () => {
+    expect(text).toContain("Open your report (PDF)");
+    expect(html).toContain('href="https://foundry.gitwork.co.uk/api/public/pulse/report/tok123/pdf"');
     expect(html).not.toContain("/scan/");
+    expect(html).not.toContain("/report/tok123\"");
   });
 
   it("uses the placed wordmark, never the name set in a font", () => {

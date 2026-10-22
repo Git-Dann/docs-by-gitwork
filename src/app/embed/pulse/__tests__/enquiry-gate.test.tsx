@@ -197,7 +197,7 @@ describe("the in-depth review is the gate", () => {
     expect(enquiry!.body).toMatchObject({ name: "Sam Buyer", business: "Acme", email: "buyer@acme.test", termsAccepted: true });
     // Exactly one scan was ever started — the enquiry must not trigger another.
     expect(calls.filter((c) => c.url.endsWith("/api/public/pulse/scan"))).toHaveLength(1);
-    expect(host.textContent).toMatch(/full report is on its way/i);
+    expect(host.textContent).toMatch(/full report will be in your inbox in a few minutes/i);
   });
 
   it("surfaces a friendly message when the address has already been used", async () => {

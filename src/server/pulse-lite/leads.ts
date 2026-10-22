@@ -11,15 +11,6 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import { isAtLeast } from "@/types/auth";
-import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
-import { summarise, triage } from "./public-scan";
-import { renderReportEmail } from "./report-email";
-import { buildReportPdf } from "./report-pdf";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { freeKeysFor } from "@/lib/pulse-free-tier";
-import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
-import type { PulseScanCheckInput } from "@/types/pulse";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 function notFound(message: string): Error {
@@ -135,77 +126,19 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
  * internal-admin notification. Filtered to the workspace's curated embed check set (§2
  * of the plan) so the email matches exactly what the widget showed, never more.
  */
-function hostOf(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "your site"; }
-}
-
 async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
-  if (!lead || !lead.liteScanId) return;
-  const workspace = await prisma.workspace.findFirst({ where: { slug: DEFAULT_WORKSPACE_SLUG }, select: { id: true } });
-  if (!workspace) return;
-  const config = await getPulseEmbedWorkspaceConfig();
-
-  const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true, updatedAt: true } });
-  const allChecks = (lite?.checks as PulseScanCheckInput[] | null) ?? [];
-  // ⚠️ ONE score per scan. This used to rescore a curated ~10-check subset with
-  // `calculateHealthScore`, so the same visitor was emailed a DIFFERENT number from
-  // the one on their screen and on /scan/[id] — same person, same scan, two scores.
-  // `computeScoreBreakdown` over the full set is what every other surface uses.
-  const score = computeScoreBreakdown(allChecks).finalScore;
-  // And the same triage as the page, so the email echoes the report rather than
-  // inventing its own selection.
-  // The visitor has unlocked the report (they gave name, business, email and agreed to the
-  // terms), so their copy is the FULL triaged report — the workspace's free-set limit
-  // applies to strangers, not to them.
-  const { actionable, advisoryCount, notEstablished } = triage(allChecks, freeKeysFor(true, config.freeCheckKeys));
-  const { pass, warn, fail } = summarise(allChecks);
-  // Absolute, because this is an email.
-  const base = (process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "");
-  const applied = allChecks.filter((c) => c.status !== "SKIPPED" && c.status !== "NOT_APPLICABLE");
-  const { subject, html } = renderReportEmail({
+  if (!lead) return;
+  // Loaded here, not at the top: delivery runs the full scan, which pulls in the AI
+  // pipeline, and this file is imported by the public routes, which must stay light.
+  const { deliverFullReport } = await import("./report-delivery");
+  const res = await deliverFullReport({
+    to: lead.email,
     name: lead.name,
     targetUrl: lead.targetUrl,
-    score,
-    pass,
-    warn,
-    fail,
-    findings: actionable,
-    advisoryCount,
-    notEstablishedCount: notEstablished.length,
-    checkCount: applied.length,
-    bookingUrl: config.bookingUrl,
-    logoUrl: `${base}/email/gitwork-wordmark-ink.png`,
-  });
-
-  // The full report: every check, with its evidence. If it cannot be built the summary
-  // still goes, because the email on its own is useful and a missing PDF is recoverable.
-  let pdf: Uint8Array | null = null;
-  try {
-    pdf = await buildReportPdf({
-      targetUrl: lead.targetUrl,
-      preparedFor: [lead.name, lead.business].filter(Boolean).join(", ") || null,
-      scannedAt: lite?.updatedAt ?? new Date(),
-      score,
-      pass,
-      warn,
-      fail,
-      findings: actionable,
-      checks: allChecks.map((c) => ({ category: c.category, label: c.label, status: c.status, detail: c.detail ?? null })),
-      logoPng: await readFile(join(process.cwd(), "public/email/gitwork-wordmark-ink.png")).catch(() => null),
-    });
-  } catch (e) {
-    console.error("[pulse] report PDF failed", e);
-  }
-
-  const res = await sendWorkspaceEmail({
-    workspaceId: workspace.id,
-    to: [lead.email],
-    subject,
-    html,
-    attachments: pdf ? [{ filename: `Pulse report - ${hostOf(lead.targetUrl)}.pdf`, content: pdf }] : undefined,
+    liteScanId: lead.liteScanId,
   });
   // Say why when it does not go. A send that fails quietly is how "the emails aren't
   // triggering" went unnoticed.
-  if (!res.ok) console.error(`[pulse] report email to lead ${leadId} not sent: ${res.error}`);
+  if (!res.ok) console.error(`[pulse] report for lead ${leadId} not sent: ${res.error}`);
 }

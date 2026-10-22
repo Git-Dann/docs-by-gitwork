@@ -92,7 +92,7 @@ export function ScanEnquiry({
     return (
       <div>
         <p style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: "white", margin: "0 0 6px" }}>
-          {alreadyEnquired ? "This report is unlocked." : "Unlocked. Your full report is on its way."}
+          {alreadyEnquired ? "This report is unlocked." : "Unlocked. Your full report will be in your inbox in a few minutes."}
         </p>
         <p style={{ fontSize: 14, color: "#9ca3af", margin: "0 0 16px", lineHeight: 1.6 }}>
           Every finding for {targetHost} is shown above, and we&apos;ve emailed you the full report. Want

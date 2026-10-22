@@ -1525,6 +1525,15 @@ export async function getPulseEmbedConfig(): Promise<PulseEmbedConfig> {
   return apiFetch<PulseEmbedConfig>("/api/workspace/pulse-embed");
 }
 
+/** Emails the caller the report a visitor gets after unlocking a scan. The email follows in a few minutes. */
+export async function sendPulseSampleReport(url?: string): Promise<{ queued: boolean; to: string; targetUrl: string }> {
+  return apiFetch("/api/workspace/pulse-embed/sample-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(url ? { url } : {}),
+  });
+}
+
 export async function updatePulseEmbedConfig(patch: {
   enabled?: boolean;
   freeCheckKeys?: string[] | null;
@@ -1750,6 +1759,11 @@ export async function saveIntegrations(data: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+/** Sends one email through the saved outbound settings, to the caller. */
+export async function sendTestEmail(): Promise<{ sent: boolean; to: string }> {
+  return apiFetch("/api/settings/integrations/test-email", { method: "POST" });
 }
 
 // Keep for backwards compat
