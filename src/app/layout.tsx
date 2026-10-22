@@ -68,10 +68,17 @@ export default function RootLayout({
           animations for anyone who has asked their OS to reduce motion (WCAG
           2.3.3), and stronger borders/text under prefers-contrast: more. Component
           styles can still override per-element.
+
+          Two exceptions, both Headless UI menus. Opening a menu moves focus to its panel
+          and closing it moves focus back to its button, both in code, and Chrome treats
+          that as keyboard focus: every menu drew a blue box round itself and then round
+          its button after a mouse click. The panel never needs the ring (the active item
+          shows where you are), and the button keeps it only when Headless UI says the
+          focus came from the keyboard (data-focus).
         */}
         <style
           dangerouslySetInnerHTML={{
-            __html: `:focus-visible{outline:2px solid #1D4ED8;outline-offset:2px;border-radius:3px}@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}}@media (prefers-contrast:more){:root{--border-1:rgba(0,0,0,.55);--border-2:rgba(0,0,0,.4);--text-3:#1E293B;--text-4:#334155}[data-theme="dark"]{--border-1:rgba(255,255,255,.7);--border-2:rgba(255,255,255,.5);--text-3:#E3E3E5;--text-4:#C9C9CE}}`,
+            __html: `:focus-visible{outline:2px solid #1D4ED8;outline-offset:2px;border-radius:3px}[role="menu"]:focus-visible{outline:none}[aria-haspopup="menu"]:focus-visible:not([data-focus]){outline:none}@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}}@media (prefers-contrast:more){:root{--border-1:rgba(0,0,0,.55);--border-2:rgba(0,0,0,.4);--text-3:#1E293B;--text-4:#334155}[data-theme="dark"]{--border-1:rgba(255,255,255,.7);--border-2:rgba(255,255,255,.5);--text-3:#E3E3E5;--text-4:#C9C9CE}}`,
           }}
         />
         {/*
