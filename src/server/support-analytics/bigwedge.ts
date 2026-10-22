@@ -79,8 +79,8 @@ const FIELDS: {
   { key: "subs_yearly", label: "Yearly subscriptions", group: "Revenue", path: ["revenue", "active_yearly_subs"], card: { id: "subs", title: "Subscriptions", part: "Yearly" } },
   { key: "revenue_mrr", label: "MRR", group: "Revenue", path: ["revenue", "mrr"], money: true },
   // Cash actually taken in the range, a yearly plan counted IN FULL in the month it is paid.
-  // The report does not carry it yet (requested from Big Wedge, Oct 2026). When it does, this
-  // wins; until then `estimateRevenueTaken` works it out from the counts and the plan prices.
+  // Big Wedge added it on 21 Oct 2026, but it does NOT yet follow the date range — so it is
+  // only shown once `revenueIsRangeScoped` says it does. Until then the estimate stands in.
   { key: "revenue_cash", label: "Revenue this month", group: "Revenue", path: ["revenue", "cash_revenue"], money: true },
 ];
 
@@ -122,6 +122,28 @@ export function estimateRevenueTaken(
   const newYearly = Math.max(0, month.yearly - dayBefore.yearly);
   const total = month.monthly * BIG_WEDGE_PLAN_PRICES.monthly + newYearly * BIG_WEDGE_PLAN_PRICES.yearly;
   return Math.round(total * 100) / 100;
+}
+
+/**
+ * Does the report's revenue actually follow the date range? Compares the month with the
+ * single day before it: a real "cash taken" figure for one day cannot equal the figure for
+ * a whole month unless both are zero. True / false when it can tell; null when the report
+ * carries no cash figure to compare.
+ */
+export function revenueIsRangeScoped(month: unknown, dayBefore: unknown): boolean | null {
+  const cash = (json: unknown) => {
+    const v = (json as { data?: { revenue?: { cash_revenue?: unknown } } })?.data?.revenue?.cash_revenue;
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+  const a = cash(month);
+  const b = cash(dayBefore);
+  if (a === null || b === null) return null;
+  return !(a === b && a !== 0);
+}
+
+/** Is `now` inside the given month? (The month still running.) */
+export function isRunningMonth(year: number, month: number, now: Date): boolean {
+  return now.getUTCFullYear() === year && now.getUTCMonth() + 1 === month;
 }
 
 /** "YYYY-MM-DD" of the day before the 1st of the month. */
@@ -187,23 +209,46 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
     throw new Error("Big Wedge's analytics report answered but carried none of the expected figures.");
   }
 
-  // The total taken, when Big Wedge does not report it itself. Needs one more read — the day
-  // before the month — and if that read fails the figure is LEFT OUT, never guessed: the rest
-  // of the month is still good.
+  // Revenue needs the day BEFORE the month too, for two reasons: to work the total out when
+  // Big Wedge does not report it, and to check that the revenue it does report is for THIS
+  // range at all (see `revenueIsRangeScoped`). If that read fails, figures that depend on it
+  // are LEFT OUT, never guessed: the rest of the month is still good.
   const counts = subCounts(report);
-  if (counts && !metrics.some((m) => m.key === "revenue_cash")) {
+  const reportsCash = metrics.some((m) => m.key === "revenue_cash");
+  if (counts || reportsCash) {
+    let before: unknown = undefined;
     try {
       const day = dayBeforeMonth(ctx.year, ctx.month);
-      const before = subCounts(
-        await getJson<unknown>(`${base}/api/v1/analytics/overall-report/?start_date=${day}&end_date=${day}`, bearer.token),
-      );
-      if (before) {
+      before = await getJson<unknown>(`${base}/api/v1/analytics/overall-report/?start_date=${day}&end_date=${day}`, bearer.token);
+    } catch {
+      // Handled below as "could not check".
+    }
+    const scoped = before === undefined ? null : revenueIsRangeScoped(report, before);
+    const drop = (keep: (m: AnalyticsMetric) => boolean) => {
+      for (let i = metrics.length - 1; i >= 0; i--) if (!keep(metrics[i])) metrics.splice(i, 1);
+    };
+
+    if (scoped === false) {
+      // Big Wedge answered the same revenue for one day as for the whole month, so its
+      // revenue block is TODAY's state, not this month's (live, 22 Oct 2026: £373.81 and
+      // 8 + 11 subscriptions for August, September, October and a single day alike).
+      // "Revenue this month" would be a confident wrong figure, so it goes. The counts and
+      // MRR are true NOW, which is right for the month still running and wrong for any
+      // month that has ended, so a finished month keeps no revenue figures at all.
+      drop((m) => m.key !== "revenue_cash");
+      if (!isRunningMonth(ctx.year, ctx.month, ctx.now ?? new Date())) drop((m) => m.group !== "Revenue");
+    } else if (scoped === null && reportsCash) {
+      // Could not check the range, so Big Wedge's total cannot be trusted as this month's.
+      drop((m) => m.key !== "revenue_cash");
+    } else if (!reportsCash && counts) {
+      const prior = subCounts(before);
+      if (prior) {
         const mrrAt = metrics.findIndex((m) => m.key === "revenue_mrr");
         const unit = metrics[mrrAt]?.unit;
         const total: AnalyticsMetric = {
           key: "revenue_cash",
           label: "Revenue this month (est.)",
-          value: estimateRevenueTaken(counts, before),
+          value: estimateRevenueTaken(counts, prior),
           group: "Revenue",
           money: true,
           ...(unit ? { unit } : {}),
@@ -211,8 +256,6 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
         // Beside MRR, so the two are read together.
         metrics.splice(mrrAt >= 0 ? mrrAt + 1 : metrics.length, 0, total);
       }
-    } catch {
-      // Omitted, not zeroed (§35).
     }
   }
   return { periodLabel: monthLabel(ctx.year, ctx.month), metrics };

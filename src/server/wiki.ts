@@ -1479,7 +1479,7 @@ export async function addChangelogEntry(
   });
 
   if (entry.status === "PENDING") {
-    void notifyClientSlackChangelogPending(entry.wikiId, entry);
+    notifyClientSlackChangelogPending(entry);
   }
   return serializeEntry(entry);
 }
@@ -1512,7 +1512,7 @@ export async function updateChangelogEntryStatus(
     data: { status },
   });
   if (approvedNow) {
-    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+    notifyClientSlackChangelogApproved(entry);
   }
   return serializeEntry(entry);
 }
@@ -1542,7 +1542,7 @@ export async function updateChangelogEntry(
     },
   });
   if (approvedNow) {
-    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+    notifyClientSlackChangelogApproved(entry);
   }
   return serializeEntry(entry);
 }

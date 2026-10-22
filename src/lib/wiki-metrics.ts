@@ -484,3 +484,131 @@ export function tilesFor<T extends { card?: MetricCard | null }>(metrics: T[]): 
   }
   return out.map((t) => (t.kind === "card" && t.parts.length === 1 ? { kind: "single", metric: t.parts[0] } : t));
 }
+
+// ─── Viewing a chosen period (the page's time-frame control) ─────────────────────────────
+//
+// Everything below works on figures the page ALREADY has: each whole-month metric carries
+// its last HISTORY_MONTHS values, and the running month rides alongside. So choosing
+// "August" needs no fetch and cannot disagree with the trend line drawn from the same data.
+
+/** The month still running, as a period option's value. */
+export const SO_FAR = "so-far";
+
+export interface PeriodOption {
+  /** "YYYY-MM", or SO_FAR. */
+  value: string;
+  /** "October so far" / "September 2026". */
+  label: string;
+  /** Short form for the segmented control: "Oct so far" / "Sep". */
+  short: string;
+}
+
+/** One metric as it stood in the chosen period. */
+export interface PeriodMetric {
+  key: string;
+  label: string;
+  value: number;
+  unit: string | null;
+  group: string | null;
+  money?: boolean;
+  card?: MetricCard | null;
+  /** The month before; null when there is none; undefined for the running month (never compared). */
+  previous: number | null | undefined;
+  /** Values up to and including the period, oldest first, with their periods. */
+  history: { period: string; value: number }[];
+}
+
+interface PeriodSource {
+  metrics: WikiMetric[];
+  historyPeriods: string[];
+  monthToDate: MonthToDateView | null;
+}
+
+/** Newest first: the running month, then each whole month that has a visible figure. */
+export function metricPeriodOptions(src: PeriodSource): PeriodOption[] {
+  const out: PeriodOption[] = [];
+  const mtd = src.monthToDate;
+  if (mtd && mtd.metrics.some((m) => !m.hidden)) {
+    const month = periodLabel(mtd.period).split(" ")[0];
+    out.push({ value: SO_FAR, label: `${month} so far`, short: `${month.slice(0, 3)} so far` });
+  }
+  const visible = src.metrics.filter((m) => !m.hidden);
+  for (let i = src.historyPeriods.length - 1; i >= 0; i--) {
+    const p = src.historyPeriods[i];
+    if (!visible.some((m) => m.history[i] !== null && m.history[i] !== undefined)) continue;
+    out.push({ value: p, label: periodLabel(p), short: periodLabel(p).split(" ")[0].slice(0, 3) });
+  }
+  return out;
+}
+
+/**
+ * The visible metrics as they stood in `period` (or the running month for SO_FAR). A metric
+ * with no figure that month is left out — never shown as 0.
+ */
+export function metricsAt(src: PeriodSource, period: string): PeriodMetric[] {
+  if (period === SO_FAR) {
+    return (src.monthToDate?.metrics ?? [])
+      .filter((m) => !m.hidden)
+      .map((m) => ({ ...m, previous: undefined, history: [] }));
+  }
+  const i = src.historyPeriods.indexOf(period);
+  if (i < 0) return [];
+  const out: PeriodMetric[] = [];
+  for (const m of src.metrics) {
+    if (m.hidden) continue;
+    const value = m.history[i];
+    if (value === null || value === undefined) continue;
+    const prev = i > 0 ? m.history[i - 1] : null;
+    const history: { period: string; value: number }[] = [];
+    for (let j = 0; j <= i; j++) {
+      const v = m.history[j];
+      if (v !== null && v !== undefined) history.push({ period: src.historyPeriods[j], value: v });
+    }
+    out.push({
+      key: m.key,
+      label: m.label,
+      value,
+      unit: m.unit,
+      group: m.group,
+      money: m.money,
+      card: m.card,
+      previous: prev ?? null,
+      history,
+    });
+  }
+  return out;
+}
+
+/** How many headline cards the page leads with. */
+export const HEADLINE_COUNT = 4;
+
+/**
+ * The tiles that lead the page. Gitwork's ★ picks first, in the order chosen; then one tile
+ * from each group in turn (so a page leads with users AND golf AND revenue, not four user
+ * counts); then whatever is left, in order. Indices into `tiles`, in display order.
+ */
+export function headlineTileIndexes<T extends { key: string; group: string | null }>(
+  tiles: MetricTileGroup<T>[],
+  featuredKeys: string[],
+  n = HEADLINE_COUNT,
+): number[] {
+  const keysOf = (t: MetricTileGroup<T>) => (t.kind === "single" ? [t.metric.key] : t.parts.map((p) => p.key));
+  const groupOf = (t: MetricTileGroup<T>) => (t.kind === "single" ? t.metric.group : t.parts[0]?.group) ?? "";
+  const picked: number[] = [];
+  const take = (i: number) => {
+    if (picked.length < n && i >= 0 && !picked.includes(i)) picked.push(i);
+  };
+  for (const k of featuredKeys) take(tiles.findIndex((t) => keysOf(t).includes(k)));
+  // One from each group in turn, each group's tiles in their own order.
+  const queues = [...new Set(tiles.map(groupOf))].map((g) =>
+    tiles.flatMap((t, i) => (groupOf(t) === g && !picked.includes(i) ? [i] : [])),
+  );
+  while (picked.length < n && queues.some((q) => q.length > 0)) {
+    for (const q of queues) {
+      const i = q.shift();
+      if (i !== undefined) take(i);
+    }
+  }
+  tiles.forEach((_, i) => take(i));
+  return picked;
+}

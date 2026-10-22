@@ -19,6 +19,7 @@ import {
   estimateRevenueTaken,
   metricsFromReport,
   monthRange,
+  revenueIsRangeScoped,
 } from "@/server/support-analytics/bigwedge";
 
 /** Trimmed from the real response for August 2026. */
@@ -188,14 +189,51 @@ describe("revenue taken — the total MRR cannot give", () => {
     expect(total).toMatchObject({ label: "Revenue this month (est.)", value: 147.21, money: true });
   });
 
-  it("uses Big Wedge's own figure once the report carries it, and asks for nothing more", async () => {
-    getJson.mockResolvedValueOnce({
+  it("uses Big Wedge's own figure once it follows the date range", async () => {
+    const withCash = (n: number) => ({
       ...OCTOBER_SO_FAR,
-      data: { ...OCTOBER_SO_FAR.data, revenue: { ...OCTOBER_SO_FAR.data.revenue, cash_revenue: 150 } },
+      data: { ...OCTOBER_SO_FAR.data, revenue: { ...OCTOBER_SO_FAR.data.revenue, cash_revenue: n } },
     });
+    getJson.mockResolvedValueOnce(withCash(150)).mockResolvedValueOnce(withCash(5.45));
     const snap = await bigwedgeAdapter.fetchMonth(octCtx);
-    expect(getJson).toHaveBeenCalledTimes(1);
     expect(snap.metrics.find((m) => m.key === "revenue_cash")).toMatchObject({ label: "Revenue this month", value: 150 });
+  });
+
+  /** The live report on 22 Oct 2026: the same revenue block for every range asked. */
+  const LIVE_REVENUE = { currency: "GBP", cash_revenue: 373.81, monthly_revenue: 373.81, mrr: 71.41, arpu: 3.76, active_monthly_subs: 8, active_yearly_subs: 11 };
+  const live = (users: number) => ({
+    ...OCTOBER_SO_FAR,
+    data: { ...OCTOBER_SO_FAR.data, user_growth: { new_users: users }, business_growth: { premium_users: 19 }, revenue: LIVE_REVENUE },
+  });
+
+  it("⚠️ drops 'Revenue this month' when Big Wedge gives the same revenue for a day as for the month", async () => {
+    getJson.mockResolvedValueOnce(live(2365)).mockResolvedValueOnce(live(70));
+    const snap = await bigwedgeAdapter.fetchMonth(octCtx);
+    expect(snap.metrics.some((m) => m.key === "revenue_cash")).toBe(false);
+    // True NOW, and October is the month still running, so these stay.
+    expect(snap.metrics.find((m) => m.key === "subs_yearly")?.value).toBe(11);
+    expect(snap.metrics.some((m) => m.key === "users_new")).toBe(true);
+  });
+
+  it("⚠️ a month that has ENDED keeps no revenue figures when they are today's, not its own", async () => {
+    getJson.mockResolvedValueOnce(live(4712)).mockResolvedValueOnce(live(150));
+    const snap = await bigwedgeAdapter.fetchMonth({ ...ctx, month: 9, now: new Date("2026-10-22T09:00:00Z") });
+    expect(snap.metrics.some((m) => m.group === "Revenue")).toBe(false);
+    expect(snap.metrics.find((m) => m.key === "users_new")?.value).toBe(4712);
+  });
+
+  it("drops Big Wedge's total when the day before cannot be read to check it", async () => {
+    getJson.mockResolvedValueOnce(live(2365)).mockRejectedValueOnce(new Error("503"));
+    const snap = await bigwedgeAdapter.fetchMonth(octCtx);
+    expect(snap.metrics.some((m) => m.key === "revenue_cash")).toBe(false);
+  });
+
+  it("revenueIsRangeScoped: equal non-zero cash means not scoped; no cash means can't tell", () => {
+    const r = (cash?: number) => ({ data: { revenue: cash === undefined ? {} : { cash_revenue: cash } } });
+    expect(revenueIsRangeScoped(r(373.81), r(373.81))).toBe(false);
+    expect(revenueIsRangeScoped(r(150), r(5.45))).toBe(true);
+    expect(revenueIsRangeScoped(r(0), r(0))).toBe(true);
+    expect(revenueIsRangeScoped(r(), r(5))).toBeNull();
   });
 
   it("⚠️ leaves the total OUT when the day before cannot be read — the month still loads", async () => {

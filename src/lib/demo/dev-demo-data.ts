@@ -907,6 +907,10 @@ const demoWiki: WikiDTO = {
     },
   ],
   changelog: [
+    // One release still waiting for approval, on two platforms, so the approve bar and the
+    // "Pending 1" count can be seen — a demo of only approved releases cannot show them.
+    { id: "cl0a", platform: "IOS", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline", releasedAt: null, createdAt: atDays(0), status: "PENDING" },
+    { id: "cl0b", platform: "ANDROID", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline\n- Picture-in-picture during a party", releasedAt: null, createdAt: atDays(0), status: "PENDING" },
     { id: "cl1", platform: "IOS", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Smarter storage management\n- Fixes for AirPlay handoff", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED" },
     { id: "cl2", platform: "ANDROID", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Chromecast reliability improvements", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED" },
     { id: "cl3", platform: "WEB", version: "2.8.1", title: "Faster search", body: "- New search index, ~3x faster results\n- Keyboard navigation in the results list", releasedAt: atDays(-9), createdAt: atDays(-10), status: "APPROVED" },
@@ -1221,6 +1225,10 @@ const demoWiki: WikiDTO = {
       { key: "subs.active", label: "Active subscriptions", value: 1240, unit: null, group: "Subscriptions", previous: 1198, hidden: false, featured: true, history: [980, 1012, 1080, 1150, 1198, 1240] },
       { key: "subs.mrr", label: "Monthly revenue", value: 11408, unit: "£", group: "Subscriptions", previous: 11021, hidden: false, featured: true, history: [8820, 9310, 9935, 10580, 11021, 11408] },
       { key: "subs.cancelled", label: "Cancellations", value: 38, unit: null, group: "Subscriptions", previous: 44, hidden: false, featured: false, history: [51, 47, 49, 41, 44, 38] },
+      { key: "users.new", label: "New users", value: 1320, unit: null, group: "Users", previous: 1405, hidden: false, featured: false, history: [990, 1104, 1210, 1288, 1405, 1320] },
+      { key: "eng.sessions", label: "Sessions", value: 38210, unit: null, group: "Engagement", previous: 35940, hidden: false, featured: false, history: [27100, 29400, 31800, 33650, 35940, 38210] },
+      { key: "eng.orders", label: "Orders placed", value: 6124, unit: null, group: "Engagement", previous: 5980, hidden: false, featured: false, history: [4410, 4720, 5105, 5530, 5980, 6124] },
+      { key: "eng.per_user", label: "Sessions per active user", value: 7.94, unit: null, group: "Engagement", previous: 8.15, hidden: false, featured: false, history: [8.47, 8.38, 8.17, 8.2, 8.15, 7.94] },
       { key: "debug.queue_depth", label: "Queue depth", value: 3, unit: null, group: null, previous: 7, hidden: true, featured: false, history: [null, null, 5, 9, 7, 3] },
     ],
     // The month still running, with the hidden metric in it too — the client's copy must
@@ -1230,6 +1238,9 @@ const demoWiki: WikiDTO = {
       capturedAt: atDays(0),
       metrics: [
         { key: "users.active", label: "Active users", value: 2960, unit: null, group: "Users", hidden: false },
+        { key: "users.new", label: "New users", value: 812, unit: null, group: "Users", hidden: false },
+        { key: "eng.sessions", label: "Sessions", value: 24150, unit: null, group: "Engagement", hidden: false },
+        { key: "eng.orders", label: "Orders placed", value: 3870, unit: null, group: "Engagement", hidden: false },
         // Three metrics in one card, the way Big Wedge's Subscriptions card renders.
         { key: "subs.active", label: "Active subscriptions", value: 1251, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Total" } },
         { key: "subs.monthly", label: "Monthly subscriptions", value: 1004, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Monthly" } },

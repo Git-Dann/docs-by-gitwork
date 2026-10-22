@@ -7437,3 +7437,29 @@ checked **4 Aug**, still showing UP), Fellas had no monitor, and a failing check
 - ⚠️ **Found while doing this:** Fellas' `/api/analytics/*` endpoints answer without auth,
   including `trials/export/`, a CSV of ~5,650 customer emails. Reported to Dan to lock down in
   the Fellas codebase.
+
+## 79. Recent Changes (October 2026) — One changelog ping per version; Metrics gets a headline row
+
+- **One Slack message per changelog VERSION.** A version is one `ClientChangelogEntry` per
+  platform and the editor saves them as parallel requests, so iOS + Android sent two
+  identical "added" messages (and two "approved"). `wiki-slack-notify.ts` now collects pings
+  for the same wiki + version for `CHANGELOG_PING_WINDOW_MS` (3s) and sends one naming the
+  platforms. In-process on purpose: one server, one save. Adding a platform to a version that
+  already had rows is an edit and sends no "added".
+- **Changelog card actions.** Approving was a click on the amber "● PENDING" pill, which
+  read as a label and got missed. Status is now a plain badge; a pending version has an amber
+  bar with a green **Approve release** button; Copy / Edit are labelled; Mark as pending and
+  Delete sit in a ⋯ menu, and Delete confirms in place. Filters are segmented controls, and the
+  status filter shows counts. The demo carries a pending two-platform release.
+- **Metrics page** (`wiki-metrics-section.tsx`): a **Period** control (the running month,
+  then each stored month, built from data already on the page with no fetch) and a
+  **Show** filter (groups). `01 // HEADLINE` shows four large cards: ★ picks first, then one
+  from each group in turn (`headlineTileIndexes`). `02 // ALL METRICS` shows the rest.
+  Choosing a group shows only that group.
+- ⚠️ **Big Wedge's new revenue fields ignore the date range** (22 Oct 2026). `cash_revenue`
+  £373.81, 8 monthly + 11 yearly, MRR £71.41 and `premium_users` 19 come back identical for
+  August, September, October and a single day. User counts still follow the range.
+  `revenueIsRangeScoped` compares the month with the day before. When the two match,
+  "Revenue this month" is dropped. A month that has ended then keeps no revenue figures, and
+  the running month keeps the counts and MRR, which are true now. Ask Big Wedge to scope
+  revenue to `start_date`/`end_date`.
