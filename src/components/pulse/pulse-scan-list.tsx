@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { Pager } from "@/components/ui/pager";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
@@ -38,7 +39,8 @@ type SortKey = "NEWEST" | "OLDEST" | "SCORE_HIGH" | "SCORE_LOW";
 
 type MonitorStatus = { active: boolean; alerting: boolean };
 
-const PAGE_SIZE = 50;
+/** Rows per page. Dan, Oct 2026: "maybe show 20 at most". */
+const PAGE_SIZE = 20;
 
 // ── Small helpers ──────────────────────────────────────────────────────────────
 
@@ -452,7 +454,8 @@ export function PulseScanListView() {
   const [sort, setSort] = useState<SortKey>("NEWEST");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
-  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [page, setPage] = useState(0);
+  const listTop = useRef<HTMLParagraphElement>(null);
 
   const allScans = useMemo<PulseScanListItem[]>(() => data?.scans ?? [], [data?.scans]);
 
@@ -542,12 +545,24 @@ export function PulseScanListView() {
     return list;
   }, [allScans, search, statusFilter, healthFilter, inputFilter, monitorFilter, moveFilter, sort, monitorByTarget, scanTrends]);
 
-  // Reset the render window whenever the result set changes.
+  // Back to page 1 whenever the result set changes.
   useEffect(() => {
-    setVisible(PAGE_SIZE);
+    setPage(0);
   }, [search, statusFilter, healthFilter, inputFilter, monitorFilter, moveFilter, sort]);
 
-  const shown = filtered.slice(0, visible);
+  // A page past the end (rows deleted, the list shrank) falls back to the last real page.
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const shown = filtered.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+
+  // Ticks are for the page you can see. Carried across pages, "Delete selected" would
+  // delete scans that are not on screen.
+  function goToPage(p: number) {
+    setPage(p);
+    setSelected(new Set());
+    setConfirmingBulkDelete(false);
+    listTop.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
 
   function toggleAll() {
     if (selected.size === shown.length) setSelected(new Set());
@@ -705,7 +720,7 @@ export function PulseScanListView() {
       )}
 
       {/* Results summary */}
-      <p className="text-xs text-[var(--text-4)]">
+      <p ref={listTop} className="scroll-mt-4 text-xs text-[var(--text-4)]">
         {filtered.length === allScans.length
           ? `${allScans.length} scan${allScans.length !== 1 ? "s" : ""}`
           : `${filtered.length} of ${allScans.length} scans`}
@@ -762,13 +777,7 @@ export function PulseScanListView() {
             </div>
           </div>
 
-          {filtered.length > visible && (
-            <div className="flex justify-center">
-              <Button variant="secondary" size="sm" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
-                Load more · showing {shown.length} of {filtered.length}
-              </Button>
-            </div>
-          )}
+          <Pager page={current} pageSize={PAGE_SIZE} total={filtered.length} onPage={goToPage} label="Scan pages" />
         </>
       )}
     </div>
