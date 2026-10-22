@@ -36,6 +36,37 @@ export function teamMentionRecipients(
   return [...out];
 }
 
+/**
+ * Which of this client's OWN people a reply @mentioned, as wiki-user ids.
+ *
+ * ⚠️ The mirror of `teamMentionRecipients`, and it exists because the client half
+ * of a mention went nowhere. A Gitwork person could @mention a client in a reply,
+ * the name would highlight, the Slack post would go out — and the person named had
+ * no way to learn about it except by opening the wiki and reading. `kind: "CLIENT"`
+ * was simply not a case anything handled.
+ *
+ * ⚠️ `contact:primary` is deliberately dropped. It is a CLIENT-kind mention with no
+ * `ClientWikiUser` behind it — a name and an address off the client record — so
+ * there is no account and therefore no device to ring. It is still highlighted in
+ * the body and still reaches them by email; it is only push that it cannot have.
+ *
+ * ⚠️ The author is never a recipient, whoever they are. A client @mentioning a
+ * colleague must not ring their own phone.
+ */
+export function clientMentionRecipients(
+  mentions: readonly Pick<StoredMention, "id" | "kind">[],
+  authorClientUserId: string | null | undefined,
+): string[] {
+  const out = new Set<string>();
+  for (const m of mentions) {
+    if (m.kind !== "CLIENT" || !m.id.startsWith("client:")) continue;
+    const userId = m.id.slice("client:".length).trim();
+    if (!userId || userId === authorClientUserId) continue;
+    out.add(userId);
+  }
+  return [...out];
+}
+
 export interface WikiUserContact {
   email: string;
   name: string | null;

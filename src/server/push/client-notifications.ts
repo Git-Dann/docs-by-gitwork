@@ -9,7 +9,13 @@
 
 import { prisma } from "@/lib/prisma";
 import { isApnsConfigured, type ApnsPayload } from "./apns";
-import { clientDeviceStore, listActiveClientDevices } from "./client-devices";
+import {
+  clientDeviceStore,
+  listActiveClientDevices,
+  listActiveClientDevicesForUser,
+} from "./client-devices";
+import { clientMentionRecipients } from "@/lib/wiki-intake-reply-notify";
+import type { StoredMention } from "@/lib/wiki-mentions";
 import { fanOutToDevices } from "./transport";
 import { fitTitle, shrinkToFit } from "./notifications";
 
@@ -227,3 +233,97 @@ export async function notifyClientsOfStandup(args: {
     }),
   );
 }
+
+// MARK: - A client @mentioned on one of their requests
+
+/**
+ * Rings the phone of each of the client's own people named in a reply.
+ *
+ * ⚠️ THIS WAS THE MISSING HALF OF @MENTIONS. A Gitwork person could mention a
+ * client in a reply, the name would highlight, the Slack post would go out — and
+ * the person named had no way to learn about it except by opening the wiki and
+ * reading. Team mentions have notified since §70; `kind: "CLIENT"` was not a case
+ * anything handled.
+ *
+ * Four rules, each one a way this could go wrong:
+ *
+ *   • ONE PERSON'S DEVICES, never the wiki's. A mention is addressed to someone;
+ *     fanning it out would ring a colleague to tell them somebody else was
+ *     mentioned, and would leak who is talking to whom inside the client's team.
+ *   • THE AUTHOR IS NEVER RUNG, whoever they are.
+ *   • QUIET HOURS APPLY, exactly as they do to the standup. A reply typed at 23:30
+ *     by someone in another timezone must not wake a client. The mention is not
+ *     lost — it is in the app, in Slack and in their email; it is the interruption
+ *     that is dropped, not the message.
+ *   • NO BODY TEXT ON THE LOCK SCREEN beyond a short excerpt, and never the
+ *     client's own request title in the title line — the alert says who mentioned
+ *     them and where, and the app shows the rest behind their login.
+ *
+ * Best-effort and never throws: a reply must not fail because a phone could not be
+ * reached. Returns what it did, because "nothing happened" and "there was nothing
+ * to do" are different facts.
+ */
+export async function notifyClientMentionsOnRequest(args: {
+  wikiId: string;
+  itemId: string;
+  /** Who wrote the reply, as shown to the client. */
+  authorName: string;
+  /** The reply's author when they are a client user — never rung. */
+  authorClientUserId: string | null;
+  body: string;
+  mentions: readonly StoredMention[];
+  now?: Date;
+}): Promise<{ status: "sent" | "no_recipients" | "no_devices" | "quiet_hours" | "apns_unconfigured"; devices: number }> {
+  try {
+    const recipients = clientMentionRecipients(args.mentions, args.authorClientUserId);
+    if (recipients.length === 0) return { status: "no_recipients", devices: 0 };
+
+    if (!isApnsConfigured()) return { status: "apns_unconfigured", devices: 0 };
+    if (!isWithinClientPushHours(args.now ?? new Date())) {
+      return { status: "quiet_hours", devices: 0 };
+    }
+
+    const devices = (
+      await Promise.all(
+        recipients.map((userId) => listActiveClientDevicesForUser(args.wikiId, userId)),
+      )
+    ).flat();
+    if (devices.length === 0) return { status: "no_devices", devices: 0 };
+
+    const excerpt = args.body.trim().replace(/\s+/g, " ").slice(0, MENTION_EXCERPT);
+    const payload: ApnsPayload = {
+      aps: {
+        alert: {
+          title: fitTitle(`${args.authorName} mentioned you`),
+          body: excerpt || "They mentioned you on a request.",
+        },
+        sound: "default",
+        // Replies on one request collapse together rather than stacking.
+        "thread-id": `request:${args.itemId}`,
+      },
+      // ⚠️ A SECTION, never a staff `path`. A client build has no Foundry session
+      // and cannot act on an `/app/...` link.
+      kind: "client-mention",
+      section: "intake",
+    };
+
+    const result = await fanOutToDevices(
+      devices.map((d) => ({
+        id: d.id,
+        token: d.token,
+        environment: d.environment,
+        ownerId: d.clientWikiUserId,
+      })),
+      clientDeviceStore,
+      shrinkToFit(payload),
+      `mention:${args.itemId}`,
+    );
+    return { status: "sent", devices: result.sent };
+  } catch (err) {
+    console.error("[client-push] mention notify failed", err);
+    return { status: "no_devices", devices: 0 };
+  }
+}
+
+/** The longest reply excerpt on a lock screen. */
+const MENTION_EXCERPT = 180;
