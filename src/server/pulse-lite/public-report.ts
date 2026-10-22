@@ -13,6 +13,7 @@ import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { scoreGrade } from "@/lib/badge/pulse-badge";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
+import { freeKeysFor } from "@/lib/pulse-free-tier";
 
 export interface PublicReport {
   id: string;
@@ -80,7 +81,7 @@ export async function getPublicReport(id: string): Promise<PublicReport | null> 
     fail,
     inconclusive,
     categories,
-    triage: triage(checks, freeCheckKeys ? new Set(freeCheckKeys) : null),
+    triage: triage(checks, freeKeysFor(lite.emailCaptured, freeCheckKeys)),
     enquired: lite.emailCaptured,
     errorMessage: lite.errorMessage,
   };

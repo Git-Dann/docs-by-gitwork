@@ -8,12 +8,16 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import { isAtLeast } from "@/types/auth";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
-import { triage } from "./public-scan";
+import { summarise, triage } from "./public-scan";
+import { renderReportEmail } from "./report-email";
+import { buildReportPdf } from "./report-pdf";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { freeKeysFor } from "@/lib/pulse-free-tier";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
@@ -39,13 +43,20 @@ export class EmailAlreadyUsedError extends Error {
  * ONE lifetime capture across ALL scans — a second attempt (even a different URL)
  * is rejected with EmailAlreadyUsedError.
  */
-export async function capturePulseLead(params: { liteScanId: string; email: string; source?: string }): Promise<{ leadId: string }> {
+export async function capturePulseLead(params: {
+  liteScanId: string;
+  email: string;
+  source?: string;
+  name?: string;
+  business?: string;
+  termsAcceptedAt?: Date;
+}): Promise<{ leadId: string; created: boolean }> {
   const lite = await prisma.pulseLiteScan.findUnique({
     where: { id: params.liteScanId },
     select: { id: true, targetUrl: true, healthScore: true, emailCaptured: true, leadId: true },
   });
   if (!lite) throw notFound("Scan not found.");
-  if (lite.emailCaptured && lite.leadId) return { leadId: lite.leadId };
+  if (lite.emailCaptured && lite.leadId) return { leadId: lite.leadId, created: false };
 
   const existingForEmail = await prisma.pulseLead.findFirst({ where: { email: params.email }, select: { id: true } });
   if (existingForEmail) throw new EmailAlreadyUsedError();
@@ -57,6 +68,9 @@ export async function capturePulseLead(params: { liteScanId: string; email: stri
       targetUrl: lite.targetUrl,
       healthScore: lite.healthScore,
       source: params.source ?? "embed",
+      name: params.name ?? null,
+      business: params.business ?? null,
+      termsAcceptedAt: params.termsAcceptedAt ?? null,
     },
     select: { id: true },
   });
@@ -65,7 +79,7 @@ export async function capturePulseLead(params: { liteScanId: string; email: stri
     data: { emailCaptured: true, leadId: lead.id },
   });
 
-  return { leadId: lead.id };
+  return { leadId: lead.id, created: true };
 }
 
 /**
@@ -103,6 +117,8 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
     subject: `New Pulse lead — ${lead.email}`,
     html: `<p>A new lead just ran the public Pulse scanner.</p>
       <ul>
+        ${lead.name ? `<li><strong>Name:</strong> ${escapeHtml(lead.name)}</li>` : ""}
+        ${lead.business ? `<li><strong>Business:</strong> ${escapeHtml(lead.business)}</li>` : ""}
         <li><strong>Email:</strong> ${escapeHtml(lead.email)}</li>
         <li><strong>Scanned:</strong> ${escapeHtml(lead.targetUrl)}</li>
         <li><strong>Health score:</strong> ${score}/100</li>
@@ -119,6 +135,10 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
  * internal-admin notification. Filtered to the workspace's curated embed check set (§2
  * of the plan) so the email matches exactly what the widget showed, never more.
  */
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "your site"; }
+}
+
 async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
   if (!lead || !lead.liteScanId) return;
@@ -126,7 +146,7 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
   if (!workspace) return;
   const config = await getPulseEmbedWorkspaceConfig();
 
-  const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true } });
+  const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true, updatedAt: true } });
   const allChecks = (lite?.checks as PulseScanCheckInput[] | null) ?? [];
   // ⚠️ ONE score per scan. This used to rescore a curated ~10-check subset with
   // `calculateHealthScore`, so the same visitor was emailed a DIFFERENT number from
@@ -135,35 +155,57 @@ async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const score = computeScoreBreakdown(allChecks).finalScore;
   // And the same triage as the page, so the email echoes the report rather than
   // inventing its own selection.
-  const { actionable, advisoryCount, lockedCount } = triage(allChecks, config.freeCheckKeys ? new Set(config.freeCheckKeys) : null);
-  // The shareable result page (Phase 3). Absolute, because this is an email.
-  const reportUrl = `${(process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "")}/scan/${lead.liteScanId}`;
-  const findings = actionable;
-  const criticalCount = actionable.filter((f) => f.status === "FAIL").length;
+  // The visitor has unlocked the report (they gave name, business, email and agreed to the
+  // terms), so their copy is the FULL triaged report — the workspace's free-set limit
+  // applies to strangers, not to them.
+  const { actionable, advisoryCount, notEstablished } = triage(allChecks, freeKeysFor(true, config.freeCheckKeys));
+  const { pass, warn, fail } = summarise(allChecks);
+  // Absolute, because this is an email.
+  const base = (process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "");
+  const applied = allChecks.filter((c) => c.status !== "SKIPPED" && c.status !== "NOT_APPLICABLE");
+  const { subject, html } = renderReportEmail({
+    name: lead.name,
+    targetUrl: lead.targetUrl,
+    score,
+    pass,
+    warn,
+    fail,
+    findings: actionable,
+    advisoryCount,
+    notEstablishedCount: notEstablished.length,
+    checkCount: applied.length,
+    bookingUrl: config.bookingUrl,
+    logoUrl: `${base}/email/gitwork-wordmark-ink.png`,
+  });
 
-  const findingsHtml = findings.length
-    ? `<ul>${findings
-        .map(
-          (f) =>
-            `<li><strong>${f.status === "FAIL" ? "✕" : "!"} ${escapeHtml(f.label)}</strong>${f.detail ? `<br/>${escapeHtml(f.detail)}` : ""}</li>`,
-        )
-        .join("")}</ul>`
-    : lockedCount > 0
-      ? ""
-      : "<p>No issues found in the checks we ran — nice work.</p>";
+  // The full report: every check, with its evidence. If it cannot be built the summary
+  // still goes, because the email on its own is useful and a missing PDF is recoverable.
+  let pdf: Uint8Array | null = null;
+  try {
+    pdf = await buildReportPdf({
+      targetUrl: lead.targetUrl,
+      preparedFor: [lead.name, lead.business].filter(Boolean).join(", ") || null,
+      scannedAt: lite?.updatedAt ?? new Date(),
+      score,
+      pass,
+      warn,
+      fail,
+      findings: actionable,
+      checks: allChecks.map((c) => ({ category: c.category, label: c.label, status: c.status, detail: c.detail ?? null })),
+      logoPng: await readFile(join(process.cwd(), "public/email/gitwork-wordmark-ink.png")).catch(() => null),
+    });
+  } catch (e) {
+    console.error("[pulse] report PDF failed", e);
+  }
 
-  await sendWorkspaceEmail({
+  const res = await sendWorkspaceEmail({
     workspaceId: workspace.id,
     to: [lead.email],
-    subject: `Your Pulse results for ${lead.targetUrl}`,
-    html: `<p>Thanks for scanning your site with Gitwork Pulse. Here's what we found:</p>
-      <p><strong>Health score:</strong> ${score}/100</p>
-      ${lockedCount > 0 ? "" : `<p><strong>Critical issues:</strong> ${criticalCount}</p>`}
-      ${findingsHtml}
-      ${lockedCount > 0 ? `<p>Plus ${lockedCount} more finding${lockedCount === 1 ? "" : "s"} we ranked as actionable, which come with the in-depth review.</p>` : ""}
-      ${advisoryCount > 0 ? `<p>Plus ${advisoryCount} lower-priority advisory checks, which come with the in-depth review.</p>` : ""}
-      <p><a href="${reportUrl}">View the full report</a> — a link you can share.</p>
-      <p>Want help fixing these, or a full deep-dive across ${ADVERTISED_CHECK_COUNT_LABEL} checks?
-        <a href="${config.bookingUrl}">Book a call</a> with Gitwork.</p>`,
+    subject,
+    html,
+    attachments: pdf ? [{ filename: `Pulse report - ${hostOf(lead.targetUrl)}.pdf`, content: pdf }] : undefined,
   });
+  // Say why when it does not go. A send that fails quietly is how "the emails aren't
+  // triggering" went unnoticed.
+  if (!res.ok) console.error(`[pulse] report email to lead ${leadId} not sent: ${res.error}`);
 }

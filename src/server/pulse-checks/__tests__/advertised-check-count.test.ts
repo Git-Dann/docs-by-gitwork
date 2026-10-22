@@ -38,7 +38,7 @@ describe("no surface hardcodes a stale count", () => {
     "src/app/pulse-overview/page.tsx",
     "src/app/pulse-overview/opengraph-image.tsx",
     "src/app/context/page.tsx",
-    "src/server/pulse-lite/leads.ts",
+    // leads.ts left this list in October 2026: the report email no longer quotes a check count.
   ];
 
   for (const f of FILES) {

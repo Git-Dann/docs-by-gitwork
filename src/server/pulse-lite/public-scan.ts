@@ -128,6 +128,13 @@ export interface PublicTriage {
    */
   lockedCount: number;
   lockedByCategory: { category: string; count: number }[];
+  /**
+   * The SHAPE of the first few held-back findings — area, priority and result, nothing
+   * that describes them. The widget draws these as blurred rows. The real label and
+   * evidence never leave the server until the visitor unlocks the report, so the blur
+   * is not a CSS trick over data already in the page.
+   */
+  lockedPreview: { category: string; tier: "P1" | "P2"; status: string }[];
   /** True when a free-set limit is in force. Drives wording like "All of it, free". */
   limited: boolean;
   /** P3 advisory count. The long tail belongs to the in-depth review. */
@@ -178,6 +185,9 @@ export interface PublicTriage {
  * be established. That is more valuable than the wall, not less, which is exactly
  * what makes gating the interpretation fair rather than mean.
  */
+/** How many blurred placeholder rows the widget draws. Enough to show there is more. */
+const LOCKED_PREVIEW_MAX = 5;
+
 export function triage(checks: PulseScanCheckInput[], freeKeys: ReadonlySet<string> | null = null): PublicTriage {
   const allActionable: PublicFinding[] = [];
   let advisoryCount = 0;
@@ -217,10 +227,17 @@ export function triage(checks: PulseScanCheckInput[], freeKeys: ReadonlySet<stri
   // the widget and the email cannot disagree about what a stranger may see.
   const { shown, lockedCount, lockedByCategory, limited } = splitByFreeSet(allActionable, freeKeys);
 
+  const shownKeys = new Set(shown.map((f) => f.checkKey));
+  const lockedPreview = allActionable
+    .filter((f) => !shownKeys.has(f.checkKey))
+    .slice(0, LOCKED_PREVIEW_MAX)
+    .map(({ category, tier, status }) => ({ category, tier, status }));
+
   return {
     actionable: shown,
     lockedCount,
     lockedByCategory,
+    lockedPreview,
     limited,
     advisoryCount,
     advisoryByCategory: [...advisoryCats.entries()]

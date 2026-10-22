@@ -114,7 +114,7 @@ describe("embed ?example=1", () => {
 
     expect(host.textContent).not.toContain("acme-app.io");
     // The scan form is URL-only and free — no email required to see results.
-    expect(host.textContent).toMatch(/no email needed to see your results/i);
+    expect(host.textContent).toMatch(/score and top findings straight away/i);
     expect(host.querySelector('input[type="email"]')).toBeNull();
   });
 });

@@ -17,6 +17,8 @@ export type EmailMessage = {
   text?: string;
   /** Override the default reply-to header. */
   replyTo?: string;
+  /** Files to attach. `content` is the raw bytes; Resend takes them base64-encoded. */
+  attachments?: { filename: string; content: Uint8Array }[];
 };
 
 export async function sendWorkspaceEmail(msg: EmailMessage): Promise<SendResult> {
@@ -58,6 +60,9 @@ export async function sendWorkspaceEmail(msg: EmailMessage): Promise<SendResult>
         html: msg.html,
         text: msg.text,
         reply_to: replyTo,
+        ...(msg.attachments?.length
+          ? { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: Buffer.from(a.content).toString("base64") })) }
+          : {}),
       }),
     });
     if (!res.ok) {

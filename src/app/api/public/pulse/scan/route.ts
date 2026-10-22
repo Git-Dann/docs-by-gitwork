@@ -4,21 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
 import { assertWithinLiteScanQuota, clientIpFrom, rateLimitHeaders, retryAfterHeaders, RateLimitedError } from "@/server/pulse-lite/rate-limit";
 import { runPublicLiteScan } from "@/server/pulse-lite/public-scan";
-import { capturePulseLead } from "@/server/pulse-lite/leads";
 import { PulseEmbedDisabledError } from "@/server/pulse-lite/kill-switch";
 import { assertValidTurnstileToken } from "@/server/pulse-lite/turnstile";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
-import { isPulseScanSource } from "@/server/pulse-embed-config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // lite scan (no PageSpeed) finishes well within this
 
 const LITE_SCAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * POST /api/public/pulse/scan  (PUBLIC — no API key)
- * Body: { url, email? }.
+ * Body: { url, source?, honeypot?, turnstileToken? }.
  *
  * ── Email is OPTIONAL ────────────────────────────────────────────────────────
  * The facts are not the gate. A scan costs nothing to run — `pulse-lite/*` imports
@@ -31,24 +28,23 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * the fix brief and the ~600-item advisory tail. That is where the token cost and the
  * expertise sit, and it is gated behind POST /api/public/pulse/scan/[id]/enquiry.
  *
- * Passing an email here still works and behaves exactly as before (captures the lead
- * immediately, enforcing one free scan per address), so the previous widget contract
- * is unbroken.
+ * An email sent here is IGNORED. It used to capture a lead and unlock the report on the
+ * spot, which would let anyone skip the unlock form (name, business, terms). Unlocking
+ * happens only through the enquiry endpoint.
  *
- * Order is cheapest-first: kill-switch → honeypot → Turnstile → email (if given) →
+ * Order is cheapest-first: kill-switch → honeypot → Turnstile →
  * SSRF guard → rate limit. Abuse is bounded by Turnstile plus the per-IP and
  * per-host quotas, which is where it always actually was — the email requirement was
  * doing lead-scarcity work, not security work.
  */
 export async function POST(request: NextRequest) {
   try {
-    // Cheapest checks first: kill-switch → honeypot → Turnstile → email → SSRF-guard/rate-limit.
+    // Cheapest checks first: kill-switch → honeypot → Turnstile → SSRF-guard/rate-limit.
     const config = await getPulseEmbedWorkspaceConfig();
     if (!config.enabled) throw new PulseEmbedDisabledError();
 
     const body = (await request.json().catch(() => ({}))) as {
       url?: string;
-      email?: string;
       source?: string;
       honeypot?: string;
       turnstileToken?: string;
@@ -58,18 +54,6 @@ export async function POST(request: NextRequest) {
 
     const ip = clientIpFrom(request.headers);
     await assertValidTurnstileToken(body.turnstileToken, ip, config.turnstileSecretKey);
-
-    // Only validated when supplied. An absent email is the normal path now.
-    const rawEmail = (body.email ?? "").trim().toLowerCase();
-    const email = rawEmail.length > 0 ? rawEmail : null;
-    if (email !== null) {
-      if (!EMAIL_RE.test(email) || email.length > 200) {
-        return apiError("Enter a valid email address.", 400);
-      }
-      // Fail fast — don't burn a scan on an email that can't convert anyway.
-      const existingForEmail = await prisma.pulseLead.findFirst({ where: { email }, select: { id: true } });
-      if (existingForEmail) return apiError("This email has already used its free scan.", 409);
-    }
 
     // SSRF guard + normalisation (throws 400 on unsafe input).
     const { url, hostname } = await assertScannableUrl(body.url ?? "");
@@ -89,9 +73,6 @@ export async function POST(request: NextRequest) {
       },
       select: { id: true },
     });
-
-    const source = isPulseScanSource(body.source) ? body.source : undefined;
-    if (email !== null) await capturePulseLead({ liteScanId: lite.id, email, source });
 
     after(() => runPublicLiteScan(lite.id, url));
 

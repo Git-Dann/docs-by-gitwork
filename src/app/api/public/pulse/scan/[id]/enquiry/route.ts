@@ -1,6 +1,8 @@
-import { NextRequest } from "next/server";
+import { after, NextRequest } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { parseCapture } from "@/lib/pulse-capture";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { capturePulseLead } from "@/server/pulse-lite/leads";
+import { capturePulseLead, notifyLeadOfScanResult } from "@/server/pulse-lite/leads";
 import { clientIpFrom } from "@/server/pulse-lite/rate-limit";
 import { PulseEmbedDisabledError } from "@/server/pulse-lite/kill-switch";
 import { assertValidTurnstileToken } from "@/server/pulse-lite/turnstile";
@@ -9,11 +11,9 @@ import { isPulseScanSource } from "@/server/pulse-embed-config";
 
 export const dynamic = "force-dynamic";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /**
  * POST /api/public/pulse/scan/[id]/enquiry  (PUBLIC — no API key)
- * Body: { email, source?, honeypot?, turnstileToken? }
+ * Body: { name, business, email, termsAccepted: true, source?, honeypot?, turnstileToken? }
  *
  * The conversion point. A visitor has already seen the free report — the score, the
  * triaged P1/P2 findings with evidence, and what could not be established — and is
@@ -39,7 +39,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { id } = await params;
     const body = (await request.json().catch(() => ({}))) as {
+      name?: string;
+      business?: string;
       email?: string;
+      termsAccepted?: boolean;
       source?: string;
       honeypot?: string;
       turnstileToken?: string;
@@ -50,15 +53,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const ip = clientIpFrom(request.headers);
     await assertValidTurnstileToken(body.turnstileToken, ip, config.turnstileSecretKey);
 
-    const email = (body.email ?? "").trim().toLowerCase();
-    if (!EMAIL_RE.test(email) || email.length > 200) {
-      return apiError("Enter a valid email address.", 400);
-    }
+    // Name, business, email and agreement to the terms — all required. Recording the
+    // moment they agreed is the point of asking.
+    const parsed = parseCapture(body);
+    if (!parsed.ok) return apiError(parsed.error, 400);
+    const { name, business, email } = parsed.value;
 
     const source = isPulseScanSource(body.source) ? body.source : undefined;
     // capturePulseLead is idempotent per scan and throws EmailAlreadyUsedError (409)
     // for an address that has already been captured — `fromError` maps that status.
-    const { leadId } = await capturePulseLead({ liteScanId: id, email, source });
+    const { leadId, created } = await capturePulseLead({
+      liteScanId: id,
+      email,
+      name,
+      business,
+      source,
+      termsAcceptedAt: new Date(),
+    });
+
+    // Send the full report now if the scan has finished (a scan still running notifies
+    // from runPublicLiteScan when it completes, because the lead now exists). Only on a
+    // NEW lead, so a retried submit cannot email the visitor twice.
+    if (created) {
+      const lite = await prisma.pulseLiteScan.findUnique({ where: { id }, select: { status: true } });
+      if (lite?.status === "COMPLETED") after(() => notifyLeadOfScanResult(leadId).catch(() => {}));
+    }
 
     return apiOk({ leadId, requested: true }, { status: 201 });
   } catch (error) {

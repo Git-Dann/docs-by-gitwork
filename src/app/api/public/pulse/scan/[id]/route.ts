@@ -5,6 +5,7 @@ import { summarise, triage, type PublicScanView } from "@/server/pulse-lite/publ
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
+import { freeKeysFor } from "@/lib/pulse-free-tier";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       categories,
       emailCaptured: lite.emailCaptured,
       // The free-set limit lives inside triage() so every public surface applies it.
-      triage: triage(checks, freeCheckKeys ? new Set(freeCheckKeys) : null),
+      // A visitor who has unlocked the report (name, business, email, terms) sees all of
+      // it; everyone else gets the limit. Decided HERE, on the server, so a locked
+      // finding's text is never in the response for someone who has not unlocked.
+      triage: triage(checks, freeKeysFor(lite.emailCaptured, freeCheckKeys)),
       // The raw ~960-row tail stays gated — it is the tail, not the report.
       checks: lite.emailCaptured ? checks : null,
       errorMessage: lite.errorMessage,

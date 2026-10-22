@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getPublicReport, renderReportMarkdown } from "@/server/pulse-lite/public-report";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import { ScanEnquiry } from "./enquiry";
+import { LockedFindings } from "@/components/pulse/public-scanner";
 
 /**
  * PUBLIC result page for a free Pulse scan — `/scan/<id>`.
@@ -158,12 +159,8 @@ export default async function PublicScanPage({ params }: { params: Promise<{ id:
           </ol>
         )}
 
-        {t.lockedCount > 0 && (
-          <p style={{ fontSize: 13, color: "#374151", marginTop: 14, padding: "10px 12px", border: "1px dashed #d1d5db", borderRadius: 10, background: "#f9fafb" }}>
-            <strong>{t.lockedCount}</strong> more actionable finding{t.lockedCount === 1 ? "" : "s"} in
-            {" "}{t.lockedByCategory.slice(0, 4).map((a) => `${a.category} (${a.count})`).join(", ")}
-            {t.lockedByCategory.length > 4 && <> and more</>}. These come with the in-depth review.
-          </p>
+        {t.lockedCount > 0 && !report.enquired && (
+          <LockedFindings count={t.lockedCount} byCategory={t.lockedByCategory} preview={t.lockedPreview} />
         )}
 
         {t.advisoryCount > 0 && (
@@ -203,13 +200,12 @@ export default async function PublicScanPage({ params }: { params: Promise<{ id:
         </section>
       )}
 
-      {/* THE GATE — everything above is free and needed no email. */}
+      {/* THE GATE — name, business, email and terms unlock the held-back findings. */}
       <section style={{ marginTop: 40, background: NAVY, borderRadius: 14, padding: "clamp(20px, 4vw, 28px)" }}>
         <ScanEnquiry
           scanId={report.id}
           alreadyEnquired={report.enquired}
-          failCount={report.fail}
-          advisoryCount={t.advisoryCount}
+          lockedCount={report.enquired ? 0 : t.lockedCount}
           bookingUrl={bookingUrl}
           targetHost={report.targetHost}
           turnstileSiteKey={turnstileSiteKey}

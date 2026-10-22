@@ -66,6 +66,17 @@ export function splitByFreeSet<T extends FreeTierFinding>(
 }
 
 /**
+ * The free set that applies to ONE viewer. Someone who has unlocked the report (name,
+ * business, email, terms) sees everything triaged; everyone else gets the workspace's
+ * limit. Every public surface calls this, so what a visitor sees on the widget, the
+ * shareable page, the markdown twin and in their email cannot drift apart.
+ */
+export function freeKeysFor(unlocked: boolean, keys: readonly string[] | null): ReadonlySet<string> | null {
+  if (unlocked) return null;
+  return keys ? new Set(keys) : null;
+}
+
+/**
  * What is stored in `Workspace.pulseEmbedCheckKeys`: `{ keys: [...] }`, or null for no
  * limit.
  *

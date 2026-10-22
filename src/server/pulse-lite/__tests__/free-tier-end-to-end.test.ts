@@ -28,6 +28,7 @@ const CHECKS: PulseScanCheckInput[] = [
 ];
 
 let freeCheckKeys: string[] | null = null;
+let captured = false;
 const sent: Array<{ html: string }> = [];
 
 vi.mock("@/lib/prisma", () => ({
@@ -35,7 +36,7 @@ vi.mock("@/lib/prisma", () => ({
     pulseLiteScan: {
       findUnique: vi.fn(async (a: { select?: { checks?: boolean } }) => ({
         id: "s1", status: "COMPLETED", targetUrl: "https://example.com", targetHost: "example.com",
-        healthScore: 50, techStack: [], checks: CHECKS, emailCaptured: false, errorMessage: null,
+        healthScore: 50, techStack: [], checks: CHECKS, emailCaptured: captured, errorMessage: null,
         updatedAt: new Date("2026-10-14"), createdAt: new Date("2026-10-14"), ...(a.select ? {} : {}),
       })),
     },
@@ -75,7 +76,7 @@ const SURFACES = async () => {
   return { api, md, email: sent[0].html };
 };
 
-beforeEach(() => { freeCheckKeys = null; sent.length = 0; });
+beforeEach(() => { freeCheckKeys = null; captured = false; sent.length = 0; });
 
 describe("no limit (the default, and what is live today)", () => {
   it("every surface shows every finding with its evidence and says nothing is locked", async () => {
@@ -89,9 +90,9 @@ describe("no limit (the default, and what is live today)", () => {
 describe("limited to one check", () => {
   beforeEach(() => { freeCheckKeys = ["csp_header"]; });
 
-  it("shows the chosen finding and leaks NONE of the locked evidence anywhere", async () => {
-    const { api, md, email } = await SURFACES();
-    for (const text of [api, md, email]) {
+  it("shows the chosen finding and leaks NONE of the locked evidence to a stranger", async () => {
+    const { api, md } = await SURFACES();
+    for (const text of [api, md]) {
       expect(text).toContain(SECRET_DETAILS.csp);
       expect(text).not.toContain(SECRET_DETAILS.terms);
       expect(text).not.toContain(SECRET_DETAILS.hsts);
@@ -101,13 +102,34 @@ describe("limited to one check", () => {
   });
 
   it("counts what is held back, by area, on every surface", async () => {
-    const { api, md, email } = await SURFACES();
+    const { api, md } = await SURFACES();
     const t = (JSON.parse(api).triage ?? JSON.parse(api).data.triage);
     expect(t.lockedCount).toBe(2);
     expect(t.limited).toBe(true);
     expect(t.lockedByCategory.map((c: { category: string }) => c.category).sort()).toEqual(["Legal & Compliance", "Security"]);
     expect(md).toContain("2 more findings");
-    expect(email).toContain("2 more findings");
+  });
+
+  it("sends the locked findings' SHAPE only — area, priority, result — never their text", async () => {
+    const { api } = await SURFACES();
+    const t = (JSON.parse(api).triage ?? JSON.parse(api).data.triage);
+    expect(t.lockedPreview).toHaveLength(2);
+    for (const p of t.lockedPreview) expect(Object.keys(p).sort()).toEqual(["category", "status", "tier"]);
+  });
+
+  it("the visitor who unlocked gets the FULL report by email — that is what they asked for", async () => {
+    const { email } = await SURFACES();
+    for (const d of Object.values(SECRET_DETAILS)) expect(email).toContain(d);
+    expect(email).not.toContain("more findings");
+  });
+
+  it("once unlocked, every surface shows everything", async () => {
+    captured = true;
+    const { api, md } = await SURFACES();
+    for (const text of [api, md]) for (const d of Object.values(SECRET_DETAILS)) expect(text).toContain(d);
+    const t = (JSON.parse(api).triage ?? JSON.parse(api).data.triage);
+    expect(t.lockedCount).toBe(0);
+    expect(t.lockedPreview).toEqual([]);
   });
 
   it("the SCORE is byte-identical to the unlimited scan", async () => {
@@ -126,7 +148,6 @@ describe("limit that shows nothing", () => {
     const { md, email } = await SURFACES();
     expect(md).not.toContain("Nothing reached the actionable threshold");
     expect(email).not.toContain("No issues found");
-    expect(email).not.toContain("Critical issues");
     expect(md).toContain("3 more findings");
   });
 });

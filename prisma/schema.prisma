@@ -3094,6 +3094,11 @@ model PulseLead {
   convertedClientId String? // → WorkspaceClient if the lead is imported into Foundry
   notifiedAt        DateTime?
   createdAt         DateTime  @default(now())
+  // Captured by the unlock form on the public scanner (name, business, terms). Null on
+  // leads from before it existed. `termsAcceptedAt` is the moment they ticked the box.
+  name              String?
+  business          String?
+  termsAcceptedAt   DateTime?
 
   @@index([email])
   @@index([createdAt])

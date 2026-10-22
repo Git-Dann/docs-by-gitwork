@@ -34,7 +34,7 @@ const REPORT: PublicReport = {
       { checkKey: "privacy_policy", category: "Legal & Compliance", label: "Privacy Policy", status: "FAIL", detail: "No privacy policy link found.", tier: "P1" },
       { checkKey: "csp_header", category: "Security", label: "Content-Security-Policy", status: "WARN", detail: "No CSP header is sent.", tier: "P2" },
     ],
-    lockedCount: 0, lockedByCategory: [], limited: false,
+    lockedCount: 0, lockedByCategory: [], lockedPreview: [], limited: false,
     advisoryCount: 588,
     advisoryByCategory: [{ category: "SEO", count: 300 }],
     notEstablished: [
