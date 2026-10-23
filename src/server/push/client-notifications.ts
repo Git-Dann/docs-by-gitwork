@@ -110,8 +110,25 @@ export async function sendClientStandupPush(args: {
 
   const devices = await listActiveClientDevices(args.wikiId);
   if (devices.length === 0) {
-    // Nobody on this client has the app. Extremely common, and not a failure —
-    // recorded so the receipt reflects what actually happened.
+    // ⚠️ RELEASE THE CLAIM. Nobody on this client has the app yet, so nothing
+    // was sent — and the receipt is the day's only slot for this phase. Keeping
+    // it burns that slot on a push to nobody, which is precisely what the
+    // quiet-hours branch twelve lines up refuses to do: "claiming first would
+    // silently burn the day's only chance on a push that was never sent."
+    // Same situation, and it was handled the opposite way.
+    //
+    // Measured on production, 21 Oct 2026: Wedge's AM (07:47) and PM (15:44)
+    // standups both recorded deviceCount 0, and the client's phone registered
+    // at 15:55 — eleven minutes after the second one. Both slots were already
+    // spent, so a phone that was now perfectly able to receive the day's
+    // updates could not be sent either of them.
+    //
+    // There is no double-send risk in releasing it: zero devices means there
+    // is nothing to send twice. The next developer of the phase re-claims and
+    // either finds a device or releases it again.
+    await prisma.clientPushReceipt
+      .deleteMany({ where: { wikiId: args.wikiId, key } })
+      .catch(() => {});
     return { status: "no_devices" };
   }
 
