@@ -7,6 +7,7 @@ import { githubHeaders } from "@/lib/github";
 import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
 import { getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { MAX_DIGEST_RECIPIENTS, maybeSendWeeklyDigest, parseDigestEmails } from "@/server/pulse-agents/monitor-digest";
 
 export type MonitorFrequency = "DAILY" | "WEEKLY" | "OFF";
 
@@ -27,6 +28,9 @@ export interface MonitorRecord {
   lastRunAt: string | null;
   createdAt: string;
   webhookUrl: string;
+  /** Who receives the weekly summary email. Empty: no digest. */
+  digestEmails: string[];
+  lastDigestAt: string | null;
 }
 
 function serializeMonitor(record: {
@@ -34,9 +38,13 @@ function serializeMonitor(record: {
   inputUrl: string | null; inputGithubRepo: string | null; clientId: string | null;
   webhookSecret: string; lastScanId: string | null; lastHealthScore: number | null;
   alertThreshold: number; isActive: boolean; frequency: string; lastRunAt: Date | null; createdAt: Date;
+  digestEmails?: unknown; lastDigestAt?: Date | null;
 }, appUrl: string): MonitorRecord {
+  const { digestEmails, lastDigestAt, ...rest } = record;
   return {
-    ...record,
+    ...rest,
+    digestEmails: parseDigestEmails(digestEmails),
+    lastDigestAt: lastDigestAt?.toISOString() ?? null,
     inputType: record.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
     frequency: (record.frequency as MonitorFrequency) ?? "DAILY",
     lastRunAt: record.lastRunAt?.toISOString() ?? null,
@@ -81,7 +89,7 @@ export async function createMonitor(input: {
 
 export async function updateMonitor(
   monitorId: string,
-  input: { frequency?: MonitorFrequency; isActive?: boolean; alertThreshold?: number },
+  input: { frequency?: MonitorFrequency; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] },
   appUrl: string,
 ): Promise<MonitorRecord | null> {
   const { workspace } = await ensureBaseRecords();
@@ -91,6 +99,7 @@ export async function updateMonitor(
       ...(input.frequency !== undefined ? { frequency: input.frequency } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...(input.alertThreshold !== undefined ? { alertThreshold: input.alertThreshold } : {}),
+      ...(input.digestEmails !== undefined ? { digestEmails: parseDigestEmails(input.digestEmails).slice(0, MAX_DIGEST_RECIPIENTS) } : {}),
     },
   });
   if (result.count === 0) return null;
@@ -222,6 +231,10 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
       where: { id: monitorId },
       data: { lastScanId: scan.id, lastHealthScore: newScore, lastRunAt: new Date(), lastCriticalKeys: newCriticalKeys },
     });
+
+    // The weekly summary email, when this monitor has recipients and a week has passed.
+    // Never allowed to fail the run: the scan and its alerts already stand.
+    await maybeSendWeeklyDigest(monitorId, scan.id).catch((e) => console.warn(`[monitor-digest] ${monitorId}:`, (e as Error).message));
   } else {
     await prisma.pulseMonitor.update({
       where: { id: monitorId },

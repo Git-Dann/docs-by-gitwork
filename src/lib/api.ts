@@ -1610,6 +1610,8 @@ export interface MonitorRecord {
   lastRunAt: string | null;
   createdAt: string;
   webhookUrl: string;
+  digestEmails: string[];
+  lastDigestAt: string | null;
 }
 
 export async function listMonitors(): Promise<{ monitors: MonitorRecord[] }> {
@@ -1632,7 +1634,7 @@ export async function createMonitor(input: {
   });
 }
 
-export async function updateMonitor(monitorId: string, input: { frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number }): Promise<{ monitor: MonitorRecord }> {
+export async function updateMonitor(monitorId: string, input: { frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] }): Promise<{ monitor: MonitorRecord }> {
   return apiFetch<{ monitor: MonitorRecord }>(`/api/pulse/monitors/${monitorId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

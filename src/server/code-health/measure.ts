@@ -7,8 +7,9 @@ import type { ClassMeasure, FunctionMeasure } from "@/types/code-health";
  */
 export interface MeasureNode {
   type: string;
-  isNamed(): boolean;
-  children: MeasureNode[];
+  /** A property in web-tree-sitter 0.25; a method in older releases and plain test objects. */
+  isNamed: boolean | (() => boolean);
+  children: (MeasureNode | null)[];
   parent: MeasureNode | null;
   startPosition: { row: number };
   /** Byte offset; nodes are compared by position, never by object identity (see measureTree). */
@@ -21,6 +22,8 @@ export interface MeasureNode {
 interface FunctionFrame {
   seq: number;
   node: MeasureNode;
+  /** Where the function starts when that is not where `node` starts (Dart's signature). */
+  startRow?: number;
   name: string;
   owner: ClassFrame | null;
   complexity: number;
@@ -45,6 +48,15 @@ export interface TreeMeasure {
   loc: number;
 }
 
+function named(n: MeasureNode): boolean {
+  return typeof n.isNamed === "function" ? n.isNamed() : n.isNamed;
+}
+
+/** Children without the nulls web-tree-sitter 0.25 can return for a missing node. */
+function kids(n: MeasureNode): MeasureNode[] {
+  return n.children.filter((c): c is MeasureNode => c !== null);
+}
+
 const NAME_TYPES = /^(identifier|simple_identifier|type_identifier|property_identifier|field_identifier|name|constant|private_property_identifier)$/;
 
 /** The declared name of a function or class, or null when it has none of its own. */
@@ -52,7 +64,7 @@ function ownName(node: MeasureNode): string | null {
   const field = node.childForFieldName("name");
   if (field) return field.text.slice(0, 120);
   // Kotlin and some Swift nodes carry no `name` field: the first identifier child is the name.
-  for (const c of node.children) if (NAME_TYPES.test(c.type)) return c.text.slice(0, 120);
+  for (const c of kids(node)) if (NAME_TYPES.test(c.type)) return c.text.slice(0, 120);
   return null;
 }
 
@@ -69,7 +81,7 @@ function assignedName(node: MeasureNode): string | null {
     case "variable_declarator": // const Page = () => {}
     case "public_field_definition": // class field = () => {}
     case "field_definition":
-      return (p.childForFieldName("name") ?? p.children[0])?.text.slice(0, 120) ?? null;
+      return (p.childForFieldName("name") ?? kids(p)[0])?.text.slice(0, 120) ?? null;
     case "pair": // { onClick: () => {} }
       return p.childForFieldName("key")?.text.slice(0, 120) ?? null;
     case "assignment_expression": // module.exports.x = function () {}
@@ -79,6 +91,23 @@ function assignedName(node: MeasureNode): string | null {
     default:
       return null;
   }
+}
+
+/** Dart: the signature node directly before a function body, or null if there is none. */
+function signatureBefore(body: MeasureNode, rules: LanguageRules): MeasureNode | null {
+  const p = body.parent;
+  if (!p || !rules.bodyAfterSignature) return null;
+  const siblings = kids(p);
+  const i = siblings.findIndex((c) => c.startIndex === body.startIndex && c.type === body.type);
+  const prev = i > 0 ? siblings[i - 1] : null;
+  return prev && rules.bodyAfterSignature.signatures.has(prev.type) ? prev : null;
+}
+
+/** Dart signatures wrap the real one: method_signature > function_signature | getter_signature | … */
+function signatureName(sig: MeasureNode): string | null {
+  const inner = kids(sig).find((c) => c.type.endsWith("_signature")) ?? sig;
+  if (inner.type === "constructor_signature" || inner.type === "factory_constructor_signature") return "constructor";
+  return ownName(inner);
 }
 
 /** `else if` is a continuation of the same choice, not a block nested inside it. */
@@ -91,8 +120,9 @@ function isElseIf(node: MeasureNode): boolean {
     // Kotlin: if_expression > control_structure_body > if_expression, after an `else` keyword.
     const gp = p.parent;
     if (gp && gp.type === node.type) {
-      const i = gp.children.findIndex((c) => c.startIndex === p.startIndex && c.type === p.type);
-      return i > 0 && gp.children[i - 1].type === "else";
+      const siblings = kids(gp);
+      const i = siblings.findIndex((c) => c.startIndex === p.startIndex && c.type === p.type);
+      return i > 0 && siblings[i - 1].type === "else";
     }
   }
   return false;
@@ -101,8 +131,8 @@ function isElseIf(node: MeasureNode): boolean {
 function countParams(fn: MeasureNode, rules: LanguageRules): number {
   let count = 0;
   const countIn = (list: MeasureNode) => {
-    for (const c of list.children) {
-      if (!c.isNamed() || !rules.parameters.has(c.type)) continue;
+    for (const c of kids(list)) {
+      if (!named(c) || !rules.parameters.has(c.type)) continue;
       if (count === 0 && rules.implicitParameters?.has(c.text)) continue;
       count++;
     }
@@ -114,7 +144,15 @@ function countParams(fn: MeasureNode, rules: LanguageRules): number {
     countIn(field);
     return count;
   }
-  for (const c of fn.children) if (rules.parameterLists.has(c.type)) countIn(c);
+  const lists = (n: MeasureNode, depth: number) => {
+    for (const c of kids(n)) {
+      if (rules.parameterLists.has(c.type)) {
+        countIn(c);
+        lists(c, depth); // Dart's optional/named parameters sit inside the main list
+      } else if (depth > 0 && c.type.endsWith("_signature")) lists(c, depth - 1);
+    }
+  };
+  lists(fn, 1);
   // Swift lists its parameters directly under the declaration.
   if (rules.parameterLists.size === 0) countIn(fn);
   return count;
@@ -124,7 +162,7 @@ function isLogical(node: MeasureNode, rules: LanguageRules): boolean {
   if (!rules.logicalExpressions.has(node.type)) return false;
   // Languages that model each operator as its own node type list the type itself.
   if (rules.logicalOperators.has(node.type)) return true;
-  for (const c of node.children) if (!c.isNamed() && rules.logicalOperators.has(c.type)) return true;
+  for (const c of kids(node)) if (!named(c) && rules.logicalOperators.has(c.type)) return true;
   return false;
 }
 
@@ -172,7 +210,8 @@ export function measureTree(root: MeasureNode, rules: LanguageRules, lineCount: 
     }
 
     // Leaves mark their lines as code, unless they are comments.
-    if (n.children.length === 0) {
+    const children = kids(n);
+    if (children.length === 0) {
       if (!n.type.includes("comment")) {
         for (let r = n.startPosition.row; r <= n.endPosition.row && r < codeLines.length; r++) codeLines[r] = 1;
       }
@@ -186,11 +225,15 @@ export function measureTree(root: MeasureNode, rules: LanguageRules, lineCount: 
     };
 
     if (rules.classes.has(n.type)) {
-      classStack.push({ seq: seq++, node: n, name: ownName(n) ?? "(anonymous class)", methods: 0, wmc: 0 });
+      // Ruby's `class << self` has no name of its own: it holds the enclosing class's class methods.
+      const enclosing = classStack[classStack.length - 1];
+      const name = ownName(n) ?? (n.type === "singleton_class" && enclosing ? `${enclosing.name} (class methods)` : "(anonymous class)");
+      classStack.push({ seq: seq++, node: n, name, methods: 0, wmc: 0 });
       pushExit();
     }
 
-    const isFunction = rules.functions.has(n.type);
+    const signature = rules.bodyAfterSignature && n.type === rules.bodyAfterSignature.body ? signatureBefore(n, rules) : null;
+    const isFunction = rules.functions.has(n.type) || signature !== null;
     const inlineName = !isFunction && rules.inlineFunctions.has(n.type) ? assignedName(n) : null;
     if (isFunction || inlineName) {
       // A method belongs to a class only when no other function sits between them.
@@ -200,10 +243,11 @@ export function measureTree(root: MeasureNode, rules: LanguageRules, lineCount: 
       fnStack.push({
         seq: seq++,
         node: n,
-        name: (isFunction ? ownName(n) : inlineName) ?? (n.type.includes("constructor") || n.type.startsWith("init") ? "constructor" : "(anonymous)"),
+        name: (signature ? signatureName(signature) : isFunction ? ownName(n) : inlineName) ?? (n.type.includes("constructor") || n.type.startsWith("init") ? "constructor" : "(anonymous)"),
         owner,
+        startRow: signature?.startPosition.row,
         complexity: 1,
-        params: countParams(n, rules),
+        params: countParams(signature ?? n, rules),
         depth: 0,
         maxNesting: 0,
       });
@@ -224,7 +268,7 @@ export function measureTree(root: MeasureNode, rules: LanguageRules, lineCount: 
       }
     }
 
-    for (let i = n.children.length - 1; i >= 0; i--) work.push({ node: n.children[i], exit: false });
+    for (let i = children.length - 1; i >= 0; i--) work.push({ node: children[i], exit: false });
   }
 
   let loc = 0;
@@ -239,7 +283,7 @@ function locBetween(codeLines: Uint8Array, start: number, end: number): number {
 }
 
 function finishFunction(f: FunctionFrame, codeLines: Uint8Array): FunctionMeasure {
-  const start = f.node.startPosition.row;
+  const start = f.startRow ?? f.node.startPosition.row;
   const end = f.node.endPosition.row;
   return {
     name: f.name,

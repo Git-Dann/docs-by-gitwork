@@ -35,16 +35,23 @@ export interface LanguageRules {
   parameters: ReadonlySet<string>;
   /** First parameters that are not really parameters (`self`, `cls`). */
   implicitParameters?: ReadonlySet<string>;
+  /**
+   * Dart only: a function's body is the SIBLING of its signature, not its child
+   * (`method_signature` then `function_body` under the class body). The body node is
+   * measured as the function, and its name and parameters are read off the signature
+   * immediately before it.
+   */
+  bodyAfterSignature?: { body: string; signatures: ReadonlySet<string> };
 }
 
 /** The subset of a tree-sitter node the rules look at, so they can be tested without a parser. */
 export interface SyntaxNodeLike {
   type: string;
-  children: SyntaxNodeLike[];
+  children: (SyntaxNodeLike | null)[];
 }
 
 const set = (...xs: string[]) => new Set(xs);
-const hasKeyword = (n: SyntaxNodeLike, kw: string) => n.children.some((c) => c.type === kw);
+const hasKeyword = (n: SyntaxNodeLike, kw: string) => n.children.some((c) => c?.type === kw);
 
 const JS_LIKE: Omit<LanguageRules, "grammar"> = {
   functions: set("function_declaration", "generator_function_declaration", "method_definition"),
@@ -139,6 +146,31 @@ export const LANGUAGE_RULES: Record<CodeLanguage, LanguageRules> = {
     parameterLists: set("formal_parameters"),
     parameters: set("simple_parameter", "variadic_parameter", "property_promotion_parameter"),
   },
+  dart: {
+    grammar: "dart",
+    functions: set(),
+    bodyAfterSignature: { body: "function_body", signatures: set("method_signature", "function_signature", "declaration") },
+    inlineFunctions: set("function_expression"),
+    classes: set("class_definition", "mixin_declaration", "extension_declaration", "enum_declaration"),
+    decisions: set("if_statement", "for_statement", "while_statement", "do_statement", "switch_statement_case", "switch_expression_case", "catch_clause", "conditional_expression", "if_element", "for_element"),
+    logicalExpressions: set("logical_and_expression", "logical_or_expression", "if_null_expression"),
+    logicalOperators: set("logical_and_expression", "logical_or_expression", "if_null_expression"),
+    nesting: set("if_statement", "for_statement", "while_statement", "do_statement", "switch_statement", "try_statement"),
+    parameterLists: set("formal_parameter_list", "optional_formal_parameters"),
+    parameters: set("formal_parameter"),
+  },
+  ruby: {
+    grammar: "ruby",
+    functions: set("method", "singleton_method"),
+    inlineFunctions: set("lambda"),
+    classes: set("class", "module", "singleton_class"),
+    decisions: set("if", "elsif", "unless", "while", "until", "for", "when", "rescue", "conditional", "if_modifier", "unless_modifier", "while_modifier", "until_modifier", "rescue_modifier"),
+    logicalExpressions: set("binary"),
+    logicalOperators: set("&&", "||", "and", "or"),
+    nesting: set("if", "unless", "while", "until", "for", "case", "begin"),
+    parameterLists: set("method_parameters"),
+    parameters: set("identifier", "optional_parameter", "splat_parameter", "keyword_parameter", "hash_splat_parameter", "block_parameter"),
+  },
 };
 
 /** File extension → language. `.d.ts` is declarations only, so it is excluded upstream. */
@@ -158,17 +190,16 @@ export const EXTENSION_LANGUAGE: Record<string, CodeLanguage> = {
   ".java": "java",
   ".go": "go",
   ".php": "php",
+  ".dart": "dart",
+  ".rb": "ruby",
 };
 
 /**
  * Source languages we recognise but cannot measure yet. Counted so the report can say
  * "these Dart files were not analysed" instead of reporting a smaller repo than there is.
- * Dart's grammar is built for a newer parser ABI than the one the others need, and Ruby's
- * fails to load; both are known gaps, not oversights.
+ * Each needs a grammar and a LanguageRules entry here, checked against real parses.
  */
 export const UNSUPPORTED_SOURCE_EXTENSIONS: Record<string, string> = {
-  ".dart": "Dart",
-  ".rb": "Ruby",
   ".cs": "C#",
   ".rs": "Rust",
   ".c": "C",

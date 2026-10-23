@@ -88,7 +88,7 @@
     "tree-sitter-wasms": "0.1.13",
     "undici": "^7.29.0",
     "web-push": "^3.6.7",
-    "web-tree-sitter": "0.20.8",
+    "web-tree-sitter": "0.25.10",
     "zod": "^4.3.6"
   },
   "devDependencies": {

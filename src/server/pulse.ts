@@ -1,4 +1,5 @@
 import type { CodeHealthReport } from "@/types/code-health";
+import { enrichCodeHealth } from "@/server/code-health/enrich";
 import { NotFoundError, canSeeAllClients, type EffectiveUser, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { Prisma } from "@prisma/client";
 import { resolveDocumentOwnerName, type DocumentOwnerIdentity } from "@/lib/document-owner";
@@ -1162,6 +1163,9 @@ export async function runAnalysis(
       techStack = lite.techStack;
       codeInsights = lite.codeInsights;
       codeHealth = lite.codeHealth;
+      if (codeHealth && staleScan?.workspaceId && input.inputGithubRepo) {
+        codeHealth = await enrichCodeHealth(codeHealth, { scanId, workspaceId: staleScan.workspaceId, repo: input.inputGithubRepo });
+      }
       deployInsights = lite.deployInsights;
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;

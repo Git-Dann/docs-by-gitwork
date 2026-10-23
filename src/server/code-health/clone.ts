@@ -42,7 +42,7 @@ export function isCloneableRepo(slug: string): boolean {
 }
 
 /** The git arguments for a hardened shallow clone. Exported so the flags are testable. */
-export function cloneArgs(slug: string, dest: string, branch: string | null, token: string | null): string[] {
+export function cloneArgs(slug: string, dest: string, branch: string | null, token: string | null, historySince: string | null = null): string[] {
   const args = [
     "-c", "core.hooksPath=/dev/null",
     "-c", "core.symlinks=false",
@@ -56,7 +56,11 @@ export function cloneArgs(slug: string, dest: string, branch: string | null, tok
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
     args.push("-c", `http.https://github.com/.extraHeader=Authorization: Basic ${basic}`);
   }
-  args.push("clone", "--depth", "1", "--single-branch", "--no-tags", "--quiet");
+  args.push("clone", "--single-branch", "--no-tags", "--quiet");
+  // With history: every commit and tree since the date, but only the current file
+  // contents (a blobless partial clone). Without: the latest commit only.
+  if (historySince) args.push("--filter=blob:none", `--shallow-since=${historySince}`);
+  else args.push("--depth", "1");
   if (branch) args.push("--branch", branch);
   args.push(`https://github.com/${slug}.git`, dest);
   return args;
@@ -114,6 +118,8 @@ async function slot(): Promise<() => void> {
 
 export interface Checkout {
   dir: string;
+  /** Read-only git command in the checkout, for the history pass. */
+  git: (args: string[]) => Promise<string>;
   commit: string | null;
   /** Tracked file paths, relative to `dir`. */
   files: string[];
@@ -125,7 +131,7 @@ export interface Checkout {
  */
 export async function withCheckout<T>(
   slug: string,
-  opts: { branch?: string | null; sizeKb?: number | null },
+  opts: { branch?: string | null; sizeKb?: number | null; historySince?: string | null },
   work: (checkout: Checkout) => Promise<T>,
 ): Promise<T> {
   if (!isCloneableRepo(slug)) throw new CloneError("invalid_repo", `"${slug}" is not a GitHub owner/repo.`);
@@ -137,11 +143,20 @@ export async function withCheckout<T>(
   try {
     const dest = join(root, "repo");
     const token = process.env.GITHUB_TOKEN?.trim() || null;
-    await run("git", cloneArgs(slug, dest, opts.branch ?? null, token), { timeout: CLONE_TIMEOUT_MS });
+    try {
+      await run("git", cloneArgs(slug, dest, opts.branch ?? null, token, opts.historySince ?? null), { timeout: CLONE_TIMEOUT_MS });
+    } catch (e) {
+      // A history clone that fails for any reason other than "not there" falls back to
+      // the latest commit only: the measure still runs, the history is reported missing.
+      if (!opts.historySince || (e instanceof CloneError && (e.code === "not_found" || e.code === "git_missing"))) throw e;
+      await rm(dest, { recursive: true, force: true }).catch(() => {});
+      await run("git", cloneArgs(slug, dest, opts.branch ?? null, token, null), { timeout: CLONE_TIMEOUT_MS });
+    }
     const commit = (await run("git", ["rev-parse", "HEAD"], { cwd: dest, timeout: 10_000 }).catch(() => "")).trim() || null;
     const listed = await run("git", ["ls-files", "-z"], { cwd: dest, timeout: 20_000 });
     const files = listed.split("\0").filter(Boolean);
-    return await work({ dir: dest, commit, files });
+    const git = (args: string[]) => run("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd: dest, timeout: 30_000 });
+    return await work({ dir: dest, commit, files, git });
   } finally {
     await rm(root, { recursive: true, force: true }).catch(() => {});
     release();

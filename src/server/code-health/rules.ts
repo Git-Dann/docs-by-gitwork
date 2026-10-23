@@ -23,6 +23,22 @@ export const THRESHOLDS = {
   fileLoc: { moderate: 750, high: 1500, veryHigh: 3000 },
 } as const;
 
+/**
+ * Hours to bring one finding under its threshold, including the tests that make the
+ * change safe. Deliberately coarse and published: this is a planning figure for "how big
+ * is this debt", not a quote. A function counts once, at its worst finding.
+ */
+export const EFFORT_HOURS: Record<DebtKind, Record<DebtSeverity, number>> = {
+  complex_function: { moderate: 3, high: 8, very_high: 20 },
+  long_function: { moderate: 2, high: 5, very_high: 12 },
+  long_parameter_list: { moderate: 1, high: 2, very_high: 4 },
+  deep_nesting: { moderate: 2, high: 4, very_high: 8 },
+  large_class: { moderate: 6, high: 12, very_high: 28 },
+  large_file: { moderate: 3, high: 8, very_high: 16 },
+};
+/** Productive engineering hours in a day, for turning hours into days. */
+export const HOURS_PER_DAY = 6;
+
 /** How many register entries are kept. Counts are always complete; only the list is capped. */
 export const DEBT_REGISTER_LIMIT = 100;
 
@@ -161,7 +177,7 @@ export function bandOf(score: number): CodeHealthReport["band"] {
  * The register: per function only its worst finding (a 300-line, complexity-60 function
  * is one problem to fix, not two rows), every class and file finding, worst first.
  */
-export function buildRegister(files: FileMeasure[]): { debt: DebtItem[]; counts: Record<DebtKind, number> } {
+export function buildRegister(files: FileMeasure[]): { debt: DebtItem[]; counts: Record<DebtKind, number>; effortHours: number } {
   const counts: Record<DebtKind, number> = {
     complex_function: 0,
     long_function: 0,
@@ -176,13 +192,23 @@ export function buildRegister(files: FileMeasure[]): { debt: DebtItem[]; counts:
     for (const fn of file.functions) {
       const found = functionFindings(file.path, fn);
       for (const d of found) counts[d.kind]++;
-      if (found.length > 0) items.push(found.reduce((a, b) => (weight(b) > weight(a) ? b : a)));
+      if (found.length > 0) items.push(withEffort(found.reduce((a, b) => (weight(b) > weight(a) ? b : a))));
     }
     for (const d of fileFindings(file)) {
       counts[d.kind]++;
-      items.push(d);
+      items.push(withEffort(d));
     }
   }
   items.sort((a, b) => weight(b) - weight(a));
-  return { debt: items.slice(0, DEBT_REGISTER_LIMIT), counts };
+  const effortHours = items.reduce((s, d) => s + (d.effortHours ?? 0), 0);
+  return { debt: items.slice(0, DEBT_REGISTER_LIMIT), counts, effortHours };
+}
+
+function withEffort(d: DebtItem): DebtItem {
+  return { ...d, effortHours: EFFORT_HOURS[d.kind][d.severity] };
+}
+
+/** A register entry's identity across scans: where it is and what it is, never its line. */
+export function debtKey(d: Pick<DebtItem, "kind" | "path" | "symbol">): string {
+  return `${d.kind}\0${d.path}\0${d.symbol}`;
 }

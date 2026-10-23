@@ -7480,13 +7480,15 @@ match exactly. Weighted complexity is one lower per class, because they add 1 pe
   (no schema change). It's rendered by `CodeHealthPanel` on the scan overview and on the
   shared report/PDF (25 rows). Each register row links to the exact line on GitHub at the
   commit measured.
-- **Languages:** TS, TSX, JS, Python, Swift, Kotlin, Java, Go, PHP. **Dart and Ruby are not
-  supported**: their grammars don't load on this parser version. The report counts their files
-  under "Not measured", never as zero. ⚠️ `web-tree-sitter@0.20.8` and `tree-sitter-wasms@0.1.13`
-  are **pinned as a pair**. Newer web-tree-sitter crashed on some grammars. Bump them together,
-  and re-run `src/server/code-health/__tests__/measure.test.ts`, which uses real parses. A wrong
-  grammar node name fails silently (that construct just stops counting). That test caught
-  Swift's `default_keyword` while this was being written.
+- **Languages:** TS, TSX, JS, Python, Swift, Kotlin, Java, Go, PHP, **Dart and Ruby** (phase 2).
+  Anything else (Rust, C#, …) is counted under "Not measured", never as zero. ⚠️
+  `web-tree-sitter@0.25.10` and `tree-sitter-wasms@0.1.13` are **pinned as a pair**. 0.20.8
+  could not load Dart (ABI 15) or Ruby, and 0.22.6 crashed on Dart. 0.25 deprecates
+  `setTimeoutMicros` (it throws), so parses are budgeted with a progress callback
+  (`parseWithBudget`). Bump them together and re-run `src/server/code-health/__tests__/measure.test.ts`,
+  which uses real parses. A wrong grammar node name fails silently (that construct just stops
+  counting); that test caught Swift's `default_keyword`. ⚠️ **Dart puts a function's body beside
+  its signature, not inside it** (`LanguageRules.bodyAfterSignature`).
 - **Thresholds are published ones** (SEI complexity bands 11/21/51; class weighted complexity
   47, from Lanza & Marinescu). The register says **"large class", never "God Class"**: that rule
   also needs cohesion measures we don't take. There's **no dead-code check**, because that needs
@@ -7507,11 +7509,38 @@ match exactly. Weighted complexity is one lower per class, because they add 1 pe
   `process.cwd()/node_modules`, never `createRequire`, which webpack warns on.
 - **Measured** (shallow clone + parse): flask 1.0s · express 0.9s · Alamofire 3.4s ·
   okhttp 2.4s · cal.com (320k lines) 13.9s.
-- **Phase 2, not built:** git-history hotspots (churn × complexity), complexity trend between
-  scans, bus factor, module coupling, branch choice, a costed register via the pricing engine,
-  Provenance `subjectCommit` (the commit is now known), Dart/Ruby, and a weekly digest email.
+- **Phase 2 (shipped):**
+  - **History** (`history.ts`): the clone is blobless + `--shallow-since` 12 months, so every
+    commit and tree for a year, but only current file contents. `git log --name-only
+    --no-renames` reads trees only, so nothing is fetched lazily. Bots and mass edits (>60
+    files) are left out. Produces **hotspots** (change frequency × complexity, Tornhill's
+    method), **bus factor** (fewest people who are main author of over half the changing
+    code), owners, and **change coupling** across folders. Change is counted in commits, not
+    lines, because line churn needs old file versions.
+  - **Trend** (`trend.ts`, `enrich.ts`): against the last measured scan of the same repo.
+    Debt is matched on kind + file + symbol, never line. Resolved items are only counted when
+    the list was under the 100 cap.
+  - **Costed register:** `EFFORT_HOURS` per kind × severity (published, coarse, "not a quote"),
+    one per function at its worst. Days shown everywhere; **£ only in the internal view**
+    (`showMoney`), priced with the workspace day rate (`blendedDayRateGbp`), never on a shared report.
+  - **MCP**: the verdict carries `codeHealth` (score, effort, bus factor, top debt, hotspots).
+  - **Language-aware repo checks** (`pulse-checks/repo-language.ts`): a repo that isn't a
+    JavaScript project (no root package.json, JS not dominant) skips `has_typescript`,
+    `has_unit_test_config`, `has_e2e_tests` and `is_monorepo`. `has_linter` now recognises ruff,
+    flake8, Pylint, RuboCop, golangci-lint, detekt, SwiftLint, PHPStan and Dart analysis
+    options. It reads `pyproject.toml` only when nothing else answered. Found by scanning Flask
+    on production, which was told "No TypeScript".
+  - **Weekly digest email** (`pulse-agents/monitor-digest.ts`): a monitor with recipients
+    (`PulseMonitor.digestEmails`, additive) gets a summary after its scheduled re-scan once a
+    week has passed. It rides on the existing `pulse-run-monitors` cron, so no new crontab
+    line. It covers score movement, new/fixed/open confirmed issues, code health and hotspots,
+    and one link to the shared PDF. One email per recipient, so client addresses aren't
+    shared. The monitors GET/PATCH/DELETE routes now require `canManagePulse`; they returned
+    webhook secrets, and now recipient addresses, to any session.
+- **Still not built:** branch choice (the default branch is measured), Provenance
+  `subjectCommit` (the commit is now known), C#/Rust.
 
-## 80. Recent Changes (October 2026) — A shareable "What Pulse checks" page
+## 81. Recent Changes (October 2026) — A shareable "What Pulse checks" page
 
 `/pulse/features` is public, not indexed, and made for sending to someone. The **About Pulse** card
 (`02 // ABOUT PULSE` on /app/pulse, replacing Research studies) shows the counts and copies the link.

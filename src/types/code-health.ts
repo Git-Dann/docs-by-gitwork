@@ -17,7 +17,9 @@ export type CodeLanguage =
   | "kotlin"
   | "java"
   | "go"
-  | "php";
+  | "php"
+  | "dart"
+  | "ruby";
 
 /** One function, method, constructor or named closure, as measured. */
 export interface FunctionMeasure {
@@ -79,6 +81,64 @@ export interface DebtItem {
   metrics: Record<string, number>;
   /** One sentence, in words a non-developer can follow. */
   reason: string;
+  /** Estimated hours to bring it under the threshold, tests included (rules.ts EFFORT_HOURS). */
+  effortHours?: number;
+}
+
+export interface Hotspot {
+  path: string;
+  /** Commits that changed it in the history window. */
+  changes: number;
+  /** Sum of its functions' complexity. */
+  complexity: number;
+  loc: number;
+  authors: number;
+  /** Share of its changes made by one person (0–1). High on a hotspot is a knowledge risk. */
+  mainAuthorShare: number;
+  /** changes × complexity, each relative to the repo's own maximum (0–1). */
+  score: number;
+}
+
+export interface CodeHistory {
+  months: number;
+  commits: number;
+  massEditsIgnored: number;
+  botCommitsIgnored: number;
+  contributors: number;
+  firstCommitAt: string | null;
+  lastCommitAt: string | null;
+  /** Fewest people who are main author of over half the code that changed. Null with no history. */
+  busFactor: number | null;
+  owners: { name: string; share: number }[];
+  hotspots: Hotspot[];
+  /** Files in different folders that keep changing in the same commits. */
+  coupling: { a: string; b: string; shared: number; degree: number }[];
+}
+
+/** What changed since the last measured scan of the same repository. */
+export interface CodeHealthTrend {
+  previousScanId: string;
+  previousCommit: string | null;
+  previousMeasuredAt: string;
+  previousScore: number;
+  scoreDelta: number;
+  complexLocShareDelta: number;
+  /** Register entries now that were not there before, and ones that went. */
+  newDebt: number;
+  resolvedDebt: number;
+  /** Up to 5 of each, worst first, so the change can be named. */
+  newItems: Pick<DebtItem, "kind" | "severity" | "path" | "line" | "symbol">[];
+  resolvedItems: Pick<DebtItem, "kind" | "severity" | "path" | "symbol">[];
+}
+
+export interface CodeHealthEffort {
+  /** Summed over every finding, one per function (its worst), not just the listed ones. */
+  hours: number;
+  days: number;
+  /** Set at scan time from the workspace's own day rate; internal only, never on a shared report. */
+  dayRateGbp?: number;
+  gbpLow?: number;
+  gbpHigh?: number;
 }
 
 export interface LanguageSummary {
@@ -112,6 +172,12 @@ export interface CodeHealthReport {
   /** The register, worst first, capped. `debtCounts` holds the full totals. */
   debt: DebtItem[];
   debtCounts: Record<DebtKind, number>;
+  /** Absent on reports measured before history and effort were added (Oct 2026). */
+  effort?: CodeHealthEffort;
+  /** Git history analysis. Null when the history could not be read; absent on older reports. */
+  history?: CodeHistory | null;
+  /** Set after the scan, against the previous measured scan of the same repository. */
+  trend?: CodeHealthTrend | null;
   /** What was not measured, and why, so the coverage is honest. */
   coverage: {
     analysedFiles: number;

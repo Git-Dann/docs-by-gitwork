@@ -1,11 +1,11 @@
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isExampleOrFixturePath, isVendoredPath } from "@/server/pulse-checks/native-mobile";
-import { parserFor } from "./grammar";
+import { parseWithBudget, parserFor } from "./grammar";
 import { EXTENSION_LANGUAGE, LANGUAGE_RULES, UNSUPPORTED_SOURCE_EXTENSIONS } from "./languages";
 import { measureTree, type MeasureNode } from "./measure";
-import { bandOf, buildRegister, scoreOf } from "./rules";
-import type { CodeHealthReport, CodeLanguage, FileMeasure, LanguageSummary } from "@/types/code-health";
+import { bandOf, buildRegister, HOURS_PER_DAY, scoreOf } from "./rules";
+import type { CodeHealthReport, CodeHistory, CodeLanguage, FileMeasure, LanguageSummary } from "@/types/code-health";
 
 /** Files larger than this are almost always generated or bundled, not written. */
 export const MAX_FILE_BYTES = 256 * 1024;
@@ -57,7 +57,13 @@ export interface AnalyseInput {
   now?: () => number;
 }
 
-export async function analyseCheckout(input: AnalyseInput): Promise<CodeHealthReport> {
+/** The parsed files, for the history pass, which needs per-file complexity. */
+export interface Analysed {
+  report: CodeHealthReport;
+  measured: FileMeasure[];
+}
+
+export async function analyseCheckout(input: AnalyseInput): Promise<Analysed> {
   const now = input.now ?? Date.now;
   const started = now();
   const coverage: CodeHealthReport["coverage"] = {
@@ -113,7 +119,7 @@ export async function analyseCheckout(input: AnalyseInput): Promise<CodeHealthRe
         parser = await parserFor(c.language);
         parsers.set(c.language, parser);
       }
-      const tree = parser.parse(source);
+      const tree = parseWithBudget(parser, source);
       if (!tree) continue; // parse timed out: skip the file rather than stall the scan
       try {
         const root = tree.rootNode as unknown as MeasureNode & { hasError: boolean | (() => boolean) };
@@ -131,7 +137,7 @@ export async function analyseCheckout(input: AnalyseInput): Promise<CodeHealthRe
   }
 
   coverage.unsupportedLanguages = [...unsupported].sort();
-  return buildReport(input, measured, coverage, now);
+  return { report: buildReport(input, measured, coverage, now), measured };
 }
 
 /** Pure: measures in, report out. Split out so it can be tested without a parser. */
@@ -140,6 +146,7 @@ export function buildReport(
   measured: FileMeasure[],
   coverage: CodeHealthReport["coverage"],
   now: () => number = Date.now,
+  history: CodeHistory | null = null,
 ): CodeHealthReport {
   const prod = measured.filter((f) => !f.isTest);
   const loc = prod.reduce((s, f) => s + f.loc, 0);
@@ -147,7 +154,7 @@ export function buildReport(
   const fns = prod.flatMap((f) => f.functions);
   const totalComplexity = fns.reduce((s, f) => s + f.complexity, 0);
   const { score, complexLocShare } = scoreOf(measured);
-  const { debt, counts } = buildRegister(measured);
+  const { debt, counts, effortHours } = buildRegister(measured);
 
   const byLang = new Map<CodeLanguage, LanguageSummary>();
   for (const f of prod) {
@@ -177,6 +184,8 @@ export function buildReport(
     languages: [...byLang.values()].sort((a, b) => b.loc - a.loc),
     debt,
     debtCounts: counts,
+    effort: { hours: effortHours, days: Math.round((effortHours / HOURS_PER_DAY) * 10) / 10 },
+    history,
     coverage,
   };
 }

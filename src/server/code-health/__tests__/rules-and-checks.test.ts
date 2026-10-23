@@ -106,7 +106,8 @@ describe("which files are measured", () => {
   });
 
   it("counts source it cannot read yet, so the report can say so", () => {
-    expect(classifyPath("lib/main.dart")).toEqual({ skip: "unsupported", label: "Dart" });
+    expect(classifyPath("src/main.rs")).toEqual({ skip: "unsupported", label: "Rust" });
+    expect(classifyPath("lib/main.dart")).toEqual({ language: "dart", isTest: false });
   });
 
   it("recognises minified and generated content", () => {
@@ -142,10 +143,10 @@ describe("the checks", () => {
   const report = (files: FileMeasure[], coverage = COVERAGE) => buildReport({ repo: "a/b", branch: "main", commit: "abcdef1234" }, files, coverage, () => 0);
 
   it("claims nothing when nothing was measured", () => {
-    const checks = codeHealthChecks(report([], { ...COVERAGE, analysedFiles: 0, unsupportedSourceFiles: 40, unsupportedLanguages: ["Dart"] }));
+    const checks = codeHealthChecks(report([], { ...COVERAGE, analysedFiles: 0, unsupportedSourceFiles: 40, unsupportedLanguages: ["Rust"] }));
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({ checkKey: "code_health_score", status: "INCONCLUSIVE" });
-    expect(checks[0].detail).toContain("Dart");
+    expect(checks[0].detail).toContain("Rust");
   });
 
   it("fails on a very complex function, naming it and where it is", () => {

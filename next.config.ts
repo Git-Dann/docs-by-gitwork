@@ -59,14 +59,15 @@ const nextConfig: NextConfig = {
     // Pulse's code-health measure (src/server/code-health/grammar.ts) loads the parser
     // runtime and one grammar per language by path at runtime, which the tracer cannot
     // see. Scans run from many routes (in-app, MCP, cron jobs), so this is global; the
-    // standalone build copies each file once. Only the nine grammars the measure uses,
-    // not the ~40 the package ships. Keep in step with LANGUAGE_RULES.
+    // standalone build copies each file once. Only
+    // the eleven LANGUAGE_RULES uses, not the ~40 the package ships. Keep in step with LANGUAGE_RULES.
     "/**/*": [
       "./node_modules/web-tree-sitter/package.json",
       "./node_modules/web-tree-sitter/tree-sitter.js",
+      "./node_modules/web-tree-sitter/tree-sitter.cjs",
       "./node_modules/web-tree-sitter/tree-sitter.wasm",
       "./node_modules/tree-sitter-wasms/package.json",
-      "./node_modules/tree-sitter-wasms/out/tree-sitter-{typescript,tsx,javascript,python,swift,kotlin,java,go,php}.wasm",
+      "./node_modules/tree-sitter-wasms/out/tree-sitter-{typescript,tsx,javascript,python,swift,kotlin,java,go,php,dart,ruby}.wasm",
     ],
     "/api/proposals/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
     "/api/pulse/scans/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],

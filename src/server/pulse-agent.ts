@@ -1,3 +1,4 @@
+import type { CodeHealthReport } from "@/types/code-health";
 // Pulse as an agent-callable service — runs a scan and returns a COMPACT verdict
 // for AI coding tools (via the MCP server) or any authenticated HTTP agent.
 //
@@ -20,6 +21,8 @@ import type { PulseScanCheckInput, GateEvaluationRecord, ScoreBreakdown } from "
 
 export interface AgentVerdict {
   url: string;
+  /** Repo scans: the full-checkout code measure, condensed. Absent when it did not run. */
+  codeHealth?: AgentCodeHealth;
   /**
    * WHAT was scanned. An App Store link is an iOS app and a Google Play link an
    * Android app — stated here so a caller never has to infer it from the URL, and
@@ -252,6 +255,32 @@ export function buildAgentVerdict(args: {
   };
 }
 
+export interface AgentCodeHealth {
+  score: number;
+  band: CodeHealthReport["band"];
+  commit: string | null;
+  linesMeasured: number;
+  effortDays: number | null;
+  busFactor: number | null;
+  /** Worst first: "path:line symbol — reason". */
+  topDebt: string[];
+  /** Most-changed complex files: "path (N changes, complexity C)". */
+  hotspots: string[];
+}
+
+export function summariseCodeHealth(r: CodeHealthReport): AgentCodeHealth {
+  return {
+    score: r.score,
+    band: r.band,
+    commit: r.commit,
+    linesMeasured: r.totals.loc,
+    effortDays: r.effort?.days ?? null,
+    busFactor: r.history?.busFactor ?? null,
+    topDebt: r.debt.slice(0, 8).map((d) => `${d.path}:${d.line} ${d.symbol} — ${d.reason}`),
+    hotspots: (r.history?.hotspots ?? []).slice(0, 5).map((h) => `${h.path} (${h.changes} changes, complexity ${h.complexity})`),
+  };
+}
+
 /** Run a fresh lite scan for an agent and return the compact verdict. */
 export async function runAgentScan(input: {
   url?: string;
@@ -273,7 +302,7 @@ export async function runAgentScan(input: {
       targetMarkets: markets.length > 0 ? markets : undefined,
       // skipUrlGuard left false — external agents must pass the SSRF guard.
     });
-    return buildAgentVerdict({
+    const verdict = buildAgentVerdict({
       url: subjectRef,
       inputType,
       status: "COMPLETED",
@@ -289,6 +318,7 @@ export async function runAgentScan(input: {
       nameFromStore: true,
       relevance: lite.relevance,
     });
+    return lite.codeHealth ? { ...verdict, codeHealth: summariseCodeHealth(lite.codeHealth) } : verdict;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Scan failed.";
     // A scan that never ran cannot clear a gate. Returning no decision at all

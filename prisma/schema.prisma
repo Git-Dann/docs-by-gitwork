@@ -3006,6 +3006,11 @@ model PulseMonitor {
   frequency        String             @default("DAILY") // "DAILY" | "WEEKLY" | "OFF"
   lastRunAt        DateTime? // last scheduled run (cron stamps this)
   lastCriticalKeys Json? // string[] — CONFIRMED-critical checkKeys at last run, to diff for "new issue appeared"
+  // Weekly digest (additive): who gets the weekly summary email, and the scan it last
+  // compared against, so "this week" means since the last email rather than the last run.
+  digestEmails     Json? // string[]
+  lastDigestAt     DateTime?
+  lastDigestScanId String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 

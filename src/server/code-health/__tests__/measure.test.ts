@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parserFor } from "../grammar";
+import { parseWithBudget, parserFor } from "../grammar";
 import { LANGUAGE_RULES } from "../languages";
 import { measureTree, type MeasureNode } from "../measure";
 import type { CodeLanguage, FunctionMeasure } from "@/types/code-health";
@@ -12,7 +12,8 @@ import type { CodeLanguage, FunctionMeasure } from "@/types/code-health";
  */
 async function measure(lang: CodeLanguage, src: string) {
   const p = await parserFor(lang);
-  const tree = p.parse(src);
+  const tree = parseWithBudget(p, src);
+  if (!tree) throw new Error("parse cancelled");
   try {
     return measureTree(tree.rootNode as unknown as MeasureNode, LANGUAGE_RULES[lang], src.split("\n").length);
   } finally {
@@ -171,6 +172,56 @@ class Basket {
     expect(f.complexity).toBe(4);
     expect(f.params).toBe(2);
     expect(f.owner).toBe("Basket");
+  });
+
+  it("Dart: the body is a sibling of its signature; name, params and lines span both", async () => {
+    const m = await measure("dart", `
+class Cart extends Base {
+  Cart(this.items);
+  int total(List<int> xs, {int cap = 0}) {
+    var t = 0;
+    for (final x in xs) {
+      if (x > 0 && x < 9) {
+        t += x;
+      } else if (x < 0) {
+        t -= 1;
+      }
+    }
+    switch (t) { case 1: return 1; default: return t ?? 0; }
+  }
+}
+`);
+    const f = fn(m.functions, "total");
+    // for, if, &&, else-if, case 1, ??
+    expect(f.complexity).toBe(7);
+    expect(f.params).toBe(2);
+    expect(f.owner).toBe("Cart");
+    expect(f.startLine).toBe(4);
+    expect(f.maxNesting).toBe(2);
+    expect(m.classes).toEqual([expect.objectContaining({ name: "Cart", methods: 1 })]);
+  });
+
+  it("Ruby: modifiers, unless, when and rescue count; else does not", async () => {
+    const m = await measure("ruby", `
+class Cart < Base
+  def total(xs, cap = 0, *rest, key:, **opts)
+    t = 0
+    xs.each { |x| t += x if x > 0 && x < 9 }
+    unless t then t = 2 end
+    case t
+    when 1 then 1
+    else 0
+    end
+    begin; f; rescue StandardError => e; 0; end
+    t > 3 ? 1 : 2
+  end
+end
+`);
+    const f = fn(m.functions, "total");
+    // if-modifier, &&, unless, when, rescue, ternary
+    expect(f.complexity).toBe(7);
+    expect(f.params).toBe(5);
+    expect(f.owner).toBe("Cart");
   });
 
   it("lines of code exclude blanks and comment-only lines", async () => {

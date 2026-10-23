@@ -1,6 +1,7 @@
 import { githubRequest, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput } from "@/types/pulse";
-import { analyseCheckout } from "./analyse";
+import { analyseCheckout, buildReport } from "./analyse";
+import { analyseHistory, HISTORY_MONTHS, logArgs, parseLog } from "./history";
 import { codeHealthChecks, codeHealthUnavailable } from "./checks";
 import { CloneError, withCheckout } from "./clone";
 import type { CodeHealthReport } from "@/types/code-health";
@@ -29,9 +30,19 @@ export async function runCodeHealth(repoInput: string): Promise<CodeHealthResult
     // default branch, which is what gets measured.
     const meta = await githubRequest<{ size?: number; default_branch?: string }>(`/repos/${slug}`).catch(() => null);
     const branch = meta?.default_branch ?? null;
-    const report = await withCheckout(slug, { sizeKb: meta?.size ?? null }, (c) =>
-      analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files }),
-    );
+    const since = new Date(Date.now() - HISTORY_MONTHS * 30.44 * 86_400_000).toISOString().slice(0, 10);
+    const report = await withCheckout(slug, { sizeKb: meta?.size ?? null, historySince: since }, async (c) => {
+      const { report, measured } = await analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files });
+      // History is a second, independent read: if it fails, the measure still stands.
+      const history = await c
+        .git(logArgs(since))
+        .then((out) => analyseHistory(parseLog(out), measured))
+        .catch((e) => {
+          console.warn(`[code-health] ${slug}: history unavailable: ${(e as Error).message.slice(0, 200)}`);
+          return null;
+        });
+      return history ? buildReport(report, measured, report.coverage, () => Date.parse(report.measuredAt), history) : report;
+    });
     return { report, checks: codeHealthChecks(report), unavailable: null };
   } catch (error) {
     if (error instanceof CloneError) {

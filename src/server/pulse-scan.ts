@@ -1,4 +1,5 @@
 import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
+import { applyLanguageApplicability, hasNonJsLinter, languageTechStack } from "@/server/pulse-checks/repo-language";
 import { safeGithubRequest, parseGithubRepo, hasGithubToken, githubRateLimitedUntil } from "@/lib/github";
 import type { PulseCheckStatus, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
@@ -6671,6 +6672,15 @@ export async function runGithubChecks(
     names.includes(".eslintrc.js") ||
     names.includes("biome.json") ||
     names.includes(".prettierrc");
+  // Lint config outside the JavaScript world (ruff, flake8, RuboCop, golangci-lint, …). Was
+  // ESLint-only, so every Python, Go or Ruby repo was told it had no linter. pyproject.toml
+  // is read only when nothing else answered, because it costs an API call.
+  let pyprojectText: string | null = null;
+  if (!hasLinter && names.includes("pyproject.toml")) {
+    const r = await safeGithubRequest<{ content?: string }>(`/repos/${fullName}/contents/pyproject.toml`, {});
+    pyprojectText = r.content ? Buffer.from(r.content.replace(/\n/g, ""), "base64").toString("utf-8") : null;
+  }
+  const hasAnyLinter = hasLinter || hasNonJsLinter(allTreePaths, pyprojectText);
   const hasTs = names.includes("tsconfig.json") || treeHas((_, base) => base === "tsconfig.json");
   const hasEnvExample = [".env.example", ".env.sample", ".env.template", ".env.dist", ".env.local.example", "env.example"].some((f) => names.includes(f));
   const hasCi = names.includes(".github") || names.includes(".circleci");
@@ -6778,8 +6788,8 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_linter",
       label: "Linter config",
-      status: hasLinter ? "PASS" : "WARN",
-      detail: hasLinter ? "Linting configuration found." : "No ESLint/Biome/Prettier config found.",
+      status: hasAnyLinter ? "PASS" : "WARN",
+      detail: hasAnyLinter ? "Linting configuration found." : "No linter config found (ESLint, Biome, Prettier, ruff, flake8, Pylint, RuboCop, golangci-lint, detekt, SwiftLint, PHPStan, Dart analysis options).",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
@@ -7292,12 +7302,15 @@ export async function runGithubChecks(
     resolvedShape as NativePlatform,
   ) ? resolvedShape as NativePlatform : null;
   techStack.push(...nativeTechStack(nativePlatform, nativeSnapshot?.paths ?? []));
+  if (!nativePlatform) techStack.push(...languageTechStack(treeSnapshot?.paths ?? []));
   return {
     // No category filter here: a platform's OWN checks live in categories the coarse
     // platform profile marked not-applicable (ext_manifest_v3 is APP_STORE, which
     // CHROME_EXTENSION excludes), so filtering by category dropped them. The relevance
     // gate in run-lite-scan decides per check, from what the repo actually is.
-    checks: applyNativeApplicability(checks, nativePlatform).map((check, i) => ({ ...check, sortOrder: i })),
+    // Native shapes have their own skip lists; for everything else, JavaScript tooling
+    // checks are skipped on a repository that is not a JavaScript project.
+    checks: (nativePlatform ? applyNativeApplicability(checks, nativePlatform) : applyLanguageApplicability(checks, treeSnapshot?.paths ?? [])).map((check, i) => ({ ...check, sortOrder: i })),
     techStack: [...new Set(techStack)],
     // Retained for report metadata and compatibility. The live orchestrator never
     // expands a repository scan into its optional GitHub Website field.

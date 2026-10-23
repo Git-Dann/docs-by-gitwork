@@ -1,3 +1,4 @@
+import { EFFORT_HOURS } from "@/server/code-health/rules";
 import type { CodeHealthReport, DebtItem } from "@/types/code-health";
 
 /**
@@ -5,7 +6,7 @@ import type { CodeHealthReport, DebtItem } from "@/types/code-health";
  * the shape and the proportions follow real measured repositories, so the panel is
  * exercised with a realistic mix of severities and kinds.
  */
-const d = (o: Omit<DebtItem, "reason"> & { reason?: string }): DebtItem => ({ reason: "", ...o });
+const d = (o: Omit<DebtItem, "reason"> & { reason?: string }): DebtItem => ({ reason: "", effortHours: EFFORT_HOURS[o.kind][o.severity], ...o });
 
 export const DEMO_CODE_HEALTH: CodeHealthReport = {
   repo: "cadenza-app/cadenza",
@@ -36,5 +37,46 @@ export const DEMO_CODE_HEALTH: CodeHealthReport = {
     d({ kind: "complex_function", severity: "moderate", path: "server/billing/proration.ts", line: 11, symbol: "prorate", metrics: { complexity: 14, loc: 52, params: 4, nesting: 3 } }),
   ],
   debtCounts: { complex_function: 23, long_function: 14, long_parameter_list: 4, deep_nesting: 6, large_class: 2, large_file: 3 },
+  effort: { hours: 412, days: 68.7, dayRateGbp: 450, gbpLow: 21_600, gbpHigh: 46_400 },
+  history: {
+    months: 12,
+    commits: 1_184,
+    massEditsIgnored: 6,
+    botCommitsIgnored: 212,
+    contributors: 7,
+    firstCommitAt: "2025-10-21T08:00:00.000Z",
+    lastCommitAt: "2026-10-19T17:40:00.000Z",
+    busFactor: 2,
+    owners: [
+      { name: "Priya N.", share: 0.41 },
+      { name: "Tom H.", share: 0.27 },
+      { name: "Ade O.", share: 0.14 },
+      { name: "Lena S.", share: 0.11 },
+      { name: "Marc D.", share: 0.07 },
+    ],
+    hotspots: [
+      { path: "server/billing/invoice.ts", changes: 64, complexity: 188, loc: 1_140, authors: 4, mainAuthorShare: 0.72, score: 1 },
+      { path: "web/src/pages/Checkout.tsx", changes: 51, complexity: 141, loc: 920, authors: 3, mainAuthorShare: 0.55, score: 0.6 },
+      { path: "server/sync/SyncEngine.ts", changes: 22, complexity: 131, loc: 1_084, authors: 1, mainAuthorShare: 1, score: 0.24 },
+      { path: "server/auth/session.ts", changes: 38, complexity: 64, loc: 310, authors: 5, mainAuthorShare: 0.39, score: 0.2 },
+      { path: "web/src/pages/Settings.tsx", changes: 29, complexity: 77, loc: 1_612, authors: 4, mainAuthorShare: 0.48, score: 0.19 },
+    ],
+    coupling: [
+      { a: "server/billing/invoice.ts", b: "web/src/pages/Checkout.tsx", shared: 19, degree: 0.83 },
+      { a: "server/auth/session.ts", b: "web/src/lib/api.ts", shared: 11, degree: 0.79 },
+    ],
+  },
+  trend: {
+    previousScanId: "scan-cadenza-prev",
+    previousCommit: "9a1b7c3d",
+    previousMeasuredAt: "2026-09-22T09:00:00.000Z",
+    previousScore: 68,
+    scoreDelta: 3,
+    complexLocShareDelta: -0.014,
+    newDebt: 2,
+    resolvedDebt: 5,
+    newItems: [{ kind: "complex_function", severity: "high", path: "web/src/components/Scheduler/useSlots.ts", line: 17, symbol: "useSlots" }],
+    resolvedItems: [{ kind: "complex_function", severity: "very_high", path: "server/api/students.ts", symbol: "syncRoster" }],
+  },
   coverage: { analysedFiles: 262, skippedLarge: 0, skippedMinified: 1, skippedGenerated: 3, unsupportedSourceFiles: 0, unsupportedLanguages: [], filesWithParseErrors: 2, truncated: false },
 };

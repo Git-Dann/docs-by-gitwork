@@ -2464,7 +2464,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           <PillarStrip checks={scan.checks} num={sectionNo()} />
 
           {/* Repo scans: the full-checkout measure and its tech-debt register. */}
-          {scan.codeHealth && <CodeHealthPanel report={scan.codeHealth} num={sectionNo()} />}
+          {scan.codeHealth && <CodeHealthPanel report={scan.codeHealth} num={sectionNo()} showMoney />}
 
           {/* COMPLIANCE BY MARKET — per-jurisdiction posture; deep-links to the Compliance tab */}
           {scorecard.length > 0 && (

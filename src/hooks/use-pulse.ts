@@ -449,7 +449,7 @@ export function usePulseLeadPreview(leadId: string | null) {
 export function useUpdateMonitor() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ monitorId, ...input }: { monitorId: string; frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number }) =>
+    mutationFn: ({ monitorId, ...input }: { monitorId: string; frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] }) =>
       updateMonitor(monitorId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useMonitors, useUpdateMonitor, useDeleteMonitor } from "@/hooks/use-pulse";
+import type { MonitorRecord } from "@/lib/api";
 import { cn } from "@/lib/format";
 
 function scoreTone(score: number | null): string {
@@ -33,14 +35,16 @@ export function PulseMonitorsPanel() {
       <div className="mb-4">
         <p className="text-sm font-semibold text-[var(--text-1)]">Continuous monitoring</p>
         <p className="mt-0.5 text-xs text-[var(--text-4)]">
-          Scheduled re-scans — alerts fire on a health drop or a new confirmed critical issue (e.g. RLS turned off).
+          Scheduled re-scans. Alerts fire on a health drop or a new confirmed critical issue (e.g. RLS turned off).
+          Add recipients to send a weekly summary email after the re-scan.
         </p>
       </div>
       <div className="space-y-2">
         {monitors.map((m) => {
           const target = m.inputUrl ?? m.inputGithubRepo ?? m.projectName;
           return (
-            <div key={m.id} className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--border-2)] px-3 py-2">
+            <div key={m.id} className="rounded-[8px] border border-[var(--border-2)] px-3 py-2">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.projectName}</p>
                 <p className="truncate text-xs text-[var(--text-4)]">{target} · last run {timeAgo(m.lastRunAt)}</p>
@@ -81,9 +85,71 @@ export function PulseMonitorsPanel() {
                 Remove
               </button>
             </div>
+            <DigestRecipients monitor={m} />
+            </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Who gets the weekly summary email for this monitor. Saved as a list; blank turns it off. */
+function DigestRecipients({ monitor }: { monitor: MonitorRecord }) {
+  const { mutate: update, isPending, error } = useUpdateMonitor();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(monitor.digestEmails.join(", "));
+  const parsed = draft.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+  const invalid = parsed.filter((e) => !EMAIL.test(e));
+
+  if (!editing) {
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-4)]">
+        <span>
+          {monitor.digestEmails.length === 0
+            ? "No weekly email"
+            : `Weekly email to ${monitor.digestEmails.join(", ")}${monitor.lastDigestAt ? ` · last sent ${timeAgo(monitor.lastDigestAt)}` : " · first one after the next re-scan"}`}
+        </span>
+        <button type="button" onClick={() => { setDraft(monitor.digestEmails.join(", ")); setEditing(true); }} className="font-medium text-[var(--brand-600)] hover:underline">
+          {monitor.digestEmails.length === 0 ? "Add recipients" : "Edit"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-start gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (invalid.length > 0 || parsed.length > 10) return;
+        update({ monitorId: monitor.id, digestEmails: parsed }, { onSuccess: () => setEditing(false) });
+      }}
+    >
+      <div className="min-w-[220px] flex-1">
+        <label htmlFor={`digest-${monitor.id}`} className="sr-only">Weekly email recipients</label>
+        <input
+          id={`digest-${monitor.id}`}
+          className="app-input h-8 text-base sm:text-xs"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="name@client.com, another@client.com"
+          autoComplete="off"
+        />
+        {(invalid.length > 0 || parsed.length > 10 || error) && (
+          <p className="mt-1 text-xs text-[var(--danger-500)]">
+            {invalid.length > 0 ? `Not an email address: ${invalid.join(", ")}` : parsed.length > 10 ? "Up to 10 recipients." : "Could not save. Try again."}
+          </p>
+        )}
+      </div>
+      <button type="submit" disabled={isPending} className="app-button app-button-primary h-8 px-3 text-xs">
+        {isPending ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} className="h-8 px-2 text-xs text-[var(--text-4)] hover:text-[var(--text-2)]">
+        Cancel
+      </button>
+    </form>
   );
 }
