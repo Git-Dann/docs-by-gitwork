@@ -8,6 +8,7 @@ import {
   createPulseScan,
   getPulseScan,
   getPulsePortfolio,
+  getCodePortfolio,
   getPulseBenchmarks,
   getPulseScanHistory,
   getPulseScanDiff,
@@ -88,6 +89,10 @@ export function usePulsePortfolio() {
     queryFn: getPulsePortfolio,
     staleTime: 1000 * 15,
   });
+}
+
+export function useCodePortfolio() {
+  return useQuery({ queryKey: ["code-portfolio"], queryFn: getCodePortfolio, staleTime: 1000 * 60 });
 }
 
 export function usePulseBenchmarks(scanId: string, enabled = true) {

@@ -12,8 +12,24 @@ import type { CodeHealthReport, DebtItem, DebtKind } from "@/types/code-health";
  * build.
  */
 
-/** Sampled checks the full measure answers better. They are skipped when it succeeds. */
-export const SUPERSEDED_BY_CODE_HEALTH = ["clean_file_size", "clean_nesting_depth"] as const;
+/**
+ * Sampled checks the full measure answers better. They are held back while it runs and
+ * dropped only for the parts it actually answered (`answeredByCodeHealth`), so a scan never
+ * carries two answers to one question and never loses the sampled one when the full one failed.
+ */
+export const SUPERSEDED_BY_CODE_HEALTH = ["clean_file_size", "clean_nesting_depth", "dependency_vulnerabilities"] as const;
+
+/**
+ * Which superseded checks this report really answers. Dependabot's answer (read through the
+ * GitHub API, often unreadable with our token) is replaced only when the lockfile audit ran
+ * against OSV; if it could not, Dependabot's answer stays.
+ */
+export function answeredByCodeHealth(report: CodeHealthReport | null): Set<string> {
+  if (!report) return new Set();
+  const out = new Set<string>(["clean_file_size", "clean_nesting_depth"]);
+  if (report.dependencies?.status === "checked") out.add("dependency_vulnerabilities");
+  return out;
+}
 
 const QUOTE = 5;
 
@@ -153,6 +169,80 @@ export function codeHealthChecks(report: CodeHealthReport): PulseScanCheckInput[
   });
 
   return out;
+}
+
+/** The import graph as checks. Absent on reports without a structure section. */
+export function structureChecks(report: CodeHealthReport): PulseScanCheckInput[] {
+  if (report.structure === undefined) return [];
+  const conf = confidenceOf(report);
+  const base = { category: CATEGORIES.CODE_QUALITY, ...conf };
+  const s = report.structure;
+  if (s === null) {
+    return [{
+      ...base,
+      checkKey: "code_health_import_cycles",
+      label: "No import cycles between files",
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail: "The imports between this repository's files could not be mapped (its language imports whole modules rather than files, or nothing internal was imported), so nothing is claimed about cycles.",
+    }];
+  }
+  const partial = s.unresolvedShare > 0.3
+    ? { confidence: "MEDIUM" as const, confidenceReason: `${Math.round(s.unresolvedShare * 100)}% of internal-looking imports could not be traced to a file, so the graph is partial.` }
+    : {};
+  const largest = s.cycles[0]?.files.length ?? 0;
+  const out: PulseScanCheckInput[] = [{
+    ...base,
+    ...partial,
+    checkKey: "code_health_import_cycles",
+    label: "No import cycles between files",
+    status: s.cycleCount === 0 ? "PASS" : largest >= 10 || s.filesInCycles >= Math.max(10, s.modules * 0.1) ? "FAIL" : "WARN",
+    detail: s.cycleCount === 0
+      ? `Mapped ${s.edges.toLocaleString("en-GB")} imports between ${s.modules.toLocaleString("en-GB")} files: none of them import each other in a loop.`
+      : `${s.cycleCount} import ${s.cycleCount === 1 ? "cycle" : "cycles"}, catching ${s.filesInCycles} files; the largest loops through ${largest}. ` +
+        "Files in a cycle can only be changed, tested and reused together, and the cycle grows as code is added. Cutting one import, usually by moving a shared type or function out, breaks it.",
+    evidence: s.cycles.slice(0, QUOTE).map((c) => c.path.join(" → ")).join("\n") || undefined,
+  }];
+  out.push({
+    ...base,
+    ...partial,
+    checkKey: "code_health_hub_files",
+    label: "No complex file that everything depends on",
+    status: s.hubs.length === 0 ? "PASS" : "WARN",
+    detail: s.hubs.length === 0
+      ? "No file is both depended on by many others and complex, so changes stay local."
+      : `${s.hubs.length} ${s.hubs.length === 1 ? "file is" : "files are"} imported by many others and complex at the same time, so a change there ripples furthest and is the likeliest to break something far away. A small, stable interface in front of each keeps callers out of the detail.`,
+    evidence: s.hubs.slice(0, QUOTE).map((h) => `${h.path}: used by ${h.fanIn} files, complexity ${h.complexity}`).join("\n") || undefined,
+  });
+  return out;
+}
+
+/** The lockfile audit as one check. Absent on reports without a dependencies section. */
+export function dependencyChecks(report: CodeHealthReport): PulseScanCheckInput[] {
+  const d = report.dependencies;
+  if (d === undefined) return [];
+  const base = { category: CATEGORIES.SECURITY, checkKey: "dependency_osv_vulnerabilities", label: "Libraries have no known vulnerabilities" } as const;
+  if (d === null || d.status !== "checked") {
+    return [{
+      ...base,
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail: `The libraries were not checked: ${d?.reason ?? "the audit did not run."} Nothing is claimed about them either way.`,
+    }];
+  }
+  const bad = d.counts.critical + d.counts.high;
+  return [{
+    ...base,
+    status: bad > 0 ? "FAIL" : d.vulnerable.length > 0 ? "WARN" : "PASS",
+    confidence: "HIGH",
+    confidenceReason: "Exact versions read from the lockfile, checked against the OSV vulnerability database.",
+    detail: d.vulnerable.length === 0
+      ? `${d.packages.toLocaleString("en-GB")} libraries pinned in ${d.lockfiles.map((l) => l.path).join(", ")}: none has a published vulnerability at the version used.`
+      : `${d.vulnerable.length} of ${d.packages.toLocaleString("en-GB")} pinned libraries have published vulnerabilities at the version used ` +
+        `(${(["critical", "high", "moderate", "low", "unknown"] as const).filter((k) => d.counts[k] > 0).map((k) => `${d.counts[k]} ${k}`).join(", ")}). ` +
+        "Most are fixed by upgrading to the version each advisory names.",
+    evidence: d.vulnerable.slice(0, QUOTE).map((p) => `${p.name} ${p.version} (${p.severity}): ${p.advisories.map((a) => a.aliases.find((x) => x.startsWith("CVE-")) ?? a.id).slice(0, 3).join(", ")}`).join("\n") || undefined,
+  }];
 }
 
 /** The note shown when the full measure could not run, so its absence is never read as a pass. */

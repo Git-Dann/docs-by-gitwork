@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { PulseChecksDisclosure } from "@/components/pulse/pulse-overview";
 import { PulseTopCards } from "@/components/pulse/pulse-top-cards";
@@ -25,6 +26,16 @@ export default function PulsePage() {
         <InternalOnly>
           <PulseTopCards checks={checks} areas={areas.length} />
         </InternalOnly>
+        <Link
+          href="/app/pulse/portfolio"
+          className="flex items-center justify-between gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-0)] px-4 py-3 hover:border-[var(--brand-600)]"
+        >
+          <span>
+            <span className="block font-mono text-[10px] uppercase tracking-wide text-[var(--text-4)]">Code portfolio</span>
+            <span className="block text-sm text-[var(--text-2)]">Every measured repository side by side: debt, vulnerable libraries, import cycles, and where the next days do the most good.</span>
+          </span>
+          <span aria-hidden className="font-mono text-sm text-[var(--brand-600)]">→</span>
+        </Link>
         <PulseChecksDisclosure />
         <InternalOnly>
           <PulseMonitorsPanel />

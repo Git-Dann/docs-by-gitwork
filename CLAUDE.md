@@ -7625,3 +7625,55 @@ into weeks. Its overall score is computed with the real PILLARS weights, never t
 renders the finished values first, and the reset to 0 happens inside the first animation frame.
 A hidden tab never runs one, and resetting earlier left a screenshot showing a score of 0 (§39).
 
+
+## 83. Recent Changes (October 2026) — Code portfolio, import graph, OSV library audit, framework benchmarks
+
+Built after a call with Julian Bass (Salford; his product "CodeTuner"), which demoed tech-debt tracking
+across a portfolio of products, framework benchmarks, a debt register with vulnerable libraries,
+and weekly snapshots. Pulse already had the register, history, trend, effort and weekly email (§80);
+this adds what it lacked. Everything is deterministic: no AI anywhere in it.
+
+- **Code portfolio** — `/app/pulse/portfolio` (API `/api/pulse/code-portfolio`, demo `/demo/pulse/portfolio`; ⚠️ NOT `/api/pulse/portfolio`, which is the top cards’ client scores), linked from the
+  Pulse page. Every measured GitHub repo side by side (score sparkline, debt days, vulnerable
+  libraries, cycles, bus factor), plus **"where to spend the next N days"**: a pure planner
+  (`src/lib/code-portfolio.ts`, re-run in the browser as the slider moves) that ranks work items
+  from every repo. Known vulnerabilities go first regardless of value per day; the rest is by risk
+  removed per day, with debt in a hotspot weighted up to 4× (`churnMultiplier`; unknown churn = 1,
+  never 0). Items that don't fit are skipped and smaller ones still tried; security items left out
+  are counted on the page, never dropped silently. Loader `src/server/code-health/portfolio.ts`,
+  scoped exactly like the scan list. It reads each scan's score with one `$queryRaw` on
+  `agentData->'codeHealth'` so old reports are never loaded whole; a newer scan whose measure failed
+  does not hide the last good one (listed as unmeasured instead).
+- **Import graph** — `src/server/code-health/structure.ts`: imports read from the source the measure
+  already parsed, resolved to files (tsconfig `paths`/JSONC/`extends`, go.mod, PSR-4, pubspec, Python
+  packages, Java/Kotlin package dirs), iterative Tarjan for cycles, hubs (fanIn ≥ 8 and complexity ≥
+  40, or fanIn ≥ 20), longest chain. New checks `code_health_import_cycles`, `code_health_hub_files`.
+  ⚠️ **Two exclusions, both found by checking real repos, and both keep the claim honest:**
+  TypeScript `import type` / `export type … from` are left out (erased at compile time; counting
+  them reported a 79-file "cycle" in zod that was type references — the real one is 2 files), and
+  Python imports are module-level only (column 0): an indented import is inside a function or
+  `TYPE_CHECKING`, the deliberate way to break a cycle (httpie had 3 false cycles). Swift imports
+  name modules, so a Swift-only repo has no graph (null → INCONCLUSIVE, never a pass).
+- **Library audit** — `src/server/code-health/dependencies.ts`: npm (package-lock v1–3, yarn v1/berry,
+  pnpm v5–9), PyPI (poetry, Pipfile.lock, pinned requirements, uv), Packagist, RubyGems, Go, crates.io,
+  Pub, read from the checkout and checked against OSV (`api.osv.dev` querybatch + vuln details, no
+  key). Check `dependency_osv_vulnerabilities` (SECURITY). OSV unreachable or no lockfile →
+  INCONCLUSIVE, never "clean". It **supersedes `dependency_vulnerabilities`** (Dependabot via GraphQL,
+  often unreadable with our token) **only when it actually ran** — `answeredByCodeHealth()` in
+  `checks.ts`; `run-lite-scan.ts` releases any held sampled check the full measure didn't answer.
+  Lockfile fixtures are named `*.fixture` so Dependabot doesn't flag this repo for them.
+- **Benchmarks** — `src/server/code-health/benchmark.ts` + `benchmarks.json`: 20 open-source
+  frameworks (Express, Fastify, NestJS, FastAPI, Django, Flask, Laravel, Gin, Alamofire, Bloc…) measured
+  by the same measure, each pinned to a release tag + commit (a test enforces it). Drawn as dot strips in
+  the code-health panel. Regenerate with
+  `node --max-old-space-size=8192 --liftoff-only --import tsx scripts/code-health-benchmarks.ts <cloneDir>`
+  (`--liftoff-only` because Node 24 OOMs compiling the Swift grammar; `npx tsx` can't pass it).
+  `docs_src/` is now excluded from the measure (FastAPI keeps example code there).
+- Weekly email lists critical/high libraries (marked new) and the cycle count. The code-health panel
+  states the data handling: the checkout is deleted when the measure ends; only measurements, paths
+  and function names are kept — which is the honest answer to a client NDA question.
+
+Verified end to end against real repos (OWASP NodeGoat: 131 of 1,091 pinned libraries vulnerable, 28
+critical; zod; httpie; gin), with every cycle checked against the source. Not verified against
+production data — post-deploy, open `/app/pulse/portfolio` and re-scan one client repo so it gains
+the structure and library sections (older reports show "not checked").

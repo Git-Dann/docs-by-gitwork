@@ -1378,6 +1378,11 @@ export async function listPulseScans(params?: {
   return apiFetch<{ scans: PulseScanListItem[] }>(`/api/pulse/scans${qs ? `?${qs}` : ""}`);
 }
 
+/** Every measured repository and the ranked work across them (the code portfolio page). */
+export async function getCodePortfolio(): Promise<import("@/server/code-health/portfolio").CodePortfolio> {
+  return apiFetch<import("@/server/code-health/portfolio").CodePortfolio>("/api/pulse/code-portfolio");
+}
+
 export async function getPulsePortfolio(): Promise<{ portfolio: import("@/types/pulse").PulsePortfolioEntry[] }> {
   return apiFetch<{ portfolio: import("@/types/pulse").PulsePortfolioEntry[] }>("/api/pulse/portfolio");
 }

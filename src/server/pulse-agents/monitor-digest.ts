@@ -92,6 +92,15 @@ export async function maybeSendWeeklyDigest(monitorId: string, scanId: string, n
           resolvedDebt: chTrend?.resolvedDebt ?? 0,
           newDebt: chTrend?.newDebt ?? 0,
           hotspots: (ch.history?.hotspots ?? []).slice(0, 3).map((h) => `${h.path} (${h.changes} changes this year, complexity ${h.complexity})`),
+          libraries: ch.dependencies?.status === "checked"
+            ? ch.dependencies.vulnerable
+                .filter((p) => p.severity === "critical" || p.severity === "high")
+                .map((p) => {
+                  const before = prevCh?.dependencies?.status === "checked" && !prevCh.dependencies.vulnerable.some((q) => q.name === p.name && q.version === p.version);
+                  return `${p.name} ${p.version} (${p.severity})${before ? " · new" : ""}`;
+                })
+            : null,
+          cycles: ch.structure ? { now: ch.structure.cycleCount, before: prevCh?.structure ? prevCh.structure.cycleCount : null } : null,
         }
       : null,
     reportPdfUrl: `${base}/api/public/pulse/report/${token}/pdf`,

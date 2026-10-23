@@ -22,7 +22,7 @@ import {
 import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { resolveEvidenceBackedControls } from "@/server/pulse-checks/standards-verification";
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
-import { runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type CodeHealthReport } from "@/server/code-health";
+import { answeredByCodeHealth, runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type CodeHealthReport } from "@/server/code-health";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
@@ -391,7 +391,11 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       runCodeAgent(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(repoIngest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
       codeHealthRun,
     ]);
-    if (!codeHealth && heldSampled.length > 0) pending.push(ingest(heldSampled));
+    // Release every held sampled check the full measure did not actually answer: all of
+    // them when it failed, and Dependabot's library answer when the lockfile audit could not run.
+    const answered = answeredByCodeHealth(codeHealth);
+    const released = heldSampled.filter((c) => !answered.has(c.checkKey));
+    if (released.length > 0) pending.push(ingest(released));
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
 

@@ -2,12 +2,13 @@ import { githubRequest, parseGithubRepo } from "@/lib/github";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { analyseCheckout, buildReport } from "./analyse";
 import { analyseHistory, HISTORY_MONTHS, logArgs, parseLog } from "./history";
-import { codeHealthChecks, codeHealthUnavailable } from "./checks";
+import { codeHealthChecks, codeHealthUnavailable, dependencyChecks, structureChecks } from "./checks";
 import { CloneError, withCheckout } from "./clone";
+import { auditDependencies } from "./dependencies";
 import type { CodeHealthReport } from "@/types/code-health";
 
 export type { CodeHealthReport } from "@/types/code-health";
-export { SUPERSEDED_BY_CODE_HEALTH } from "./checks";
+export { SUPERSEDED_BY_CODE_HEALTH, answeredByCodeHealth } from "./checks";
 
 export interface CodeHealthResult {
   report: CodeHealthReport | null;
@@ -33,19 +34,27 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
     const branch = meta?.default_branch ?? null;
     const since = new Date(Date.now() - HISTORY_MONTHS * 30.44 * 86_400_000).toISOString().slice(0, 10);
     const report = await withCheckout(slug, { sizeKb: meta?.size ?? null, historySince: withHistory ? since : null }, async (c) => {
-      const { report, measured } = await analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files });
-      if (!withHistory) return report;
-      // History is a second, independent read: if it fails, the measure still stands.
-      const history = await c
-        .git(logArgs(since))
-        .then((out) => analyseHistory(parseLog(out), measured))
-        .catch((e) => {
-          console.warn(`[code-health] ${slug}: history unavailable: ${(e as Error).message.slice(0, 200)}`);
-          return null;
-        });
-      return history ? buildReport(report, measured, report.coverage, () => Date.parse(report.measuredAt), history) : report;
+      const { report: measuredReport, measured } = await analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files });
+      // The lockfile audit and the history are independent reads of the same checkout: they
+      // run side by side, and neither failing can take the measure (or the other) with it.
+      const [dependencies, history] = await Promise.all([
+        auditDependencies({ dir: c.dir, files: c.files }),
+        withHistory
+          ? c
+              .git(logArgs(since))
+              .then((out) => analyseHistory(parseLog(out), measured))
+              .catch((e) => {
+                console.warn(`[code-health] ${slug}: history unavailable: ${(e as Error).message.slice(0, 200)}`);
+                return null;
+              })
+          : Promise.resolve(null),
+      ]);
+      const report = history
+        ? { ...buildReport(measuredReport, measured, measuredReport.coverage, () => Date.parse(measuredReport.measuredAt), history), structure: measuredReport.structure }
+        : measuredReport;
+      return { ...report, dependencies };
     });
-    return { report, checks: codeHealthChecks(report), unavailable: null };
+    return { report, checks: [...codeHealthChecks(report), ...structureChecks(report), ...dependencyChecks(report)], unavailable: null };
   } catch (error) {
     if (error instanceof CloneError) {
       const why =

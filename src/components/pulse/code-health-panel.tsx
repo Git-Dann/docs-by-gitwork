@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { cn, formatDate } from "@/lib/format";
+import { BenchmarkSection, DependencySection, PlainSummaryBox, StructureSection } from "./code-health-sections";
+import { summariseCodeHealth } from "@/lib/code-health-summary";
+import { compareToBenchmarks } from "@/server/code-health/benchmark";
 import type { CodeHealthReport, CodeHistory, DebtItem, DebtKind, DebtSeverity } from "@/types/code-health";
 
 /**
@@ -73,6 +76,7 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
         </span>
       </div>
       <div className="widget-body space-y-5">
+        <PlainSummaryBox summary={summariseCodeHealth(report, compareToBenchmarks(report))} />
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
           <div>
             <p className="widget-data-label">Score</p>
@@ -216,12 +220,19 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
 
         {history && <HistorySection report={report} history={history} />}
 
+        <BenchmarkSection report={report} />
+
+        {report.structure && <StructureSection report={report} structure={report.structure} rows={rows === undefined ? undefined : 5} />}
+
+        {report.dependencies && <DependencySection audit={report.dependencies} rows={rows === undefined ? undefined : 10} />}
+
         <p className="border-t border-[var(--border-2)] pt-3 text-xs leading-5 text-[var(--text-3)]">
           Measured by parsing every supported source file in the repository, not a sample.
           {notMeasured.length > 0 ? ` Not measured: ${notMeasured.join(", ")}.` : ""}
           {c.truncated ? " The measure reached its size or time limit, so part of the code was not read." : ""}
           {" "}Thresholds: complexity 11+ moderate, 21+ high, 51+ very high (SEI); functions over 60 lines; classes with combined complexity 47+ or 500+ lines.
           {report.effort ? " Effort is a planning estimate from published hours per finding, one per function, tests included; it is not a quote." : ""}
+          {" "}Source code is read in a temporary checkout that is deleted when the measure ends; Pulse keeps only the measurements, file paths and function names shown here, never the code itself.
           {history ? ` History: the last ${history.months} months, ${history.commits.toLocaleString("en-GB")} commits${history.botCommitsIgnored ? `, ${history.botCommitsIgnored} bot commits left out` : ""}${history.massEditsIgnored ? `, ${history.massEditsIgnored} mass edits left out` : ""}.` : ""}
         </p>
       </div>

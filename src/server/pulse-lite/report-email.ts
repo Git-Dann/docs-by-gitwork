@@ -345,6 +345,10 @@ export interface DigestEmailInput {
     resolvedDebt: number;
     newDebt: number;
     hotspots: string[];
+    /** Critical/high vulnerable libraries now, "(new)" marked; absent when the audit did not run. */
+    libraries?: string[] | null;
+    /** Import cycles now and on the previous measure (null when either was not mapped). */
+    cycles?: { now: number; before: number | null } | null;
   } | null;
   reportPdfUrl: string;
   logoUrl: string;
@@ -420,7 +424,9 @@ export function renderWeeklyDigestEmail(input: DigestEmailInput): { subject: str
 
     ${ch ? card(`<div>${label("Code health", SIGNAL)}</div>
       <p style="margin:10px 0 0 0;font-family:${BODY};font-size:15px;line-height:1.55;color:${TEXT};"><strong>${ch.score}/100</strong> ${delta(ch.scoreDelta)}${ch.effortDays !== null ? ` &middot; about ${ch.effortDays} days of debt to clear` : ""}.${ch.resolvedDebt || ch.newDebt ? ` ${ch.resolvedDebt} item${ch.resolvedDebt === 1 ? "" : "s"} resolved, ${ch.newDebt} new.` : ""}</p>
-      ${ch.hotspots.length ? `<div style="padding-top:12px;">${label("Hotspots: complex and changing often")}</div><div style="padding-top:8px;">${list(ch.hotspots, "")}</div>` : ""}`) : ""}
+      ${ch.hotspots.length ? `<div style="padding-top:12px;">${label("Hotspots: complex and changing often")}</div><div style="padding-top:8px;">${list(ch.hotspots, "")}</div>` : ""}
+      ${ch.libraries && ch.libraries.length ? `<div style="padding-top:12px;">${label("Libraries with critical or high vulnerabilities", "#C2410C")}</div><div style="padding-top:8px;">${list(ch.libraries.slice(0, 6), "")}</div>` : ""}
+      ${ch.cycles ? `<p style="margin:12px 0 0 0;font-family:${BODY};font-size:13px;line-height:1.5;color:${MUTED};">${ch.cycles.now} import cycle${ch.cycles.now === 1 ? "" : "s"} between files${ch.cycles.before !== null && ch.cycles.before !== ch.cycles.now ? ` (was ${ch.cycles.before})` : ""}.</p>` : ""}`) : ""}
 
     ${card(`<div>${label("The full report", SIGNAL)}</div>
       <p style="margin:8px 0 16px 0;font-family:${BODY};font-size:14px;line-height:1.55;color:${TEXT};">Every check from this week's scan, with what was observed and what to do about it.</p>

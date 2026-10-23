@@ -13,7 +13,8 @@
  * is safe and never causes SSR/CSR drift.
  */
 
-import { DEMO_CODE_HEALTH } from "@/lib/demo/demo-code-health";
+import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
+import { summariseRepo, workItemsFor } from "@/lib/code-portfolio";
 import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
@@ -3252,6 +3253,19 @@ export function examplePulseReportScans(): Record<string, unknown> {
   };
 }
 
+/** The demo code portfolio, built by the same pure functions the real loader uses. */
+function demoCodePortfolio() {
+  const repos = DEMO_PORTFOLIO_REPORTS.map((r) =>
+    summariseRepo(r.report, {
+      scanId: r.scanId,
+      projectName: r.projectName,
+      clientName: r.clientName,
+      history: r.history.map((score, i) => ({ at: atDays(-7 * (r.history.length - 1 - i)), score })),
+    }),
+  ).sort((a, b) => a.score - b.score);
+  return { repos, items: DEMO_PORTFOLIO_REPORTS.flatMap((r) => workItemsFor(r.report)), unmeasured: [] };
+}
+
 const demoPulseScanList = [
   { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 48, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
   { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: 63, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
@@ -3952,6 +3966,7 @@ export function resolveDemoApi(
 
   // Pulse (AI project validation) — 3 seeded reports.
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
+  if (pathname === "/api/pulse/code-portfolio") return demoCodePortfolio();
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
   if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };

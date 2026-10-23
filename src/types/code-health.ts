@@ -141,6 +141,92 @@ export interface CodeHealthEffort {
   gbpHigh?: number;
 }
 
+/**
+ * The import graph: which source files depend on which, resolved inside the repository.
+ * Deterministic (no AI): imports are read from the source text and resolved to tracked
+ * files. Change-coupling from git history lives in `CodeHistory.coupling`; this is the
+ * structural coupling the code itself declares.
+ */
+export interface DependencyCycle {
+  /** Every file in the cycle (one strongly connected component), shortest path first. */
+  files: string[];
+  /** One concrete loop through it, so a developer can see where to cut: a → b → c → a. */
+  path: string[];
+}
+
+export interface HubModule {
+  path: string;
+  /** Files that import it. */
+  fanIn: number;
+  /** Files it imports. */
+  fanOut: number;
+  /** fanOut / (fanIn + fanOut): 0 = depended on and depends on nothing, 1 = the reverse. */
+  instability: number;
+  /** Sum of its functions' complexity. */
+  complexity: number;
+}
+
+export interface StructureReport {
+  /** Production files in the graph. */
+  modules: number;
+  /** Resolved file-to-file imports. */
+  edges: number;
+  /** Imports that looked internal but could not be resolved to a file (0–1). Honesty, not a score. */
+  unresolvedShare: number;
+  /** Languages whose imports were resolved. Files in other languages are not in the graph. */
+  languages: CodeLanguage[];
+  /** Strongly connected components of more than one file, largest first, capped. */
+  cycles: DependencyCycle[];
+  cycleCount: number;
+  filesInCycles: number;
+  /** Depended on by many AND complex: a change here ripples. Worst first, capped. */
+  hubs: HubModule[];
+  /** Longest chain of imports with no cycle, as a sense of how layered the code is. */
+  maxDepth: number;
+}
+
+export type VulnerabilitySeverity = "critical" | "high" | "moderate" | "low" | "unknown";
+
+export interface PackageAdvisory {
+  /** OSV id, e.g. GHSA-xxxx or PYSEC-…; `aliases` carries CVE ids. */
+  id: string;
+  aliases: string[];
+  summary: string;
+  severity: VulnerabilitySeverity;
+  /** Lowest version that fixes it, when the advisory names one. */
+  fixedIn: string | null;
+  url: string;
+}
+
+export interface VulnerablePackage {
+  ecosystem: string;
+  name: string;
+  version: string;
+  /** The lockfile it was found in. */
+  lockfile: string;
+  /** Declared by the project itself (true), pulled in by another package (false), or unknown. */
+  direct: boolean | null;
+  advisories: PackageAdvisory[];
+  /** The worst severity among its advisories. */
+  severity: VulnerabilitySeverity;
+}
+
+/**
+ * Third-party libraries, read from the lockfiles in the checkout and checked against the
+ * OSV database (osv.dev). A lockfile pins exact versions, so this is a lookup, not a
+ * guess. When the lookup could not run, `status` says so and nothing is claimed clean.
+ */
+export interface DependencyAudit {
+  status: "checked" | "no_lockfile" | "unavailable";
+  /** Why, when not checked. */
+  reason: string | null;
+  lockfiles: { path: string; ecosystem: string; packages: number }[];
+  packages: number;
+  vulnerable: VulnerablePackage[];
+  counts: Record<VulnerabilitySeverity, number>;
+  checkedAt: string;
+}
+
 export interface LanguageSummary {
   language: CodeLanguage;
   files: number;
@@ -176,6 +262,10 @@ export interface CodeHealthReport {
   effort?: CodeHealthEffort;
   /** Git history analysis. Null when the history could not be read; absent on older reports. */
   history?: CodeHistory | null;
+  /** The import graph. Absent on reports measured before Oct 2026; null when it could not be built. */
+  structure?: StructureReport | null;
+  /** Lockfile libraries checked against OSV. Absent on older reports. */
+  dependencies?: DependencyAudit | null;
   /** Set after the scan, against the previous measured scan of the same repository. */
   trend?: CodeHealthTrend | null;
   /** What was not measured, and why, so the coverage is honest. */
