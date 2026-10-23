@@ -5,8 +5,10 @@ import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
 import { PulseLeadsPanel } from "@/components/pulse/pulse-leads-panel";
 import { PulseMonitorsPanel } from "@/components/pulse/pulse-monitors-panel";
 import { InternalOnly } from "@/components/internal-only";
+import { pulseCapabilityCounts } from "@/server/pulse-capabilities";
 
 export default function PulsePage() {
+  const { checks, areas } = pulseCapabilityCounts();
   return (
     <AppShell
       title="Pulse"
@@ -21,7 +23,7 @@ export default function PulsePage() {
             the list is scoped server-side, and the catalogue is public on
             /production-ready anyway. */}
         <InternalOnly>
-          <PulseTopCards />
+          <PulseTopCards checks={checks} areas={areas.length} />
         </InternalOnly>
         <PulseChecksDisclosure />
         <InternalOnly>

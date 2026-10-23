@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { PulseOverview } from "@/components/pulse/pulse-overview";
-import { PulseStudiesPanel } from "@/components/pulse/pulse-studies-panel";
+import { PulseAboutPanel } from "@/components/pulse/pulse-about-panel";
 import { PulseSalesPagePanel } from "@/components/pulse/pulse-sales-page-panel";
 import { PulseEmbedTopCard } from "@/components/pulse/pulse-embed-panel";
 
 const STORAGE_KEY = "gitwork.pulse.topcards.collapsed";
 
 /**
- * The four top Pulse cards (Portfolio · Research studies · Sales page · Public embed) as one
+ * The four top Pulse cards (Portfolio · About Pulse · Sales page · Public embed) as one
  * uniform, collapse-in-unison row. Collapsed by default on first load to save room; the chevron
  * in any card header toggles all four together (kept in sync + persisted so the row stays
  * uniform in both states — no ragged mixed heights).
@@ -22,7 +22,7 @@ const STORAGE_KEY = "gitwork.pulse.topcards.collapsed";
  * front door (the mono `· STARTERS` link in the HQ context strip), and a library of
  * reusable prompts is not a sibling of "how the outside world reaches Pulse".
  */
-export function PulseTopCards() {
+export function PulseTopCards({ checks, areas }: { checks: number; areas: number }) {
   const [collapsed, setCollapsed] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
@@ -51,7 +51,7 @@ export function PulseTopCards() {
   return (
     <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
       <PulseOverview collapsed={collapsed} onToggle={onToggle} />
-      <PulseStudiesPanel collapsed={collapsed} onToggle={onToggle} />
+      <PulseAboutPanel checks={checks} areas={areas} collapsed={collapsed} onToggle={onToggle} />
       <PulseSalesPagePanel collapsed={collapsed} onToggle={onToggle} />
       <PulseEmbedTopCard collapsed={collapsed} onToggle={onToggle} />
     </div>

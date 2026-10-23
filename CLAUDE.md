@@ -7510,3 +7510,19 @@ match exactly. Weighted complexity is one lower per class, because they add 1 pe
 - **Phase 2, not built:** git-history hotspots (churn × complexity), complexity trend between
   scans, bus factor, module coupling, branch choice, a costed register via the pricing engine,
   Provenance `subjectCommit` (the commit is now known), Dart/Ruby, and a weekly digest email.
+
+## 80. Recent Changes (October 2026) — A shareable "What Pulse checks" page
+
+`/pulse/features` is public, not indexed, and made for sending to someone. The **About Pulse** card
+(`02 // ABOUT PULSE` on /app/pulse, replacing Research studies) shows the counts and copies the link.
+Study is still reachable from a scan's results and at /app/study.
+
+- **It stays current by construction.** The check total and per-area counts come from
+  `CHECKS_REGISTRY` (`src/server/pulse-capabilities.ts`), and the product types come from the scan
+  form's `PULSE_PLATFORM_LABEL`. The plain-English lines live in `src/lib/pulse-capabilities.ts`.
+  `AREAS` is keyed by every `CheckCategory`, so a new category is a type error until it is described.
+- ⚠️ **Shipping a Pulse capability? Add it to `EXTRAS` in the same PR.** Each entry names its
+  `evidence` file. A test fails if that file is gone, so a removed feature can't stay advertised.
+  Nothing can detect a *new* feature on its own; this rule is what keeps the page complete.
+- Copy is written as if everything had always existed. A test rejects "new", "recently", "latest"
+  and years.
