@@ -16,7 +16,7 @@ type Ctx = { params: Promise<{ slug: string; sheetId: string }> };
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { slug, sheetId } = await params;
-    const { clientId, actor } = await resolveInternalSheets(req, slug, "add rows");
+    const { clientId, actor } = await resolveInternalSheets(req, slug, "add rows", "rows");
     if (!clientId) return apiError("Client not found", 404);
     const { rows } = sheetAddRowsSchema.parse(await req.json());
     return apiOk(await addSheetRows(clientId, sheetId, rows, actor), { status: 201 });
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { slug, sheetId } = await params;
-    const { clientId, actor } = await resolveInternalSheets(req, slug, "change rows");
+    const { clientId, actor } = await resolveInternalSheets(req, slug, "change rows", "rows");
     if (!clientId) return apiError("Client not found", 404);
     const { action, rowIds, featureBlockId } = sheetRowsBulkSchema.parse(await req.json());
     if (action === "send") {
@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 export async function PUT(req: NextRequest, { params }: Ctx) {
   try {
     const { slug, sheetId } = await params;
-    const { clientId } = await resolveInternalSheets(req, slug, "reorder rows");
+    const { clientId } = await resolveInternalSheets(req, slug, "reorder rows", "rows");
     if (!clientId) return apiError("Client not found", 404);
     const { order } = sheetOrderSchema.parse(await req.json());
     await reorderSheetRows(clientId, sheetId, order);

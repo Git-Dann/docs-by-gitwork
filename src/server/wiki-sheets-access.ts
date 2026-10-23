@@ -25,11 +25,13 @@ import type { ClientWriter, SheetActor } from "@/server/wiki-sheets";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import {
+  ForbiddenError,
   assertCan,
   canManageClients,
   getEffectiveUserOrNull,
   type EffectiveUser,
 } from "@/server/auth/effective-user";
+import { isAtLeast } from "@/types/auth";
 
 export type SheetsAccessFailure = "not_found" | "unauthorized" | "section_disabled" | "wrong_section";
 
@@ -97,17 +99,37 @@ export function sheetsAccessError(reason: SheetsAccessFailure): { message: strin
 /* ─────────────────────────────────────────────────── internal (team) ── */
 
 /**
- * Internal routes: 'Manage clients' AND access to THIS client (a developer scoped to other
- * clients gets 403, §71). Returns the client id and the team actor to stamp on rows.
+ * What an internal sheet request changes, which decides who may make it:
+ *  - "rows":      cells, rows, row order, images, send to the board — the day-to-day work.
+ *                 Anyone on the team (Developer and up) with access to THIS client, the same
+ *                 bar as the task board the rows are sent to. A developer was refused "Send
+ *                 14 to board" because these used to need 'Manage clients' (Nasir, Oct 2026).
+ *  - "structure": sheets, columns and the client's permissions. Still 'Manage clients'.
+ */
+export type SheetScope = "rows" | "structure";
+
+/**
+ * Internal routes: the scope's permission AND access to THIS client (a developer scoped to
+ * other clients gets 403, §71). Returns the client id and the team actor to stamp on rows.
  * An API-key caller (null user) is trusted, as everywhere else, and is named "Gitwork".
+ *
+ * ⚠️ A client GUEST never passes: these routes skip the per-column locks and the
+ * `clientCan*` switches that the client's own (token) routes enforce.
  */
 export async function resolveInternalSheets(
   req: Request,
   slug: string,
   action: string,
+  scope: SheetScope = "structure",
 ): Promise<{ clientId: string | null; actor: SheetActor; user: EffectiveUser | null }> {
   const user = await getEffectiveUserOrNull(req);
-  assertCan(user, canManageClients, action);
+  if (scope === "rows") {
+    if (user && !isAtLeast(user.role, "DEVELOPER")) {
+      throw new ForbiddenError(`You don't have permission to ${action}.`);
+    }
+  } else {
+    assertCan(user, canManageClients, action);
+  }
   await assertClientAccessBySlug(user, slug);
   const { workspace } = await ensureBaseRecords();
   const client = await prisma.workspaceClient.findUnique({

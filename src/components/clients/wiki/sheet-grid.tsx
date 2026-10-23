@@ -732,6 +732,9 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   const [blockId, setBlockId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // A failed batch action is shown IN the floating bar, where the button was pressed. Shown
+  // only above the grid, it was out of sight and the click read as "nothing happened".
+  const [batchError, setBatchError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const cellRefs = useRef(new Map<string, HTMLElement>());
   const wasActiveOnPress = useRef(false);
@@ -1228,6 +1231,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
       onRefresh();
     } catch (err) {
       setNotice(errorMessage(err));
+      setBatchError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1237,6 +1241,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
     if (busy || ids.length === 0) return;
     setBusy(true);
     setNotice(null);
+    setBatchError(null);
     try {
       const res = await bulkWikiSheetRowsApi(target, sheet.id, {
         action,
@@ -1515,7 +1520,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                     disabled={busy}
                     onClick={() => void bulk("send", sendable.map((r) => r.id))}
                   >
-                    Send {sendable.length} to board
+                    {busy ? "Sending…" : `Send ${sendable.length} to board`}
                   </button>
                 </>
               )}
@@ -1543,9 +1548,21 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                   Restore {restorable.length}
                 </button>
               )}
-              <button type="button" className="app-button app-button-tertiary app-button-xs" onClick={() => setSelected(new Set())}>
+              <button
+                type="button"
+                className="app-button app-button-tertiary app-button-xs"
+                onClick={() => {
+                  setSelected(new Set());
+                  setBatchError(null);
+                }}
+              >
                 Clear
               </button>
+              {batchError && (
+                <p role="alert" data-sheet-batch-error className="basis-full text-[12px] text-[var(--danger-500)]">
+                  {batchError}
+                </p>
+              )}
           </div>,
           document.body,
         )}

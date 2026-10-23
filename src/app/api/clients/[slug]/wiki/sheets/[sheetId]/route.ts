@@ -9,7 +9,7 @@ type Ctx = { params: Promise<{ slug: string; sheetId: string }> };
 export async function GET(req: NextRequest, { params }: Ctx) {
   try {
     const { slug, sheetId } = await params;
-    const { clientId } = await resolveInternalSheets(req, slug, "view a sheet");
+    const { clientId } = await resolveInternalSheets(req, slug, "view a sheet", "rows");
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await getWikiSheet({ clientId }, sheetId));
   } catch (err) {

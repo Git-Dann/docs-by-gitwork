@@ -14,7 +14,7 @@ type Ctx = { params: Promise<{ slug: string; sheetId: string; rowId: string }> }
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
     const { slug, sheetId, rowId } = await params;
-    const { clientId, actor } = await resolveInternalSheets(req, slug, "edit a row");
+    const { clientId, actor } = await resolveInternalSheets(req, slug, "edit a row", "rows");
     if (!clientId) return apiError("Client not found", 404);
     const { cells, height } = sheetRowPatchSchema.parse(await req.json());
     if (cells && Object.keys(cells).length > 0) {
