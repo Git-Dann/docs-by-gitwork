@@ -21,45 +21,59 @@ export const PULSE_SUMMARY =
 
 /** What can be scanned. */
 export const PULSE_INPUTS: { name: string; detail: string }[] = [
-  { name: "A website", detail: "Any public URL — a SaaS app, a marketing site or an API." },
+  { name: "A website", detail: "Any public URL: a SaaS app, a marketing site or an API." },
   { name: "A GitHub repo", detail: "The source itself: code health, secrets, tests, CI and platform-specific checks." },
   { name: "A store listing", detail: "App Store, Google Play or Chrome Web Store, read from the live listing." },
 ];
+
+/** The sections the page groups areas into, in display order. Plain words, for a reader. */
+export const AREA_GROUPS = [
+  { id: "security", name: "Security & access", line: "Is it safe, and can only the right people get in?" },
+  { id: "code", name: "Code & delivery", line: "Is the code sound, and is it built and shipped safely?" },
+  { id: "infra", name: "Infrastructure & APIs", line: "Will it stay up, stay fast, and behave as an API should?" },
+  { id: "ai", name: "AI", line: "If it uses AI, is that safe and affordable, and can AI tools find it?" },
+  { id: "legal", name: "Legal & business", line: "Is it legally ready to sell, and does its email arrive?" },
+  { id: "product", name: "Product & growth", line: "Does it look and work like a finished product people can find?" },
+  { id: "apps", name: "Apps & accessibility", line: "Is the app store-ready, and can everyone use it?" },
+  { id: "standards", name: "Standards", line: "Formal controls, shown when there is evidence to judge them." },
+] as const;
+
+export type AreaGroupId = (typeof AREA_GROUPS)[number]["id"];
 
 /**
  * One line per check area, in the order the page lists them. Keyed by every category, so
  * a new one cannot ship undescribed.
  */
-export const AREAS: Record<CheckCategory, { name: string; covers: string }> = {
-  Security: { name: "Security", covers: "HTTPS and security headers, DNS security, exposed admin endpoints and leaked files" },
-  "Secrets & Keys": { name: "Secrets & keys", covers: "API keys in committed code, committed .env files" },
-  Authentication: { name: "Authentication", covers: "Two-factor login, passkeys, single sign-on, account lockout" },
-  "Roles & Permissions": { name: "Roles & permissions", covers: "Who can see what, keeping customers' data apart, audit logs" },
-  Payments: { name: "Payments", covers: "Stripe setup, card security (3DS), fraud checks, invoicing, tax" },
-  "Code Quality": { name: "Code quality", covers: "README, tests, CI, linting, branch protection, dependencies and overall code health" },
-  "Build & Supply Chain": { name: "Build & supply chain", covers: "How safely code gets built and shipped, containers, where dependencies come from" },
-  Infrastructure: { name: "Infrastructure", covers: "SSL, CDN, IPv6, redundancy, how secrets are stored" },
-  Observability: { name: "Observability", covers: "Error tracking, performance monitoring, uptime, tracing" },
-  Performance: { name: "Performance", covers: "Page speed scores, image formats, lazy loading, minified files" },
-  "Legal & Compliance": { name: "Legal & compliance", covers: "UK GDPR, GDPR, CCPA, EU AI Act, cookie consent, privacy policy and terms" },
-  "Business Operations": { name: "Business operations", covers: "Company number, VAT, SLAs, required company policies" },
-  "Email Deliverability": { name: "Email deliverability", covers: "SPF, DKIM, DMARC and related email settings" },
-  "SaaS Readiness": { name: "SaaS readiness", covers: "Billing portal, onboarding, free trial, data export, roadmap" },
-  "Missing Pages": { name: "Missing pages", covers: "About, contact, pricing, docs, status, changelog, security" },
-  SEO: { name: "SEO", covers: "Structured data, sitemaps, link previews, search console" },
-  "AEO & AI Discoverability": { name: "AEO & AI discoverability", covers: "Whether AI tools can find and read the site (llms.txt, AI crawler access)" },
-  "AI Safety": { name: "AI safety", covers: "Prompt and output guardrails, exposed system prompts and keys, jailbreak resistance" },
-  "AI Readiness": { name: "AI readiness", covers: "AI cost monitoring, content safety, fallbacks, EU AI Act disclosure" },
-  "Vibe Code Hygiene": { name: "Vibe-code hygiene", covers: "Leftovers from AI coding tools: placeholder text, debug mode, test logins" },
-  Accessibility: { name: "Accessibility", covers: "WCAG: form labels, contrast, screen-reader roles, captions, focus" },
-  "Mobile & Accessibility": { name: "Mobile", covers: "Mobile layout, installable web app, offline support" },
-  "App Store & Mobile": { name: "App Store & mobile", covers: "Deep links, app banners, plus dedicated iOS, Android, Flutter and React Native checks" },
-  "Store Listing": { name: "Store listing", covers: "Read from the live App Store, Play or Chrome listing: privacy labels, screenshots, ratings" },
-  "API Quality": { name: "API quality", covers: "Versioning, error format, rate limits, OpenAPI spec, live endpoint behaviour" },
-  "Global Distribution": { name: "Global distribution", covers: "Multi-language support, currencies, EU data residency" },
-  "Trust & Brand": { name: "Trust & brand", covers: "Customer logos, case studies, reviews, team" },
-  "Social & Marketing": { name: "Social & marketing", covers: "Link previews, social profiles" },
-  "Standards Verification": { name: "Standards verification", covers: "Controls that need evidence beyond what Pulse can see, shown only when there is evidence" },
+export const AREAS: Record<CheckCategory, { group: AreaGroupId; name: string; covers: string }> = {
+  Security: { group: "security", name: "Security", covers: "HTTPS and security headers, DNS security, exposed admin endpoints and leaked files" },
+  "Secrets & Keys": { group: "security", name: "Secrets & keys", covers: "API keys in committed code, committed .env files" },
+  Authentication: { group: "security", name: "Authentication", covers: "Two-factor login, passkeys, single sign-on, account lockout" },
+  "Roles & Permissions": { group: "security", name: "Roles & permissions", covers: "Who can see what, keeping customers' data apart, audit logs" },
+  Payments: { group: "security", name: "Payments", covers: "Stripe setup, card security (3DS), fraud checks, invoicing, tax" },
+  "Code Quality": { group: "code", name: "Code quality", covers: "README, tests, CI, linting, branch protection, dependencies and overall code health" },
+  "Build & Supply Chain": { group: "code", name: "Build & supply chain", covers: "How safely code gets built and shipped, containers, where dependencies come from" },
+  Infrastructure: { group: "infra", name: "Infrastructure", covers: "SSL, CDN, IPv6, redundancy, how secrets are stored" },
+  Observability: { group: "infra", name: "Observability", covers: "Error tracking, performance monitoring, uptime, tracing" },
+  Performance: { group: "infra", name: "Performance", covers: "Page speed scores, image formats, lazy loading, minified files" },
+  "Legal & Compliance": { group: "legal", name: "Legal & compliance", covers: "UK GDPR, GDPR, CCPA, EU AI Act, cookie consent, privacy policy and terms" },
+  "Business Operations": { group: "legal", name: "Business operations", covers: "Company number, VAT, SLAs, required company policies" },
+  "Email Deliverability": { group: "legal", name: "Email deliverability", covers: "SPF, DKIM, DMARC and related email settings" },
+  "SaaS Readiness": { group: "product", name: "SaaS readiness", covers: "Billing portal, onboarding, trials, data export, roadmap" },
+  "Missing Pages": { group: "product", name: "Missing pages", covers: "About, contact, pricing, docs, status, changelog, security" },
+  SEO: { group: "product", name: "SEO", covers: "Structured data, sitemaps, link previews, search console" },
+  "AEO & AI Discoverability": { group: "ai", name: "AEO & AI discoverability", covers: "Whether AI tools can find and read the site (llms.txt, AI crawler access)" },
+  "AI Safety": { group: "ai", name: "AI safety", covers: "Prompt and output guardrails, exposed system prompts and keys, jailbreak resistance" },
+  "AI Readiness": { group: "ai", name: "AI readiness", covers: "AI cost monitoring, content safety, fallbacks, EU AI Act disclosure" },
+  "Vibe Code Hygiene": { group: "code", name: "Vibe-code hygiene", covers: "Leftovers from AI coding tools: placeholder text, debug mode, test logins" },
+  Accessibility: { group: "apps", name: "Accessibility", covers: "WCAG: form labels, contrast, screen-reader roles, captions, focus" },
+  "Mobile & Accessibility": { group: "apps", name: "Mobile", covers: "Mobile layout, installable web app, offline support" },
+  "App Store & Mobile": { group: "apps", name: "App Store & mobile", covers: "Deep links, app banners, plus dedicated iOS, Android, Flutter and React Native checks" },
+  "Store Listing": { group: "apps", name: "Store listing", covers: "Read from the live App Store, Play or Chrome listing: privacy labels, screenshots, ratings" },
+  "API Quality": { group: "infra", name: "API quality", covers: "Versioning, error format, rate limits, OpenAPI spec, live endpoint behaviour" },
+  "Global Distribution": { group: "product", name: "Global distribution", covers: "Multi-language support, currencies, EU data residency" },
+  "Trust & Brand": { group: "product", name: "Trust & brand", covers: "Customer logos, case studies, reviews, team" },
+  "Social & Marketing": { group: "product", name: "Social & marketing", covers: "Link previews, social profiles" },
+  "Standards Verification": { group: "standards", name: "Standards verification", covers: "Controls that need evidence beyond what Pulse can see, shown only when there is evidence" },
 };
 
 /**
@@ -78,11 +92,19 @@ export const EXTRAS: { name: string; detail: string; evidence: string }[] = [
   { name: "Fixes as pull requests", detail: "For a GitHub repo, fixes can be opened as a pull request.", evidence: "src/server/pulse-agents/fix-agent.ts" },
   { name: "Shareable reports and PDFs", detail: "A private link to the full report, and a designed PDF.", evidence: "src/app/report/[token]/page.tsx" },
   { name: "Proposals from a scan", detail: "Turn a scan into a costed proposal in Docs.", evidence: "src/app/api/pulse/scans/[scanId]/generate-proposal/route.ts" },
-  { name: "A free public scanner", detail: "An embeddable widget and a public page; the full report is emailed as a PDF.", evidence: "src/app/embed/pulse/page.tsx" },
-  { name: "Leads", detail: "Everyone who runs the free scanner, ready to turn into a full scan.", evidence: "src/server/pulse-lite/leads-admin.ts" },
+  { name: "A public scanner", detail: "An embeddable widget and a public page, at no charge to the visitor. The full report is emailed as a PDF.", evidence: "src/app/embed/pulse/page.tsx" },
+  { name: "Leads", detail: "Everyone who runs the public scanner, ready to turn into a full scan.", evidence: "src/server/pulse-lite/leads-admin.ts" },
   { name: "Monitors", detail: "A repo re-scanned on every push, with alerts when the score drops.", evidence: "src/server/pulse-agents/monitor.ts" },
   { name: "Countermark certificates and badges", detail: "A signed, expiring certificate of what a scan found, and a score badge for a client's own site.", evidence: "src/server/provenance/issue.ts" },
   { name: "Scans from Claude", detail: "Claude can run a scan and read the result through Foundry's MCP connector.", evidence: "src/server/mcp/handler.ts" },
+];
+
+/** How a scan works, start to finish. */
+export const PULSE_STEPS: { title: string; detail: string }[] = [
+  { title: "Point it at something", detail: "A website, a GitHub repo, or an App Store, Google Play or Chrome Web Store listing." },
+  { title: "It works out what it is", detail: "Web app, iOS app, API, CLI and so on, then runs only the checks that apply." },
+  { title: "Every check gives an answer", detail: "Pass, warning or fail, with the evidence. If it could not check something, it says so." },
+  { title: "You get the verdict", detail: "Ready or not ready, six summary scores, a score per market and, optionally, a fix plan." },
 ];
 
 /** Every product type Pulse understands — the scan form's own list, so the two cannot differ. */
