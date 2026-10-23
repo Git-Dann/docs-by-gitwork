@@ -90,7 +90,7 @@ export function CodePortfolioView() {
           <span className="widget-header-right">{repos.length} {repos.length === 1 ? "repository" : "repositories"}</span>
         </div>
         <div className="widget-body space-y-5">
-          <PlainSummaryBox summary={summarisePortfolio(repos, data.items)} />
+          <PlainSummaryBox summary={summarisePortfolio(repos, data.items)} maxSteps={3} />
           <div className="grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-3 xl:grid-cols-6">
             <Stat label="Code measured" value={loc.toLocaleString("en-GB")} note={`lines across ${repos.length} repos`} />
             <Stat label="Work to tidy up" value={`${Math.round(debtDays).toLocaleString("en-GB")}`} note="developer-days, estimated" />
@@ -110,22 +110,23 @@ export function CodePortfolioView() {
       <div className="widget-card">
         <div className="widget-header">
           <span className="widget-header-label">02 // REPOSITORIES</span>
-          <span className="widget-header-right">worst first</span>
+          <span className="widget-header-right">most urgent first</span>
         </div>
         <div className="widget-body">
           <div className="overflow-x-auto">
-            <table className="app-table app-table--dense min-w-[900px]">
+            <table className="app-table app-table--dense min-w-[1040px]">
               <thead>
                 <tr>
                   <th className="text-left">Repository</th>
+                  <th className="text-left">Needs</th>
                   <th className="text-right">Score</th>
                   <th className="text-left">Since last check</th>
                   <th className="text-right">Lines</th>
-                  <th className="text-right">Debt</th>
+                  <th className="text-right">Tidy-up work</th>
                   <th className="text-left">Security holes</th>
-                  <th className="text-right">Tangled</th>
+                  <th className="text-right">File loops</th>
                   <th className="text-right">Who knows it</th>
-                  <th className="text-left">Measured</th>
+                  <th className="text-left">Checked</th>
                 </tr>
               </thead>
               <tbody>
@@ -138,6 +139,9 @@ export function CodePortfolioView() {
                       <span className="block truncate text-[11px] text-[var(--text-4)]" title={[r.clientName, r.primaryLanguage].filter(Boolean).join(" · ")}>
                         {[r.clientName, r.primaryLanguage].filter(Boolean).join(" · ") || "No client"}
                       </span>
+                    </td>
+                    <td className={cn("min-w-[170px] max-w-[220px] text-xs", r.urgency.rank <= 2 ? "font-medium text-[var(--danger-700)]" : r.urgency.rank >= 6 ? "text-[var(--success-500)]" : "text-[var(--text-2)]")}>
+                      {r.urgency.reason}
                     </td>
                     <td className="text-right">
                       <span className="font-serif text-lg font-bold tabular-nums text-[var(--text-1)]">{r.score}</span>

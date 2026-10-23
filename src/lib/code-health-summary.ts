@@ -7,7 +7,8 @@
 
 import type { CodeHealthReport } from "@/types/code-health";
 import type { BenchmarkComparison } from "@/server/code-health/benchmark";
-import { planPortfolio, workItemsFor, type PortfolioRepo, type WorkItem } from "@/lib/code-portfolio";
+import { byUrgency, workItemsFor, type PortfolioRepo, type WorkItem } from "@/lib/code-portfolio";
+import { actionPlan, type PlanStep } from "@/lib/plain-impact";
 
 export type SummaryTone = "good" | "watch" | "bad";
 
@@ -21,19 +22,21 @@ export interface PlainSummary {
   headline: string;
   tone: SummaryTone;
   lines: SummaryLine[];
-  /** The single most useful next step, or null when nothing stands out. */
-  firstStep: string | null;
+  /** What to do, in order, with time and benefit: at most five steps. Empty when nothing stands out. */
+  plan: PlanStep[];
+  /** Days, following the plan, until most (80%) of the measured risk is gone. */
+  daysToMost: number | null;
 }
 
 const n = (x: number) => x.toLocaleString("en-GB");
 const plural = (count: number, one: string, many: string) => `${n(count)} ${count === 1 ? one : many}`;
 
 /** Days as people say them: "about half a day", "about 3 days", "about 14 weeks". */
-export function humanDays(days: number): string {
+export function humanDays(days: number, opts: { short?: boolean } = {}): string {
   if (days <= 0.5) return "about half a day";
   if (days < 1.5) return "about a day";
   if (days < 15) return `about ${Math.round(days)} days`;
-  return `about ${Math.round(days / 5)} weeks of one developer's time`;
+  return `about ${Math.round(days / 5)} weeks${opts.short ? "" : " of one developer's time"}`;
 }
 
 /** What the benchmark position means, in words: never a percentile. */
@@ -47,6 +50,7 @@ export function comparisonWords(betterThan: number, total: number): string {
 
 export function summariseCodeHealth(report: CodeHealthReport, benchmark: BenchmarkComparison | null = null): PlainSummary {
   const lines: SummaryLine[] = [];
+  const plan = actionPlan(workItemsFor(report));
 
   // Overall condition.
   const condition =
@@ -85,10 +89,23 @@ export function summariseCodeHealth(report: CodeHealthReport, benchmark: Benchma
   if (report.effort && report.effort.days >= 0.5) {
     lines.push({
       tone: report.effort.days > 40 ? "bad" : report.effort.days > 10 ? "watch" : "good",
-      text: `Fixing every hard-to-change part would take ${humanDays(report.effort.days)}. That is an estimate for planning, not a quote.`,
+      text: `Fixing every hard-to-change part would take ${humanDays(report.effort.days)}${
+        plan.daysToMost !== null && plan.daysToMost < report.effort.days * 0.6
+          ? `, but most of the risk is gone after the first ${humanDays(plan.daysToMost, { short: true }).replace(/^about /, "")}: the plan below puts that work first`
+          : ""
+      }. An estimate for planning, not a quote.`,
     });
   } else if (report.debt.length === 0) {
     lines.push({ tone: "good", text: "Nothing in it is complicated enough to slow developers down." });
+  }
+
+  // The best news in a big estimate is usually that one step does a lot of it: say so.
+  const first = plan.steps[0];
+  if (first && first.cumulativeShare >= 0.3 && first.days <= 10 && plan.steps.length > 1) {
+    lines.push({
+      tone: "good",
+      text: `The first step alone, ${humanDays(first.days)} of work, removes about ${Math.round(first.cumulativeShare * 100)}% of the risk Pulse measured.`,
+    });
   }
 
   const s = report.structure;
@@ -121,25 +138,23 @@ export function summariseCodeHealth(report: CodeHealthReport, benchmark: Benchma
     });
   }
 
-  return { headline, tone, lines, firstStep: firstStepOf(workItemsFor(report)) };
-}
-
-function firstStepOf(items: WorkItem[]): string | null {
-  const top = planPortfolio(items, Number.POSITIVE_INFINITY).chosen[0];
-  if (!top) return null;
-  return `${top.title}: ${humanDays(top.days)}.`;
+  return { headline, tone, lines, plan: plan.steps, daysToMost: plan.daysToMost };
 }
 
 /** The portfolio in plain English: which repo needs attention, and what to do first. */
 export function summarisePortfolio(repos: PortfolioRepo[], items: WorkItem[]): PlainSummary {
-  if (repos.length === 0) return { headline: "No repository has been measured yet.", tone: "watch", lines: [], firstStep: null };
+  if (repos.length === 0) return { headline: "No repository has been measured yet.", tone: "watch", lines: [], plan: [], daysToMost: null };
   const lines: SummaryLine[] = [];
-  const worst = [...repos].sort((a, b) => a.score - b.score)[0];
+  const first = [...repos].sort(byUrgency)[0];
   const poor = repos.filter((r) => r.band === "poor").length;
-  const headline =
+  const state =
     poor === 0
-      ? `All ${plural(repos.length, "codebase is", "codebases are")} in fair or good shape; ${worst.repo} needs the most attention (${worst.score} out of 100).`
-      : `${plural(poor, "of the codebases is", "of the codebases are")} in poor shape. ${worst.repo} needs attention first (${worst.score} out of 100).`;
+      ? `All ${plural(repos.length, "codebase is", "codebases are")} in fair or good shape.`
+      : `${plural(poor, "of the codebases is", "of the codebases are")} in poor shape.`;
+  const headline =
+    first.urgency.rank >= 6
+      ? `${state} Nothing needs urgent attention.`
+      : `${state} First: ${first.repo}. ${first.urgency.reason}.`;
 
   const serious = repos.reduce((s, r) => s + (r.vulnerable ? r.vulnerable.critical + r.vulnerable.high : 0), 0);
   const seriousRepos = repos.filter((r) => r.vulnerable && r.vulnerable.critical + r.vulnerable.high > 0);
@@ -158,5 +173,6 @@ export function summarisePortfolio(repos: PortfolioRepo[], items: WorkItem[]): P
   const days = repos.reduce((s, r) => s + (r.debtDays ?? 0), 0);
   if (days > 0) lines.push({ tone: "watch", text: `Clearing every hard-to-change part across all of them would take ${humanDays(days)}. The plan below picks what matters most for the time you have.` });
 
-  return { headline, tone: poor > 0 || serious > 0 ? "bad" : "watch", lines, firstStep: firstStepOf(items) };
+  const plan = actionPlan(items, 5, { nameRepos: true });
+  return { headline, tone: poor > 0 || serious > 0 ? "bad" : "watch", lines, plan: plan.steps, daysToMost: plan.daysToMost };
 }

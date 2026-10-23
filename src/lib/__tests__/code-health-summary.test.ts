@@ -18,8 +18,17 @@ describe("summariseCodeHealth", () => {
     expect(s.lines.some((l) => l.text.includes("2 groups of files depend on each other in a loop (7 files)"))).toBe(true);
   });
 
-  it("puts the security fix first as where to start", () => {
-    expect(s.firstStep).toMatch(/^Upgrade jsonwebtoken/);
+  it("plans security first, as one step, then the rest with time and benefit", () => {
+    expect(s.plan[0].title).toBe("Upgrade the 3 outside libraries with known security holes");
+    expect(s.plan.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < s.plan.length; i++) expect(s.plan[i].cumulativeShare).toBeGreaterThanOrEqual(s.plan[i - 1].cumulativeShare);
+    for (const st of s.plan) expect(st.benefit.length).toBeGreaterThan(20);
+  });
+
+  it("says how soon most of the risk is gone, when that is much sooner than the whole job", () => {
+    expect(s.daysToMost).not.toBeNull();
+    const effort = s.lines.find((l) => l.text.startsWith("Fixing every"))!;
+    expect(effort.text).toMatch(/most of the risk is gone after the first/);
   });
 
   it("never claims libraries are safe when they were not checked", () => {
@@ -45,8 +54,9 @@ describe("summarisePortfolio", () => {
   const repos = DEMO_PORTFOLIO_REPORTS.map((r) => summariseRepo(r.report, { scanId: r.scanId, projectName: r.projectName, clientName: r.clientName, history: r.history.map((score, i) => ({ at: String(i), score })) }));
   const p = summarisePortfolio(repos, DEMO_PORTFOLIO_REPORTS.flatMap((r) => workItemsFor(r.report)));
 
-  it("names the codebase that needs attention first, in plain words", () => {
-    expect(p.headline).toContain("fairway-nine/booking-api");
+  it("names the codebase that needs attention first by urgency, not by score", () => {
+    // cadenza scores higher than fairway but has serious security holes, so it comes first.
+    expect(p.headline).toContain("First: cadenza-app/cadenza. 2 serious security holes.");
     for (const t of [p.headline, ...p.lines.map((l) => l.text)]) expect(t, t).not.toMatch(JARGON);
   });
 

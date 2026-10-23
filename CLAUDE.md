@@ -7677,3 +7677,31 @@ Verified end to end against real repos (OWASP NodeGoat: 131 of 1,091 pinned libr
 critical; zod; httpie; gin), with every cycle checked against the source. Not verified against
 production data — post-deploy, open `/app/pulse/portfolio` and re-scan one client repo so it gains
 the structure and library sections (older reports show "not checked").
+
+### 83.1 Reports that are clear and constructive, tested on a real client repo
+
+Asked "is this the best it can be?", the honest answer was no: the facts were right, but the
+report was ordered for developers and said what was wrong rather than what it meant.
+
+- **Plain consequences** (`src/lib/plain-words.ts`): each vulnerable library gets "It could let
+  someone get past sign-in…" from its advisory text; each debt item gets what it costs, naming the
+  product area ("This is payments code…"). Areas match **whole path words** — substring matching
+  read `state.dart` as reporting and `border` as orders, and called a content feed "data syncing".
+- **A themed plan** (`src/lib/plain-impact.ts`, `actionPlan`): security as one step, a big import
+  loop on its own, the most-changed files, then debt **grouped by product area** (payments and
+  sign-in weighted ×3, which is what their step says), central files, and a catch-all last. Each
+  step has time, benefit and cumulative risk removed. ⚠️ Item-by-item ranking on value per day was
+  tried first and surfaced three trivial 2-file loops ahead of a 181-file knot on a real app.
+- **Summary** adds how soon most risk is gone and, when one step does a lot, says so ("the first
+  step alone, about 5 days, removes about 47%"). Code-health panel reordered to match the plan:
+  summary + plan, stats, libraries, structure, register, history, benchmarks.
+- **Portfolio** ranks by urgency (`urgencyOf`: serious holes → getting worse → one-person
+  knowledge → poor → fair → unchecked → good), with a plain "Needs" column.
+- **Real-data fixes from Fellas Android (Flutter, private):** build_runner output skipped by name
+  (`.freezed/.gr/.config/.mocks/.chopper/.gen.dart`) and banner (`GENERATED CODE`, `DO NOT
+  MODIFY`); `copyWith`/`copy` never registered as debt (size tracks field count by design) — the
+  two together took its estimate from 248 to 159 days; a hub must be widely used **and** complex
+  (a simple shared error type imported by 260 files topped the plan); "most changed" is the top
+  three hotspots with ≥3 changes, because hotspot scores are relative and a quiet repo (69 commits
+  a year) never reached the old fixed 0.5 threshold. Its 181-file loop was checked in the source
+  and is real (`navigator_helper.dart` ↔ `home_page.dart`).

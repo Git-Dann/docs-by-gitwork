@@ -1,7 +1,8 @@
 import { cn } from "@/lib/format";
 import { compareVersions } from "@/lib/code-portfolio";
+import { libraryImpact } from "@/lib/plain-words";
 import { BENCHMARK_REFERENCES, compareToBenchmarks, type BenchmarkMetric } from "@/server/code-health/benchmark";
-import { comparisonWords, type PlainSummary, type SummaryTone } from "@/lib/code-health-summary";
+import { comparisonWords, humanDays, type PlainSummary, type SummaryTone } from "@/lib/code-health-summary";
 import type { CodeHealthReport, DependencyAudit, StructureReport, VulnerabilitySeverity } from "@/types/code-health";
 
 /**
@@ -150,9 +151,9 @@ export function DependencySection({ audit, rows }: { audit: DependencyAudit; row
               <thead>
                 <tr>
                   <th className="text-left">Library</th>
+                  <th className="text-left">What could happen</th>
                   <th className="text-left">Severity</th>
-                  <th className="text-left">Advisories</th>
-                  <th className="text-left">Fixed in</th>
+                  <th className="text-left">Fix: upgrade to</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,15 +165,21 @@ export function DependencySection({ audit, rows }: { audit: DependencyAudit; row
                         <span className="block font-mono text-xs text-[var(--text-1)]">{p.name} <span className="text-[var(--text-4)]">{p.version}</span></span>
                         <span className="block font-mono text-[10px] text-[var(--text-4)]">{p.ecosystem}{p.direct === false ? " · pulled in by another package" : p.direct ? " · declared by the project" : ""}</span>
                       </td>
-                      <td><span className={cn("inline-block rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] uppercase", SEV[p.severity])}>{p.severity}</span></td>
-                      <td className="max-w-[320px] text-xs text-[var(--text-2)]">
-                        {p.advisories.slice(0, 3).map((a) => (
-                          <a key={a.id} href={a.url} target="_blank" rel="noreferrer noopener" className="block truncate hover:underline" title={a.summary}>
-                            <span className="font-mono text-[10px] text-[var(--brand-600)]">{a.aliases.find((x) => x.startsWith("CVE-")) ?? a.id}</span> {a.summary}
-                          </a>
-                        ))}
-                        {p.advisories.length > 3 && <span className="font-mono text-[10px] text-[var(--text-4)]">+{p.advisories.length - 3} more</span>}
+                      <td className="max-w-[340px]">
+                        <span className="block text-xs leading-5 text-[var(--text-1)]">It {libraryImpact(p)}.</span>
+                        <span className="mt-0.5 block font-mono text-[10px] leading-4 text-[var(--text-4)]">
+                          {p.advisories.slice(0, 3).map((a, i) => (
+                            <span key={a.id}>
+                              {i > 0 && ", "}
+                              <a href={a.url} target="_blank" rel="noreferrer noopener" className="text-[var(--brand-600)] hover:underline" title={a.summary}>
+                                {a.aliases.find((x) => x.startsWith("CVE-")) ?? a.id}
+                              </a>
+                            </span>
+                          ))}
+                          {p.advisories.length > 3 && ` +${p.advisories.length - 3} more`}
+                        </span>
                       </td>
+                      <td><span className={cn("inline-block rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] uppercase", SEV[p.severity])}>{p.severity}</span></td>
                       <td className="whitespace-nowrap font-mono text-[11px] text-[var(--text-2)]">{fixed.length ? fixed[fixed.length - 1] : "no fix yet"}</td>
                     </tr>
                   );
@@ -255,7 +262,7 @@ const SUMMARY_DOT: Record<SummaryTone, string> = {
 };
 
 /** The plain-English summary that leads the code-health section and the portfolio. */
-export function PlainSummaryBox({ summary }: { summary: PlainSummary }) {
+export function PlainSummaryBox({ summary, maxSteps = 5 }: { summary: PlainSummary; maxSteps?: number }) {
   return (
     <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3.5">
       <p className="widget-data-label">In plain English</p>
@@ -270,11 +277,25 @@ export function PlainSummaryBox({ summary }: { summary: PlainSummary }) {
           ))}
         </ul>
       )}
-      {summary.firstStep && (
-        <p className="mt-2.5 border-t border-[var(--border-2)] pt-2.5 text-sm leading-6 text-[var(--text-2)]">
-          <span className="font-medium text-[var(--text-1)]">Where to start: </span>
-          {summary.firstStep}
-        </p>
+      {summary.plan.length > 0 && (
+        <div className="mt-3 border-t border-[var(--border-2)] pt-3">
+          <p className="widget-data-label">What to do, in order</p>
+          <ol className="mt-2 space-y-2.5">
+            {summary.plan.slice(0, maxSteps).map((step, i) => (
+              <li key={i} className="grid grid-cols-[22px_minmax(0,1fr)_auto] gap-x-2.5">
+                <span className="pt-0.5 font-mono text-[11px] tabular-nums text-[var(--text-4)]">{i + 1}.</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-6 text-[var(--text-1)] [overflow-wrap:anywhere]">{step.title}</p>
+                  <p className="text-xs leading-5 text-[var(--text-3)]">{step.benefit}</p>
+                </div>
+                <span className="whitespace-nowrap pt-0.5 text-right text-xs text-[var(--text-2)]">
+                  {humanDays(step.days).replace(/^about /, "")}
+                  <span className="block font-mono text-[10px] text-[var(--text-4)]">{Math.round(step.cumulativeShare * 100)}% of risk gone</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
     </div>
   );

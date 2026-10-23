@@ -13,6 +13,8 @@ import type { CodeHealthReport, DebtItem, DebtKind, DebtSeverity, FileMeasure, F
  * Length, nesting and parameter limits have no single standard; the values below are
  * conservative versions of common linter defaults (ESLint, Sonar, Fowler's Refactoring).
  */
+const COPY_WITH = /^(copyWith\w*|copy)$/;
+
 export const THRESHOLDS = {
   complexity: { moderate: 11, high: 21, veryHigh: 51 },
   functionLoc: { moderate: 61, high: 121, veryHigh: 251 },
@@ -59,6 +61,11 @@ const SEVERITY_WORD: Record<DebtSeverity, string> = { moderate: "moderately", hi
 
 /** Every finding for one function; the register keeps the worst, the counts keep them all. */
 export function functionFindings(path: string, fn: FunctionMeasure): DebtItem[] {
+  // A copy-with function takes one optional argument per field and does `field ?? this.field`
+  // for each, by design: it is how immutable state is updated in Dart (and `copy` in Kotlin
+  // data classes). Its size, parameter count and branch count all track the type's field
+  // count, so none of them is a defect. A real Flutter app had 54 flagged, adding weeks.
+  if (COPY_WITH.test(fn.name)) return [];
   const out: DebtItem[] = [];
   const base = { path, line: fn.startLine, symbol: symbolOf(fn), metrics: { complexity: fn.complexity, loc: fn.loc, params: fn.params, nesting: fn.maxNesting } };
   const c = band(fn.complexity, THRESHOLDS.complexity);

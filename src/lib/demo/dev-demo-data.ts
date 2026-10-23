@@ -14,7 +14,7 @@
  */
 
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
-import { summariseRepo, workItemsFor } from "@/lib/code-portfolio";
+import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
 import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
@@ -3262,7 +3262,7 @@ function demoCodePortfolio() {
       clientName: r.clientName,
       history: r.history.map((score, i) => ({ at: atDays(-7 * (r.history.length - 1 - i)), score })),
     }),
-  ).sort((a, b) => a.score - b.score);
+  ).sort(byUrgency);
   return { repos, items: DEMO_PORTFOLIO_REPORTS.flatMap((r) => workItemsFor(r.report)), unmeasured: [] };
 }
 

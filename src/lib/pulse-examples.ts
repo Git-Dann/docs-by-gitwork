@@ -24,10 +24,21 @@ export interface ExampleScan {
   /** What was scanned, as the report would name it. */
   subject: string;
   verdict: "Ready" | "Conditional" | "Not ready";
+  /** The report's own plain-English headline: what a non-developer takes away. */
+  plain: string;
   /** null = that pillar had nothing to measure for this product, so its weight is shared out. */
   pillars: Record<PillarKey, number | null>;
   findings: ExampleFinding[];
-  codeHealth?: { score: number; effortDays: number; busFactor: number; hotspots: string[] };
+  codeHealth?: {
+    score: number;
+    effortDays: number;
+    /** Days, following the plan, until most (80%) of the risk is gone. */
+    daysToMost: number;
+    busFactor: number;
+    seriousLibraries: number;
+    loops: number;
+    hotspots: string[];
+  };
 }
 
 export const EXAMPLE_SCANS: ExampleScan[] = [
@@ -36,6 +47,7 @@ export const EXAMPLE_SCANS: ExampleScan[] = [
     label: "Web app",
     subject: "app.example-saas.com",
     verdict: "Not ready",
+    plain: "Not ready to launch: anyone can read every user's profile without signing in. Fix that first; the rest is a short list.",
     pillars: { security: 58, access: 52, code: null, reliability: 85, legal: 61, experience: 90 },
     findings: [
       { status: "FAIL", area: "Security", title: "Row-level security is off on the profiles table", evidence: "The public key read rows from profiles without signing in." },
@@ -48,6 +60,7 @@ export const EXAMPLE_SCANS: ExampleScan[] = [
     label: "iOS app",
     subject: "example/fitness-ios",
     verdict: "Conditional",
+    plain: "Nearly ready: sign-in tokens are stored where other apps on a jailbroken phone could read them. A one-day fix before release.",
     pillars: { security: 70, access: 75, code: 66, reliability: 72, legal: 80, experience: 84 },
     findings: [
       { status: "FAIL", area: "App Store & mobile", title: "Login tokens are kept in UserDefaults, not the Keychain", evidence: "SessionStore.swift writes accessToken to UserDefaults." },
@@ -60,6 +73,7 @@ export const EXAMPLE_SCANS: ExampleScan[] = [
     label: "API",
     subject: "api.example.com",
     verdict: "Ready",
+    plain: "Ready: nothing blocks launch. Two small warnings to tidy when convenient.",
     pillars: { security: 91, access: 88, code: null, reliability: 86, legal: 74, experience: 80 },
     findings: [
       { status: "WARN", area: "API quality", title: "The server header names its exact version", evidence: "server: Jetty(9.2.9)" },
@@ -72,16 +86,21 @@ export const EXAMPLE_SCANS: ExampleScan[] = [
     label: "GitHub repo",
     subject: "example/billing-platform",
     verdict: "Conditional",
+    plain: "Works, but a live payment key is in the code and two libraries have serious security holes. Those take about a day; most of the remaining risk is gone within two weeks.",
     pillars: { security: 80, access: 70, code: 62, reliability: 68, legal: 75, experience: 77 },
     findings: [
       { status: "FAIL", area: "Secrets & keys", title: "A live payment key is committed", evidence: "src/config.ts, line 12: a live Stripe secret key." },
-      { status: "WARN", area: "Code quality", title: "buildInvoice has 74 paths through it", evidence: "billing/invoice.ts:142, 412 lines. About 20 hours to split." },
+      { status: "FAIL", area: "Libraries", title: "lodash 4.17.15 could let an attacker run their own code on the server", evidence: "CVE-2021-23337 and 5 more. Fixed by upgrading to 4.17.21." },
+      { status: "WARN", area: "Code quality", title: "The invoicing code is too tangled to test fully", evidence: "billing/invoice.ts:142 buildInvoice: 74 paths through it, 412 lines. About 20 hours to simplify." },
       { status: "PASS", area: "Build & supply chain", title: "Every CI action is pinned to a commit", evidence: "12 of 12 workflow steps use a full commit SHA." },
     ],
     codeHealth: {
       score: 71,
       effortDays: 69,
+      daysToMost: 9,
       busFactor: 2,
+      seriousLibraries: 2,
+      loops: 2,
       hotspots: ["billing/invoice.ts", "web/pages/Checkout.tsx", "sync/SyncEngine.ts"],
     },
   },

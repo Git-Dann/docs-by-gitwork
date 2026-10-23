@@ -370,12 +370,13 @@ describe("analyseStructure", () => {
     expect(looped?.cycles[0].path).toHaveLength(n + 1);
   });
 
-  it("names a hub only when it is both depended on and complex, or very widely used", () => {
+  it("names a hub only when it is both depended on and complex: a simple file everyone uses is good design", () => {
     const repo: Record<string, string> = { "src/core.ts": ``, "src/util.ts": ``, "src/simple.ts": `` };
     for (let i = 0; i < 8; i++) repo[`src/f${i}.ts`] = `import "./core"; import "./simple";`;
     for (let i = 0; i < 20; i++) repo[`src/g${i}.ts`] = `import "./util";`;
     const { report } = run(repo, { "src/core.ts": 40, "src/simple.ts": 39, "src/util.ts": 1 });
-    expect(report?.hubs.map((h) => h.path)).toEqual(["src/core.ts", "src/util.ts"]);
+    // util.ts is imported by 20 files but is simple, like a shared error type: not a risk.
+    expect(report?.hubs.map((h) => h.path)).toEqual(["src/core.ts"]);
     const core = report!.hubs[0];
     expect(core).toMatchObject({ fanIn: 8, fanOut: 0, instability: 0, complexity: 40 });
   });

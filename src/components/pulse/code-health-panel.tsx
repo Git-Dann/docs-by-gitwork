@@ -4,6 +4,8 @@ import { useState } from "react";
 import { cn, formatDate } from "@/lib/format";
 import { BenchmarkSection, DependencySection, PlainSummaryBox, StructureSection } from "./code-health-sections";
 import { summariseCodeHealth } from "@/lib/code-health-summary";
+import { debtImpact } from "@/lib/plain-words";
+import { mostChangedFiles } from "@/lib/code-portfolio";
 import { compareToBenchmarks } from "@/server/code-health/benchmark";
 import type { CodeHealthReport, CodeHistory, DebtItem, DebtKind, DebtSeverity } from "@/types/code-health";
 
@@ -60,6 +62,7 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
   const totalDebt = Object.values(report.debtCounts).reduce((s, n) => s + n, 0);
   const trend = report.trend ?? null;
   const history = report.history ?? null;
+  const mostChanged = mostChangedFiles(report);
   const notMeasured = [
     c.unsupportedSourceFiles > 0 ? `${c.unsupportedSourceFiles} ${c.unsupportedLanguages.join("/")} file${c.unsupportedSourceFiles === 1 ? "" : "s"} (not supported yet)` : null,
     c.skippedGenerated > 0 ? `${c.skippedGenerated} generated` : null,
@@ -147,9 +150,14 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
           </div>
         )}
 
-        <div>
+        {/* Same order as the plan in the summary: security first, then what makes changes risky. */}
+        {report.dependencies && <DependencySection audit={report.dependencies} rows={rows === undefined ? undefined : 10} />}
+
+        {report.structure && <StructureSection report={report} structure={report.structure} rows={rows === undefined ? undefined : 5} />}
+
+        <div className={cn((report.dependencies || report.structure) && "border-t border-[var(--border-2)] pt-4")}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="widget-data-label">Tech-debt register</p>
+            <p className="widget-data-label">Hard-to-change code, worst first</p>
             <p className="font-mono text-[10px] text-[var(--text-4)]">
               {(Object.keys(KIND_LABEL) as DebtKind[])
                 .filter((k) => report.debtCounts[k] > 0)
@@ -187,7 +195,10 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
                           {d.path}:{d.line}
                         </span>
                       </td>
-                      <td className="text-xs text-[var(--text-2)]" title={d.reason}>{KIND_LABEL[d.kind]}</td>
+                      <td className="max-w-[300px] text-xs text-[var(--text-2)]" title={d.reason}>
+                        {KIND_LABEL[d.kind]}
+                        <span className="block text-[11px] leading-4 text-[var(--text-4)]">{debtImpact(d, mostChanged.has(d.path))}</span>
+                      </td>
                       <td className="whitespace-nowrap font-mono text-[11px] text-[var(--text-3)]">{metricsText(d)}</td>
                       <td>
                         <span className={cn("inline-block rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] uppercase", SEVERITY[d.severity].cls)}>
@@ -218,13 +229,10 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
           )}
         </div>
 
+        {/* Evidence after the register, least urgent last: who knows the code, then how it compares. */}
         {history && <HistorySection report={report} history={history} />}
 
         <BenchmarkSection report={report} />
-
-        {report.structure && <StructureSection report={report} structure={report.structure} rows={rows === undefined ? undefined : 5} />}
-
-        {report.dependencies && <DependencySection audit={report.dependencies} rows={rows === undefined ? undefined : 10} />}
 
         <p className="border-t border-[var(--border-2)] pt-3 text-xs leading-5 text-[var(--text-3)]">
           Measured by parsing every supported source file in the repository, not a sample.

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { summariseRepo, workItemsFor, type PortfolioRepo, type WorkItem } from "@/lib/code-portfolio";
+import { byUrgency, summariseRepo, workItemsFor, type PortfolioRepo, type WorkItem } from "@/lib/code-portfolio";
 import type { CodeHealthReport } from "@/types/code-health";
 
 /**
@@ -90,6 +90,6 @@ export async function loadCodePortfolio(scope: PortfolioScope): Promise<CodePort
     repos.push(summariseRepo(report, { scanId: latest.id, projectName: latest.projectName, clientName: latest.client?.name ?? null, history }));
     items.push(...workItemsFor(report));
   }
-  repos.sort((a, b) => a.score - b.score || a.repo.localeCompare(b.repo));
+  repos.sort(byUrgency);
   return { repos, items, unmeasured };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { churnMultiplier, compareVersions, planPortfolio, summariseRepo, workItemsFor, type WorkItem } from "@/lib/code-portfolio";
+import { byUrgency, churnMultiplier, compareVersions, planPortfolio, summariseRepo, workItemsFor, type WorkItem } from "@/lib/code-portfolio";
 import type { CodeHealthReport, DebtItem } from "@/types/code-health";
 
 function report(over: Partial<CodeHealthReport> = {}): CodeHealthReport {
@@ -129,6 +129,29 @@ describe("summariseRepo", () => {
     const meta = { scanId: "s1", projectName: "p", clientName: null, history: [] };
     expect(summariseRepo(report({ history: h }), meta).knowledgeRisk).toBe(true);
     expect(summariseRepo(report({ history: h, totals: { ...report().totals, loc: 300 } }), meta).knowledgeRisk).toBe(false);
+  });
+});
+
+describe("urgency", () => {
+  const meta = { scanId: "s", projectName: "p", clientName: null };
+  const deps = (critical: number) => ({
+    status: "checked" as const, reason: null, lockfiles: [], packages: 5, checkedAt: "", vulnerable: [],
+    counts: { critical, high: 0, moderate: 0, low: 0, unknown: 0 },
+  });
+
+  it("puts a tidy repo with a security hole ahead of a messy one without", () => {
+    const tidy = summariseRepo(report({ score: 92, band: "good", dependencies: deps(1) }), { ...meta, history: [] });
+    const messy = summariseRepo(report({ score: 41, band: "poor", dependencies: deps(0) }), { ...meta, history: [] });
+    expect([messy, tidy].sort(byUrgency)[0]).toBe(tidy);
+    expect(tidy.urgency.reason).toBe("1 serious security hole");
+    expect(messy.urgency.reason).toBe("Hard to change safely");
+  });
+
+  it("flags getting worse above condition, and says an unchecked repo needs a re-scan", () => {
+    const worse = summariseRepo(report({ dependencies: deps(0) }), { ...meta, history: [{ at: "a", score: 75 }, { at: "b", score: 70 }] });
+    expect(worse.urgency).toEqual({ rank: 1, reason: "Getting worse (down 5)" });
+    const unchecked = summariseRepo(report({ score: 90, band: "good" }), { ...meta, history: [] });
+    expect(unchecked.urgency.reason).toMatch(/scan it again/);
   });
 });
 

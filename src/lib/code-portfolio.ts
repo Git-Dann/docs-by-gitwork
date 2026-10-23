@@ -14,6 +14,7 @@ import type {
   DebtSeverity,
   VulnerabilitySeverity,
 } from "@/types/code-health";
+import { debtImpact, libraryImpact, productArea } from "@/lib/plain-words";
 
 /** Working hours in a developer-day, matching the register's effort estimate (rules.ts). */
 export const PLAN_HOURS_PER_DAY = 6;
@@ -36,10 +37,29 @@ export interface WorkItem {
   value: number;
   /** "security" sorts above everything else at equal value per day: a known exploit is not a style issue. */
   lane: "security" | "change_risk" | "maintainability";
+  /** The part of the product it is in ("payments"…), for grouping a plan into themes. */
+  area?: string | null;
+  /** In one of the most-changed files (hotspot score ≥ 0.5). */
+  hot?: boolean;
+  /** The file it is in, for grouping several findings in one file into one step. */
+  file?: string | null;
 }
 
 /** Severity weights. Published here so the ranking can be argued with. */
 export const DEBT_WEIGHT: Record<DebtSeverity, number> = { moderate: 3, high: 8, very_high: 15 };
+/**
+ * How much each kind of debt matters, relative to a complex function. A long parameter list
+ * is cheap to fix, so on value per day it would otherwise jump the queue ahead of the
+ * tangled code that actually causes bugs (seen on a real app's plan).
+ */
+export const KIND_WEIGHT: Record<DebtItem["kind"], number> = {
+  complex_function: 1,
+  long_function: 0.8,
+  large_class: 0.9,
+  deep_nesting: 0.7,
+  large_file: 0.5,
+  long_parameter_list: 0.3,
+};
 export const VULN_WEIGHT: Record<VulnerabilitySeverity, number> = { critical: 100, high: 60, moderate: 20, low: 5, unknown: 10 };
 
 /**
@@ -52,18 +72,30 @@ export function churnMultiplier(hotspotScore: number | null | undefined): number
   return 1 + 3 * Math.max(0, Math.min(1, hotspotScore));
 }
 
+/**
+ * The files that count as "most changed": the top three hotspots that changed at least three
+ * times. Relative on purpose: hotspot scores are relative to the repo's own maximum, and on a
+ * quiet repo (69 commits a year on a real client app) none reaches a fixed cut-off, so a fixed
+ * threshold found no hotspots at all.
+ */
+export function mostChangedFiles(report: Pick<CodeHealthReport, "history">): Set<string> {
+  return new Set((report.history?.hotspots ?? []).filter((h) => h.changes >= 3).slice(0, 3).map((h) => h.path));
+}
+
 function hotspotScores(report: CodeHealthReport): Map<string, number> {
   return new Map((report.history?.hotspots ?? []).map((h) => [h.path, h.score]));
 }
 
 function debtTitle(d: DebtItem): string {
+  const area = productArea(d.path);
+  const inArea = area ? ` in ${area}` : "";
   switch (d.kind) {
-    case "complex_function": return `Split ${d.symbol} (${d.metrics.complexity ?? "?"} paths through it)`;
-    case "long_function": return `Break up ${d.symbol} (${d.metrics.loc ?? "?"} lines)`;
-    case "long_parameter_list": return `Group the parameters of ${d.symbol} (${d.metrics.params ?? "?"})`;
-    case "deep_nesting": return `Flatten ${d.symbol} (nested ${d.metrics.nesting ?? d.metrics.maxNesting ?? "?"} deep)`;
-    case "large_class": return `Separate the jobs in ${d.symbol}`;
-    case "large_file": return `Split ${d.path.split("/").pop()} (${d.metrics.loc ?? "?"} lines)`;
+    case "complex_function": return `Simplify ${d.symbol}${inArea}`;
+    case "long_function": return `Break up ${d.symbol}${inArea}`;
+    case "long_parameter_list": return `Make ${d.symbol} harder to call the wrong way${inArea}`;
+    case "deep_nesting": return `Untangle the logic in ${d.symbol}${inArea}`;
+    case "large_class": return `Split ${d.symbol} into smaller parts${inArea}`;
+    case "large_file": return `Split ${d.path.split("/").pop()} into smaller files${inArea}`;
   }
 }
 
@@ -80,7 +112,8 @@ export function workItemsFor(report: CodeHealthReport): WorkItem[] {
       repo,
       kind: "vulnerable_dependency",
       title: fixed ? `Upgrade ${p.name} ${p.version} → ${fixed}` : `Replace or patch ${p.name} ${p.version} (no fixed version published)`,
-      why: `${p.advisories.length} known ${p.advisories.length === 1 ? "vulnerability" : "vulnerabilities"}, worst ${p.severity}: ${ids.slice(0, 3).join(", ")}${ids.length > 3 ? "…" : ""}. ${p.direct === false ? "Pulled in by another package." : p.direct ? "Declared by the project." : ""}`.trim(),
+      // The consequence first, then the evidence, so a non-developer reads the part they need.
+      why: `It ${libraryImpact(p)}. ${p.advisories.length} published ${p.advisories.length === 1 ? "warning" : "warnings"}, worst ${p.severity}: ${ids.slice(0, 3).join(", ")}${ids.length > 3 ? "…" : ""}.`,
       path: p.lockfile,
       // A direct upgrade is a version bump and a test run; a transitive one usually means
       // upgrading or overriding the package that pulls it in.
@@ -91,6 +124,7 @@ export function workItemsFor(report: CodeHealthReport): WorkItem[] {
   }
 
   const hot = hotspotScores(report);
+  const top = mostChangedFiles(report);
 
   for (const c of report.structure?.cycles ?? []) {
     const churn = Math.max(...c.files.map((f) => hot.get(f) ?? 0));
@@ -98,10 +132,15 @@ export function workItemsFor(report: CodeHealthReport): WorkItem[] {
       id: `cycle:${c.files.join("|")}`,
       repo,
       kind: "dependency_cycle",
-      title: `Break the import cycle between ${c.files.length} files`,
-      why: `${c.path.map((p) => p.split("/").pop()).join(" → ")}. Files in a cycle cannot be changed, tested or reused on their own.`,
+      title: `Untangle ${c.files.length} files that depend on each other in a loop`,
+      why: `These files depend on each other in a loop (${c.path.map((p) => p.split("/").pop()).join(" → ")}), so a change to one can break the others and none can be tested on its own.`,
       path: c.files[0] ?? null,
-      days: Math.max(0.5, Math.round(c.files.length * 0.25 * 4) / 4),
+      // Breaking a loop means cutting a few imports, not rewriting every file in it, so the
+      // effort grows slowly with its size (a 181-file loop is days of work, not 45).
+      days: Math.min(5, Math.max(0.5, Math.round((0.5 + c.files.length * 0.025) * 4) / 4)),
+      area: productArea(c.files[0] ?? ""),
+      hot: c.files.some((f) => top.has(f)),
+      file: c.files[0] ?? null,
       value: (6 + 2 * c.files.length) * churnMultiplier(hot.size ? churn : null),
       lane: "change_risk",
     });
@@ -112,11 +151,15 @@ export function workItemsFor(report: CodeHealthReport): WorkItem[] {
       id: `hub:${h.path}`,
       repo,
       kind: "hub_module",
-      title: `Put a stable interface in front of ${h.path.split("/").pop()}`,
-      why: `${h.fanIn} files depend on it and its functions add up to a complexity of ${h.complexity}, so every change to it ripples.`,
+      title: `Make ${h.path.split("/").pop()} safer to change`,
+      why: `${h.fanIn} other files depend on it and it is complicated, so every change to it can ripple out and break something far away.`,
       path: h.path,
+      area: productArea(h.path),
+      hot: top.has(h.path),
+      file: h.path,
       days: Math.min(5, Math.max(1, Math.round(h.complexity / 40))),
-      value: Math.min(40, 4 + h.fanIn / 2) * churnMultiplier(hot.size ? hot.get(h.path) ?? 0 : null),
+      // Valued by how complicated it is, not how popular: popularity alone is good design.
+      value: Math.min(20, h.complexity / 10) * churnMultiplier(hot.size ? hot.get(h.path) ?? 0 : null),
       lane: "change_risk",
     });
   }
@@ -129,11 +172,14 @@ export function workItemsFor(report: CodeHealthReport): WorkItem[] {
       repo,
       kind: "debt",
       title: debtTitle(d),
-      why: d.reason + (score != null && score >= 0.5 ? " It is in one of the most-changed files in the repository." : ""),
+      why: debtImpact(d, top.has(d.path)),
       path: `${d.path}:${d.line}`,
       days,
-      value: DEBT_WEIGHT[d.severity] * churnMultiplier(score),
-      lane: score != null && score >= 0.5 ? "change_risk" : "maintainability",
+      area: productArea(d.path),
+      hot: top.has(d.path),
+      file: d.path,
+      value: DEBT_WEIGHT[d.severity] * KIND_WEIGHT[d.kind] * churnMultiplier(score),
+      lane: top.has(d.path) ? "change_risk" : "maintainability",
     });
   }
 
@@ -236,6 +282,25 @@ export interface PortfolioRepo {
   dependencyNote: string | null;
   /** Below this, a repo is one resignation from nobody understanding it. */
   knowledgeRisk: boolean;
+  /** Why it needs attention, in words, and how urgently (0 = most). The portfolio sorts by this. */
+  urgency: { rank: number; reason: string };
+}
+
+/**
+ * How urgently a repository needs attention, and why. A score alone ranks a tidy repo with
+ * a critical security hole below a messy one without: the order here is the order a person
+ * would act in. Security, then getting worse, then one-person knowledge, then condition.
+ */
+export function urgencyOf(r: Omit<PortfolioRepo, "urgency">): PortfolioRepo["urgency"] {
+  const serious = r.vulnerable ? r.vulnerable.critical + r.vulnerable.high : 0;
+  if (serious > 0) return { rank: 0, reason: `${serious} serious security ${serious === 1 ? "hole" : "holes"}` };
+  const last = r.history.length >= 2 ? r.history[r.history.length - 1].score - r.history[r.history.length - 2].score : 0;
+  if (last < 0) return { rank: 1, reason: `Getting worse (down ${-last})` };
+  if (r.knowledgeRisk) return { rank: 2, reason: "Only one person really knows it" };
+  if (r.band === "poor") return { rank: 3, reason: "Hard to change safely" };
+  if ((r.cycles ?? 0) > 0 || r.band === "fair") return { rank: 4, reason: "Some areas slow work down" };
+  if (!r.vulnerable) return { rank: 5, reason: "Libraries not checked yet: scan it again" };
+  return { rank: 6, reason: "In good shape" };
 }
 
 export function summariseRepo(
@@ -243,7 +308,7 @@ export function summariseRepo(
   meta: { scanId: string; projectName: string; clientName: string | null; history: { at: string; score: number }[] },
 ): PortfolioRepo {
   const deps = report.dependencies;
-  return {
+  const base: Omit<PortfolioRepo, "urgency"> = {
     repo: report.repo,
     scanId: meta.scanId,
     projectName: meta.projectName,
@@ -265,4 +330,10 @@ export function summariseRepo(
     dependencyNote: deps == null ? "Not checked on this scan. Re-scan to check libraries." : deps.status === "checked" ? null : deps.reason,
     knowledgeRisk: report.history?.busFactor === 1 && report.totals.loc >= 2_000,
   };
+  return { ...base, urgency: urgencyOf(base) };
+}
+
+/** Most urgent first; within the same urgency, the lower score first. */
+export function byUrgency(a: PortfolioRepo, b: PortfolioRepo): number {
+  return a.urgency.rank - b.urgency.rank || a.score - b.score || a.repo.localeCompare(b.repo);
 }

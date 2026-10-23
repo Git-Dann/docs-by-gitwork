@@ -765,7 +765,13 @@ export function resolveImports(input: {
 
 const MAX_CYCLES = 10;
 const MAX_HUBS = 10;
-export const HUB_RULES = { fanIn: 8, complexity: 40, fanInAlone: 20 } as const;
+/**
+ * A hub must be BOTH widely depended on and complicated. Being widely used alone is good
+ * design when the file is simple (a shared error type, a constants file): on a real Flutter
+ * app the old "very widely used" rule put `failure.dart`, a small error type 260 files
+ * import, at the top of the fix plan.
+ */
+export const HUB_RULES = { fanIn: 8, complexity: 40 } as const;
 
 /**
  * Strongly connected components, iteratively (Tarjan). A recursive version overflows the
@@ -906,7 +912,7 @@ export function analyseStructure(measured: FileMeasure[], resolved: ResolvedImpo
         complexity: f.functions.reduce((s, fn) => s + fn.complexity, 0),
       };
     })
-    .filter((h) => (h.fanIn >= HUB_RULES.fanIn && h.complexity >= HUB_RULES.complexity) || h.fanIn >= HUB_RULES.fanInAlone)
+    .filter((h) => h.fanIn >= HUB_RULES.fanIn && h.complexity >= HUB_RULES.complexity)
     .sort((a, b) => b.fanIn * b.complexity - a.fanIn * a.complexity || b.fanIn - a.fanIn || a.path.localeCompare(b.path))
     .slice(0, MAX_HUBS);
 

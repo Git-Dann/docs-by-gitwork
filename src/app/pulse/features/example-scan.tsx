@@ -165,6 +165,11 @@ export function ExampleScanDemo({ pillars }: { pillars: PillarInfo[] }) {
             : `Weighted as Pulse weights them: ${pillars.map((pl) => `${pl.label.toLowerCase()} ${pl.weight}%`).join(", ")}.`}
         </p>
 
+        <p className="ex-plain">
+          <span className="ex-plain-label">In plain English</span>
+          {scan.plain}
+        </p>
+
         <ul className="ex-findings">
           {scan.findings.map((f) => (
             <li key={f.title} className="ex-finding">
@@ -186,11 +191,23 @@ export function ExampleScanDemo({ pillars }: { pillars: PillarInfo[] }) {
               </div>
               <div>
                 <div className="ex-stat-num">{Math.round(scan.codeHealth.effortDays * p)}</div>
-                <div className="ex-stat-label">Days of debt</div>
+                <div className="ex-stat-label">Days to tidy everything</div>
+              </div>
+              <div>
+                <div className="ex-stat-num">{Math.round(scan.codeHealth.daysToMost * p)}</div>
+                <div className="ex-stat-label">Days until most risk is gone</div>
+              </div>
+              <div>
+                <div className="ex-stat-num">{scan.codeHealth.seriousLibraries}</div>
+                <div className="ex-stat-label">Serious library holes</div>
+              </div>
+              <div>
+                <div className="ex-stat-num">{scan.codeHealth.loops}</div>
+                <div className="ex-stat-label">Files tangled in loops</div>
               </div>
               <div>
                 <div className="ex-stat-num">{scan.codeHealth.busFactor}</div>
-                <div className="ex-stat-label">Bus factor</div>
+                <div className="ex-stat-label">People who know it</div>
               </div>
             </div>
             <label className="ex-slider">
@@ -204,7 +221,7 @@ export function ExampleScanDemo({ pillars }: { pillars: PillarInfo[] }) {
               </span>
               <input type="range" min={1} max={6} step={1} value={devs} onChange={(e) => setDevs(Number(e.target.value))} aria-label="Developers working on the debt" />
             </label>
-            <p className="ex-note" style={{ marginTop: 10 }}>Hotspots, where complex code changes most: {scan.codeHealth.hotspots.join(", ")}.</p>
+            <p className="ex-note" style={{ marginTop: 10 }}>Where it costs most, because the code is complicated and changes often: {scan.codeHealth.hotspots.join(", ")}.</p>
           </div>
         )}
       </div>
@@ -232,11 +249,13 @@ const STYLES = `
 .ex-track{height:6px;border-radius:999px;background:rgba(12,12,24,0.08);overflow:hidden}
 .ex-fill{height:100%;border-radius:999px}
 .ex-note{font-size:12px;color:${MUTED};line-height:1.55;margin:14px 0 0}
+.ex-plain{margin:18px 0 0;padding:14px 16px;background:#F7F3EC;border:1px solid ${RULE};border-radius:10px;font-size:15px;line-height:1.55;color:${TEXT}}
+.ex-plain-label{display:block;font-family:${MONO};font-size:10px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED};margin-bottom:6px}
 .ex-findings{list-style:none;margin:24px 0 0;padding:0;border-top:1px solid ${RULE}}
 .ex-finding{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid ${RULE}}
 .ex-chip{flex:0 0 auto;width:72px;text-align:center;font-family:${MONO};font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;border-radius:6px;padding:5px 0;margin-top:1px}
 .ex-code{margin-top:24px;padding:20px;border-radius:12px;background:#F7F4EE}
-.ex-code-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.ex-code-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px 12px;margin-bottom:20px}
 .ex-stat-num{font-family:${DISPLAY};font-size:34px;font-weight:700;line-height:1;color:${TEXT};font-variant-numeric:tabular-nums}
 .ex-stat-label{font-family:${MONO};font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${MUTED};margin-top:8px}
 .ex-slider{display:block}
