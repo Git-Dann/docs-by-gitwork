@@ -156,7 +156,7 @@ export default function PulseFeaturesPage() {
               <article key={r.id} className="pf-report">
                 <div className="pf-report-cover">
                   <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 500, letterSpacing: "0.16em", textTransform: "uppercase", color: INK_MUTED }}>Pulse // Example report</div>
-                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginTop: 28 }}>
+                  <div className="pf-report-head">
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, letterSpacing: "-0.012em", lineHeight: 1.15, color: PAPER }}>{breakable(r.subject)}</div>
                       <div style={{ fontSize: 13, color: INK_MUTED, marginTop: 4 }}>{r.kind}</div>
@@ -280,9 +280,12 @@ const PAGE_STYLES = `
 .pf-way-list li::before{content:"";flex:0 0 auto;width:6px;height:6px;border-radius:999px;background:${SIGNAL}}
 .pf-extras{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:28px 0 0;border-top:1px solid ${RULE}}
 .pf-extra{padding:18px 0;border-bottom:1px solid ${RULE}}
-.pf-reports{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.pf-report{display:flex;flex-direction:column;background:#fff;border:1px solid ${RULE};border-radius:14px;overflow:hidden}
-.pf-report-cover{background:${INK};padding:20px 20px 22px}
+.pf-reports{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto auto;column-gap:18px;row-gap:0}
+/* Subgrid: every card's dark cover and white body share one row each, so a name that
+   wraps in one card makes all three covers taller together, not just its own. */
+.pf-report{grid-row:span 2;display:grid;grid-template-rows:subgrid;row-gap:0;background:#fff;border:1px solid ${RULE};border-radius:14px;overflow:hidden}
+.pf-report-cover{background:${INK};padding:20px 20px 22px;display:flex;flex-direction:column}
+.pf-report-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-top:28px}
 .pf-report-score{flex:0 0 auto;width:64px;height:64px;border-radius:999px;display:grid;place-items:center;border:4px solid var(--band);}
 .pf-report-score span{font-family:var(--font-fraunces),'Fraunces',Georgia,serif;font-size:24px;font-weight:700;color:${PAPER};font-variant-numeric:tabular-nums lining-nums}
 .pf-report-btn{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid ${RULE};font-size:13px;font-weight:500;color:${TEXT};text-decoration:none}
@@ -291,7 +294,8 @@ const PAGE_STYLES = `
 .pf-report-btn--primary{background:${INK};border-color:${INK};color:${PAPER}}
 .pf-report-btn--primary:hover{background:${SIGNAL};border-color:${SIGNAL}}
 @media (max-width: 760px){
-  .pf-reports{grid-template-columns:minmax(0,1fr)}
+  .pf-reports{grid-template-columns:minmax(0,1fr);grid-template-rows:none;row-gap:18px}
+  .pf-report{grid-row:auto;grid-template-rows:none;display:flex;flex-direction:column}
   .pf-ways{grid-template-columns:minmax(0,1fr);grid-template-rows:none}
   .pf-way{grid-row:auto;grid-template-rows:none;display:flex;flex-direction:column}
   .pf-way + .pf-way{border-left:0;border-top:1px solid ${RULE}}
