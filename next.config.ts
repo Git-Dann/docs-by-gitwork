@@ -189,6 +189,14 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "public, max-age=60, must-revalidate" }],
       },
       {
+        // /pulse/features is a link for the team, never a search result. The header says
+        // so even to a crawler that ignores the page's meta tag. Deliberately NOT disallowed
+        // in robots.txt: a blocked crawler never sees "noindex", and can still index the
+        // bare URL from a link elsewhere.
+        source: "/pulse/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+      {
         // The public Pulse scanner is a lead-gen widget for the gitwork.co.uk marketing
         // site — restricted to Gitwork's own domains, plus 'self' so /pulse-overview's
         // same-origin self-embed keeps working. No X-Frame-Options here (it can't
