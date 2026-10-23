@@ -20,10 +20,27 @@ export const PULSE_SUMMARY =
   "Pulse checks whether a product is ready to launch. Give it a website, a GitHub repo or an App Store, Google Play or Chrome Web Store listing. It runs only the checks that apply to that kind of product, says plainly what it could not check, and gives a ready or not-ready verdict.";
 
 /** What can be scanned. */
-export const PULSE_INPUTS: { name: string; detail: string }[] = [
-  { name: "A website", detail: "Any public URL: a SaaS app, a marketing site or an API." },
-  { name: "A GitHub repo", detail: "The source itself: code health, secrets, tests, CI and platform-specific checks." },
-  { name: "A store listing", detail: "App Store, Google Play or Chrome Web Store, read from the live listing." },
+/**
+ * What can be scanned, and which product types each way in covers. `products` are keys of
+ * the scan form's PULSE_PLATFORM_LABEL, so a renamed type cannot drift from the form.
+ * A store link covers the Mac App Store too, which is scanned as a desktop app.
+ */
+export const PULSE_INPUTS: { name: string; detail: string; products: string[] }[] = [
+  {
+    name: "A website",
+    detail: "Any public URL: a SaaS app, a marketing site or an API. For any other product, its public site.",
+    products: ["WEB_APP", "SAAS", "MARKETING_SITE", "API_BACKEND"],
+  },
+  {
+    name: "A GitHub repo",
+    detail: "The source itself: code health, secrets, tests, CI and platform-specific checks.",
+    products: ["WEB_APP", "SAAS", "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "API_BACKEND", "CLI_TOOL"],
+  },
+  {
+    name: "A store listing",
+    detail: "App Store, Google Play or Chrome Web Store, read from the live listing.",
+    products: ["IOS_APP", "ANDROID_APP", "DESKTOP_APP", "CHROME_EXTENSION"],
+  },
 ];
 
 /** The sections the page groups areas into, in display order. Plain words, for a reader. */

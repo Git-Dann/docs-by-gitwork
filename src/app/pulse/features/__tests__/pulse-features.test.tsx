@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AREAS, AREA_GROUPS, EXTRAS, PULSE_INPUTS, PULSE_PLATFORMS, PULSE_STEPS, PULSE_SUMMARY } from "@/lib/pulse-capabilities";
 import { matchesQuery, searchArea } from "@/app/pulse/features/check-explorer";
 import { pulseCapabilityCounts } from "@/server/pulse-capabilities";
+import { PULSE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
 import { CHECKS_REGISTRY } from "@/server/checks-registry";
 import PulseFeaturesPage from "@/app/pulse/features/page";
 
@@ -72,6 +73,12 @@ describe("what the features page says stays true", () => {
   it("is not a sales page: no call to book or buy", () => {
     const html = renderToStaticMarkup(<PulseFeaturesPage />);
     expect(html).not.toMatch(/book|run a (free )?check|\/production-ready/i);
+  });
+
+  it("every way in names real product types, and every product type has a way in", () => {
+    const keys = Object.keys(PULSE_PLATFORM_LABEL).filter((k) => k !== "OTHER");
+    for (const i of PULSE_INPUTS) for (const p of i.products) expect(keys, `${i.name}: ${p}`).toContain(p);
+    for (const k of keys) expect(PULSE_INPUTS.some((i) => i.products.includes(k)), k).toBe(true);
   });
 
   it("lists the scan form's product types, without 'Other'", () => {

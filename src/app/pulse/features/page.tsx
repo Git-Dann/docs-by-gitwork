@@ -9,7 +9,10 @@ import {
   PULSE_SUMMARY,
 } from "@/lib/pulse-capabilities";
 import { pulseCapabilityCounts } from "@/server/pulse-capabilities";
+import { PULSE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
 import { CheckExplorer } from "./check-explorer";
+import { ExampleScanDemo } from "./example-scan";
+import { PILLARS } from "@/server/pulse-checks/pillars";
 
 /**
  * What Pulse is and everything it does — an internal overview for sharing a link with the
@@ -130,12 +133,22 @@ export default function PulseFeaturesPage() {
         </Wrap>
       </section>
 
+      {/* What a result looks like — example data that moves */}
+      <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}`, background: "#EAE5DC" }}>
+        <Wrap>
+          <Eyebrow>See it work</Eyebrow>
+          <H2>What a result looks like</H2>
+          <Lede>Pick a kind of product. These are example results, not a client&apos;s, but every finding is the kind Pulse really reports.</Lede>
+          <ExampleScanDemo pillars={PILLARS.map((p) => ({ key: p.key, label: p.label, weight: p.weight }))} />
+        </Wrap>
+      </section>
+
       {/* What it checks — the explorer */}
       <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}` }}>
         <Wrap>
           <Eyebrow>What it checks</Eyebrow>
           <H2>{checks.toLocaleString("en-GB")} checks, in {AREA_GROUPS.length} sections</H2>
-          <Lede>Search for anything, or pick a section and open an area to see every check in it.</Lede>
+          <Lede>Search for anything, narrow it to a section, or open an area to see every check in it.</Lede>
           <CheckExplorer
             total={checks}
             groups={AREA_GROUPS.map((g) => ({ id: g.id, name: g.name, line: g.line }))}
@@ -147,44 +160,45 @@ export default function PulseFeaturesPage() {
         </Wrap>
       </section>
 
-      {/* What it understands */}
+      {/* What it scans — three ways in, each listing the product types it covers */}
       <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}`, background: "#EAE5DC" }}>
         <Wrap>
           <Eyebrow>What it scans</Eyebrow>
           <H2>Three ways in, {PULSE_PLATFORMS.length} kinds of product</H2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 18, margin: "28px 0 24px" }}>
-            {PULSE_INPUTS.map((i) => (
-              <div key={i.name} style={card}>
-                <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>{i.name}</h3>
-                <p style={{ fontSize: 14, lineHeight: 1.55, color: TEXT, margin: 0 }}>{i.detail}</p>
+          <div className="pf-ways">
+            {PULSE_INPUTS.map((i, n) => (
+              <div key={i.name} className="pf-way">
+                <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: "0.2em", color: MUTED }}>{String(n + 1).padStart(2, "0")}</div>
+                <h3 style={{ fontFamily: DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: "-0.012em", lineHeight: 1.15, margin: "12px 0 8px" }}>{i.name}</h3>
+                <p style={{ fontSize: 14, lineHeight: 1.55, color: MUTED, margin: 0 }}>{i.detail}</p>
+                <ul className="pf-way-list">
+                  {i.products.map((p) => (
+                    <li key={p}>{PULSE_PLATFORM_LABEL[p]}</li>
+                  ))}
+                </ul>
               </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {PULSE_PLATFORMS.map((p) => (
-              <span key={p} style={{ border: `1px solid ${RULE}`, background: "#FFFFFF", borderRadius: 999, padding: "6px 14px", fontSize: 13 }}>
-                {p}
-              </span>
             ))}
           </div>
         </Wrap>
       </section>
 
-      {/* Beyond the checks */}
+      {/* Beyond the checks — a two-column list, not a wall of boxes */}
       <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}` }}>
         <Wrap>
           <Eyebrow>Beyond the checks</Eyebrow>
           <H2>What else Pulse does</H2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18, marginTop: 28 }}>
+          <dl className="pf-extras">
             {EXTRAS.map((e) => (
-              <div key={e.name} style={card}>
-                <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 6px" }}>{e.name}</h3>
-                <p style={{ fontSize: 14, lineHeight: 1.55, color: MUTED, margin: 0 }}>{e.detail}</p>
+              <div key={e.name} className="pf-extra">
+                <dt style={{ fontSize: 15, fontWeight: 600, margin: "0 0 4px", color: TEXT }}>{e.name}</dt>
+                <dd style={{ fontSize: 14, lineHeight: 1.55, color: MUTED, margin: 0 }}>{e.detail}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         </Wrap>
       </section>
+
+      <style>{PAGE_STYLES}</style>
 
       <footer style={{ borderTop: `1px solid ${RULE}` }}>
         <Wrap>
@@ -197,3 +211,22 @@ export default function PulseFeaturesPage() {
     </main>
   );
 }
+
+/** Layout rules inline styles cannot express: column counts per width, and the hairline rows. */
+const PAGE_STYLES = `
+.pf-ways{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:32px;background:#fff;border:1px solid ${RULE};border-radius:14px;overflow:hidden}
+.pf-way{padding:26px 26px 24px;display:flex;flex-direction:column}
+.pf-way + .pf-way{border-left:1px solid ${RULE}}
+.pf-way-list{list-style:none;margin:20px 0 0;padding:16px 0 0;border-top:1px solid ${RULE};display:grid;gap:9px}
+.pf-way-list li{display:flex;align-items:center;gap:10px;font-size:14px;color:${TEXT}}
+.pf-way-list li::before{content:"";flex:0 0 auto;width:6px;height:6px;border-radius:999px;background:${SIGNAL}}
+.pf-extras{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:28px 0 0;border-top:1px solid ${RULE}}
+.pf-extra{padding:18px 0;border-bottom:1px solid ${RULE}}
+@media (max-width: 760px){
+  .pf-ways{grid-template-columns:minmax(0,1fr)}
+  .pf-way + .pf-way{border-left:0;border-top:1px solid ${RULE}}
+  .pf-way{padding:22px 20px}
+  .pf-extras{grid-template-columns:minmax(0,1fr)}
+  .pf-way-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+`;

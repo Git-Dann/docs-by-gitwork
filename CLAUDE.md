@@ -7614,3 +7614,14 @@ each with a two-sided test.
 
 Also in this change: **Code measures candidates' actual code** (§35), and **Countermarks are
 pinned to the commit examined** (§38).
+
+**Overview page polish (same day):** `/pulse/features` uses one search bar with a section
+dropdown (not a wall of pills). Area cards are a fixed size and open a side panel (a bottom
+sheet on phones) instead of expanding in place. "What it scans" maps each way in to the product
+types it covers (`PULSE_INPUTS.products`, keys of the scan form's list, test-enforced). An
+**example scan** section (`example-scan.tsx`, data in `src/lib/pulse-examples.ts`) animates a
+score, the six pillar bars and findings per product type, with a slider that turns debt days
+into weeks. Its overall score is computed with the real PILLARS weights, never typed. ⚠️ It
+renders the finished values first, and the reset to 0 happens inside the first animation frame.
+A hidden tab never runs one, and resetting earlier left a screenshot showing a score of 0 (§39).
+
