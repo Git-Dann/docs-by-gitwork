@@ -65,6 +65,9 @@ RUN apk add --no-cache \
   harfbuzz \
   ca-certificates \
   ttf-freefont
+# git: Pulse's code-health measure takes a shallow clone of the repository it is scanning
+# (src/server/code-health/clone.ts). Read-only; nothing in a checkout is ever executed.
+RUN apk add --no-cache git
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 ENV NODE_ENV=production

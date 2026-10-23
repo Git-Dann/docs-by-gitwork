@@ -13,6 +13,8 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { DEMO_CODE_HEALTH } from "@/lib/demo/demo-code-health";
+import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
   TaskDTO,
@@ -2952,6 +2954,7 @@ function makeDemoScan(o: {
   at: string;
   checks: ReturnType<typeof demoPulseChecks>;
   llmAnalysis: unknown;
+  codeHealth?: CodeHealthReport | null;
 }) {
   return {
     id: o.id,
@@ -2975,6 +2978,7 @@ function makeDemoScan(o: {
     llmAnalysis: o.llmAnalysis,
     discoveryKit: null,
     codeInsights: null,
+    codeHealth: o.codeHealth ?? null,
     deployInsights: null,
     browserInsights: null,
     visualInsights: null,
@@ -3081,6 +3085,7 @@ const demoScanCadenza = makeDemoScan({
   inputType: "GITHUB_REPO",
   inputGithubRepo: "cadenza-app/cadenza",
   platform: "Render",
+  codeHealth: DEMO_CODE_HEALTH,
   healthScore: 63,
   previousHealthScore: 58,
   techStack: ["React", "Vite", "Node.js", "Express", "PostgreSQL", "Render"],

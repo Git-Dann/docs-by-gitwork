@@ -7463,3 +7463,50 @@ checked **4 Aug**, still showing UP), Fellas had no monitor, and a failing check
   "Revenue this month" is dropped. A month that has ended then keeps no revenue figures, and
   the running month keeps the counts and MRR, which are true now. Ask Big Wedge to scope
   revenue to `start_date`/`end_date`.
+
+## 80. Recent Changes (October 2026) — Pulse measures code health from a full checkout
+
+Prompted by Code Tuner (a competitor showing per-class complexity and a tech-debt view). Pulse
+read source by sampling ~150 files through the GitHub API and pattern-matching. That can't say
+"this method has a complexity of 34, at line 120". A repo scan now also takes a **shallow clone
+and parses every supported source file with a real parser** (tree-sitter, as WebAssembly), in
+`src/server/code-health/`. Validated against Code Tuner on `pallets/flask`: class line spans
+match exactly. Weighted complexity is one lower per class, because they add 1 per class.
+
+- **Pipeline:** `clone.ts` (hardened shallow clone) → `analyse.ts` (which files, then parse) →
+  `measure.ts` (one tree walk: per-function complexity, length, params, nesting; per-class
+  methods + weighted complexity) → `rules.ts` (thresholds, register, score) → `checks.ts` (7
+  `code_health_*` checks, CODE_QUALITY). The report lives at `PulseScan.agentData.codeHealth`
+  (no schema change). It's rendered by `CodeHealthPanel` on the scan overview and on the
+  shared report/PDF (25 rows). Each register row links to the exact line on GitHub at the
+  commit measured.
+- **Languages:** TS, TSX, JS, Python, Swift, Kotlin, Java, Go, PHP. **Dart and Ruby are not
+  supported**: their grammars don't load on this parser version. The report counts their files
+  under "Not measured", never as zero. ⚠️ `web-tree-sitter@0.20.8` and `tree-sitter-wasms@0.1.13`
+  are **pinned as a pair**. Newer web-tree-sitter crashed on some grammars. Bump them together,
+  and re-run `src/server/code-health/__tests__/measure.test.ts`, which uses real parses. A wrong
+  grammar node name fails silently (that construct just stops counting). That test caught
+  Swift's `default_keyword` while this was being written.
+- **Thresholds are published ones** (SEI complexity bands 11/21/51; class weighted complexity
+  47, from Lanza & Marinescu). The register says **"large class", never "God Class"**: that rule
+  also needs cohesion measures we don't take. There's **no dead-code check**, because that needs
+  a whole-program call graph.
+- **Score** (`scoreOf`) is share-based: big repos aren't punished for size, nested functions
+  aren't charged twice, and tests are excluded. The formula is in the doc comment.
+- **Clone safety:** github.com `owner/repo` only. The token goes in an HTTP header, never the
+  URL. Hooks, symlinks and the file protocol are off, and git runs with a clean environment.
+  Nothing in a checkout is ever executed. Limits: 500 MB repo, 90s, 2 clones at once, 6,000
+  files, 60s of parsing. The directory is always deleted. A clone doesn't count against the
+  shared GitHub REST limit (§62.7).
+- **It never fails silently.** A clone or measure that can't run emits one INCONCLUSIVE
+  `code_health_score` saying why. The sampled `clean_file_size` / `clean_nesting_depth` are held
+  back while it runs, then dropped if it succeeded or shown if it didn't
+  (`SUPERSEDED_BY_CODE_HEALTH`), so a scan never gives two answers to one question.
+- **Deploy:** the runner image installs `git` (Dockerfile). `next.config.ts` externalises
+  `web-tree-sitter` and traces the runtime plus the nine grammars. Paths resolve from
+  `process.cwd()/node_modules`, never `createRequire`, which webpack warns on.
+- **Measured** (shallow clone + parse): flask 1.0s · express 0.9s · Alamofire 3.4s ·
+  okhttp 2.4s · cal.com (320k lines) 13.9s.
+- **Phase 2, not built:** git-history hotspots (churn × complexity), complexity trend between
+  scans, bus factor, module coupling, branch choice, a costed register via the pricing engine,
+  Provenance `subjectCommit` (the commit is now known), Dart/Ruby, and a weekly digest email.

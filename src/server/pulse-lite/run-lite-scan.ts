@@ -21,6 +21,7 @@ import {
 import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { resolveEvidenceBackedControls } from "@/server/pulse-checks/standards-verification";
 import { runCodeAgent } from "@/server/pulse-agents/code-agent";
+import { runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type CodeHealthReport } from "@/server/code-health";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
@@ -88,6 +89,8 @@ export interface LiteScanResult {
   browserInsights: BrowserAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
   codeInsights: CodeAgentInsights | null;
+  /** The full-checkout code measure (repo scans only). Null when it did not run. */
+  codeHealth: CodeHealthReport | null;
   homepageUrl: string | null;
   /** Jurisdiction codes auto-detected from the page (audit + legacy fallback). */
   detectedMarkets: JurisdictionCode[];
@@ -174,6 +177,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let browserInsights: BrowserAgentInsights | null = null;
   let deployInsights: DeployAgentInsights | null = null;
   let codeInsights: CodeAgentInsights | null = null;
+  let codeHealth: CodeHealthReport | null = null;
   let homepageUrl: string | null = null;
   let detectedMarkets: JurisdictionCode[] = [];
   let urlTargetBlocked = false;
@@ -366,10 +370,27 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // The collectors run as what the repo IS (executionPlatform), not what was picked:
     // an Express API picked as "iOS app" ran 17 checks, the same repo picked as "Other"
     // ran 101. The dropdown only labels the scan; the coverage note below says so.
+    // The full-checkout measure answers some sampled checks better. Those are held back
+    // until it settles: shown only if it could not run, so a scan never carries two
+    // answers to one question, and never loses the sampled one when the full one failed.
+    const superseded = new Set<string>(SUPERSEDED_BY_CODE_HEALTH);
+    const heldSampled: PulseScanCheckInput[] = [];
+    const repoIngest = (batch: PulseScanCheckInput[]) => {
+      heldSampled.push(...batch.filter((c) => superseded.has(c.checkKey)));
+      return ingest(batch.filter((c) => !superseded.has(c.checkKey)));
+    };
+    const codeHealthRun = (snapshot?.accessible === false ? Promise.resolve(null) : runCodeHealth(repo)).then((r) => {
+      if (!r) return;
+      if (r.report) { codeHealth = r.report; collectorCompleted("code-health"); }
+      else collectorFailed("code-health", new Error(r.unavailable ?? "did not run"));
+      pending.push(ingest(r.checks));
+    });
     const [ghResult, codeResult] = await Promise.all([
-      runGithubChecks(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
-      runCodeAgent(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
+      runGithubChecks(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(repoIngest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
+      runCodeAgent(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(repoIngest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
+      codeHealthRun,
     ]);
+    if (!codeHealth && heldSampled.length > 0) pending.push(ingest(heldSampled));
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
 
@@ -419,6 +440,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     browserInsights,
     deployInsights,
     codeInsights,
+    codeHealth,
     homepageUrl,
     detectedMarkets,
     collectorExecutions,

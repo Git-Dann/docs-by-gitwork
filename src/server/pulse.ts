@@ -1,3 +1,4 @@
+import type { CodeHealthReport } from "@/types/code-health";
 import { NotFoundError, canSeeAllClients, type EffectiveUser, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { Prisma } from "@prisma/client";
 import { resolveDocumentOwnerName, type DocumentOwnerIdentity } from "@/lib/document-owner";
@@ -99,6 +100,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     llmAnalysis: asJson<PulseAnalysisOutput | null>(record.llmAnalysis, null),
     discoveryKit: (record.discoveryData as DiscoveryKit | null) ?? null,
     codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
+    codeHealth: ((record.agentData as { codeHealth?: CodeHealthReport | null } | null)?.codeHealth) ?? null,
     deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
     browserInsights: ((record.agentData as { browserInsights?: BrowserAgentInsights | null } | null)?.browserInsights) ?? null,
     visualInsights: ((record.agentData as { visualInsights?: VisualAgentInsights | null } | null)?.visualInsights) ?? null,
@@ -1125,6 +1127,7 @@ export async function runAnalysis(
     let techStack: string[] = [];
     let detectedMarkets: JurisdictionCode[] = [];
     let codeInsights: CodeAgentInsights | null = null;
+    let codeHealth: CodeHealthReport | null = null;
     let deployInsights: DeployAgentInsights | null = null;
     let browserInsights: BrowserAgentInsights | null = null;
     let visualInsights: VisualAgentInsights | null = null;
@@ -1158,6 +1161,7 @@ export async function runAnalysis(
       allChecks = lite.checks;
       techStack = lite.techStack;
       codeInsights = lite.codeInsights;
+      codeHealth = lite.codeHealth;
       deployInsights = lite.deployInsights;
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;
@@ -1231,7 +1235,7 @@ export async function runAnalysis(
         healthScore: isDescription ? null : healthScore,
         checksCompletedAt: new Date(),
         techStack: techStack as unknown as Prisma.InputJsonValue,
-        agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, codeHealth, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
         detectedMarkets: detectedMarkets.length > 0 ? (detectedMarkets as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         complianceScorecard: complianceScorecard.length > 0 ? (complianceScorecard as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         scoreBreakdown: isDescription ? Prisma.JsonNull : (scoreBreakdown as unknown as Prisma.InputJsonValue),
@@ -1417,7 +1421,7 @@ export async function runAnalysis(
         pricingBands: pricingBands.length > 0 ? (pricingBands as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         // Authenticated page signals are intentionally ephemeral. They are
         // locally redacted, used for this synthesis call, and never persisted.
-        agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, codeHealth, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
       },
     });
 

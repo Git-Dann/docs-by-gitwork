@@ -50,12 +50,24 @@ const nextConfig: NextConfig = {
   // instead of request.url. Confirmed by instrumenting next/dist/server/config.js
   // and next/dist/build/index.js directly — this isn't a guess.
   // Keep the headless-Chromium packages out of the bundler so their code isn't relocated.
-  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "firebase-admin"],
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "firebase-admin", "web-tree-sitter"],
   // …but Chromium's binary pack under bin/ is loaded by a computed path at runtime, so Next's
   // file tracer doesn't see it and leaves it out of the function ("/bin does not exist"). Force
   // it into ONLY the PDF route's function (the `*` matches the [id] segment; scoping it here
   // avoids bloating every other /api route with the ~50MB pack).
   outputFileTracingIncludes: {
+    // Pulse's code-health measure (src/server/code-health/grammar.ts) loads the parser
+    // runtime and one grammar per language by path at runtime, which the tracer cannot
+    // see. Scans run from many routes (in-app, MCP, cron jobs), so this is global; the
+    // standalone build copies each file once. Only the nine grammars the measure uses,
+    // not the ~40 the package ships. Keep in step with LANGUAGE_RULES.
+    "/**/*": [
+      "./node_modules/web-tree-sitter/package.json",
+      "./node_modules/web-tree-sitter/tree-sitter.js",
+      "./node_modules/web-tree-sitter/tree-sitter.wasm",
+      "./node_modules/tree-sitter-wasms/package.json",
+      "./node_modules/tree-sitter-wasms/out/tree-sitter-{typescript,tsx,javascript,python,swift,kotlin,java,go,php}.wasm",
+    ],
     "/api/proposals/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
     "/api/pulse/scans/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],
     "/api/docs/*/pdf": ["./node_modules/@sparticuz/chromium/**/*"],

@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { serializePulseScan, pulseInclude } from "@/server/pulse";
 import { parseWorkspaceBranding } from "@/server/documents";
 import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
+import { CodeHealthPanel } from "@/components/pulse/code-health-panel";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
 // Report-view domain groupings are derived from the single source of truth.
@@ -343,6 +344,9 @@ export default async function PublicReportPage({
             </div>
           </div>
         )}
+
+        {/* Code health — repo scans only: the full-checkout measure and its register */}
+        {scan.codeHealth && <CodeHealthPanel report={scan.codeHealth} rows={25} />}
 
         {/* Compliance by market */}
         {scan.complianceScorecard && scan.complianceScorecard.length > 0 && (

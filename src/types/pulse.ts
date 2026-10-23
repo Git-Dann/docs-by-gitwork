@@ -1,3 +1,4 @@
+import type { CodeHealthReport } from "@/types/code-health";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
 export type { CheckCategory };
 
@@ -358,6 +359,8 @@ export interface PulseScanRecord {
   llmAnalysis: PulseAnalysisOutput | null;
   discoveryKit: DiscoveryKit | null;
   codeInsights: CodeAgentInsights | null;
+  /** Full-checkout code measure, repo scans only. Null for URL scans and older scans. */
+  codeHealth: CodeHealthReport | null;
   deployInsights: DeployAgentInsights | null;
   browserInsights: BrowserAgentInsights | null;
   visualInsights: VisualAgentInsights | null;

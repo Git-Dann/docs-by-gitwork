@@ -247,6 +247,13 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // -- Code cleanliness: structural debt, measured --
   { key: "clean_file_size", category: CATEGORIES.CODE_QUALITY, label: "Files stay a readable length" },
   { key: "clean_nesting_depth", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested" },
+  { key: "code_health_score", category: CATEGORIES.CODE_QUALITY, label: "Code health" },
+  { key: "code_health_complex_functions", category: CATEGORIES.CODE_QUALITY, label: "Functions are simple enough to test" },
+  { key: "code_health_long_functions", category: CATEGORIES.CODE_QUALITY, label: "Functions are a readable length" },
+  { key: "code_health_large_classes", category: CATEGORIES.CODE_QUALITY, label: "Classes have one clear job" },
+  { key: "code_health_large_files", category: CATEGORIES.CODE_QUALITY, label: "Source files stay a manageable size" },
+  { key: "code_health_parameter_lists", category: CATEGORIES.CODE_QUALITY, label: "Functions take few parameters" },
+  { key: "code_health_nesting", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested (full measure)" },
   { key: "clean_duplication_cross_file", category: CATEGORIES.CODE_QUALITY, label: "Logic is not copy-pasted between files" },
   { key: "clean_duplication_in_file", category: CATEGORIES.CODE_QUALITY, label: "Blocks are not repeated within a file" },
   { key: "clean_commented_out_code", category: CATEGORIES.CODE_QUALITY, label: "No commented-out code left behind" },

@@ -1,5 +1,6 @@
 "use client";
 
+import { CodeHealthPanel } from "@/components/pulse/code-health-panel";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -2461,6 +2462,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               rollup exists to answer. On the Checks tab it would sit above the
               wall it is meant to save you reading. */}
           <PillarStrip checks={scan.checks} num={sectionNo()} />
+
+          {/* Repo scans: the full-checkout measure and its tech-debt register. */}
+          {scan.codeHealth && <CodeHealthPanel report={scan.codeHealth} num={sectionNo()} />}
 
           {/* COMPLIANCE BY MARKET — per-jurisdiction posture; deep-links to the Compliance tab */}
           {scorecard.length > 0 && (
