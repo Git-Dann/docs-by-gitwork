@@ -11,7 +11,7 @@ type Ctx = { params: Promise<{ slug: string; sheetId: string }> };
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
     const { slug, sheetId } = await params;
-    const { clientId, actor } = await resolveInternalSheets(req, slug, "upload images");
+    const { clientId, actor } = await resolveInternalSheets(req, slug, "upload images", "rows");
     if (!clientId) return apiError("Client not found", 404);
     const file = await readImageForm(req);
     return apiOk(await saveSheetImage({ clientId }, sheetId, file, actor), { status: 201 });

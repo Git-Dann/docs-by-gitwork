@@ -12,7 +12,7 @@ type Ctx = { params: Promise<{ slug: string }> };
 export async function GET(req: NextRequest, { params }: Ctx) {
   try {
     const { slug } = await params;
-    const { clientId } = await resolveInternalSheets(req, slug, "view sheets");
+    const { clientId } = await resolveInternalSheets(req, slug, "view sheets", "rows");
     if (!clientId) return apiError("Client not found", 404);
     const people = sheetPeopleForBrowser(await sheetPeopleDirectory({ clientId }, "team"));
     return apiOk({ people });
