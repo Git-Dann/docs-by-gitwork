@@ -3232,6 +3232,26 @@ const demoPulseScansById: Record<string, unknown> = {
   "scan-fairway": demoScanFairway,
 };
 
+/**
+ * The three demo scans as the /pulse/features example reports (strong, middling, weak).
+ * Renamed onto `.example` names so a public page never gives a real domain a made-up score.
+ */
+export function examplePulseReportScans(): Record<string, unknown> {
+  const rename = (scan: object, projectName: string, url: string | null, repo: string | null): unknown => ({
+    ...scan,
+    projectName,
+    clientId: null,
+    clientName: null,
+    inputUrl: url,
+    inputGithubRepo: repo,
+  });
+  return {
+    strong: rename(demoScanNorthwind, "northwind.example", "https://app.northwind.example", null),
+    middling: rename(demoScanCadenza, "cadenza (GitHub repo)", null, "example/cadenza"),
+    weak: rename(demoScanFairway, "fairwaynine.example", "https://fairwaynine.example", null),
+  };
+}
+
 const demoPulseScanList = [
   { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 48, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
   { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: 63, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },

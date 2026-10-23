@@ -13,6 +13,8 @@ import { PULSE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
 import { CheckExplorer } from "./check-explorer";
 import { ExampleScanDemo } from "./example-scan";
 import { PILLARS } from "@/server/pulse-checks/pillars";
+import { EXAMPLE_REPORTS } from "@/lib/pulse-example-reports";
+import { scoreGrade } from "@/lib/badge/pulse-badge";
 
 /**
  * What Pulse is and everything it does — an internal overview for sharing a link with the
@@ -64,7 +66,7 @@ function H2({ children }: { children: React.ReactNode }) {
 }
 
 function Lede({ children }: { children: React.ReactNode }) {
-  return <p style={{ fontSize: 18, fontWeight: 300, lineHeight: 1.55, color: MUTED, margin: "0 0 32px", maxWidth: "52ch" }}>{children}</p>;
+  return <p style={{ fontSize: 18, fontWeight: 300, lineHeight: 1.55, color: MUTED, margin: "0 0 32px", maxWidth: "80ch", textWrap: "balance" }}>{children}</p>;
 }
 
 function Wrap({ children }: { children: React.ReactNode }) {
@@ -143,6 +145,45 @@ export default function PulseFeaturesPage() {
         </Wrap>
       </section>
 
+      {/* Example reports — the real report design, as PDFs, at three levels */}
+      <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}` }}>
+        <Wrap>
+          <Eyebrow>The report</Eyebrow>
+          <H2>Three example reports</H2>
+          <Lede>The PDF a client receives, in the same design, for a strong, a middling and a weak result. Example data, not a client&apos;s.</Lede>
+          <div className="pf-reports">
+            {EXAMPLE_REPORTS.map((r) => (
+              <article key={r.id} className="pf-report">
+                <div className="pf-report-cover">
+                  <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 500, letterSpacing: "0.16em", textTransform: "uppercase", color: INK_MUTED }}>Pulse // Example report</div>
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginTop: 28 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, letterSpacing: "-0.012em", lineHeight: 1.15, color: PAPER }}>{breakable(r.subject)}</div>
+                      <div style={{ fontSize: 13, color: INK_MUTED, marginTop: 4 }}>{r.kind}</div>
+                    </div>
+                    <div className="pf-report-score" style={{ ["--band" as string]: bandColour(r.score) }}>
+                      <span>{r.score}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: bandColour(r.score) }} />
+                    <span>{r.label}</span>
+                    <span style={{ color: MUTED }}>· {scoreGrade(r.score)}</span>
+                  </div>
+                  <p style={{ fontSize: 14, lineHeight: 1.55, color: MUTED, margin: 0, flex: 1 }}>{r.summary}</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <a className="pf-report-btn pf-report-btn--primary" href={`/api/public/pulse/examples/${r.id}/pdf`} target="_blank" rel="noopener">Open the PDF</a>
+                    <a className="pf-report-btn" href={`/pulse/features/examples/${r.id}`} target="_blank" rel="noopener">View in the browser</a>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </Wrap>
+      </section>
+
       {/* What it checks — the explorer */}
       <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}` }}>
         <Wrap>
@@ -212,18 +253,47 @@ export default function PulseFeaturesPage() {
   );
 }
 
+/** A domain or repo name that may wrap only after a dot or slash, never mid-word. */
+function breakable(name: string): React.ReactNode {
+  return name.split(/(?<=[./])/).map((part, i) => (
+    <span key={i}>
+      {i > 0 && <wbr />}
+      {part}
+    </span>
+  ));
+}
+
+/** The report's own score bands (HealthScoreRing / scoreBand): 75+ good, 50+ needs work, under 50 at risk. */
+function bandColour(score: number): string {
+  return score >= 75 ? "#1F9D63" : score >= 50 ? "#C98A0B" : "#D2463C";
+}
+
 /** Layout rules inline styles cannot express: column counts per width, and the hairline rows. */
 const PAGE_STYLES = `
-.pf-ways{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:32px;background:#fff;border:1px solid ${RULE};border-radius:14px;overflow:hidden}
-.pf-way{padding:26px 26px 24px;display:flex;flex-direction:column}
+.pf-ways{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto auto auto 1fr;margin-top:32px;background:#fff;border:1px solid ${RULE};border-radius:14px;overflow:hidden}
+/* Subgrid: the number, title, description and list are four shared rows, so every column's
+   divider lines up however long its description runs. */
+.pf-way{padding:26px 26px 24px;display:grid;grid-row:span 4;grid-template-rows:subgrid;row-gap:0;align-content:start}
 .pf-way + .pf-way{border-left:1px solid ${RULE}}
 .pf-way-list{list-style:none;margin:20px 0 0;padding:16px 0 0;border-top:1px solid ${RULE};display:grid;gap:9px}
 .pf-way-list li{display:flex;align-items:center;gap:10px;font-size:14px;color:${TEXT}}
 .pf-way-list li::before{content:"";flex:0 0 auto;width:6px;height:6px;border-radius:999px;background:${SIGNAL}}
 .pf-extras{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:48px;margin:28px 0 0;border-top:1px solid ${RULE}}
 .pf-extra{padding:18px 0;border-bottom:1px solid ${RULE}}
+.pf-reports{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.pf-report{display:flex;flex-direction:column;background:#fff;border:1px solid ${RULE};border-radius:14px;overflow:hidden}
+.pf-report-cover{background:${INK};padding:20px 20px 22px}
+.pf-report-score{flex:0 0 auto;width:64px;height:64px;border-radius:999px;display:grid;place-items:center;border:4px solid var(--band);}
+.pf-report-score span{font-family:var(--font-fraunces),'Fraunces',Georgia,serif;font-size:24px;font-weight:700;color:${PAPER};font-variant-numeric:tabular-nums lining-nums}
+.pf-report-btn{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid ${RULE};font-size:13px;font-weight:500;color:${TEXT};text-decoration:none}
+.pf-report-btn:hover{border-color:${TEXT}}
+.pf-report-btn:focus-visible{outline:2px solid ${SIGNAL};outline-offset:2px}
+.pf-report-btn--primary{background:${INK};border-color:${INK};color:${PAPER}}
+.pf-report-btn--primary:hover{background:${SIGNAL};border-color:${SIGNAL}}
 @media (max-width: 760px){
-  .pf-ways{grid-template-columns:minmax(0,1fr)}
+  .pf-reports{grid-template-columns:minmax(0,1fr)}
+  .pf-ways{grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+  .pf-way{grid-row:auto;grid-template-rows:none;display:flex;flex-direction:column}
   .pf-way + .pf-way{border-left:0;border-top:1px solid ${RULE}}
   .pf-way{padding:22px 20px}
   .pf-extras{grid-template-columns:minmax(0,1fr)}
