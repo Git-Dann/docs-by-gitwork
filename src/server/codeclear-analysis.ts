@@ -3,12 +3,49 @@ import type {
   GitHubLanguageUsage,
   GitHubProfileSnapshot,
   GitHubRepoSnapshot,
+  RepoCodeHealth,
 } from "@/types/codeclear";
 import { clampScore } from "@/server/codeclear";
+import { runCodeHealth } from "@/server/code-health";
 
 const GITHUB_API_BASE = "https://api.github.com";
-const ANALYSIS_VERSION = "docs-codeclear-v1";
+const ANALYSIS_VERSION = "docs-codeclear-v2"; // v2: measured code health of the top repos (evidence only)
 const MAX_REPOS = 6;
+/** How many of a candidate's repos get their source measured (a clone + parse each). */
+const MAX_MEASURED_REPOS = 3;
+/** Whole budget for measuring them, so a slow clone cannot hold up the analysis. */
+const MEASURE_BUDGET_MS = 90_000;
+
+/**
+ * Measure the source of a candidate's strongest readable repos with Pulse's code-health
+ * measure (a shallow clone and a real parse, src/server/code-health). This is EVIDENCE, not
+ * a score input: a candidate's public repos are often old, experimental or shared, so the
+ * figures go in the drawer for a person to weigh, and the recommended scores are unchanged.
+ * Never throws; a repo that could not be measured says why.
+ */
+async function measureRepos(repos: GitHubRepoSnapshot[]): Promise<Map<string, RepoCodeHealth>> {
+  const out = new Map<string, RepoCodeHealth>();
+  const picks = repos.filter((r) => r.treeReadable && r.size > 0).slice(0, MAX_MEASURED_REPOS);
+  const work = Promise.all(
+    picks.map(async (repo) => {
+      const r = await runCodeHealth(repo.fullName, { history: false });
+      out.set(repo.fullName, r.report
+        ? {
+            score: r.report.totals.files > 0 ? r.report.score : null,
+            band: r.report.totals.files > 0 ? r.report.band : null,
+            loc: r.report.totals.loc,
+            complexLocShare: r.report.totals.complexLocShare,
+            commit: r.report.commit,
+            languages: r.report.languages.map((l) => l.language),
+            topDebt: r.report.debt.slice(0, 3).map(({ kind, severity, path, line, symbol }) => ({ kind, severity, path, line, symbol })),
+            unavailable: r.report.totals.files > 0 ? null : "no source in a supported language",
+          }
+        : { score: null, band: null, loc: 0, complexLocShare: 0, commit: null, languages: [], topDebt: [], unavailable: r.unavailable });
+    }),
+  );
+  await Promise.race([work, new Promise((resolve) => setTimeout(resolve, MEASURE_BUDGET_MS))]);
+  return out;
+}
 const RECENT_ACTIVITY_WINDOW_DAYS = 365;
 
 type GitHubUserResponse = {
@@ -457,6 +494,13 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     }),
   );
 
+  const measuredHealth = await measureRepos(repoDetails);
+  for (const repo of repoDetails) {
+    const h = measuredHealth.get(repo.fullName);
+    if (h) repo.codeHealth = h;
+  }
+  const scored = [...measuredHealth.values()].filter((h) => h.score !== null);
+
   const aggregatedLanguages = aggregateLanguages(repoDetails.map((repo) => {
     const map: Record<string, number> = {};
     for (const language of repo.languages) {
@@ -511,6 +555,8 @@ export async function analyzeGitHubProfile(githubHandle: string) {
           repoDetails.reduce((sum, repo) => sum + repo.healthScore, 0) / repoDetails.length,
         )
       : 0,
+    codeHealthMeasured: scored.length,
+    averageCodeHealth: scored.length ? Math.round(scored.reduce((s, h) => s + (h.score ?? 0), 0) / scored.length) : null,
   };
 
   const redFlags: string[] = [];
@@ -604,6 +650,7 @@ export async function analyzeGitHubProfile(githubHandle: string) {
 export function buildChecksFromAnalysis(args: {
   metrics: GitHubAnalysisMetrics;
   redFlags: string[];
+  repos?: GitHubRepoSnapshot[];
 }): Array<{
   category: string;
   checkKey: string;
@@ -728,7 +775,42 @@ export function buildChecksFromAnalysis(args: {
     },
   ];
 
+  const health = codeHealthCheck(args.repos ?? []);
+  if (health) checks.push(health);
+
   return checks;
+}
+
+/**
+ * The measured code of the candidate's top repos, as one evidence row. Never FAIL: this is
+ * a person's public, often personal, code, so a low reading is something to ask about in
+ * an interview, not a verdict. SKIPPED (not WARN) when nothing could be measured, because
+ * "we could not read it" is not a finding about the candidate.
+ */
+export function codeHealthCheck(repos: GitHubRepoSnapshot[]) {
+  const tried = repos.filter((r) => r.codeHealth);
+  if (tried.length === 0) return null;
+  const measured = tried.filter((r) => r.codeHealth!.score !== null);
+  const lines = tried.map((r) => {
+    const h = r.codeHealth!;
+    if (h.score === null) return `${r.fullName}: not measured (${h.unavailable ?? "unknown"})`;
+    const worst = h.topDebt[0] ? `; most complex: ${h.topDebt[0].symbol} (${h.topDebt[0].path}:${h.topDebt[0].line})` : "";
+    return `${r.fullName}: ${h.score}/100 over ${h.loc.toLocaleString("en-GB")} lines (${h.languages.join(", ")})${worst}`;
+  });
+  const avg = measured.length ? Math.round(measured.reduce((s, r) => s + (r.codeHealth!.score ?? 0), 0) / measured.length) : null;
+  return {
+    category: "Code Quality",
+    checkKey: "measured_code_health",
+    label: "Code health of their repos (measured)",
+    status: avg === null ? ("SKIPPED" as const) : avg >= 75 ? ("PASS" as const) : ("WARN" as const),
+    detail:
+      (avg === null
+        ? "Their repositories could not be measured, so this says nothing either way. "
+        : `Average code health ${avg}/100 across ${measured.length} repo${measured.length === 1 ? "" : "s"}, measured by parsing every source file. Evidence only: it does not change the recommended scores, because public repos are often old, experimental or shared. `) +
+      lines.join(" · "),
+    weight: 1,
+    sortOrder: 24,
+  };
 }
 
 // ─── Scoped repo analysis ─────────────────────────────────────────────────────

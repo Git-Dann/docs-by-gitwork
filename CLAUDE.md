@@ -2114,7 +2114,10 @@ Vercel before the migration and absent on the VPS after it. Consequences, all si
   `pubspec.yaml` was reported as having none of them (§34.7 covers the guard that now prevents this).
 - `codeclear-analysis.ts` has the **same shape and worse stakes**: `detectRepoSignals` turns an
   empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding `CodeClearScore`. Every
-  private candidate repo has been scored as having no tests, CI, linter or docs. **Not yet fixed.**
+  private candidate repo has been scored as having no tests, CI, linter or docs. **Fixed in #470
+  and #471** (unreadable is now "unassessed"; tests/lint detected across every language). Since
+  October 2026 Code also measures the actual source of a candidate's top three repos, as evidence
+  only (`measured_code_health`, never FAIL, scores unchanged).
 
 ### What changed
 
@@ -2193,10 +2196,8 @@ It is not — the tree read is REST, which succeeds unauthenticated on a **publi
 GraphQL path proves the token. Verified by unit test rather than by inference: 6 tests for the
 partial-error contract, 5 asserting the native family survives every GraphQL failure mode.
 
-**Still open (unchanged):** `codeclear-analysis.ts` has the same shape with worse stakes —
-`detectRepoSignals` turns an empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding
-`CodeClearScore`, so every private candidate repo has been scored as having no tests, CI, linter or
-docs.
+**Since fixed:** `codeclear-analysis.ts` had the same shape. It was fixed in #470/#471. This
+note said "still open" until October 2026, which sent a later session to fix something already fixed.
 
 ## 36. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
 
@@ -2365,7 +2366,7 @@ Not missing findings: an app on a supported version reported as end-of-life. Ful
 | Constant | File | Value | Cadence |
 |---|---|---|---|
 | `ELECTRON_OLDEST_SUPPORTED_MAJOR` | `desktop-app.ts` | 41 | new major every 8 weeks, latest 3 supported |
-| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 84 | latest 3 minors |
+| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 86 | latest 3 minors |
 | `PLAY_TARGET_SDK_FLOOR` | `android-app.ts` | 35 | each August |
 
 ### 37.6 Things learned (again) writing this
@@ -2505,9 +2506,8 @@ case (noindex, in `robots.ts`) — a working document with dated regulation, sou
 specimen certificate, the competitive-gap table, and an explicit register of what is NOT built
 and what is unresolved.
 
-**Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
-because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
-than a version (recorded as null rather than guessed, per the no-false-precision rule);
+**Deferred, highest-value first:** ~~commit pinning~~ (**done October 2026**: a repo mark is
+pinned to the commit the code-health measure read, sealed, and shown as "Version examined");
 **continuous re-examination** as a `COUNTERMARK_RECHECK` job on the existing Curator/Foreman cron spine
 (this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
 certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
@@ -7555,3 +7555,62 @@ Study is still reachable from a scan's results and at /app/study.
   Nothing can detect a *new* feature on its own; this rule is what keeps the page complete.
 - Copy is written as if everything had always existed. A test rejects "new", "recently", "latest"
   and years.
+
+## 82. Recent Changes (October 2026) — The platform families checked against 18 real projects
+
+§37 shipped 116 platform checks tested only on fixtures, and said that real repos are what find the
+wrong ones. This audit did that: 18 real projects, every non-PASS verdict checked against the
+source (or with curl for live APIs). About 60 of ~450 verdicts were wrong. All of them are fixed,
+each with a two-sided test.
+
+- **The tool: `scripts/pulse-family-local.ts <clone> [--all]`.** It rebuilds the production
+  snapshot from a local clone with the same selection functions, then runs whichever family the
+  repo resolves to. It makes no API calls, so there's no rate limit. Use it on any new family
+  before shipping.
+- **Projects:** electron/fiddle, marktext, clash-verge-rev (Tauri); bluesky social-app (Expo),
+  mattermost-mobile, rainbow; serve, np, zx, npm-check-updates; nowinandroid, NewPipe,
+  thunderbird-android; darkreader, refined-github, uBlock, uBOL-home; plus live APIs (GitHub,
+  Stripe, httpbin, jsonplaceholder, a public GraphQL, petstore).
+- **The worst finds, all fixed:**
+  - `stripCStyleComments` nested block comments. A common Java banner (`/*////…////*/`) never
+    closed, and the Android family stripped the JOINED sample, so **89% of NewPipe's code was
+    deleted before any check ran**. It now strips per file, and nests only for Swift, Kotlin and
+    Dart (`nestsBlockComments`). The default is unchanged for other callers. ⚠️ JS/TS callers
+    still treat block comments as nesting, which JS does not. That's a follow-up.
+  - Safari Web Extension wrappers (an `.xcodeproj` + `SafariWebExtensionHandler.swift`) made
+    **refined-github and uBOL-home scan as iOS apps**, and they were told they had no tests.
+    `isSafariExtensionWrapper` in `resolveSnapshotShape`.
+  - **API CORS reflection was a HIGH FAIL with no evidence of cookie login** (Stripe and three
+    more). It's now FAIL only when a session cookie is seen, otherwise a MEDIUM WARN. The
+    relevance gate also hid this check (and GraphQL introspection) behind feature `accounts` /
+    `public_api` on most API scans. Those gates are now `feature: null`.
+  - **GraphQL endpoints were scanned as websites**, because a bare GET returns 204.
+    `pulse-lite/api-target.ts` `answersAsApi`.
+- **Recurring causes, now fixed:**
+  - JS/TS never reached the must-read sampling tier (`SOURCE_EXT`), the Dart bug of §34.6 again.
+  - Tests, mocks, build scripts and fixtures were read as app code.
+  - Keywords were matched inside comments and strings.
+  - One global regex was satisfied by an unrelated call site. Checks are now judged per call site.
+  - Monorepo manifests were read from the root only.
+  - Expo `app.config.*` was never parsed (`parseExpoNativeConfig`, `rnAppShell`).
+  - "Not found" was reported confidently on a 4–12% sample, or as SKIPPED. Absence now goes
+    through the coverage gate and becomes INCONCLUSIVE.
+- **Android reads more now:** manifests, module build files, convention plugins, the version
+  catalog and the network-security config get their own budget (`selectAndroidBuildInputs`),
+  outside the 60-file config cap. Thunderbird went from 8 to all 27 manifests. Cost: about 70–90
+  more GitHub reads per Android scan.
+- **Desktop sampling** is app-root aware (`desktopAppRoots` / `desktopRelevance`). MarkText's
+  sample was half the bundled editor library.
+- **Constants:** `RN_OLDEST_SUPPORTED_MINOR` = 86 (RN 0.88 is current, as of 2026-10-15).
+- **Result:** the three FAILs left across all 17 repos are true: Thunderbird and Mattermost
+  allow cleartext traffic, and Bluesky persists `accessJwt` to AsyncStorage.
+- **Known follow-ups:**
+  - Flutter's `xp_deep_link_both_platforms` counts the launcher intent-filter as a deep link, and
+    its permission parity compares raw counts (React Native now maps categories).
+  - JS block-comment nesting (above).
+  - darkreader `ext_x_privacy_policy` dropped to INCONCLUSIVE, because `.tsx` files now compete
+    for the sample cap.
+  - Recommend retiring `android_x_app_bundle` (withheld).
+
+Also in this change: **Code measures candidates' actual code** (§35), and **Countermarks are
+pinned to the commit examined** (§38).

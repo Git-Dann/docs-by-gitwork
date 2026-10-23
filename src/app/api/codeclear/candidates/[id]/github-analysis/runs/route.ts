@@ -124,6 +124,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       const checks = buildChecksFromAnalysis({
         metrics: analysis.metrics,
         redFlags: analysis.redFlags,
+        repos: analysis.repoSnapshot,
       });
 
       await prisma.$transaction([

@@ -197,8 +197,19 @@ describe("backend service", () => {
 
 // ─── Desktop extended ────────────────────────────────────────────────────────
 describe("desktop extended", () => {
-  it("fails an updater with no signature verification", () => {
+  // electron-updater verifies against the app's own code signature by default, so an updater
+  // with no explicit config is unconfirmed (signing lives outside the repo), not a FAIL.
+  // Only an explicit opt-out is. (Audit 2026-10, desktop finding 6.)
+  it("treats an updater with no explicit signature config as inconclusive", () => {
     const s = snap({ "main.ts": "import { autoUpdater } from 'electron-updater';\nautoUpdater.checkForUpdates();\n" });
+    expect(at(evaluateDesktopExtendedChecks(s, "electron"), "desk_x_update_signature").status).toBe("INCONCLUSIVE");
+  });
+
+  it("fails an updater whose signature verification is switched off", () => {
+    const s = snap({
+      "main.ts": "import { autoUpdater } from 'electron-updater';\nautoUpdater.checkForUpdates();\n",
+      "electron-builder.yml": "win:\n  verifyUpdateCodeSignature: false\n",
+    });
     expect(at(evaluateDesktopExtendedChecks(s, "electron"), "desk_x_update_signature").status).toBe("FAIL");
   });
 
@@ -244,9 +255,10 @@ describe("browser extension extended", () => {
     expect(at(evaluateExtensionExtendedChecks(s), "ext_x_icons_complete").status).toBe("PASS");
   });
 
-  it("warns when data permissions are requested with no privacy policy", () => {
+  // Audit 2026-10: INCONCLUSIVE, not WARN — the policy URL lives in the store dashboard.
+  it("is inconclusive when data permissions are requested and no privacy policy is in the repo", () => {
     const s = snap({ "manifest.json": mf({ permissions: ["cookies", "history"] }) });
-    expect(at(evaluateExtensionExtendedChecks(s), "ext_x_privacy_policy").status).toBe("WARN");
+    expect(at(evaluateExtensionExtendedChecks(s), "ext_x_privacy_policy").status).toBe("INCONCLUSIVE");
   });
 
   it("skips the privacy-policy requirement when no user data is touched", () => {

@@ -316,6 +316,11 @@ export function applyNativeApplicability<T extends { checkKey: string; status: s
   });
 }
 
+/** Languages whose block comments nest (Swift, Kotlin, Dart). Java and JS do not. */
+export function nestsBlockComments(path: string): boolean {
+  return /\.(swift|kt|kts|dart)$/i.test(path);
+}
+
 /**
  * Strip C-style comments so code patterns can't match commented-out code.
  *
@@ -329,8 +334,17 @@ export function applyNativeApplicability<T extends { checkKey: string; status: s
  * Handles line comments, nested block comments (legal in Swift), plain and multiline
  * string literals, and escapes. Dart, Kotlin and Java share this comment syntax, so
  * every platform family uses this one implementation.
+ *
+ * ⚠️ Nesting is per LANGUAGE. Swift, Kotlin and Dart nest block comments; Java and
+ * JS do not. A Java banner — an opener followed by a run of slashes — contains a
+ * second opener before its closer, so under nesting rules its depth never returns to
+ * 0 and everything after it is deleted. On NewPipe that removed 89% of the sampled
+ * source, because the Android family stripped the JOINED sample. Callers that know
+ * the file's language pass `nestedBlocks` (see nestsBlockComments) and strip per
+ * file. The default stays `true` so existing callers keep their behaviour.
  */
-export function stripCStyleComments(source: string): string {
+export function stripCStyleComments(source: string, opts: { nestedBlocks?: boolean } = {}): string {
+  const nested = opts.nestedBlocks ?? true;
   let out = "";
   let i = 0;
   const n = source.length;
@@ -381,12 +395,12 @@ export function stripCStyleComments(source: string): string {
       continue;
     }
 
-    // Block comment — Swift allows nesting, so track depth.
+    // Block comment — Swift/Kotlin/Dart allow nesting, so track depth; Java/JS do not.
     if (two === "/*") {
       let depth = 1;
       i += 2;
       while (i < n && depth > 0) {
-        if (source.startsWith("/*", i)) { depth++; i += 2; }
+        if (nested && source.startsWith("/*", i)) { depth++; i += 2; }
         else if (source.startsWith("*/", i)) { depth--; i += 2; }
         else { if (source[i] === "\n") out += "\n"; i++; }
       }

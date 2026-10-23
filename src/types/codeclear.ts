@@ -220,6 +220,20 @@ export interface GitHubRepoSnapshot {
   pushedAt: string;
   updatedAt: string;
   healthScore: number;
+  /** Measured from the repo's actual source (Pulse code health). Absent on older runs and
+   *  for repos that were not measured; `unavailable` says why when it was tried and failed. */
+  codeHealth?: RepoCodeHealth | null;
+}
+
+export interface RepoCodeHealth {
+  score: number | null;
+  band: "good" | "fair" | "poor" | null;
+  loc: number;
+  complexLocShare: number;
+  commit: string | null;
+  languages: string[];
+  topDebt: { kind: string; severity: string; path: string; line: number; symbol: string }[];
+  unavailable: string | null;
 }
 
 export interface GitHubAnalysisMetrics {
@@ -237,6 +251,9 @@ export interface GitHubAnalysisMetrics {
   manifestCoverage: number;
   averageRecentCommitCount: number;
   averageHealthScore: number;
+  /** Repos whose source was measured, and their average code health (null when none). */
+  codeHealthMeasured?: number;
+  averageCodeHealth?: number | null;
 }
 
 export interface GitHubAnalysisRunRecord {

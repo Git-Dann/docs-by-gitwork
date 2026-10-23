@@ -14,7 +14,17 @@
 
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
-import { isVendoredPath, sampleCoverage, type RepoSnapshot } from "./native-mobile";
+import { isVendoredPath, sampleCoverage, stripCStyleComments, type RepoSnapshot } from "./native-mobile";
+import {
+  crashReportingPresent,
+  desktopManifests,
+  electronCspDeclared,
+  electronNavGuardPresent,
+  electronUpdaterPresent,
+  enabledSettings,
+  openExternalCallSites,
+} from "./desktop-app";
+import type { PackageManifest } from "./project-shape";
 
 /** Below this sampled fraction, "not found" is inconclusive rather than a finding — same rule as desktop-app.ts. */
 const SOUND_ABSENCE_COVERAGE = 0.3;
@@ -30,8 +40,19 @@ export type DesktopShape = "electron" | "tauri";
 interface Ctx {
   shape: DesktopShape;
   source: string;
+  /** Shipped JS/TS only, comments intact — for call-site analysis. */
+  jsRaw: string;
+  /** Shipped Rust, comments stripped (per file). */
+  rust: string;
+  /** Shipped JS/TS (raw) and Rust (stripped) files individually, for per-file analysis. */
+  jsFiles: string[];
+  rustFiles: string[];
+  /** Cargo.toml text(s) — where Tauri's cargo features (e.g. "devtools") are switched on. */
+  cargo: string;
   tauriConf: string;
+  /** The desktop app's own package.json manifest(s) — not the first in map order (see desktopManifests). */
   packageJson: string;
+  pkg: PackageManifest | null;
   builderConfig: string;
   /** Renderer HTML entry files (where an Electron CSP <meta> usually lives). */
   html: string;
@@ -41,25 +62,38 @@ interface Ctx {
 
 function buildCtx(snapshot: RepoSnapshot, shape: DesktopShape): Ctx {
   const src: string[] = [];
+  const js: string[] = [];
+  const rust: string[] = [];
+  const cargo: string[] = [];
   const tauri: string[] = [];
   const builder: string[] = [];
   const html: string[] = [];
-  let packageJson = "";
   for (const [path, text] of snapshot.files) {
-    if (/\.html?$/i.test(path)) html.push(text);
+    if (/\.html?$/i.test(path) && isShippedSourcePath(path)) html.push(text);
     if (/\.(ts|tsx|js|jsx|mjs|cjs|rs)$/i.test(path)) {
       // Tests, mocks and vendored code are not the shipped app: a jest mock of `electron`
       // (`setPermissionRequestHandler: jest.fn()`) must not stand in for the app's own handler.
-      if (isShippedSourcePath(path)) src.push(text);
+      if (isShippedSourcePath(path)) {
+        src.push(text);
+        (/\.rs$/i.test(path) ? rust : js).push(text);
+      }
     } else if (/tauri\.conf\.json$|capabilities\/.*\.(json|toml)$/i.test(path)) tauri.push(text);
+    else if (/(^|\/)Cargo\.toml$/i.test(path) && !isVendoredPath(path)) cargo.push(text);
     else if (/electron-builder\.|forge\.config\./i.test(path)) builder.push(text);
-    if (/(^|\/)package\.json$/i.test(path) && !packageJson) packageJson = text;
   }
+  const manifests = desktopManifests(snapshot.files, shape);
+  const rustFiles = rust.map((t) => stripCStyleComments(t));
   return {
     shape,
     source: src.join("\n"),
+    jsRaw: js.join("\n"),
+    rust: rustFiles.join("\n"),
+    jsFiles: js,
+    rustFiles,
+    cargo: cargo.join("\n"),
     tauriConf: tauri.join("\n"),
-    packageJson,
+    packageJson: manifests.text,
+    pkg: manifests.pkg,
     builderConfig: builder.join("\n"),
     html: html.join("\n"),
     coverage: sampleCoverage(
@@ -112,7 +146,7 @@ export function evaluateDesktopExtendedChecks(
       checkKey,
       label,
       status,
-      confidence: thin ? "LOW" : "HIGH",
+      confidence: thin || status === "INCONCLUSIVE" ? "LOW" : "HIGH",
       detail: thin
         ? `${detail} (Based on ${Math.round(ctx.coverage * 100)}% of this project's source files — below the ` +
           `threshold for a confident "not present anywhere", so this is inconclusive rather than a failure.)`
@@ -120,21 +154,43 @@ export function evaluateDesktopExtendedChecks(
     });
   };
 
-  const navGuard = isElectron
-    ? /will-navigate|setWindowOpenHandler|will-attach-webview/.test(ctx.source)
-    : /"?dangerousRemoteDomainIpcAccess"?|navigation|"?capabilities"?/.test(ctx.tauriConf);
-  add(
-    "desk_x_navigation_guard",
-    "The app blocks navigation to untrusted origins",
-    navGuard ? "PASS" : "WARN",
-    navGuard
-      ? "Navigation is intercepted, so the app window cannot be steered to an arbitrary origin."
-      : "No navigation guard was found. Without a will-navigate handler (Electron) or a navigation allowlist " +
-        "(Tauri), a link or redirect inside the app can move the main window to any URL — and that window keeps " +
-        "whatever privileges the app granted it, so a phishing page renders inside your signed application chrome.",
-    // Electron handlers live in sampled source; Tauri's allowlist is in tauri.conf.json, which is always read.
-    isElectron,
-  );
+  // Electron: the same detection as electron_navigation_guard, so the two cannot disagree
+  // (setWindowOpenHandler controls NEW windows, not navigation of this one).
+  // Tauri: only a Rust `on_navigation` handler is a guard. The old test passed on the word
+  // "capabilities" in tauri.conf.json, which every v2 app has. And a Tauri window that
+  // navigates away does NOT take the IPC bridge with it unless remote IPC is configured —
+  // so a missing guard only matters when it is.
+  if (isElectron) {
+    const navGuard = electronNavGuardPresent(ctx.source.replace(/^\s*\/\/.*$/gm, ""));
+    add(
+      "desk_x_navigation_guard",
+      "The app blocks navigation to untrusted origins",
+      navGuard ? "PASS" : "WARN",
+      navGuard
+        ? "Navigation is intercepted, so the app window cannot be steered to an arbitrary origin."
+        : "No navigation guard was found. Without a will-navigate handler, a link or redirect inside the app can move " +
+          "the main window to any URL — and that window keeps whatever privileges the app granted it, so a phishing " +
+          "page renders inside your signed application chrome.",
+      true,
+    );
+  } else {
+    const onNavigation = /\bon_navigation\s*\(/.test(ctx.rust);
+    const remoteIpc = /"dangerousRemoteDomainIpcAccess"|"remote"\s*:\s*\{[^}]*"urls"/i.test(ctx.tauriConf);
+    add(
+      "desk_x_navigation_guard",
+      "The app blocks navigation to untrusted origins",
+      onNavigation ? "PASS" : remoteIpc ? "WARN" : "SKIPPED",
+      onNavigation
+        ? "An on_navigation handler decides which URLs the webview may navigate to."
+        : remoteIpc
+          ? "Remote origins are granted IPC access and no on_navigation handler was found. A link or redirect can then " +
+            "move the window to a page that can call your Tauri commands. Add an on_navigation handler that allows " +
+            "only your own origins."
+          : "No on_navigation handler was found, but Tauri grants no IPC to remote origins unless remote access is " +
+            "configured, so navigating away does not carry the app's privileges. Not assessed.",
+      true,
+    );
+  }
 
   const windowGuard = isElectron
     ? /setWindowOpenHandler|new-window/.test(ctx.source)
@@ -198,76 +254,163 @@ export function evaluateDesktopExtendedChecks(
         : "The remote module is not used.",
   );
 
-  const protocolHandler = /registerFileProtocol|registerSchemesAsPrivileged|setAsDefaultProtocolClient|tauri:\/\//.test(
-    all,
-  );
-  const protocolValidated = /path\.normalize|decodeURIComponent|startsWith\(|canonicalize/.test(ctx.source);
+  // Inline handlers (protocol.handle, register_uri_scheme_protocol) receive the request
+  // directly, so validation is looked for within ±500 characters. URL-delivery events
+  // (open-url, deep-link on_open_url) routinely hand the URL to a parser elsewhere in the
+  // module (fiddle's protocol.ts), so for those the whole file counts. A `tauri://localhost`
+  // string is not a registration — it is Tauri's own asset origin, and clash-verge-rev PASSed
+  // on it from a CORS allow-list.
+  const INLINE_HANDLER = isElectron
+    ? /\bprotocol\.(handle|registerFileProtocol|registerBufferProtocol|registerStringProtocol|registerHttpProtocol|registerStreamProtocol|interceptFileProtocol)\s*\(/g
+    : /\bregister_(asynchronous_)?uri_scheme_protocol\s*\(/g;
+  const URL_EVENT = isElectron ? /\.on\(\s*["']open-url["']/ : /\bon_open_url\s*\(/;
+  const declared = isElectron
+    ? /\bsetAsDefaultProtocolClient\s*\(|\bregisterSchemesAsPrivileged\s*\(/.test(ctx.jsRaw)
+    : /"deep-link"\s*:|tauri_plugin_deep_link|tauri-plugin-deep-link/.test(ctx.tauriConf + ctx.cargo + ctx.rust);
+  const PROTOCOL_VALIDATION =
+    /path\.(posix\.)?normalize|path\.resolve|decodeURIComponent|startsWith\(|starts_with\(|canonicalize|realpath|new URL\(|\.host(name)?\s*[!=]==|Url::parse|\.scheme\(\)/;
+  let handlers = 0, unvalidated = 0, unvalidatedEvents = 0;
+  for (const file of isElectron ? ctx.jsFiles : ctx.rustFiles) {
+    for (const m of file.matchAll(INLINE_HANDLER)) {
+      handlers++;
+      const at = m.index ?? 0;
+      if (!PROTOCOL_VALIDATION.test(file.slice(Math.max(0, at - 500), at + 500))) unvalidated++;
+    }
+    if (URL_EVENT.test(file)) {
+      handlers++;
+      if (!PROTOCOL_VALIDATION.test(file)) {
+        unvalidated++;
+        unvalidatedEvents++;
+      }
+    }
+  }
+  const hasProtocol = handlers > 0 || declared;
+  const protocolOk = handlers > 0 && unvalidated === 0;
   add(
     "desk_x_protocol_handler",
     "Custom protocol handlers validate their input",
-    !protocolHandler ? "SKIPPED" : protocolValidated ? "PASS" : "WARN",
-    !protocolHandler
+    !hasProtocol ? "SKIPPED" : protocolOk ? "PASS" : "WARN",
+    !hasProtocol
       ? "The app registers no custom protocol handler."
-      : protocolValidated
-        ? "Custom protocol handlers normalise and check the paths they are given."
-        : "A custom protocol handler is registered with no visible path validation. A custom scheme can be invoked " +
-          "by any web page in the user's browser, so its argument is untrusted input — an unnormalised path is a " +
-          "directory traversal that reads files from anywhere on the machine.",
+      : protocolOk
+        ? "Custom protocol handlers parse or normalise the URLs and paths they are given."
+        : handlers === 0
+          ? "A custom URL scheme is registered, but the code that handles incoming URLs was not in the sampled source, " +
+            "so whether it validates them is unconfirmed. A custom scheme can be invoked by any web page in the user's " +
+            "browser, so its argument is untrusted input."
+          : "A custom protocol handler has no visible path or URL validation next to it (it may delegate to a helper " +
+            "elsewhere). A custom scheme can be invoked by any web page in the user's browser, so its argument is " +
+            "untrusted input — an unnormalised path is a directory traversal that reads files from anywhere on the machine.",
+    true,
   );
+  // A URL-event handler that passes the URL to another module (clash-verge-rev: on_open_url →
+  // resolve_scheme, which does Url::parse plus a scheme match) cannot be judged from its own
+  // file, and an unseen handler cannot be judged at all.
+  if (hasProtocol && !protocolOk && (handlers === 0 || unvalidated === unvalidatedEvents)) {
+    checks[checks.length - 1].confidence = "LOW";
+  }
 
-  const keychain = /keytar|safeStorage|keyring|credential-?manager|secret-service/i.test(all);
-  const storesCreds = /token|password|refreshToken|apiKey/i.test(ctx.source);
+  // Only a plaintext WRITE of a credential-named value is a finding. The old test fired on any
+  // word "token" in the source — marktext's markdown lexer tokens — and WARNed at HIGH on an
+  // app that stores its secrets with keytar.
+  const keychain = /keytar|safeStorage|\bkeyring\b|credential-?manager|secret-service|tauri-plugin-stronghold/i.test(
+    ctx.source + ctx.packageJson + ctx.cargo,
+  );
+  const CRED = String.raw`\b(access_?token|refresh_?token|auth_?token|id_?token|api_?key|password|passwd|client_?secret|secret)\b`;
+  const plaintextWrite = new RegExp(
+    String.raw`(localStorage\.setItem|sessionStorage\.setItem|\bstore\.set|\.writeFile(Sync)?|\bfs\.(promises\.)?write\w*|writeJson\w*|\bfs::write)\s*\(\s*[^;\n]{0,160}?` + CRED,
+    "i",
+  ).exec(ctx.source);
   add(
     "desk_x_credentials_plaintext",
     "Credentials are stored in the OS keychain",
-    !storesCreds ? "SKIPPED" : keychain ? "PASS" : "WARN",
-    !storesCreds
-      ? "The sampled source shows no credential storage."
-      : keychain
-        ? "Credentials go through the OS keychain (safeStorage, keytar or the platform keyring), so they are " +
-          "encrypted at rest with the user's login."
-        : "The app stores tokens or passwords with no OS keychain integration. Anything written to a plain file or " +
-          "to localStorage in the app's data directory is readable by every other program running as that user — " +
-          "including anything the user installs later.",
+    keychain ? "PASS" : plaintextWrite ? "WARN" : "SKIPPED",
+    keychain
+      ? "Credentials go through the OS keychain (safeStorage, keytar or the platform keyring), so they are " +
+        "encrypted at rest with the user's login."
+      : plaintextWrite
+        ? `A credential-named value is written to plain storage (\`${plaintextWrite[0].slice(0, 80)}\`) and the app ` +
+          "has no OS keychain integration. Anything written to a plain file or to localStorage in the app's data " +
+          "directory is readable by every other program running as that user — including anything installed later."
+        : "No plaintext write of a credential (to localStorage, a settings store or a file) was seen in the sampled source.",
   );
 
-  const updateSig = /publisherName|verifyUpdateCodeSignature|"?pubkey"?|updater.*signature|SIGNING_KEY/i.test(all);
-  const hasUpdater = /autoUpdater|electron-updater|tauri.*updater|"?updater"?:/i.test(all);
+  // Electron: electron-updater verifies Windows updates against the app's own publisher by
+  // default, and Squirrel.Mac (which update-electron-app drives) refuses an update whose code
+  // signature does not match — so "no explicit signature config" is not "unverified". Only an
+  // explicit opt-out is a finding; otherwise it rests on release signing we cannot see.
+  // Tauri: the updater verifies against the pubkey in tauri.conf.json (always read).
+  const hasUpdater = isElectron
+    ? electronUpdaterPresent(ctx.pkg, ctx.source, ctx.builderConfig)
+    : /tauri-plugin-updater|"updater"\s*:/i.test(ctx.tauriConf + ctx.cargo + ctx.packageJson);
+  const sigOptOut = /verifyUpdateCodeSignature\s*[:=]\s*false/i.test(ctx.builderConfig + ctx.source);
+  const updateSig = isElectron
+    ? /publisherName|verifyUpdateCodeSignature|osxSign|osxNotarize|notarize|SIGNING_KEY/i.test(
+      enabledSettings(ctx.builderConfig + ctx.packageJson) + ctx.source,
+    )
+    : /"pubkey"\s*:\s*"[^"]{20,}"/.test(ctx.tauriConf);
   add(
     "desk_x_update_signature",
     "Auto-updates verify a signature",
-    !hasUpdater ? "SKIPPED" : updateSig ? "PASS" : "FAIL",
+    !hasUpdater ? "SKIPPED" : sigOptOut ? "FAIL" : updateSig ? "PASS" : isElectron ? "INCONCLUSIVE" : "FAIL",
     !hasUpdater
       ? "No auto-update mechanism was found."
-      : updateSig
-        ? "The updater verifies a signature before applying an update."
-        : "An auto-updater is configured with no signature verification. The updater downloads and executes code " +
-          "with the user's privileges, so whoever can serve or intercept that download owns every installation. " +
-          "This is the single highest-severity finding available in a desktop app.",
+      : sigOptOut
+        ? "verifyUpdateCodeSignature is turned off, so the updater installs a downloaded build without checking who " +
+          "signed it. Whoever can serve or intercept that download owns every installation."
+        : updateSig
+          ? "The updater verifies a signature before applying an update."
+          : isElectron
+            ? "An auto-updater is in use with no explicit signature configuration in the repository. electron-updater " +
+              "and Squirrel.Mac verify updates against the app's own code signature by default, so this is safe exactly " +
+              "when release builds are signed — which is configured outside the repository and not confirmed here."
+            : "An auto-updater is configured with no updater public key. The updater downloads and executes code with " +
+              "the user's privileges, so whoever can serve or intercept that download owns every installation.",
   );
 
   // The Electron API is a METHOD (webContents.openDevTools / win.openDevTools). A bare `openDevTools(`
   // is the app's own function — e.g. a Tauri app's user-clicked "open devtools" command wrapper.
-  const devtools = /\.openDevTools\(/.test(ctx.source);
-  const devtoolsGuarded = /isDev|NODE_ENV\s*[=!]==?\s*["']development|app\.isPackaged/.test(ctx.source);
-  add(
-    "desk_x_devtools_release",
-    "DevTools are not opened in release builds",
-    !devtools ? "PASS" : devtoolsGuarded ? "PASS" : "WARN",
-    !devtools
-      ? "DevTools are not opened programmatically."
-      : devtoolsGuarded
-        ? "DevTools are opened behind a development-only guard."
-        : "openDevTools is called with no development guard visible in the sampled source, so the developer console " +
-          "may be reachable in the shipped application. If it is, it hands any user a full inspector over the app's " +
-          "renderer — including its local storage and any in-memory tokens.",
-  );
+  // Tauri: `open_devtools()` only exists in a release build when the tauri crate's "devtools"
+  // cargo feature is on (it is cfg-gated to debug_assertions otherwise), so the feature is the finding.
+  if (isElectron) {
+    const devtools = /\.openDevTools\(/.test(ctx.source);
+    const devtoolsGuarded = /isDev|NODE_ENV\s*[=!]==?\s*["']development|app\.isPackaged/.test(ctx.source);
+    add(
+      "desk_x_devtools_release",
+      "DevTools are not opened in release builds",
+      !devtools ? "PASS" : devtoolsGuarded ? "PASS" : "WARN",
+      !devtools
+        ? "DevTools are not opened programmatically."
+        : devtoolsGuarded
+          ? "DevTools are opened behind a development-only guard."
+          : "openDevTools is called with no development guard visible in the sampled source, so the developer console " +
+            "may be reachable in the shipped application. If it is, it hands any user a full inspector over the app's " +
+            "renderer — including its local storage and any in-memory tokens.",
+    );
+  } else {
+    const featureOn = tauriDevtoolsFeatureEnabled(ctx.cargo);
+    const opens = /\.open_devtools\s*\(/.test(ctx.rust);
+    add(
+      "desk_x_devtools_release",
+      "DevTools are not opened in release builds",
+      featureOn ? "WARN" : "PASS",
+      featureOn
+        ? "The tauri dependency enables the \"devtools\" cargo feature, which keeps the web inspector in release " +
+          `builds${opens ? " — and the app calls open_devtools(), so it can be opened in the shipped app" : ""}. That ` +
+          "hands any user a full inspector over the frontend, including its storage and any in-memory tokens. Enable " +
+          "the feature only in a debug profile, or behind a cargo feature release builds do not turn on."
+        : "The tauri crate's \"devtools\" feature is not enabled, so the inspector is compiled out of release builds.",
+    );
+  }
 
   // `"csp": null` (or ""/false) in tauri.conf.json is Tauri's way of saying NO policy — not a declared one.
   // The left boundary stops `"devCsp"` (dev builds only) from counting as the shipped policy.
-  const csp = /Content-Security-Policy|(?<![\w$-])["']?csp["']?\s*:\s*(?!null\b|false\b|undefined\b|""|'')[\w"'{`\[]/i.test(
-    all + "\n" + ctx.html,
-  );
+  // Electron shares electron_csp's detection, so the two cannot disagree; Tauri reads tauri.conf.json's `csp`.
+  const csp = isElectron
+    ? electronCspDeclared(ctx.jsRaw, ctx.html)
+    : /Content-Security-Policy|(?<![\w$-])["']?csp["']?\s*:\s*(?!null\b|false\b|undefined\b|""|'')[\w"'{`\[]/i.test(
+      all + "\n" + ctx.html,
+    );
   add(
     "desk_x_csp_defined",
     "The renderer declares a content security policy",
@@ -281,19 +424,22 @@ export function evaluateDesktopExtendedChecks(
     isElectron,
   );
 
-  const shellOpen = /shell\.openExternal\(/.test(ctx.source);
-  const shellValidated = /startsWith\(["']https?:|new URL\(|protocol\s*===|\/\^https\??:/.test(ctx.source);
+  // Same per-call-site rule as electron_open_external_validated, so the two cannot disagree.
+  // Tauri has no shell.openExternal; its URL opening is judged by tauri_shell_open_validator.
+  const openExternal = isElectron ? openExternalCallSites(ctx.jsRaw) : null;
   add(
     "desk_x_shell_open_external",
     "External links are opened without arbitrary shell execution",
-    !shellOpen ? "PASS" : shellValidated ? "PASS" : "WARN",
-    !shellOpen
-      ? "The app does not call shell.openExternal."
-      : shellValidated
-        ? "shell.openExternal is called with a validated URL scheme."
-        : "shell.openExternal is called without validating the URL's scheme. It hands the string to the operating " +
-          "system, so a `file://` or a platform-specific scheme can launch a local executable rather than opening a " +
-          "web page — turning a link in loaded content into code execution.",
+    !openExternal ? "SKIPPED" : openExternal.unvalidated === 0 ? "PASS" : "WARN",
+    !openExternal
+      ? "shell.openExternal is Electron-specific; Tauri's URL opening is covered by the opener/shell scope check."
+      : openExternal.total === 0
+        ? "The app does not call shell.openExternal."
+        : openExternal.unvalidated === 0
+          ? "Every shell.openExternal call either uses a fixed URL or validates the URL scheme."
+          : "shell.openExternal is called without validating the URL's scheme. It hands the string to the operating " +
+            "system, so a `file://` or a platform-specific scheme can launch a local executable rather than opening a " +
+            "web page — turning a link in loaded content into code execution.",
   );
 
   const singleInstance = /requestSingleInstanceLock|single_instance|SingleInstance|second-instance|check_singleton/i.test(all);
@@ -310,7 +456,8 @@ export function evaluateDesktopExtendedChecks(
     true,
   );
 
-  const crashReporter = /crashReporter|sentry|bugsnag|crashpad|minidump/i.test(all);
+  // Shared with desktop_crash_reporting so the two cannot disagree.
+  const crashReporter = crashReportingPresent(ctx.pkg, ctx.source, snapshot.paths);
   add(
     "desk_x_crash_reporter",
     "The app reports crashes",
@@ -324,4 +471,30 @@ export function evaluateDesktopExtendedChecks(
   );
 
   return checks;
+}
+
+/**
+ * True when a Cargo.toml's runtime `tauri` dependency turns on the "devtools" feature.
+ * A dev-dependency does not ship; a [workspace.dependencies] entry does (members inherit it).
+ */
+export function tauriDevtoolsFeatureEnabled(cargo: string): boolean {
+  let section = "";
+  const lines = cargo.split("\n");
+  const depth = (l: string) => (l.match(/[[{]/g) ?? []).length - (l.match(/[\]}]/g) ?? []).length;
+  for (let i = 0; i < lines.length; i++) {
+    const header = /^\s*\[([^\]]+)\]/.exec(lines[i]);
+    if (header) {
+      section = header[1].trim();
+      continue;
+    }
+    if (!/^\s*tauri\s*=/.test(lines[i]) || /dev-dependencies/.test(section)) continue;
+    // Collect the (possibly multi-line) inline table.
+    let entry = lines[i];
+    for (let j = i + 1, d = depth(entry); d > 0 && j < lines.length; j++) {
+      entry += "\n" + lines[j];
+      d += depth(lines[j]);
+    }
+    if (/features\s*=\s*\[[^\]]*"devtools"/.test(entry.replace(/#.*$/gm, ""))) return true;
+  }
+  return false;
 }

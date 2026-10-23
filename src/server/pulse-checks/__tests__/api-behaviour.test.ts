@@ -81,12 +81,16 @@ describe("CORS", () => {
     expect(statusOf(checks, "api_cors_credentials")).toBe("PASS");
   });
 
-  it("fails an API that reflects an arbitrary Origin with credentials", async () => {
+  it("fails an API that reflects an arbitrary Origin with credentials and a session cookie", async () => {
     stubFetch((_url, init) => {
       const origin = (init.headers as Record<string, string> | undefined)?.Origin ?? "";
       return {
         status: 200,
-        headers: { "access-control-allow-origin": origin, "access-control-allow-credentials": "true" },
+        headers: {
+          "access-control-allow-origin": origin,
+          "access-control-allow-credentials": "true",
+          "set-cookie": "session=abc; Path=/; HttpOnly; Secure; SameSite=None",
+        },
       };
     });
     const checks = await runApiBehaviourChecks(ctx());
@@ -200,14 +204,14 @@ describe("headers and methods", () => {
 
 describe("GraphQL", () => {
   it("does not apply when there is no GraphQL endpoint", async () => {
-    stubFetch((url) => (url.endsWith("/graphql") ? { status: 404, body: "Not found" } : { status: 200 }));
+    stubFetch((url) => (url.includes("/graphql") ? { status: 404, body: "Not found" } : { status: 200 }));
     const checks = await runApiBehaviourChecks(ctx());
     expect(statusOf(checks, "api_graphql_introspection")).toBe("SKIPPED");
   });
 
   it("warns when a playground is served to an unauthenticated GET", async () => {
     stubFetch((url) =>
-      url.endsWith("/graphql")
+      url.includes("/graphql")
         ? { status: 200, headers: { "content-type": "text/html" }, body: "<div id=graphiql>GraphiQL</div>" }
         : { status: 200 });
     const checks = await runApiBehaviourChecks(ctx());

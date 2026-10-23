@@ -22,13 +22,15 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments } from "./native-mobile";
+import { isExampleOrFixturePath, isVendoredPath, stripCStyleComments } from "./native-mobile";
 
 /** A parsed manifest, or null when the repo has none / it is unparseable. */
 export interface ExtensionManifest {
   path: string;
   raw: string;
   json: Record<string, unknown> | null;
+  /** How many other extension manifests the repo carries (other browsers, retired builds). */
+  otherCandidates?: number;
 }
 
 /**
@@ -38,21 +40,204 @@ export interface ExtensionManifest {
  * tools use it too — so a file only counts when it actually carries the
  * `manifest_version` key that Chrome requires. That single test is what stops every
  * PWA in the world being scanned as an extension.
+ *
+ * ⚠️ A multi-browser repo carries several manifests, and the first one in Map order is
+ * not the one Chrome loads. gorhill/uBlock has seven: platform/chromium (MV2, retired),
+ * platform/mv3/chromium (MV3, the one on the Web Store), plus Firefox, Safari, Opera and
+ * Thunderbird builds. Picking by order judged the retired MV2 build and reported
+ * "this extension does not run" — and a Firefox manifest (`background.scripts`) reads
+ * as a broken Chrome service worker. So candidates are RANKED: not browser-specific
+ * first, then the highest manifest_version, then the shallowest path. Shared by both
+ * extension families so they always judge the same file.
  */
 export function findExtensionManifest(snapshot: RepoSnapshot): ExtensionManifest | null {
+  const candidates: { path: string; text: string; version: number; otherBrowser: boolean; fixture: boolean }[] = [];
   for (const [path, text] of snapshot.files) {
     if (!/(^|\/)manifest\.json$/i.test(path)) continue;
     if (!/"manifest_version"\s*:/.test(text)) continue;
-    let json: Record<string, unknown> | null = null;
-    try {
-      json = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      json = null; // Keep the raw text — a broken manifest is itself a finding.
-    }
-    return { path, raw: text, json };
+    candidates.push({
+      path,
+      text,
+      version: Number(/"manifest_version"\s*:\s*(\d+)/.exec(text)?.[1] ?? 0),
+      otherBrowser: isNonChromeManifestPath(path),
+      fixture: isExampleOrFixturePath(path) || isVendoredPath(path),
+    });
+  }
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) =>
+    Number(a.fixture) - Number(b.fixture) ||
+    Number(a.otherBrowser) - Number(b.otherBrowser) ||
+    b.version - a.version ||
+    a.path.split("/").length - b.path.split("/").length);
+  const { path, text } = candidates[0];
+  let json: Record<string, unknown> | null = null;
+  try {
+    json = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    json = null; // Keep the raw text — a broken manifest is itself a finding.
+  }
+  return { path, raw: text, json, otherCandidates: candidates.length - 1 };
+}
+
+/** A manifest that lives under a Firefox / Safari / Thunderbird build directory, or is named for one. */
+function isNonChromeManifestPath(path: string): boolean {
+  return /firefox|gecko|mozilla|safari|thunderbird/i.test(path);
+}
+
+/** True when the judged manifest targets Firefox rather than Chrome. */
+function targetsFirefox(m: Record<string, unknown>, path: string): boolean {
+  const bss = m.browser_specific_settings as Record<string, unknown> | undefined;
+  const background = m.background as Record<string, unknown> | undefined;
+  return isNonChromeManifestPath(path) ||
+    (Boolean(bss?.gecko) && Array.isArray(background?.scripts) && typeof background?.service_worker !== "string");
+}
+
+/**
+ * Manifest variants beside the judged manifest that a build merges over it
+ * (darkreader: src/manifest-chrome-mv3.json over src/manifest.json). Firefox, Safari
+ * and Thunderbird variants say nothing about the Chrome package, so they are excluded.
+ * `text` is null when only the path is known.
+ */
+function chromeManifestVariants(snapshot: RepoSnapshot, manifestPath: string): { path: string; text: string | null }[] {
+  const dir = manifestPath.replace(/[^/]*$/, "");
+  return snapshot.paths
+    .filter((p) =>
+      p !== manifestPath && p.startsWith(dir) && /^manifest[^/]*\.json$/i.test(p.slice(dir.length)) &&
+      !isNonChromeManifestPath(p.slice(dir.length)))
+    .map((p) => ({ path: p, text: snapshot.files.get(p) ?? null }));
+}
+
+/**
+ * The minimum_chrome_version the Chrome build declares — from the judged manifest, or
+ * from a Chrome variant merged over it. Shared by ext_minimum_chrome_version and
+ * ext_x_minimum_chrome_version so the two cannot disagree.
+ */
+export function declaredMinimumChromeVersion(
+  snapshot: RepoSnapshot,
+  manifest: ExtensionManifest,
+): { value: string; from: string } | null {
+  const own = manifest.json?.minimum_chrome_version;
+  if (own !== undefined && own !== null && own !== "") return { value: String(own), from: manifest.path };
+  for (const v of chromeManifestVariants(snapshot, manifest.path)) {
+    const hit = v.text ? /"minimum_chrome_version"\s*:\s*"([^"]+)"/.exec(v.text) : null;
+    if (hit) return { value: hit[1], from: v.path };
   }
   return null;
 }
+
+/** Chrome's version rule: one to four dot-separated integers 0–65535, no leading zeros. Shared by both families. */
+export function isValidExtensionVersion(version: string): boolean {
+  return /^\d{1,5}(\.\d{1,5}){0,3}$/.test(version) &&
+    version.split(".").every((part) => (part === "0" || !part.startsWith("0")) && Number(part) <= 65535);
+}
+
+/** The required icon sizes (16/48/128) the manifest does not declare. Shared by both families. */
+export function missingIconSizes(m: Record<string, unknown>): string[] {
+  const icons = (m.icons ?? {}) as Record<string, unknown>;
+  // Numbers stringified, not a string-literal array — see the note at ext_icons_complete.
+  return [16, 48, 128].map(String).filter((s) => !icons[s]);
+}
+
+/**
+ * Host match patterns the extension asks for at install: MV3 `host_permissions`, plus
+ * MV2-style patterns inside `permissions`. ⚠️ `<all_urls>` has no `://`, and filtering on
+ * that alone dropped it — so an MV2 `["<all_urls>", "storage"]` reported no host access.
+ */
+export function installHostPatterns(m: Record<string, unknown>): string[] {
+  return [
+    ...(Array.isArray(m.host_permissions) ? (m.host_permissions as unknown[]) : []),
+    ...(Array.isArray(m.permissions) ? (m.permissions as unknown[]) : []),
+  ].filter((p): p is string => typeof p === "string" && (/:\/\//.test(p) || p === "<all_urls>"));
+}
+
+// ── Shipped extension source, shared by both families ───────────────────────
+
+export interface ExtensionSourceFile {
+  path: string;
+  /** Comments stripped, string literals kept. */
+  text: string;
+  /** Comments AND string-literal contents stripped — for "is this a call" questions. */
+  code: string;
+}
+
+/**
+ * True for a script that ships in the extension package. Excluded: tests, vendored code,
+ * build tooling (darkreader's tasks/bundle-js.js holds `'eval(': 'void('` as a string-
+ * replacement table — not extension code) and bundler config files.
+ */
+export function isShippedExtensionSource(p: string): boolean {
+  return /\.(js|jsx|ts|tsx|mjs|cjs)$/i.test(p) && !isVendoredPath(p) &&
+    !/\.d\.ts$/i.test(p) &&
+    !/(^|\/)(tests?|__tests__|spec|e2e)\//i.test(p) && !/\.(tests?|spec)\.[cm]?[jt]sx?$/i.test(p) &&
+    !/^(tasks|scripts|build|tools|gulp)\//i.test(p) &&
+    !/(^|\/)[^/]*\.config\.[cm]?[jt]s$/i.test(p) && !/(^|\/)gulpfile\.[cm]?[jt]s$/i.test(p);
+}
+
+/** Strip comments and the contents of string/template literals, keeping code tokens. */
+export function stripJsCommentsAndStrings(source: string): string {
+  let out = "";
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    const c = source[i];
+    const two = source.slice(i, i + 2);
+    if (two === "//") {
+      const end = source.indexOf("\n", i);
+      i = end === -1 ? n : end;
+      continue;
+    }
+    if (two === "/*") {
+      const end = source.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+      out += " ";
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      // Single/double quoted strings end at the line, so a quote inside a regex literal
+      // cannot swallow the rest of the file.
+      i++;
+      while (i < n && source[i] !== c && (c === "`" || source[i] !== "\n")) i += source[i] === "\\" ? 2 : 1;
+      i++;
+      out += c + c;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/** Every shipped extension script we read, plus how many exist — the coverage the absence findings rest on. */
+export function extensionSourceFiles(snapshot: RepoSnapshot): { files: ExtensionSourceFile[]; total: number; coverage: number } {
+  const total = snapshot.paths.filter(isShippedExtensionSource).length;
+  const files: ExtensionSourceFile[] = [];
+  for (const [path, text] of snapshot.files) {
+    if (!isShippedExtensionSource(path)) continue;
+    files.push({ path, text: stripCStyleComments(text), code: stripJsCommentsAndStrings(text) });
+  }
+  return { files, total, coverage: total === 0 ? 0 : Math.min(1, files.length / total) };
+}
+
+/** Below this share of shipped scripts read, "not found anywhere" is not a confident answer. */
+export const EXTENSION_SOUND_COVERAGE = 0.3;
+
+/**
+ * A real `eval(...)` / `new Function(...)` call. Matched on code with strings stripped,
+ * so a replacement table entry `'eval('` is not a call, and `.eval(` (e.g.
+ * chrome.devtools.inspectedWindow.eval, which evaluates in the INSPECTED page and is the
+ * sanctioned DevTools API) is not the global eval. Returns the first file that calls it.
+ */
+export function findDynamicEval(files: ExtensionSourceFile[]): string | null {
+  const re = /(?<![.\w$])eval\s*\(|(?<![\w$])(?:window|globalThis|self)\.eval\s*\(|(?<![.\w$])new\s+Function\s*\(/;
+  return files.find((f) => re.test(f.code))?.path ?? null;
+}
+
+/** Shared by ext_dom_injection and ext_x_innerhtml_injection. */
+export const HTML_INJECTION_RE = /\.innerHTML\s*=(?!=)|\.outerHTML\s*=(?!=)|insertAdjacentHTML\s*\(/;
+export const HTML_SANITISER_RE = /DOMPurify|sanitize|textContent\s*=/;
+/** Shared by ext_message_sender_validation and ext_x_message_sender_check. */
+export const MESSAGE_LISTENER_RE = /onMessage(?:External)?\.addListener|onConnect(?:External)?\.addListener/;
+export const SENDER_CHECK_RE = /sender\.(id|origin|url|tab)\b/;
 
 /** True when this repo is a browser extension. */
 export function isChromeExtension(snapshot: RepoSnapshot): boolean {
@@ -71,7 +256,22 @@ const HIGH_RISK_PERMISSIONS: Record<string, string> = {
   nativeMessaging: "talk to a native binary outside the browser sandbox",
   clipboardRead: "read the clipboard",
   downloads: "start downloads and read the download history",
+  // MV3's injection APIs: with host access, `scripting` runs code in any matched page and
+  // `userScripts` runs arbitrary user-supplied code there.
+  scripting: "inject scripts and styles into the pages it has host access to",
+  userScripts: "run arbitrary user-supplied scripts in web pages",
 };
+
+/**
+ * `scripting` only reaches the pages the extension already has host access to, so it is
+ * high-risk when that access is every site — refined-github's `scripting` on four GitHub
+ * origins is not. `userScripts` runs arbitrary code wherever it is pointed, so it always is.
+ */
+function isHighRiskPermission(p: string, m: Record<string, unknown>): boolean {
+  if (!(p in HIGH_RISK_PERMISSIONS)) return false;
+  if (p === "scripting") return isAllUrlsPattern(installHostPatterns(m));
+  return true;
+}
 
 export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const manifest = findExtensionManifest(snapshot);
@@ -106,24 +306,34 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
   });
 
   const manifestChecks = evaluateExtensionManifest(m, "repo");
-  // ⚠️ A repo can keep an MV2 base manifest beside a Chrome MV3 variant that the build merges
-  // over it — darkreader/darkreader: src/manifest.json is V2, src/manifest-chrome-mv3.json is V3
-  // (tasks/bundle-manifest.js). "This extension does not run" is false for such a repo. Only manifest.json
-  // files are read into the snapshot, so a variant is usually known by NAME only — that earns a WARN, not a PASS.
-  if (Number(m.manifest_version) < 3) {
-    const dir = manifest.path.replace(/[^/]*$/, "");
-    const sibling = (p: string) =>
-      p !== manifest.path && p.startsWith(dir) && /^manifest[^/]*\.json$/i.test(p.slice(dir.length)) &&
-      // A Firefox/Safari MV3 manifest says nothing about what the Chrome build ships.
-      !/firefox|gecko|moz|safari/i.test(p.slice(dir.length));
-    const verified =
-      [...snapshot.files.entries()].find(([p, t]) => sibling(p) && /"manifest_version"\s*:\s*3\b/.test(t))?.[0];
-    const byName = verified ? undefined : snapshot.paths.find((p) => sibling(p) && /mv3/i.test(p.slice(dir.length)));
-    const mv3Variant = verified ?? byName;
+  const replace = (key: string, patch: Partial<PulseScanCheckInput>) => {
+    const i = manifestChecks.findIndex((c) => c.checkKey === key);
+    if (i >= 0) manifestChecks[i] = { ...manifestChecks[i], ...patch };
+  };
+  // Name the judged file whenever there was a choice to make, so a reader can see WHICH
+  // of a multi-browser repo's manifests the verdict is about.
+  if ((manifest.otherCandidates ?? 0) > 0) {
     const i = manifestChecks.findIndex((c) => c.checkKey === "ext_manifest_v3");
-    if (mv3Variant && i >= 0) {
+    if (i >= 0) {
       manifestChecks[i] = {
         ...manifestChecks[i],
+        detail: `${manifestChecks[i].detail} (Judged from ${manifest.path}, the Chrome manifest chosen from ` +
+          `${(manifest.otherCandidates ?? 0) + 1} in the repository.)`,
+      };
+    }
+  }
+  // ⚠️ A repo can keep an MV2 base manifest beside a Chrome MV3 variant that the build merges
+  // over it — darkreader/darkreader: src/manifest.json is V2, src/manifest-chrome-mv3.json is V3
+  // (tasks/bundle-manifest.js). "This extension does not run" is false for such a repo. Variants are
+  // read into the snapshot (CONFIG_PATTERNS), so one is usually VERIFIED; a variant known only by
+  // name earns a WARN, not a PASS.
+  const variants = chromeManifestVariants(snapshot, manifest.path);
+  if (Number(m.manifest_version) < 3) {
+    const verified = variants.find((v) => v.text && /"manifest_version"\s*:\s*3\b/.test(v.text))?.path;
+    const byName = verified ? undefined : variants.find((v) => /mv3/i.test(v.path.replace(/^.*\//, "")))?.path;
+    const mv3Variant = verified ?? byName;
+    if (mv3Variant) {
+      replace("ext_manifest_v3", {
         status: verified ? "PASS" : "WARN",
         confidence: "MEDIUM",
         detail: verified
@@ -133,11 +343,38 @@ export function evaluateChromeExtensionChecks(snapshot: RepoSnapshot): PulseScan
             `contents were not read). If the Chrome build merges it over the base, the package is V3; if it is an ` +
             `unfinished migration, the shipped extension is still V2 and no longer runs. Confirm which.`,
         evidence: verified ? `manifest_version 3 in ${mv3Variant}` : `MV3-named sibling ${mv3Variant}`,
+      });
+    }
+  }
+  // Same overlay for minimum_chrome_version: darkreader declares 106 in the Chrome variant only.
+  const minVersion = declaredMinimumChromeVersion(snapshot, manifest);
+  if (minVersion && minVersion.from !== manifest.path) {
+    replace("ext_minimum_chrome_version", {
+      status: "PASS",
+      confidence: "MEDIUM",
+      detail: `${manifest.path} declares no minimum_chrome_version, but the Chrome variant ${minVersion.from} merged ` +
+        `over it declares ${minVersion.value}.`,
+      evidence: `minimum_chrome_version ${minVersion.value} in ${minVersion.from}`,
+    });
+  }
+  checks.push(...manifestChecks);
+  const surface = surfaceChecks(m, snapshot);
+  // A Firefox manifest's `background.scripts` is correct for Firefox; reporting it as a Chrome
+  // service worker Chrome "will refuse to load" is wrong. Only reached when no Chrome manifest exists.
+  if (targetsFirefox(m, manifest.path)) {
+    const i = surface.findIndex((c) => c.checkKey === "ext_service_worker");
+    if (i >= 0) {
+      surface[i] = {
+        ...surface[i],
+        status: "WARN",
+        confidence: "MEDIUM",
+        detail: `${manifest.path} targets Firefox (\`browser_specific_settings.gecko\` / a Firefox build directory) ` +
+          `and uses \`background.scripts\`, which Firefox supports. No Chrome manifest was found in the repository, ` +
+          `so whether a Chrome build exists — and whether it declares a service worker — could not be established.`,
       };
     }
   }
-  checks.push(...manifestChecks);
-  checks.push(...surfaceChecks(m, snapshot));
+  checks.push(...surface);
   checks.push(...extensionCodeChecks(snapshot));
   checks.push(...listingChecks(m));
 
@@ -199,31 +436,30 @@ export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "
   // ── Host permissions breadth ────────────────────────────────────────────────
   // The single most common Web Store rejection, and the one users see in the scary
   // install prompt: "Read and change all your data on all websites".
-  const hostPerms = [
-    ...(Array.isArray(m.host_permissions) ? (m.host_permissions as string[]) : []),
-    ...(Array.isArray(m.permissions) ? (m.permissions as string[]).filter((p) => /:\/\//.test(p)) : []),
-  ];
+  const hostPerms = installHostPatterns(m);
   const contentScriptMatches = Array.isArray(m.content_scripts)
     ? (m.content_scripts as Array<{ matches?: string[] }>).flatMap((cs) => cs.matches ?? [])
     : [];
   const allHosts = [...hostPerms, ...contentScriptMatches];
-  const wildcards = [...new Set(allHosts.filter((h) => /^(<all_urls>|\*:\/\/\*\/\*|https?:\/\/\*\/\*)$/i.test(h)))];
+  const wildcards = [...new Set(allHosts.filter((h) => isAllUrlsPattern([h])))];
 
   if (allHosts.length > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "ext_host_permissions_scoped",
       label: "Host permissions scoped to the sites the extension needs",
-      // A PUBLISHED listing already passed review, so "this is why reviews get rejected" is
-      // not true of it. The install warning and the blast radius still are — a WARN, said plainly.
-      status: wildcards.length > 0 ? (surface === "store" ? "WARN" : "FAIL") : "PASS",
+      // WARN on both surfaces. Many extensions legitimately need every site — dark mode, ad
+      // blocking, password managers — so all-sites access is a cost to justify, not a defect.
+      // A FAIL on the repo surface said the opposite of the store surface about the same manifest.
+      status: wildcards.length > 0 ? "WARN" : "PASS",
       confidence: "HIGH",
       detail: wildcards.length > 0
         ? `The extension requests ${wildcards.join(", ")} — access to EVERY site the user visits. Chrome shows this as ` +
           `"Read and change all your data on all websites", which suppresses installs` +
           (surface === "store"
-            ? `. Some extensions genuinely need it (a password manager fills forms on any site). `
-            : `, and it is the most common reason a Web Store review is rejected or held for justification. `) +
+            ? `. `
+            : `, and it is the most common reason a Web Store review is held for justification. `) +
+          `Some extensions genuinely need it (dark mode, ad blocking, a password manager filling forms on any site). ` +
           `It also means one compromised dependency in this extension can read every page the user opens. ` +
           (surface === "store" ? `If this extension does not need every site, list` : `List`) +
           ` the specific origins instead, or request them at runtime with the optional_host_permissions + chrome.permissions.request flow.`
@@ -234,7 +470,7 @@ export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "
 
   // ── High-risk API permissions ───────────────────────────────────────────────
   const perms = Array.isArray(m.permissions) ? (m.permissions as string[]) : [];
-  const risky = perms.filter((p) => p in HIGH_RISK_PERMISSIONS);
+  const risky = perms.filter((p) => isHighRiskPermission(p, m));
   if (risky.length > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
@@ -388,25 +624,48 @@ export function evaluateExtensionManifest(m: Record<string, unknown>, surface: "
   return checks;
 }
 
-/** Every content-script source we managed to read, comments stripped. */
-function extensionSource(snapshot: RepoSnapshot): { source: string; readCount: number; total: number } {
-  // Test suites are not shipped. darkreader/darkreader assigns innerHTML only in tests/**/*.tests.ts
-  // fixtures; counting them reported DOM injection in an extension whose shipped code has none.
-  const isShippedSource = (p: string) =>
-    /\.(js|ts|mjs)$/i.test(p) && !isVendoredPath(p) &&
-    !/(^|\/)(tests?|__tests__|e2e)\//i.test(p) && !/\.(tests?|spec)\.(js|ts|mjs)$/i.test(p);
-  const jsPaths = snapshot.paths.filter(isShippedSource);
-  const read: string[] = [];
-  for (const [path, text] of snapshot.files) {
-    if (isShippedSource(path)) read.push(text);
-  }
-  return { source: stripCStyleComments(read.join("\n")), readCount: read.length, total: jsPaths.length };
-}
-
 /** True when a match-pattern list reaches every site the user visits. */
 export function isAllUrlsPattern(patterns: unknown): boolean {
   if (!Array.isArray(patterns)) return false;
-  return patterns.some((p) => typeof p === "string" && /^(<all_urls>|\*:\/\/\*\/\*|https?:\/\/\*\/\*)$/.test(p));
+  return patterns.some((p) => typeof p === "string" && /^(<all_urls>|\*:\/\/\*\/\*|https?:\/\/\*\/\*)$/i.test(p));
+}
+
+const BUNDLER_CONFIG_RE = /(^|\/)(tsdown|tsup|vite|webpack|rollup|esbuild|rspack|wxt|parcel|plasmo|crx)\.config\.[cm]?[jt]s$|(^|\/)\.parcelrc$/i;
+
+/**
+ * Where the declared service worker comes from. The worker path is relative to the
+ * EXTENSION ROOT (the manifest's directory); a leading "/" means that root, not the repo
+ * root — gorhill/uBlock declares `/js/background.js` in platform/mv3/chromium/manifest.json.
+ *
+ * ⚠️ A compiled extension never commits the .js its manifest names: refined-github's
+ * manifest says `assets/background.js`, built from source/background.ts by tsdown. A HIGH
+ * "no such file" there was a confident claim the evidence could not back.
+ */
+export function resolveServiceWorker(
+  snapshot: RepoSnapshot,
+  manifestPath: string,
+  declaredWorker: string,
+): { kind: "exists" | "built" | "elsewhere" | "compiled" | "bundler" | "missing"; path?: string } {
+  const manifestDir = manifestPath.replace(/[^/]*$/, "").toLowerCase();
+  const workerRel = declaredWorker.replace(/^\.?\//, "").toLowerCase();
+  const direct = snapshot.paths.find((p) => p.toLowerCase() === manifestDir + workerRel);
+  if (direct) return { kind: "exists", path: direct };
+  if (/^(dist|build|out)\//i.test(workerRel)) return { kind: "built" };
+  // A same-named file elsewhere only counts when it is the project's own source — never a vendored copy or a
+  // test fixture, which would let a genuinely missing worker pass on a coincidental filename.
+  const ownSource = (p: string) => !isVendoredPath(p) && !isExampleOrFixturePath(p);
+  const elsewhere = snapshot.paths.find((p) =>
+    ownSource(p) && (p.toLowerCase() === workerRel || p.toLowerCase().endsWith(`/${workerRel}`)));
+  if (elsewhere) return { kind: "elsewhere", path: elsewhere };
+  const stem = workerRel.replace(/^.*\//, "").replace(/\.[cm]?jsx?$/, "");
+  const compiled = snapshot.paths
+    .filter((p) => ownSource(p) && isShippedExtensionSource(p) &&
+      p.replace(/^.*\//, "").toLowerCase().replace(/\.[cm]?[jt]sx?$/, "") === stem)
+    .sort((x, y) => x.split("/").length - y.split("/").length)[0];
+  if (compiled) return { kind: "compiled", path: compiled };
+  const bundler = snapshot.paths.find((p) => !isVendoredPath(p) && BUNDLER_CONFIG_RE.test(p));
+  if (bundler) return { kind: "bundler", path: bundler };
+  return { kind: "missing" };
 }
 
 // ── The extension's surface on the user's browsing ──────────────────────────
@@ -519,8 +778,9 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
   }
 
   // activeTab is the narrow alternative to broad host permissions.
-  const hostPermissions = Array.isArray(m.host_permissions) ? (m.host_permissions as string[]) : [];
-  if (isAllUrlsPattern(hostPermissions) && !permissions.includes("activeTab")) {
+  // Same host list as ext_host_permissions_scoped — MV2 extensions put `<all_urls>` in `permissions`,
+  // and reading only `host_permissions` meant this never fired for them.
+  if (isAllUrlsPattern(installHostPatterns(m)) && !permissions.includes("activeTab")) {
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "ext_activetab_alternative",
@@ -537,7 +797,7 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
   }
 
   // Optional permissions let the user grant the scary ones on demand.
-  const risky = permissions.filter((p) => p in HIGH_RISK_PERMISSIONS);
+  const risky = permissions.filter((p) => isHighRiskPermission(p, m));
   if (risky.length >= 2) {
     const usesOptional = Array.isArray(m.optional_permissions) && (m.optional_permissions as string[]).length > 0;
     checks.push({
@@ -564,8 +824,7 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
   // [category, key, label] tuple, so writing the three sizes as quoted strings had
   // the middle one reported as an unregistered checkKey. (Worth noting the comment
   // explaining it trips the same wire if it quotes them — so it does not.)
-  const requiredSizes = [16, 48, 128].map(String);
-  const missingIcons = requiredSizes.filter((s) => !icons[s]);
+  const missingIcons = missingIconSizes(m);
   checks.push({
     category: CATEGORIES.STORE_LISTING,
     checkKey: "ext_icons_complete",
@@ -587,40 +846,36 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
   // but only worth saying when we can actually see the tree.
   const declaredWorker = typeof background?.service_worker === "string" ? background.service_worker : null;
   if (declaredWorker) {
-    // The worker path is relative to the EXTENSION ROOT (the manifest's directory); a leading "/" means that
-    // root, not the repository root. gorhill/uBlock declares `/js/background.js` in
-    // platform/mv3/chromium/manifest.json and its build assembles platform/mv3/extension/js/background.js
-    // beside it — the old literal comparison against repo-root paths could never match.
-    const manifestDir = (findExtensionManifest(snapshot)?.path ?? "").replace(/[^/]*$/, "").toLowerCase();
-    const workerRel = declaredWorker.replace(/^\.?\//, "").toLowerCase();
-    const exists = snapshot.paths.some((p) => p.toLowerCase() === manifestDir + workerRel);
-    const built = /^(dist|build|out)\//i.test(workerRel);
-    // A same-named file elsewhere only counts when it is the project's own source — never a vendored copy or a
-    // test fixture, which would let a genuinely missing worker pass on a coincidental filename.
-    const elsewhere = exists || built
-      ? undefined
-      : snapshot.paths.find((p) =>
-          !isVendoredPath(p) &&
-          !/(^|\/)(examples?|samples?|fixtures?|__fixtures__|__tests__|tests?|e2e)\//i.test(p) &&
-          (p.toLowerCase() === workerRel || p.toLowerCase().endsWith(`/${workerRel}`)));
+    const manifestPath = findExtensionManifest(snapshot)?.path ?? "";
+    const worker = resolveServiceWorker(snapshot, manifestPath, declaredWorker);
+    const k = worker.kind;
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "ext_entrypoints_resolve",
       label: "Manifest entry points resolve to real files",
-      status: exists || built || elsewhere ? "PASS" : "WARN",
-      confidence: built || elsewhere ? "MEDIUM" : "HIGH",
-      detail: exists
+      status: k === "missing" ? "WARN" : k === "bundler" ? "INCONCLUSIVE" : "PASS",
+      confidence: k === "exists" || k === "missing" ? "HIGH" : "MEDIUM",
+      detail: k === "exists"
         ? `The declared service worker (\`${declaredWorker}\`) exists in the repository.`
-        : elsewhere
-          ? `The declared service worker (\`${declaredWorker}\`) is not beside the manifest, but \`${elsewhere}\` ` +
+        : k === "elsewhere"
+          ? `The declared service worker (\`${declaredWorker}\`) is not beside the manifest, but \`${worker.path}\` ` +
             `matches it — consistent with a build step that assembles the package from several directories, ` +
             `which cannot be fully verified from source alone.`
-          : built
+          : k === "built"
           ? `The service worker points at build output (\`${declaredWorker}\`), which is not committed — expected for ` +
             `a bundled extension, so this cannot be verified from source alone.`
+          : k === "compiled"
+          ? `The declared service worker (\`${declaredWorker}\`) is not committed, but \`${worker.path}\` is its ` +
+            `source — the usual shape of a compiled extension, where the build emits the .js the manifest names. ` +
+            `That the build actually emits it at that path cannot be verified from source alone.`
+          : k === "bundler"
+          ? `The declared service worker (\`${declaredWorker}\`) is not committed and no same-named source was found, ` +
+            `but the repository has a bundler config (\`${worker.path}\`) that may emit it under another source ` +
+            `name. Whether the packaged extension contains it could not be established from source.`
           : `The manifest declares \`${declaredWorker}\` as its service worker and no such file exists in the ` +
-            `repository. Chrome refuses to load an extension whose entry point is missing, so if this is not produced ` +
-            `by a build step the packaged extension is broken.`,
+            `repository, no source file shares its name, and there is no bundler config that could produce it. ` +
+            `Chrome refuses to load an extension whose entry point is missing.`,
+      evidence: worker.path,
     });
   }
 
@@ -630,36 +885,42 @@ function surfaceChecks(m: Record<string, unknown>, snapshot: RepoSnapshot): Puls
 // ── What the extension's own code does ──────────────────────────────────────
 function extensionCodeChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
-  const { source, readCount, total } = extensionSource(snapshot);
-  if (readCount === 0) return checks;
+  const { files, coverage } = extensionSourceFiles(snapshot);
+  if (files.length === 0) return checks;
+  const source = files.map((f) => f.text).join("\n");
+  // Identifier-level questions (an innerHTML assignment, a listener, a sender check) are asked
+  // of CODE, so filter-list data and scriptlet argument strings that merely contain the word
+  // — uBOL's generated rulesets ship "/skin|insertAdjacentHTML|netflix/" as data — are not calls.
+  const code = files.map((f) => f.code).join("\n");
 
-  const coverage = total === 0 ? 0 : Math.min(1, readCount / total);
-  const thin = coverage < 0.3;
+  const thin = coverage < EXTENSION_SOUND_COVERAGE;
   const note = thin
     ? ` (Based on ${Math.round(coverage * 100)}% of this extension's script files — below the threshold for a ` +
       `confident "not present anywhere", so this is inconclusive rather than a failure.)`
     : "";
 
   // eval / new Function in an extension context. Remotely-hosted code is banned
-  // under MV3, and this is the usual way it slips back in.
-  const usesEval = /\beval\s*\(|new\s+Function\s*\(/.test(source);
+  // under MV3, and this is the usual way it slips back in. Presence is sound on a
+  // sample; absence is only as good as the coverage behind it.
+  const evalIn = findDynamicEval(files);
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "ext_no_eval",
     label: "No dynamic code execution",
-    status: usesEval ? "FAIL" : "PASS",
-    confidence: "HIGH",
-    detail: usesEval
-      ? `\`eval\` or \`new Function\` appears in extension source. Manifest V3's Content Security Policy forbids it — ` +
-        `Chrome will throw at runtime — and reviewers treat it as the signature of remotely-hosted code, which is ` +
-        `banned outright and is a common grounds for removal. If it is parsing JSON, use \`JSON.parse\`; if it is ` +
-        `running user-authored logic, that logic has to ship in the package.`
-      : `No \`eval\` or \`new Function\` in the sampled extension source.`,
+    status: evalIn ? "FAIL" : "PASS",
+    confidence: evalIn ? "HIGH" : thin ? "LOW" : "HIGH",
+    detail: evalIn
+      ? `\`eval\` or \`new Function\` is called in extension source (${evalIn}). Manifest V3's Content Security Policy ` +
+        `forbids it — Chrome will throw at runtime — and reviewers treat it as the signature of remotely-hosted code, ` +
+        `which is banned outright and is a common grounds for removal. If it is parsing JSON, use \`JSON.parse\`; if ` +
+        `it is running user-authored logic, that logic has to ship in the package.`
+      : `No \`eval\` or \`new Function\` call in the sampled extension source.${note}`,
+    evidence: evalIn ?? undefined,
   });
 
   // innerHTML in a content script writes into a page the extension does not own.
-  const usesInnerHtml = /\.innerHTML\s*=|insertAdjacentHTML\s*\(|outerHTML\s*=/.test(source);
-  const sanitises = /DOMPurify|sanitize|textContent\s*=/.test(source);
+  const usesInnerHtml = HTML_INJECTION_RE.test(code);
+  const sanitises = HTML_SANITISER_RE.test(code);
   if (usesInnerHtml) {
     checks.push({
       category: CATEGORIES.SECURITY,
@@ -679,45 +940,53 @@ function extensionCodeChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
 
   // Message handlers are reachable from any content script — and, if
   // externally_connectable is set, from web pages.
-  if (/onMessage\.addListener/.test(source)) {
-    const validates = /sender\.(id|origin|url|tab)/.test(source);
+  if (MESSAGE_LISTENER_RE.test(code)) {
+    const validates = SENDER_CHECK_RE.test(code);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "ext_message_sender_validation",
       label: "Message handlers validate the sender",
       status: validates ? "PASS" : "WARN",
-      confidence: "MEDIUM",
+      confidence: thin ? "LOW" : "MEDIUM",
       detail: validates
         ? `Message listeners inspect the \`sender\` — confirm every privileged handler does, not only one.`
-        : `\`onMessage.addListener\` handlers do not reference \`sender\` anywhere in the sampled source. The ` +
+        : `Message listeners do not reference \`sender\` anywhere in the sampled source. The ` +
           `background worker holds the extension's permissions, so an unvalidated handler is a privilege-escalation ` +
           `path: a content script on any matched page — or, with \`externally_connectable\`, a web page — can ask it ` +
           `to perform a privileged action. Check \`sender.id\` and \`sender.origin\` before acting.${note}`,
-      ...(thin ? { confidence: "LOW" as const } : {}),
     });
   }
 
-  // Tokens in chrome.storage.local persist unencrypted on disk.
-  const TOKEN_KEY = /['"][^'"]*(?:access|refresh|auth|bearer)[_-]?token[^'"]*['"]/i;
-  if (/chrome\.storage\.(local|sync)/.test(source) && TOKEN_KEY.test(source)) {
+  // Tokens in chrome.storage.local persist unencrypted on disk. ⚠️ Decided per file, on an
+  // actual storage WRITE whose object carries a token key: gorhill/uBlock was flagged for a
+  // URL parameter named "auth-token" in one file and an unrelated chrome.storage.local in another.
+  const tokenWrite = files.find((f) => TOKEN_STORAGE_WRITE_RE.test(f.text));
+  if (tokenWrite) {
+    const usesSession = /storage\.session/.test(source);
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "ext_token_storage",
       label: "Auth tokens are stored with appropriate lifetime",
-      status: /chrome\.storage\.session/.test(source) ? "PASS" : "WARN",
+      status: usesSession ? "PASS" : "WARN",
       confidence: "MEDIUM",
-      detail: /chrome\.storage\.session/.test(source)
+      detail: usesSession
         ? `\`chrome.storage.session\` is in use — it is memory-backed and cleared when the browser closes, which is ` +
           `the right home for a short-lived token.`
-        : `Auth token keys appear alongside \`chrome.storage.local\`/\`sync\`, which persist to disk unencrypted in ` +
-          `the browser profile and — for \`sync\` — are replicated to every device signed into that Chrome profile. ` +
-          `Anything with access to the profile directory can read them. Use \`chrome.storage.session\` for tokens, ` +
-          `and prefer \`chrome.identity.getAuthToken\` so Chrome holds the credential rather than your extension.`,
+        : `${tokenWrite.path} writes an auth token to \`chrome.storage.local\`/\`sync\`, which persist to disk ` +
+          `unencrypted in the browser profile and — for \`sync\` — are replicated to every device signed into that ` +
+          `Chrome profile. Anything with access to the profile directory can read them. Use ` +
+          `\`chrome.storage.session\` for tokens, and prefer \`chrome.identity.getAuthToken\` so Chrome holds the ` +
+          `credential rather than your extension.`,
+      evidence: tokenWrite.path,
     });
   }
 
   return checks;
 }
+
+/** A storage.local/sync WRITE whose object literal carries a token key. */
+export const TOKEN_STORAGE_WRITE_RE =
+  /storage\.(local|sync)\.set\(\s*\{[^}]{0,200}(access|refresh|auth|bearer)[_-]?token/i;
 
 // ── Web Store listing readiness ─────────────────────────────────────────────
 function listingChecks(m: Record<string, unknown>): PulseScanCheckInput[] {
@@ -726,8 +995,7 @@ function listingChecks(m: Record<string, unknown>): PulseScanCheckInput[] {
   // Version string format. Chrome is strict, and a rejected version wastes a
   // review cycle rather than failing locally.
   const version = typeof m.version === "string" ? m.version : "";
-  const validVersion = /^\d{1,5}(\.\d{1,5}){0,3}$/.test(version) &&
-    version.split(".").every((part) => part === "0" || !part.startsWith("0"));
+  const validVersion = isValidExtensionVersion(version);
   checks.push({
     category: CATEGORIES.APP_STORE,
     checkKey: "ext_version_format",

@@ -158,14 +158,19 @@ describe("android_exported_components — launchers are not the finding", () => 
     expect(find(out, "android_exported_components")?.status).toBe("PASS");
   });
 
-  it("still warns when non-launcher components are exported with no permission (NewPipe)", () => {
+  // Updated Oct 2026 (audit A4): this fixture's exported components are the launcher, a
+  // MEDIA_BUTTON receiver and an https VIEW handler — all public by contract — so the old WARN
+  // was the false positive. The custom-action case that SHOULD warn is in audit-2026-10-android.
+  it("passes NewPipe's exported components, which are all public by contract", () => {
     const out = evaluateAndroidChecks(snapshot({ [M]: NEWPIPE_MANIFEST }));
-    expect(find(out, "android_exported_components")?.status).toBe("WARN");
+    expect(find(out, "android_exported_components")?.status).toBe("PASS");
   });
 });
 
 describe("android_minify_enabled — computed assignment is not 'not configured'", () => {
-  it("treats nowinandroid's gradleProperty(...).getOrElse(true) as inconclusive, not missing", () => {
+  // Updated Oct 2026 (audit A2): a property toggle that DEFAULTS to true is on unless someone passes
+  // the property — the extended family already passed it, and the two families must agree.
+  it("treats nowinandroid's gradleProperty(...).getOrElse(true) as enabled (its default), not missing", () => {
     const out = evaluateAndroidChecks(snapshot({
       "app/build.gradle.kts": `android {
     buildTypes {
@@ -179,7 +184,7 @@ describe("android_minify_enabled — computed assignment is not 'not configured'
     }));
     const c = find(out, "android_minify_enabled");
     expect(c?.detail).not.toMatch(/not configured/);
-    expect(c?.confidence).toBe("LOW");
+    expect(c?.status).toBe("PASS");
   });
 
   it("still reports literal minifyEnabled false as explicitly disabled at HIGH (kickstarter)", () => {
@@ -210,13 +215,14 @@ describe("android_minify_enabled — computed assignment is not 'not configured'
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = providers.gradleProperty("minifyWithR8").map(String::toBooleanStrict).getOrElse(true)
+            isMinifyEnabled = !isCI.get()
         }
     }
 }`,
     }));
     const c = find(out, "android_minify_enabled");
-    expect(c?.status).toBe("WARN");
+    // Updated Oct 2026 (audit A2): a value that cannot be evaluated is INCONCLUSIVE, not a WARN.
+    expect(c?.status).toBe("INCONCLUSIVE");
     expect(c?.confidence).toBe("LOW");
     expect(c?.detail).not.toMatch(/explicitly disabled/);
   });

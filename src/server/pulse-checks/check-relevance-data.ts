@@ -346,13 +346,13 @@ export const CHECK_RELEVANCE: Record<string, RelevanceRule> = {
   "cli_readme_usage": { surface: "REPO_CLI", platforms: ["CLI_TOOL"], presence: false, feature: null },
   "cli_error_handling": { surface: "REPO_CLI", platforms: ["CLI_TOOL"], presence: false, feature: null },
   "cli_shell_injection": { surface: "REPO_CLI", platforms: ["CLI_TOOL"], presence: false, feature: null },
-  "api_cors_credentials": { surface: "API_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: "accounts" },
-  "api_cors_origin_reflection": { surface: "API_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: "accounts" },
+  "api_cors_credentials": { surface: "API_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: null }, // own evidence condition (cookie gate / GraphQL-shaped response); feature-gating hid real findings on API scans (Oct 2026 audit)
+  "api_cors_origin_reflection": { surface: "API_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: null }, // own evidence condition (cookie gate / GraphQL-shaped response); feature-gating hid real findings on API scans (Oct 2026 audit)
   "api_verbose_errors": { surface: "API_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: null },
   "api_rate_limit_headers": { surface: "API_HTTP", platforms: ["API_BACKEND", "SAAS", "WEB_APP"], presence: true, feature: "public_api" },
   "api_server_banner": { surface: "WEB_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: null },
   "api_nosniff_header": { surface: "WEB_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: null },
-  "api_graphql_introspection": { surface: "API_HTTP", platforms: ["API_BACKEND", "SAAS", "WEB_APP"], presence: true, feature: "public_api" },
+  "api_graphql_introspection": { surface: "API_HTTP", platforms: ["API_BACKEND", "SAAS", "WEB_APP"], presence: true, feature: null }, // own evidence condition (cookie gate / GraphQL-shaped response); feature-gating hid real findings on API scans (Oct 2026 audit)
   "api_trace_method": { surface: "API_HTTP", platforms: ["API_BACKEND", "WEB_APP", "SAAS", "OTHER"], presence: true, feature: null },
   "api_debug_endpoints": { surface: "API_HTTP", platforms: ["API_BACKEND", "SAAS", "WEB_APP"], presence: false, feature: "public_api" },
   "api_unauthenticated_data": { surface: "API_HTTP", platforms: ["API_BACKEND", "SAAS", "WEB_APP"], presence: false, feature: "public_api" },

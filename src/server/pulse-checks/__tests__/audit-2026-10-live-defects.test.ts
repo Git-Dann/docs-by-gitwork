@@ -64,13 +64,14 @@ describe("Chrome extension host permissions", () => {
     expect(check.evidence).toBe("https://*/*, *://*/*");
   });
 
-  it("a published listing is a WARN, without telling it it will be rejected; source is still a FAIL", () => {
+  // Audit 2026-10 (extension item 12): source is a WARN too now — all-sites access is often legitimate.
+  it("a published listing is a WARN, without telling it it will be rejected; source is a WARN too", () => {
     const store = evaluateExtensionManifest(manifest, "store").find((x) => x.checkKey === "ext_host_permissions_scoped")!;
     const repo = evaluateExtensionManifest(manifest, "repo").find((x) => x.checkKey === "ext_host_permissions_scoped")!;
     expect(store.status).toBe("WARN");
     expect(store.detail).not.toMatch(/rejected/);
-    expect(repo.status).toBe("FAIL");
-    expect(repo.detail).toMatch(/rejected/);
+    expect(repo.status).toBe("WARN");
+    expect(repo.detail).toMatch(/held for justification/);
   });
 });
 

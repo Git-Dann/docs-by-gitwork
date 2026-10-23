@@ -15,17 +15,33 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
+import { isVendoredPath } from "./native-mobile";
+import {
+  ANDROID_BUILD_LOGIC_PATH,
+  androidBuildInputs,
+  concatenatedSql,
+  gradleToggleState,
+  manifestAbsence,
+  pendingIntentSites,
+  stripJvmFile,
+  type AndroidBuildInputs,
+} from "./android-app";
 
 const SOUND_ABSENCE_COVERAGE = 0.3;
 
 interface Ctx {
   source: string;
+  /** Per-file stripped source — for patterns that must hold WITHIN one file (a guard and what it guards). */
+  sourceFiles: { path: string; text: string }[];
   sampled: number;
   total: number;
   manifest: string;
   gradle: string;
   properties: string;
   coverage: number;
+  build: AndroidBuildInputs;
+  /** App source that exists in the tree but was not read. */
+  unreadSource: string[];
 }
 
 /**
@@ -71,77 +87,34 @@ export function stripJvmComments(source: string): string {
   return out;
 }
 
-/**
- * True when the SQL argument of a rawQuery/execSQL call is built from a NON-constant value — by concatenation
- * (`"… = " + id`) or by a Kotlin template (`"… = $id"`). Concatenating string literals, numbers or SCREAMING_CASE
- * constants (`"DROP TABLE " + TABLE_NAME`) cannot be injected. Only the FIRST argument is judged: the bind-args
- * array (`arrayOf(a + b)`, `arrayOf("$id")`) is the parameterised path, not an injection.
- */
-/** A SCREAMING_CASE constant, optionally qualified (`TABLE_NAME`, `Contract.Entry.COLUMN_ID`). */
-const SQL_CONSTANT = /^(?:\w+\.)*[A-Z][A-Z0-9]*(?:_[A-Za-z0-9]+)*$/;
-
-export function concatenatedSql(source: string): boolean {
-  // Kotlin raw strings (`"""…"""`, often multi-line SQL) first, so a template inside one is still judged.
-  const literal = /"""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g;
-  const start = /\b(?:rawQuery|execSQL)\(\s*(?=["'])/g;
-  for (const m of source.matchAll(start)) {
-    const open = source.indexOf("(", m.index ?? 0);
-    const window = source.slice(open, open + 2000);
-    // Same-length mask so parentheses and commas inside literals do not move the argument boundaries.
-    const masked = window.replace(literal, (l) => '"' + " ".repeat(Math.max(0, l.length - 2)) + '"');
-    let depth = 0;
-    let end = window.length;
-    for (let i = 0; i < masked.length; i++) {
-      const c = masked[i];
-      if (c === "(") depth++;
-      else if (c === ")" && --depth === 0) {
-        end = i;
-        break;
-      } else if (c === "," && depth === 1) {
-        end = i;
-        break;
-      }
-    }
-    const sqlArg = window.slice(1, end);
-    // Kotlin templates: `$name` / `${expr}` interpolate a value unless it names a constant (`${Contract.TABLE}`).
-    // `\$` is an escaped dollar, not a template.
-    const templated = [...sqlArg.matchAll(literal)]
-      .filter((l) => l[0].startsWith('"'))
-      .flatMap((l) => [...l[0].matchAll(/(?<!\\)\$(?:\{([^}]*)\}|([A-Za-z_]\w*))/g)])
-      .some((t) => !SQL_CONSTANT.test((t[1] ?? t[2] ?? "").trim()));
-    if (templated) return true;
-    const args = sqlArg.replace(literal, '""');
-    const operands = [...args.matchAll(/\+\s*(""|[A-Za-z_][\w.]*|\S)/g)].map((o) => o[1]);
-    if (operands.some((op) => op !== '""' && !/^\d/.test(op) && !SQL_CONSTANT.test(op))) return true;
-  }
-  return false;
-}
+// concatenatedSql lives in android-app.ts so BOTH families judge SQL the same way.
+export { concatenatedSql } from "./android-app";
 
 function buildCtx(snapshot: RepoSnapshot): Ctx {
-  const src: string[] = [];
-  const manifest: string[] = [];
-  const gradle: string[] = [];
+  const isAppSource = (p: string) => /\.(kt|java)$/i.test(p) && !isVendoredPath(p) && !ANDROID_BUILD_LOGIC_PATH.test(p);
+  const sourceFiles: { path: string; text: string }[] = [];
   const properties: string[] = [];
-  let sampled = 0;
 
   for (const [path, text] of snapshot.files) {
-    if (/\.(kt|java)$/i.test(path)) {
-      src.push(text);
-      sampled++;
-    } else if (/AndroidManifest\.xml$/i.test(path)) manifest.push(text);
-    else if (/build\.gradle(\.kts)?$/i.test(path)) gradle.push(text);
+    // Strip per FILE by its own language (stripJvmFile): stripping the joined sample
+    // let one unterminated comment delete every file after it.
+    if (isAppSource(path)) sourceFiles.push({ path, text: stripJvmFile(path, text) });
     else if (/gradle\.properties$/i.test(path)) properties.push(text);
   }
 
-  const total = snapshot.paths.filter((p) => /\.(kt|java)$/i.test(p)).length;
+  const allSource = snapshot.paths.filter(isAppSource);
+  const build = androidBuildInputs(snapshot);
   return {
-    source: stripJvmComments(src.join("\n")),
-    sampled,
-    total,
-    manifest: manifest.join("\n"),
-    gradle: gradle.join("\n"),
+    source: sourceFiles.map((f) => f.text).join("\n"),
+    sourceFiles,
+    sampled: sourceFiles.length,
+    total: allSource.length,
+    manifest: build.manifest,
+    gradle: build.gradle,
     properties: properties.join("\n"),
-    coverage: total === 0 ? 0 : sampled / total,
+    coverage: allSource.length === 0 ? 0 : Math.min(1, sourceFiles.length / allSource.length),
+    build,
+    unreadSource: allSource.filter((p) => !snapshot.files.has(p)),
   };
 }
 
@@ -176,23 +149,29 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     label: string,
     status: PulseScanCheckInput["status"],
     detail: string,
-    opts: { absence?: boolean } = {},
+    opts: { absence?: boolean; hint?: string | null } = {},
   ) => {
-    const weak = opts.absence === true && !soundAbsence && status !== "PASS";
+    const weak = opts.absence === true && (!soundAbsence || !!opts.hint) && status !== "PASS";
+    // SKIPPED means "does not apply". Not finding something in a partial sample is
+    // NOT that — it is "we did not see it", which is INCONCLUSIVE. SKIPPED stands
+    // only when coverage is sound AND no unread file suggests otherwise (`hint`).
+    const notSeen = weak && status === "SKIPPED";
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey,
       label,
-      status,
+      status: notSeen ? "INCONCLUSIVE" : status,
       confidence: weak ? "LOW" : "HIGH",
       ...(weak
         ? {
             confidenceReason:
-              `Only ${ctx.sampled} of ${ctx.total} Kotlin/Java files were read, so the absence of this pattern is ` +
-              "not established.",
+              (opts.hint ? `${opts.hint} was not read, ` : `Only ${ctx.sampled} of ${ctx.total} Kotlin/Java files were read, `) +
+              "so the absence of this pattern is not established.",
           }
         : {}),
-      detail,
+      detail: notSeen
+        ? `${detail.replace(/\.$/, "")}, but ${opts.hint ? `${opts.hint} was not read` : `only ${ctx.sampled} of ${ctx.total} Kotlin/Java files were read`} — so whether this applies is not established.`
+        : detail,
     });
   };
 
@@ -210,10 +189,17 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     return checks;
   }
 
+  // A verdict resting on a manifest NOT declaring something — inconclusive when some manifests were not read.
+  const manifestGated = (fn: () => void, holds: boolean) => {
+    const before = checks.length;
+    fn();
+    if (!holds) checks[before] = manifestAbsence(ctx.build, checks[before]);
+  };
+
   // ── Backup ─────────────────────────────────────────────────────────────────
   const allowBackup = /android:allowBackup\s*=\s*"true"/i.test(ctx.manifest);
   const backupDisabled = /android:allowBackup\s*=\s*"false"/i.test(ctx.manifest);
-  add(
+  manifestGated(() => add(
     "android_x_allow_backup",
     "Application data is not silently backed up off-device",
     backupDisabled ? "PASS" : allowBackup ? "WARN" : "WARN",
@@ -223,10 +209,10 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
       : "android:allowBackup is enabled (explicitly, or by default — it defaults to true). The app's entire private " +
         "data directory is copied to Google Drive and can be pulled off a debuggable device with `adb backup`. " +
         "Anything the app stores locally — session tokens, cached personal data, a local database — travels with it.",
-  );
+  ), backupDisabled);
 
   const backupRules = /android:(fullBackupContent|dataExtractionRules)\s*=/i.test(ctx.manifest);
-  add(
+  manifestGated(() => add(
     "android_x_backup_rules",
     "Backup rules exclude credentials and databases",
     backupDisabled ? "SKIPPED" : backupRules ? "PASS" : "WARN",
@@ -238,36 +224,75 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
         : "Backup is enabled with no fullBackupContent or dataExtractionRules, so the default is to back up " +
           "everything in the app's private directory. Declare an exclusion list covering shared preferences holding " +
           "tokens and any local database.",
-  );
+  ), backupDisabled || backupRules);
 
   // ── Release build configuration ────────────────────────────────────────────
-  const minify =
-    // `minifyEnabled true`, Groovy's `minifyEnabled = true` and Kotlin's `isMinifyEnabled = true` (via /i).
-    /minifyEnabled\s*=?\s*true\b/i.test(ctx.gradle) ||
-    // A property-driven toggle that defaults to ON, e.g. Now in Android:
-    // `isMinifyEnabled = providers.gradleProperty("minifyWithR8").map(...).getOrElse(true)`.
-    /isMinifyEnabled\s*=\s*[^\n]*(?:\n\s*\.[^\n]*)*?(?:\.(?:getOrElse|orElse)\(\s*true\s*\)|\?:\s*true\b)/.test(ctx.gradle);
-  add(
-    "android_x_code_shrinking",
-    "Release builds are minified and obfuscated",
-    !ctx.gradle ? "SKIPPED" : minify ? "PASS" : "WARN",
-    !ctx.gradle
-      ? "No Gradle build file was read, so build configuration could not be inspected."
-      : minify
+  // One predicate for both families (gradleToggleState). thunderbird's
+  // `isMinifyEnabled = !isCI.get()` is a computed value — it was WARN HIGH here and
+  // LOW in the base family; it is now INCONCLUSIVE in both.
+  const minifyState = gradleToggleState(ctx.gradle, "minify");
+  const shrinkState = gradleToggleState(ctx.gradle, "shrinkResources");
+  const minify = minifyState === "on";
+  const minifyUnknown = minifyState === "computed" || (minifyState === "unset" && ctx.build.gradleCoverage < 1);
+  if (!ctx.gradle) {
+    checks.push({
+      category: CATEGORIES.APP_STORE,
+      checkKey: "android_x_code_shrinking",
+      label: "Release builds are minified and obfuscated",
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail: "No Gradle build file was read, so build configuration could not be inspected.",
+    });
+  } else if (minifyUnknown) {
+    checks.push({
+      category: CATEGORIES.APP_STORE,
+      checkKey: "android_x_code_shrinking",
+      label: "Release builds are minified and obfuscated",
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail:
+        minifyState === "computed"
+          ? "Release minification is set from a build-time expression that cannot be evaluated from source, so " +
+            "whether R8 runs for release builds is not established — check the value the release build resolves."
+          : "minifyEnabled was not found in the build files that were read, and some build files were not read, so " +
+            "whether release builds are minified is not established.",
+    });
+  } else {
+    add(
+      "android_x_code_shrinking",
+      "Release builds are minified and obfuscated",
+      minify ? "PASS" : "WARN",
+      minify
         ? "Release builds enable code shrinking, so the shipped APK is minified and obfuscated by R8."
         : "minifyEnabled is not set for release builds. The APK ships with original class, method and field names, " +
           "so decompiling it produces near-readable source — including the names of your API endpoints, feature " +
           "flags and any hardcoded logic. It is also a straight size increase for users.",
-  );
+    );
+  }
 
-  const shrinkRes = /shrinkResources\s+true|isShrinkResources\s*=\s*true/i.test(ctx.gradle);
-  add(
-    "android_x_resource_shrinking",
-    "Release builds shrink unused resources",
-    !ctx.gradle ? "SKIPPED" : shrinkRes ? "PASS" : minify ? "WARN" : "SKIPPED",
-    !ctx.gradle
-      ? "No Gradle build file was read."
-      : shrinkRes
+  // "Code shrinking not enabled" was reported (SKIPPED) when it was in fact computed;
+  // when either value cannot be evaluated, this is not established.
+  const shrinkRes = shrinkState === "on";
+  if (!ctx.gradle || minifyUnknown || shrinkState === "computed") {
+    checks.push({
+      category: CATEGORIES.APP_STORE,
+      checkKey: "android_x_resource_shrinking",
+      label: "Release builds shrink unused resources",
+      status: shrinkRes && minify ? "PASS" : "INCONCLUSIVE",
+      confidence: shrinkRes && minify ? "HIGH" : "LOW",
+      detail: !ctx.gradle
+        ? "No Gradle build file was read."
+        : shrinkRes && minify
+          ? "Unused resources are stripped from release builds."
+          : "Whether release builds shrink resources depends on build-time values that cannot be evaluated from " +
+            "source (code shrinking and/or shrinkResources are computed), so this is not established.",
+    });
+  } else {
+    add(
+      "android_x_resource_shrinking",
+      "Release builds shrink unused resources",
+      shrinkRes ? "PASS" : minify ? "WARN" : "SKIPPED",
+      shrinkRes
         ? "Unused resources are stripped from release builds."
         : minify
           ? "Code shrinking is on but shrinkResources is not, so unused drawables, layouts and strings — including " +
@@ -275,11 +300,14 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
             "largest single download-size saving available."
           : "Resource shrinking requires code shrinking, which is not enabled — so this is reported against the " +
             "minification finding rather than separately.",
-  );
+    );
+  }
 
   // ── Intents ────────────────────────────────────────────────────────────────
-  const pendingIntents = /PendingIntent\.(getActivity|getBroadcast|getService)/.test(ctx.source);
-  const immutable = /FLAG_IMMUTABLE/.test(ctx.source);
+  // PendingIntentCompat states mutability in its last argument (pendingIntentSites).
+  const sites = pendingIntentSites(ctx.source);
+  const pendingIntents = sites.count > 0;
+  const immutable = sites.immutable;
   add(
     "android_x_pending_intent_mutable",
     "PendingIntents are explicitly immutable",
@@ -309,6 +337,10 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
 
   // ── WebView ────────────────────────────────────────────────────────────────
   const usesWebView = /WebView|webViewClient/i.test(ctx.source);
+  // thunderbird's legacy/.../MessageWebView.kt was unread, and "no WebView" was SKIPPED HIGH.
+  const unreadWebView = ctx.unreadSource.find((p) => /webview/i.test(p.split("/").pop() ?? ""));
+  // Only "no WebView" is an absence; a finding about a WebView we saw is presence, sound on any sample.
+  const webViewOpts = usesWebView ? {} : { absence: true, hint: unreadWebView ? `\`${unreadWebView}\`` : null };
   const jsEnabled = /javaScriptEnabled\s*=\s*true|setJavaScriptEnabled\(true\)/.test(ctx.source);
   const loadsRemote = /loadUrl\(\s*"https?:/.test(ctx.source);
   add(
@@ -322,6 +354,7 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
           "script the remote page pulls in — an ad network, an analytics tag, a compromised CDN — executes inside " +
           "your app's WebView. Restrict which origins can load, and never combine this with a JavaScript interface."
         : "The WebView either does not enable JavaScript or does not load remote content.",
+    webViewOpts,
   );
 
   const jsInterface = /addJavascriptInterface\(/.test(ctx.source);
@@ -336,6 +369,7 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
           "becomes callable by any script on the loaded page, giving remote JavaScript a direct route into native " +
           "code with the app's own permissions."
         : "No JavaScript bridge is exposed to remotely-loaded content.",
+    webViewOpts,
   );
 
   const webViewFile = /setAllowFileAccess\(true\)|setAllowUniversalAccessFromFileURLs\(true\)|setAllowFileAccessFromFileURLs\(true\)/.test(
@@ -352,6 +386,7 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
           "the app's private storage — the standard route from an XSS in a WebView to reading the app's session " +
           "tokens off disk."
         : "WebView file access is not enabled.",
+    webViewOpts,
   );
 
   // ── Data handling ──────────────────────────────────────────────────────────
@@ -446,7 +481,25 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
   );
 
   const strictMode = /StrictMode\.setThreadPolicy|StrictMode\.setVmPolicy/.test(ctx.source);
-  const strictGuarded = /if\s*\(\s*BuildConfig\.DEBUG\s*\)[\s\S]*?StrictMode/.test(ctx.source);
+  // The guard must precede StrictMode IN THE SAME FILE — across the joined sample a
+  // debug check in one file "guarded" StrictMode in another. `isDebuggable()` /
+  // FLAG_DEBUGGABLE is the same guard as BuildConfig.DEBUG (nowinandroid uses it).
+  const DEBUG_GUARD = /if\s*\(\s*(?:BuildConfig\.DEBUG|[\w.]*isDebuggable\w*(?:\(\))?|[\w.]*isDebugBuild\w*(?:\(\))?|[^)\n]*FLAG_DEBUGGABLE[^)\n]*)\s*\)/;
+  const strictFiles = ctx.sourceFiles.filter((f) => /StrictMode\.set(?:Thread|Vm)Policy/.test(f.text));
+  const strictGuarded =
+    strictFiles.length > 0 &&
+    strictFiles.every((f) => {
+      const at = f.text.search(/StrictMode\.set(?:Thread|Vm)Policy/);
+      const guard = DEBUG_GUARD.exec(f.text);
+      return guard !== null && guard.index < at;
+    });
+  // StrictMode is set up in the Application subclass by convention, so "not used"
+  // is not established while the class the manifest names was not read
+  // (nowinandroid: NiaApplication.kt).
+  const appClass = /<application\b[^>]*android:name\s*=\s*"([\w.$]+)"/i.exec(ctx.manifest)?.[1]?.split(".").pop();
+  const unreadAppClass = appClass
+    ? ctx.unreadSource.find((p) => (p.split("/").pop() ?? "").replace(/\.(kt|java)$/i, "") === appClass)
+    : undefined;
   add(
     "android_x_strict_mode",
     "StrictMode is not enabled in release builds",
@@ -454,10 +507,11 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     !strictMode
       ? "StrictMode is not used in the sampled source."
       : strictGuarded
-        ? "StrictMode is enabled behind a BuildConfig.DEBUG guard, so it does not run in release."
+        ? "StrictMode is enabled behind a debug-build guard, so it does not run in release."
         : "StrictMode is configured without a debug guard. With a penalty of death it crashes production users on " +
           "the exact disk and network violations it is meant to surface during development; with logging it is " +
           "still a per-operation cost paid on every device.",
+    { absence: !strictMode, hint: !strictMode && unreadAppClass ? `the Application class \`${unreadAppClass}\`` : null },
   );
 
   return checks;

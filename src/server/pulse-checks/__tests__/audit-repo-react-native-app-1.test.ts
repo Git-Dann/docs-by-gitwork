@@ -18,11 +18,12 @@ const pkg = (rn: string, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ dependencies: { "react-native": rn }, ...extra });
 
 describe("audit repo-react-native-app-1 — rn_version_supported window", () => {
-  it("warns on 0.84 now that 0.87 is current, and states the 0.85 floor", () => {
+  // Floor moved to 0.86 when 0.88 shipped (2026-10-15); see audit-2026-10-react-native.test.ts.
+  it("warns on 0.84 now that 0.88 is current, and states the 0.86 floor", () => {
     const c = find(evaluateReactNativeChecks(snapshot({ "package.json": pkg("0.84.2") })), "rn_version_supported");
     expect(c?.status).toBe("WARN");
     const mm = find(evaluateReactNativeChecks(snapshot({ "package.json": pkg("0.83.9") })), "rn_version_supported");
-    expect(mm?.detail).toMatch(/0\.85 and above/);
+    expect(mm?.detail).toMatch(/0\.86 and above/);
   });
   it("still passes a current version (bluesky 0.86.3)", () => {
     const c = find(evaluateReactNativeChecks(snapshot({ "package.json": pkg("0.86.3") })), "rn_version_supported");

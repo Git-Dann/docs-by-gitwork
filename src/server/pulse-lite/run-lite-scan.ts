@@ -13,6 +13,7 @@
  * No AI imports belong in this file — keep it that way.
  */
 
+import { answersAsApi } from "@/server/pulse-lite/api-target";
 import {
   runUrlChecks,
   runGithubChecks,
@@ -216,7 +217,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
         relevanceCtx.features = features;
         // A URL that answers with JSON is an API, whatever the dropdown said — and is
         // judged as one: an API scanned as "iOS app" is not asked for an About page.
-        if (/json/i.test(page.contentType ?? "")) {
+        if (answersAsApi(safeUrl, page.contentType)) {
           relevanceCtx.target = { kind: "api" };
           relevanceCtx.platform = "API_BACKEND";
         }

@@ -321,10 +321,14 @@ what it knows.
   Provenance route erroring. `@@map` made it a pure code rename with no manual DB step. Fixing the
   physical name properly is a `prisma migrate` job, not a hand-run `--accept-data-loss` push
   someone can forget.
-- **Commit pinning.** `subjectCommit` is written as `null` because `PulseScan` does not
-  record the SHA it read. Recorded as null rather than guessed — a certificate must not imply
-  a precision it does not have. Threading the SHA through the code agent is the single
-  highest-value next change: without it a mark names a repo, not a version.
+- ~~**Commit pinning.**~~ **Done (October 2026).** A repo mark records the commit the
+  code-health measure checked out (`scanCommit` in `issue.ts`, from
+  `agentData.codeHealth.commit`). It is sealed through the payload's `subject.commit` and shown on
+  the certificate as "Version examined". It stays `null` for URL scans and for scans from before the
+  measure existed; the certificate then says plainly that the mark is not pinned to a commit.
+  ⚠️ The commit is the one the clone read. The API-based repo checks read the default branch
+  in the same scan, seconds apart, so a push landing mid-scan could split them. That's accepted,
+  not solved.
 - **Continuous re-examination.** The `CuratorRun`/`ForemanRun` job + cron spine is right there; a
   `COUNTERMARK_RECHECK` job that re-scans and re-issues before expiry is the subscription.
 - **Licensed issuers (white label).** Needs an issuer record, per-issuer branding on the

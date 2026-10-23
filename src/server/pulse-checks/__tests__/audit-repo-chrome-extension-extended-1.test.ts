@@ -91,23 +91,25 @@ describe("ext_x_privacy_policy recognises real policy links", () => {
     });
     expect(at(evaluateExtensionExtendedChecks(s), "ext_x_privacy_policy").status).toBe("PASS");
   });
-  it("still WARNs when only the chrome.privacy API and chrome:// settings URLs appear", () => {
+  // Audit 2026-10: the policy URL lives in the store dashboard, so not finding one in the repo
+  // is INCONCLUSIVE ("could not establish"), never a WARN that implies there is none.
+  it("is INCONCLUSIVE when only the chrome.privacy API and chrome:// settings URLs appear", () => {
     const s = snap({
       "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0", permissions: ["cookies", "privacy"] }),
       "src/bg.ts": "chrome.privacy.network.webRTCIPHandlingPolicy.set({ value: 'default' });\nchrome.tabs.create({ url: 'chrome://settings/privacy' });\n",
       "README.md": "# x\nBlocks trackers.\n",
     });
     const c = at(evaluateExtensionExtendedChecks(s), "ext_x_privacy_policy");
-    expect(c.status).toBe("WARN");
-    expect(c.detail).toMatch(/sampled source/);
+    expect(c.status).toBe("INCONCLUSIVE");
+    expect(c.detail).toMatch(/could not be established/);
   });
-  it("still WARNs when the only privacy URL is the chrome.privacy API reference page", () => {
+  it("is INCONCLUSIVE when the only privacy URL is the chrome.privacy API reference page", () => {
     const s = snap({
       "manifest.json": JSON.stringify({ manifest_version: 3, name: "x", version: "1.0.0", permissions: ["cookies", "privacy"] }),
       "src/bg.ts": "// see https://developer.chrome.com/docs/extensions/reference/api/privacy\nchrome.privacy.websites.thirdPartyCookiesAllowed.set({ value: false });\n",
       "README.md": "Docs: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/privacy\n",
     });
-    expect(at(evaluateExtensionExtendedChecks(s), "ext_x_privacy_policy").status).toBe("WARN");
+    expect(at(evaluateExtensionExtendedChecks(s), "ext_x_privacy_policy").status).toBe("INCONCLUSIVE");
   });
 });
 

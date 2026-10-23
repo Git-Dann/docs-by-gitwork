@@ -21,7 +21,8 @@ export interface CodeHealthResult {
  * plus its checks. Never throws: a measure that could not run returns one INCONCLUSIVE
  * check saying why, so "we could not look" is never read as "nothing is wrong" (§35).
  */
-export async function runCodeHealth(repoInput: string): Promise<CodeHealthResult> {
+export async function runCodeHealth(repoInput: string, opts: { history?: boolean } = {}): Promise<CodeHealthResult> {
+  const withHistory = opts.history ?? true;
   const parsed = parseGithubRepo(repoInput);
   if (!parsed) return unavailable("the repository is not a GitHub owner/repo.");
   const slug = `${parsed.owner}/${parsed.repo}`;
@@ -31,8 +32,9 @@ export async function runCodeHealth(repoInput: string): Promise<CodeHealthResult
     const meta = await githubRequest<{ size?: number; default_branch?: string }>(`/repos/${slug}`).catch(() => null);
     const branch = meta?.default_branch ?? null;
     const since = new Date(Date.now() - HISTORY_MONTHS * 30.44 * 86_400_000).toISOString().slice(0, 10);
-    const report = await withCheckout(slug, { sizeKb: meta?.size ?? null, historySince: since }, async (c) => {
+    const report = await withCheckout(slug, { sizeKb: meta?.size ?? null, historySince: withHistory ? since : null }, async (c) => {
       const { report, measured } = await analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files });
+      if (!withHistory) return report;
       // History is a second, independent read: if it fails, the measure still stands.
       const history = await c
         .git(logArgs(since))

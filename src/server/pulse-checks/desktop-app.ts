@@ -34,8 +34,17 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
+import { isExampleOrFixturePath, isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 import { allDependencies, anyDependency, hasDependency, parsePackageManifest, type PackageManifest, type ProjectShape } from "./project-shape";
+
+/**
+ * Config text with keys explicitly switched off removed. marktext's electron-builder.yml
+ * says `notarize: false` (its builds are ad-hoc signed), and the signing check PASSed on
+ * the word "notarize".
+ */
+export function enabledSettings(config: string): string {
+  return config.replace(/["']?\b[\w.-]+["']?\s*[:=]\s*(false|null|undefined)\b/g, "");
+}
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
 const SOUND_ABSENCE_COVERAGE = 0.3;
@@ -62,14 +71,22 @@ interface DesktopContext {
   /** Sampled source minus test/spec/mock files — where a handler's PRESENCE is searched, so a jest mock
    *  of `electron` (`setPermissionRequestHandler: jest.fn()`) or a spec cannot stand in for the app's own guard. */
   appSource: string;
+  /** appSource with comments intact — for call-site analysis that must keep offsets and regex literals. */
+  appSourceRaw: string;
+  /** Renderer HTML entry files — where an Electron CSP <meta> usually lives. */
+  html: string;
   /** Rust source (Tauri) with comments stripped. */
   rust: string;
   /** All tauri.conf.json content joined. */
   tauriConf: string;
   /** Tauri v2 capability files joined. */
   capabilities: string;
+  /** Every permission entry from capability files and tauri.conf.json, parsed. */
+  permissions: unknown[];
   /** Packager config (electron-builder.yml/json, forge.config.*) joined. */
   packagerConfig: string;
+  /** GitHub Actions workflow contents joined — where signing secrets are referenced by name. */
+  workflows: string;
   pkg: PackageManifest | null;
   /** Sampled fraction of the repo's JS/TS files (0–1). */
   coverage: number;
@@ -83,6 +100,176 @@ const PRELOAD = /preload/i;
 const NOT_SHIPPED =
   /(^|\/)(specs?|tests?|__tests__|__mocks__|mocks?|e2e|fixtures?|__fixtures__)\/|\.(test|spec|tests)\.[cm]?[jt]sx?$/i;
 
+/** True for source that ships in the app: not vendored, not a test, spec, mock or fixture. */
+export function isShippedDesktopSource(path: string): boolean {
+  return !isVendoredPath(path) && !NOT_SHIPPED.test(path);
+}
+
+/**
+ * The package.json manifests that describe the desktop app itself, merged.
+ *
+ * Reading only the ROOT manifest misses every monorepo: marktext's root package.json
+ * is a workspace shell, and electron-updater, keytar and the app's version live in
+ * packages/desktop/package.json — so the updater, keychain and crash checks all
+ * reported "not found". Taking only the manifests that declare the framework (electron,
+ * or a @tauri-apps package) keeps a sibling website's @sentry from counting as the
+ * desktop app's crash reporting. Root first, so the version read stays the root's.
+ */
+export function desktopManifests(
+  files: Map<string, string>,
+  shape: "electron" | "tauri",
+): { pkg: PackageManifest | null; text: string } {
+  const all: { path: string; text: string; pkg: PackageManifest }[] = [];
+  for (const [path, text] of files) {
+    if (!/(^|\/)package\.json$/i.test(path) || isVendoredPath(path) || isExampleOrFixturePath(path)) continue;
+    const pkg = parsePackageManifest(text);
+    if (pkg) all.push({ path, text, pkg });
+  }
+  all.sort((a, b) => a.path.split("/").length - b.path.split("/").length);
+  const declares = (m: PackageManifest) =>
+    shape === "electron" ? hasDependency(m, "electron") : anyDependency(m, /^@tauri-apps\//);
+  let chosen = all.filter((m) => declares(m.pkg));
+  if (chosen.length === 0) chosen = all.filter((m) => !m.path.includes("/"));
+  if (chosen.length === 0) return { pkg: null, text: "" };
+  const merged: PackageManifest = {
+    ...chosen[0].pkg,
+    version: chosen.find((m) => m.pkg.version)?.pkg.version,
+    dependencies: Object.assign({}, ...chosen.map((m) => allDependencies(m.pkg))),
+    devDependencies: {},
+    peerDependencies: {},
+    optionalDependencies: {},
+  };
+  return { pkg: merged, text: chosen.map((m) => m.text).join("\n") };
+}
+
+/** A CSP declared in shipped source (session header / meta built in JS) or in the renderer HTML. */
+export function electronCspDeclared(appSourceRaw: string, html: string): boolean {
+  return /Content-Security-Policy/i.test(appSourceRaw) || /Content-Security-Policy/i.test(html);
+}
+
+/** Electron's own navigation events. A renderer <webview> DOM listener is not a guard (preventDefault does nothing). */
+export function electronNavGuardPresent(appSource: string): boolean {
+  return /\bwill-navigate\b|\bwill-redirect\b/.test(
+    appSource.replace(/addEventListener\s*\(\s*["'`]will-(navigate|redirect)["'`]/g, ""),
+  );
+}
+
+/** Electron updater libraries. update-electron-app wraps the built-in autoUpdater (Squirrel). */
+const ELECTRON_UPDATER_DEPS = /^(electron-updater|update-electron-app)$/;
+
+/** An Electron auto-update channel: a dependency, a call in shipped source, or a packager publish target. */
+export function electronUpdaterPresent(pkg: PackageManifest | null, appSource: string, packagerConfig: string): boolean {
+  return anyDependency(pkg, ELECTRON_UPDATER_DEPS) ||
+    /\bautoUpdater\b|\bupdateElectronApp\s*\(/.test(appSource) ||
+    /\bpublish(ers)?\s*[:=]/i.test(packagerConfig);
+}
+
+/**
+ * Per-call-site analysis of shell.openExternal.
+ *
+ * One global "is there a scheme check anywhere near any call" let a hard-coded
+ * `shell.openExternal('https://…')` in a menu vouch for marktext's
+ * `ipcMain.handle(…, (_e, url) => shell.openExternal(url))`, which hands renderer
+ * input straight to the OS. A literal argument cannot be attacker-controlled, so it is
+ * skipped; every other call needs its own check within ±300 characters. Runs on RAW
+ * source (offsets intact, regex literals like /^https?:\/\// unmangled) and skips calls
+ * on a commented-out line.
+ */
+export function openExternalCallSites(raw: string): { total: number; dynamic: number; unvalidated: number } {
+  const VALIDATION = /new URL\(|\.protocol\b|startsWith\(\s*["'`]https?|\/\^\(?https?|\/\^http\(s\)\?|\^https\??:/;
+  let total = 0, dynamic = 0, unvalidated = 0;
+  for (const m of raw.matchAll(/shell\.openExternal\s*\(\s*/g)) {
+    const at = m.index ?? 0;
+    const lineStart = raw.lastIndexOf("\n", at) + 1;
+    if (/^\s*(\/\/|\*|\/\*)/.test(raw.slice(lineStart, at))) continue;
+    total++;
+    const arg = raw.slice(at + m[0].length, at + m[0].length + 400);
+    // A plain string literal (no ${…} interpolation) is a fixed destination.
+    if (/^(["'])(?:\\.|(?!\1)[^\\\n])*\1\s*[,)]/.test(arg) || /^`[^`$]*`\s*[,)]/.test(arg)) continue;
+    dynamic++;
+    if (!VALIDATION.test(raw.slice(Math.max(0, at - 300), at + 300))) unvalidated++;
+  }
+  return { total, dynamic, unvalidated };
+}
+
+/**
+ * IPC sender validation: a read of the sending frame's URL or origin. The old
+ * `\.sender\b[\s\S]{0,120}(url|origin)` (case-insensitive) was satisfied by any
+ * `rawUrl` within 120 characters of any `.sender` — marktext PASSed with no check at all.
+ */
+export function ipcSenderValidated(appSource: string): boolean {
+  return /\bsenderFrame\??\.(url|origin)\b|\.sender(?:Frame)?\??\.(getURL\(\)|url\b|origin\b)|\bvalidateSender\b/.test(appSource);
+}
+
+/**
+ * Crash/error reporting, shared by desktop_crash_reporting and desk_x_crash_reporter so they
+ * cannot disagree. Local loggers (electron-log, tauri-plugin-log) are deliberately NOT
+ * reporting: nothing they write reaches the developer.
+ */
+export function crashReportingPresent(pkg: PackageManifest | null, source: string, paths: string[]): boolean {
+  return anyDependency(pkg, /^(@sentry\/|bugsnag|@bugsnag\/|rollbar)/) ||
+    /crashReporter\.start|startCrashReporter|\bsentry|bugsnag|crashpad|minidump/i.test(source) ||
+    paths.some((p) =>
+      /(^|\/)crash-?reporter[^/]*\.(js|ts|mjs|cjs)$/i.test(p) &&
+      !/\.(test|spec)\.[cm]?[jt]s$|[-_]spec\.[cm]?[jt]s$/i.test(p) &&
+      !/(^|\/)(specs?|tests?|__tests__|e2e|fixtures?|__fixtures__|examples?|samples?|demos?)\//i.test(p) &&
+      !isVendoredPath(p));
+}
+
+/** Every entry of every `permissions` array in a Tauri JSON config (capability files, or inline in tauri.conf.json). */
+export function tauriPermissions(json: string): unknown[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const out: unknown[] = [];
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (k === "permissions" && Array.isArray(v)) out.push(...v);
+        else walk(v);
+      }
+    }
+  };
+  walk(parsed);
+  return out;
+}
+
+/**
+ * How the Tauri v2 opener plugin's URL opening is scoped.
+ *   • `opener:default` carries the plugin's own default scope (http, https, mailto, tel).
+ *   • `opener:allow-open-url` with an `allow` list is scoped by that list.
+ *   • the bare string with no scope anywhere is unscoped.
+ * null when no URL-opening opener permission is granted.
+ */
+export function openerUrlScope(permissions: unknown[]): "scoped" | "broad" | "unscoped" | null {
+  const SAFE = /^(https?:\/\/|mailto:|tel:)/i;
+  let granted = false, scoped = false, broad = false;
+  for (const p of permissions) {
+    if (p === "opener:default") {
+      granted = true;
+      scoped = true;
+    } else if (p === "opener:allow-open-url") {
+      granted = true;
+    } else if (p && typeof p === "object" && (p as { identifier?: unknown }).identifier === "opener:allow-open-url") {
+      granted = true;
+      const allow = (p as { allow?: unknown }).allow;
+      if (Array.isArray(allow) && allow.length > 0) {
+        scoped = true;
+        for (const a of allow) {
+          const url = a && typeof a === "object" ? (a as { url?: unknown }).url : undefined;
+          if (typeof url !== "string" || !SAFE.test(url)) broad = true;
+        }
+      }
+    }
+  }
+  if (!granted) return null;
+  return broad ? "broad" : scoped ? "scoped" : "unscoped";
+}
+
 function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): DesktopContext {
   const jsPaths = snapshot.paths.filter(
     (p) => /\.(js|ts|mjs|cjs|jsx|tsx)$/i.test(p) && !isVendoredPath(p),
@@ -91,42 +278,62 @@ function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): Desk
   const mainRead: string[] = [];
   const rustRead: string[] = [];
   const appRead: string[] = [];
+  const htmlRead: string[] = [];
   let tauriConf = "";
   let capabilities = "";
   let packagerConfig = "";
-  let pkgText: string | null = null;
+  let workflows = "";
+  const permissions: unknown[] = [];
 
   for (const [path, text] of snapshot.files) {
-    if (/(^|\/)src-tauri\/tauri\.conf\.json$/i.test(path)) tauriConf += "\n" + text;
-    else if (/(^|\/)src-tauri\/capabilities\/.*\.(json|toml)$/i.test(path)) capabilities += "\n" + text;
-    else if (/(^|\/)(electron-builder\.(ya?ml|json|js|ts|cjs)|forge\.config\.(js|ts|cjs|mjs)|electron\.vite\.config\.(js|ts|cjs|mjs))$/i.test(path)) {
+    if (/(^|\/)src-tauri\/tauri\.conf\.json$/i.test(path)) {
+      tauriConf += "\n" + text;
+      permissions.push(...tauriPermissions(text));
+    } else if (/(^|\/)src-tauri\/capabilities\/.*\.(json|toml)$/i.test(path)) {
+      capabilities += "\n" + text;
+      permissions.push(...tauriPermissions(text));
+    } else if (/(^|\/)(electron-builder\.(ya?ml|json|js|ts|cjs)|forge\.config\.(js|ts|cjs|mjs)|electron\.vite\.config\.(js|ts|cjs|mjs))$/i.test(path)) {
       packagerConfig += "\n" + text;
-    } else if (/(^|\/)package\.json$/i.test(path) && pkgText === null && !path.includes("/")) {
-      pkgText = text;
+    } else if (/^\.github\/workflows\/[^/]+\.ya?ml$/i.test(path)) {
+      workflows += "\n" + text;
+    } else if (/\.html?$/i.test(path) && isShippedDesktopSource(path)) {
+      htmlRead.push(text);
     } else if (/\.rs$/i.test(path) && !isVendoredPath(path)) {
       rustRead.push(text);
     } else if (/\.(js|ts|mjs|cjs|jsx|tsx)$/i.test(path) && !isVendoredPath(path)) {
       read.push(text);
-      if (!NOT_SHIPPED.test(path)) appRead.push(text);
-      if (MAIN_PROCESS.test(path) || PRELOAD.test(path)) mainRead.push(text);
+      if (!NOT_SHIPPED.test(path)) {
+        appRead.push(text);
+        // Shipped main-process files only: fiddle's tests/main/*.spec.ts matched the
+        // `main/` convention and fed mock webPreferences into the settings read.
+        if (MAIN_PROCESS.test(path) || PRELOAD.test(path)) mainRead.push(text);
+      }
     }
   }
 
+  // Strip each file on its own: the stripper does not parse regex literals, so one file's
+  // `/'/` desynchronised its quote tracking and swallowed code in the FILES AFTER it —
+  // marktext's `crashReporter.start` vanished from the joined, stripped sample.
+  const strip = (texts: string[]) => texts.map((t) => stripCStyleComments(t)).join("\n");
   const sourceRaw = read.join("\n");
   return {
     shape,
-    source: stripCStyleComments(sourceRaw),
+    source: strip(read),
     sourceRaw,
-    // Falls back to the whole sample when no file matched the main-process naming
+    // Falls back to the whole shipped sample when no file matched the main-process naming
     // convention — plenty of apps put createWindow in src/app.ts or similar, and a
     // security setting missed because of a filename is a false PASS.
-    mainSource: stripCStyleComments(mainRead.length > 0 ? mainRead.join("\n") : sourceRaw),
-    appSource: stripCStyleComments(appRead.join("\n")),
-    rust: stripCStyleComments(rustRead.join("\n")),
+    mainSource: strip(mainRead.length > 0 ? mainRead : appRead),
+    appSource: strip(appRead),
+    appSourceRaw: appRead.join("\n"),
+    html: htmlRead.join("\n"),
+    rust: strip(rustRead),
     tauriConf,
     capabilities,
+    permissions,
     packagerConfig,
-    pkg: parsePackageManifest(pkgText),
+    workflows,
+    pkg: desktopManifests(snapshot.files, shape).pkg,
     coverage: sampleCoverage(read.length, jsPaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
@@ -138,7 +345,8 @@ function buildContext(snapshot: RepoSnapshot, shape: "electron" | "tauri"): Desk
  * drops out of scoring rather than reporting a failure we cannot support.
  */
 function absence(ctx: DesktopContext, check: Omit<PulseScanCheckInput, "confidence">): PulseScanCheckInput {
-  const sound = ctx.coverage >= SOUND_ABSENCE_COVERAGE;
+  // A PASS from absence() means the thing WAS found — a presence finding, sound on any sample.
+  const sound = ctx.coverage >= SOUND_ABSENCE_COVERAGE || check.status === "PASS";
   return {
     ...check,
     confidence: sound ? "HIGH" : "LOW",
@@ -168,6 +376,35 @@ export function readBooleanSetting(source: string, key: string): boolean | null 
   return false;
 }
 
+/**
+ * readBooleanSetting plus the case it cannot represent: a NON-literal value.
+ *
+ * `nodeIntegration: isDev` or `sandbox: !app.isPackaged` was read as "absent" and so
+ * passed with "the secure default is in effect" — exactly what we cannot say.
+ * Precedence: a literal insecure value ANYWHERE in the shipped app is a presence finding
+ * (sound on a sample); then a non-literal value in the main process is "dynamic"
+ * (INCONCLUSIVE); then a literal in the main process.
+ *
+ * Type annotations (`sandbox: boolean`) and string values (an iframe `sandbox:
+ * "allow-scripts"` prop) are not a webPreferences value and are ignored.
+ */
+export function readSettingState(
+  mainSource: string,
+  appSource: string,
+  key: string,
+  insecure: boolean,
+): boolean | "dynamic" | null {
+  const literal = (src: string) =>
+    [...src.matchAll(new RegExp(`\\b${key}\\s*:\\s*(true|false)\\b`, "g"))].map((m) => m[1] === "true");
+  if (literal(appSource).includes(insecure)) return insecure;
+  const dynamic = new RegExp(
+    `\\b${key}\\s*:\\s*(?!true\\b|false\\b|boolean\\b|Boolean\\b|undefined\\b|any\\b|["'\`{\\[])[!\\w$(]`,
+  ).test(mainSource);
+  if (dynamic) return "dynamic";
+  const main = literal(mainSource);
+  return main.length === 0 ? null : main.includes(insecure) ? insecure : !insecure;
+}
+
 export function evaluateDesktopChecks(snapshot: RepoSnapshot, shape: "electron" | "tauri"): PulseScanCheckInput[] {
   if (!snapshot.accessible) return [];
   const ctx = buildContext(snapshot, shape);
@@ -193,12 +430,26 @@ export function evaluateDesktopChecks(snapshot: RepoSnapshot, shape: "electron" 
 function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const src = ctx.mainSource;
+  const state = (key: string, insecure: boolean) => readSettingState(src, ctx.appSource, key, insecure);
+  // A value computed at runtime (`nodeIntegration: isDev`) cannot be read statically, so it
+  // is reported as what it is rather than as the default.
+  const dynamic = (checkKey: string, label: string, key: string): PulseScanCheckInput => ({
+    category: CATEGORIES.SECURITY,
+    checkKey,
+    label,
+    status: "INCONCLUSIVE",
+    confidence: "LOW",
+    detail: `\`${key}\` is set from an expression rather than a literal, so the value a shipped build uses cannot be ` +
+      `read from source. Confirm it resolves to the secure value in packaged builds, or set it as a literal.`,
+  });
 
   // 1 — nodeIntegration. The single highest-severity setting in the family.
-  const nodeIntegration = readBooleanSetting(src, "nodeIntegration");
-  const contextIsolation = readBooleanSetting(src, "contextIsolation");
+  const nodeIntegration = state("nodeIntegration", true);
+  const contextIsolation = state("contextIsolation", false);
   const bothWrong = nodeIntegration === true && contextIsolation === false;
-  checks.push({
+  if (nodeIntegration === "dynamic") {
+    checks.push(dynamic("electron_node_integration", "Node integration disabled in the renderer", "nodeIntegration"));
+  } else checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "electron_node_integration",
     label: "Node integration disabled in the renderer",
@@ -219,7 +470,9 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
   });
 
   // 2 — contextIsolation. Secure by default since Electron 12, so absence passes.
-  checks.push({
+  if (contextIsolation === "dynamic") {
+    checks.push(dynamic("electron_context_isolation", "Context isolation enabled", "contextIsolation"));
+  } else checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "electron_context_isolation",
     label: "Context isolation enabled",
@@ -239,8 +492,9 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
 
   // 3 — sandbox. Defaults to true since Electron 20, but a preload script that
   // needs Node re-disables it, which is the common real-world case.
-  const sandbox = readBooleanSetting(src, "sandbox");
-  checks.push({
+  const sandbox = state("sandbox", false);
+  if (sandbox === "dynamic") checks.push(dynamic("electron_sandbox", "Renderer sandbox enabled", "sandbox"));
+  else checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "electron_sandbox",
     label: "Renderer sandbox enabled",
@@ -257,8 +511,9 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
   });
 
   // 4 — webSecurity. Disabling it turns off the same-origin policy entirely.
-  const webSecurity = readBooleanSetting(src, "webSecurity");
-  checks.push({
+  const webSecurity = state("webSecurity", false);
+  if (webSecurity === "dynamic") checks.push(dynamic("electron_web_security", "Same-origin policy enforced", "webSecurity"));
+  else checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "electron_web_security",
     label: "Same-origin policy enforced",
@@ -276,8 +531,10 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
   });
 
   // 5 — allowRunningInsecureContent: mixed content over an HTTPS page.
-  const insecureContent = readBooleanSetting(src, "allowRunningInsecureContent");
-  checks.push({
+  const insecureContent = state("allowRunningInsecureContent", true);
+  if (insecureContent === "dynamic") {
+    checks.push(dynamic("electron_insecure_content", "Insecure content is not permitted", "allowRunningInsecureContent"));
+  } else checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "electron_insecure_content",
     label: "Insecure content is not permitted",
@@ -363,9 +620,7 @@ function electronNavigation(ctx: DesktopContext): PulseScanCheckInput[] {
   // window to an attacker's page, which then inherits that window's webPreferences.
   // A renderer <webview> also emits a DOM 'will-navigate' event, but preventDefault()
   // has no effect on it, so that listener is not a guard and is excluded.
-  const hasNavGuard = /\bwill-navigate\b|\bwill-redirect\b/.test(
-    src.replace(/addEventListener\s*\(\s*["'`]will-(navigate|redirect)["'`]/g, ""),
-  );
+  const hasNavGuard = electronNavGuardPresent(src);
   checks.push(absence(ctx, {
     category: CATEGORIES.SECURITY,
     checkKey: "electron_navigation_guard",
@@ -401,21 +656,26 @@ function electronNavigation(ctx: DesktopContext): PulseScanCheckInput[] {
   }));
 
   // shell.openExternal with an unvalidated URL is command execution on Windows
-  // (file:// and other schemes are handed to the OS handler).
-  if (/shell\.openExternal\s*\(/.test(ctx.source)) {
-    const validated = /shell\.openExternal[\s\S]{0,200}(https?|startsWith|URL\(|protocol)/i.test(ctx.source);
+  // (file:// and other schemes are handed to the OS handler). Judged per call site.
+  const openExternal = openExternalCallSites(ctx.appSourceRaw);
+  if (openExternal.total > 0) {
+    const pass = openExternal.unvalidated === 0;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "electron_open_external_validated",
       label: "shell.openExternal validates the URL scheme",
-      status: validated ? "PASS" : "WARN",
-      confidence: "MEDIUM",
-      detail: validated
-        ? `\`shell.openExternal\` is used with what looks like scheme validation nearby — confirm it allow-lists ` +
-          `http/https rather than rejecting a handful of known-bad schemes.`
-        : `\`shell.openExternal\` is called with no visible scheme check. It hands the string to the operating ` +
-          `system's handler, so a \`file://\` or application-scheme URL that reaches it can launch a local program. ` +
-          `Parse the URL and proceed only when the protocol is \`http:\` or \`https:\`.`,
+      status: pass ? "PASS" : "WARN",
+      // "Every call is fine" is only as good as the sample when no dynamic call was seen at all.
+      confidence: pass && openExternal.dynamic === 0 && ctx.coverage < SOUND_ABSENCE_COVERAGE ? "LOW" : "MEDIUM",
+      detail: !pass
+        ? `${openExternal.unvalidated} of ${openExternal.dynamic} \`shell.openExternal\` call(s) with a non-literal URL ` +
+          `have no visible scheme check. It hands the string to the operating system's handler, so a \`file://\` or ` +
+          `application-scheme URL that reaches it can launch a local program. Parse the URL and proceed only when the ` +
+          `protocol is \`http:\` or \`https:\`.`
+        : openExternal.dynamic > 0
+          ? `Every \`shell.openExternal\` call with a non-literal URL has scheme validation nearby — confirm it ` +
+            `allow-lists http/https rather than rejecting a handful of known-bad schemes.`
+          : `\`shell.openExternal\` is only called with fixed URLs in the sampled source.`,
     });
   }
 
@@ -437,7 +697,7 @@ function electronNavigation(ctx: DesktopContext): PulseScanCheckInput[] {
   // IPC sender validation — an ipcMain handler is reachable from EVERY frame,
   // including a third-party iframe inside your window.
   if (/ipcMain\.(handle|on)\s*\(/.test(src)) {
-    const validatesSender = /senderFrame|\.sender\b[\s\S]{0,120}(url|origin)|validateSender/i.test(src);
+    const validatesSender = ipcSenderValidated(src);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "electron_ipc_sender_validation",
@@ -470,16 +730,16 @@ function electronNavigation(ctx: DesktopContext): PulseScanCheckInput[] {
     });
   }
 
-  // CSP — Electron ships no default policy, so an app that sets none has none.
-  const hasCsp = /Content-Security-Policy/i.test(ctx.sourceRaw) ||
-    ctx.paths.some((p) => /\.html?$/i.test(p) && !isVendoredPath(p)) &&
-    /Content-Security-Policy/i.test([...ctx.paths].join(""));
+  // CSP — Electron ships no default policy, so an app that sets none has none. Most apps
+  // declare it as a <meta> in the renderer HTML (fiddle static/index.html, marktext
+  // src/renderer/index.html), which this used to never read.
+  const hasCsp = electronCspDeclared(ctx.appSourceRaw, ctx.html);
   checks.push(absence(ctx, {
     category: CATEGORIES.SECURITY,
     checkKey: "electron_csp",
     label: "A Content-Security-Policy is defined",
-    status: /Content-Security-Policy/i.test(ctx.sourceRaw) ? "PASS" : "WARN",
-    detail: hasCsp && /Content-Security-Policy/i.test(ctx.sourceRaw)
+    status: hasCsp ? "PASS" : "WARN",
+    detail: hasCsp
       ? `A Content-Security-Policy is set — confirm it avoids \`unsafe-eval\` and \`unsafe-inline\`.`
       : `No Content-Security-Policy found. Electron applies none by default, so the renderer will execute script from ` +
         `any origin and any inline block. A CSP is the control that stops an injected script from loading its ` +
@@ -539,41 +799,39 @@ function electronPackaging(ctx: DesktopContext): PulseScanCheckInput[] {
   // about by SmartScreen, and cannot be notarised.
   const hasSigning =
     anyDependency(ctx.pkg, /^(@electron\/(notarize|osx-sign|windows-sign)|electron-notarize|electron-osx-sign)$/) ||
-    /\b(certificateFile|certificateSubjectName|identity|signingIdentity|notarize|osxSign|azureSignOptions|signtoolOptions|CSC_LINK)\b/i.test(ctx.packagerConfig) ||
-    /\b(CSC_LINK|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|WINDOWS_CERTIFICATE)\b/.test(
-      ctx.paths.filter((p) => /\.github\/workflows\//i.test(p)).join(" ") + ctx.packagerConfig,
-    );
+    /\b(certificateFile|certificateSubjectName|identity|signingIdentity|notarize|osxSign|azureSignOptions|signtoolOptions|CSC_LINK)\b/i.test(enabledSettings(ctx.packagerConfig)) ||
+    // The secrets are referenced by NAME in workflow contents (this used to test the workflow file PATHS).
+    /\b(CSC_LINK|APPLE_ID|APPLE_APP_SPECIFIC_PASSWORD|WINDOWS_CERTIFICATE)\b/.test(ctx.workflows + ctx.packagerConfig);
   checks.push({
     category: CATEGORIES.INFRASTRUCTURE,
     checkKey: "electron_code_signing",
     label: "Builds are code-signed",
     status: hasSigning ? "PASS" : "WARN",
-    confidence: "MEDIUM",
+    // "Not found" is LOW whatever the sample: signing identities normally live in CI secrets
+    // and the release machine's keychain, neither of which a repository shows.
+    confidence: hasSigning ? "MEDIUM" : "LOW",
     detail: hasSigning
       ? `Code-signing configuration is present (packager signing config or signing/notarisation tooling).`
-      : `No code-signing configuration found. An unsigned macOS build is refused by Gatekeeper ("cannot be opened ` +
+      : `No code-signing configuration was visible in the repository — signing is often configured only in CI ` +
+        `secrets, so this is unconfirmed rather than a finding. An unsigned macOS build is refused by Gatekeeper ("cannot be opened ` +
         `because the developer cannot be verified") and cannot be notarised; an unsigned Windows build triggers a ` +
         `SmartScreen warning that most users will not click through. Signing is also what makes an auto-update ` +
         `trustworthy — without it there is nothing to distinguish your update from a substituted one.`,
   });
 
   // Auto-update. A desktop app without one cannot ship a security fix.
-  const hasUpdater =
-    hasDependency(ctx.pkg, "electron-updater") ||
-    /autoUpdater/.test(ctx.source) ||
-    /\bpublish\s*[:=]/i.test(ctx.packagerConfig);
-  checks.push({
+  const hasUpdater = electronUpdaterPresent(ctx.pkg, ctx.appSource, ctx.packagerConfig);
+  checks.push(absence(ctx, {
     category: CATEGORIES.INFRASTRUCTURE,
     checkKey: "electron_auto_update",
     label: "An auto-update channel is configured",
     status: hasUpdater ? "PASS" : "WARN",
-    confidence: "MEDIUM",
     detail: hasUpdater
-      ? `An update mechanism is configured (electron-updater / autoUpdater / a publish target).`
+      ? `An update mechanism is configured (electron-updater / update-electron-app / autoUpdater / a publish target).`
       : `No auto-updater found. Every copy of the app is then frozen at the version the user installed, so a security ` +
         `fix — including the Electron/Chromium upgrades this report asks for — only reaches users who reinstall by ` +
         `hand. For a desktop app this is the difference between patching in a day and patching never.`,
-  });
+  }));
 
   // An update feed over plain HTTP is a code-execution channel.
   const httpFeed = /setFeedURL\s*\([^)]*["']http:\/\//i.test(ctx.source) ||
@@ -592,23 +850,33 @@ function electronPackaging(ctx: DesktopContext): PulseScanCheckInput[] {
     });
   }
 
-  // Electron Fuses flip off debugging features at package time. Their absence is
-  // not a vulnerability on its own, so this is deliberately informational.
-  if (!anyDependency(ctx.pkg, /^@electron\/fuses$/)) {
-    checks.push({
-      category: CATEGORIES.CODE_QUALITY,
-      checkKey: "electron_fuses",
-      label: "Electron Fuses harden the packaged build",
-      status: "WARN",
-      confidence: "MEDIUM",
-      detail:
-        `\`@electron/fuses\` is not in the dependency list. Fuses flip off capabilities at package time that a shipped ` +
-        `app never needs — \`RunAsNode\`, \`EnableNodeCliInspectArguments\`, \`EnableNodeOptionsEnvironmentVariable\` ` +
-        `— each of which lets someone with the binary run arbitrary Node code inside your signed, notarised app and ` +
-        `inherit its permissions (camera, microphone, keychain access). Enabling them is a build-step change, not a ` +
-        `code change.`,
-    });
-  }
+  // Electron Fuses flip off debugging features at package time. electron-builder configures
+  // them with an `electronFuses:` block and Forge with FusesPlugin, neither of which is a
+  // dependency on @electron/fuses — so a dependency test missed marktext's.
+  const fuseText = ctx.packagerConfig + "\n" + ctx.appSource;
+  const fusesConfigured =
+    anyDependency(ctx.pkg, /^(@electron\/fuses|@electron-forge\/plugin-fuses)$/) ||
+    /\belectronFuses\s*:|FusesPlugin|flipFuses/.test(fuseText);
+  // RunAsNode matters most: ELECTRON_RUN_AS_NODE turns the signed app into a plain Node runtime.
+  const runAsNodeOff = /\brunAsNode\]?\s*[:=]\s*false\b/i.test(fuseText);
+  const fuses: Omit<PulseScanCheckInput, "confidence"> = {
+    category: CATEGORIES.CODE_QUALITY,
+    checkKey: "electron_fuses",
+    label: "Electron Fuses harden the packaged build",
+    status: fusesConfigured && runAsNodeOff ? "PASS" : "WARN",
+    detail: fusesConfigured
+      ? runAsNodeOff
+        ? `Electron Fuses are configured and \`RunAsNode\` is turned off.`
+        : `Electron Fuses are configured, but \`RunAsNode\` is not turned off in them. That fuse is on by default, and ` +
+          `while it is on anyone with the binary can set \`ELECTRON_RUN_AS_NODE\` and run arbitrary Node code inside ` +
+          `your signed app, inheriting its permissions. Add \`runAsNode: false\` alongside the fuses you already set.`
+      : `No Electron Fuses configuration found (an \`electronFuses\` block, Forge's FusesPlugin or \`@electron/fuses\`). ` +
+        `Fuses flip off capabilities at package time that a shipped app never needs — \`RunAsNode\`, ` +
+        `\`EnableNodeCliInspectArguments\`, \`EnableNodeOptionsEnvironmentVariable\` — each of which lets someone with ` +
+        `the binary run arbitrary Node code inside your signed, notarised app and inherit its permissions (camera, ` +
+        `microphone, keychain access). Enabling them is a build-step change, not a code change.`,
+  };
+  checks.push(fusesConfigured ? { ...fuses, confidence: "MEDIUM" } : absence(ctx, fuses));
 
   return checks;
 }
@@ -764,21 +1032,35 @@ function tauriScopes(ctx: DesktopContext): PulseScanCheckInput[] {
       });
   }
 
-  // shell:allow-open with a permissive validator is the Tauri analogue of an
-  // unvalidated shell.openExternal.
-  if (/shell:allow-open/i.test(scopeText)) {
-    const scoped = /"validator"\s*:\s*"[^"]+"/i.test(scopeText);
+  // shell:allow-open with a permissive validator, or an unscoped opener:allow-open-url, is the
+  // Tauri analogue of an unvalidated shell.openExternal. v2 apps open URLs through the opener
+  // plugin, so a check that only knew shell:allow-open never saw them.
+  const shellOpen = /shell:allow-open/i.test(scopeText);
+  const opener = openerUrlScope(ctx.permissions);
+  if (shellOpen || opener !== null) {
+    const shellScoped = !shellOpen || /"validator"\s*:\s*"[^"]+"/i.test(scopeText);
+    const scoped = shellScoped && (opener === null || opener === "scoped");
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "tauri_shell_open_validator",
-      label: "shell:allow-open restricts the URL scheme",
+      label: "Opening links is restricted to web URLs (shell/opener scope)",
       status: scoped ? "PASS" : "WARN",
       confidence: "MEDIUM",
       detail: scoped
-        ? `\`shell:allow-open\` declares a validator regex — confirm it anchors on \`^https?://\`.`
-        : `\`shell:allow-open\` is granted with no validator. It hands the string to the operating system's URL ` +
-          `handler, so a \`file://\` path or an application scheme can launch a local program. Add a validator regex ` +
-          `that permits only \`http\` and \`https\`.`,
+        ? opener !== null
+          ? `The opener plugin's URL permission is scoped to web/mail schemes (\`opener:default\` or an explicit ` +
+            `\`allow\` list of http/https URLs).`
+          : `\`shell:allow-open\` declares a validator regex — confirm it anchors on \`^https?://\`.`
+        : !shellScoped
+          ? `\`shell:allow-open\` is granted with no validator. It hands the string to the operating system's URL ` +
+            `handler, so a \`file://\` path or an application scheme can launch a local program. Add a validator regex ` +
+            `that permits only \`http\` and \`https\`.`
+          : opener === "broad"
+            ? `\`opener:allow-open-url\` is scoped with an entry that is not an http/https/mailto/tel URL, so the ` +
+              `frontend can ask the OS to open a \`file://\` path or an application scheme. Restrict the \`allow\` list ` +
+              `to \`https://*\` (and \`http://*\` if needed).`
+            : `\`opener:allow-open-url\` is granted with no URL scope in the capability files. Scope it with an \`allow\` ` +
+              `list of http/https URLs so the frontend cannot open \`file://\` paths or application schemes.`,
     });
   }
 
@@ -844,27 +1126,19 @@ function sharedDesktop(ctx: DesktopContext): PulseScanCheckInput[] {
 
   // Crash/error reporting. A desktop app's failures are invisible without it —
   // there are no server logs to look at.
-  const hasReporting =
-    anyDependency(ctx.pkg, /^(@sentry\/|bugsnag|@bugsnag\/|rollbar|electron-log)/) ||
-    /crashReporter\.start|startCrashReporter|tauri-plugin-log|sentry/i.test(ctx.source + ctx.rust) ||
-    ctx.paths.some((p) =>
-      /(^|\/)crash-?reporter[^/]*\.(js|ts|mjs|cjs)$/i.test(p) &&
-      !/\.(test|spec)\.[cm]?[jt]s$|[-_]spec\.[cm]?[jt]s$/i.test(p) &&
-      !/(^|\/)(specs?|tests?|__tests__|e2e|fixtures?|__fixtures__|examples?|samples?|demos?)\//i.test(p) &&
-      !isVendoredPath(p));
-  checks.push({
+  const hasReporting = crashReportingPresent(ctx.pkg, ctx.appSource + "\n" + ctx.rust, ctx.paths);
+  checks.push(absence(ctx, {
     category: CATEGORIES.OBSERVABILITY,
     checkKey: "desktop_crash_reporting",
     label: "Crash and error reporting is wired up",
     status: hasReporting ? "PASS" : "WARN",
-    confidence: "MEDIUM",
     detail: hasReporting
       ? `Crash or error reporting is configured.`
       : `No crash reporter or error-reporting SDK found. A desktop app runs on machines you cannot inspect, across OS ` +
         `versions and hardware you do not have, and produces no server-side logs — so without reporting, a crash that ` +
         `affects a subset of users is invisible until someone emails you. Wire up \`crashReporter\` (Electron) or a ` +
         `reporting SDK, and scrub PII before sending.`,
-  });
+  }));
 
   return checks;
 }

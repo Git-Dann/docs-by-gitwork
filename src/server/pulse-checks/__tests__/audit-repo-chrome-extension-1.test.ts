@@ -76,12 +76,17 @@ describe("ext_manifest_v3 — sibling MV3 variant", () => {
     expect(c.detail).toMatch(/does not run/);
   });
 
-  it("still FAILs an MV2 manifest when the MV3 manifest lives in a different directory (separate product)", () => {
+  // Audit 2026-10 (item 9): this asserted the defect. The MV3 manifest in another directory
+  // IS the Chrome build (gorhill/uBlock's platform/mv3/chromium is what the Web Store ships);
+  // the old finder judged whichever manifest came first in Map order.
+  it("judges the MV3 Chrome manifest when an MV2 one lives in another directory (uBlock)", () => {
     const out = evaluateChromeExtensionChecks(snapshot({
       "platform/chromium/manifest.json": JSON.stringify({ manifest_version: 2, name: "uBlock Origin", version: "1.60.0", description: "d" }),
       "platform/mv3/chromium/manifest.json": ublockMv3(dynamicWar),
     }));
-    expect(find(out, "ext_manifest_v3")!.status).toBe("FAIL");
+    const c = find(out, "ext_manifest_v3")!;
+    expect(c.status).toBe("PASS");
+    expect(c.detail).toContain("platform/mv3/chromium/manifest.json");
   });
 });
 

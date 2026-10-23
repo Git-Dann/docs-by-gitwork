@@ -85,6 +85,17 @@ function narrowConfidence(value: string | null): CheckConfidence | null {
   return value === "HIGH" || value === "MEDIUM" || value === "LOW" ? value : null;
 }
 
+/**
+ * The exact commit a repo scan examined: the one the code-health measure checked out
+ * (src/server/code-health/clone.ts reads `git rev-parse HEAD`). Null for URL scans and for
+ * scans from before the measure existed. A malformed value is null too: a certificate
+ * names a version only when it is certain which one.
+ */
+export function scanCommit(agentData: unknown): string | null {
+  const commit = (agentData as { codeHealth?: { commit?: unknown } | null } | null)?.codeHealth?.commit;
+  return typeof commit === "string" && /^[0-9a-f]{40}$/.test(commit) ? commit : null;
+}
+
 export class ProvenanceError extends Error {
   status: number;
   constructor(message: string, status = 400) {
@@ -150,9 +161,10 @@ export async function issueCountermark(input: {
         clientId: scan.client?.id ?? null,
         subjectName: scan.projectName,
         subjectRepo: scan.inputGithubRepo,
-        // No commit pinning yet — see docs/provenance.md "Deferred". Recorded as null rather
-        // than guessed, so the certificate does not imply a precision we do not have.
-        subjectCommit: null,
+        // The commit the code-health measure checked out, so the mark is about a version,
+        // not a repo whose contents keep changing. Sealed via the payload's subject.commit.
+        // Null when unknown (URL scans, older scans): recorded as unknown, never guessed.
+        subjectCommit: scan.inputGithubRepo ? scanCommit(scan.agentData) : null,
         subjectUrl: scan.inputUrl,
         scanId: scan.id,
         scanVersion: scan.scanVersion,

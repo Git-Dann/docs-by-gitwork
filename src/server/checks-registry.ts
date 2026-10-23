@@ -323,7 +323,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "tauri_updater_signature", category: CATEGORIES.SECURITY, label: "Updates are signature-verified" },
   { key: "tauri_fs_scope", category: CATEGORIES.SECURITY, label: "Filesystem access is scoped" },
   { key: "tauri_shell_scope", category: CATEGORIES.SECURITY, label: "Shell command execution is constrained" },
-  { key: "tauri_shell_open_validator", category: CATEGORIES.SECURITY, label: "shell:allow-open restricts the URL scheme" },
+  { key: "tauri_shell_open_validator", category: CATEGORIES.SECURITY, label: "Opening links is restricted to web URLs (shell/opener scope)" },
   { key: "tauri_version_current", category: CATEGORIES.CODE_QUALITY, label: "Built on Tauri v2" },
   { key: "desktop_embedded_secret", category: CATEGORIES.SECRETS_KEYS, label: "No API secrets embedded in the shipped app" },
   { key: "desktop_version_declared", category: CATEGORIES.CODE_QUALITY, label: "The app declares a version" },

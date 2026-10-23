@@ -26,7 +26,7 @@ import { evaluateAndroidChecks } from "./android-app";
 import { evaluateAndroidExtendedChecks } from "./android-app-extended";
 import { evaluateChromeExtensionChecks, isChromeExtension } from "./chrome-extension";
 import { evaluateExtensionExtendedChecks } from "./chrome-extension-extended";
-import { evaluateReactNativeChecks } from "./react-native-app";
+import { evaluateReactNativeChecks, RN_NON_APP_SOURCE } from "./react-native-app";
 import { evaluateDesktopChecks } from "./desktop-app";
 import { evaluateDesktopExtendedChecks } from "./desktop-app-extended";
 import { evaluateCliChecks, binEntries } from "./cli-tool";
@@ -117,6 +117,10 @@ const CONFIG_PATTERNS: RegExp[] = [
   // by findExtensionManifest, which requires a "manifest_version" key — a PWA web
   // app manifest shares this filename and must not be scanned as an extension.
   /(^|\/)manifest\.json$/i,
+  // Per-browser manifest variants a build merges over the base (darkreader:
+  // src/manifest-chrome-mv3.json carries manifest_version 3 and minimum_chrome_version).
+  // Known by name only, they could not establish either; read, they can.
+  /(^|\/)manifest[-_.][^/]*\.json$/i,
   // Desktop — Tauri config + capabilities, and both Electron packagers.
   /(^|\/)src-tauri\/tauri\.conf\.json$/i,
   /(^|\/)src-tauri\/capabilities\/[^/]+\.(json|toml)$/i,
@@ -130,6 +134,8 @@ const CONFIG_PATTERNS: RegExp[] = [
   // React Native build configuration.
   /(^|\/)(babel\.config\.(js|cjs|ts)|\.babelrc(\.js|\.json)?)$/i,
   /(^|\/)(app\.json|app\.config\.(js|ts)|eas\.json|metro\.config\.(js|cjs|ts))$/i,
+  // CodePush keeps its signing public key (CodePushPublicKey) in the app's strings.
+  /(^|\/)android\/app\/src\/main\/res\/values\/strings\.xml$/i,
   // Read for the CLI family (usage docs) and the desktop signing check.
   /^README(\.md|\.markdown|\.rst|\.txt)?$/i,
   /^\.github\/workflows\/[^/]+\.ya?ml$/i,
@@ -200,7 +206,9 @@ const SOURCE_EXTENSION: Record<SnapshotShape, RegExp | null> = {
   // Tauri's security surface is split across the Rust commands and the JS frontend.
   tauri: /\.(rs|ts|tsx|js|jsx|mjs|cjs)$/i,
   cli: /\.(ts|js|mjs|cjs)$/i,
-  "chrome-extension": /\.(ts|js|mjs|cjs)$/i,
+  // tsx/jsx too: popup and options UIs are routinely React, and an extension's .tsx was
+  // neither sampled nor counted toward coverage.
+  "chrome-extension": /\.(ts|tsx|js|jsx|mjs|cjs)$/i,
   // A plain web/service repo. This used to be null — the snapshot returned after
   // the round-0 probes and NO source was read, so the most common repo shape of
   // all was graded on filenames and HTTP responses alone. See web-repo-source.ts.
@@ -225,13 +233,40 @@ const GENERATED_DART = /\.(g|freezed|config)\.dart$/i;
 const MUST_READ_STEMS =
   /^(logger|logging|log|keychain\w*|\w*keychain|userdefaults|\w*storage\w*|\w*store|\w*persist\w*|\w*pref\w*|environment\w*|\w*environment|env|config\w*|\w*config|constants|\w*constants|strings|settings|apiclient|api_?client|dio_?client|\w*_client|networkmanager|reachability|\w*connectivity\w*|\w*interceptor\w*|appdelegate\w*|scenedelegate|app|main|session\w*|\w*session|auth\w*|\w*auth|token\w*|\w*token|\w*journey\w*|cache\w*|\w*cache\w*|\w*keys|\w*download\w*|\w*player|\w*secure\w*)$/i;
 
-/** Extensions the must-read tier applies to — every language family we sample. */
-const SOURCE_EXT = /\.(swift|dart|kt|java)$/i;
+/**
+ * The must-read tier for JS/TS. Deliberately narrower than MUST_READ_STEMS: in a JS
+ * app `\w*token` is a crypto-token list component and `\w*store` is every Zustand
+ * slice — rainbow had 223 files matching the native list, more than the whole cap,
+ * which pushed its real sentry.ts out of the sample. These are the files the RN
+ * checks actually turn on: logging/crash reporting, storage and persistence,
+ * keychain, env/config, the network client, session/auth, deep-link handlers, and
+ * a store's `schema` (Bluesky declares its persisted session — accessJwt included — there).
+ */
+const MUST_READ_STEMS_JS =
+  /^(logger|logging|log|sentry|bugsnag|crashlytics|crash_?report\w*|error_?report\w*|\w*storage|storage\w*|\w*persist\w*|keychain\w*|\w*keychain|secure_?store|\w*secure_?storage|env|environment|config|app_?config|constants|api_?client|http_?client|network_?client|network_?manager|\w*interceptors?|session_?manager|session|auth|auth_?manager|authentication|tokens?_?(?:storage|store|manager)|app|main|linking|deep_?links?\w*|schema)$/i;
+
+/** JS/TS source — the files the narrower must-read list applies to. */
+const JS_SOURCE = /\.(tsx?|jsx?)$/i;
+
+/**
+ * Extensions the must-read tier applies to — every language family we sample.
+ * JS/TS was missing, so stemOf never stripped `.ts` and no React Native (or web)
+ * file could ever be must-read: social-app's logger and Sentry transport, and its
+ * persisted store, were never sampled while hundreds of view files were.
+ */
+const SOURCE_EXT = /\.(swift|dart|kt|java|tsx?|jsx?)$/i;
 
 /** The filename stem (no directory, no extension), for must-read matching. */
 function stemOf(path: string): string {
-  const base = path.toLowerCase().split("/").pop() ?? "";
-  return base.replace(SOURCE_EXT, "");
+  const parts = path.toLowerCase().split("/");
+  let base = (parts.pop() ?? "").replace(SOURCE_EXT, "");
+  if (JS_SOURCE.test(path)) {
+    // `storage.native.ts` is the storage module; `persisted/index.ts` is the
+    // persisted module — in JS the directory names an index file.
+    base = base.replace(/\.(native|ios|android|web)$/, "");
+    if (base === "index" && parts.length > 0) base = parts[parts.length - 1];
+  }
+  return base;
 }
 
 /**
@@ -250,7 +285,7 @@ export function swiftRelevance(path: string, size: number): number {
   // file could ever be must-read — and the Flutter env-baseurl check, the whole
   // reason that family exists, silently SKIPPED because constants.dart fell outside
   // the cap on a 1,114-file app.
-  if (MUST_READ_STEMS.test(stemOf(p))) score += 100_000;
+  if ((JS_SOURCE.test(p) ? MUST_READ_STEMS_JS : MUST_READ_STEMS).test(stemOf(p))) score += 100_000;
   if (/(network|apiclient|api-client|service|request|session|http)/.test(p)) score += 1000;
   if (/(auth|login|signin|register|token|keychain|credential|secret)/.test(p)) score += 1000;
   if (/(logger|logging|analytics|telemetry)/.test(p)) score += 900;
@@ -313,6 +348,120 @@ function configRank(path: string): number {
   return PLATFORM_CONFIG.test(path) ? 1 : 0;
 }
 
+// ── Android build inputs: their own budget ────────────────────────────────────
+//
+// Manifests and Gradle build files used to compete with every other config file for
+// CONFIG_CAP (60), after CI workflows. thunderbird-android declares 27 manifests and
+// 161 Gradle files, so 8 manifests and 23 build files were read — and verdicts like
+// "POST_NOTIFICATIONS is never declared" were reported HIGH while it sat in three of
+// the unread manifests. These inputs now get a separate, still-bounded budget, so the
+// general cap (and CI workflows, which ci-workflows reads only from it) is untouched.
+// The family measures what fraction it read (manifestCoverage / gradleCoverage) and
+// downgrades "not declared" verdicts when that is below 1.
+const ANDROID_MANIFEST_CAP = 40;
+const ANDROID_GRADLE_CAP = 40;
+const ANDROID_BUILD_LOGIC_CAP = 25;
+const ANDROID_MANIFEST = /(^|\/)AndroidManifest\.xml$/i;
+const ANDROID_GRADLE = /(^|\/)(build|settings)\.gradle(\.kts)?$/i;
+/** Convention plugins: where minSdk/targetSdk/minify are set in multi-module builds (nowinandroid, thunderbird). */
+const ANDROID_BUILD_LOGIC = /(^|\/)(build-logic|buildSrc|build-plugin)\/.*\.(kt|kts|gradle)$/i;
+/** The version catalog (pinning) and the network security config the manifest references (cleartext). */
+const ANDROID_BUILD_EXTRAS = /(^|\/)gradle\/[^/]+\.versions\.toml$|(^|\/)res\/xml\/[^/]*(network|security)[^/]*\.xml$/i;
+
+function selectAndroidBuildInputs(usable: { path: string }[]): string[] {
+  const paths = usable.map((e) => e.path).filter((p) => !isVendoredPath(p));
+  const depthOf = (p: string) => p.split("/").length;
+  // Module dirs that ship a main manifest — their build files configure an actual app or library.
+  const moduleDirs = new Set(
+    paths
+      .filter((p) => /(^|\/)src\/main\/AndroidManifest\.xml$/i.test(p))
+      .map((p) => p.replace(/\/?src\/main\/AndroidManifest\.xml$/i, "")),
+  );
+  const testish = (p: string) => /(^|\/)(src\/(test|androidTest)|benchmarks?|baselineprofile|testing)(\/|$)/i.test(p);
+
+  const manifests = paths
+    .filter((p) => ANDROID_MANIFEST.test(p))
+    .sort(
+      (a, b) =>
+        Number(testish(a)) - Number(testish(b)) ||
+        Number(!/src\/main\//.test(a)) - Number(!/src\/main\//.test(b)) ||
+        depthOf(a) - depthOf(b),
+    )
+    .slice(0, ANDROID_MANIFEST_CAP);
+  const gradleRank = (p: string) => {
+    const dir = p.replace(/\/?[^/]+$/, "");
+    if (dir === "") return 0; // root build + settings
+    if (moduleDirs.has(dir)) return /(^|\/)app[^/]*$/i.test(dir) ? 1 : 2;
+    return 3;
+  };
+  const gradle = paths
+    .filter((p) => ANDROID_GRADLE.test(p) && !ANDROID_BUILD_LOGIC.test(p))
+    .sort((a, b) => gradleRank(a) - gradleRank(b) || Number(testish(a)) - Number(testish(b)) || depthOf(a) - depthOf(b))
+    .slice(0, ANDROID_GRADLE_CAP);
+  // Build scripts first (they count toward build-file coverage), then precompiled convention
+  // scripts (`thunderbird.app.android.gradle.kts`), then classes NAMED for the SDK levels and
+  // build types (`KotlinAndroid.kt`, `ProjectConfig.kt`). Basename only: every class sits under
+  // src/main/kotlin/, so matching the whole path ranked them all equal.
+  const logicRank = (p: string) => {
+    const base = p.split("/").pop() ?? "";
+    if (ANDROID_GRADLE.test(base)) return 0;
+    if (/\.gradle(\.kts)?$/i.test(base)) return 1;
+    return /(application|android|config|sdk|buildtype)/i.test(base) ? 2 : 3;
+  };
+  const buildLogic = paths
+    .filter((p) => ANDROID_BUILD_LOGIC.test(p))
+    .sort((a, b) => logicRank(a) - logicRank(b))
+    .slice(0, ANDROID_BUILD_LOGIC_CAP);
+  const extras = paths.filter((p) => ANDROID_BUILD_EXTRAS.test(p)).slice(0, 10);
+  return [...new Set([...manifests, ...gradle, ...buildLogic, ...extras])];
+}
+
+/**
+ * The directories that hold the desktop app itself: wherever an Electron packager config
+ * sits, or the parent of `src-tauri/`. [""] means the repo root (no narrowing).
+ *
+ * Derived from paths alone because selection runs before any workspace package.json is
+ * read; the packager config sits beside the app's own package.json.
+ */
+export function desktopAppRoots(paths: string[]): string[] {
+  const roots = new Set<string>();
+  for (const p of paths) {
+    if (isVendoredPath(p) || isExampleOrFixturePath(p)) continue;
+    const packager = /^(?:(.*)\/)?(electron-builder\.(ya?ml|json|js|ts|cjs)|forge\.config\.(js|ts|cjs|mjs)|electron\.vite\.config\.(js|ts|cjs|mjs))$/i.exec(p);
+    if (packager) roots.add(packager[1] ?? "");
+    const tauri = /^(?:(.*)\/)?src-tauri\/tauri\.conf\.json$/i.exec(p);
+    if (tauri) roots.add(tauri[1] ?? "");
+  }
+  return roots.size === 0 || roots.has("") ? [""] : [...roots];
+}
+
+/** Test suites, specs and mocks — never part of the shipped app. */
+const DESKTOP_NOT_SHIPPED =
+  /(^|\/)(specs?|tests?|__tests__|__mocks__|mocks?|e2e|fixtures?|__fixtures__)\/|\.(test|spec|tests)\.[cm]?[jt]sx?$/i;
+
+/**
+ * Desktop sampling boost, layered on swiftRelevance (Electron and Tauri only).
+ *
+ * Learned on marktext: 105 of 200 sampled files were packages/muya (an editor package
+ * that does not depend on electron), so packages/desktop/src/main — where crashReporter,
+ * keytar, the IPC handlers and shell.openExternal live — was mostly unread and four checks
+ * reported those things missing. Main/preload files carry every Electron security
+ * setting, so they are must-read; files outside the app's directory, and tests, only fill
+ * what is left of the cap.
+ */
+export function desktopRelevance(path: string, appRoots: string[]): number {
+  if (!appRoots.some((r) => r === "" || path.startsWith(r + "/"))) return -400_000;
+  if (DESKTOP_NOT_SHIPPED.test(path)) return -300_000;
+  if (
+    /(^|\/)(main|preload|electron|background)\//i.test(path) ||
+    /(^|\/)(main|preload)(\.[\w-]+)?\.(ts|js|mjs|cjs)$/i.test(path) ||
+    /(^|\/)src-tauri\/src\/(main|lib)\.rs$/i.test(path)
+  ) {
+    return 100_000;
+  }
+  return 0;
+}
+
 /**
  * Choose which paths to read: config always, then a relevance-ranked source sample
  * for the detected platform. `source` is named generically because the same ranking
@@ -323,8 +472,11 @@ export function selectFilesToRead(
   platform: SnapshotShape = "ios",
 ): { config: string[]; source: string[] } {
   const usable = entries.filter((e) => e.size <= MAX_BLOB_BYTES);
+  // Android build inputs are read from their own budget (selectAndroidBuildInputs), outside the shared cap.
+  const androidBuild = platform === "android" ? selectAndroidBuildInputs(usable) : [];
+  const androidSet = new Set(androidBuild);
   const config = usable
-    .filter((e) => CONFIG_PATTERNS.some((re) => re.test(e.path)) && !isVendoredPath(e.path))
+    .filter((e) => CONFIG_PATTERNS.some((re) => re.test(e.path)) && !isVendoredPath(e.path) && !androidSet.has(e.path))
     .map((e) => e.path)
     // Rank before capping. In tree order a monorepo filled the 60-file cap with
     // docker/, ~100 i18n/*.json and similar before mobile/ was reached, so immich's
@@ -336,6 +488,7 @@ export function selectFilesToRead(
     // is kept within each rank.
     .sort((a, b) => configRank(b) - configRank(a))
     .slice(0, CONFIG_CAP);
+  config.push(...androidBuild);
 
   // Renderer HTML entry — where Electron/Tauri apps most often declare their CSP <meta>. Desktop shapes
   // only: operational-depth and service-depth consume EVERY snapshot file, so HTML must not leak into
@@ -352,13 +505,21 @@ export function selectFilesToRead(
   const ext = SOURCE_EXTENSION[platform];
   if (!ext) return { config, source: [] };
 
+  // Desktop only: rank the app's own directory, and its main/preload files, ahead of
+  // sibling workspace packages and tests (desktopRelevance).
+  const desktopRoots = platform === "electron" || platform === "tauri" ? desktopAppRoots(usable.map((e) => e.path)) : null;
   const source = usable
     .filter((e) => ext.test(e.path) && !isVendoredPath(e.path))
     // Generated Dart is repetitive boilerplate; a handful is enough to read the
     // retrofit baseUrl, and reading hundreds would crowd out hand-written code.
     .map((e) => ({
       path: e.path,
-      score: swiftRelevance(e.path, e.size) - (GENERATED_DART.test(e.path) ? 500 : 0),
+      score: swiftRelevance(e.path, e.size) - (GENERATED_DART.test(e.path) ? 500 : 0) -
+        // React Native: tests, mocks, Detox/e2e helpers and .d.ts files are not the
+        // app (mattermost: 59 of 150 sampled files were detox/). Below even the
+        // must-read tier, so a __mocks__/storage.ts can't outrank real app code.
+        (platform === "react-native" && RN_NON_APP_SOURCE.test(e.path) ? 200_000 : 0) +
+        (desktopRoots ? desktopRelevance(e.path, desktopRoots) : 0),
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, platform === "none" ? WEB_SAMPLE_CAP : SWIFT_SAMPLE_CAP)
@@ -423,6 +584,41 @@ export function selectShapeProbes(paths: string[]): string[] {
 }
 
 /**
+ * True when the repo's only Xcode content is a Safari Web Extension wrapper around a
+ * browser extension: an extension manifest (manifest_version) exists OUTSIDE the wrapper,
+ * and every Swift file and Xcode project lives under the wrapper's root — the directory
+ * above SafariWebExtensionHandler.swift (or above a read project.pbxproj declaring the
+ * com.apple.Safari.web-extension point).
+ *
+ * Deliberately narrow: a real iOS app that ships a Safari extension as one target keeps
+ * its app code outside that root (or has the wrapper at the repo root), and stays iOS.
+ */
+export function isSafariExtensionWrapper(paths: string[], probeFiles: Map<string, string>): boolean {
+  const parentOfDir = (p: string) => p.split("/").slice(0, -2).join("/");
+  const roots = new Set<string>();
+  for (const p of paths) {
+    if (isVendoredPath(p)) continue;
+    if (/(^|\/)SafariWebExtensionHandler\.swift$/i.test(p)) roots.add(parentOfDir(p));
+  }
+  for (const [p, text] of probeFiles) {
+    if (/\.xcodeproj\/project\.pbxproj$/i.test(p) && /com\.apple\.Safari\.web-extension/.test(text)) {
+      roots.add(p.replace(/(^|\/)[^/]*\.xcodeproj\/project\.pbxproj$/i, ""));
+    }
+  }
+  // A wrapper at the repo root would make every path "inside" it.
+  const wrapperRoots = [...roots].filter((r) => r !== "").map((r) => `${r}/`);
+  if (wrapperRoots.length === 0) return false;
+  const inWrapper = (p: string) => wrapperRoots.some((r) => p.startsWith(r));
+  const manifestOutside = [...probeFiles].some(
+    ([p, text]) => /(^|\/)manifest\.json$/i.test(p) && /"manifest_version"\s*:/.test(text) && !inWrapper(p),
+  );
+  if (!manifestOutside) return false;
+  return paths
+    .filter((p) => !isVendoredPath(p) && !isExampleOrFixturePath(p) && /\.swift$|\.(xcodeproj|xcworkspace)\//i.test(p))
+    .every(inWrapper);
+}
+
+/**
  * Decide which family (if any) will read this repo's contents.
  *
  * Mobile wins first because detectNativePlatform's ordering already resolves the
@@ -435,6 +631,12 @@ export function resolveSnapshotShape(
   probeFiles: Map<string, string>,
 ): SnapshotShape {
   const platform = detectNativePlatform(paths, probeFiles.get("package.json") ?? null);
+  // ⚠️ A browser extension that also ships to Safari carries an Xcode project — the
+  // Safari Web Extension wrapper (refined-github: safari/Refined GitHub.xcodeproj;
+  // uBOL-home: dist/safari/xcode/…). detectNativePlatform counts any .xcodeproj as iOS,
+  // so both were scanned as iOS apps and failed the iOS family ("no test files" on a repo
+  // with many). Checked before mobile wins.
+  if (platform === "ios" && isSafariExtensionWrapper(paths, probeFiles)) return "chrome-extension";
   if (platform === "ios" || platform === "android" || platform === "flutter") return platform;
 
   const shape = detectProjectShape(paths.filter((p) => !isExampleOrFixturePath(p)), probeFiles.get("package.json") ?? null);
@@ -502,6 +704,8 @@ async function buildSnapshot(owner: string, repo: string): Promise<RepoSnapshot>
         if (known.has(clean.toLowerCase())) extra.push(clean);
       }
     }
+    // .npmrc can switch on publish provenance (provenance=true).
+    if (paths.includes(".npmrc")) extra.push(".npmrc");
   }
 
   const wanted = [...new Set([...config, ...source, ...extra])].filter((p) => !files.has(p));
@@ -563,6 +767,8 @@ export async function runNativeMobileChecks(
 
   const platform = detectNativePlatform(snapshot.paths, snapshot.files.get("package.json") ?? null);
   if (platform === "ios") {
+    // A Safari Web Extension wrapper is not an iOS app — the extension family owns it.
+    if (resolveSnapshotShape(snapshot.paths, snapshot.files) === "chrome-extension") return { platform: null, checks: [] };
     return { platform, checks: [...evaluateIosChecks(snapshot), ...evaluateIosExtendedChecks(snapshot)] };
   }
   if (platform === "flutter") {

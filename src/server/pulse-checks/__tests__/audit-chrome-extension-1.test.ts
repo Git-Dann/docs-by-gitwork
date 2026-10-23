@@ -45,10 +45,12 @@ describe("ext_host_permissions_scoped wording", () => {
     expect(c.detail).toContain("one compromised dependency");
   });
 
-  it("repo surface: still FAIL with the review-rejection wording and unconditional advice", () => {
+  // Audit 2026-10 (item 12): was FAIL on the repo surface. Many extensions legitimately need
+  // every site, so all-sites access is a WARN on both surfaces now.
+  it("repo surface: WARN with the review-justification wording and unconditional advice", () => {
     const c = find(evaluateExtensionManifest(reactDevtools, "repo"), "ext_host_permissions_scoped")!;
-    expect(c.status).toBe("FAIL");
-    expect(c.detail).toContain("most common reason a Web Store review is rejected");
+    expect(c.status).toBe("WARN");
+    expect(c.detail).toContain("most common reason a Web Store review is held for justification");
     expect(c.detail).toContain("List the specific origins instead");
   });
 
@@ -68,7 +70,8 @@ describe("unchanged neighbours", () => {
   it("high-risk permissions ignore optional_permissions and list required ones", () => {
     const c = find(evaluateExtensionManifest(lastpass, "store"), "ext_high_risk_permissions")!;
     expect(c.status).toBe("WARN");
-    expect(c.evidence).toBe("tabs, webRequest, cookies");
+    // `scripting` counts as high-risk when host access is every site (LastPass: http/https wildcards).
+    expect(c.evidence).toBe("scripting, tabs, webRequest, cookies");
   });
 
   it("minimum_chrome_version WARN when absent, PASS when declared", () => {

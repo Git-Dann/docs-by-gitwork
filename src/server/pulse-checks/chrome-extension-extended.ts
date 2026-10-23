@@ -15,39 +15,59 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
+import {
+  EXTENSION_SOUND_COVERAGE,
+  HTML_INJECTION_RE,
+  HTML_SANITISER_RE,
+  MESSAGE_LISTENER_RE,
+  SENDER_CHECK_RE,
+  declaredMinimumChromeVersion,
+  extensionSourceFiles,
+  findDynamicEval,
+  findExtensionManifest,
+  installHostPatterns,
+  isAllUrlsPattern,
+  isValidExtensionVersion,
+  missingIconSizes,
+  resolveServiceWorker,
+  stripJsCommentsAndStrings,
+  type ExtensionManifest,
+  type ExtensionSourceFile,
+} from "./chrome-extension";
 
+/**
+ * ⚠️ Everything here reads the SAME judged manifest and the SAME shipped-source set as
+ * chrome-extension.ts (findExtensionManifest / extensionSourceFiles). The two families
+ * used to pick their own manifest by Map order and build their own uncommented source
+ * blob, so a comment in uBlock ("JS eval() ...") failed one family's eval check while the
+ * other passed — and ~6 checks that ask the same question could contradict each other.
+ */
 interface Ctx {
+  found: ExtensionManifest | null;
   manifest: Record<string, unknown> | null;
   manifestText: string;
+  files: ExtensionSourceFile[];
+  /** Comment-stripped shipped source, strings kept. */
   source: string;
+  /** Comments and string contents stripped — for identifier-level questions. */
+  code: string;
+  coverage: number;
   paths: string[];
 }
 
-/** The extension manifest — the one with a manifest_version key. */
-function findManifest(snapshot: RepoSnapshot): { text: string; json: Record<string, unknown> | null } {
-  for (const [path, text] of snapshot.files) {
-    if (!/(^|\/)manifest\.json$/i.test(path)) continue;
-    if (!/"manifest_version"\s*:/.test(text)) continue;
-    try {
-      return { text, json: JSON.parse(text) as Record<string, unknown> };
-    } catch {
-      return { text, json: null };
-    }
-  }
-  return { text: "", json: null };
-}
-
 function buildCtx(snapshot: RepoSnapshot): Ctx {
-  const src: string[] = [];
-  for (const [path, text] of snapshot.files) {
-    if (!/\.(ts|js|mjs|cjs)$/i.test(path)) continue;
-    // Test fixtures are not shipped in the extension package; counting them made
-    // darkreader's `container.innerHTML = ...` test setup read as extension UI code.
-    if (/(^|\/)(tests?|__tests__|spec|e2e)\/|\.(test|spec|tests)\.[cm]?[jt]s$/i.test(path)) continue;
-    src.push(text);
-  }
-  const { text, json } = findManifest(snapshot);
-  return { manifest: json, manifestText: text, source: src.join("\n"), paths: snapshot.paths };
+  const found = findExtensionManifest(snapshot);
+  const { files, coverage } = extensionSourceFiles(snapshot);
+  return {
+    found,
+    manifest: found?.json ?? null,
+    manifestText: found?.raw ?? "",
+    files,
+    source: files.map((f) => f.text).join("\n"),
+    code: files.map((f) => f.code).join("\n"),
+    coverage,
+    paths: snapshot.paths,
+  };
 }
 
 const CATALOGUE: [string, string][] = [
@@ -72,23 +92,37 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
   const ctx = buildCtx(snapshot);
   const checks: PulseScanCheckInput[] = [];
 
+  // Absence findings rest on the shipped scripts we actually read. Below the sound-coverage
+  // threshold a "not found" PASS/SKIPPED is LOW confidence, never a confident all-clear.
+  const thin = ctx.coverage < EXTENSION_SOUND_COVERAGE;
+  const thinNote = thin
+    ? ` (Based on ${Math.round(ctx.coverage * 100)}% of this extension's script files, so "not found" is not a ` +
+      `confident answer.)`
+    : "";
+
   const add = (
     checkKey: string,
     label: string,
     status: PulseScanCheckInput["status"],
     detail: string,
+    confidence: PulseScanCheckInput["confidence"] = "HIGH",
+    evidence?: string,
   ) => {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey,
       label,
       status,
-      confidence: "HIGH",
+      confidence,
       detail,
+      ...(evidence ? { evidence } : {}),
     });
   };
+  /** For a verdict derived from NOT finding something in sampled source. */
+  const absence = (checkKey: string, label: string, status: PulseScanCheckInput["status"], detail: string) =>
+    add(checkKey, label, status, thin ? detail + thinNote : detail, thin ? "LOW" : "HIGH");
 
-  if (!ctx.manifestText) {
+  if (!ctx.manifestText || !ctx.found) {
     for (const [key, label] of CATALOGUE) {
       add(key, label, "SKIPPED", "No extension manifest was found, so the extended extension family did not run.");
     }
@@ -97,31 +131,35 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
 
   const m = ctx.manifest ?? {};
   const permissions = Array.isArray(m.permissions) ? (m.permissions as string[]) : [];
-  const hostPermissions = Array.isArray(m.host_permissions) ? (m.host_permissions as string[]) : [];
+  const hostPermissions = installHostPatterns(m);
   const optional = Array.isArray(m.optional_permissions) ? (m.optional_permissions as string[]) : [];
   const optionalHosts = Array.isArray(m.optional_host_permissions)
     ? (m.optional_host_permissions as string[])
     : [];
 
   // ── Messaging ──────────────────────────────────────────────────────────────
-  const listens = /onMessage\.addListener|onMessageExternal\.addListener|onConnect\.addListener/.test(ctx.source);
-  const checksSender = /sender\.(id|origin|url|tab)/.test(ctx.source);
-  add(
-    "ext_x_message_sender_check",
-    "Messages from content scripts verify their sender",
-    !listens ? "SKIPPED" : checksSender ? "PASS" : "WARN",
-    !listens
-      ? "The extension registers no message listeners."
-      : checksSender
+  const listens = MESSAGE_LISTENER_RE.test(ctx.code);
+  const checksSender = SENDER_CHECK_RE.test(ctx.code);
+  const senderLabel = "Messages from content scripts verify their sender";
+  if (!listens) {
+    absence("ext_x_message_sender_check", senderLabel, "SKIPPED", "The extension registers no message listeners.");
+  } else {
+    add(
+      "ext_x_message_sender_check",
+      senderLabel,
+      checksSender ? "PASS" : "WARN",
+      checksSender
         ? "Message handlers inspect the sender before acting."
         : "Message listeners act on messages without checking `sender`. A content script runs in the page, so any " +
           "script on that page can post to it — meaning a hostile page can drive whatever privileged action the " +
-          "background worker performs on the content script's behalf.",
-  );
+          "background worker performs on the content script's behalf." + thinNote,
+      thin ? "LOW" : "MEDIUM",
+    );
+  }
 
   const externallyConnectable = m.externally_connectable as { matches?: string[] } | undefined;
   const extMatches = externallyConnectable?.matches ?? [];
-  const wildcardExternal = extMatches.some((x) => /^\*:\/\/\*\/\*$|<all_urls>/.test(x));
+  const wildcardExternal = isAllUrlsPattern(extMatches);
   add(
     "ext_x_external_connectable",
     "Externally-connectable origins are restricted",
@@ -141,27 +179,34 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
   // API documentation links (chrome.privacy / browser.privacy reference pages) are not a policy.
   const policyRe =
     /privacy[\s_-]?(policy|url)|privacyPolicy|https?:\/\/(?!developer\.chrome\.com|developer\.mozilla\.org)[^\s'"`)]*\/privacy(?:[-_/.#?]|\b)/i;
-  const hasPolicy = policyRe.test(ctx.manifestText + ctx.source) ||
-    [...snapshot.files].some(([p, t]) => /\.(md|html?)$/i.test(p) && policyRe.test(t)) ||
-    ctx.paths.some((p) => /privacy/i.test(p));
+  // ⚠️ A policy FILE is named for one. `/privacy/i` over every path passed uBOL-home on
+  // rulesets/main/easyprivacy.json — a filter list, not a policy.
+  const policyFile = ctx.paths.find((p) => /(^|\/)privacy[-_ ]?(policy)?\.(md|html?)$/i.test(p));
+  const hasPolicy = Boolean(policyFile) || policyRe.test(ctx.manifestText + ctx.source) ||
+    [...snapshot.files].some(([p, t]) => /\.(md|html?)$/i.test(p) && policyRe.test(t));
   add(
     "ext_x_privacy_policy",
     "A privacy policy is declared when user data is handled",
-    !handlesUserData ? "SKIPPED" : hasPolicy ? "PASS" : "WARN",
+    // The policy URL lives in the Web Store developer dashboard, not the repo — so not finding
+    // one here is "could not establish", never "there is none".
+    !handlesUserData ? "SKIPPED" : hasPolicy ? "PASS" : "INCONCLUSIVE",
     !handlesUserData
       ? "The extension requests no permissions that access user data, so a privacy policy is not required."
       : hasPolicy
-        ? "A privacy policy is present alongside the data-accessing permissions."
+        ? `A privacy policy is present alongside the data-accessing permissions${policyFile ? ` (${policyFile})` : ""}.`
         : `The extension requests data-accessing permissions (${permissions
             .filter((p) => sensitivePerms.includes(p))
             .concat(hostPermissions)
             .slice(0, 4)
-            .join(", ")}) and no privacy policy link was found in the sampled source. The policy URL is set in the store's developer dashboard, so confirm one is posted there — the Chrome Web Store requires a posted privacy policy for ` +
-          "any extension handling personal or sensitive user data, and publishes rejections on exactly this basis.",
+            .join(", ")}) and no privacy policy was found in the repository. The policy URL is set in the store's ` +
+          "developer dashboard, which a source scan cannot see, so this could not be established either way. " +
+          "Confirm one is posted there — the Chrome Web Store requires a posted privacy policy for any extension " +
+          "handling personal or sensitive user data.",
+    hasPolicy ? "MEDIUM" : "LOW",
   );
 
   // MV2 manifests put host patterns in `permissions`; http(s)://*/* is all-sites too.
-  const broadHosts = hostPermissions.concat(permissions).filter((h) => /<all_urls>|^(\*|https?):\/\/\*\//.test(h));
+  const broadHosts = hostPermissions.filter((h) => isAllUrlsPattern([h]));
   // Only optional HOST access moves broad access to runtime; an optional `contextMenus` does not.
   const optionalHostAccess = optionalHosts.length + optional.filter((p) => /<all_urls>|:\/\//.test(p)).length;
   add(
@@ -179,7 +224,8 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
   );
 
   const contentScripts = Array.isArray(m.content_scripts) ? (m.content_scripts as { matches?: string[] }[]) : [];
-  const broadContent = contentScripts.some((cs) => (cs.matches ?? []).some((x) => /<all_urls>|^\*:\/\/\*\//.test(x)));
+  // Same rule as ext_content_script_scope — the old regex here missed http://*/* and https://*/*.
+  const broadContent = contentScripts.some((cs) => isAllUrlsPattern(cs.matches));
   add(
     "ext_x_content_script_matches",
     "Content scripts are scoped to the sites they need",
@@ -194,51 +240,71 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
   );
 
   // ── Implementation quality ─────────────────────────────────────────────────
-  const usesSync = /storage\.sync/.test(ctx.source);
+  const syncLabel = "Synced storage is used within its quota";
+  const usesSync = /storage\.sync/.test(ctx.code);
   const largeWrites = /storage\.sync\.set\([^)]*JSON\.stringify/.test(ctx.source);
-  add(
-    "ext_x_storage_sync_size",
-    "Synced storage is used within its quota",
-    !usesSync ? "SKIPPED" : largeWrites ? "WARN" : "PASS",
-    !usesSync
-      ? "The extension does not use chrome.storage.sync."
-      : largeWrites
+  if (!usesSync) {
+    absence("ext_x_storage_sync_size", syncLabel, "SKIPPED", "The extension does not use chrome.storage.sync.");
+  } else {
+    add(
+      "ext_x_storage_sync_size",
+      syncLabel,
+      largeWrites ? "WARN" : "PASS",
+      largeWrites
         ? "A serialised object is written to storage.sync. That area has a hard 8KB-per-item and 100KB-total quota " +
           "plus a write-rate limit; exceeding either fails the write, and the common pattern is to ignore the " +
           "returned error — so the user's settings silently stop saving. Use storage.local for anything sizeable."
         : "storage.sync is used for small values.",
-  );
+      largeWrites ? "MEDIUM" : thin ? "LOW" : "MEDIUM",
+    );
+  }
 
-  const evalInSource = /\beval\(|new Function\(/.test(ctx.source);
-  add(
-    "ext_x_no_eval_in_content",
-    "Content scripts do not evaluate strings as code",
-    evalInSource ? "FAIL" : "PASS",
-    evalInSource
-      ? "The extension evaluates strings as code. Manifest V3's content security policy forbids this for extension " +
-        "pages, so it is both a review rejection and — in a content script, which runs with access to the page and " +
-        "the extension's messaging — a direct injection route."
-      : "No runtime code evaluation was found.",
-  );
+  // Same rule as ext_no_eval: a real call, strings and comments stripped.
+  const evalIn = findDynamicEval(ctx.files);
+  const evalLabel = "Content scripts do not evaluate strings as code";
+  if (evalIn) {
+    add(
+      "ext_x_no_eval_in_content",
+      evalLabel,
+      "FAIL",
+      `The extension evaluates strings as code (${evalIn}). Manifest V3's content security policy forbids this for ` +
+        "extension pages, so it is both a review rejection and — in a content script, which runs with access to the " +
+        "page and the extension's messaging — a direct injection route.",
+      "HIGH",
+      evalIn,
+    );
+  } else {
+    absence("ext_x_no_eval_in_content", evalLabel, "PASS", "No runtime code evaluation was found.");
+  }
 
-  const innerHtml = /\.innerHTML\s*=|insertAdjacentHTML\(/.test(ctx.source);
-  const sanitised = /DOMPurify|sanitize|textContent\s*=/.test(ctx.source);
-  add(
-    "ext_x_innerhtml_injection",
-    "Extension UI is not built by injecting HTML strings",
-    !innerHtml ? "PASS" : sanitised ? "WARN" : "FAIL",
-    !innerHtml
-      ? "The extension builds its UI without assigning HTML strings."
-      : sanitised
+  // Same rule as ext_dom_injection.
+  const innerHtml = HTML_INJECTION_RE.test(ctx.code);
+  const sanitised = HTML_SANITISER_RE.test(ctx.code);
+  const htmlLabel = "Extension UI is not built by injecting HTML strings";
+  if (!innerHtml) {
+    absence("ext_x_innerhtml_injection", htmlLabel, "PASS", "The extension builds its UI without assigning HTML strings.");
+  } else {
+    add(
+      "ext_x_innerhtml_injection",
+      htmlLabel,
+      sanitised ? "WARN" : "FAIL",
+      sanitised
         ? "HTML is assigned but a sanitiser is present. Confirm it covers every assignment — the risk is any path " +
           "where page content reaches the extension's own DOM."
         : "The extension assigns innerHTML with no sanitiser. Content scripts read from the host page, so page " +
           "content flows into the extension's DOM — and script that runs there has the extension's privileges, not " +
           "the page's. This is the standard route from a hostile page to extension compromise.",
-  );
+      "MEDIUM",
+    );
+  }
 
+  // ⚠️ Decided from the JUDGED manifest's permissions. A comment elsewhere in uBlock mentioning
+  // declarativeNetRequest passed an MV2 manifest that requests webRequestBlocking and no DNR.
+  // Source is consulted only when the manifest says nothing either way, and only as code.
   const usesWebRequest = permissions.includes("webRequest") || permissions.includes("webRequestBlocking");
-  const usesDnr = permissions.includes("declarativeNetRequest") || /declarativeNetRequest/.test(ctx.source);
+  const manifestDnr = permissions.some((p) => /^declarativeNetRequest/.test(p)) || "declarative_net_request" in m;
+  const usesDnr = manifestDnr ||
+    (!usesWebRequest && ctx.files.some((f) => /declarativeNetRequest\s*\.\s*\w+\s*\(/.test(f.code)));
   add(
     "ext_x_declarative_net_request",
     "Network rules use the declarative API",
@@ -253,31 +319,54 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
           "every request it intercepts, which is exactly what the declarative API was introduced to avoid.",
   );
 
-  const swGlobals = /^(?:const|let|var)\s+\w+\s*=\s*(?:\[\]|\{\}|new Map)/m.test(ctx.source);
-  const usesAlarms = /chrome\.alarms|storage\.(local|session)\.set/.test(ctx.source);
-  add(
-    "ext_x_service_worker_lifetime",
-    "The service worker does not assume it stays alive",
-    (m.manifest_version as number) !== 3 ? "SKIPPED" : !swGlobals ? "PASS" : usesAlarms ? "PASS" : "WARN",
-    (m.manifest_version as number) !== 3
-      ? "This is a Manifest V2 extension with a persistent background page, so worker lifetime does not apply."
-      : !swGlobals
-        ? "No module-level mutable state was found in the worker."
-        : usesAlarms
-          ? "Module-level state exists but the extension also persists to storage or uses alarms, so it survives a " +
-            "worker restart."
-          : "The service worker holds state in module-level variables with no persistence. Manifest V3 terminates " +
-            "the worker after roughly 30 seconds of inactivity and restarts it on the next event, so that state is " +
-            "silently lost — which presents as an extension that 'forgets' things after a few minutes idle and is " +
-            "very hard to reproduce while actively testing.",
-  );
+  // Read the WORKER file, not the whole repo: module-level state in a popup or options
+  // page is harmless, and a repo-wide match said nothing about the worker.
+  const lifetimeLabel = "The service worker does not assume it stays alive";
+  const background = m.background as Record<string, unknown> | undefined;
+  const declaredWorker = typeof background?.service_worker === "string" ? background.service_worker : null;
+  if ((m.manifest_version as number) !== 3) {
+    add("ext_x_service_worker_lifetime", lifetimeLabel, "SKIPPED",
+      "This is a Manifest V2 extension with a persistent background page, so worker lifetime does not apply.");
+  } else if (!declaredWorker) {
+    add("ext_x_service_worker_lifetime", lifetimeLabel, "SKIPPED", "The manifest declares no background service worker.");
+  } else {
+    const resolved = resolveServiceWorker(snapshot, ctx.found.path, declaredWorker);
+    const workerText = resolved.path ? snapshot.files.get(resolved.path) : undefined;
+    if (workerText === undefined) {
+      add("ext_x_service_worker_lifetime", lifetimeLabel, "INCONCLUSIVE",
+        `The service worker (\`${declaredWorker}\`) or its source was not read, so whether it holds state in ` +
+        "module-level variables could not be established.", "LOW");
+    } else {
+      const workerCode = stripJsCommentsAndStrings(workerText);
+      const swGlobals = /^(?:const|let|var)\s+\w+\s*=\s*(?:\[\]|\{\}|new Map)/m.test(workerCode);
+      const usesAlarms = /chrome\.alarms|storage\.(local|session)\.set/.test(workerText);
+      add(
+        "ext_x_service_worker_lifetime",
+        lifetimeLabel,
+        !swGlobals ? "PASS" : usesAlarms ? "PASS" : "WARN",
+        !swGlobals
+          ? `No module-level mutable state was found in the worker (${resolved.path}). Modules it imports were not ` +
+            "inspected."
+          : usesAlarms
+            ? "Module-level state exists but the worker also persists to storage or uses alarms, so it survives a " +
+              "worker restart."
+            : `The service worker (${resolved.path}) holds state in module-level variables with no persistence. ` +
+              "Manifest V3 terminates the worker after roughly 30 seconds of inactivity and restarts it on the next " +
+              "event, so that state is silently lost — which presents as an extension that 'forgets' things after a " +
+              "few minutes idle and is very hard to reproduce while actively testing.",
+        "MEDIUM",
+        resolved.path,
+      );
+    }
+  }
 
+  // Same rule as ext_version_format (leading zeros and the 65535 cap included).
   const version = typeof m.version === "string" ? m.version : "";
-  const validVersion = /^\d{1,5}(\.\d{1,5}){0,3}$/.test(version);
+  const validVersion = isValidExtensionVersion(version);
   add(
     "ext_x_version_scheme",
     "The version is a valid store version string",
-    !version ? "WARN" : validVersion ? "PASS" : "FAIL",
+    !version ? "FAIL" : validVersion ? "PASS" : "FAIL",
     !version
       ? "The manifest declares no version, which the store requires."
       : validVersion
@@ -287,13 +376,8 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
           "outright rather than warning.",
   );
 
-  const icons = (m.icons ?? {}) as Record<string, string>;
-  const iconSizes = Object.keys(icons);
-  // Written as numbers rather than a string array: the registry drift guard reads
-  // any three-string array as a check tuple, so the literal sizes were picked up as
-  // an unregistered checkKey. Exactly the trap recorded in CLAUDE.md §37.6 — the
-  // code changes, the guard does not.
-  const required = [16, 48, 128].map(String).filter((s) => !iconSizes.includes(s));
+  const iconSizes = Object.keys((m.icons ?? {}) as Record<string, string>);
+  const required = missingIconSizes(m);
   add(
     "ext_x_icons_complete",
     "The full icon set is declared",
@@ -308,25 +392,18 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
           "the nearest declared icon, which can look soft.",
   );
 
-  // Multi-browser repos keep the Chrome-only keys in a variant (darkreader: src/manifest-chrome-mv3.json)
-  // merged over a shared manifest.json at build time, so look across manifest*.json files.
-  const minVersion =
-    typeof m.minimum_chrome_version === "string" ||
-    [...snapshot.files].some(
-      ([p, t]) =>
-        /(^|\/)manifest[^/]*\.json$/i.test(p) &&
-        !/(^|\/)(tests?|__tests__|spec|e2e|fixtures?|__fixtures__|examples?|node_modules)\//i.test(p) &&
-        /"minimum_chrome_version"\s*:\s*"/.test(t),
-    );
+  // Shared with ext_minimum_chrome_version: the judged manifest, or a Chrome variant merged over it.
+  const minVersion = declaredMinimumChromeVersion(snapshot, ctx.found);
   add(
     "ext_x_minimum_chrome_version",
     "A minimum browser version is declared",
     minVersion ? "PASS" : "WARN",
     minVersion
-      ? "The manifest declares a minimum browser version, so users on older builds are not offered an install that " +
-        "will not work."
+      ? `The Chrome build declares minimum_chrome_version ${minVersion.value} (${minVersion.from}), so users on older ` +
+        "builds are not offered an install that will not work."
       : "No minimum_chrome_version is declared. Users on an older browser can install the extension and hit a " +
         "silent failure on whichever API is missing, which arrives as a one-star review rather than as a bug report.",
+    minVersion && minVersion.from !== ctx.found.path ? "MEDIUM" : "HIGH",
   );
 
   return checks;

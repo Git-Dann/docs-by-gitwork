@@ -34,7 +34,7 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
-import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
+import { isExampleOrFixturePath, isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 import { allDependencies, anyDependency, parsePackageManifest, type PackageManifest } from "./project-shape";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
@@ -45,31 +45,177 @@ const MIN_LINES_FOR_DENSITY = 200;
 
 /**
  * The oldest React Native minor still receiving security fixes. RN maintains the
- * latest three minor series; as of October 2026 that is 0.87 (current), 0.86 and
- * 0.85 (security-only).
+ * latest three minor series; as of October 2026 that is 0.88 (current, released
+ * 2026-10-15), 0.87 and 0.86.
  *
  * Bump this line when the window moves. An app below it is carrying unpatched
  * issues in the framework AND in the bundled Hermes/JSC engine, and — because RN
  * upgrades get harder the further behind you fall — every release skipped makes
  * the eventual jump more expensive, which is the real reason apps end up stranded.
+ *
+ * Exported because cross-platform-extended's dependency check must use the same
+ * floor: two checks disagreeing about one version number is a contradiction the
+ * report would print side by side.
  */
-const RN_OLDEST_SUPPORTED_MINOR = 85;
+export const RN_OLDEST_SUPPORTED_MINOR = 86;
+
+/**
+ * Test, mock, e2e and type-declaration files. Not app code: a token key in a Jest
+ * fixture or a `.map()` in a Detox helper describes the test suite, not what ships.
+ * mattermost-mobile had 59 of its 150 sampled files under detox/ before this was
+ * excluded. Shared with native-repo.ts (sampling) and cross-platform-extended.ts.
+ */
+export const RN_NON_APP_SOURCE =
+  /(\.(test|spec|e2e)\.|(^|\/)(__tests__|__mocks__|e2e|detox|__e2e__|tests?)\/|\.d\.ts$)/i;
+
+/** JS/TS source that is the app's own code: not vendored, not a native shell, not a test. */
+function isRnAppSource(path: string): boolean {
+  return /\.(js|jsx|ts|tsx)$/i.test(path) && !isVendoredPath(path) && !/^(android|ios)\//i.test(path) &&
+    !RN_NON_APP_SOURCE.test(path);
+}
+
+/**
+ * The native app SHELL — the Android and iOS projects that actually ship — as
+ * opposed to every manifest and plist in the repo.
+ *
+ * Learned on real apps: social-app (Expo, CNG) has no android/ or ios/ at all, and
+ * its only manifests and gradle files belong to local library modules
+ * (modules/x/android/…). Reading those as the app turned "no minify setting in a
+ * library's build.gradle" into "the app ships unshrunk". mattermost and rainbow DO
+ * have shells, but also share/notification extensions, test-target plists and a
+ * debug-only manifest, all of which were being counted as the app.
+ *
+ *   • Android: `<P>android/app/src/<variant>/AndroidManifest.xml` (debug kept apart),
+ *     `<P>android/app/build.gradle`, `<P>android/build.gradle`, `<P>android/gradle.properties`.
+ *   • iOS: `<P>ios/<Target>/Info.plist`, minus test targets and app extensions
+ *     (an extension's plist carries an NSExtension key).
+ *
+ * `<P>` is the repo root, or a directory whose android/ has an app/ module or a
+ * settings.gradle (a library module has neither), or whose ios/ has a Podfile.
+ */
+export interface RnAppShell {
+  hasAndroid: boolean;
+  hasIos: boolean;
+  /** Release/main manifests of the app module — never the debug variant. */
+  androidManifest: string;
+  /** src/debug manifests: development-only, reported but never a release finding. */
+  androidDebugManifest: string;
+  androidGradle: string;
+  iosPlist: string;
+  /** Entitlements of the app target (associated domains live here, not in Info.plist). */
+  iosEntitlements: string;
+}
+
+export function rnAppShell(snapshot: RepoSnapshot): RnAppShell {
+  const paths = snapshot.paths.filter((p) => !isVendoredPath(p) && !isExampleOrFixturePath(p));
+  const androidRoots = new Set<string>();
+  const iosRoots = new Set<string>();
+  for (const p of paths) {
+    if (p.startsWith("android/")) androidRoots.add("");
+    if (p.startsWith("ios/")) iosRoots.add("");
+    const a = /^((?:[^/]+\/)*?)android\/(?:app\/|settings\.gradle(?:\.kts)?$)/.exec(p);
+    if (a) androidRoots.add(a[1]);
+    const i = /^((?:[^/]+\/)*?)ios\/Podfile$/.exec(p);
+    if (i) iosRoots.add(i[1]);
+  }
+  const shell: RnAppShell = {
+    hasAndroid: androidRoots.size > 0,
+    hasIos: iosRoots.size > 0,
+    androidManifest: "",
+    androidDebugManifest: "",
+    androidGradle: "",
+    iosPlist: "",
+    iosEntitlements: "",
+  };
+  for (const [path, text] of snapshot.files) {
+    if (isVendoredPath(path) || isExampleOrFixturePath(path)) continue;
+    for (const root of androidRoots) {
+      if (!path.startsWith(root)) continue;
+      const rest = path.slice(root.length);
+      const manifest = /^android\/app\/src\/([^/]+)\/AndroidManifest\.xml$/i.exec(rest);
+      if (manifest) {
+        if (/^debug/i.test(manifest[1])) shell.androidDebugManifest += "\n" + text;
+        else shell.androidManifest += "\n" + text;
+      } else if (/^android\/(app\/)?build\.gradle(\.kts)?$|^android\/gradle\.properties$/i.test(rest)) {
+        shell.androidGradle += "\n" + text;
+      }
+    }
+    for (const root of iosRoots) {
+      if (!path.startsWith(root)) continue;
+      const rest = path.slice(root.length);
+      const plist = /^ios\/(?:([^/]+)\/)?Info\.plist$/i.exec(rest);
+      if (plist && !/tests?$/i.test(plist[1] ?? "") && !/<key>\s*NSExtension\s*<\/key>/.test(text)) {
+        shell.iosPlist += "\n" + text;
+      } else if (/^ios\/[^/]+\/[^/]+\.entitlements$/i.test(rest) && !/(tests?|extension|share|widget|notification\w*)\//i.test(rest)) {
+        shell.iosEntitlements += "\n" + text;
+      }
+    }
+  }
+  return shell;
+}
+
+/**
+ * Native settings declared in an Expo config (app.json / app.config.js|ts) instead
+ * of in a committed shell. app.config.js is JavaScript, so keys are usually
+ * UNQUOTED (`enableMinifyInReleaseBuilds: true`) — matching only the JSON-quoted
+ * form is what made social-app read as having none of these settings.
+ */
+export interface ExpoNativeConfig {
+  /** Any Expo config file was read. */
+  present: boolean;
+  iosUsageDescriptions: string[];
+  /** null = the config does not list Android permissions (Expo then generates them). */
+  androidPermissions: string[] | null;
+  scheme: boolean;
+  associatedDomains: boolean;
+  intentFilters: boolean;
+  minify: boolean;
+  cleartext: boolean;
+  arbitraryLoads: boolean;
+}
+
+const cfgKey = (key: string, value: string) => new RegExp(`["']?\\b${key}["']?\\s*:\\s*${value}`);
+
+export function parseExpoNativeConfig(appConfigRaw: string): ExpoNativeConfig {
+  const cfg = stripCStyleComments(appConfigRaw);
+  const perms = new Set<string>();
+  for (const m of cfg.matchAll(/android\.permission\.(\w+)/g)) perms.add(m[1]);
+  const listed = cfgKey("permissions", "\\[([^\\]]*)\\]").exec(cfg);
+  if (listed) for (const m of listed[1].matchAll(/['"`]([A-Z][A-Z0-9_]+)['"`]/g)) perms.add(m[1]);
+  return {
+    present: cfg.trim().length > 0,
+    iosUsageDescriptions: [...new Set(cfg.match(/\bNS\w+UsageDescription\b/g) ?? [])],
+    androidPermissions: listed || perms.size > 0 ? [...perms] : null,
+    scheme: cfgKey("scheme", "['\"`\\[]").test(cfg),
+    associatedDomains: cfgKey("associatedDomains", "\\S").test(cfg),
+    intentFilters: cfgKey("intentFilters", "\\[").test(cfg),
+    minify: cfgKey("enable(?:Proguard|Minify)InReleaseBuilds", "true").test(cfg),
+    cleartext: cfgKey("usesCleartextTraffic", "true").test(cfg),
+    arbitraryLoads: cfgKey("NSAllowsArbitraryLoads", "true").test(cfg),
+  };
+}
 
 interface RnContext {
   /** Sampled JS/TS source with comments stripped — for "is this live code?". */
   source: string;
   /** Same source, comments intact — for signals that legitimately live in comments. */
   sourceRaw: string;
-  /** android/gradle.properties + android/**\/build.gradle joined. */
+  /** Sampled app files (comments stripped), for per-file evidence. */
+  files: { path: string; text: string }[];
+  shell: RnAppShell;
+  expo: ExpoNativeConfig;
+  /** The app shell's gradle (never a library module's). */
   gradle: string;
-  /** android/**\/AndroidManifest.xml joined. */
+  /** The app shell's release manifest(s). */
   androidManifest: string;
-  /** ios/**\/Info.plist joined. */
+  /** The app target's Info.plist (no extensions, no test targets). */
   iosPlist: string;
   /** babel.config.js / .babelrc joined. */
   babel: string;
   /** app.json / app.config.* / eas.json joined (Expo + EAS). */
   appConfig: string;
+  /** android/app/src/main/res/values/strings.xml — CodePush keeps its public key here. */
+  androidStrings: string;
   pkg: PackageManifest | null;
   /** Non-vendored sampled line count, for density metrics. */
   lines: number;
@@ -80,55 +226,63 @@ interface RnContext {
 
 function buildContext(snapshot: RepoSnapshot): RnContext {
   // App source only. The native shells (android/, ios/) are read as CONFIG below;
-  // counting them here would dilute coverage with files we never sample.
-  const jsPaths = snapshot.paths.filter(
-    (p) => /\.(js|jsx|ts|tsx)$/i.test(p) && !isVendoredPath(p) && !/^(android|ios)\//i.test(p),
-  );
-  const read: string[] = [];
-  let gradle = "";
-  let androidManifest = "";
-  let iosPlist = "";
+  // counting them here would dilute coverage with files we never sample. Tests are
+  // excluded from both sides of the ratio.
+  const jsPaths = snapshot.paths.filter(isRnAppSource);
+  const files: { path: string; text: string }[] = [];
   let babel = "";
   let appConfig = "";
+  let androidStrings = "";
   let pkgText: string | null = null;
 
   for (const [path, text] of snapshot.files) {
-    if (/(^|\/)AndroidManifest\.xml$/i.test(path)) androidManifest += "\n" + text;
-    else if (/(^|\/)(gradle\.properties|build\.gradle(\.kts)?)$/i.test(path)) gradle += "\n" + text;
-    else if (/(^|\/)Info\.plist$/i.test(path)) iosPlist += "\n" + text;
-    else if (/(^|\/)(babel\.config\.(js|cjs|ts)|\.babelrc(\.js|\.json)?)$/i.test(path)) babel += "\n" + text;
-    else if (/(^|\/)(app\.json|app\.config\.(js|ts)|eas\.json)$/i.test(path)) appConfig += "\n" + text;
+    if (/(^|\/)(babel\.config\.(js|cjs|ts)|\.babelrc(\.js|\.json)?)$/i.test(path)) babel += "\n" + text;
+    else if (/(^|\/)(app\.json|app\.config\.(js|ts)|eas\.json)$/i.test(path) && !isVendoredPath(path)) appConfig += "\n" + text;
+    else if (/(^|\/)res\/values\/strings\.xml$/i.test(path)) androidStrings += "\n" + text;
     else if (/(^|\/)package\.json$/i.test(path) && !path.includes("/")) pkgText = text;
-    else if (/\.(js|jsx|ts|tsx)$/i.test(path) && !isVendoredPath(path) && !/^(android|ios)\//i.test(path)) {
-      read.push(text);
-    }
+    else if (isRnAppSource(path)) files.push({ path, text });
   }
 
-  const sourceRaw = read.join("\n");
+  const sourceRaw = files.map((f) => f.text).join("\n");
+  const shell = rnAppShell(snapshot);
   return {
     source: stripCStyleComments(sourceRaw),
     sourceRaw,
-    gradle,
-    androidManifest,
-    iosPlist,
+    files: files.map((f) => ({ path: f.path, text: stripCStyleComments(f.text) })),
+    shell,
+    expo: parseExpoNativeConfig(appConfig),
+    gradle: shell.androidGradle,
+    androidManifest: shell.androidManifest,
+    iosPlist: shell.iosPlist,
     babel,
     appConfig,
+    androidStrings,
     pkg: parsePackageManifest(pkgText),
     lines: sourceRaw.split("\n").length,
-    coverage: sampleCoverage(read.length, jsPaths.length, snapshot.truncated),
+    coverage: sampleCoverage(files.length, jsPaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
 }
 
+/**
+ * An absence-derived verdict. Only an ADVERSE status is an absence claim: a WARN or
+ * FAIL resting on a thin sample becomes INCONCLUSIVE (LOW), the same rule as
+ * cross-platform-extended's add(). A PASS is presence (or a dependency) and is left
+ * alone — it used to be relabelled LOW with "this is inconclusive rather than a
+ * failure" appended, which described a pass as a failure that wasn't.
+ */
 function absence(ctx: RnContext, check: Omit<PulseScanCheckInput, "confidence">): PulseScanCheckInput {
   const sound = ctx.coverage >= SOUND_ABSENCE_COVERAGE;
+  const adverse = check.status === "WARN" || check.status === "FAIL";
+  if (sound || !adverse) return { ...check, confidence: "HIGH" };
   return {
     ...check,
-    confidence: sound ? "HIGH" : "LOW",
-    detail: sound
-      ? check.detail
-      : `${check.detail} (Based on ${Math.round(ctx.coverage * 100)}% of this app's JavaScript/TypeScript files — ` +
-        `below the threshold for a confident "not present anywhere", so this is inconclusive rather than a failure.)`,
+    status: "INCONCLUSIVE",
+    confidence: "LOW",
+    confidenceReason:
+      `Only ${Math.round(ctx.coverage * 100)}% of this app's JavaScript/TypeScript files were read, so not finding ` +
+      `this is not evidence that it is missing.`,
+    detail: `Not established from the sampled source. ${check.detail}`,
   };
 }
 
@@ -157,8 +311,30 @@ function secretsChecks(ctx: RnContext): PulseScanCheckInput[] {
     ctx.pkg,
     /^(react-native-keychain|expo-secure-store|react-native-encrypted-storage|react-native-sensitive-info)$/,
   );
-  const TOKEN_KEY = /['"][^'"]*(?:access|refresh|auth|bearer|id)[_-]?token[^'"]*['"]|\b(?:access|refresh|auth)Token\b/i;
-  const tokenNearStorage = usesAsyncStorage && TOKEN_KEY.test(ctx.source);
+  // Evidence, not co-occurrence. "AsyncStorage is a dependency" + "a token word
+  // appears somewhere" warned on rainbow, whose token words were only in tests and
+  // whose real token store is memory-only. Two shapes count:
+  //   1. a storage call that names a token key directly, in app code;
+  //   2. a persisted store — the whole state written to AsyncStorage under a
+  //      variable key — whose schema carries token fields (Bluesky: BSKY_STORAGE
+  //      holds the session, accessJwt included).
+  const TOKEN_WORD = String.raw`(?:(?:access|refresh|auth|bearer|id)[_-]?(?:token|jwt)|accessJwt|refreshJwt|\bjwt\b)`;
+  const STORAGE_CALL_WITH_TOKEN = new RegExp(
+    String.raw`(?:AsyncStorage|\w*[Ss]torage|\w*MMKV|\w*mmkv)\.(?:setItem|getItem|multiSet|multiGet|set|setString|getString)\(\s*[^)]{0,120}?` +
+      TOKEN_WORD,
+    "i",
+  );
+  const directFile = ctx.files.find((f) => STORAGE_CALL_WITH_TOKEN.test(f.text));
+  const persistFile = ctx.files.find((f) => /AsyncStorage\.setItem\(\s*[A-Za-z_$][\w$.]*\s*,/.test(f.text));
+  const schemaFile = ctx.files.find((f) =>
+    /\b(?:accessJwt|refreshJwt|accessToken|refreshToken|authToken)\??\s*:\s*(?:z\.|string\b|String\b|t\.)/.test(f.text),
+  );
+  const tokenEvidence = directFile
+    ? `${directFile.path}: a storage call names a token key`
+    : persistFile && schemaFile
+      ? `${persistFile.path} persists state to AsyncStorage; ${schemaFile.path} declares token fields in it`
+      : null;
+  const tokenNearStorage = usesAsyncStorage && tokenEvidence !== null;
 
   if (tokenNearStorage) {
     checks.push({
@@ -177,11 +353,14 @@ function secretsChecks(ctx: RnContext): PulseScanCheckInput[] {
           `app-private storage, readable on a rooted device and extractable via ADB backup where backup is allowed; ` +
           `React Native's own security documentation says not to put tokens in it. Move them to ` +
           `\`react-native-keychain\` or \`expo-secure-store\`, which use the iOS Keychain and Android Keystore.`,
+      evidence: tokenEvidence ?? undefined,
     });
   }
 
-  // A password persisted at all is worse than where it is persisted.
-  if (usesAsyncStorage && /['"][^'"]*password[^'"]*['"]\s*,/i.test(ctx.source)) {
+  // A password persisted at all is worse than where it is persisted. Requires a
+  // storage WRITE whose key names a password — a string containing "password" and a
+  // comma matched `type: 'password',` (a form field) and a metric name on Bluesky.
+  if (/(?:AsyncStorage|MMKV|[Ss]torage|SecureStore)\w*\.(?:setItem|set|setString|setItemAsync)\(\s*['"`][^'"`]*pass(?:word|wd)[^'"`]*['"`]/i.test(ctx.source)) {
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "rn_password_retention",
@@ -199,7 +378,10 @@ function secretsChecks(ctx: RnContext): PulseScanCheckInput[] {
   // Secrets compiled into the JS bundle. react-native-config and dotenv variants
   // inline values at BUILD time — the value ends up in the shipped bundle, which
   // is the misconception RN's docs call out by name.
-  const SECRET_LITERAL = /(api[_-]?key|apiKey|secret|clientSecret|private[_-]?key)\s*[:=]\s*['"][A-Za-z0-9_\-]{20,}['"]/i;
+  // The value must contain a digit: real keys do, and it is what separates them from
+  // a long identifier — Mattermost's `HEADER_X_..._SECRET = 'X-Mattermost-Preauth-Secret'`
+  // is a header NAME and was reported as a leaked secret once its file was sampled.
+  const SECRET_LITERAL = /(api[_-]?key|apiKey|secret|clientSecret|private[_-]?key)\s*[:=]\s*['"](?=[^'"]*\d)[A-Za-z0-9_\-]{20,}['"]/i;
   const usesConfigLib = anyDependency(ctx.pkg, /^(react-native-config|react-native-dotenv|@env)$/);
   if (SECRET_LITERAL.test(ctx.source)) {
     checks.push({
@@ -221,7 +403,9 @@ function secretsChecks(ctx: RnContext): PulseScanCheckInput[] {
   // Sending tokens/PII to crash reporters is a named pitfall in RN's docs.
   const hasReporting = anyDependency(ctx.pkg, /^(@sentry\/react-native|bugsnag-react-native|@bugsnag\/|rollbar-react-native)/);
   if (hasReporting) {
-    const scrubs = /beforeSend|beforeBreadcrumb|redact|scrub|sanitiz/i.test(ctx.source);
+    // Only the SDK's own hooks count. Any "redact"/"sanitize" anywhere in the app
+    // (a form sanitiser, a log helper) said nothing about what reaches the reporter.
+    const scrubs = /beforeSend|beforeBreadcrumb|beforeSendTransaction/.test(ctx.source);
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "rn_reporting_pii_scrub",
@@ -247,17 +431,27 @@ function securityChecks(ctx: RnContext): PulseScanCheckInput[] {
   // The two native shells must agree. Checking them TOGETHER is the point: a
   // cross-platform app whose platforms disagree about cleartext HTTP has one
   // insecure platform and a team that believes it has none.
-  const androidCleartext = /android:usesCleartextTraffic\s*=\s*"true"/i.test(ctx.androidManifest);
-  const iosArbitraryLoads = /<key>NSAllowsArbitraryLoads<\/key>\s*<true\/>/i.test(ctx.iosPlist);
+  // Only the shipping shells count: the src/debug manifest is development-only (the
+  // RN template sets cleartext there so Metro works), and a library module's
+  // manifest is not the app's. With no committed shell (Expo CNG), the Expo config
+  // is what generates them.
+  const androidCleartext = /android:usesCleartextTraffic\s*=\s*"true"/i.test(ctx.androidManifest) ||
+    (!ctx.shell.hasAndroid && ctx.expo.cleartext);
+  const iosArbitraryLoads = /<key>NSAllowsArbitraryLoads<\/key>\s*<true\/>/i.test(ctx.iosPlist) ||
+    (!ctx.shell.hasIos && ctx.expo.arbitraryLoads);
+  const debugOnly = !androidCleartext && /android:usesCleartextTraffic\s*=\s*"true"/i.test(ctx.shell.androidDebugManifest);
   const eitherOpen = androidCleartext || iosArbitraryLoads;
   const bothOpen = androidCleartext && iosArbitraryLoads;
-  if (ctx.androidManifest || ctx.iosPlist) {
+  const fromShell = Boolean(ctx.androidManifest || ctx.iosPlist);
+  if (fromShell || ctx.expo.present) {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "rn_cleartext_traffic",
       label: "Cleartext HTTP is disabled on both platforms",
       status: eitherOpen ? "FAIL" : "PASS",
-      confidence: "HIGH",
+      // A PASS read off the Expo config alone is weaker: a config plugin can still
+      // add the flag at prebuild.
+      confidence: eitherOpen || fromShell ? "HIGH" : "MEDIUM",
       detail: bothOpen
         ? `Both native shells permit plaintext HTTP — \`usesCleartextTraffic="true"\` on Android and ` +
           `\`NSAllowsArbitraryLoads\` on iOS. Every request can be downgraded and read on a hostile network, and ` +
@@ -271,7 +465,11 @@ function securityChecks(ctx: RnContext): PulseScanCheckInput[] {
             ? `iOS permits plaintext HTTP (\`NSAllowsArbitraryLoads\`) while Android does not. Apple requires a ` +
               `justification for this exception at review, and a blanket one is frequently rejected. Scope it to the ` +
               `specific domain with \`NSExceptionDomains\`, or remove it.`
-            : `Neither native shell permits app-wide cleartext HTTP.`,
+            : `Neither native shell permits app-wide cleartext HTTP${fromShell ? "" : " (read from the Expo config — this app has no committed android/ or ios/ project)"}.` +
+              (debugOnly
+                ? ` The debug-only manifest (src/debug) allows it, which is the React Native template's setting for ` +
+                  `talking to the local Metro server and does not ship in release builds.`
+                : ""),
       evidence: eitherOpen ? [androidCleartext && "Android", iosArbitraryLoads && "iOS"].filter(Boolean).join(" + ") : undefined,
     });
   }
@@ -299,38 +497,57 @@ function securityChecks(ctx: RnContext): PulseScanCheckInput[] {
   // because URL schemes have no central registry and any app can claim yours.
   if (/Linking\.(addEventListener|getInitialURL)|createURL|expo-linking/.test(ctx.source)) {
     const tokenInLink = /[?&](token|access_token|auth|jwt|session|api_?key)=/i.test(ctx.sourceRaw);
+    // The receiving side: a file that listens for links and READS a token-named
+    // query parameter off the URL. Mattermost's SSO takes `parsedUrl.query?.MMAUTHTOKEN`
+    // from a link — no literal `?token=` string exists anywhere, so only the read
+    // shows it. Not used for an opaque code (`query.login_code`), which is the fix.
+    const TOKEN_READ =
+      /\.query(?:\?\.)?\.?\[?['"]?\w*(?:TOKEN|Token|token|jwt|JWT|session|auth|AUTH)\w*|searchParams\.get\(\s*['"][^'"]*(?:token|jwt|session|auth)/;
+    const readsToken = ctx.files.find((f) => /Linking|expo-linking|createURL/.test(f.text) && TOKEN_READ.test(f.text));
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "rn_deeplink_credentials",
       label: "Deep links do not carry credentials",
-      status: tokenInLink ? "FAIL" : "PASS",
-      confidence: tokenInLink ? "MEDIUM" : "MEDIUM",
-      detail: tokenInLink
-        ? `A deep-link URL appears to carry a token or session parameter. Custom URL schemes have no central registry ` +
-          `— any other app on the device can register the same scheme and receive the link, including the token in ` +
-          `it. Pass an opaque single-use code instead and exchange it for the token over HTTPS, or use Universal ` +
-          `Links / App Links, which are domain-verified.`
+      status: tokenInLink ? "FAIL" : readsToken ? "WARN" : "PASS",
+      confidence: "MEDIUM",
+      detail: tokenInLink || readsToken
+        ? `${tokenInLink
+            ? "A deep-link URL appears to carry a token or session parameter."
+            : `${readsToken!.path} reads a token-named parameter off a URL it receives through Linking.`} Custom URL ` +
+          `schemes have no central registry — any other app on the device can register the same scheme and receive ` +
+          `the link, including the token in it. Pass an opaque single-use code instead and exchange it for the token ` +
+          `over HTTPS, or use Universal Links / App Links, which are domain-verified.`
         : `No credentials found in deep-link parameters.`,
+      evidence: !tokenInLink && readsToken ? readsToken.path : undefined,
     });
   }
 
   // Certificate pinning is genuinely optional — it is a real hardening step with
   // a real operational cost (certs rotate), so this is informational, not a fail.
-  const pins = anyDependency(ctx.pkg, /^(react-native-ssl-pinning|react-native-cert-pinner|react-native-pinch)$/) ||
-    /NSPinnedDomains|certificatePinner|sslPinning/i.test(ctx.source + ctx.iosPlist);
-  checks.push(absence(ctx, {
+  const pins = anyDependency(
+    ctx.pkg,
+    /^(react-native-ssl-pinning|react-native-cert-pinner|react-native-pinch|react-native-ssl-public-key-pinning|@mattermost\/react-native-network-client)$/,
+  ) || /NSPinnedDomains|certificatePinner|ssl[\s_-]?pinning|pinned (?:ssl )?cert|pin-set|TrustKit/i.test(
+    ctx.source + ctx.iosPlist + ctx.androidManifest,
+  );
+  // Not finding it is INCONCLUSIVE, never WARN: pinning is often native (an OkHttp
+  // CertificatePinner, a network_security_config pin-set, TrustKit in the iOS
+  // project) or injected at build time, none of which the JS sample shows.
+  checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "rn_certificate_pinning",
     label: "Certificate pinning considered for sensitive traffic",
-    status: pins ? "PASS" : "WARN",
+    status: pins ? "PASS" : "INCONCLUSIVE",
+    confidence: pins ? "MEDIUM" : "LOW",
+    ...(pins ? {} : { confidenceReason: "Pinning is frequently configured natively or at build time, outside the JavaScript that was read." }),
     detail: pins
       ? `Certificate pinning is configured. Keep a rotation plan — a pinned certificate that expires without a shipped ` +
         `app update takes the app offline for everyone.`
-      : `No certificate pinning found. This is a hardening measure rather than a defect: HTTPS already protects the ` +
-        `traffic unless the device trusts a hostile root CA (a corporate MDM profile, a user-installed proxy, or ` +
-        `malware). Pinning is worth it for apps handling payments or health data, and is usually not worth the ` +
-        `rotation risk otherwise.`,
-  }));
+      : `No certificate pinning was found in the JavaScript or the app manifests, but pinning is often set up in native ` +
+        `code or at build time, so this is not established either way. It is a hardening measure rather than a ` +
+        `defect: HTTPS already protects the traffic unless the device trusts a hostile root CA. Pinning is worth it ` +
+        `for apps handling payments or health data, and is usually not worth the rotation risk otherwise.`,
+  });
 
   return checks;
 }
@@ -368,7 +585,8 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
   // projects and costs startup time and memory on every launch.
   const hermesOff = /hermesEnabled\s*=\s*false/i.test(ctx.gradle) ||
     /:hermes_enabled\s*=>\s*false/i.test(ctx.gradle) ||
-    /"jsEngine"\s*:\s*"jsc"/i.test(ctx.appConfig);
+    // app.config.js keys are usually unquoted (`jsEngine: 'jsc'`).
+    /["']?\bjsEngine["']?\s*:\s*["'`]jsc["'`]/i.test(stripCStyleComments(ctx.appConfig));
   checks.push({
     category: CATEGORIES.PERFORMANCE,
     checkKey: "rn_hermes_enabled",
@@ -389,8 +607,11 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
   // From 0.82 the New Architecture is the ONLY architecture — the legacy bridge was
   // removed and `newArchEnabled` is ignored — so the flag's absence means nothing there.
   const rnMinorForArch = Number(/0\.(\d+)/.exec(rnRange ?? "")?.[1] ?? -1);
-  const newArchOn = rnMinorForArch >= 82 ||
-    /newArchEnabled\s*=\s*true/i.test(ctx.gradle) || /"newArchEnabled"\s*:\s*true/i.test(ctx.appConfig);
+  // gradle.properties (`newArchEnabled=true`) or an Expo config, quoted or not.
+  const archConfig = stripCStyleComments(ctx.gradle) + "\n" + stripCStyleComments(ctx.appConfig);
+  const archFlagOn = /["']?\bnewArchEnabled["']?\s*[:=]\s*true/i.test(archConfig);
+  const archFlagOff = !archFlagOn && /["']?\bnewArchEnabled["']?\s*[:=]\s*false/i.test(archConfig);
+  const newArchOn = rnMinorForArch >= 82 || archFlagOn;
   checks.push({
     category: CATEGORIES.PERFORMANCE,
     checkKey: "rn_new_architecture",
@@ -402,7 +623,9 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
         ? `React Native 0.${rnMinorForArch} runs only on the New Architecture (the legacy bridge was removed in 0.82), ` +
           `so Fabric rendering and TurboModules are in use whatever \`newArchEnabled\` says.`
         : `The New Architecture is enabled — Fabric rendering and TurboModules remove the asynchronous bridge.`
-      : `\`newArchEnabled\` is not set. The New Architecture replaces the asynchronous JSON bridge with direct ` +
+      : `${archFlagOff
+          ? "The New Architecture is explicitly disabled (`newArchEnabled=false`)."
+          : "`newArchEnabled` is not set."} The New Architecture replaces the asynchronous JSON bridge with direct ` +
         `synchronous access (JSI), which removes the serialise-every-message cost that shows up as jank in lists and ` +
         `gestures. It is the default for new apps and the old architecture is on a deprecation path, so this is a ` +
         `question of when rather than whether — but it needs every native dependency to have a compatible version, so ` +
@@ -410,9 +633,15 @@ function buildChecks(ctx: RnContext): PulseScanCheckInput[] {
   });
 
   // ProGuard/R8 on Android release builds.
-  const proguardOff = /enableProguardInReleaseBuilds\s*=\s*false/i.test(ctx.gradle);
-  const proguardOn = /enableProguardInReleaseBuilds\s*=\s*true|isMinifyEnabled\s*=\s*true|minifyEnabled\s+true/i.test(ctx.gradle);
-  if (ctx.gradle) {
+  // The APP's gradle only (ctx.gradle is the shell): a library module's
+  // build.gradle never configures release shrinking for the app. Expo CNG apps set
+  // it through expo-build-properties in app.config instead (Bluesky:
+  // `enableMinifyInReleaseBuilds: true`).
+  const gradleLive = stripCStyleComments(ctx.gradle);
+  const proguardOff = /enableProguardInReleaseBuilds\s*=\s*false/i.test(gradleLive);
+  const proguardOn = /enableProguardInReleaseBuilds\s*=\s*true|isMinifyEnabled\s*=\s*true|minifyEnabled\s+true/i.test(gradleLive) ||
+    ctx.expo.minify;
+  if (ctx.gradle || ctx.expo.minify) {
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "rn_android_proguard",
@@ -481,23 +710,43 @@ function performanceChecks(ctx: RnContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
 
   // Long lists rendered with .map inside a ScrollView mount every row at once.
-  const scrollViewMap = /<ScrollView[\s\S]{0,400}\.map\s*\(/.test(ctx.source);
-  const usesVirtualList = /<(FlatList|SectionList|FlashList|VirtualizedList)\b/.test(ctx.source);
+  // Only a ScrollView that HAS children counts — a self-closing `<ScrollView ... />`
+  // followed within 400 characters by an unrelated .map() was a match on rainbow —
+  // and the .map() must be inside its body. Capped at WARN: a ScrollView over a
+  // short, bounded array (a settings page, five chips) is correct code, and the
+  // length of the array is not visible from source.
+  let scrollViewMap = false;
+  for (const m of ctx.source.matchAll(/<ScrollView\b/g)) {
+    const start = (m.index ?? 0) + m[0].length;
+    const tag = openingTagOf(ctx.source.slice(start, start + 2000));
+    if (/\/>$/.test(tag)) continue;
+    const bodyStart = start + tag.length;
+    const window = ctx.source.slice(bodyStart, bodyStart + 1500);
+    const close = window.indexOf("</ScrollView>");
+    if (/\.map\s*\(/.test(close >= 0 ? window.slice(0, close) : window.slice(0, 400))) {
+      scrollViewMap = true;
+      break;
+    }
+  }
+  const usesVirtualList = /<(FlatList|SectionList|FlashList|VirtualizedList|LegendList)\b/.test(ctx.source) ||
+    anyDependency(ctx.pkg, /^(@shopify\/flash-list|@legendapp\/list|recyclerlistview)$/);
   if (scrollViewMap) {
-    checks.push({
+    const check: Omit<PulseScanCheckInput, "confidence"> = {
       category: CATEGORIES.PERFORMANCE,
       checkKey: "rn_list_virtualization",
       label: "Long lists are virtualised",
-      status: usesVirtualList ? "WARN" : "FAIL",
-      confidence: "MEDIUM",
+      status: "WARN",
       detail:
         `A \`ScrollView\` renders items with \`.map()\`${usesVirtualList
           ? ", alongside virtualised lists elsewhere in the app"
           : ", and no FlatList/FlashList appears anywhere in the sampled source"}. A ScrollView mounts EVERY child ` +
         `immediately, so a list of a few hundred rows blocks the JS thread on mount and holds all of it in memory — ` +
         `this is the most common cause of "the app freezes when I open that screen" in React Native. Use \`FlatList\` ` +
-        `(or \`FlashList\`) so only visible rows are mounted.`,
-    });
+        `(or \`FlashList\`) so only visible rows are mounted. A short, fixed-length array is fine as it is — check ` +
+        `whether this one can grow with the user's data.`,
+    };
+    // "No virtual list anywhere" is an absence claim, so it is gated on coverage.
+    checks.push(usesVirtualList ? { ...check, confidence: "MEDIUM" } : absence(ctx, check));
   }
 
   // Image caching. RN's stock <Image> has no persistent disk cache on Android.
@@ -585,10 +834,23 @@ function qualityChecks(ctx: RnContext): PulseScanCheckInput[] {
     touchables++;
     const start = (m.index ?? 0) + m[0].length;
     const openingTag = openingTagOf(ctx.source.slice(start, start + 2000));
+    // Design-system Buttons also take their visible text as `text=` (Mattermost: 9
+    // of 9 used it, and the check read all nine as unlabelled).
     const labelProp = m[1] === "Button"
-      ? /(?:\baccessibilityLabel|\baria-label|\blabel|\btitle)\s*=/
+      ? /(?:\baccessibilityLabel|\baria-label|\blabel|\btitle|\btext)\s*=/
       : /(?:\baccessibilityLabel|\baria-label)\s*=/;
-    if (labelProp.test(openingTag)) labelled++;
+    if (labelProp.test(openingTag)) {
+      labelled++;
+      continue;
+    }
+    // A touchable with visible text inside it is announced by that text. Only an
+    // icon-only control (no <Text> child, no string child) is truly unlabelled.
+    if (/\/>$/.test(openingTag)) continue;
+    const bodyStart = start + openingTag.length;
+    const window = ctx.source.slice(bodyStart, bodyStart + 1500);
+    const close = window.indexOf(`</${m[1]}>`);
+    const body = close >= 0 ? window.slice(0, close) : "";
+    if (/<Text\b(?!Input)/.test(body) || /(^|>)\s*[A-Za-z][^<>{}]*</.test(body)) labelled++;
   }
   if (touchables >= 5) {
     const ratio = labelled / touchables;
@@ -611,8 +873,10 @@ function qualityChecks(ctx: RnContext): PulseScanCheckInput[] {
   // execution path onto every install.
   const usesOta = anyDependency(ctx.pkg, /^(react-native-code-push|expo-updates|@rnef\/|react-native-ota)/);
   if (usesOta) {
-    const signed = /codeSigningCertificate|publicKey|"codeSigning"|CodePushPublicKey/i.test(
-      ctx.appConfig + ctx.source + ctx.iosPlist + ctx.gradle,
+    // The real signing settings only. A bare `publicKey` matched any crypto code
+    // (a wallet's key handling, a WebAuthn helper) and passed unsigned channels.
+    const signed = /codeSigningCertificate|codeSigningMetadata|CodePushPublicKey/.test(
+      ctx.appConfig + ctx.source + ctx.iosPlist + ctx.gradle + ctx.androidStrings,
     );
     checks.push({
       category: CATEGORIES.SECURITY,
