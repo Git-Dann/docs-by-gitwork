@@ -7705,3 +7705,17 @@ report was ordered for developers and said what was wrong rather than what it me
   three hotspots with ≥3 changes, because hotspot scores are relative and a quiet repo (69 commits
   a year) never reached the old fixed 0.5 threshold. Its 181-file loop was checked in the source
   and is real (`navigator_helper.dart` ↔ `home_page.dart`).
+
+### 83.2 The whole report in plain English, and MCP scans that save
+
+- **`src/lib/plain-report.ts` (`summariseScan`)** — an "In plain English" box at the top of every
+  scan (in-app overview and the shared report/PDF): ready or not, up to five "Fix first" findings in
+  plain words, and how many things Pulse could not check (never implied fine). Order is Pulse's own
+  `rankFindings`; meanings match the check key (first rule wins, so `release_logging` = passwords
+  in logs is ruled before generic logging), fall back to "Not yet in place: <label>", and one
+  meaning is said once however many checks found it. Code-health checks are left to their own
+  summary. Tested on Fellas Android's real findings: staging server, unencrypted traffic, no tests.
+- **MCP `pulse_scan` takes `saveToClient`** (+ optional `projectName`): also creates a full in-app
+  scan on that client, the same path as `POST /api/pulse/scans` (needs `ai.generate`, client must be
+  in scope, runs in `after()`). Before this, MCP scans returned a verdict and saved nothing, so a
+  repo scanned from Claude never reached the client's list or the code portfolio.

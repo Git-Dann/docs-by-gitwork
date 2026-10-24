@@ -28,6 +28,7 @@ import {
   allowedDocTypesForUser,
   canManageClients,
   canManageDocs,
+  canGenerateAi,
   canManagePulse,
   canManageStarters,
   canManageSupport,
@@ -86,7 +87,8 @@ import { setWikiMetricsConfig } from "@/server/wiki-metrics";
 import { listStarters, getStarterBySlug, recordStarterUsage } from "@/server/starters";
 import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
-import { getPulseScan, listPulseScans } from "@/server/pulse";
+import { createPulseScanRecord, getPulseScan, listPulseScans, runAnalysis } from "@/server/pulse";
+import { after } from "next/server";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
 import {
   listDerivedClients,
@@ -655,6 +657,8 @@ const pulseScanToolSchema = z.object({
   githubRepo: z.string().trim().min(3).max(200).optional(),
   platform: z.enum(PULSE_PLATFORMS).optional(),
   targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
+  saveToClient: z.string().trim().min(1).max(200).optional(),
+  projectName: z.string().trim().min(1).max(200).optional(),
 }).refine((value) => Boolean(value.url) !== Boolean(value.githubRepo), { message: "Pass exactly one of url or githubRepo." });
 const pulseResultToolSchema = z.object({ scanId: z.string().min(1) });
 const listPulseScansSchema = z.object({
@@ -2587,12 +2591,46 @@ const TOOLS: ToolDef[] = [
         githubRepo: { type: "string", description: "owner/repo to scan its source. Pass this OR url." },
         platform: { type: "string", enum: [...PULSE_PLATFORMS], description: "What the product is. Optional: a store link or a repo's detected shape overrides it." },
         targetMarkets: { type: "array", items: { type: "string" }, description: "Optional jurisdiction codes the product serves (e.g. EU, UK, US, US-CA)." },
+        saveToClient: {
+          type: "string",
+          description:
+            "Optional client slug, name or id. When set, the scan is ALSO saved as a full in-app scan on that client " +
+            "(it then appears in the client's Pulse list, the code portfolio and the weekly email), exactly as if started " +
+            "from the app. The full scan, including its AI write-up, finishes in the background over a few minutes; the " +
+            "verdict returned now is the quick one. Needs permission to run AI scans.",
+        },
+        projectName: { type: "string", description: "Name for the saved scan (with saveToClient). Defaults to the repo or host." },
       },
       additionalProperties: false,
     },
     handler: async (user, args) => {
       assertCan(user, canManagePulse, "run Pulse scans");
       const parsed = pulseScanToolSchema.parse(args);
+      if (parsed.saveToClient) {
+        // The same path as POST /api/pulse/scans: a saved scan spends AI tokens after its
+        // checks, so it needs the AI gate as well, and the client must be in the caller's scope.
+        assertCan(user, canGenerateAi, "run AI-powered Pulse scans");
+        const client = await resolveClient(user, parsed.saveToClient);
+        const inputType = parsed.githubRepo ? ("GITHUB_REPO" as const) : ("URL" as const);
+        const projectName = parsed.projectName ?? parsed.githubRepo ?? new URL(parsed.url!).hostname;
+        const { scan, aiConfig } = await createPulseScanRecord({
+          projectName,
+          inputType,
+          inputUrl: parsed.url,
+          inputGithubRepo: parsed.githubRepo,
+          platform: parsed.platform,
+          clientId: client.id,
+          targetMarkets: parsed.targetMarkets,
+          triggeredByUserId: user?.id ?? null,
+        });
+        after(() =>
+          runAnalysis(scan.id, { inputType, inputUrl: parsed.url, inputGithubRepo: parsed.githubRepo, projectName, platform: parsed.platform, clientId: client.id }, aiConfig),
+        );
+        return textResult(
+          { scanId: scan.id, client: client.name, status: "RUNNING", note: "Saved on the client. Use pulse_scan_result with this scanId once it finishes (a few minutes)." },
+          `Saved scan ${scan.id} started on ${client.name}. Check it with pulse_scan_result in a few minutes.`,
+        );
+      }
       const verdict = await runAgentScan({ url: parsed.url, githubRepo: parsed.githubRepo, platform: parsed.platform, targetMarkets: parsed.targetMarkets });
       return textResult(verdict, verdict.summary);
     },

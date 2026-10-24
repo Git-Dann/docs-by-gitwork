@@ -7,6 +7,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { CodeHealthPanel } from "@/components/pulse/code-health-panel";
+import { PlainScanBox } from "@/components/pulse/code-health-sections";
 import { cn, formatDate } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
 // Report-view domain groupings are derived from the single source of truth.
@@ -289,6 +290,9 @@ export function PulseReportView({
       </div>
 
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
+
+        {/* Before any detail: ready or not, and what to fix first, in plain words. */}
+        <PlainScanBox checks={scan.checks} />
 
         {/* Tech stack */}
         {scan.techStack && scan.techStack.length > 0 && (

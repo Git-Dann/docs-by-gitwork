@@ -33,6 +33,7 @@ import { Modal } from "@/components/ui/modal";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
+import { PlainScanBox } from "@/components/pulse/code-health-sections";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
@@ -2461,6 +2462,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               asks "which part of this is the problem?" — the question the whole
               rollup exists to answer. On the Checks tab it would sit above the
               wall it is meant to save you reading. */}
+          {/* What a non-developer needs first: ready or not, and what to fix. */}
+          <PlainScanBox checks={scan.checks} />
+
           <PillarStrip checks={scan.checks} num={sectionNo()} />
 
           {/* Repo scans: the full-checkout measure and its tech-debt register. */}

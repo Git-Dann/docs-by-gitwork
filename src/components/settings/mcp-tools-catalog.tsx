@@ -401,9 +401,10 @@ const TOOLS: Tool[] = [
   {
     name: "pulse_scan",
     blurb:
-      "Run a Pulse production-readiness + security scan on a URL and get a compact verdict — health score, confirmed issues, security/TLS/accessibility grades, and top fixes. Requires the 'Manage Pulse' permission.",
+      "Run a Pulse production-readiness + security scan on a URL or GitHub repo and get a compact verdict — health score, confirmed issues, security/TLS/accessibility grades, and top fixes. Add a client to also save it as a full in-app scan on that client. Requires the 'Manage Pulse' permission.",
     examples: [
       "Run a Pulse scan on https://speakify.com and summarise the risks.",
+      "Scan the Git-Dann/Fellas-AndroidMobileApp repo and save it to Fellas Loaded.",
       "Is app.bigwedge.golf ready to ship? Scan it for EU + UK.",
     ],
   },

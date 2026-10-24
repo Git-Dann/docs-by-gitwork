@@ -1,6 +1,7 @@
 import { cn } from "@/lib/format";
 import { compareVersions } from "@/lib/code-portfolio";
 import { libraryImpact } from "@/lib/plain-words";
+import { summariseScan, type PlainCheck } from "@/lib/plain-report";
 import { BENCHMARK_REFERENCES, compareToBenchmarks, type BenchmarkMetric } from "@/server/code-health/benchmark";
 import { comparisonWords, humanDays, type PlainSummary, type SummaryTone } from "@/lib/code-health-summary";
 import type { CodeHealthReport, DependencyAudit, StructureReport, VulnerabilitySeverity } from "@/types/code-health";
@@ -296,6 +297,41 @@ export function PlainSummaryBox({ summary, maxSteps = 5 }: { summary: PlainSumma
             ))}
           </ol>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The whole scan in plain English: ready or not, what to fix first, and what could not be
+ * checked. Server-safe, so the shared report and its PDF render it too.
+ */
+export function PlainScanBox({ checks }: { checks: PlainCheck[] }) {
+  const s = summariseScan(checks);
+  return (
+    <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3.5">
+      <p className="widget-data-label">In plain English</p>
+      <p className="mt-1.5 text-[15px] font-medium leading-6 text-[var(--text-1)]">{s.headline}</p>
+      {s.findings.length > 0 && (
+        <>
+          <p className="widget-data-label mt-3">Fix first</p>
+          <ol className="mt-1.5 space-y-1.5">
+            {s.findings.map((f, i) => (
+              <li key={i} className="flex gap-2.5 text-sm leading-6 text-[var(--text-2)]">
+                <span aria-hidden className={cn("mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full", f.urgent ? "bg-[var(--danger-500)]" : "bg-[var(--warning-500)]")} />
+                <span>
+                  {f.text}
+                  <span className="ml-1 font-mono text-[10px] text-[var(--text-4)]">({f.label})</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+      {s.unchecked > 0 && (
+        <p className="mt-2.5 border-t border-[var(--border-2)] pt-2.5 text-xs leading-5 text-[var(--text-3)]">
+          Pulse could not check {s.unchecked} {s.unchecked === 1 ? "thing" : "things"} from what it was given. They are listed in the full results, not assumed fine.
+        </p>
       )}
     </div>
   );
