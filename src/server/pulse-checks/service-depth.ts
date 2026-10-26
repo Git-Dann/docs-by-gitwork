@@ -132,6 +132,29 @@ const doesEmail = has(/resend|sendgrid|postmark|mailgun|ses\b|nodemailer|actionm
 /** Is it a service with HTTP endpoints? */
 const isService = has(/express|fastify|@nestjs|next|django|flask|fastapi|rails|spring|gin-gonic|echo\.New|actix/i);
 
+/** This code checks a password or one-time code itself, rather than handing sign-in to a provider. */
+const VERIFIES_CREDENTIAL =
+  /\bbcrypt(?:js)?\.compare(?:Sync)?\(|\bargon2\.verify\(|\bverifyPassword\(|\bcomparePassword\(|\bcheck_password(?:_hash)?\(|\bpassword_verify\(|\bauthenticate\(\s*request\b|\bLoginView\b|django\.contrib\.auth\.urls|has_secure_password|\bvalid_password\?|\bdatabase_authenticatable\b|LocalStrategy|CredentialsProvider|\bCredentials\(\s*\{|passwordEncoder\.matches\(|\btotp\.verify\(|\bauthenticator\.(?:check|verify)\(|speakeasy\.totp\.verify|\bverify_?otp\(|\bpyotp\b/i;
+
+/** A constant-time comparison helper, in any of the common languages. */
+const CONSTANT_TIME =
+  /timingSafeEqual|compare_digest|secure_compare|MessageDigest\.isEqual|ConstantTimeCompare|constant_time_compare|hash_equals\(|safe_str_cmp/i;
+
+/**
+ * A plain equality test where one side is named as a credential (a signature, HMAC,
+ * API key, webhook or signing secret, or an access/auth/API token) and the other is a
+ * value, not a quoted literal or null. `signature.length === x` is not a match, and
+ * neither is a bare `token` or `digest`, which tokenizers and content hashes compare.
+ */
+const CRED_NAME =
+  "(?:signature|hmac|secret|api_?key|access_?token|auth_?token|api_?token|bearer_?token|(?:webhook|verify|verification|signing|shared)_?token|x-hub-signature(?:-256)?|x-api-key|x-signature)";
+const NAMED = `(?:[\\w$]+(?:\\.[\\w$]+)*\\[\\s*["'\`][\\w-]*${CRED_NAME}["'\`]\\s*\\]|(?<![\\w$])(?:[\\w$]+\\.)*[\\w$]*${CRED_NAME})(?![\\w$.\\[(])`;
+const PLAIN = `(?!null\\b|undefined\\b|nil\\b|None\\b|true\\b|false\\b|True\\b|False\\b|\\d)[\\w$]+(?:\\.[\\w$]+|\\[[^\\]\\n]{1,40}\\]|\\(\\))*(?![\\w$.\\[(])`;
+const UNSAFE_SECRET_COMPARE = new RegExp(
+  `(?<!typeof\\s+)${NAMED}\\s*(?:===?|!==?)\\s*${PLAIN}|(?<![\\w$.])${PLAIN}\\s*(?:===?|!==?)\\s*${NAMED}`,
+  "i",
+);
+
 const RULES: Rule[] = [
   // ── Authentication ───────────────────────────────────────────────────────
   {
@@ -210,35 +233,34 @@ const RULES: Rule[] = [
   },
   {
     key: "auth_x_login_rate_limit", label: "Authentication endpoints are rate-limited",
-    // Credential stuffing needs a password (or a short code) to stuff. OAuth- and
-    // magic-link-only sign-in (shadcn-ui/taxonomy) has no such endpoint to rate-limit;
-    // a local strategy using `pwd`, or an OTP/TOTP entry step, still does.
+    // Credential stuffing needs a sign-in this code CHECKS. The withheld version applied
+    // to any repo with an auth library and the word "password" (a profile form, a
+    // hosted-provider sign-in widget). It now applies only where this repository
+    // verifies a password or one-time code itself; a hosted provider (Clerk, Auth0,
+    // Supabase, Firebase, Cognito) rate-limits its own sign-in endpoint.
     category: AUTH, subject: doesAuth,
-    applies: (c) => doesAuth(c) && /pass(?:word|wd|phrase)|\bpwd\b|LocalStrategy|CredentialsProvider|\b(?:totp|otp)\b/i.test(c.source),
-    present: has(/rate-?limit|rateLimiter|throttle|attempt.*lock|failedAttempts|slowDown/i),
+    applies: (c) => VERIFIES_CREDENTIAL.test(c.source),
+    // Named limiters and lockout only: a bare "throttle" is lodash's throttle().
+    present: has(/express-rate-limit|rate-limiter-flexible|@upstash\/ratelimit|@nestjs\/throttler|ThrottlerGuard|\brateLimit\(|\brateLimiter\b|@fastify\/rate-limit|express-slow-down|\bslowDown\(|rack-attack|Rack::Attack|django-axes|\baxes\b|django-ratelimit|@ratelimit\(|flask[-_]limiter|\bslowapi\b|\bLimiter\(|throttle:\d|ThrottleRequests|RateLimiter::|:lockable\b|failedAttempts|failed_attempts|lockoutUntil|locked_until|bucket4j/i),
     onMissing: "WARN", absence: true,
-    pass: "Rate limiting or lockout is applied around authentication.",
-    fail: "No rate limiting or lockout was found around the login path. Credential stuffing against a leaked password list is then bounded only by network speed, and it produces no signal that distinguishes it from ordinary traffic.",
-    absent: "No password login was found — authentication, if any, is delegated (OAuth, magic links or a hosted provider).",
+    pass: "A rate limiter or account lockout is in use in a project that checks passwords or codes itself. Confirm it covers the sign-in route.",
+    fail: "This code checks passwords or one-time codes itself, and no rate limiter or lockout was found. Credential stuffing against a leaked password list is then bounded only by network speed, and it produces no signal that distinguishes it from ordinary traffic.",
+    absent: "No password or code check was found in this code: sign-in, if any, is handled by OAuth, magic links or a hosted provider, which rate-limits its own endpoint.",
   },
   {
     key: "auth_x_timing_safe_compare", label: "Secret comparison is timing-safe",
-    // Applies only where there is a comparison to judge: a constant-time helper, or
-    // an equality test on a secret-named value (including a quoted header key such as
-    // req.headers['x-hub-signature-256'] !== expected). Merely mentioning "token" or
-    // "secret" (every next-auth config) compares nothing, yet taxonomy and the
-    // realworld example were told their secrets "appear to be compared with ===".
+    // Applies only where there is a comparison to judge: a constant-time helper, or an
+    // equality test on a CREDENTIAL-named value (a signature, an HMAC, an API key, a
+    // webhook or access secret). A bare `token` is too wide: every tokenizer, lexer and
+    // CSRF form compares something called a token. The verdict is per comparison seen:
+    // one plain `===` on a signature is a WARN even if timingSafeEqual is used elsewhere.
     category: AUTH,
-    subject: has(/apiKey|api_key|token|secret|hmac|signature/i),
-    applies: (c) =>
-      /timingSafeEqual|compare_digest|secure_compare|MessageDigest\.isEqual/i.test(c.source + c.config + c.packageJson) ||
-      /(?<!typeof\s+)\b\w*(?:secret|token|signature|hmac|digest|api_?key)(?:[\w-]*["'\x60]\s*[\])]+)?\s*(?:===?|!==?)\s*(?!null\b|undefined\b|nil\b|None\b|true\b|false\b|""|'')[\w"'\x60]|[\w)\]]\s*(?:===?|!==?)\s*(?:[\w$]+\.)*\w*(?:secret|token|signature|hmac|digest|api_?key)\b/i.test(
-        c.source,
-      ),
-    present: has(/timingSafeEqual|hmac\.compare_digest|compare_digest|secure_compare|MessageDigest\.isEqual|subtle\.timingSafeEqual/i),
-    onMissing: "WARN", absence: true,
-    pass: "Secrets are compared with a constant-time function.",
-    fail: "Secrets appear to be compared with `===` or an equivalent. String equality returns early at the first differing byte, so response time leaks how much of a guess was correct — enough to recover an API key or a webhook signature byte by byte over a few thousand requests.",
+    subject: has(/apiKey|api_key|secret|hmac|signature/i),
+    applies: (c) => CONSTANT_TIME.test(c.source + c.config + c.packageJson) || UNSAFE_SECRET_COMPARE.test(c.source),
+    present: (c) => !UNSAFE_SECRET_COMPARE.test(c.source),
+    onMissing: "WARN",
+    pass: "The secret comparisons found use a constant-time function, and no plain equality test on a signature, HMAC, API key or secret was seen.",
+    fail: "A signature, HMAC, API key or secret is compared with `===` or an equivalent. String equality returns early at the first differing byte, so response time leaks how much of a guess was correct: enough to recover a webhook signature or an API key byte by byte over a few thousand requests. Use crypto.timingSafeEqual, hmac.compare_digest or secure_compare.",
     absent: "No secret comparison was found in the sampled source.",
   },
   {
@@ -379,12 +401,18 @@ const RULES: Rule[] = [
   },
   {
     key: "obs_x_log_retention_config", label: "Log volume is bounded",
-    category: OBS, applies: has(/winston|pino|bunyan|logging\.config|logback/i),
-    present: has(/maxFiles|maxSize|rotat|retention|RollingFile|TimeBasedTriggering/i),
-    onMissing: "WARN",
-    pass: "Log rotation or retention is configured.",
-    fail: "A logging library is configured with no rotation or retention limit. Unbounded logs fill the disk, and a full disk takes down the application and its database together — one of the most common self-inflicted outages there is.",
-    absent: "No configurable logging library was found.",
+    // Only logs this code writes to FILES can fill a disk. Logging to standard output
+    // (the default for pino, winston's Console transport, and every container platform)
+    // is bounded by the runtime, so it has nothing to rotate. The subject is a file
+    // transport or handler, read from the project's own code and config.
+    category: OBS,
+    subject: has(/winston|pino|bunyan|logging\.config|logback|log4j|structlog|\blogging\.basicConfig/i),
+    applies: has(/transports\.File\b|new\s+(?:winston\.)?transports\.File\(|pino\.destination\(\s*["'`][^"'`]+\.log|pino\/file|\bFileHandler\(|RotatingFileHandler|TimedRotatingFileHandler|logging\.basicConfig\([^)]*filename\s*=|FileAppender|RollingFileAppender|logging\.file\.(?:name|path)|\bfilename\s*:\s*["'`][^"'`\n]+\.log["'`]|winston-daily-rotate-file|DailyRotateFile|rotating-file-stream|pino-roll/i),
+    present: has(/\bmaxFiles\b|\bmaxsize\b|\bmaxSize\b|winston-daily-rotate-file|DailyRotateFile|rotating-file-stream|pino-roll|RotatingFileHandler|TimedRotatingFileHandler|RollingFileAppender|TimeBasedRollingPolicy|SizeAndTimeBasedRollingPolicy|logging\.logback\.rollingpolicy|max-history|maxHistory|backupCount\s*=|logrotate/i),
+    onMissing: "WARN", absence: true,
+    pass: "Logs written to files are rotated or capped.",
+    fail: "Logs are written to a file with no rotation or size cap. Unbounded log files fill the disk, and a full disk takes down the application and its database together, one of the most common self-inflicted outages there is. Rotate them (a daily-rotate transport, RotatingFileHandler, a rolling appender) or log to standard output.",
+    absent: "Logs are not written to files by this code, so the runtime or platform bounds them and there is nothing to rotate.",
   },
   {
     key: "obs_x_startup_config_validation", label: "Configuration is validated at startup",

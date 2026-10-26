@@ -57,7 +57,8 @@ export function dockerfiles(snapshot: RepoSnapshot): Dockerfile[] {
   const out: Dockerfile[] = [];
   for (const [path, text] of snapshot.files) {
     const base = path.split("/").pop() ?? "";
-    if (/^Dockerfile(\.[\w.-]+)?$/i.test(base) || /\.dockerfile$/i.test(base)) {
+    // `Dockerfile.dockerignore` is a per-Dockerfile ignore file, not a build definition.
+    if ((/^Dockerfile(\.[\w.-]+)?$/i.test(base) && !/\.dockerignore$/i.test(base)) || /\.dockerfile$/i.test(base)) {
       out.push({ path, text, lines: dockerInstructions(text) });
     }
   }
@@ -129,13 +130,79 @@ export function shippedLines(df: Dockerfile): string[] {
   return [...preamble, ...out];
 }
 
-/** Does the final stage set a non-root USER? */
+/** Does the shipped image run as a non-root user? */
 export function runsAsNonRoot(df: Dockerfile): boolean {
-  const stage = finalStage(df);
-  const users = stage.map((l) => /^USER\s+(.+)$/i.exec(l)?.[1]?.trim()).filter((v): v is string => Boolean(v));
-  if (users.length === 0) return false;
-  const last = users[users.length - 1].split(":")[0].trim();
-  return last !== "root" && last !== "0";
+  return nonRootVerdict(df).verdict === "nonroot";
+}
+
+/**
+ * Official images whose default user is root. Docker's own library images run as
+ * root unless the Dockerfile says otherwise (node and python ship a spare user but
+ * never switch to it), so no USER on top of one of these is root, observed.
+ */
+const ROOT_DEFAULT_LIBRARY = new Set([
+  "alpine", "ubuntu", "debian", "busybox", "centos", "fedora", "rockylinux", "almalinux", "amazonlinux",
+  "oraclelinux", "archlinux", "node", "python", "pypy", "ruby", "golang", "rust", "php", "openjdk",
+  "eclipse-temurin", "amazoncorretto", "ibmjava", "ibm-semeru-runtimes", "maven", "gradle", "elixir", "erlang",
+  "haskell", "perl", "julia", "swift", "dart", "gcc", "clojure", "nginx", "httpd", "caddy", "tomcat", "buildpack-deps",
+]);
+
+/** A VS Code / Codespaces dev container: an editor environment, not a deployed image. */
+export function isDevContainerPath(path: string): boolean {
+  return /(?:^|\/)\.devcontainer\//.test(path);
+}
+
+export type NonRootVerdict = { verdict: "nonroot" | "root" | "unknown"; reason: string };
+
+/**
+ * Who the shipped image runs as.
+ *
+ * A USER in the final stage, or in a stage it inherits from (`FROM builder`), decides
+ * it. With no USER at all the answer is the base image's default user, which Pulse
+ * only knows for some images: official library images and distroless default to root;
+ * distroless `:nonroot`, Chainguard and Bitnami images default to an unprivileged
+ * account. Anything else is "unknown", never assumed to be root. The withheld version
+ * of this check failed `distroless/…:nonroot` images for running as root.
+ */
+export function nonRootVerdict(df: Dockerfile): NonRootVerdict {
+  const shipped = shippedLines(df);
+  const users = shipped
+    .map((l) => /^USER\s+(.+)$/i.exec(l)?.[1]?.trim())
+    .filter((v): v is string => Boolean(v));
+  if (users.length > 0) {
+    const last = users[users.length - 1].split(":")[0].trim();
+    return last === "root" || last === "0"
+      ? { verdict: "root", reason: `the last USER is ${last}` }
+      : { verdict: "nonroot", reason: `USER ${last}` };
+  }
+  // The first FROM of the shipped chain is the registry image everything else builds on.
+  const from = shipped.find((l) => /^FROM\s/i.test(l)) ?? "";
+  const ref = (from.replace(/^FROM\s+/i, "").split(/\s+/).filter((p) => !p.startsWith("--"))[0] ?? "").toLowerCase();
+  const withoutDigest = ref.split("@")[0];
+  const tagAt = withoutDigest.lastIndexOf(":");
+  const hasTag = tagAt > withoutDigest.lastIndexOf("/");
+  const name = hasTag ? withoutDigest.slice(0, tagAt) : withoutDigest;
+  const tag = hasTag ? withoutDigest.slice(tagAt + 1) : "";
+  const dropsAtStart = shipped.some((l) =>
+    /^(?:ENTRYPOINT|CMD|RUN)\s.*\b(?:gosu|su-exec|setpriv|runuser|chpst\s+-u)\b/i.test(l),
+  );
+  const nonRootBase =
+    /(?:^|-)nonroot$/.test(tag) ||
+    (/(?:^|\/)chainguard\//.test(name) && !/-dev$/.test(tag)) ||
+    /^(?:docker\.io\/)?bitnami\//.test(name);
+  if (nonRootBase) return { verdict: "nonroot", reason: `the base image ${ref} runs as an unprivileged user by default` };
+  const library = name.replace(/^(?:docker\.io\/)?(?:library\/)?/, "");
+  const rootBase =
+    (!library.includes("/") && ROOT_DEFAULT_LIBRARY.has(library)) ||
+    /^gcr\.io\/distroless\//.test(name) ||
+    /^mcr\.microsoft\.com\/dotnet\//.test(name);
+  if (rootBase && !dropsAtStart) return { verdict: "root", reason: `no USER is set and ${ref} runs as root by default` };
+  return {
+    verdict: "unknown",
+    reason: dropsAtStart
+      ? "no USER is set, but the start command drops privileges (gosu, su-exec or similar), which Pulse cannot follow"
+      : `no USER is set, and the default user of ${ref || "the base image"} is not one Pulse knows`,
+  };
 }
 
 function quote(items: string[]): string {
@@ -229,20 +296,45 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
     const allLines = dfs.flatMap((d) => d.lines);
     const name = (p: string) => p;
 
-    // 1. Root user — the single highest-value container finding.
-    const rootImages = dfs.filter((d) => !runsAsNonRoot(d));
-    add(
+    // 1. Root user, the single highest-value container finding. Who the process runs
+    // as comes from USER, or failing that from the base image's own default user.
+    // A dev container (.devcontainer/) is an editor environment, never deployed, and is
+    // meant to run as root; it is not graded here.
+    const runtimeImages = dfs.filter((d) => !isDevContainerPath(d.path));
+    const verdicts = runtimeImages.map((d) => ({ d, v: nonRootVerdict(d) }));
+    const rootImages = verdicts.filter((x) => x.v.verdict === "root");
+    const unknownImages = verdicts.filter((x) => x.v.verdict === "unknown");
+    if (runtimeImages.length === 0) {
+      add(
+        "docker_nonroot_user",
+        "The container does not run as root",
+        "SKIPPED",
+        "The only Dockerfiles in this repository define a development container (.devcontainer/), which is an " +
+          "editor environment rather than a deployed image, so who it runs as does not apply.",
+      );
+    } else add(
       "docker_nonroot_user",
       "The container does not run as root",
-      rootImages.length === 0 ? "PASS" : "FAIL",
-      rootImages.length === 0
-        ? "Every image's final stage drops to a non-root USER, so the application process has no more privilege " +
-          "inside the container than it needs."
-        : `${quote(rootImages.map((d) => name(d.path)))} never set a non-root USER in the final stage, so the ` +
-          "process runs as root. Root in a container maps to root on the host for anything shared with it — a " +
-          "bind-mounted directory is written as root, and any container escape starts from uid 0 rather than from " +
-          "an unprivileged account. Add a `USER app` (with a matching adduser) as the last instruction. Only the " +
-          "FINAL stage is graded, so a multi-stage build that compiles as root is unaffected.",
+      rootImages.length > 0
+        ? "FAIL"
+        : unknownImages.length > 0 || unreadDockerfiles.length > 0
+          ? "INCONCLUSIVE"
+          : "PASS",
+      rootImages.length > 0
+        ? `${quote(rootImages.map((x) => `${name(x.d.path)} (${x.v.reason})`))}, so the process runs as root. Root ` +
+          "in a container maps to root on the host for anything shared with it: a bind-mounted directory is written " +
+          "as root, and any container escape starts from uid 0 rather than from an unprivileged account. Add a " +
+          "`USER app` (with a matching adduser) to the final stage. Only the shipped stages are graded, so a " +
+          "multi-stage build that compiles as root is unaffected."
+        : unknownImages.length > 0
+          ? `${quote(unknownImages.map((x) => `${name(x.d.path)}: ${x.v.reason}`))}. Whether the process runs as root ` +
+            "depends on that image's default user, so this is not established. Setting `USER` explicitly in the final " +
+            "stage makes it certain."
+          : unreadDockerfiles.length > 0
+            ? `Every Dockerfile read runs as a non-root user, but ${unreadDockerfiles.length} more in the repository ` +
+              "were not read, so this is not established for all of them."
+            : "Every image runs as a non-root user, set by USER or by a base image that defaults to an unprivileged " +
+              "account, so the application process has no more privilege inside the container than it needs.",
     );
 
     // 2/3. Base image provenance.
@@ -263,7 +355,11 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
     // A tag may contain "-" (`node:20-slim`, `python:3.12-bookworm`); without it in the
     // class every variant tag read as "no tag". A registry port (`host:5000/img`) still
     // does not count, because "/" is outside the class.
-    const unpinned = froms.filter((f) => !/@sha256:[0-9a-f]{64}/i.test(f.ref) && !/:[\w.-]+$/.test(f.ref));
+    // A tag built from a build argument (`java:0-${VARIANT}`, `node:$NODE_VERSION`) is a
+    // tag: the build pins it, Pulse just cannot see the value.
+    const unpinned = froms.filter(
+      (f) => !/@sha256:[0-9a-f]{64}/i.test(f.ref) && !/:(?:[\w.-]|\$\{?\w+\}?)+$/.test(f.ref),
+    );
     const latest = froms.filter((f) => /:latest$/i.test(f.ref) || !/[:@]/.test(f.ref));
     add(
       "docker_base_image_pinned",

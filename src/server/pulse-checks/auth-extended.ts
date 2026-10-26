@@ -3,6 +3,25 @@ import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 import { claimNotApplicable, claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 import { oauthLinkFindings, passwordRuleEvidence, tokenInLocalStorage } from "./auth-page-evidence";
 
+/**
+ * The password inputs on a page, with their autocomplete tokens (lower-cased, may be
+ * empty). Reads each `<input>` tag on its own, so an attribute is never borrowed from a
+ * neighbouring element. Attribute values may be quoted either way or unquoted.
+ */
+export function passwordFields(html: string): { autocomplete: string }[] {
+  const out: { autocomplete: string }[] = [];
+  for (const m of html.matchAll(/<input\b[^>]{0,2000}>/gi)) {
+    const tag = m[0];
+    const attr = (name: string) =>
+      new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
+    const type = attr("type");
+    if ((type?.[1] ?? type?.[2] ?? type?.[3] ?? "").toLowerCase() !== "password") continue;
+    const ac = attr("autocomplete");
+    out.push({ autocomplete: (ac?.[1] ?? ac?.[2] ?? ac?.[3] ?? "").trim().toLowerCase() });
+  }
+  return out;
+}
+
 export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, ctx: pctx } = ctx;
   const html = pageResult.html;
@@ -195,11 +214,42 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const hasOtpAttemptLimiting = /too many.*(?:attempt|code|tries)|invalid.*code.*(?:attempt|remaining)|locked.*out.*(?:attempt|code)|maximum.*attempt/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_attempt_limiting", label: "OTP attempt / brute-force limiting", status: !isOtpRelevant ? "SKIPPED" : (hasOtpAttemptLimiting ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpAttemptLimiting ? "OTP attempt-limiting signals detected." : "No attempt-limiting signals visible — a short numeric OTP without a cap on guesses is brute-forceable; lock out or invalidate the code after a handful of failed attempts.") });
 
-  const hasCurrentPasswordAutocomplete = /<input(?=[^>]*\btype=["']password["'])(?=[^>]*\bautocomplete=["']current-password["'])[^>]*>/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_login_autocomplete", label: "Login password identifies its autocomplete purpose", status: isOtpOnly ? "SKIPPED" : hasCurrentPasswordAutocomplete ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasCurrentPasswordAutocomplete ? "A password field declares autocomplete=current-password, enabling password managers to fill the correct credential safely." : "No password field with autocomplete=current-password was observed. Identify login credentials explicitly so password managers do not guess from surrounding markup." });
+  // Autocomplete purpose is judged on the password fields the scanned page actually
+  // has. The login and signup forms usually live on their own pages, which Pulse does
+  // not fetch, so a page with no password field says nothing either way: the withheld
+  // version WARNed linear.app's homepage, which has no password input at all.
+  const fields = passwordFields(ctx.contentHtml ?? html);
+  const newPasswordFields = fields.filter((f) => f.autocomplete.includes("new-password"));
+  const currentPasswordFields = fields.filter((f) => f.autocomplete.includes("current-password"));
+  // A form with two password fields is a signup or change-password form; a lone one is a login.
+  const signupShaped = fields.length >= 2 || newPasswordFields.length > 0;
+  const loginUnlabelled = !signupShaped && fields.length > 0 && currentPasswordFields.length === 0;
+  checks.push({
+    category: CATEGORIES.AUTHENTICATION, checkKey: "auth_login_autocomplete", label: "Login password identifies its autocomplete purpose",
+    status: isOtpOnly ? "SKIPPED" : currentPasswordFields.length > 0 ? "PASS" : loginUnlabelled ? "WARN" : "INCONCLUSIVE",
+    confidence: isOtpOnly ? undefined : currentPasswordFields.length > 0 || loginUnlabelled ? "HIGH" : "LOW",
+    detail: isOtpOnly
+      ? "Not applicable: passwordless authentication detected."
+      : currentPasswordFields.length > 0
+        ? "The password field on the scanned page declares autocomplete=\"current-password\", so password managers fill the saved credential for this site."
+        : loginUnlabelled
+          ? `The scanned page has a login password field with ${fields[0].autocomplete ? `autocomplete="${fields[0].autocomplete}"` : "no autocomplete attribute"}. Add autocomplete="current-password" (and autocomplete="username" on the email field) so password managers fill the right credential.`
+          : "The scanned page has no login password field, so this could not be checked. The login form is usually on its own page, which Pulse does not fetch.",
+  });
 
-  const hasNewPasswordAutocomplete = /<input(?=[^>]*\btype=["']password["'])(?=[^>]*\bautocomplete=["']new-password["'])[^>]*>/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_signup_autocomplete", label: "New password identifies its autocomplete purpose", status: isOtpOnly ? "SKIPPED" : hasNewPasswordAutocomplete ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasNewPasswordAutocomplete ? "A password-creation field declares autocomplete=new-password, allowing password managers to generate and save a strong credential." : "No password-creation field with autocomplete=new-password was observed. Add it to signup and password-change forms." });
+  const signupUnlabelled = signupShaped && newPasswordFields.length === 0;
+  checks.push({
+    category: CATEGORIES.AUTHENTICATION, checkKey: "auth_signup_autocomplete", label: "New password identifies its autocomplete purpose",
+    status: isOtpOnly ? "SKIPPED" : newPasswordFields.length > 0 ? "PASS" : signupUnlabelled ? "WARN" : "INCONCLUSIVE",
+    confidence: isOtpOnly ? undefined : newPasswordFields.length > 0 || signupUnlabelled ? "HIGH" : "LOW",
+    detail: isOtpOnly
+      ? "Not applicable: passwordless authentication detected."
+      : newPasswordFields.length > 0
+        ? "A password-creation field on the scanned page declares autocomplete=\"new-password\", so password managers can generate and save a strong password."
+        : signupUnlabelled
+          ? "The scanned page has a form with two password fields (a signup or change-password form), and neither declares autocomplete=\"new-password\". Add it so password managers offer to generate and save a strong password."
+          : "The scanned page has no signup or change-password form, so this could not be checked. Those forms are usually on their own pages, which Pulse does not fetch.",
+  });
 
   const hasPasswordReset = /forgot(?:ten)?[\s_-]*password|reset[\s_-]*password|password[\s_-]*recovery/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_password_reset", label: "Password reset flow is discoverable", status: isOtpOnly ? "SKIPPED" : hasPasswordReset ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasPasswordReset ? "A password recovery/reset route or control is visible." : "No password reset control was observed. Users need a discoverable recovery route that does not require support intervention." });

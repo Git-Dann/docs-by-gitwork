@@ -16,7 +16,7 @@
 
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { CATEGORIES, type CheckCategory } from "./categories";
-import { sampleCoverage, type RepoSnapshot } from "./native-mobile";
+import { sampleCoverage, stripCStyleComments, type RepoSnapshot } from "./native-mobile";
 
 const SOUND_ABSENCE_COVERAGE = 0.3;
 
@@ -37,6 +37,30 @@ export interface OperationalDepthRule {
   remediation: string;
   positiveFixture: string;
   adverseFixture: string;
+  /**
+   * Narrower evaluation, for rules where a keyword anywhere in the joined sample is not
+   * evidence: the subject is matched one file at a time (documentation never counts),
+   * and required evidence must appear within a single file the scope names, so an
+   * `origin` in one file can never pair with a `backoff` in another.
+   */
+  scope?: RuleScope;
+  /** PASS wording for a rule whose PASS is not "supporting implementation evidence was found". */
+  passDetail?: string;
+}
+
+export interface RuleScope {
+  /** Only files whose path matches can carry the subject. */
+  subjectFiles?: RegExp;
+  /** Each must ALSO match in the same file as the subject. */
+  withSubject?: RegExp[];
+  /** Establishes the subject from the tree listing alone, e.g. two locale catalogues. */
+  subjectFromPaths?: (paths: string[]) => boolean;
+  /**
+   * Where required evidence may come from: the files that carried the subject (the
+   * default), every file read, or files whose path matches. Forbidden constructs are
+   * always read from the subject files.
+   */
+  evidence?: "subject" | "all" | RegExp;
 }
 
 const rule = (
@@ -62,6 +86,63 @@ const rule = (
   positiveFixture,
   adverseFixture,
 });
+
+/**
+ * How many distinct locales the tree has translation catalogues for: locales/fr.json,
+ * messages/de/*.json, config/locales/es.yml, fr.lproj/, values-de/strings.xml,
+ * app_es.arb, locale/fr/LC_MESSAGES/. The default Android values/ counts as one.
+ */
+export function localeCatalogues(paths: string[]): number {
+  const codes = new Set<string>();
+  const patterns = [
+    /(?:^|\/)(?:locales?|i18n|langs?|translations?|messages|l10n)\/([a-z]{2}(?:[-_][A-Za-z]{2,4})?)(?:\/|\.(?:json|ya?ml|po|js|ts|php|properties|xlf|xliff)$)/,
+    /(?:^|\/)config\/locales\/(?:[^/]+\/)*(?:[\w-]+\.)?([a-z]{2}(?:-[A-Z]{2})?)\.yml$/,
+    /(?:^|\/)([a-z]{2}(?:[-_][A-Za-z]{2,4})?)\.lproj\//,
+    /(?:^|\/)values-([a-z]{2}(?:-r[A-Z]{2})?)\/strings\.xml$/,
+    /(?:^|\/)(?:app|intl)_([a-z]{2}(?:_[A-Z]{2})?)\.arb$/,
+    /(?:^|\/)locale\/([a-z]{2}(?:_[A-Z]{2})?)\/LC_MESSAGES\//,
+  ];
+  for (const p of paths) {
+    if (/(?:^|\/)(?:node_modules|vendor|third_party)\//.test(p)) continue;
+    if (/(?:^|\/)values\/strings\.xml$/.test(p)) codes.add("default");
+    for (const re of patterns) {
+      const m = re.exec(p);
+      if (m) codes.add(m[1].toLowerCase().replace("_", "-"));
+    }
+  }
+  return codes.size;
+}
+
+/**
+ * A money column name: amount, unitPrice, total_cents, priceInCents … A word before it is
+ * allowed and only unit words after it, so `stripePriceId` and `taxRate` are not money.
+ */
+const MONEY_NAME =
+  "(?:[a-z]+_?)?(?:amount|price|total|subtotal|balance|cost|fee|tax|revenue|refund|payout)(?:_?(?:cents|pence|minor|value|amount|due|paid|total|usd|gbp|eur|price|cost|fee|in_?cents|in_?pence))*";
+/** A money column declared as a binary float. */
+const MONEY_FLOAT = new RegExp(
+  [
+    `^\\s*${MONEY_NAME}\\s+Float\\b`, // Prisma
+    `\\b${MONEY_NAME}["\`]?\\s+(?:float|double(?:\\s+precision)?|real)\\b`, // SQL
+    `\\b${MONEY_NAME}\\s*=\\s*models\\.FloatField\\b`, // Django
+    `\\bt\\.float\\s+[:"']${MONEY_NAME}\\b`, // Rails
+    `\\b${MONEY_NAME}\\s*:\\s*(?:real|doublePrecision|float)\\(`, // Drizzle
+    `\\b${MONEY_NAME}\\s*:\\s*\\{?\\s*type\\s*:\\s*DataTypes\\.(?:FLOAT|DOUBLE|REAL)\\b`, // Sequelize
+  ].join("|"),
+  "im",
+);
+/** A money column declared as integer minor units or a fixed-point decimal. */
+const MONEY_EXACT = new RegExp(
+  [
+    `^\\s*${MONEY_NAME}\\s+(?:Int|BigInt|Decimal)\\b`,
+    `\\b${MONEY_NAME}["\`]?\\s+(?:numeric|decimal|integer|int|bigint|money)\\b`,
+    `\\b${MONEY_NAME}\\s*=\\s*models\\.(?:Decimal|Integer|BigInteger|PositiveInteger|PositiveBigInteger)Field\\b`,
+    `\\bt\\.(?:decimal|integer|bigint|monetize)\\s+[:"']${MONEY_NAME}\\b`,
+    `\\b${MONEY_NAME}\\s*:\\s*(?:numeric|decimal|integer|bigint)\\(`,
+    `\\b${MONEY_NAME}\\s*:\\s*\\{?\\s*type\\s*:\\s*DataTypes\\.(?:DECIMAL|INTEGER|BIGINT)\\b`,
+  ].join("|"),
+  "im",
+);
 
 const AUTH = CATEGORIES.AUTHENTICATION;
 const ROLES = CATEGORIES.ROLES;
@@ -106,18 +187,25 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `router.post("/change-email", requireRecentAuth, changeEmail);`,
     `router.post("/change-email", changeEmail);`,
   ),
-  rule(
-    AUTH, "auth_depth_generic_login_errors", "Login responses do not reveal whether an account exists",
-    /login|signIn|authenticate/i,
-    [/invalid (?:credentials|email or password)|authentication failed|["']?email or password["']?\s*:\s*\[\s*["']is invalid|IncorrectEmailPassword|CredentialsSignin/i],
-    // Only a server RESPONSE that names the account's existence. "Wrong password" on its
-    // own leaks nothing (it is what the generic message often says), and UI copy is not
-    // the server's answer.
-    [/(?:\.(?:json|send)\(\s*\{?\s*(?:error|message|detail)?\s*:?\s*|\b(?:error|message|detail)\s*:\s*|throw new \w*\(\s*|raise \w+\(\s*)["'`][^"'`\n]{0,40}\b(?:user|account|email) (?:not found|does not exist)/i], "WARN",
-    "Return the same status, message, and timing for an unknown account and a wrong password.",
-    `return response.status(401).json({ error: "Invalid credentials" }); // login`,
-    `return response.status(404).json({ error: "User not found" }); // login`,
-  ),
+  {
+    ...rule(
+      AUTH, "auth_depth_generic_login_errors", "Login responses do not reveal whether an account exists",
+      // The code that CHECKS a password, not the word "login" (in every repo; on
+      // chatbot-ui it matched a profile helper's "User not found").
+      /\bbcrypt(?:js)?\.compare(?:Sync)?\(|\bargon2\.verify\(|\bverifyPassword\(|\bcomparePassword\(|\bcheck_password\(|\bpassword_verify\(|\bauthenticate\(\s*(?:request|req)\b|\bLocalStrategy\b|\bvalid_password\?|passwordEncoder\.matches\(|\bsignInWithPassword\(/,
+      undefined,
+      // Only a server RESPONSE that names the account's existence, in the same file as
+      // the password check. "Wrong password" on its own leaks nothing (it is what the
+      // generic message often says), and UI copy is not the server's answer.
+      [/(?:\.(?:json|send)\(\s*\{?\s*(?:error|message|detail)?\s*:?\s*|\b(?:error|message|detail)\s*:\s*|throw new \w*\(\s*|raise \w+\(\s*)["'`][^"'`\n]{0,40}\b(?:user|account|email) (?:not found|does not exist)/i], "WARN",
+      "Return the same status, message, and timing for an unknown account and a wrong password.",
+      `const ok = await bcrypt.compare(password, user.passwordHash); if (!ok) return res.status(401).json({ error: "Invalid credentials" });`,
+      `if (!user) return res.status(404).json({ error: "User not found" }); await bcrypt.compare(password, user.passwordHash);`,
+    ),
+    scope: {},
+    passDetail:
+      "The code that checks passwords was read, and none of its responses says whether an account exists.",
+  },
   rule(
     AUTH, "auth_depth_recovery_single_use", "Account-recovery tokens are invalidated after use",
     /password.?reset|resetPassword|recovery.?token|resetToken/i,
@@ -430,14 +518,20 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
 
   // ── Email deliverability ─────────────────────────────────────────────────
-  rule(
+  {
+    ...rule(
     MAIL, "email_depth_retry_backoff", "Transient email failures retry with backoff and jitter",
-    /resend|sendgrid|postmark|mailgun|nodemailer|sendEmail|mailer/i,
-    [/(?:resend|sendgrid|postmark|mailgun|nodemailer|sendEmail|sendMail|mailer|e-?mail[\w-]*(?:queue|jobs?|workers?))[\s\S]{0,600}?(?:backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt)|(?:backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt)[\s\S]{0,600}?(?:resend|sendgrid|postmark|mailgun|nodemailer|sendEmail|sendMail|mailer|e-?mail[\w-]*(?:queue|jobs?|workers?))/i], undefined, "WARN",
+    // Files that SEND mail or queue a mail job. The backoff must be in one of those
+    // files, near the mail call: backoff in an unrelated HTTP client no longer counts.
+    /\bsend\w*E-?mail\w*\s*\(|\bsendMail\s*\(|\bsend_mail\s*\(|\b(?:emails|mailer|transporter|sgMail|mailgun|postmark\w*)\.send\w*\s*\(|e-?mail[\w-]*(?:queue|jobs?|workers?)/i,
+    [/(?:resend|sendgrid|postmark|mailgun|nodemailer|send\w*E-?mail|sendMail|send_mail|mailer|transporter|e-?mail[\w-]*(?:queue|jobs?|workers?))[\s\S]{0,600}?(?:backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt|autoretry_for)|(?:backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt|autoretry_for)[\s\S]{0,600}?(?:resend|sendgrid|postmark|mailgun|nodemailer|send\w*E-?mail|sendMail|send_mail|mailer|transporter|e-?mail[\w-]*(?:queue|jobs?|workers?))/i], undefined, "WARN",
     "Retry only transient responses with capped exponential backoff and jitter; dead-letter permanent failures.",
     `await sendEmail(message, { retries: 3, backoff: "exponential", jitter: true });`,
     `for (let retry = 0; retry < 3; retry++) await sendEmail(message);`,
-  ),
+    ),
+    scope: {},
+    passDetail: "The code that sends or queues email retries with backoff, read in the same file as the send.",
+  },
   rule(
     MAIL, "email_depth_send_idempotency", "Transactional email sends are idempotent",
     /sendEmail|sendOnce|emails\.send|mailer\.send|deliver_later/i,
@@ -462,14 +556,26 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"; // newsletter`,
     `newsletter.headers["List-Unsubscribe"] = "<https://example.test/unsubscribe>";`,
   ),
-  rule(
-    MAIL, "email_depth_stream_separation", "Transactional and marketing mail use separate streams",
-    /newsletter|bulk.?mail|(?:marketing|campaign|promotional|broadcast)[\s_-]?(?:e-?mails?|mail(?:ings?)?|messages?|streams?|sends?)\b|(?:e-?mail|mail)[\s_-]?(?:marketing|campaigns?)/i,
-    [/messageStream|serverToken.{0,20}(?:transactional|marketing)|(?:mail|email|news|marketing|bulk)[\w.-]{0,20}subdomain|subdomain.{0,30}(?:mail|email)|sendingDomain/i], undefined, "WARN",
-    "Separate transactional and bulk mail by provider stream or subdomain so campaign reputation cannot block account mail.",
-    `sendNewsletter({ messageStream: "broadcast" }); sendReceipt({ messageStream: "outbound" });`,
-    `sendNewsletter({ from: "hello@example.test" }); sendReceipt({ from: "hello@example.test" });`,
-  ),
+  {
+    ...rule(
+      MAIL, "email_depth_stream_separation", "Transactional and marketing mail use separate streams",
+      // Bulk mail this code SENDS itself: a newsletter or campaign word in the same file
+      // as a send call. A newsletter sign-up form that hands addresses to Mailchimp sends
+      // nothing, and "marketing" in a page component is not mail.
+      /newsletter|bulk.?mail|(?:marketing|campaign|promotional|broadcast)[\s_-]?(?:e-?mails?|mail(?:ings?)?|messages?|streams?|sends?)\b|(?:e-?mail|mail)[\s_-]?(?:marketing|campaigns?)/i,
+      // Separation: a provider message stream, a dedicated sending domain or subdomain in a
+      // from address, or a separate marketing provider for the bulk mail.
+      [/messageStream|MessageStream|serverToken.{0,20}(?:transactional|marketing)|sendingDomain|(?:from|sender)\s*[:=]\s*["'`][^"'`@\n]*@(?:news|mail|marketing|updates|bulk|e|em|m|go)\.[\w-]+\.[\w.-]+|\b(?:mailchimp|convertkit|beehiiv|klaviyo|customerio|customer\.io|brevo|sendinblue)\b|@loops\b|loops\.so/i], undefined, "WARN",
+      "Separate transactional and bulk mail by provider stream or subdomain so campaign reputation cannot block account mail.",
+      `sendNewsletter({ messageStream: "broadcast" }); sendReceipt({ messageStream: "outbound" });`,
+      `sendNewsletter({ from: "hello@example.test" }); sendReceipt({ from: "hello@example.test" });`,
+    ),
+    scope: {
+      withSubject: [/\bsend\w*\s*\(|\.send\w*\s*\(|\bsend_mail\s*\(/],
+      evidence: "all",
+    },
+    passDetail: "Bulk mail sent by this code goes through a separate message stream, sending domain or marketing provider.",
+  },
   rule(
     MAIL, "email_depth_template_versioning", "Email templates carry a version or immutable identifier",
     /email.{0,12}template|templateId|renderEmail/i,
@@ -478,14 +584,26 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `renderEmail({ templateId: "receipt", templateVersion: 4, data });`,
     `renderEmail({ templateId: "receipt", data });`,
   ),
-  rule(
-    MAIL, "email_depth_address_validation", "Recipient addresses are parsed and normalised before send",
-    /sendEmail|emails\.send|mailer\.send/i,
-    [/emailSchema|isEmail|isValidEmail|validateEmail|normalizeEmail|normalizeIdentifier|parseAddress|Address\(|\.string\([^)]*\)(?:\.\w+\([^)]*\))*\.email\(|\bz\.email\(/i], undefined, "WARN",
-    "Validate syntax, normalise conservatively, and reject header characters before handing an address to the provider.",
-    `const to = emailSchema.parse(normalizeEmail(input)); await sendEmail({ to });`,
-    `await sendEmail({ to: req.body.email });`,
-  ),
+  {
+    ...rule(
+      MAIL, "email_depth_address_validation", "Recipient addresses are parsed and normalised before send",
+      // A send call whose recipient comes straight from the request, in one file. Mail to
+      // an address already on a user record was validated when it was stored.
+      /\bsend\w*E-?mail\w*\s*\(|\bsendMail\s*\(|\bsend_mail\s*\(|\b(?:emails|mailer|transporter|sgMail)\.send\w*\s*\(/i,
+      // zod `.email()`, yup `.string().email()`, a schema parse of the body, validator.js,
+      // class-validator, express-validator and Django's EmailField all count.
+      [/emailSchema|isEmail|isValidEmail|validateEmail|normalizeEmail|normalizeIdentifier|parseAddress|Address\(|\.string\([^)]*\)(?:\.\w+\([^)]*\))*\.email\(|\bz\.email\(|\b\w*[sS]chema\.(?:safe)?[pP]arse(?:Async)?\(|\bvalidate_email\(|\bEmailValidator\b|\bEmailField\b|@IsEmail\(|\bbody\(\s*["']email["']\s*\)\.isEmail|\.is_valid\(\)/i], undefined, "WARN",
+      "Validate syntax, normalise conservatively, and reject header characters before handing an address to the provider.",
+      `const { email } = req.body; const to = emailSchema.parse(normalizeEmail(email)); await sendEmail({ to });`,
+      `const { email } = req.body; await sendEmail({ to: email });`,
+    ),
+    scope: {
+      withSubject: [
+        /\bto\s*[:=]\s*(?:req|request|ctx\.request)\.(?:body|query|params)\b|\{[^}\n]*\bemail\b[^}\n]*\}\s*=\s*(?:await\s+)?(?:req|request|ctx\.request)\.(?:body|query|json\(\))|\bformData\.get\(\s*["']email["']\s*\)|\brequest\.(?:POST|data|form|json)(?:\.get\(|\[)\s*["']email["']/,
+      ],
+    },
+    passDetail: "Where a recipient address comes straight from a request, it is validated in the same handler before the send.",
+  },
   rule(
     MAIL, "email_depth_webhook_signature", "Email delivery webhooks authenticate the provider",
     /email.{0,20}webhook|delivery.{0,12}event|bounce.{0,12}webhook/i,
@@ -529,14 +647,25 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `kind: Deployment\nreadinessProbe: { httpGet: { path: /ready } }\nlivenessProbe: { httpGet: { path: /live } }`,
     `kind: Deployment\nlivenessProbe: { httpGet: { path: /health } }`,
   ),
-  rule(
-    INFRA, "infra_depth_iac_plan_gate", "Infrastructure changes produce a reviewed plan in CI",
-    /\bterraform\b|\bopentofu\b|\btofu\s+(?:init|plan|apply)\b|\bpulumi\b|cloudformation|\.tf\n/i,
-    [/(?:terraform|tofu) plan|pulumi preview|create-change-set|cloudformation.{0,60}change.?set|plan.?artifact/i], undefined, "WARN",
-    "Generate a non-destructive plan for pull requests and require review before apply.",
-    `pull_request:\n  run: terraform plan -out plan.artifact`,
-    `push:\n  run: terraform apply -auto-approve`,
-  ),
+  {
+    ...rule(
+      INFRA, "infra_depth_iac_plan_gate", "Infrastructure changes produce a reviewed plan in CI",
+      // Infrastructure code itself (Terraform/OpenTofu blocks, a CloudFormation template),
+      // or IaC project files in the tree. A README that says "deploy with Terraform" is not.
+      /^\s*(?:terraform|resource|module|provider)\s+(?:"[^"\n]+"\s*)*\{|AWSTemplateFormatVersion/m,
+      // A plan, preview or diff step in a CI definition, or a Terraform Cloud / Atlantis
+      // setup that plans every pull request.
+      [/\b(?:terraform|tofu|terragrunt)\s+(?:run-all\s+)?plan\b|\bpulumi\s+preview\b|pulumi\/actions[\s\S]{0,200}?command:\s*preview|\bcdk\s+diff\b|create-change-set|no-execute-changeset|hashicorp\/tfc-workflows|dflook\/(?:terraform|tofu)-plan|^\s*cloud\s*\{|backend\s+"remote"|\batlantis\b/im], undefined, "WARN",
+      "Generate a non-destructive plan for pull requests and require review before apply.",
+      `terraform { required_version = ">= 1.5" }\npull_request:\n  run: terraform plan -out plan.artifact`,
+      `terraform { required_version = ">= 1.5" }\npush:\n  run: terraform apply -auto-approve`,
+    ),
+    scope: {
+      subjectFromPaths: (paths) => paths.some((p) => /(?:^|\/)(?:Pulumi\.ya?ml|cdk\.json)$/.test(p)),
+      evidence: /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$|(?:^|\/)\.gitlab-ci\.ya?ml$|(?:^|\/)\.circleci\/config\.ya?ml$|(?:^|\/)(?:azure|bitbucket)-pipelines\.ya?ml$|(?:^|\/)Jenkinsfile$|(?:^|\/)atlantis\.ya?ml$|\.tf$/i,
+    },
+    passDetail: "A CI step plans infrastructure changes for review (terraform plan, pulumi preview, cdk diff or a change set), or Terraform Cloud or Atlantis plans each pull request.",
+  },
   rule(
     INFRA, "infra_depth_remote_state_protection", "Infrastructure state is remote, encrypted and locked",
     /\bterraform\b|\bopentofu\b|\btofu\s+(?:init|plan|apply)\b|\.tf\n/i,
@@ -546,14 +675,28 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `terraform { backend "s3" { encrypt = true; use_lockfile = true; kms_key_id = "alias/state" } }`,
     `terraform { backend "local" { path = "terraform.tfstate" } }`,
   ),
-  rule(
-    INFRA, "infra_depth_dead_letter_queue", "Asynchronous work has a dead-letter path",
-    /(?<![a-z])sqs|AmazonSQS|rabbitmq|amqp|kafka|bullmq|celery|sidekiq|resque|dramatiq|pg-boss|graphile-worker|@google-cloud\/pubsub|(?:job|message|task)[\s_-]?queue|new Queue\(|\bqueue\.(?:add|process|configure|enqueue|push|send)\(/i,
-    [/dead.?letter|redrivePolicy|maxReceiveCount|failedQueue|DLQ|\bsidekiq\b/i], [/sidekiq_options[^\n]{0,80}dead\s*:\s*false/i], "WARN",
-    "After bounded retries, move poison messages to a monitored dead-letter queue with replay tooling.",
-    `queue.configure({ redrivePolicy: { deadLetterTargetArn: dlq, maxReceiveCount: 5 } });`,
-    `queue.process(async job => handle(job));`,
-  ),
+  {
+    ...rule(
+      INFRA, "infra_depth_dead_letter_queue", "Asynchronous work has a dead-letter path",
+      /(?<![a-z])sqs|AmazonSQS|rabbitmq|amqp|kafka|bullmq|celery|sidekiq|resque|dramatiq|pg-boss|graphile-worker|@google-cloud\/pubsub|(?:job|message|task)[\s_-]?queue|new Queue\(|\bqueue\.(?:add|process|configure|enqueue|push|send)\(/i,
+      // An explicit dead-letter queue, or a queue library that KEEPS failed jobs for
+      // inspection and retry by default: BullMQ's failed set, Sidekiq's dead set, Resque's
+      // failed queue, pg-boss and graphile-worker's failed rows, Solid Queue's failed
+      // executions, Oban's discarded jobs, Hangfire's failed state. Celery, SQS, RabbitMQ
+      // and Kafka drop or redeliver forever unless one is configured.
+      [/dead.?letter|redrivePolicy|maxReceiveCount|failedQueue|\bDLQ\b|\bsidekiq\b|\bbullmq\b|["']bull["']|\bpg-boss\b|\bgraphile-worker\b|\bresque\b|\bsolid_queue\b|\boban\b|\bhangfire\b/i],
+      [/sidekiq_options[^\n]{0,80}dead\s*:\s*false|\bremoveOnFail\s*:\s*true\b/i], "WARN",
+      "After bounded retries, move poison messages to a monitored dead-letter queue with replay tooling.",
+      `queue.configure({ redrivePolicy: { deadLetterTargetArn: dlq, maxReceiveCount: 5 } });`,
+      `queue.process(async job => handle(job));`,
+    ),
+    // Read from code and configuration, never documentation (a README naming Kafka is
+    // not a consumer). Evidence may sit in any file: the DLQ is often declared in
+    // infrastructure code apart from the worker.
+    scope: { evidence: "all" },
+    passDetail:
+      "Failed jobs are kept for inspection and replay: an explicit dead-letter queue, or a queue library that keeps failed jobs by default (BullMQ, Sidekiq, Resque, pg-boss, graphile-worker, Solid Queue, Oban or Hangfire).",
+  },
   rule(
     INFRA, "infra_depth_secret_versions", "Deployed secrets are versioned for safe rotation",
     /secretsmanager|secret manager|vault|KeyVault|secretRef/i,
@@ -981,14 +1124,20 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `i18n.init({ locales: ["en", "fr"], fallbackLng: "en" });`,
     `i18n.init({ locales: ["en", "fr"] });`,
   ),
-  rule(
-    GLOBAL, "global_depth_translation_parity", "Translation catalogues are checked for missing keys",
-    /i18n|translations|locales/i,
-    [/missing.?key|translation.{0,12}(?:test|check|lint)|i18n-check|locale parity|lingodotdev\/lingo\.dev|lingo\.dev(?:@\S+)?\s+(?:i18n|run|ci)\b/i], undefined, "WARN",
-    "Compare every locale to the source catalogue in CI and fail on missing or orphaned keys.",
-    `run: i18n-check --missing-key --locale-parity translations/`,
-    `translations/en.json\ntranslations/fr.json`,
-  ),
+  {
+    ...rule(
+      GLOBAL, "global_depth_translation_parity", "Translation catalogues are checked for missing keys",
+      // The subject is the tree having catalogues for two or more locales (below); a
+      // project with one language, or "i18n" in a config comment, has nothing to compare.
+      /(?!)/,
+      [/missing.?keys?|translation.{0,12}(?:test|check|lint)|i18n-check|locale parity|lingodotdev\/lingo\.dev|lingo\.dev(?:@\S+)?\s+(?:i18n|run|ci)\b|\bi18n-tasks\s+(?:missing|health|check-consistent-interpolations)\b|\bfailOnUpdate\b|--fail-on-update\b|eslint-plugin-i18n-json|i18n-json\/identical-keys|\blingui\s+(?:extract|compile)\b[^\n]*--strict|\bformatjs\s+verify\b|\bmsgfmt\s+(?:-c|--check)\b|\bvue-i18n-extract\b|\bi18n-unused\b|untranslated-messages-file/i], undefined, "WARN",
+      "Compare every locale to the source catalogue in CI and fail on missing or orphaned keys.",
+      `translations/en.json\ntranslations/fr.json\nrun: i18n-check --missing-key --locale-parity translations/`,
+      `translations/en.json\ntranslations/fr.json`,
+    ),
+    scope: { subjectFromPaths: (paths) => localeCatalogues(paths) >= 2, evidence: "all" },
+    passDetail: "The project has catalogues for several locales, and a parity or missing-key check runs over them.",
+  },
   rule(
     GLOBAL, "global_depth_locale_formatters", "Dates, numbers and lists use locale-aware formatters",
     /date|currency|amount|number|list/i,
@@ -1007,15 +1156,24 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `const createdAt = new Date().toISOString(); // UTC timestamptz`,
     `const createdAt = new Date().toLocaleString(); await db.insert({ createdAt });`,
   ),
-  rule(
-    GLOBAL, "global_depth_currency_precision", "Currency values preserve ISO currency and minor-unit precision",
-    /currenc(?:y|ies)|\bamount\b|\bmoney\b|(?:amount|price)["']?\s*[:=]\s*["']?\d/i,
-    [/currencyCode|minorUnits|(?<![-\w])Decimal|BigInt|Money\(|unit_amount|amount_?in_?cents|\bamount\s+Int\b/i],
-    [/(?:amount|price)\s*[:=]\s*\d+\.\d+\b/i], "WARN",
-    "Carry amount and ISO currency together, using integer minor units or a decimal money type.",
-    `const total = Money({ minorUnits: 1099n, currencyCode: "GBP" });`,
-    `const price = 10.99; const currency = "GBP";`,
-  ),
+  {
+    ...rule(
+      GLOBAL, "global_depth_currency_precision", "Stored money amounts avoid floating-point columns",
+      // A money column read from the schema, with its type: Prisma, SQL migrations, Django
+      // models, Rails migrations, Drizzle and Sequelize. A price in a pricing page, a
+      // Stripe price id or `list-decimal` in CSS is not a stored amount.
+      new RegExp(`${MONEY_FLOAT.source}|${MONEY_EXACT.source}`, "im"),
+      [MONEY_EXACT],
+      [MONEY_FLOAT], "WARN",
+      "Store money as integer minor units (pence, cents) or a fixed-point decimal type, never a binary float.",
+      `model Order {\n  amountCents Int\n  currency String\n}`,
+      `model Order {\n  amount Float\n  currency String\n}`,
+    ),
+    scope: {
+      subjectFiles: /schema\.prisma$|(?:^|\/)(?:db\/)?migrat\w*\/|\.sql$|(?:^|\/)models?(?:\.py|\/)|(?:^|\/)db\/schema\.rb$|(?:^|\/)(?:schema|entities|entity)\b|\.entity\.[jt]s$|(?:^|\/)drizzle\//i,
+    },
+    passDetail: "The money columns read from the schema use integer minor units or a fixed-point decimal type, so amounts do not pick up floating-point rounding errors.",
+  },
   rule(
     GLOBAL, "global_depth_rtl_logical_layout", "Layouts use logical properties for RTL compatibility",
     /dir=|rtl|direction\s*:/i,
@@ -1025,14 +1183,23 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `<html dir="rtl"><style>.card { margin-inline-start: 1rem; text-align: start; }</style>`,
     `<html dir="rtl"><style>.card { margin-left: 1rem; text-align: left; }</style>`,
   ),
-  rule(
-    GLOBAL, "global_depth_unicode_normalization", "User identifiers are Unicode-normalised consistently",
-    /\buser.?name|@unique|unique\s*:\s*true|validates.{0,40}uniqueness/i,
-    [/normalize\(["']NFK?[CD]|Normalizer\.normalize|casefold|unicode.?normal/i], undefined, "WARN",
-    "Normalise once using a documented form before uniqueness, comparison, and security-sensitive matching.",
-    `const username = input.normalize("NFKC").toLocaleLowerCase("und");`,
-    `const username = input.toLowerCase();`,
-  ),
+  {
+    ...rule(
+      GLOBAL, "global_depth_unicode_normalization", "User identifiers are Unicode-normalised consistently",
+      // A UNIQUE username or handle, the identifier a person types and others see, where
+      // two different code-point sequences that look identical would be two accounts. A
+      // bare @unique (ids, slugs, Stripe ids) or a DB_USERNAME env var is not one.
+      /\b(?:user_?name|handle|screen_?name|nick_?name)\b[^\n]{0,60}(?:@unique|unique\s*[:=]\s*(?:true|True)|unique=True|\.unique\(\))|validates?\s*\(?\s*:(?:user_?name|handle)\b[^\n]{0,80}uniqueness|add_index[^\n]{0,60}:(?:user_?name|handle)\b[^\n]{0,40}unique:\s*true|\bUNIQUE\s*\(\s*["`]?(?:user_?name|handle)["`]?\s*\)|\b(?:user_?name|handle)["`]?\s+(?:varchar|text|citext)\b[^\n,]{0,40}\bUNIQUE\b/i,
+      // NFC/NFKC normalisation in any form. Django's AbstractBaseUser normalises usernames
+      // with NFKC itself, so a custom user model built on it counts.
+      [/normalize\(\s*["'`]NFK?[CD]["'`]|\.normalize\(\s*\)|Normalizer\.normalize|unicodedata\.normalize|unicode_normalize|casefold\(|normalize_username|AbstractBaseUser|AbstractUser|UnicodeUsernameValidator/i], undefined, "WARN",
+      "Normalise once using a documented form before uniqueness, comparison, and security-sensitive matching.",
+      `model User { username String @unique }\nconst username = input.normalize("NFKC").toLocaleLowerCase("und");`,
+      `model User { username String @unique }\nconst username = input.toLowerCase();`,
+    ),
+    scope: { evidence: "all" },
+    passDetail: "Usernames or handles are unique, and Unicode normalisation (NFC or NFKC) is applied, so two look-alike names cannot become two accounts.",
+  },
   rule(
     GLOBAL, "global_depth_residency_routing", "Regional data residency is enforced in infrastructure routing",
     /data.?residency|tenantRegion|residencyPolicy|residencyRegion|regional data|dataRegion|data.?location/i,
@@ -1127,18 +1294,7 @@ function test(re: RegExp, text: string): boolean {
   return re.test(text);
 }
 
-function evaluateText(ruleDef: OperationalDepthRule, text: string): Evaluation {
-  if (!test(ruleDef.subject, text)) {
-    return {
-      status: "SKIPPED",
-      detail: "Not applicable — the repository sample contains no evidence of this feature.",
-      missingRequired: false,
-      forbiddenMatched: false,
-    };
-  }
-
-  const missingRequired = (ruleDef.required ?? []).some((pattern) => !test(pattern, text));
-  const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => test(pattern, text));
+function verdict(ruleDef: OperationalDepthRule, missingRequired: boolean, forbiddenMatched: boolean): Evaluation {
   const ok = !missingRequired && !forbiddenMatched;
   // A missing keyword is never a FAIL: these are regexes over a joined sample, and a
   // safeguard written with a name the rule does not list reads exactly like no
@@ -1146,13 +1302,89 @@ function evaluateText(ruleDef: OperationalDepthRule, text: string): Evaluation {
   return {
     status: ok ? "PASS" : forbiddenMatched ? ruleDef.onMissing : "WARN",
     detail: ok
-      ? `${ruleDef.label}: supporting implementation evidence was found.`
+      ? ruleDef.passDetail ?? `${ruleDef.label}: supporting implementation evidence was found.`
       : `${ruleDef.label}: the required safeguard was not established. Remediation: ${ruleDef.remediation}`,
     missingRequired,
     forbiddenMatched,
   };
 }
 
+const NOT_APPLICABLE: Evaluation = {
+  status: "SKIPPED",
+  detail: "Not applicable — the repository sample contains no evidence of this feature.",
+  missingRequired: false,
+  forbiddenMatched: false,
+};
+
+function evaluateText(ruleDef: OperationalDepthRule, text: string): Evaluation {
+  if (ruleDef.scope) {
+    // A fixture is one file; its lines double as the tree listing for path-based subjects.
+    return evaluateScoped(ruleDef, [["fixture", text]], text.split("\n"), false).evaluation;
+  }
+  if (!test(ruleDef.subject, text)) return NOT_APPLICABLE;
+  const missingRequired = (ruleDef.required ?? []).some((pattern) => !test(pattern, text));
+  const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => test(pattern, text));
+  return verdict(ruleDef, missingRequired, forbiddenMatched);
+}
+
+function stripComments(path: string, content: string): string {
+  if (/\.(?:[cm]?[jt]sx?|go|java|kt|swift|dart|cs|rs|php|scala|c|cc|cpp|h)$|\.prisma$/i.test(path)) {
+    return stripCStyleComments(content);
+  }
+  if (/\.(?:py|rb|sh|bash|ya?ml|toml|tf|hcl|cfg|ini|properties)$|(?:^|\/)(?:Gemfile|Dockerfile|Procfile|\.env[\w.-]*)$/i.test(path)) {
+    return content.replace(/^[ \t]*#.*$/gm, "");
+  }
+  return content;
+}
+
+/** Documentation describes a feature; it never implements one. */
+const DOC_FILE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+
+/**
+ * Evaluate a scoped rule over individual files. `filterPaths` is false for a fixture,
+ * which has no real path. Returns the files that carried the subject (for evidence
+ * naming) and how many evidence files the tree has that were not read.
+ */
+function evaluateScoped(
+  ruleDef: OperationalDepthRule,
+  rawFiles: [string, string][],
+  paths: string[],
+  filterPaths = true,
+): { evaluation: Evaluation; subjectFiles: string[]; unreadEvidence: number } {
+  const scope = ruleDef.scope!;
+  // Comments are not code: bakerydemo's "Do not use the same Redis for … Celery!" is
+  // not a Celery worker. C-style comments go in JS/TS/Go/Java…; `#` lines in Python,
+  // Ruby, shell, YAML, TOML and Terraform. A fixture is code as written.
+  const code: [string, string][] = filterPaths ? rawFiles.map(([path, content]) => [path, stripComments(path, content)]) : rawFiles;
+  const candidates = code.filter(
+    ([path]) => !filterPaths || (!DOC_FILE.test(path) && (!scope.subjectFiles || scope.subjectFiles.test(path))),
+  );
+  const inScope = candidates.filter(
+    ([, content]) => test(ruleDef.subject, content) && (scope.withSubject ?? []).every((re) => test(re, content)),
+  );
+  const fromPaths = scope.subjectFromPaths?.(paths) ?? false;
+  if (inScope.length === 0 && !fromPaths) return { evaluation: NOT_APPLICABLE, subjectFiles: [], unreadEvidence: 0 };
+
+  const where = scope.evidence ?? "subject";
+  const evidenceFiles =
+    where === "subject"
+      ? inScope
+      : where === "all" || !filterPaths
+        ? code.filter(([path]) => !filterPaths || !DOC_FILE.test(path))
+        : code.filter(([path]) => where.test(path));
+  const missingRequired = (ruleDef.required ?? []).some(
+    (pattern) => !evidenceFiles.some(([, content]) => test(pattern, content)),
+  );
+  const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => inScope.some(([, content]) => test(pattern, content)));
+  const read = new Set(code.map(([path]) => path));
+  const unreadEvidence =
+    filterPaths && where instanceof RegExp ? paths.filter((p) => where.test(p) && !read.has(p)).length : 0;
+  return {
+    evaluation: verdict(ruleDef, missingRequired, forbiddenMatched),
+    subjectFiles: inScope.map(([path]) => path),
+    unreadEvidence,
+  };
+}
 export function evaluateOperationalRuleText(
   ruleDef: OperationalDepthRule,
   text: string,
@@ -1205,6 +1437,34 @@ function evidencePath(snapshot: RepoSnapshot, ruleDef: OperationalDepthRule): st
   return undefined;
 }
 
+/** A scoped rule as a check: same confidence rules as the rest, evidence named by file. */
+function scopedCheck(
+  ruleDef: OperationalDepthRule,
+  files: [string, string][],
+  paths: string[],
+  coverageRatio: number,
+  sampleWords: string,
+): PulseScanCheckInput {
+  const { evaluation: result, subjectFiles, unreadEvidence } = evaluateScoped(ruleDef, files, paths);
+  const absenceOnly = result.status !== "PASS" && result.status !== "SKIPPED" && result.missingRequired && !result.forbiddenMatched;
+  const weakAbsence = absenceOnly && (coverageRatio < SOUND_ABSENCE_COVERAGE || unreadEvidence > 0);
+  return {
+    category: ruleDef.category,
+    checkKey: ruleDef.key,
+    label: ruleDef.label,
+    status: weakAbsence ? "INCONCLUSIVE" : result.status,
+    detail: weakAbsence
+      ? unreadEvidence > 0
+        ? `${ruleDef.label}: inconclusive. No supporting evidence was found in the files read, but ${unreadEvidence} more of the files where it would live were not read. If it is genuinely absent: ${ruleDef.remediation}`
+        : `${ruleDef.label}: inconclusive. Pulse read ${sampleWords} and found no supporting evidence, so its absence is not established. If it is genuinely absent: ${ruleDef.remediation}`
+      : result.detail,
+    // Pattern evidence: MEDIUM at most, never HIGH.
+    confidence: weakAbsence ? "LOW" : "MEDIUM",
+    ...(weakAbsence ? { confidenceReason: "Absent implementation evidence is not established from the files read." } : {}),
+    evidence: result.status === "SKIPPED" || subjectFiles.length === 0 ? undefined : `Repository evidence: ${subjectFiles.slice(0, 3).join(", ")}`,
+  };
+}
+
 export function evaluateOperationalDepthChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const text = [...snapshot.files]
     .filter(([path]) => !LOCKFILE.test(path))
@@ -1225,7 +1485,9 @@ export function evaluateOperationalDepthChecks(snapshot: RepoSnapshot): PulseSca
     ? `${coverage.sampled} ${coverage.unit} from a repository tree too large to list in full`
     : `${coverage.sampled} of ${coverage.total} ${coverage.unit}`;
 
+  const readFiles = [...snapshot.files].filter(([path]) => !LOCKFILE.test(path));
   return OPERATIONAL_DEPTH_RULES.map((ruleDef): PulseScanCheckInput => {
+    if (ruleDef.scope) return scopedCheck(ruleDef, readFiles, snapshot.paths, coverage.ratio, sampleWords);
     const sampledResult = evaluateText(
       ruleDef,
       RELEASE_SOURCE_ONLY_KEYS.has(ruleDef.key)

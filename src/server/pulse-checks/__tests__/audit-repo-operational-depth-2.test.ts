@@ -96,7 +96,9 @@ describe("email_depth_address_validation", () => {
       },
       "email_depth_address_validation",
     );
-    expect(check.status).toBe("PASS");
+    // The recipient comes from NextAuth, not straight from a request, so the rule does
+    // not apply there (un-withhold, Oct 2026). What must never happen is a false WARN.
+    expect(check.status).not.toBe("WARN");
   });
 
   it("still warns when a raw request field is handed to the mailer", () => {
@@ -178,8 +180,15 @@ describe("global_depth_currency_precision", () => {
     expect(check.status).toBe("PASS");
   });
 
-  it("still warns on a float price", () => {
+  it("does not treat a display price constant as a stored amount", () => {
+    // Only schema columns are graded since the un-withhold (Oct 2026): a price literal in a
+    // pricing component is not money kept in a database.
     const check = run({ "src/pricing.ts": 'const price = 10.99; const currency = "GBP";' }, "global_depth_currency_precision");
+    expect(check.status).toBe("SKIPPED");
+  });
+
+  it("warns on a money column stored as a float", () => {
+    const check = run({ "prisma/schema.prisma": "model Order {\n  total Float\n  currency String\n}" }, "global_depth_currency_precision");
     expect(check.status).toBe("WARN");
   });
 });
@@ -218,6 +227,8 @@ describe("global_depth_translation_parity", () => {
         "packages/i18n/server.ts": 'export const loadLocale = (locale: string) => import(`./locales/${locale}/common.json`);',
       },
       "global_depth_translation_parity",
+      // cal.com's real catalogues (main, Oct 2026).
+      ["packages/i18n/locales/de/common.json", "packages/i18n/locales/en/common.json", "packages/i18n/locales/fr/common.json"],
     );
     expect(check.status).toBe("PASS");
   });
@@ -248,7 +259,13 @@ describe("global_depth_unicode_normalization", () => {
   });
 
   it("accepts NFC normalisation", () => {
-    const check = run({ "src/users.ts": 'const username = input.normalize("NFC").toLowerCase();' }, "global_depth_unicode_normalization");
+    const check = run(
+      {
+        "prisma/schema.prisma": "model User {\n  username String @unique\n}",
+        "src/users.ts": 'const username = input.normalize("NFC").toLowerCase();',
+      },
+      "global_depth_unicode_normalization",
+    );
     expect(check.status).toBe("PASS");
   });
 
@@ -288,9 +305,11 @@ describe("infra_depth_dead_letter_queue", () => {
     expect(check.status).toBe("PASS");
   });
 
-  it("still warns for BullMQ without a DLQ and for Sidekiq jobs that opt out of the dead set", () => {
+  it("still warns for BullMQ that discards failed jobs and for Sidekiq jobs that opt out of the dead set", () => {
+    // BullMQ keeps failed jobs in its failed set by default (un-withhold, Oct 2026); only
+    // removeOnFail: true throws them away.
     expect(
-      run({ "src/queue.ts": 'const queue = new Queue("email"); // bullmq\nqueue.process(async job => handle(job));' }, "infra_depth_dead_letter_queue").status,
+      run({ "src/queue.ts": 'import { Queue } from "bullmq";\nconst queue = new Queue("email", { defaultJobOptions: { removeOnFail: true } });\nawait queue.add("send", data);' }, "infra_depth_dead_letter_queue").status,
     ).toBe("WARN");
     expect(
       run({ "app/jobs/hard_job.rb": "class HardJob\n  include Sidekiq::Job\n  sidekiq_options retry: 5, dead: false\nend" }, "infra_depth_dead_letter_queue").status,
@@ -317,7 +336,13 @@ describe("IaC rules ignore 'tofu' inside other words", () => {
       run({ "infra/main.tf": 'terraform {\n  backend "local" {\n    path = "terraform.tfstate"\n  }\n}' }, "infra_depth_remote_state_protection").status,
     ).toBe("FAIL");
     expect(
-      run({ ".github/workflows/infra.yml": "on: pull_request\njobs:\n  plan:\n    steps:\n      - run: terraform plan -out=tfplan" }, "infra_depth_iac_plan_gate").status,
+      run(
+        {
+          "infra/main.tf": 'terraform {\n  required_version = ">= 1.5"\n}',
+          ".github/workflows/infra.yml": "on: pull_request\njobs:\n  plan:\n    steps:\n      - run: terraform plan -out=tfplan",
+        },
+        "infra_depth_iac_plan_gate",
+      ).status,
     ).toBe("PASS");
   });
 });

@@ -166,9 +166,9 @@ describe("backend service", () => {
     expect(at(evaluateBackendServiceChecks(s), "svc_django_debug").status).toBe("PASS");
   });
 
-  it("fails a wildcard-plus-credentials CORS configuration", () => {
+  it("warns on a literal wildcard-plus-credentials CORS configuration (browsers refuse it, so it fails closed)", () => {
     const s = snap({ "server.ts": 'cors({ origin: "*", credentials: true })\n', "package.json": '{"dependencies":{"express":"^4"}}' });
-    expect(at(evaluateBackendServiceChecks(s), "svc_cors_wildcard").status).toBe("FAIL");
+    expect(at(evaluateBackendServiceChecks(s), "svc_cors_wildcard").status).toBe("WARN");
   });
 
   it("stays quiet on a wildcard origin WITHOUT credentials", () => {

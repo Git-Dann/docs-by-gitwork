@@ -54,7 +54,9 @@ describe("authentication value controls", () => {
 
   it("does not award account-security controls without evidence", async () => {
     const checks = await runAuthExtended(context("<main>Account</main>"));
-    for (const key of ["auth_login_autocomplete", "auth_signup_autocomplete", "auth_password_reset", "auth_logout_control", "auth_security_notifications"]) expect(statusOf(checks, key)).toBe("WARN");
+    for (const key of ["auth_password_reset", "auth_logout_control", "auth_security_notifications"]) expect(statusOf(checks, key)).toBe("WARN");
+    // No password field on the page: the autocomplete checks have nothing to judge.
+    for (const key of ["auth_login_autocomplete", "auth_signup_autocomplete"]) expect(statusOf(checks, key)).toBe("INCONCLUSIVE");
   });
 });
 
