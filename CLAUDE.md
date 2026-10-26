@@ -7886,3 +7886,16 @@ back office).
 - Absence of an optional feature (Stripe, currencies, web push, trust badges) is NOT_APPLICABLE.
 - Extra requests per URL scan: up to 40 HEAD requests (page weight) and 10 sitemap GETs.
 - Withheld 144 → 103. Live checks: 1,206 ("over 1,200").
+
+**Round three, repo (39):**
+- Operational-depth rules can declare a per-file `scope`. Scoped rules strip comments and ignore
+  docs, so a subject and its safeguard must sit in the same file.
+- Containers: `nonRootVerdict` decides from the base image's default user when there's no USER line
+  (official images run as root; `:nonroot`, Chainguard and Bitnami don't; any other base is
+  INCONCLUSIVE).
+- Django: DEBUG and SECRET_KEY are judged per settings module.
+- Spring YAML: nested and list forms are parsed.
+- CORS: a reflected origin is flagged only when origin and credentials sit in one config.
+- CI: `on:` is read at any indentation.
+- Validated against realworld, bakerydemo, commerce, petclinic and rreading-glasses.
+- Withheld 103 → 64. Live checks: 1,245.
