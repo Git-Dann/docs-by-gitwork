@@ -7799,3 +7799,25 @@ the VPS.
 nodemailer and ip-address. `npm audit fix --package-lock-only` clears them, but it moves ~600
 lockfile lines including puppeteer-core (PDF rendering), so it belongs in its own change with a
 build and a PDF check. Everything else in the gate is green.
+
+### 84.3 One clear scan page
+
+- **Four tabs: Summary · All checks · Plan · Technical.** There used to be eleven. The older tab
+  ids still exist, mapped through `PRIMARY_OF`, so `setActiveTab("gaps")` from a card and old
+  deep links still land in the right place.
+  - Plan's five parts (Readiness, Gaps, Opportunities, Roadmap, Stack) are one row of choices
+    inside the Plan tab.
+  - Compliance by market sits under All checks.
+  - Competitors, the discovery kit and the agent tools are in Technical.
+  - The overview's duplicate roadmap card is gone.
+- **Order above the tabs:** cover, then the release banner, then the plain-English box. The
+  confidence/grades row moved into Summary and the agent panel into Technical, so the decision and
+  the fix-first list come before the detail.
+- **One set of status words** (`src/lib/pulse-status-words.ts`): Fix · Worth fixing · Passing ·
+  Couldn't check · Doesn't apply. The scan page, the shared report, the status icons and the lead
+  popup all use them. All checks shows a legend explaining each word and a "Couldn't check" filter.
+- **Fix first says who does it.** `ownerFor(category)` in `plain-report.ts` names who usually fixes
+  each finding: your developer, whoever runs your domain and hosting, whoever runs your content and
+  marketing, or you or your legal adviser.
+- **The shared report shows the gate's reasons.** `ReleaseGateBanner` moved to
+  `release-gate-banner.tsx` and renders above the plain box in both places, in the same order.

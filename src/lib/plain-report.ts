@@ -25,6 +25,22 @@ export interface PlainFinding {
   /** The check it came from, for anyone who wants the detail. */
   label: string;
   urgent: boolean;
+  /** Who usually does the fix, so the list can be handed out rather than just read. */
+  owner: string;
+}
+
+/**
+ * Who usually fixes a finding in this category. A routing hint, not a rule: it is the
+ * person a non-developer would forward the line to. Matched on the category's name.
+ */
+const OWNERS: { test: RegExp; owner: string }[] = [
+  { test: /^Legal|^Business Operations|^Trust & Brand/, owner: "You or your legal adviser" },
+  { test: /^Email Deliverability|^Infrastructure|^Global Distribution/, owner: "Whoever runs your domain and hosting" },
+  { test: /^SEO|^AEO|^Social|^Missing Pages|^Store Listing/, owner: "Whoever runs your content and marketing" },
+];
+
+export function ownerFor(category: string): string {
+  return OWNERS.find((o) => o.test.test(category))?.owner ?? "Your developer";
 }
 
 export interface PlainScanSummary {
@@ -85,7 +101,7 @@ export function summariseScan(checks: PlainCheck[], maxFindings = 5, gate?: { de
     const text = findingMeaning(r.check);
     if (seen.has(text)) continue;
     seen.add(text);
-    findings.push({ text, label: r.check.label, urgent: r.priority.tier === "P1" });
+    findings.push({ text, label: r.check.label, urgent: r.priority.tier === "P1", owner: ownerFor(r.check.category) });
     if (findings.length >= maxFindings) break;
   }
 

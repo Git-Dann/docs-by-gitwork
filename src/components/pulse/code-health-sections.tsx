@@ -321,7 +321,9 @@ export function PlainScanBox({ checks, gate }: { checks: PlainCheck[]; gate?: { 
                 <span aria-hidden className={cn("mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full", f.urgent ? "bg-[var(--danger-500)]" : "bg-[var(--warning-500)]")} />
                 <span>
                   {f.text}
-                  <span className="ml-1 font-mono text-[10px] text-[var(--text-4)]">({f.label})</span>
+                  <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
+                    {f.owner} · {f.label}
+                  </span>
                 </span>
               </li>
             ))}

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { STATUS_WORDS } from "@/lib/pulse-status-words";
+import { GATE_LABEL, ReleaseGateBanner } from "@/components/pulse/release-gate-banner";
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -234,13 +236,14 @@ export function PulseReportView({
   const passCount = scan.checks.filter((c) => c.status === "PASS").length;
   const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
   const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
-  const skipCount = scan.checks.filter((c) => c.status === "SKIPPED").length;
+  const unknownCount = scan.checks.filter((c) => ["INCONCLUSIVE", "ERROR", "NOT_TESTED", "EVIDENCE_REQUIRED"].includes(c.status)).length;
+  // Same words and order as the scan page. "Doesn't apply" is not shown: it is not about this product.
   const coverStats = [
-    { count: passCount, label: "Passing", color: "#16A34A", bg: "#F0FDF4" },
-    { count: warnCount, label: "Warnings", color: "#D97706", bg: "#FFFBEB" },
-    { count: failCount, label: "Failed", color: "#DC2626", bg: "#FEF2F2" },
-    ...(skipCount > 0
-      ? [{ count: skipCount, label: "Skipped", color: "#9CA3AF", bg: "#F9FAFB" }]
+    { count: failCount, label: STATUS_WORDS.FAIL, color: "#DC2626", bg: "#FEF2F2" },
+    { count: warnCount, label: STATUS_WORDS.WARN, color: "#D97706", bg: "#FFFBEB" },
+    { count: passCount, label: STATUS_WORDS.PASS, color: "#16A34A", bg: "#F0FDF4" },
+    ...(unknownCount > 0
+      ? [{ count: unknownCount, label: STATUS_WORDS.INCONCLUSIVE, color: "#475569", bg: "#F9FAFB" }]
       : []),
   ];
 
@@ -251,7 +254,7 @@ export function PulseReportView({
   if (subject) meta.push({ label: "Platform", value: subject });
   const gate = scan.scoreBreakdown?.gate;
   if (gate) {
-    const decision = { READY: "Ready to ship", CONDITIONAL: "Ship with reservations", BLOCKED: "Blocked", INCONCLUSIVE: "Not enough evidence" }[gate.decision];
+    const decision = GATE_LABEL[gate.decision];
     meta.push({ label: "Release", value: `${decision} · ${gate.policy.label}` });
   }
   if (llm?.projectClassification?.type) {
@@ -291,7 +294,9 @@ export function PulseReportView({
 
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
 
-        {/* Before any detail: ready or not, and what to fix first, in plain words. */}
+        {/* Before any detail: the decision with its reasons, as on the scan page, then what to
+            fix first in plain words. Same order in both places, so a shared report reads the same. */}
+        {scan.scoreBreakdown?.gate && <ReleaseGateBanner gate={scan.scoreBreakdown.gate} />}
         <PlainScanBox checks={scan.checks} gate={scan.scoreBreakdown?.gate ?? null} />
 
         {/* Tech stack */}

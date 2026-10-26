@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findingMeaning, summariseScan, type PlainCheck } from "@/lib/plain-report";
+import { findingMeaning, summariseScan, type PlainCheck, ownerFor } from "@/lib/plain-report";
 
 const c = (checkKey: string, label: string, category: string, status = "FAIL"): PlainCheck => ({ checkKey, label, category, status, trustBucket: "CONFIRMED", confidence: "HIGH" });
 
@@ -69,5 +69,17 @@ describe("headline and meanings", () => {
 
   it("falls back to the check's own label when it has no plain meaning yet", () => {
     expect(findingMeaning({ checkKey: "weird_new_check", label: "Widgets are frobbed." })).toBe("Not yet in place: Widgets are frobbed.");
+  });
+});
+
+describe("who fixes a finding", () => {
+  it("routes legal, domain and content findings away from the developer", () => {
+    expect(ownerFor("Legal & Compliance")).toBe("You or your legal adviser");
+    expect(ownerFor("Email Deliverability")).toBe("Whoever runs your domain and hosting");
+    expect(ownerFor("SEO")).toBe("Whoever runs your content and marketing");
+  });
+  it("defaults to the developer, never to nobody", () => {
+    expect(ownerFor("Security")).toBe("Your developer");
+    expect(ownerFor("Something new")).toBe("Your developer");
   });
 });

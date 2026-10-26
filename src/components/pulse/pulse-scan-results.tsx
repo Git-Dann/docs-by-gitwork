@@ -46,6 +46,8 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useStarterList } from "@/hooks/use-starters";
 import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { FixAgentResult } from "@/lib/api";
+import { STATUS_WORDS, STATUS_LEGEND } from "@/lib/pulse-status-words";
+import { GATE_LABEL, ReleaseGateBanner } from "@/components/pulse/release-gate-banner";
 import { cn, formatRelative } from "@/lib/format";
 import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff, GateEvaluationRecord, ReleaseDecisionState } from "@/types/pulse";
 import { AI_MATURITY_LABELS } from "@/types/pulse";
@@ -109,95 +111,6 @@ function categoryScore(checks: PulseScanCheckRecord[]): number {
  * snapshot would be correct exactly once. (Opposite call from Countermark, which
  * freezes because it records what was true at a moment.)
  */
-/** Plain words for each decision — the label a non-engineer reads first. */
-const GATE_LABEL: Record<ReleaseDecisionState, string> = {
-  READY: "Ready to ship",
-  CONDITIONAL: "Ship with reservations",
-  BLOCKED: "Blocked",
-  INCONCLUSIVE: "Not enough evidence",
-};
-
-/**
- * The release decision, at the top of the report.
- *
- * A score says how a product is doing; this says whether it can ship and what is
- * stopping it. It leads because that is the question the reader actually arrived
- * with — §39 of the assurance brief puts the decision above the number for
- * exactly that reason.
- *
- * INCONCLUSIVE is styled as its own state, not as a soft failure: "we could not
- * establish this" and "this is broken" are different facts with different fixes,
- * and collapsing them is the mistake the whole gate exists to avoid.
- */
-function ReleaseGateBanner({ gate }: { gate: GateEvaluationRecord }) {
-  // Semantic tokens, not Tailwind's own reds and ambers — the palette has no
-  // -600 step and the literals do not flip in dark mode, which is the defect
-  // §42.12 had to go back and fix across Care.
-  //
-  // INCONCLUSIVE is deliberately NEUTRAL rather than a warning colour. It is not
-  // a finding about the product; colouring it like one invites a reader to treat
-  // "we could not see enough" as "something is wrong here", and the two need
-  // different actions from different people.
-  // Semantic tokens, not Tailwind's own reds and ambers — the palette has no
-  // -600 step and the literals do not flip in dark mode, which is the defect
-  // §42.12 had to go back and fix across Care.
-  //
-  // Colour lives in the accent rule, the dot and the decision word; the reasons
-  // stay in ordinary text tokens. This banner renders on EVERY scan, and a
-  // saturated panel that is always on screen becomes wallpaper — the same
-  // lesson §42.7 had to learn when Care's reply banner filled a card on healthy
-  // threads too. Only BLOCKED is allowed to fill, because it is the one state
-  // that must interrupt.
-  //
-  // INCONCLUSIVE is deliberately NEUTRAL rather than a warning colour. It is not
-  // a finding about the product; colouring it like one invites a reader to treat
-  // "we could not see enough" as "something is wrong here", and the two need
-  // different actions from different people.
-  const tone =
-    gate.decision === "BLOCKED"
-      ? { rule: "border-l-[var(--danger-500)]", bg: "bg-[var(--danger-50)]", text: "text-[var(--danger-700)]", dot: "bg-[var(--danger-500)]" }
-      : gate.decision === "INCONCLUSIVE"
-        ? { rule: "border-l-[var(--text-4)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--text-2)]", dot: "bg-[var(--text-4)]" }
-        : gate.decision === "CONDITIONAL"
-          ? { rule: "border-l-[var(--warning-500)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--warning-500)]", dot: "bg-[var(--warning-500)]" }
-          : { rule: "border-l-[var(--success-500)]", bg: "bg-[var(--surface-0)]", text: "text-[var(--success-500)]", dot: "bg-[var(--success-500)]" };
-
-  const reasons = gate.decision === "BLOCKED" ? gate.blocking
-    : gate.decision === "INCONCLUSIVE" ? gate.unverified
-      : gate.decision === "CONDITIONAL" ? gate.conditional
-        : [];
-
-  return (
-    <div className={cn("rounded-[10px] border border-[var(--border-1)] border-l-[3px] p-4", tone.rule, tone.bg)}>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", tone.dot)} />
-        <span className={cn("text-sm font-semibold", tone.text)}>{GATE_LABEL[gate.decision]}</span>
-        <span className="widget-data-label text-[var(--text-4)]">
-          {gate.policy.label} · health {gate.metrics.health} · coverage {gate.metrics.coverage}%
-        </span>
-      </div>
-      {reasons.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {reasons.map((reason) => (
-            <li key={reason.code} className="text-xs leading-5 text-[var(--text-2)]">{reason.summary}</li>
-          ))}
-        </ul>
-      )}
-      {/* Always visible, whatever the decision — a READY that quietly omits what
-          it could not check is the overstatement this report is built to avoid. */}
-      {gate.decision !== "INCONCLUSIVE" && gate.unverified.length > 0 && (
-        <p className="mt-2 border-t border-current/10 pt-2 text-xs leading-5 text-[var(--text-3)]">
-          {gate.unverified.map((reason) => reason.summary).join(" ")}
-        </p>
-      )}
-      <p className="mt-2 text-[10px] text-[var(--text-4)]">
-        Decided from the checks and coverage on this scan under policy{" "}
-        <span className="font-mono">{gate.policy.id}@{gate.policy.version}</span>. No AI output is used.
-      </p>
-    </div>
-  );
-}
-
 function PillarStrip({ checks, num }: { checks: PulseScanCheckRecord[]; num: string }) {
   const { pillars, dropped } = computePillarBreakdown(checks as unknown as PulseScanCheckInput[]);
   const scored = pillars.filter((pillar) => pillar.score !== null);
@@ -308,7 +221,47 @@ function effectiveTechStack(scan: PulseScanRecord): { stack: string[]; inferred:
   return { stack: [...new Set(out)], inferred: true };
 }
 
-type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery" | "competitors" | "compliance";
+type Tab = "overview" | "checks" | "gaps" | "opportunities" | "roadmap" | "readiness" | "stack" | "discovery" | "competitors" | "compliance" | "technical";
+
+/**
+ * Four tabs on the page; the older, finer ids still exist so deep links and
+ * `setActiveTab("gaps")` from a card keep working. Each maps to the tab it lives in.
+ */
+type PrimaryTab = "summary" | "checks" | "plan" | "technical";
+const PRIMARY_OF: Record<Tab, PrimaryTab> = {
+  overview: "summary",
+  checks: "checks",
+  compliance: "checks",
+  readiness: "plan",
+  gaps: "plan",
+  opportunities: "plan",
+  roadmap: "plan",
+  stack: "plan",
+  technical: "technical",
+  competitors: "technical",
+  discovery: "technical",
+};
+
+/** What the status words mean, said once beside the list rather than left to guesswork. */
+function StatusLegend() {
+  const dot: Record<string, string> = {
+    FAIL: "bg-[var(--danger-500)]",
+    WARN: "bg-[var(--warning-500)]",
+    INCONCLUSIVE: "bg-[var(--text-4)]",
+    NOT_APPLICABLE: "border border-[var(--border-2)]",
+  };
+  return (
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 rounded-[8px] border border-[var(--border-2)] px-3 py-2.5 sm:grid-cols-2">
+      {STATUS_LEGEND.map((item) => (
+        <div key={item.status} className="flex items-start gap-2 text-xs leading-5">
+          <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", dot[item.status])} aria-hidden />
+          <dt className="shrink-0 font-semibold text-[var(--text-1)]">{item.word}</dt>
+          <dd className="text-[var(--text-3)]">{item.meaning}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 function CompetitorsTab({ data, mainScore }: { data: CompetitorData; mainScore: number }) {
   const all: Array<{ label: string; score: number; isMain: boolean; detail?: typeof data.scans[number] }> = [
@@ -1720,7 +1673,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [reanalyseError, setReanalyseError] = useState<string | null>(null);
   const [showReanalyseInput, setShowReanalyseInput] = useState(false);
   const [discoveryExpanded, setDiscoveryExpanded] = useState(false);
-  const [checkStatusFilter, setCheckStatusFilter] = useState<"ALL" | "FAIL" | "WARN" | "PASS">("ALL");
+  const [checkStatusFilter, setCheckStatusFilter] = useState<"ALL" | "FAIL" | "WARN" | "INCONCLUSIVE" | "PASS">("ALL");
   const [pricingTier, setPricingTier] = useState(2); // selected team size for the engagement estimate
   const [checksSortBySeverity, setChecksSortBySeverity] = useState(false);
   // Cover title is editable (see the Hero below) — local state for responsive typing,
@@ -1994,17 +1947,23 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
   const scorecard = scan.complianceScorecard ?? [];
   const complianceMissing = scorecard.reduce((n, e) => n + e.failing, 0);
-  const tabs: Array<{ id: Tab; label: string; count?: number; badgeColor?: "red" | "amber" }> = [
-    { id: "overview", label: "Overview" },
+  const primary = PRIMARY_OF[activeTab];
+  const inSummary = primary === "summary";
+  const inTechnical = primary === "technical";
+  const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
+  const tabs: Array<{ id: PrimaryTab; to: Tab; label: string; count?: number; badgeColor?: "red" | "amber" }> = [
+    { id: "summary", to: "overview", label: "Summary" },
+    { id: "checks", to: "checks", label: "All checks", count: failCount, badgeColor: "red" as const },
+    { id: "plan", to: "readiness", label: "Plan", count: missingCount || undefined },
+    { id: "technical", to: "technical", label: "Technical" },
+  ];
+  // The plan's parts, as one row of choices inside the Plan tab rather than five more tabs.
+  const planParts: Array<{ id: Tab; label: string; count?: number }> = [
     { id: "readiness", label: "Readiness", count: missingCount },
-    { id: "checks", label: "Health Checks", count: scan.checks.filter((c) => c.status === "FAIL").length, badgeColor: "red" as const },
-    ...(scorecard.length > 0 ? [{ id: "compliance" as Tab, label: "Compliance", count: complianceMissing, badgeColor: "amber" as const }] : []),
     { id: "gaps", label: "Gaps", count: llm?.criticalGaps.length },
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
     { id: "roadmap", label: "Roadmap", count: llm?.scalingRoadmap.length },
-    { id: "stack", label: "Tech Stack", count: llm?.techStackAnalysis?.recommendations.length },
-    ...(scan.competitorData ? [{ id: "competitors" as Tab, label: "Competitors", count: scan.competitorData.scans.length }] : []),
-    ...(scan.discoveryKit ? [{ id: "discovery" as Tab, label: "Discovery" }] : []),
+    { id: "stack", label: "Stack", count: llm?.techStackAnalysis?.recommendations.length },
   ];
 
   // Sequential section numbering — increments only for sections that actually
@@ -2074,10 +2033,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     heroMeta.push({ label: "Trend", value: `${delta > 0 ? "+" : ""}${delta} vs last scan` });
   }
   const heroStats: DocumentCoverStat[] = [
-    { count: scan.checks.filter((c) => c.status === "PASS").length, label: "Passing", color: "#16a34a", bg: "#f0fdf4" },
-    { count: scan.checks.filter((c) => c.status === "WARN").length, label: "Warnings", color: "#d97706", bg: "#fffbeb" },
-    { count: scan.checks.filter((c) => c.status === "FAIL").length, label: "Failed", color: "#dc2626", bg: "#fef2f2" },
-    { count: scan.checks.filter((c) => c.status !== "SKIPPED").length, label: "Total checks", color: "#0F172A", bg: "#FAFAF9" },
+    { count: scan.checks.filter((c) => c.status === "FAIL").length, label: STATUS_WORDS.FAIL, color: "#dc2626", bg: "#fef2f2" },
+    { count: scan.checks.filter((c) => c.status === "WARN").length, label: STATUS_WORDS.WARN, color: "#d97706", bg: "#fffbeb" },
+    { count: scan.checks.filter((c) => c.status === "PASS").length, label: STATUS_WORDS.PASS, color: "#16a34a", bg: "#f0fdf4" },
+    { count: scan.checks.filter((c) => c.status === "INCONCLUSIVE").length, label: STATUS_WORDS.INCONCLUSIVE, color: "#475569", bg: "#FAFAF9" },
   ];
 
   return (
@@ -2256,10 +2215,75 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         <AiUnavailable aiError={scan.aiError} />
       )}
 
+      {/* The decision, above the tabs, so it is read before any of the detail
+          that supports it — and on every tab, not just the one it happens to
+          live on. */}
+      {gate && <ReleaseGateBanner gate={gate} />}
+
+      {/* The plain-English verdict and what to fix first, before any tab: the first thing a
+          non-developer needs, and its headline follows the banner above it. */}
+      {scan.status === "COMPLETED" && <PlainScanBox checks={scan.checks} gate={gate ?? null} />}
+
+      {/* Tabs — four. The plan's five parts are a row of choices inside Plan. */}
+      <div className="border-b border-[var(--border-2)]">
+        <div className="flex gap-0 overflow-x-auto" role="tablist">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={primary === tab.id}
+              onClick={() => setActiveTab(tab.to)}
+              className={cn(
+                "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition",
+                primary === tab.id
+                  ? "border-[var(--brand-600)] text-[var(--brand-700)]"
+                  : "border-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
+              )}
+            >
+              {tab.label}
+              {tab.count !== undefined && tab.count > 0 && (
+                <span className={cn(
+                  "rounded-[4px] px-1.5 py-0.5 text-xs tabular-nums",
+                  tab.badgeColor === "red" ? "bg-red-100 text-red-700"
+                  : tab.badgeColor === "amber" ? "bg-amber-100 text-amber-700"
+                  : "bg-[var(--surface-2)] text-[var(--text-3)]",
+                )}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {primary === "plan" && (
+        <div className="flex flex-wrap gap-1 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-1" role="tablist" aria-label="Plan">
+          {planParts.map((part) => (
+            <button
+              key={part.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === part.id}
+              onClick={() => setActiveTab(part.id)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.08em] transition",
+                activeTab === part.id
+                  ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-sm"
+                  : "text-[var(--text-3)] hover:text-[var(--text-1)]",
+              )}
+            >
+              {part.label}
+              {part.count !== undefined && part.count > 0 && <span className="tabular-nums text-[var(--text-4)]">{part.count}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Detail annotation row — trust-bucket confidence breakdown, letter grades, AI maturity,
           and the score-history trend. Secondary/detail context under the cover's primary
           pass/warn/fail strip, rather than a second competing stat block. */}
-      {(() => {
+      {inSummary && (() => {
         const b = (name: string) => scan.checks.filter((c) => c.trustBucket === name).length;
         const confirmed = b("CONFIRMED"), likely = b("LIKELY"), inconclusive = b("INCONCLUSIVE"), working = b("VERIFIED_WORKING");
         const hasTrust = confirmed + likely + inconclusive + working > 0;
@@ -2342,7 +2366,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       })()}
 
       {/* Agent panel */}
-      {scan.status === "COMPLETED" && (
+      {inTechnical && scan.status === "COMPLETED" && (
         <AgentPanel
           scan={scan}
           fixResult={fixResult}
@@ -2356,46 +2380,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           onDiscoverySuccess={() => setActiveTab("discovery")}
         />
       )}
-
-      {/* The decision, above the tabs, so it is read before any of the detail
-          that supports it — and on every tab, not just the one it happens to
-          live on. */}
-      {gate && <ReleaseGateBanner gate={gate} />}
-
-      {/* The plain-English verdict and what to fix first, before any tab: the first thing a
-          non-developer needs, and its headline follows the banner above it. */}
-      {scan.status === "COMPLETED" && <PlainScanBox checks={scan.checks} gate={gate ?? null} />}
-
-      {/* Tabs */}
-      <div className="border-b border-[var(--border-2)]">
-        <div className="flex gap-0 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition",
-                activeTab === tab.id
-                  ? "border-[var(--brand-600)] text-[var(--brand-700)]"
-                  : "border-transparent text-[var(--text-3)] hover:text-[var(--text-1)]",
-              )}
-            >
-              {tab.label}
-              {tab.count !== undefined && tab.count > 0 && (
-                <span className={cn(
-                  "rounded-full px-1.5 py-0.5 text-xs",
-                  tab.badgeColor === "red" ? "bg-red-100 text-red-700"
-                  : tab.badgeColor === "amber" ? "bg-amber-100 text-amber-700"
-                  : "bg-[var(--surface-2)] text-[var(--text-3)]",
-                )}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* AI analysis banner — shown when AI failed or returned incomplete results */}
       {showReanalyseBanner && (
@@ -2461,20 +2445,20 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       )}
 
       {/* ═══ OVERVIEW TAB — BENTO DASHBOARD ═══════════════════════════════ */}
-      {activeTab === "overview" && (
+      {(inSummary || inTechnical || activeTab === "readiness") && (
         <div className="space-y-4">
 
           {/* Directly under the headline score, because that is where the reader
               asks "which part of this is the problem?" — the question the whole
               rollup exists to answer. On the Checks tab it would sit above the
               wall it is meant to save you reading. */}
-          <PillarStrip checks={scan.checks} num={sectionNo()} />
+          {inSummary && <PillarStrip checks={scan.checks} num={sectionNo()} />}
 
           {/* Repo scans: the full-checkout measure and its tech-debt register. */}
-          {scan.codeHealth && <CodeHealthPanel report={scan.codeHealth} num={sectionNo()} showMoney />}
+          {inTechnical && scan.codeHealth && <CodeHealthPanel report={scan.codeHealth} num={sectionNo()} showMoney />}
 
           {/* COMPLIANCE BY MARKET — per-jurisdiction posture; deep-links to the Compliance tab */}
-          {scorecard.length > 0 && (
+          {inSummary && scorecard.length > 0 && (
             <button
               type="button"
               onClick={() => setActiveTab("compliance")}
@@ -2507,7 +2491,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
           {/* CHANGES SINCE LAST SCAN. Shown whenever there is an earlier scan, including when
               nothing changed: hiding it made "no changes" look the same as "no earlier scan". */}
-          {scanDiff && (
+          {inSummary && scanDiff && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">CHANGES SINCE LAST SCAN</span>
@@ -2528,7 +2512,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* Row 2: Blockers · Gaps · Quick Wins */}
-          {llm && (
+          {inSummary && llm && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
               {/* 02 // PRODUCTION BLOCKERS */}
@@ -2649,7 +2633,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               failing-check gate, and the Checks tab holds the full per-category detail. */}
 
           {/* Row: Tech Stack · Web Vitals */}
-          {(showTechStack || showWebVitals) && (
+          {inTechnical && (showTechStack || showWebVitals) && (
           <div className={cn("grid grid-cols-1 gap-3", techVitalsBoth && "sm:grid-cols-2")}>
 
             {/* 06 // TECH STACK */}
@@ -2728,43 +2712,8 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           </div>
           )}
 
-          {/* 08 // BUILD ROADMAP */}
-          {llm && llm.scalingRoadmap.length > 0 && (
-            <div className="widget-card">
-              <div className="widget-header">
-                <span className="widget-header-label">{`${sectionNo()} // BUILD ROADMAP`}</span>
-                <span className="widget-header-right">{llm.scalingRoadmap.length} phases</span>
-              </div>
-              <div className="widget-body">
-                <div className="flex flex-col gap-4 sm:flex-row">
-                  {llm.scalingRoadmap.map((phase, i) => (
-                    <div key={phase.phase} className="flex flex-1 items-start gap-3 sm:flex-col sm:gap-0">
-                      <div className="flex items-center sm:mb-3 sm:w-full">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] bg-gray-900 text-xs font-bold text-white">
-                          {phase.phase}
-                        </div>
-                        {i < llm.scalingRoadmap.length - 1 && (
-                          <div className="ml-3 hidden h-px flex-1 bg-[var(--border-2)] sm:block" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 sm:pr-4">
-                        <p className="text-xs font-semibold text-[var(--text-1)]">{phase.title}</p>
-                        <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-4)]">{phase.duration}</p>
-                        <ul className="mt-1.5 space-y-0.5">
-                          {phase.goals.slice(0, 2).map((goal, gi) => (
-                            <li key={gi} className="text-[11px] leading-4 text-[var(--text-3)]">· {goal}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Row: Code Intelligence · Deploy Intelligence */}
-          {(showCodeIntel || showDeployIntel) && (
+          {inTechnical && (showCodeIntel || showDeployIntel) && (
             <div className={cn("grid grid-cols-1 gap-3", codeDeployBoth && "sm:grid-cols-2")}>
 
               {/* 09 // CODE INTELLIGENCE */}
@@ -2897,7 +2846,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 11 // DISCOVERY KIT */}
-          {scan.discoveryKit && (
+          {inTechnical && scan.discoveryKit && (
             <div className="widget-card">
               <button
                 type="button"
@@ -2910,7 +2859,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                   <ChevronDownIcon className={cn("h-3 w-3 transition-transform", discoveryExpanded && "rotate-180")} />
                 </span>
               </button>
-              {discoveryExpanded ? (
+              {discoveryExpanded || activeTab === "discovery" ? (
                 <div className="widget-body">
                   <DiscoveryTab kit={scan.discoveryKit} />
                 </div>
@@ -2924,10 +2873,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 12 // PRIORITY ACTION PLAN */}
-          {llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} num={sectionNo()} />}
+          {inSummary && llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} num={sectionNo()} />}
 
           {/* 13 // SUGGESTED BENCHMARKS — AI-discovered competitors to scan against */}
-          {!scan.competitorData && (llm?.competitorSuggestions?.length ?? 0) > 0 && (
+          {inTechnical && !scan.competitorData && (llm?.competitorSuggestions?.length ?? 0) > 0 && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">{`${sectionNo()} // SUGGESTED BENCHMARKS`}</span>
@@ -2958,7 +2907,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 14 // INDUSTRY BENCHMARKS — Wave E3: rank vs same-type scans in this workspace */}
-          {benchmark && (
+          {inTechnical && benchmark && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">{`${sectionNo()} // INDUSTRY BENCHMARKS`}</span>
@@ -3002,7 +2951,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           )}
 
           {/* 15 // VISUAL QUALITY — Wave D1 vision-AI score + F4 axe-core accessibility */}
-          {scan.visualInsights && (scan.visualInsights.visualQualityScore !== null || (scan.visualInsights.a11yViolations ?? null) !== null) && (() => {
+          {inTechnical && scan.visualInsights && (scan.visualInsights.visualQualityScore !== null || (scan.visualInsights.a11yViolations ?? null) !== null) && (() => {
             const v = scan.visualInsights!;
             const tone = (n: number | null) => n === null ? "text-[var(--text-3)]" : n >= 75 ? "text-emerald-600" : n >= 50 ? "text-amber-600" : "text-red-600";
             const sub: Array<[string, number | null]> = [
@@ -3064,7 +3013,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           })()}
 
           {/* 16 // ENGAGEMENT ESTIMATE — F3: indicative effort/cost/timeline to production */}
-          {llm?.engagementEstimate && (llm.engagementEstimate.weeksHigh > 0 || llm.engagementEstimate.priceHigh > 0) && (() => {
+          {activeTab === "readiness" && llm?.engagementEstimate && (llm.engagementEstimate.weeksHigh > 0 || llm.engagementEstimate.priceHigh > 0) && (() => {
             const e = llm.engagementEstimate!;
             const gbp = (n: number) => `£${Math.round(n).toLocaleString("en-GB")}`;
             const bands = scan.pricingBands ?? [];
@@ -3142,7 +3091,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           })()}
 
           {/* 17 // INTAKE & RISK — F2: stage, market, feasibility, regulatory landmines */}
-          {llm?.intakeAssessment && (() => {
+          {activeTab === "readiness" && llm?.intakeAssessment && (() => {
             const a = llm.intakeAssessment!;
             const stageTone: Record<string, string> = {
               IDEA: "bg-purple-50 text-purple-700",
@@ -3198,7 +3147,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
-      {activeTab === "checks" && (() => {
+      {primary === "checks" && (() => {
         // Checks the jurisdiction filter excluded. Identified by the marker phrase
         // applyJurisdictionFilter writes into `detail` — the only signal that
         // survives onto the persisted check, since there is no separate skip-reason
@@ -3214,10 +3163,15 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
         const warnCount = scan.checks.filter((c) => c.status === "WARN").length;
         const passCount = scan.checks.filter((c) => c.status === "PASS").length;
+        const UNKNOWN = ["ERROR", "INCONCLUSIVE", "NOT_TESTED", "EVIDENCE_REQUIRED"];
+        const unknownCount = scan.checks.filter((c) => UNKNOWN.includes(c.status)).length;
+        // "Couldn't check" covers every status that means Pulse had no verdict.
+        const matchesFilter = (c: { status: string }) =>
+          checkStatusFilter === "ALL" || (checkStatusFilter === "INCONCLUSIVE" ? UNKNOWN.includes(c.status) : c.status === checkStatusFilter);
 
         let entries = Array.from(checksByCategory.entries());
         if (checkStatusFilter !== "ALL") {
-          entries = entries.filter(([, checks]) => checks.some((c) => c.status === checkStatusFilter));
+          entries = entries.filter(([, checks]) => checks.some(matchesFilter));
         }
         if (checksSortBySeverity) {
           entries = [...entries].sort(([, a], [, b]) => {
@@ -3232,7 +3186,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header-label">{`${sectionNo()} // HEALTH CHECKS`}</span>
-              <span className="widget-header-right">{failCount} failed · {warnCount} warn · {passCount} pass</span>
+              <span className="widget-header-right">{failCount} {STATUS_WORDS.FAIL.toLowerCase()} · {warnCount} {STATUS_WORDS.WARN.toLowerCase()} · {passCount} {STATUS_WORDS.PASS.toLowerCase()}</span>
             </div>
             <div className="widget-body space-y-3">
             {/* Selected markets — shown HERE, beside the checks, not only as a
@@ -3289,8 +3243,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
             {/* Filter chips + sort toggle */}
             <div className="flex flex-wrap items-center gap-2">
-              {(["ALL", "FAIL", "WARN", "PASS"] as const).map((f) => {
-                const count = f === "ALL" ? scan.checks.filter((c) => c.status !== "SKIPPED").length : f === "FAIL" ? failCount : f === "WARN" ? warnCount : passCount;
+              {(["ALL", "FAIL", "WARN", "INCONCLUSIVE", "PASS"] as const).map((f) => {
+                const count = f === "ALL" ? scan.checks.filter((c) => c.status !== "SKIPPED" && c.status !== "NOT_APPLICABLE").length
+                  : f === "FAIL" ? failCount : f === "WARN" ? warnCount : f === "INCONCLUSIVE" ? unknownCount : passCount;
+                if (f === "INCONCLUSIVE" && count === 0) return null;
                 const isActive = checkStatusFilter === f;
                 return (
                   <button
@@ -3306,7 +3262,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                       : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:bg-[var(--surface-1)]",
                     )}
                   >
-                    {f === "ALL" ? "All" : f === "FAIL" ? "Failing" : f === "WARN" ? "Warnings" : "Passing"} ({count})
+                    {f === "ALL" ? "All" : STATUS_WORDS[f]} ({count})
                   </button>
                 );
               })}
@@ -3323,6 +3279,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 {checksSortBySeverity ? "Severity ↓" : "Sort: Category"}
               </button>
             </div>
+            <StatusLegend />
 
             {/* Code Quality on a URL-only scan is inferred from public page signals, not real
                 repo access (README/tests/CI/linter/branch protection need runGithubChecks()) —
@@ -3353,7 +3310,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                 const unknown = checks.filter((c) => ["ERROR", "INCONCLUSIVE", "NOT_TESTED", "EVIDENCE_REQUIRED"].includes(c.status)).length;
                 const hasIssues = failed > 0 || warned > 0;
                 const isExpanded = expandedCategories.has(category) || checkStatusFilter !== "ALL";
-                const visibleChecks = applicable.filter((c) => checkStatusFilter === "ALL" || c.status === checkStatusFilter);
+                const visibleChecks = applicable.filter(matchesFilter);
 
                 return (
                   <div key={category} className="overflow-hidden rounded-[10px] border border-[var(--border-2)]">
@@ -3662,16 +3619,13 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
-      {activeTab === "competitors" && scan.competitorData && scan.healthScore !== null && (
+      {inTechnical && scan.competitorData && scan.healthScore !== null && (
         <CompetitorsTab data={scan.competitorData} mainScore={scan.healthScore} />
       )}
 
-      {activeTab === "discovery" && scan.discoveryKit && (
-        <DiscoveryTab kit={scan.discoveryKit} />
-      )}
-
-      {activeTab === "compliance" && (
-        <div className="space-y-4">
+      {primary === "checks" && scorecard.length > 0 && (
+        <div className="space-y-4" id="compliance">
+          <p className="widget-data-label">By market</p>
           <p className="text-sm text-[var(--text-3)]">
             What each market this product serves legally requires — and what&apos;s missing.{" "}
             {scan.targetMarkets && scan.targetMarkets.length > 0

@@ -1,5 +1,6 @@
 "use client";
 
+import { STATUS_WORDS } from "@/lib/pulse-status-words";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
@@ -109,10 +110,10 @@ function FullScanAction({ lead, size = "sm" }: { lead: PulseLeadView; size?: "sm
 // ─── Popup: checks column ─────────────────────────────────────────────────────
 
 const GROUPS = [
-  { key: "fail", label: "Failing", statuses: ["FAIL"], dot: "bg-[var(--danger-500)]", empty: "Nothing failing." },
-  { key: "warn", label: "Warnings", statuses: ["WARN"], dot: "bg-[var(--warning-500)]", empty: "No warnings." },
-  { key: "unknown", label: "Not assessed", statuses: ["INCONCLUSIVE", "ERROR", "NOT_TESTED", "EVIDENCE_REQUIRED"], dot: "bg-[var(--text-4)]", empty: "Every check reached a verdict." },
-  { key: "pass", label: "Passed", statuses: ["PASS"], dot: "bg-[var(--success-500)]", empty: "Nothing passed." },
+  { key: "fail", label: STATUS_WORDS.FAIL, statuses: ["FAIL"], dot: "bg-[var(--danger-500)]", empty: "Nothing failing." },
+  { key: "warn", label: STATUS_WORDS.WARN, statuses: ["WARN"], dot: "bg-[var(--warning-500)]", empty: "No warnings." },
+  { key: "unknown", label: STATUS_WORDS.INCONCLUSIVE, statuses: ["INCONCLUSIVE", "ERROR", "NOT_TESTED", "EVIDENCE_REQUIRED"], dot: "bg-[var(--text-4)]", empty: "Every check reached a verdict." },
+  { key: "pass", label: STATUS_WORDS.PASS, statuses: ["PASS"], dot: "bg-[var(--success-500)]", empty: "Nothing passed." },
 ] as const;
 type GroupKey = (typeof GROUPS)[number]["key"];
 
