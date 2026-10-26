@@ -94,6 +94,14 @@ export const DERIVED_STANDARDS: readonly StandardsDerivation[] = [
   d("security_core_19", ["roles_depth_role_change_audit", "payments_depth_refund_audit", "saas_depth_admin_audit_timeline"], "Role changes or refunds with no audit record contradict auditing of high-risk actions."),
 
   // ── Inclusive access ──────────────────────────────────────────────────────
+  // The first six rest on the rendered-page pass (rendered-a11y.ts): one page, one load,
+  // so each can refute a control and none can prove it — core tasks span other pages.
+  d("inclusive_access_01", ["rendered_keyboard_reachable"], "A visible control Tab cannot reach on the scanned page fails keyboard-only use there. Whole tasks across pages are not walked."),
+  d("inclusive_access_02", ["rendered_no_keyboard_trap"], "Focus that cycles and Escape does not release is a keyboard trap. Only the scanned page's initial state is walked; dialogs opened later are not."),
+  d("inclusive_access_03", ["rendered_focus_not_obscured"], "A focused control completely covered by a sticky header or overlay fails the control. Dialogs opened later are not tested."),
+  d("inclusive_access_04", ["rendered_focus_visible"], "Controls that look identical focused and unfocused have no perceptible focus indicator. Indicator contrast is not measured."),
+  d("inclusive_access_05", ["touch_target_size"], "Controls under 24×24 px that crowd another control at phone width fail WCAG 2.5.8 on the scanned page."),
+  d("inclusive_access_11", ["rendered_text_contrast"], "Rendered text below WCAG AA contrast fails the control. Icons, control borders and state colours are not measured."),
   d("inclusive_access_06", ["wcag22_dragging_alternative"], "Draggable elements with no non-drag alternative on the scanned page fail the control there."),
   d("inclusive_access_12", CONTROL_NAMES, "Controls with no accessible name, or hidden content that still takes focus, fail name/role/value. Only the scanned page or sampled screens are covered."),
   d("inclusive_access_13", ["video_captions"], "Video on the scanned page without a captions track fails the control. Transcripts and audio description are not tested."),
