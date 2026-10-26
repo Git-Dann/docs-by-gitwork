@@ -19,6 +19,10 @@ import {
   parsePubspecLock,
   parseRequirements,
   parseUvLock,
+  parseGradleLockfile,
+  parseNugetLock,
+  parsePackageResolved,
+  swiftUrlName,
   parseYarnLock,
   queryOsv,
   type LockedPackage,
@@ -457,5 +461,86 @@ describe("auditDependencies", () => {
     expect(audit.status).toBe("checked");
     expect(audit.packages).toBe(1);
     expect(audit.reason).toMatch(/package-lock\.json could not be parsed/);
+  });
+});
+
+
+// ── Maven (Gradle), NuGet and Swift: real lockfiles from public repositories ──
+
+describe("Gradle, NuGet and Swift Package Manager lockfiles", () => {
+  it("knows the three lockfile names, including Xcode's own Package.resolved", () => {
+    expect(lockfileKind("gradle.lockfile")).toBe("gradle");
+    expect(lockfileKind("src/packages.lock.json")).toBe("nuget");
+    expect(lockfileKind("App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved")).toBe("swiftpm");
+    expect(lockfileKind("packages.json")).toBeNull();
+  });
+
+  it("reads Netflix/maestro's gradle.lockfile: every pinned coordinate, never the comments or `empty=`", async () => {
+    const pkgs = parseGradleLockfile(await fx("maven/gradle.lockfile"));
+    expect(pkgs).toHaveLength(68);
+    expect(pkgs.every((p) => p.ecosystem === "Maven")).toBe(true);
+    expect(pick(pkgs, "com.github.spotbugs:spotbugs", "4.10.3")).toBeTruthy();
+    expect(pkgs.some((p) => p.name.startsWith("empty") || p.name.startsWith("#"))).toBe(false);
+  });
+
+  it("reads a packages.lock.json, with Direct/Transitive and the repo's own projects left out", () => {
+    const pkgs = parseNugetLock(JSON.stringify({
+      version: 1,
+      dependencies: {
+        "net8.0": {
+          "Newtonsoft.Json": { type: "Direct", requested: "[12.0.1, )", resolved: "12.0.1" },
+          "System.Buffers": { type: "Transitive", resolved: "4.5.1" },
+          "MyCompany.Core": { type: "Project" },
+        },
+      },
+    }));
+    expect(keys(pkgs)).toEqual(["Newtonsoft.Json@12.0.1", "System.Buffers@4.5.1"]);
+    expect(pick(pkgs, "Newtonsoft.Json").direct).toBe(true);
+    expect(pick(pkgs, "System.Buffers").direct).toBe(false);
+  });
+
+  it("reads a real packages.lock.json (WinMemoryCleaner)", async () => {
+    const pkgs = parseNugetLock(await fx("nuget/packages.lock.json"));
+    expect(pkgs).toHaveLength(9);
+    expect(pick(pkgs, "NUnit", "2.6.4").direct).toBe(true);
+  });
+
+  it("reads stripe-ios's Package.resolved: a versioned pin is checked, a branch/revision pin is not", async () => {
+    const pkgs = parsePackageResolved(await fx("swift/Package.resolved"));
+    // ocmock and OHHTTPStubs are pinned to a revision with no version: nothing for OSV to compare.
+    expect(keys(pkgs)).toEqual(["github.com/uber/ios-snapshot-test-case@8.0.0"]);
+    expect(pkgs[0].ecosystem).toBe("SwiftURL");
+  });
+
+  it("reads the v1 Package.resolved layout too", () => {
+    const pkgs = parsePackageResolved(JSON.stringify({
+      object: { pins: [{ package: "swift-nio", repositoryURL: "https://github.com/apple/swift-nio.git", state: { version: "2.29.0" } }] },
+      version: 1,
+    }));
+    expect(keys(pkgs)).toEqual(["github.com/apple/swift-nio@2.29.0"]);
+  });
+
+  it("names a Swift package the way OSV does: no scheme, no .git (with either, OSV finds nothing)", () => {
+    expect(swiftUrlName("https://github.com/apple/swift-nio.git")).toBe("github.com/apple/swift-nio");
+    expect(swiftUrlName("https://github.com/apple/swift-nio")).toBe("github.com/apple/swift-nio");
+    expect(swiftUrlName("git@github.com:apple/swift-nio.git")).toBe("github.com/apple/swift-nio");
+    expect(swiftUrlName("https://GitHub.com/apple/swift-nio/")).toBe("github.com/apple/swift-nio");
+  });
+
+  it("asks OSV about a Swift package under its OSV name, end to end", async () => {
+    const co = await checkout({ "App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved": { text: JSON.stringify({
+      pins: [{ identity: "swift-nio", kind: "remoteSourceControl", location: "https://github.com/apple/swift-nio.git", state: { version: "2.29.0" } }],
+      version: 2,
+    }) } });
+    const NIO = {
+      id: "GHSA-test-nio",
+      summary: "swift-nio test advisory",
+      database_specific: { severity: "HIGH" },
+      affected: [{ package: { ecosystem: "SwiftURL", name: "github.com/apple/swift-nio" }, ranges: [{ type: "SEMVER", events: [{ introduced: "0" }, { fixed: "2.29.1" }] }] }],
+    };
+    const { impl } = fakeFetch({ matches: { "SwiftURL:github.com/apple/swift-nio@2.29.0": [NIO.id] }, vulns: { [NIO.id]: NIO } });
+    const audit = await auditDependencies({ ...co, fetchImpl: impl, now: NOW });
+    expect(audit.status).toBe("checked");
+    expect(audit.vulnerable.map((v) => `${v.name}@${v.version}`)).toEqual(["github.com/apple/swift-nio@2.29.0"]);
   });
 });

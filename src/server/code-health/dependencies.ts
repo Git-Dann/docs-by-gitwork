@@ -24,7 +24,7 @@ import type {
 // ── Types ────────────────────────────────────────────────────────────────────
 
 /** OSV ecosystem names, spelled exactly as OSV spells them. */
-export type OsvEcosystem = "npm" | "PyPI" | "Packagist" | "RubyGems" | "Go" | "crates.io" | "Pub";
+export type OsvEcosystem = "npm" | "PyPI" | "Packagist" | "RubyGems" | "Go" | "crates.io" | "Pub" | "Maven" | "NuGet" | "SwiftURL";
 
 export interface LockedPackage {
   ecosystem: OsvEcosystem;
@@ -47,6 +47,9 @@ export type LockfileKind =
   | "go-sum"
   | "cargo"
   | "pubspec"
+  | "gradle"
+  | "nuget"
+  | "swiftpm"
   | "podfile";
 
 export const MAX_PACKAGES = 5_000;
@@ -98,6 +101,12 @@ export function lockfileKind(path: string): LockfileKind | null {
       return "cargo";
     case "pubspec.lock":
       return "pubspec";
+    case "gradle.lockfile":
+      return "gradle";
+    case "packages.lock.json":
+      return "nuget";
+    case "Package.resolved":
+      return "swiftpm";
     case "Podfile.lock":
       return "podfile";
   }
@@ -118,6 +127,9 @@ const KIND_ECOSYSTEM: Record<Exclude<LockfileKind, "podfile">, OsvEcosystem> = {
   "go-sum": "Go",
   cargo: "crates.io",
   pubspec: "Pub",
+  gradle: "Maven",
+  nuget: "NuGet",
+  swiftpm: "SwiftURL",
 };
 
 /** Manifests that declare dependencies, and the lockfile names that would pin them. */
@@ -131,6 +143,7 @@ const MANIFEST_LOCKS: { manifest: string; ecosystem: string; locks: string[] }[]
   { manifest: "Cargo.toml", ecosystem: "crates.io", locks: ["Cargo.lock"] },
   { manifest: "pubspec.yaml", ecosystem: "Pub", locks: ["pubspec.lock"] },
   { manifest: "Podfile", ecosystem: "CocoaPods", locks: ["Podfile.lock"] },
+  { manifest: "Package.swift", ecosystem: "SwiftURL", locks: ["Package.resolved"] },
 ];
 
 // ── Small helpers ────────────────────────────────────────────────────────────
@@ -646,6 +659,68 @@ export function parsePubspecLock(text: string): LockedPackage[] {
   return out;
 }
 
+// ── Maven: gradle.lockfile ───────────────────────────────────────────────────
+
+/**
+ * Gradle dependency locking: one `group:artifact:version=configurations` per line. A Maven
+ * `pom.xml` has no lockfile and its versions come through properties, parents and BOMs, so
+ * it is not read: a version reconstructed from those would be a guess.
+ */
+export function parseGradleLockfile(text: string): LockedPackage[] {
+  const out: LockedPackage[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#") || line.startsWith("empty=")) continue;
+    const m = /^([\w.-]+):([\w.-]+):([^=\s]+)=/.exec(line);
+    if (m && looksLikeVersion(m[3])) out.push({ ecosystem: "Maven", name: `${m[1]}:${m[2]}`, version: m[3], direct: null });
+  }
+  return out;
+}
+
+// ── NuGet: packages.lock.json ────────────────────────────────────────────────
+
+export function parseNugetLock(text: string): LockedPackage[] {
+  const lock = JSON.parse(text) as { dependencies?: Record<string, Record<string, { type?: string; resolved?: string }>> };
+  const out: LockedPackage[] = [];
+  for (const framework of Object.values(lock.dependencies ?? {})) {
+    for (const [name, entry] of Object.entries(framework ?? {})) {
+      // "Project" entries are the repo's own projects, not packages from nuget.org.
+      if (!entry?.resolved || entry.type === "Project" || !looksLikeVersion(entry.resolved)) continue;
+      out.push({ ecosystem: "NuGet", name, version: entry.resolved, direct: entry.type === "Direct" ? true : entry.type === "Transitive" ? false : null });
+    }
+  }
+  return out;
+}
+
+// ── Swift Package Manager: Package.resolved ──────────────────────────────────
+
+/**
+ * OSV names a Swift package by its repository URL without the scheme or `.git`
+ * (`github.com/apple/swift-nio`); with either, the lookup silently finds nothing.
+ */
+export function swiftUrlName(location: string): string | null {
+  const m = /^(?:https?:\/\/|git@|ssh:\/\/git@)?([^/:]+)[/:](.+?)(?:\.git)?\/?$/i.exec(location.trim());
+  return m ? `${m[1].toLowerCase()}/${m[2]}` : null;
+}
+
+export function parsePackageResolved(text: string): LockedPackage[] {
+  const doc = JSON.parse(text) as {
+    pins?: Array<{ location?: string; kind?: string; state?: { version?: string | null } }>;
+    object?: { pins?: Array<{ repositoryURL?: string; state?: { version?: string | null } }> };
+  };
+  // v2/v3 put pins at the top; v1 nests them under `object`. A pin on a branch or a bare
+  // revision has no version, so there is nothing for OSV to compare and it is skipped.
+  const pins = doc.pins ?? (doc.object?.pins ?? []).map((p) => ({ location: p.repositoryURL, kind: undefined, state: p.state }));
+  const out: LockedPackage[] = [];
+  for (const pin of pins) {
+    if (pin.kind && pin.kind !== "remoteSourceControl") continue;
+    const name = pin.location ? swiftUrlName(pin.location) : null;
+    const version = pin.state?.version ?? null;
+    if (name && version && looksLikeVersion(version)) out.push({ ecosystem: "SwiftURL", name, version, direct: null });
+  }
+  return out;
+}
+
 // ── CVSS 3.x base score ──────────────────────────────────────────────────────
 
 function roundUp1(x: number): number {
@@ -1009,6 +1084,15 @@ export async function auditDependencies(input: {
             break;
           case "pubspec":
             pkgs = parsePubspecLock(text);
+            break;
+          case "gradle":
+            pkgs = parseGradleLockfile(text);
+            break;
+          case "nuget":
+            pkgs = parseNugetLock(text);
+            break;
+          case "swiftpm":
+            pkgs = parsePackageResolved(text);
             break;
           default:
             pkgs = [];

@@ -7823,3 +7823,18 @@ puppeteer-core PDF render.
   marketing, or you or your legal adviser.
 - **The shared report shows the gate's reasons.** `ReleaseGateBanner` moved to
   `release-gate-banner.tsx` and renders above the plain box in both places, in the same order.
+
+### 84.4 Library audit covers Java, .NET and Swift
+
+`src/server/code-health/dependencies.ts` now also reads `gradle.lockfile` (OSV `Maven`),
+`packages.lock.json` (`NuGet`, with Direct/Transitive, the repo's own `Project` entries skipped) and
+`Package.resolved` (`SwiftURL`, v1 and v2/v3 layouts, including Xcode's
+`…/xcshareddata/swiftpm/Package.resolved`).
+- ⚠️ OSV names a Swift package `github.com/owner/repo`, with no scheme and no `.git`. With either one
+  the query returns nothing, silently. Checked live against swift-nio: 4 advisories under that
+  name, 0 under the full URL.
+- A Swift pin on a branch or a bare revision has no version, so it is skipped.
+- `pom.xml` is deliberately not read: its versions come through properties, parent POMs and BOMs,
+  and a version rebuilt from those would be a guess.
+
+Tests use real lockfiles from Netflix/maestro, stripe-ios and WinMemoryCleaner.
