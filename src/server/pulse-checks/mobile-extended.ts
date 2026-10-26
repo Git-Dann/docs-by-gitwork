@@ -1,6 +1,7 @@
 import { CATEGORIES } from "./categories";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, probeInconclusive, skip } from "./_types";
+import { webPushEvidence } from "./page-code-evidence";
 
 const MAX_STYLESHEETS = 40;
 const STYLESHEET_READ_TIMEOUT_MS = 8_000;
@@ -115,8 +116,15 @@ export async function runMobileExtended(ctx: ExtendedCheckContext): Promise<Puls
   }
 
   // Web Push
-  const hasWebPush = /web.*push|push.*notification|service.*worker.*push|notification.*permission|\"push\"/i.test(html);
-  checks.push({ category: CATEGORIES.MOBILE, checkKey: "web_push_notifications", label: "Web Push Notifications support", status: hasWebPush ? "PASS" : "WARN", detail: hasWebPush ? "Web Push Notifications signals detected." : "No Web Push support detected — Web Push is a high-engagement re-activation channel for web apps, now supported on all major platforms including iOS 16.4+." });
+  // Evidence is push CODE or a push SDK: `web.*push` on a minified page matched any "web…"
+  // text followed by any `.push(` call, which every Next.js App Router page contains.
+  const webPush = webPushEvidence(html);
+  checks.push({
+    category: CATEGORIES.MOBILE, checkKey: "web_push_notifications", label: "Web Push Notifications support",
+    ...(webPush
+      ? { status: "PASS" as const, detail: `The page sets up web push (${webPush}).`, evidence: webPush }
+      : { status: "NOT_APPLICABLE" as const, detail: "No web push SDK or push subscription code in the page HTML or its inline scripts. Web push is optional, and code inside the app's own bundles is not read here, so this is not a finding." }),
+  });
 
   // Polite push permission
   const hasImmediatePush = /Notification\.requestPermission\s*\(\s*\)/i.test(html) || /requestPermission.*onload|requestPermission.*DOMContentLoaded/i.test(html);

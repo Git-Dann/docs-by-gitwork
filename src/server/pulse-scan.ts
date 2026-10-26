@@ -15,6 +15,10 @@ import {
 import { computeScoreBreakdown } from "./pulse-checks/score-breakdown";
 import { detectAiBuilder } from "./pulse-checks/vibe-code-hygiene";
 import { parseSetCookieHeader } from "./pulse-checks/security-extended";
+import { adminExposureVerdict, probeAdminPaths } from "./pulse-checks/admin-exposure";
+import { nonCardPaymentMethods, paymentAssurance, priceCurrencies, stripeUseOnPage, webhookRouteIsLive } from "./pulse-checks/payment-page-evidence";
+import { socialProofEvidence } from "./pulse-checks/page-evidence";
+import { detectDataLayer, envFilesVerdict } from "./pulse-checks/repo-data-and-env";
 import { detectSpaContext, isEmptyShell as isEmptyRenderShell, reclassifySpaChecks, staticTextWordCount } from "./pulse-lite/spa-detect";
 import { permitsEveryOrigin } from "./pulse-checks/csp-sources";
 import { analyzeHost, boundedDmarcCandidates, organizationalDomainCandidates, registrableDomain } from "./pulse-lite/registrable-domain";
@@ -180,7 +184,7 @@ export {
 } from "@/server/pulse-checks/path-probe";
 export type { PathProbe, PageProbeState } from "@/server/pulse-checks/path-probe";
 import {
-  fetchSnippet, looksLikePhpInfo, looksLikeGitConfig, looksLikeSqlDump, looksLikeEnvFile, looksLikeAdminLogin,
+  fetchSnippet, looksLikePhpInfo, looksLikeGitConfig, looksLikeSqlDump, looksLikeEnvFile,
   looksLikeOpenApi, looksLikeGraphqlEndpoint, looksLikeDebugTool, pageTitle, classifyTopicPage, combinePageStates,
   type PathProbe, type PageProbeState,
 } from "@/server/pulse-checks/path-probe";
@@ -3263,6 +3267,7 @@ export async function runUrlChecks(
     const paymentsApplicable = isCategoryApplicable(platform, CATEGORIES.PAYMENTS, surfaceKind);
     const repoPaymentSignal = paymentsApplicable &&
       (contextHints?.githubTechStack?.some((t) => t === "Stripe" || t === "Paddle") ?? false);
+    const repoStripeSignal = paymentsApplicable && (contextHints?.githubTechStack?.includes("Stripe") ?? false);
     // GET, not HEAD, so the body can be read: vercel.com answers this path with its
     // HTML homepage (200) while a random path 404s, which read as a live webhook and
     // switched the whole payments family on for a site that takes no payments.
@@ -3278,10 +3283,13 @@ export async function runUrlChecks(
     // 401 / 405 method not allowed); nothing else is evidence it exists.
     // And it must differ from what the host says for a path that cannot exist — a host
     // that answers 401 to everything (an auth wall) is not running a webhook either.
-    const liveStripeSignal = liveStripeWebhookStatus !== baselineProbe.status && (
-      (liveStripeWebhookStatus >= 200 && liveStripeWebhookStatus < 300) ||
-      liveStripeWebhookStatus === 400 || liveStripeWebhookStatus === 401 ||
-      liveStripeWebhookStatus === 405 || liveStripeWebhookStatus === 415);
+    const stripeRouteAnswers = webhookRouteIsLive(liveStripeWebhookStatus, baselineProbe.status, null);
+    // The root baseline is not enough: an /api/ prefix behind auth answers 401 for every
+    // path under it. A made-up sibling must answer differently before the route counts.
+    const stripeSiblingStatus = stripeRouteAnswers
+      ? (await fetchSnippet(`${baseUrl}/api/webhooks/__pulse_${Math.random().toString(36).slice(2, 10)}`, 4000, 1024)).status
+      : 0;
+    const liveStripeSignal = webhookRouteIsLive(liveStripeWebhookStatus, baselineProbe.status, stripeSiblingStatus);
     const correctedPaymentSignal = repoPaymentSignal || liveStripeSignal;
     if (correctedPaymentSignal && !ctx.isPaymentEnabled) {
       ctx = { ...ctx, isPaymentEnabled: true, hasBackend: true };
@@ -3659,20 +3667,24 @@ export async function runUrlChecks(
     });
 
     // Payments & Auth
-    const hasStripeInHtml = pageResult.html.includes("js.stripe.com") || pageResult.html.includes("stripe");
-    const hasStripe = hasStripeInHtml || repoPaymentSignal || liveStripeSignal;
+    // Stripe in USE (its library, a Stripe-hosted checkout link, a publishable key), not
+    // the word "stripe" anywhere in the HTML. Not using Stripe is a choice of provider, not
+    // a finding, so its absence is NOT_APPLICABLE.
+    const stripeInPage = stripeUseOnPage(contentHtml);
+    const hasStripe = Boolean(stripeInPage) || repoStripeSignal || liveStripeSignal;
     checks.push({
       category: CATEGORIES.PAYMENTS,
       checkKey: "stripe_signals",
       label: "Stripe integration",
-      status: hasStripe ? "PASS" : "WARN",
-      detail: hasStripeInHtml
-        ? "Stripe detected in page source."
-        : repoPaymentSignal
-          ? "Stripe dependency detected in the connected repo's package.json (not referenced in the homepage HTML — likely used server-side only)."
+      status: hasStripe ? "PASS" : "NOT_APPLICABLE",
+      detail: stripeInPage
+        ? `Stripe is in use on the page (${stripeInPage}).`
+        : repoStripeSignal
+          ? "The connected repository depends on Stripe, though the scanned page does not load it (it may be used server-side only)."
           : liveStripeSignal
-            ? `Stripe webhook route responded live (status ${liveStripeWebhookStatus}) though not referenced in the homepage HTML — integration appears server-side only.`
-            : "No Stripe integration detected.",
+            ? `A Stripe webhook route answered (status ${liveStripeWebhookStatus}, unlike a made-up path beside it), though the page does not load Stripe, so it appears to be used server-side only.`
+            : "No Stripe library, Stripe-hosted checkout link or Stripe webhook route was found. Stripe is one payment provider among many, so this is not a finding.",
+      evidence: stripeInPage ?? (liveStripeSignal ? `GET /api/webhooks/stripe → ${liveStripeWebhookStatus}` : undefined),
     });
 
     const hasPricingPage = linksPricingPage(pageResult.html, baseUrl);
@@ -3992,17 +4004,18 @@ export async function runUrlChecks(
         : "No support channel found — users with no help path will churn silently.",
     });
 
-    const hasSocialProof = ["testimonial", "review", "customer stor", "case stud", "trusted by", "loved by", "join thousands", "rating"].some((s) =>
-      htmlLower.includes(s),
-    );
+    // Whole words in the visible copy: "review" is inside "preview" and "rating" inside
+    // "operating", "generating" and "migrating", so almost any page used to pass.
+    const socialProofPhrase = socialProofEvidence(contentHtml);
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "social_proof",
       label: "Social proof / testimonials",
-      status: hasSocialProof ? "PASS" : "WARN",
-      detail: hasSocialProof
-        ? "Social proof signals detected (testimonials, reviews, customer stories)."
-        : "No social proof found — critical for conversion and buyer confidence.",
+      status: socialProofPhrase ? "PASS" : "WARN",
+      detail: socialProofPhrase
+        ? `The page shows social proof ("${socialProofPhrase}").`
+        : "The scanned page shows no testimonials, reviews, ratings, case studies or \"trusted by\" customers. Evidence from other customers helps visitors trust a product they have not used.",
+      evidence: socialProofPhrase ?? undefined,
     });
 
     const hasOnboarding = ["/onboarding", "/welcome", "/get-started", "/setup", "/tour", "/quickstart"].some((p) =>
@@ -4216,10 +4229,12 @@ export async function runUrlChecks(
         category: CATEGORIES.PAYMENTS,
         checkKey: "stripe_webhook",
         label: "Stripe webhook endpoint",
-        status: liveStripeSignal ? "PASS" : "WARN",
+        // Only one conventional path is probed, so not finding it says nothing about a
+        // webhook at /api/stripe/webhook or anywhere else.
+        status: liveStripeSignal ? "PASS" : "INCONCLUSIVE",
         detail: liveStripeSignal
-          ? "Stripe webhook endpoint found — subscription lifecycle events will be processed."
-          : "No Stripe webhook detected — subscription upgrades, failures, and cancellations won't be handled automatically.",
+          ? `A route at /api/webhooks/stripe answers (status ${liveStripeWebhookStatus}), and a made-up path beside it does not, so a Stripe webhook endpoint appears to exist. Pulse did not test that it verifies Stripe's signature.`
+          : "Pulse probed /api/webhooks/stripe only and found no route there. Webhook endpoints can live at any path, so whether this project handles Stripe events could not be established.",
         evidence: liveStripeWebhookStatus ? `Status: ${liveStripeWebhookStatus}` : undefined,
       });
     } else {
@@ -4362,16 +4377,21 @@ export async function runUrlChecks(
         : "No CCPA/CPRA opt-out link (\"Do Not Sell or Share My Personal Information\" or \"Your Privacy Choices\") found on this page. The link is required of businesses that meet CCPA thresholds and sell or share California residents' personal information.",
     });
 
-    const currencySymbols = ["€", "£", "¥", "₹", "kr ", "chf", "sgd", "aud", "cad", "r$"];
-    const hasMultiCurrency = currencySymbols.some((s) => pageResult.html.toLowerCase().includes(s));
+    // Currencies attached to an amount in the visible copy, counted. One "£", or "aud"
+    // inside "claude", used to pass. A single currency is not a finding: many sites
+    // localise prices by visitor location, which one fetch cannot see.
+    const currencies = priceCurrencies(contentHtml);
     checks.push({
       category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "multi_currency",
       label: "Multi-currency pricing",
-      status: hasMultiCurrency ? "PASS" : "WARN",
-      detail: hasMultiCurrency
-        ? "Multiple currency symbols detected — product appears to support international pricing."
-        : "USD-only pricing detected — EU (€), UK (£), and Asian markets expect local currency; USD-only loses 20–40% of international revenue.",
+      status: currencies.length >= 2 ? "PASS" : "NOT_APPLICABLE",
+      detail: currencies.length >= 2
+        ? `Prices on the page are shown in ${currencies.length} currencies (${currencies.join(", ")}).`
+        : currencies.length === 1
+          ? `Prices on the page are shown in ${currencies[0]} only. Many sites show local prices based on where the visitor is, which a single fetch cannot see, and pricing in one currency is a business choice, so this is not a finding.`
+          : "The scanned page shows no prices, so there is nothing to judge here.",
+      evidence: currencies.length ? currencies.join(", ") : undefined,
     });
 
     const hasRtlSupport = /dir=["']rtl["']/i.test(pageResult.html) || htmlLower.includes(":dir(rtl)") || htmlLower.includes("[dir=rtl]");
@@ -4400,18 +4420,18 @@ export async function runUrlChecks(
         : "No language switcher found — international users cannot switch to their preferred language.",
     });
 
-    const hasInternationalPayments = htmlLower.includes("paypal") || htmlLower.includes("klarna") ||
-      htmlLower.includes("afterpay") || htmlLower.includes("ideal") || htmlLower.includes("sofort") ||
-      htmlLower.includes("alipay") || htmlLower.includes("wechat pay") || htmlLower.includes("paytm") ||
-      htmlLower.includes("upi") || htmlLower.includes("sepa");
+    // Method names as words (iDEAL in its own capitals) or a provider SDK: "sepa" inside
+    // "separate" and "upi" inside "grouping" used to pass linear.app.
+    const paymentMethods = nonCardPaymentMethods(contentHtml);
     checks.push({
       category: CATEGORIES.GLOBAL_DISTRIBUTION,
       checkKey: "international_payments",
       label: "International payment methods",
-      status: hasInternationalPayments ? "PASS" : "WARN",
-      detail: hasInternationalPayments
-        ? "International payment methods detected (PayPal, Klarna, iDEAL, Alipay, etc.)."
-        : "Card-only payments detected — EU (iDEAL, SEPA, Klarna), Asia (Alipay, WeChat Pay, UPI), and LATAM markets expect local options.",
+      status: paymentMethods.length > 0 ? "PASS" : "NOT_APPLICABLE",
+      detail: paymentMethods.length > 0
+        ? `The page offers payment methods beyond cards: ${paymentMethods.join(", ")}.`
+        : "The scanned page shows no payment method beyond cards. Methods are normally listed at checkout, which Pulse did not reach, and which ones to offer is a business choice, so this is not a finding.",
+      evidence: paymentMethods.length ? paymentMethods.join(", ") : undefined,
     });
 
     const hasEuVatSignal = htmlLower.includes(" vat") || htmlLower.includes("value added tax") || htmlLower.includes("tax invoice") || htmlLower.includes("ust-idnr") || htmlLower.includes("mwst");
@@ -5101,15 +5121,18 @@ export async function runUrlChecks(
         ["crypto_payments", "Cryptocurrency payment option"],
       ], "Skipped — no payment integration detected on this project.");
     } else {
-    const hasPciTrustBadge = ["pci dss", "pci-dss", "payment security", "256-bit encryption", "ssl secured checkout"].some((s) => htmlLower.includes(s));
+    // Visible copy and image alt text, whole phrases. Badges are optional and belong at
+    // checkout, so their absence on this page is not a finding.
+    const trustBadge = paymentAssurance(contentHtml);
     checks.push({
       category: CATEGORIES.PAYMENTS,
       checkKey: "payment_trust_badges",
       label: "Payment trust badges",
-      status: hasPciTrustBadge ? "PASS" : "WARN",
-      detail: hasPciTrustBadge
-        ? "Payment security trust signals detected — checkout conversion improved."
-        : "No payment trust badges near checkout — SSL/PCI badges reduce cart abandonment by up to 30%.",
+      status: trustBadge ? "PASS" : "NOT_APPLICABLE",
+      detail: trustBadge
+        ? `The page shows a payment assurance ("${trustBadge}").`
+        : "The scanned page shows no payment-security badge or assurance. These are optional and usually shown at checkout, which Pulse did not reach, so this is not a finding.",
+      evidence: trustBadge ?? undefined,
     });
 
     const hasBnpl = ["klarna", "afterpay", "affirm", "clearpay", "laybuy", "zip pay", "sezzle", "buy now pay later"].some((s) => htmlLower.includes(s));
@@ -5468,13 +5491,12 @@ export async function runUrlChecks(
 
     const isHtml = (p: PathProbe) => /text\/html|application\/xhtml/i.test(p.contentType) || /^\s*(<!doctype html|<html)/i.test(p.body);
     const [adminProbe, phpInfoProbe, gitConfigProbe, debugProbe, backupProbe] = await Promise.all([
-      checkPaths(httpsUrl, ["/admin", "/wp-admin"], (p) => looksLikeAdminLogin(p.body)),
+      probeAdminPaths(httpsUrl),
       checkPaths(httpsUrl, ["/phpinfo.php", "/info.php"], (p) => looksLikePhpInfo(p.body)),
       checkPaths(httpsUrl, ["/.git/config"], (p) => !isHtml(p) && looksLikeGitConfig(p.body)),
       checkPaths(httpsUrl, ["/telescope", "/__clockwork", "/horizon", "/_debug"], (p, path) => looksLikeDebugTool(path, p)),
       checkPaths(httpsUrl, ["/backup.sql", "/dump.sql", "/.env.bak", "/db.sql"], (p, path) => !isHtml(p) && (path.endsWith(".env.bak") ? looksLikeEnvFile(p.body) : looksLikeSqlDump(p.body))),
     ]);
-    const adminStatuses = adminProbe.statuses;
     const phpInfoStatuses = phpInfoProbe.statuses;
     const gitConfigStatus = gitConfigProbe.statuses[0];
     const debugStatuses = debugProbe.statuses;
@@ -5496,18 +5518,13 @@ export async function runUrlChecks(
       statuses.some((s) => s === 200) ? " (The path answered with an ordinary page, not the file itself.)" : "";
     const listed = (paths: string[]) => paths.join(", ");
 
-    const adminExposed = adminProbe.exposedPaths.length > 0;
+    // A sign-in form at /wp-admin or /admin means the admin IS protected; it used to be
+    // reported as an exposed panel. Exposure is an admin dashboard served without one.
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_admin",
       label: "Admin panel not publicly accessible",
-      status: absenceStatus(adminExposed, adminStatuses, "WARN"),
-      detail: adminExposed
-        ? `An admin sign-in page is publicly reachable at ${listed(adminProbe.exposedPaths)} — verify it is rate-limited and protected by strong authentication. Exposed admin panels are prime targets for credential stuffing.`
-        : adminStatuses.some((status) => status === 0)
-          ? "One or more admin-path probes failed, so public exposure could not be ruled out."
-          : "No admin sign-in page found at /admin or /wp-admin." + softRouteNote(adminStatuses),
-      evidence: adminExposed ? `GET ${listed(adminProbe.exposedPaths)} → admin sign-in markup` : undefined,
+      ...adminExposureVerdict(adminProbe),
     });
 
     const phpInfoExposed = phpInfoProbe.exposedPaths.length > 0;
@@ -7028,7 +7045,11 @@ export async function runGithubChecks(
   const hasSupabase = names.includes("supabase");
   const hasPrisma = names.includes("prisma");
   const hasDrizzle = names.some((n) => n === "drizzle.config.ts" || n === "drizzle.config.js");
-  const hasOrmConfig = hasPrisma || hasDrizzle || hasSupabase;
+  // What the repo declares (dependencies, schema and config files anywhere in the tree), not
+  // a `prisma/` folder at the root: a repo depending on @prisma/client with its schema in
+  // src/ used to "have no ORM" while its tech stack listed Prisma.
+  const dataLayer = (hasPrisma || hasDrizzle || hasSupabase ? "ORM folder or config at the repository root" : null)
+    ?? detectDataLayer({ paths: treePaths, files: treeSnapshot?.files ?? new Map<string, string>() });
   const hasMonorepo = names.some((n) => n === "pnpm-workspace.yaml" || n === "lerna.json" || n === "nx.json" || n === "turbo.json");
   const hasCoverage =
     names.some(
@@ -7073,10 +7094,14 @@ export async function runGithubChecks(
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "has_orm_config",
       label: "ORM / database configuration",
-      status: hasOrmConfig ? "PASS" : "WARN",
-      detail: hasOrmConfig
-        ? "Database ORM configuration detected (Prisma/Drizzle/Supabase)."
-        : "No ORM config detected — consider Prisma or Drizzle for type-safe database access and migration management.",
+      // Using no ORM is a choice (raw SQL, a query builder, no database at all), so its
+      // absence is not a finding; an unread tree says nothing either way.
+      status: dataLayer ? "PASS" : treeSnapshot?.accessible ? "NOT_APPLICABLE" : "INCONCLUSIVE",
+      detail: dataLayer
+        ? `A database access layer is configured: ${dataLayer}.`
+        : treeSnapshot?.accessible
+          ? "No ORM or query-builder dependency or configuration was found. Projects without a database, or that use plain SQL, do not need one, so this is not a finding."
+          : "The repository tree could not be read, so its database tooling could not be established.",
     },
     {
       category: CATEGORIES.INFRASTRUCTURE,
@@ -7280,15 +7305,19 @@ export async function runGithubChecks(
   }
 
   // Vibe Code Hygiene checks (GitHub root tree source)
-  const envCommitted = names.includes(".env") || names.includes(".env.production") || names.includes(".env.local");
+  // Judged by what the committed .env files CONTAIN. Next.js documents committing .env and
+  // .env.production as non-secret defaults, so a file name alone is not a leaked secret.
+  const envFiles = names
+    .filter((n) => /^\.env(?:\.[\w-]+)*$/.test(n))
+    .map((n) => {
+      const rawPath = treeSnapshot?.paths.find((p) => p.toLowerCase() === n) ?? n;
+      return { path: rawPath, text: treeSnapshot?.files.get(rawPath) ?? null };
+    });
   checks.push({
     category: CATEGORIES.VIBE_HYGIENE,
     checkKey: "vibe_env_not_committed",
     label: ".env file not committed to repo",
-    status: envCommitted ? "FAIL" : "PASS",
-    detail: envCommitted
-      ? "CRITICAL: .env file found in repo root — API keys and secrets are exposed in version control. Rotate all secrets immediately."
-      : "No .env file found in repo root.",
+    ...envFilesVerdict(envFiles),
   });
 
   const nodeModulesCommitted = names.includes("node_modules");

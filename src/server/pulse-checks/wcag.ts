@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
+import { focusIndicatorVerdict, htmlLangVerdict, inlineContrastVerdict } from "./wcag-page-evidence";
 
 /** Blank every quoted attribute value, so text inside a value ("Intro, muted by default", class="hidden")
  *  is never read as an attribute name. `alt="x"` becomes `alt=`. */
@@ -237,8 +238,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "form_error_identification", label: "Form errors identify the field", status: !hasForms ? "PASS" : hasErrorMessages ? "PASS" : "WARN", detail: !hasForms ? "No forms detected." : hasErrorMessages ? "Error identification signals detected (aria-invalid, role=alert, or error classes)." : "Forms detected but no error identification patterns — WCAG 3.3.1 requires identifying which field caused an error in a text description." });
 
   // Focus visible
-  const hasFocusVisible = /:focus-visible|:focus\s*\{[^}]*outline/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "keyboard_focus_visible", label: ":focus-visible CSS present", status: hasFocusVisible ? "PASS" : "WARN", detail: hasFocusVisible ? ":focus-visible styles detected in page HTML." : "No :focus-visible styles detected — WCAG 2.4.7 requires a visible keyboard focus indicator on all interactive elements." });
+  // Reads what the page's CSS does to focus: `:focus{outline:none}` REMOVES the indicator
+  // and used to pass because it contains "outline" (see wcag-page-evidence.ts).
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "keyboard_focus_visible", label: "Visible keyboard focus indicator", ...focusIndicatorVerdict(html) });
 
   // Touch target size (check for min-height/min-width patterns ≥ 44px)
   const hasTouchTargets = /min-height:\s*(4[4-9]|[5-9]\d|\d{3})px|min-width:\s*(4[4-9]|[5-9]\d|\d{3})px|h-\d+\s+w-\d+/i.test(html);
@@ -284,8 +286,8 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "prefers_high_contrast", label: "prefers-contrast CSS media query", status: hasPrefersContrast ? "PASS" : "WARN", detail: hasPrefersContrast ? "prefers-contrast media query detected — layout adapts to high-contrast OS preference." : "No prefers-contrast media query — consider supporting this CSS media query to improve usability for users with low vision." });
 
   // Low contrast inline styles (very basic check)
-  const hasLowContrastInline = /color:\s*#([0-9a-fA-F]{3,6})\s*;\s*background[^;]*:\s*#([0-9a-fA-F]{3,6})/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "sufficient_colour_contrast", label: "No obvious low-contrast inline styles", status: hasLowContrastInline ? "WARN" : "PASS", detail: hasLowContrastInline ? "Inline colour + background styles detected — verify contrast ratios meet WCAG AA (4.5:1 for normal text, 3:1 for large text)." : "No obvious low-contrast inline styles detected — use an automated tool like Lighthouse or axe to audit colour contrast." });
+  // Computes the WCAG ratio for colour pairs set inline; stylesheet colours need a render.
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "sufficient_colour_contrast", label: "Inline colour pairs meet 4.5:1 contrast", ...inlineContrastVerdict(html) });
 
   // Text spacing
   // Authored spacing values (letter-spacing:0px is simply the default) do not fail 1.4.12. The only
@@ -304,8 +306,8 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "page_title_unique", label: "Unique page title", ...pageTitleVerdict(pageTitle) });
 
   // Language attribute on html element
-  const hasLangAttr = /<html[^>]+lang=["'][a-z]{2}/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "language_attribute_body", label: "lang attribute on <html> element", status: hasLangAttr ? "PASS" : "FAIL", detail: hasLangAttr ? "lang attribute present on <html> element — screen readers use this to select the correct pronunciation engine." : "No lang attribute on <html> — WCAG 3.1.1 requires specifying the page language so screen readers pronounce content correctly." });
+  // Unquoted `lang=en` is valid HTML and used to FAIL here.
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "language_attribute_body", label: "lang attribute on <html> element", ...htmlLangVerdict(html) });
 
   // ─── WCAG 2.2 (2023) new success criteria ────────────────────────────────────
 

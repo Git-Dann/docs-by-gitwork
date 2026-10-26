@@ -48,8 +48,15 @@ export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): 
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "iso_27701_signals", label: "ISO 27701 (privacy management) signals", status: hasIso27701 ? "PASS" : "WARN", detail: hasIso27701 ? "ISO 27701 signals detected." : "No ISO 27701 signals — ISO 27701 (Privacy Information Management) is increasingly requested by enterprise DPOs during vendor assessment." });
 
   // Transfer impact assessment
-  const hasTia = /standard contractual clause|scc|transfer impact assessment|tia|schrems|data transfer.*mechanism/i.test(html);
-  checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "transfer_impact_assessment", label: "SCCs / Data Transfer Impact Assessment", status: hasTia ? "PASS" : "WARN", detail: hasTia ? "Data transfer mechanism signals detected (SCCs / TIA)." : "No data transfer mechanism referenced — post-Schrems II, international data transfers must be covered by SCCs or another valid transfer mechanism." });
+  // Word-bounded, in visible copy: "tia" is inside initial, essential and credential, so
+  // nearly every page passed. The acronyms are matched in capitals only.
+  const transferRuns = proseRuns(ctx.contentHtml ?? html);
+  const transferBase = { category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "transfer_impact_assessment", label: "SCCs / Data Transfer Impact Assessment" };
+  const transferPhrase = findClaim(transferRuns, /\bSCCs?\b|\bTIAs?\b|\bIDTA\b/)
+    ?? findClaim(transferRuns, /\bstandard contractual clauses\b|\btransfer impact assessments?\b|\bSchrems II\b|\bData Privacy Framework\b|\binternational data transfer agreement\b|\binternational (?:data )?transfers?\b[^.!?]{0,60}\b(?:safeguards?|clauses|adequacy)\b/i);
+  checks.push(transferPhrase
+    ? claimSeen(transferBase, "The page names a mechanism for international data transfers. Pulse did not review the agreements themselves.", transferPhrase)
+    : claimUnseen(transferBase, "The scanned page does not name a mechanism for international data transfers (such as SCCs or the Data Privacy Framework). That normally sits in the privacy policy or data processing agreement, which Pulse did not read, so this does not show it is missing."));
 
   // Mentions Légales (France/Belgium)
   const hasMentionsLegales = /mentions.légales|mentions legales|mentions légal/i.test(html) || /href=["'][^"']*legal[^"']*["']/i.test(html);

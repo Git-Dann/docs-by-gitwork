@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, verifyFileExposure, platformIs, skip } from "./_types";
+import { imageSitemapVerdict, newsSitemapVerdict, readSitemaps } from "./sitemap-reader";
 
 /** URL normalised for canonical comparison: host case, default port, fragment, one trailing slash, query order. */
 export function normaliseCanonicalUrl(href: string, base: string): string | null {
@@ -96,15 +97,13 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   const hasSitemapIndex = sitemapIndexA || sitemapIndexB || rootSitemapIsIndex;
   checks.push({ category: CATEGORIES.SEO, checkKey: "sitemap_index", label: "XML sitemap index", status: hasSitemapIndex ? "PASS" : "WARN", detail: hasSitemapIndex ? "Sitemap index file found." : "No sitemap index found at /sitemap.xml, /sitemap_index.xml or /sitemap-index.xml — an index is only needed once a site has more than one sitemap (each sitemap is capped at 50,000 URLs / 50 MB); a single sitemap is fine for smaller sites." });
 
-  // Image sitemap
-  const imageSitemapServed = await verifyFileExposure(`${httpsUrl}/image-sitemap.xml`, isSitemapXml);
-  const hasSitemapWithImages = html.includes("image:") || imageSitemapServed;
-  checks.push({ category: CATEGORIES.SEO, checkKey: "image_sitemap_present", label: "Image sitemap", status: hasSitemapWithImages ? "PASS" : "WARN", detail: hasSitemapWithImages ? "Image sitemap signals detected." : "No image sitemap — an image sitemap helps Google discover and index product photos, blog images, and other visual content." });
-
-  // News sitemap
-  const hasNewsSitemap = await verifyFileExposure(`${httpsUrl}/news-sitemap.xml`, isSitemapXml);
-  const isNewsSite = /news|blog|article|press/i.test(ctx.httpsUrl) || hasArticleSchema;
-  checks.push({ category: CATEGORIES.SEO, checkKey: "news_sitemap_present", label: "Google News sitemap", status: isNewsSite ? (hasNewsSitemap ? "PASS" : "WARN") : "PASS", detail: isNewsSite ? (hasNewsSitemap ? "News sitemap found." : "News/blog content detected but no news sitemap — submit a news sitemap to appear in Google News and Top Stories.") : "Not applicable — no news/blog content signals detected." });
+  // Image and news entries live inside the sitemaps themselves, so read them. The old image
+  // check passed on any "image:" in the page (og:image:width, CSS background-image:) and the
+  // news check gave every non-news site a free PASS.
+  const sitemaps = await readSitemaps(httpsUrl);
+  checks.push({ category: CATEGORIES.SEO, checkKey: "image_sitemap_present", label: "Image sitemap", ...imageSitemapVerdict(sitemaps) });
+  const isNewsPublisher = /"(?:newsarticle|newsmediaorganization)"/.test(schemaContent);
+  checks.push({ category: CATEGORIES.SEO, checkKey: "news_sitemap_present", label: "Google News sitemap", ...newsSitemapVerdict(sitemaps, isNewsPublisher) });
 
   // Pagination
   const hasPaginationRel = /<link[^>]+rel=["'](?:prev|next)["']/i.test(html);

@@ -6,6 +6,7 @@ import { detectSpaContext } from "@/server/pulse-lite/spa-detect";
 import { evaluateBuilderChecks, probeBubbleDataApi, probeBubbleVersionTest } from "./builder-platforms";
 import { fetchBundleText } from "./vibe-security";
 import { fetchSnippet } from "./path-probe";
+import { hardcodedCredentials } from "./page-code-evidence";
 
 const CATEGORY = CATEGORIES.VIBE_HYGIENE;
 
@@ -223,22 +224,18 @@ export async function runVibeCodeHygieneChecks(
   });
 
   // 6. Hardcoded test credentials visible in HTML
-  const hasTestCreds =
-    htmlLower.includes("admin@example.com") ||
-    htmlLower.includes("password123") ||
-    htmlLower.includes("test@test.com") ||
-    htmlLower.includes("admin@admin.com") ||
-    htmlLower.includes("demo@demo.com") ||
-    (htmlLower.includes("password") && htmlLower.includes("123456"));
-
+  // A credential is a pre-filled password field or a stated username/password pair. A
+  // password field anywhere plus "123456" anywhere (a phone number, an ID, a hash) is not.
+  const creds = hardcodedCredentials(pageResult.html);
   checks.push({
     category: CATEGORY,
     checkKey: "vibe_hardcoded_creds_html",
     label: "No hardcoded test credentials in page HTML",
-    status: hasTestCreds ? "FAIL" : "PASS",
-    detail: hasTestCreds
-      ? "Hardcoded test credentials detected in page HTML — remove before launch."
-      : "No hardcoded test credentials detected in page HTML.",
+    ...(creds.prefilledPassword
+      ? { status: "FAIL" as const, detail: `A password field in the page HTML is pre-filled (${creds.prefilledPassword}). Anyone who views the page source can read it; remove the value before launch.`, evidence: creds.prefilledPassword }
+      : creds.statedPair
+        ? { status: "WARN" as const, detail: `The page shows a sign-in username and password ("${creds.statedPair}"). If this is a public demo account that is deliberate; otherwise remove it and change the password.`, evidence: creds.statedPair }
+        : { status: "PASS" as const, detail: "No pre-filled password field and no username and password shown in the page HTML." }),
   });
 
   // 7. Custom 404 page (HEAD a non-existent path)

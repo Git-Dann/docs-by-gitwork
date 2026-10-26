@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
+import { cardDataHandling } from "./payment-page-evidence";
 
 export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { ctx: pctx } = ctx;
@@ -40,8 +41,19 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasPaypal = /paypal/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "paypal_integration", label: "PayPal integration", status: hasPaypal ? "PASS" : "WARN", detail: hasPaypal ? "PayPal integration detected." : "No PayPal integration — PayPal adds a trusted fallback for customers without credit cards or who distrust card-on-file." });
 
-  const has3ds = /3d.*secure|3ds|psd2|sca|strong.*customer.*authentication/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "three_ds_sca_compliant", label: "3D Secure / PSD2 SCA compliant", status: has3ds ? "PASS" : "WARN", detail: has3ds ? "3D Secure / SCA signals detected." : "No 3D Secure / SCA signals — EU PSD2 requires Strong Customer Authentication for most online card payments. Non-compliant payments are declined." });
+  // A bare "sca" matched "initial-scale" in the viewport meta, so nearly every page passed.
+  // SCA is run by the checkout, so the evidence is a hosted checkout that runs it, or the
+  // site saying so in words; a homepage with neither says nothing about the checkout.
+  const cardHandling = cardDataHandling(html);
+  const scaPhrase = /\b3-?D ?Secure\b|\bStrong Customer Authentication\b|\bPSD2\b/i.exec(text)?.[0];
+  checks.push({
+    category: CATEGORIES.PAYMENTS, checkKey: "three_ds_sca_compliant", label: "3D Secure / PSD2 SCA compliant",
+    ...(cardHandling.scaHandledBy
+      ? { status: "PASS" as const, detail: `Payments go through ${cardHandling.scaHandledBy}, whose hosted checkout runs 3D Secure whenever the card issuer requires Strong Customer Authentication.`, evidence: cardHandling.scaHandledBy }
+      : scaPhrase
+        ? { status: "PASS" as const, detail: `The page says card payments use Strong Customer Authentication ("${scaPhrase}"). Pulse did not test the checkout.`, evidence: scaPhrase }
+        : { status: "INCONCLUSIVE" as const, detail: `3D Secure runs inside the checkout, which Pulse did not reach${cardHandling.hostedProvider ? ` (the page loads ${cardHandling.hostedProvider}, which supports it when the integration requests it)` : ""}. Whether card payments meet PSD2 Strong Customer Authentication could not be established.` }),
+  });
 
   const hasFraudDetection = /stripe.*radar|kount|signifyd|forter|fraud.*detection|fraud.*prevention|risk.*score/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "fraud_detection_tool", label: "Fraud detection (Stripe Radar / Kount)", status: hasFraudDetection ? "PASS" : "WARN", detail: hasFraudDetection ? "Fraud detection tool signals detected." : "No fraud detection signals — implement Stripe Radar or a dedicated fraud tool to prevent chargebacks and card testing attacks." });
@@ -55,9 +67,19 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasChargeback = /chargeback.*prevention|dispute.*protection|dispute.*tool|chargeback.*dispute|friendly.*fraud/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "chargeback_prevention", label: "Chargeback prevention tools", status: hasChargeback ? "PASS" : "WARN", detail: hasChargeback ? "Chargeback prevention signals detected." : "No chargeback prevention signals — chargebacks above 1% trigger card network scrutiny. Use Stripe Radar, chargeback alerts, or Chargeback911." });
 
-  const hasProration = /proration|prorat|upgrade.*credit|credit.*upgrade|mid.cycle|plan.*change.*credit/i.test(html);
   const hasSubs = pctx.isSaas;
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "subscription_proration", label: "Subscription plan proration", status: hasSubs ? (hasProration ? "PASS" : "WARN") : "PASS", detail: hasSubs ? (hasProration ? "Proration signals detected — mid-cycle plan changes are handled fairly." : "No proration signals — clearly handle and communicate credits when users upgrade or downgrade mid-billing-cycle.") : "Not applicable." });
+  // Applies only when the page sells a recurring plan; being "SaaS" is not the same thing,
+  // and a non-subscription site used to get a free PASS here.
+  const sellsPlans = /\b(?:per|a|\/)\s?(?:month|mo|year|yr)\b|\bbilled (?:monthly|annually|yearly)\b|\b(?:monthly|annual|yearly) plans?\b|\bsubscriptions?\b/i.test(text);
+  const prorationPhrase = /\bpro-?rat(?:ed|a|ion|es)\b|\bmid[- ]cycle\b|\bcredit\w*\b[^.!?]{0,40}\b(?:upgrad|downgrad)\w*|\b(?:upgrad|downgrad)\w*\b[^.!?]{0,40}\bcredit\w*/i.exec(text)?.[0];
+  checks.push({
+    category: CATEGORIES.PAYMENTS, checkKey: "subscription_proration", label: "Subscription plan proration",
+    ...(!sellsPlans
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: the scanned page does not sell a recurring plan." }
+      : prorationPhrase
+        ? { status: "PASS" as const, detail: `The page says how mid-cycle plan changes are charged ("${prorationPhrase.slice(0, 80)}").`, evidence: prorationPhrase.slice(0, 80) }
+        : { status: "INCONCLUSIVE" as const, detail: "The page sells a recurring plan but does not say how upgrades and downgrades are charged mid-cycle. That is normally explained on the pricing page or billing docs, which Pulse did not read." }),
+  });
 
   const hasInvoicing = /invoice.*generation|tax.*invoice|generate.*invoice|download.*invoice|billing.*invoice|invoice.*pdf/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "invoicing_capability", label: "Invoice generation for B2B", status: hasInvoicing ? "PASS" : "WARN", detail: hasInvoicing ? "Invoice generation signals detected." : "No invoice generation signals — B2B customers require VAT invoices for expense reporting. Stripe Billing and Paddle handle this automatically." });
