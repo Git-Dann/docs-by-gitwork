@@ -161,7 +161,7 @@ export function surfacesFor(target: ScanTarget): ReadonlySet<CheckSurface> {
  * entry can never silently delete findings. The completeness test fails instead.
  */
 export function decideRelevance(
-  check: Pick<PulseScanCheckInput, "checkKey" | "status">,
+  check: Pick<PulseScanCheckInput, "checkKey" | "status" | "confidence">,
   rule: RelevanceRule | null,
   ctx: ScanContext,
 ): RelevanceDecision {
@@ -182,7 +182,11 @@ export function decideRelevance(
   if (rule.surface === "STANDARDS_CATALOG") {
     // Shown only when Pulse has a verdict from evidence. A generic "verify manually" item
     // (WARN / EVIDENCE_REQUIRED / NOT_TESTED) is a to-do, not a finding.
-    if (check.status !== "PASS" && check.status !== "FAIL") return { show: false, reason: "needs_evidence" };
+    // A control DERIVED from live evidence (standards-derived.ts) may also carry a WARN:
+    // hiding its warnings while showing its passes would select the flattering verdicts.
+    const derivedWarn = check.status === "WARN" && DERIVED_STANDARD_KEYS.has(check.checkKey)
+      && (check.confidence === "HIGH" || check.confidence === "MEDIUM");
+    if (check.status !== "PASS" && check.status !== "FAIL" && !derivedWarn) return { show: false, reason: "needs_evidence" };
     if (!rule.platforms.includes(ctx.platform)) return { show: false, reason: "not_this_platform" };
     return { show: true };
   }
@@ -227,6 +231,7 @@ export function recordDecision(summary: RelevanceSummary, decision: RelevanceDec
 
 import { CHECK_RELEVANCE, WITHHELD } from "./check-relevance-data";
 import { SUPPORTED_PULSE_PLATFORMS, isStandardsControlApplicable } from "./platform-applicability";
+import { DERIVED_STANDARD_KEYS } from "./standards-derived";
 
 const standardsRuleCache = new Map<string, RelevanceRule>();
 
