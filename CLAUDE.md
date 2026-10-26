@@ -7838,3 +7838,24 @@ puppeteer-core PDF render.
   and a version rebuilt from those would be a guess.
 
 Tests use real lockfiles from Netflix/maestro, stripe-ios and WinMemoryCleaner.
+
+### 84.5 Standards controls derived from live evidence
+
+`standards-derived.ts` (`DERIVED_STANDARDS`) names 146 of the 391 `standards_*` controls that a live
+check can speak to, and which checks each one rests on. It replaces `EVIDENCE_BINDINGS`, which had
+two wrong bindings:
+- a valid certificate alone passed "transport encryption required end to end";
+- `web_unsafe_deserialization` was bound to the template-injection control.
+
+`EVIDENCE_BINDINGS` also ignored WARN evidence.
+
+How a derived control gets its verdict:
+- Any FAIL or WARN at MEDIUM or HIGH confidence on its evidence gives that verdict.
+- PASS needs a complete proving group. Only `deep_supply_01` (lockfile) and `deep_host_08` (Tauri
+  updater key) have one.
+- Anything else is INCONCLUSIVE and hidden.
+
+**They are NOT counted in `LIVE_CHECKS`.** A derived row restates checks that already ran, and 144 of
+the 146 can only ever fail. Counting them would raise the advertised number without Pulse observing
+anything new. The classification of all 391 controls (146 derivable, 47 observable with new
+collectors, 198 not observable from outside) is a plan for real new collectors, not a count.
