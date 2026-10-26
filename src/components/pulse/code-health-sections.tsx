@@ -1,7 +1,7 @@
 import { cn } from "@/lib/format";
 import { compareVersions } from "@/lib/code-portfolio";
 import { libraryImpact } from "@/lib/plain-words";
-import { summariseScan, type PlainCheck } from "@/lib/plain-report";
+import { summariseScan, type GateDecision, type PlainCheck } from "@/lib/plain-report";
 import { BENCHMARK_REFERENCES, compareToBenchmarks, type BenchmarkMetric } from "@/server/code-health/benchmark";
 import { comparisonWords, humanDays, type PlainSummary, type SummaryTone } from "@/lib/code-health-summary";
 import type { CodeHealthReport, DependencyAudit, StructureReport, VulnerabilitySeverity } from "@/types/code-health";
@@ -306,8 +306,8 @@ export function PlainSummaryBox({ summary, maxSteps = 5 }: { summary: PlainSumma
  * The whole scan in plain English: ready or not, what to fix first, and what could not be
  * checked. Server-safe, so the shared report and its PDF render it too.
  */
-export function PlainScanBox({ checks }: { checks: PlainCheck[] }) {
-  const s = summariseScan(checks);
+export function PlainScanBox({ checks, gate }: { checks: PlainCheck[]; gate?: { decision: GateDecision; blocking: unknown[] } | null }) {
+  const s = summariseScan(checks, 5, gate ? { decision: gate.decision, blocking: gate.blocking.length } : null);
   return (
     <div className="rounded-[10px] border border-[var(--border-1)] bg-[var(--surface-1)] px-4 py-3.5">
       <p className="widget-data-label">In plain English</p>

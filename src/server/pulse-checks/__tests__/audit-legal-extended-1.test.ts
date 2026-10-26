@@ -66,17 +66,20 @@ describe("regional privacy gates ignore headlines, URL params and hreflang", () 
 <div>From ₹99</div></body></html>`;
     expect(await statusOf(flipkart, "www.flipkart.com", "pipl_china")).toBe("SKIPPED");
     // The genuine Indian market signal must still fire.
-    expect(await statusOf(flipkart, "www.flipkart.com", "dpdp_india")).toBe("WARN");
+    expect(await statusOf(flipkart, "www.flipkart.com", "dpdp_india")).toBe("INCONCLUSIVE");
   });
 
+  // A market anchor makes the law relevant; a homepage that does not mention it is not proof
+  // the business ignores it (the notice usually lives in the privacy policy), so the
+  // honest answer is INCONCLUSIVE, while an unrelated market stays SKIPPED.
   it("still fires on genuine market anchors", async () => {
     const plain = `<html lang="en"><body><p>Welcome</p></body></html>`;
-    expect(await statusOf(plain, "www.cbc.ca", "pipeda_canada")).toBe("WARN");
-    expect(await statusOf(plain, "shop.example.sg", "pdpa_singapore")).toBe("WARN");
-    expect(await statusOf(`<html lang="pt-BR"><body>Frete Grátis</body></html>`, "www.mercadolivre.com.br", "lgpd_brazil")).toBe("WARN");
-    expect(await statusOf(`<html lang="zh-CN"><body>欢迎</body></html>`, "shop.example.com", "pipl_china")).toBe("WARN");
-    expect(await statusOf(`<html lang="en"><body><p>Plans from S$ 49.90 / month</p></body></html>`, "shop.example.com", "pdpa_singapore")).toBe("WARN");
-    expect(await statusOf(`<html lang="en-CA"><body><p>Welcome</p></body></html>`, "shop.example.com", "pipeda_canada")).toBe("WARN");
+    expect(await statusOf(plain, "www.cbc.ca", "pipeda_canada")).toBe("INCONCLUSIVE");
+    expect(await statusOf(plain, "shop.example.sg", "pdpa_singapore")).toBe("INCONCLUSIVE");
+    expect(await statusOf(`<html lang="pt-BR"><body>Frete Grátis</body></html>`, "www.mercadolivre.com.br", "lgpd_brazil")).toBe("INCONCLUSIVE");
+    expect(await statusOf(`<html lang="zh-CN"><body>欢迎</body></html>`, "shop.example.com", "pipl_china")).toBe("INCONCLUSIVE");
+    expect(await statusOf(`<html lang="en"><body><p>Plans from S$ 49.90 / month</p></body></html>`, "shop.example.com", "pdpa_singapore")).toBe("INCONCLUSIVE");
+    expect(await statusOf(`<html lang="en-CA"><body><p>Welcome</p></body></html>`, "shop.example.com", "pipeda_canada")).toBe("INCONCLUSIVE");
   });
 });
 
@@ -100,28 +103,28 @@ describe("reviewer-requested market anchors that a headline cannot fake", () => 
   const plain = (body: string, lang = "en") => `<html lang="${lang}"><head><title>Shop</title></head><body>${body}</body></html>`;
 
   it("treats a CAD price as Canadian, but not CAD as software vocabulary", async () => {
-    expect(await statusOf(plain("<p>Plans from $49 CAD / month</p>"), "shop.example.com", "pipeda_canada")).toBe("WARN");
-    expect(await statusOf(plain("<p>CAD $49 per month</p>"), "shop.example.com", "pipeda_canada")).toBe("WARN");
+    expect(await statusOf(plain("<p>Plans from $49 CAD / month</p>"), "shop.example.com", "pipeda_canada")).toBe("INCONCLUSIVE");
+    expect(await statusOf(plain("<p>CAD $49 per month</p>"), "shop.example.com", "pipeda_canada")).toBe("INCONCLUSIVE");
     expect(await statusOf(plain("<p>Import your CAD drawings and BIM models</p>"), "www.autodesk-like.com", "pipeda_canada")).toBe("SKIPPED");
   });
 
   it("treats Rs. / INR prices as Indian", async () => {
-    expect(await statusOf(plain("<p>Starting at Rs. 499</p>"), "shop.example.com", "dpdp_india")).toBe("WARN");
-    expect(await statusOf(plain("<p>INR 1,299 per year</p>"), "shop.example.com", "dpdp_india")).toBe("WARN");
+    expect(await statusOf(plain("<p>Starting at Rs. 499</p>"), "shop.example.com", "dpdp_india")).toBe("INCONCLUSIVE");
+    expect(await statusOf(plain("<p>INR 1,299 per year</p>"), "shop.example.com", "dpdp_india")).toBe("INCONCLUSIVE");
     expect(await statusOf(plain("<p>Open 24 hrs 7 days a week</p>"), "shop.example.com", "dpdp_india")).toBe("SKIPPED");
   });
 
   it("treats a displayed CNPJ as a Brazilian business", async () => {
-    expect(await statusOf(plain("<footer>Acme Comércio Ltda — CNPJ 12.345.678/0001-90</footer>"), "shop.example.com", "lgpd_brazil")).toBe("WARN");
+    expect(await statusOf(plain("<footer>Acme Comércio Ltda — CNPJ 12.345.678/0001-90</footer>"), "shop.example.com", "lgpd_brazil")).toBe("INCONCLUSIVE");
   });
 
   it("treats an ICP filing number as mainland China, but zh-TW as not", async () => {
-    expect(await statusOf(plain("<footer>京ICP备11041704号</footer>"), "www.jd-like.com", "pipl_china")).toBe("WARN");
+    expect(await statusOf(plain("<footer>京ICP备11041704号</footer>"), "www.jd-like.com", "pipl_china")).toBe("INCONCLUSIVE");
     expect(await statusOf(plain("<p>歡迎</p>", "zh-TW"), "shop.example.com.tw", "pipl_china")).toBe("SKIPPED");
   });
 
   it("treats a Pte. Ltd. footer as a Singapore business", async () => {
-    expect(await statusOf(plain("<footer>© 2026 Acme Pte. Ltd. All rights reserved.</footer>"), "acme.com", "pdpa_singapore")).toBe("WARN");
+    expect(await statusOf(plain("<footer>© 2026 Acme Pte. Ltd. All rights reserved.</footer>"), "acme.com", "pdpa_singapore")).toBe("INCONCLUSIVE");
   });
 
   it("catches a nicotine seller whose title says nothing (juul.com)", async () => {
@@ -137,13 +140,13 @@ describe("adversarial review: market anchors stay tight and survive entity encod
   it("does not read CAD software vocabulary followed by a number as a Canadian price", async () => {
     expect(await statusOf(plain("<p>CAD 3D modelling for engineers</p>"), "www.cad-tool.com", "pipeda_canada")).toBe("SKIPPED");
     expect(await statusOf(plain("<p>Compatible with CAD 2024 and later</p>"), "www.cad-tool.com", "pipeda_canada")).toBe("SKIPPED");
-    expect(await statusOf(plain("<p>From CAD 49.99 a month</p>"), "shop.example.com", "pipeda_canada")).toBe("WARN");
+    expect(await statusOf(plain("<p>From CAD 49.99 a month</p>"), "shop.example.com", "pipeda_canada")).toBe("INCONCLUSIVE");
   });
 
   it("reads prices written with HTML entities", async () => {
-    expect(await statusOf(plain("<p>Rs.&nbsp;499</p>"), "shop.example.com", "dpdp_india")).toBe("WARN");
-    expect(await statusOf(plain("<p>&#8377;499</p>"), "shop.example.com", "dpdp_india")).toBe("WARN");
-    expect(await statusOf(plain("<p>$49&nbsp;CAD</p>"), "shop.example.com", "pipeda_canada")).toBe("WARN");
+    expect(await statusOf(plain("<p>Rs.&nbsp;499</p>"), "shop.example.com", "dpdp_india")).toBe("INCONCLUSIVE");
+    expect(await statusOf(plain("<p>&#8377;499</p>"), "shop.example.com", "dpdp_india")).toBe("INCONCLUSIVE");
+    expect(await statusOf(plain("<p>$49&nbsp;CAD</p>"), "shop.example.com", "pipeda_canada")).toBe("INCONCLUSIVE");
   });
 
   it("does not age-gate a news page that names Drinkaware or BeGambleAware, but does a seller showing their URLs", async () => {

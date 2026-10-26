@@ -384,12 +384,20 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
           "is no way to tell which line caused it.",
   );
 
-  const bitcode = /ENABLE_BITCODE\s*=\s*YES/.test(ctx.pbxproj);
+  // A PASS needs the build settings to have been READ: with no project.pbxproj (or with
+  // .xcconfig files that were not fetched) "no ENABLE_BITCODE = YES" is not established.
+  const bitcode = /ENABLE_BITCODE\s*=\s*YES/.test(`${ctx.pbxproj}\n${xcconfigText}`);
+  const bitcodeUnread = !bitcode && (!ctx.pbxproj || xcconfigPaths.some((p) => !snapshot.files.has(p)));
   add(
     "ios_x_bitcode_deprecated",
     "The project does not still enable the removed Bitcode setting",
-    bitcode ? "WARN" : "PASS",
-    bitcode
+    bitcode ? "WARN" : bitcodeUnread ? "INCONCLUSIVE" : "PASS",
+    bitcodeUnread
+      ? !ctx.pbxproj
+        ? "No Xcode project file was read, so whether ENABLE_BITCODE is still set could not be established."
+        : "The project keeps build settings in .xcconfig files that were not read, so whether ENABLE_BITCODE is " +
+          "still set could not be established."
+      : bitcode
       ? "ENABLE_BITCODE is still YES. Apple removed Bitcode support in Xcode 14 and App Store Connect rejects " +
         "bitcode-enabled uploads, so this either produces a build warning today or will fail an upload on the next " +
         "toolchain bump."

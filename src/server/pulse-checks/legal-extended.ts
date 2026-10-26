@@ -47,126 +47,196 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   const hasDma = /digital markets act|dma compliance|gatekeeper/i.test(html);
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "digital_markets_act", label: "EU Digital Markets Act compliance signals", status: hasDma ? "PASS" : "WARN", detail: hasDma ? "EU Digital Markets Act compliance signals detected." : "No EU Digital Markets Act reference — large platforms operating in the EU should document DMA compliance obligations." });
 
-  const hasAiDisclosure = /powered by ai|ai-generated|ai assistant|transparency.*ai|ai disclosure/i.test(html);
-  const isAiProduct = htmlLower.includes("ai") && (htmlLower.includes("generate") || htmlLower.includes("model") || htmlLower.includes("llm") || htmlLower.includes("gpt"));
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "eu_ai_act_disclosure", label: "EU AI Act transparency disclosure", status: isAiProduct ? (hasAiDisclosure ? "PASS" : "WARN") : "PASS", detail: isAiProduct ? (hasAiDisclosure ? "AI transparency disclosure detected — EU AI Act requirements addressed." : "AI product detected but no explicit EU AI Act transparency disclosure found — the EU AI Act requires disclosing AI-generated content and AI system interactions.") : "Not applicable — no AI product signals detected." });
+  // ─── Market signals and visible text ───────────────────────────────────────
 
-  // ─── Regional Laws ──────────────────────────────────────────────────────────
-
-  // Market signals for the self-gated regional checks below and the EU e-commerce
-  // gate further down. Only things a site chooses market-by-market count: its ccTLD,
-  // the region of its own <html lang>, or a local-currency price in VISIBLE text. A
-  // country name in a news headline ("Singapore says…"), a URL parameter
-  // (`sid=…,cny`), a script string (`encodeURIComponent` contains "eur") or an
+  // Only things a site chooses market-by-market count as market signals: its ccTLD,
+  // the region of its own <html lang>, a local-currency PRICE, a local phone prefix,
+  // or a local company form / registration number in VISIBLE text. A country name in
+  // a news headline ("Singapore says…"), a URL parameter (`sid=…,cny`), a script string
+  // (`encodeURIComponent` contains "eur", `sentry-sample_rand` contains "rand") or an
   // hreflang alternate (`hreflang="en-CA"`) says nothing about the markets served.
   // Entities decoded first so "Rs.&nbsp;499", "&#8377;499" or "$49&nbsp;CAD" still read as prices.
-  const marketText = stripNonMarketContext(html)
+  const proseHtml = stripNonMarketContext(html);
+  const visibleText = proseHtml
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
     .replace(/&#8377;|&#x20b9;/gi, "₹")
     .replace(/&euro;|&#8364;|&#x20ac;/gi, "€")
     .replace(/&#36;|&#x24;|&dollar;/gi, "$")
-    .toLowerCase();
+    .replace(/&#163;|&pound;/gi, "£")
+    .replace(/&yen;|&#165;/gi, "¥")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ");
+  const marketText = visibleText.toLowerCase();
   const docLang = documentLanguage(html) ?? "";
+  const docPrimary = docLang.split("-")[0] ?? "";
   const docRegion = docLang.split("-")[1] ?? "";
 
-  // Brazil LGPD
-  // A CNPJ (Brazilian company registration, required on Brazilian e-commerce sites by
-  // Decreto 7.962/2013) identifies a Brazilian business even on an English .com.
-  const ptBrSignals = /\.br\b/.test(ctx.hostname) || docRegion === "br" || docLang === "pt" || /\br\$\s?\d/.test(marketText) || /\bcnpj\b|\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/.test(marketText);
-  if (ptBrSignals) {
-    const hasLgpd = /lgpd|lei geral|proteção de dados|autoridade nacional/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "lgpd_brazil", label: "Brazil LGPD compliance", status: hasLgpd ? "PASS" : "WARN", detail: hasLgpd ? "LGPD compliance reference detected." : "Brazilian market signals detected but no LGPD reference — Brazil's LGPD requires a legal basis for processing, DPO appointment, and data subject rights similar to GDPR." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "lgpd_brazil", label: "Brazil LGPD compliance", status: "SKIPPED", detail: "No Brazilian market signals detected — skipping LGPD check." });
-  }
+  // ─── EU AI Act ──────────────────────────────────────────────────────────────
 
-  // Canada PIPEDA
-  // "CAD" only beside a price ("$49 CAD", "CAD $49", "CAD 49.99") — CAD is also software
-  // vocabulary, and "CAD 3D" / "CAD 2024" are not prices.
-  const caSignals = /\.ca\b/.test(ctx.hostname) || docRegion === "ca" || /\b(?:ca|c)\$\s?\d/.test(marketText) || /\$\s?\d[\d,.]*\s?cad\b|\bcad\s?\$\s?\d|\bcad\s?\d[\d,]*\.\d{2}\b/.test(marketText);
-  if (caSignals) {
-    const hasPipeda = /pipeda|quebec law 25|personal information protection|casl/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipeda_canada", label: "Canada PIPEDA / Law 25 compliance", status: hasPipeda ? "PASS" : "WARN", detail: hasPipeda ? "PIPEDA / Canadian privacy law reference detected." : "Canadian market signals detected but no PIPEDA reference — Canada's PIPEDA and Quebec Law 25 require consent for data collection and breach notification." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipeda_canada", label: "Canada PIPEDA / Law 25 compliance", status: "SKIPPED", detail: "No Canadian market signals detected — skipping PIPEDA check." });
-  }
+  // An AI product is established from what the page RUNS or SAYS ABOUT ITSELF, never
+  // from the letters "ai" (which are inside "email", "contain", "maintain", "detail").
+  //   • a model API called from the page, or an AI chat widget it loads;
+  //   • a word-bounded, upper-case "AI" (or LLM/GPT/generative AI) beside a product noun
+  //     in visible text: "AI assistant", "AI-powered search", "powered by GPT-4".
+  const aiRuntime = /api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.cohere\.(?:ai|com)|\/api\/(?:chat|completions?|ai|assistant)(?=[/?"'])|(?:www\.)?chatbase\.co\/embed|cdn\.voiceflow\.com|cdn\.botpress\.cloud|widget\.kapa\.ai|docsbot\.ai\/chat|sitegpt\.ai|inkeep\.com|mendable\.ai/i.exec(html)?.[0];
+  const aiClaim = /\b(?:AI|A\.I\.)(?:[- ](?:powered|driven|generated|assistants?|agents?|chat(?:bot)?s?|copilots?|models?|features?|search|writer|writing|tools?|platform|answers?))\b|\b(?:[Pp]owered by|[Bb]uilt (?:on|with)|[Uu]ses?|[Uu]sing)\s+(?:AI|GPT-?\d[\w.]*|ChatGPT|Claude|Gemini|LLMs?|large language models?)\b|\bgenerative AI\b|\blarge language models?\b|\bLLM-powered\b/.exec(visibleText)?.[0];
+  const isAiProduct = Boolean(aiRuntime || aiClaim);
+  const aiDisclosure = /\b(?:powered by (?:AI|artificial intelligence)|AI[- ]generated|generated (?:by|with|using) (?:AI|artificial intelligence)|(?:you are|you're) (?:chatting|talking|speaking) (?:with|to) an? (?:AI|bot|virtual assistant)|AI assistant|AI disclosure|use of AI|how we use AI)\b/i.exec(visibleText)?.[0];
+  const aiEvidence = aiRuntime ? `the page loads ${aiRuntime}` : `the page says "${aiClaim}"`;
+  checks.push({
+    category: CATEGORIES.LEGAL,
+    checkKey: "eu_ai_act_disclosure",
+    label: "AI use stated to users",
+    ...(!isAiProduct
+      ? { status: "SKIPPED" as const, detail: "No AI feature found on the scanned page (no model API or AI chat widget loaded, and the page does not describe an AI feature)." }
+      : aiDisclosure
+        ? { status: "PASS" as const, detail: `AI feature found (${aiEvidence}) and the scanned page tells users AI is involved ("${aiDisclosure}"). Pulse checked this page only; it did not assess whether each AI interaction or generated output is labelled as the EU AI Act (Art. 50) requires.` }
+        : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "AI disclosure is shown where the AI is used — inside the chat window or next to generated content — which a homepage scan does not see.", detail: `AI feature found (${aiEvidence}), but the scanned page does not say AI is in use. The EU AI Act (Art. 50) requires telling people when they interact with an AI system or see AI-generated content; that notice normally sits inside the chat window or beside the output, which this scan cannot see, so neither a pass nor a gap can be claimed. Check the AI surface itself.` }),
+  });
 
-  // Singapore PDPA
-  // "Pte. Ltd." is a Singapore company form — the business stating its own identity,
-  // which a headline about Singapore cannot fake.
-  const sgSignals = /\.sg\b/.test(ctx.hostname) || docRegion === "sg" || /\bsgd\b|\bs\$\s?\d/.test(marketText) || /\bpte\.?\s+ltd\b/.test(marketText);
-  if (sgSignals) {
-    const hasPdpaSg = /pdpa|personal data protection act.*singapore|pdpc/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pdpa_singapore", label: "Singapore PDPA compliance", status: hasPdpaSg ? "PASS" : "WARN", detail: hasPdpaSg ? "Singapore PDPA reference detected." : "Singapore market signals detected but no PDPA reference — Singapore's Personal Data Protection Act requires consent and a data protection officer." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pdpa_singapore", label: "Singapore PDPA compliance", status: "SKIPPED", detail: "No Singapore market signals detected." });
-  }
+  // ─── Regional Laws ──────────────────────────────────────────────────────────
 
-  // Thailand PDPA
-  const thSignals = /\.th\b/.test(ctx.hostname) || /lang=["']th/i.test(html) || htmlLower.includes("thailand") || htmlLower.includes("thai baht");
-  if (thSignals) {
-    const hasPdpaTh = /pdpa.*thailand|personal data protection.*thailand|พ\.ร\.บ/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pdpa_thailand", label: "Thailand PDPA compliance", status: hasPdpaTh ? "PASS" : "WARN", detail: hasPdpaTh ? "Thailand PDPA reference detected." : "Thai market signals detected but no PDPA reference — Thailand's PDPA requires explicit consent and data subject rights comparable to GDPR." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pdpa_thailand", label: "Thailand PDPA compliance", status: "SKIPPED", detail: "No Thai market signals detected." });
-  }
-
-  // South Africa POPIA
-  const zaSignals = /\.za\b/.test(ctx.hostname) || htmlLower.includes("south africa") || htmlLower.includes("rand") || htmlLower.includes("zar");
-  if (zaSignals) {
-    const hasPopia = /popia|protection of personal information|information regulator.*south africa/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "popia_south_africa", label: "South Africa POPIA compliance", status: hasPopia ? "PASS" : "WARN", detail: hasPopia ? "POPIA reference detected." : "South African market signals detected but no POPIA reference — South Africa's POPIA requires lawful processing, consent, and a designated information officer." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "popia_south_africa", label: "South Africa POPIA compliance", status: "SKIPPED", detail: "No South African market signals detected." });
-  }
-
-  // Japan APPI
-  const jpSignals = /\.jp\b/.test(ctx.hostname) || /lang=["']ja/i.test(html) || htmlLower.includes("japan") || htmlLower.includes("yen") || htmlLower.includes("¥");
-  if (jpSignals) {
-    const hasAppi = /appi|act on.*protection of personal information|個人情報保護/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "appi_japan", label: "Japan APPI compliance", status: hasAppi ? "PASS" : "WARN", detail: hasAppi ? "Japan APPI reference detected." : "Japanese market signals detected but no APPI reference — Japan's Act on Protection of Personal Information requires purpose limitation and breach notification." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "appi_japan", label: "Japan APPI compliance", status: "SKIPPED", detail: "No Japanese market signals detected." });
-  }
-
-  // China PIPL
-  // zh-TW / zh-HK are not mainland China. An ICP filing number ("京ICP备…") must be
-  // displayed by every site hosted in mainland China; an RMB price is local pricing.
-  const cnSignals = /\.cn\b/.test(ctx.hostname) || /^zh(?:-hans)?(?:-cn)?$/.test(docLang) || marketText.includes("人民币") || /\bcny\b/.test(marketText) || /icp[备證证]/.test(marketText) || /\brmb\s?¥?\s?\d|\d\s?rmb\b/.test(marketText);
-  if (cnSignals) {
-    const hasPipl = /pipl|personal information protection law.*china|个人信息保护法/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipl_china", label: "China PIPL compliance", status: hasPipl ? "PASS" : "WARN", detail: hasPipl ? "China PIPL reference detected." : "Chinese market signals detected but no PIPL reference — China's PIPL requires separate consent for each processing purpose and a local representative for overseas processors." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipl_china", label: "China PIPL compliance", status: "SKIPPED", detail: "No Chinese market signals detected." });
-  }
-
-  // South Korea PIPA
-  const krSignals = /\.kr\b/.test(ctx.hostname) || /lang=["']ko/i.test(html) || htmlLower.includes("korea") || htmlLower.includes("korean won") || htmlLower.includes("₩");
-  if (krSignals) {
-    const hasPipa = /pipa.*korea|personal information protection act.*korea|개인정보 보호법/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipa_korea", label: "South Korea PIPA compliance", status: hasPipa ? "PASS" : "WARN", detail: hasPipa ? "South Korea PIPA reference detected." : "Korean market signals detected but no PIPA reference — South Korea's PIPA is one of the world's strictest privacy laws, requiring explicit consent and mandatory breach notification within 24 hours." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "pipa_korea", label: "South Korea PIPA compliance", status: "SKIPPED", detail: "No Korean market signals detected." });
-  }
-
-  // India DPDP
-  // "Rs. 499" / "INR 499" only beside an amount.
-  const inSignals = /\.in\b/.test(ctx.hostname) || docLang.split("-")[0] === "hi" || docRegion === "in" || marketText.includes("₹") || /\brs\.?\s?\d|\binr\s?\d|\d\s?inr\b/.test(marketText);
-  if (inSignals) {
-    const hasDpdp = /dpdp|digital personal data protection|data protection board.*india/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "dpdp_india", label: "India DPDP Act compliance", status: hasDpdp ? "PASS" : "WARN", detail: hasDpdp ? "India DPDP Act reference detected." : "Indian market signals detected but no DPDP reference — India's Digital Personal Data Protection Act 2023 requires consent notices in multiple languages and data subject rights." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "dpdp_india", label: "India DPDP Act compliance", status: "SKIPPED", detail: "No Indian market signals detected." });
-  }
-
-  // Australia Privacy Act
-  const auSignals = /\.au\b/.test(ctx.hostname) || htmlLower.includes("australia") || htmlLower.includes("australian") || htmlLower.includes("aud") || htmlLower.includes("a\$");
-  if (auSignals) {
-    const hasAuPrivacy = /australian privacy act|privacy act.*1988|oaic|office of the australian information commissioner/i.test(html);
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "australian_privacy_act", label: "Australian Privacy Act compliance", status: hasAuPrivacy ? "PASS" : "WARN", detail: hasAuPrivacy ? "Australian Privacy Act reference detected." : "Australian market signals detected but no Privacy Act reference — the Australian Privacy Act (13 APPs) applies to organisations with >$3M revenue and requires specific privacy policy content." });
-  } else {
-    checks.push({ category: CATEGORIES.LEGAL, checkKey: "australian_privacy_act", label: "Australian Privacy Act compliance", status: "SKIPPED", detail: "No Australian market signals detected." });
+  // One approach for every region: the check runs only when the page carries a real
+  // market signal, and it reports only what it can see — whether the scanned page names
+  // the law. A page that does not name it is INCONCLUSIVE, never WARN: privacy-law
+  // references live on the privacy policy, which this check does not read.
+  const phone = (cc: string) => new RegExp(String.raw`\+${cc}[\s.-]?\(?0?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}\b`).test(visibleText);
+  type Region = { checkKey: string; country: string; law: string; label: string; signals: Array<[boolean, string]>; mentions: RegExp };
+  const regions: Region[] = [
+    {
+      // A CNPJ (Brazilian company registration, required on Brazilian e-commerce sites by
+      // Decreto 7.962/2013) identifies a Brazilian business even on an English .com.
+      checkKey: "lgpd_brazil", country: "Brazilian", law: "LGPD", label: "Brazil: page mentions LGPD",
+      signals: [
+        [/\.br$/.test(ctx.hostname), ".br domain"],
+        [docRegion === "br" || docLang === "pt", `page language "${docLang}"`],
+        [/\br\$\s?\d/.test(marketText), "R$ price"],
+        [/\bcnpj\b|\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/.test(marketText), "CNPJ registration"],
+      ],
+      mentions: /\blgpd\b|lei geral de prote[çc][ãa]o de dados|\bautoridade nacional de prote[çc][ãa]o de dados\b|\banpd\b/i,
+    },
+    {
+      // "CAD" only beside a price ("$49 CAD", "CAD $49", "CAD 49.99") — CAD is also software
+      // vocabulary, and "CAD 3D" / "CAD 2024" are not prices.
+      checkKey: "pipeda_canada", country: "Canadian", law: "PIPEDA / Quebec Law 25", label: "Canada: page mentions PIPEDA / Law 25",
+      signals: [
+        [/\.ca$/.test(ctx.hostname), ".ca domain"],
+        [docRegion === "ca", `page language "${docLang}"`],
+        [/\b(?:ca|c)\$\s?\d/.test(marketText) || /\$\s?\d[\d,.]*\s?cad\b|\bcad\s?\$\s?\d|\bcad\s?\d[\d,]*\.\d{2}\b/.test(marketText), "CAD price"],
+      ],
+      mentions: /\bpipeda\b|personal information protection and electronic documents act|\b(?:quebec|québec) law 25\b|\bloi 25\b|\bcasl\b/i,
+    },
+    {
+      // "Pte. Ltd." is a Singapore company form — the business stating its own identity,
+      // which a headline about Singapore cannot fake.
+      checkKey: "pdpa_singapore", country: "Singapore", law: "Singapore's PDPA", label: "Singapore: page mentions the PDPA",
+      signals: [
+        [/\.sg$/.test(ctx.hostname), ".sg domain"],
+        [docRegion === "sg", `page language "${docLang}"`],
+        [/\bsgd\s?\$?\s?\d|\d\s?sgd\b|\bs\$\s?\d/.test(marketText), "SGD price"],
+        [/\bpte\.?\s+ltd\b/.test(marketText), "Pte. Ltd. company"],
+        [phone("65"), "+65 phone number"],
+      ],
+      mentions: /\bpdpa\b|personal data protection act[^.<]{0,40}singapore|\bpdpc\b/i,
+    },
+    {
+      checkKey: "pdpa_thailand", country: "Thai", law: "Thailand's PDPA", label: "Thailand: page mentions the PDPA",
+      signals: [
+        [/\.th$/.test(ctx.hostname), ".th domain"],
+        [docPrimary === "th" || docRegion === "th", `page language "${docLang}"`],
+        [/฿\s?\d|\d\s?฿|\bthb\s?\d|\d\s?thb\b|\d\s?บาท/.test(marketText), "Thai baht price"],
+        [phone("66"), "+66 phone number"],
+      ],
+      mentions: /\bpdpa\b[^.<]{0,40}thailand|thailand[^.<]{0,40}\bpdpa\b|personal data protection act[^.<]{0,40}(?:thailand|b\.e\. 2562)|พ\.ร\.บ\.\s*คุ้มครองข้อมูลส่วนบุคคล/i,
+    },
+    {
+      // "rand"/"zar" are not market signals: they are inside "brand", "random",
+      // "bizarre", "bazaar" and `sentry-sample_rand`. A rand PRICE is ("R 1 299,00",
+      // "ZAR 499"), as is the South African "(Pty) Ltd" form or a +27 number.
+      checkKey: "popia_south_africa", country: "South African", law: "POPIA", label: "South Africa: page mentions POPIA",
+      signals: [
+        [/\.za$/.test(ctx.hostname), ".za domain"],
+        [docRegion === "za", `page language "${docLang}"`],
+        [/\bzar\s?\d|\d\s?zar\b/.test(marketText) || /(?:^|[\s(])R\s?\d{1,3}(?:[ ,]\d{3})*[.,]\d{2}\b/.test(visibleText), "rand price"],
+        [/\(pty\)\s*ltd\b/.test(marketText), "(Pty) Ltd company"],
+        [phone("27"), "+27 phone number"],
+      ],
+      mentions: /\bpopia\b|protection of personal information act|information regulator[^.<]{0,40}south africa/i,
+    },
+    {
+      // "yen" is inside "Bayern"/"yen" prose, and "¥" is also the yuan sign. A price in
+      // 円, a JPY price, the 株式会社 company form or a +81 number is Japanese.
+      checkKey: "appi_japan", country: "Japanese", law: "Japan's APPI", label: "Japan: page mentions the APPI",
+      signals: [
+        [/\.jp$/.test(ctx.hostname), ".jp domain"],
+        [docPrimary === "ja" || docRegion === "jp", `page language "${docLang}"`],
+        [/\d\s?円|\bjpy\s?¥?\s?\d|\d\s?jpy\b|税込/.test(marketText), "yen price"],
+        [/株式会社|\bkabushiki kaisha\b|\bk\.k\.(?=\s|$)/.test(marketText), "Japanese company form"],
+        [phone("81"), "+81 phone number"],
+      ],
+      mentions: /\bAPPI\b|act on (?:the )?protection of personal information|個人情報(?:の)?保護/i,
+    },
+    {
+      // zh-TW / zh-HK are not mainland China. An ICP filing number ("京ICP备…") must be
+      // displayed by every site hosted in mainland China; an RMB price is local pricing.
+      checkKey: "pipl_china", country: "Chinese", law: "China's PIPL", label: "China: page mentions the PIPL",
+      signals: [
+        [/\.cn$/.test(ctx.hostname), ".cn domain"],
+        [/^zh(?:-hans)?(?:-cn)?$/.test(docLang), `page language "${docLang}"`],
+        [marketText.includes("人民币") || /\bcny\b/.test(marketText) || /\brmb\s?¥?\s?\d|\d\s?rmb\b/.test(marketText), "RMB price"],
+        [/icp[备證证]/.test(marketText), "ICP filing number"],
+      ],
+      mentions: /\bpipl\b|personal information protection law[^.<]{0,40}china|个人信息保护法/i,
+    },
+    {
+      // "korea" in a headline is not a market. A won price, the 주식회사 company form or a
+      // +82 number is.
+      checkKey: "pipa_korea", country: "Korean", law: "South Korea's PIPA", label: "South Korea: page mentions PIPA",
+      signals: [
+        [/\.kr$/.test(ctx.hostname), ".kr domain"],
+        [docPrimary === "ko" || docRegion === "kr", `page language "${docLang}"`],
+        [/₩\s?\d|\d\s?₩|\bkrw\s?\d|\d\s?krw\b|\d\s?원(?![가-힣])/.test(marketText), "won price"],
+        [/주식회사/.test(marketText), "Korean company form"],
+        [phone("82"), "+82 phone number"],
+      ],
+      mentions: /\bpipa\b[^.<]{0,40}korea|korea[^.<]{0,40}\bpipa\b|personal information protection act[^.<]{0,40}korea|개인정보\s?보호법/i,
+    },
+    {
+      // "Rs. 499" / "INR 499" only beside an amount.
+      checkKey: "dpdp_india", country: "Indian", law: "India's DPDP Act", label: "India: page mentions the DPDP Act",
+      signals: [
+        [/\.in$/.test(ctx.hostname), ".in domain"],
+        [docPrimary === "hi" || docRegion === "in", `page language "${docLang}"`],
+        [marketText.includes("₹") || /\brs\.?\s?\d|\binr\s?\d|\d\s?inr\b/.test(marketText), "rupee price"],
+      ],
+      mentions: /\bdpdp\b|digital personal data protection|data protection board[^.<]{0,40}india/i,
+    },
+    {
+      // "aud" is inside "audio", "audit", "audience", "fraud" and "claude"; "a$" is a
+      // minified-JS identifier. An AUD price, an ABN or a +61 number is Australian.
+      checkKey: "australian_privacy_act", country: "Australian", law: "the Australian Privacy Act", label: "Australia: page mentions the Privacy Act",
+      signals: [
+        [/\.au$/.test(ctx.hostname), ".au domain"],
+        [docRegion === "au", `page language "${docLang}"`],
+        [/\b(?:a|au)\$\s?\d/.test(marketText) || /\$\s?\d[\d,.]*\s?aud\b|\baud\s?\$?\s?\d/.test(marketText), "AUD price"],
+        [/\babn\b:?\s*\d{2}\s?\d{3}\s?\d{3}\s?\d{3}\b/.test(marketText), "ABN"],
+        [phone("61"), "+61 phone number"],
+      ],
+      mentions: /\b(?:australian )?privacy act 1988\b|australian privacy act|australian privacy principles|\boaic\b|office of the australian information commissioner/i,
+    },
+  ];
+  for (const region of regions) {
+    const reasons = region.signals.filter(([hit]) => hit).map(([, why]) => why);
+    if (reasons.length === 0) {
+      checks.push({ category: CATEGORIES.LEGAL, checkKey: region.checkKey, label: region.label, status: "SKIPPED", detail: `No ${region.country} market signals on the scanned page (domain, page language, local-currency price, local phone number or company registration) — skipping the ${region.law} check.` });
+      continue;
+    }
+    const mention = region.mentions.exec(proseHtml)?.[0];
+    const why = reasons.join(", ");
+    checks.push(mention
+      ? { category: CATEGORIES.LEGAL, checkKey: region.checkKey, label: region.label, status: "PASS", detail: `${region.country} market signals found (${why}) and the scanned page mentions ${region.law} ("${mention}"). This shows the law is referenced; Pulse did not assess compliance with it.` }
+      : { category: CATEGORIES.LEGAL, checkKey: region.checkKey, label: region.label, status: "INCONCLUSIVE", confidence: "LOW", confidenceReason: "Privacy-law references normally sit on the privacy policy, which this check does not read.", detail: `${region.country} market signals found (${why}), but the scanned page does not mention ${region.law}. That is normally covered on the privacy policy rather than the homepage, so its absence here is not evidence of a gap — check the privacy policy names ${region.law} and the rights it gives.` });
   }
 
   // ─── Industry-Specific ──────────────────────────────────────────────────────

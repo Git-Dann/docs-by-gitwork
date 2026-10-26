@@ -15,6 +15,7 @@
 
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
 import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
+import { buildProjects, decodeTargetKey, targetKey } from "@/lib/pulse-projects";
 import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
@@ -3270,6 +3271,10 @@ const demoPulseScanList = [
   { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 48, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
   { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: 63, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
   { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
+  // Earlier scans of the same site, so the demo has a project history and a trend to show.
+  { id: "scan-northwind-prev", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 80, generatedProposalId: null, createdAt: atDays(-33), updatedAt: atDays(-33) },
+  { id: "scan-northwind-first", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co/", inputGithubRepo: null, status: "COMPLETED", healthScore: 71, generatedProposalId: null, createdAt: atDays(-61), updatedAt: atDays(-61) },
+  { id: "scan-fairway-prev", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 55, generatedProposalId: null, createdAt: atDays(-20), updatedAt: atDays(-20) },
 ];
 
 /**
@@ -3284,6 +3289,10 @@ const demoPulseScanList = [
 const demoScanDiff: PulseScanDiff = {
   previousScanId: "scan-northwind-prev",
   previousCompletedAt: "2026-07-30T09:14:00.000Z",
+  previousScore: 80,
+  currentScore: 86,
+  currentCompletedAt: null,
+  summary: "2 fixed, 1 got worse, 1 new issue, and 2 Pulse could not check this time.",
   scoreChange: 6,
   fixed: [
     { checkKey: "security_headers_csp", label: "Content-Security-Policy present", category: "Security", status: "PASS", prevStatus: "FAIL" },
@@ -3967,6 +3976,15 @@ export function resolveDemoApi(
   // Pulse (AI project validation) — 3 seeded reports.
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
   if (pathname === "/api/pulse/code-portfolio") return demoCodePortfolio();
+  if (pathname === "/api/pulse/projects") return { projects: buildProjects(demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[]) };
+  {
+    const pp = pathname.match(/^\/api\/pulse\/projects\/([^/]+)$/);
+    if (pp) {
+      const key = decodeTargetKey(pp[1]);
+      const scans = (demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[]).filter((sc) => targetKey(sc) === key).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      return scans.length ? { project: buildProjects(scans)[0], scans } : { project: null, scans: [] };
+    }
+  }
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
   if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };

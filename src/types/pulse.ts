@@ -482,6 +482,11 @@ export interface UnverifiedDiffItem {
 export interface PulseScanDiff {
   previousScanId: string;
   previousCompletedAt: string | null;
+  previousScore: number | null;
+  currentScore: number | null;
+  currentCompletedAt: string | null;
+  /** One plain sentence: what got fixed, what is new, what got worse. */
+  summary: string;
   scoreChange: number; // current - previous health score
   fixed: ScanDiffItem[];     // was an issue, now passing WITH PROOF
   regressed: ScanDiffItem[]; // was PASS, now FAIL/WARN

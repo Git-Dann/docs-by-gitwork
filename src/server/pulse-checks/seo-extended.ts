@@ -1,6 +1,29 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, verifyFileExposure, platformIs, skip } from "./_types";
 
+/** URL normalised for canonical comparison: host case, default port, fragment, one trailing slash, query order. */
+export function normaliseCanonicalUrl(href: string, base: string): string | null {
+  try {
+    const u = new URL(href, base);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    u.hash = "";
+    u.hostname = u.hostname.toLowerCase().replace(/\.$/, "");
+    const params = [...u.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const query = params.length ? `?${new URLSearchParams(params).toString()}` : "";
+    const path = u.pathname.length > 1 ? u.pathname.replace(/\/+$/, "") : "/";
+    return `${u.protocol}//${u.host}${path}${query}`;
+  } catch {
+    return null;
+  }
+}
+
+/** True when the canonical href (absolute or relative) names the page it sits on. */
+export function isSelfCanonical(canonicalHref: string, pageUrl: string): boolean {
+  const a = normaliseCanonicalUrl(canonicalHref, pageUrl);
+  const b = normaliseCanonicalUrl(pageUrl, pageUrl);
+  return a !== null && a === b;
+}
+
 export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { httpsUrl } = ctx;
   const html = ctx.pageResult.html;
@@ -93,7 +116,9 @@ export async function runSeoExtended(ctx: ExtendedCheckContext): Promise<PulseSc
   // is as valid as the rel-first form, so find the tag first, then read its href.
   const canonicalTag = html.match(/<link\b[^>]*\brel=["']?canonical["']?[^>]*>/i)?.[0] ?? "";
   const canonicalUrl = canonicalTag.match(/\bhref=["']([^"']+)["']/i)?.[1] ?? "";
-  const hasSelfCanonical = !!canonicalUrl && (canonicalUrl.includes(ctx.hostname) || canonicalUrl.startsWith("/"));
+  // Self-referencing means it names THIS page (normalised), not merely any page on the
+  // host: a canonical on /pricing pointing at / was a PASS before.
+  const hasSelfCanonical = !!canonicalUrl && isSelfCanonical(canonicalUrl, ctx.pageResult.finalUrl || ctx.httpsUrl);
   checks.push({ category: CATEGORIES.SEO, checkKey: "canonical_self_referencing", label: "Self-referencing canonical on key pages", status: hasSelfCanonical ? "PASS" : "WARN", detail: hasSelfCanonical ? `Self-referencing canonical present: ${canonicalUrl}` : canonicalUrl ? `Canonical points to a different URL (${canonicalUrl}) rather than this page — confirm this is intentional (e.g. a deliberate cross-domain canonical).` : "No self-referencing canonical — add a canonical tag on every page pointing to itself to prevent duplicate content from URL parameters and sorting." });
 
   // Google Business Profile

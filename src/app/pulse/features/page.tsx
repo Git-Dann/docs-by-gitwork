@@ -77,6 +77,8 @@ const card: React.CSSProperties = { background: "#FFFFFF", border: `1px solid ${
 
 export default function PulseFeaturesPage() {
   const { checks, areas } = pulseCapabilityCounts();
+  // A section with no live checks (Standards, until evidence lets one show) has nothing to list.
+  const groups = AREA_GROUPS.filter((g) => areas.some((a) => a.group === g.id));
   const figures: [string, string][] = [
     [checks.toLocaleString("en-GB"), "Checks"],
     [String(areas.length), "Areas"],
@@ -188,11 +190,11 @@ export default function PulseFeaturesPage() {
       <section style={{ padding: "clamp(56px, 8vw, 96px) 0", borderTop: `1px solid ${RULE}` }}>
         <Wrap>
           <Eyebrow>What it checks</Eyebrow>
-          <H2>{checks.toLocaleString("en-GB")} checks, in {AREA_GROUPS.length} sections</H2>
+          <H2>{checks.toLocaleString("en-GB")} checks, in {groups.length} sections</H2>
           <Lede>Search for anything, narrow it to a section, or open an area to see every check in it.</Lede>
           <CheckExplorer
             total={checks}
-            groups={AREA_GROUPS.map((g) => ({ id: g.id, name: g.name, line: g.line }))}
+            groups={groups.map((g) => ({ id: g.id, name: g.name, line: g.line }))}
             areas={areas.map((a) => ({ category: a.category, group: a.group, name: a.name, covers: a.covers, labels: a.labels }))}
           />
           <p style={{ color: MUTED, fontSize: 13, lineHeight: 1.6, margin: "8px 0 0" }}>

@@ -169,6 +169,19 @@ function imageUrlsInTag(tag: string): string[] {
   return out;
 }
 
+/** Share of in-flow <img> elements that must carry width + height for both dimension checks to pass. */
+export const IMAGE_DIMENSION_COVERAGE_PASS = 0.8;
+
+/** A script/link the page loads that shows its JavaScript is split into chunks, or null. */
+export function codeSplittingEvidence(html: string): string | null {
+  const srcs = [...html.matchAll(/<script\b[^>]*\ssrc=["']([^"']+)["']/gi)].map((m) => m[1]);
+  const chunk = srcs.find((u) => /\/_next\/static\/chunks\/|\/_nuxt\/|[./-]chunk(\.[\w-]+)*\.m?js(\?|$)|\/chunks?\/[^"']+\.m?js/i.test(u));
+  if (chunk) return chunk;
+  const preload = html.match(/<link\b[^>]*rel=["']modulepreload["'][^>]*href=["']([^"']+)["']|<link\b[^>]*href=["']([^"']+)["'][^>]*rel=["']modulepreload["']/i);
+  if (preload) return `modulepreload ${preload[1] ?? preload[2]}`;
+  return null;
+}
+
 export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, htmlLower } = ctx;
   const html = pageResult.html;
@@ -255,7 +268,12 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
   const imgTags = allImgTags.filter((t) => !isFillImage(t));
   const imgsWithDims = imgTags.filter((t) => /\swidth\s*=/i.test(t) && /\sheight\s*=/i.test(t)).length;
   const dimCoverage = imgTags.length > 0 ? imgsWithDims / imgTags.length : 1;
-  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "image_dimension_attributes", label: "Image width/height attributes (CLS prevention)", status: dimCoverage >= 0.8 ? "PASS" : dimCoverage >= 0.5 ? "WARN" : "WARN", detail: dimCoverage >= 0.8 ? `${imgTags.length} images checked — ${Math.round(dimCoverage * 100)}% have explicit width/height (prevents Cumulative Layout Shift).` : `${Math.round(dimCoverage * 100)}% of ${imgTags.length} images have explicit width/height — images without them can shift layout as they load (CLS) unless CSS already reserves their space (aspect-ratio or a fixed-size box); add width/height attributes where it does not.` });
+  // image_dimension_attributes and image_width_height measure the SAME coverage, so they
+  // share one threshold: they used to pass at 80% and 90% and could disagree on one page.
+  // With no in-flow <img> at all there is nothing to measure, so neither reports a verdict.
+  const noImagesToMeasure = imgTags.length === 0;
+  const dimsOk = dimCoverage >= IMAGE_DIMENSION_COVERAGE_PASS;
+  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "image_dimension_attributes", label: "Image width/height attributes (CLS prevention)", status: noImagesToMeasure ? "NOT_APPLICABLE" : dimsOk ? "PASS" : "WARN", detail: noImagesToMeasure ? "No in-flow <img> elements on the page, so there are no image dimensions to check." : dimsOk ? `${imgTags.length} images checked — ${Math.round(dimCoverage * 100)}% have explicit width/height (prevents Cumulative Layout Shift).` : `${Math.round(dimCoverage * 100)}% of ${imgTags.length} images have explicit width/height — images without them can shift layout as they load (CLS) unless CSS already reserves their space (aspect-ratio or a fixed-size box); add width/height attributes where it does not.` });
 
   // Critical CSS inlined
   const hasCriticalCss = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].some((m) => m[1].trim().length >= 200);
@@ -359,8 +377,7 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
   checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "lcp_fetchpriority_hint", label: "fetchpriority=high on LCP image", ...lcpHint });
 
   // image width/height (combined with dimension check above)
-  const hasWidthHeight = dimCoverage >= 0.9;
-  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "image_width_height", label: "Images have explicit width/height", status: hasWidthHeight ? "PASS" : "WARN", detail: hasWidthHeight ? "Images have explicit dimensions." : "Some images lack width/height attributes — unless CSS reserves their space (aspect-ratio or a fixed-size box), the browser cannot reserve room before they load, which can cause layout shift." });
+  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "image_width_height", label: "Images have explicit width/height", status: noImagesToMeasure ? "NOT_APPLICABLE" : dimsOk ? "PASS" : "WARN", detail: noImagesToMeasure ? "No in-flow <img> elements on the page, so there are no image dimensions to check." : dimsOk ? `${Math.round(dimCoverage * 100)}% of ${imgTags.length} images have explicit dimensions.` : "Some images lack width/height attributes — unless CSS reserves their space (aspect-ratio or a fixed-size box), the browser cannot reserve room before they load, which can cause layout shift." });
 
   // Font preload
   // Fonts are usually declared in a stylesheet, so both font checks read the linked sheets — once, shared.
@@ -407,9 +424,12 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
   const thirdPartyBlocking = html.match(/<script(?![^>]*(async|defer))[^>]+(googleapis|googletagmanager|facebook|twitter|hotjar|intercom)[^>]*>/gi) ?? [];
   checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "third_party_script_blocking", label: "No render-blocking third-party scripts", status: thirdPartyBlocking.length === 0 ? "PASS" : "WARN", detail: thirdPartyBlocking.length === 0 ? "No synchronous third-party scripts detected." : `${thirdPartyBlocking.length} synchronous third-party script(s) detected — add async/defer to all third-party scripts to prevent render-blocking.` });
 
-  // Code splitting signals
-  const hasCodeSplitting = htmlLower.includes("chunk") || /\/_next\/static\/chunks/i.test(html) || /lazy\s*\(/i.test(html) || htmlLower.includes("import(");
-  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "no_unused_javascript", label: "Code splitting / lazy loading signals", status: hasCodeSplitting ? "PASS" : "WARN", detail: hasCodeSplitting ? "Code splitting or lazy loading detected — JavaScript is split into chunks." : "No code splitting signals — ensure large JS bundles are split and unused code is tree-shaken." });
+  // Code splitting signals. Evidence is the page actually LOADING split bundles — a chunk
+  // script URL or a modulepreload link — not the substring "chunk" or "import(" anywhere
+  // in the HTML (a blog post, inline JSON). Unused JavaScript itself cannot be measured
+  // from the HTML, so absence of a signal is INCONCLUSIVE, never a WARN.
+  const codeSplitEvidence = codeSplittingEvidence(html);
+  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "no_unused_javascript", label: "Code splitting / lazy loading signals", status: codeSplitEvidence ? "PASS" : "INCONCLUSIVE", detail: codeSplitEvidence ? `The page loads split JavaScript bundles (${codeSplitEvidence}).` : "No split-bundle signal in the HTML (no chunk script URLs or modulepreload links). Bundles may still be split and loaded from JavaScript, and how much of the shipped code goes unused can only be measured in a browser, so this could not be established." });
 
   // Module scripts
   const hasModuleScripts = /type=["']module["']/i.test(html);

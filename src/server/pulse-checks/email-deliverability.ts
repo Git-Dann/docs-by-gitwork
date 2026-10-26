@@ -238,6 +238,43 @@ export function dmarcDiscoveryCandidates(hostname: string): string[] {
   return boundedDmarcCandidates(organizationalDomainCandidates(hostname));
 }
 
+/** Names a sending subdomain commonly takes, queried for MX (an ESP's return-path / bounce domain carries one). */
+export const SENDING_SUBDOMAIN_LABELS = ["mail", "send", "em", "mg", "bounce", "bounces", "email", "mail2", "mailer"] as const;
+/** Names an ESP commonly asks you to CNAME to it (return-path / link branding). */
+export const SENDING_CNAME_LABELS = ["em", "bounce", "bounces", "pm-bounces", "email", "mg"] as const;
+/** CNAME targets that belong to an email service provider. */
+const ESP_CNAME_TARGET = /(?:sendgrid\.net|mailgun\.org|mtasv\.net|amazonses\.com|sparkpostmail\.com|mandrillapp\.com|mcsv\.net|rsgsv\.net|sendinblue\.com|brevo\.com|mailjet\.com|resend\.(?:com|dev)|postmarkapp\.com|customer\.io|mailchimp\.com|klaviyomail\.com|hubspotemail\.net)\.?$/i;
+
+export function transactionalSubdomainCheck(
+  hostname: string,
+  probes: Array<{ name: string; kind: "MX" | "CNAME"; lookup: DnsResolution }>,
+): PulseScanCheckInput {
+  const base = { category: CATEGORY, checkKey: "transactional_subdomain", label: "Dedicated sending subdomain" } as const;
+  const found = probes.find((probe) => probe.lookup.ok && probe.lookup.records.length > 0
+    && (probe.kind === "MX" || probe.lookup.records.some((record) => ESP_CNAME_TARGET.test(record.trim()))));
+  if (found && found.lookup.ok) {
+    return { ...base, status: "PASS", detail: `Dedicated sending subdomain detected: ${found.name} (${found.kind} ${found.lookup.records[0]}).`, evidence: `${found.name} ${found.kind} ${found.lookup.records.join(", ")}` };
+  }
+  const failed = probes.filter((probe) => !probe.lookup.ok);
+  return {
+    ...base,
+    status: "INCONCLUSIVE",
+    confidence: "LOW",
+    confidenceReason: "A sending subdomain can have any name; only common ones were queried.",
+    detail: `None of the common sending-subdomain names (${probes.map((probe) => probe.name.split(".")[0]).filter((v, i, a) => a.indexOf(v) === i).join(", ")}) under ${hostname} has an MX record or an email-provider CNAME${failed.length ? `, and ${failed.length} of those lookups did not complete` : ""}. A sending subdomain can be named anything (SendGrid's are em plus digits), so this does not show there is none. If you send transactional email from the root domain, moving it to a subdomain keeps its reputation separate.`,
+  };
+}
+
+/** The enforcing DMARC policy (with pct 100) that governs mail from the host, or null. */
+function enforcingDmarc(applicable: ApplicableDmarc): string | null {
+  const policy = governingDmarcPolicy(applicable);
+  if (policy !== "quarantine" && policy !== "reject") return null;
+  if (applicable.kind !== "own" && applicable.kind !== "inherited") return null;
+  const pct = applicable.tags.raw.match(/(?:^|;)\s*pct\s*=\s*(\d{1,3})\b/i);
+  if (pct && parseInt(pct[1], 10) < 100) return null;
+  return policy;
+}
+
 export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { hostname } = ctx;
   const html = ctx.pageResult.html;
@@ -310,7 +347,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "bimi_record_present", "BIMI DNS record (brand in inbox)", dnsFailed(bimi.reason)));
   } else {
     const hasBimi = bimi.records.some((r) => r.includes("v=BIMI1"));
-    checks.push({ category: CATEGORY, checkKey: "bimi_record_present", label: "BIMI DNS record (brand in inbox)", status: hasBimi ? "PASS" : "WARN", detail: hasBimi ? "BIMI record detected — your brand logo will appear in supporting email clients." : "No BIMI record — Brand Indicators for Message Identification (BIMI) displays your logo in Gmail, Yahoo, and Apple Mail inboxes, increasing open rates." });
+    checks.push({ category: CATEGORY, checkKey: "bimi_record_present", label: "BIMI DNS record (brand in inbox)", status: hasBimi ? "PASS" : "NOT_APPLICABLE", detail: hasBimi ? "BIMI record detected — your brand logo will appear in supporting email clients." : "Optional — not having it is not a defect. No BIMI record at default._bimi; BIMI shows your logo beside your mail in Gmail, Yahoo and Apple Mail, and needs DMARC at quarantine or reject (and, for Gmail, a paid mark certificate) first." });
   }
 
   // MTA-STS
@@ -352,7 +389,13 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     // RFC 7208 §6.1: with no `all` mechanism, `redirect=` hands the final verdict
     // to another record that this probe does not evaluate.
     const spfRedirect = spf && !allTerm ? spf.match(/(?:^|\s)redirect=(\S+)/i)?.[1] ?? null : null;
-    checks.push(spfRedirect
+    // ~all under an ENFORCING DMARC policy is the recommended setup (RFC 7489 §10.1): DMARC
+    // already rejects unaligned mail, and -all can make a receiver drop a message at
+    // SMTP before DKIM alignment — the thing that rescues forwarded mail — is checked.
+    const dmarcEnforcement = enforcingDmarc(dmarcApplicable);
+    checks.push(hasSpfSoftfail && dmarcEnforcement
+      ? { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: "PASS", detail: `SPF ends in ~all (softfail) and the DMARC policy governing ${hostname} is ${dmarcEnforcement} at 100%. That is the recommended pairing: DMARC rejects mail that fails authentication, and ~all avoids receivers discarding forwarded mail before DKIM is checked. -all adds nothing here.`, evidence: spf }
+      : spfRedirect
       ? { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: "INCONCLUSIVE", confidence: "LOW", detail: `The SPF record at ${hostname} delegates its policy with redirect=${spfRedirect}. Pulse did not evaluate that record, so whether unauthorised senders end in -all or ~all is unknown.`, evidence: spf }
       : { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: hasSpfHardfail ? "PASS" : "WARN", detail: hasSpfHardfail ? "SPF -all (hardfail) configured — unauthorised senders are rejected." : hasSpfSoftfail ? "SPF uses ~all (softfail) — upgrade to -all (hardfail) to instruct receivers to reject rather than mark messages from unauthorised senders." : spf ? `The SPF record at ${hostname} ${allTerm ? `ends in ${allTerm}` : "has no all mechanism"} rather than -all, so receivers are not told to reject mail from unauthorised senders. End the record with -all.` : `No SPF record is published at ${hostname} — configure SPF to declare authorised sending servers. SPF is not inherited from parent domains (RFC 7208 §3.1).` });
   }
@@ -408,18 +451,17 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   const hasUnsubscribe = /unsubscribe|list.unsubscribe|opt.out.*email|email.*preferences/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "email_unsubscribe_signal", label: "Unsubscribe / list management link", status: hasUnsubscribe ? "PASS" : "WARN", detail: hasUnsubscribe ? "Unsubscribe / email preference signals detected on page." : "No unsubscribe link signals detected — CAN-SPAM, GDPR, and CASL all require easy unsubscribe; Google/Yahoo now enforce List-Unsubscribe headers." });
 
-  // Transactional sending subdomain
-  const sendingSubdomains = await resolveAllDnsRecords([
-    [`mail.${hostname}`, "MX"],
-    [`send.${hostname}`, "MX"],
-    [`em.${hostname}`, "MX"],
+  // Transactional sending subdomain. Sending subdomains can be named anything
+  // (SendGrid's are em<digits>), so Pulse can only test common names: finding one
+  // is evidence, NOT finding one is not evidence of absence — INCONCLUSIVE, not WARN.
+  const [sendingMx, sendingCname] = await Promise.all([
+    Promise.all(SENDING_SUBDOMAIN_LABELS.map((label) => resolveDnsRecord(`${label}.${hostname}`, "MX"))),
+    Promise.all(SENDING_CNAME_LABELS.map((label) => resolveDnsRecord(`${label}.${hostname}`, "CNAME"))),
   ]);
-  if (!sendingSubdomains.ok) {
-    checks.push(probeInconclusive(CATEGORY, "transactional_subdomain", "Dedicated sending subdomain", dnsFailed(sendingSubdomains.reason)));
-  } else {
-    const hasTransactionalSubdomain = sendingSubdomains.records.length > 0;
-    checks.push({ category: CATEGORY, checkKey: "transactional_subdomain", label: "Dedicated sending subdomain", status: hasTransactionalSubdomain ? "PASS" : "WARN", detail: hasTransactionalSubdomain ? "Dedicated email sending subdomain detected (mail.*, send.*, em.*)." : "No dedicated sending subdomain detected — use a subdomain (mail.yourdomain.com) for transactional email to protect your root domain's reputation." });
-  }
+  checks.push(transactionalSubdomainCheck(hostname, [
+    ...SENDING_SUBDOMAIN_LABELS.map((label, i) => ({ name: `${label}.${hostname}`, kind: "MX" as const, lookup: sendingMx[i] })),
+    ...SENDING_CNAME_LABELS.map((label, i) => ({ name: `${label}.${hostname}`, kind: "CNAME" as const, lookup: sendingCname[i] })),
+  ]));
 
   // CAN-SPAM address
   const hasPhysicalAddress = /\d+\s+[a-z]+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i.test(html) || /p\.?o\.?\s*box\s+\d+/i.test(html);

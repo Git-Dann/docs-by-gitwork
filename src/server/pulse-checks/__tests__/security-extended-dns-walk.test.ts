@@ -84,8 +84,9 @@ describe("DNSSEC — asked of the zone that serves the host", () => {
       "gov.uk:SOA": [soa("gov.uk")],
     }));
     expect(await resolveDnssecZone("www.hmrc.gov.uk")).toEqual({ ok: true, signed: false, zone: "hmrc.gov.uk" });
+    // hmrc.gov.uk's own (unsigned) zone decides, not gov.uk's DS. Unsigned is NOT_APPLICABLE, not PASS.
     const check = find(await runSecurityExtended(context("www.hmrc.gov.uk")), "dnssec_enabled");
-    expect(check?.status).toBe("WARN");
+    expect(check?.status).toBe("NOT_APPLICABLE");
   });
 
   it("a CNAME'd www whose target is the signed apex still PASSes (owner name, not type, decides)", async () => {
@@ -96,10 +97,10 @@ describe("DNSSEC — asked of the zone that serves the host", () => {
     expect(await resolveDnssecZone("www.example.com")).toEqual({ ok: true, signed: true, zone: "example.com" });
   });
 
-  it("still WARNs an unsigned apex (figma.com shape) and an unsigned www under it", async () => {
+  it("does not PASS an unsigned apex (figma.com shape) or an unsigned www under it", async () => {
     vi.stubGlobal("fetch", doh({ "figma.com:SOA": [soa("figma.com")] }));
-    expect(find(await runSecurityExtended(context("figma.com")), "dnssec_enabled")?.status).toBe("WARN");
-    expect(find(await runSecurityExtended(context("www.figma.com")), "dnssec_enabled")?.status).toBe("WARN");
+    expect(find(await runSecurityExtended(context("figma.com")), "dnssec_enabled")?.status).toBe("NOT_APPLICABLE");
+    expect(find(await runSecurityExtended(context("www.figma.com")), "dnssec_enabled")?.status).toBe("NOT_APPLICABLE");
   });
 
   it("a DS chased through a CNAME to SOMEONE ELSE'S signed apex does not make an unsigned zone PASS", async () => {
@@ -172,10 +173,11 @@ describe("bot protection — the cookie the service sets", () => {
     expect(check?.detail).toContain("__cf_bm");
   });
 
-  it("still WARNs a response with only analytics/session cookies and no captcha markup", async () => {
+  it("does not PASS a response with only analytics/session cookies and no captcha markup", async () => {
     vi.stubGlobal("fetch", doh({}));
     const checks = await runSecurityExtended(context("supabase.com", { "set-cookie": "_ga=GA1.1.1; Path=/, sessionid=x; Path=/; HttpOnly" }));
-    expect(find(checks, "bot_protection_present")?.status).toBe("WARN");
+    // Bot management is optional: unseen reads NOT_APPLICABLE, never PASS.
+    expect(find(checks, "bot_protection_present")?.status).toBe("NOT_APPLICABLE");
   });
 
   it("matches exact cookie names only", () => {

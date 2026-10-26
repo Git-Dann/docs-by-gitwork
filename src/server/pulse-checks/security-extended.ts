@@ -1,3 +1,5 @@
+import { findSecrets } from "./secret-formats";
+import { certificateExpiryCheck, readCertificate } from "./tls-certificate";
 import { CATEGORIES } from "./categories";
 import { restrictsFraming } from "./csp-sources";
 import { organizationalDomainCandidates } from "@/server/pulse-lite/registrable-domain";
@@ -580,6 +582,198 @@ export function isBotManagementCookie(name: string): boolean {
   return /^(?:__cf_bm|cf_clearance|ak_bmsc|_abck|bm_sz|bm_sv|bm_mi|_px[23]?|_pxhd|_pxvid|pxcts|datadome)$/i.test(name);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 2026-10 audit fixes. Each helper below replaced a substring test that produced
+// a confident finding from evidence that could not support it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Hosting services where a CNAME left pointing at a deleted resource can be
+ * re-claimed by anyone, and the page each one serves when nothing is claimed.
+ *
+ * ⚠️ A CNAME into one of these services is NOT a takeover risk by itself — it is
+ * how every Heroku app, GitHub Pages site and S3 website is hosted. The old check
+ * FAILed on the CNAME alone, so it told every healthy site on these platforms
+ * that it was dangling, while the page it had just loaded from that very host
+ * proved the resource was claimed. Only the service's own "nothing here" page,
+ * or a CNAME target that does not exist (NXDOMAIN), shows the resource is gone.
+ * Fingerprints from the can-i-take-over-xyz project.
+ */
+export const TAKEOVER_PROVIDERS: ReadonlyArray<{ name: string; host: RegExp; unclaimed: RegExp | null }> = [
+  { name: "Heroku", host: /\.(?:herokuapp|herokudns|herokussl)\.com\.?$/i, unclaimed: /no such app|herokucdn\.com\/error-pages\/no-such-app/i },
+  { name: "GitHub Pages", host: /\.github\.io\.?$/i, unclaimed: /There isn't a GitHub Pages site here/i },
+  { name: "Amazon S3", host: /(?:^|\.)s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com\.?$/i, unclaimed: /NoSuchBucket|The specified bucket does not exist/i },
+  // Azure releases the name itself, so an unclaimed target is NXDOMAIN; the 404 page is the other shape.
+  { name: "Microsoft Azure", host: /\.(?:azurewebsites\.net|cloudapp\.net|cloudapp\.azure\.com|trafficmanager\.net|blob\.core\.windows\.net|azureedge\.net)\.?$/i, unclaimed: /404 Web Site not found/i },
+  { name: "Ghost", host: /\.ghost\.io\.?$/i, unclaimed: /Failed to resolve DNS path for this host|The thing you were looking for is no longer here, or never was/i },
+  { name: "Surge", host: /\.surge\.sh\.?$/i, unclaimed: /project not found/i },
+  { name: "Bitbucket", host: /\.bitbucket\.io\.?$/i, unclaimed: /Repository not found/i },
+  { name: "Cargo", host: /\.cargo\.site\.?$|cargocollective\.com\.?$/i, unclaimed: /If you're moving your domain away from Cargo you must make this configuration through your registrar's DNS control panel/i },
+  { name: "Pantheon", host: /\.pantheonsite\.io\.?$/i, unclaimed: /The gods are wise, but do not know of the site which you seek/i },
+  { name: "Shopify", host: /\.myshopify\.com\.?$/i, unclaimed: /Sorry, this shop is currently unavailable/i },
+];
+
+export type TakeoverInput = {
+  hostname: string;
+  cnameTargets: string[];
+  /** What this scan fetched from the host itself. */
+  page: { ok: boolean; status: number; html: string };
+  /** true = the CNAME target answered NXDOMAIN; false = it resolved; null = not looked up, or the lookup failed. */
+  targetNxdomain: boolean | null;
+};
+
+export function assessSubdomainTakeover(input: TakeoverInput): Pick<PulseScanCheckInput, "status" | "detail" | "evidence" | "confidence"> {
+  const target = input.cnameTargets
+    .map((record) => record.trim().replace(/\.$/, ""))
+    .map((record) => ({ record, provider: TAKEOVER_PROVIDERS.find((p) => p.host.test(record)) }))
+    .find((entry) => entry.provider);
+  if (!target?.provider) {
+    return { status: "PASS", detail: input.cnameTargets.length
+      ? `${input.hostname} is a CNAME to ${input.cnameTargets[0].replace(/\.$/, "")}, which is not a service where a released name can be re-claimed by someone else.`
+      : `${input.hostname} has no CNAME record, so there is nothing to leave dangling.` };
+  }
+  const { record, provider } = target;
+  if (input.targetNxdomain === true) {
+    return { status: "FAIL", evidence: record, detail: `${input.hostname} is a CNAME to ${record}, and that name does not exist (NXDOMAIN). The ${provider.name} resource has been deleted while the DNS record still points at it, so anyone who creates a resource with that name serves content on ${input.hostname}. Remove the CNAME, or re-create the resource.` };
+  }
+  if (provider.unclaimed?.test(input.page.html)) {
+    return { status: "FAIL", evidence: record, detail: `${input.hostname} is a CNAME to ${record}, and ${provider.name} answered with its "nothing is hosted here" page. The resource has been deleted while the DNS record still points at it, so anyone who claims that name on ${provider.name} serves content on ${input.hostname}. Remove the CNAME, or re-claim the resource.` };
+  }
+  if (input.page.ok && input.page.status < 400) {
+    return { status: "PASS", evidence: record, detail: `${input.hostname} is a CNAME to ${record} on ${provider.name}, and that service served this site to the scan (HTTP ${input.page.status}), so the resource is claimed. A dangling CNAME there would serve ${provider.name}'s "nothing here" page instead.` };
+  }
+  return { status: "INCONCLUSIVE", confidence: "LOW", evidence: record, detail: `${input.hostname} is a CNAME to ${record} on ${provider.name}, and the page answered HTTP ${input.page.status || "nothing"} without ${provider.name}'s "nothing is hosted here" page. Pulse could not establish whether the resource is still claimed. Confirm it exists in your ${provider.name} account.` };
+}
+
+/** Words that mark a credential-shaped string as an example, not a live value. */
+const PLACEHOLDER_SECRET = /x{5,}|X{5,}|\*{3,}|0{10,}|1234567890|abcdefgh|example|placeholder|your[_-]?|dummy|redacted|changeme|sample|fake|\.\.\.|<[^>]*>|\$\{|\{\{/i;
+
+export type PageSecretMatch = { kind: string; redacted: string };
+
+/** base64url → string, or null. */
+function decodeBase64Url(segment: string): string | null {
+  try {
+    return Buffer.from(segment.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Server-side credentials in a page's source, by their real formats.
+ *
+ * ⚠️ The check this feeds used to match `password="…"` / `secret="…"` anywhere,
+ * which fired on form placeholders, UI copy and JS config labels — and said
+ * "rotate" about each. Every rule here is a format an issuer actually mints,
+ * and a value that reads like an example is skipped.
+ *
+ * Deliberately NOT here: keys that are public by design (Stripe `pk_`, Supabase
+ * anon JWTs, Firebase/Google browser keys) and the formats `no_api_keys_in_html`
+ * already reports (Google, AWS key id, `ghp_`, `sk-`), so one leak is one finding.
+ */
+const PAGE_SECRET_RULES: Array<{ kind: string; pattern: RegExp; accept?: (match: RegExpMatchArray) => boolean }> = [
+  { kind: "Stripe live secret key", pattern: /(?<![A-Za-z0-9_])(?:sk|rk)_live_[0-9A-Za-z]{24,}/g },
+  { kind: "Slack token", pattern: /(?<![A-Za-z0-9])xox[abposr]-[0-9]{6,}-[0-9A-Za-z-]{10,}/g },
+  { kind: "GitHub token", pattern: /(?<![A-Za-z0-9_])(?:github_pat_[A-Za-z0-9_]{60,}|gh[ousr]_[A-Za-z0-9]{36})(?![A-Za-z0-9])/g },
+  { kind: "SendGrid API key", pattern: /(?<![A-Za-z0-9])SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g },
+  { kind: "Private key", pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY(?: BLOCK)?-----(?:\s|\\n|\\r)*[A-Za-z0-9+/=]{64}/g },
+  { kind: "AWS secret access key", pattern: /aws_?secret_?access_?key["']?\s*[:=]\s*["']([A-Za-z0-9/+=]{40})["']/gi },
+  {
+    kind: "Database URL with password",
+    pattern: /(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?):\/\/([^:/\s"'@]+):([^@\s"'/]+)@([^\s"'/:?]+)/gi,
+    accept: (m) => !/^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|host|hostname|db|database|server|example\.\w+)$/i.test(m[3])
+      && !/^(?:pass(?:word)?|secret|pwd|root|admin|test|postgres|mysql|user)$/i.test(m[2]),
+  },
+  {
+    // Supabase's anon key is public by design; the service_role key bypasses row-level security.
+    kind: "Supabase service_role key",
+    pattern: /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.(eyJ[A-Za-z0-9_-]{10,})\.[A-Za-z0-9_-]{20,}/g,
+    accept: (m) => /"role"\s*:\s*"service_role"/.test(decodeBase64Url(m[1]) ?? ""),
+  },
+];
+
+export function findPageSecrets(html: string): PageSecretMatch[] {
+  const found: PageSecretMatch[] = [];
+  for (const rule of PAGE_SECRET_RULES) {
+    for (const match of html.matchAll(new RegExp(rule.pattern.source, rule.pattern.flags))) {
+      const value = match[0];
+      if (PLACEHOLDER_SECRET.test(value)) continue;
+      if (rule.accept && !rule.accept(match)) continue;
+      found.push({ kind: rule.kind, redacted: `${value.slice(0, 8)}… (${value.length} chars)` });
+      break; // one instance per kind is enough to act on
+    }
+  }
+  return found;
+}
+
+/**
+ * Database error text that only a database driver produces.
+ *
+ * ⚠️ Not the bare function names `pg_query` / `mysql_fetch`, which appear in any
+ * page that talks about PHP, and not a bare `ORA-12345`, which is a product code
+ * as often as an Oracle error. Each of these is the shape the driver prints.
+ */
+const SQL_ERROR_SIGNATURES: Array<[string, RegExp]> = [
+  ["MySQL", /You have an error in your SQL syntax/i],
+  ["PHP database warning", /Warning(?:<\/b>)?:\s*(?:mysql|mysqli|pg|sqlite|oci|mssql|sqlsrv|db2)_[a-z_]+\(\)/i],
+  ["PostgreSQL", /PG::(?:SyntaxError|UndefinedTable|UndefinedColumn|InvalidTextRepresentation)|unterminated quoted string at or near|syntax error at or near "|psycopg2\.(?:errors\.\w+|ProgrammingError)/],
+  ["PDO", /SQLSTATE\[[0-9A-Z]{5}\]/],
+  ["Oracle", /\bORA-\d{5}:\s/],
+  ["SQL Server", /Unclosed quotation mark after the character string|Microsoft OLE DB Provider for (?:SQL Server|ODBC)|\[Microsoft\]\[ODBC SQL Server Driver\]/i],
+  ["SQLite", /sqlite3\.OperationalError|SQLite3?::(?:SQLException|query)|SQLITE_ERROR/],
+  ["JDBC", /com\.mysql\.jdbc\.exceptions|org\.postgresql\.util\.PSQLException/],
+];
+
+/** The database engine whose error text appears in the page, or null. Sample code (`<code>`, `<samp>`, scripts, comments) is not read. */
+export function detectSqlErrorSignature(html: string): { engine: string; excerpt: string } | null {
+  const visible = html
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
+    .replace(/<(script|style|textarea|code|samp|xmp|template)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ");
+  for (const [engine, pattern] of SQL_ERROR_SIGNATURES) {
+    const match = pattern.exec(visible);
+    if (match) return { engine, excerpt: visible.slice(match.index, match.index + 120).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() };
+  }
+  return null;
+}
+
+/** A library version referenced by the page, parsed exactly. */
+export type LibraryVersion = { library: "jQuery" | "AngularJS"; version: string; vulnerable: boolean; advisory: string };
+
+const versionLess = (a: number[], b: number[]) => {
+  for (let i = 0; i < 3; i += 1) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0);
+  return false;
+};
+
+/**
+ * jQuery and AngularJS versions named in script URLs (`jquery-1.4.2.min.js`,
+ * `/jquery/1.4.2/`, `jquery@1.4.2`, `jquery.min.js?ver=1.4.2`) and library
+ * banners (`jQuery v1.4.2`, `AngularJS v1.2.0`).
+ *
+ * ⚠️ The old Angular test was `/angular\.js.*1\.[0-3]\./`, whose `.*` spanned the
+ * whole document — any page that mentioned angular.js and, anywhere later, any
+ * `1.0.` (a version query string, a date, a price) was flagged. The version must
+ * now be attached to the library name.
+ */
+export function findLibraryVersions(html: string): LibraryVersion[] {
+  const found: LibraryVersion[] = [];
+  const seen = new Set<string>();
+  const add = (library: LibraryVersion["library"], parts: string[], floor: number[], advisory: string) => {
+    const nums = parts.map((p) => parseInt(p, 10));
+    const version = nums.join(".");
+    if (seen.has(`${library}@${version}`)) return;
+    seen.add(`${library}@${version}`);
+    found.push({ library, version, vulnerable: versionLess(nums, floor), advisory });
+  };
+  for (const m of html.matchAll(/(?<![A-Za-z0-9_-])jquery(?:[-.]min)?(?:\.js)?(?:[-@/]|\?ver=|\s+v)(\d{1,2})\.(\d{1,2})\.(\d{1,2})(?![\d])/gi)) {
+    add("jQuery", [m[1], m[2], m[3]], [1, 9, 0], "jQuery before 1.9.0 has known cross-site-scripting flaws in selector handling (CVE-2011-4969, CVE-2012-6708)");
+  }
+  for (const m of html.matchAll(/(?<![A-Za-z0-9_-])angular(?:js)?(?:[-.]min)?(?:\.js)?(?:[-@/]|\?ver=|\s+v)(\d{1,2})\.(\d{1,2})\.(\d{1,2})(?![\d])/gi)) {
+    if (m[1] !== "1") continue; // Angular 2+ is a different framework; this check is about AngularJS 1.x
+    add("AngularJS", [m[1], m[2], m[3]], [1, 4, 0], "AngularJS before 1.4.0 has known expression-sandbox escapes that turn template injection into script execution");
+  }
+  return found;
+}
+
 export type DnssecZoneResult =
   | { ok: true; signed: boolean; zone: string }
   | { ok: false; name: string; reason: string };
@@ -820,15 +1014,12 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
       `The DNSSEC lookup for ${dnssec.name} did not complete (${dnssec.reason}).`));
   } else {
     const zoneNote = dnssec.zone === hostname ? "" : ` (on ${dnssec.zone}, the zone serving ${hostname})`;
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: dnssec.signed ? "PASS" : "WARN", detail: dnssec.signed ? `DNSSEC DS record found${zoneNote} — DNS responses are cryptographically signed.` : `No DNSSEC detected${zoneNote} — DNS responses are unauthenticated and vulnerable to cache poisoning attacks.` });
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "dnssec_enabled", label: "DNSSEC enabled on domain", status: dnssec.signed ? "PASS" : "NOT_APPLICABLE", detail: dnssec.signed ? `DNSSEC DS record found${zoneNote} — DNS responses are cryptographically signed.` : `Optional — not having it is not a defect. ${hostname}'s zone${zoneNote} is not DNSSEC-signed, which is true of most of the web's largest sites. Signing lets validating resolvers detect forged answers; it is worth considering if your DNS provider supports it with automatic key rollover.` });
   }
 
-  // Certificate expiry (check for Strict-Transport-Security max-age or server header)
-  const stsHeader = h["strict-transport-security"] ?? "";
-  const maxAgeMatch = stsHeader.match(/max-age=(\d+)/);
-  const maxAge = maxAgeMatch ? parseInt(maxAgeMatch[1], 10) : 0;
-  const certExpirySoon = maxAge > 0 && maxAge < 30 * 24 * 3600;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "certificate_expiry_30d", label: "SSL cert not expiring within 30 days", status: certExpirySoon ? "WARN" : "PASS", detail: certExpirySoon ? "HSTS max-age is very short — may indicate certificate expiring soon. Verify renewal is automated (Let's Encrypt / certbot)." : "Certificate appears valid with adequate HSTS max-age." });
+  // Certificate expiry, read from the certificate itself. It used to be guessed from the
+  // HSTS max-age, which has nothing to do with when a certificate expires.
+  checks.push(certificateExpiryCheck(hostname, await readCertificate(hostname)));
 
   // ── Exposed-file / endpoint probes ───────────────────────────────────────────
   // A 200 is not an exposure. Hosts soft-route unknown paths to their homepage
@@ -925,15 +1116,29 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
 
   // API keys in HTML. This verdict tells an owner to rotate a credential, so it
   // must not fire on a filename fingerprint — see findExposedApiKeys.
-  const exposedKeys = findExposedApiKeys(pageResult.html);
+  // Real secret formats only (secret-formats.ts). Keys that are public by design (a Google
+  // browser key, Stripe pk_live, Supabase anon) are named but never a failure: Firebase
+  // web apps carry an AIza key by design, and failing every one of them is why this
+  // check was switched off.
+  // Two matchers, on purpose: `findExposedApiKeys` is hardened for page source (filename
+  // fingerprints, hex-alphabet `sk-` keys that `findSecrets` would discard as not random);
+  // `findSecrets` adds the vendor formats it does not know (Stripe sk_live_, Slack, PEM…).
+  // A Google AIza key is public by design in both.
+  const pageKeys = findExposedApiKeys(pageResult.html).map((k) => ({ ...k, publicByDesign: k.kind === "Google API key" }));
+  // Same vendor once: the page matcher's kinds lead with the vendor ("OpenAI-style", "GitHub").
+  const vendor = (kind: string) => kind.toLowerCase().split(/[\s-]/)[0];
+  const pageVendors = new Set(pageKeys.map((k) => vendor(k.kind)));
+  const htmlKeyMatches = [...pageKeys, ...findSecrets(pageResult.html).filter((k) => !pageVendors.has(vendor(k.kind)))];
+  const exposedKeys = htmlKeyMatches.filter((k) => !k.publicByDesign);
+  const publicKeys = htmlKeyMatches.filter((k) => k.publicByDesign);
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "no_api_keys_in_html",
     label: "No API key patterns in HTML source",
     status: exposedKeys.length > 0 ? "FAIL" : "PASS",
     detail: exposedKeys.length > 0
-      ? `CRITICAL: credential-shaped string in the page source — ${exposedKeys.map((key) => `${key.kind} ${key.redacted}`).join("; ")}. Confirm it against the redacted value below, then rotate it; a key served in HTML is readable by anyone who views source.`
-      : "No obvious API key patterns detected in HTML source.",
+      ? `A secret key is in the page source: ${exposedKeys.map((key) => `${key.kind} ${key.redacted}`).join("; ")}. Anyone who views the source can read it. Confirm it against the redacted value, then rotate it and move it server-side.`
+      : `No secret key formats in the page source.${publicKeys.length ? ` Public-by-design keys seen (${publicKeys.map((k) => k.kind).join(", ")}) are meant to be in the browser; make sure they are restricted to your domain or app.` : ""}`,
     evidence: exposedKeys.length > 0 ? exposedKeys.map((key) => `${key.kind}: ${key.redacted}`).join("; ") : undefined,
   });
 
@@ -949,11 +1154,16 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasCfBot = !!h["cf-mitigated"] || !!botCookie || htmlLower.includes("__cf_bm") || htmlLower.includes("cf-turnstile");
   const hasRecaptcha = htmlLower.includes("recaptcha") || htmlLower.includes("hcaptcha");
   const hasBotProtection = hasCfBot || hasRecaptcha;
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "bot_protection_present", label: "Bot protection (Cloudflare / reCAPTCHA)", status: hasBotProtection ? "PASS" : "WARN", detail: hasBotProtection ? (botCookie ? `Bot-management cookie \`${botCookie.name}\` set on this response — a bot-protection service sits in front of the site.` : "Bot protection signals detected (Cloudflare / reCAPTCHA / hCaptcha).") : "No bot protection detected — consider Cloudflare Turnstile, hCaptcha, or similar to protect forms and auth endpoints." });
+  checks.push({ category: CATEGORIES.SECURITY, checkKey: "bot_protection_present", label: "Bot protection (Cloudflare / reCAPTCHA)", // ⚠️ Absence is not a finding: bot protection is a choice, a static or marketing
+  // page has nothing to protect, and a service fronting only the login or signup
+  // form leaves no trace on the homepage. Same outcome as OPTIONAL_ABSENCE.
+  status: hasBotProtection ? "PASS" : "NOT_APPLICABLE", detail: hasBotProtection ? (botCookie ? `Bot-management cookie \`${botCookie.name}\` set on this response — a bot-protection service sits in front of the site.` : "Bot protection signals detected (Cloudflare / reCAPTCHA / hCaptcha).") : "Optional — not having it is not a defect. No bot-protection signal on this page; if the product has public sign-up, login or contact forms, a challenge such as Cloudflare Turnstile or hCaptcha on those forms reduces automated abuse." });
 
   // SQL error exposure
-  const hasSqlError = /SQL syntax|mysql_fetch|ORA-\d{5}|pg_query|You have an error in your SQL syntax/i.test(pageResult.html);
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "sql_error_exposure", label: "No SQL errors exposed in responses", status: hasSqlError ? "FAIL" : "PASS", detail: hasSqlError ? "CRITICAL: SQL error message detected in page response — exposes database structure and confirms SQL injection vectors." : "No SQL error messages detected in page response." });
+  // A driver's own error text, not the bare words `pg_query` / `mysql_fetch`. And
+  // an error page leaks internals; it does not by itself confirm injection.
+  const sqlError = detectSqlErrorSignature(pageResult.html);
+  checks.push({ category: CATEGORIES.SECURITY, checkKey: "sql_error_exposure", label: "No SQL errors exposed in responses", status: sqlError ? "FAIL" : "PASS", detail: sqlError ? `${sqlError.engine} database error text is in this page's response. A raw database error tells an attacker the engine, and often the query and table names, and usually means errors reach the user unhandled. Catch the error server-side and show a generic message; then check the query that failed is parameterised.` : "No database error text in this page's response.", evidence: sqlError?.excerpt });
 
   // Brute force protection
   const hasBruteForce = htmlLower.includes("account locked") || htmlLower.includes("too many attempts") || htmlLower.includes("temporarily disabled") || hasRateLimit;
@@ -1049,8 +1259,10 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "no_exposed_env_variants", label: ".env.prod / .env.docker not accessible", status: (envProdExposed || envDockerExposed) ? "FAIL" : "PASS", detail: (envProdExposed || envDockerExposed) ? "CRITICAL: .env.prod or .env.docker accessible — environment secrets are exposed." : ".env variant files not publicly accessible." });
 
   // Secrets / keys in HTML (broader check)
-  const hasSecretPatterns = /password\s*=\s*["'][^"']{8,}["']|secret\s*=\s*["'][^"']{8,}["']/i.test(pageResult.html);
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "secret_scanning_github", label: "No secrets / keys in page HTML", status: hasSecretPatterns ? "FAIL" : "PASS", detail: hasSecretPatterns ? "Potential hardcoded secret or password detected in page source. Review and rotate if confirmed." : "No hardcoded secret patterns detected in page HTML." });
+  // Key name kept for compatibility (checkKeys are public ids, CLAUDE.md §8); this
+  // scans the PAGE Pulse fetched, not a GitHub repository, and says so.
+  const pageSecrets = findPageSecrets(pageResult.html);
+  checks.push({ category: CATEGORIES.SECURITY, checkKey: "secret_scanning_github", label: "No secrets / keys in page HTML", status: pageSecrets.length > 0 ? "FAIL" : "PASS", detail: pageSecrets.length > 0 ? `Server-side credential in the source of this page (the HTML and inline scripts Pulse fetched): ${pageSecrets.map((s) => `${s.kind} ${s.redacted}`).join("; ")}. Anyone who views source can read it. Confirm it against the redacted value, rotate it, and move it to server-side configuration.` : "No server-side credential formats (Stripe live secret, Slack, GitHub, SendGrid, private key, AWS secret, database URL with password, Supabase service_role) in the source of this page. This reads the served page only, not a repository.", evidence: pageSecrets.length > 0 ? pageSecrets.map((s) => `${s.kind}: ${s.redacted}`).join("; ") : undefined });
 
   // CORS credentials
   const corsOrigin = h["access-control-allow-origin"] ?? "";
@@ -1059,8 +1271,9 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
   checks.push({ category: CATEGORIES.SECURITY, checkKey: "cors_credentials_restricted", label: "CORS credentials not open to all origins", status: badCors ? "FAIL" : "PASS", detail: badCors ? "CRITICAL: CORS allows all origins (*) with credentials — this configuration is invalid and dangerous. Specify explicit allowed origins." : "CORS credentials configuration appears safe." });
 
   // Vulnerable library versions (basic jQuery check from existing + old Angular)
-  const hasOldLib = /jquery[/-]1\.[0-6]\./i.test(pageResult.html) || /angular\.js.*1\.[0-3]\./i.test(pageResult.html);
-  checks.push({ category: CATEGORIES.SECURITY, checkKey: "dependency_audit_clean", label: "No obvious vulnerable library versions", status: hasOldLib ? "WARN" : "PASS", detail: hasOldLib ? "Outdated library version detected — check npm audit / Dependabot for known CVEs." : "No obviously vulnerable library versions detected in page source." });
+  const libraries = findLibraryVersions(pageResult.html);
+  const vulnerableLibs = libraries.filter((lib) => lib.vulnerable);
+  checks.push({ category: CATEGORIES.SECURITY, checkKey: "dependency_audit_clean", label: "No obvious vulnerable library versions", status: vulnerableLibs.length > 0 ? "WARN" : "PASS", detail: vulnerableLibs.length > 0 ? `This page loads ${vulnerableLibs.map((lib) => `${lib.library} ${lib.version}`).join(" and ")}. ${vulnerableLibs.map((lib) => lib.advisory).join("; ")}. Upgrade to a current release.` : `No jQuery older than 1.9 or AngularJS older than 1.4 is referenced in this page's source${libraries.length ? ` (found ${libraries.map((lib) => `${lib.library} ${lib.version}`).join(", ")})` : ""}. This covers only those two libraries as named in the page; a full dependency audit needs the source repository.`, evidence: libraries.length ? libraries.map((lib) => `${lib.library} ${lib.version}`).join(", ") : undefined });
 
   // Subdomain takeover (CNAME to common unclaimed services). The PASS here rests on
   // an EMPTY answer, so a failed lookup must not reach it — see resolveDnsRecord.
@@ -1069,9 +1282,15 @@ export async function runSecurityExtended(ctx: ExtendedCheckContext): Promise<Pu
     checks.push(probeInconclusive(CATEGORIES.SECURITY, "subdomain_takeover_risk", "No dangling CNAME / subdomain takeover risk",
       `The CNAME lookup for ${hostname} did not complete (${cname.reason}), so dangling-CNAME risk could not be assessed.`));
   } else {
-    const dangling = ["s3.amazonaws.com", "azurewebsites.net", "herokuapp.com", "pages.github.io", "ghost.io", "cargo.site", "surge.sh", "bitbucket.io"];
-    const subTakeoverRisk = cname.records.some((r) => dangling.some((d) => r.includes(d)));
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "subdomain_takeover_risk", label: "No dangling CNAME / subdomain takeover risk", status: subTakeoverRisk ? "FAIL" : "PASS", detail: subTakeoverRisk ? "CNAME points to a cloud service that may be unclaimed — subdomain takeover risk. Verify the target resource still exists." : "No obvious dangling CNAME records detected." });
+    // Only a CNAME into a re-claimable service costs a second lookup: does its target exist?
+    const providerTarget = cname.records.map((r) => r.trim().replace(/\.$/, "")).find((r) => TAKEOVER_PROVIDERS.some((p) => p.host.test(r)));
+    let targetNxdomain: boolean | null = null;
+    if (providerTarget) {
+      const targetLookup = await resolveDnsRecord(providerTarget, "A");
+      targetNxdomain = targetLookup.ok ? targetLookup.status === 3 : null;
+    }
+    const takeover = assessSubdomainTakeover({ hostname, cnameTargets: cname.records, page: pageResult, targetNxdomain });
+    checks.push({ category: CATEGORIES.SECURITY, checkKey: "subdomain_takeover_risk", label: "No dangling CNAME / subdomain takeover risk", ...takeover });
   }
 
   // ── Inline-script control (nonce / hash / no unsafe-inline) ─────────────────

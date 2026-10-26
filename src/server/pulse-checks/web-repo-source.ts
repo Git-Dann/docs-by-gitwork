@@ -184,39 +184,131 @@ export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckI
   ];
 }
 
+// ── AI repository checks ───────────────────────────────────────────────────
+// Audit, Oct 2026: every rule here used to be one keyword regex over the whole
+// concatenated repo, and four of them FAILed at HIGH from it. Three were simply
+// wrong — a negative lookahead after `[\s\S]{0,180}` that always succeeds, a
+// "client-readable" claim made about server route handlers, and any `fetch(`
+// within 160 characters of `toolCall` read as an unsafe tool. The rules below say
+// what they actually observed and no more: a concrete unsafe construct is named
+// per file; anything that needs dataflow is a MEDIUM-confidence WARN that asks a
+// person to confirm.
+
+/** What a repo must DO to count as using an LLM — an SDK import or an API call, never a word. */
+const AI_USAGE =
+  /\bfrom\s+["'`](?:openai|@anthropic-ai\/sdk|ai|@ai-sdk\/[\w-]+|@google\/(?:generative-ai|genai)|@mistralai\/mistralai|cohere-ai|langchain|@langchain\/[\w-]+|llamaindex)["'`]|\brequire\(\s*["'`](?:openai|@anthropic-ai\/sdk|ai|@ai-sdk\/[\w-]+|@google\/(?:generative-ai|genai)|langchain|@langchain\/[\w-]+)["'`]\s*\)|^\s*(?:from\s+(?:openai|anthropic|langchain[\w.]*|llama_index[\w.]*|google\.generativeai|google\.genai)\s+import|import\s+(?:openai|anthropic))\b|\bchat\.completions\.create\s*\(|\bmessages\.create\s*\(|\bresponses\.create\s*\(|\bgenerateContent\s*\(|\b(?:generateText|streamText|generateObject|streamObject)\s*\(|\buseChat\s*\(|api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com/im;
+
+/** Cap an absence finding at MEDIUM: a missing keyword is never more than that. */
+function aiAbsence(ctx: WebContext, check: Omit<PulseScanCheckInput, "confidence">): PulseScanCheckInput {
+  const result = absence(ctx, check);
+  return result.confidence === "HIGH" ? { ...result, confidence: "MEDIUM" } : result;
+}
+
 function aiRepositoryReadinessChecks(ctx: WebContext): PulseScanCheckInput[] {
   const source = ctx.source;
   if (!/\b(?:openai|anthropic|chat\.completions|generateContent|useChat|languageModel)\b/i.test(source)) return [];
   const checks: PulseScanCheckInput[] = [];
-  const signal = (key: string, label: string, pattern: RegExp, detail: string) => checks.push(absence(ctx, { category: CATEGORIES.AI_READINESS, checkKey: key, label, status: pattern.test(source) ? "PASS" : "WARN", detail }));
+  const signal = (key: string, label: string, pattern: RegExp, detail: string) => checks.push(aiAbsence(ctx, { category: CATEGORIES.AI_READINESS, checkKey: key, label, status: pattern.test(source) ? "PASS" : "WARN", detail }));
   signal("pulse_ai_retry_policy", "AI requests use bounded retry policy", /\b(?:retry|backoff|maxRetries)\b/i, "AI request paths need bounded retries with backoff evidence.");
-  signal("pulse_ai_failure_fallback", "AI failures have a user-safe fallback", /\b(?:fallback|try again|graceful|provider unavailable)\b/i, "AI request paths need an explicit user-safe fallback.");
+  // Not `fallback`: React's <Suspense fallback={…}> is in nearly every React app.
+  signal("pulse_ai_failure_fallback", "AI failures have a user-safe fallback", /\b(?:fallbackModel|fallback_model|modelFallback|try again|graceful(?:ly)?|provider unavailable)\b/i, "AI request paths need an explicit user-safe fallback.");
   signal("pulse_ai_stream_cancel", "Streaming AI responses can be cancelled", /\b(?:AbortController|abort\(|cancel(?:led)?\b)\b/i, "Streaming AI paths need cancellation evidence.");
   signal("pulse_ai_evaluation_fixture", "AI changes have versioned evaluation fixtures", /\b(?:evals?|golden(?:set)?|benchmark|testCases)\b/i, "AI code needs versioned evaluation fixtures or benchmark evidence.");
-  signal("pulse_ai_monitoring", "AI requests emit operational telemetry", /\b(?:trace|span|metrics|observability|telemetry)\b/i, "AI request paths need trace, metric, or telemetry evidence.");
-  signal("pulse_ai_cost_budget", "AI requests enforce cost or token budgets", /\b(?:maxTokens|tokenBudget|costBudget|usageLimit)\b/i, "AI request paths need token or cost-budget evidence.");
+  // Not bare `span`: that is the JSX <span> element.
+  signal("pulse_ai_monitoring", "AI requests emit operational telemetry", /\b(?:trace|startSpan|startActiveSpan|span\.end|metrics|observability|telemetry|experimental_telemetry|langfuse|helicone|langsmith)\b/i, "AI request paths need trace, metric, or telemetry evidence.");
+  // max_tokens / maxOutputTokens are the real SDK parameter names.
+  signal("pulse_ai_cost_budget", "AI requests enforce cost or token budgets", /\b(?:maxTokens|max_tokens|maxOutputTokens|max_output_tokens|max_completion_tokens|tokenBudget|costBudget|usageLimit)\b/i, "AI request paths need token or cost-budget evidence.");
   signal("pulse_ai_feedback_capture", "AI output feedback is captured for review", /\b(?:feedback|thumbs(?:Up|Down)?|rating|regenerate)\b/i, "AI output paths need feedback-capture evidence.");
   signal("pulse_ai_model_version", "AI model and prompt versions are recorded", /\b(?:modelVersion|promptVersion|model:\s*["'`])\b/i, "AI request paths need model or prompt version evidence.");
   return checks;
 }
 
+const SERVER_FRAMEWORK_DEPS = /^(?:next|express|fastify|koa|hono|@hapi\/hapi|@nestjs\/core|@remix-run\/(?:node|react)|nuxt|@sveltejs\/kit|astro|@builder\.io\/qwik-city)$/;
+const SPA_BUNDLER_DEPS = /^(?:vite|react-scripts|@vitejs\/plugin-react|parcel)$/;
+
+/**
+ * Does this file ship to the browser? Only three things establish that from a
+ * repo: a `"use client"` directive, a browser-only directory, or a pure SPA
+ * (Vite / CRA with no server framework) where everything under src/ is bundled.
+ * A Next/Express/SvelteKit route handler is server code, and a system prompt
+ * there is exactly where it belongs.
+ */
+export function shipsToBrowser(path: string, text: string, pkg: PackageManifest | null): boolean {
+  if (/\.(?:py|rb|php|go|java|cs)$/i.test(path)) return false;
+  if (/^\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*["']use client["']/.test(text)) return true;
+  if (/(^|\/)(?:public|static|client|frontend|browser)\//i.test(path)) return true;
+  if (/(^|\/)(?:api|server|functions|lambda|backend)\//i.test(path) || /(^|\/)route\.[cm]?[jt]s$/i.test(path)) return false;
+  const spa = anyDependency(pkg, SPA_BUNDLER_DEPS) && !anyDependency(pkg, SERVER_FRAMEWORK_DEPS);
+  return spa && /(^|\/)src\//i.test(path) && /\.[cm]?[jt]sx?$/i.test(path);
+}
+
+/** Retrieval calls, and the window after each one in which a scope would be written. */
+const RETRIEVAL_CALL = /(?:\b(?:similaritySearch(?:WithScore)?|maxMarginalRelevanceSearch|asRetriever|vectorStore\.(?:search|query)|(?:index|namespace|collection)\.query)|\.rpc(?=\s*\(\s*["'`]match_\w+))\s*\(/gi;
+const RETRIEVAL_SCOPE = /\b(?:filter|where|namespace|tenant\w*|user_?id|userId|org(?:anization)?_?id|organizationId|workspace_?id|workspaceId|account_?id|accountId|owner_?id|ownerId|metadata)\b/i;
+
+/** Files where a retrieval call has no scope term in the call that follows it. */
+function unscopedRetrievalSites(ctx: WebContext): string[] {
+  const hits: string[] = [];
+  for (const [path, raw] of ctx.files) {
+    const text = stripCStyleComments(raw);
+    RETRIEVAL_CALL.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = RETRIEVAL_CALL.exec(text))) {
+      // The call's own argument list, bounded: the scope belongs IN the query.
+      const window = text.slice(m.index, m.index + m[0].length + 240);
+      const close = callExtent(window, m[0].length);
+      if (!RETRIEVAL_SCOPE.test(window.slice(0, close))) { hits.push(path); break; }
+    }
+  }
+  return hits;
+}
+
+/** Index just past the `)` that closes the call opened at `openAt - 1`, or the window end. */
+function callExtent(text: string, openAt: number): number {
+  let depth = 1;
+  for (let i = openAt; i < text.length; i++) {
+    if (text[i] === "(") depth++;
+    else if (text[i] === ")" && --depth === 0) return i + 1;
+  }
+  return text.length;
+}
+
+function siteList(paths: string[]): string {
+  const shown = paths.slice(0, MAX_SITES_QUOTED);
+  const more = paths.length - shown.length;
+  return shown.join(", ") + (more > 0 ? ` (+${more} more)` : "");
+}
+
 function aiRepositorySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
-  const source = ctx.source;
-  const ai = /\b(?:openai|anthropic|chat\.completions|generateContent|useChat|languageModel|toolCall|function_call|vectorStore|embedding)\b/i.test(source);
-  if (!ai) return [];
+  if (!AI_USAGE.test(ctx.source)) return [];
   const checks: PulseScanCheckInput[] = [];
-  const add = (key: string, label: string, pattern: RegExp, detail: string) => {
-    const hits = sitesMatching(ctx, pattern);
-    if (hits.count) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: key, label, status: "FAIL", confidence: "HIGH", detail, evidence: hits.where });
-  };
-  add("pulse_ai_client_secret", "AI provider credentials stay server-side", /(?:sk-[a-zA-Z0-9_-]{20,}|AIzaSy[a-zA-Z0-9_-]{20,})/, "An AI provider credential pattern appears in application source.");
-  add("pulse_ai_client_prompt", "Long system instructions stay server-side", /(?:system|developer)\s*(?:=|:)\s*["'`][^"'`]{80,}/i, "A long system/developer instruction appears in client-readable source.");
-  add("pulse_ai_unsafe_tool", "AI tool calls validate arguments before execution", /(?:toolCall|function_call)[\s\S]{0,160}(?:exec\(|spawn\(|fetch\(|redirect\()/i, "An AI tool-call path reaches an execution or network primitive without visible validation.");
-  add("pulse_ai_unscoped_retrieval", "AI retrieval applies user or tenant scope", /(?:vectorStore|similaritySearch|embedding)[\s\S]{0,180}(?!tenant|userId|organizationId)/i, "Retrieval code lacks visible user or tenant scoping near the query.");
-  if (/\b(?:toolCall|function_call)\b/i.test(source)) checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_tool_confirmation", label: "High-impact AI tool calls require confirmation", status: /\b(?:confirm|approval|humanReview)\b/i.test(source) ? "PASS" : "WARN", detail: "Tool-call code needs explicit confirmation or approval evidence for consequential actions." }));
-  checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_output_schema", label: "AI outputs are schema-validated before use", status: /\b(?:zod|safeParse|schema\.parse|json_schema|structuredOutput)\b/i.test(source) ? "PASS" : "WARN", detail: "AI code needs schema-validation evidence before output is rendered, persisted, or executed." }));
-  checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_budget_timeout", label: "AI requests have budget and timeout limits", status: /\b(?:maxTokens|tokenBudget|timeout|AbortController|rateLimit)\b/i.test(source) ? "PASS" : "WARN", detail: "AI request paths need token-budget, timeout, or rate-limit evidence." }));
-  checks.push(absence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_audit_log", label: "AI tool decisions create auditable records", status: /\b(?:auditLog|audit\.log|toolAudit|decisionLog)\b/i.test(source) ? "PASS" : "WARN", detail: "AI tool or decision paths need privacy-safe audit-record evidence." }));
+
+  // A provider key literal is observed, not inferred. Leading boundary so that
+  // `risk-assessment-dashboard` is not read as `sk-assessment-dashboard`, and
+  // AIzaSy is NOT here: that is every Firebase web config and Maps key, public by design.
+  const secret = sitesMatching(ctx, /(?<![A-Za-z0-9_-])(?:sk-(?:proj-|ant-(?:api\d+-)?)?[A-Za-z0-9_-]{32,})(?![A-Za-z0-9_-])/);
+  if (secret.count) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_client_secret", label: "AI provider credentials stay server-side", status: "FAIL", confidence: "HIGH", detail: "An OpenAI/Anthropic-format secret key is committed in application source. Rotate it and load it from server-side configuration.", evidence: secret.where });
+
+  // A long system instruction is only "client-readable" in a file that ships to
+  // the browser. In a route handler it is where it belongs, so say nothing.
+  const PROMPT = /(?:role\s*:\s*["'`](?:system|developer)["'`]\s*,\s*content\s*:|\bsystem(?:Prompt|Message|Instruction)?\s*[:=])\s*["'`][^"'`]{80,}/i;
+  const clientPromptFiles = [...ctx.files].filter(([path, text]) => shipsToBrowser(path, text, ctx.pkg) && PROMPT.test(stripCStyleComments(text))).map(([p]) => p);
+  if (clientPromptFiles.length) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_client_prompt", label: "Long system instructions stay server-side", status: "WARN", confidence: "MEDIUM", detail: "A long system instruction sits in a file that ships to the browser, so any visitor can read it. Prompts are not secrets, but anything that relies on the user not seeing them (hidden rules, internal notes, the shape of a tool) should move to a server route.", evidence: siteList(clientPromptFiles) });
+
+  // Model-chosen arguments handed straight to a shell or eval is the concrete
+  // unsafe tool. Any other exec/spawn inside tool code is a "confirm" WARN.
+  const unsafeDirect = sitesMatching(ctx, /\b(?:exec|execSync|spawn|spawnSync|eval)\s*\(\s*(?:(?:toolCall|call|tool|args|toolArgs|input|params)\.(?:args|arguments|input|command|cmd|code|function\.arguments)\b|JSON\.parse\(\s*[\w.]*arguments\s*\))/i);
+  const toolExec = sitesMatching(ctx, /(?:\btoolCalls?\b|\bfunction_call\b|\btool\s*\(\s*\{|\bexecute\s*:\s*async)[\s\S]{0,240}\b(?:exec|execSync|spawn|spawnSync|eval)\s*\(/i);
+  if (unsafeDirect.count) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_unsafe_tool", label: "AI tool calls validate arguments before execution", status: "FAIL", confidence: "MEDIUM", detail: "Arguments chosen by the model are passed directly to a shell or eval call. A prompt-injected instruction can run commands on the server. Validate the arguments against a strict schema and an allow-list first.", evidence: unsafeDirect.where });
+  else if (toolExec.count) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_unsafe_tool", label: "AI tool calls validate arguments before execution", status: "WARN", confidence: "MEDIUM", detail: "AI tool code runs a shell or eval call. Pulse cannot follow the data to tell whether the model controls its input; confirm the arguments are validated and allow-listed before execution.", evidence: toolExec.where });
+
+  const unscoped = unscopedRetrievalSites(ctx);
+  if (unscoped.length) checks.push({ category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_unscoped_retrieval", label: "AI retrieval applies user or tenant scope", status: "WARN", confidence: "MEDIUM", detail: "A vector/retrieval query passes no filter, namespace, or user/tenant scope in its arguments. If one index holds more than one customer's data, a user can retrieve another's. Confirm the scope is applied, or add a filter on the authenticated user/tenant.", evidence: siteList(unscoped) });
+
+  if (/\b(?:toolCall|function_call)\b/i.test(ctx.source)) checks.push(aiAbsence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_tool_confirmation", label: "High-impact AI tool calls require confirmation", status: /\b(?:confirm|approval|humanReview)\b/i.test(ctx.source) ? "PASS" : "WARN", detail: "Tool-call code needs explicit confirmation or approval evidence for consequential actions." }));
+  checks.push(aiAbsence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_output_schema", label: "AI outputs are schema-validated before use", status: /\b(?:zod|safeParse|schema\.parse|json_schema|structuredOutput|generateObject|streamObject)\b/i.test(ctx.source) ? "PASS" : "WARN", detail: "AI code needs schema-validation evidence before output is rendered, persisted, or executed." }));
+  checks.push(aiAbsence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_budget_timeout", label: "AI requests have budget and timeout limits", status: /\b(?:maxTokens|max_tokens|maxOutputTokens|tokenBudget|timeout|AbortController|rateLimit)\b/i.test(ctx.source) ? "PASS" : "WARN", detail: "AI request paths need token-budget, timeout, or rate-limit evidence." }));
+  checks.push(aiAbsence(ctx, { category: CATEGORIES.AI_SAFETY, checkKey: "pulse_ai_audit_log", label: "AI tool decisions create auditable records", status: /\b(?:auditLog|audit\.log|toolAudit|decisionLog)\b/i.test(ctx.source) ? "PASS" : "WARN", detail: "AI tool or decision paths need privacy-safe audit-record evidence." }));
   return checks;
 }
 
@@ -738,10 +830,10 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
 
   const gates: Array<[string, string, RegExp, string, string]> = [
-    ["pulse_static_analysis_gate", "Static analysis runs in CI", /\b(?:static[-_ ]analysis|sast|source[-_ ]analysis)\b/i, "Static analysis is wired into the delivery workflow.", "No CI evidence of static analysis. Pulse requires source-pattern analysis before merge."],
+    ["pulse_static_analysis_gate", "Static analysis runs in CI", /\b(?:static[-_ ]analysis|sast|source[-_ ]analysis)\b|\bcodeql-action\/analyze\b|\bsemgrep(?:\/semgrep-action|\s+(?:ci|scan))\b|\bsonar(?:cloud|qube)?-(?:github-)?(?:scan|action)\b/i, "Static analysis is wired into the delivery workflow.", "No CI evidence of static analysis. We recommend running a source analyser (CodeQL, Semgrep, a linter with security rules) on every pull request."],
     ["pulse_static_analysis_policy", "Static-analysis rules are versioned", /\b(?:static[-_ ]analysis|sast)\b[\s\S]{0,240}\b(?:rules|policy|config(?:uration)?)\b|\b(?:rules|policy|config(?:uration)?)\b[\s\S]{0,240}\b(?:static[-_ ]analysis|sast)\b/i, "A checked-in static-analysis policy is present.", "No checked-in static-analysis policy evidence. Keep reviewable rules with the repository."],
     ["pulse_static_analysis_blocking", "Static-analysis findings block unsafe changes", /\b(?:static[-_ ]analysis|sast)\b[\s\S]{0,240}\b(?:fail|block|threshold|severity|critical|high)\b/i, "The static-analysis workflow includes blocking criteria.", "No evidence that static-analysis findings block a merge or release."],
-    ["pulse_secret_scan_gate", "Secret scanning runs in CI", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b/i, "A secret-scanning workflow is present.", "No CI evidence of secret scanning. Pulse requires credential detection before merge."],
+    ["pulse_secret_scan_gate", "Secret scanning runs in CI", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b|\bgitleaks(?:\/gitleaks-action|\s+(?:detect|protect|git|dir))\b|\btrufflesecurity\/trufflehog\b|\btrufflehog\s+(?:git|filesystem|github)\b/i, "A secret-scanning workflow is present.", "No CI evidence of secret scanning. We recommend a secret scanner (gitleaks, TruffleHog, GitHub secret scanning) on every pull request."],
     ["pulse_secret_history_scope", "Secret scanning covers repository history", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b[\s\S]{0,240}\b(?:history|full[-_ ]repo|all[-_ ]commits|pull[-_ ]request)\b/i, "The secret scan includes repository-history or pull-request coverage.", "No evidence that secret scanning covers history or pull requests."],
     ["pulse_secret_remediation", "Secret findings have a remediation path", /\b(?:secret[-_ ]scan|secret[-_ ]detection|credential[-_ ]scan)\b[\s\S]{0,240}\b(?:revoke|rotate|redact|remediate|incident)\b/i, "The repository documents how a secret finding is contained.", "No evidence of a documented revoke, rotation, or remediation path for secret findings."],
     ["pulse_supply_chain_gate", "Supply-chain risk scanning runs in CI", /\b(?:supply[-_ ]chain|dependency[-_ ]scan|iac[-_ ]scan|artifact[-_ ]scan)\b/i, "A supply-chain risk scan is wired into delivery.", "No CI evidence of dependency, infrastructure, or artifact risk scanning."],
@@ -756,7 +848,7 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
     ["pulse_accessibility_assertions", "Accessibility assertions run with UI tests", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|toHaveNoViolations)\b/i, "Automated accessibility assertions run with UI tests.", "No CI evidence of automated accessibility assertions against rendered UI."],
     ["pulse_accessibility_keyboard", "UI tests verify keyboard operation", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|keyboard[-_ ]navigation|focus[-_ ]order)\b/i, "UI-test evidence includes keyboard or focus validation.", "No evidence that UI tests verify keyboard navigation or focus order."],
     ["pulse_accessibility_semantics", "UI tests verify accessible semantics", /\b(?:accessibility[-_ ]assertion|accessibility[-_ ]test|a11y[-_ ]test|accessible[-_ ]name|role[-_ ]assertion|contrast[-_ ]check)\b/i, "UI-test evidence includes semantic or contrast validation.", "No evidence that UI tests verify accessible names, roles, or contrast."],
-    ["pulse_dynamic_security_gate", "Dynamic security baseline runs before release", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b/i, "A dynamic web or API security baseline is wired into delivery.", "No CI evidence of dynamic web or API security testing before release."],
+    ["pulse_dynamic_security_gate", "Dynamic security baseline runs before release", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b/i, "A dynamic web or API security baseline is wired into delivery.", "No CI evidence of dynamic web or API security testing before release. We recommend a DAST baseline (for example OWASP ZAP) against a staging or preview deployment, including signed-in paths."],
     ["pulse_dynamic_security_auth", "Dynamic security checks authenticated paths", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b[\s\S]{0,240}\b(?:auth(?:enticated)?|session|token|role)\b/i, "Dynamic security configuration covers authenticated behaviour.", "No evidence that dynamic security checks cover authenticated sessions or roles."],
     ["pulse_dynamic_security_isolation", "Dynamic security tests run against a safe target", /\b(?:dynamic[-_ ]security|dynamic[-_ ]scan|dast|web[-_ ]api[-_ ]baseline)\b[\s\S]{0,240}\b(?:staging|preview|sandbox|test[-_ ]environment)\b/i, "Dynamic security tests target an isolated environment.", "No evidence that dynamic security tests run against a safe staging, preview, sandbox, or test environment."],
   ];
@@ -768,7 +860,22 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
     /(?:^|\/)(?:e2e|playwright|cypress)\/(?:[^/]+\/)*[^/]*(?:login|sign-?up|checkout|payment|onboarding)[^/]*\.[jt]sx?$|(?:login|sign-?up|checkout|payment|onboarding)[^/]*\.(?:e2e|cy)\.[jt]sx?$/i.test(p));
   const staticAnalysisConfigPath = ctx.paths.some((p) => !isVendoredPath(p) &&
     /(^|\/)(?:\.eslintrc(?:\.(?:js|cjs|json|ya?ml))?|eslint\.config\.[cm]?[jt]s|\.rubocop\.yml|\.?ruff\.toml|\.semgrep\.ya?ml|\.golangci\.ya?ml|\.pylintrc|\.flake8|biome\.jsonc?|phpstan\.neon(?:\.dist)?|psalm\.xml)$/i.test(p));
+  // One absent DAST step is one finding. The two follow-on controls describe HOW a
+  // dynamic scan is configured, so with no dynamic scan there is nothing for them to
+  // judge — they defer to the gate instead of repeating its finding twice more.
+  const dastGate = gates.find(([key]) => key === "pulse_dynamic_security_gate")!;
+  const hasDast = has(dastGate[2]);
   for (const [checkKey, label, pattern, passDetail, warnDetail] of gates) {
+    if (!hasDast && (checkKey === "pulse_dynamic_security_auth" || checkKey === "pulse_dynamic_security_isolation")) {
+      checks.push({
+        category: CATEGORIES.CODE_QUALITY,
+        checkKey,
+        label,
+        status: "SKIPPED",
+        detail: "Not assessed: no dynamic security scan was found in CI, so there is no scan configuration to check. See \"Dynamic security baseline runs before release\" (pulse_dynamic_security_gate).",
+      });
+      continue;
+    }
     const enabled = has(pattern) ||
       (checkKey === "pulse_browser_release_coverage" && criticalBrowserTestPath) ||
       // A checked-in analyzer config IS a reviewable static-analysis policy (discourse:
@@ -828,7 +935,19 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   addFail("pulse_open_redirect", "Redirect targets are allow-listed", /(?:redirect|location)\s*\(\s*(?:req\.(?:query|body|params)|request\.(?:GET|POST|args|form|values|query_params|data|params|query|body)\b|params\[)/i, "A redirect target appears to come directly from request input (a query, form or route parameter).");
   addFail("pulse_ssrf", "Server-side fetch targets are not user-controlled", /(?:fetch|axios\.(?:get|post)|request)\s*\(\s*(?:req\.(?:query|body|params)|request\.)/i, "A server-side request target appears to come directly from request input.");
   if (/\b(?:webhook|onWebhook)\b/i.test(checksSource)) checks.push(absence(ctx, { category: CATEGORIES.SECURITY, checkKey: "pulse_webhook_replay", label: "Webhooks verify signatures and replay windows", status: /\b(?:signature|hmac|timestamp|replay)\b/i.test(checksSource) ? "PASS" : "WARN", detail: "Webhook handling needs signature and replay-window verification evidence." }));
-  if (/\b(?:toolCall|tools\s*:|function_call)\b/i.test(checksSource)) checks.push(absence(ctx, { category: CATEGORIES.AI_READINESS, checkKey: "pulse_ai_tool_controls", label: "AI tool calls require approval, budget, timeout, and audit controls", status: /\b(?:approval|confirm|budget|timeout|audit)\b/i.test(checksSource) ? "PASS" : "WARN", detail: "AI tool-call handling needs approval, budget, timeout, and audit evidence." }));
+  // `tools:` alone is any config object; a tool CALL is the trigger. The label names
+  // four controls, so all four must be evidenced to pass — one stray `timeout: 5000`
+  // in a fetch config used to pass it outright.
+  if (/\b(?:toolCalls?|tool_calls|function_call)\b/i.test(checksSource)) {
+    const controls: Array<[string, RegExp]> = [
+      ["approval", /\b(?:approval|approve|confirm(?:ation)?|humanReview|needsApproval)\b/i],
+      ["budget", /\b(?:budget|maxTokens|max_tokens|maxOutputTokens|maxSteps|stopWhen|max_iterations)\b/i],
+      ["timeout", /\b(?:timeout|AbortController|abortSignal)\b/i],
+      ["audit", /\b(?:audit\w*|decisionLog|toolLog)\b/i],
+    ];
+    const missing = controls.filter(([, re]) => !re.test(checksSource)).map(([name]) => name);
+    checks.push(aiAbsence(ctx, { category: CATEGORIES.AI_READINESS, checkKey: "pulse_ai_tool_controls", label: "AI tool calls require approval, budget, timeout, and audit controls", status: missing.length === 0 ? "PASS" : "WARN", detail: missing.length === 0 ? "Approval, budget, timeout and audit evidence were all found around AI tool-call handling." : `AI tool-call handling shows no evidence of: ${missing.join(", ")}. Consequential tools should need approval, run within a step/token budget and a timeout, and leave an audit record.` }));
+  }
 
   const scripts = ctx.pkg?.scripts ?? {};
   const riskyLifecycle = Object.entries(scripts).some(([name, command]) => /^(?:preinstall|install|postinstall|prepare)$/i.test(name) && /\b(?:curl|wget|powershell|bash|sh|node\s+-e)\b/i.test(command));

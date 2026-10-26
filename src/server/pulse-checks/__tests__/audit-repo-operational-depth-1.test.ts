@@ -107,7 +107,7 @@ describe("audit repo-operational-depth-1", () => {
         "api_depth_webhook_replay_window",
         'lib/shopify/index.ts\nexport async function revalidate(req: NextRequest) {\n  // shopify webhook topic\n  const secret = req.nextUrl.searchParams.get("secret");\n  if (!secret || secret !== process.env.SHOPIFY_REVALIDATION_SECRET) {\n    return NextResponse.json({ status: 401 });\n  }',
       ),
-    ).toBe("FAIL");
+    ).toBe("WARN");
   });
 
   it("auth_depth_csrf_state_change: header-token APIs skip; cookie-session mutation still warns", () => {

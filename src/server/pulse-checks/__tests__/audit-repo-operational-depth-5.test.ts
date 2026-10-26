@@ -50,15 +50,15 @@ describe("audit repo-operational-depth-5: thin-sample absence is inconclusive", 
     expect(check.detail).not.toMatch(/required safeguard was not established/);
   });
 
-  it("still FAILs when the whole source was read and no cross-tenant test exists", () => {
+  it("still flags when the whole source was read and no cross-tenant test exists", () => {
     const check = at(
       evaluateOperationalDepthChecks(
         snap({ "apps/api/v2/src/modules/oauth-clients/services/oauth-clients-users.service.ts": service }),
       ),
       "saas_depth_tenant_isolation_tests",
     );
-    expect(check.status).toBe("FAIL");
-    expect(check.confidence).toBe("HIGH");
+    expect(check.status).toBe("WARN");
+    expect(check.confidence).toBe("MEDIUM");
   });
 });
 
@@ -99,7 +99,7 @@ describe("audit repo-operational-depth-5: roles_depth_object_ownership", () => {
     expect(at(checks, "roles_depth_object_ownership").status).toBe("PASS");
   });
 
-  it("still FAILs an unscoped lookup even when authorId is set on create", () => {
+  it("still flags an unscoped lookup even when authorId is set on create", () => {
     const checks = evaluateOperationalDepthChecks(
       snap({
         "app/api/items/route.ts": [
@@ -109,7 +109,7 @@ describe("audit repo-operational-depth-5: roles_depth_object_ownership", () => {
         ].join("\n"),
       }),
     );
-    expect(at(checks, "roles_depth_object_ownership").status).toBe("FAIL");
+    expect(at(checks, "roles_depth_object_ownership").status).toBe("WARN");
   });
 });
 
@@ -137,13 +137,13 @@ describe("audit repo-operational-depth-5: roles_depth_server_authorization", () 
     expect(at(checks, "roles_depth_server_authorization").status).toBe("PASS");
   });
 
-  it("still FAILs an admin route that relies only on a hidden button", () => {
+  it("still flags an admin route that relies only on a hidden button", () => {
     const checks = evaluateOperationalDepthChecks(
       snap({
         "src/routes/admin.ts": 'router.delete("/admin/users/:id", handler); // button is hidden for non-admins',
       }),
     );
-    expect(at(checks, "roles_depth_server_authorization").status).toBe("FAIL");
+    expect(at(checks, "roles_depth_server_authorization").status).toBe("WARN");
   });
 });
 

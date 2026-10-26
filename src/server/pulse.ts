@@ -23,7 +23,8 @@ import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
 import { detectStoreTarget, isPlaceholderStoreName, provisionalStoreProjectName, resolveScanPlatform } from "@/lib/pulse-store-url";
-import { diffChecks } from "@/server/pulse-checks/scan-diff";
+import { describeDiff, diffChecks } from "@/server/pulse-checks/scan-diff";
+import { buildProjects, targetKey, type PulseProject } from "@/lib/pulse-projects";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
@@ -285,9 +286,37 @@ export async function canViewPulseScan(
   return (await assignedIds()).includes(row.clientId);
 }
 
-/** Lower-cased target key for a scan — the unit a trend / monitor is keyed on. */
-function scanTargetKey(scan: { inputUrl: string | null; inputGithubRepo: string | null; projectName: string }): string {
-  return (scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName).toLowerCase().trim();
+/** The target a trend / monitor is keyed on: one rule everywhere (src/lib/pulse-projects.ts). */
+const scanTargetKey = targetKey;
+
+/**
+ * Completed scans of the same target as `scan`, oldest first, matched with the shared
+ * `targetKey` rule. History and diff used to match the raw URL exactly, so a scan of
+ * `example.com/` had no history with `Example.com`.
+ */
+async function sameTargetScans(scan: { workspaceId: string; inputType: string; inputUrl: string | null; inputGithubRepo: string | null; projectName: string }) {
+  const key = targetKey(scan);
+  const rows = await prisma.pulseScan.findMany({
+    where: { workspaceId: scan.workspaceId, status: "COMPLETED", inputType: scan.inputType as Prisma.PulseScanWhereInput["inputType"] },
+    orderBy: { completedAt: "asc" },
+    select: { id: true, completedAt: true, healthScore: true, inputUrl: true, inputGithubRepo: true, projectName: true },
+  });
+  return rows.filter((r) => targetKey(r) === key);
+}
+
+/** Every project (one per scanned target), most urgent first, scoped like the scan list. */
+export async function getPulseProjects(params?: { clientIds?: string[] | null; triggeredByUserId?: string | null }): Promise<PulseProject[]> {
+  return buildProjects(await listPulseScans(params));
+}
+
+/** Every scan of one project, newest first, scoped like the scan list. Null when the project is not visible. */
+export async function getProjectScans(
+  key: string,
+  params?: { clientIds?: string[] | null; triggeredByUserId?: string | null },
+): Promise<{ project: PulseProject; scans: PulseScanListItem[] } | null> {
+  const scans = (await listPulseScans(params)).filter((s) => targetKey(s) === key);
+  if (scans.length === 0) return null;
+  return { project: buildProjects(scans)[0], scans };
 }
 
 /**
@@ -427,21 +456,10 @@ export async function renamePulseScan(id: string, projectName: string): Promise<
 export async function getScanHistory(scanId: string): Promise<{ id: string; completedAt: string | null; healthScore: number | null }[]> {
   const scan = await prisma.pulseScan.findUnique({
     where: { id: scanId },
-    select: { workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true },
+    select: { workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, projectName: true },
   });
-  if (!scan) return [];
-  const target =
-    scan.inputType === "URL" && scan.inputUrl ? { inputUrl: scan.inputUrl } :
-    scan.inputType === "GITHUB_REPO" && scan.inputGithubRepo ? { inputGithubRepo: scan.inputGithubRepo } :
-    null;
-  if (!target) return [];
-
-  const rows = await prisma.pulseScan.findMany({
-    where: { workspaceId: scan.workspaceId, status: "COMPLETED", healthScore: { not: null }, ...target },
-    orderBy: { completedAt: "asc" },
-    take: 20,
-    select: { id: true, completedAt: true, healthScore: true },
-  });
+  if (!scan || scan.inputType === "FREE_TEXT") return [];
+  const rows = (await sameTargetScans(scan)).filter((r) => r.healthScore !== null);
   return rows.slice(-12).map((r) => ({ id: r.id, completedAt: r.completedAt?.toISOString() ?? null, healthScore: r.healthScore }));
 }
 
@@ -511,28 +529,29 @@ export async function recordStarterOutcomeIfApplicable(scanId: string): Promise<
  * probe that could not complete would be able to close a finding. `DiffCheck`
  * requires it so narrowing this select is a compile error.
  */
-export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null> {
+export async function getScanDiff(scanId: string, againstScanId?: string | null): Promise<PulseScanDiff | null> {
+  const checkSelect = { select: { checkKey: true, label: true, category: true, status: true, confidence: true } } as const;
   const current = await prisma.pulseScan.findUnique({
     where: { id: scanId },
     select: {
-      workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, completedAt: true, healthScore: true,
-      checks: { select: { checkKey: true, label: true, category: true, status: true, confidence: true } },
+      workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, projectName: true, completedAt: true, healthScore: true,
+      checks: checkSelect,
     },
   });
-  if (!current || !current.completedAt) return null;
-  const target =
-    current.inputType === "URL" && current.inputUrl ? { inputUrl: current.inputUrl } :
-    current.inputType === "GITHUB_REPO" && current.inputGithubRepo ? { inputGithubRepo: current.inputGithubRepo } :
-    null;
-  if (!target) return null;
+  if (!current || !current.completedAt || current.inputType === "FREE_TEXT") return null;
 
+  // Against a chosen scan (any two can be compared), or else the one just before this one.
+  let prevId: string | null = null;
+  if (againstScanId) {
+    prevId = againstScanId;
+  } else {
+    const earlier = (await sameTargetScans(current)).filter((r) => r.completedAt && r.completedAt < current.completedAt!);
+    prevId = earlier[earlier.length - 1]?.id ?? null;
+  }
+  if (!prevId) return null;
   const prev = await prisma.pulseScan.findFirst({
-    where: { workspaceId: current.workspaceId, status: "COMPLETED", completedAt: { lt: current.completedAt }, ...target },
-    orderBy: { completedAt: "desc" },
-    select: {
-      id: true, completedAt: true, healthScore: true,
-      checks: { select: { checkKey: true, label: true, category: true, status: true, confidence: true } },
-    },
+    where: { id: prevId, workspaceId: current.workspaceId, status: "COMPLETED" },
+    select: { id: true, completedAt: true, healthScore: true, checks: checkSelect },
   });
   if (!prev) return null;
 
@@ -541,6 +560,10 @@ export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null>
   return {
     previousScanId: prev.id,
     previousCompletedAt: prev.completedAt?.toISOString() ?? null,
+    previousScore: prev.healthScore,
+    currentScore: current.healthScore,
+    currentCompletedAt: current.completedAt.toISOString(),
+    summary: describeDiff(diff),
     scoreChange: (current.healthScore ?? 0) - (prev.healthScore ?? 0),
     fixed: diff.fixed,
     regressed: diff.regressed,
@@ -586,6 +609,10 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
     healthScore: number | null;
     generatedProposalId: string | null;
     llmAnalysis: Prisma.JsonValue;
+    inputUrl: string | null;
+    inputGithubRepo: string | null;
+    projectName: string;
+    createdAt: Date;
   };
 
   const [allScans, recentScansRaw] = await Promise.all([
@@ -597,6 +624,10 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
         healthScore: true,
         generatedProposalId: true,
         llmAnalysis: true,
+        inputUrl: true,
+        inputGithubRepo: true,
+        projectName: true,
+        createdAt: true,
       },
     }) as Promise<ScanSummary[]>,
     prisma.pulseScan.findMany({
@@ -607,7 +638,16 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
     }),
   ]);
 
-  const completed = (allScans as ScanSummary[]).filter((s: ScanSummary) => s.status === "COMPLETED");
+  const completedAll = (allScans as ScanSummary[]).filter((s: ScanSummary) => s.status === "COMPLETED");
+  // Each project counts once, at its latest score. Averaging every scan let a site scanned
+  // ten times count ten times, so the portfolio average tracked how often people re-scanned.
+  const latestPerTarget = new Map<string, ScanSummary>();
+  for (const sc of completedAll) {
+    const k = targetKey(sc);
+    const cur = latestPerTarget.get(k);
+    if (!cur || sc.createdAt > cur.createdAt) latestPerTarget.set(k, sc);
+  }
+  const completed = [...latestPerTarget.values()];
   const withScore = completed.filter((s: ScanSummary) => s.healthScore !== null);
 
   const avgHealthScore = withScore.length
@@ -630,7 +670,7 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
 
   return {
     totalScans: allScans.length,
-    completedScans: completed.length,
+    completedScans: completedAll.length,
     avgHealthScore,
     awaitingFollowUp: completed.filter((s: ScanSummary) => !s.generatedProposalId).length,
     totalCriticalGaps,

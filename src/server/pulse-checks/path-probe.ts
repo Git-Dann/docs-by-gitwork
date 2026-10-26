@@ -58,6 +58,24 @@ export const looksLikeEnvFile = (body: string) => {
   return lines.length > 0 && lines.slice(0, 20).filter((l) => /^(export\s+)?[A-Z][A-Z0-9_]*\s*=/.test(l)).length >= Math.min(2, lines.length)
     && !/<html|<body|<div/i.test(body);
 };
+/** `.git/HEAD`: a symbolic ref or a bare commit SHA, and nothing else. */
+export const looksLikeGitHead = (body: string) =>
+  /^(ref:\s*refs\/[^\s]+|[0-9a-f]{40}|[0-9a-f]{64})\s*$/.test(body.trim());
+
+/**
+ * Is a sensitive file exposed at this path? "exposed" only when the body IS the file
+ * (its own format, per `looksLike`); "not_exposed" when the server answered and served
+ * something else (a 404, a 403, the site's homepage or app shell under a catch-all
+ * route); "unestablished" when it did not answer usefully — the request failed, it was
+ * rate-limited, or the server errored — because "we could not look" is not "it is not
+ * there" (CLAUDE.md §35).
+ */
+export type ExposureVerdict = "exposed" | "not_exposed" | "unestablished";
+export function exposureVerdict(probe: PathProbe, looksLike: (body: string) => boolean): ExposureVerdict {
+  if (probe.status === 0 || probe.status === 429 || probe.status >= 500) return "unestablished";
+  if (probe.status >= 200 && probe.status < 300 && looksLike(probe.body)) return "exposed";
+  return "not_exposed";
+}
 export const looksLikeAdminLogin = (body: string) =>
   /type=["']?password/i.test(body)
   && /(<title>[^<]*(admin|log ?in|sign ?in|dashboard)|wp-login|id=["']?loginform|name=["']?log["'\s>])/i.test(body);

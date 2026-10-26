@@ -1,5 +1,6 @@
 import { CATEGORIES } from "../pulse-checks/categories";
-import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
+import { githubGraphQL, githubRequest, hasGithubToken, parseGithubRepo } from "@/lib/github";
+import { applyPrivateRepoPolicyAll, parseRepoVisibility, type RepoVisibility } from "@/server/pulse-checks/private-repo";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { collectorCompletenessCheck, collectorExecution } from "@/server/pulse-checks/collector-health";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
@@ -79,6 +80,8 @@ const CODE_AGENT_QUERY = `
       licenseInfo { name spdxId }
       isArchived
       isEmpty
+      isPrivate
+      visibility
       diskUsage
       primaryLanguage { name }
       languages(first: 5) { nodes { name } }
@@ -137,6 +140,9 @@ interface GQLResponse {
     licenseInfo: { name: string; spdxId: string } | null;
     isArchived: boolean;
     isEmpty: boolean;
+    // Basic repository fields, but still nullable under a partial response (§35.1).
+    isPrivate?: boolean | null;
+    visibility?: string | null;
     diskUsage: number | null;
     primaryLanguage: { name: string } | null;
     languages: { nodes: { name: string }[] } | null;
@@ -447,7 +453,11 @@ export async function runCodeAgent(
 
   return {
     // The relevance gate in run-lite-scan decides per check; see runGithubChecks.
-    checks,
+    // run-lite-scan applies the private-repo policy to every check it ingests, from a
+    // visibility it fetched up front. Applying it here too, from GraphQL's own answer,
+    // covers the case where that up-front read failed but this query did not. The
+    // policy is idempotent, so applying it twice is harmless.
+    checks: applyPrivateRepoPolicyAll(checks, parseRepoVisibility(repo)),
     insights: {
       vulnerabilities,
       branchProtected,
@@ -524,4 +534,38 @@ function emptyInsights(): CodeAgentInsights {
     homepageUrl: null,
     exposedSecrets: [],
   };
+}
+
+const VISIBILITY_QUERY = `
+  query RepoVisibility($owner: String!, $name: String!) {
+    repository(owner: $owner, name: $name) { isPrivate visibility }
+  }
+`;
+
+/**
+ * Whether GitHub says the repo is private. REST first — `/repos/{owner}/{repo}` carries
+ * `private` and `visibility`, needs no token for a public repo and costs one call — then
+ * GraphQL as a fallback. Anything that cannot be established is `null`, and a null never
+ * changes a check: an unreadable answer is not evidence the repo is private (§35).
+ */
+export async function fetchRepoVisibility(repoInput: string): Promise<RepoVisibility> {
+  const parsed = parseGithubRepo(repoInput);
+  if (!parsed) return null;
+  try {
+    const meta = await githubRequest<unknown>(`/repos/${parsed.owner}/${parsed.repo}`);
+    const fromRest = parseRepoVisibility(meta);
+    if (fromRest !== null) return fromRest;
+  } catch {
+    // Fall through to GraphQL.
+  }
+  if (!hasGithubToken()) return null;
+  try {
+    const data = await githubGraphQL<{ repository: { isPrivate?: boolean | null; visibility?: string | null } | null }>(
+      VISIBILITY_QUERY,
+      { owner: parsed.owner, name: parsed.repo },
+    );
+    return parseRepoVisibility(data?.repository ?? null);
+  } catch {
+    return null;
+  }
 }

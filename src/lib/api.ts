@@ -1379,6 +1379,21 @@ export async function listPulseScans(params?: {
 }
 
 /** Every measured repository and the ranked work across them (the code portfolio page). */
+/** Every scanned project (one per target), most urgent first. */
+export async function getPulseProjects(): Promise<{ projects: import("@/lib/pulse-projects").PulseProject[] }> {
+  return apiFetch("/api/pulse/projects");
+}
+
+/** One project and every scan of it. */
+export async function getPulseProject(slug: string): Promise<{ project: import("@/lib/pulse-projects").PulseProject; scans: PulseScanListItem[] }> {
+  return apiFetch(`/api/pulse/projects/${slug}`);
+}
+
+/** What changed between two scans (`against` is the earlier one). */
+export async function comparePulseScans(scanId: string, against: string): Promise<{ diff: import("@/types/pulse").PulseScanDiff | null }> {
+  return apiFetch(`/api/pulse/scans/${scanId}/diff?against=${encodeURIComponent(against)}`);
+}
+
 export async function getCodePortfolio(): Promise<import("@/server/code-health/portfolio").CodePortfolio> {
   return apiFetch<import("@/server/code-health/portfolio").CodePortfolio>("/api/pulse/code-portfolio");
 }

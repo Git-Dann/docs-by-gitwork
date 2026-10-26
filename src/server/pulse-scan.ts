@@ -1,5 +1,7 @@
 import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
-import { applyLanguageApplicability, hasNonJsLinter, languageTechStack } from "@/server/pulse-checks/repo-language";
+import { applyLanguageApplicability, languageTechStack } from "@/server/pulse-checks/repo-language";
+import { errorMonitoringTool, hostingPlatformOf, isFirstPartyHost, RESPONSE_TIME_FAIL_MS, responseTimeVerdict } from "@/server/pulse-checks/web-basics";
+import { detectCi, detectDependencyUpdates, detectLinter, detectTests, type Detection, type RepoBasicsInput } from "@/server/pulse-checks/repo-basics";
 import { safeGithubRequest, parseGithubRepo, hasGithubToken, githubRateLimitedUntil } from "@/lib/github";
 import type { PulseCheckStatus, PulseScanCheckInput, PulseScanInputType } from "@/types/pulse";
 import { runExtendedChecks } from "./pulse-scan-extended";
@@ -3354,13 +3356,21 @@ export async function runUrlChecks(
     });
 
     const rt = pageResult.responseTimeMs;
+    // One slow sample is a WARN at most; FAIL needs a second load that is also slow.
+    // The second fetch only happens when the first was past the FAIL threshold.
+    const rtSamples = [rt];
+    if (rt >= RESPONSE_TIME_FAIL_MS) {
+      const again = await fetchPage(httpsUrl).catch(() => null);
+      if (again) rtSamples.push(again.responseTimeMs);
+    }
+    const rtVerdict = responseTimeVerdict(rtSamples);
     checks.push({
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "response_time",
       label: "Response time",
-      status: rt < 2000 ? "PASS" : rt < 5000 ? "WARN" : "FAIL",
-      detail: `Page loaded in ${rt}ms.`,
-      evidence: `${rt}ms`,
+      status: rtVerdict.status,
+      detail: rtVerdict.detail,
+      evidence: rtSamples.map((n) => `${n}ms`).join(", "),
     });
 
     checks.push({
@@ -3384,14 +3394,14 @@ export async function runUrlChecks(
     });
 
     const hostname = new URL(httpsUrl).hostname;
-    const platformSuffixes = [".vercel.app", ".netlify.app", ".railway.app", ".render.com", ".fly.dev", ".pages.dev", ".onrender.com"];
-    const hasCustomDomain = !platformSuffixes.some((suffix) => hostname.endsWith(suffix));
+    const hostingPlatform = hostingPlatformOf(hostname);
+    const hasCustomDomain = hostingPlatform === null;
     checks.push({
       category: CATEGORIES.INFRASTRUCTURE,
       checkKey: "custom_domain",
       label: "Custom domain",
       status: hasCustomDomain ? "PASS" : "WARN",
-      detail: hasCustomDomain ? "Custom domain detected." : `Hosting on a platform subdomain (${hostname}).`,
+      detail: hasCustomDomain ? "Custom domain detected." : `Hosting on a platform subdomain (${hostname}, under ${hostingPlatform}).`,
       evidence: hostname,
     });
 
@@ -3574,6 +3584,7 @@ export async function runUrlChecks(
       evidence: framing.evidence,
     });
 
+    const probeUnanswered = (status: number) => status === 0 || status === 429 || status >= 500;
     // .env — a real exposure serves the raw file (KEY=VALUE, not HTML). A 200
     // that's the app shell (catch-all routing) is not an exposure.
     const envProbe = await probePath(`${httpsUrl.replace(/\/$/, "")}/.env`);
@@ -3583,8 +3594,12 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_env",
       label: ".env not public",
-      status: envRealExposure ? "FAIL" : "PASS",
-      detail: envRealExposure
+      // No answer, rate-limited or a server error is not "not exposed": it is unknown.
+      status: envRealExposure ? "FAIL" : probeUnanswered(envProbe.status) ? "INCONCLUSIVE" : "PASS",
+      ...(probeUnanswered(envProbe.status) ? { confidence: "LOW" as const } : {}),
+      detail: probeUnanswered(envProbe.status) && !envRealExposure
+        ? `The .env check got no usable answer (${envProbe.status ? `HTTP ${envProbe.status}` : "no response"}), so Pulse cannot say whether it is exposed.`
+        : envRealExposure
         ? ".env file is publicly accessible and exposes environment variables — block it immediately."
         : envProbe.status === 200
           ? ".env path returns 200 but serves the app shell (catch-all routing), not a real file — no exposure."
@@ -3599,8 +3614,11 @@ export async function runUrlChecks(
       category: CATEGORIES.SECURITY,
       checkKey: "no_exposed_git",
       label: ".git directory not public",
-      status: gitRealExposure ? "FAIL" : "PASS",
-      detail: gitRealExposure
+      status: gitRealExposure ? "FAIL" : probeUnanswered(gitProbe.status) ? "INCONCLUSIVE" : "PASS",
+      ...(probeUnanswered(gitProbe.status) ? { confidence: "LOW" as const } : {}),
+      detail: probeUnanswered(gitProbe.status) && !gitRealExposure
+        ? `The .git check got no usable answer (${gitProbe.status ? `HTTP ${gitProbe.status}` : "no response"}), so Pulse cannot say whether it is exposed.`
+        : gitRealExposure
         ? ".git directory is exposed — source history and secrets are downloadable. Block access immediately."
         : gitProbe.status === 200
           ? ".git path returns 200 but serves the app shell (catch-all routing), not a real repository — no exposure."
@@ -3685,15 +3703,16 @@ export async function runUrlChecks(
     });
 
     // Observability
-    const errorTools = ["sentry", "bugsnag", "logrocket", "rollbar", "datadog"];
-    const hasErrorMonitoring = errorTools.some((t) => pageResult.html.toLowerCase().includes(t));
+    // The SDK's script, init call or ingest endpoint — not the bare word "sentry" in page text.
+    const errorTool = errorMonitoringTool(pageResult.html);
+    const hasErrorMonitoring = errorTool !== null;
     checks.push({
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "error_monitoring",
       label: "Error monitoring",
       status: hasErrorMonitoring ? "PASS" : "INCONCLUSIVE",
       detail: hasErrorMonitoring
-        ? "Error monitoring tool detected."
+        ? `Error monitoring SDK loaded by the page: ${errorTool}.`
         : "No error-monitoring SDK (Sentry, Bugsnag, etc.) is referenced in the page HTML. These SDKs are normally bundled into JavaScript files or run server-side, which this check does not read, so whether the site has error monitoring could not be established.",
     });
 
@@ -5779,7 +5798,8 @@ export async function runUrlChecks(
       if (!src.startsWith("http")) continue;
       try {
         const scriptHostname = new URL(src).hostname;
-        if (scriptHostname !== hostname) {
+        // The site's own cdn./static. subdomains are not third parties.
+        if (!isFirstPartyHost(scriptHostname, hostname)) {
           externalScriptDomains.add(scriptHostname);
         }
       } catch { /* ignore */ }
@@ -6539,6 +6559,11 @@ export async function runUrlChecks(
 type GitHubContentsEntry = { name: string; type: "file" | "dir" };
 type GitHubContentsResponse = GitHubContentsEntry[] | { message?: string };
 
+/** PRESENT → PASS, ABSENT → WARN, UNKNOWN → INCONCLUSIVE (never a guess either way). */
+function basicsStatus(d: Detection): "PASS" | "WARN" | "INCONCLUSIVE" {
+  return d.state === "present" ? "PASS" : d.state === "absent" ? "WARN" : "INCONCLUSIVE";
+}
+
 export async function runGithubChecks(
   repoInput: string,
   platform?: string,
@@ -6664,26 +6689,29 @@ export async function runGithubChecks(
   const allTreePaths = (treeSnapshot?.paths ?? []).map((p) => p.toLowerCase());
 
   const hasReadme = names.some((n) => n.startsWith("readme"));
-  const hasTests = names.some((n) => ["test", "tests", "__tests__", "spec", "specs"].includes(n));
-  const hasLinter =
-    names.includes("eslint.config.js") ||
-    names.includes("eslint.config.mjs") ||
-    names.includes(".eslintrc") ||
-    names.includes(".eslintrc.js") ||
-    names.includes("biome.json") ||
-    names.includes(".prettierrc");
-  // Lint config outside the JavaScript world (ruff, flake8, RuboCop, golangci-lint, …). Was
-  // ESLint-only, so every Python, Go or Ruby repo was told it had no linter. pyproject.toml
-  // is read only when nothing else answered, because it costs an API call.
+  // Tests, linter, CI and dependency-update config: detected over the whole tree (not
+  // five root folder names), and ABSENT only when the tree was read in full — see
+  // pulse-checks/repo-basics.ts (October 2026 audit).
+  const basicsInput: RepoBasicsInput = {
+    rootNames: names,
+    paths: treeSnapshot?.accessible ? treeSnapshot.paths : null,
+    truncated: Boolean(treeSnapshot?.truncated),
+    packageJson: rootPackageJson,
+  };
+  let linterFound = detectLinter(basicsInput);
+  // pyproject.toml is read only when nothing else answered, because it costs an API call.
   let pyprojectText: string | null = null;
-  if (!hasLinter && names.includes("pyproject.toml")) {
+  if (linterFound.state !== "present" && names.includes("pyproject.toml")) {
     const r = await safeGithubRequest<{ content?: string }>(`/repos/${fullName}/contents/pyproject.toml`, {});
     pyprojectText = r.content ? Buffer.from(r.content.replace(/\n/g, ""), "base64").toString("utf-8") : null;
+    basicsInput.pyproject = pyprojectText;
+    linterFound = detectLinter(basicsInput);
   }
-  const hasAnyLinter = hasLinter || hasNonJsLinter(allTreePaths, pyprojectText);
+  const testsFound = detectTests(basicsInput);
+  const ciFound = detectCi(basicsInput);
+  const depUpdatesFound = detectDependencyUpdates(basicsInput);
   const hasTs = names.includes("tsconfig.json") || treeHas((_, base) => base === "tsconfig.json");
   const hasEnvExample = [".env.example", ".env.sample", ".env.template", ".env.dist", ".env.local.example", "env.example"].some((f) => names.includes(f));
-  const hasCi = names.includes(".github") || names.includes(".circleci");
   const hasLicense = names.some((n) => n.startsWith("license"));
   const hasPackageJson = names.includes("package.json");
   const hasPyProject = names.includes("pyproject.toml") || names.includes("requirements.txt");
@@ -6781,15 +6809,25 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_tests",
       label: "Test suite",
-      status: hasTests ? "PASS" : "WARN",
-      detail: hasTests ? "Test directory found." : "No test directory detected.",
+      status: basicsStatus(testsFound),
+      detail:
+        testsFound.state === "present"
+          ? `Tests found: ${testsFound.evidence}.`
+          : testsFound.state === "absent"
+            ? "No tests found anywhere in the repository: no test or spec files, no test folders, no test runner config and no test script in package.json."
+            : "Could not establish whether this repository has tests: the file tree could not be read in full, and nothing at the root or in the part that was read is a test.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_linter",
       label: "Linter config",
-      status: hasAnyLinter ? "PASS" : "WARN",
-      detail: hasAnyLinter ? "Linting configuration found." : "No linter config found (ESLint, Biome, Prettier, ruff, flake8, Pylint, RuboCop, golangci-lint, detekt, SwiftLint, PHPStan, Dart analysis options).",
+      status: basicsStatus(linterFound),
+      detail:
+        linterFound.state === "present"
+          ? `Linter configured: ${linterFound.evidence}.`
+          : linterFound.state === "absent"
+            ? "No linter config found (ESLint, Biome, oxlint, ruff, flake8, Pylint, RuboCop, golangci-lint, detekt, SwiftLint, PHPStan, Dart analysis options). A formatter such as Prettier is not a linter."
+            : "Could not establish whether a linter is configured: the file tree could not be read in full, and no lint config was found at the root or in the part that was read.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
@@ -6809,8 +6847,13 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "ci_cd_present",
       label: "CI/CD pipeline",
-      status: hasCi ? "PASS" : "WARN",
-      detail: hasCi ? "CI/CD configuration found." : "No CI/CD configuration detected.",
+      status: basicsStatus(ciFound),
+      detail:
+        ciFound.state === "present"
+          ? `CI configuration found: ${ciFound.evidence}.`
+          : ciFound.state === "absent"
+            ? "No CI configuration found (no .github/workflows/*.yml, CircleCI, GitLab CI, Buildkite, Jenkinsfile or similar). A .github folder holding only templates does not run anything."
+            : "Could not establish whether CI is configured: the repository has a .github folder but its contents could not be read in full.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,
@@ -6850,10 +6893,6 @@ export async function runGithubChecks(
   const hasSecurityMd =
     names.some((n) => n === "security.md") ||
     treeHas((p) => p === ".github/security.md" || p === "docs/security.md");
-  const hasDependabot = names.includes(".github") && (() => {
-    const githubDir = entries.find((e) => e.name === ".github" && e.type === "dir");
-    return Boolean(githubDir);
-  })();
   const hasChangelogFile =
     names.some((n) => n.startsWith("changelog") || n === "history.md") ||
     // CHANGES.rst / NEWS / HISTORY.rst / RELEASES.md are standard (especially in Python).
@@ -6896,8 +6935,13 @@ export async function runGithubChecks(
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "has_dependabot",
       label: "Dependabot / automated dependency updates",
-      status: hasDependabot ? "PASS" : "WARN",
-      detail: hasDependabot ? ".github directory found — check for dependabot.yml for automated updates." : "No Dependabot configuration — unpatched dependencies are the #1 source of supply-chain vulnerabilities.",
+      status: basicsStatus(depUpdatesFound),
+      detail:
+        depUpdatesFound.state === "present"
+          ? `Automated dependency updates configured: ${depUpdatesFound.evidence}.`
+          : depUpdatesFound.state === "absent"
+            ? "No Dependabot (.github/dependabot.yml) or Renovate config found. Without one, dependency security fixes arrive only when someone remembers to update."
+            : "Could not establish whether Dependabot or Renovate is configured: the .github folder could not be read in full.",
     },
     {
       category: CATEGORIES.CODE_QUALITY,

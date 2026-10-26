@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
+import { documentLanguage, stripNonMarketContext } from "./jurisdictions";
 
 const CATEGORY = CATEGORIES.BUSINESS_OPS;
 
@@ -57,15 +58,63 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   const isEuProduct = /\.eu\b/.test(ctx.hostname) || html.toLowerCase().includes("€") || html.toLowerCase().includes("vat");
   checks.push({ category: CATEGORY, checkKey: "vat_number_displayed", label: "VAT number in footer (EU B2B)", status: isEuProduct ? (hasVatNumber ? "PASS" : "WARN") : "PASS", detail: isEuProduct ? (hasVatNumber ? "VAT registration number signals detected." : "EU signals detected but no VAT number — EU B2B customers need your VAT number for reverse-charge invoicing and expense claims.") : "Not applicable." });
 
-  const hasCompaniesHouse = /company.*number|companies.*house|registered.*england|registered.*wales|registered.*scotland|co\. no\.|no\.\s+\d{7,8}/i.test(html);
-  const isUkProduct = /\.uk\b/.test(ctx.hostname) || html.toLowerCase().includes("united kingdom") || html.toLowerCase().includes("ltd") || html.toLowerCase().includes("limited");
-  checks.push({ category: CATEGORY, checkKey: "uk_companies_house_number", label: "UK Companies House registration number", status: isUkProduct ? (hasCompaniesHouse ? "PASS" : "WARN") : "PASS", detail: isUkProduct ? (hasCompaniesHouse ? "UK company registration number detected." : "UK signals detected but no Companies House number — UK law requires displaying your registered company number on your website.") : "Not applicable." });
+  // Visible prose: scripts, styles, JSON payloads and locale switchers removed, tags
+  // stripped, whitespace collapsed. Checks that read phrases read THIS, so a bounded
+  // window cannot be bridged by minified markup.
+  const visibleText = stripNonMarketContext(html)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
+    .replace(/&#163;|&pound;/gi, "£")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ");
 
-  const hasDirectorInfo = /director|ceo|chief executive|managing director|responsible person|dpo|data protection officer/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "eu_director_info", label: "Director / responsible person named", status: hasDirectorInfo ? "PASS" : "WARN", detail: hasDirectorInfo ? "Director / responsible person information detected." : "No director or DPO named — some EU jurisdictions require naming a responsible person on the company website." });
+  // A UK business is established by what only a UK business shows: a .uk domain, an
+  // en-GB page, "Registered in England/Wales/Scotland/Northern Ireland", Companies
+  // House, a UK postcode, a £ price or a +44 number. "Ltd"/"Limited" alone is not UK —
+  // it is a company form in Ireland, India, Hong Kong, Singapore ("Pte. Ltd."), Australia
+  // and South Africa ("(Pty) Ltd") too.
+  const docRegion = (documentLanguage(html) ?? "").split("-")[1] ?? "";
+  const ukReasons: string[] = [];
+  if (/\.uk$/.test(ctx.hostname)) ukReasons.push(".uk domain");
+  if (docRegion === "gb") ukReasons.push("page language en-GB");
+  if (/\bregistered in (?:england|wales|scotland|northern ireland)\b/i.test(visibleText)) ukReasons.push("\"registered in England/Wales/Scotland\"");
+  if (/\bcompanies house\b/i.test(visibleText)) ukReasons.push("Companies House mentioned");
+  if (/\b[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]? \d[ABD-HJLNP-UW-Z]{2}\b/.test(visibleText)) ukReasons.push("UK postcode");
+  if (/£\s?\d/.test(visibleText)) ukReasons.push("£ price");
+  if (/\+44[\s.-]?\(?0?\)?\s?\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/.test(visibleText)) ukReasons.push("+44 phone number");
+  const isUkProduct = ukReasons.length > 0;
+  // A registered company: the page says it is one, or names its company form.
+  const isUkCompany = isUkProduct && (/\b(?:ltd|limited|plc|llp)\b/i.test(visibleText) || /\bregistered in (?:england|wales|scotland|northern ireland)\b|\bcompanies house\b/i.test(visibleText));
+  // A company number is 8 characters: 8 digits, or a 2-letter prefix (SC, NI, OC…) + 6
+  // digits; older numbers are often written without the leading zero (7 digits).
+  const companyNumber = String.raw`(?:[A-Z]{2}\d{6}|\d{7,8})\b`;
+  const hasCompaniesHouse = new RegExp(String.raw`\bcompany (?:registration )?(?:number|no\.?|reg(?:istration)?\.? no\.?)\s*:?\s*${companyNumber}|\b(?:registered|registration) (?:number|no\.?)\s*:?\s*${companyNumber}|\bregistered in (?:england|wales|scotland|northern ireland)(?: (?:and|&) wales)?(?:[^.]|\bno\.){0,60}?\b${companyNumber}|\bco\.? (?:reg\.? )?no\.?\s*:?\s*${companyNumber}|\bcrn\s*:?\s*${companyNumber}|\bcompanies house[^.]{0,40}?\b${companyNumber}`, "i").test(visibleText);
+  const ukWhy = ukReasons.join(", ");
+  checks.push({
+    category: CATEGORY, checkKey: "uk_companies_house_number", label: "UK Companies House registration number",
+    ...(!isUkProduct
+      ? { status: "SKIPPED" as const, detail: "No UK signals on the scanned page (.uk domain, en-GB, \"registered in England\", Companies House, UK postcode, £ price or +44 number) — the UK company-number disclosure rule does not apply." }
+      : hasCompaniesHouse
+        ? { status: "PASS" as const, detail: `UK signals found (${ukWhy}) and a company registration number is shown.` }
+        : isUkCompany
+          ? { status: "WARN" as const, detail: `UK company signals found (${ukWhy}) but no company registration number on the scanned page — the Company, LLP and Business Names Regulations 2015 require a UK company's website to show its registered number (a legal or contact page also satisfies this).` }
+          : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "Only a registered company must show a number, and the page does not say whether this business is one.", detail: `UK signals found (${ukWhy}), but the page does not show that this is a registered company (no Ltd, PLC or LLP), so whether a company number is required cannot be established. Sole traders and partnerships have none.` }),
+  });
 
-  const hasSupportSla = /support.*sla|response.*time|reply.*within|sla.*support|24.*hour.*response|business.*day.*response/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "support_sla_documented", label: "Support SLA / response times documented", status: hasSupportSla ? "PASS" : "WARN", detail: hasSupportSla ? "Support SLA / response time signals detected." : "No support SLA documented — enterprise buyers require documented response times in their vendor assessment questionnaires." });
+  // Word-bounded role names: "dpo" is inside "endpoint", and "art director" is a job
+  // title in a portfolio, not the company's responsible person.
+  const directorRole = /\b(?:managing director|company director|chief executive(?: officer)?|ceo|geschäftsführer(?:in)?|gérant|amministratore delegato|data protection officer|responsible person|vertretungsberechtigt)\b/i.exec(visibleText)?.[0];
+  checks.push({
+    category: CATEGORY, checkKey: "eu_director_info", label: "Director / responsible person named",
+    ...(directorRole
+      ? { status: "PASS" as const, detail: `The scanned page names a responsible role ("${directorRole}").` }
+      : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "Where it is required, the responsible person is named on an Impressum or legal page this check does not read.", detail: "The scanned page does not name a director or responsible person. Most sites have no duty to; where one exists (e.g. a German Impressum under DDG §5) it is met on a legal page rather than the homepage, so this is not a finding." }),
+  });
+
+  // Bounded to a short window of visible text: the old /response.*time/ joined a
+  // "response" in one script to a "time" thousands of characters later.
+  const hasSupportSla = /\b(?:support|response|first[- ]response|resolution)\s+(?:times?|SLAs?)\b|\b(?:reply|respond|response|get back to you)\b[^.]{0,30}?\bwithin\s+(?:\d+|one|two|three|four|24|48|72)\s*(?:business |working )?(?:hours?|hrs?|days?|minutes?|mins?)\b|\bSLA\b[^.]{0,40}?\b(?:support|response|uptime)\b|\b(?:support|uptime)\b[^.]{0,40}?\bSLA\b|\b\d+\s*(?:hour|hr|business[- ]day|working[- ]day)s?\s+response\b/i.test(visibleText);
+  checks.push({ category: CATEGORY, checkKey: "support_sla_documented", label: "Support SLA / response times documented", status: hasSupportSla ? "PASS" : "WARN", detail: hasSupportSla ? "Support response-time commitment found on the scanned page." : "No support response time found on the scanned page — enterprise buyers ask for documented response times in vendor assessments. If a support or SLA page states them, this does not apply." });
 
   const hasEsignature = /esignature|e-signature|docusign|hellosign|sign now|adobe.*sign|pandadoc|electronic.*signature/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "esignature_support", label: "eSignature / contract workflow", status: hasEsignature ? "PASS" : "WARN", detail: hasEsignature ? "eSignature / contract workflow signals detected." : "No eSignature signals — B2B contracts require legal electronic signatures; integrations with DocuSign, HelloSign, or PandaDoc streamline procurement." });

@@ -37,6 +37,44 @@ function isAriaHidden(tag: string): boolean {
   return (attributeValue(tag, "aria-hidden") ?? "").trim().toLowerCase() === "true";
 }
 
+/** True when any <video> autoplays without `muted`, judged per tag with attributes in any order. */
+export function hasUnmutedAutoplayVideo(html: string): boolean {
+  const tags = html.match(/<video\b[^>]*>/gi) ?? [];
+  return tags.some((t) => hasAttribute(t, "autoplay") && !hasAttribute(t, "muted"));
+}
+
+/**
+ * Links whose whole visible text is generic ("read more", "here") AND that carry no
+ * aria-label / aria-labelledby. A non-empty aria-label replaces the visible text as the
+ * accessible name, so `<a aria-label="Read more about pricing">Read more</a>` is fine.
+ */
+export function genericLinkTexts(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<a\b([^>]*)>\s*(click here|here|more|read more|learn more|link|go)\s*<\/a>/gi)) {
+    if (hasProgrammaticName(`<a ${m[1]}>`)) continue;
+    out.push(m[2]);
+  }
+  return out;
+}
+
+/** Titles scaffolding tools ship with — identical across every page that keeps them. */
+const PLACEHOLDER_TITLES = /^(react app|vite \+ react( \+ ts)?|vite app|document|untitled|home|index|my app|create next app|next\.js|welcome to nginx!?|new tab)$/i;
+
+/**
+ * page_title_unique. Uniqueness needs the site's OTHER pages, which a one-page scan has
+ * not read — so a real-looking title is INCONCLUSIVE, never a PASS. Only what this page
+ * proves on its own is a verdict: no title at all, or a scaffolding placeholder that is,
+ * by construction, the same on every page.
+ */
+export function pageTitleVerdict(rawTitle: string): { status: "WARN" | "INCONCLUSIVE"; detail: string } {
+  const title = rawTitle.replace(/\s+/g, " ").trim();
+  if (!title) return { status: "WARN", detail: "No page title — WCAG 2.4.2 requires every page to have a title that describes its topic or purpose." };
+  if (PLACEHOLDER_TITLES.test(title)) {
+    return { status: "WARN", detail: `The page title is a framework placeholder ("${title}"), so it is the same on every page that keeps it — WCAG 2.4.2 requires a title that describes this page.` };
+  }
+  return { status: "INCONCLUSIVE", detail: `Page title: "${title}". Whether it is unique needs the site's other pages, which a single-page scan does not read.` };
+}
+
 export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult } = ctx;
   const html = pageResult.html;
@@ -211,7 +249,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "no_autoplay_audio", label: "No autoplay audio without controls", status: hasAutoplayAudio ? "WARN" : "PASS", detail: hasAutoplayAudio ? "Autoplay audio detected — WCAG 1.4.2 requires providing a mechanism to pause, stop, or control the volume of audio that plays automatically." : "No autoplay audio detected." });
 
   // No autoplay video
-  const hasAutoplayVideo = /<video[^>]+autoplay/i.test(html) && !/<video[^>]+autoplay[^>]+muted/i.test(html);
+  // Per <video> tag, attributes in any order: `<video muted autoplay>` is as muted as
+  // `<video autoplay muted>` (the old test only accepted the second).
+  const hasAutoplayVideo = hasUnmutedAutoplayVideo(html);
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "no_autoplay_video", label: "No autoplay video without controls", status: hasAutoplayVideo ? "WARN" : "PASS", detail: hasAutoplayVideo ? "Autoplay video without muted attribute detected — WCAG 1.4.2 requires a mechanism to pause or stop autoplaying media." : "No problematic autoplay video detected." });
 
   // Session timeout warning
@@ -255,13 +295,13 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "text_spacing_supported", label: "Letter/word spacing not fixed", status: hasFixedSpacing ? "WARN" : "PASS", detail: hasFixedSpacing ? "Inline !important letter/word/line spacing detected — text-spacing adjustments applied by browser extensions or bookmarklets cannot override these elements (WCAG 1.4.12)." : "No inline !important spacing that would block user text-spacing overrides detected." });
 
   // Link purpose
-  const genericLinks = html.match(/>(?:click here|here|more|read more|learn more|link|go)<\/a>/gi) ?? [];
+  const genericLinks = genericLinkTexts(html);
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "link_purpose_clear", label: "Links have descriptive text", status: genericLinks.length === 0 ? "PASS" : "WARN", detail: genericLinks.length === 0 ? "No generic link text detected." : `${genericLinks.length} link(s) with generic text (\"here\", \"read more\") detected — this meets WCAG 2.4.4 (AA) only if the surrounding sentence, paragraph or list item explains the destination; link text that describes its purpose on its own is WCAG 2.4.9 (AAA).` });
 
   // Page title
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const pageTitle = titleMatch?.[1] ?? "";
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "page_title_unique", label: "Unique page title", status: pageTitle.length > 5 ? "PASS" : "WARN", detail: pageTitle.length > 5 ? `Page title detected: "${pageTitle.trim()}" — descriptive titles help users navigate and understand context.` : "No descriptive page title detected — WCAG 2.4.2 requires every page to have a descriptive, unique title." });
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "page_title_unique", label: "Unique page title", ...pageTitleVerdict(pageTitle) });
 
   // Language attribute on html element
   const hasLangAttr = /<html[^>]+lang=["'][a-z]{2}/i.test(html);
@@ -276,7 +316,7 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
 
   // 3.2.6 Consistent Help — a help mechanism in a consistent location across pages.
   const hasConsistentHelp = /href=["'][^"']*(help|support|contact)[^"']*["']|intercom|crisp\.chat|zendesk|drift|help.*center|live chat|tawk\.to/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "wcag22_consistent_help", label: "Consistent help mechanism (WCAG 3.2.6)", status: "PASS", detail: hasConsistentHelp ? "A help/contact mechanism is present — WCAG 2.2 (3.2.6) is satisfied when it appears in the same relative location on every page that repeats it; cross-page placement is not verified from a single page." : "Not applicable — no help/contact mechanism detected on this page. WCAG 2.2 (3.2.6) only governs where help appears when it is provided; it does not require one." });
+  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "wcag22_consistent_help", label: "Consistent help mechanism (WCAG 3.2.6)", status: hasConsistentHelp ? "INCONCLUSIVE" : "NOT_APPLICABLE", detail: hasConsistentHelp ? "A help/contact mechanism is present — WCAG 2.2 (3.2.6) is satisfied when it appears in the same relative location on every page that repeats it; cross-page placement is not verified from a single page." : "Not applicable — no help/contact mechanism detected on this page. WCAG 2.2 (3.2.6) only governs where help appears when it is provided; it does not require one." });
 
   // EU Accessibility Act (in force June 2025) — a published accessibility statement.
   const hasAccessibilityStatement = /accessibility statement|accessibility commitment|href=["'][^"']*accessibility[^"']*["']|we are committed to accessibility|wcag 2\.[12]|en 301 549/i.test(html);

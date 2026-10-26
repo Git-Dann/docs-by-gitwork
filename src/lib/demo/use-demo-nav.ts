@@ -22,7 +22,11 @@ export function useDemoLinkReroute() {
     const docMatch = href.match(/^\/app\/docs\/([^/?#]+)/);
     const devSignalMatch = href.match(/^\/app\/codeclear\/devsignal\/([^/?#]+)$/);
     const pulseScanMatch = href.match(/^\/app\/pulse\/([^/?#]+)/);
-    if (devSignalMatch) router.push(`/demo/devsignal/${devSignalMatch[1]}`);
+    const pulseProjectMatch = href.match(/^\/app\/pulse\/projects\/([^/?#]+)/);
+    const pulseCompareMatch = href.match(/^\/app\/pulse\/compare(\?.*)?$/);
+    if (pulseProjectMatch) router.push(`/demo/pulse/projects/${pulseProjectMatch[1]}`);
+    else if (pulseCompareMatch) router.push(`/demo/pulse/compare${pulseCompareMatch[1] ?? ""}`);
+    else if (devSignalMatch) router.push(`/demo/devsignal/${devSignalMatch[1]}`);
     else if (/^\/app\/codeclear\/devsignal$/.test(href)) router.push("/demo/devsignal");
     else if (/^\/app\/pulse\/new/.test(href) || /^\/app\/pulse$/.test(href)) router.push("/demo/pulse");
     else if (pulseScanMatch) router.push(`/demo/pulse/${pulseScanMatch[1]}`);

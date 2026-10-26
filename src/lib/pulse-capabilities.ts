@@ -102,6 +102,7 @@ export const EXTRAS: { name: string; detail: string; evidence: string }[] = [
   { name: "Six summary scores", detail: "Security, access, code, reliability, legal and experience, with their weights published.", evidence: "src/server/pulse-checks/pillars.ts" },
   { name: "A score per market", detail: "UK, EU and US compliance scored separately.", evidence: "src/server/pulse-checks/jurisdictions.ts" },
   { name: "An AI summary and fix plan", detail: "Optional: the gaps that matter most and what to build next, written up.", evidence: "src/server/pulse-ai.ts" },
+  { name: "A history for every project", detail: "Every scan of the same site, repo or listing kept together: the score over time, what needs a look first, and any two scans compared side by side.", evidence: "src/lib/pulse-projects.ts" },
   { name: "Comparison with other scans", detail: "Where a product sits against others of the same kind, and what changed since its last scan.", evidence: "src/app/api/pulse/scans/[scanId]/benchmarks/route.ts" },
   { name: "Code health and a tech-debt register", detail: "Every source file of a repo parsed, not sampled: each complex, long or oversized function and class listed worst first, linked to its line, with the effort to clear it.", evidence: "src/server/code-health/analyse.ts" },
   { name: "Hotspots and who knows the code", detail: "A year of git history: complex code that changes most, the bus factor, and files that always change together.", evidence: "src/server/code-health/history.ts" },

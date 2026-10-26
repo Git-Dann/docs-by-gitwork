@@ -45,7 +45,7 @@ describe("audit wcag-2: video_captions", () => {
 describe("audit wcag-2: wcag22_consistent_help", () => {
   it("does not warn when a page simply has no help mechanism (SC 3.2.6 is conditional) - badssl.com style", async () => {
     const check = find(await runWcagChecks(context('<html lang="en"><body><h1>badssl.com</h1><a href="https://expired.badssl.com/">expired</a></body></html>')), "wcag22_consistent_help");
-    expect(check.status).toBe("PASS");
+    expect(check.status).toBe("NOT_APPLICABLE");
     expect(check.detail).toMatch(/Not applicable/);
     expect(check.detail).not.toMatch(/3\.3\.6/);
     expect(check.label).toContain("3.2.6");
@@ -53,7 +53,7 @@ describe("audit wcag-2: wcag22_consistent_help", () => {
 
   it("still recognises a present help mechanism", async () => {
     const check = find(await runWcagChecks(context('<footer><a href="/contact">Contact us</a><a href="https://support.anthropic.com">Support</a></footer>')), "wcag22_consistent_help");
-    expect(check.status).toBe("PASS");
+    expect(check.status).toBe("INCONCLUSIVE") // cross-page placement cannot be verified from one page (Oct 2026 audit);
     expect(check.detail).toMatch(/help\/contact mechanism is present/);
   });
 });

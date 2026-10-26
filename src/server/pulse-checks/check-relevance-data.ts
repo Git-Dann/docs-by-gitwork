@@ -1321,6 +1321,19 @@ export const CHECK_RELEVANCE: Record<string, RelevanceRule> = {
   "vibe_depth_ui_error_boundary": { surface: "REPO_WEB_SOURCE", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "OTHER"], presence: false, feature: null },
 };
 
+/*
+ * Re-enabled (Oct 2026), each with tests in __tests__/audit-2026-10-unwithhold-*.test.ts:
+ *  - no_exposed_env / no_exposed_git: the "unreachable site → FAIL" branch can no longer
+ *    run (runUrlChecks stops with one target_content_accessible finding, §61); a reachable
+ *    path is judged on the file's own format, so a catch-all host is not called exposed.
+ *  - repo_secret_keys: real key formats only (secret-formats.ts); Google AIza browser/Firebase
+ *    keys and Stripe pk_live_ are public by design and noted, not failed; placeholders and
+ *    test keys dropped; INCONCLUSIVE when no candidate file could be read.
+ *  - supabase_rls_enforced: only an explicit permission denial counts as protected; a 404,
+ *    5xx or refused key is unestablished (INCONCLUSIVE).
+ *  - firebase_rules_locked: an empty 200 means the rules ALLOW the read (WARN); only
+ *    PERMISSION_DENIED is a PASS; a 404/disabled API is INCONCLUSIVE; Realtime Database probed.
+ */
 /**
  * Checks held back from every report, with the reason. Two kinds: ones Pulse cannot
  * assess from what it scans (a repo practice guessed from a website's HTML), and ones the
@@ -1328,6 +1341,10 @@ export const CHECK_RELEVANCE: Record<string, RelevanceRule> = {
  * confident wrong answer is worse than no answer. Fixing one removes it from this list.
  */
 export const WITHHELD: Record<string, string> = {
+  // Oct 2026 audit: still keyword guesses after the fix pass.
+  "roles_depth_default_deny": "Keyword match over the whole repo: deny-by-default is a control-flow property that a pattern cannot establish (Oct 2026 audit).",
+  "roles_depth_server_authorization": "A list of guard names matched anywhere in the repo, not tied to the code that decides roles; WARNs on apps that authorise correctly (Oct 2026 audit).",
+  "auth_depth_generic_login_errors": "Its subject (login/signIn) appears in almost every repo; on chatbot-ui it flagged a profile helper, not the login (Oct 2026 audit).",
   "auth_x_login_rate_limit": "Withheld pending a fix \u2014 verified against real repositories (Oct 2026): Applicability is 'uses any auth library', not 'has a password login'.",
   "auth_x_timing_safe_compare": "Withheld pending a fix \u2014 verified against real repositories (Oct 2026): Applicability is the bare word token/secret, but the detail claims an === comparison was seen.",
   "desktop_crash_reporting": "Withheld pending a fix \u2014 verified against real repositories (Oct 2026): The presence signal is the single literal `crashReporter.start` in sampled source. A wrapper module (crash-reporter-start.js / startCrashReporter) that sits outside the sample is invisible, and the check reports absence at MEDIUM without using absence().",
@@ -1350,7 +1367,6 @@ export const WITHHELD: Record<string, string> = {
   "ai_cost_monitoring_script": "Withheld pending a fix \u2014 'arize' is a substring of 'summarize', 'familiarize' and 'categorize', so any page using those words passes as having AI cost monitoring.",
   "ai_endpoint_rate_limited": "Withheld pending a fix \u2014 The bare `429` matches any number containing those digits in minified JS, and 'throttle' matches lodash. Server-side rate limiting cannot be seen in the client bundle anyway.",
   "ai_error_fallback_ui": "Withheld pending a fix \u2014 'ai' is a substring of 'email', 'detail' and 'maintain', and 'skeleton' or 'spinner' are common CSS classes, so nearly every page passes. The PASS copy claims the app 'handles AI ... provider failures gracefully'.",
-  "ai_llm_key_not_client_exposed": "Withheld pending a fix \u2014 AIzaSy\u2026 is the format of every Firebase web config and Google Maps key, which are public by design. Any Firebase or Maps site that also mentions an AI term gets a CRITICAL 'rotate now' FAIL.",
   "ai_output_validation": "Withheld pending a fix \u2014 `.parse(` (JSON.parse, URL.parse) appears in essentially every JS bundle, so this always PASSes when the bundle loads.",
   "alert_escalation": "Not assessable from what Pulse scans: Same as alert_pagerduty_opsgenie. WARN on 17/17 web runs.",
   "alert_pagerduty_opsgenie": "Not assessable from what Pulse scans: Internal ops practice guessed by regex over the homepage (observability-extended.ts:8). A public page cannot show whether paging is configured; the same 4 runs PASS every observability regex in url-baseline. Treat it like gdpr_ropa_maintained and whistleblower_policy ([]).",
@@ -1372,7 +1388,6 @@ export const WITHHELD: Record<string, string> = {
   "api_trace_method": "Withheld pending a fix \u2014 PASS with no evidence: TRACE is never sent, and a missing Allow header passes",
   "app_icon_sizes": "Withheld pending a fix \u2014 This counts string occurrences, not icon sizes. One `<link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">` contains the string twice and reports '2 Apple touch icon sizes detected'. Baseline: linear.app and gitwork.co.uk PASS.",
   "audit_trail_present": "Withheld pending a fix \u2014 'log' is a substring of 'login' and 'logo'. On linear.app `activity.*log` matched from 'Activity</h4>' to the CSS class `MR81zG_log` 14,349 characters later. 'event'/'action' anywhere before a login link or logo also PASSes.",
-  "australian_privacy_act": "Withheld pending a fix \u2014 `aud` matches 'audio', 'audit', 'audience', 'fraud' and 'claude', and `a$` matches minified JS identifiers. On the live linear.app it matched 'claude opus', and the baseline shows WARN 'Australian market signals detected' for a US company.",
   "auth_login_autocomplete": "Withheld pending a fix \u2014 Nothing checks that a password input exists on the scanned page. The linear.app homepage has no `type=password` input (measured), yet the baseline reports WARN. The login page is never fetched, so this WARNs on almost every marketing-style ",
   "auth_logout_control": "Withheld pending a fix \u2014 The scanner is never signed in, and a sign-out control only renders for an authenticated user, so essentially every public site gets a WARN (WARN on linear.app in the baseline).",
   "auth_signup_autocomplete": "Withheld pending a fix \u2014 This WARNs when no password-creation field exists on the page at all; signup and change-password forms are never on the fetched homepage. A page with only a login form (current-password) also WARNs for a missing signup field that lives else",
@@ -1385,7 +1400,6 @@ export const WITHHELD: Record<string, string> = {
   "can_spam_address": "Not assessable from what Pulse scans: Same as email_unsubscribe_signal (email-deliverability.ts:393). Also duplicates physical_address_footer.",
   "case_studies_present": "Withheld pending a fix \u2014 'show' plus any later 'use' on the line passes almost every page.",
   "casl_double_optin": "Not assessable from what Pulse scans: Same as email_unsubscribe_signal (email-deliverability.ts:397).",
-  "certificate_expiry_30d": "Withheld pending a fix \u2014 The certificate is never read; the verdict is derived from the HSTS max-age header, which has no relationship to certificate expiry. A certificate expiring tomorrow PASSes. The key is in HIGH_CONFIDENCE_KEYS (confidence.ts:71) and is eviden",
   "chargeback_prevention": "Withheld pending a fix \u2014 Dispute tooling is back-office and not observable on a website, so the WARN is unsupported",
   "ci_dangerous_triggers": "Withheld pending a fix \u2014 Block-form trigger keys are only accepted at indent <= 2. A workflow using 4-space indentation (`on:\\n    pull_request_target:`) yields no triggers. Reproduced by running evaluateCiWorkflowChecks on such a file: ci_dangerous_triggers=PASS, ",
   "ci_privileged_injection": "Withheld pending a fix \u2014 Only the spaced form `${{ ctx` is matched, while ci_template_injection (line ~314) also matches `${{ctx`. Reproduced: a pull_request_target workflow with `run: echo \"${{github.event.pull_request.title}}\"` gives ci_dangerous_triggers=WARN, c",
@@ -1427,13 +1441,11 @@ export const WITHHELD: Record<string, string> = {
   "error_budget_policy": "Not assessable from what Pulse scans: Same as alert_pagerduty_opsgenie (observability-extended.ts:41; /slo|99\\.9/ matches marketing uptime copy).",
   "esignature_support": "Not assessable from what Pulse scans: judged irrelevant to every product type in the audit.",
   "eu_art27_representative": "Withheld pending a fix \u2014 Every .com/.io/.co.uk/.es/.it/.nl host is presumed to be a non-EU org targeting the EU. Baseline WARN on linear.app, example.com and api.github.com.",
-  "eu_director_info": "Withheld pending a fix \u2014 'dpo' is inside 'endpoint', and 'director' matches any usage (e.g. 'art director'), so almost any page passes",
   "eu_representative_contact": "Withheld pending a fix \u2014 The check never establishes that the organisation is outside the EU, so an EU-established company WARNs on a duty that does not apply to it. Its sibling check gates on `isNonEuProduct`.",
   "ext_no_eval": "Withheld pending a fix \u2014 The 'extension source' is every sampled script, including build scripts, tests, configs and committed dist/ bundles, and string literals survive comment stripping. Measured FAIL on darkreader/darkreader: the only line in the repo matching t",
   "ext_no_remote_code": "Withheld pending a fix \u2014 `[^\"]*` does not stop at the ';' directive boundary, so any https:// URL in a LATER directive counts as a remote script source. Verified with node against darkreader's real Chrome manifest (src/manifest-chrome-mv3.json: \"script-src 'self'; ",
   "ext_x_no_eval_in_content": "Withheld pending a fix \u2014 The label is about content scripts, but the regex covers every JS/TS file in the repo: build configs, tests, vendored libraries and comments. One eval( in a webpack config or a test gives a HIGH-confidence FAIL.",
   "ferpa_signals": "Withheld pending a fix \u2014 Raw HTML includes markup. linear.app's SVG `<symbol id=\"education\">` made the baseline WARN 'Educational content detected', and a 'student discount' line would do the same.",
-  "firebase_rules_locked": "Withheld pending a fix \u2014 A 200 with an empty collection means unauthenticated reads are allowed, but it is reported as 'rules appear locked down'. A 404 (wrong collection guess or non-default database) also PASSes. Realtime Database is never probed.",
   "fraud_detection_tool": "Withheld pending a fix \u2014 Radar and similar tools are server-side and invisible in HTML. Stripe Radar is on by default, so a WARN is unsupported by the evidence",
   "gdpr_breach_notification": "Withheld pending a fix \u2014 Art. 33/34 require an internal procedure. Nothing requires publishing it on a website, so its absence from the homepage is not evidence of a missing procedure.",
   "gdpr_data_access_control": "Withheld pending a fix \u2014 On linear.app it spanned 164,771 characters from `data=none` to 'ride request'. A privacy-policy mention of access requests is also taken as evidence of role-based control.",
@@ -1451,10 +1463,7 @@ export const WITHHELD: Record<string, string> = {
   "github_required_reviews": "Not assessable from what Pulse scans: Same as github_code_scanning (code-quality-extended.ts:17-18). Owned by pr_review_culture (REPO_ANY).",
   "github_secret_scanning": "Not assessable from what Pulse scans: Same as github_code_scanning (code-quality-extended.ts:23-24). WARN on 17/17 web runs in url-baseline.",
   "github_stars": "Withheld pending a fix \u2014 Every private client repo has 0 stars and FAILs a scored TRUST_BRAND check (score-breakdown.ts:65).",
-  "has_dependabot": "Withheld pending a fix \u2014 It passes on any .github directory, and the PASS text admits dependabot.yml was not checked. Measured PASS on kickstarter/ios-oss (its .github holds only PULL_REQUEST_TEMPLATE.md and an SVG), sindresorhus/np (ISSUE_TEMPLATE, pull_request_te",
-  "has_linter": "Withheld pending a fix \u2014 Misses .eslintrc.json/.cjs/.yml, eslint.config.ts/.cjs, biome.jsonc, .oxlintrc.json, package.json eslintConfig/xo, and every non-JS linter (ruff, flake8, golangci, rubocop, swiftlint). Baseline: electron/fiddle (has .oxlintrc.json, .prettie",
   "has_orm_config": "Withheld pending a fix \u2014 The same function records Prisma in the tech stack from package.json, yet reports no ORM because the prisma/ directory is not at the root. Measured: gothinkster/node-express-realworld-example-app (deps @prisma/client and prisma) WARNs 'No O",
-  "has_tests": "Withheld pending a fix \u2014 Only five top-level directory names count. Baseline: gothinkster/node-express-realworld-example-app has jest.config.ts, e2e/ and src/tests/*.test.ts yet WARNs; colocated *.test.ts, e2e/, cypress/, playwright/vitest/jest configs and Go _test",
   "hipaa_signals": "Withheld pending a fix \u2014 The unanchored `baa` matched inside a UUID (`\u20261abaa73f\u2026`) in linear.app's inline JSON, which reported 'HIPAA compliance signals detected (BAA, PHI handling referenced)'.",
   "image_sitemap_present": "Withheld pending a fix \u2014 Matches 'og:image:width' meta tags and CSS 'background-image:', so most pages 'have an image sitemap'",
   "incident_runbooks": "Not assessable from what Pulse scans: Same as alert_pagerduty_opsgenie (observability-extended.ts:44).",
@@ -1478,10 +1487,7 @@ export const WITHHELD: Record<string, string> = {
   "modern_slavery_statement": "Withheld pending a fix \u2014 Free PASS when not applicable",
   "multi_currency": "Withheld pending a fix \u2014 Unbounded substrings over the whole HTML. Measured on linear.app, which PASSes in the baseline: \"kr \" matched the CSS class \"gbpgkr kfzpfa_counter\", \"aud\" matched \"claude\", and \"cad\" matched the hash \"acad4015031d\". A single \"\u00a3\" also passes",
   "news_sitemap_present": "Withheld pending a fix \u2014 Every non-news site gets a free PASS",
-  "no_api_keys_in_html": "Withheld pending a fix \u2014 Google browser keys (Maps JavaScript `?key=AIza\u2026`, Firebase web config) are designed to be embedded in pages and are secured by referrer restriction; rotating them achieves nothing. Every site with an embedded Google Map gets a CRITICAL 'ro",
   "no_exposed_admin": "Withheld pending a fix \u2014 Redirects are followed, so a correctly protected admin that 302s to a login page (WordPress /wp-admin \u2192 wp-login.php, Django /admin \u2192 /admin/login) lands on a 200 and WARNs at HIGH severity (Security category) on a non-catch-all host. The f",
-  "no_exposed_env": "Withheld pending a fix \u2014 When the homepage fetch fails, \".env not public\" is emitted as FAIL, which reads as \"your .env is exposed\". The cause was that Pulse could not connect, so a failed look becomes a security alarm.",
-  "no_exposed_git": "Withheld pending a fix \u2014 An unreachable site is reported as having an exposed .git directory.",
   "no_service_role_key_exposed": "Withheld pending a fix \u2014 The PEM alternative starts and ends with '-', so the surrounding \\b only matches next to a word character. A PEM inside a JS string (preceded by a quote, followed by an escaped newline) never matches. sk-proj- OpenAI keys are also missed.",
   "oauth_minimal_scopes": "Withheld pending a fix \u2014 Measured on linear.app: `full.*access` matched marketing copy from 'full vehicle_state sync\u2026' to a label 'Access' (79,066 characters). The baseline reports WARN 'Broad OAuth scopes detected'. Pricing copy such as 'full access to all feature",
   "on_call_configured": "Not assessable from what Pulse scans: Same as alert_pagerduty_opsgenie (observability-extended.ts:11, /on.call|incident.*response/ on marketing HTML).",
@@ -1494,25 +1500,15 @@ export const WITHHELD: Record<string, string> = {
   "permission_matrix_docs": "Withheld pending a fix \u2014 On linear.app `permission.*table` matched across 80,408 characters and ended inside the CSS class `_8fVXdW_editable` ('edi-table'). `access.*level` matches 'Access ... next level'. This is a substring match, not documentation.",
   "pkce_oauth_flow": "Withheld pending a fix \u2014 This WARNs on any site with a /login link, whether or not it uses OAuth at all. Even for OAuth apps, `code_challenge` appears in the authorize redirect URL, not in the homepage HTML. The baseline shows WARN for linear.app.",
   "plain_text_email": "Not assessable from what Pulse scans: Same as email_unsubscribe_signal (email-deliverability.ts:401).",
-  "popia_south_africa": "Withheld pending a fix \u2014 `rand` matches 'brand', 'random' and 'grand', and `zar` matches 'bizarre' and 'bazaar'. On the live linear.app it matched `sentry-sample_rand` in inline JS, and the baseline shows WARN 'South African market signals detected' for a US compan",
   "post_mortem_culture": "Not assessable from what Pulse scans: Same as alert_pagerduty_opsgenie (observability-extended.ts:47).",
   "price_vat_inclusive": "Withheld pending a fix \u2014 '+ VAT' means the price EXCLUDES VAT and still passes. The greedy `including.*vat` matched linear.app's 'including changes to initiatives\u2026', where 'vat' is a substring of a later word.",
   "pulse_accessibility_keyboard": "Withheld pending a fix \u2014 The keyboard check passes on a generic 'accessibility test' or 'a11y test' mention with no keyboard assertion at all. A probe against `describe('a11y test', ...)` returned true. The PASS copy then states keyboard/focus validation exists. Be",
   "pulse_accessibility_semantics": "Withheld pending a fix \u2014 It passes on any generic 'a11y test' or 'accessibility test' string in source or comments. Semantic, role or contrast validation is never established, but the PASS copy claims it. The three a11y keys share the same generic alternatives, so ",
-  "pulse_ai_client_prompt": "Withheld pending a fix \u2014 Every sampled file is tested, including server-only route handlers where a system prompt belongs. Reproduced: `app/api/chat/route.ts` with `system: \"You are a helpful assistant ...\"` \u2192 FAIL HIGH claiming client-readable source.",
-  "pulse_ai_client_secret": "Withheld pending a fix \u2014 No leading word boundary, so it matches inside ordinary kebab-case strings: `className=\"risk-assessment-dashboard-panel\"` contains `sk-assessment-dashboard-panel`. Reproduced end-to-end: a Logo component with that className produced FAIL HI",
-  "pulse_ai_cost_budget": "Withheld pending a fix \u2014 Does not match `max_tokens` (the parameter name in the Anthropic and OpenAI APIs/SDKs; required on every Anthropic Messages call) or `maxOutputTokens`. Reproduced: `messages.create({ ..., max_tokens: 1024 })` \u2192 WARN 'need token or cost-budg",
-  "pulse_ai_failure_fallback": "Withheld pending a fix \u2014 `fallback` matches React's `<Suspense fallback={...}>`, present in nearly every React/Next.js app, so the check passes regardless of AI error handling. Reproduced: a snapshot whose only match was `<Suspense fallback={null}>` returned PASS.",
-  "pulse_ai_monitoring": "Withheld pending a fix \u2014 `\\bspan\\b` matches the JSX `<span` element, present in essentially every React file, so every AI web app passes. Reproduced: a snapshot whose only match was `<span className=...>` returned PASS.",
-  "pulse_ai_tool_controls": "Withheld pending a fix \u2014 The label requires all four controls, but the check PASSes when any one word appears anywhere in the codebase. `timeout: 5000` in any fetch config, or `confirm('Delete?')`, passes (both probes: true).",
-  "pulse_ai_unscoped_retrieval": "Withheld pending a fix \u2014 The negative lookahead sits after a variable-length `[\\s\\S]{0,180}`, so the engine can always backtrack to a position not followed by 'tenant' \u2014 the pattern matches EVERY occurrence of the trigger word. Reproduced: `vectorStore.similaritySe",
   "pulse_browser_journeys": "Withheld pending a fix \u2014 Measured. repo-baseline.json, target repo-api (gothinkster/node-express-realworld-example-app). That repo has no .github/workflows: ci_cd_present is WARN and every ci_* check is SKIPPED. Pulse still reports pulse_browser_journeys PASS with ",
   "pulse_ci_untrusted_checkout": "Withheld pending a fix \u2014 Measured. repo-api has a Dockerfile and no .github/workflows (ci_cd_present WARN, ci_dangerous_triggers SKIPPED). It still reports pulse_ci_untrusted_checkout PASS with 'No unsafe privileged pull-request checkout pattern found.' Even with r",
   "pulse_ci_untrusted_privilege": "Withheld pending a fix \u2014 Measured. repo-api, with no workflows and only a Dockerfile, reports PASS 'No unsafe untrusted-contribution privilege pattern found in scanned workflows.' No workflows were scanned.",
   "pulse_code_flow_gate": "Withheld pending a fix \u2014 CodeQL \u2014 the most common code-flow analyser on GitHub \u2014 does not match (`github/codeql-action/init` with `queries: security-extended` tested false), so repos running it WARN 'No CI evidence of code-flow analysis'.",
   "pulse_container_nonroot": "Withheld pending a fix \u2014 The trigger is a case-insensitive word 'from' in any automation text. A workflow step like `- name: Download artifact from build job` matches (probe: true). A repo with no container at all then gets WARN 'Container configuration runs as roo",
-  "pulse_secret_scan_gate": "Withheld pending a fix \u2014 gitleaks-action and trufflehog steps do not match (verified) \u2192 WARN 'No CI evidence of secret scanning', while ci_security_scanning (ci-workflows.ts:721) recognises gitleaks|trufflehog in the same scan.",
-  "pulse_static_analysis_gate": "Withheld pending a fix \u2014 Real tools never match: a workflow with `github/codeql-action/analyze` and `semgrep ci` tests false (verified) \u2192 WARN 'No CI evidence of static analysis'. Meanwhile ci_security_scanning (ci-workflows.ts:721) recognises codeql-action/semgrep",
   "pulse_supply_chain_gate": "Withheld pending a fix \u2014 `npm audit --audit-level=high`, `aquasecurity/trivy-action` and `actions/dependency-review-action` do not match (verified) \u2192 WARN, while ci_security_scanning (ci-workflows.ts:721) recognises the same steps.",
   "pulse_upload_limit": "Withheld pending a fix \u2014 Zod `z.array(` (probe: true), Supabase `.single()` (probe: true) and `request.formData()` for a plain text form (probe: true) all count as 'upload handling'. Nearly every Zod or Supabase app with no uploads therefore gets WARN 'Upload handl",
   "pulse_webhook_replay": "Withheld pending a fix \u2014 The label requires signatures AND replay windows, but the check PASSes if any one of four common words appears anywhere in the codebase. `timestamp` is in almost every app (probe: `{ timestamp: Date.now() }` returned true), so an unverified",
@@ -1523,7 +1519,6 @@ export const WITHHELD: Record<string, string> = {
   "release_automation": "Not assessable from what Pulse scans: Same as github_code_scanning (code-quality-extended.ts:35-36). WARN on 17/17 web runs.",
   "release_health": "Not assessable from what Pulse scans: Same as alert_pagerduty_opsgenie (observability-extended.ts regex over HTML). WARN on 17/17 web runs.",
   "repo_prompt_injection_risk": "Withheld pending a fix \u2014 Prompt-building code (lib/ai/*.ts, route handlers) usually scores 0 and is never read, so a PASS means 'not looked at'. Python f-strings are not covered either.",
-  "repo_secret_keys": "Withheld pending a fix \u2014 Firebase client config files such as firebase_options.dart and firebase.ts are scanned first and contain AIza\u2026 keys that are public by design. Flutter, RN, Android and web Firebase apps get a CRITICAL FAIL.",
   "rn_cleartext_traffic": "Withheld pending a fix \u2014 The RN template ships android/app/src/debug/AndroidManifest.xml with usesCleartextTraffic=\"true\" so Metro works in debug. This debug-only overlay is never in release builds, but it fails the check and the detail claims 'the Android build sh",
   "rn_password_retention": "Withheld pending a fix \u2014 Navigation routes ('ForgotPassword', {...}), i18n keys and form field names all match. The rn-probe.out probe gives `rn_password_retention:FAIL` for `navigation.navigate('ForgotPassword', {})`. There is no storage call in the match.",
   "role_hierarchy": "Withheld pending a fix \u2014 `role.*level` matches `<nav role=\"navigation\"></nav><p>Take your skills to the next level` (verified). On linear.app it matched from `role=\"combobox\"` to 'team-level' 355,943 characters later.",
@@ -1538,7 +1533,6 @@ export const WITHHELD: Record<string, string> = {
   "subscription_cancellation_easy": "Withheld pending a fix \u2014 The greedy `.*` spans whole lines of minified HTML, and a newsletter 'unsubscribe' qualifies. On linear.app it matched the SVG `id=\"StatusCanceled\"` plus a later 'plan', which reported 'Easy cancellation messaging detected'. Marketing copy ",
   "subscription_proration": "Withheld pending a fix \u2014 Non-subscription sites get a free PASS",
   "sufficient_colour_contrast": "Withheld pending a fix \u2014 No contrast ratio is ever computed; a key named sufficient_colour_contrast PASSes whenever there is no adjacent inline color+background pair \u2014 i.e. on effectively every site (PASS on every baseline web run).",
-  "supabase_rls_enforced": "Withheld pending a fix \u2014 A 404 (a table name scraped wrongly from .from() or a missing table), a 5xx, or a 401 from a rotated key all count as 'protected'.",
   "supplier_due_diligence": "Not assessable from what Pulse scans: judged irrelevant to every product type in the audit.",
   "svc_cors_wildcard": "Withheld pending a fix \u2014 Django `CORS_ALLOW_ALL_ORIGINS = True` + `CORS_ALLOW_CREDENTIALS = True` (django-cors-headers then reflects the origin) and Express `cors({ origin: true, credentials: true })` (reflection) are not matched and PASS \u2014 the exploitable forms.",
   "svc_django_content_type_nosniff": "Withheld pending a fix \u2014 SECURE_CONTENT_TYPE_NOSNIFF defaults to True in Django 3.0+, so absence means the header IS sent. Every modern Django project that leaves the default gets a WARN claiming a browser may execute uploads as script; check --deploy does not repo",
@@ -1553,7 +1547,6 @@ export const WITHHELD: Record<string, string> = {
   "touch_target_size": "Withheld pending a fix \u2014 Matches layout widths and media queries (`@media (min-width:768px)`), any section min-height, and any Tailwind `h-4 w-4` (16px). Measured on the stored Chrome Web Store page: `min-width:592px` makes it PASS. None of these are target sizes.",
   "trace_correlation": "Not assessable from what Pulse scans: It says it asks whether responses carry correlation IDs, but it greps HTML for 'request id' (observability-extended.ts:59-60). The real header question is answered by api_request_correlation (API_HTTP). As written it is unanswerable noise.",
   "transfer_impact_assessment": "Withheld pending a fix \u2014 'tia' occurs in initial, essential, potential and credential, so nearly every page passes.",
-  "uk_companies_house_number": "Withheld pending a fix \u2014 Non-UK sites get a free PASS",
   "vat_number_displayed": "Withheld pending a fix \u2014 Non-EU sites get a free PASS",
   "vibe_env_not_committed": "Withheld pending a fix \u2014 It FAILs, and tells the user to rotate secrets, based on the filename alone without reading the file. Next.js documents committing .env and .env.production as non-secret defaults (only .env*.local is ignored), so a correct Next.js repo gets",
   "vibe_hardcoded_creds_html": "Withheld pending a fix \u2014 Any page with a password field or word plus any digit run containing 123456 (phone numbers, IDs, hashes) FAILs as 'Hardcoded test credentials'.",

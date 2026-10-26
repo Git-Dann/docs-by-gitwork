@@ -109,10 +109,21 @@ describe("delivery and abuse safeguards", () => {
 describe("AI repository safety", () => {
   it("detects concrete unsafe AI implementation paths", () => {
     const checks = evaluateWebSourceChecks(snapshot({
-      "src/ai.ts": `const client = openai; const key = "sk-abcdefghijklmnopqrstuvwxyz123456"; const system = "${"x".repeat(90)}"; toolCall(() => exec(command)); vectorStore.similaritySearch(query);`,
+      "src/server/ai.ts": `import OpenAI from "openai"; const key = "sk-abcdefghijklmnopqrstuvwxyz123456"; const system = "${"x".repeat(90)}"; for (const toolCall of calls) exec(toolCall.args.command); vectorStore.similaritySearch(query);`,
     }));
-    for (const key of ["pulse_ai_client_secret", "pulse_ai_client_prompt", "pulse_ai_unsafe_tool", "pulse_ai_unscoped_retrieval"]) expect(statusOf(checks, key)).toBe("FAIL");
+    expect(statusOf(checks, "pulse_ai_client_secret")).toBe("FAIL");
+    expect(statusOf(checks, "pulse_ai_unsafe_tool")).toBe("FAIL");
+    expect(statusOf(checks, "pulse_ai_unscoped_retrieval")).toBe("WARN");
+    // A long system prompt in a server file is where it belongs.
+    expect(keys(checks)).not.toContain("pulse_ai_client_prompt");
     for (const key of ["pulse_ai_tool_confirmation", "pulse_ai_output_schema", "pulse_ai_budget_timeout", "pulse_ai_audit_log"]) expect(statusOf(checks, key)).toBe("WARN");
+  });
+
+  it("says nothing about AI safety in a repo that only mentions OpenAI", () => {
+    const checks = evaluateWebSourceChecks(snapshot({ "src/pricing.ts": `const copy = "Works with OpenAI and Anthropic models";` }));
+    for (const key of ["pulse_ai_client_secret", "pulse_ai_unsafe_tool", "pulse_ai_unscoped_retrieval", "pulse_ai_output_schema", "pulse_ai_audit_log"]) {
+      expect(keys(checks)).not.toContain(key);
+    }
   });
 });
 

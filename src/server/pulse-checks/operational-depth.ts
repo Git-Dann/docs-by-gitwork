@@ -110,7 +110,10 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     AUTH, "auth_depth_generic_login_errors", "Login responses do not reveal whether an account exists",
     /login|signIn|authenticate/i,
     [/invalid (?:credentials|email or password)|authentication failed|["']?email or password["']?\s*:\s*\[\s*["']is invalid|IncorrectEmailPassword|CredentialsSignin/i],
-    [/(?:user|account|email) (?:not found|does not exist)|wrong password/i], "WARN",
+    // Only a server RESPONSE that names the account's existence. "Wrong password" on its
+    // own leaks nothing (it is what the generic message often says), and UI copy is not
+    // the server's answer.
+    [/(?:\.(?:json|send)\(\s*\{?\s*(?:error|message|detail)?\s*:?\s*|\b(?:error|message|detail)\s*:\s*|throw new \w*\(\s*|raise \w+\(\s*)["'`][^"'`\n]{0,40}\b(?:user|account|email) (?:not found|does not exist)/i], "WARN",
     "Return the same status, message, and timing for an unknown account and a wrong password.",
     `return response.status(401).json({ error: "Invalid credentials" }); // login`,
     `return response.status(404).json({ error: "User not found" }); // login`,
@@ -152,8 +155,12 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   // ── Roles & permissions ──────────────────────────────────────────────────
   rule(
     ROLES, "roles_depth_server_authorization", "Privileged routes enforce authorization on the server",
-    /\badmin|isAdmin|requireAdmin|adminProcedure|permissions?\s*[:=(\[.]|\broles?\s*(?:===?|!==?|\.includes)|userRole|hasRole|requireRole|privileged/i,
-    [/authorize\(|requireRole|requirePermission|can\(|policy\.|requireAdmin|isAdminMiddleware|AdminProcedure|checkPermission|PermissionCheckService/i], undefined, "FAIL",
+    // Code that decides on a role, not the word "admin" (which is in every CMS, every
+    // settings page and every "administrator" sentence).
+    /\bisAdmin\b|requireAdmin|adminProcedure|\badmin(?:Router|Routes|Controller|Middleware)\b|(?:^|\/)(?:routes|controllers|api)\/admin\b|\brole\s*(?:===?|!==?)\s*["'`]admin|\broles?\.includes\(\s*["'`]admin|\b(?:userRole|currentUserRole)\b|\bhasRole\b|\brequireRole\b|["'`]\/admin(?:\/|["'`])/i,
+    // Many real guard idioms exist; a missing name from this list is not a missing guard,
+    // which is why an absence here is a WARN to confirm, never a FAIL.
+    [/authorize\(|requireRole|requirePermission|\bcan\(|policy\.|requireAdmin|isAdminMiddleware|AdminProcedure|protectedProcedure|checkPermission|PermissionCheckService|requireAuth|withAuth|ensureAdmin|assertAdmin|adminOnly|isAdmin\s*\(|@UseGuards|RolesGuard|@PreAuthorize|@Secured|@login_required|@permission_required|user_passes_test|permission_classes|before_action\s+:(?:authenticate|authorize|require)|Gate::|->middleware\(|getServerSession\(|currentUser\(\)|auth\(\)\.protect|clerkMiddleware|role\s*!==?\s*["'`]admin["'`][\s\S]{0,80}(?:403|401|forbidden|unauthori[sz]ed|redirect|throw)/i], undefined, "WARN",
     "Enforce authorization inside the server handler or policy layer; hidden UI controls are not access control.",
     `router.delete("/admin/users/:id", requirePermission("users:delete"), handler);`,
     `router.delete("/admin/users/:id", handler); // button is hidden for non-admins`,
@@ -161,17 +168,20 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     ROLES, "roles_depth_default_deny", "Authorization policies default to deny",
     /\b(?:hasPermission|checkPermission|requirePermission|requireRole|hasRole|isAllowed|isAuthorized|has_perms?)\s*\(|\bcan\(|\bpermissions?\s*[:=]\s*[\[{]|\bpolicies\s*[:=]|\bpolicy\.\w+\(|access.?control.?list|@casl\/ability|\bcasbin\b|permission_classes\s*=|DEFAULT_PERMISSION_CLASSES|Gate::(?:define|allows|denies|before)|@PreAuthorize|@Roles\(|\bRolesGuard\b/i,
-    [/default.{0,12}deny|deny.{0,12}default|return false|effect\s*:\s*["']Deny/i],
-    [/default.{0,12}allow|return true\s*;?\s*\/\/ fallback/i], "FAIL",
+    // `return false` is in every codebase, so it proved nothing; a stated deny default
+    // is the only thing a sample can show. And only a policy that DECLARES an allow
+    // default is adverse — `defaultAllowed` or "default: allow" in prose is not.
+    [/default.{0,12}deny|deny.{0,12}default|denyAll|if\s*\(\s*!\s*[\w.]*(?:grant|permission|role|polic|rule|acl|abilit)\w*[\w.\[\]]*\s*\)\s*return false|effect\s*:\s*["']Deny|\bdefault(?:Policy|Effect|Decision|Access)\s*[:=]\s*["'`]?deny|\bdefault_(?:policy|effect|decision|access)\s*[:=]\s*["']?deny|DEFAULT_PERMISSION_CLASSES[^\n]*IsAuthenticated/i],
+    [/\bdefault(?:Policy|Effect|Decision|Access)\s*[:=]\s*["'`]?(?:allow|permit|grant)\b|\bdefault_(?:policy|effect|decision|access)\s*[:=]\s*["']?(?:allow|permit|grant)\b|return true\s*;?\s*\/\/\s*(?:fallback|default)/i], "FAIL",
     "Make unknown roles, resources, and actions deny by default and add explicit grants.",
-    `function can(action) { if (!known(action)) return false; } // authorization default deny`,
-    `function can(action) { return true; } // authorization default allow fallback`,
+    `const policy = { defaultEffect: "deny" }; function can(action) { return policy.allows(action); }`,
+    `const policy = { defaultEffect: "allow" }; function can(action) { return policy.allows(action); }`,
   ),
   rule(
     ROLES, "roles_depth_tenant_query_scope", "Multi-tenant data queries carry tenant scope",
     /workspaceId|tenantId|organizationId|accountId/i,
     [/where\s*:\s*\{[^}]{0,160}(?:workspaceId|tenantId|organizationId|accountId)|scopeToTenant|tenantFilter/i],
-    undefined, "FAIL",
+    undefined, "WARN",
     "Inject the authenticated tenant identifier into every query rather than accepting it from the request body.",
     `db.document.findMany({ where: { workspaceId: session.workspaceId } });`,
     `const workspaceId = req.body.workspaceId; db.document.findMany();`,
@@ -179,7 +189,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     ROLES, "roles_depth_object_ownership", "Object-level access verifies ownership or membership",
     /findUnique|findById|\/:[a-z]*id|params\.id/i,
-    [/ownerId|userId.{0,30}(?:===|where)|membership|authorizeObject|scopeToUser|where\s*:\s*\{[^}]{0,120}(?:owner|author|user)Id\s*:\s*(?:session|currentUser|user|req\.user|ctx\.user)\??\.|\.(?:owner|author)\.id\s*!==?/i], undefined, "FAIL",
+    [/ownerId|userId.{0,30}(?:===|where)|membership|authorizeObject|scopeToUser|where\s*:\s*\{[^}]{0,120}(?:owner|author|user)Id\s*:\s*(?:session|currentUser|user|req\.user|ctx\.user)\??\.|\.(?:owner|author)\.id\s*!==?/i], undefined, "WARN",
     "Check the requested object's owner or tenant membership before returning or mutating it.",
     `const item = await db.item.findFirst({ where: { id: params.id, ownerId: session.user.id } });`,
     `const item = await db.item.findUnique({ where: { id: params.id } });`,
@@ -195,7 +205,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     ROLES, "roles_depth_impersonation_control", "Support impersonation is explicit, bounded and audited",
     /impersonat|loginAs|actAsUser/i,
-    [/audit|reason|requiredTicket|expiresAt|stopImpersonat/i], undefined, "FAIL",
+    [/audit|reason|requiredTicket|expiresAt|stopImpersonat/i], undefined, "WARN",
     "Require a support reason, short expiry, visible session state, and immutable audit event for impersonation.",
     `impersonate({ target, reason, expiresAt }); audit.record("impersonation.started");`,
     `loginAsUser(targetUserId);`,
@@ -330,7 +340,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     API, "api_depth_webhook_replay_window", "Webhook verification rejects stale deliveries",
     /webhook/i,
-    [/tolerance|timestamp.{0,24}(?:window|age|fresh)|replay|nonce|webhooks?\s*\.\s*construct(?:_event|Event(?:Async)?)\s*\(/i], undefined, "FAIL",
+    [/tolerance|timestamp.{0,24}(?:window|age|fresh)|replay|nonce|webhooks?\s*\.\s*construct(?:_event|Event(?:Async)?)\s*\(/i], undefined, "WARN",
     "Verify the signed timestamp within a short tolerance and persist event identifiers to reject replays.",
     `verifyWebhook(signature, body, { tolerance: 300 }); rejectReplay(event.id);`,
     `verifyWebhook(signature, body); processWebhook(body);`,
@@ -364,7 +374,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PAY, "payments_depth_refund_authorization", "Refunds require an explicit privileged permission",
     /refund/i,
-    [/requirePermission\(["']refund|authorizeRefund|role.{0,20}(?:finance|admin)|refundPolicy\.can/i], undefined, "FAIL",
+    [/requirePermission\(["']refund|authorizeRefund|role.{0,20}(?:finance|admin)|refundPolicy\.can/i], undefined, "WARN",
     "Gate refund creation behind a dedicated permission rather than general account access.",
     `router.post("/refunds", requirePermission("refund:create"), createRefund);`,
     `router.post("/refunds", requireUser, createRefund);`,
@@ -405,7 +415,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     PAY, "payments_depth_price_allowlist", "Checkout accepts server-owned price identifiers only",
     /priceId|price_id|checkout.{0,16}session/i,
     [/allowedPrices|priceCatalog|lookupPrice|productConfig|line_items\s*:\s*\[\s*\{[^}]{0,120}?\bprice\s*:\s*(?!(?:req|request|body|input|query|params|args|ctx)\.)(?:process\.env\.[A-Z0-9_]+|[\w.]*(?:plan|config|catalog|tier)\w*\.\w*price_?id\b)/i],
-    [/price(?:Id|_id)\s*[:=]\s*(?:req|request)\.(?:body|query)/i], "FAIL",
+    [/price(?:Id|_id)\s*[:=]\s*(?:req|request)\.(?:body|query)|\{[^}]{0,80}\bprice(?:Id|_id)\b[^}]{0,80}\}\s*=\s*(?:await\s+)?(?:req|request)\.(?:body|query|json\(\))/i], "FAIL",
     "Map a client plan key to a server-owned price catalogue and reject unknown or inactive prices.",
     `const priceId = priceCatalog[planKey]; checkout.sessions.create({ line_items: [{ price: priceId }] });`,
     `const priceId = req.body.priceId; checkout.sessions.create({ line_items: [{ price: priceId }] });`,
@@ -413,7 +423,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PAY, "payments_depth_entitlement_transaction", "Payment state and entitlements update atomically",
     /entitlement|grantAccess|subscriptionStatus|planAccess/i,
-    [/transaction\(|unitOfWork|atomic\(|compareAndSet|version.{0,20}entitlement/i], undefined, "FAIL",
+    [/transaction\(|unitOfWork|atomic\(|compareAndSet|version.{0,20}entitlement/i], undefined, "WARN",
     "Update the payment event, subscription state, and entitlement in one transaction with idempotency.",
     `await db.transaction(async tx => { await tx.event.create(); await tx.entitlement.upsert(); });`,
     `await grantAccess(userId); await markPaymentProcessed(event.id);`,
@@ -479,7 +489,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     MAIL, "email_depth_webhook_signature", "Email delivery webhooks authenticate the provider",
     /email.{0,20}webhook|delivery.{0,12}event|bounce.{0,12}webhook/i,
-    [/verifyWebhook|verifySignature|svix|webhook-signature|timingSafeEqual/i], undefined, "FAIL",
+    [/verifyWebhook|verifySignature|svix|webhook-signature|timingSafeEqual/i], undefined, "WARN",
     "Verify the provider signature over the raw body before changing suppression or delivery state.",
     `app.post("/email-webhook", rawBody, (req) => verifyWebhook(req.headers, req.body));`,
     `app.post("/email-webhook", (req) => processDeliveryEvent(req.body));`,
@@ -668,7 +678,9 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     AI, "ai_safety_sensitive_telemetry", "AI telemetry excludes prompts and sensitive payloads by default",
     /prompt|completion|modelResponse|toolCall|tokenCount|captureContent/i,
     [/redact|hashPrompt|metadataOnly|captureContent\s*:\s*false|sanitizeTelemetry/i],
-    [/logger\.\w+\([^)]*(?:prompt|completion|modelResponse)|captureContent\s*:\s*true/i], "FAIL",
+    // The prompt as a logged VALUE, not the word inside a log message
+    // ("Using local guardrails prompt…" in chat-langchain is not a leak).
+    [/logger\.\w+\((?:\s*["'`][^"'`]*["'`]\s*,)?\s*\{?[^)"'`]*\b(?:prompt|completion|modelResponse)\b|logger\.\w+\(\s*f?["'`][^"'`]*\{\s*(?:prompt|completion|modelResponse)\b|captureContent\s*:\s*true/i], "FAIL",
     "Log model, latency, token counts and outcome by default; store content only through an explicit redacted, access-controlled path.",
     `logger.info(sanitizeTelemetry({ model, tokenCount, latency, captureContent: false }));`,
     `logger.info({ prompt, completion: modelResponse });`,
@@ -730,7 +742,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     VIBE, "vibe_depth_boundary_validation", "Untrusted request data is parsed before use",
     /req\.(?:body|query|params)|request\.(?:json|body)|FormData\(/i,
-    [/\.parse\(|safeParse\(|validate\(|schema|pydantic|class-validator/i], undefined, "FAIL",
+    [/\.parse\(|safeParse\(|validate\(|schema|pydantic|class-validator/i], undefined, "WARN",
     "Validate request bodies, query parameters, route parameters, and uploaded metadata against bounded schemas.",
     `const input = requestSchema.parse(req.body);`,
     `const input = req.body; await db.user.create({ data: input });`,
@@ -832,7 +844,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     SAAS, "saas_depth_tenant_isolation_tests", "Tenant isolation has explicit cross-tenant tests",
     /workspaceId|tenantId|organizationId/i,
-    [/cross.?tenant|other tenant|tenant isolation|expect\([^)]*403/i], undefined, "FAIL",
+    [/cross.?tenant|other tenant|tenant isolation|expect\([^)]*403/i], undefined, "WARN",
     "Test that a valid identifier from another tenant cannot be read, changed, exported, or inferred.",
     `describe("tenant isolation", () => it("rejects other tenant id", () => expect(status).toBe(403))); workspaceId`,
     `const workspaceId = session.workspaceId;`,
@@ -856,7 +868,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     SAAS, "saas_depth_usage_meter_idempotency", "Usage metering is idempotent and traceable",
     /usage|meter|quota|credits|consumption/i,
-    [/idempotency|eventId|dedup|unique.{0,20}usage|ledger/i], undefined, "FAIL",
+    [/idempotency|eventId|dedup|unique.{0,20}usage|ledger/i], undefined, "WARN",
     "Write immutable usage events with a provider/source id under a unique constraint; derive totals from the ledger.",
     `usageLedger.insert({ eventId, quantity, source }); // unique eventId idempotency`,
     `account.credits -= request.units;`,
@@ -914,7 +926,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     LEGAL, "legal_depth_dsar_identity", "Privacy-rights requests verify the requester",
     /DSAR|data subject request|DataSubjectRequest|privacy request|access request/i,
-    [/verifyIdentity|identity check|authenticated user|verificationStatus/i], undefined, "FAIL",
+    [/verifyIdentity|identity check|authenticated user|verificationStatus/i], undefined, "WARN",
     "Verify identity proportionately before disclosing, correcting, exporting, or deleting personal data.",
     `privacyRequest.create({ verificationStatus: await verifyIdentity(requester), type: "DSAR" });`,
     `app.post("/privacy-request", submitDataSubjectRequest);`,
@@ -938,7 +950,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     LEGAL, "legal_depth_export_authorization", "Personal-data exports are access-controlled and short-lived",
     /exportUserData|data portability|personal data export/i,
-    [/requireRecentAuth|authorize|signedUrl|expiresAt|oneTime/i], undefined, "FAIL",
+    [/requireRecentAuth|authorize|signedUrl|expiresAt|oneTime/i], undefined, "WARN",
     "Require recent authentication, scope the dataset server-side, encrypt at rest, and expire the one-time download.",
     `requireRecentAuth(); authorize(userId); return signedUrl(exportUserData(userId), { expiresAt, oneTime: true });`,
     `return exportUserData(req.query.userId);`,
@@ -1128,8 +1140,11 @@ function evaluateText(ruleDef: OperationalDepthRule, text: string): Evaluation {
   const missingRequired = (ruleDef.required ?? []).some((pattern) => !test(pattern, text));
   const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => test(pattern, text));
   const ok = !missingRequired && !forbiddenMatched;
+  // A missing keyword is never a FAIL: these are regexes over a joined sample, and a
+  // safeguard written with a name the rule does not list reads exactly like no
+  // safeguard. Only a FORBIDDEN construct actually seen in source can fail a rule.
   return {
-    status: ok ? "PASS" : ruleDef.onMissing,
+    status: ok ? "PASS" : forbiddenMatched ? ruleDef.onMissing : "WARN",
     detail: ok
       ? `${ruleDef.label}: supporting implementation evidence was found.`
       : `${ruleDef.label}: the required safeguard was not established. Remediation: ${ruleDef.remediation}`,
@@ -1248,7 +1263,8 @@ export function evaluateOperationalDepthChecks(snapshot: RepoSnapshot): PulseSca
       detail: weakAbsence
         ? `${ruleDef.label}: inconclusive — Pulse read ${sampleWords} and found no supporting evidence, so its absence is not established. If it is genuinely absent: ${ruleDef.remediation}`
         : result.detail,
-      confidence: weakAbsence ? "LOW" : "HIGH",
+      // Keyword evidence over a concatenated sample: MEDIUM at most, never HIGH.
+      confidence: weakAbsence ? "LOW" : "MEDIUM",
       ...(weakAbsence
         ? {
             confidenceReason:

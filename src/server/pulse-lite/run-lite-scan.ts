@@ -21,7 +21,8 @@ import {
 } from "@/server/pulse-scan";
 import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { resolveEvidenceBackedControls } from "@/server/pulse-checks/standards-verification";
-import { runCodeAgent } from "@/server/pulse-agents/code-agent";
+import { fetchRepoVisibility, runCodeAgent } from "@/server/pulse-agents/code-agent";
+import { applyPrivateRepoPolicy, type RepoVisibility } from "@/server/pulse-checks/private-repo";
 import { answeredByCodeHealth, runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type CodeHealthReport } from "@/server/code-health";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { assertScannableUrl } from "./url-guard";
@@ -147,10 +148,13 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   };
   const relevance = emptyRelevanceSummary();
   const heldBack = new Set<string>();
+  // Set once, before any repo check is ingested. null (a URL scan, or GitHub would not
+  // say) changes nothing — see private-repo.ts.
+  let repoIsPrivate: RepoVisibility = null;
 
   const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
     const fresh: PulseScanCheckInput[] = [];
-    for (const c of applyCheckPolicy(batch, input.checkPolicy).map((c) => applyAbsencePolicy(c, relevanceCtx.target.kind))) {
+    for (const c of applyCheckPolicy(batch, input.checkPolicy).map((c) => applyAbsencePolicy(applyPrivateRepoPolicy(c, repoIsPrivate), relevanceCtx.target.kind))) {
       if (seen.has(c.checkKey) || heldBack.has(c.checkKey)) continue;
       const decision = decideRelevance(c, relevanceRuleFor(c.checkKey), relevanceCtx);
       recordDecision(relevance, decision);
@@ -345,6 +349,9 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     const repo = (input.githubRepo ?? "").trim();
     if (!repo) throw new Error("A GitHub repo is required.");
 
+    // Visibility runs alongside shape detection and is settled before any collector
+    // ingests: a private product repo is not graded on open-source chores.
+    const visibilityRun = fetchRepoVisibility(repo).catch(() => null);
     // Shares one memoized snapshot with both collectors — no repeated tree fetch.
     const repoShape = await detectRepoShape(repo)
       .then((shape) => { collectorCompleted("repo-shape"); return shape; })
@@ -374,6 +381,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // The full-checkout measure answers some sampled checks better. Those are held back
     // until it settles: shown only if it could not run, so a scan never carries two
     // answers to one question, and never loses the sampled one when the full one failed.
+    repoIsPrivate = await visibilityRun;
     const superseded = new Set<string>(SUPERSEDED_BY_CODE_HEALTH);
     const heldSampled: PulseScanCheckInput[] = [];
     const repoIngest = (batch: PulseScanCheckInput[]) => {

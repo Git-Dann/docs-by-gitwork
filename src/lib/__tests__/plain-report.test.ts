@@ -35,6 +35,19 @@ describe("summariseScan on a real client scan", () => {
   });
 });
 
+describe("the headline follows the release gate", () => {
+  it("never says 'close to ready' when the gate says blocked, or the reverse (an audit caught this)", () => {
+    // No P1 findings, but the gate blocks: the headline must agree with the gate.
+    const quiet = [c("seo_meta_description", "Meta description", "SEO", "WARN")];
+    expect(summariseScan(quiet, 5, { decision: "BLOCKED", blocking: 2 }).headline).toMatch(/^Not ready to launch: 2 things block release/);
+    expect(summariseScan(quiet, 5, { decision: "BLOCKED", blocking: 2 }).tone).toBe("bad");
+    // Urgent findings, but the gate allows launch: the headline must not say "not ready".
+    expect(summariseScan(FELLAS, 5, { decision: "CONDITIONAL", blocking: 0 }).headline).toMatch(/^Can launch, with care/);
+    expect(summariseScan(FELLAS, 5, { decision: "INCONCLUSIVE", blocking: 0 }).headline).toMatch(/could not check enough/);
+    expect(summariseScan(FELLAS, 5, { decision: "READY", blocking: 0 }).tone).toBe("good");
+  });
+});
+
 describe("headline and meanings", () => {
   it("never calls a clean scan anything but ready, and never invents urgency", () => {
     expect(summariseScan([c("ssl_valid", "Valid TLS certificate", "Security", "PASS")]).headline).toMatch(/^Ready/);

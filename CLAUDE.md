@@ -7719,3 +7719,83 @@ report was ordered for developers and said what was wrong rather than what it me
   scan on that client, the same path as `POST /api/pulse/scans` (needs `ai.generate`, client must be
   in scope, runs in `after()`). Before this, MCP scans returned a verdict and saved nothing, so a
   repo scanned from Claude never reached the client's list or the code portfolio.
+
+## 84. Recent Changes (October 2026) — Pulse checks bolstered; projects, history and compare
+
+From a full Pulse audit (Dan: checks first, then tracking). Two parts.
+
+### 84.1 The check catalogue
+
+Every check family was re-read against the honesty rules (§35, §44, §58). Fixed:
+
+- **Security** (`security-extended.ts`):
+  - `subdomain_takeover_risk` FAILs only when the CNAME points at a provider AND the provider's
+    "unclaimed" page is served or the target is NXDOMAIN (`assessSubdomainTakeover`). A CNAME into
+    Heroku or S3 is how those are hosted, not a takeover.
+  - `certificate_expiry_30d` reads the real certificate (`tls-certificate.ts`) instead of guessing from HSTS.
+  - DNSSEC, bot protection and BIMI are good practice: absent reads **NOT_APPLICABLE**, never WARN.
+- **Secrets.** `secret-formats.ts` (`findSecrets`) holds the vendor formats and marks Stripe `pk_live_`
+  and Google `AIza…` as public by design. `no_api_keys_in_html` uses BOTH matchers.
+  - ⚠️ `findExposedApiKeys` is still needed because `findSecrets` requires mixed case and so drops
+    DeepSeek-style `sk-` + hex keys. Switching to `findSecrets` alone reintroduced exactly that false
+    negative; `security-extended-fp.test.ts` catches it.
+  - `secret_scanning_github` now covers only the server-side formats (Stripe `sk_live_`, Slack, PEM…).
+- **Exposure probes.** `no_exposed_env` and `no_exposed_git` are INCONCLUSIVE when the probe went
+  unanswered (status 0, 429 or 5xx). They check the body against the file's real format (`path-probe.ts`).
+- **Legal** (`legal-extended.ts`, `business-operations.ts`): a regional privacy law whose market is
+  anchored (₹, CNPJ, ICP, Pte. Ltd., en-CA…) but not mentioned on the homepage is **INCONCLUSIVE**.
+  The notice usually lives in the privacy policy. An unrelated market stays SKIPPED. `eu_ai_act`
+  needs real AI use.
+- **AI** (`web-repo-source.ts`, `ai-app-safety.ts`): the `pulse_ai_*` safety rules run only when the
+  repo DOES something with an LLM (`AI_USAGE`: an SDK import or API call), never when it names one.
+  A long system prompt is flagged only in a file that ships to the browser.
+- **Operational depth** (`operational-depth.ts`): a gap found by keyword is a **WARN, at MEDIUM
+  confidence at most**. The control may live outside the repo.
+- **Repo and web basics.** `repo-basics.ts` covers has_tests, has_linter, ci_cd_present and
+  has_dependabot below the root. `web-basics.ts` covers custom domain, third-party scripts, response
+  time over two samples, and error monitoring.
+- **Private repos** (`private-repo.ts`): checks that need public metadata are not reported as
+  missing for a private repo.
+
+**Withheld:** 237 → 216. Twenty-four checks were fixed and un-withheld. Three still-keyword checks
+were added: `roles_depth_default_deny`, `roles_depth_server_authorization` and
+`auth_depth_generic_login_errors`.
+
+**The advertised count is the live count.** `LIVE_CHECKS` (`checks-registry.ts`) is the registry
+minus `standards_*` rows and minus WITHHELD keys. `ADVERTISED_CHECK_COUNT`, `pulseCapabilityCounts`,
+the features page and `llms.txt` all read it. The count went from **1,700 rows to ~1,090 live, "over
+1,000"**. Un-withholding a check raises it. The features page drops a section with no live checks
+(Standards).
+
+### 84.2 Projects, history and compare
+
+- **A project is a target, not a name.** `targetKey()` (`src/lib/pulse-projects.ts`) gives
+  `repo:owner/name`, or `url:host+path` (lower-cased, without `www.` or a trailing slash). It is the
+  one rule used for the list, history, diff and portfolio. Before, they disagreed, so `Example.com/`
+  was one project on the home screen and two in its history.
+- **Home** (`PulseProjectsView`) is **By project** by default, with **All scans** one click away.
+  Projects needing a look sort first (`buildProjects`):
+  1. fell 5+ points since the last scan;
+  2. the last scan failed;
+  3. score below 50;
+  4. not checked in 60 days.
+
+  The portfolio average counts each project once, at its latest score. Re-scans used to inflate it.
+- **Project page** `/app/pulse/projects/[slug]`: a dated score chart, a compare picker and every scan.
+  **Compare** `/app/pulse/compare?from&to`: any two scans, via `GET /api/pulse/scans/[id]/diff?against=`.
+  Access is checked on both scans. `ScanDiffBody` (`pulse-scan-diff.tsx`) is shared with the scan
+  page's "since last scan" card.
+  - ⚠️ "Couldn't check this time" is its own block. A problem the new scan could not re-check is
+    still outstanding, not fixed.
+- **The plain summary follows the gate.** `summariseScan(checks, n, gate)` takes its headline from
+  the release decision. The box sits directly under the gate banner, above the tabs. Before this, a
+  BLOCKED scan could open with "Mostly ready".
+- Demo: `/demo/pulse`, `/demo/pulse/projects/…`, `/demo/pulse/compare` (older Northwind and Fairway scans).
+
+**Not verified against production data:** projects grouping on real history, and the TLS read on
+the VPS.
+
+⚠️ **`npm run verify` fails at `audit:dependencies` on `main` too:** new advisories for zod, undici,
+nodemailer and ip-address. `npm audit fix --package-lock-only` clears them, but it moves ~600
+lockfile lines including puppeteer-core (PDF rendering), so it belongs in its own change with a
+build and a PDF check. Everything else in the gate is green.

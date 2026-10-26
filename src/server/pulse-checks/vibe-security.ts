@@ -64,6 +64,55 @@ function jwtRole(token: string): string | null {
   } catch { return null; }
 }
 
+export type SupabaseProbeOutcome = "exposed" | "empty" | "protected" | "unestablished";
+/**
+ * What one PostgREST read with the public key says about RLS. Only an explicit
+ * permission denial (Postgres 42501, "permission denied") is "protected". A 404 (wrong
+ * or missing table), a 401 because the key itself was refused, a 5xx, or any other
+ * answer is "unestablished". A 200 with rows is exposed; a 200 with no rows is
+ * ambiguous — RLS filtering every row looks exactly like an empty table.
+ */
+export function classifySupabaseProbe(status: number, body: string): SupabaseProbeOutcome {
+  if (status === 200) {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (Array.isArray(parsed)) return parsed.length > 0 ? "exposed" : "empty";
+    } catch { /* not JSON */ }
+    return "unestablished";
+  }
+  if ((status === 401 || status === 403) && /"code"\s*:\s*"42501"|permission denied/i.test(body)) return "protected";
+  return "unestablished";
+}
+
+export type FirebaseProbeOutcome = "exposed" | "readable_empty" | "protected" | "unestablished";
+/** One unauthenticated Firestore REST list. 403 PERMISSION_DENIED from the rules is "protected"; a disabled API is not. */
+export function classifyFirestoreProbe(status: number, body: string): FirebaseProbeOutcome {
+  if (status === 200) {
+    try {
+      const parsed = JSON.parse(body) as { documents?: unknown[] } | null;
+      if (parsed && typeof parsed === "object") return Array.isArray(parsed.documents) && parsed.documents.length > 0 ? "exposed" : "readable_empty";
+    } catch { /* not JSON */ }
+    return "unestablished";
+  }
+  // Only the RULES' own denial. Firestore also answers 403 PERMISSION_DENIED for a project
+  // that does not exist ("Permission denied on resource project …", CONSUMER_INVALID) and
+  // for one with the API switched off (SERVICE_DISABLED) — verified live, Oct 2026.
+  if (status === 403 && /Missing or insufficient permissions/i.test(body)
+    && !/CONSUMER_INVALID|SERVICE_DISABLED|has not been used|is disabled/i.test(body)) return "protected";
+  return "unestablished";
+}
+
+/** One unauthenticated Realtime Database root read (`/.json?shallow=true`). */
+export function classifyRtdbProbe(status: number, body: string): FirebaseProbeOutcome {
+  if (status === 200) {
+    const trimmed = body.trim();
+    if (trimmed === "null") return "readable_empty";
+    try { JSON.parse(trimmed); return "exposed"; } catch { return "unestablished"; }
+  }
+  if ((status === 401 || status === 403) && /permission denied/i.test(body)) return "protected";
+  return "unestablished";
+}
+
 const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
 
 export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
@@ -100,53 +149,58 @@ export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<
   const serviceKey = jwts.find((t) => jwtRole(t) === "service_role") ?? null;
 
   // ── Supabase RLS — the live, read-only proof ────────────────────────────────
-  const supabaseUrl = bundle.match(/https:\/\/[a-z0-9]{8,}\.supabase\.co/i)?.[0] ?? null;
-  if (usesSupabase && supabaseUrl && anonKey) {
+  // Each table probe is classified by what came back (classifySupabaseProbe). Only an
+  // explicit permission denial counts as "protected": a 404 (a table name scraped
+  // wrongly, or one that no longer exists), a 5xx, or a 401 because the key was
+  // rotated all said nothing about RLS and used to read as protected.
+  const supabaseUrl = bundle.match(/https:\/\/[a-z0-9-]{8,}\.supabase\.(?:co|in)(?![a-z])/i)?.[0] ?? null;
+  const publishableKey = bundle.match(/\bsb_publishable_[A-Za-z0-9_-]{16,}/)?.[0] ?? null;
+  const clientKey = anonKey ?? publishableKey;
+  const RLS = { category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced" } as const;
+  if (usesSupabase && supabaseUrl && clientKey) {
     const tables = Array.from(new Set(
       Array.from(bundle.matchAll(/\.from\(\s*["'`]([a-zA-Z_][a-zA-Z0-9_]*)["'`]\s*\)/g)).map((m) => m[1]),
     )).filter((t) => !/^(auth|storage)$/i.test(t)).slice(0, MAX_TABLES);
 
-    const exposed: string[] = [];
-    let probed = 0;
-    let inconclusive = 0;
-    for (const table of tables.length > 0 ? tables : []) {
+    const outcome: Record<SupabaseProbeOutcome, string[]> = { exposed: [], empty: [], protected: [], unestablished: [] };
+    for (const table of tables) {
       try {
-        const res = await fetchWithTimeout(`${supabaseUrl}/rest/v1/${encodeURIComponent(table)}?select=*&limit=1`, {
-          headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, "User-Agent": "Gitwork-Pulse/1.0" },
-        });
-        probed++;
-        if (res.status === 200) {
-          const body = (await res.json().catch(() => null)) as unknown;
-          if (Array.isArray(body) && body.length > 0) exposed.push(table);
-          else inconclusive++; // empty table OR RLS returning [] — can't be sure
-        }
-        // 401/403/4xx ⇒ protected (RLS enforced) — no action.
-      } catch { /* network error — skip this table */ }
+        const headers: Record<string, string> = { apikey: clientKey, "User-Agent": "Gitwork-Pulse/1.0" };
+        if (anonKey) headers.Authorization = `Bearer ${anonKey}`;
+        const res = await fetchWithTimeout(`${supabaseUrl}/rest/v1/${encodeURIComponent(table)}?select=*&limit=1`, { headers });
+        const body = (await res.text().catch(() => "")).slice(0, 4096);
+        outcome[classifySupabaseProbe(res.status, body)].push(table);
+      } catch {
+        outcome.unestablished.push(table);
+      }
     }
 
-    if (exposed.length > 0) {
-      checks.push({ category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced", status: "FAIL",
-        detail: `CRITICAL: ${exposed.length} table(s) are readable with the public anon key WITHOUT logging in — Row-Level Security is off or misconfigured (CVE-2025-48757). Anyone can read this data. Enable RLS policies on every table in Supabase immediately.`,
-        evidence: `Readable unauthenticated: ${exposed.join(", ")} · anon key ${anonKey.slice(0, 12)}…` });
-    } else if (probed > 0 && inconclusive === probed) {
-      checks.push({ category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced", status: "WARN",
-        detail: "Supabase tables returned no rows to the public anon key — likely RLS-protected (or simply empty). Verify RLS policies exist on every table.",
-        evidence: `Probed ${probed} table(s); none returned data` });
-    } else if (probed > 0) {
-      checks.push({ category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced", status: "PASS",
-        detail: "Supabase tables rejected unauthenticated reads with the public anon key — Row-Level Security appears enforced.",
-        evidence: `Probed ${probed} table(s); all protected` });
+    const summary = `Probed ${tables.length} table(s): ${outcome.exposed.length} readable, ${outcome.protected.length} denied, ${outcome.empty.length} returned no rows, ${outcome.unestablished.length} could not be established`;
+    if (outcome.exposed.length > 0) {
+      checks.push({ ...RLS, status: "FAIL",
+        detail: `CRITICAL: ${outcome.exposed.length} table(s) are readable with the public key WITHOUT logging in — Row-Level Security is off or misconfigured (CVE-2025-48757). Anyone can read this data. Enable RLS policies on every table in Supabase immediately.`,
+        evidence: `Readable unauthenticated: ${outcome.exposed.join(", ")} · key ${clientKey.slice(0, 12)}…` });
+    } else if (outcome.protected.length > 0 && outcome.empty.length === 0 && outcome.unestablished.length === 0) {
+      checks.push({ ...RLS, status: "PASS",
+        detail: `Every table Pulse found referenced in the client bundle (${outcome.protected.join(", ")}) refused an unauthenticated read with the public key. Tables the bundle does not reference were not probed.`,
+        evidence: summary });
+    } else if (outcome.protected.length > 0 || outcome.empty.length > 0) {
+      checks.push({ ...RLS, status: "WARN",
+        detail: `No table returned data to the public key, but not every table could be confirmed as protected: ${outcome.empty.length > 0 ? `${outcome.empty.join(", ")} answered with no rows (RLS filtering every row looks the same as an empty table)` : ""}${outcome.empty.length > 0 && outcome.unestablished.length > 0 ? "; " : ""}${outcome.unestablished.length > 0 ? `${outcome.unestablished.join(", ")} could not be probed` : ""}. Confirm RLS policies exist on those tables.`,
+        evidence: summary });
     } else {
-      checks.push({ category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced", status: "WARN",
-        detail: "Supabase detected but no table references were found in the client bundle to probe — manually confirm RLS is enabled on all tables.",
-        evidence: supabaseUrl });
+      checks.push({ ...RLS, status: "INCONCLUSIVE",
+        detail: tables.length === 0
+          ? "Supabase is used, but no table references were found in the client bundle to probe — whether Row-Level Security is enforced could not be established."
+          : `No table probe gave an answer about Row-Level Security (tables not found, the key was refused, or the request failed) — whether RLS is enforced could not be established.`,
+        evidence: tables.length === 0 ? supabaseUrl : summary });
     }
   } else if (usesSupabase) {
-    checks.push({ category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced", status: "WARN",
-      detail: "Supabase detected but the project URL or anon key couldn't be read from the bundle — manually verify Row-Level Security is enabled on all tables.",
-      evidence: supabaseUrl ?? "no anon key found" });
+    checks.push({ ...RLS, status: "INCONCLUSIVE",
+      detail: "Supabase is used, but the project URL or public key could not be read from the client bundle, so no read could be attempted — whether Row-Level Security is enforced could not be established.",
+      evidence: supabaseUrl ?? "no public key found" });
   } else {
-    checks.push({ category: CATEGORY, checkKey: "supabase_rls_enforced", label: "Supabase Row-Level Security enforced", status: "SKIPPED", detail: "No Supabase backend detected." });
+    checks.push({ ...RLS, status: "SKIPPED", detail: "No Supabase backend detected." });
   }
 
   // ── Service-role / secret key exposed in the client bundle ──────────────────
@@ -159,30 +213,61 @@ export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<
     evidence: hasSecret ? (serviceKey ? `service_role JWT ${serviceKey.slice(0, 12)}…` : "secret key pattern in bundle") : undefined });
 
   // ── Firebase rules ──────────────────────────────────────────────────────────
+  // Firestore AND Realtime Database, each classified by what came back. A 200 is the
+  // rules ALLOWING an unauthenticated read, whether or not anything is there yet — so an
+  // empty 200 is not "locked down". Only an explicit permission denial is. A 404 (no
+  // default database, a wrong project id) or an API-disabled answer says nothing.
   if (usesFirebase) {
+    const FB = { category: CATEGORY, checkKey: "firebase_rules_locked", label: "Firebase security rules locked down" } as const;
     const projectId = bundle.match(/["']?projectId["']?\s*[:=]\s*["']([a-z0-9-]+)["']/i)?.[1] ?? null;
-    const collection = Array.from(bundle.matchAll(/collection\(\s*(?:[a-zA-Z_$][\w$]*\s*,\s*)?["'`]([a-zA-Z_][\w]*)["'`]/g)).map((m) => m[1])[0] ?? null;
-    let open = false;
-    let probedFb = false;
-    if (projectId && collection) {
-      try {
-        const res = await fetchWithTimeout(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collection}?pageSize=1`, {
-          headers: { "User-Agent": "Gitwork-Pulse/1.0" },
-        });
-        probedFb = true;
-        if (res.status === 200) {
-          const body = (await res.json().catch(() => null)) as { documents?: unknown[] } | null;
-          if (body && Array.isArray(body.documents) && body.documents.length > 0) open = true;
-        }
-      } catch { /* skip */ }
+    const databaseUrl = bundle.match(/https:\/\/[a-z0-9-]+(?:-default-rtdb)?(?:\.[a-z0-9-]+)?\.(?:firebaseio\.com|firebasedatabase\.app)/i)?.[0] ?? null;
+    const collections = Array.from(new Set(
+      Array.from(bundle.matchAll(/collection\(\s*(?:[a-zA-Z_$][\w$]*\s*,\s*)?["'`]([a-zA-Z_][\w]*)["'`]/g)).map((m) => m[1]),
+    )).slice(0, 3);
+    const results: Array<{ where: string; outcome: FirebaseProbeOutcome }> = [];
+    if (projectId) {
+      for (const collection of collections) {
+        const where = `Firestore /${collection}`;
+        try {
+          const res = await fetchWithTimeout(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collection}?pageSize=1`, {
+            headers: { "User-Agent": "Gitwork-Pulse/1.0" },
+          });
+          results.push({ where, outcome: classifyFirestoreProbe(res.status, (await res.text().catch(() => "")).slice(0, 8192)) });
+        } catch { results.push({ where, outcome: "unestablished" }); }
+      }
     }
-    checks.push({ category: CATEGORY, checkKey: "firebase_rules_locked", label: "Firebase security rules locked down", status: open ? "FAIL" : probedFb ? "PASS" : "WARN",
-      detail: open
-        ? `CRITICAL: the Firestore collection "${collection}" is world-readable without authentication — Firebase security rules are in test/open mode. Lock down your rules before launch.`
-        : probedFb
-          ? "Firestore rejected an unauthenticated read — security rules appear locked down."
-          : "Firebase detected but couldn't determine a collection to probe — manually verify Firestore/RTDB security rules are not in test mode.",
-      evidence: projectId ? `project ${projectId}${collection ? ` · /${collection}` : ""}` : undefined });
+    if (databaseUrl) {
+      const where = `Realtime Database ${new URL(databaseUrl).hostname}`;
+      try {
+        const res = await fetchWithTimeout(`${databaseUrl}/.json?shallow=true`, { headers: { "User-Agent": "Gitwork-Pulse/1.0" } });
+        results.push({ where, outcome: classifyRtdbProbe(res.status, (await res.text().catch(() => "")).slice(0, 4096)) });
+      } catch { results.push({ where, outcome: "unestablished" }); }
+    }
+    const of = (o: FirebaseProbeOutcome) => results.filter((r) => r.outcome === o).map((r) => r.where);
+    const evidence = [projectId ? `project ${projectId}` : null, ...results.map((r) => `${r.where}: ${r.outcome.replace("_", " ")}`)].filter(Boolean).join(" · ") || undefined;
+    if (of("exposed").length > 0) {
+      checks.push({ ...FB, status: "FAIL",
+        detail: `CRITICAL: ${of("exposed").join(", ")} returned data without authentication — Firebase security rules allow anyone to read it. Lock the rules down before launch (unless this data is meant to be public).`,
+        evidence });
+    } else if (of("readable_empty").length > 0) {
+      checks.push({ ...FB, status: "WARN",
+        detail: `${of("readable_empty").join(", ")} accepted an unauthenticated read (it is empty right now, so nothing leaked). The rules allow it, so whatever is written there next is public. Restrict the rules unless that is intended.`,
+        evidence });
+    } else if (of("protected").length > 0 && of("unestablished").length === 0) {
+      checks.push({ ...FB, status: "PASS",
+        detail: `${of("protected").join(", ")} refused an unauthenticated read. Only these paths were probed; rules elsewhere were not tested.`,
+        evidence });
+    } else if (of("protected").length > 0) {
+      checks.push({ ...FB, status: "WARN",
+        detail: `${of("protected").join(", ")} refused an unauthenticated read, but ${of("unestablished").join(", ")} could not be checked. Confirm the rules there too.`,
+        evidence });
+    } else {
+      checks.push({ ...FB, status: "INCONCLUSIVE",
+        detail: results.length === 0
+          ? "Firebase is used, but no Firestore collection or Realtime Database URL could be read from the client bundle to probe — whether the security rules are locked down could not be established."
+          : "No Firebase probe gave an answer about the security rules (no default database, a wrong project id, the API disabled, or the request failed) — whether the rules are locked down could not be established.",
+        evidence });
+    }
   } else {
     checks.push({ category: CATEGORY, checkKey: "firebase_rules_locked", label: "Firebase security rules locked down", status: "SKIPPED", detail: "No Firebase backend detected." });
   }

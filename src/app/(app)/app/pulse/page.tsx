@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { PulseChecksDisclosure } from "@/components/pulse/pulse-overview";
 import { PulseTopCards } from "@/components/pulse/pulse-top-cards";
 import { PulseScanListView } from "@/components/pulse/pulse-scan-list";
+import { PulseProjectsView } from "@/components/pulse/pulse-projects";
 import { PulseLeadsPanel } from "@/components/pulse/pulse-leads-panel";
 import { PulseMonitorsPanel } from "@/components/pulse/pulse-monitors-panel";
 import { InternalOnly } from "@/components/internal-only";
@@ -40,7 +41,9 @@ export default function PulsePage() {
         <InternalOnly>
           <PulseMonitorsPanel />
         </InternalOnly>
-        <PulseScanListView />
+        {/* By project by default (one row per site/repo, trend, what needs a look); the flat
+            list of every scan is one click away. */}
+        <PulseProjectsView allScans={<PulseScanListView />} />
         {/* Compact table below the main scan list — mirrors its row/header grammar so a lead
             reads as "one more row of the same list", not a separate spacious card. */}
         <InternalOnly>

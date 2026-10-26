@@ -9,6 +9,9 @@ import {
   getPulseScan,
   getPulsePortfolio,
   getCodePortfolio,
+  getPulseProjects,
+  getPulseProject,
+  comparePulseScans,
   getPulseBenchmarks,
   getPulseScanHistory,
   getPulseScanDiff,
@@ -89,6 +92,18 @@ export function usePulsePortfolio() {
     queryFn: getPulsePortfolio,
     staleTime: 1000 * 15,
   });
+}
+
+export function usePulseProjects() {
+  return useQuery({ queryKey: ["pulse-projects"], queryFn: getPulseProjects, staleTime: 1000 * 30 });
+}
+
+export function usePulseProject(slug: string) {
+  return useQuery({ queryKey: ["pulse-project", slug], queryFn: () => getPulseProject(slug), enabled: !!slug });
+}
+
+export function usePulseCompare(scanId: string, against: string) {
+  return useQuery({ queryKey: ["pulse-compare", scanId, against], queryFn: () => comparePulseScans(scanId, against), enabled: !!scanId && !!against });
 }
 
 export function useCodePortfolio() {

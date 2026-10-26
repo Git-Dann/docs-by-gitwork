@@ -112,7 +112,7 @@ describe("audit repo-operational-depth-3", () => {
         "config/initializers/filter_parameter_logging.rb": "Rails.application.config.filter_parameters += %i[password api_key second_factor_token]",
       }, "obs_depth_structured_redaction"),
     ).toBe("PASS");
-    expect(status({ "config/environments/production.rb": prod }, "obs_depth_structured_redaction")).toBe("FAIL");
+    expect(status({ "config/environments/production.rb": prod }, "obs_depth_structured_redaction")).toBe("WARN");
     expect(
       status({
         "config/initializers/filter_parameter_logging.rb": "Rails.application.config.filter_parameters += %i[password]",

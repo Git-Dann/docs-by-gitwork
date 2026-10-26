@@ -2,6 +2,7 @@ import { CATEGORIES, ORDERED_CATEGORIES, type CheckCategory } from "./pulse-chec
 import { STANDARDS_VALIDATION_REGISTRY } from "./pulse-checks/standards-verification";
 import { SERVICE_DEPTH_REGISTRY } from "./pulse-checks/service-depth";
 import { OPERATIONAL_DEPTH_REGISTRY } from "./pulse-checks/operational-depth";
+import { WITHHELD } from "./pulse-checks/check-relevance-data";
 
 /**
  * Static registry of every Pulse check (key + category + label). This is the
@@ -1288,6 +1289,23 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
 /** All unique categories in display order */
 /** All categories in canonical display order — derived from the SoT, never hand-listed. */
 /**
+ * The checks a scan can actually show someone. Two kinds of registry row never reach a
+ * report, so counting them overstated the product:
+ *   - `standards_*` rows: the derived standards catalogue, shown only with an
+ *     evidence-backed verdict (a reference list, not checks Pulse performs);
+ *   - WITHHELD keys: held back because Pulse cannot observe them, or they had a verified
+ *     wrong-verdict defect (check-relevance-data.ts).
+ * Un-withholding a check raises this number; that is the point.
+ */
+export const LIVE_CHECKS: readonly CheckDefinition[] = CHECKS_REGISTRY.filter(
+  (c) => !c.key.startsWith("standards_") && !Object.prototype.hasOwnProperty.call(WITHHELD, c.key),
+);
+
+function liveCheckCount(): number {
+  return LIVE_CHECKS.length;
+}
+
+/**
  * Single source of truth for the check count we ADVERTISE.
  *
  * Derived from the registry and rounded DOWN to the nearest hundred, so the public
@@ -1302,8 +1320,10 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
  * Flutter, desktop, React Native, CLI, browser extension — and the source-analysis
  * families need a repository. So this is the catalogue size, which is the honest
  * thing to advertise for the product; per-scan counts come from the scan itself.
+ * It counts LIVE_CHECKS only (Oct 2026): before, it counted 1,700 rows of which ~600
+ * could never appear on a report.
  */
-export const ADVERTISED_CHECK_COUNT = Math.floor(CHECKS_REGISTRY.length / 100) * 100;
+export const ADVERTISED_CHECK_COUNT = Math.floor(liveCheckCount() / 100) * 100;
 
 /** e.g. "over 1,000" — for prose. */
 export const ADVERTISED_CHECK_COUNT_LABEL = `over ${ADVERTISED_CHECK_COUNT.toLocaleString("en-GB")}`;

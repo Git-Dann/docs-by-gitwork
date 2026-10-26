@@ -5,7 +5,7 @@ import { AREAS, AREA_GROUPS, EXTRAS, PULSE_INPUTS, PULSE_PLATFORMS, PULSE_STEPS,
 import { matchesQuery, searchArea } from "@/app/pulse/features/check-explorer";
 import { pulseCapabilityCounts } from "@/server/pulse-capabilities";
 import { PULSE_PLATFORM_LABEL } from "@/lib/pulse-store-url";
-import { CHECKS_REGISTRY } from "@/server/checks-registry";
+import { LIVE_CHECKS } from "@/server/checks-registry";
 import PulseFeaturesPage from "@/app/pulse/features/page";
 
 // The page is shared with people outside Gitwork, so it must stay TRUE as Pulse changes.
@@ -15,14 +15,14 @@ describe("what the features page says stays true", () => {
     for (const e of EXTRAS) expect(existsSync(e.evidence), `${e.name} → ${e.evidence}`).toBe(true);
   });
 
-  it("the total is the registry's, and the areas add up to it", () => {
+  it("the total is the live checks', and the areas add up to it", () => {
     const { checks, areas } = pulseCapabilityCounts();
-    expect(checks).toBe(CHECKS_REGISTRY.length);
+    expect(checks).toBe(LIVE_CHECKS.length);
     expect(areas.reduce((n, a) => n + a.checks, 0)).toBe(checks);
   });
 
   it("⚠️ every area that has checks is described — none silently missing from the table", () => {
-    const withChecks = new Set(CHECKS_REGISTRY.map((c) => c.category));
+    const withChecks = new Set(LIVE_CHECKS.map((c) => c.category));
     const shown = new Set(pulseCapabilityCounts().areas.map((a) => a.category));
     expect([...withChecks].filter((c) => !shown.has(c))).toEqual([]);
     for (const a of Object.values(AREAS)) expect(a.covers.trim().length).toBeGreaterThan(10);

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ADVERTISED_CHECK_COUNT, ADVERTISED_CHECK_COUNT_LABEL, CHECKS_REGISTRY } from "@/server/checks-registry";
+import { ADVERTISED_CHECK_COUNT, ADVERTISED_CHECK_COUNT_LABEL, CHECKS_REGISTRY, LIVE_CHECKS } from "@/server/checks-registry";
+import { WITHHELD } from "@/server/pulse-checks/check-relevance-data";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The same product was simultaneously advertised as "150+", "450+", "500+",
@@ -16,11 +17,17 @@ import { ADVERTISED_CHECK_COUNT, ADVERTISED_CHECK_COUNT_LABEL, CHECKS_REGISTRY }
 describe("the advertised count is derived and can only understate", () => {
   it("rounds down to the nearest hundred", () => {
     expect(ADVERTISED_CHECK_COUNT % 100).toBe(0);
-    expect(ADVERTISED_CHECK_COUNT).toBeLessThanOrEqual(CHECKS_REGISTRY.length);
+    expect(ADVERTISED_CHECK_COUNT).toBeLessThanOrEqual(LIVE_CHECKS.length);
   });
 
   it("is never a wild understatement either", () => {
-    expect(CHECKS_REGISTRY.length - ADVERTISED_CHECK_COUNT).toBeLessThan(100);
+    expect(LIVE_CHECKS.length - ADVERTISED_CHECK_COUNT).toBeLessThan(100);
+  });
+
+  it("counts only checks a report can show: no withheld and no standards-catalogue rows", () => {
+    expect(LIVE_CHECKS.some((c) => c.key.startsWith("standards_"))).toBe(false);
+    expect(LIVE_CHECKS.some((c) => Object.prototype.hasOwnProperty.call(WITHHELD, c.key))).toBe(false);
+    expect(LIVE_CHECKS.length).toBeLessThan(CHECKS_REGISTRY.length);
   });
 
   it("formats with a thousands separator", () => {
@@ -61,7 +68,7 @@ describe("no surface hardcodes a stale count", () => {
     const claimed = Number(m![1].replace(/,/g, ""));
     // Static file, so it cannot import the constant — but it must not overstate,
     // and must not fall more than a hundred behind.
-    expect(claimed).toBeLessThanOrEqual(CHECKS_REGISTRY.length);
-    expect(CHECKS_REGISTRY.length - claimed).toBeLessThan(200);
+    expect(claimed).toBeLessThanOrEqual(LIVE_CHECKS.length);
+    expect(LIVE_CHECKS.length - claimed).toBeLessThan(200);
   });
 });

@@ -350,12 +350,14 @@ describe("thin-sample absence is not reported as missing", () => {
     expect(check.status).toBe("FAIL");
   });
 
-  it("keeps a fully-read Terraform-only repo's gap as a high-confidence FAIL", () => {
+  // A gap read from a keyword sample is a WARN at MEDIUM confidence at most: the control may
+  // live outside the repository (a bucket policy, the console), so absence is not a FAIL.
+  it("keeps a fully-read Terraform-only repo's gap as a finding, not an unobserved one", () => {
     const check = run(
       { "infra/backend.tf": 'terraform {\n  backend "s3" {\n    bucket = "acme-tf-state"\n    key    = "prod/terraform.tfstate"\n  }\n}' },
       "infra_depth_remote_state_protection",
     );
-    expect(check.status).toBe("FAIL");
-    expect(check.confidence).toBe("HIGH");
+    expect(check.status).toBe("WARN");
+    expect(check.confidence).toBe("MEDIUM");
   });
 });

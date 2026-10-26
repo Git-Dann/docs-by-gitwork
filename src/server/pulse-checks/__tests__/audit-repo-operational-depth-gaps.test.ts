@@ -97,13 +97,13 @@ describe("api_depth_response_schema does not count every Mapper", () => {
 });
 
 describe("api_depth_webhook_replay_window only credits the Stripe SDK", () => {
-  it("fails a home-made constructEvent that only parses JSON", () => {
+  it("flags a home-made constructEvent that only parses JSON", () => {
     expect(
       evalKey(
         "api_depth_webhook_replay_window",
         "routes/webhook.ts\nfunction constructEvent(body) { return JSON.parse(body); }\napp.post('/webhook', (req) => handle(constructEvent(req.body)));",
       ),
-    ).toBe("FAIL");
+    ).toBe("WARN");
   });
   it("passes the Stripe SDK verification call", () => {
     expect(
@@ -135,7 +135,7 @@ describe("auth_depth_oauth_redirect_allowlist ignores documentation prose", () =
       "README.md\nIf Google shows `redirect_uri_mismatch`, check the console.\nsrc/auth.ts\nconst returnTo = session.returnTo; res.redirect(returnTo);",
     );
     expect(status).not.toBe("PASS");
-    expect(status).toBe("FAIL");
+    expect(status).toBe("WARN");
   });
 });
 
@@ -154,10 +154,10 @@ describe("api_depth_contract_validation_ci", () => {
 });
 
 describe("auth_depth_session_cookie_flags", () => {
-  it("fails koa-session with no SameSite policy", () => {
+  it("flags koa-session with no SameSite policy", () => {
     expect(
       evalKey("auth_depth_session_cookie_flags", 'server.ts\nimport session from "koa-session";\napp.use(session({ key: "s" }, app));'),
-    ).toBe("FAIL");
+    ).toBe("WARN");
   });
 });
 
@@ -265,10 +265,10 @@ describe("payments, performance and roles counter-examples", () => {
         "roles_depth_object_ownership",
         "app/api/items/[id]/route.ts\nif (session.user.id !== undefined) {\n  const item = await db.item.findUnique({ where: { id: params.id } });\n}",
       ),
-    ).toBe("FAIL");
+    ).toBe("WARN");
   });
-  it("keeps an unprotected adminRouter route in scope and failing", () => {
-    expect(evalKey("roles_depth_server_authorization", 'routes/admin.ts\nadminRouter.delete("/users/:id", handler);')).toBe("FAIL");
+  it("keeps an unprotected adminRouter route in scope and flagged", () => {
+    expect(evalKey("roles_depth_server_authorization", 'routes/admin.ts\nadminRouter.delete("/users/:id", handler);')).toBe("WARN");
   });
 });
 
@@ -278,7 +278,7 @@ describe("sampling coverage", () => {
   it("reports a fully-read Terraform-only repository's missing restore drill as a finding", () => {
     const check = at(evaluateOperationalDepthChecks(snap(tfOnly)), "infra_depth_restore_drill");
     expect(check.status).toBe("WARN");
-    expect(check.confidence).toBe("HIGH");
+    expect(check.confidence).toBe("MEDIUM");
   });
 
   it("treats the same absence on a truncated tree as unobserved", () => {

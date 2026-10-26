@@ -292,7 +292,7 @@ export function PulseReportView({
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:px-6">
 
         {/* Before any detail: ready or not, and what to fix first, in plain words. */}
-        <PlainScanBox checks={scan.checks} />
+        <PlainScanBox checks={scan.checks} gate={scan.scoreBreakdown?.gate ?? null} />
 
         {/* Tech stack */}
         {scan.techStack && scan.techStack.length > 0 && (

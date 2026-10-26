@@ -34,6 +34,8 @@ import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAg
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { PlainScanBox } from "@/components/pulse/code-health-sections";
+import { ScanDiffBody, ScoreChange } from "@/components/pulse/pulse-scan-diff";
+import { encodeTargetKey, targetKey } from "@/lib/pulse-projects";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
@@ -2360,6 +2362,10 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           live on. */}
       {gate && <ReleaseGateBanner gate={gate} />}
 
+      {/* The plain-English verdict and what to fix first, before any tab: the first thing a
+          non-developer needs, and its headline follows the banner above it. */}
+      {scan.status === "COMPLETED" && <PlainScanBox checks={scan.checks} gate={gate ?? null} />}
+
       {/* Tabs */}
       <div className="border-b border-[var(--border-2)]">
         <div className="flex gap-0 overflow-x-auto">
@@ -2462,9 +2468,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               asks "which part of this is the problem?" — the question the whole
               rollup exists to answer. On the Checks tab it would sit above the
               wall it is meant to save you reading. */}
-          {/* What a non-developer needs first: ready or not, and what to fix. */}
-          <PlainScanBox checks={scan.checks} />
-
           <PillarStrip checks={scan.checks} num={sectionNo()} />
 
           {/* Repo scans: the full-checkout measure and its tech-debt register. */}
@@ -2502,59 +2505,24 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </button>
           )}
 
-          {/* CHANGES SINCE LAST SCAN — diff vs the previous scan of this target */}
-          {scanDiff && (scanDiff.fixed.length + scanDiff.regressed.length + scanDiff.newIssues.length + scanDiff.unverified.length > 0) && (
+          {/* CHANGES SINCE LAST SCAN. Shown whenever there is an earlier scan, including when
+              nothing changed: hiding it made "no changes" look the same as "no earlier scan". */}
+          {scanDiff && (
             <div className="widget-card">
               <div className="widget-header">
                 <span className="widget-header-label">CHANGES SINCE LAST SCAN</span>
-                <span className={cn("widget-header-right tabular-nums", scanDiff.scoreChange > 0 ? "text-[var(--success-500)]" : scanDiff.scoreChange < 0 ? "text-[var(--danger-500)]" : "text-[var(--text-4)]")}>
-                  {scanDiff.scoreChange > 0 ? "+" : ""}{scanDiff.scoreChange} pts
-                </span>
+                <span className="widget-header-right"><ScoreChange diff={scanDiff} /></span>
               </div>
               <div className="widget-body space-y-3">
-                {[
-                  { items: scanDiff.regressed, label: "Regressed", tone: "text-[var(--danger-500)]", sign: "▼" },
-                  { items: scanDiff.newIssues, label: "New issues", tone: "text-[var(--warning-500)]", sign: "+" },
-                  { items: scanDiff.fixed, label: "Fixed", tone: "text-[var(--success-500)]", sign: "✓" },
-                ].filter((g) => g.items.length > 0).map((g) => (
-                  <div key={g.label}>
-                    <p className={cn("widget-data-label", g.tone)}>{g.sign} {g.label} ({g.items.length})</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {g.items.slice(0, 8).map((it) => (
-                        <span key={it.checkKey} className="rounded-[6px] border border-[var(--border-2)] px-2 py-0.5 text-xs text-[var(--text-2)]">{it.label}</span>
-                      ))}
-                      {g.items.length > 8 && <span className="text-xs text-[var(--text-4)]">+{g.items.length - 8} more</span>}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Given its own block rather than a fourth chip row, because the
-                    REASON is the content. "We stopped being able to check this"
-                    reads as "sorted" the moment it is reduced to a label, which
-                    is precisely how a finding disappears. Neutral, not a warning
-                    colour: it is not a finding about the product. */}
-                {scanDiff.unverified.length > 0 && (
-                  <div className="border-t border-[var(--border-2)] pt-3">
-                    <p className="widget-data-label text-[var(--text-3)]">
-                      ? No longer verifiable ({scanDiff.unverified.length})
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-[var(--text-3)]">
-                      These were findings last time. This scan could not confirm or clear them, so they are
-                      still outstanding — not fixed.
-                    </p>
-                    <ul className="mt-2 space-y-1.5">
-                      {scanDiff.unverified.slice(0, 6).map((it) => (
-                        <li key={it.checkKey} className="text-xs leading-5">
-                          <span className="text-[var(--text-1)]">{it.label}</span>
-                          <span className="text-[var(--text-3)]"> — {it.detail}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {scanDiff.unverified.length > 6 && (
-                      <p className="mt-1 text-xs text-[var(--text-4)]">+{scanDiff.unverified.length - 6} more</p>
-                    )}
-                  </div>
-                )}
+                <ScanDiffBody diff={scanDiff} previousHref={`/app/pulse/${scanDiff.previousScanId}`} />
+                <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--border-2)] pt-2.5 text-xs">
+                  <Link href={`/app/pulse/projects/${encodeTargetKey(targetKey(scan))}`} className="text-[var(--brand-600)] hover:underline">
+                    Every scan of this project →
+                  </Link>
+                  <Link href={`/app/pulse/compare?from=${scanDiff.previousScanId}&to=${scan.id}`} className="text-[var(--brand-600)] hover:underline">
+                    Full comparison →
+                  </Link>
+                </div>
               </div>
             </div>
           )}
