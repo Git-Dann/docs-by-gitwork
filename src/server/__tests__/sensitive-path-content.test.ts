@@ -67,7 +67,7 @@ describe("a genuinely exposed file is still caught", () => {
     ["no_exposed_backup", "/dump.sql", "-- MySQL dump 10.13  Distrib 8.0.36\nCREATE TABLE `users` (\n  `id` int NOT NULL\n);\n", "application/sql"],
     ["no_exposed_backup", "/.env.bak", "APP_KEY=base64:abc\nDB_PASSWORD=hunter2\n# comment\nSTRIPE_SECRET=sk_live_x\n", "application/octet-stream"],
     ["no_debug_endpoints", "/telescope", '<html><head><title>Telescope - Acme</title><script src="/vendor/telescope/app.js"></script></head></html>', "text/html"],
-    ["no_exposed_admin", "/wp-admin", '<html><head><title>Log In &lsaquo; Acme &#8212; WordPress</title></head><body><form id="loginform"><input name="log"><input type="password" name="pwd"></form></body></html>', "text/html"],
+    ["no_exposed_admin", "/wp-admin", '<html><head><title>Dashboard &lsaquo; Acme &#8212; WordPress</title></head><body><div id="wpadminbar"></div><h1>Dashboard</h1></body></html>', "text/html"],
   ];
   for (const [key, path, body, type] of exposed) {
     it(`${key} at ${path}`, async () => {
@@ -82,6 +82,21 @@ describe("a genuinely exposed file is still caught", () => {
       expect(c[key].detail).toContain(path === "/wp-admin" ? "/wp-admin" : path.replace(/^\//, "") ? path.split("/").pop()! : path);
     });
   }
+});
+
+describe("an admin area behind a sign-in is not exposed", () => {
+  // Every WordPress site serves a sign-in form at /wp-admin. That is the admin area
+  // protecting itself, not an exposure; the dashboard served without one is (above).
+  it("WordPress sign-in form at /wp-admin passes", async () => {
+    route = (url) => {
+      const p = new URL(url).pathname;
+      if (p === "/wp-admin") return res(200, '<html><head><title>Log In &lsaquo; Acme &#8212; WordPress</title></head><body><form id="loginform"><input name="log"><input type="password" name="pwd"></form></body></html>');
+      if (p === "/") return res(200, HOMEPAGE);
+      return res(404, "not found", "text/plain");
+    };
+    const c = await exposure();
+    expect(c.no_exposed_admin.status).toBe("PASS");
+  });
 });
 
 describe("a probe that failed is inconclusive, never a pass", () => {
