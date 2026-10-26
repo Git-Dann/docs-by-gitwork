@@ -28,16 +28,16 @@ const byKey = (checks: PulseScanCheckInput[], key: string) => {
 };
 
 describe("evidence-backed verification controls", () => {
-  it("upgrades a matching manual control to a high-confidence pass", () => {
+  it("upgrades a control with a complete proving group to a pass", () => {
     const resolved = resolveEvidenceBackedControls(
       "WEB_APP",
-      [observed("ssl_valid", "PASS")],
+      [observed("web_dependency_pinning", "PASS")],
     );
 
-    const check = byKey(resolved, "standards_deep_network_01");
+    const check = byKey(resolved, "standards_deep_supply_01");
     expect(check.status).toBe("PASS");
     expect(check.confidence).toBe("HIGH");
-    expect(check.detail).toContain("Pulse runtime evidence");
+    expect(check.detail).toContain("Pulse observed");
   });
 
   it("carries a confirmed source failure into the matching control", () => {
@@ -52,15 +52,14 @@ describe("evidence-backed verification controls", () => {
     expect(check.evidence).toContain("ssl_valid");
   });
 
-  it("does not turn a warning or weak signal into a verified verdict", () => {
+  it("carries a warning as a warning, and treats a weak signal as no evidence", () => {
     const weak = resolveEvidenceBackedControls("WEB_APP", [observed("ssl_valid", "WARN")]);
-    const low = resolveEvidenceBackedControls("WEB_APP", [observed("ssl_valid", "PASS", "LOW")]);
+    expect(byKey(weak, "standards_deep_network_01").status).toBe("WARN");
 
-    for (const result of [weak, low]) {
-      const check = byKey(result, "standards_deep_network_01");
-      expect(check.status).toBe("WARN");
-      expect(check.confidence).toBe("LOW");
-    }
+    const low = resolveEvidenceBackedControls("WEB_APP", [observed("ssl_valid", "PASS", "LOW")]);
+    const check = byKey(low, "standards_deep_network_01");
+    expect(check.status).toBe("INCONCLUSIVE");
+    expect(check.confidence).toBe("LOW");
   });
 
   it("leaves unrelated controls as manual evidence requirements", () => {
