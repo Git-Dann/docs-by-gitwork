@@ -51,6 +51,14 @@ const GUARDRAIL =
   /\bllm[-_]guard\b|\bguardrails[-_]ai\b|@guardrails-ai\/|\bnemoguardrails\b|\bnemo[-_]guardrails\b|\brebuff\b|\bprompt[-_]?shields?\b|\blakera\b|\bllama[-_]?guard\b|\bprompt[-_]?guard\b|\/v1\/moderations\b|\bmoderations\.create\s*\(|\b(?:omni|text)-moderation-(?:latest|stable|\d)|\bcontentsafety\b|\bcontent[-_]safety\.cognitiveservices\b|\bprotectai\b/i;
 
 /**
+ * A structured-output request with a schema: the Vercel AI SDK's object APIs, OpenAI's
+ * json_schema response format or its zod helper, Gemini's responseSchema. Never a bare
+ * `.parse(` or the word "zod".
+ */
+const STRUCTURED_OUTPUT =
+  /\b(?:generateObject|streamObject|useObject|experimental_useObject)\s*\(|\bresponse_format\s*:\s*\{\s*type\s*:\s*["']json_schema["']|\bzodResponseFormat\s*\(|\bresponseSchema\s*:|\bjson_schema\s*:\s*\{\s*(?:name|schema|strict)\s*:/;
+
+/**
  * Pure verdicts over what the scan fetched. `html` is the page; `bundleJs` is the
  * same-origin JS bundles. Returns null when there is no LLM usage to judge.
  */
@@ -111,12 +119,21 @@ export function evaluateAiAppSafety(html: string, bundleJs: string): PulseScanCh
       : "Not established from outside: prompt-injection guardrails and moderation normally run on the server, which a website scan cannot see. Confirm user input reaching the model is screened (a moderation API or a guardrail library). Prompt injection is OWASP LLM01.",
   });
 
-  // Output validation before use (heuristic → MEDIUM).
-  const hasOutputValidation = /\.parse\(|zod|schema\.validate|json\.parse\([^)]*\)\s*;?\s*\/\/|structured.?output|tool.?call/i.test(clientJs);
-  checks.push({ category: CATEGORY, checkKey: "ai_output_validation", label: "LLM output validated before use", status: hasOutputValidation ? "PASS" : "WARN",
+  // Output validation usually happens on the server, which a website scan cannot see,
+  // so its absence from the client JS establishes nothing. Only a schema-bound
+  // structured-output API in the client code is evidence. The withheld version passed on
+  // any `.parse(`, which is JSON.parse and URL.parse in every bundle.
+  const hasOutputValidation = STRUCTURED_OUTPUT.test(clientJs);
+  checks.push({
+    category: CATEGORY,
+    checkKey: "ai_output_validation",
+    label: "LLM output validated before use",
+    status: hasOutputValidation ? "PASS" : "INCONCLUSIVE",
+    confidence: hasOutputValidation ? "MEDIUM" : "LOW",
     detail: hasOutputValidation
-      ? "LLM output validation/parse signals detected."
-      : "No LLM output validation detected — model responses should be schema-validated before being rendered or executed (avoids injection via model output)." });
+      ? "The site's client code asks the model for schema-bound output (a structured-output API with a schema), so responses are checked against that schema before use."
+      : "Not established from outside: model output is normally validated on the server, which a website scan cannot see. Confirm responses are checked against a schema before they are rendered or acted on.",
+  });
 
   // Rate-limiting signals on the AI endpoint (heuristic → MEDIUM).
   const hasRateLimit = /rate.?limit|ratelimit|upstash|@vercel\/kv|too many requests|429|throttle/i.test(clientJs);

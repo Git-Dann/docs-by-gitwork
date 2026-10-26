@@ -597,22 +597,30 @@ function methodChecks(res: ProbeResult | null): PulseScanCheckInput[] {
     ];
   }
 
-  const allow = (res.headers["allow"] ?? res.headers["access-control-allow-methods"] ?? "").toUpperCase();
-  const risky = ["TRACE", "TRACK", "CONNECT"].filter((m) => allow.includes(m));
+  // What is observed is the method list the server ADVERTISES in its Allow header (the
+  // CORS allow-methods list is a different question). TRACE itself is never sent:
+  // fetch() refuses to. So a TRACE in the list is a finding; a list without it is a
+  // MEDIUM pass about the advertised methods; no Allow header is not evidence at all.
+  // The withheld version passed a missing Allow header as if TRACE had been tested.
+  const allow = (res.headers["allow"] ?? "").toUpperCase();
+  const methods = allow.split(",").map((m) => m.trim()).filter(Boolean);
+  const risky = ["TRACE", "TRACK", "CONNECT"].filter((m) => methods.includes(m));
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "api_trace_method",
     label: "TRACE / TRACK methods are disabled",
-    status: risky.length > 0 ? "WARN" : "PASS",
-    confidence: "HIGH",
+    status: risky.length > 0 ? "WARN" : methods.length > 0 ? "PASS" : "INCONCLUSIVE",
+    confidence: risky.length > 0 ? "HIGH" : methods.length > 0 ? "MEDIUM" : "LOW",
     detail: risky.length > 0
-      ? `The server advertises ${risky.join(", ")} in its allowed methods. TRACE echoes the request back including ` +
-        `headers, which historically enabled Cross-Site Tracing — reading HttpOnly cookies that JavaScript is ` +
+      ? `The server advertises ${risky.join(", ")} in its Allow header. TRACE echoes the request back including ` +
+        `headers, which historically enabled Cross-Site Tracing: reading HttpOnly cookies that JavaScript is ` +
         `specifically not allowed to see. There is no production use for it; disable it at the web server.`
-      : allow
-        ? `Allowed methods (${allow.slice(0, 60)}) contain no TRACE/TRACK/CONNECT.`
-        : `No Allow header returned — the server does not advertise its method set.`,
-    evidence: risky.join(", ") || undefined,
+      : methods.length > 0
+        ? `The methods the server advertises in its Allow header (${methods.join(", ").slice(0, 80)}) do not include ` +
+          `TRACE, TRACK or CONNECT. A TRACE request itself was not sent.`
+        : `The server returned no Allow header to an OPTIONS request, so its method set is not advertised and ` +
+          `whether TRACE is enabled is not established.`,
+    evidence: risky.join(", ") || (methods.length > 0 ? `Allow: ${allow.slice(0, 80)}` : undefined),
   });
 
   // These two need path probes, which the caller has deliberately not run here:
@@ -687,7 +695,7 @@ function apiContractChecks(
       inconclusive(category, "api_request_correlation", "Scanned API response carries a correlation ID", why),
       inconclusive(category, "api_cache_policy", "Scanned API response declares a cache policy", why),
     ];
-    checks.push(errorFormatCheck(error, ctx));
+    checks.push(errorFormatCheck(error, ctx, response));
     return checks;
   }
 
@@ -736,11 +744,15 @@ function apiContractChecks(
       },
   ];
 
-  checks.push(errorFormatCheck(error, ctx));
+  checks.push(errorFormatCheck(error, ctx, response));
   return checks;
 }
 
-function errorFormatCheck(error: ProbeResult | null, ctx: ExtendedCheckContext): PulseScanCheckInput {
+function errorFormatCheck(
+  error: ProbeResult | null,
+  ctx: ExtendedCheckContext,
+  response: ProbeResult | null,
+): PulseScanCheckInput {
   const category = CATEGORIES.API_QUALITY;
   if (!error) return unprobed("api_error_machine_readable", "API error responses are machine-readable", "error-response", category);
   if (ctx.catchAll200 && error.status === 200) {
@@ -755,6 +767,20 @@ function errorFormatCheck(error: ProbeResult | null, ctx: ExtendedCheckContext):
   const errorType = error.headers["content-type"] ?? "";
   // XML errors (Jetty/JAX-RS `<apiResponse>`, problem+xml) are as structured as JSON.
   const structured = isApiShaped(error) || /^\s*[\[{]/.test(error.body) || /^\s*<\?xml\b/i.test(error.body);
+  // An HTML page for an unknown /api path is how a site with NO API under /api answers:
+  // the web server's own 404. It is only a finding about an API's error format when the
+  // scanned target is evidently an API (declared as one, or answering in JSON or XML).
+  // The withheld version graded every marketing site's HTML 404 as a bad API error.
+  const targetIsApi = platformIs(ctx.platform, "API_BACKEND") || (response !== null && isApiShaped(response));
+  if (!structured && !targetIsApi) {
+    return inconclusive(
+      category,
+      "api_error_machine_readable",
+      "API error responses are machine-readable",
+      `An unknown path under /api returned ${errorType || "a response with no Content-Type"}, which is what a site ` +
+        "with no API under /api serves, so Pulse did not reach an API error handler and cannot judge its format.",
+    );
+  }
   return {
     category,
     checkKey: "api_error_machine_readable",

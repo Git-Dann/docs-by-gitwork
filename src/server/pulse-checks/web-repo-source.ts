@@ -37,6 +37,8 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
 import { isVendoredPath, stripCStyleComments, sampleCoverage } from "./native-mobile";
 import { anyDependency, parsePackageManifest, type PackageManifest } from "./project-shape";
+import { runBodies, stripYamlComments, triggers as ciTriggers } from "./ci-workflows";
+import { dockerfiles, isDevContainerPath, nonRootVerdict } from "./containers";
 
 /** Below this sampled-file coverage, absence findings self-downgrade to LOW. */
 const SOUND_ABSENCE_COVERAGE = 0.3;
@@ -70,7 +72,25 @@ interface WebContext {
   /** Sampled fraction of the repo's source files (0–1). */
   coverage: number;
   paths: string[];
+  /** GitHub Actions workflows read, by path, comments stripped. */
+  workflows: Map<string, string>;
+  /** Every CI definition read (Actions, GitLab, CircleCI, Azure, Bitbucket, Jenkins). */
+  ciText: string;
+  /** CI definitions present in the tree but not read, so an absence there is not established. */
+  unreadCi: number;
+  /** Test files read (unit, component and end-to-end), by path. */
+  testFiles: Map<string, string>;
+  /** The snapshot itself, for families that read Dockerfiles. */
+  snapshot: RepoSnapshot;
 }
+
+const WORKFLOW_PATH = /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$/i;
+const CI_PATH =
+  /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)\.gitlab-ci\.ya?ml$|(^|\/)\.circleci\/config\.ya?ml$|(^|\/)azure-pipelines\.ya?ml$|(^|\/)bitbucket-pipelines\.ya?ml$|(^|\/)Jenkinsfile$/i;
+const TEST_PATH =
+  /(?:^|\/)(?:__tests__|tests?|spec|e2e|playwright|cypress)\/|\.(?:test|spec|e2e|cy)\.[cm]?[jt]sx?$|(?:^|\/)test_[^/]*\.py$|_test\.py$|_spec\.rb$/i;
+/** Browser UI in the repository: components, templates or pages a person looks at. */
+const UI_PATH = /\.(?:jsx|tsx|vue|svelte|astro|html|erb|haml|slim|hbs|njk|blade\.php|twig|razor|cshtml)$/i;
 
 const SOURCE_RE = /\.(js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|java|cs)$/i;
 
@@ -118,7 +138,21 @@ function buildContext(snapshot: RepoSnapshot): WebContext {
   }
 
   const sourceRaw = [...files.values()].join("\n");
+  const workflows = new Map<string, string>();
+  let ciText = "";
+  const testFiles = new Map<string, string>();
+  for (const [path, text] of snapshot.files) {
+    if (WORKFLOW_PATH.test(path)) workflows.set(path, stripYamlComments(text));
+    if (CI_PATH.test(path)) ciText += "\n" + stripYamlComments(text);
+    if (TEST_PATH.test(path) && !isVendoredPath(path)) testFiles.set(path, text);
+  }
+  const unreadCi = snapshot.paths.filter((p) => CI_PATH.test(p) && !snapshot.files.has(p)).length;
   return {
+    workflows,
+    ciText,
+    unreadCi,
+    testFiles,
+    snapshot,
     source: stripCStyleComments(sourceRaw),
     sourceRaw,
     files,
@@ -162,6 +196,22 @@ export function sitesMatching(ctx: WebContext, re: RegExp): { count: number; whe
     count: hits.length,
     where: shown.join(", ") + (more > 0 ? ` (+${more} more)` : ""),
   };
+}
+
+/** An http:// address on a public host (not loopback, a private range or a dev-only name). */
+const PUBLIC_HTTP =
+  "http:\\/\\/(?!localhost\\b|127\\.|0\\.0\\.0\\.0|\\[::1\\]|10\\.|192\\.168\\.|172\\.(?:1[6-9]|2\\d|3[01])\\.|host\\.docker\\.internal|[^\\/\"'`\\s]*\\.(?:local|localhost|internal|test|example|invalid)\\b)[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.[a-z]{2,}";
+/** A request made to that address: an HTTP call, or a client's base/API URL. */
+const PLAINTEXT_REQUEST = new RegExp(
+  `\\b(?:fetch|axios(?:\\.\\w+)?|got(?:\\.\\w+)?|ky(?:\\.\\w+)?|superagent\\.\\w+|requests\\.\\w+|httpx\\.\\w+|urlopen|http\\.(?:get|request)|Net::HTTP\\.\\w+|URI\\.open|curl_init)\\s*\\(\\s*["'\`]${PUBLIC_HTTP}` +
+    `|\\b(?:baseURL|baseUrl|base_url|BASE_URL|[A-Z_]*API_(?:URL|BASE(?:_URL)?|ENDPOINT)|apiUrl|api_url|apiBase|apiEndpoint|endpoint)\\s*[:=]\\s*["'\`]${PUBLIC_HTTP}`,
+  "i",
+);
+
+/** sitesMatching, but test and fixture files are not the shipped product. */
+function sitesMatchingOutsideTests(ctx: WebContext, re: RegExp): { count: number; where: string } {
+  const shipped = new Map([...ctx.files].filter(([path]) => !TEST_PATH.test(path) && !/(?:^|\/)(?:fixtures?|mocks?|__mocks__|examples?|docs?)\//i.test(path)));
+  return sitesMatching({ ...ctx, files: shipped }, re);
 }
 
 export function evaluateWebSourceChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
@@ -698,24 +748,34 @@ function frameworkDefaultChecks(ctx: WebContext): PulseScanCheckInput[] {
     });
   }
 
-  // JWT verification disabled or the `none` algorithm accepted.
-  const jwtWeak = sitesMatching(
+  // JWT verification disabled, read only at a JWT call. The withheld version matched
+  // any `verify=False`, which is Python requests' TLS flag, and any JS `{ verify: false }`.
+  // Accepting the `none` algorithm is never right (FAIL). Decoding with signature
+  // verification switched off is sometimes done on purpose, to read a key id before
+  // verifying, so it is a WARN to confirm.
+  const jwtNone = sitesMatchingOutsideTests(
     ctx,
-    /verify_signature["']?\s*:\s*False|verify\s*[:=]\s*False|algorithms\s*=\s*\[[^\]]*["']none["']|["']alg["']\s*:\s*["']none["']/i,
+    /\bjwt\.(?:decode|verify)\([^;\n]{0,300}\balgorithms\s*[=:]\s*\[[^\]\n]*["']none["']/i,
   );
-  if (jwtWeak.count > 0) {
+  const jwtUnverified = sitesMatchingOutsideTests(
+    ctx,
+    /\bjwt\.decode\([^;\n]{0,300}(?:\bverify\s*=\s*False\b|["']verify_signature["']\s*:\s*False\b)|\bjwt\.decode\([^;\n]{0,300}\boptions\s*=\s*\{[^}\n]{0,120}["']verify_signature["']\s*:\s*False/,
+  );
+  if (jwtNone.count > 0 || jwtUnverified.count > 0) {
     checks.push({
       category: CATEGORIES.AUTHENTICATION,
       checkKey: "web_jwt_verification",
       label: "JWT signatures are verified",
-      status: "FAIL",
-      confidence: "MEDIUM",
-      detail:
-        `JWT signature verification appears to be disabled, or the \`none\` algorithm accepted, in ${jwtWeak.count} ` +
-        `file(s). A token is only a credential because it is signed — without verification anyone can mint one ` +
-        `claiming to be any user, including an administrator, by editing the payload in a text editor. Verify with ` +
-        `an explicit algorithm allow-list; never let the token's own header choose it.`,
-      evidence: jwtWeak.where.slice(0, 200) || undefined,
+      status: jwtNone.count > 0 ? "FAIL" : "WARN",
+      confidence: "HIGH",
+      detail: jwtNone.count > 0
+        ? `A JWT call accepts the \`none\` algorithm in ${jwtNone.where}. A token with alg "none" carries no signature, ` +
+          `so anyone can mint one claiming to be any user, including an administrator. Remove "none" from the ` +
+          `algorithm list.`
+        : `A JWT is decoded with signature verification switched off in ${jwtUnverified.where}. That is safe only if ` +
+          `the claims read this way choose which key to verify with and are never trusted on their own; otherwise ` +
+          `anyone can edit the payload and be believed. Confirm the token is verified before its claims are used.`,
+      evidence: (jwtNone.count > 0 ? jwtNone.where : jwtUnverified.where).slice(0, 200) || undefined,
     });
   }
 
@@ -786,18 +846,23 @@ function transportChecks(ctx: WebContext): PulseScanCheckInput[] {
     });
   }
 
-  const plainHttp = sitesMatching(ctx, /["']http:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])[a-z0-9.-]+\.[a-z]{2,}/i);
+  // A plain http:// URL counts only where a REQUEST is made to it: a fetch/axios/requests
+  // call, an HTTP client's base URL, or an API/base URL setting. The withheld version
+  // matched every http:// string, so the SVG namespace on every inline icon and the
+  // JSON-LD "@context": "http://schema.org" read as network calls. Private and
+  // development hosts are excluded.
+  const plainHttp = sitesMatchingOutsideTests(ctx, PLAINTEXT_REQUEST);
   if (plainHttp.count > 0) {
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "web_plaintext_api_calls",
       label: "Outbound API calls use HTTPS",
       status: "WARN",
-      confidence: "MEDIUM",
+      confidence: "HIGH",
       detail:
-        `A plain \`http://\` URL to an external host appears in ${plainHttp.count} file(s). Any request sent that way ` +
-        `— including whatever API key or token it carries — is readable and modifiable by anyone on the network path. ` +
-        `Localhost URLs are excluded from this finding; these are not.`,
+        `A request is made to a plain \`http://\` address on an external host in ${plainHttp.where}. Anything sent ` +
+        `that way, including whatever API key or token it carries, can be read and changed by anyone on the ` +
+        `network path. Use the https:// address.`,
       evidence: plainHttp.where.slice(0, 200) || undefined,
     });
   }
@@ -859,6 +924,211 @@ function supplyChainChecks(ctx: WebContext): PulseScanCheckInput[] {
   return checks;
 }
 
+/** Code that RECEIVES a file upload. */
+const FILE_UPLOAD =
+  /\bmulter\s*\(|\bbusboy\b|\bformidable\b|express-fileupload|@fastify\/multipart|\bFileInterceptor\(|\bFilesInterceptor\(|\bUploadedFile\b|\brequest\.FILES\b|\brequest\.files\b|\bUploadFile\b|\bMultipartFile\b|has_(?:one|many)_attached\b|createUploadthing\(|\bformData\(\)[\s\S]{0,300}?(?:instanceof\s+File\b|as\s+File\b|\.arrayBuffer\(\))/;
+/** An explicit byte limit in the upload code. */
+const UPLOAD_LIMIT =
+  /\bfileSize\s*:|\blimits\s*:\s*\{|\bmaxFileSize\b|\bmax_file_size\b|\bMAX_CONTENT_LENGTH\b|\bmaxSize\s*:|\.size\s*>\s*[\w(]|\bcontent[-_]length\b|\bbyte_size\b[^\n]{0,40}(?:<|>|less_than|greater_than)|\bsize\s*:\s*\{\s*less_than/i;
+/** A byte limit set in framework configuration (Spring, Flask, nginx). Django has none for files. */
+const UPLOAD_LIMIT_CONFIG =
+  /spring\.servlet\.multipart\.max-(?:file|request)-size|max-file-size\s*:|MAX_CONTENT_LENGTH|client_max_body_size/i;
+/** Libraries that cap a file's size when no limit is given. */
+const DEFAULT_CAPPED_UPLOAD = /\bformidable\b|\bMultipartFile\b|createUploadthing\(/;
+
+/** A handler that RECEIVES webhooks: a webhook route or a provider's signature header. */
+const WEBHOOK_RECEIVER =
+  /\.webhooks\.constructEvent|stripe-signature|x-hub-signature|x-slack-signature|x-shopify-hmac|x-twilio-signature|svix-signature|webhook-signature|@octokit\/webhooks|\b(?:post|route|router\.\w+|app\.\w+)\(\s*["'`][^"'`\n]*webhook/i;
+/** The file reads an incoming request, so it is a handler rather than code that SENDS webhooks. */
+const HANDLES_REQUEST =
+  /\b(?:req|request|ctx\.request)\.(?:(?:body|headers|rawBody|get_data|data|META)\b|(?:text|json|arrayBuffer)\(\))|export\s+(?:async\s+)?function\s+POST\b|@(?:app|router)\.post\(/;
+/** Provider SDKs that verify the signature AND reject an old timestamp. */
+const SIGNATURE_AND_WINDOW =
+  /\.webhooks\.constructEvent(?:Async)?\(|\bfrom\s+["']svix["']|require\(\s*["']svix["']\)|\bstandardwebhooks\b|@slack\/bolt|\bverifySlackRequest\(|\bisValidSlackRequest\(/;
+/** Signature verification without a built-in timestamp window. */
+const SIGNATURE_ONLY =
+  /\bcreateHmac\(|\bhmac\.new\(|\bcompare_digest\(|\btimingSafeEqual\(|@octokit\/webhooks|\bwebhooks\.verify\(|\bvalidateRequest\(|\bverify\w*(?:Signature|Webhook|Request)\s*\(/i;
+/** A replay defence written by hand: a timestamp tolerance, or de-duplication by delivery id. */
+const REPLAY_DEFENCE =
+  /\bMath\.abs\([^)\n]*(?:Date\.now|now|time)[^)\n]*\)\s*[<>]|\btolerance\b|\breplay\b|\bx-github-delivery\b|\bidempoten|\b(?:delivery|event|webhook)_?[iI]d\b[^\n]{0,60}\b(?:unique|exists|findUnique|processed|seen|has)\b/;
+
+/**
+ * Inbound webhook handlers read, each judged in its own file. Null when no handler was
+ * read. The withheld version passed if "timestamp" appeared anywhere in the codebase.
+ */
+function webhookVerdict(ctx: WebContext): Pick<PulseScanCheckInput, "status" | "confidence" | "detail" | "evidence"> | null {
+  const handlers = [...ctx.files].filter(
+    ([path, text]) => !TEST_PATH.test(path) && HANDLES_REQUEST.test(text) && (WEBHOOK_RECEIVER.test(text) || /webhook/i.test(path)),
+  );
+  if (handlers.length === 0) return null;
+  const unsigned: string[] = [];
+  const noWindow: string[] = [];
+  for (const [path, raw] of handlers) {
+    const text = stripCStyleComments(raw);
+    if (SIGNATURE_AND_WINDOW.test(text)) continue;
+    if (!SIGNATURE_ONLY.test(text)) unsigned.push(path);
+    else if (!REPLAY_DEFENCE.test(text)) noWindow.push(path);
+  }
+  if (unsigned.length === 0 && noWindow.length === 0) {
+    return { status: "PASS", confidence: "HIGH", detail: "Every webhook handler read verifies the sender's signature and rejects old or repeated deliveries (a provider SDK with a timestamp window, or a hand-written tolerance or delivery-id check)." };
+  }
+  const name = (list: string[]) => list.slice(0, MAX_SITES_QUOTED).join(", ") + (list.length > MAX_SITES_QUOTED ? ` (+${list.length - MAX_SITES_QUOTED} more)` : "");
+  return {
+    status: "WARN",
+    confidence: "MEDIUM",
+    detail: unsigned.length > 0
+      ? `No signature check was found in the webhook handler ${name(unsigned)}. Unless it is verified in shared middleware, anyone who learns the URL can send events that look like the provider's. Verify the provider's signature over the raw body (for Stripe, stripe.webhooks.constructEvent).`
+      : `The webhook handler ${name(noWindow)} checks a signature but not the timestamp or delivery id, so a captured request can be replayed later and is accepted again. Reject deliveries older than a few minutes, or record each delivery id and ignore repeats.`,
+    evidence: name(unsigned.length > 0 ? unsigned : noWindow),
+  };
+}
+
+/** A checkout (or fetch) of the pull request's own code, as opposed to the base branch. */
+const PR_HEAD_CHECKOUT =
+  // The head ref may sit inside a conditional (`event_name == 'pull_request_target' &&
+  // github.event.pull_request.head.sha || github.ref`, amazon-kinesis-client-python).
+  /\bref\s*:\s*["']?\$\{\{[^}\n]*\b(?:github\.event\.pull_request\.head\.(?:sha|ref)|github\.head_ref|github\.event\.workflow_run\.head_(?:sha|branch))\b|refs\/pull\/\$\{\{|\brepository\s*:\s*["']?\$\{\{[^}\n]*\bgithub\.event\.pull_request\.head\.repo\.full_name|\bgh\s+pr\s+checkout\b|\bgit\s+fetch\b[^\n]*\bpull\/\$\{\{/i;
+/** Pull-request text expanded straight into a shell step. */
+const PR_TEXT_IN_RUN =
+  /\$\{\{\s*(?:github\.event\.pull_request\.(?:title|body|head\.ref|head\.label)|github\.head_ref|github\.event\.(?:issue|comment|review)\.(?:title|body)|github\.event\.workflow_run\.head_branch)\b/i;
+
+/**
+ * Workflows where contributor-controlled code runs in a privileged context, one file at
+ * a time. `checkout`: a privileged trigger (pull_request_target, workflow_run) that
+ * checks out the pull request's code. `privileged`: contributor-controlled code (that
+ * checkout, or PR text in a run step) in a workflow that ALSO declares write
+ * permissions or reads a repository secret other than GITHUB_TOKEN.
+ */
+export function untrustedWorkflowFindings(workflows: Map<string, string>): { checkout: string[]; privileged: string[] } {
+  const checkout: string[] = [];
+  const privileged: string[] = [];
+  for (const [path, text] of workflows) {
+    const name = path.replace(/^.*\.github\/workflows\//, "");
+    if (!ciTriggers(text).some((t) => t === "pull_request_target" || t === "workflow_run")) continue;
+    const checksOutPr = PR_HEAD_CHECKOUT.test(text);
+    const injects = runBodies(text).some((body) => PR_TEXT_IN_RUN.test(body));
+    if (checksOutPr) checkout.push(name);
+    const writes = /\bpermissions\s*:\s*write-all\b|^\s+[\w-]+\s*:\s*write\b/m.test(text);
+    const secrets = /\$\{\{\s*secrets\.(?!GITHUB_TOKEN\b)\w+/.test(text);
+    if ((checksOutPr || injects) && (writes || secrets)) privileged.push(name);
+  }
+  return { checkout, privileged };
+}
+
+// ── Delivery controls read from what actually runs ─────────────────────────
+// Five of the gates below were one keyword regex over CI, config AND application
+// source together, so a comment saying "data flow" passed code-flow analysis and a
+// repo with no workflows passed browser journeys on the word "e2e". Each now reads
+// the specific evidence its label names: a CI step that runs the tool, or a test
+// assertion that exercises the behaviour. Where the control can live outside the
+// repository (GitHub's default CodeQL setup leaves no file), absence is not a finding.
+
+type DeliveryVerdict = Pick<PulseScanCheckInput, "status" | "confidence" | "detail">;
+
+/** A CI step or package script that runs a dependency or image vulnerability scanner. */
+const SUPPLY_CHAIN_SCANNER =
+  /\b(?:npm|pnpm|yarn|bun)\s+(?:npm\s+)?audit\b|\baudit-ci\b|actions\/dependency-review-action|aquasecurity\/trivy-action|\btrivy\s+(?:fs|filesystem|image|repo|repository|config|sbom|rootfs)\b|snyk\/actions|\bsnyk\s+(?:test|monitor|container)\b|google\/osv-scanner-action|\bosv-scanner\b|\bpip-audit\b|\bbundle(?:r)?[-\s]audit\b|\bgovulncheck\b|\bcargo\s+(?:audit|deny)\b|anchore\/scan-action|\bgrype\b|dependency-check|\bsafety\s+(?:check|scan)\b|\bcomposer\s+audit\b|\b(?:dependency|iac|artifact)[-_ ]scan\b/i;
+/** Code-flow (dataflow) analysers: CodeQL, Snyk Code, Semgrep's cross-file Pro engine. */
+const CODE_FLOW_ANALYSER = /github\/codeql-action\/(?:init|analyze|autobuild)\b|\bcodeql\s+database\s+(?:create|analyze)\b|\bsnyk\s+code\s+test\b|\bsemgrep\b[^\n]*--pro\b/i;
+/** A browser test runner in the dependencies. */
+const BROWSER_RUNNER_DEP = /^(?:@playwright\/test|playwright|cypress|puppeteer|webdriverio|@wdio\/cli|selenium-webdriver|nightwatch|testcafe)$/;
+/** A browser test runner's config file, anywhere in the tree (monorepos keep e2e in a package). */
+const BROWSER_RUNNER_CONFIG = /(?:^|\/)(?:playwright\.config|cypress\.config|wdio\.conf)\.[cm]?[jt]s$|(?:^|\/)cypress\.json$/i;
+/** A CI step that runs browser tests directly. */
+const BROWSER_RUN_IN_CI =
+  /\bplaywright\s+test\b|cypress-io\/github-action|\bcypress\s+run\b|\bwdio\s+run\b|\btestcafe\s|\bnightwatch\b|\brails\s+test:system\b|\bpytest\b[^\n]*--browser\b/i;
+/** A test that operates the UI from the keyboard or asserts where focus is. */
+const KEYBOARD_ASSERTION =
+  /\buserEvent\.(?:tab|keyboard)\(|\.keyboard\.(?:press|type|down)\(|\.press\(\s*["'`](?:Tab|Shift\+Tab|Enter|Escape|Space|ArrowDown|ArrowUp|ArrowLeft|ArrowRight)["'`]|\bcy\.(?:realPress|tab|press)\(|\bfireEvent\.keyDown\(|\btoHaveFocus\(|\btoBeFocused\(|\bdocument\.activeElement\b/;
+/** A test that checks roles, accessible names or runs an accessibility engine (axe checks contrast). */
+const SEMANTICS_ASSERTION =
+  /\btoHaveNoViolations\b|\bcheckA11y\(|\binjectAxe\(|\bAxeBuilder\b|@axe-core\/|\bjest-axe\b|\bvitest-axe\b|\bcypress-axe\b|\bpa11y\b|\b(?:get|find|query)(?:All)?ByRole\(|\btoHaveAccessibleName\(|\btoHaveAccessibleDescription\(|\btoHaveRole\(|\btoMatchAriaSnapshot\(/;
+
+function scriptsRunning(ctx: WebContext, re: RegExp): string[] {
+  return Object.entries(ctx.pkg?.scripts ?? {})
+    .filter(([, cmd]) => typeof cmd === "string" && re.test(cmd))
+    .map(([name]) => name);
+}
+
+/** Does CI run one of these package scripts (`npm run x`, `pnpm x`, `yarn x`)? */
+function ciRunsScript(ctx: WebContext, names: string[]): boolean {
+  return names.some((n) =>
+    new RegExp(`\\b(?:npm\\s+run|pnpm(?:\\s+run)?|yarn(?:\\s+run)?|bun\\s+run)\\s+${n.replace(/[.*+?^${}()|[\]\\:]/g, "\\$&")}\\b`).test(ctx.ciText),
+  );
+}
+
+const hasUi = (ctx: WebContext) => ctx.paths.some((p) => UI_PATH.test(p) && !isVendoredPath(p));
+const unreadTests = (ctx: WebContext) =>
+  ctx.paths.filter((p) => TEST_PATH.test(p) && /\.[cm]?[jt]sx?$/.test(p) && !ctx.testFiles.has(p) && !isVendoredPath(p)).length;
+
+const DELIVERY_EVIDENCE: Record<string, (ctx: WebContext) => DeliveryVerdict> = {
+  pulse_supply_chain_gate: (ctx) => {
+    const scripts = scriptsRunning(ctx, SUPPLY_CHAIN_SCANNER);
+    const inCi = SUPPLY_CHAIN_SCANNER.test(ctx.ciText) || ciRunsScript(ctx, scripts);
+    if (inCi) return { status: "PASS", confidence: "HIGH", detail: "A CI step runs a dependency or image vulnerability scanner (npm audit, Trivy, dependency review, OSV-Scanner, Snyk or similar)." };
+    if (ctx.unreadCi > 0) return { status: "INCONCLUSIVE", confidence: "LOW", detail: `No dependency scanner was found in the CI files read, but ${ctx.unreadCi} more were not read, so this is not established.` };
+    return {
+      status: "WARN",
+      confidence: "HIGH",
+      detail:
+        "No CI step runs a dependency or image vulnerability scanner. Add one to every pull request: " +
+        "actions/dependency-review-action, `npm audit --audit-level=high`, Trivy or OSV-Scanner. Dependabot alerts " +
+        "are separate and do not block a merge.",
+    };
+  },
+  pulse_code_flow_gate: (ctx) => {
+    if (CODE_FLOW_ANALYSER.test(ctx.ciText)) return { status: "PASS", confidence: "HIGH", detail: "A CI step runs a code-flow analyser (CodeQL, Snyk Code or Semgrep Pro), which follows data across functions to find injection paths a pattern match cannot see." };
+    return {
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail:
+        "No code-flow analyser was found in the CI files read. GitHub's default CodeQL setup is switched on in the " +
+        "repository settings and leaves no file, so its absence here is not established. If it is not on, enable " +
+        "CodeQL default setup or add the codeql-action workflow.",
+    };
+  },
+  pulse_browser_journeys: (ctx) => {
+    if (!hasUi(ctx)) return { status: "SKIPPED", detail: "No browser UI (components, pages or templates) was found in this repository, so browser journeys do not apply." };
+    const runnerDep = Object.keys({ ...(ctx.pkg?.dependencies ?? {}), ...(ctx.pkg?.devDependencies ?? {}) }).some((d) => BROWSER_RUNNER_DEP.test(d));
+    const runnerConfig = ctx.paths.some((p) => BROWSER_RUNNER_CONFIG.test(p) && !isVendoredPath(p));
+    const scripts = scriptsRunning(ctx, /\b(?:playwright\s+test|cypress\s+run|wdio\s+run|testcafe|nightwatch)\b/i);
+    const inCi = BROWSER_RUN_IN_CI.test(ctx.ciText) || ciRunsScript(ctx, scripts);
+    if (inCi) return { status: "PASS", confidence: "HIGH", detail: "A CI step runs browser tests (Playwright, Cypress or similar), so user journeys are exercised in a real browser before release." };
+    if (ctx.unreadCi > 0) return { status: "INCONCLUSIVE", confidence: "LOW", detail: `No CI step running browser tests was found in the CI files read, but ${ctx.unreadCi} more were not read.` };
+    if (runnerDep || runnerConfig) {
+      return { status: "WARN", confidence: "HIGH", detail: "A browser test runner is set up, but no CI step runs it, so the journeys it covers are not checked before release. Run it in the pull-request workflow." };
+    }
+    return { status: "WARN", confidence: "HIGH", detail: "This repository has a browser UI and no browser test runner (Playwright, Cypress or similar). Critical journeys such as sign-in and checkout are then only checked by hand." };
+  },
+  pulse_accessibility_keyboard: (ctx) => uiAssertionVerdict(ctx, KEYBOARD_ASSERTION, "keyboard", "operate the UI from the keyboard or assert where focus is (userEvent.tab, keyboard.press, toHaveFocus)"),
+  pulse_accessibility_semantics: (ctx) => uiAssertionVerdict(ctx, SEMANTICS_ASSERTION, "semantics", "check roles and accessible names or run an accessibility engine (getByRole, toHaveAccessibleName, axe)"),
+};
+
+function uiAssertionVerdict(ctx: WebContext, re: RegExp, what: "keyboard" | "semantics", how: string): DeliveryVerdict {
+  if (!hasUi(ctx)) return { status: "SKIPPED", detail: "No browser UI (components, pages or templates) was found in this repository, so UI accessibility tests do not apply." };
+  const hit = [...ctx.testFiles].find(([, text]) => re.test(text));
+  if (hit) {
+    return {
+      status: "PASS",
+      confidence: "HIGH",
+      detail: what === "keyboard"
+        ? `UI tests exercise keyboard operation or focus (for example in ${hit[0]}).`
+        : `UI tests check accessible roles and names or run an accessibility engine (for example in ${hit[0]}).`,
+    };
+  }
+  const unread = unreadTests(ctx);
+  if ((ctx.testFiles.size === 0 && unread > 0) || unread > ctx.testFiles.size) {
+    return { status: "INCONCLUSIVE", confidence: "LOW", detail: `No test that ${how.split(" (")[0]} was found in the ${ctx.testFiles.size} test files read, but ${unread} more were not read, so this is not established.` };
+  }
+  return {
+    status: "WARN",
+    confidence: "HIGH",
+    detail: ctx.testFiles.size === 0
+      ? `This repository has a browser UI and no tests. Add UI tests that ${how}.`
+      : `None of the ${ctx.testFiles.size} test files read ${how.split(" (")[0]}. Add UI tests that ${how}.`,
+  };
+}
+
 // ── Pulse audit controls ───────────────────────────────────────────────────
 // A package name alone is never evidence. Each Pulse control looks for an
 // executable workflow, checked-in policy, or real test assertion. That is the
@@ -906,6 +1176,11 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
   const dastGate = gates.find(([key]) => key === "pulse_dynamic_security_gate")!;
   const hasDast = has(dastGate[2]);
   for (const [checkKey, label, pattern, passDetail, warnDetail] of gates) {
+    const specific = DELIVERY_EVIDENCE[checkKey];
+    if (specific) {
+      checks.push({ category: CATEGORIES.CODE_QUALITY, checkKey, label, ...specific(ctx) });
+      continue;
+    }
     if (!hasDast && (checkKey === "pulse_dynamic_security_auth" || checkKey === "pulse_dynamic_security_isolation")) {
       checks.push({
         category: CATEGORIES.CODE_QUALITY,
@@ -941,12 +1216,40 @@ function automationChecks(ctx: WebContext): PulseScanCheckInput[] {
 function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const workflow = ctx.automation;
+  // The untrusted-contribution pair is judged one GitHub Actions workflow at a time.
+  // `workflow` also holds Dockerfiles and audit configs, so a repo with no workflows
+  // at all used to PASS both ("no unsafe pattern found in scanned workflows" when none
+  // were scanned), and a trigger in one file paired with a checkout in another.
+  if (ctx.workflows.size > 0) {
+    const untrusted = untrustedWorkflowFindings(ctx.workflows);
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "pulse_ci_untrusted_checkout",
+      label: "Privileged CI does not check out contributor-controlled code",
+      status: untrusted.checkout.length > 0 ? "FAIL" : ctx.unreadCi > 0 ? "INCONCLUSIVE" : "PASS",
+      confidence: untrusted.checkout.length > 0 ? "HIGH" : ctx.unreadCi > 0 ? "LOW" : "HIGH",
+      detail: untrusted.checkout.length > 0
+        ? `${untrusted.checkout.join(", ")} run on pull_request_target and check out the pull request's own code. That code then runs with the base repository's secrets and token. A protected environment that holds each run for a maintainer's approval reduces this, but Pulse cannot see whether one is enforced. Keep fork code in a plain pull_request workflow.`
+        : ctx.unreadCi > 0
+          ? `None of the ${ctx.workflows.size} workflows read check out pull-request code under pull_request_target, but ${ctx.unreadCi} CI files were not read.`
+          : `None of the ${ctx.workflows.size} workflows check out the pull request's code under pull_request_target.`,
+      ...(untrusted.checkout.length > 0 ? { evidence: untrusted.checkout.slice(0, MAX_SITES_QUOTED).join(", ") } : {}),
+    });
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "pulse_ci_untrusted_privilege",
+      label: "Untrusted CI code cannot access write privileges or secrets",
+      status: untrusted.privileged.length > 0 ? "FAIL" : ctx.unreadCi > 0 ? "INCONCLUSIVE" : "PASS",
+      confidence: untrusted.privileged.length > 0 ? "HIGH" : ctx.unreadCi > 0 ? "LOW" : "HIGH",
+      detail: untrusted.privileged.length > 0
+        ? `${untrusted.privileged.join(", ")} run contributor-controlled code (a checked-out pull request, or pull-request text in a shell step) under pull_request_target or workflow_run, in a workflow that also grants write permissions or reads repository secrets. Split the review step from the privileged step into separate workflows.`
+        : ctx.unreadCi > 0
+          ? `No workflow read combines contributor-controlled code with write permissions or secrets, but ${ctx.unreadCi} CI files were not read.`
+          : `None of the ${ctx.workflows.size} workflows combine contributor-controlled code with write permissions or repository secrets.`,
+      ...(untrusted.privileged.length > 0 ? { evidence: untrusted.privileged.slice(0, MAX_SITES_QUOTED).join(", ") } : {}),
+    });
+  }
   if (workflow) {
-    const unsafeCheckout = /\bpull_request_target\b/i.test(workflow) && /actions\/checkout[\s\S]{0,240}(?:github\.event\.pull_request\.head|ref\s*:)/i.test(workflow);
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_untrusted_checkout", label: "Privileged CI does not check out contributor-controlled code", status: unsafeCheckout ? "FAIL" : "PASS", confidence: "HIGH", detail: unsafeCheckout ? "A privileged pull-request workflow checks out a contributor-controlled ref. Keep untrusted code in an unprivileged workflow." : "No unsafe privileged pull-request checkout pattern found." });
-    const privilegedUntrusted = /\b(?:pull_request_target|workflow_run)\b/i.test(workflow) &&
-      (/(?:permissions\s*:\s*(?:write-all|[\s\S]{0,100}\bwrite\b)|secrets\.|github\.event\.pull_request\.head)/i.test(workflow));
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_ci_untrusted_privilege", label: "Untrusted CI code cannot access write privileges or secrets", status: privilegedUntrusted ? "FAIL" : "PASS", confidence: "HIGH", detail: privilegedUntrusted ? "A workflow triggered by untrusted contribution activity can access write privileges, secrets, or contributor-controlled code. Split review and privileged deployment work into separate workflows." : "No unsafe untrusted-contribution privilege pattern found in scanned workflows." });
     const mutableAction = /\buses:\s*[^\s@]+@(?![a-f0-9]{40}\b)[^\s#]+/i.test(workflow);
     const immutableActions: Omit<PulseScanCheckInput, "confidence"> = { category: CATEGORIES.CODE_QUALITY, checkKey: "pulse_ci_immutable_actions", label: "CI actions are pinned to immutable revisions", status: mutableAction ? "WARN" : "PASS", detail: mutableAction ? "At least one CI action is referenced by a mutable tag. Pin release-critical actions to an immutable revision and review updates deliberately." : "Scanned CI action references are immutable." };
     // A mutable ref we SAW is a presence finding: sound at any sample coverage.
@@ -960,9 +1263,29 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   }
 
   const docker = workflow;
+  // Judged from the Dockerfiles themselves, with the same rule as docker_nonroot_user so
+  // the two can never disagree. The withheld version fired on the word "from" in any
+  // workflow step ("Download artifact from build job") in repos with no container at all.
+  const images = dockerfiles(ctx.snapshot)
+    .filter((d) => !isDevContainerPath(d.path))
+    .map((d) => ({ path: d.path, ...nonRootVerdict(d) }));
+  if (images.length > 0) {
+    const rootImages = images.filter((i) => i.verdict === "root");
+    const unknownImages = images.filter((i) => i.verdict === "unknown");
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "pulse_container_nonroot",
+      label: "Container runtime does not default to root",
+      status: rootImages.length > 0 ? "WARN" : unknownImages.length > 0 ? "INCONCLUSIVE" : "PASS",
+      confidence: rootImages.length > 0 || unknownImages.length === 0 ? "HIGH" : "LOW",
+      detail: rootImages.length > 0
+        ? `${rootImages.slice(0, MAX_SITES_QUOTED).map((i) => `${i.path} (${i.reason})`).join(", ")}, so the container runs as root. Add a non-root USER to the final stage.`
+        : unknownImages.length > 0
+          ? `${unknownImages.slice(0, MAX_SITES_QUOTED).map((i) => `${i.path}: ${i.reason}`).join(", ")}, so whether it runs as root is not established. Set USER explicitly in the final stage.`
+          : "Every Dockerfile runs as a non-root user, set by USER or by a base image that defaults to one.",
+    });
+  }
   if (/\bFROM\b/i.test(docker)) {
-    const root = /\bUSER\s+root\b/i.test(docker) || !/\bUSER\s+[^\s]+/i.test(docker);
-    checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_container_nonroot", label: "Container runtime does not default to root", status: root ? "WARN" : "PASS", confidence: "HIGH", detail: root ? "Container configuration runs as root or declares no non-root user." : "Container configuration declares a non-root runtime user." });
     const secretLayer = /\b(?:ARG|ENV)\s+\w*(?:SECRET|TOKEN|PASSWORD|API_KEY)\w*=/i.test(docker);
     checks.push({ category: CATEGORIES.SECRETS_KEYS, checkKey: "pulse_container_secret_layer", label: "Container layers do not embed secrets", status: secretLayer ? "FAIL" : "PASS", confidence: "HIGH", detail: secretLayer ? "A container build argument or environment layer appears to embed a secret." : "No secret-like container layer declaration found." });
   }
@@ -974,7 +1297,8 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   // URL and took a HIGH FAIL as an open redirect.
   addFail("pulse_open_redirect", "Redirect targets are allow-listed", /(?:redirect|location)\s*\(\s*(?:req\.(?:query|body|params)|request\.(?:GET|POST|args|form|values|query_params|data|params|query|body)\b|params\[)/i, "A redirect target appears to come directly from request input (a query, form or route parameter).");
   addFail("pulse_ssrf", "Server-side fetch targets are not user-controlled", /(?:fetch|axios\.(?:get|post)|request)\s*\(\s*(?:req\.(?:query|body|params)|request\.)/i, "A server-side request target appears to come directly from request input.");
-  if (/\b(?:webhook|onWebhook)\b/i.test(checksSource)) checks.push(absence(ctx, { category: CATEGORIES.SECURITY, checkKey: "pulse_webhook_replay", label: "Webhooks verify signatures and replay windows", status: /\b(?:signature|hmac|timestamp|replay)\b/i.test(checksSource) ? "PASS" : "WARN", detail: "Webhook handling needs signature and replay-window verification evidence." }));
+  const webhook = webhookVerdict(ctx);
+  if (webhook) checks.push({ category: CATEGORIES.SECURITY, checkKey: "pulse_webhook_replay", label: "Webhooks verify signatures and replay windows", ...webhook });
   // `tools:` alone is any config object; a tool CALL is the trigger. The label names
   // four controls, so all four must be evidenced to pass — one stray `timeout: 5000`
   // in a fetch config used to pass it outright.
@@ -1001,8 +1325,29 @@ function deliverySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   // body-parser (and express.json/urlencoded/raw/text, which wrap it) caps every body at 100kb when no limit is passed.
   const defaultBodyLimit = !bodyLimit && /\b(?:express|bodyParser)\.(?:json|urlencoded|raw|text)\s*\(/.test(ctx.source);
   if (hasServer) checks.push(absence(ctx, { category: CATEGORIES.API_QUALITY, checkKey: "pulse_request_body_limit", label: "Server request bodies have explicit size limits", status: bodyLimit || defaultBodyLimit ? "PASS" : "WARN", detail: bodyLimit ? "An explicit request-body limit is configured in scanned server source." : defaultBodyLimit ? "Request bodies are parsed with body-parser/Express defaults, which cap each body at 100kb." : "No explicit request-body size limit found in scanned server source. Bound request parsing before allocating attacker-controlled payloads." }));
-  const hasUpload = /\b(?:multer|formData|fileUpload|single\s*\(|array\s*\()/.test(ctx.source);
-  const uploadLimit = /\b(?:fileSize|limits\s*:|content-length|maxFileSize)\b/i.test(ctx.source);
-  if (hasUpload) checks.push(absence(ctx, { category: CATEGORIES.SECURITY, checkKey: "pulse_upload_limit", label: "File uploads enforce size limits", status: uploadLimit ? "PASS" : "WARN", detail: uploadLimit ? "Upload size-limit evidence found in scanned source." : "Upload handling was found without an explicit size limit. Enforce byte limits before storage and decompression." }));
+  // File uploads, recognised by the libraries and APIs that RECEIVE a file. The withheld
+  // version counted any `.single(` (Supabase), `.array(` (Zod) or `formData` (a plain
+  // text form) as upload handling, so nearly every Zod or Supabase app was warned.
+  const uploadSites = [...ctx.files].filter(([path, raw]) => !TEST_PATH.test(path) && FILE_UPLOAD.test(stripCStyleComments(raw)));
+  if (uploadSites.length > 0) {
+    const uploadSource = uploadSites.map(([, t]) => stripCStyleComments(t)).join("\n");
+    const explicitLimit = UPLOAD_LIMIT.test(uploadSource) || UPLOAD_LIMIT_CONFIG.test(ctx.sourceRaw + ctx.automation);
+    const defaultCapped = DEFAULT_CAPPED_UPLOAD.test(uploadSource);
+    const where = uploadSites.slice(0, MAX_SITES_QUOTED).map(([p]) => p).join(", ");
+    checks.push({
+      ...absence(ctx, {
+        category: CATEGORIES.SECURITY,
+        checkKey: "pulse_upload_limit",
+        label: "File uploads enforce size limits",
+        status: explicitLimit || defaultCapped ? "PASS" : "WARN",
+        detail: explicitLimit
+          ? "File uploads are received with an explicit size limit."
+          : defaultCapped
+            ? "File uploads are received by a library that applies a size cap by default (formidable, Spring multipart or UploadThing)."
+            : `File uploads are received in ${where} with no size limit found. The libraries used here (multer, busboy, express-fileupload, FastAPI UploadFile, Flask or Active Storage) accept a file of any size by default, so one request can fill the disk or memory. Set a byte limit before the file is stored or decompressed.`,
+      }),
+      evidence: where,
+    });
+  }
   return checks;
 }

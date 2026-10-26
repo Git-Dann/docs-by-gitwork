@@ -81,13 +81,13 @@ describe("auth_depth_generic_login_errors", () => {
   it("does not treat UI copy 'Wrong password' as an account-existence leak", () => {
     const check = at({
       "src/login.tsx": `export function Login() { return <p className="hint">Wrong password? Reset it below.</p>; } // login`,
-      "src/api/login.ts": `return res.status(401).json({ error: "Invalid credentials" }); // login`,
+      "src/api/login.ts": `const ok = await bcrypt.compare(password, user.hash);\nif (!ok) return res.status(401).json({ error: "Invalid credentials" }); // login`,
     }, "auth_depth_generic_login_errors");
     expect(check.status).toBe("PASS");
   });
 
   it("warns when the server's login response names a missing account", () => {
-    const check = at({ "src/api/login.ts": `// login\nreturn res.status(404).json({ error: "User not found" });` }, "auth_depth_generic_login_errors");
+    const check = at({ "src/api/login.ts": `// login\nif (!user) return res.status(404).json({ error: "User not found" });\nconst ok = await bcrypt.compare(password, user.hash);` }, "auth_depth_generic_login_errors");
     expect(check.status).toBe("WARN");
     expect(check.confidence).toBe("MEDIUM");
   });

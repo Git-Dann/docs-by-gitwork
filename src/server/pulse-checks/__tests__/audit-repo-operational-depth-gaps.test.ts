@@ -162,8 +162,8 @@ describe("auth_depth_session_cookie_flags", () => {
 });
 
 describe("global and email rules after narrowing", () => {
-  it("still warns on a float price with no currency word", () => {
-    expect(at(evaluateOperationalDepthChecks(snap({ "src/cart.ts": "const totalPrice = 19.99;" })), "global_depth_currency_precision").status).toBe("WARN");
+  it("does not grade a price constant in application code (only stored columns)", () => {
+    expect(at(evaluateOperationalDepthChecks(snap({ "src/cart.ts": "const totalPrice = 19.99;" })), "global_depth_currency_precision").status).toBe("SKIPPED");
   });
   it("does not treat a database username env var as user accounts", () => {
     expect(
@@ -177,16 +177,16 @@ describe("global and email rules after narrowing", () => {
   });
   it("accepts a zod email schema whose .string() carries options", () => {
     expect(
-      evalKey("email_depth_address_validation", 'lib/validations/auth.ts\nconst s = z.string({ required_error: "x" }).email();\nawait sendEmail({ to })'),
+      evalKey("email_depth_address_validation", 'lib/validations/auth.ts\nconst { email } = req.body;\nconst s = z.string({ required_error: "x" }).email();\nawait sendEmail({ to: s.parse(email) })'),
     ).toBe("PASS");
   });
-  it("keeps pg-boss in scope for dead-letter handling", () => {
+  it("keeps pg-boss in scope for dead-letter handling, where failed jobs are kept by default", () => {
     expect(
       at(
         evaluateOperationalDepthChecks(snap({ "src/worker.ts": 'import PgBoss from "pg-boss"; await boss.work("q", handler);' })),
         "infra_depth_dead_letter_queue",
       ).status,
-    ).toBe("WARN");
+    ).toBe("PASS");
   });
 });
 

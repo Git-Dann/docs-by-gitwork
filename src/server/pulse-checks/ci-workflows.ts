@@ -192,17 +192,21 @@ export function triggers(text: string): string[] {
       }
     }
   }
-  // Block form: `on:` then indented trigger keys.
+  // Block form: `on:` then indented trigger keys. A trigger is a DIRECT child of `on:`,
+  // at whatever indent the first child uses: YAML allows any width, and a 4-space
+  // workflow used to yield no triggers at all (so pull_request_target went unseen).
   const lines = body.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    if (!/^on:\s*$/.test(lines[i])) continue;
+    if (!/^["']?on["']?:\s*$/.test(lines[i])) continue;
+    let childIndent = -1;
     for (let j = i + 1; j < lines.length; j++) {
       const cur = lines[j];
       if (cur.trim() === "") continue;
       const indent = cur.length - cur.trimStart().length;
       if (indent === 0) break;
-      const key = /^\s+([a-z_]+):/.exec(cur);
-      if (key && indent <= 2) found.add(key[1]);
+      if (childIndent === -1) childIndent = indent;
+      const key = /^\s+["']?([a-z_]+)["']?:/.exec(cur);
+      if (key && indent === childIndent) found.add(key[1]);
     }
   }
   return [...found];
@@ -333,7 +337,8 @@ export function evaluateCiWorkflowChecks(snapshot: RepoSnapshot): PulseScanCheck
   const injectionInDangerous = parsed.some(
     (f) =>
       f.triggers.some((t) => DANGEROUS_TRIGGERS.has(t)) &&
-      f.runs.some((body) => UNTRUSTED_CONTEXTS.some((c) => body.includes(`\${{ ${c}`))),
+      // Both spellings, as ci_template_injection matches: `${{ ctx` and `${{ctx`.
+      f.runs.some((body) => UNTRUSTED_CONTEXTS.some((c) => body.includes(`\${{ ${c}`) || body.includes(`\${{${c}`))),
   );
   add(
     "ci_privileged_injection",

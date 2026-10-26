@@ -129,19 +129,19 @@ describe("audit repo-operational-depth-1", () => {
     expect(
       evalKey(
         "auth_depth_generic_login_errors",
-        "src/app/routes/auth/auth.service.ts\nexport const login = async (userPayload: any) => {\n  throw new HttpException(403, {\n    errors: {\n      'email or password': ['is invalid'],\n    },\n  });\n};",
+        "src/app/routes/auth/auth.service.ts\nexport const login = async (userPayload: any) => {\n  const match = await bcrypt.compare(password, user.password);\n  throw new HttpException(403, {\n    errors: {\n      'email or password': ['is invalid'],\n    },\n  });\n};",
       ),
     ).toBe("PASS");
     expect(
       evalKey(
         "auth_depth_generic_login_errors",
-        "packages/features/auth/lib/next-auth-options.ts\npages: { signIn: \"/auth/login\" },\nconst authorize = async (credentials) => {\n  // Don't leak information about it being username or password that is invalid\n  if (!user) {\n    throw new Error(ErrorCode.IncorrectEmailPassword);\n  }\n};",
+        "packages/features/auth/lib/next-auth-options.ts\npages: { signIn: \"/auth/login\" },\nconst authorize = async (credentials) => {\n  // Don't leak information about it being username or password that is invalid\n  if (!user) {\n    throw new Error(ErrorCode.IncorrectEmailPassword);\n  }\n  const isCorrectPassword = await verifyPassword(credentials.password, user.password.hash);\n};",
       ),
     ).toBe("PASS");
     expect(
       evalKey(
         "auth_depth_generic_login_errors",
-        "src/routes/login.ts\nif (!user) return res.status(404).json({ error: 'User not found' });\nif (!match) return res.status(401).json({ error: 'Wrong password' });",
+        "src/routes/login.ts\nif (!user) return res.status(404).json({ error: 'User not found' });\nconst match = await bcrypt.compare(password, user.password);\nif (!match) return res.status(401).json({ error: 'Wrong password' });",
       ),
     ).toBe("WARN");
   });
