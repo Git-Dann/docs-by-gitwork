@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, fetchWithTimeout, skip, platformIs } from "./_types";
+import { findSecrets } from "./secret-formats";
 
 // Live security probes for AI-built ("vibe-coded") apps — the differentiator.
 //
@@ -115,6 +116,28 @@ export function classifyRtdbProbe(status: number, body: string): FirebaseProbeOu
 
 const JWT_RE = /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
 
+const hostOf = (url: string) => { try { return new URL(url).host; } catch { return ""; } };
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Secret credentials in client-side code, by vendor format: the kinds that are not
+ * public by design, a PEM private key WITH its body, and DeepSeek-style `sk-` + hex keys
+ * (which findSecrets drops, because they are not mixed case). A minified bundle is one
+ * line, so it is split at statement and property boundaries first: findSecrets reads the
+ * whole line for placeholder words, and one "example" anywhere in a bundle would
+ * otherwise excuse every key in it.
+ */
+export function findClientBundleSecrets(bundle: string): string[] {
+  const kinds = new Set(
+    findSecrets(bundle.replace(/[;,{}]/g, "\n"))
+      .filter((s) => !s.publicByDesign && s.kind !== "Private key block")
+      .map((s) => s.kind),
+  );
+  if (/-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----(?:\\n|\\r|\s)+[A-Za-z0-9+/=]{64,}/.test(bundle)) kinds.add("Private key block");
+  if (/(?<![A-Za-z0-9_-])sk-[a-f0-9]{32}(?![A-Za-z0-9_-])/.test(bundle)) kinds.add("sk- API key");
+  return [...kinds];
+}
+
 export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   // Only meaningful for live web apps with a backend.
   if (platformIs(ctx.platform, "API_BACKEND", "CLI_TOOL", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP")) {
@@ -141,7 +164,8 @@ export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<
   }
 
   // Pull the client JS so we can see the backend URL + keys + table references.
-  const bundle = html + "\n" + (await fetchBundleText(html, ctx.httpsUrl));
+  const bundleJs = await fetchBundleText(html, ctx.httpsUrl);
+  const bundle = html + "\n" + bundleJs;
   const checks: PulseScanCheckInput[] = [];
 
   const jwts = Array.from(new Set(bundle.match(JWT_RE) ?? []));
@@ -204,13 +228,23 @@ export async function runVibeSecurityChecks(ctx: ExtendedCheckContext): Promise<
   }
 
   // ── Service-role / secret key exposed in the client bundle ──────────────────
-  const secretPatterns = /\b(sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)\b/;
-  const hasSecret = Boolean(serviceKey) || secretPatterns.test(bundle);
-  checks.push({ category: CATEGORY, checkKey: "no_service_role_key_exposed", label: "No service-role / secret key in client bundle", status: hasSecret ? "FAIL" : "PASS",
+  // Vendor formats (findSecrets), so sk-proj- OpenAI keys count. A PEM only counts with
+  // its base64 body: crypto libraries ship the bare "-----BEGIN PRIVATE KEY-----" header
+  // as a constant, and inside a JS string the old \b-wrapped pattern never matched at all.
+  const leaked = findClientBundleSecrets(bundle);
+  const hasSecret = Boolean(serviceKey) || leaked.length > 0;
+  // Scripts the page loads from its own origin that could not be fetched were not read.
+  const sameOriginScripts = /<script[^>]+src=["'](?!https?:\/\/|\/\/)[^"']+\.js/i.test(html) ||
+    new RegExp(`<script[^>]+src=["']https?://${escapeRe(hostOf(ctx.httpsUrl))}/`, "i").test(html);
+  const unread = !hasSecret && sameOriginScripts && bundleJs.trim() === "";
+  checks.push({ category: CATEGORY, checkKey: "no_service_role_key_exposed", label: "No service-role / secret key in client bundle",
+    status: hasSecret ? "FAIL" : unread ? "INCONCLUSIVE" : "PASS",
     detail: hasSecret
-      ? `CRITICAL: a secret key was found in the client-side code — ${serviceKey ? "a Supabase service_role key (bypasses ALL Row-Level Security)" : "an API secret / private key"}. Rotate it immediately and move it server-side. Public/anon/publishable keys are fine; this is not one.`
-      : "No service-role or secret API keys detected in the client bundle (public/anon keys are expected and fine).",
-    evidence: hasSecret ? (serviceKey ? `service_role JWT ${serviceKey.slice(0, 12)}…` : "secret key pattern in bundle") : undefined });
+      ? `CRITICAL: a secret key was found in the client-side code: ${serviceKey ? "a Supabase service_role key (bypasses ALL Row-Level Security)" : leaked.map((l) => `a ${l}`).join(", ")}. Rotate it immediately and move it server-side. Public/anon/publishable keys are fine; this is not one.`
+      : unread
+        ? "The page's own scripts could not be fetched, so the client bundle was not read and whether it carries a secret key is not established."
+        : "No service-role or secret API keys detected in the page or the scripts it loads from its own origin (public/anon keys are expected and fine).",
+    evidence: hasSecret ? (serviceKey ? `service_role JWT ${serviceKey.slice(0, 12)}…` : leaked.join(", ")) : undefined });
 
   // ── Firebase rules ──────────────────────────────────────────────────────────
   // Firestore AND Realtime Database, each classified by what came back. A 200 is the

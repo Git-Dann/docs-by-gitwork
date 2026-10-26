@@ -23,7 +23,9 @@ import {
   gradleToggleState,
   manifestAbsence,
   pendingIntentSites,
+  resolvedTargetSdk,
   stripJvmFile,
+  webViewFileAccess,
   type AndroidBuildInputs,
 } from "./android-app";
 
@@ -138,6 +140,29 @@ const CATALOGUE: [string, string][] = [
 ];
 
 export const ANDROID_EXTENDED_KEYS: string[] = CATALOGUE.map(([k]) => k);
+
+/** Implicit ACTION_SEND / ACTION_VIEW intents, each judged on its own statement window. */
+export function implicitIntentSites(
+  files: { path: string; text: string }[],
+): { path: string; action: string; sensitive: boolean; what: string }[] {
+  const out: { path: string; action: string; sensitive: boolean; what: string }[] = [];
+  const SECRET = /(?:access|refresh|auth|bearer|id|session)[_-]?token|\btoken\b|password|passwd|secret|api[_-]?key|session[_-]?id/i;
+  for (const f of files) {
+    for (const m of f.text.matchAll(/\bIntent\s*\(\s*(?:Intent\.)?(ACTION_SEND(?:TO|_MULTIPLE)?|ACTION_VIEW)\b/g)) {
+      const at = m.index ?? 0;
+      // To the send call (or 600 chars): the extras and data set on THIS intent.
+      const rest = f.text.slice(at, at + 600);
+      const end = rest.search(/\b(?:startActivity|startActivityForResult|sendBroadcast|createChooser)\s*\(/);
+      const window = end >= 0 ? rest.slice(0, end + 200) : rest;
+      if (/\bsetPackage\s*\(|\bsetComponent\s*\(|\bsetClass(?:Name)?\s*\(/.test(window)) continue;
+      const extras = [...window.matchAll(/putExtra\s*\(\s*([^,]+),\s*([^)\n]+)\)/g)].map((e) => `${e[1]} ${e[2]}`);
+      const uriParams = [...window.matchAll(/[?&]([A-Za-z_]+)=|appendQueryParameter\s*\(\s*"([^"]+)"/g)].map((q) => q[1] ?? q[2]);
+      const hit = [...extras, ...uriParams].find((v) => SECRET.test(v));
+      out.push({ path: f.path, action: m[1], sensitive: Boolean(hit), what: hit ? hit.trim().slice(0, 60) : "" });
+    }
+  }
+  return out;
+}
 
 export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const ctx = buildCtx(snapshot);
@@ -322,18 +347,34 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     { absence: true },
   );
 
-  const implicitSensitive =
-    /Intent\(\s*Intent\.ACTION_(SEND|VIEW)/.test(ctx.source) && /token|password|secret|auth/i.test(ctx.source);
-  add(
-    "android_x_implicit_intent_sensitive",
-    "Sensitive data is not sent via implicit intents",
-    implicitSensitive ? "WARN" : "PASS",
-    implicitSensitive
-      ? "The sampled source builds implicit intents (ACTION_SEND / ACTION_VIEW) and also handles tokens or " +
-        "credentials. An implicit intent is delivered to whichever app the user picks — or, for a broadcast, to " +
-        "every app registered for that action. Use an explicit component when the payload is sensitive."
-      : "No implicit intent was found carrying obviously sensitive data.",
-  );
+  // Judged per intent, in its own file: an implicit ACTION_SEND / ACTION_VIEW intent
+  // whose extras or URI carry a credential. Two unrelated whole-codebase tests (any
+  // share button, plus the word "auth" anywhere: author, FileProvider authorities)
+  // warned almost every app.
+  const implicitSites = implicitIntentSites(ctx.sourceFiles);
+  const sensitiveIntent = implicitSites.find((s) => s.sensitive);
+  if (implicitSites.length === 0) {
+    add(
+      "android_x_implicit_intent_sensitive",
+      "Sensitive data is not sent via implicit intents",
+      "SKIPPED",
+      "The sampled source builds no implicit ACTION_SEND or ACTION_VIEW intents.",
+      { absence: true },
+    );
+  } else {
+    add(
+      "android_x_implicit_intent_sensitive",
+      "Sensitive data is not sent via implicit intents",
+      sensitiveIntent ? "WARN" : "PASS",
+      sensitiveIntent
+        ? `An implicit ${sensitiveIntent.action} intent in ${sensitiveIntent.path} carries a credential-named value ` +
+          `(${sensitiveIntent.what}). An implicit intent is delivered to whichever app the user picks, or any app ` +
+          "registered for that action, so the value leaves your app. Use an explicit component, or send a link that " +
+          "does not contain the credential."
+        : `${implicitSites.length} implicit ACTION_SEND / ACTION_VIEW intent(s) found; none carries an extra or URI ` +
+          "parameter named as a token, password or secret.",
+    );
+  }
 
   // ── WebView ────────────────────────────────────────────────────────────────
   const usesWebView = /WebView|webViewClient/i.test(ctx.source);
@@ -372,22 +413,44 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
     webViewOpts,
   );
 
-  const webViewFile = /setAllowFileAccess\(true\)|setAllowUniversalAccessFromFileURLs\(true\)|setAllowFileAccessFromFileURLs\(true\)/.test(
-    ctx.source,
-  );
-  add(
-    "android_x_webview_file_access",
-    "WebView file access is disabled",
-    !usesWebView ? "SKIPPED" : webViewFile ? "FAIL" : "PASS",
-    !usesWebView
-      ? "The sampled source contains no WebView."
-      : webViewFile
-        ? "The WebView enables file access. Combined with any content injection this lets a page read files out of " +
-          "the app's private storage — the standard route from an XSS in a WebView to reading the app's session " +
-          "tokens off disk."
-        : "WebView file access is not enabled.",
-    webViewOpts,
-  );
+  // Both spellings (webViewFileAccess): the Kotlin property `settings.allowFileAccess = true`
+  // is the dominant style and was not matched.
+  const access = webViewFileAccess(ctx.source);
+  const webViewFile = access.file || access.fileUrls || access.universal;
+  // allowFileAccess defaults to TRUE below API 30, so "no enable call" is only "disabled"
+  // when it is switched off explicitly or the app targets 30 or later.
+  const target = resolvedTargetSdk(ctx.build);
+  const fileDefaultOff = access.fileOff || (target !== null && target >= 30);
+  if (usesWebView && !webViewFile && !fileDefaultOff) {
+    checks.push({
+      category: CATEGORIES.APP_STORE,
+      checkKey: "android_x_webview_file_access",
+      label: "WebView file access is disabled",
+      status: target !== null ? "WARN" : "INCONCLUSIVE",
+      confidence: target !== null ? "HIGH" : "LOW",
+      detail: target !== null
+        ? `WebView file access is never switched off, and the app targets API ${target}. Below API 30 ` +
+          "`allowFileAccess` defaults to true, so the WebView can load `file://` URLs. Set it to false explicitly."
+        : "WebView file access is not switched on in the sampled source, but the app's targetSdk could not be read. " +
+          "`allowFileAccess` defaults to true below API 30, so whether it is off is not established.",
+    });
+  } else {
+    add(
+      "android_x_webview_file_access",
+      "WebView file access is disabled",
+      !usesWebView ? "SKIPPED" : webViewFile ? "FAIL" : "PASS",
+      !usesWebView
+        ? "The sampled source contains no WebView."
+        : webViewFile
+          ? "The WebView enables file access. Combined with any content injection this lets a page read files out of " +
+            "the app's private storage: the standard route from an XSS in a WebView to reading the app's session " +
+            "tokens off disk."
+          : access.fileOff
+            ? "WebView file access is switched off explicitly."
+            : `WebView file access is not switched on, and the app targets API ${target}, where it defaults to off.`,
+      webViewOpts,
+    );
+  }
 
   // ── Data handling ──────────────────────────────────────────────────────────
   const rawQuery = concatenatedSql(ctx.source);

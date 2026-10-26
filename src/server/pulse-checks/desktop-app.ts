@@ -492,14 +492,20 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
 
   // 3 — sandbox. Defaults to true since Electron 20, but a preload script that
   // needs Node re-disables it, which is the common real-world case.
+  // Absent is only "on" where Electron's default makes it so: renderers are sandboxed by
+  // default from Electron 20, and NOT when the window turns on nodeIntegration (which
+  // disables the sandbox for it). Below 20, or with the version unread, absent is not on.
   const sandbox = state("sandbox", false);
+  const electronMajor = Number(/(\d+)/.exec(allDependencies(ctx.pkg)["electron"] ?? "")?.[1] ?? 0) || null;
+  const absentVerdict: "on" | "off" | "unknown" =
+    nodeIntegration === true ? "off" : electronMajor === null ? "unknown" : electronMajor >= 20 ? "on" : "off";
   if (sandbox === "dynamic") checks.push(dynamic("electron_sandbox", "Renderer sandbox enabled", "sandbox"));
   else checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "electron_sandbox",
     label: "Renderer sandbox enabled",
-    status: sandbox === false ? "WARN" : "PASS",
-    confidence: sandbox === null ? "MEDIUM" : "HIGH",
+    status: sandbox === false ? "WARN" : sandbox === true ? "PASS" : absentVerdict === "on" ? "PASS" : absentVerdict === "off" ? "WARN" : "INCONCLUSIVE",
+    confidence: sandbox !== null ? "HIGH" : absentVerdict === "unknown" ? "LOW" : "MEDIUM",
     detail: sandbox === false
       ? `\`sandbox: false\` opts this window out of Chromium's OS-level process sandbox. Sandboxing is what limits ` +
         `the damage when a renderer IS compromised — without it, a Chromium exploit reaches the machine directly ` +
@@ -507,7 +513,17 @@ function electronWebPreferences(ctx: DesktopContext): PulseScanCheckInput[] {
         `that work to the main process behind an IPC handler and keep the sandbox on.`
       : sandbox === true
         ? `\`sandbox: true\` — renderers run inside Chromium's OS sandbox.`
-        : `No \`sandbox: false\` found. Electron 20+ sandboxes renderers by default, so this is likely on.`,
+        : absentVerdict === "on"
+          ? `No \`sandbox\` setting found, and the app uses Electron ${electronMajor}, which sandboxes renderers by ` +
+            `default from version 20.`
+          : nodeIntegration === true
+            ? `No \`sandbox\` setting found, and a window turns on \`nodeIntegration\`, which runs that renderer ` +
+              `outside Chromium's sandbox. Turn nodeIntegration off and set \`sandbox: true\`.`
+            : absentVerdict === "off"
+              ? `No \`sandbox\` setting found, and the app uses Electron ${electronMajor}. Renderers are only ` +
+                `sandboxed by default from Electron 20, so these run unsandboxed. Set \`sandbox: true\`, or upgrade.`
+              : `No \`sandbox\` setting found, and the Electron version could not be read. Renderers are sandboxed ` +
+                `by default only from Electron 20, so whether this one is sandboxed is not established.`,
   });
 
   // 4 — webSecurity. Disabling it turns off the same-origin policy entirely.

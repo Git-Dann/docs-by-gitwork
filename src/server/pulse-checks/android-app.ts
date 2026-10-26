@@ -116,6 +116,8 @@ interface AndroidContext extends AndroidBuildInputs {
   source: string;
   /** Same source, comments intact — for signals that legitimately live in comments. */
   sourceRaw: string;
+  /** The same stripped source, per file — for findings judged at a call site. */
+  sourceFiles: { path: string; text: string }[];
   /** Non-vendored source line count, for density metrics. */
   lines: number;
   /** Sampled fraction of the repo's Kotlin/Java files (0–1). */
@@ -130,7 +132,7 @@ const isAppSource = (p: string) => /\.(kt|java)$/i.test(p) && !isVendoredPath(p)
 function buildContext(snapshot: RepoSnapshot): AndroidContext {
   const sourcePaths = snapshot.paths.filter(isAppSource);
   const raw: string[] = [];
-  const stripped: string[] = [];
+  const sourceFiles: { path: string; text: string }[] = [];
 
   for (const [path, text] of snapshot.files) {
     if (!isAppSource(path)) continue;
@@ -138,13 +140,14 @@ function buildContext(snapshot: RepoSnapshot): AndroidContext {
     // Per FILE, by the file's own language. Stripping the joined sample let one Java
     // banner comment (which nesting rules read as unclosed) delete every file after
     // it — 973,581 → 108,535 chars on NewPipe.
-    stripped.push(stripJvmFile(path, text));
+    sourceFiles.push({ path, text: stripJvmFile(path, text) });
   }
 
   const sourceRaw = raw.join("\n");
   return {
     ...androidBuildInputs(snapshot),
-    source: stripped.join("\n"),
+    source: sourceFiles.map((f) => f.text).join("\n"),
+    sourceFiles,
     sourceRaw,
     lines: sourceRaw.split("\n").length,
     coverage: sampleCoverage(raw.length, sourcePaths.length, snapshot.truncated),
@@ -239,6 +242,17 @@ export function gradleToggleState(gradle: string, name: "minify" | "shrinkResour
 /** Paths whose SDK levels describe a test/benchmark module, not the shipped app. */
 const NON_APP_MODULE = /(^|\/)(benchmarks?|baselineprofile|macrobenchmark|testing|test-?app)(\/|$)|(^|\/)src\/(test|androidTest)\/|BaselineProfile/i;
 /** A build file that applies the Android APPLICATION plugin (directly or via a convention alias). */
+/**
+ * A manifest that describes what ships: not a build-type or test variant (src/debug,
+ * src/androidTest, src/test) and not a sample, demo or benchmark module. Library
+ * modules' manifests DO merge into the app, so they count.
+ */
+export function isReleaseManifest(path: string): boolean {
+  return !/(^|\/)src\/(debug|androidTest|test\w*|benchmark)\//i.test(path) &&
+    !/(^|\/)(samples?|demos?|examples?)\//i.test(path) &&
+    !NON_APP_MODULE.test(path);
+}
+
 const APPLIES_APP_PLUGIN = /com\.android\.application|android[.-]application\b|\.app\.android\b/i;
 
 /**
@@ -495,6 +509,47 @@ export function concatenatedSql(source: string): boolean {
   return false;
 }
 
+/**
+ * The app module's targetSdk, or null when it could not be resolved. Several defaults
+ * (WebView file access, the notification permission) change at a target level, so a
+ * verdict that rests on a default needs this.
+ */
+export function resolvedTargetSdk(inputs: Pick<AndroidBuildInputs, "buildFiles" | "catalog">): number | null {
+  const target = resolveSdkLevels(inputs.buildFiles, "targetSdk", inputs.catalog);
+  const values = target.app.length > 0 ? target.app : target.other;
+  return values.length > 0 ? Math.min(...values) : null;
+}
+
+/**
+ * WebView file-access settings, in both spellings: the Java setter
+ * (`settings.setAllowFileAccess(true)`) and the Kotlin property
+ * (`settings.allowFileAccess = true`, often inside `settings.apply { … }`). Only the
+ * setter was matched, so the dominant Android language reported the most dangerous
+ * setting as off.
+ */
+export function webViewFileAccess(source: string): { universal: boolean; fileUrls: boolean; file: boolean; fileOff: boolean } {
+  const setting = (name: string, value: boolean) => {
+    const property = name.charAt(0).toLowerCase() + name.slice(1);
+    return new RegExp(`\\bset${name}\\s*\\(\\s*${value}\\b|\\b${property}\\s*=\\s*${value}\\b`).test(source);
+  };
+  return {
+    universal: setting("AllowUniversalAccessFromFileURLs", true),
+    fileUrls: setting("AllowFileAccessFromFileURLs", true),
+    file: setting("AllowFileAccess", true),
+    fileOff: setting("AllowFileAccess", false),
+  };
+}
+
+/**
+ * Calls whose SQL argument is a variable built elsewhere (`db.rawQuery(query, null)`).
+ * This check cannot follow it to where it is built, so such calls are counted and
+ * said, never read as safe.
+ */
+export function variableSqlCalls(source: string): number {
+  return [...source.matchAll(/\b(?:rawQuery|execSQL)\s*\(\s*([A-Za-z_][\w.]*)\s*[,)]/g)]
+    .filter((m) => !SQL_CONSTANT.test(m[1])).length;
+}
+
 export function evaluateAndroidChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   if (!snapshot.accessible) return [];
   const ctx = buildContext(snapshot);
@@ -640,24 +695,38 @@ function componentSecurityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   // WebView file access. Combined with universal access from file URLs, a
   // malicious local HTML file can read every file the app can.
   if (/WebView|webView/.test(ctx.source)) {
-    const fileAccess = /setAllowFileAccess\s*\(\s*true|setAllowFileAccessFromFileURLs\s*\(\s*true/.test(ctx.source);
-    const universalAccess = /setAllowUniversalAccessFromFileURLs\s*\(\s*true/.test(ctx.source);
+    const access = webViewFileAccess(ctx.source);
+    const fileAccess = access.file || access.fileUrls;
+    // allowFileAccess DEFAULTS to true below API 30, so not finding an enable call is
+    // only "disabled" when it is switched off explicitly or the app targets 30+.
+    const target = resolvedTargetSdk(ctx);
+    const defaultOff = access.fileOff || (target !== null && target >= 30);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "android_webview_file_access",
       label: "WebView file access is disabled",
-      status: universalAccess ? "FAIL" : fileAccess ? "WARN" : "PASS",
-      confidence: "HIGH",
-      detail: universalAccess
-        ? `\`setAllowUniversalAccessFromFileURLs(true)\` lets content loaded from a \`file://\` URL make requests to ` +
-          `ANY origin and read the responses — bypassing the same-origin policy entirely. Any HTML that reaches the ` +
-          `WebView from disk (a downloaded file, a cache entry another app can write) can then read the app's private ` +
-          `files and exfiltrate them. Set it to false; Android defaults it off from API 30 for this reason.`
+      status: access.universal ? "FAIL" : fileAccess ? "WARN" : defaultOff ? "PASS" : target !== null ? "WARN" : "INCONCLUSIVE",
+      confidence: access.universal || fileAccess || defaultOff || target !== null ? "HIGH" : "LOW",
+      detail: access.universal
+        ? `\`allowUniversalAccessFromFileURLs\` is set to true. It lets content loaded from a \`file://\` URL make ` +
+          `requests to ANY origin and read the responses, bypassing the same-origin policy entirely. Any HTML that ` +
+          `reaches the WebView from disk (a downloaded file, a cache entry another app can write) can then read the ` +
+          `app's private files and send them elsewhere. Set it to false; Android defaults it off for this reason.`
         : fileAccess
-          ? `\`setAllowFileAccess(true)\` permits the WebView to load \`file://\` URLs. Combined with any path the ` +
-            `app writes from untrusted input, this becomes a local file read. Disable it unless the app genuinely ` +
-            `renders local HTML, and use \`WebViewAssetLoader\` if it does.`
-          : `WebView file access is not explicitly enabled.`,
+          ? `WebView file access is switched on (\`allowFileAccess\` or \`allowFileAccessFromFileURLs\` set to true). ` +
+            `The WebView can then load \`file://\` URLs, and combined with any path the app writes from untrusted ` +
+            `input this becomes a local file read. Disable it unless the app genuinely renders local HTML, and use ` +
+            `\`WebViewAssetLoader\` if it does.`
+          : defaultOff
+            ? access.fileOff
+              ? `WebView file access is switched off explicitly.`
+              : `WebView file access is not switched on, and the app targets API ${target}, where it defaults to off.`
+            : target !== null
+              ? `WebView file access is not switched off, and the app targets API ${target}. Below API 30 ` +
+                `\`allowFileAccess\` defaults to true, so the WebView can load \`file://\` URLs unless the app sets ` +
+                `it to false. Set it to false explicitly, or raise the target SDK.`
+              : `WebView file access is not switched on in the sampled source, but the app's targetSdk could not be ` +
+                `read. \`allowFileAccess\` defaults to true below API 30, so whether it is off is not established.`,
     });
   }
 
@@ -672,18 +741,28 @@ function componentSecurityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
     const concatenated =
       concatenatedSql(ctx.source) ||
       /(rawQuery|execSQL)\s*\(\s*[a-z_]\w*\s*\+/.test(ctx.source);
+    const calls = (ctx.source.match(/\b(?:rawQuery|execSQL)\s*\(/g) ?? []).length;
+    const variable = variableSqlCalls(ctx.source);
+    const allVariable = !concatenated && variable >= calls;
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "android_sql_injection",
       label: "SQL queries are parameterised",
-      status: concatenated ? "FAIL" : "PASS",
-      confidence: "MEDIUM",
+      status: concatenated ? "FAIL" : allVariable ? "INCONCLUSIVE" : "PASS",
+      confidence: allVariable ? "LOW" : "MEDIUM",
       detail: concatenated
-        ? `A \`rawQuery\`/\`execSQL\` call builds its SQL by string concatenation or interpolation. Any user-supplied ` +
-          `value reaching it can change the query — read other users' cached rows, or drop the table. Pass values as ` +
-          `\`selectionArgs\` with \`?\` placeholders, which SQLite binds rather than parses. If the app syncs data ` +
-          `from your API, remember the "user input" here includes anything the server sent.`
-        : `Raw SQL calls are present and do not appear to concatenate values into the statement.`,
+        ? `A \`rawQuery\`/\`execSQL\` call builds its SQL by string concatenation or a Kotlin \`$value\` template. ` +
+          `Any user-supplied value reaching it can change the query: read other users' cached rows, or drop the ` +
+          `table. Pass values as \`selectionArgs\` with \`?\` placeholders, which SQLite binds rather than parses. ` +
+          `If the app syncs data from your API, remember the "user input" here includes anything the server sent.`
+        : allVariable
+          ? `Every raw SQL call here passes a statement built elsewhere (\`rawQuery(query, …)\`), so whether values ` +
+            `are concatenated into it could not be read from the call itself.`
+          : `The raw SQL statements written at the call site do not concatenate or interpolate values.` +
+            (variable > 0
+              ? ` ${variable} more call${variable === 1 ? " passes" : "s pass"} a statement built elsewhere, which ` +
+                `this check cannot follow.`
+              : ""),
     });
   }
 
@@ -754,22 +833,60 @@ function platformQualityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
     /com\.google\.firebase\.MESSAGING_EVENT/.test(ctx.manifest);
   if (usesNotifications) {
     const requestsPermission = /POST_NOTIFICATIONS/.test(ctx.manifest + ctx.source);
+    // The app's own manifests are not the merged manifest. firebase-messaging declares
+    // POST_NOTIFICATIONS in its library manifest from 23.0.6, so an FCM app has the
+    // permission after manifest merge without declaring it itself.
+    const deps = ctx.gradle + "\n" + ctx.catalog;
+    const fcmVersion = /firebase-messaging(?:-ktx)?[:"'\s=]+(?:version\s*=\s*)?"?(\d+)\.(\d+)\.(\d+)/i.exec(deps);
+    const fcmDeclared = /firebase-messaging/i.test(deps);
+    const fcmMerges = fcmVersion
+      ? Number(fcmVersion[1]) > 23 || (Number(fcmVersion[1]) === 23 && (Number(fcmVersion[2]) > 0 || Number(fcmVersion[3]) >= 6))
+      : null;
+    // Below targetSdk 33 the system asks for the permission itself on the first channel,
+    // so not declaring it is only a defect for an app that targets 33 or later.
+    const target = resolvedTargetSdk(ctx);
+    const status: PulseScanCheckInput["status"] = requestsPermission
+      ? "PASS"
+      : fcmMerges === true
+        ? "PASS"
+        : target !== null && target < 33
+          ? "PASS"
+          : fcmDeclared && fcmMerges === null
+            ? "INCONCLUSIVE"
+            : target === null
+              ? "INCONCLUSIVE"
+              : "FAIL";
     const notif: PulseScanCheckInput = {
       category: CATEGORIES.MOBILE,
       checkKey: "android_notification_permission",
       label: "POST_NOTIFICATIONS is requested",
-      status: requestsPermission ? "PASS" : "FAIL",
-      confidence: "HIGH",
+      status,
+      confidence: status === "INCONCLUSIVE" ? "LOW" : fcmMerges === true && !requestsPermission ? "MEDIUM" : "HIGH",
       detail: requestsPermission
-        ? `\`POST_NOTIFICATIONS\` is declared — confirm the app also requests it at runtime and handles a refusal.`
-        : `The app posts notifications but never declares \`android.permission.POST_NOTIFICATIONS\`. Since Android 13 ` +
-          `(API 33) that is a runtime permission, and without it notifications are silently dropped — no error, no ` +
-          `log, nothing in the tray. On any modern device this app's notifications simply do not arrive, which is ` +
-          `usually reported as "push isn't working" and debugged on the server side for a long time first.`,
+        ? `\`POST_NOTIFICATIONS\` is declared. Confirm the app also requests it at runtime and handles a refusal.`
+        : fcmMerges === true
+          ? `The app does not declare \`POST_NOTIFICATIONS\` itself, but it uses firebase-messaging ` +
+            `${fcmVersion![1]}.${fcmVersion![2]}.${fcmVersion![3]}, whose library manifest declares it, so it is in the ` +
+            `merged manifest. Confirm the app requests it at runtime and handles a refusal.`
+          : target !== null && target < 33
+            ? `The app does not declare \`POST_NOTIFICATIONS\`, and it targets API ${target}. Below 33 Android asks ` +
+              `for the permission itself when the first notification channel is created, so this is not yet a defect. ` +
+              `It becomes one when the target is raised to 33 or later.`
+            : status === "INCONCLUSIVE"
+              ? fcmDeclared
+                ? `The app does not declare \`POST_NOTIFICATIONS\` itself, but it uses firebase-messaging at a version ` +
+                  `that could not be read (a BOM or a variable). From 23.0.6 that library declares the permission in ` +
+                  `its own manifest, which merges into the app, so whether it is present is not established.`
+                : `The app posts notifications and does not declare \`POST_NOTIFICATIONS\`, but its targetSdk could not ` +
+                  `be read. That runtime permission is only required when the app targets API 33 or later.`
+              : `The app posts notifications and targets API ${target}, but never declares ` +
+                `\`android.permission.POST_NOTIFICATIONS\`. Since Android 13 that is a runtime permission, and without ` +
+                `it notifications are silently dropped: no error, no log, nothing in the tray. This is usually ` +
+                `reported as "push isn't working" and debugged on the server side for a long time first.`,
     };
     // "Never declared" is a claim about EVERY manifest (they merge at build time).
     // thunderbird declares it in three manifests the old 60-file cap never read.
-    checks.push(requestsPermission ? notif : manifestAbsence(ctx, notif));
+    checks.push(status === "FAIL" ? manifestAbsence(ctx, notif) : notif);
   }
 
   // Network on the main thread. StrictMode catches this in development; in
@@ -885,16 +1002,24 @@ function securityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   // Cleartext HTTP app-wide. The exact finding the Flutter family caught in the
   // same client's Android app — worth checking against the iOS side, where ATS is
   // usually enforced; the two drifting apart is the common case.
-  const cleartext = /android:usesCleartextTraffic\s*=\s*"true"/i.test(ctx.manifest);
-  const hasNetworkConfig = /android:networkSecurityConfig\s*=/i.test(ctx.manifest);
+  // Only the manifests that ship. `src/debug/AndroidManifest.xml` with
+  // usesCleartextTraffic="true" is the standard way to reach a local dev server and is
+  // never merged into a release build; test and sample modules are not the app either.
+  const releaseManifests = ctx.manifests.filter((m) => isReleaseManifest(m.path)).map((m) => m.text).join("\n");
+  const debugCleartext = ctx.manifests.some(
+    (m) => !isReleaseManifest(m.path) && /android:usesCleartextTraffic\s*=\s*"true"/i.test(m.text),
+  );
+  const cleartext = /android:usesCleartextTraffic\s*=\s*"true"/i.test(releaseManifests);
+  const hasNetworkConfig = /android:networkSecurityConfig\s*=/i.test(releaseManifests);
   // The network security config OVERRIDES the manifest flag, and its <base-config>
   // is the app-wide default — so `cleartextTrafficPermitted="true"` there is the same
   // finding as the manifest flag. It was never read: no flag + a permissive
-  // base-config passed.
-  const nscFiles = [...ctx.manifest.matchAll(/android:networkSecurityConfig\s*=\s*"@xml\/([\w.]+)"/gi)].map((m) => {
+  // base-config passed. A debug-only resource of the same name is not the release one.
+  const nscFiles = [...releaseManifests.matchAll(/android:networkSecurityConfig\s*=\s*"@xml\/([\w.]+)"/gi)].map((m) => {
     const re = new RegExp(`(^|/)res/xml/${m[1].replace(/\./g, "\\.")}\\.xml$`);
-    const hit = [...ctx.files].find(([path]) => re.test(path));
-    return { name: m[1], text: hit?.[1] ?? null, exists: ctx.paths.some((path) => re.test(path)) };
+    const shipped = (path: string) => re.test(path) && isReleaseManifest(path);
+    const hit = [...ctx.files].find(([path]) => shipped(path));
+    return { name: m[1], text: hit?.[1] ?? null, exists: ctx.paths.some(shipped) };
   });
   const nscCleartext = nscFiles.some(
     (f) => f.text !== null && /<base-config\b[^>]*cleartextTrafficPermitted\s*=\s*"true"/i.test(f.text),
@@ -915,7 +1040,11 @@ function securityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
       : nscUnread
         ? `No app-wide cleartext flag in the manifest, but it references a network security config (${nscFiles.map((f) => `@xml/${f.name}`).join(", ")}) ` +
           `that was not read — and that file's base-config decides whether cleartext is permitted.`
-        : `Cleartext HTTP is not enabled app-wide (API 28+ blocks it by default)${nscFiles.length > 0 ? ", and the network security config's base-config does not permit it" : ""}.`,
+        : `Cleartext HTTP is not enabled app-wide (API 28+ blocks it by default)${nscFiles.length > 0 ? ", and the network security config's base-config does not permit it" : ""}.` +
+          (debugCleartext
+            ? " A debug-only or test manifest allows it, which is the usual setting for reaching a local development " +
+              "server and is not merged into release builds."
+            : ""),
   };
   checks.push(cleartextFound ? cleartextCheck : manifestAbsence(ctx, cleartextCheck));
 
@@ -1053,13 +1182,63 @@ function securityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
  * a true finding and a 100% false-positive rate lives in it alone.
  */
 export function tokenKeyInPrefsApi(source: string): boolean {
-  return /\b(?:put|get)(?:String|StringSet)\s*\(\s*(?:"[^"\n]*(?:access|refresh|auth|bearer|id)[_-]?token[^"\n]*"|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*)\s*[,)]/i
-    .test(source);
+  // `getString`/`putString` are also Bundle, JSONObject and Cursor methods. A token read
+  // out of an OAuth JSON response (`json.getString("access_token")`) or put in a Bundle
+  // is not preference storage, so the RECEIVER on the same line decides.
+  const KEY = /\b(put|get)(?:String|StringSet)\s*\(\s*(?:"[^"\n]*(?:access|refresh|auth|bearer|id)[_-]?token[^"\n]*"|[A-Za-z0-9_]*TOKEN[A-Za-z0-9_]*)\s*([,)])/gi;
+  const NOT_PREFS = /\b(?:\w*json\w*|\w*bundle\w*|args|arguments|extras|outState|savedInstanceState|intent|cursor|response|body|payload|obj|map)\s*\??\.\s*$/i;
+  const PREFS = /pref|settings|editor|storage|\bstore\b|edit\s*\(\s*\)|edit\s*\{/i;
+  for (const m of source.matchAll(KEY)) {
+    const at = m.index ?? 0;
+    const before = source.slice(Math.max(0, source.lastIndexOf("\n", at - 1) + 1, at - 160), at);
+    if (NOT_PREFS.test(before)) continue;
+    if (m[1].toLowerCase() === "put") return true;
+    // A read: SharedPreferences.getString takes a default value; JSONObject's does not.
+    if (PREFS.test(before) || m[2] === ",") return true;
+  }
+  return false;
 }
 
+/** A password-named key written as a STRING. putBoolean("remember_password", true) cannot store one. */
 export function writesPasswordToPrefs(source: string): boolean {
-  return /\bput(?:String|Boolean|Int|Long|Float|StringSet)\s*\(\s*(?:"[^"\n]*password[^"\n]*"|[A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*)\s*,/i
-    .test(source);
+  const FLAG = /(?:show|has|is|should|enable|visible|hint|reset|forgot|policy|length|strength|changed|required|toggle|expir)/i;
+  for (const m of source.matchAll(/\bput(?:String|StringSet)\s*\(\s*(?:"([^"\n]*password[^"\n]*)"|([A-Za-z0-9_]*PASSWORD[A-Za-z0-9_]*))\s*,/gi)) {
+    if (!FLAG.test(m[1] ?? m[2] ?? "")) return true;
+  }
+  return false;
+}
+
+/**
+ * Signing passwords written literally into a build file, outside a debug signing
+ * config. The debug keystore's password is the public default `android`, and a value
+ * built from a template (`"$storePass"`) is read from somewhere else.
+ */
+export function committedSigningPasswords(buildFiles: { path: string; text: string }[]): { path: string; block: string }[] {
+  const out: { path: string; block: string }[] = [];
+  for (const f of buildFiles) {
+    const text = stripJvmFile(f.path, f.text);
+    for (const m of text.matchAll(/\b(?:storePassword|keyPassword)\b\s*=?\s*(?:"([^"\n]*)"|'([^'\n]*)')/g)) {
+      const value = m[1] ?? m[2] ?? "";
+      if (value === "" || value === "android" || /\$/.test(value)) continue;
+      const block = enclosingBlock(text, m.index ?? 0);
+      if (/debug/i.test(block)) continue;
+      out.push({ path: f.path, block: block || "build file" });
+    }
+  }
+  return out;
+}
+
+/** The name of the `{ … }` block a position sits in (`release`, `create("upload")`), or "". */
+function enclosingBlock(text: string, at: number): string {
+  let depth = 0;
+  for (let i = at - 1; i >= 0; i--) {
+    if (text[i] === "}") depth++;
+    else if (text[i] === "{") {
+      if (depth === 0) return /([\w.]+(?:\(\s*["'][^"'\n]*["']\s*\))?)\s*$/.exec(text.slice(Math.max(0, i - 80), i))?.[1] ?? "";
+      depth--;
+    }
+  }
+  return "";
 }
 
 function secretsChecks(ctx: AndroidContext): PulseScanCheckInput[] {
@@ -1163,7 +1342,8 @@ function secretsChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   }
 
   // Signing config with a literal password in Gradle: the key that IS the app.
-  if (/storePassword\s*=?\s*"[^"]+"|keyPassword\s*=?\s*"[^"]+"/i.test(ctx.gradle)) {
+  const signing = committedSigningPasswords(ctx.buildFiles);
+  if (signing.length > 0) {
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "android_signing_credentials_committed",
@@ -1171,10 +1351,12 @@ function secretsChecks(ctx: AndroidContext): PulseScanCheckInput[] {
       status: "FAIL",
       confidence: "HIGH",
       detail:
-        `A signing store or key password is written literally into a Gradle build file. The upload/signing key is the ` +
-        `one credential that cannot be rotated cheaply — whoever holds it can publish an update AS you. Move it to ` +
-        `gradle.properties outside version control (or CI secrets), and if this was ever pushed to a shared remote, ` +
-        `treat the key as compromised and start a Play upload-key reset.`,
+        `A signing store or key password is written literally into ${signing[0].path} (in \`${signing[0].block}\`), ` +
+        `outside the debug signing config. The upload or signing key is the one credential that cannot be rotated ` +
+        `cheaply: whoever holds it can publish an update AS you. Move it to gradle.properties outside version control ` +
+        `(or CI secrets), and if this was ever pushed to a shared remote, treat the key as compromised and start a ` +
+        `Play upload-key reset.`,
+      evidence: signing.map((s) => `${s.path}: ${s.block}`).slice(0, 3).join("; "),
     });
   }
 
@@ -1276,6 +1458,24 @@ function storeReadinessChecks(ctx: AndroidContext): PulseScanCheckInput[] {
 }
 
 // ── Code quality ────────────────────────────────────────────────────────────
+/**
+ * A base URL that names a non-production environment, judged on whole host labels.
+ * Substrings were matched before, so `latest.api.example.com` read as a test host and
+ * `api.evaluate.io` as UAT.
+ */
+export function isNonProductionUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === "localhost" || host === "10.0.2.2" || host === "127.0.0.1" || /\.local$|\.localhost$|\.test$/.test(host)) return true;
+  if (/(^|\.)ngrok(-free)?\.(io|app|dev)$/.test(host)) return true;
+  const words = host.split(/[.-]/);
+  return words.some((w) => /^(staging|stage|stg|dev|develop|development|test|testing|qa|uat|preprod|sandbox)\d*$/.test(w));
+}
+
 function qualityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
 
@@ -1303,9 +1503,8 @@ function qualityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   const baseUrlDecl = /(?:const\s+val|val|static\s+final\s+String)\s+\w*BASE_?URL\w*\s*[:=]/i;
   if (baseUrlDecl.test(ctx.sourceRaw)) {
     const commentedAlternatives = (ctx.sourceRaw.match(/^\s*\/\/\s*(?:const\s+val|val)\s+\w*BASE_?URL/gim) ?? []).length;
-    const NON_PROD = /(staging|\.test\.|test\.|dev\.|\.local|localhost|10\.0\.2\.2|ngrok|preprod|uat|sandbox)/i;
     const liveUrl = /(?:const\s+val|val)\s+\w*BASE_?URL\w*\s*[:=]\s*"([^"]+)"/i.exec(ctx.source)?.[1] ?? "";
-    const liveIsNonProd = NON_PROD.test(liveUrl);
+    const liveIsNonProd = isNonProductionUrl(liveUrl);
 
     if (commentedAlternatives > 0 || liveIsNonProd) {
       checks.push({
@@ -1348,24 +1547,41 @@ function qualityChecks(ctx: AndroidContext): PulseScanCheckInput[] {
   }
 
   // Absence findings — these self-downgrade on a thin sample.
-  // `contentDescription = null` is Compose's explicit "decorative, announce nothing" — it is
-  // required on every Icon/Image, so it appears in apps that describe nothing at all and must
-  // not count as a description being set.
-  const describedCount =
-    (ctx.source.match(/contentDescription/gi) ?? []).length -
-    (ctx.source.match(/contentDescription\s*=\s*null\b|setContentDescription\s*\(\s*null\s*\)/gi) ?? []).length;
-  const described = describedCount > 0 || /semantics\s*\{/.test(ctx.source);
-  checks.push(absence(ctx, {
-    category: CATEGORIES.ACCESSIBILITY,
-    checkKey: "android_content_descriptions",
-    label: "Interactive elements have content descriptions",
-    status: described ? "PASS" : "WARN",
-    detail: described
-      ? `Content descriptions are set, so TalkBack has something to announce.`
-      : `No contentDescription or Compose semantics found. Every non-text control is then announced by TalkBack as ` +
-        `"button" with no indication of what it does, which makes the app unusable with a screen reader and is a ` +
-        `common accessibility-complaint trigger.`,
-  }));
+  // `contentDescription = null` is Compose's explicit "decorative, announce nothing", and
+  // it is a REQUIRED parameter of Icon/Image, so the bare word is in every Compose app.
+  // Only a description actually given counts; a parameter declaration
+  // (`contentDescription: String?`) is not one.
+  const described =
+    (ctx.source.match(/\bcontentDescription\s*=\s*(?!null\b)[^\s,)]/g) ?? []).length +
+    (ctx.source.match(/setContentDescription\s*\(\s*(?!null\b)[^\s)]/g) ?? []).length +
+    (ctx.source.match(/\bsemantics\s*(?:\([^)]*\))?\s*\{[^}]*contentDescription\s*=/g) ?? []).length;
+  const visuals = (ctx.source.match(/\b(?:Icon|IconButton|Image|AsyncImage|FloatingActionButton|ImageButton|ImageView)\s*\(/g) ?? []).length;
+  if (described === 0 && visuals === 0) {
+    checks.push({
+      category: CATEGORIES.ACCESSIBILITY,
+      checkKey: "android_content_descriptions",
+      label: "Interactive elements have content descriptions",
+      status: ctx.coverage >= SOUND_ABSENCE_COVERAGE ? "SKIPPED" : "INCONCLUSIVE",
+      confidence: ctx.coverage >= SOUND_ABSENCE_COVERAGE ? "HIGH" : "LOW",
+      detail: `No icons or images were found in the sampled Kotlin/Java source, so there was nothing to check for a ` +
+        `content description.` + (ctx.coverage >= SOUND_ABSENCE_COVERAGE ? "" :
+          ` (Based on ${Math.round(ctx.coverage * 100)}% of this app's Kotlin/Java files, so this is inconclusive rather than a failure.)`),
+    });
+  } else {
+    checks.push(absence(ctx, {
+      category: CATEGORIES.ACCESSIBILITY,
+      checkKey: "android_content_descriptions",
+      label: "Interactive elements have content descriptions",
+      status: described > 0 ? "PASS" : "WARN",
+      detail: described > 0
+        ? `${described} content description${described === 1 ? " is" : "s are"} given across ${visuals} icon or image ` +
+          `element${visuals === 1 ? "" : "s"} in the sampled source. A decorative image correctly passes null; ` +
+          `whether every icon-only button has one is not something a scan can confirm.`
+        : `${visuals} icon or image element${visuals === 1 ? "" : "s"} found, and no content description is given ` +
+          `anywhere (every \`contentDescription\` is null). An icon-only button is then announced by TalkBack as ` +
+          `"button" with no indication of what it does. Give each control that has no visible text a description.`,
+    }));
+  }
 
   // Room DAOs are a local store. In an offline-first app (nowinandroid) screens render from the
   // device, so "every screen re-fetches" is false — but many apps keep only favourites/history in

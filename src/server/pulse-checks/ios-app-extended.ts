@@ -133,6 +133,40 @@ const CATALOGUE: [string, string][] = [
 
 export const IOS_EXTENDED_KEYS: string[] = CATALOGUE.map(([k]) => k);
 
+/** A credential, card or one-time-code value, by the name it is held under. */
+const SENSITIVE_VALUE = /password|passcode|token|secret|apiKey|cvv|cvc|iban|cardNumber|\botp|oneTimeCode|\bpin\b/i;
+/** A screen that displays or collects a credential, card or one-time code. */
+const SENSITIVE_SCREEN =
+  /\bSecureField\b|isSecureTextEntry\s*=\s*true|textContentType\s*[:=]\s*\.(?:password|newPassword|oneTimeCode|creditCardNumber)|\b(?:cvv|cvc|iban|cardNumber)\b|STPPaymentCardTextField|PaymentSheet|PKPaymentAuthorization/;
+
+/** The value expression of each write to the general pasteboard. */
+export function pasteboardWrites(swift: string): string[] {
+  return [...swift.matchAll(/UIPasteboard\.general\.(?:string|url|strings)\s*=\s*([^\n]+)|UIPasteboard\.general\.setValue\s*\(([^\n]+)/g)]
+    .map((m) => (m[1] ?? m[2] ?? "").trim());
+}
+
+/**
+ * True when the app covers or redacts content as it leaves the foreground: a
+ * resign-active handler whose body adds a view, blurs, hides or redacts, or SwiftUI's
+ * privacySensitive / redacted / a scenePhase change that does the same.
+ */
+export function snapshotIsHidden(swift: string): boolean {
+  if (/\.privacySensitive\s*\(|\.redacted\s*\(\s*reason/.test(swift)) return true;
+  const ACTS = /addSubview|UIVisualEffectView|UIBlurEffect|\.isHidden\s*=\s*true|\.alpha\s*=\s*0|\.blur\s*\(|overlay|privacy|snapshot|\bcover|present\s*\(/i;
+  for (const m of swift.matchAll(/(?:applicationWillResignActive|sceneWillResignActive|willResignActiveNotification|scenePhase|\bfunc\s+\w*(?:[Rr]esign|[Bb]ackground)\w*)[^{\n]*\{/g)) {
+    const start = (m.index ?? 0) + m[0].length;
+    let depth = 1;
+    let i = start;
+    while (i < swift.length && i < start + 1500 && depth > 0) {
+      if (swift[i] === "{") depth++;
+      else if (swift[i] === "}") depth--;
+      i++;
+    }
+    if (ACTS.test(swift.slice(start, i - 1))) return true;
+  }
+  return false;
+}
+
 export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const ctx = buildCtx(snapshot);
   const checks: PulseScanCheckInput[] = [];
@@ -221,36 +255,44 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
     { absence: true },
   );
 
-  const pasteboard = /UIPasteboard\.general\.string\s*=/.test(ctx.swift);
-  const sensitiveNearby = /password|token|secret|card|cvv|iban|account/i.test(ctx.swift);
+  // Judged on the value actually copied. Searching the whole codebase for "account",
+  // "card" or "token" warned every app that copies a share link.
+  const copies = pasteboardWrites(ctx.swift);
+  const sensitiveCopy = copies.find((c) => SENSITIVE_VALUE.test(c));
   add(
     "ios_x_pasteboard_sensitive",
     "Sensitive values are not written to the general pasteboard",
-    !pasteboard ? "PASS" : sensitiveNearby ? "WARN" : "PASS",
-    !pasteboard
-      ? "The app does not write to the general pasteboard."
-      : sensitiveNearby
-        ? "The app writes to UIPasteboard.general and the sampled source also handles credentials or card data. The " +
+    copies.length === 0 ? "SKIPPED" : sensitiveCopy ? "WARN" : "PASS",
+    copies.length === 0
+      ? "The sampled source does not write to the general pasteboard."
+      : sensitiveCopy
+        ? `The app copies a credential-named value to UIPasteboard.general (\`${sensitiveCopy.slice(0, 60)}\`). The ` +
           "general pasteboard is readable by every other app on the device and, with Universal Clipboard, syncs to " +
-          "the user's other devices. If a copied value is a password or card number, set " +
-          "`UIPasteboard.general.setItems(_:options:)` with an expiry and `.localOnly`."
-        : "Pasteboard writes were found but the sampled source shows no sensitive values being copied.",
+          "the user's other devices. If it has to be copied, use `UIPasteboard.general.setItems(_:options:)` with an " +
+          "expiry and `.localOnly`."
+        : `${copies.length} pasteboard write${copies.length === 1 ? "" : "s"} found; none copies a value named as a ` +
+          "password, token, card number or one-time code.",
+    { absence: copies.length === 0 },
   );
 
-  const hidesSnapshot = /applicationWillResignActive|sceneWillResignActive|willResignActiveNotification/.test(ctx.swift);
+  // The gate is a screen that SHOWS something sensitive (a password or one-time-code
+  // field, card entry, a payment sheet), and the fix is a handler that does something:
+  // Xcode's SceneDelegate template ships an empty `sceneWillResignActive` stub.
+  const sensitiveUi = SENSITIVE_SCREEN.test(ctx.swift);
+  const hidesSnapshot = snapshotIsHidden(ctx.swift);
   add(
     "ios_x_screenshot_redaction",
     "Sensitive screens are hidden from the app switcher snapshot",
-    !sensitiveNearby ? "SKIPPED" : hidesSnapshot ? "PASS" : "WARN",
-    !sensitiveNearby
-      ? "The sampled source shows no obviously sensitive screens, so app-switcher redaction is not required."
+    !sensitiveUi ? "SKIPPED" : hidesSnapshot ? "PASS" : "WARN",
+    !sensitiveUi
+      ? "The sampled source shows no password, one-time-code or card-entry screens, so app-switcher redaction is not required."
       : hidesSnapshot
-        ? "The app responds to resign-active, which is where a snapshot overlay is installed to keep sensitive " +
-          "content out of the app-switcher thumbnail."
+        ? "The app covers or redacts its content when it moves to the background, which keeps sensitive content out " +
+          "of the app-switcher thumbnail."
         : "iOS captures a screenshot of the app whenever it moves to the background, and stores it unencrypted for " +
-          "the app-switcher. The sampled source handles credentials or financial data but never responds to " +
-          "willResignActive, so whatever is on screen at that moment — a balance, a card number, a one-time code — " +
-          "is written to disk as an image.",
+          "the app-switcher. The app has password, one-time-code or card-entry screens but never covers its content " +
+          "when it resigns active (an empty `sceneWillResignActive` stub does nothing), so whatever is on screen at " +
+          "that moment is written to disk as an image.",
     { absence: true },
   );
 

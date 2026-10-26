@@ -360,7 +360,15 @@ function secretsChecks(ctx: RnContext): PulseScanCheckInput[] {
   // A password persisted at all is worse than where it is persisted. Requires a
   // storage WRITE whose key names a password — a string containing "password" and a
   // comma matched `type: 'password',` (a form field) and a metric name on Bluesky.
-  if (/(?:AsyncStorage|MMKV|[Ss]torage|SecureStore)\w*\.(?:setItem|set|setString|setItemAsync)\(\s*['"`][^'"`]*pass(?:word|wd)[^'"`]*['"`]/i.test(ctx.source)) {
+  // Flags named after the password (`rememberPassword`, `showPassword`, `hasSetPassword`)
+  // are not the password: a "remember me" toggle stored as "true" is not a credential.
+  const passwordWrite = [...ctx.source.matchAll(
+    /(?:AsyncStorage|MMKV|[Ss]torage|SecureStore)\w*\.(?:setItem|set|setString|setItemAsync)\(\s*['"`]([^'"`]*pass(?:word|wd)[^'"`]*)['"`]\s*,\s*([^)\n]{0,80})/gi,
+  )].find((m) =>
+    !/(?:remember|show|has|is|should|enable|visible|hint|reset|forgot|policy|length|strength|changed|required|toggle|expir|last)/i.test(m[1]) &&
+    !/^\s*(?:true|false|['"`](?:true|false|1|0)['"`]|String\(\s*(?:true|false)\s*\))\s*$/.test(m[2]),
+  );
+  if (passwordWrite) {
     checks.push({
       category: CATEGORIES.SECRETS_KEYS,
       checkKey: "rn_password_retention",

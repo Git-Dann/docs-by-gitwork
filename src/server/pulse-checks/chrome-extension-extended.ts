@@ -22,6 +22,7 @@ import {
   MESSAGE_LISTENER_RE,
   SENDER_CHECK_RE,
   declaredMinimumChromeVersion,
+  contentScriptSources,
   extensionSourceFiles,
   findDynamicEval,
   findExtensionManifest,
@@ -259,22 +260,41 @@ export function evaluateExtensionExtendedChecks(snapshot: RepoSnapshot): PulseSc
     );
   }
 
-  // Same rule as ext_no_eval: a real call, strings and comments stripped.
-  const evalIn = findDynamicEval(ctx.files);
+  // Same rule as ext_no_eval (a real call, strings and comments stripped), asked of the
+  // CONTENT SCRIPTS only. Run over every script it was ext_no_eval again, and one eval in
+  // a build config or a test was reported as a content script evaluating strings.
+  const content = contentScriptSources(ctx.manifest, ctx.found.path, ctx.files);
+  const evalIn = findDynamicEval(content.files);
   const evalLabel = "Content scripts do not evaluate strings as code";
-  if (evalIn) {
+  if (content.declared === 0 && content.files.length === 0) {
+    absence("ext_x_no_eval_in_content", evalLabel, "SKIPPED", "The extension declares no content scripts.");
+  } else if (evalIn) {
     add(
       "ext_x_no_eval_in_content",
       evalLabel,
       "FAIL",
-      `The extension evaluates strings as code (${evalIn}). Manifest V3's content security policy forbids this for ` +
-        "extension pages, so it is both a review rejection and — in a content script, which runs with access to the " +
-        "page and the extension's messaging — a direct injection route.",
+      `A content script evaluates strings as code (${evalIn}). Manifest V3's content security policy forbids this, ` +
+        "so it is a review rejection, and a content script runs with access to the page and the extension's " +
+        "messaging, so it is also a direct injection route.",
       "HIGH",
       evalIn,
     );
+  } else if (content.files.length === 0) {
+    add(
+      "ext_x_no_eval_in_content",
+      evalLabel,
+      "INCONCLUSIVE",
+      `The manifest declares ${content.declared} content script file(s), but none could be matched to the source ` +
+        "that builds it, so the content scripts were not read.",
+      "LOW",
+    );
   } else {
-    absence("ext_x_no_eval_in_content", evalLabel, "PASS", "No runtime code evaluation was found.");
+    absence(
+      "ext_x_no_eval_in_content",
+      evalLabel,
+      "PASS",
+      `No runtime code evaluation was found in the ${content.files.length} content script source file(s) read.`,
+    );
   }
 
   // Same rule as ext_dom_injection.

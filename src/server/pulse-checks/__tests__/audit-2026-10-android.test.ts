@@ -106,7 +106,9 @@ describe("S2/A6 — a 'not declared' manifest verdict needs every manifest read"
   });
 
   it("POST_NOTIFICATIONS: still FAILs when every manifest was read and none declares it", () => {
-    const out = evaluateAndroidChecks(snap({ [M]: manifest(""), ...NOTIFY }));
+    // targetSdk 34: the runtime permission only exists for apps targeting 33+.
+    const gradle = { "app/build.gradle.kts": 'plugins { id("com.android.application") }\nandroid { defaultConfig { targetSdk = 34 } }' };
+    const out = evaluateAndroidChecks(snap({ [M]: manifest(""), ...NOTIFY, ...gradle }));
     expect(find(out, "android_notification_permission")?.status).toBe("FAIL");
   });
 });

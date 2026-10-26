@@ -170,6 +170,9 @@ export function isShippedExtensionSource(p: string): boolean {
     !/\.d\.ts$/i.test(p) &&
     !/(^|\/)(tests?|__tests__|spec|e2e)\//i.test(p) && !/\.(tests?|spec)\.[cm]?[jt]sx?$/i.test(p) &&
     !/^(tasks|scripts|build|tools|gulp)\//i.test(p) &&
+    // Committed build output and minified copies: the bundler's runtime and vendored
+    // libraries (regenerator's `Function("r", …)`) are in there, not the project's code.
+    !/(^|\/)(dist|out)\//i.test(p) && !/\.min\.[cm]?js$/i.test(p) &&
     !/(^|\/)[^/]*\.config\.[cm]?[jt]s$/i.test(p) && !/(^|\/)gulpfile\.[cm]?[jt]s$/i.test(p);
 }
 
@@ -230,6 +233,43 @@ export const EXTENSION_SOUND_COVERAGE = 0.3;
 export function findDynamicEval(files: ExtensionSourceFile[]): string | null {
   const re = /(?<![.\w$])eval\s*\(|(?<![\w$])(?:window|globalThis|self)\.eval\s*\(|(?<![.\w$])new\s+Function\s*\(/;
   return files.find((f) => re.test(f.code))?.path ?? null;
+}
+
+/**
+ * The source files that become content scripts: the `content_scripts[].js` entries in
+ * the manifest (and `scripting.executeScript({ files })` targets), matched to the source
+ * that builds them by path or by name (`content.js` ← `src/content.ts` or
+ * `src/content/index.ts`), plus files in a `content-script(s)` folder. `declared` is
+ * how many content-script entries the extension has.
+ */
+export function contentScriptSources(
+  manifest: Record<string, unknown> | null,
+  manifestPath: string,
+  files: ExtensionSourceFile[],
+): { declared: number; files: ExtensionSourceFile[] } {
+  const entries: string[] = [];
+  const cs = manifest && Array.isArray(manifest.content_scripts) ? (manifest.content_scripts as { js?: unknown }[]) : [];
+  for (const block of cs) if (Array.isArray(block?.js)) entries.push(...block.js.filter((j): j is string => typeof j === "string"));
+  for (const f of files) {
+    for (const m of f.code.matchAll(/executeScript\s*\(/g)) {
+      const window = f.text.slice(m.index ?? 0, (m.index ?? 0) + 300);
+      for (const e of window.matchAll(/["'`]([\w./-]+\.[cm]?js)["'`]/g)) entries.push(e[1]);
+    }
+  }
+  const dir = manifestPath.includes("/") ? manifestPath.slice(0, manifestPath.lastIndexOf("/") + 1) : "";
+  const stem = (p: string) => p.replace(/^\.?\//, "").replace(/\.[cm]?[jt]sx?$/i, "");
+  const wanted = entries.map((e) => stem(e));
+  const matched = files.filter((f) => {
+    const own = stem(f.path);
+    const rel = dir && own.startsWith(dir) ? own.slice(dir.length) : own;
+    if (/(^|\/)content[-_]?scripts?(\/|$)|(^|\/)contentscript/i.test(own)) return true;
+    return wanted.some((w) => {
+      const base = w.split("/").pop()!;
+      return rel === w || own.endsWith("/" + w) || own.endsWith("/" + base) || own === base ||
+        own.endsWith(`/${base}/index`) || own === `${base}/index`;
+    });
+  });
+  return { declared: entries.length, files: matched };
 }
 
 /** Shared by ext_dom_injection and ext_x_innerhtml_injection. */
