@@ -7876,3 +7876,13 @@ real pages and repos. Each fix was proved to discriminate by reverting it.
 **Withheld:** 216 → 144. Every check still withheld either awaits a fix, or has a reason starting
 "Not assessable from what Pulse scans:" (internal ops, a product's own emails, behind sign-in,
 back office).
+
+**Round two, scanB (41):**
+- Payment, auth, roles, accessibility and sitemap checks now rest on parsed evidence:
+  - real WCAG contrast ratios for inline colour pairs;
+  - OAuth scope and `code_challenge` read from the page's own authorise link;
+  - a Stripe webhook route must answer differently from a made-up sibling path;
+  - page weight measured from HEAD Content-Length, and INCONCLUSIVE if anything can't be measured.
+- Absence of an optional feature (Stripe, currencies, web push, trust badges) is NOT_APPLICABLE.
+- Extra requests per URL scan: up to 40 HEAD requests (page weight) and 10 sitemap GETs.
+- Withheld 144 → 103. Live checks: 1,206 ("over 1,200").
