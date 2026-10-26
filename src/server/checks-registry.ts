@@ -724,6 +724,14 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "form_error_identification", category: CATEGORIES.ACCESSIBILITY, label: "Form errors identify the field" },
   { key: "keyboard_focus_visible", category: CATEGORIES.ACCESSIBILITY, label: "Visible keyboard focus indicator" },
   { key: "touch_target_size", category: CATEGORIES.ACCESSIBILITY, label: "Sufficient touch target sizing" },
+  // Measured on the page as Chromium renders it (pulse-agents/rendered-a11y-agent.ts).
+  // touch_target_size above is now measured there too, at a phone-width viewport.
+  { key: "rendered_keyboard_reachable", category: CATEGORIES.ACCESSIBILITY, label: "Every visible control can be reached with Tab" },
+  { key: "rendered_no_keyboard_trap", category: CATEGORIES.ACCESSIBILITY, label: "Keyboard focus is never trapped" },
+  { key: "rendered_focus_visible", category: CATEGORIES.ACCESSIBILITY, label: "Focused controls show a visible focus indicator" },
+  { key: "rendered_focus_not_obscured", category: CATEGORIES.ACCESSIBILITY, label: "Focused controls are not hidden behind other content" },
+  { key: "rendered_text_contrast", category: CATEGORIES.ACCESSIBILITY, label: "Text meets WCAG AA contrast on the rendered page" },
+  { key: "rendered_skip_link_works", category: CATEGORIES.ACCESSIBILITY, label: "Skip link moves focus to the main content" },
   { key: "no_autoplay_audio", category: CATEGORIES.ACCESSIBILITY, label: "No autoplay audio without controls" },
   { key: "no_autoplay_video", category: CATEGORIES.ACCESSIBILITY, label: "No autoplay video without controls" },
   { key: "session_timeout_warning", category: CATEGORIES.ACCESSIBILITY, label: "Session timeout warning" },

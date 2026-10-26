@@ -25,6 +25,7 @@ import { fetchRepoVisibility, runCodeAgent } from "@/server/pulse-agents/code-ag
 import { applyPrivateRepoPolicy, type RepoVisibility } from "@/server/pulse-checks/private-repo";
 import { answeredByCodeHealth, runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type CodeHealthReport } from "@/server/code-health";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
+import { runRenderedA11yAgent } from "@/server/pulse-agents/rendered-a11y-agent";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { applyAbsencePolicy } from "@/server/pulse-checks/absence-policy";
@@ -301,12 +302,19 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     });
     if (coverage) pending.push(ingest([coverage]));
 
-    const [deployOutcome, browserOutcome] = await Promise.all([
+    // The rendered accessibility pass needs a page a browser can draw: a website, reached,
+    // on the internal path (it launches Chromium, so it rides the same switch as rendering).
+    const runRenderedA11y = collectorPlan.browser && renderJs && !storeTarget && !urlTargetBlocked
+      && relevanceCtx.target.kind === "website";
+    const [deployOutcome, browserOutcome, a11yOutcome] = await Promise.all([
       collectorPlan.deploy
         ? Promise.allSettled([runDeployAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
       collectorPlan.browser && includePageSpeed
         ? Promise.allSettled([runBrowserAgent(safeUrl)]).then(([result]) => result)
+        : Promise.resolve(null),
+      runRenderedA11y
+        ? Promise.allSettled([runRenderedA11yAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
     ]);
 
@@ -333,6 +341,15 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       }
     } else {
       collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
+    }
+
+    // Its checks are ingested on failure too: they say INCONCLUSIVE, which is the honest
+    // answer to "could a keyboard user reach this?" when no browser ran.
+    if (a11yOutcome) {
+      collectorExecutions.push(collectorOutcome("rendered-a11y", a11yOutcome));
+      if (a11yOutcome.status === "fulfilled") pending.push(ingest(a11yOutcome.value.checks));
+    } else {
+      collectorExecutions.push({ name: "rendered-a11y", outcome: "NOT_APPLICABLE" });
     }
 
     // The source collectors are not merely absent from a URL scan — they are

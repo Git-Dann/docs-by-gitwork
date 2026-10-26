@@ -89,7 +89,6 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
       ["form_labels_present", "<label> for every <input>"],
       ["form_error_identification", "Form errors identify the field"],
       ["keyboard_focus_visible", ":focus-visible CSS present"],
-      ["touch_target_size", "Sufficient touch target sizing"],
       ["no_autoplay_audio", "No autoplay audio without controls"],
       ["no_autoplay_video", "No autoplay video without controls"],
       ["session_timeout_warning", "Session timeout warning"],
@@ -242,9 +241,9 @@ export async function runWcagChecks(ctx: ExtendedCheckContext): Promise<PulseSca
   // and used to pass because it contains "outline" (see wcag-page-evidence.ts).
   checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "keyboard_focus_visible", label: "Visible keyboard focus indicator", ...focusIndicatorVerdict(html) });
 
-  // Touch target size (check for min-height/min-width patterns ≥ 44px)
-  const hasTouchTargets = /min-height:\s*(4[4-9]|[5-9]\d|\d{3})px|min-width:\s*(4[4-9]|[5-9]\d|\d{3})px|h-\d+\s+w-\d+/i.test(html);
-  checks.push({ category: CATEGORIES.ACCESSIBILITY, checkKey: "touch_target_size", label: "Sufficient touch target sizing", status: hasTouchTargets ? "PASS" : "WARN", detail: hasTouchTargets ? "Touch target size CSS patterns detected." : "No explicit touch target size constraints detected — WCAG 2.5.8 recommends a minimum 24×24px target, Apple HIG recommends 44×44pt." });
+  // Touch target size is measured on the rendered page at a phone width
+  // (pulse-agents/rendered-a11y-agent.ts). The CSS-text guess that lived here was withheld
+  // because text cannot say how large a control is drawn.
 
   // No autoplay audio
   const hasAutoplayAudio = /<audio[^>]+autoplay/i.test(html) || /<source[^>]*autoplay/i.test(html);
