@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
+import { claimNotApplicable, claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, ctx: pctx } = ctx;
@@ -44,14 +45,22 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   // tell it apart from "password" from the homepage alone, so don't guess N/A.
   const isOtpOnly = pctx.authMethod === "otp";
   const isOtpRelevant = pctx.authMethod === "otp" || pctx.authMethod === "both";
+  // Readable text, one block at a time (page-claims.ts). The account controls below live
+  // inside the signed-in product, so the page saying so is a PASS and its silence is not
+  // a finding: on linear.app `lockout.*policy` ran 77,926 characters from an SVG symbol id.
+  const runs = proseRuns(ctx.contentHtml ?? html);
+  const AUTH = CATEGORIES.AUTHENTICATION;
 
   // Session timeout
   const hasSessionTimeout = /session.*expir|timeout.*setting|session.*length|auto.*log.*out|idle.*timeout/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "session_timeout_configured", label: "Session timeout configured", status: hasSessionTimeout ? "PASS" : "WARN", detail: hasSessionTimeout ? "Session timeout signals detected." : "No session timeout signals found — configure automatic session expiry to reduce exposure from unattended sessions." });
 
   // Account lockout
-  const hasLockout = /account.*lock|too many.*attempt|temporarily.*disabled|lockout.*policy/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "account_lockout_policy", label: "Account lockout policy", status: hasLockout ? "PASS" : "WARN", detail: hasLockout ? "Account lockout signals detected." : "No account lockout signals — implement lockout after repeated failed login attempts to prevent credential stuffing." });
+  const lockoutBase = { category: AUTH, checkKey: "account_lockout_policy", label: "Account lockout policy" };
+  const lockoutQuote = findClaim(runs, /\baccounts?\s+(?:is\s+|are\s+|will\s+be\s+|gets?\s+)?(?:temporarily\s+)?locked\b|\block(?:s|ed|ing)?\s+(?:out\s+)?(?:the\s+|your\s+)?accounts?\b|\baccount\s+lock(?:out|ing)\b|\blockout\s+polic(?:y|ies)\b|\btoo\s+many\s+(?:failed\s+|unsuccessful\s+|incorrect\s+|invalid\s+)?(?:login\s+|sign[- ]?in\s+|password\s+)?attempts\b/i);
+  checks.push(lockoutQuote
+    ? claimSeen(lockoutBase, "The page states that repeated failed sign-ins lock the account.", lockoutQuote)
+    : claimUnseen(lockoutBase, "The scanned page does not mention locking an account after failed sign-ins. Lockout is enforced by the sign-in server and only shows when it triggers, so this page cannot show whether it is in place. Confirm that repeated failures are slowed or locked."));
 
   // Password strength — not applicable to a confident OTP/passwordless-only project.
   const hasPasswordStrength = /password.*must|password.*require|at least.*character|must contain.*uppercase|strong.*password/i.test(html);
@@ -66,8 +75,11 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "breach_password_detection", label: "Breach password detection", status: isOtpOnly ? "SKIPPED" : (hasBreachDetection ? "PASS" : "WARN"), detail: isOtpOnly ? "Not applicable — this project authenticates via OTP/passwordless login; there are no user passwords to check against breach corpora." : (hasBreachDetection ? "Breach password detection signals detected." : "No breach password detection — integrating with HaveIBeenPwned (k-anonymity API) to reject known-breached passwords is recommended by NIST.") });
 
   // Account recovery
-  const hasRecovery = /backup.*code|recovery.*code|security.*question|phone.*verify|backup.*email|recovery.*options/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "account_recovery_options", label: "Account recovery beyond email", status: hasRecovery ? "PASS" : "WARN", detail: hasRecovery ? "Multiple recovery options detected." : "Only email-based recovery signals found — support backup codes, recovery phrases, or trusted devices to prevent lockouts." });
+  const recoveryBase = { category: AUTH, checkKey: "account_recovery_options", label: "Account recovery beyond email" };
+  const recoveryQuote = findClaim(runs, /\b(?:backup|recovery)\s+(?:codes?|keys?|phrases?|emails?|phone(?:\s+numbers?)?)\b|\brecovery\s+(?:options?|methods?)\b|\bsecurity\s+questions?\b|\btrusted\s+contacts?\b/i);
+  checks.push(recoveryQuote
+    ? claimSeen(recoveryBase, "The page mentions a way to recover an account other than an email link.", recoveryQuote)
+    : claimUnseen(recoveryBase, "The scanned page does not mention backup codes, a recovery phone or another way back into an account. Recovery options are set up inside account settings, which this scan cannot reach, so this does not show they are missing."));
 
   // JWT not in localStorage
   const hasJwtLocalStorage = /localStorage\.(set|get)Item.*token|localStorage.*jwt|jwt.*localStorage/i.test(html);
@@ -82,8 +94,17 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "pkce_oauth_flow", label: "PKCE for OAuth public clients", status: hasPkce ? "PASS" : "WARN", detail: hasPkce ? "PKCE OAuth flow signals detected." : "No PKCE signals detected — PKCE is required for all OAuth public clients (SPAs, mobile apps) per RFC 9700." });
 
   // API key creation UI
-  const hasApiKeyUi = /api key|api token|access token|create.*token|generate.*key|developer.*key/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "api_key_creation_ui", label: "API key generation UI", status: pctx.isSaas ? (hasApiKeyUi ? "PASS" : "WARN") : "PASS", detail: pctx.isSaas ? (hasApiKeyUi ? "API key generation UI detected." : "SaaS app detected but no API key creation UI — developer access is critical for integration adoption and partner workflows.") : "Not applicable." });
+  // "Not applicable" used to be reported as a PASS, which counted toward the score of
+  // every authenticated site that is not a SaaS product.
+  const apiKeyBase = { category: AUTH, checkKey: "api_key_creation_ui", label: "API key generation UI" };
+  const apiKeyQuote = pctx.isSaas
+    ? findClaim(runs, /\b(?:create|generate|issue|manage|rotate|revoke|get)\w*\s+(?:(?:an?|your|new|own|personal)\s+){0,2}(?:api|access|developer)\s+(?:keys?|tokens?)\b|\b(?:api|access)\s+(?:keys?|tokens?)\s+(?:from|in|under)\s+(?:your\s+|the\s+)?(?:dashboard|settings|account|console|workspace)\b|\bpersonal\s+access\s+tokens?\b/i)
+    : null;
+  checks.push(!pctx.isSaas
+    ? claimNotApplicable(apiKeyBase, "Not applicable: no SaaS product was detected, so there is no developer API to issue keys for.")
+    : apiKeyQuote
+      ? claimSeen(apiKeyBase, "The page tells users they can create their own API keys or tokens.", apiKeyQuote)
+      : claimUnseen(apiKeyBase, "The scanned page does not mention creating API keys or tokens. Key management sits inside account settings, which this scan cannot reach, so this does not show it is missing."));
 
   // OAuth minimal scopes — only the excessive-scope signal drives the verdict; the minimal-scope
   // signal was used in an earlier version but didn't add value beyond the excessive check.
@@ -95,12 +116,18 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "service_account_support", label: "Machine-to-machine / service account tokens", status: pctx.isSaas && pctx.hasBackend ? (hasServiceAccounts ? "PASS" : "WARN") : "PASS", detail: pctx.isSaas && pctx.hasBackend ? (hasServiceAccounts ? "Service account / M2M auth signals detected." : "SaaS API product detected but no service account support — enterprise integrations require M2M authentication (OAuth client credentials flow).") : "Not applicable." });
 
   // Device management
-  const hasDeviceMgmt = /trusted.*device|device.*management|manage.*session|active.*session|logged.*in.*device/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "device_management", label: "Trusted device management", status: hasDeviceMgmt ? "PASS" : "WARN", detail: hasDeviceMgmt ? "Device / session management signals detected." : "No device management detected — allowing users to view and revoke active sessions builds security trust." });
+  const deviceBase = { category: AUTH, checkKey: "device_management", label: "Trusted device management" };
+  const deviceQuote = findClaim(runs, /\b(?:trusted|active|recogni[sz]ed|signed[- ]in|logged[- ]in)\s+(?:devices?|sessions?)\b|\b(?:manage|view|review|revoke|remove|sign\s+out\s+(?:of|from)|log\s+out\s+(?:of|from))\s+(?:your\s+|all\s+|other\s+|any\s+)?(?:devices?|sessions?)\b|\bdevice\s+management\b/i);
+  checks.push(deviceQuote
+    ? claimSeen(deviceBase, "The page mentions letting users see or revoke their signed-in devices or sessions.", deviceQuote)
+    : claimUnseen(deviceBase, "The scanned page does not mention a list of signed-in devices or sessions. That list lives in account settings, which this scan cannot reach, so this does not show it is missing."));
 
   // Concurrent sessions
-  const hasConcurrentPolicy = /single.*session|one.*session|active.*session.*limit|concurrent.*session/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "concurrent_session_policy", label: "Concurrent session limiting", status: hasConcurrentPolicy ? "PASS" : "WARN", detail: hasConcurrentPolicy ? "Concurrent session policy signals detected." : "No concurrent session policy visible — consider allowing users to control how many simultaneous sessions are allowed." });
+  const concurrentBase = { category: AUTH, checkKey: "concurrent_session_policy", label: "Concurrent session limiting" };
+  const concurrentQuote = findClaim(runs, /\bconcurrent\s+(?:sessions?|logins?|sign[- ]?ins?|users?\s+limit)\b|\b(?:single|one)\s+(?:active\s+)?(?:session|login|sign[- ]?in)\s+(?:at\s+a\s+time|per\s+(?:user|account|seat))\b|\bsession\s+limits?\b|\b(?:simultaneous|parallel)\s+(?:sessions?|logins?)\b/i);
+  checks.push(concurrentQuote
+    ? claimSeen(concurrentBase, "The page states a limit on simultaneous sessions.", concurrentQuote)
+    : claimUnseen(concurrentBase, "The scanned page does not mention limiting simultaneous sessions. Such a limit is enforced by the sign-in server and shows only when it triggers, so this page cannot show whether one exists."));
 
   // Short-lived tokens
   // Terms must sit together in one text run: an unbounded `.*` let a 315KB span of

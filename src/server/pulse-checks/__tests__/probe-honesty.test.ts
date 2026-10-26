@@ -359,8 +359,12 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
       if (key === "bimi_record_present") continue;
       // With no mail records at all there is nothing to say about a sending subdomain.
       if (key === "transactional_subdomain") continue;
+      // A DKIM selector can be named anything, so nothing at the four common ones is not
+      // absence (dkim-record.ts).
+      if (key === "dkim_record_present") continue;
       expect(statusOf(checks, key), key).toBe("WARN");
     }
+    expect(statusOf(checks, "dkim_record_present")).toBe("INCONCLUSIVE");
     expect(statusOf(checks, "tls_rpt_destination")).toBe("NOT_APPLICABLE");
     expect(statusOf(checks, "bimi_record_present")).toBe("NOT_APPLICABLE");
     expect(statusOf(checks, "transactional_subdomain")).toBe("INCONCLUSIVE");

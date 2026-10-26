@@ -2,6 +2,7 @@ import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
 import type { CheckCategory } from "./categories";
 import { type PageProbeState, classifyTopicPage, fetchSnippet, pageTitle } from "./path-probe";
+import { pageAnchors } from "./page-claims";
 
 /**
  * Probe a path for a page about a topic. A 200 is not an answer: hosts serve their
@@ -109,8 +110,10 @@ export async function runMissingPagesExtended(ctx: ExtendedCheckContext): Promis
     "/security page found — dedicated security documentation is available.",
     "No /security page — enterprise buyers and security teams routinely request a dedicated security page covering certifications, pen testing, and data handling."));
 
+  // A real link to documentation, by its path, its docs./developer. host or its words.
+  // `api.*doc` over the raw HTML passed almost any page that ships JavaScript.
   checks.push(topicPageCheck({ category: MP, checkKey: "api_docs_page", label: "API documentation page" },
-    /href=["']\/api|href=["']\/docs/i.test(html) || /api.*doc|developer.*doc/i.test(html), apiDocsState, "/docs",
+    linksApiDocs(html), apiDocsState, "/docs",
     "API documentation page found.",
     "No API documentation page — developer-facing products need /docs or /api-docs with reference documentation to drive integration adoption."));
 
@@ -146,4 +149,16 @@ export async function runMissingPagesExtended(ctx: ExtendedCheckContext): Promis
     "No release notes page — regular release notes signal active development and give users confidence the product is improving."));
 
   return checks;
+}
+
+/** The page links developer or API documentation: by path, by a docs/developer host, or by its words. */
+export function linksApiDocs(html: string): boolean {
+  return pageAnchors(html).some(({ href, text }) => {
+    const m = /^(?:https?:)?\/\/([^/?#]+)(.*)$/i.exec(href);
+    const host = m ? m[1].toLowerCase() : "";
+    const path = (m ? m[2] : href).split(/[?#]/)[0].toLowerCase();
+    if (/^(?:docs|developers?|dev|api)\.|^(?:readme\.io|[a-z0-9-]+\.readme\.io|[a-z0-9-]+\.mintlify\.app|[a-z0-9-]+\.gitbook\.io)$/.test(host)) return true;
+    if (/^\/(?:docs|api-docs|api-reference|developers?|reference|api\/docs|documentation)(?:[/.]|$)/.test(path)) return true;
+    return /^(?:api\s+(?:docs|documentation|reference)|developer(?:s|\s+(?:docs|documentation|portal|hub|centre|center))?|docs|documentation)$/i.test(text);
+  });
 }

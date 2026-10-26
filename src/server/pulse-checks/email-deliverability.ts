@@ -2,6 +2,7 @@ import { CATEGORIES } from "./categories";
 import { type DnsResolution, type ExtendedCheckContext, type PulseScanCheckInput, resolveDnsRecord, resolveAllDnsRecords, probeInconclusive, skip, platformIs } from "./_types";
 import { analyzeHost, boundedDmarcCandidates, organizationalDomainCandidates } from "@/server/pulse-lite/registrable-domain";
 import { type DmarcTags, parseDmarcTags } from "@/server/pulse-scan";
+import { dkimVerdict } from "./dkim-record";
 
 const CATEGORY = CATEGORIES.EMAIL;
 
@@ -338,8 +339,8 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   if (!dkim.ok) {
     checks.push(probeInconclusive(CATEGORY, "dkim_record_present", "DKIM record configured", dnsFailed(dkim.reason)));
   } else {
-    const hasDkim = dkim.records.some((r) => r.includes("v=DKIM1"));
-    checks.push({ category: CATEGORY, checkKey: "dkim_record_present", label: "DKIM record configured", status: hasDkim ? "PASS" : "WARN", detail: hasDkim ? "DKIM TXT record detected — outbound email is cryptographically signed." : "No common DKIM selectors found — DKIM signing is required for inbox placement and DMARC enforcement. Configure DKIM with your ESP." });
+    // A revoked key (empty p=) is not a key, and four selectors are not all of them (dkim-record.ts).
+    checks.push(dkimVerdict({ category: CATEGORY, checkKey: "dkim_record_present", label: "DKIM record configured" }, dkim, spfLookup));
   }
 
   // BIMI

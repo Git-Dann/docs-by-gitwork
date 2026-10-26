@@ -2,6 +2,7 @@ import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { ExtendedCheckContext } from "./_types";
 import { skip } from "./_types";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 const CATEGORY = CATEGORIES.AI_READINESS;
 
@@ -68,25 +69,14 @@ export async function runAiReadinessChecks(
   });
 
   // 2. AI error / fallback state
-  const hasErrorFallback =
-    htmlLower.includes("try again") ||
-    htmlLower.includes("ai unavailable") ||
-    htmlLower.includes("generating...") ||
-    htmlLower.includes("thinking...") ||
-    htmlLower.includes("skeleton") ||
-    htmlLower.includes("spinner") ||
-    htmlLower.includes("fallback mode") ||
-    (htmlLower.includes("loading") && htmlLower.includes("ai"));
-
-  checks.push({
-    category: CATEGORY,
-    checkKey: "ai_error_fallback_ui",
-    label: "AI error / fallback state in UI",
-    status: hasErrorFallback ? "PASS" : "WARN",
-    detail: hasErrorFallback
-      ? "Error or loading state detected — the app handles AI delays or provider failures gracefully."
-      : "No AI error or loading state detected. When the AI provider fails or is slow, users will see blank or broken output.",
-  });
+  // Copy that ties an AI answer to a failure or wait, in one run of readable text. 'ai' is
+  // inside 'email' and 'detail', and 'skeleton'/'spinner' are CSS class names on any page.
+  // An error state renders only when something fails, so silence here is not a finding.
+  const fallbackBase = { category: CATEGORY, checkKey: "ai_error_fallback_ui", label: "AI error / fallback state in UI" };
+  const fallbackQuote = findClaim(proseRuns(ctx.contentHtml ?? ctx.pageResult.html), /\b(?:AI|assistant|model|chatbot|copilot|answer|response|generation|reply)\b[^.!?]{0,40}\b(?:(?:is\s+)?(?:currently\s+)?unavailable|failed|went\s+wrong|couldn'?t|could\s+not|unable\s+to|timed\s+out|try\s+again)\b|\b(?:thinking|generating)(?:\.{3}|…)/i);
+  checks.push(fallbackQuote
+    ? claimSeen(fallbackBase, "The page carries wording for when an AI answer fails or is still coming.", fallbackQuote)
+    : claimUnseen(fallbackBase, "The scanned page shows no wording for an AI answer that fails or is slow. Error and loading states appear only when they happen, which a single page load does not trigger, so this does not show they are missing."));
 
   // 3. Streaming AI response pattern
   const hasStreamingUi =
@@ -109,26 +99,13 @@ export async function runAiReadinessChecks(
   });
 
   // 4. AI cost / observability monitoring
-  const hasCostMonitoring =
-    htmlLower.includes("helicone") ||
-    htmlLower.includes("langsmith") ||
-    htmlLower.includes("langfuse") ||
-    htmlLower.includes("portkey") ||
-    htmlLower.includes("arize") ||
-    htmlLower.includes("traceloop") ||
-    htmlLower.includes("braintrust") ||
-    htmlLower.includes("wandb") ||
-    htmlLower.includes("weights & biases");
-
-  checks.push({
-    category: CATEGORY,
-    checkKey: "ai_cost_monitoring_script",
-    label: "AI cost / usage monitoring tool",
-    status: hasCostMonitoring ? "PASS" : "WARN",
-    detail: hasCostMonitoring
-      ? "AI observability or cost monitoring tool detected — LLM spend and usage are tracked."
-      : "No AI observability tool detected. Without LLM cost monitoring, API spend can grow unnoticed and unpredictably in production.",
-  });
+  // These tools run on the server, so only a request to their own hosts from the page's
+  // scripts is evidence. 'arize' is inside 'summarize' and 'categorize'.
+  const costBase = { category: CATEGORY, checkKey: "ai_cost_monitoring_script", label: "AI cost / usage monitoring tool" };
+  const costHost = aiObservabilityHost(ctx.pageResult.html);
+  checks.push(costHost
+    ? { ...costBase, status: "PASS", detail: `The page's scripts call ${costHost}, an LLM observability and cost monitoring service.` }
+    : claimUnseen(costBase, "No LLM observability service (Helicone, Langfuse, LangSmith and similar) is called from the page's scripts. These tools are normally called from the server, which this scan cannot see, so this does not show AI spend is unmonitored."));
 
   // 5. Content safety / moderation
   const hasContentSafety =
@@ -238,4 +215,24 @@ export async function runAiReadinessChecks(
   });
 
   return checks;
+}
+
+const AI_OBSERVABILITY_HOSTS = /\b((?:[a-z0-9-]+\.)*(?:helicone\.ai|langfuse\.com|smith\.langchain\.com|api\.smith\.langchain\.com|portkey\.ai|arize\.com|traceloop\.com|braintrust\.dev|wandb\.ai|lunary\.ai|openmeter\.io))\b/i;
+
+/**
+ * The LLM observability host a page's own scripts reach, or null: a script src, or a URL
+ * string inside an inline script. A link to the vendor's site in the page text is not use.
+ */
+export function aiObservabilityHost(html: string): string | null {
+  const scripts = html.match(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi) ?? [];
+  for (const tag of scripts) {
+    const src = /\bsrc\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1];
+    const haystack = src ? src : tag.replace(/^<script\b[^>]*>/i, "");
+    const urls = haystack.match(/https?:\/\/[a-z0-9.-]+/gi) ?? [];
+    for (const url of urls) {
+      const host = AI_OBSERVABILITY_HOSTS.exec(url);
+      if (host) return host[1].toLowerCase();
+    }
+  }
+  return null;
 }

@@ -26,6 +26,7 @@ import {
 } from "./pulse-checks/native-mobile";
 import { detectRepoShape, getRepoSnapshot, type SnapshotShape } from "./pulse-checks/native-repo";
 import { runStandardsVerificationCatalog } from "./pulse-checks/standards-verification";
+import { appIconSizesVerdict, companyRegistrationVerdict, cookieBannerSignals, cookieConsentGranularVerdict, cookieTrackersLoaded, corsWildcardVerdict } from "./pulse-checks/page-signals";
 import { fetchScannableUrl } from "./pulse-lite/url-guard";
 import {
   detectUrlSurfaceKind,
@@ -5176,18 +5177,9 @@ export async function runUrlChecks(
         : "No dedicated screenshot assets — App Store and Play Store listings require 3–8 high-quality screenshots.",
     });
 
-    const appleTouchIconCount = (pageResult.html.match(/apple-touch-icon/gi) ?? []).length;
-    checks.push({
-      category: CATEGORIES.APP_STORE,
-      checkKey: "app_icon_sizes",
-      label: "App icon multiple resolutions",
-      status: appleTouchIconCount >= 2 ? "PASS" : appleTouchIconCount === 1 ? "WARN" : "WARN",
-      detail: appleTouchIconCount >= 2
-        ? `${appleTouchIconCount} Apple touch icon sizes detected — iOS device resolutions covered.`
-        : appleTouchIconCount === 1
-          ? "Only one Apple touch icon size — add 60×60, 76×76, 120×120, and 180×180 variants for full iOS support."
-          : "No Apple touch icon — required for iOS home screen installation and App Store submission.",
-    });
+    // Parsed <link> elements and their sizes (page-signals.ts). Counting the string
+    // "apple-touch-icon" read one icon as two, and one 180x180 icon covers every device.
+    checks.push(appIconSizesVerdict({ category: CATEGORIES.APP_STORE, checkKey: "app_icon_sizes", label: "App icon multiple resolutions" }, pageResult.html));
     } // end if (ctx.isMobileApp) — additional App Store section
 
     // ─── Additional Global Distribution ────────────────────────────────────────
@@ -5234,16 +5226,9 @@ export async function runUrlChecks(
         : "No EU data residency signals — EU enterprise buyers require data to stay within the EU under GDPR.",
     });
 
-    const hasCompanyRegistration = /company (number|reg|registration)|registered in|vat number|registered company|\b(ltd|llc|inc|gmbh|bv|ab)\b/i.test(pageResult.html);
-    checks.push({
-      category: CATEGORIES.GLOBAL_DISTRIBUTION,
-      checkKey: "company_registration_info",
-      label: "Company registration info",
-      status: hasCompanyRegistration ? "PASS" : "WARN",
-      detail: hasCompanyRegistration
-        ? "Company registration details detected in page — legal entity transparency confirmed."
-        : "No company registration visible — EU regulations require displaying registered company name and number in footer.",
-    });
+    // A registration statement in readable text (page-signals.ts). A bare company suffix
+    // ('© … Inc.' of a third party, or the word 'AB') is not one.
+    checks.push(companyRegistrationVerdict({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "company_registration_info", label: "Company registration info" }, contentHtml));
 
     const hasTimezoneAware = ["timezone", "time zone", "local time", "utc offset", "intl.datetimeformat"].some((s) => htmlLower.includes(s));
     checks.push({
@@ -5646,18 +5631,9 @@ export async function runUrlChecks(
           : "Server header not present — server identity and version are not disclosed.",
     });
 
-    const a3CorsHeader = pageResult.headers["access-control-allow-origin"] ?? "";
-    checks.push({
-      category: CATEGORIES.SECURITY,
-      checkKey: "cors_not_wildcard",
-      label: "CORS not open to all origins",
-      status: a3CorsHeader === "*" ? "FAIL" : "PASS",
-      detail: a3CorsHeader === "*"
-        ? "Access-Control-Allow-Origin: * allows any website to read your API responses, enabling data theft and CSRF-style attacks. Restrict to specific trusted origins."
-        : a3CorsHeader
-          ? `CORS origin is restricted to "${a3CorsHeader}".`
-          : "No CORS header present on the main page.",
-    });
+    // A wildcard carries no credentials, so on its own it exposes nothing private: a
+    // warning about where else it is sent, not a failure (page-signals.ts).
+    checks.push(corsWildcardVerdict({ category: CATEGORIES.SECURITY, checkKey: "cors_not_wildcard", label: "CORS not open to all origins" }, pageResult.headers));
 
     // ─── A4: Content Quality (HTML analysis) ──────────────────────────────────
     const strippedText = contentHtml.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -5996,19 +5972,22 @@ export async function runUrlChecks(
         : "No search functionality detected. Apps without search force users to navigate manually — search reduces time-to-value.",
     });
 
-    const hasGranularConsent = hasGranularCookieControls(pageResult.html);
-    const hasBasicConsent = /cookie\s*(consent|banner|notice)|we\s+use\s+cookies|this\s+site\s+uses\s+cookies/i.test(pageResult.html);
-    checks.push({
-      category: CATEGORIES.LEGAL,
-      checkKey: "cookie_consent_granular",
-      label: "Granular cookie consent (accept/reject all)",
-      status: hasGranularConsent ? "PASS" : hasBasicConsent ? "WARN" : "FAIL",
-      detail: hasGranularConsent
-        ? "Granular cookie consent (accept all / reject all / manage preferences) detected — GDPR-compliant consent flow."
-        : hasBasicConsent
-          ? "Basic cookie notice detected but no reject/manage options — GDPR requires granular consent with the ability to decline non-essential cookies."
-          : "No cookie consent mechanism detected — required by GDPR, ePrivacy Directive, and CCPA for sites using tracking cookies.",
-    });
+    // Read the rendered DOM too, where consent managers inject their buttons. Missing
+    // consent is a finding only when a cookie-setting tracker is actually loaded: the old
+    // FAIL fired on example.com and on the JSON API api.github.com (page-signals.ts).
+    // Banner wording is read as visible text: a script identifier such as `cookieBanner`
+    // is not a banner.
+    const bannerStatic = cookieBannerSignals(pageResult.html);
+    const bannerRendered = contentHtml !== pageResult.html ? cookieBannerSignals(contentHtml) : bannerStatic;
+    checks.push(cookieConsentGranularVerdict(
+      { category: CATEGORIES.LEGAL, checkKey: "cookie_consent_granular", label: "Granular cookie consent (accept/reject all)" },
+      {
+        hasGranular: bannerStatic.granular || bannerRendered.granular,
+        hasBanner: bannerStatic.notice || bannerRendered.notice,
+        hasMechanism: hasCookieConsentMechanism(pageResult.html) || (contentHtml !== pageResult.html && hasCookieConsentMechanism(contentHtml)),
+        trackers: cookieTrackersLoaded(pageResult.html),
+      },
+    ));
 
     const hasNewsletter = /newsletter|\bsubscribe\b|mailing\s+list|email\s+updates/i.test(pageResult.html);
     checks.push({
