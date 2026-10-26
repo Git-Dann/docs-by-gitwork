@@ -7795,10 +7795,12 @@ the features page and `llms.txt` all read it. The count went from **1,700 rows t
 **Not verified against production data:** projects grouping on real history, and the TLS read on
 the VPS.
 
-⚠️ **`npm run verify` fails at `audit:dependencies` on `main` too:** new advisories for zod, undici,
-nodemailer and ip-address. `npm audit fix --package-lock-only` clears them, but it moves ~600
-lockfile lines including puppeteer-core (PDF rendering), so it belongs in its own change with a
-build and a PDF check. Everything else in the gate is green.
+**Dependency advisories cleared (same day).** New advisories for zod, undici, nodemailer and
+ip-address had turned `audit:dependencies` red on `main`, and the pre-push hook blocks on it. Fixed
+in the lockfile only (`npm audit fix --package-lock-only`), as its own commit. Every bump stays
+inside its current major version: puppeteer-core 25.1 → 25.16, zod 4.3 → 4.6, mailparser 3.9 → 3.12,
+nodemailer 10.0 → 10.2. Verified with a real `npm ci`, the full gate, `next build`, and a
+puppeteer-core PDF render.
 
 ### 84.3 One clear scan page
 
