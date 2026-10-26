@@ -7904,3 +7904,30 @@ back office).
 gate's failure count, `rankFindings` (and so Fix first) and the MCP verdict's issue lists all skip
 them; the full check list still shows them. Found on the live linear.app scan, where one unlabelled
 button was three gate failures, and vercel/commerce, whose vulnerable libraries appeared twice.
+
+### 84.7 Rendered-page accessibility checks (`rendered-a11y`)
+
+A new collector loads the page once in the shared `launchHeadlessBrowser()` Chromium (the same one the
+render and visual agents use) and measures it. It runs only on internal website scans, in parallel
+with PageSpeed. Measuring takes 0.5–1s; with launch and navigation it is 1.7–3.3s.
+- **Where it lives:** `pulse-agents/rendered-a11y-agent.ts` (launch and guard),
+  `rendered-a11y-scripts.ts` (in-page collection only), `pulse-checks/rendered-a11y.ts` (every
+  verdict, pure and unit-tested).
+- **Checks:**
+  - `rendered_keyboard_reachable`: a Tab walk, up to 120 steps.
+  - `rendered_no_keyboard_trap`.
+  - `rendered_focus_visible`: computed style before and after focus, with transitions frozen.
+  - `rendered_focus_not_obscured`.
+  - `rendered_text_contrast`: computed colour over the composited background, rounded down; text on
+    images or gradients is not judged.
+  - `touch_target_size`: the old withheld key, now measured at 390px against WCAG 2.5.8.
+  - `rendered_skip_link_works`.
+- **No evidence, no verdict:** if the browser can't run, every key is INCONCLUSIVE and the collector
+  is recorded as ERROR. These checks never pass on nothing.
+- **Verified on real sites:** gov.uk passes. Hacker News fails contrast at 3.54:1 (#828282 on
+  #f6f6ef) and tap targets (18×10px arrows), both correct. The W3C and Deque demo sites fail as
+  expected.
+- ⚠️ **Known weak spot:** linear.app's homepage mock-up uses real 14px buttons, so it fails tap targets
+  on controls that are only a picture of the product. The evidence names each element. Nothing on the
+  page marks the mock-up as decorative, so it is reported rather than guessed away.
+- **Standards:** `inclusive_access_01–05` and `11` can now be refuted by these checks. Live checks: 1,252.
