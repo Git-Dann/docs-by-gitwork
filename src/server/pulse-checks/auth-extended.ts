@@ -1,6 +1,7 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 import { claimNotApplicable, claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
+import { oauthLinkFindings, passwordRuleEvidence, tokenInLocalStorage } from "./auth-page-evidence";
 
 export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, ctx: pctx } = ctx;
@@ -50,10 +51,16 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   // a finding: on linear.app `lockout.*policy` ran 77,926 characters from an SVG symbol id.
   const runs = proseRuns(ctx.contentHtml ?? html);
   const AUTH = CATEGORIES.AUTHENTICATION;
+  // OAuth authorisation links in the page's own markup (auth-page-evidence.ts).
+  const pageHtml = ctx.contentHtml ?? html;
+  const oauth = oauthLinkFindings(pageHtml);
 
   // Session timeout
-  const hasSessionTimeout = /session.*expir|timeout.*setting|session.*length|auto.*log.*out|idle.*timeout/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "session_timeout_configured", label: "Session timeout configured", status: hasSessionTimeout ? "PASS" : "WARN", detail: hasSessionTimeout ? "Session timeout signals detected." : "No session timeout signals found — configure automatic session expiry to reduce exposure from unattended sessions." });
+  const sessionBase = { category: AUTH, checkKey: "session_timeout_configured", label: "Session timeout configured" };
+  const sessionTimeoutPhrase = findClaim(runs, /\bsessions?\b[^.!?]{0,30}\b(?:expire|expires|time out|times out|timeout)\b|\b(?:idle|inactivity|session)[- ]timeouts?\b|\b(?:automatically|auto)[- ]?(?:log(?:s|ged)?|sign(?:s|ed)?) (?:you |users )?out\b/i);
+  checks.push(sessionTimeoutPhrase
+    ? claimSeen(sessionBase, "The page says sessions time out.", sessionTimeoutPhrase)
+    : claimUnseen(sessionBase, "The scanned page does not mention session timeouts. Session lifetime is a server setting, normally only described in security docs, so this does not show it is missing."));
 
   // Account lockout
   const lockoutBase = { category: AUTH, checkKey: "account_lockout_policy", label: "Account lockout policy" };
@@ -63,8 +70,19 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
     : claimUnseen(lockoutBase, "The scanned page does not mention locking an account after failed sign-ins. Lockout is enforced by the sign-in server and only shows when it triggers, so this page cannot show whether it is in place. Confirm that repeated failures are slowed or locked."));
 
   // Password strength — not applicable to a confident OTP/passwordless-only project.
-  const hasPasswordStrength = /password.*must|password.*require|at least.*character|must contain.*uppercase|strong.*password/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "password_strength_enforced", label: "Password strength requirements", status: isOtpOnly ? "SKIPPED" : (hasPasswordStrength ? "PASS" : "WARN"), detail: isOtpOnly ? "Not applicable — this project authenticates via OTP/passwordless login, not traditional passwords." : (hasPasswordStrength ? "Password strength requirements detected." : "No password strength requirements visible — enforce minimum length (≥12 chars) and complexity; consider NIST SP 800-63B guidance.") });
+  // Read from the password field's own minlength, or a stated "at least N characters" rule.
+  // A `<strong>` tag next to a password field is not a strength rule (it was, on linear.app).
+  const passwordRule = passwordRuleEvidence(pageHtml, runs.join("\n"));
+  checks.push({
+    category: CATEGORIES.AUTHENTICATION, checkKey: "password_strength_enforced", label: "Password strength requirements",
+    ...(isOtpOnly
+      ? { status: "SKIPPED" as const, detail: "Not applicable — this project authenticates via OTP/passwordless login, not traditional passwords." }
+      : passwordRule === null
+        ? { status: "INCONCLUSIVE" as const, detail: "The scanned page shows no password-length rule (no minlength on a password field and no \"at least N characters\" text). The rule is normally shown on the sign-up form and enforced by the server, neither of which this page shows, so this is not evidence either way." }
+        : passwordRule.min >= 8
+          ? { status: "PASS" as const, detail: `The page requires passwords of at least ${passwordRule.min} characters (${passwordRule.source}). NIST SP 800-63B asks for at least 8; Pulse did not test that the server enforces it.`, evidence: passwordRule.source }
+          : { status: "WARN" as const, detail: `The page allows passwords of only ${passwordRule.min} characters (${passwordRule.source}). NIST SP 800-63B asks for a minimum of 8 characters.`, evidence: passwordRule.source }),
+  });
 
   // Passkeys / WebAuthn
   const hasWebAuthn = /webauthn|passkey|passkeys|fido2|security key|biometric.*login|face id.*login|fingerprint.*login/i.test(html);
@@ -82,16 +100,35 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
     : claimUnseen(recoveryBase, "The scanned page does not mention backup codes, a recovery phone or another way back into an account. Recovery options are set up inside account settings, which this scan cannot reach, so this does not show they are missing."));
 
   // JWT not in localStorage
-  const hasJwtLocalStorage = /localStorage\.(set|get)Item.*token|localStorage.*jwt|jwt.*localStorage/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "jwt_not_in_localstorage", label: "JWT not stored in localStorage", status: hasJwtLocalStorage ? "WARN" : "PASS", detail: hasJwtLocalStorage ? "JWT stored in localStorage detected — localStorage is accessible to any JavaScript on the page; use HttpOnly cookies for session tokens." : "No localStorage JWT storage detected — tokens appear to be stored securely." });
+  // Only the page's inline scripts are read; the bundles where storage code normally lives
+  // are not downloaded, so not finding it can never be a PASS.
+  const tokenWrite = tokenInLocalStorage(html);
+  checks.push({
+    category: CATEGORIES.AUTHENTICATION, checkKey: "jwt_not_in_localstorage", label: "JWT not stored in localStorage",
+    ...(tokenWrite
+      ? { status: "WARN" as const, detail: `An inline script on the page writes a token to localStorage (${tokenWrite}). Any script running on the page can read localStorage, so an XSS bug can steal it; an HttpOnly cookie cannot be read by scripts.`, evidence: tokenWrite }
+      : { status: "INCONCLUSIVE" as const, detail: "No inline script on the scanned page stores a token in localStorage. Token storage normally lives in the app's JavaScript bundles, which Pulse does not download, so where tokens are kept could not be established." }),
+  });
 
   // Refresh token rotation
-  const hasRefreshRotation = /refresh.*token.*rotat|token.*refresh.*rotat|rotate.*refresh/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "refresh_token_rotation", label: "Refresh token rotation", status: hasRefreshRotation ? "PASS" : "WARN", detail: hasRefreshRotation ? "Refresh token rotation signals detected." : "No refresh token rotation signals — rotating refresh tokens on each use prevents token replay attacks." });
+  const refreshBase = { category: AUTH, checkKey: "refresh_token_rotation", label: "Refresh token rotation" };
+  const refreshRotationPhrase = findClaim(runs, /\brefresh tokens?\b[^.!?]{0,60}\brotat\w*|\brotat\w*\b[^.!?]{0,40}\brefresh tokens?\b/i);
+  checks.push(refreshRotationPhrase
+    ? claimSeen(refreshBase, "The page says refresh tokens are rotated.", refreshRotationPhrase)
+    : claimUnseen(refreshBase, "The scanned page does not mention refresh token rotation. Token handling happens on the server and is normally only described in API docs, so this does not show it is missing."));
 
   // PKCE
-  const hasPkce = /pkce|code_challenge|code_verifier|proof.*key.*code.*exchange/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "pkce_oauth_flow", label: "PKCE for OAuth public clients", status: hasPkce ? "PASS" : "WARN", detail: hasPkce ? "PKCE OAuth flow signals detected." : "No PKCE signals detected — PKCE is required for all OAuth public clients (SPAs, mobile apps) per RFC 9700." });
+  // Judged from OAuth authorisation links in the page itself. A site with a /login link
+  // may not use OAuth at all, and a flow started by a script or a server redirect shows no
+  // link, so no link is INCONCLUSIVE rather than a missing-PKCE warning.
+  checks.push({
+    category: CATEGORIES.AUTHENTICATION, checkKey: "pkce_oauth_flow", label: "PKCE for OAuth public clients",
+    ...(oauth.links.length === 0
+      ? { status: "INCONCLUSIVE" as const, detail: "The scanned page contains no OAuth authorisation link. Sign-in flows are normally started by a script or a server redirect, where the code_challenge parameter is not visible to Pulse." }
+      : oauth.withoutPkce.length > 0
+        ? { status: "WARN" as const, detail: `An OAuth authorisation link on the page (${oauth.withoutPkce[0]}) requests an authorisation code without a code_challenge. RFC 9700 recommends PKCE for every client that uses the authorisation code flow.`, evidence: oauth.withoutPkce[0] }
+        : { status: "PASS" as const, detail: `The OAuth authorisation link${oauth.links.length > 1 ? "s" : ""} on the page carr${oauth.links.length > 1 ? "y" : "ies"} a code_challenge (PKCE).`, evidence: oauth.links[0] }),
+  });
 
   // API key creation UI
   // "Not applicable" used to be reported as a PASS, which counted toward the score of
@@ -108,12 +145,25 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
 
   // OAuth minimal scopes — only the excessive-scope signal drives the verdict; the minimal-scope
   // signal was used in an earlier version but didn't add value beyond the excessive check.
-  const hasExcessiveScopes = /scope.*admin|scope.*write.*all|full.*access/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "oauth_minimal_scopes", label: "Minimal OAuth scope requests", status: hasExcessiveScopes ? "WARN" : "PASS", detail: hasExcessiveScopes ? "Broad OAuth scopes detected — request only the minimum permissions needed (principle of least privilege)." : "No overly broad OAuth scopes detected." });
+  // The scope parameter of the page's own OAuth authorisation links, not the words "full
+  // access" in marketing copy (79,066 characters apart on linear.app).
+  checks.push({
+    category: CATEGORIES.AUTHENTICATION, checkKey: "oauth_minimal_scopes", label: "Minimal OAuth scope requests",
+    ...(oauth.scopes.length === 0
+      ? { status: "INCONCLUSIVE" as const, detail: "The scanned page contains no OAuth authorisation link with a scope parameter, so the permissions the app requests could not be read." }
+      : oauth.broadScopes.length > 0
+        ? { status: "WARN" as const, detail: `The page's OAuth link requests broad scope${oauth.broadScopes.length > 1 ? "s" : ""}: ${oauth.broadScopes.join(", ")}. Request the narrowest scope the feature needs; users are more willing to grant less.`, evidence: oauth.broadScopes.join(" ") }
+        : { status: "PASS" as const, detail: `The page's OAuth link requests: ${oauth.scopes.slice(0, 8).join(", ")}. None of these is a broad admin or full-access scope.`, evidence: oauth.scopes.slice(0, 8).join(" ") }),
+  });
 
   // Service accounts
-  const hasServiceAccounts = /service.*account|machine.*to.*machine|m2m|api.*secret|client.*credential|client_credentials/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "service_account_support", label: "Machine-to-machine / service account tokens", status: pctx.isSaas && pctx.hasBackend ? (hasServiceAccounts ? "PASS" : "WARN") : "PASS", detail: pctx.isSaas && pctx.hasBackend ? (hasServiceAccounts ? "Service account / M2M auth signals detected." : "SaaS API product detected but no service account support — enterprise integrations require M2M authentication (OAuth client credentials flow).") : "Not applicable." });
+  const serviceBase = { category: AUTH, checkKey: "service_account_support", label: "Machine-to-machine / service account tokens" };
+  const serviceAccountPhrase = findClaim(runs, /\bservice accounts?\b|\bmachine[- ]to[- ]machine\b|\bM2M\b|\bclient[ _]credentials\b|\b(?:bot|robot|integration) (?:accounts?|users?|tokens?)\b/i);
+  checks.push(!(pctx.isSaas && pctx.hasBackend)
+    ? claimNotApplicable(serviceBase, "Not applicable: no hosted SaaS product with a backend was detected, so there is no API for machine credentials to reach.")
+    : serviceAccountPhrase
+      ? claimSeen(serviceBase, "The page says the product offers service accounts or machine-to-machine credentials.", serviceAccountPhrase)
+      : claimUnseen(serviceBase, "The scanned page does not mention service accounts or machine-to-machine credentials. They are normally documented in the API docs or set up behind sign-in, so this does not show they are missing."));
 
   // Device management
   const deviceBase = { category: AUTH, checkKey: "device_management", label: "Trusted device management" };

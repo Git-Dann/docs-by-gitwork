@@ -3,6 +3,7 @@ import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs, 
 import { analyzeHost } from "@/server/pulse-lite/registrable-domain";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
 import { dnsTtlVerdict, observeDnsTtl } from "./dns-ttl";
+import { measurePageWeight, pageWeightVerdict } from "./page-weight";
 
 const PROBE_HEADERS = { "User-Agent": "Gitwork-Pulse/1.0" };
 /** Asset body reads are bounded in time AND size: a slow-drip or multi-MB file must not stall a scan. */
@@ -418,9 +419,10 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
   }
   checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "font_preload_hint", label: "Fonts preloaded", ...fontPreload });
 
-  // Page weight (rough estimate from HTML size)
-  const htmlSizeKb = (html.length / 1024);
-  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "total_page_weight", label: "Total page weight < 3MB", status: htmlSizeKb < 300 ? "PASS" : "WARN", detail: htmlSizeKb < 300 ? `HTML document is ${Math.round(htmlSizeKb)}KB — total page weight likely within budget.` : `HTML document alone is ${Math.round(htmlSizeKb)}KB — verify total page weight (images + JS + CSS) stays under 3MB for good mobile performance.` });
+  // Page weight: the HTML plus the measured sizes of what it references (page-weight.ts).
+  // It used to count only the HTML's characters and call the total "likely within budget".
+  const weight = await measurePageWeight(html, ctx.pageResult.finalUrl || ctx.httpsUrl, ctx.pageResult.headers["content-length"]);
+  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "total_page_weight", label: "Total page weight < 3MB", ...pageWeightVerdict(weight) });
 
   // Third-party render-blocking scripts
   const thirdPartyBlocking = html.match(/<script(?![^>]*(async|defer))[^>]+(googleapis|googletagmanager|facebook|twitter|hotjar|intercom)[^>]*>/gi) ?? [];

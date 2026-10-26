@@ -70,10 +70,6 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
     ? claimSeen(hoursBase, "The page shows when the business or support team is available.", hoursQuote)
     : claimUnseen(hoursBase, "The scanned page does not show opening or support hours. They are often on a contact page, which this check does not read, so this does not show they are missing. Showing when people can expect a reply reduces frustration."));
 
-  const hasVatNumber = /vat.*number|vat reg|gb\d{9}|eu\d{9}|\bvat\b.*\d{7,12}/i.test(html);
-  const isEuProduct = /\.eu\b/.test(ctx.hostname) || html.toLowerCase().includes("€") || html.toLowerCase().includes("vat");
-  checks.push({ category: CATEGORY, checkKey: "vat_number_displayed", label: "VAT number in footer (EU B2B)", status: isEuProduct ? (hasVatNumber ? "PASS" : "WARN") : "PASS", detail: isEuProduct ? (hasVatNumber ? "VAT registration number signals detected." : "EU signals detected but no VAT number — EU B2B customers need your VAT number for reverse-charge invoicing and expense claims.") : "Not applicable." });
-
   // Visible prose: scripts, styles, JSON payloads and locale switchers removed, tags
   // stripped, whitespace collapsed. Checks that read phrases read THIS, so a bounded
   // window cannot be bridged by minified markup.
@@ -81,6 +77,7 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
     .replace(/&#163;|&pound;/gi, "£")
+    .replace(/&euro;|&#8364;|&#x20ac;/gi, "€")
     .replace(/&amp;/gi, "&")
     .replace(/\s+/g, " ");
 
@@ -99,6 +96,20 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   if (/£\s?\d/.test(visibleText)) ukReasons.push("£ price");
   if (/\+44[\s.-]?\(?0?\)?\s?\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/.test(visibleText)) ukReasons.push("+44 phone number");
   const isUkProduct = ukReasons.length > 0;
+
+  // The e-Commerce Directive (art. 5) and the UK e-Commerce Regulations 2002 (reg. 6) ask a
+  // VAT-registered business to give its VAT number. Applies to EU and UK businesses only;
+  // non-EU sites used to get a free PASS, and "vat" anywhere made a site "EU".
+  const euReasons = euMarketReasons(ctx.hostname, visibleText, docRegion);
+  const vatId = vatNumberOnPage(visibleText);
+  checks.push({
+    category: CATEGORY, checkKey: "vat_number_displayed", label: "VAT number shown (EU / UK)",
+    ...(!isUkProduct && euReasons.length === 0
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no EU or UK signals on the scanned page (domain, page language, euro or sterling price, UK postcode or phone number)." }
+      : vatId
+        ? { status: "PASS" as const, detail: `The page shows a VAT number ("${vatId}").`, evidence: vatId }
+        : { status: "INCONCLUSIVE" as const, detail: `EU or UK signals found (${[...ukReasons, ...euReasons].join(", ")}), but the scanned page shows no VAT number. Only a VAT-registered business must give one, and it is normally on a legal, contact or Impressum page, so this is not evidence either way.` }),
+  });
   // A registered company: the page says it is one, or names its company form.
   const isUkCompany = isUkProduct && (/\b(?:ltd|limited|plc|llp)\b/i.test(visibleText) || /\bregistered in (?:england|wales|scotland|northern ireland)\b|\bcompanies house\b/i.test(visibleText));
   // A company number is 8 characters: 8 digits, or a 2-letter prefix (SC, NI, OC…) + 6
@@ -135,8 +146,17 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   const hasEsignature = /esignature|e-signature|docusign|hellosign|sign now|adobe.*sign|pandadoc|electronic.*signature/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "esignature_support", label: "eSignature / contract workflow", status: hasEsignature ? "PASS" : "WARN", detail: hasEsignature ? "eSignature / contract workflow signals detected." : "No eSignature signals — B2B contracts require legal electronic signatures; integrations with DocuSign, HelloSign, or PandaDoc streamline procurement." });
 
-  const hasInvoicing = /invoice.*generation|tax.*invoice|generate.*invoice|download.*invoice|billing.*invoice|vat.*invoice/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "invoice_generation_b2b", label: "Invoice / tax invoice generation", status: hasInvoicing ? "PASS" : "WARN", detail: hasInvoicing ? "Invoice generation signals detected." : "No invoice generation signals — B2B customers in all markets require VAT/tax invoices for expense reporting and bookkeeping." });
+  // Only a site that takes payments issues invoices; sites with no payments used to be told
+  // to generate VAT invoices. Read from visible copy, one sentence at a time.
+  const invoicePhrase = /\b(?:download|generate|get|receive|view)\w*\s+(?:your\s+)?(?:VAT\s+|tax\s+|PDF\s+)?invoices?\b|\b(?:VAT|tax) invoices?\b|\binvoices? (?:are |is )?(?:sent|emailed|generated|available)\b|\binvoice (?:history|PDFs?)\b|\bpay by invoice\b/i.exec(visibleText)?.[0];
+  checks.push({
+    category: CATEGORY, checkKey: "invoice_generation_b2b", label: "Invoice / tax invoice generation",
+    ...(!ctx.ctx.isPaymentEnabled
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no payment processing was detected, so there is nothing to invoice." }
+      : invoicePhrase
+        ? { status: "PASS" as const, detail: `The page says customers get invoices ("${invoicePhrase}"). Pulse did not see an invoice itself.`, evidence: invoicePhrase }
+        : { status: "INCONCLUSIVE" as const, detail: "The page takes payments but does not mention invoices. Invoices normally live in the billing area behind sign-in or on the pricing FAQ, so their absence here is not evidence either way." }),
+  });
 
   const hasInsurance = /professional.*indemnity|liability.*insurance|insurance.*certificate|indemnity.*insurance/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "insurance_mention", label: "Professional indemnity insurance", status: hasInsurance ? "PASS" : "WARN", detail: hasInsurance ? "Professional indemnity insurance signals detected." : "No insurance mention — enterprise and government procurement often require proof of professional indemnity insurance as a condition of contracting." });
@@ -161,9 +181,19 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   const hasVendorDueDiligence = /vendor.*assessment|supplier.*due.*diligence|third.*party.*risk|sub.processor.*review|vendor.*security/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "supplier_due_diligence", label: "Vendor / sub-processor due diligence", status: hasVendorDueDiligence ? "PASS" : "WARN", detail: hasVendorDueDiligence ? "Vendor due diligence signals detected." : "No vendor due diligence signals — document your process for assessing sub-processors; enterprise DPOs require evidence of third-party risk management." });
 
-  const hasModernSlavery = /modern slavery|human trafficking|slavery.*act|forced.*labour.*statement/i.test(html);
-  const isLargeOrg = /enterprise|£|million|billion|employee.*\d{3}/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "modern_slavery_statement", label: "Modern Slavery Act statement (UK)", status: isLargeOrg && isUkProduct ? (hasModernSlavery ? "PASS" : "WARN") : "PASS", detail: isLargeOrg && isUkProduct ? (hasModernSlavery ? "Modern Slavery Act statement detected." : "UK organisation signals detected — UK companies with >£36M turnover must publish a Modern Slavery Act transparency statement.") : "Not applicable at this stage." });
+  // The duty (Modern Slavery Act 2015 s.54) falls on UK commercial organisations with
+  // turnover of £36m or more, which a web page cannot show. So: not UK is not applicable,
+  // a statement or a link to one passes, and anything else is unestablished.
+  const slaveryStatement = /\bmodern slavery(?: act)?(?: (?:and human trafficking )?statement)?\b/i.exec(visibleText)?.[0]
+    ?? (/\shref\s*=\s*["'][^"']*modern[-_]?slavery[^"']*["']/i.test(html) ? "a link to a modern slavery page" : null);
+  checks.push({
+    category: CATEGORY, checkKey: "modern_slavery_statement", label: "Modern Slavery Act statement (UK)",
+    ...(!isUkProduct
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no UK signals on the scanned page, and the Modern Slavery Act duty applies to organisations doing business in the UK." }
+      : slaveryStatement
+        ? { status: "PASS" as const, detail: `The page links to or names a modern slavery statement ("${slaveryStatement}").`, evidence: slaveryStatement }
+        : { status: "INCONCLUSIVE" as const, detail: `UK signals found (${ukWhy}), but the homepage has no modern slavery statement link. The duty applies only to organisations with turnover of £36m or more, which Pulse cannot see; those must link to the statement from a prominent place on their homepage.` }),
+  });
 
   const hasAntiBribery = /anti.bribery|bribery.*act|anti.*corruption|gifts.*hospitality.*policy/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "bribery_act_policy", label: "Anti-bribery policy (UK Bribery Act)", status: isUkProduct ? (hasAntiBribery ? "PASS" : "WARN") : "PASS", detail: isUkProduct ? (hasAntiBribery ? "Anti-bribery policy signals detected." : "UK signals detected — the UK Bribery Act 2010 requires organisations to have 'adequate procedures' to prevent bribery; an anti-bribery policy is the key evidence.") : "Not applicable." });
@@ -172,4 +202,28 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   checks.push({ category: CATEGORY, checkKey: "whistleblower_policy", label: "Whistleblower / speak-up policy", status: hasWhistleblower ? "PASS" : "WARN", detail: hasWhistleblower ? "Whistleblower / speak-up policy signals detected." : "No whistleblower policy detected — EU Whistleblower Protection Directive requires organisations with >50 employees to have a formal reporting channel." });
 
   return checks;
+}
+
+const EU_CCTLD = /\.(?:at|be|bg|cy|cz|de|dk|ee|es|eu|fi|fr|gr|hr|hu|ie|it|lt|lu|lv|mt|nl|pl|pt|ro|se|si|sk)$/;
+const EU_REGIONS = new Set(["at", "be", "bg", "cy", "cz", "de", "dk", "ee", "es", "fi", "fr", "gr", "hr", "hu", "ie", "it", "lt", "lu", "lv", "mt", "nl", "pl", "pt", "ro", "se", "si", "sk"]);
+
+/** Why the page reads as an EU business: an EU ccTLD, an EU page-language region, or a euro price. */
+export function euMarketReasons(hostname: string, visibleText: string, docRegion: string): string[] {
+  const reasons: string[] = [];
+  if (EU_CCTLD.test(hostname)) reasons.push("EU domain");
+  if (EU_REGIONS.has(docRegion)) reasons.push(`page language region ${docRegion.toUpperCase()}`);
+  if (/€\s?\d|\d\s?€|\bEUR\s?\d/.test(visibleText)) reasons.push("euro price");
+  return reasons;
+}
+
+/**
+ * A VAT identification number in the visible text: a label (VAT, USt-IdNr, TVA, P.IVA,
+ * BTW…) followed by an identifier with at least seven digits, or a country-prefixed
+ * number in a published national format.
+ */
+export function vatNumberOnPage(visibleText: string): string | null {
+  const labelled = /\b(?:VAT(?:\s+(?:reg(?:istration)?|registered|no\.?|number|ID|nr\.?))*|USt-?IdNr\.?|Umsatzsteuer-?(?:ID|Identifikationsnummer)|TVA(?: intracommunautaire)?|N° TVA|P\.?\s?IVA|Partita IVA|BTW(?:-?(?:nummer|nr\.?))?|NIF-IVA)\s*[:.#]?\s*((?:[A-Z]{2,3}\s?)?[0-9][0-9A-Z .-]{5,16}[0-9A-Z])/i.exec(visibleText);
+  if (labelled && (labelled[1].match(/\d/g) ?? []).length >= 7) return labelled[0].replace(/\s+/g, " ").trim().slice(0, 60);
+  const prefixed = /\b(?:GB\s?\d{3}\s?\d{4}\s?\d{2}(?:\s?\d{3})?|DE\s?\d{9}|ATU\s?\d{8}|FR\s?[0-9A-HJ-NP-Z]{2}\s?\d{9}|NL\s?\d{9}\s?B\s?\d{2}|IE\s?\d{7}[A-W][A-I]?|IT\s?\d{11}|ES\s?[A-Z0-9]\d{7}[A-Z0-9]|BE\s?[01]\d{9})\b/.exec(visibleText);
+  return prefixed ? prefixed[0] : null;
 }

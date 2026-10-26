@@ -3,6 +3,7 @@ import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
 import { documentLanguage, stripNonMarketContext } from "./jurisdictions";
 import { claimNotApplicable, claimSeen, claimUnseen, findClaim, pageAnchors, proseRuns } from "./page-claims";
 import { isDmaGatekeeperHost } from "./legal-claims";
+import { cardDataHandling } from "./payment-page-evidence";
 
 export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult, htmlLower } = ctx;
@@ -268,12 +269,35 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
 
   // ─── Industry-Specific ──────────────────────────────────────────────────────
 
-  const hasHipaa = /hipaa|business associate agreement|baa|protected health information|phi\b|healthcare compliance/i.test(html);
-  const isHealthcare = htmlLower.includes("health") || htmlLower.includes("medical") || htmlLower.includes("patient") || htmlLower.includes("clinical");
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "hipaa_signals", label: "HIPAA compliance signals (healthcare)", status: isHealthcare ? (hasHipaa ? "PASS" : "WARN") : "PASS", detail: isHealthcare ? (hasHipaa ? "HIPAA compliance signals detected (BAA, PHI handling referenced)." : "Healthcare content detected but no HIPAA reference — if handling US patient data, HIPAA requires a BAA with all vendors and strict PHI controls.") : "Not applicable — no healthcare product signals detected." });
+  // Read from the visible copy, word-bounded: an unanchored "baa" matched inside a UUID in
+  // linear.app's inline JSON, and "health" is inside every /healthcheck route.
+  const healthcareWord = findClaim(claimRuns, /\b(?:patients?|clinical|clinicians?|clinics?|medical|healthcare|health care|telehealth|telemedicine|electronic (?:health|medical) records?|EHR|EMR)\b/);
+  const hipaaPhrase = findClaim(claimRuns, /\bHIPAA\b|\bbusiness associate agreements?\b|\bBAA\b|\bprotected health information\b/i);
+  checks.push({
+    category: CATEGORIES.LEGAL, checkKey: "hipaa_signals", label: "HIPAA compliance signals (healthcare)",
+    ...(!healthcareWord
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: the scanned page does not describe a healthcare product (no mention of patients, clinical, medical or health records)." }
+      : hipaaPhrase
+        ? { status: "PASS" as const, detail: `The page describes a healthcare product ("${healthcareWord}") and mentions HIPAA ("${hipaaPhrase}"). This shows HIPAA is addressed in the site's own words; Pulse did not assess compliance.`, evidence: hipaaPhrase }
+        : { status: "INCONCLUSIVE" as const, detail: `The page describes a healthcare product ("${healthcareWord}") but does not mention HIPAA. HIPAA applies to US covered entities and their vendors, and a HIPAA statement normally sits on a security or compliance page, so its absence here is not evidence either way.` }),
+  });
 
-  const hasPci = /pci.dss|pci compliance|saq|scope reduction|cardholder data environment/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "pci_dss_scope_reduction", label: "PCI DSS scope reduction evidence", status: ctx.ctx.isPaymentEnabled ? (hasPci ? "PASS" : "WARN") : "PASS", detail: ctx.ctx.isPaymentEnabled ? (hasPci ? "PCI DSS compliance reference detected." : "Payment processing detected but no PCI DSS reference — document scope reduction strategies (SAQ, tokenisation) to reduce liability.") : "Not applicable — no payment processing detected." });
+  // Scope reduction is about WHERE card numbers are typed: into a provider's hosted field or
+  // checkout (SAQ A / A-EP), or into the site's own form (SAQ D). Read from the markup.
+  const cardData = cardDataHandling(ctx.contentHtml ?? html);
+  const pciPhrase = findClaim(claimRuns, /\bPCI[- ]DSS\b|\bPCI (?:compliant|compliance|level \d)\b|\bSAQ[- ]?(?:A-EP|A|D)\b|\bcardholder data\b/);
+  checks.push({
+    category: CATEGORIES.LEGAL, checkKey: "pci_dss_scope_reduction", label: "PCI DSS scope reduction evidence",
+    ...(!ctx.ctx.isPaymentEnabled
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no payment processing was detected." }
+      : cardData.ownCardField
+        ? { status: "WARN" as const, detail: `The page collects card numbers in its own form field (${cardData.ownCardField}), not a payment provider's hosted field. That puts your servers in PCI DSS scope (SAQ D); a hosted field or checkout keeps card data off them.`, evidence: cardData.ownCardField }
+        : cardData.hostedProvider
+          ? { status: "PASS" as const, detail: `Card entry is handled by ${cardData.hostedProvider}'s hosted checkout or fields, which keeps card numbers off your servers (PCI DSS SAQ A or A-EP).`, evidence: cardData.hostedProvider }
+          : pciPhrase
+            ? { status: "PASS" as const, detail: `The page refers to PCI DSS ("${pciPhrase}"). Pulse did not see where card numbers are entered.`, evidence: pciPhrase }
+            : { status: "INCONCLUSIVE" as const, detail: "The scanned page shows neither a card field nor a payment provider's hosted checkout, so how card data is handled could not be established. Checkout normally sits on a page Pulse did not reach." }),
+  });
 
   // What the SITE is, from its <title> and meta description, not any word in its markup:
   // linear.app's SVG `<symbol id="education">` made it an education product.
@@ -307,7 +331,6 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   // markup (linear.app: 'loops are recurring agent workflows') is not a subscription offer.
   const renewalBase = { category: CATEGORIES.LEGAL, checkKey: "auto_renewal_disclosure", label: "Auto-renewal terms prominently disclosed" };
   const recurringPrice = findClaim(claimRuns, /(?:[£€$]\s?|\b(?:USD|EUR|GBP|AUD|CAD)\s?)\d[\d,]*(?:\.\d{1,2})?\s*(?:\/\s*|per\s+|a\s+|every\s+)(?:mo(?:nth)?|yr|year|annum|week|user\s*\/\s*mo(?:nth)?)\b|\bbilled\s+(?:monthly|annually|yearly)\b/i);
-  const hasSubSignals = htmlLower.includes("subscription") || htmlLower.includes("recurring");
   const renewalQuote = recurringPrice
     ? findClaim(claimRuns, /\bauto(?:matically)?[- ]?renew\w*\b|\brenews?\s+(?:automatically|each|every|monthly|annually|yearly|at\s+the\s+end)\b|\b(?:subscriptions?|plans?)\s+(?:will\s+)?renew\w*\b/i)
     : null;
@@ -317,12 +340,36 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
       ? claimSeen(renewalBase, `The page shows a recurring price ("${recurringPrice}") and says how it renews.`, renewalQuote)
       : claimUnseen(renewalBase, `The page shows a recurring price ("${recurringPrice}") but does not say it renews automatically. Renewal terms must be clear before the customer commits, which is often at checkout; this scan does not reach checkout, so it cannot tell whether they are shown there.`));
 
-  const hasEasyCancellation = /cancel.*(anytime|subscription|plan|account)|unsubscribe|no.*lock.in/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "subscription_cancellation_easy", label: "Easy cancellation (FTC click-to-cancel)", status: hasSubSignals ? (hasEasyCancellation ? "PASS" : "WARN") : "PASS", detail: hasSubSignals ? (hasEasyCancellation ? "Easy cancellation messaging detected." : "Subscription detected but no easy cancellation signal — FTC's click-to-cancel rule requires cancellation to be as easy as sign-up.") : "No subscription signals detected." });
+  // Visible copy, bounded to one sentence; a newsletter "unsubscribe" is not a subscription
+  // cancellation, and the old `.*` matched across whole lines of minified HTML.
+  const sellsSubscription = ctx.ctx.isPaymentEnabled && /\b(?:per|a|\/)\s?(?:month|mo|year|yr)\b|\bbilled (?:monthly|annually|yearly)\b|\bmonthly plan\b|\bannual plan\b|\bsubscriptions?\b/i.test(visibleText);
+  const cancellationPhrase = findClaim(claimRuns, /\bcancel\w*\b[^.!?]{0,40}\b(?:any ?time|at any time|online|in (?:one|a few|two) clicks?|from your account|yourself)\b|\bno (?:lock[- ]in|long[- ]term contracts?|commitment|minimum term)\b|\bcancel (?:your )?(?:subscription|plan|membership) (?:at any time|any ?time|online|from)\b/i);
+  checks.push({
+    category: CATEGORIES.LEGAL, checkKey: "subscription_cancellation_easy", label: "Easy cancellation stated for subscriptions",
+    ...(!sellsSubscription
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: the scanned page does not sell a subscription." }
+      : cancellationPhrase
+        ? { status: "PASS" as const, detail: `The page says subscriptions can be cancelled easily ("${cancellationPhrase}"). Pulse did not test the cancellation flow itself.`, evidence: cancellationPhrase }
+        : { status: "INCONCLUSIVE" as const, detail: "The page sells a subscription but says nothing here about how to cancel. Cancellation terms normally sit on the pricing page, FAQ or terms, which Pulse did not read. Several US state automatic-renewal laws require online cancellation for subscriptions bought online." }),
+  });
 
-  const hasVat = /incl.*vat|including.*vat|inc\. vat|tax included|\+ vat/i.test(html);
   const hasEuSignals = /\.eu\b/.test(ctx.hostname) || /\.de\b/.test(ctx.hostname) || /\.fr\b/.test(ctx.hostname) || /\.nl\b/.test(ctx.hostname) || marketText.includes("european union") || marketText.includes("€") || marketText.includes("&euro;") || /\beur\b/.test(marketText);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "price_vat_inclusive", label: "Prices shown inc. VAT (EU requirement)", status: hasEuSignals && isEcommerce ? (hasVat ? "PASS" : "WARN") : "PASS", detail: hasEuSignals && isEcommerce ? (hasVat ? "VAT-inclusive pricing detected." : "EU market signals with pricing detected — EU Consumer Rights Directive requires prices shown to consumers to include VAT and all taxes.") : "Not applicable — no EU e-commerce signals detected." });
+  // "+ VAT" means the price EXCLUDES VAT, and "including" must be followed by VAT itself:
+  // the old greedy `including.*vat` matched "including changes to initiatives … vat" on linear.app.
+  const vatInclusive = findClaim(claimRuns, /\b(?:incl\.?|including|inc\.?)\s*(?:of\s+)?VAT\b|\bVAT included\b|\bTTC\b|\binkl\.?\s*(?:MwSt|USt)\b|\b(?:all )?tax(?:es)? included\b|\bIVA incluido\b/i);
+  const vatExclusive = findClaim(claimRuns, /\+\s*VAT\b|\b(?:excl\.?|excluding|ex\.?|plus)\s*(?:of\s+)?VAT\b|\b(?:zzgl|exkl)\.?\s*(?:MwSt|USt)\b|\b(?:excl\.?|excluding|plus) (?:sales )?tax(?:es)?\b/i);
+  const showsPrices = /[€£]\s?\d/.test(visibleText);
+  const vatMarket = (hasEuSignals || /\.uk$/.test(ctx.hostname) || marketText.includes("£")) && isEcommerce && showsPrices;
+  checks.push({
+    category: CATEGORIES.LEGAL, checkKey: "price_vat_inclusive", label: "Prices shown inc. VAT (EU / UK consumers)",
+    ...(!vatMarket
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: the scanned page shows no euro or sterling prices for a product it sells." }
+      : vatInclusive
+        ? { status: "PASS" as const, detail: `The page says its prices include VAT ("${vatInclusive}").`, evidence: vatInclusive }
+        : vatExclusive
+          ? { status: "INCONCLUSIVE" as const, detail: `The page shows prices excluding VAT ("${vatExclusive}"). That is allowed for prices aimed at business customers, but prices shown to consumers in the EU and UK must include VAT; Pulse cannot tell which audience these prices are for.`, evidence: vatExclusive }
+          : { status: "INCONCLUSIVE" as const, detail: "The page shows euro or sterling prices without saying whether they include VAT. Consumer prices must include it; whether these do could not be established from the page." }),
+  });
 
   const hasDistanceSelling = /distance (selling|contract)|right of withdrawal|eu.*consumer|consumer.*directive/i.test(html);
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "distance_selling_notice", label: "EU Distance Selling regulations disclosure", status: hasEuSignals && isEcommerce ? (hasDistanceSelling ? "PASS" : "WARN") : "PASS", detail: hasEuSignals && isEcommerce ? (hasDistanceSelling ? "Distance selling disclosure detected." : "EU e-commerce signals detected but no distance selling notice — EU Distance Selling Regulations require pre-contract information on your identity, goods, and cancellation rights.") : "Not applicable." });

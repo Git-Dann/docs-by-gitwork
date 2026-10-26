@@ -58,8 +58,11 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   const behindSignIn = "That control lives inside the signed-in product, which this scan cannot reach, so this does not show it is missing.";
 
   // RBAC
-  const hasRbac = /role.based|rbac|user.*role|assign.*role|role.*assign|role.*permission|permission.*role/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "rbac_signals", label: "Role-based access control (RBAC) UI", status: hasRbac ? "PASS" : "WARN", detail: hasRbac ? "RBAC / role management signals detected." : "No RBAC signals detected — role-based access control is essential for multi-user products to enforce least privilege." });
+  const rbacPhraseBase = { category: CATEGORY, checkKey: "rbac_signals", label: "Role-based access control (RBAC) UI" };
+  const rbacPhrase = findClaim(runs, /\brole[- ]based access(?: control)?\b|\bRBAC\b|\b(?:assign|set|change|manage|define)\w*\s+(?:user\s+|member\s+|team\s+)?roles\b|\broles? and permissions\b|\bpermissions? (?:by|per) role\b/i);
+  checks.push(rbacPhrase
+    ? claimSeen(rbacPhraseBase, "The page says the product has role-based access control.", rbacPhrase)
+    : claimUnseen(rbacPhraseBase, `The scanned page does not mention role-based access control. ${behindSignIn}`));
 
   // Admin role separation
   // `role.*admin` matched `<nav role="navigation"><a href="/admin">Admin`; a bare "Admin"
@@ -71,16 +74,25 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
     : claimUnseen(adminBase, `The scanned page does not describe separate administrator and member roles. ${behindSignIn}`));
 
   // Team management
-  const hasTeamMgmt = /team.*management|manage.*team|team.*member|add.*member|invite.*team|workspace.*member/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "team_management_ui", label: "Team / org management UI", status: hasTeamMgmt ? "PASS" : "WARN", detail: hasTeamMgmt ? "Team management UI signals detected." : "No team management UI detected — multi-user SaaS products need an interface to add, remove, and manage team members." });
+  // "Meet our team members" on an About page is not team management, so a bare "team
+  // member" does not count: the copy has to manage, add or invite people, or sell seats.
+  const teamPhraseBase = { category: CATEGORY, checkKey: "team_management_ui", label: "Team / org management UI" };
+  const teamPhrase = findClaim(runs, /\b(?:manage|add|invite|remove)\s+(?:your\s+|new\s+)?(?:team ?mates?|team members?|members|seats|users)\b|\bteam management\b|\bunlimited (?:team )?(?:members|seats|users)\b|\bper (?:seat|member)\b/i);
+  checks.push(teamPhrase
+    ? claimSeen(teamPhraseBase, "The page says team members can be managed.", teamPhrase)
+    : claimUnseen(teamPhraseBase, `The scanned page does not mention a way to manage team members. ${behindSignIn}`));
 
   // Invite workflow
   const hasInvite = /\binvit\w*[^<>"=]{0,30}\b(?:users?|members?|teammates?|colleagues?|collaborators?|guests?|clients?|others|people|team)\b|\bsend\w*[^<>"=]{0,15}\binvit|\binvitation links?\b|\binvite\w*[^<>"=]{0,15}\bby email\b/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "invite_workflow", label: "User invitation workflow", status: hasInvite ? "PASS" : "WARN", detail: hasInvite ? "User invitation workflow detected." : "No invite workflow detected — team products need an invitation system for controlled user onboarding." });
 
   // Permission matrix docs
-  const hasPermMatrix = /permission.*matrix|permission.*table|what.*can.*role|role.*comparison|access.*level/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "permission_matrix_docs", label: "Permissions matrix documentation", status: hasPermMatrix ? "PASS" : "WARN", detail: hasPermMatrix ? "Permissions matrix documentation signals detected." : "No permissions matrix found — document which roles can perform which actions to help enterprise buyers evaluate your access controls." });
+  const permMatrixBase = { category: CATEGORY, checkKey: "permission_matrix_docs", label: "Permissions matrix documentation" };
+  const permMatrix = roleTableHeader(ctx.contentHtml ?? html)
+    ?? findClaim(runs, /\bpermissions? (?:matrix|table)\b|\bwhat each role can (?:do|see|access)\b|\bcompare (?:user )?roles\b/i);
+  checks.push(permMatrix
+    ? claimSeen(permMatrixBase, "The page sets out what each role can do.", permMatrix)
+    : claimUnseen(permMatrixBase, "The scanned page does not set out what each role can do. A permissions matrix normally sits on a docs or help page, which this scan does not read, so this does not show it is missing."));
 
   // Data scope isolation
   // "Your workspace" is marketing copy, not an isolation claim; the run has to say the
@@ -104,12 +116,20 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "api_scope_documentation", label: "API scopes documented", status: hasApiScopeDocs ? "PASS" : "WARN", detail: hasApiScopeDocs ? "API scope documentation signals detected." : "No API scope documentation detected — document available OAuth/API scopes so developers can request only the permissions they need." });
 
   // Least privilege tokens
-  const hasLeastPrivilege = /scoped.*token|limited.*access.*token|read.only.*token|restricted.*token|minimal.*permission/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "least_privilege_api_tokens", label: "Scoped / least-privilege API tokens", status: hasLeastPrivilege ? "PASS" : "WARN", detail: hasLeastPrivilege ? "Scoped / least-privilege token signals detected." : "No scoped token signals — allow creating API tokens restricted to specific actions (read-only, specific resources) to enforce least privilege." });
+  const leastPrivilegePhraseBase = { category: CATEGORY, checkKey: "least_privilege_api_tokens", label: "Scoped / least-privilege API tokens" };
+  const leastPrivilegePhrase = findClaim(runs, /\b(?:scoped|fine[- ]grained|read[- ]only|restricted|limited[- ]scope)\s+(?:API\s+|access\s+|personal access\s+)?(?:tokens?|keys?)\b|\b(?:API )?(?:tokens?|keys?)\s+(?:with|limited to|restricted to)\s+(?:specific|limited|read[- ]only|selected)\s+(?:scopes?|permissions?|resources?)\b/i);
+  checks.push(leastPrivilegePhrase
+    ? claimSeen(leastPrivilegePhraseBase, "The page says API tokens can be limited to specific scopes.", leastPrivilegePhrase)
+    : claimUnseen(leastPrivilegePhraseBase, "The scanned page does not mention API tokens limited to specific scopes. Token settings normally sit in the API docs or behind sign-in so this does not show it is missing."));
 
   // Role hierarchy
-  const hasHierarchy = /admin.*manager.*user|owner.*admin.*member|super.*admin.*admin.*user|role.*level|permission.*level/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "role_hierarchy", label: "Admin > Manager > User role hierarchy", status: hasHierarchy ? "PASS" : "WARN", detail: hasHierarchy ? "Role hierarchy signals detected." : "No multi-level role hierarchy detected — a clear role hierarchy (Owner > Admin > Member > Guest) helps enterprises manage permissions at scale." });
+  const roleSet = namedRoleSet(runs.join(" "));
+  checks.push({
+    category: CATEGORY, checkKey: "role_hierarchy", label: "Admin > Manager > User role hierarchy",
+    ...(roleSet
+      ? { status: "PASS" as const, detail: `The scanned page names several user roles together (${roleSet.join(", ")}). This is what the site states; Pulse did not test how the roles are enforced.`, evidence: roleSet.join(", ") }
+      : { status: "INCONCLUSIVE" as const, detail: `The scanned page does not name a set of user roles. ${behindSignIn}` }),
+  });
 
   // Access revocation
   const revokeBase = { category: CATEGORY, checkKey: "access_revocation_ui", label: "Account deactivation / access revocation UI" };
@@ -139,8 +159,11 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "guest_anonymous_mode", label: "Guest / view-only mode", status: hasGuestMode ? "PASS" : "WARN", detail: hasGuestMode ? "Guest / view-only access signals detected." : "No guest mode detected — a view-only or guest role enables sharing with external stakeholders without giving them edit access." });
 
   // Read-only role
-  const hasReadOnly = /read.only|viewer.*role|read.*permission|view.*only.*access/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "read_only_role", label: "Read-only role available", status: hasReadOnly ? "PASS" : "WARN", detail: hasReadOnly ? "Read-only role signals detected." : "No read-only role detected — a read-only role is important for compliance (auditors, finance) who need to view but not modify data." });
+  const readOnlyPhraseBase = { category: CATEGORY, checkKey: "read_only_role", label: "Read-only role available" };
+  const readOnlyPhrase = findClaim(runs, /\b(?:read[- ]only|view[- ]only|viewer)\s+(?:roles?|access|users?|seats?|members?|permissions?)\b|\bviewers?\b[^.!?]{0,30}\bcan only\s+(?:view|see|read|comment)\b/i);
+  checks.push(readOnlyPhrase
+    ? claimSeen(readOnlyPhraseBase, "The page says the product has a read-only role.", readOnlyPhrase)
+    : claimUnseen(readOnlyPhraseBase, `The scanned page does not mention a read-only role. ${behindSignIn}`));
 
   // Data export by role
   // `role.*export` ran from `role="img"` to a JavaScript `export`; the run has to tie
@@ -156,8 +179,12 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "workspace_tenant_isolation", label: "Workspace / tenant isolation", status: hasWorkspaceIsolation ? "PASS" : "WARN", detail: hasWorkspaceIsolation ? "Workspace / tenant isolation signals detected." : "No workspace isolation signals — multi-tenant SaaS requires clear workspace boundaries to prevent data cross-contamination." });
 
   // Permission inheritance
-  const hasInheritance = /group.*permission|inherit.*permission|team.*permission|permission.*group|role.*group/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "permission_inheritance", label: "Permission inheritance (groups)", status: hasInheritance ? "PASS" : "WARN", detail: hasInheritance ? "Permission group / inheritance signals detected." : "No group-based permissions detected — group-based permission inheritance reduces admin overhead at scale." });
+  // Read from visible copy only: `role="group"` is an ARIA attribute on every other page.
+  const inheritancePhraseBase = { category: CATEGORY, checkKey: "permission_inheritance", label: "Permission inheritance (groups)" };
+  const inheritancePhrase = findClaim(runs, /\binherit\w*\b[^.!?]{0,40}\b(?:permissions?|roles?|access)\b|\b(?:permissions?|roles?|access)\b[^.!?]{0,40}\binherit\w*|\b(?:assign|grant)\w*\s+(?:roles?|permissions?|access)\s+to\s+(?:whole |entire |user )?(?:groups|teams)\b|\b(?:user|permission|security) groups\b/i);
+  checks.push(inheritancePhrase
+    ? claimSeen(inheritancePhraseBase, "The page says permissions can be granted through groups.", inheritancePhrase)
+    : claimUnseen(inheritancePhraseBase, `The scanned page does not mention permissions granted through groups. ${behindSignIn}`));
 
   // GDPR data access control
   const hasGdprAccess = /data.*access.*request|subject.*access|access.*personal.*data|export.*personal.*data/i.test(html);
@@ -179,4 +206,36 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "custom_roles", label: "Custom roles can be defined", status: hasCustomRoles ? "PASS" : "WARN", detail: hasCustomRoles ? "Custom-role configuration evidence detected." : "No custom-role support was observed. For larger teams, fixed roles often force unnecessary privileges; custom roles allow a closer least-privilege fit." });
 
   return checks;
+}
+
+/**
+ * Three or more distinct role names within one short stretch of copy ("Owner, Admin,
+ * Member and Guest roles"). A single "admin" or "member" anywhere is not a hierarchy.
+ */
+export function namedRoleSet(copy: string): string[] | null {
+  const re = /\b(owners?|admins?|administrators?|managers?|members?|editors?|viewers?|guests?|contributors?|collaborators?)\b/gi;
+  const hits = [...copy.matchAll(re)].map((m) => ({ at: m.index ?? 0, role: m[1].toLowerCase().replace(/s$/, "").replace(/^administrator$/, "admin") }));
+  for (let i = 0; i < hits.length; i++) {
+    const seen = new Set<string>();
+    for (let j = i; j < hits.length && hits[j].at - hits[i].at <= 120; j++) seen.add(hits[j].role);
+    if (seen.size >= 3) return [...seen].map((r) => r[0].toUpperCase() + r.slice(1));
+  }
+  return null;
+}
+
+const ROLE_HEADERS = new Set(["owner", "admin", "administrator", "manager", "member", "editor", "viewer", "guest", "contributor", "collaborator", "billing admin"]);
+
+/**
+ * A table on the page whose header row names two or more roles: a role-by-capability
+ * matrix. Returned as the header text it was recognised from.
+ */
+export function roleTableHeader(html: string): string | null {
+  for (const table of html.match(/<table\b[\s\S]{0,20000}?<\/table>/gi) ?? []) {
+    const headerRow = /<tr\b[\s\S]*?<\/tr>/i.exec(table)?.[0] ?? "";
+    const cells = [...headerRow.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+      .map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().toLowerCase());
+    const roles = new Set(cells.map((c) => c.replace(/s$/, "")).filter((c) => ROLE_HEADERS.has(c)));
+    if (roles.size >= 2) return cells.filter(Boolean).join(" | ").slice(0, 90);
+  }
+  return null;
 }

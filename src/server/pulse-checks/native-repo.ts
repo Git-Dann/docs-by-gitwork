@@ -172,6 +172,9 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)config\/environments\/production\.rb$/i,
   /(^|\/)config\/(application|storage|database)\.rb$/i,
   /(^|\/)\.env\.example$/i,
+  // Root .env files a repo commits, read so vibe_env_not_committed judges their CONTENTS
+  // (Next.js commits .env / .env.production as non-secret defaults by design).
+  /^\.env(?:\.[\w-]+)*$/i,
   /(^|\/)(next|nuxt|vite|svelte|astro|remix)\.config\.(js|ts|mjs|cjs)$/i,
   /(^|\/)application(-\w+)?\.(properties|ya?ml)$/i,
   /(^|\/)(nginx|default)\.conf$/i,
