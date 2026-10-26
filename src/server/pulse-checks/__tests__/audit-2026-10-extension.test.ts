@@ -95,7 +95,8 @@ describe("D2 — .tsx/.jsx are extension source", () => {
 describe("1/2 — eval is a real call, not a string, a comment, or inspectedWindow.eval", () => {
   it("passes darkreader's build-task string table and a DevTools inspectedWindow.eval", () => {
     const s = snap({
-      "manifest.json": mv3(),
+      // ext_x_no_eval_in_content reads content scripts only, so the file both families judge is declared as one.
+      "manifest.json": mv3({ content_scripts: [{ matches: ["<all_urls>"], js: ["src/devtools.js"] }] }),
       "tasks/bundle-js.js": "const replace = { 'eval(': 'void(', };\neval(code);",
       "webpack.config.js": "eval(x)",
       "src/devtools.js": "chrome.devtools.inspectedWindow.eval('document.title', cb);\nconst t = 'eval(';",
@@ -106,7 +107,7 @@ describe("1/2 — eval is a real call, not a string, a comment, or inspectedWind
   });
 
   it("passes uBlock's comment that mentions eval()", () => {
-    const s = snap({ "manifest.json": mv3(), "src/js/jsonpath.js": "/*\n *   JS eval() is not used here\n */\nexport const q = 1;\n// eval(x)\n" });
+    const s = snap({ "manifest.json": mv3({ content_scripts: [{ matches: ["<all_urls>"], js: ["src/js/jsonpath.js"] }] }), "src/js/jsonpath.js": "/*\n *   JS eval() is not used here\n */\nexport const q = 1;\n// eval(x)\n" });
     const out = all(s);
     expect(at(out, "ext_no_eval")!.status).toBe("PASS");
     expect(at(out, "ext_x_no_eval_in_content")!.status).toBe("PASS");
@@ -114,7 +115,7 @@ describe("1/2 — eval is a real call, not a string, a comment, or inspectedWind
 
   it("still FAILs a real eval(userCode) and new Function(s), in both families, naming the file", () => {
     for (const body of ["eval(userCode);", "const f = new Function(s);", "window.eval(code)"]) {
-      const out = all(snap({ "manifest.json": mv3(), "src/bg.js": body }));
+      const out = all(snap({ "manifest.json": mv3({ content_scripts: [{ matches: ["<all_urls>"], js: ["src/bg.js"] }] }), "src/bg.js": body }));
       expect(at(out, "ext_no_eval")!.status).toBe("FAIL");
       expect(at(out, "ext_x_no_eval_in_content")!.status).toBe("FAIL");
       expect(at(out, "ext_no_eval")!.evidence).toBe("src/bg.js");

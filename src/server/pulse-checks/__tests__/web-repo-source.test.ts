@@ -147,7 +147,9 @@ describe("injection — presence findings", () => {
   it("downgrades to WARN when a sanitiser is in the project", () => {
     const checks = evaluateWebSourceChecks(snapshot({
       "package.json": JSON.stringify({ dependencies: { dompurify: "^3.0.0" } }),
-      "src/Post.tsx": `<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.body) }} />`,
+      // A sanitiser in the project, but THIS site renders the raw value: WARN, not a pass.
+      "src/Post.tsx": `<div dangerouslySetInnerHTML={{ __html: post.body }} />`,
+      "src/Comment.tsx": `<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(comment.body) }} />`,
     }));
     expect(statusOf(checks, "web_raw_html_injection")).toBe("WARN");
   });

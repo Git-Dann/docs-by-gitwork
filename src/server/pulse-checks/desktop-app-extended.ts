@@ -342,7 +342,9 @@ export function evaluateDesktopExtendedChecks(
   // Tauri: the updater verifies against the pubkey in tauri.conf.json (always read).
   const hasUpdater = isElectron
     ? electronUpdaterPresent(ctx.pkg, ctx.source, ctx.builderConfig)
-    : /tauri-plugin-updater|"updater"\s*:/i.test(ctx.tauriConf + ctx.cargo + ctx.packageJson);
+    : /tauri-plugin-updater|"updater"\s*:/i.test(ctx.tauriConf + ctx.cargo + ctx.packageJson) &&
+      // Tauri v1 `"updater": { "active": false }` is a switched-off updater.
+      !/"updater"\s*:\s*\{[^}]*"active"\s*:\s*false/i.test(ctx.tauriConf);
   const sigOptOut = /verifyUpdateCodeSignature\s*[:=]\s*false/i.test(ctx.builderConfig + ctx.source);
   const updateSig = isElectron
     ? /publisherName|verifyUpdateCodeSignature|osxSign|osxNotarize|notarize|SIGNING_KEY/i.test(
@@ -359,7 +361,12 @@ export function evaluateDesktopExtendedChecks(
         ? "verifyUpdateCodeSignature is turned off, so the updater installs a downloaded build without checking who " +
           "signed it. Whoever can serve or intercept that download owns every installation."
         : updateSig
-          ? "The updater verifies a signature before applying an update."
+          ? isElectron
+            ? "Release builds are configured to be code-signed, and electron-updater and Squirrel.Mac check every " +
+              "update against that signature before applying it. The signing identity itself lives outside the " +
+              "repository."
+            : "The updater has a public key in tauri.conf.json, and Tauri refuses any update not signed with the " +
+              "matching private key."
           : isElectron
             ? "An auto-updater is in use with no explicit signature configuration in the repository. electron-updater " +
               "and Squirrel.Mac verify updates against the app's own code signature by default, so this is safe exactly " +

@@ -313,6 +313,8 @@ describe("Android — component security", () => {
     const checks = evaluateAndroidChecks(snapshot({
       "app/src/main/java/Web.kt":
         `// webView.settings.setAllowUniversalAccessFromFileURLs(true)\nwebView.loadUrl("https://x/y")`,
+      // allowFileAccess only defaults off from API 30, so the PASS needs the target read.
+      "app/build.gradle.kts": `plugins { id("com.android.application") }\nandroid { defaultConfig { targetSdk = 34 } }`,
     }));
     expect(find(checks, "android_webview_file_access")!.status).toBe("PASS");
   });
@@ -337,6 +339,8 @@ describe("Android — platform quality", () => {
     const checks = evaluateAndroidChecks(snapshot({
       "app/src/main/AndroidManifest.xml": `<manifest><application /></manifest>`,
       "app/src/main/java/Push.kt": `NotificationManagerCompat.from(ctx).notify(1, builder.build())`,
+      // The runtime permission only exists for apps targeting 33+, so the FAIL needs the target read.
+      "app/build.gradle.kts": `plugins { id("com.android.application") }\nandroid { defaultConfig { targetSdk = 34 } }`,
     }));
     expect(find(checks, "android_notification_permission")!.status).toBe("FAIL");
   });

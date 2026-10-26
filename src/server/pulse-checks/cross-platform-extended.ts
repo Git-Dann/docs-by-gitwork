@@ -39,6 +39,10 @@ interface Ctx {
   packageJson: string;
   iosPlist: string;
   androidManifest: string;
+  /** Release Android manifests only (no src/debug, test or profile overlays), for deep-link reads. */
+  releaseAndroidManifest: string;
+  /** All .entitlements contents: where iOS associated domains (universal links) live. */
+  entitlements: string;
   coverage: number;
   paths: string[];
   /** React Native only: the shipping native shell and the Expo config (CNG apps have no shell). */
@@ -93,6 +97,8 @@ function buildCtx(snapshot: RepoSnapshot, runtime: CrossPlatformRuntime): Ctx {
   let packageJson = "";
   const plist: string[] = [];
   const androidManifest: string[] = [];
+  const releaseAndroidManifest: string[] = [];
+  let entitlements = "";
   let sampled = 0;
   const ext = runtime === "flutter" ? /\.dart$/i : /\.(ts|tsx|js|jsx)$/i;
   const isRn = runtime === "react-native";
@@ -110,7 +116,10 @@ function buildCtx(snapshot: RepoSnapshot, runtime: CrossPlatformRuntime): Ctx {
     } else if (/pubspec\.ya?ml$/i.test(path)) manifests.push(text);
     else if (/(^|\/)package\.json$/i.test(path) && !packageJson) packageJson = text;
     else if (/Info\.plist$/i.test(path)) plist.push(text);
-    else if (/AndroidManifest\.xml$/i.test(path)) androidManifest.push(text);
+    else if (/AndroidManifest\.xml$/i.test(path)) {
+      androidManifest.push(text);
+      if (!/(^|\/)src\/(debug|profile|androidTest|test)\//i.test(path)) releaseAndroidManifest.push(text);
+    } else if (/\.entitlements$/i.test(path) && !isVendoredPath(path)) entitlements += "\n" + text;
   }
 
   const total = snapshot.paths.filter(isSource).length;
@@ -127,6 +136,8 @@ function buildCtx(snapshot: RepoSnapshot, runtime: CrossPlatformRuntime): Ctx {
     packageJson,
     iosPlist: shell ? shell.iosPlist : plist.join("\n"),
     androidManifest: shell ? shell.androidManifest : androidManifest.join("\n"),
+    releaseAndroidManifest: releaseAndroidManifest.join("\n"),
+    entitlements,
     coverage: total === 0 ? 0 : sampled / total,
     paths: snapshot.paths,
     shell,
@@ -346,8 +357,12 @@ export function evaluateCrossPlatformExtendedChecks(
   if (isRn && ctx.shell && ctx.expo) {
     rnDeepLinkParity(ctx.shell, ctx.expo, add);
   } else {
-    const iosLinks = /associated-domains|CFBundleURLSchemes/.test(ctx.iosPlist);
-    const androidLinks = /android:autoVerify|intent-filter/.test(ctx.androidManifest);
+    // Universal links are declared in the .entitlements file, not Info.plist. And an
+    // intent-filter is not a deep link: every Android app has the MAIN/LAUNCHER one. A
+    // deep link is a filter with a <data android:scheme>, or a verified App Link.
+    const iosLinks = /CFBundleURLSchemes/.test(ctx.iosPlist) || /associated-domains/.test(ctx.entitlements);
+    const androidLinks = /<data\b[^>]*android:scheme/.test(ctx.releaseAndroidManifest) ||
+      /android:autoVerify\s*=\s*"true"/.test(ctx.releaseAndroidManifest);
     add(
       "xp_deep_link_both_platforms",
       "Deep links are configured on both platforms",

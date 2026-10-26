@@ -312,6 +312,29 @@ function aiRepositorySafetyChecks(ctx: WebContext): PulseScanCheckInput[] {
   return checks;
 }
 
+/**
+ * Raw-HTML sites (`dangerouslySetInnerHTML`, `.innerHTML =`, `insertAdjacentHTML`),
+ * split by what they render. Safe: a string literal with no `${…}`, `JSON.stringify(…)`,
+ * or a sanitiser call. Unsafe: anything else, which is a value built at runtime.
+ */
+export function rawHtmlSites(files: Map<string, string>): { safe: number; unsafe: { path: string }[] } {
+  const SAFE_VALUE = /^(?:(["'])(?:\\.|(?!\1)[^\\\n])*\1|`[^`$]*`|JSON\.stringify\s*\(|(?:DOMPurify\s*\.\s*)?sanitize(?:Html)?\s*\(|sanitizeHtml\s*\(|xss\s*\()/;
+  let safe = 0;
+  const unsafe: { path: string }[] = [];
+  for (const [path, raw] of files) {
+    const text = stripCStyleComments(raw);
+    const values: string[] = [];
+    for (const m of text.matchAll(/dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*/g)) values.push(text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 200));
+    for (const m of text.matchAll(/\.(?:innerHTML|outerHTML)\s*=(?!=)\s*/g)) values.push(text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 200));
+    for (const m of text.matchAll(/insertAdjacentHTML\s*\(\s*[^,]+,\s*/g)) values.push(text.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 200));
+    for (const v of values) {
+      if (SAFE_VALUE.test(v.trim())) safe++;
+      else unsafe.push({ path });
+    }
+  }
+  return { safe, unsafe };
+}
+
 // ── Injection & unsafe code ─────────────────────────────────────────────────
 function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
@@ -319,12 +342,15 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
   // The single most common finding in AI-built React apps. Deliberately NOT a
   // FAIL on its own: rendering trusted, sanitised markup this way is legitimate,
   // and a scanner that fails every use is one people learn to ignore.
-  const dsi = sitesMatching(ctx, /dangerouslySetInnerHTML/);
-  const rawInner = sitesMatching(ctx, /\.innerHTML\s*=|insertAdjacentHTML\s*\(/);
-  if (dsi.count > 0 || rawInner.count > 0) {
+  // Judged per site (rawHtmlSites): markup that is a constant, JSON.stringify output
+  // (the standard Next.js JSON-LD `<script type="application/ld+json">` pattern), or
+  // passed through a sanitiser cannot carry a user's HTML, so it is not counted.
+  const html = rawHtmlSites(ctx.files);
+  if (html.unsafe.length > 0) {
     const sanitises = /DOMPurify|sanitize-html|xss\b|sanitizeHtml/i.test(
       ctx.source + JSON.stringify(ctx.pkg?.dependencies ?? {}),
     );
+    const files = [...new Set(html.unsafe.map((h) => h.path))];
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "web_raw_html_injection",
@@ -332,15 +358,25 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
       status: sanitises ? "WARN" : "FAIL",
       confidence: "MEDIUM",
       detail: sanitises
-        ? `Raw HTML rendering found in ${dsi.count + rawInner.count} file(s), and a sanitiser (DOMPurify / ` +
+        ? `Raw HTML is rendered from a value built at runtime in ${files.length} file(s), and a sanitiser (DOMPurify / ` +
           `sanitize-html) is present in this project. Confirm EVERY site that can receive user or remote content ` +
           `passes through it — a sanitiser in the dependency list is not the same as a sanitiser on this code path.`
-        : `\`dangerouslySetInnerHTML\` or a raw \`innerHTML\` assignment appears in ${dsi.count + rawInner.count} ` +
-          `file(s), with no HTML sanitiser anywhere in the project. If any of that markup can contain something a ` +
-          `user typed — a comment, a profile field, a name, anything round-tripped through your API — it is a ` +
-          `cross-site-scripting hole, and the attacker's script runs with your users' session. Render text as text, ` +
-          `and pass unavoidable HTML through DOMPurify.`,
-      evidence: [dsi.where, rawInner.where].filter(Boolean).join(" | ").slice(0, 200) || undefined,
+        : `\`dangerouslySetInnerHTML\` or a raw \`innerHTML\` assignment renders a value built at runtime in ` +
+          `${files.length} file(s), with no HTML sanitiser anywhere in the project. If any of that markup can contain ` +
+          `something a user typed (a comment, a profile field, a name, anything round-tripped through your API), it ` +
+          `is a cross-site-scripting hole, and the attacker's script runs with your users' session. Render text as ` +
+          `text, and pass unavoidable HTML through DOMPurify.`,
+      evidence: files.slice(0, 5).join(", ").slice(0, 200) || undefined,
+    });
+  } else if (html.safe > 0) {
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "web_raw_html_injection",
+      label: "Raw HTML is sanitised before rendering",
+      status: "PASS",
+      confidence: "MEDIUM",
+      detail: `${html.safe} raw HTML site(s) found, each rendering a constant, \`JSON.stringify\` output or a ` +
+        `sanitised value, none of which can carry a user's markup.`,
     });
   }
 
@@ -410,8 +446,12 @@ function injectionChecks(ctx: WebContext): PulseScanCheckInput[] {
       [new RegExp(`${quote}${c}{0,200}?${shape}${c}{0,200}?${placeholder}${c}{0,200}?${quote}\\s*%\\s*\\(?\\w`, "i"), "%-formatting"],
     );
   }
+  // 6. A TAGGED template parameterises by construction: Prisma `$queryRaw\`…${id}\``,
+  //    postgres.js / slonik / drizzle `sql\`…${x}\`` send each `${…}` as a bound value.
+  //    The tag sits immediately before the backtick, so an untagged template is one not
+  //    preceded by an identifier, `)`, `]` or `.`. `$queryRawUnsafe(\`…\`)` is not tagged.
   sqlPatterns.push([
-    new RegExp(`\`${tpl}{0,300}?${sqlShape(tpl)}${tpl}{0,300}?${valuePoint}\\$\\{`, "i"),
+    new RegExp(`(?<![\\w$)\\].]\\s*)\`${tpl}{0,300}?${sqlShape(tpl)}${tpl}{0,300}?${valuePoint}\\$\\{`, "i"),
     "template literal",
   ]);
   const found = sqlPatterns.filter(([re]) => re.test(ctx.source));

@@ -157,6 +157,47 @@ function absence(ctx: CliContext, check: Omit<PulseScanCheckInput, "confidence">
   };
 }
 
+/**
+ * Calls that run a command through a shell: child_process exec/execSync, and
+ * spawn/spawnSync/execFile/execFileSync with `shell: true`. `dynamic` when the command
+ * (or, for spawn, an argument) is built at runtime rather than written as a literal.
+ */
+export function shellCallSites(source: string): { call: string; dynamic: boolean; fromArgv: boolean }[] {
+  const out: { call: string; dynamic: boolean; fromArgv: boolean }[] = [];
+  const ARGV = /\b(?:process\.argv|argv|args|flags|options|opts|cli\.(?:input|flags))\b/;
+  const re = /(?:\b(?:child_process|cp|childProcess)\s*\.\s*|(?<![.\w$]))(exec|execSync|spawn|spawnSync|execFile|execFileSync)\s*\(/g;
+  for (const m of source.matchAll(re)) {
+    const open = (m.index ?? 0) + m[0].length;
+    // The argument list, to the matching parenthesis (strings masked so a ")" inside one does not end it).
+    let depth = 1;
+    let i = open;
+    let quote = "";
+    while (i < source.length && i < open + 800 && depth > 0) {
+      const c = source[i];
+      if (quote) {
+        if (c === "\\") i++;
+        else if (c === quote) quote = "";
+      } else if (c === '"' || c === "'" || c === "`") quote = c;
+      else if (c === "(") depth++;
+      else if (c === ")") depth--;
+      i++;
+    }
+    const args = source.slice(open, i - 1).trim();
+    const fn = m[1];
+    const first = /^(`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')\s*([\s\S]*)$/.exec(args);
+    const literalFirst = first !== null && !(first[1].startsWith("`") && first[1].includes("${")) && !/^\+/.test(first[2].trim());
+    if (fn === "exec" || fn === "execSync") {
+      if (args === "") continue;
+      out.push({ call: `${fn}(${args.slice(0, 40)})`, dynamic: !literalFirst, fromArgv: !literalFirst && ARGV.test(args) });
+    } else if (/\bshell\s*:\s*(?:true|['"`])/.test(args)) {
+      // With a shell, the command AND every argument are parsed by it.
+      const dynamicArgs = !literalFirst || /\[[^\]]*(?:\$\{|[A-Za-z_$][\w$.]*(?!\s*:))[^\]]*\]/.test(args.replace(/(["'])(?:\\.|(?!\1)[^\\])*\1/g, '""'));
+      out.push({ call: `${fn}(${args.slice(0, 40)})`, dynamic: dynamicArgs, fromArgv: dynamicArgs && ARGV.test(args) });
+    }
+  }
+  return out;
+}
+
 export function evaluateCliChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   if (!snapshot.accessible) return [];
   const pkgText = snapshot.files.get("package.json") ?? null;
@@ -611,26 +652,31 @@ function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
 
   // Node built-ins that the package would need declared to work cross-platform.
   if (/require\(\s*['"](?:node:)?child_process['"]\s*\)|from\s+['"](?:node:)?child_process['"]/.test(ctx.source)) {
-    // A shell-string call with something INTERPOLATED into it. A static string has
-    // nothing to inject, and RegExp.prototype.exec is not a child process.
-    const execCall = /(?:\b(?:child_process|cp|childProcess)\.|(?<![.\w]))exec(?:Sync)?\s*\(\s*(?:`[^`]*\$\{|['"][^'"]*['"]\s*\+)/;
-    const usesExecSync = execCall.test(ctx.source);
-    // Static analysis cannot tell a validated value from user input, so the finding is
-    // only confident when the interpolated value visibly comes from the command line.
-    const fromArgv = /exec(?:Sync)?\s*\(\s*(?:`[^`]*\$\{\s*|['"][^'"]*['"]\s*\+\s*)(?:process\.argv|argv|args|flags|options|opts|cli\.(?:input|flags))\b/.test(ctx.source);
+    // Judged per call site (shellCallSites): exec/execSync with a value built at runtime
+    // (a template with ${…}, a concatenation, or a VARIABLE, which the old rule missed),
+    // and spawn/execFile with `shell: true`. A fixed command string has nothing to inject,
+    // and RegExp.prototype.exec is not a child process.
+    const sites = shellCallSites(ctx.source);
+    const dynamic = sites.filter((c) => c.dynamic);
+    const fromArgv = dynamic.some((c) => c.fromArgv);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "cli_shell_injection",
       label: "Child processes are spawned without a shell",
-      status: usesExecSync ? "WARN" : "PASS",
-      confidence: usesExecSync && !fromArgv ? "LOW" : "MEDIUM",
-      detail: usesExecSync
-        ? `\`exec\`/\`execSync\` runs its argument through a shell, so any user-supplied value interpolated into that ` +
-          `string is a command-injection point — a filename containing \`; rm -rf\` is enough. Use \`execFile\` or ` +
-          `\`spawn\` with an argument ARRAY, which passes arguments to the program directly and never involves a shell.` +
-          (fromArgv ? "" : ` The interpolated value does not visibly come from the command line, and a scan cannot tell ` +
-            `whether it is validated first, so this is a lead to review rather than a confirmed injection.`)
-        : `Child processes are spawned without going through a shell.`,
+      status: dynamic.length > 0 ? "WARN" : "PASS",
+      confidence: dynamic.length > 0 && !fromArgv ? "LOW" : "MEDIUM",
+      detail: dynamic.length > 0
+        ? `${dynamic.length} call${dynamic.length === 1 ? " runs" : "s run"} a command through a shell with a value ` +
+          `built at runtime (${dynamic.slice(0, 2).map((c) => `\`${c.call}\``).join(", ")}), so any user-supplied ` +
+          `value in that string is a command-injection point: a filename containing \`; rm -rf\` is enough. Use ` +
+          `\`execFile\` or \`spawn\` with an argument ARRAY and no \`shell: true\`, which passes arguments to the ` +
+          `program directly.` +
+          (fromArgv ? "" : ` The value does not visibly come from the command line, and a scan cannot tell whether it ` +
+            `is validated first, so this is a lead to review rather than a confirmed injection.`)
+        : sites.length > 0
+          ? `${sites.length} shell call${sites.length === 1 ? "" : "s"} found, each running a fixed command string; ` +
+            `no shell call receives a value built at runtime.`
+          : `No call in the sampled source runs a command through a shell.`,
     });
   }
 

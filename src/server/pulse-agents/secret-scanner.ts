@@ -43,9 +43,20 @@ interface ContentsResponse {
 // Stripe pk_live_) and from placeholders. A Firebase web config committed in
 // firebase_options.dart / firebase.ts is NOT a leak, and used to be a CRITICAL FAIL.
 
-// Direct user-input → prompt interpolation (prompt injection risk).
+// Direct user-input → prompt interpolation (prompt injection risk). Only asked of a
+// file that actually calls a model (AI_CALL): `Error: ${message}` in an ordinary file
+// is not a prompt. Template literals (bounded, so one cannot run across a file) and
+// Python f-strings both count.
 const PROMPT_INJECTION_RE =
-  /`[^`]*\$\{\s*(?:req\.(?:body|query|params)|request\.|userInput|user_input|message|input|prompt)[^`]*`/;
+  /`[^`]{0,2000}?\$\{\s*(?:req\.(?:body|query|params)|request\.(?:body|json|form|args|query)|userInput|user_input|userMessage|input|prompt)\b[^`]{0,2000}?`|\bf(?:"{3}|'{3}|"|')[^\n]{0,400}?\{\s*(?:request\.(?:json|form|args|data|get_json)|user_input|user_message|prompt|query)\b/;
+/** A file that calls an LLM: an SDK import or a completion call. */
+const AI_CALL =
+  /from\s+["'](?:openai|@anthropic-ai\/sdk|@google\/generative-ai|@google\/genai|ai|@ai-sdk\/[\w-]+|langchain|@langchain\/[\w-]+|groq-sdk|@mistralai\/[\w-]+|ollama)["']|require\(\s*["'](?:openai|@anthropic-ai\/sdk)["']\s*\)|^\s*(?:import|from)\s+(?:openai|anthropic|langchain\w*|google\.generativeai|litellm)\b|\b(?:chat\.completions\.create|messages\.create|generateText|streamText|generateContent)\s*\(/m;
+/** Paths likely to build prompts, given a few of the content-read slots. */
+const AI_PATH = /(^|\/)(?:prompts?|llm|ai|agents?|openai|anthropic|gemini|chat|completions?)(?:\/|[._-][^/]*\.(?:t|j)sx?$|\.(?:t|j)sx?$|\.py$)/i;
+const AI_SLOTS = 4;
+/** An AI SDK in a package manifest. */
+const AI_DEPENDENCY = /"(?:openai|@anthropic-ai\/sdk|@google\/generative-ai|@google\/genai|ai|@ai-sdk\/[\w-]+|langchain|@langchain\/[\w-]+|groq-sdk|@mistralai\/[\w-]+|ollama)"\s*:/;
 
 // Strings that mean "this is a placeholder, not a real secret".
 const PLACEHOLDER_HINTS = [
@@ -142,18 +153,28 @@ export async function scanRepoSecrets(
   // 1. Committed env files (path-only signal, no fetch needed).
   const committedEnvFiles = blobs.map((b) => b.path).filter(isEnvFile);
 
-  // 2. Pick candidate files to content-scan, by risk score, capped.
-  const candidates = blobs
-    .filter((b) => (b.size ?? 0) <= MAX_BLOB_BYTES)
+  // 2. Pick candidate files to content-scan, by risk score, capped. A few of the slots
+  // go to files named like prompt-building code, which would otherwise score 0 and
+  // never be read, so the prompt check would pass on "not looked at".
+  const sized = blobs.filter((b) => (b.size ?? 0) <= MAX_BLOB_BYTES && !/(^|\/)(node_modules|vendor|dist|build)\//.test(b.path));
+  const aiCandidates = sized
+    .filter((b) => AI_PATH.test(b.path) && /\.(?:[cm]?[jt]sx?|py)$/i.test(b.path) && !/\.(?:test|spec)\.|(^|\/)(?:tests?|__tests__)\//i.test(b.path))
+    .slice(0, AI_SLOTS)
+    .map((b) => ({ path: b.path, score: 1 }));
+  const candidates = sized
     .map((b) => ({ path: b.path, score: candidateScore(b.path) }))
-    .filter((c) => c.score > 0)
+    .filter((c) => c.score > 0 && !aiCandidates.some((a) => a.path === c.path))
     .sort((a, b) => b.score - a.score)
-    .slice(0, CANDIDATE_CAP);
+    .slice(0, CANDIDATE_CAP - aiCandidates.length)
+    .concat(aiCandidates);
+  const aiPathsInTree = sized.filter((b) => AI_PATH.test(b.path)).length;
 
   const secrets: SecretFinding[] = [];
   const publicKeys: PublicKeyNote[] = [];
   let filesRead = 0;
   let promptInjectionFile: string | null = null;
+  const aiFilesRead: string[] = [];
+  let manifestHasAi: boolean | null = null;
   const envFilesRead = new Set<string>();
   const envFilesWithSecrets = new Set<string>();
 
@@ -182,8 +203,10 @@ export async function scanRepoSecrets(
         const list = match.publicByDesign ? publicKeys : secrets;
         if (!list.some((s) => s.file === c.path && s.type === match.kind)) list.push({ file: c.path, type: match.kind });
       }
-      if (!promptInjectionFile && PROMPT_INJECTION_RE.test(text)) {
-        promptInjectionFile = c.path;
+      if (/(^|\/)package\.json$/.test(c.path) && !c.path.includes("/")) manifestHasAi = AI_DEPENDENCY.test(text);
+      if (AI_CALL.test(text)) {
+        aiFilesRead.push(c.path);
+        if (!promptInjectionFile && PROMPT_INJECTION_RE.test(text)) promptInjectionFile = c.path;
       }
     }),
   );
@@ -243,15 +266,34 @@ export async function scanRepoSecrets(
         : undefined,
   });
 
-  checks.push({
-    category: CATEGORY,
-    checkKey: "repo_prompt_injection_risk",
-    label: "No raw user input interpolated into AI prompts",
-    status: promptInjectionFile ? "WARN" : "PASS",
-    detail: promptInjectionFile
-      ? `Possible prompt-injection vector: user-controlled input appears interpolated directly into a prompt string (${promptInjectionFile}). Sanitise or delimit user content before passing it to the model.`
-      : "No direct user-input-to-prompt interpolation detected in scanned files.",
-  });
+  const promptBase = { category: CATEGORY, checkKey: "repo_prompt_injection_risk", label: "No raw user input interpolated into AI prompts" } as const;
+  checks.push(
+    promptInjectionFile
+      ? {
+          ...promptBase,
+          status: "WARN",
+          detail: `Possible prompt-injection vector: user-controlled input appears interpolated directly into a prompt string in a file that calls a model (${promptInjectionFile}). Delimit user content clearly, keep it out of the system instructions, and treat the model's output as untrusted.`,
+          evidence: promptInjectionFile,
+        }
+      : aiFilesRead.length > 0
+        ? {
+            ...promptBase,
+            status: "PASS",
+            detail: `No raw request or user-input value is interpolated into a prompt in the ${aiFilesRead.length} model-calling file${aiFilesRead.length === 1 ? "" : "s"} Pulse read. Other prompt-building code in the repository was not read.`,
+            evidence: aiFilesRead.slice(0, 3).join(", "),
+          }
+        : manifestHasAi === false && aiPathsInTree === 0
+          ? {
+              ...promptBase,
+              status: "NOT_APPLICABLE",
+              detail: "No AI SDK in package.json and no prompt-building files in the repository, so there are no prompts to check.",
+            }
+          : {
+              ...promptBase,
+              status: "INCONCLUSIVE",
+              detail: "None of the files Pulse read calls a model, so whether user input reaches a prompt unescaped was not checked.",
+            },
+  );
 
   return { checks, secrets };
 }

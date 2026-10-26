@@ -45,6 +45,15 @@ const CODE_AGENT_QUERY = `
           isAdminEnforced
         }
       }
+      viewerPermission
+      rulesets(first: 25) {
+        nodes {
+          enforcement
+          target
+          conditions { refName { include } }
+          rules(first: 30) { nodes { type } }
+        }
+      }
       pullRequests(last: 20, states: [MERGED]) {
         totalCount
         nodes {
@@ -53,6 +62,7 @@ const CODE_AGENT_QUERY = `
         }
       }
       defaultBranchRef {
+        name
         target {
           ... on Commit {
             history(first: 30) {
@@ -117,7 +127,10 @@ interface GQLResponse {
       totalCount: number;
       nodes: { mergedAt: string; reviews: { totalCount: number } }[];
     } | null;
+    viewerPermission?: string | null;
+    rulesets?: BranchRulesets | null;
     defaultBranchRef: {
+      name?: string;
       target: {
         history: {
           totalCount: number;
@@ -148,6 +161,65 @@ interface GQLResponse {
     languages: { nodes: { name: string }[] } | null;
     homepageUrl: string | null;
   };
+}
+
+interface BranchRulesets {
+  nodes: {
+    enforcement: string;
+    target: string | null;
+    conditions: { refName: { include: string[] } | null } | null;
+    rules: { nodes: { type: string }[] } | null;
+  }[];
+}
+
+/**
+ * Whether the default branch is protected, from BOTH mechanisms: classic branch
+ * protection rules and repository rulesets (org rulesets included). "No protection" is
+ * only reported when the viewer could have seen it: classic rules are listed to admins
+ * only, so for anyone else an empty list establishes nothing.
+ */
+export function assessBranchProtection(repo: {
+  branchProtectionRules: { nodes: { requiresApprovingReviews: boolean; requiresStatusChecks: boolean }[] } | null;
+  rulesets?: BranchRulesets | null;
+  viewerPermission?: string | null;
+  defaultBranchRef?: { name?: string } | null;
+}): PulseScanCheckInput {
+  const base = { category: CATEGORIES.CODE_QUALITY, checkKey: "branch_protection", label: "Branch protection on default branch" } as const;
+  const branch = repo.defaultBranchRef?.name ?? null;
+  const applies = (include: string[]) =>
+    include.some((ref) => ref === "~ALL" || ref === "~DEFAULT_BRANCH" || (branch !== null && ref === `refs/heads/${branch}`));
+  const active = (repo.rulesets?.nodes ?? []).filter(
+    (r) => r.enforcement === "ACTIVE" && r.target === "BRANCH" && applies(r.conditions?.refName?.include ?? []),
+  );
+  const ruleTypes = new Set(active.flatMap((r) => (r.rules?.nodes ?? []).map((n) => n.type)));
+  const classic = repo.branchProtectionRules?.nodes?.[0] ?? null;
+  const reviews = Boolean(classic?.requiresApprovingReviews) || ruleTypes.has("PULL_REQUEST");
+  const checksRequired = Boolean(classic?.requiresStatusChecks) || ruleTypes.has("REQUIRED_STATUS_CHECKS");
+  const protectedBranch = classic !== null || active.length > 0;
+
+  if (protectedBranch) {
+    return {
+      ...base,
+      status: reviews ? "PASS" : "WARN",
+      detail: reviews
+        ? `The default branch is protected${active.length > 0 ? ` (${active.length} active ruleset${active.length === 1 ? "" : "s"}${classic ? " and a branch protection rule" : ""})` : ""}: pull request reviews are required${checksRequired ? ", and so are status checks" : ""}.`
+        : `The default branch is protected${active.length > 0 ? ` by ${active.length} active ruleset${active.length === 1 ? "" : "s"}` : ""}, but nothing requires a pull request review before merging.`,
+    };
+  }
+  // Nothing seen. Classic rules are only visible to admins, so the absence is only
+  // established for an admin viewer who could also read the rulesets.
+  const canSeeAll = repo.viewerPermission === "ADMIN" && repo.branchProtectionRules !== null && repo.rulesets != null;
+  if (!canSeeAll) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail: repo.branchProtectionRules === null && repo.rulesets == null
+        ? "Branch protection metadata is inaccessible with the configured GitHub permissions."
+        : "No ruleset protects the default branch, and classic branch protection rules are only listed to repository " +
+          "admins, which this scanner is not. Whether the branch is protected is not established.",
+    };
+  }
+  return { ...base, status: "FAIL", detail: "No branch protection rule or ruleset covers the default branch, so anyone with write access can push to it directly." };
 }
 
 export async function runCodeAgent(
@@ -252,29 +324,13 @@ export async function runCodeAgent(
   });
 
   // ── Branch protection ──────────────────────────────────────────────────────
-  // `?.` throughout: now that partial GraphQL responses are honoured, any single
-  // field can arrive null because the token lacked the permission for just that one
-  // (branchProtectionRules needs administration:read). Nulling one field must not
-  // throw and lose the other seven checks.
-  const branchRule = repo.branchProtectionRules?.nodes?.[0];
-  const branchMetadataAccessible = repo.branchProtectionRules !== null;
-  const branchProtected = branchMetadataAccessible && Boolean(branchRule);
-  const requiresReviews = branchRule?.requiresApprovingReviews ?? false;
-  const requiresChecks = branchRule?.requiresStatusChecks ?? false;
-
-  checks.push({
-    category: CATEGORIES.CODE_QUALITY,
-    checkKey: "branch_protection",
-    label: "Branch protection on default branch",
-    status: !branchMetadataAccessible ? "INCONCLUSIVE" : !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
-    detail: !branchMetadataAccessible
-      ? "Branch protection metadata is inaccessible with the configured GitHub permissions."
-      : !branchProtected
-      ? "No branch protection rules — anyone can push directly to the default branch."
-      : !requiresReviews
-        ? "Branch protection enabled but does not require PR reviews before merging."
-        : `Branch protection active: requires reviews${requiresChecks ? " and status checks" : ""}.`,
-  });
+  // Classic rules are only listed to repository admins (a READ viewer gets an empty
+  // list on a protected repo), and repository rulesets are a second mechanism. vercel/next.js
+  // reads as "0 rules" to a READ token while 7 active rulesets protect its default branch.
+  const branchCheck = assessBranchProtection(repo);
+  checks.push(branchCheck);
+  const branchProtected = branchCheck.status === "PASS" || branchCheck.status === "WARN";
+  const requiresReviews = branchCheck.status === "PASS";
 
   // ── PR review culture ──────────────────────────────────────────────────────
   const prs = repo.pullRequests?.nodes ?? [];
@@ -396,13 +452,19 @@ export async function runCodeAgent(
   });
 
   // ── Repo vitals ────────────────────────────────────────────────────────────
-  const stars = repo.stargazerCount ?? 0;
+  // Stars are a public repository's social proof, nothing more: a low count is a
+  // reading, not a defect, and a private repository cannot be starred by the public.
+  const stars = typeof repo.stargazerCount === "number" ? repo.stargazerCount : null;
   checks.push({
     category: CATEGORIES.TRUST_BRAND,
     checkKey: "github_stars",
     label: "GitHub stars (social proof)",
-    status: stars >= 100 ? "PASS" : stars >= 10 ? "WARN" : "FAIL",
-    detail: `${stars.toLocaleString()} GitHub stars.${stars < 10 ? " Low stars suggest limited community adoption or a private/new project." : ""}`,
+    status: repo.isPrivate === true ? "NOT_APPLICABLE" : stars === null ? "INCONCLUSIVE" : stars >= 100 ? "PASS" : "WARN",
+    detail: repo.isPrivate === true
+      ? "Private repository: it cannot be starred by the public, so stars are not a measure here."
+      : stars === null
+        ? "The star count could not be read."
+        : `${stars.toLocaleString()} GitHub star${stars === 1 ? "" : "s"}.${stars < 100 ? " A low count is normal for a new or niche public project; it only matters if the repository is meant to attract outside users or contributors." : ""}`,
   });
 
   // ── Archived check ─────────────────────────────────────────────────────────
