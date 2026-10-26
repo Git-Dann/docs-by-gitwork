@@ -7899,3 +7899,8 @@ back office).
 - CI: `on:` is read at any indentation.
 - Validated against realworld, bakerydemo, commerce, petclinic and rreading-glasses.
 - Withheld 103 → 64. Live checks: 1,245.
+
+**Derived standards rows are never findings of their own** (`isDerivedRestatement`). The release
+gate's failure count, `rankFindings` (and so Fix first) and the MCP verdict's issue lists all skip
+them; the full check list still shows them. Found on the live linear.app scan, where one unlabelled
+button was three gate failures, and vercel/commerce, whose vulnerable libraries appeared twice.

@@ -278,6 +278,16 @@ export const DERIVED_STANDARDS: readonly StandardsDerivation[] = [
 
 export const DERIVED_STANDARD_KEYS: ReadonlySet<string> = new Set(DERIVED_STANDARDS.map((x) => `standards_${x.controlId}`));
 
+/**
+ * A derived standards row restates checks that already ran. It belongs in the full check
+ * list, but never as a finding of its own: counting it made one missing button label read
+ * as three failures on linear.app, and listed commerce's vulnerable libraries twice in its
+ * top fixes. Everything that counts or ranks findings skips these.
+ */
+export function isDerivedRestatement(checkKey: string): boolean {
+  return DERIVED_STANDARD_KEYS.has(checkKey);
+}
+
 /** Every live check key any derivation reads, for the registry guard. */
 export function derivationEvidenceKeys(x: StandardsDerivation): string[] {
   return [...new Set([...x.refutedBy, ...(x.provedBy ?? []).flat()])];

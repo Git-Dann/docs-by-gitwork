@@ -30,6 +30,7 @@
 
 import type { PulseScanCheckInput, ScoreBreakdown } from "@/types/pulse";
 import { CATEGORIES, type CheckCategory } from "./categories";
+import { isDerivedRestatement } from "./standards-derived";
 import { detectStoreTarget, storeSubjectLabel, type StoreTarget } from "@/lib/pulse-store-url";
 
 export type ReleaseDecision = "READY" | "CONDITIONAL" | "BLOCKED" | "INCONCLUSIVE";
@@ -486,6 +487,8 @@ export function evaluateReleaseGate(
   const reservations = checks.filter(
     (check) =>
       check.status === "FAIL" &&
+      // A derived standards row restates a failure already counted here.
+      !isDerivedRestatement(check.checkKey) &&
       (check.trustBucket === "CONFIRMED" || check.trustBucket === "LIKELY") &&
       !namedBlockers.includes(check) &&
       !criticalInBlockedCategory.includes(check),

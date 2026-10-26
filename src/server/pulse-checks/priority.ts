@@ -5,6 +5,7 @@
 import type { PulseScanCheckInput, PulseScanCheckRecord } from "@/types/pulse";
 import { WEIGHTED_CATEGORIES } from "./categories";
 import { CRITICAL_KEYS } from "./confidence";
+import { isDerivedRestatement } from "./standards-derived";
 
 export type PriorityTier = "P1" | "P2" | "P3" | null;
 export interface CheckPriority {
@@ -86,10 +87,10 @@ export function computePriority(check: AnyCheck): CheckPriority {
   return { score: Math.round(score * 10) / 10, tier };
 }
 
-/** Rank a scan's findings worst-first (FAIL/WARN only), highest priority on top. */
+/** Rank a scan's findings worst-first (FAIL/WARN only, never a derived restatement), highest priority on top. */
 export function rankFindings<T extends AnyCheck>(checks: T[]): { check: T; priority: CheckPriority }[] {
   return checks
-    .filter((c) => c.status === "FAIL" || c.status === "WARN")
+    .filter((c) => (c.status === "FAIL" || c.status === "WARN") && !isDerivedRestatement(c.checkKey))
     .map((check) => ({ check, priority: computePriority(check) }))
     .sort((a, b) => b.priority.score - a.priority.score);
 }

@@ -7,6 +7,7 @@ import type { CodeHealthReport } from "@/types/code-health";
 // internal — callers are authenticated by middleware (API key / OAuth); this module
 // has no auth of its own.
 
+import { isDerivedRestatement } from "@/server/pulse-checks/standards-derived";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { computeGrades, type PulseGrade } from "@/server/pulse-checks/grades";
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
@@ -172,11 +173,13 @@ export function buildAgentVerdict(args: {
     (rankedKeys.get(a.checkKey)?.rank ?? Number.MAX_SAFE_INTEGER) -
     (rankedKeys.get(b.checkKey)?.rank ?? Number.MAX_SAFE_INTEGER);
 
-  const confirmedIssues = confirmed.filter((c) => c.status === "FAIL").map(asIssue).sort(byPriority);
+  // A derived standards row restates a check already listed, so it is never an issue of its own.
+  const own = (c: PulseScanCheckInput) => !isDerivedRestatement(c.checkKey);
+  const confirmedIssues = confirmed.filter((c) => c.status === "FAIL" && own(c)).map(asIssue).sort(byPriority);
   // Warnings across every bucket except the unprovable ones — a WARN is still a real
   // finding, and omitting them made "all warnings" read as "nothing wrong".
   const warnings = checks
-    .filter((c) => c.status === "WARN" && c.trustBucket !== "INCONCLUSIVE")
+    .filter((c) => c.status === "WARN" && c.trustBucket !== "INCONCLUSIVE" && own(c))
     .map(asIssue)
     .sort(byPriority);
 
