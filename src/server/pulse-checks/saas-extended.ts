@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const html = ctx.pageResult.html;
@@ -34,8 +35,14 @@ export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.SAAS, checkKey: "scim_user_provisioning", label: "SCIM user provisioning", status: hasScim ? "PASS" : "WARN", detail: hasScim ? "SCIM provisioning signals detected." : "No SCIM signals — SCIM automates user lifecycle management from the customer's identity provider, reducing IT admin overhead." });
 
   // Custom branding
-  const hasCustomBranding = /custom.*brand|white.label|your.*logo|brand.*settings|custom.*domain|custom.*subdomain/i.test(html);
-  checks.push({ category: CATEGORIES.SAAS, checkKey: "custom_branding_available", label: "White-label / custom branding", status: hasCustomBranding ? "PASS" : "WARN", detail: hasCustomBranding ? "Custom branding signals detected." : "No white-label/custom branding signals — custom branding (logo, domain, colours) is a common enterprise tier differentiator." });
+  // Readable text, one block at a time (page-claims.ts): `your.*logo` matched the word
+  // 'your' followed anywhere by the site's own logo class or alt text.
+  const runs = proseRuns(ctx.contentHtml ?? html);
+  const brandingBase = { category: CATEGORIES.SAAS, checkKey: "custom_branding_available", label: "White-label / custom branding" };
+  const brandingQuote = findClaim(runs, /\bwhite[- ]?label(?:ed|ing)?\b|\bcustom\s+(?:branding|brand(?:ed)?\s+(?:domains?|portals?|emails?|pages?)|domains?|subdomains?|logos?|colou?rs?\s+and\s+logos?)\b|\b(?:your|own)\s+(?:own\s+)?(?:logo|branding|brand\s+colou?rs?)\b|\b(?:add|upload|use)\s+your\s+(?:own\s+)?logo\b/i);
+  checks.push(brandingQuote
+    ? claimSeen(brandingBase, "The page offers customers their own branding, logo or domain.", brandingQuote)
+    : claimUnseen(brandingBase, "The scanned page does not mention white-label or custom branding. Plan features are often listed on a pricing page rather than here, so this does not show it is unavailable."));
 
   // Enterprise pricing tier
   const hasEnterpriseTier = /enterprise.*plan|enterprise.*pricing|enterprise.*tier|talk.*to.*sales|contact.*sales.*enterprise|custom.*pricing/i.test(html);
@@ -52,16 +59,24 @@ export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.SAAS, checkKey: "dark_mode_supported", label: "Dark mode (prefers-color-scheme)", status: hasDarkMode ? "PASS" : "WARN", detail: hasDarkMode ? "Dark mode signals detected." : "No dark mode detected — dark mode is now a standard expectation; support prefers-color-scheme and a manual toggle." });
 
   // Bulk operations
-  const hasBulkOps = /bulk.*select|select.*all|bulk.*delete|bulk.*export|bulk.*action|bulk.*update|multi.*select/i.test(html);
-  checks.push({ category: CATEGORIES.SAAS, checkKey: "bulk_operations_ui", label: "Bulk select / bulk operations", status: hasBulkOps ? "PASS" : "WARN", detail: hasBulkOps ? "Bulk operation signals detected." : "No bulk operations detected — enterprise users managing large datasets need bulk select, delete, and export to be productive." });
+  // `select.*all` matched CSS `user-select` followed by any later 'all' (install, small).
+  const bulkBase = { category: CATEGORIES.SAAS, checkKey: "bulk_operations_ui", label: "Bulk select / bulk operations" };
+  const bulkQuote = findClaim(runs, /\bbulk\s+(?:edit(?:s|ing)?|actions?|select(?:ion)?|delete|deletion|update(?:s)?|operations?|export(?:s)?|import(?:s)?|upload(?:s)?|changes?|archive)\b|\bmulti[- ]?select\b|\bin\s+bulk\b|\bbatch\s+(?:edit(?:ing)?|actions?|updates?|operations?)\b/i);
+  checks.push(bulkQuote
+    ? claimSeen(bulkBase, "The page mentions acting on many records at once.", bulkQuote)
+    : claimUnseen(bulkBase, "The scanned page does not mention bulk or batch actions. They live inside the signed-in product, which this scan cannot reach, so this does not show they are missing."));
 
   // Data export
   const hasDataExport = /export.*csv|download.*csv|export.*excel|export.*pdf|download.*report|export.*data/i.test(html);
   checks.push({ category: CATEGORIES.SAAS, checkKey: "data_export_csv_pdf", label: "Data export (CSV / PDF / Excel)", status: hasDataExport ? "PASS" : "WARN", detail: hasDataExport ? "Data export signals detected." : "No data export signals — users and compliance teams need to export their data. CSV, PDF, and Excel are the minimum expectation." });
 
   // Data import
-  const hasDataImport = /import.*csv|upload.*csv|import.*data|data.*migration|migrate.*from|import.*from/i.test(html);
-  checks.push({ category: CATEGORIES.SAAS, checkKey: "data_import_capability", label: "Data import / migration", status: hasDataImport ? "PASS" : "WARN", detail: hasDataImport ? "Data import / migration signals detected." : "No data import signals — making it easy to migrate from competitors reduces switch friction." });
+  // `import.*from` matched every inline ES module (`import x from "…"`); scripts are not prose.
+  const importBase = { category: CATEGORIES.SAAS, checkKey: "data_import_capability", label: "Data import / migration" };
+  const importQuote = findClaim(runs, /\bimport\w*\s+(?:your\s+|existing\s+|all\s+)?(?:data|contacts|customers|users|issues|projects|records|files|history|content|spreadsheets?|csvs?)\b|\bimport\w*\s+(?:\w+\s+){0,2}from\s+(?:csv|excel|a\s+spreadsheet|spreadsheets|another\s+tool|other\s+tools|your\s+(?:old|current|existing|previous)\s+\w+|jira|trello|asana|notion|airtable|hubspot|salesforce|shopify|github|google\s+sheets)\b|\b(?:csv|spreadsheet|excel|bulk)\s+import(?:s|er)?\b|\bmigrat\w*\s+(?:your\s+\w+\s+)?from\b|\bmigrat\w*\s+your\s+(?:data|content|projects|workspace)\b/i);
+  checks.push(importQuote
+    ? claimSeen(importBase, "The page mentions bringing existing data in.", importQuote)
+    : claimUnseen(importBase, "The scanned page does not mention importing data or migrating from another tool. Import tools often sit inside the product or in the help centre, so this does not show they are missing."));
 
   // Community
   const hasCommunity = /community.*forum|slack.*community|discord.*community|forum\.|\bjoin.*community|community.*slack/i.test(html);

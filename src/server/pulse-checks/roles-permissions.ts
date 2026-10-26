@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs } from "./_types";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 const CATEGORY = CATEGORIES.ROLES;
 
@@ -51,14 +52,23 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   }
 
   const checks: PulseScanCheckInput[] = [];
+  // Readable text, one block at a time (page-claims.ts). The controls read from it live
+  // inside the signed-in product: the page saying so is a PASS, its silence is not a finding.
+  const runs = proseRuns(ctx.contentHtml ?? html);
+  const behindSignIn = "That control lives inside the signed-in product, which this scan cannot reach, so this does not show it is missing.";
 
   // RBAC
   const hasRbac = /role.based|rbac|user.*role|assign.*role|role.*assign|role.*permission|permission.*role/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "rbac_signals", label: "Role-based access control (RBAC) UI", status: hasRbac ? "PASS" : "WARN", detail: hasRbac ? "RBAC / role management signals detected." : "No RBAC signals detected — role-based access control is essential for multi-user products to enforce least privilege." });
 
   // Admin role separation
-  const hasAdminSep = /admin.*role|admin.*user|admin.*panel|admin.*dashboard|super.*admin|role.*admin/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "admin_role_separation", label: "Admin vs user role separation", status: hasAdminSep ? "PASS" : "WARN", detail: hasAdminSep ? "Admin role separation signals detected." : "No admin role separation detected — separate admin and end-user roles to enforce privilege separation." });
+  // `role.*admin` matched `<nav role="navigation"><a href="/admin">Admin`; a bare "Admin"
+  // link says nothing about separating roles, so the run has to talk about the roles.
+  const adminBase = { category: CATEGORY, checkKey: "admin_role_separation", label: "Admin vs user role separation" };
+  const adminQuote = findClaim(runs, /\badmin(?:istrator)?s?\s+(?:roles?|permissions?|privileges?|rights|accounts?|controls?)\b|\bsuper[- ]?admins?\b|\badmin(?:istrator)?s?\s*(?:,\s*|\s+(?:and|or|vs\.?|versus)\s+)(?:members?|users?|editors?|viewers?|guests?)\b/i);
+  checks.push(adminQuote
+    ? claimSeen(adminBase, "The page describes separate administrator and member roles.", adminQuote)
+    : claimUnseen(adminBase, `The scanned page does not describe separate administrator and member roles. ${behindSignIn}`));
 
   // Team management
   const hasTeamMgmt = /team.*management|manage.*team|team.*member|add.*member|invite.*team|workspace.*member/i.test(html);
@@ -73,12 +83,21 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "permission_matrix_docs", label: "Permissions matrix documentation", status: hasPermMatrix ? "PASS" : "WARN", detail: hasPermMatrix ? "Permissions matrix documentation signals detected." : "No permissions matrix found — document which roles can perform which actions to help enterprise buyers evaluate your access controls." });
 
   // Data scope isolation
-  const hasIsolation = /tenant.*isol|workspace.*isol|data.*scope|multi.tenant|isolated.*data|your.*workspace|your.*organisation/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "data_scope_isolation", label: "Multi-tenant data isolation signals", status: hasIsolation ? "PASS" : "WARN", detail: hasIsolation ? "Multi-tenant isolation signals detected." : "No tenant isolation signals — enterprise buyers need assurance that their data is isolated from other customers." });
+  // "Your workspace" is marketing copy, not an isolation claim; the run has to say the
+  // data is kept apart.
+  const isolationBase = { category: CATEGORY, checkKey: "data_scope_isolation", label: "Multi-tenant data isolation signals" };
+  const isolationQuote = findClaim(runs, /\b(?:tenant|data|customer|workspace)\s+(?:data\s+)?(?:isolation|segregation|separation)\b|\b(?:isolated|segregated|logically\s+separated|separated)\s+(?:per|by|from\s+(?:other|each))\s+(?:tenants?|customers?|workspaces?|organi[sz]ations?|accounts?)\b|\b(?:single|dedicated)[- ]tenan(?:t|cy)\b|\brow[- ]level\s+security\b/i);
+  checks.push(isolationQuote
+    ? claimSeen(isolationBase, "The page states how one customer's data is kept apart from another's.", isolationQuote)
+    : claimUnseen(isolationBase, "The scanned page does not say how one customer's data is kept apart from another's. Isolation is enforced in the product's data layer, which a public page cannot show, so this does not show it is missing. Stating it, for example on a security page, helps enterprise buyers."));
 
   // Audit trail
-  const hasAuditLog = /audit.*log|activity.*log|audit.*trail|event.*log|history.*log|action.*log/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "audit_trail_present", label: "Audit log / activity log", status: hasAuditLog ? "PASS" : "WARN", detail: hasAuditLog ? "Audit / activity log signals detected." : "No audit log detected — enterprise and compliance customers require an audit trail of who did what and when." });
+  // 'log' is a substring of 'login' and 'logo'; the words have to sit together.
+  const auditBase = { category: CATEGORY, checkKey: "audit_trail_present", label: "Audit log / activity log" };
+  const auditQuote = findClaim(runs, /\baudit\s*(?:logs?|logging|trails?|history|events?)\b|\bactivity\s+(?:logs?|history|trails?)\b|\b(?:admin|security|event)\s+logs?\b/i);
+  checks.push(auditQuote
+    ? claimSeen(auditBase, "The page mentions an audit or activity log.", auditQuote)
+    : claimUnseen(auditBase, `The scanned page does not mention an audit or activity log. ${behindSignIn}`));
 
   // API scope docs
   const hasApiScopeDocs = /api.*scope|oauth.*scope|scope.*permission|scoped.*token|token.*scope/i.test(html);
@@ -93,8 +112,11 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "role_hierarchy", label: "Admin > Manager > User role hierarchy", status: hasHierarchy ? "PASS" : "WARN", detail: hasHierarchy ? "Role hierarchy signals detected." : "No multi-level role hierarchy detected — a clear role hierarchy (Owner > Admin > Member > Guest) helps enterprises manage permissions at scale." });
 
   // Access revocation
-  const hasRevocation = /deactivate.*user|revoke.*access|suspend.*user|remove.*member|disable.*account/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "access_revocation_ui", label: "Account deactivation / access revocation UI", status: hasRevocation ? "PASS" : "WARN", detail: hasRevocation ? "Access revocation UI signals detected." : "No access revocation UI detected — the ability to quickly revoke access is critical for offboarding and security incident response." });
+  const revokeBase = { category: CATEGORY, checkKey: "access_revocation_ui", label: "Account deactivation / access revocation UI" };
+  const revokeQuote = findClaim(runs, /\b(?:deactivat|suspend|disabl|offboard|deprovision|remov)\w*\s+(?:(?:a|an|the|any|former|inactive)\s+)?(?:users?|members?|teammates?|employees?|seats?)\b|\brevok\w*\s+(?:(?:their|user|member)\s+)?access\b|\boffboarding\b|\bdeprovisioning\b/i);
+  checks.push(revokeQuote
+    ? claimSeen(revokeBase, "The page mentions removing a user or revoking their access.", revokeQuote)
+    : claimUnseen(revokeBase, `The scanned page does not mention removing users or revoking access. ${behindSignIn}`));
 
   // IP allowlisting
   // A standalone "IP" token near allowlist/restriction wording, either order. The leading verb is
@@ -121,8 +143,13 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
   checks.push({ category: CATEGORY, checkKey: "read_only_role", label: "Read-only role available", status: hasReadOnly ? "PASS" : "WARN", detail: hasReadOnly ? "Read-only role signals detected." : "No read-only role detected — a read-only role is important for compliance (auditors, finance) who need to view but not modify data." });
 
   // Data export by role
-  const hasExportPermission = /export.*permission|permission.*export|role.*export|who.*can.*export/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "data_export_permission", label: "Data export restricted by role", status: hasExportPermission ? "PASS" : "WARN", detail: hasExportPermission ? "Role-based export permission signals detected." : "No role-based export controls detected — restrict bulk data exports to admin/owner roles to prevent data exfiltration." });
+  // `role.*export` ran from `role="img"` to a JavaScript `export`; the run has to tie
+  // exporting to a role or permission.
+  const exportBase = { category: CATEGORY, checkKey: "data_export_permission", label: "Data export restricted by role" };
+  const exportQuote = findClaim(runs, /\bexport\w*\b[^.!?]{0,50}\b(?:admins?|administrators?|owners?|roles?|permissions?)\b|\b(?:admins?|administrators?|owners?|roles?|permissions?)\b[^.!?]{0,50}\bexport\w*\b/i);
+  checks.push(exportQuote
+    ? claimSeen(exportBase, "The page ties exporting data to a role or permission.", exportQuote)
+    : claimUnseen(exportBase, `The scanned page does not say who may export data. ${behindSignIn}`));
 
   // Workspace/tenant isolation
   const hasWorkspaceIsolation = /workspace.*setting|organisation.*setting|tenant.*setting|your.*workspace|workspace.*id/i.test(html);

@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { hostname } = ctx;
@@ -16,9 +17,13 @@ export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): 
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "cnil_france_compliant", label: "CNIL compliance signals (France)", status: isFrenchSite ? (hasCnil ? "PASS" : "WARN") : "PASS", detail: isFrenchSite ? (hasCnil ? "CNIL compliance signals detected." : "French market signals detected but no CNIL reference — France's CNIL has strict cookie consent guidance; specific banner wording is regulated.") : "Not applicable — no French market signals detected." });
 
   // EU Art. 27 representative
-  const hasArt27 = /eu.*representative|european.*representative|article 27|art\. 27/i.test(html);
-  const isNonEuProduct = !/\.eu\b/.test(hostname) && !/\.de\b/.test(hostname) && !/\.fr\b/.test(hostname);
-  checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "eu_art27_representative", label: "EU Art. 27 representative named", status: isNonEuProduct ? (hasArt27 ? "PASS" : "WARN") : "PASS", detail: isNonEuProduct ? (hasArt27 ? "EU Art. 27 representative signals detected." : "Non-EU product targeting EU customers — GDPR Art. 27 requires appointing a named EU representative if you process EU personal data without an EU establishment.") : "Not applicable — EU-based product." });
+  // Every non-.eu/.de/.fr host used to be presumed a non-EU organisation targeting the EU.
+  // Neither fact is on a web page, so only a named representative is a finding.
+  const art27Base = { category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "eu_art27_representative", label: "EU Art. 27 representative named" };
+  const art27Quote = findClaim(proseRuns(ctx.contentHtml ?? html), /\b(?:EU|EEA|European(?:\s+Union)?)\s+(?:GDPR\s+|data\s+protection\s+)?representatives?\b|\bArt(?:icle|\.)\s*27\b/i);
+  checks.push(art27Quote
+    ? claimSeen(art27Base, "The page names an EU representative under GDPR Art. 27.", art27Quote)
+    : claimUnseen(art27Base, "The scanned page does not name an EU representative. Art. 27 applies only to an organisation with no establishment in the EU that offers goods or services to, or monitors, people there; Pulse cannot tell either from a web page. The representative is normally named in the privacy policy, which this check does not read."));
 
   // Australian Consumer Law
   const hasAuCl = /australian consumer law|acl|consumer guarantee|statutory guarantee|competition.*consumer.*act/i.test(html);

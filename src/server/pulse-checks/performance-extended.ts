@@ -2,6 +2,7 @@ import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs, fetchWithTimeout } from "./_types";
 import { analyzeHost } from "@/server/pulse-lite/registrable-domain";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
+import { dnsTtlVerdict, observeDnsTtl } from "./dns-ttl";
 
 const PROBE_HEADERS = { "User-Agent": "Gitwork-Pulse/1.0" };
 /** Asset body reads are bounded in time AND size: a slow-drip or multi-MB file must not stall a scan. */
@@ -355,8 +356,9 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
         : { status: "WARN", detail: `Content-hashed asset ${assetFileName(hashedAsset)} is served with ${assetCacheControl ? `Cache-Control: ${assetCacheControl}` : "no Cache-Control header"} — add immutable to fingerprinted assets to eliminate revalidation requests.` };
   checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "immutable_cache_assets", label: "Immutable cache on hashed assets", ...immutable });
 
-  // DNS TTL (check if TTL in SRV/A record is sensible)
-  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "dns_ttl_optimized", label: "DNS TTL not near-zero", status: "PASS", detail: "DNS TTL check skipped in URL scan — verify your DNS TTL is >60s (ideally 300–3600s) to avoid excess DNS lookup overhead." });
+  // DNS TTL. Was a hard-coded PASS whose own detail said the check was skipped; now read
+  // from public resolvers, which can only show a lower bound (dns-ttl.ts).
+  checks.push(dnsTtlVerdict({ category: CATEGORIES.PERFORMANCE, checkKey: "dns_ttl_optimized", label: "DNS TTL not near-zero" }, ctx.hostname, await observeDnsTtl(ctx.hostname)));
 
   // Render-blocking scripts
   // Only scripts in <head> block first render: end-of-body scripts run after the content is parsed,

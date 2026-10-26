@@ -1,6 +1,7 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
 import { documentLanguage, stripNonMarketContext } from "./jurisdictions";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 const CATEGORY = CATEGORIES.BUSINESS_OPS;
 
@@ -51,8 +52,23 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
     /\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?)\s\d[ABD-HJLNP-UW-Z]{2}\b/.test(html);
   checks.push({ category: CATEGORY, checkKey: "physical_address_footer", label: "Physical address in footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical address detected." : "No postal address found on the scanned page — UK companies must show their registered office address on their website and the EU e-Commerce Directive requires a geographic address to be easily accessible (a contact or legal page also satisfies this); CAN-SPAM separately requires one in commercial emails." });
 
-  const hasBusinessHours = /business hours|office hours|monday.*friday|mon.*fri|9.*5|support.*hours|available.*\d+.*\d+/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "business_hours_displayed", label: "Business hours displayed", status: hasBusinessHours ? "PASS" : "WARN", detail: hasBusinessHours ? "Business hours signals detected." : "No business hours detected — displaying support availability hours reduces frustration and manages customer expectations." });
+  // An actual time range or round-the-clock statement in readable text. `9.*5` matched
+  // any 9 followed later by a 5, which is effectively every page.
+  const hoursBase = { category: CATEGORY, checkKey: "business_hours_displayed", label: "Business hours displayed" };
+  const day = String.raw`(?:Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:r(?:s(?:day)?)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)`;
+  const ampm = String.raw`\d{1,2}(?:[:.][0-5]\d)?\s*(?:am|pm|a\.m\.|p\.m\.)`;
+  const h24 = String.raw`(?:[01]?\d|2[0-3])[:.][0-5]\d`;
+  const range = String.raw`\s*(?:-|–|—|to|until|till)\s*`;
+  // A bare time range is not opening hours (cal.com shows "12 PM - 1 PM" as a booking slot),
+  // so it counts only in a run that also names a day or says what the hours are for.
+  const hoursContext = String.raw`(?=.*\b(?:${day}|weekdays?|weekends?|daily|every\s+day|open(?:ing)?|hours|office|support|available|lines|call\s+us|closed)\b)`;
+  const hoursQuote = findClaim(proseRuns(ctx.contentHtml ?? html), new RegExp(
+    String.raw`^${hoursContext}.*?(?:${ampm}${range}${ampm}|${h24}${range}${h24})|\b${day}${range}${day}\b[^.!?]{0,40}\d|\b(?:open|available|support(?:ed)?|staffed|here)\s+24\s*(?:\/|x)\s*7\b|\b24\s*(?:\/|x)\s*7\s+(?:support|help|service|customer)|\b24\s+hours\s+a\s+day\b`,
+    "i",
+  ));
+  checks.push(hoursQuote
+    ? claimSeen(hoursBase, "The page shows when the business or support team is available.", hoursQuote)
+    : claimUnseen(hoursBase, "The scanned page does not show opening or support hours. They are often on a contact page, which this check does not read, so this does not show they are missing. Showing when people can expect a reply reduces frustration."));
 
   const hasVatNumber = /vat.*number|vat reg|gb\d{9}|eu\d{9}|\bvat\b.*\d{7,12}/i.test(html);
   const isEuProduct = /\.eu\b/.test(ctx.hostname) || html.toLowerCase().includes("€") || html.toLowerCase().includes("vat");
