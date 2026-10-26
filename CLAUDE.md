@@ -7859,3 +7859,20 @@ How a derived control gets its verdict:
 the 146 can only ever fail. Counting them would raise the advertised number without Pulse observing
 anything new. The classification of all 391 controls (146 derivable, 47 observable with new
 collectors, 198 not observable from outside) is a plan for real new collectors, not a count.
+
+### 84.6 Hidden checks fixed, round one
+
+Two agent batches each fixed a withheld check, or made it honest, with a two-sided test built from
+real pages and repos. Each fix was proved to discriminate by reverting it.
+- **scanA (34):** auth, roles, SaaS, trust and legal page checks now read claims inside one visible
+  text run (`page-claims.ts`), never across 300k characters of markup. Absence behind sign-in is
+  INCONCLUSIVE, and laws that cannot apply are NOT_APPLICABLE (`legal-claims.ts`). Also new:
+  `page-signals.ts`, `dkim-record.ts` and `dns-ttl.ts`.
+- **platform (38):** the Android, iOS, desktop, React Native, extension and CLI checks.
+  `branch_protection` now reads rulesets and FAILs only for an admin viewer.
+  `no_service_role_key_exposed` uses `findSecrets`. `web_raw_html_injection` is judged per site
+  (JSON-LD passes; `prose.tsx` in vercel/commerce still fails).
+
+**Withheld:** 216 → 144. Every check still withheld either awaits a fix, or has a reason starting
+"Not assessable from what Pulse scans:" (internal ops, a product's own emails, behind sign-in,
+back office).
