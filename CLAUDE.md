@@ -8005,3 +8005,21 @@ from the repository snapshot. That needs no extra GitHub call, because the full 
     `branch_protection`. Retire them as `MERGED_INTO`.
   - `stale_bot_configured` is an open-source chore, not a readiness finding.
 - Live checks: 1,262. Withheld: 56.
+
+### 84.10 Real-user Core Web Vitals (`crux-field.ts`)
+
+PageSpeed's response already carried Chrome UX Report field data for each metric, and Pulse only read
+its one-word summary (`crux_overall`). New checks `crux_lcp`, `crux_inp`, `crux_cls`, `crux_fcp` and
+`crux_ttfb` judge the 75th percentile real Chrome users saw over the last 28 days, using Google's
+published thresholds.
+- **INP only exists as field data,** so these checks are what let standard `performance_core_02` be
+  refuted. LCP and CLS field data also feed `performance_core_01` and `performance_core_03`.
+- **URL data comes first,** then origin data. PSI's own `origin_fallback` flag counts as origin data.
+  The detail says which, and origin data is MEDIUM confidence.
+- **No Chrome traffic means no row at all,** as with `crux_overall`. A small site is unmeasured, not
+  slow.
+- ⚠️ **CLS arrives ×100** (`30` means 0.30). This was confirmed against a real response in Google's
+  Site Kit fixtures (`google/site-kit-wp …/pagespeed--mobile.json`). A test checks that Pulse's
+  verdict matches Google's own FAST/AVERAGE/SLOW category for every metric in that response.
+- These only run where PageSpeed runs (internal scans). Without `GOOGLE_PSI_API_KEY` the anonymous
+  quota returns 429 almost immediately.

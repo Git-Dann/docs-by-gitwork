@@ -1113,6 +1113,12 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "build_warnings", category: CATEGORIES.CODE_QUALITY, label: "Build warnings in latest deployment" },
   { key: "commit_velocity", category: CATEGORIES.CODE_QUALITY, label: "Active development velocity" },
   { key: "crux_overall", category: CATEGORIES.PERFORMANCE, label: "Real-user experience (Chrome UX Report)" },
+  // Per-metric p75 field data from the same PSI response (pulse-checks/crux-field.ts).
+  { key: "crux_lcp", category: CATEGORIES.PERFORMANCE, label: "Real-user Largest Contentful Paint (p75)" },
+  { key: "crux_inp", category: CATEGORIES.PERFORMANCE, label: "Real-user Interaction to Next Paint (p75)" },
+  { key: "crux_cls", category: CATEGORIES.PERFORMANCE, label: "Real-user Cumulative Layout Shift (p75)" },
+  { key: "crux_fcp", category: CATEGORIES.PERFORMANCE, label: "Real-user First Contentful Paint (p75)" },
+  { key: "crux_ttfb", category: CATEGORIES.PERFORMANCE, label: "Real-user Time to First Byte (p75)" },
   { key: "dependency_vulnerabilities", category: CATEGORIES.CODE_QUALITY, label: "Known dependency vulnerabilities" },
   { key: "deployment_success_rate", category: CATEGORIES.INFRASTRUCTURE, label: "Deployment success rate" },
   { key: "github_stars", category: CATEGORIES.TRUST_BRAND, label: "GitHub stars (social proof)" },

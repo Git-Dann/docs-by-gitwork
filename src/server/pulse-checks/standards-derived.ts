@@ -107,8 +107,9 @@ export const DERIVED_STANDARDS: readonly StandardsDerivation[] = [
   d("inclusive_access_13", ["video_captions"], "Video on the scanned page without a captions track fails the control. Transcripts and audio description are not tested."),
 
   // ── Performance core ──────────────────────────────────────────────────────
-  d("performance_core_01", ["psi_lcp"], "A poor lab LCP on the scanned route shows at least one route misses the budget. Other routes are not measured."),
-  d("performance_core_03", ["psi_cls"], "Poor lab layout shift on the scanned route fails the control there. Shifts during interaction are not measured."),
+  d("performance_core_01", ["psi_lcp", "crux_lcp"], "A poor lab LCP on the scanned route, or a poor real-user p75 LCP, shows at least one route misses the budget. Other routes are not measured."),
+  d("performance_core_02", ["crux_inp"], "A poor real-user p75 INP from the Chrome UX Report fails the control for the scanned page or its site. Sites with too little Chrome traffic have no field data."),
+  d("performance_core_03", ["psi_cls", "crux_cls"], "Poor lab layout shift on the scanned route fails the control there. Shifts during interaction are not measured."),
   d("performance_core_05", ["ios_low_data_mode", "flutter_metered_network", "rn_metered_network", "android_metered_network"], "Large transfers that ignore constrained or metered connections fail the control."),
   d("performance_core_07", ["responsive_images", "next_gen_image_formats", "perf_depth_responsive_images", "image_width_height", "ios_image_downsampling"], "Oversized, legacy-format or undimensioned images show no image budget is enforced."),
   d("performance_core_08", ["psi_tbt", "perf_depth_bundle_budget", "js_appears_minified"], "Long blocking time, unminified scripts or no bundle budget contradict a script budget."),

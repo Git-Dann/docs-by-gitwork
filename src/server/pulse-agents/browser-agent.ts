@@ -1,5 +1,6 @@
 import { CATEGORIES } from "../pulse-checks/categories";
 import type { PulseScanCheckInput, BrowserAgentInsights } from "@/types/pulse";
+import { evaluateCruxField, type CruxExperience } from "../pulse-checks/crux-field";
 
 const PSI_TIMEOUT_MS = 35_000;
 
@@ -15,9 +16,8 @@ interface PsiResponse {
     };
     audits: Record<string, LighthouseAudit>;
   };
-  loadingExperience?: {
-    overall_category?: string;
-  };
+  loadingExperience?: CruxExperience;
+  originLoadingExperience?: CruxExperience;
 }
 
 function scoreStatus(
@@ -192,6 +192,9 @@ export async function runBrowserAgent(
         detail: `Chrome User Experience Report: ${cruxCategory.toLowerCase()} — based on real visits to this URL.`,
       });
     }
+
+    // Per-metric real-user figures (INP has no lab equivalent at all).
+    checks.push(...evaluateCruxField(data.loadingExperience, data.originLoadingExperience));
 
     return {
       checks,
