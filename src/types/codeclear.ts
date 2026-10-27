@@ -193,6 +193,17 @@ export interface GitHubProfileSnapshot {
   updatedAt: string;
 }
 
+/**
+ * Why a repo's file tree could not be read. Recorded so the drawer can say "Couldn't read
+ * this repository: …" with the real cause instead of reporting no tests / CI / docs.
+ */
+export type RepoUnreadableReason =
+  | "NO_TOKEN"
+  | "NO_ACCESS"
+  | "RATE_LIMITED"
+  | "NOT_FOUND"
+  | "REQUEST_FAILED";
+
 export interface GitHubRepoSnapshot {
   name: string;
   fullName: string;
@@ -209,12 +220,15 @@ export interface GitHubRepoSnapshot {
    *  false simply because nothing was observed. Never render them as findings when
    *  this is false. */
   treeReadable: boolean;
-  hasReadme: boolean;
-  hasDocs: boolean;
-  hasTests: boolean;
-  hasCi: boolean;
-  hasLint: boolean;
-  hasManifest: boolean;
+  /** Why the tree could not be read. Null/absent when it was read (and on older runs). */
+  treeUnreadableReason?: RepoUnreadableReason | null;
+  /** Null when the tree was not read (unknown). Older runs stored false; treeReadable governs. */
+  hasReadme: boolean | null;
+  hasDocs: boolean | null;
+  hasTests: boolean | null;
+  hasCi: boolean | null;
+  hasLint: boolean | null;
+  hasManifest: boolean | null;
   topics: string[];
   languages: GitHubLanguageUsage[];
   pushedAt: string;
@@ -244,11 +258,16 @@ export interface GitHubAnalysisMetrics {
   languageCount: number;
   topLanguages: GitHubLanguageUsage[];
   recentRepoRatio: number;
-  docsCoverage: number;
-  testsCoverage: number;
-  ciCoverage: number;
-  lintCoverage: number;
-  manifestCoverage: number;
+  /** Coverage over the repos whose tree was READ. Null when none could be read — unknown,
+   *  never 0%, because "we could not look" is not "it isn't there". */
+  docsCoverage: number | null;
+  testsCoverage: number | null;
+  ciCoverage: number | null;
+  lintCoverage: number | null;
+  manifestCoverage: number | null;
+  /** Sampled repos whose tree could not be read, and why (distinct reasons). */
+  unreadableRepoCount?: number;
+  unreadableReasons?: RepoUnreadableReason[];
   averageRecentCommitCount: number;
   averageHealthScore: number;
   /** Repos whose source was measured, and their average code health (null when none). */

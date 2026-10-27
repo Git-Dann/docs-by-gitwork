@@ -2117,7 +2117,13 @@ Vercel before the migration and absent on the VPS after it. Consequences, all si
   private candidate repo has been scored as having no tests, CI, linter or docs. **Fixed in #470
   and #471** (unreadable is now "unassessed"; tests/lint detected across every language). Since
   October 2026 Code also measures the actual source of a candidate's top three repos, as evidence
-  only (`measured_code_health`, never FAIL, scores unchanged).
+  only (`measured_code_health`, never FAIL, scores unchanged). **Finished October 2026:** the
+  profile level still turned "nothing readable" into 0% coverage (FAIL checks, red flags at −3
+  calibre each, a lower recommended code-quality score). Unread signals are now `null`, coverage
+  is `null` when no sampled repo was read, recommended scores exclude unknown terms from both
+  sides (`weightedScore`), coverage checks go SKIPPED with "Couldn't read …: <reason>", and the
+  reason (`NO_TOKEN` / `NO_ACCESS` / `RATE_LIMITED` / `NOT_FOUND`) is stored per repo. Our lack
+  of access is never a red flag. Tests: `codeclear-unreadable-repo.test.ts`.
 
 ### What changed
 
@@ -6498,7 +6504,7 @@ family: **a probe that could not answer was reported as a finding about the prod
   the limit (`githubRateLimitedUntil`) and the scan says the limit is used up and when it clears; a 403
   that is NOT a rate limit is no longer mislabelled one. **The capacity itself is not fixed** — a GitHub
   App (higher per-installation limits) or caching repo snapshots is the real answer before repo scans
-  are opened to many users. `codeclear-analysis.ts` has its own copy of the old 403 logic, untouched.
+  are opened to many users. `codeclear-analysis.ts` now uses the shared `githubRequest` (Oct 2026).
 
 Matrix after all fixes: see the PR/commit. Tests: `uninspectable-target.test.ts`,
 `audit-2026-10-live-defects.test.ts`, `github-rate-limit.test.ts`, and the TLS-RPT case in
