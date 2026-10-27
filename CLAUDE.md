@@ -6627,6 +6627,13 @@ Repo scans share ONE token (5,000 REST calls/hour). Measured: ~150–250 calls p
 roughly 20–30 repo scans an hour across all users. A GitHub App (per-installation limits) or
 caching repo snapshots is needed before repo scans are opened widely. URL scans are unaffected.
 
+**Partly addressed (Oct 2026):** every REST GET through `githubRequest` now sends the stored
+`ETag`/`Last-Modified` back (`src/lib/github-cache.ts`, in-process LRU, 2,000 entries / 50MB,
+keyed on URL + Accept + a hash of the token) and serves the stored body on a 304. An
+authenticated 304 is not counted against the limit (measured), so a rescan of an unchanged repo
+costs close to nothing. A first scan of a new repo still costs full price, and the cache is lost
+on restart.
+
 ## 61. Recent Changes (October 2026) — The daily Slack updates report subtasks and ongoing work
 
 Asked for by a developer (Waqar): completed subtasks must appear, in-progress work must appear at

@@ -1,3 +1,5 @@
+import { GithubConditionalCache, cacheKey, tokenIdentity, type GithubCacheStats } from "./github-cache";
+
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
@@ -71,13 +73,66 @@ function noteRateLimit(response: Response, body: string): boolean {
   return true;
 }
 
+// ── Conditional requests ──────────────────────────────────────────────────────
+// A GET answered `304 Not Modified` does not count against GitHub's primary rate limit, so
+// every GET remembers its ETag / Last-Modified and body (src/lib/github-cache.ts) and sends
+// them back next time. On a 304 the stored body is returned exactly as a 200 would have been.
+const conditionalCache = new GithubConditionalCache();
+const CACHE_LOG_EVERY = 500;
+let cacheLookupsSinceLog = 0;
+
+/** Hits, 304s and misses for the conditional-request cache, for logging. */
+export function githubCacheStats(): GithubCacheStats {
+  return conditionalCache.stats();
+}
+
+/** Test seam. */
+export function __resetGithubCache(): void {
+  conditionalCache.clear();
+  cacheLookupsSinceLog = 0;
+}
+
+function noteCacheLookup(): void {
+  cacheLookupsSinceLog++;
+  if (cacheLookupsSinceLog < CACHE_LOG_EVERY) return;
+  cacheLookupsSinceLog = 0;
+  const s = conditionalCache.stats();
+  console.info(
+    `[github] conditional cache: ${s.notModified} served by 304 (not counted against the rate limit), ` +
+      `${s.misses} full reads, ${s.entries} entries, ${Math.round(s.bytes / 1024)} KB.`,
+  );
+}
+
 export async function githubRequest<T>(path: string): Promise<T> {
-  const response = await fetch(`${GITHUB_API_BASE}${path}`, {
-    headers: githubHeaders(),
+  const url = `${GITHUB_API_BASE}${path}`;
+  const baseHeaders: Record<string, string> = githubHeaders();
+  const key = cacheKey(url, baseHeaders.Accept, tokenIdentity(process.env.GITHUB_TOKEN));
+  const conditional = conditionalCache.conditionalHeaders(key);
+
+  const response = await fetch(url, {
+    headers: { ...baseHeaders, ...conditional },
     cache: "no-store",
   });
 
+  noteCacheLookup();
+
+  // 304: GitHub confirmed our stored body is current. Only reachable when we sent a
+  // validator, so a stored entry exists; if it was evicted in the meantime, fall through
+  // to the error path rather than inventing a body.
+  if (response.status === 304) {
+    const entry = conditionalCache.get(key);
+    if (entry) {
+      conditionalCache.recordNotModified();
+      return JSON.parse(entry.body) as T;
+    }
+  } else {
+    conditionalCache.recordMiss();
+  }
+
   if (!response.ok) {
+    // A failed read must never be answered from the cache later, and a stale entry must not
+    // outlive a resource that is now gone or forbidden.
+    conditionalCache.delete(key);
     const body = await response.text();
     const message = body || `GitHub request failed with status ${response.status}.`;
 
@@ -100,7 +155,12 @@ export async function githubRequest<T>(path: string): Promise<T> {
     throw new GitHubRequestError("GITHUB_REQUEST_FAILED", message);
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  const parsed = JSON.parse(text) as T;
+  if (response.status === 200) {
+    conditionalCache.set(key, text, response.headers.get("etag"), response.headers.get("last-modified"));
+  }
+  return parsed;
 }
 
 export async function safeGithubRequest<T>(path: string, fallback: T): Promise<T> {
