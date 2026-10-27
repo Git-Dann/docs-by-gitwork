@@ -13,6 +13,7 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
 import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
 import { buildProjects, decodeTargetKey, targetKey } from "@/lib/pulse-projects";
@@ -2919,8 +2920,10 @@ type DemoPulseCheckRow = {
   category: string;
   checkKey: string;
   label: string;
-  status: "PASS" | "WARN" | "FAIL";
+  status: "PASS" | "WARN" | "FAIL" | "INCONCLUSIVE" | "ERROR" | "SKIPPED" | "NOT_APPLICABLE";
   detail: string;
+  evidence?: string | null;
+  confidence?: string;
 };
 
 function demoPulseChecks(scanId: string, rows: DemoPulseCheckRow[]) {
@@ -2932,10 +2935,10 @@ function demoPulseChecks(scanId: string, rows: DemoPulseCheckRow[]) {
     label: r.label,
     status: r.status,
     detail: r.detail,
-    evidence: null,
+    evidence: (r.evidence ?? null) as string | null,
     sortOrder: i,
     createdAt: atDays(-3),
-    confidence: "HIGH" as const,
+    confidence: (r.confidence ?? "HIGH") as "HIGH" | "MEDIUM" | "LOW",
     confidenceReason: null,
     trustBucket: "CONFIRMED" as const,
   }));
@@ -3018,21 +3021,8 @@ const demoScanNorthwind = makeDemoScan({
   previousHealthScore: 79,
   techStack: ["Next.js", "React", "TypeScript", "PostgreSQL", "Tailwind CSS", "Vercel"],
   at: atDays(-5),
-  checks: demoPulseChecks("scan-northwind", [
-    { category: "Security", checkKey: "https_enforced", label: "HTTPS enforced", status: "PASS", detail: "Valid TLS with HSTS and a clean certificate chain." },
-    { category: "Security", checkKey: "security_headers", label: "Security headers", status: "PASS", detail: "CSP, X-Frame-Options and Referrer-Policy all set." },
-    { category: "Authentication", checkKey: "auth_present", label: "Authentication", status: "PASS", detail: "Session auth with secure, http-only cookies." },
-    { category: "Performance", checkKey: "lcp", label: "Largest Contentful Paint", status: "PASS", detail: "LCP 1.9s on a throttled 4G profile." },
-    { category: "Performance", checkKey: "image_opt", label: "Image optimisation", status: "WARN", detail: "A few hero images are served without explicit dimensions." },
-    { category: "SEO", checkKey: "meta_tags", label: "Meta tags & Open Graph", status: "PASS", detail: "Titles, descriptions and OG images present site-wide." },
-    { category: "SEO", checkKey: "sitemap", label: "Sitemap & robots", status: "PASS", detail: "sitemap.xml discoverable and referenced in robots.txt." },
-    { category: "Accessibility", checkKey: "contrast", label: "Colour contrast", status: "WARN", detail: "Two link hover states fall just under AA contrast." },
-    { category: "Observability", checkKey: "error_monitoring", label: "Error monitoring", status: "PASS", detail: "Sentry wired across web and API with source maps." },
-    { category: "Infrastructure", checkKey: "cdn", label: "CDN & caching", status: "PASS", detail: "Static assets on a CDN with long-lived immutable caching." },
-    { category: "Legal & Compliance", checkKey: "privacy_policy", label: "Privacy & cookie policy", status: "PASS", detail: "Both linked in the footer and the consent banner." },
-    { category: "Code Quality", checkKey: "ci_pipeline", label: "CI pipeline", status: "PASS", detail: "Typecheck, lint and tests run on every pull request." },
-    { category: "Code Quality", checkKey: "test_coverage", label: "Automated tests", status: "WARN", detail: "Coverage ~52% — core flows covered, edges thin." },
-  ]),
+  // A real scan's checks (renamed to Northwind), so the page is seen at its real size.
+  checks: demoPulseChecks("scan-northwind", RECORDED_NORTHWIND_CHECKS as DemoPulseCheckRow[]),
   llmAnalysis: {
     projectClassification: { type: "SaaS", subtype: "B2B streaming analytics", confidence: "HIGH", signals: ["Authenticated app shell", "Usage-based dashboards", "Multi-tenant routing"], verticalInsights: ["Publish an uptime/status page to build enterprise trust", "Add SSO (SAML/OIDC) to unlock larger accounts", "Expose an audit log for security-conscious buyers"] },
     executiveSummary: "Northwind is a well-built, production-grade SaaS. Security, infrastructure and SEO are strong; the main opportunities are deepening test coverage and a handful of polish items before the next enterprise push.",
@@ -3666,6 +3656,52 @@ function resolveDemoSummary(pathname: string, init?: { method?: string; body?: u
   return { ok: true };
 }
 
+// ── Pulse findings (demo) ─────────────────────────────────────────────────────
+// Writes are applied to an in-memory copy, so triage on /demo/pulse behaves like the
+// real page for the session. Northwind starts with one finding on the board and one
+// accepted, so every stage of the list has something in it.
+const demoFindingStore = new Map<string, { states: import("@/lib/pulse-findings").FindingState[]; tasks: import("@/lib/pulse-findings").FindingTask[] }>();
+
+function demoFindingSeed(scanId: string) {
+  const scan = (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[scanId] ?? demoScanNorthwind;
+  const warns = scan.checks.filter((c) => c.status === "WARN").map((c) => c.checkKey);
+  const states: import("@/lib/pulse-findings").FindingState[] = [];
+  const tasks: import("@/lib/pulse-findings").FindingTask[] = [];
+  if (scanId === "scan-northwind" && warns.length >= 2) {
+    states.push({ checkKey: warns[0], decision: null, note: null, taskId: "demo-pulse-task-1", decidedByName: null, decidedAt: null });
+    tasks.push({ id: "demo-pulse-task-1", status: "DOING", title: "[Pulse] finding", assigneeName: "Alex Rivera" });
+    states.push({ checkKey: warns[1], decision: "ACCEPTED_RISK", note: "Marketing site only; no user data on these pages.", taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-2) });
+  }
+  return { states, tasks };
+}
+
+function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: string; body?: unknown }) {
+  const store = demoFindingStore.get(scanId) ?? demoFindingSeed(scanId);
+  demoFindingStore.set(scanId, store);
+  const scan = (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[scanId] ?? demoScanNorthwind;
+  const method = (init?.method ?? "GET").toUpperCase();
+  let body: Record<string, unknown> = {};
+  try { body = typeof init?.body === "string" ? JSON.parse(init.body) : {}; } catch { body = {}; }
+  const checkKey = typeof body.checkKey === "string" ? body.checkKey : "";
+  const upsert = (patch: Partial<import("@/lib/pulse-findings").FindingState>) => {
+    const i = store.states.findIndex((st) => st.checkKey === checkKey);
+    const base = i >= 0 ? store.states[i] : { checkKey, decision: null, note: null, taskId: null, decidedByName: null, decidedAt: null };
+    const next = { ...base, ...patch };
+    if (i >= 0) store.states[i] = next; else store.states.push(next);
+  };
+  if (isTask && method === "POST" && checkKey) {
+    const id = `demo-pulse-task-${store.tasks.length + 2}`;
+    store.tasks.push({ id, status: "TODO", title: `[Pulse] ${checkKey}`, assigneeName: null });
+    upsert({ taskId: id });
+    return { taskId: id, created: true, targetKey: targetKey(scan), clientId: scan.clientId, ...store };
+  }
+  if (method === "PUT" && checkKey) {
+    const decision = body.decision === "ACCEPTED_RISK" || body.decision === "FALSE_POSITIVE" ? body.decision : null;
+    upsert({ decision, note: decision && typeof body.note === "string" ? body.note : null, decidedByName: "Alex Rivera", decidedAt: new Date().toISOString() });
+  }
+  return { targetKey: targetKey(scan), clientId: scan.clientId, ...store };
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -4003,6 +4039,10 @@ export function resolveDemoApi(
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
   if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
   if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
+  {
+    const fm = pathname.match(/^\/api\/pulse\/scans\/([^/]+)\/findings(\/task)?$/);
+    if (fm) return demoPulseFindings(fm[1], Boolean(fm[2]), init);
+  }
   {
     const ps = pathname.match(/^\/api\/pulse\/scans\/([^/]+)$/);
     if (ps) return { scan: demoPulseScansById[ps[1]] ?? demoScanNorthwind };

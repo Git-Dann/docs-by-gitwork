@@ -37,6 +37,8 @@ export function usePermissions() {
     canViewAdminDocTypes: can("docs.viewAdminTypes"),
     // Action gates (view vs manage + high-risk)
     canRunFixAgent: can("pulse.fixAgent"),
+    /** Triage Pulse findings (send to board, accept risk, dismiss). Mirrors server canManagePulse. */
+    canManagePulse: can("pulse.manage"),
     canManageCode: can("code.manage"),
     // DevSignal vetting pipeline — admin-only feature perm (default-off).
     canManageDevSignal: can("devsignal"),

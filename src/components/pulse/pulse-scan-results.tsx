@@ -30,10 +30,12 @@ import {
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan, usePulseFindings } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { PlainScanBox } from "@/components/pulse/code-health-sections";
+import { PulseFindings } from "@/components/pulse/pulse-findings";
+import { buildFindings, countByView } from "@/lib/pulse-findings";
 import { ScanDiffBody, ScoreChange } from "@/components/pulse/pulse-scan-diff";
 import { encodeTargetKey, targetKey } from "@/lib/pulse-projects";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
@@ -233,7 +235,8 @@ const PRIMARY_OF: Record<Tab, PrimaryTab> = {
   checks: "checks",
   compliance: "checks",
   readiness: "plan",
-  gaps: "plan",
+  // Gaps were AI-written restatements of failing checks; an old deep link lands on the findings.
+  gaps: "checks",
   opportunities: "plan",
   roadmap: "plan",
   stack: "plan",
@@ -1268,188 +1271,6 @@ function AiUnavailable({ aiError }: { aiError: string | null }) {
   );
 }
 
-// ── Wave 2A: Priority Action Plan ────────────────────────────────────────────
-
-type PriorityActionItem = {
-  type: "blocker" | "gap" | "opp";
-  title: string;
-  tab: Tab;
-  urgency?: "CRITICAL" | "HIGH" | "MEDIUM";
-  effort?: "S" | "M" | "L" | "XL";
-};
-
-function PriorityActionPlan({
-  llm,
-  onTabChange,
-  clientId,
-  scanId,
-  num,
-}: {
-  llm: NonNullable<PulseScanRecord["llmAnalysis"]>;
-  onTabChange: (tab: Tab) => void;
-  clientId: string | null;
-  scanId: string;
-  num: string;
-}) {
-  const { mutateAsync: batchCreate, isPending: pushing } = useBatchCreateTasks();
-  const [pushedTiers, setPushedTiers] = useState<Record<string, string>>({});
-  const [pushingTier, setPushingTier] = useState<string | null>(null);
-
-  async function pushTier(
-    tierKey: string,
-    items: PriorityActionItem[],
-    priority: "HIGH" | "MEDIUM" | "LOW",
-  ) {
-    if (!clientId || !items.length) return;
-    setPushingTier(tierKey);
-    try {
-      const res = await batchCreate({
-        clientId,
-        tasks: items.map((item) => ({
-          title: item.title,
-          priority,
-          metadata: { source: "pulse_scan", pulseScanId: scanId, pulsePlanTier: tierKey },
-        })),
-      });
-      setPushedTiers((s) => ({
-        ...s,
-        [tierKey]:
-          res.created > 0
-            ? `Added ${res.created}${res.skipped ? ` · ${res.skipped} already on board` : ""}`
-            : "Already on board",
-      }));
-    } catch {
-      setPushedTiers((s) => ({ ...s, [tierKey]: "Failed — retry" }));
-    } finally {
-      setPushingTier(null);
-    }
-  }
-
-  const blockers = (llm.productionBlockers as ProductionBlocker[]) ?? [];
-
-  const fixNow: PriorityActionItem[] = [
-    ...blockers
-      .filter((b) => b.urgency === "CRITICAL")
-      .map((b): PriorityActionItem => ({ type: "blocker", title: b.blocker, tab: "readiness", urgency: "CRITICAL" })),
-    ...llm.criticalGaps
-      .filter((g) => g.urgency === "CRITICAL")
-      .map((g): PriorityActionItem => ({ type: "gap", title: g.gap, tab: "gaps", urgency: "CRITICAL" })),
-  ];
-
-  const thisSprint: PriorityActionItem[] = [
-    ...blockers
-      .filter((b) => b.urgency === "HIGH")
-      .map((b): PriorityActionItem => ({ type: "blocker", title: b.blocker, tab: "readiness", urgency: "HIGH" })),
-    ...llm.criticalGaps
-      .filter((g) => g.urgency === "HIGH")
-      .map((g): PriorityActionItem => ({ type: "gap", title: g.gap, tab: "gaps", urgency: "HIGH" })),
-    ...llm.buildOpportunities
-      .filter((o) => o.businessValue === "HIGH" && (o.estimatedEffort === "S" || o.estimatedEffort === "M"))
-      .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
-  ];
-
-  const nextSprint: PriorityActionItem[] = [
-    ...llm.criticalGaps
-      .filter((g) => g.urgency === "MEDIUM")
-      .map((g): PriorityActionItem => ({ type: "gap", title: g.gap, tab: "gaps", urgency: "MEDIUM" })),
-    ...llm.buildOpportunities
-      .filter((o) => o.businessValue === "HIGH" && o.estimatedEffort !== "S" && o.estimatedEffort !== "M")
-      .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
-    ...llm.buildOpportunities
-      .filter((o) => o.businessValue === "MEDIUM" && (o.estimatedEffort === "S" || o.estimatedEffort === "M"))
-      .slice(0, 3)
-      .map((o): PriorityActionItem => ({ type: "opp", title: o.title, tab: "opportunities", effort: o.estimatedEffort })),
-  ];
-
-  // Dedupe across tiers — the same issue often appears as both a production blocker
-  // AND a critical gap; keep the highest-priority occurrence only (Fix now > This sprint > Next).
-  const seenActions = new Set<string>();
-  const dedupeTier = (items: PriorityActionItem[]) =>
-    items.filter((it) => {
-      const k = it.title.trim().toLowerCase();
-      if (seenActions.has(k)) return false;
-      seenActions.add(k);
-      return true;
-    });
-  const fixNowD = dedupeTier(fixNow);
-  const thisSprintD = dedupeTier(thisSprint);
-  const nextSprintD = dedupeTier(nextSprint);
-
-  const totalActions = fixNowD.length + thisSprintD.length + nextSprintD.length;
-  if (totalActions === 0) return null;
-
-  const tiers = [
-    { key: "fix-now",     label: "Fix now",     priority: "HIGH" as const,   items: fixNowD.slice(0, 5),     dotColor: "#ef4444", borderCls: "border-red-200 bg-red-50 hover:bg-red-100",   textCls: "text-red-900",   tagCls: "bg-red-100 text-red-700" },
-    { key: "this-sprint", label: "This sprint", priority: "MEDIUM" as const, items: thisSprintD.slice(0, 5), dotColor: "#f59e0b", borderCls: "border-amber-200 bg-amber-50 hover:bg-amber-100", textCls: "text-amber-900", tagCls: "bg-amber-100 text-amber-700" },
-    { key: "next-sprint", label: "Next sprint", priority: "LOW" as const,    items: nextSprintD.slice(0, 5), dotColor: "#3b82f6", borderCls: "border-blue-200 bg-blue-50 hover:bg-blue-100",   textCls: "text-blue-900",  tagCls: "bg-blue-100 text-blue-700" },
-  ].filter(({ items }) => items.length > 0);
-
-  return (
-    <div className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header-label">{`${num} // PRIORITY ACTION PLAN`}</span>
-        <span className="widget-header-right">{totalActions} action{totalActions !== 1 ? "s" : ""}</span>
-      </div>
-      <div className="widget-body">
-        <div className="grid gap-5 sm:grid-cols-3">
-          {tiers.map(({ key, label, priority, items, dotColor, borderCls, textCls, tagCls }) => (
-            <div key={key}>
-              <div className="mb-2.5 flex items-center justify-between gap-2">
-                <p className="widget-data-label">{label} · {items.length}</p>
-                {clientId && (
-                  pushedTiers[key] ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600">
-                      <CheckCircleIcon className="h-3 w-3" />
-                      {pushedTiers[key]}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={pushing}
-                      onClick={() => pushTier(key, items, priority)}
-                      className="inline-flex items-center gap-1 rounded-[5px] border border-[var(--border-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50"
-                      title="Create a task on this client's board for every item in this tier"
-                    >
-                      {pushingTier === key ? (
-                        <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                      ) : (
-                        <PlusIcon className="h-2.5 w-2.5" />
-                      )}
-                      Push to board
-                    </button>
-                  )
-                )}
-              </div>
-              <div className="space-y-1.5">
-                {items.map((item, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => onTabChange(item.tab)}
-                    className={cn("flex w-full items-start gap-2.5 rounded-[8px] border px-3 py-2.5 text-left transition", borderCls)}
-                  >
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
-                    <p className={cn("flex-1 text-xs leading-5", textCls)}>{item.title}</p>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {item.type === "blocker" && (
-                        <span className={cn("rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", tagCls)}>
-                          BLOCKER
-                        </span>
-                      )}
-                      {item.effort && <PulseEffortBadge effort={item.effort} />}
-                      {item.urgency && item.type === "gap" && <PulseUrgencyBadge urgency={item.urgency} />}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Plain-English "Why this score?" — a portal popover so it overlays (never shifts
 // the score) and can't be clipped by the widget card's overflow.
 function ScoreExplainer({
@@ -1628,7 +1449,9 @@ function ScoreExplainer({
 
 export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const router = useRouter();
-  const { canRunFixAgent, isExternal } = usePermissions();
+  const { canRunFixAgent, isExternal, canManagePulse } = usePermissions();
+  const [checksView, setChecksView] = useState<"findings" | "all">("findings");
+  const { data: findingData } = usePulseFindings(scan.id, scan.status === "COMPLETED");
   // Two actions on this bar act AS Gitwork rather than on the scan, so a guest gets
   // neither: "Generate proposal" writes a Document into our Docs workspace (a module
   // they do not hold — the route now refuses it, and offering a button that refuses is
@@ -1642,8 +1465,14 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const scoreHistory = (historyData?.history ?? []).filter((h) => typeof h.healthScore === "number");
   const { data: diffData } = usePulseScanDiff(scan.id, scan.status === "COMPLETED");
   const scanDiff = diffData?.diff ?? null;
+  // Open findings for the tab badge: the same rule the Findings list applies.
+  const openFindingCount = countByView(buildFindings(
+    scan.checks,
+    findingData?.states ?? [],
+    findingData?.tasks ?? [],
+    new Set((scanDiff?.fixed ?? []).map((d) => d.checkKey)),
+  )).open;
   const grades = computeGrades(scan.checks);
-  const topPriorities = rankFindings(scan.checks).filter((r) => r.priority.tier === "P1" || r.priority.tier === "P2").slice(0, 6);
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
   const { mutateAsync: unshareScan, isPending: unsharing } = useUnsharePulseScan();
@@ -1943,7 +1772,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   }
 
   const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
-  const missingCount = (llm?.productionBlockers?.length ?? 0) + (llm?.productionReadinessChecklist?.filter((i) => i.status === "MISSING").length ?? 0);
 
   const scorecard = scan.complianceScorecard ?? [];
   const complianceMissing = scorecard.reduce((n, e) => n + e.failing, 0);
@@ -1953,17 +1781,18 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
   const tabs: Array<{ id: PrimaryTab; to: Tab; label: string; count?: number; badgeColor?: "red" | "amber" }> = [
     { id: "summary", to: "overview", label: "Summary" },
-    { id: "checks", to: "checks", label: "All checks", count: failCount, badgeColor: "red" as const },
-    { id: "plan", to: "readiness", label: "Plan", count: missingCount || undefined },
+    { id: "checks", to: "checks", label: "Findings", count: openFindingCount || undefined, badgeColor: "red" as const },
+    { id: "plan", to: "opportunities", label: "Plan" },
     { id: "technical", to: "technical", label: "Technical" },
   ];
   // The plan's parts, as one row of choices inside the Plan tab rather than five more tabs.
   const planParts: Array<{ id: Tab; label: string; count?: number }> = [
-    { id: "readiness", label: "Readiness", count: missingCount },
-    { id: "gaps", label: "Gaps", count: llm?.criticalGaps.length },
     { id: "opportunities", label: "Opportunities", count: llm?.buildOpportunities.length },
     { id: "roadmap", label: "Roadmap", count: llm?.scalingRoadmap.length },
     { id: "stack", label: "Stack", count: llm?.techStackAnalysis?.recommendations.length },
+    // The commercial read (effort, price, intake risk). Blockers, gaps and the readiness
+    // checklist used to live here too; they repeated the findings, so they are gone.
+    { id: "readiness", label: "Estimate" },
   ];
 
   // Sequential section numbering — increments only for sections that actually
@@ -2044,12 +1873,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
       {/* Email-this-audit modal */}
       <Modal open={emailModalOpen} onClose={() => setEmailModalOpen(false)} title="Email this audit">
         {emailSent ? (
-          <div className="space-y-3">
+          <div className="widget-body space-y-3">
             <p className="text-sm text-emerald-600">Sent — {emailTo} will receive the report link and summary.</p>
             <Button size="sm" onClick={() => setEmailModalOpen(false)}>Done</Button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="widget-body space-y-3">
             <p className="text-sm text-[var(--text-3)]">Emails the prospect a link to the shared report plus the executive summary and proposal hook. Shares the report automatically if it isn&apos;t already.</p>
             <div className="space-y-1.5">
               <label className="app-field-label">Recipient email</label>
@@ -2222,7 +2051,9 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
 
       {/* The plain-English verdict and what to fix first, before any tab: the first thing a
           non-developer needs, and its headline follows the banner above it. */}
-      {scan.status === "COMPLETED" && <PlainScanBox checks={scan.checks} gate={gate ?? null} />}
+      {/* On the Summary only: its "fix first" list is the top of the Findings tab, and
+          repeating it above every tab was one of the six copies this page used to show. */}
+      {scan.status === "COMPLETED" && inSummary && <PlainScanBox checks={scan.checks} gate={gate ?? null} />}
 
       {/* Tabs — four. The plan's five parts are a row of choices inside Plan. */}
       <div className="border-b border-[var(--border-2)]">
@@ -2511,123 +2342,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
             </div>
           )}
 
-          {/* Row 2: Blockers · Gaps · Quick Wins */}
-          {inSummary && llm && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-
-              {/* 02 // PRODUCTION BLOCKERS */}
-              <div className="widget-card">
-                <div className="widget-header">
-                  <span className="widget-header-label">{`${sectionNo()} // PRODUCTION BLOCKERS`}</span>
-                  {(llm.productionBlockers as ProductionBlocker[])?.filter((b) => b.urgency === "CRITICAL").length > 0 && (
-                    <span className="widget-header-right" style={{ color: "#dc2626" }}>
-                      {(llm.productionBlockers as ProductionBlocker[]).filter((b) => b.urgency === "CRITICAL").length} critical
-                    </span>
-                  )}
-                </div>
-                <div className="widget-body-compact space-y-2.5">
-                  {!llm.productionBlockers || (llm.productionBlockers as ProductionBlocker[]).length === 0 ? (
-                    <div className="flex items-center gap-2 py-1">
-                      <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" />
-                      <span className="text-sm text-emerald-700">No blockers found</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex flex-col gap-0.5 border-b border-[var(--border-2)] pb-2.5">
-                        <span className={cn("widget-stat-sm", (llm.productionBlockers as ProductionBlocker[]).some((b) => b.urgency === "CRITICAL") ? "text-red-600" : "text-amber-600")}>
-                          {(llm.productionBlockers as ProductionBlocker[]).length}
-                        </span>
-                        <span className="widget-data-label">Blockers</span>
-                      </div>
-                      {(llm.productionBlockers as ProductionBlocker[]).slice(0, 4).map((blocker, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <XCircleIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", blocker.urgency === "CRITICAL" ? "text-red-500" : "text-orange-400")} />
-                          <p className="text-xs leading-5 text-[var(--text-2)]">{blocker.blocker}</p>
-                        </div>
-                      ))}
-                      {(llm.productionBlockers as ProductionBlocker[]).length > 4 && (
-                        <button type="button" onClick={() => setActiveTab("readiness")} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
-                          +{(llm.productionBlockers as ProductionBlocker[]).length - 4} more →
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* 03 // CRITICAL GAPS */}
-              <div className="widget-card">
-                <div className="widget-header">
-                  <span className="widget-header-label">{`${sectionNo()} // CRITICAL GAPS`}</span>
-                  {llm.criticalGaps.length > 0 && (
-                    <span className="widget-header-right">{llm.criticalGaps.length} total</span>
-                  )}
-                </div>
-                <div className="widget-body-compact space-y-2.5">
-                  {llm.criticalGaps.length === 0 ? (
-                    <div className="flex items-center gap-2 py-1">
-                      <CheckCircleIcon className="h-4 w-4 shrink-0 text-emerald-500" />
-                      <span className="text-sm text-emerald-700">No critical gaps</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex flex-col gap-0.5 border-b border-[var(--border-2)] pb-2.5">
-                        <span className="widget-stat-sm text-red-600">
-                          {llm.criticalGaps.filter((g) => g.urgency === "CRITICAL" || g.urgency === "HIGH").length}
-                        </span>
-                        <span className="widget-data-label">High priority</span>
-                      </div>
-                      {llm.criticalGaps.slice(0, 4).map((gap, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <ExclamationTriangleIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", gap.urgency === "CRITICAL" ? "text-red-500" : gap.urgency === "HIGH" ? "text-orange-500" : "text-amber-500")} />
-                          <p className="text-xs leading-5 text-[var(--text-2)]">{gap.gap}</p>
-                        </div>
-                      ))}
-                      {llm.criticalGaps.length > 4 && (
-                        <button type="button" onClick={() => setActiveTab("gaps")} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
-                          +{llm.criticalGaps.length - 4} more →
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* 04 // QUICK WINS */}
-              <div className="widget-card">
-                <div className="widget-header">
-                  <span className="widget-header-label">{`${sectionNo()} // QUICK WINS`}</span>
-                </div>
-                <div className="widget-body-compact space-y-2.5">
-                  {(() => {
-                    const wins = llm.buildOpportunities.filter((o) => o.businessValue === "HIGH" && (o.estimatedEffort === "S" || o.estimatedEffort === "M"));
-                    const list = wins.length > 0 ? wins : llm.buildOpportunities;
-                    if (list.length === 0) return <p className="py-1 text-sm text-[var(--text-3)]">No opportunities identified.</p>;
-                    return (
-                      <>
-                        <div className="flex flex-col gap-0.5 border-b border-[var(--border-2)] pb-2.5">
-                          <span className="widget-stat-sm text-emerald-600">{list.length}</span>
-                          <span className="widget-data-label">{wins.length > 0 ? "High value · low effort" : "Opportunities"}</span>
-                        </div>
-                        {list.slice(0, 4).map((opp, i) => (
-                          <div key={i} className="flex items-start gap-2">
-                            <LightBulbIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand-500)]" />
-                            <p className="text-xs leading-5 text-[var(--text-2)]">{opp.title}</p>
-                          </div>
-                        ))}
-                        {list.length > 4 && (
-                          <button type="button" onClick={() => setActiveTab("opportunities")} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
-                            +{list.length - 4} more →
-                          </button>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Checks summary intentionally omitted here — Project Health (01) already
               shows pass/warn/fail counts + score, the readiness banner shows the
               failing-check gate, and the Checks tab holds the full per-category detail. */}
@@ -2871,9 +2585,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
               )}
             </div>
           )}
-
-          {/* 12 // PRIORITY ACTION PLAN */}
-          {inSummary && llm && <PriorityActionPlan llm={llm} onTabChange={setActiveTab} clientId={scan.clientId} scanId={scan.id} num={sectionNo()} />}
 
           {/* 13 // SUGGESTED BENCHMARKS — AI-discovered competitors to scan against */}
           {inTechnical && !scan.competitorData && (llm?.competitorSuggestions?.length ?? 0) > 0 && (
@@ -3147,7 +2858,25 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
-      {primary === "checks" && (() => {
+      {primary === "checks" && checksView === "findings" && (
+        <PulseFindings
+          scanId={scan.id}
+          clientId={scan.clientId}
+          checks={scan.checks}
+          diff={scanDiff}
+          canManage={canManagePulse}
+          num={sectionNo()}
+          onShowAllChecks={() => setChecksView("all")}
+        />
+      )}
+
+      {primary === "checks" && checksView === "all" && (
+        <button type="button" onClick={() => setChecksView("findings")} className="inline-flex items-center gap-1 text-sm text-[var(--brand-600)] hover:underline">
+          ← Back to findings
+        </button>
+      )}
+
+      {primary === "checks" && checksView === "all" && (() => {
         // Checks the jurisdiction filter excluded. Identified by the marker phrase
         // applyJurisdictionFilter writes into `detail` — the only signal that
         // survives onto the persisted check, since there is no separate skip-reason
@@ -3219,25 +2948,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                     ))}
                   </div>
                 </details>
-              </div>
-            )}
-
-            {/* Fix first — priority-ranked top findings (exploitability: severity × confidence × weight) */}
-            {topPriorities.length > 0 && (
-              <div className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] p-3">
-                <p className="widget-data-label mb-2">Fix first</p>
-                <div className="space-y-1.5">
-                  {topPriorities.map(({ check, priority }) => (
-                    <div key={check.checkKey} className="flex items-center gap-2.5">
-                      <span className={cn(
-                        "rounded-[5px] px-1.5 py-0.5 text-[10px] font-bold",
-                        priority.tier === "P1" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700",
-                      )}>{priority.tier}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-1)]">{check.label}</span>
-                      <span className="shrink-0 text-[11px] text-[var(--text-4)]">{check.category}</span>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 
@@ -3436,44 +3146,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         );
       })()}
 
-      {activeTab === "gaps" && !llm && <AiUnavailable aiError={scan.aiError} />}
-
-      {activeTab === "gaps" && llm && (
-        <div className="widget-card">
-          <div className="widget-header">
-            <span className="widget-header-label">{`${sectionNo()} // CRITICAL GAPS`}</span>
-            <span className="widget-header-right">{llm.criticalGaps.length}</span>
-          </div>
-          <div className="widget-body space-y-3">
-            {llm.criticalGaps.length === 0 && (
-              <p className="text-sm text-[var(--text-3)]">No critical gaps identified.</p>
-            )}
-            {llm.criticalGaps.map((gap, i) => (
-              <div
-                key={i}
-                className="rounded-[10px] border border-[var(--border-2)] p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <ExclamationTriangleIcon className={cn("mt-0.5 h-4 w-4 shrink-0", gap.urgency === "CRITICAL" ? "text-red-500" : gap.urgency === "HIGH" ? "text-orange-500" : "text-amber-500")} />
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text-1)]">{gap.gap}</p>
-                      <p className="mt-1 text-xs text-[var(--text-3)]">{gap.impact}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="rounded-full border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-0.5 text-xs text-[var(--text-4)]">
-                      {gap.category}
-                    </span>
-                    <PulseUrgencyBadge urgency={gap.urgency} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {activeTab === "opportunities" && !llm && <AiUnavailable aiError={scan.aiError} />}
 
       {activeTab === "opportunities" && llm && (
@@ -3509,102 +3181,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         </div>
       )}
 
-      {activeTab === "readiness" && !llm && <AiUnavailable aiError={scan.aiError} />}
-
-      {activeTab === "readiness" && llm && (
-        <div className="space-y-4">
-          {llm.productionBlockers && llm.productionBlockers.length > 0 && (
-            <div className="widget-card">
-              <div className="widget-header">
-                <span className="widget-header-label">{`${sectionNo()} // PRODUCTION BLOCKERS`}</span>
-                <span className="widget-header-right text-red-600">
-                  {(llm.productionBlockers as ProductionBlocker[]).filter((b) => b.urgency === "CRITICAL").length} critical
-                </span>
-              </div>
-              <div className="widget-body">
-                <div className="divide-y divide-[var(--border-2)] overflow-hidden rounded-[10px] border border-red-200">
-                  {(llm.productionBlockers as ProductionBlocker[]).map((blocker, i) => (
-                    <div key={i} className="flex items-start gap-3 px-4 py-3">
-                      <XCircleIcon className={cn(
-                        "mt-0.5 h-4 w-4 shrink-0",
-                        blocker.urgency === "CRITICAL" ? "text-red-500" : "text-orange-400",
-                      )} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium text-[var(--text-1)]">{blocker.blocker}</p>
-                          {blocker.recommendedService && (
-                            <span className="rounded-full bg-[var(--brand-50)] px-2 py-0.5 text-xs font-medium text-[var(--brand-700)]">
-                              {blocker.recommendedService}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-0.5 text-xs text-[var(--text-3)]">{blocker.why}</p>
-                      </div>
-                      <span className={cn(
-                        "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                        blocker.urgency === "CRITICAL" ? "bg-red-50 text-red-700" : "bg-orange-50 text-orange-700",
-                      )}>
-                        {blocker.urgency}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="widget-card">
-            <div className="widget-header">
-              <span className="widget-header-label">{`${sectionNo()} // READINESS CHECKLIST`}</span>
-            </div>
-            <div className="widget-body space-y-5">
-              {(!llm.productionReadinessChecklist || llm.productionReadinessChecklist.length === 0) && (
-                <p className="text-sm text-[var(--text-3)]">No readiness checklist available.</p>
-              )}
-              {Array.from(readinessByCategory.entries()).map(([category, items]) => {
-                const done = items.filter((item: ProductionReadinessItem) => item.status === "DONE").length;
-                return (
-                  <div key={category}>
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[var(--text-1)]">{category}</p>
-                      <span className="text-xs text-[var(--text-4)]">{done}/{items.length} done</span>
-                    </div>
-                    <div className="divide-y divide-[var(--border-2)] rounded-[10px] border border-[var(--border-2)]">
-                      {(items as ProductionReadinessItem[]).map((item: ProductionReadinessItem, i: number) => (
-                        <div key={i} className="flex items-start gap-3 px-4 py-3">
-                          <span className="mt-0.5 shrink-0">
-                            <ReadinessStatusIcon status={item.status} />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className={cn(
-                              "text-sm font-medium",
-                              item.status === "DONE" ? "text-[var(--text-2)]" : "text-[var(--text-1)]",
-                            )}>
-                              {item.item}
-                            </p>
-                            <p className="mt-0.5 text-xs text-[var(--text-3)]">{item.notes}</p>
-                          </div>
-                          <span className={cn(
-                            "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                            item.status === "DONE"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : item.status === "PARTIAL"
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-red-50 text-red-700",
-                          )}>
-                            {item.status === "DONE" ? "Done" : item.status === "PARTIAL" ? "Partial" : "Missing"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
       {activeTab === "stack" && !llm && <AiUnavailable aiError={scan.aiError} />}
 
       {activeTab === "stack" && llm?.techStackAnalysis && (
@@ -3623,7 +3199,7 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
         <CompetitorsTab data={scan.competitorData} mainScore={scan.healthScore} />
       )}
 
-      {primary === "checks" && scorecard.length > 0 && (
+      {primary === "checks" && checksView === "all" && scorecard.length > 0 && (
         <div className="space-y-4" id="compliance">
           <p className="widget-data-label">By market</p>
           <p className="text-sm text-[var(--text-3)]">

@@ -40,6 +40,9 @@ import {
   deletePulseLead,
   getPulseEmbedConfig,
   updatePulseEmbedConfig,
+  getPulseFindings,
+  setPulseFindingDecision,
+  sendPulseFindingToBoard,
 } from "@/lib/api";
 
 export function useSharePulseScan() {
@@ -134,6 +137,36 @@ export function usePulseScanDiff(scanId: string, enabled = true) {
     queryFn: () => getPulseScanDiff(scanId),
     enabled: enabled && Boolean(scanId),
     staleTime: 1000 * 60,
+  });
+}
+
+/** The team's decisions and board tasks for a scan's project (src/lib/pulse-findings.ts). */
+export function usePulseFindings(scanId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["pulse-findings", scanId],
+    queryFn: () => getPulseFindings(scanId),
+    enabled: enabled && Boolean(scanId),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useSetPulseFindingDecision(scanId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { checkKey: string; decision: import("@/lib/pulse-findings").FindingDecision | null; note?: string | null }) =>
+      setPulseFindingDecision(scanId, input),
+    onSuccess: (data) => qc.setQueryData(["pulse-findings", scanId], data),
+  });
+}
+
+export function useSendPulseFindingToBoard(scanId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (checkKey: string) => sendPulseFindingToBoard(scanId, checkKey),
+    onSuccess: (data) => {
+      qc.setQueryData(["pulse-findings", scanId], { targetKey: data.targetKey, clientId: data.clientId, states: data.states, tasks: data.tasks });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 }
 

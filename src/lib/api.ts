@@ -1437,6 +1437,33 @@ export async function getPulseScanDiff(scanId: string): Promise<{ diff: import("
   return apiFetch<{ diff: import("@/types/pulse").PulseScanDiff | null }>(`/api/pulse/scans/${scanId}/diff`);
 }
 
+export interface PulseFindingsResponse {
+  targetKey: string;
+  clientId: string | null;
+  states: import("@/lib/pulse-findings").FindingState[];
+  tasks: import("@/lib/pulse-findings").FindingTask[];
+}
+export async function getPulseFindings(scanId: string): Promise<PulseFindingsResponse> {
+  return apiFetch<PulseFindingsResponse>(`/api/pulse/scans/${scanId}/findings`);
+}
+export async function setPulseFindingDecision(
+  scanId: string,
+  input: { checkKey: string; decision: import("@/lib/pulse-findings").FindingDecision | null; note?: string | null },
+): Promise<PulseFindingsResponse> {
+  return apiFetch<PulseFindingsResponse>(`/api/pulse/scans/${scanId}/findings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+export async function sendPulseFindingToBoard(scanId: string, checkKey: string): Promise<PulseFindingsResponse & { taskId: string; created: boolean }> {
+  return apiFetch<PulseFindingsResponse & { taskId: string; created: boolean }>(`/api/pulse/scans/${scanId}/findings/task`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkKey }),
+  });
+}
+
 export async function emailPulseAudit(scanId: string, input: { to: string; message?: string }): Promise<{ sent: boolean; reportUrl: string }> {
   return apiFetch<{ sent: boolean; reportUrl: string }>(`/api/pulse/scans/${scanId}/email`, {
     method: "POST",

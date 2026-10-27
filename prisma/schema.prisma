@@ -2925,6 +2925,35 @@ enum PulseCheckStatus {
   EVIDENCE_REQUIRED
 }
 
+/// What the team decided about one Pulse finding (a failing or warning check) of one
+/// project: the scanned site or repo, `targetKey` in src/lib/pulse-projects.ts. Carries
+/// from scan to scan. Whether a finding is FIXED is never stored: a check that passes on
+/// the next scan is fixed. Loose ids (no FKs), matching the other cross-module links.
+model PulseFindingState {
+  id          String                @id @default(cuid())
+  workspaceId String
+  targetKey   String
+  checkKey    String
+  decision    PulseFindingDecision?
+  note        String?
+  /// Task on the client's board this finding was sent to.
+  taskId      String?
+  decidedById String?
+  decidedAt   DateTime?
+  /// The scan the last change was made on.
+  scanId      String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([workspaceId, targetKey, checkKey])
+  @@index([workspaceId, targetKey])
+}
+
+enum PulseFindingDecision {
+  ACCEPTED_RISK
+  FALSE_POSITIVE
+}
+
 model PulseScan {
   id                  String             @id @default(cuid())
   workspaceId         String
