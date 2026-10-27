@@ -7979,3 +7979,29 @@ control, reloads, and watches again. The verdicts are pure functions in
     choice, and there is no banner.
   - The BBC sets Chartbeat, Piano and DotMetrics cookies before a choice, and Chartbeat keeps
     pinging after "Reject additional cookies". For a UK-only scan these are WARNs.
+
+### 84.9 Repository settings read from the repository (`repo-collaboration.ts`)
+
+Seven keys used to be guessed from a website's HTML: "codeowners" or "semantic-release" appearing
+anywhere in the page counted as PASS. They were withheld in the October audit. They are now answered
+from the repository snapshot. That needs no extra GitHub call, because the full path list and every
+`.github/workflows` file are already in it (§62.5). They run inside the `ci-workflows` collector.
+- **File checks:** `github_codeowners` (only where GitHub reads CODEOWNERS: the root, `.github/` or
+  `docs/`), `github_pr_template` and `github_issue_templates`. A missing file is a WARN, unless GitHub
+  truncated the tree, in which case it is INCONCLUSIVE.
+- **`release_automation`:** a release tool's config file, a workflow that publishes, or a
+  package.json script that runs a release tool. Validated on real repos: express publishes with
+  `npm stage publish`, and ky releases with `"release": "np"`. Both were missed at first and are now
+  tests. If a listed workflow was not read, absence is INCONCLUSIVE.
+- **`github_code_scanning` and `github_secret_scanning`:** a workflow that runs the tool is a PASS.
+  ⚠️ No workflow is always INCONCLUSIVE, never a WARN, because CodeQL default setup and GitHub's
+  built-in secret scanning are repository settings that leave no file.
+- **`commit_signing_enabled`:** one more field on the existing branch-rules GraphQL query
+  (`requiresCommitSignatures`, plus the ruleset rule `REQUIRED_SIGNATURES`), in `assessCommitSigning`
+  (`code-agent.ts`). It follows the same visibility rule as `branch_protection`: only an admin viewer
+  can establish "not required".
+- **Still withheld, Dan's call:**
+  - `github_branch_protection` and `github_required_reviews` are exact duplicates of
+    `branch_protection`. Retire them as `MERGED_INTO`.
+  - `stale_bot_configured` is an open-source chore, not a readiness finding.
+- Live checks: 1,262. Withheld: 56.

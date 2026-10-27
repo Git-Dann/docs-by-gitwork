@@ -41,6 +41,7 @@ const CODE_AGENT_QUERY = `
         nodes {
           requiresApprovingReviews
           requiresStatusChecks
+          requiresCommitSignatures
           restrictsPushes
           isAdminEnforced
         }
@@ -119,6 +120,7 @@ interface GQLResponse {
       nodes: {
         requiresApprovingReviews: boolean;
         requiresStatusChecks: boolean;
+        requiresCommitSignatures?: boolean;
         restrictsPushes: boolean;
         isAdminEnforced: boolean;
       }[];
@@ -220,6 +222,46 @@ export function assessBranchProtection(repo: {
     };
   }
   return { ...base, status: "FAIL", detail: "No branch protection rule or ruleset covers the default branch, so anyone with write access can push to it directly." };
+}
+
+/**
+ * Whether commits to the default branch must be signed, from the same two mechanisms
+ * as `assessBranchProtection` and with the same visibility rule: classic rules are
+ * listed to admins only, so "not required" is only established for an admin viewer.
+ */
+export function assessCommitSigning(repo: {
+  branchProtectionRules: { nodes: { requiresCommitSignatures?: boolean }[] } | null;
+  rulesets?: BranchRulesets | null;
+  viewerPermission?: string | null;
+  defaultBranchRef?: { name?: string } | null;
+}): PulseScanCheckInput {
+  const base = { category: CATEGORIES.CODE_QUALITY, checkKey: "commit_signing_enabled", label: "Signed commits (GPG / Sigstore)" } as const;
+  const branch = repo.defaultBranchRef?.name ?? null;
+  const applies = (include: string[]) =>
+    include.some((ref) => ref === "~ALL" || ref === "~DEFAULT_BRANCH" || (branch !== null && ref === `refs/heads/${branch}`));
+  const active = (repo.rulesets?.nodes ?? []).filter(
+    (r) => r.enforcement === "ACTIVE" && r.target === "BRANCH" && applies(r.conditions?.refName?.include ?? []),
+  );
+  const ruleRequires = active.some((r) => (r.rules?.nodes ?? []).some((n) => n.type === "REQUIRED_SIGNATURES"));
+  const classic = repo.branchProtectionRules?.nodes?.[0] ?? null;
+  if (ruleRequires || classic?.requiresCommitSignatures) {
+    return { ...base, status: "PASS", confidence: "HIGH", detail: "Commits to the default branch must be signed, so each one is verifiably from its author." };
+  }
+  const canSeeAll = repo.viewerPermission === "ADMIN" && repo.branchProtectionRules !== null && repo.rulesets != null;
+  if (!canSeeAll) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail: "No ruleset requires signed commits, and classic branch protection rules are only listed to repository admins, which this scanner is not. Whether signatures are required is not established.",
+    };
+  }
+  return {
+    ...base,
+    status: "WARN",
+    confidence: "HIGH",
+    detail: "Nothing requires signed commits on the default branch. Requiring signatures (GPG, SSH or Sigstore gitsign) proves who made each commit; some frameworks (FedRAMP, SLSA) expect it.",
+  };
 }
 
 export async function runCodeAgent(
@@ -329,6 +371,7 @@ export async function runCodeAgent(
   // reads as "0 rules" to a READ token while 7 active rulesets protect its default branch.
   const branchCheck = assessBranchProtection(repo);
   checks.push(branchCheck);
+  checks.push(assessCommitSigning(repo));
   const branchProtected = branchCheck.status === "PASS" || branchCheck.status === "WARN";
   const requiresReviews = branchCheck.status === "PASS";
 

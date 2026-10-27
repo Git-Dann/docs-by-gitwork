@@ -35,6 +35,7 @@ import { evaluateWebSourceChecks } from "./web-repo-source";
 import { evaluateBackendServiceChecks } from "./backend-service";
 import { evaluateCleanlinessChecks } from "./code-cleanliness";
 import { evaluateCiWorkflowChecks } from "./ci-workflows";
+import { evaluateRepoCollaborationChecks } from "./repo-collaboration";
 import { evaluateContainerChecks } from "./containers";
 import { evaluateServiceDepthChecks } from "./service-depth";
 import { evaluateOperationalDepthChecks } from "./operational-depth";
@@ -883,7 +884,9 @@ export async function runCiWorkflowChecks(
 ): Promise<{ checks: PulseScanCheckInput[] }> {
   const snapshot = await getRepoSnapshot(repoInput);
   if (!snapshot || !snapshot.accessible) return { checks: [] };
-  return { checks: evaluateCiWorkflowChecks(snapshot) };
+  // The collaboration files (CODEOWNERS, templates, release and scanning tools) read the
+  // same snapshot and the same workflow files, so they ride on this collector.
+  return { checks: [...evaluateCiWorkflowChecks(snapshot), ...evaluateRepoCollaborationChecks(snapshot)] };
 }
 
 /**

@@ -350,10 +350,11 @@ describe("pulse-scan page signals", () => {
 
 describe("WITHHELD", () => {
   it("no longer holds the fixed keys, and still holds the unobservable ones with a reason", () => {
-    for (const key of ["account_lockout_policy", "cookie_consent_granular", "dkim_record_present", "digital_markets_act", "app_icon_sizes"]) {
+    // github_codeowners was a website-HTML guess; since Oct 2026 it is read from the repository.
+    for (const key of ["account_lockout_policy", "cookie_consent_granular", "dkim_record_present", "digital_markets_act", "app_icon_sizes", "github_codeowners"]) {
       expect(WITHHELD[key], key).toBeUndefined();
     }
-    for (const key of ["fraud_detection_tool", "gdpr_right_to_erasure_ui", "dns_ttl_healthy", "early_hints_support", "github_codeowners"]) {
+    for (const key of ["fraud_detection_tool", "gdpr_right_to_erasure_ui", "dns_ttl_healthy", "early_hints_support", "github_branch_protection"]) {
       expect(WITHHELD[key], key).toMatch(/^Not assessable from what Pulse scans: /);
     }
   });
