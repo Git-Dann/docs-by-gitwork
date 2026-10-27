@@ -8026,3 +8026,27 @@ published thresholds.
   verdict matches Google's own FAST/AVERAGE/SLOW category for every metric in that response.
 - These only run where PageSpeed runs (internal scans). Without `GOOGLE_PSI_API_KEY` the anonymous
   quota returns 429 almost immediately.
+
+### 84.11 Credentials left in git history (`code-health/history-secrets.ts`)
+
+The commonest real leak is not a secret in today's files. It's a `.env` or key file that was
+committed, noticed and deleted. Deleting it removes it from the checkout, not from history. The
+code-health clone already holds 12 months of history (blobless), so `secrets_in_git_history`
+works like this:
+- It lists files **deleted** in that window whose names say they hold credentials. That means env
+  files, private keys, service-account or credentials JSON, and `.npmrc` / `.pypirc` / `.netrc`.
+  Tests, fixtures, examples and docs are skipped.
+- It reads the version just before each deletion (`git cat-file -p <sha>^:<path>`), at most 15.
+- It runs the existing secret formats over each one, plus the env-file rule from `secret-scanner.ts`.
+- **A read fetches one old blob from GitHub on demand.** That is why the checkout's `git` helper now
+  carries the same auth header and hardening as the clone (`gitConfig` in `clone.ts`). Without it,
+  private repos would fail every read.
+- **Never PASS on a gap.** INCONCLUSIVE when the history clone fell back to the latest commit only
+  (`Checkout.hasHistory`), and when any candidate could not be read (older than the shallow
+  boundary, or over the cap).
+- **Out of scope, stated in the PASS:** a secret edited out of a file that still exists. Finding that
+  needs every old version of every file.
+- A FAIL says to rotate. Rewriting history is tidying, because clones and forks keep the old copy.
+- **Validated on public repos (27 Oct 2026):** asvarshini/SafeRoute's deleted `backend/.env` was
+  read from history and flagged. Two other "remove .env" commits turned out to edit
+  `docker-compose.yml` and delete `.env.example`, and both correctly pass.

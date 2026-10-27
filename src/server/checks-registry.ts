@@ -219,6 +219,8 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "pulse_ci_remote_shell", category: CATEGORIES.SECURITY, label: "CI does not pipe remote downloads into a shell" },
   { key: "pulse_install_lifecycle_risk", category: CATEGORIES.SECURITY, label: "Install lifecycle hooks avoid remote or inline execution" },
   { key: "pulse_url_secret", category: CATEGORIES.SECRETS_KEYS, label: "Credentials are not placed in URLs" },
+  // Deleted credential files still readable from git history (code-health/history-secrets.ts).
+  { key: "secrets_in_git_history", category: CATEGORIES.SECRETS_KEYS, label: "No credentials left in deleted files in git history" },
   { key: "pulse_request_body_limit", category: CATEGORIES.API_QUALITY, label: "Server request bodies have explicit size limits" },
   { key: "pulse_upload_limit", category: CATEGORIES.SECURITY, label: "File uploads enforce size limits" },
   { key: "pulse_ci_untrusted_checkout", category: CATEGORIES.SECURITY, label: "Privileged CI does not check out contributor-controlled code" },

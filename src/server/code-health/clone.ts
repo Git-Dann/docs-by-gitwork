@@ -42,7 +42,8 @@ export function isCloneableRepo(slug: string): boolean {
 }
 
 /** The git arguments for a hardened shallow clone. Exported so the flags are testable. */
-export function cloneArgs(slug: string, dest: string, branch: string | null, token: string | null, historySince: string | null = null): string[] {
+/** The hardening and auth config every git call in a checkout carries. */
+function gitConfig(token: string | null): string[] {
   const args = [
     "-c", "core.hooksPath=/dev/null",
     "-c", "core.symlinks=false",
@@ -56,6 +57,11 @@ export function cloneArgs(slug: string, dest: string, branch: string | null, tok
     const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
     args.push("-c", `http.https://github.com/.extraHeader=Authorization: Basic ${basic}`);
   }
+  return args;
+}
+
+export function cloneArgs(slug: string, dest: string, branch: string | null, token: string | null, historySince: string | null = null): string[] {
+  const args = gitConfig(token);
   args.push("clone", "--single-branch", "--no-tags", "--quiet");
   // With history: every commit and tree since the date, but only the current file
   // contents (a blobless partial clone). Without: the latest commit only.
@@ -123,6 +129,8 @@ export interface Checkout {
   commit: string | null;
   /** Tracked file paths, relative to `dir`. */
   files: string[];
+  /** True when the clone carries history (it falls back to the latest commit only). */
+  hasHistory: boolean;
 }
 
 /**
@@ -143,6 +151,7 @@ export async function withCheckout<T>(
   try {
     const dest = join(root, "repo");
     const token = process.env.GITHUB_TOKEN?.trim() || null;
+    let hasHistory = Boolean(opts.historySince);
     try {
       await run("git", cloneArgs(slug, dest, opts.branch ?? null, token, opts.historySince ?? null), { timeout: CLONE_TIMEOUT_MS });
     } catch (e) {
@@ -150,13 +159,16 @@ export async function withCheckout<T>(
       // the latest commit only: the measure still runs, the history is reported missing.
       if (!opts.historySince || (e instanceof CloneError && (e.code === "not_found" || e.code === "git_missing"))) throw e;
       await rm(dest, { recursive: true, force: true }).catch(() => {});
+      hasHistory = false;
       await run("git", cloneArgs(slug, dest, opts.branch ?? null, token, null), { timeout: CLONE_TIMEOUT_MS });
     }
     const commit = (await run("git", ["rev-parse", "HEAD"], { cwd: dest, timeout: 10_000 }).catch(() => "")).trim() || null;
     const listed = await run("git", ["ls-files", "-z"], { cwd: dest, timeout: 20_000 });
     const files = listed.split("\0").filter(Boolean);
-    const git = (args: string[]) => run("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd: dest, timeout: 30_000 });
-    return await work({ dir: dest, commit, files, git });
+    // The same hardening and auth as the clone: in a blobless clone, reading an old file's
+    // contents fetches that one blob from GitHub on demand, which needs the token too.
+    const git = (args: string[]) => run("git", [...gitConfig(token), ...args], { cwd: dest, timeout: 30_000 });
+    return await work({ dir: dest, commit, files, git, hasHistory });
   } finally {
     await rm(root, { recursive: true, force: true }).catch(() => {});
     release();

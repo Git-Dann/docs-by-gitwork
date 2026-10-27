@@ -5,6 +5,7 @@ import { analyseHistory, HISTORY_MONTHS, logArgs, parseLog } from "./history";
 import { codeHealthChecks, codeHealthUnavailable, dependencyChecks, structureChecks } from "./checks";
 import { CloneError, withCheckout } from "./clone";
 import { auditDependencies } from "./dependencies";
+import { historySecretsCheck, scanDeletedSecrets, type HistorySecretsResult } from "./history-secrets";
 import type { CodeHealthReport } from "@/types/code-health";
 
 export type { CodeHealthReport } from "@/types/code-health";
@@ -33,11 +34,12 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
     const meta = await githubRequest<{ size?: number; default_branch?: string }>(`/repos/${slug}`).catch(() => null);
     const branch = meta?.default_branch ?? null;
     const since = new Date(Date.now() - HISTORY_MONTHS * 30.44 * 86_400_000).toISOString().slice(0, 10);
+    let historySecrets: PulseScanCheckInput | null = null;
     const report = await withCheckout(slug, { sizeKb: meta?.size ?? null, historySince: withHistory ? since : null }, async (c) => {
       const { report: measuredReport, measured } = await analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files });
       // The lockfile audit and the history are independent reads of the same checkout: they
       // run side by side, and neither failing can take the measure (or the other) with it.
-      const [dependencies, history] = await Promise.all([
+      const [dependencies, history, deletedSecrets] = await Promise.all([
         auditDependencies({ dir: c.dir, files: c.files }),
         withHistory
           ? c
@@ -48,13 +50,27 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
                 return null;
               })
           : Promise.resolve(null),
+        withHistory && c.hasHistory
+          ? scanDeletedSecrets(c.git, since).catch((e): HistorySecretsResult | null => {
+              console.warn(`[code-health] ${slug}: history secret scan unavailable: ${(e as Error).message.slice(0, 200)}`);
+              return null;
+            })
+          : Promise.resolve(null),
       ]);
+      if (withHistory) {
+        historySecrets = historySecretsCheck(
+          deletedSecrets,
+          c.hasHistory ? "reading the repository's history failed." : "the repository's history could not be downloaded, only its latest version.",
+        );
+      }
       const report = history
         ? { ...buildReport(measuredReport, measured, measuredReport.coverage, () => Date.parse(measuredReport.measuredAt), history), structure: measuredReport.structure }
         : measuredReport;
       return { ...report, dependencies };
     });
-    return { report, checks: [...codeHealthChecks(report), ...structureChecks(report), ...dependencyChecks(report)], unavailable: null };
+    const checks = [...codeHealthChecks(report), ...structureChecks(report), ...dependencyChecks(report)];
+    if (historySecrets) checks.push(historySecrets);
+    return { report, checks, unavailable: null };
   } catch (error) {
     if (error instanceof CloneError) {
       const why =

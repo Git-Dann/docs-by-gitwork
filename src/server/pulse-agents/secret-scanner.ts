@@ -64,7 +64,7 @@ const PLACEHOLDER_HINTS = [
   "<", "changeme", "change_me", "todo", "sample", "test_key", "fake",
 ];
 
-function isEnvFile(path: string): boolean {
+export function isEnvFile(path: string): boolean {
   const base = path.split("/").pop() ?? "";
   if (/^\.env(\.[\w-]+)?$/.test(base)) {
     return !/\.(example|sample|template|dist)$/.test(base) && base !== ".env.example";
@@ -103,7 +103,7 @@ function looksLikePath(value: string): boolean {
   return segs.every((s) => /^[a-z0-9_.-]+$/.test(s));
 }
 
-function envLineHoldsSecret(line: string): boolean {
+export function envLineHoldsSecret(line: string): boolean {
   if (looksPlaceholder(line)) return false;
   if (URL_EMBEDDED_SECRET_RE.test(line)) return true;
   const value = SECRET_NAME_ASSIGN_RE.exec(line)?.[1] ?? URL_WITH_PASSWORD_RE.exec(line)?.[1];
