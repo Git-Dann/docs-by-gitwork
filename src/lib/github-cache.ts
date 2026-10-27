@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 /**
  * Conditional-request cache for GitHub REST GETs.
  *
@@ -61,7 +59,19 @@ export type GithubCacheStats = {
 export function tokenIdentity(token: string | undefined | null): string {
   const t = token?.trim();
   if (!t) return "anon";
-  return createHash("sha256").update(t).digest("hex").slice(0, 16);
+  // Two independent 32-bit FNV-1a passes (different offset bases) give 64 bits. Not
+  // cryptographic, and it need not be: the value only keeps entries for different tokens
+  // apart inside this process and is never sent or logged. node:crypto is avoided because
+  // src/lib/github.ts is also imported by a client component, and a Node built-in breaks
+  // the browser bundle (it failed the production build once).
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ 0x5bd1e995;
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193) >>> 0;
+    b = Math.imul(b ^ c, 0x01000193) >>> 0;
+  }
+  return a.toString(16).padStart(8, "0") + b.toString(16).padStart(8, "0");
 }
 
 export function cacheKey(url: string, accept: string, tokenId: string): string {
