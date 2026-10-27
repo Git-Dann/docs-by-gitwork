@@ -25,8 +25,8 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   if (!pctx.isPaymentEnabled) {
     return [
       "sepa_bank_transfer", "paypal_integration", "three_ds_sca_compliant",
-      "fraud_detection_tool", "pci_saq_evidence", "regional_payment_methods",
-      "chargeback_prevention", "subscription_proration", "invoicing_capability", "tax_automation",
+      "pci_saq_evidence", "regional_payment_methods",
+      "subscription_proration", "invoicing_capability", "tax_automation",
       "payment_refund_policy", "payment_recurring_terms", "payment_checkout_provider",
       "payment_billing_support", "payment_price_currency",
     ].map((checkKey) => ({
@@ -55,8 +55,6 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
         : { status: "INCONCLUSIVE" as const, detail: `3D Secure runs inside the checkout, which Pulse did not reach${cardHandling.hostedProvider ? ` (the page loads ${cardHandling.hostedProvider}, which supports it when the integration requests it)` : ""}. Whether card payments meet PSD2 Strong Customer Authentication could not be established.` }),
   });
 
-  const hasFraudDetection = /stripe.*radar|kount|signifyd|forter|fraud.*detection|fraud.*prevention|risk.*score/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "fraud_detection_tool", label: "Fraud detection (Stripe Radar / Kount)", status: hasFraudDetection ? "PASS" : "WARN", detail: hasFraudDetection ? "Fraud detection tool signals detected." : "No fraud detection signals — implement Stripe Radar or a dedicated fraud tool to prevent chargebacks and card testing attacks." });
 
   const hasPciEvidence = /pci.*compliant|pci.*saq|pci.*dss|pci.*certified|scope.*reduction.*pci/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "pci_saq_evidence", label: "PCI SAQ / scope reduction evidence", status: hasPciEvidence ? "PASS" : "WARN", detail: hasPciEvidence ? "PCI compliance evidence detected." : "No PCI scope reduction evidence — document your PCI DSS approach (SAQ, tokenisation) to reassure enterprise procurement teams." });
@@ -64,8 +62,6 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasRegionalPayments = /klarna|ideal|sofort|giropay|bancontact|alipay|wechat.*pay|boleto|pix\b|afterpay|clearpay|mollie/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "regional_payment_methods", label: "Regional payment methods (Klarna, iDEAL, etc.)", status: hasRegionalPayments ? "PASS" : "WARN", detail: hasRegionalPayments ? "Regional payment method signals detected." : "No regional payment methods — iDEAL (Netherlands), Klarna (Nordics/Germany), and Boleto (Brazil) can unlock significant local market conversion." });
 
-  const hasChargeback = /chargeback.*prevention|dispute.*protection|dispute.*tool|chargeback.*dispute|friendly.*fraud/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "chargeback_prevention", label: "Chargeback prevention tools", status: hasChargeback ? "PASS" : "WARN", detail: hasChargeback ? "Chargeback prevention signals detected." : "No chargeback prevention signals — chargebacks above 1% trigger card network scrutiny. Use Stripe Radar, chargeback alerts, or Chargeback911." });
 
   const hasSubs = pctx.isSaas;
   // Applies only when the page sells a recurring plan; being "SaaS" is not the same thing,

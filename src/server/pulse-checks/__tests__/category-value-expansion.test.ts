@@ -49,12 +49,12 @@ describe("authentication value controls", () => {
       <a href="/forgot-password">Reset password</a><button>Sign out</button>
       <p>We send a security alert when a new device signs in or your password changes.</p>
     `));
-    for (const key of ["auth_login_autocomplete", "auth_signup_autocomplete", "auth_password_reset", "auth_logout_control", "auth_security_notifications"]) expect(statusOf(checks, key)).toBe("PASS");
+    for (const key of ["auth_login_autocomplete", "auth_signup_autocomplete", "auth_password_reset", "auth_security_notifications"]) expect(statusOf(checks, key)).toBe("PASS");
   });
 
   it("does not award account-security controls without evidence", async () => {
     const checks = await runAuthExtended(context("<main>Account</main>"));
-    for (const key of ["auth_password_reset", "auth_logout_control", "auth_security_notifications"]) expect(statusOf(checks, key)).toBe("WARN");
+    for (const key of ["auth_password_reset", "auth_security_notifications"]) expect(statusOf(checks, key)).toBe("WARN");
     // No password field on the page: the autocomplete checks have nothing to judge.
     for (const key of ["auth_login_autocomplete", "auth_signup_autocomplete"]) expect(statusOf(checks, key)).toBe("INCONCLUSIVE");
   });
@@ -83,12 +83,12 @@ describe("operational visibility controls", () => {
       <p>Trace ID and correlation ID are attached to every request. Release health tracks errors by deploy version.</p>
       <p>Pager escalation policy notifies the secondary on-call engineer.</p>
     `));
-    for (const key of ["public_status_page", "incident_subscriptions", "trace_correlation", "release_health", "alert_escalation"]) expect(statusOf(checks, key)).toBe("PASS");
+    for (const key of ["public_status_page", "incident_subscriptions"]) expect(statusOf(checks, key)).toBe("PASS");
   });
 
   it("does not infer operational controls from an ordinary product page", async () => {
     const checks = await runObservabilityExtended(context("<main>Product dashboard</main>"));
-    for (const key of ["public_status_page", "incident_subscriptions", "trace_correlation", "release_health", "alert_escalation"]) expect(statusOf(checks, key)).toBe("WARN");
+    for (const key of ["public_status_page", "incident_subscriptions"]) expect(statusOf(checks, key)).toBe("WARN");
   });
 });
 
@@ -103,7 +103,7 @@ describe("email DNS enforcement controls", () => {
 
   it("recognises complete sender-authentication reporting", async () => {
     const checks = await runEmailDeliverabilityChecks(context(""));
-    for (const key of ["email_mx_present", "spf_single_record", "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination"]) expect(statusOf(checks, key)).toBe("PASS");
+    for (const key of ["spf_single_record", "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination"]) expect(statusOf(checks, key)).toBe("PASS");
   });
 
   it("warns on ambiguous SPF and incomplete reporting enforcement", async () => {
@@ -112,6 +112,6 @@ describe("email DNS enforcement controls", () => {
     dnsRecords.set("_smtp._tls.example.test", ["v=TLSRPTv1"]);
     dnsRecords.set("example.test:MX", []);
     const checks = await runEmailDeliverabilityChecks(context(""));
-    for (const key of ["email_mx_present", "spf_single_record", "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination"]) expect(statusOf(checks, key)).toBe("WARN");
+    for (const key of ["spf_single_record", "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination"]) expect(statusOf(checks, key)).toBe("WARN");
   });
 });

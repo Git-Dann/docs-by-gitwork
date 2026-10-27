@@ -1,4 +1,5 @@
 import { CATEGORIES } from "./categories";
+import { earlyHintsCheck, probeEarlyHints } from "./early-hints";
 import { type ExtendedCheckContext, type PulseScanCheckInput, skip, platformIs, fetchWithTimeout } from "./_types";
 import { analyzeHost } from "@/server/pulse-lite/registrable-domain";
 import { fetchScannableUrl } from "@/server/pulse-lite/url-guard";
@@ -198,7 +199,7 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
       ["css_appears_minified", "CSS appears minified"],
       ["js_appears_minified", "JS files appear minified"],
       ["http3_quic_support", "HTTP/3 / QUIC support"],
-      ["early_hints_support", "103 Early Hints support"],
+      ["early_hints_support", "103 Early Hints sent"],
       ["stale_while_revalidate", "Stale-while-revalidate cache directive"],
       ["immutable_cache_assets", "Immutable cache on hashed assets"],
       ["dns_ttl_optimized", "DNS TTL not near-zero"],
@@ -333,9 +334,8 @@ export async function runPerformanceExtended(ctx: ExtendedCheckContext): Promise
   const hasHttp3 = altSvc.includes("h3") || altSvc.includes("h3-");
   checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "http3_quic_support", label: "HTTP/3 / QUIC support", status: hasHttp3 ? "PASS" : "WARN", detail: hasHttp3 ? `HTTP/3 support advertised via Alt-Svc: ${altSvc}` : "No HTTP/3 support detected — HTTP/3 (QUIC) reduces latency especially on lossy connections. Available via Cloudflare, AWS CloudFront, and Fastly." });
 
-  // Early Hints
-  const hasEarlyHints = !!h["x-early-hints"] || htmlLower.includes("103 early hints");
-  checks.push({ category: CATEGORIES.PERFORMANCE, checkKey: "early_hints_support", label: "103 Early Hints support", status: hasEarlyHints ? "PASS" : "WARN", detail: hasEarlyHints ? "103 Early Hints support detected." : "No 103 Early Hints detected — Early Hints allows the browser to start loading critical resources while the server processes the request, reducing TTFB impact." });
+  // Early Hints, observed over HTTP/2 (early-hints.ts): Pulse's ordinary fetch never sees a 103.
+  checks.push(earlyHintsCheck(await probeEarlyHints(baseUrl)));
 
   // Stale-while-revalidate
   const cacheControl = h["cache-control"] ?? "";

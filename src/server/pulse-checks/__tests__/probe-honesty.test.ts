@@ -335,7 +335,7 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
   // previously reported every one of them as a finding: no SPF, no DKIM, no MX.
   const EMAIL_DNS_KEYS = [
     "dkim_record_present", "bimi_record_present", "mta_sts_policy", "tls_rpt_record",
-    "spf_hardfail", "dmarc_quarantine_reject", "email_mx_present", "spf_single_record",
+    "spf_hardfail", "dmarc_quarantine_reject", "spf_single_record",
     "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination",
     "transactional_subdomain",
   ];
@@ -385,7 +385,6 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
     }));
     const checks = await runEmailDeliverabilityChecks(context());
     expect(statusOf(checks, "spf_hardfail")).toBe("PASS");
-    expect(statusOf(checks, "email_mx_present")).toBe("PASS");
     expect(statusOf(checks, "dmarc_quarantine_reject")).toBe("PASS");
   });
 });
@@ -426,7 +425,7 @@ describe("a resolver rcode failure reaches the checks, and NXDOMAIN still doesn'
   it("does not claim a broken mail setup on REFUSED", async () => {
     vi.stubGlobal("fetch", dnsResponder({}, "refused"));
     const checks = await runEmailDeliverabilityChecks(context());
-    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "email_mx_present", "dkim_record_present"]) {
+    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "dkim_record_present"]) {
       expect(statusOf(checks, key), key).toBe("INCONCLUSIVE");
     }
   });
@@ -455,7 +454,7 @@ describe("a resolver rcode failure reaches the checks, and NXDOMAIN still doesn'
   it("still reports genuinely absent mail records when the resolver answered NXDOMAIN", async () => {
     vi.stubGlobal("fetch", dnsResponder({}, "nxdomain"));
     const checks = await runEmailDeliverabilityChecks(context());
-    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "email_mx_present"]) {
+    for (const key of ["spf_hardfail", "dmarc_quarantine_reject"]) {
       expect(statusOf(checks, key), key).toBe("WARN");
     }
   });

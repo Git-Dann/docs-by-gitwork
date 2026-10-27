@@ -13,16 +13,7 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["tls_rpt_record", "TLS-RPT reporting record"],
   ["spf_hardfail", "SPF uses -all (hardfail)"],
   ["dmarc_quarantine_reject", "DMARC policy: quarantine or reject"],
-  ["email_unsubscribe_signal", "Unsubscribe / list management link"],
   ["transactional_subdomain", "Dedicated sending subdomain"],
-  ["can_spam_address", "Physical address in email footer"],
-  ["casl_double_optin", "Double opt-in / CASL signals"],
-  ["plain_text_email", "Plain text email alternative"],
-  ["bounce_handling_signal", "Bounce handling / list hygiene"],
-  ["email_preview_configured", "Email preview text configured"],
-  ["email_warm_up_signals", "Reputable ESP detected"],
-  ["mailing_list_segmentation", "Email segmentation / tagging signals"],
-  ["email_mx_present", "Domain accepts email through MX records"],
   ["spf_single_record", "Exactly one SPF policy is published"],
   ["dmarc_aggregate_reporting", "DMARC aggregate reports have a destination"],
   ["dmarc_full_coverage", "DMARC policy applies to 100% of messages"],
@@ -278,7 +269,6 @@ function enforcingDmarc(applicable: ApplicableDmarc): string | null {
 
 export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { hostname } = ctx;
-  const html = ctx.pageResult.html;
 
   if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CLI_TOOL")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — email deliverability checks are not relevant for this platform type.");
@@ -408,12 +398,6 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   // whose own policy was `p=none`.
   checks.push(dmarcChecks.policy);
 
-  if (!mxLookup.ok) {
-    checks.push(probeInconclusive(CATEGORY, "email_mx_present", "Domain accepts email through MX records", dnsFailed(mxLookup.reason)));
-  } else {
-    const mxRecords = mxLookup.records;
-    checks.push({ category: CATEGORY, checkKey: "email_mx_present", label: "Domain accepts email through MX records", status: mxRecords.length > 0 ? "PASS" : "WARN", detail: mxRecords.length > 0 ? `${mxRecords.length} MX record${mxRecords.length === 1 ? "" : "s"} detected for the domain.` : "No MX record was found. If this domain sends customer email, configure a monitored receiving route for replies, abuse reports, and delivery failures." });
-  }
 
   // The four checks below are DERIVED from the lookups above. This is where the
   // leak was worst: SPF and DMARC already reported their own lookup failure, but
@@ -448,10 +432,6 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
       : { category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: hasTlsDestination ? "PASS" : "WARN", detail: hasTlsDestination ? "TLS-RPT publishes a reporting destination." : "The TLS-RPT record has no valid rua= destination (mailto: or https:). A version tag alone cannot deliver reports about failed or downgraded TLS sessions." });
   }
 
-  // Unsubscribe signal
-  const hasUnsubscribe = /unsubscribe|list.unsubscribe|opt.out.*email|email.*preferences/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "email_unsubscribe_signal", label: "Unsubscribe / list management link", status: hasUnsubscribe ? "PASS" : "WARN", detail: hasUnsubscribe ? "Unsubscribe / email preference signals detected on page." : "No unsubscribe link signals detected — CAN-SPAM, GDPR, and CASL all require easy unsubscribe; Google/Yahoo now enforce List-Unsubscribe headers." });
-
   // Transactional sending subdomain. Sending subdomains can be named anything
   // (SendGrid's are em<digits>), so Pulse can only test common names: finding one
   // is evidence, NOT finding one is not evidence of absence — INCONCLUSIVE, not WARN.
@@ -464,33 +444,9 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     ...SENDING_CNAME_LABELS.map((label, i) => ({ name: `${label}.${hostname}`, kind: "CNAME" as const, lookup: sendingCname[i] })),
   ]));
 
-  // CAN-SPAM address
-  const hasPhysicalAddress = /\d+\s+[a-z]+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i.test(html) || /p\.?o\.?\s*box\s+\d+/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "can_spam_address", label: "Physical address in email footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical mailing address detected on page." : "No physical address detected — CAN-SPAM requires a valid physical postal address in every commercial email." });
-
-  // CASL double opt-in
-  const hasDoubleOptin = /double.*opt.in|confirm.*subscription|confirm.*email|verify.*subscription|casl/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "casl_double_optin", label: "Double opt-in / CASL signals", status: hasDoubleOptin ? "PASS" : "WARN", detail: hasDoubleOptin ? "Double opt-in / CASL signals detected." : "No double opt-in signals detected — Canada's CASL requires express consent for commercial emails; double opt-in is best practice globally." });
-
-  // Plain text email
-  const hasPlainTextEmail = /plain.*text.*email|text.*only.*email|email.*client.*support/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "plain_text_email", label: "Plain text email alternative", status: hasPlainTextEmail ? "PASS" : "WARN", detail: hasPlainTextEmail ? "Plain text email support signals detected." : "No plain text email signals — always send a plain text alternative with HTML emails; some email clients and spam filters prefer it." });
-
-  // Bounce handling
-  const hasBounceHandling = /bounce.*handling|list.*hygiene|clean.*list|invalid.*email|email.*validation|hard.*bounce/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "bounce_handling_signal", label: "Bounce handling / list hygiene", status: hasBounceHandling ? "PASS" : "WARN", detail: hasBounceHandling ? "Bounce handling / list hygiene signals detected." : "No bounce handling signals — high bounce rates damage sender reputation. Use an ESP with automated bounce handling and list hygiene." });
-
-  // Email preview text
-  const hasPreviewText = /preview.*text|preheader|email.*preview|preview.*message/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "email_preview_configured", label: "Email preview text configured", status: hasPreviewText ? "PASS" : "WARN", detail: hasPreviewText ? "Email preview / preheader text configuration signals detected." : "No email preview text signals — preheader text appears in inbox alongside the subject line and significantly affects open rates." });
-
-  // ESP detection
-  const hasReputableEsp = /sendgrid|mailchimp|klaviyo|mailgun|postmark|ses\b|amazon ses|sparkpost|brevo|sendinblue|resend\.com|loops\.so/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "email_warm_up_signals", label: "Reputable ESP detected", status: hasReputableEsp ? "PASS" : "WARN", detail: hasReputableEsp ? "Reputable Email Service Provider (ESP) detected — sending through a reputable ESP helps inbox placement." : "No reputable ESP detected — use a dedicated ESP (SendGrid, Postmark, Resend) rather than direct SMTP for reliable deliverability." });
-
-  // Segmentation
-  const hasSegmentation = /segment.*email|email.*segment|subscriber.*tag|tag.*subscriber|list.*segment|audience.*segment/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "mailing_list_segmentation", label: "Email segmentation / tagging signals", status: hasSegmentation ? "PASS" : "WARN", detail: hasSegmentation ? "Email segmentation / tagging signals detected." : "No email segmentation signals — segmenting email lists by behaviour, plan tier, or persona dramatically improves open rates and reduces unsubscribes." });
+  // What a product's own emails contain (unsubscribe link, postal address, preview text,
+  // a plain-text part) is read from its email templates in the repository
+  // (email-templates.ts), not guessed from words on its website.
 
   return checks;
 }

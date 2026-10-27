@@ -10,6 +10,7 @@ import {
   type ScanContext,
 } from "@/server/pulse-checks/check-relevance";
 import { CHECK_RELEVANCE, WITHHELD } from "@/server/pulse-checks/check-relevance-data";
+import { isRetiredCheck } from "@/server/pulse-checks/catalogue-compat";
 import { classifyGenericRepo } from "@/server/pulse-checks/repo-kind";
 import { featuresFromPage, featuresFromRepo } from "@/server/pulse-checks/product-features";
 
@@ -114,7 +115,8 @@ describe("every catalogued check has a relevance rule", () => {
   // unclassified — so they defaulted to shown, on every repo, until a measured scan
   // caught them.
   const catalogue = JSON.parse(readFileSync("src/server/pulse-checks/catalogue-baseline.json", "utf8")) as { keys: string[] };
-  const keys = catalogue.keys;
+  // A retired key is only a historical identifier: nothing emits it, so it needs no rule.
+  const keys = catalogue.keys.filter((key) => !isRetiredCheck(key));
 
   it("the catalogue parses", () => {
     expect(keys.length).toBeGreaterThan(1600);
@@ -135,8 +137,14 @@ describe("every catalogued check has a relevance rule", () => {
 
   it("every withheld check names a reason, and a withheld check is hidden even when it passes", () => {
     for (const [key, reason] of Object.entries(WITHHELD)) expect(reason.length, key).toBeGreaterThan(20);
-    const key = Object.keys(WITHHELD)[0];
-    expect(decideRelevance(check(key, "PASS"), CHECK_RELEVANCE[key] ?? null, ctx({})).reason).toBe("withheld");
+    // The list is empty since October 2026, so the rule is proved with a temporary entry.
+    const key = "privacy_policy";
+    WITHHELD[key] = "Temporarily withheld for this test, to prove the rule still applies.";
+    try {
+      expect(decideRelevance(check(key, "PASS"), CHECK_RELEVANCE[key] ?? null, ctx({})).reason).toBe("withheld");
+    } finally {
+      delete WITHHELD[key];
+    }
   });
 });
 

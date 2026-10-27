@@ -45,12 +45,9 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
       ["concurrent_session_policy", "Concurrent session limiting"],
       ["token_expiry_short", "Short-lived access tokens (< 1hr)"],
       ["otp_expiry_configured", "OTP code expiry"],
-      ["otp_resend_cooldown", "OTP resend cooldown"],
-      ["otp_attempt_limiting", "OTP attempt / brute-force limiting"],
       ["auth_login_autocomplete", "Login password identifies its autocomplete purpose"],
       ["auth_signup_autocomplete", "New password identifies its autocomplete purpose"],
       ["auth_password_reset", "Password reset flow is discoverable"],
-      ["auth_logout_control", "Sign-out control is discoverable"],
       ["auth_security_notifications", "Security-event notifications are disclosed"],
     ];
     return authChecks.map(([checkKey, label]) => ({
@@ -208,11 +205,7 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const hasOtpExpiry = /code.*expir|expir.*code|expires.*in.*(?:\d+\s*(?:minute|second|min|sec))|valid.*for.*(?:\d+\s*(?:minute|second))/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_expiry_configured", label: "OTP code expiry", status: !isOtpRelevant ? "SKIPPED" : (hasOtpExpiry ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpExpiry ? "OTP/code expiry signals detected." : "No OTP expiry signals visible — codes should expire within 5–10 minutes to limit the window for interception or brute-forcing.") });
 
-  const hasOtpResendCooldown = /resend.*code|resend.*in.*\d+|didn.?t.*receive.*code|wait.*(?:\d+\s*(?:second|minute)).*resend|resend.*(?:\d+\s*(?:second|minute))/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_resend_cooldown", label: "OTP resend cooldown", status: !isOtpRelevant ? "SKIPPED" : (hasOtpResendCooldown ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpResendCooldown ? "OTP resend cooldown signals detected." : "No resend cooldown visible — without a cooldown between code requests, an attacker (or an impatient user) can trigger unlimited SMS/email sends, driving up cost and enabling spam.") });
 
-  const hasOtpAttemptLimiting = /too many.*(?:attempt|code|tries)|invalid.*code.*(?:attempt|remaining)|locked.*out.*(?:attempt|code)|maximum.*attempt/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "otp_attempt_limiting", label: "OTP attempt / brute-force limiting", status: !isOtpRelevant ? "SKIPPED" : (hasOtpAttemptLimiting ? "PASS" : "WARN"), detail: !isOtpRelevant ? "Not applicable — no OTP/magic-link authentication detected." : (hasOtpAttemptLimiting ? "OTP attempt-limiting signals detected." : "No attempt-limiting signals visible — a short numeric OTP without a cap on guesses is brute-forceable; lock out or invalidate the code after a handful of failed attempts.") });
 
   // Autocomplete purpose is judged on the password fields the scanned page actually
   // has. The login and signup forms usually live on their own pages, which Pulse does
@@ -254,8 +247,6 @@ export async function runAuthExtended(ctx: ExtendedCheckContext): Promise<PulseS
   const hasPasswordReset = /forgot(?:ten)?[\s_-]*password|reset[\s_-]*password|password[\s_-]*recovery/i.test(html);
   checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_password_reset", label: "Password reset flow is discoverable", status: isOtpOnly ? "SKIPPED" : hasPasswordReset ? "PASS" : "WARN", detail: isOtpOnly ? "Not applicable — passwordless authentication detected." : hasPasswordReset ? "A password recovery/reset route or control is visible." : "No password reset control was observed. Users need a discoverable recovery route that does not require support intervention." });
 
-  const hasLogout = /(?:sign|log)[\s_-]*out|end[\s_-]*session/i.test(html);
-  checks.push({ category: CATEGORIES.AUTHENTICATION, checkKey: "auth_logout_control", label: "Sign-out control is discoverable", status: hasLogout ? "PASS" : "WARN", detail: hasLogout ? "A sign-out/end-session control is visible." : "No sign-out control was observed. Authenticated users need an obvious way to invalidate their current session." });
 
   // "security alert" alone is marketing copy as often as a disclosure (notion.so: "Respond to
   // security alerts faster"), so it needs account context, and every gap stays in one text run.

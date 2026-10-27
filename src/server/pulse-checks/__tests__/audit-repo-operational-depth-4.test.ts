@@ -153,41 +153,4 @@ describe("audit repo-operational-depth-4", () => {
     });
   });
 
-  describe("roles_depth_default_deny", () => {
-    it("skips repos whose only matches are Privacy Policy text or the Authorization header", () => {
-      const taxonomy = lines(
-        "app/(auth)/register/page.tsx",
-        'By clicking continue, you agree to our <Link href="/terms">Terms of Service</Link> and <Link href="/privacy">Privacy Policy</Link>.',
-      );
-      expect(statusOf("roles_depth_default_deny", taxonomy)).toBe("SKIPPED");
-
-      const realworld = lines(
-        "src/app/routes/auth/auth.ts",
-        "if (req.headers.authorization && req.headers.authorization.split(' ')[0] === 'Bearer') {",
-        "  return req.headers.authorization.split(' ')[1];",
-        "}",
-      );
-      expect(statusOf("roles_depth_default_deny", realworld)).toBe("SKIPPED");
-    });
-
-    it("still fails a policy that falls back to allow, and passes one that denies by default", () => {
-      const allowFallback = lines(
-        "export function can(user: User, action: string) {",
-        "  const grants = rolePermissions[user.role];",
-        "  if (!grants) return true; // fallback",
-        "  return grants.includes(action);",
-        "}",
-      );
-      expect(statusOf("roles_depth_default_deny", allowFallback)).toBe("FAIL");
-
-      const denyDefault = lines(
-        "export function can(user: User, action: string) {",
-        "  const grants = rolePermissions[user.role];",
-        "  if (!grants) return false;",
-        "  return grants.includes(action);",
-        "}",
-      );
-      expect(statusOf("roles_depth_default_deny", denyDefault)).toBe("PASS");
-    });
-  });
 });

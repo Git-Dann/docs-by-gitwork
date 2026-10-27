@@ -22,9 +22,7 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["guest_anonymous_mode", "Guest / view-only mode"],
   ["read_only_role", "Read-only role available"],
   ["data_export_permission", "Data export restricted by role"],
-  ["workspace_tenant_isolation", "Workspace / tenant isolation"],
   ["permission_inheritance", "Permission inheritance (groups)"],
-  ["gdpr_data_access_control", "GDPR data access controlled by role"],
   ["invite_expiry", "Invitations expire automatically"],
   ["invite_revocation", "Pending invitations can be revoked"],
   ["ownership_transfer", "Workspace ownership can be transferred safely"],
@@ -175,8 +173,6 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
     : claimUnseen(exportBase, `The scanned page does not say who may export data. ${behindSignIn}`));
 
   // Workspace/tenant isolation
-  const hasWorkspaceIsolation = /workspace.*setting|organisation.*setting|tenant.*setting|your.*workspace|workspace.*id/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "workspace_tenant_isolation", label: "Workspace / tenant isolation", status: hasWorkspaceIsolation ? "PASS" : "WARN", detail: hasWorkspaceIsolation ? "Workspace / tenant isolation signals detected." : "No workspace isolation signals — multi-tenant SaaS requires clear workspace boundaries to prevent data cross-contamination." });
 
   // Permission inheritance
   // Read from visible copy only: `role="group"` is an ARIA attribute on every other page.
@@ -187,8 +183,6 @@ export async function runRolesPermissionsChecks(ctx: ExtendedCheckContext): Prom
     : claimUnseen(inheritancePhraseBase, `The scanned page does not mention permissions granted through groups. ${behindSignIn}`));
 
   // GDPR data access control
-  const hasGdprAccess = /data.*access.*request|subject.*access|access.*personal.*data|export.*personal.*data/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "gdpr_data_access_control", label: "GDPR data access controlled by role", status: hasGdprAccess ? "PASS" : "WARN", detail: hasGdprAccess ? "GDPR data access request signals detected." : "No GDPR data access controls detected — GDPR requires that personal data access (subject access requests) is controlled and auditable." });
 
   const hasInviteExpiry = /invit(?:e|ation).{0,60}expir|expir.{0,60}invit(?:e|ation)|invite valid for/i.test(html);
   checks.push({ category: CATEGORY, checkKey: "invite_expiry", label: "Invitations expire automatically", status: hasInviteExpiry ? "PASS" : "WARN", detail: hasInviteExpiry ? "Invitation-expiry evidence detected." : "No invitation expiry was observed. Time-bound invitation tokens reduce the window in which a forwarded or leaked link can be used." });

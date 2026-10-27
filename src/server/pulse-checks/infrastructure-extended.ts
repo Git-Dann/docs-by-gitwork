@@ -1,4 +1,5 @@
 import { CATEGORIES } from "./categories";
+import { dnsTtlHealthyCheck, lookupAuthoritativeTtl } from "./authoritative-ttl";
 import { type ExtendedCheckContext, type PulseScanCheckInput, resolveDnsRecord, probeInconclusive } from "./_types";
 import { analyzeHost, platformSuffixOf, type HostAnalysis } from "@/server/pulse-lite/registrable-domain";
 
@@ -605,8 +606,9 @@ export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Prom
     });
   }
 
-  // DNS TTL healthy
-  checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "dns_ttl_healthy", label: "DNS TTL configured for stability", status: "PASS", detail: "Set DNS TTL to 300–3600 seconds for production records. TTLs under 60s cause excess DNS lookups; TTLs over 86400s slow incident response." });
+  // DNS TTL, asked of the zone's own name servers (authoritative-ttl.ts): a public
+  // resolver only reports what its cache has left, so it could never show a TTL was too long.
+  checks.push(dnsTtlHealthyCheck(hostname, await lookupAuthoritativeTtl(hostname)));
 
   // Apex ⟷ www pair.
   checks.push(...await runBackupDomainCheck(hostname));

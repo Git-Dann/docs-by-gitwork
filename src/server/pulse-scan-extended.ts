@@ -24,7 +24,6 @@ import { runSeoExtended } from "./pulse-checks/seo-extended";
 import { runTrustBrandExtended } from "./pulse-checks/trust-brand-extended";
 import { runMissingPagesExtended } from "./pulse-checks/missing-pages-extended";
 import { runGlobalDistributionExtended } from "./pulse-checks/global-distribution-extended";
-import { runCodeQualityExtended } from "./pulse-checks/code-quality-extended";
 import { runMobileExtended } from "./pulse-checks/mobile-extended";
 import { runBusinessOperationsChecks } from "./pulse-checks/business-operations";
 import { runSocialMarketingChecks } from "./pulse-checks/social-marketing";
@@ -73,7 +72,6 @@ export async function runExtendedChecks(
     ["trust-brand", CATEGORIES.TRUST_BRAND, runTrustBrandExtended],
     ["missing-pages", CATEGORIES.MISSING_PAGES, runMissingPagesExtended],
     ["global-distribution", CATEGORIES.GLOBAL_DISTRIBUTION, runGlobalDistributionExtended],
-    ["code-quality", CATEGORIES.CODE_QUALITY, runCodeQualityExtended],
     ["mobile", CATEGORIES.MOBILE, runMobileExtended],
     ["business-operations", CATEGORIES.BUSINESS_OPS, runBusinessOperationsChecks],
     ["social-marketing", CATEGORIES.SOCIAL_MARKETING, runSocialMarketingChecks],

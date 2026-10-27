@@ -6,7 +6,7 @@ import { isDmaGatekeeperHost } from "./legal-claims";
 import { cardDataHandling } from "./payment-page-evidence";
 
 export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
-  const { pageResult, htmlLower } = ctx;
+  const { pageResult } = ctx;
   const html = pageResult.html;
   const checks: PulseScanCheckInput[] = [];
   // Readable text, one block at a time (page-claims.ts), and the page's links. The checks
@@ -17,17 +17,11 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
 
   // ─── GDPR Articles ─────────────────────────────────────────────────────────
 
+  // Rights of access and portability are read from the privacy policy itself
+  // (privacy-notice-rights.ts); erasure is assessed by data_deletion_right and the
+  // repository account-deletion checks.
   const hasDataNotice = /what (data|information) we collect|information we (collect|process)|data we (collect|process)/i.test(html);
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_article13_notice", label: "Data collection notice (GDPR Art. 13/14)", status: hasDataNotice ? "PASS" : "WARN", detail: hasDataNotice ? "Data collection notice detected — GDPR Art. 13/14 transparency requirement addressed." : "No clear data collection notice detected — GDPR requires informing users what data you collect and why at point of collection." });
-
-  const hasAccessRight = /access (your|my) (data|information)|download (your|my) data|data (access|subject access request)/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_right_to_access", label: "Right to access data (GDPR Art. 15)", status: hasAccessRight ? "PASS" : "WARN", detail: hasAccessRight ? "Data access mechanism detected — GDPR Art. 15 right to access addressed." : "No data access mechanism detected — GDPR Art. 15 requires providing users a way to access the personal data you hold on them." });
-
-  const hasErasureUi = /delete (my|your|account|data)|right to (erasure|deletion)|remove (my|your) (account|data)|close (my|your) account/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_right_to_erasure_ui", label: "Right to erasure UI (GDPR Art. 17)", status: hasErasureUi ? "PASS" : "WARN", detail: hasErasureUi ? "Account/data deletion mechanism detected — GDPR Art. 17 right to erasure addressed." : "No data deletion mechanism detected — GDPR Art. 17 requires a clear way for users to request deletion of their personal data." });
-
-  const hasPortability = /export (your|my|our) data|download (your|my|our) data|data portability/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_right_to_portability", label: "Data portability (GDPR Art. 20)", status: hasPortability ? "PASS" : "WARN", detail: hasPortability ? "Data export/portability option detected — GDPR Art. 20 addressed." : "No data portability option detected — GDPR Art. 20 requires allowing users to export their data in a machine-readable format." });
 
   const hasObjectRight = /opt.out|unsubscribe|object to (processing|use|profiling)|withdraw consent/i.test(html);
   checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_right_to_object", label: "Right to object to processing (GDPR Art. 21)", status: hasObjectRight ? "PASS" : "WARN", detail: hasObjectRight ? "Opt-out / consent withdrawal mechanism detected." : "No opt-out or processing objection mechanism detected — GDPR Art. 21 requires a way for users to object to certain data processing activities." });
@@ -39,12 +33,6 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   checks.push(lawfulQuote
     ? claimSeen(lawfulBase, "The page names the lawful basis for processing personal data.", lawfulQuote)
     : claimUnseen(lawfulBase, `The scanned page does not name a lawful basis for processing. ${notInPrivacyPolicy}`));
-
-  const hasBreachNotification = /security breach|data breach|incident notification|notify you|we will inform/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_breach_notification", label: "Breach notification procedure (GDPR Art. 33)", status: hasBreachNotification ? "PASS" : "WARN", detail: hasBreachNotification ? "Breach notification procedure referenced." : "No breach notification procedure mentioned — GDPR Art. 33/34 requires notifying authorities within 72 hours and affected users without undue delay." });
-
-  const hasRopa = /records of processing|processing activities|ropa|article 30/i.test(html);
-  checks.push({ category: CATEGORIES.LEGAL, checkKey: "gdpr_records_processing", label: "Records of Processing Activities (GDPR Art. 30)", status: hasRopa ? "PASS" : "WARN", detail: hasRopa ? "Records of Processing Activities referenced." : "No ROPA reference — GDPR Art. 30 requires organisations to maintain records of all data processing activities." });
 
   // ─── UK & EU ────────────────────────────────────────────────────────────────
 

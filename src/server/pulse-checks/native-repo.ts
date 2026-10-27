@@ -36,6 +36,7 @@ import { evaluateBackendServiceChecks } from "./backend-service";
 import { evaluateCleanlinessChecks } from "./code-cleanliness";
 import { evaluateCiWorkflowChecks } from "./ci-workflows";
 import { evaluateRepoCollaborationChecks } from "./repo-collaboration";
+import { classifyEmailPaths, evaluateRepoOperationsChecks } from "./repo-operations";
 import { evaluateContainerChecks } from "./containers";
 import { evaluateServiceDepthChecks } from "./service-depth";
 import { evaluateOperationalDepthChecks } from "./operational-depth";
@@ -193,6 +194,16 @@ const CONFIG_PATTERNS: RegExp[] = [
   /(^|\/)(?:tsconfig(?:\.[^/]+)?\.json|eslint\.config\.(?:js|mjs|cjs|ts)|biome\.json|ruff\.toml)$/i,
   /(^|\/)(?:CODEOWNERS|SECURITY\.md|INCIDENT[^/]*\.md|RUNBOOK[^/]*\.md|SUPPORT[^/]*\.md|ARCHITECTURE[^/]*\.md|ADR-[^/]*\.md|BUSINESS-CONTINUITY[^/]*\.md|DISASTER-RECOVERY[^/]*\.md|DATA-CLASSIFICATION[^/]*\.md|VENDOR[^/]*\.(?:md|csv|json|ya?ml))$/i,
   /(^|\/)(?:locales?|translations?|i18n)\/[^/]+\.(?:json|ya?ml)$/i,
+  // Operations practices read by repo-operations.ts: alert rules and receivers, Lighthouse
+  // CI assertions, and the Serverless Framework's log retention.
+  /(^|\/)(alertmanager|prometheus)[\w.-]*\.ya?ml$/i,
+  /(^|\/)(?:prometheus|alertmanager|alerting|monitoring|grafana)\/(?:[^/]+\/)*[^/]+\.ya?ml$/i,
+  /(^|\/)\.?lighthouserc[\w.]*$/i,
+  /(^|\/)serverless\.ya?ml$/i,
+  // Release pipelines outside GitHub Actions (the App Bundle check reads where releases go).
+  /(^|\/)fastlane\/Fastfile$/i,
+  /(^|\/)(bitrise|codemagic)\.ya?ml$/i,
+  /^\.gitlab-ci\.ya?ml$/i,
 ];
 
 /**
@@ -506,6 +517,12 @@ export function selectFilesToRead(
     config.push(...htmlEntries);
   }
 
+  // Email templates (web and backend repos only), read from their own small budget so a
+  // project with dozens of templates cannot crowd out the config files above.
+  if (platform === "none") {
+    config.push(...selectEmailTemplates(usable.map((e) => e.path)).filter((p) => !config.includes(p)));
+  }
+
   const ext = SOURCE_EXTENSION[platform];
   if (!ext) return { config, source: [] };
 
@@ -530,6 +547,21 @@ export function selectFilesToRead(
     .map((e) => e.path);
 
   return { config, source };
+}
+
+/**
+ * Up to three shared email layouts and six templates, marketing-style first (newsletters
+ * and welcome mail are where preview text matters most). Components, tests and the React
+ * Email preview app are not templates.
+ */
+export function selectEmailTemplates(paths: string[]): string[] {
+  const { templates, layouts } = classifyEmailPaths(paths);
+  const ranked = templates
+    .map((p, i) => ({ p, i, rank: /newsletter|digest|welcome|marketing|campaign|announce/i.test(p) ? 0 : 1 }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((e) => e.p);
+  // Layouts first: a preheader set once there answers for every template.
+  return [...layouts.slice(0, 3), ...ranked.slice(0, 6)];
 }
 
 async function fetchText(owner: string, repo: string, path: string): Promise<string | null> {
@@ -886,7 +918,7 @@ export async function runCiWorkflowChecks(
   if (!snapshot || !snapshot.accessible) return { checks: [] };
   // The collaboration files (CODEOWNERS, templates, release and scanning tools) read the
   // same snapshot and the same workflow files, so they ride on this collector.
-  return { checks: [...evaluateCiWorkflowChecks(snapshot), ...evaluateRepoCollaborationChecks(snapshot)] };
+  return { checks: [...evaluateCiWorkflowChecks(snapshot), ...evaluateRepoCollaborationChecks(snapshot), ...evaluateRepoOperationsChecks(snapshot)] };
 }
 
 /**

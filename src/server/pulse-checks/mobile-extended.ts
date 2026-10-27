@@ -108,7 +108,6 @@ export async function runMobileExtended(ctx: ExtendedCheckContext): Promise<Puls
       ["reduced_motion_css", "prefers-reduced-motion CSS"],
       ["high_contrast_css", "prefers-contrast CSS"],
       ["biometric_auth_signals", "WebAuthn biometric auth signals"],
-      ["screen_reader_tested_signal", "Accessibility testing evidence"],
       ["gesture_navigation", "Swipe / gesture navigation"],
       ["apple_app_clip_support", "App Clips support (iOS)"],
       ["android_instant_app", "Android Instant Apps"],
@@ -154,8 +153,6 @@ export async function runMobileExtended(ctx: ExtendedCheckContext): Promise<Puls
   checks.push({ category: CATEGORIES.MOBILE, checkKey: "biometric_auth_signals", label: "WebAuthn biometric auth signals", status: hasBiometric ? "PASS" : "WARN", detail: hasBiometric ? "Biometric / WebAuthn signals detected." : "No biometric auth signals — WebAuthn biometric login (fingerprint, Face ID) improves mobile security and conversion." });
 
   // Screen reader tested
-  const hasA11yTesting = /axe|lighthouse.*accessibility|wave.*accessibility|screen.*reader.*tested|accessibility.*tested|a11y.*tested/i.test(html);
-  checks.push({ category: CATEGORIES.MOBILE, checkKey: "screen_reader_tested_signal", label: "Accessibility testing evidence", status: hasA11yTesting ? "PASS" : "WARN", detail: hasA11yTesting ? "Accessibility testing tool signals detected." : "No accessibility testing evidence — integrate axe, Lighthouse accessibility audits, or manual screen reader testing into your CI pipeline." });
 
   // Gesture navigation
   const hasGestures = /swipe|gesture|touch.*navigate|drag.*drop|hammerjs|touch.*event/i.test(html);

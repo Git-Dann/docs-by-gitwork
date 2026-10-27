@@ -242,30 +242,6 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
 
   // ── Roles & permissions ──────────────────────────────────────────────────
   rule(
-    ROLES, "roles_depth_server_authorization", "Privileged routes enforce authorization on the server",
-    // Code that decides on a role, not the word "admin" (which is in every CMS, every
-    // settings page and every "administrator" sentence).
-    /\bisAdmin\b|requireAdmin|adminProcedure|\badmin(?:Router|Routes|Controller|Middleware)\b|(?:^|\/)(?:routes|controllers|api)\/admin\b|\brole\s*(?:===?|!==?)\s*["'`]admin|\broles?\.includes\(\s*["'`]admin|\b(?:userRole|currentUserRole)\b|\bhasRole\b|\brequireRole\b|["'`]\/admin(?:\/|["'`])/i,
-    // Many real guard idioms exist; a missing name from this list is not a missing guard,
-    // which is why an absence here is a WARN to confirm, never a FAIL.
-    [/authorize\(|requireRole|requirePermission|\bcan\(|policy\.|requireAdmin|isAdminMiddleware|AdminProcedure|protectedProcedure|checkPermission|PermissionCheckService|requireAuth|withAuth|ensureAdmin|assertAdmin|adminOnly|isAdmin\s*\(|@UseGuards|RolesGuard|@PreAuthorize|@Secured|@login_required|@permission_required|user_passes_test|permission_classes|before_action\s+:(?:authenticate|authorize|require)|Gate::|->middleware\(|getServerSession\(|currentUser\(\)|auth\(\)\.protect|clerkMiddleware|role\s*!==?\s*["'`]admin["'`][\s\S]{0,80}(?:403|401|forbidden|unauthori[sz]ed|redirect|throw)/i], undefined, "WARN",
-    "Enforce authorization inside the server handler or policy layer; hidden UI controls are not access control.",
-    `router.delete("/admin/users/:id", requirePermission("users:delete"), handler);`,
-    `router.delete("/admin/users/:id", handler); // button is hidden for non-admins`,
-  ),
-  rule(
-    ROLES, "roles_depth_default_deny", "Authorization policies default to deny",
-    /\b(?:hasPermission|checkPermission|requirePermission|requireRole|hasRole|isAllowed|isAuthorized|has_perms?)\s*\(|\bcan\(|\bpermissions?\s*[:=]\s*[\[{]|\bpolicies\s*[:=]|\bpolicy\.\w+\(|access.?control.?list|@casl\/ability|\bcasbin\b|permission_classes\s*=|DEFAULT_PERMISSION_CLASSES|Gate::(?:define|allows|denies|before)|@PreAuthorize|@Roles\(|\bRolesGuard\b/i,
-    // `return false` is in every codebase, so it proved nothing; a stated deny default
-    // is the only thing a sample can show. And only a policy that DECLARES an allow
-    // default is adverse — `defaultAllowed` or "default: allow" in prose is not.
-    [/default.{0,12}deny|deny.{0,12}default|denyAll|if\s*\(\s*!\s*[\w.]*(?:grant|permission|role|polic|rule|acl|abilit)\w*[\w.\[\]]*\s*\)\s*return false|effect\s*:\s*["']Deny|\bdefault(?:Policy|Effect|Decision|Access)\s*[:=]\s*["'`]?deny|\bdefault_(?:policy|effect|decision|access)\s*[:=]\s*["']?deny|DEFAULT_PERMISSION_CLASSES[^\n]*IsAuthenticated/i],
-    [/\bdefault(?:Policy|Effect|Decision|Access)\s*[:=]\s*["'`]?(?:allow|permit|grant)\b|\bdefault_(?:policy|effect|decision|access)\s*[:=]\s*["']?(?:allow|permit|grant)\b|return true\s*;?\s*\/\/\s*(?:fallback|default)/i], "FAIL",
-    "Make unknown roles, resources, and actions deny by default and add explicit grants.",
-    `const policy = { defaultEffect: "deny" }; function can(action) { return policy.allows(action); }`,
-    `const policy = { defaultEffect: "allow" }; function can(action) { return policy.allows(action); }`,
-  ),
-  rule(
     ROLES, "roles_depth_tenant_query_scope", "Multi-tenant data queries carry tenant scope",
     /workspaceId|tenantId|organizationId|accountId/i,
     [/where\s*:\s*\{[^}]{0,160}(?:workspaceId|tenantId|organizationId|accountId)|scopeToTenant|tenantFilter/i],
@@ -1200,14 +1176,6 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     scope: { evidence: "all" },
     passDetail: "Usernames or handles are unique, and Unicode normalisation (NFC or NFKC) is applied, so two look-alike names cannot become two accounts.",
   },
-  rule(
-    GLOBAL, "global_depth_residency_routing", "Regional data residency is enforced in infrastructure routing",
-    /data.?residency|tenantRegion|residencyPolicy|residencyRegion|regional data|dataRegion|data.?location/i,
-    [/regionAllowlist|residencyPolicy|routeToRegion|regionalDatabase|dataLocation/i], undefined, "WARN",
-    "Bind tenant residency to approved storage, processing, backup, and support-access regions and test fail-closed routing.",
-    `const region = residencyPolicy.routeToRegion(tenantRegion, regionAllowlist); use regionalDatabase(region);`,
-    `const tenantRegion = req.query.region ?? deploymentRegion; // data residency`,
-  ),
 
   // ── Missing product pages (repo route evidence) ──────────────────────────
   rule(

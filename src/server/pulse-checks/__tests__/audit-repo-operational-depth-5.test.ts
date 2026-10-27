@@ -113,40 +113,6 @@ describe("audit repo-operational-depth-5: roles_depth_object_ownership", () => {
   });
 });
 
-describe("audit repo-operational-depth-5: roles_depth_server_authorization", () => {
-  it("skips a repo whose only hits are an SVG role attribute and licence prose (taxonomy)", () => {
-    const checks = evaluateOperationalDepthChecks(
-      snap({
-        "components/icons.tsx": '<svg aria-hidden="true" focusable="false" data-icon="github" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512" {...props}>',
-        "LICENSE.md": "Permission is hereby granted, free of charge, to any person obtaining a copy",
-      }),
-    );
-    expect(at(checks, "roles_depth_server_authorization").status).toBe("SKIPPED");
-  });
-
-  it("accepts tRPC admin middleware as server-side enforcement (cal.com)", () => {
-    const checks = evaluateOperationalDepthChecks(
-      snap({
-        "packages/trpc/server/procedures/authedProcedure.ts": [
-          'import { isAdminMiddleware, isAuthed } from "../middlewares/sessionMiddleware";',
-          "export const authedProcedure = publicProcedure.use(isAuthed);",
-          "export const authedAdminProcedure = publicProcedure.use(isAdminMiddleware);",
-        ].join("\n"),
-      }),
-    );
-    expect(at(checks, "roles_depth_server_authorization").status).toBe("PASS");
-  });
-
-  it("still flags an admin route that relies only on a hidden button", () => {
-    const checks = evaluateOperationalDepthChecks(
-      snap({
-        "src/routes/admin.ts": 'router.delete("/admin/users/:id", handler); // button is hidden for non-admins',
-      }),
-    );
-    expect(at(checks, "roles_depth_server_authorization").status).toBe("WARN");
-  });
-});
-
 describe("audit repo-operational-depth-5: vibe_depth_environment_schema", () => {
   it("does not treat lockfile hash noise as zod validation (node-express)", () => {
     const checks = evaluateOperationalDepthChecks(

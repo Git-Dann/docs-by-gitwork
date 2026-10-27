@@ -1,3 +1,4 @@
+import { isRetiredCheck } from "../catalogue-compat";
 // Un-withholding the "scanA" slice (Oct 2026): 34 checks whose verdicts were keyword
 // guesses over raw HTML, now resting on what a visitor can read, the page's own links,
 // parsed tags or DNS answers. Each case is two-sided: the input that produced the false
@@ -354,8 +355,11 @@ describe("WITHHELD", () => {
     for (const key of ["account_lockout_policy", "cookie_consent_granular", "dkim_record_present", "digital_markets_act", "app_icon_sizes", "github_codeowners"]) {
       expect(WITHHELD[key], key).toBeUndefined();
     }
-    for (const key of ["fraud_detection_tool", "gdpr_right_to_erasure_ui", "dns_ttl_healthy", "early_hints_support", "github_branch_protection"]) {
-      expect(WITHHELD[key], key).toMatch(/^Not assessable from what Pulse scans: /);
+    // October 2026: the unobservable ones were retired (catalogue-compat.ts) or rebuilt on
+    // real evidence, so nothing is held back any more.
+    for (const key of ["fraud_detection_tool", "gdpr_right_to_erasure_ui", "github_branch_protection"]) {
+      expect(isRetiredCheck(key), key).toBe(true);
     }
+    for (const key of ["dns_ttl_healthy", "early_hints_support"]) expect(WITHHELD[key], key).toBeUndefined();
   });
 });

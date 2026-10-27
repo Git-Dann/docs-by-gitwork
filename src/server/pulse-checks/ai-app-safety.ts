@@ -24,7 +24,6 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["ai_llm_key_not_client_exposed", "LLM API key not in client bundle"],
   ["ai_prompt_injection_guardrail", "Prompt-injection guardrail present"],
   ["ai_output_validation", "LLM output validated before use"],
-  ["ai_endpoint_rate_limited", "AI endpoint rate-limiting signals"],
 ];
 
 /**
@@ -135,12 +134,8 @@ export function evaluateAiAppSafety(html: string, bundleJs: string): PulseScanCh
       : "Not established from outside: model output is normally validated on the server, which a website scan cannot see. Confirm responses are checked against a schema before they are rendered or acted on.",
   });
 
-  // Rate-limiting signals on the AI endpoint (heuristic → MEDIUM).
-  const hasRateLimit = /rate.?limit|ratelimit|upstash|@vercel\/kv|too many requests|429|throttle/i.test(clientJs);
-  checks.push({ category: CATEGORY, checkKey: "ai_endpoint_rate_limited", label: "AI endpoint rate-limiting signals", status: hasRateLimit ? "PASS" : "WARN",
-    detail: hasRateLimit
-      ? "Rate-limiting signals detected."
-      : "No rate-limiting detected for the AI endpoint — uncapped LLM calls invite cost-blowout and abuse. Add per-user/IP rate limits on the chat/completions route." });
+  // AI endpoint rate limiting is enforced on the server, so it is read from the
+  // repository (repo-operations.ts), never guessed from the client bundle.
 
   return checks;
 }

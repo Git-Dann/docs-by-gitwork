@@ -135,7 +135,7 @@ const CATALOGUE: [string, string][] = [
   ["android_x_screenshot_flag", "Sensitive screens set FLAG_SECURE"],
   ["android_x_root_debug_detection", "Release builds do not ship debug-only escape hatches"],
   ["android_x_signing_config_committed", "Signing credentials are not committed"],
-  ["android_x_app_bundle", "The project builds an Android App Bundle"],
+  ["android_x_app_bundle", "Releases are built as an Android App Bundle"],
   ["android_x_strict_mode", "StrictMode is not enabled in release builds"],
 ];
 
@@ -529,18 +529,26 @@ export function evaluateAndroidExtendedChecks(snapshot: RepoSnapshot): PulseScan
       : "No signing passwords were found in committed build configuration.",
   );
 
-  const bundle = /bundle\s*\{|\.aab\b|bundleRelease/i.test(ctx.gradle);
+  // Every Android Gradle Plugin since 3.2 can build an App Bundle with `bundleRelease` and no
+  // configuration, so a build file without a bundle block proves nothing. What can be wrong is
+  // the RELEASE PIPELINE: one that uploads an APK to Google Play, which Play stopped accepting
+  // for new apps in August 2021. That is read from CI workflows and fastlane, when they exist.
+  const pipeline = [...snapshot.files]
+    .filter(([path]) => /^\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)fastlane\/Fastfile$|(^|\/)(bitrise|codemagic)\.ya?ml$|(^|\/)\.gitlab-ci\.ya?ml$/i.test(path))
+    .map(([path, text]) => ({ path, text }));
+  const pipelineText = pipeline.map((f) => f.text).join("\n");
+  const bundleSeen = /\bbundle[A-Z]?\w*Release\b|\.aab\b|\baab\s*:|task\s*:\s*["']bundle/i.test(pipelineText) || /\bbundle\s*\{/.test(ctx.gradle);
+  const playUpload = /upload-google-play|upload_to_play_store|\bsupply\s*\(|\bsupply\b\s*$|play-publisher|gradle-play-publisher|publishBundle|publishApk/im.test(pipelineText);
+  const apkToPlay = playUpload && /\.apk\b|\bapk\s*:|publishApk|assemble\w*Release/i.test(pipelineText) && !bundleSeen;
   add(
     "android_x_app_bundle",
-    "The project builds an Android App Bundle",
-    !ctx.gradle ? "SKIPPED" : bundle ? "PASS" : "WARN",
-    !ctx.gradle
-      ? "No Gradle build file was read."
-      : bundle
-        ? "The project is configured for Android App Bundle output, which Play requires for new apps and updates."
-        : "No App Bundle configuration was found. Play has required .aab rather than .apk for new applications since " +
-          "August 2021, so an APK-only build cannot be published — and the bundle is also what lets Play ship each " +
-          "device only the resources and native libraries it needs.",
+    "Releases are built as an Android App Bundle",
+    bundleSeen ? "PASS" : apkToPlay ? "WARN" : "SKIPPED",
+    bundleSeen
+      ? `The release pipeline or build builds an App Bundle (${pipeline.length > 0 ? pipeline.map((f) => f.path).slice(0, 3).join(", ") : "Gradle bundle settings"}), which Google Play requires for new apps.`
+      : apkToPlay
+        ? `The release pipeline uploads an APK to Google Play (${pipeline.map((f) => f.path).slice(0, 3).join(", ")}). Play has required an App Bundle (.aab) for new apps since August 2021. Build with bundleRelease and upload the .aab.`
+        : "No release pipeline that uploads to Google Play was found. Any current Android Gradle Plugin builds an App Bundle with bundleRelease and no extra configuration, so there is nothing to check here.",
   );
 
   const strictMode = /StrictMode\.setThreadPolicy|StrictMode\.setVmPolicy/.test(ctx.source);

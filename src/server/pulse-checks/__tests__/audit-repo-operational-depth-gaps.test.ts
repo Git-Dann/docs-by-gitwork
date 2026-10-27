@@ -250,15 +250,6 @@ describe("payments, performance and roles counter-examples", () => {
   it("skips pagination JSON whose 'next' key is a URL", () => {
     expect(evalKey("perf_depth_route_code_splitting", 'fixtures/page.json\n{"next": "https://api/x?page=2"}')).toBe("SKIPPED");
   });
-  it("keeps DRF and Laravel authorization layers in scope for default-deny", () => {
-    expect(
-      evalKey(
-        "roles_depth_default_deny",
-        'settings.py\nREST_FRAMEWORK = { "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"] }',
-      ),
-    ).not.toBe("SKIPPED");
-    expect(evalKey("roles_depth_default_deny", 'AuthServiceProvider.php\nGate::define("edit", fn() => true);')).not.toBe("SKIPPED");
-  });
   it("does not accept a null check on the session user as an ownership check", () => {
     expect(
       evalKey(
@@ -266,9 +257,6 @@ describe("payments, performance and roles counter-examples", () => {
         "app/api/items/[id]/route.ts\nif (session.user.id !== undefined) {\n  const item = await db.item.findUnique({ where: { id: params.id } });\n}",
       ),
     ).toBe("WARN");
-  });
-  it("keeps an unprotected adminRouter route in scope and flagged", () => {
-    expect(evalKey("roles_depth_server_authorization", 'routes/admin.ts\nadminRouter.delete("/users/:id", handler);')).toBe("WARN");
   });
 });
 

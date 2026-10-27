@@ -12,15 +12,9 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["uk_companies_house_number", "UK Companies House registration number"],
   ["eu_director_info", "Director / responsible person named"],
   ["support_sla_documented", "Support SLA / response times documented"],
-  ["esignature_support", "eSignature / contract workflow"],
   ["invoice_generation_b2b", "Invoice / tax invoice generation"],
-  ["insurance_mention", "Professional indemnity insurance"],
-  ["gdpr_ropa_maintained", "ROPA (Records of Processing Activities)"],
   ["data_retention_schedule", "Data retention schedule published"],
-  ["supplier_due_diligence", "Vendor / sub-processor due diligence"],
   ["modern_slavery_statement", "Modern Slavery Act statement"],
-  ["bribery_act_policy", "Anti-bribery policy"],
-  ["whistleblower_policy", "Whistleblower / speak-up policy"],
 ];
 
 export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
@@ -143,8 +137,6 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   const hasSupportSla = /\b(?:support|response|first[- ]response|resolution)\s+(?:times?|SLAs?)\b|\b(?:reply|respond|response|get back to you)\b[^.]{0,30}?\bwithin\s+(?:\d+|one|two|three|four|24|48|72)\s*(?:business |working )?(?:hours?|hrs?|days?|minutes?|mins?)\b|\bSLA\b[^.]{0,40}?\b(?:support|response|uptime)\b|\b(?:support|uptime)\b[^.]{0,40}?\bSLA\b|\b\d+\s*(?:hour|hr|business[- ]day|working[- ]day)s?\s+response\b/i.test(visibleText);
   checks.push({ category: CATEGORY, checkKey: "support_sla_documented", label: "Support SLA / response times documented", status: hasSupportSla ? "PASS" : "WARN", detail: hasSupportSla ? "Support response-time commitment found on the scanned page." : "No support response time found on the scanned page — enterprise buyers ask for documented response times in vendor assessments. If a support or SLA page states them, this does not apply." });
 
-  const hasEsignature = /esignature|e-signature|docusign|hellosign|sign now|adobe.*sign|pandadoc|electronic.*signature/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "esignature_support", label: "eSignature / contract workflow", status: hasEsignature ? "PASS" : "WARN", detail: hasEsignature ? "eSignature / contract workflow signals detected." : "No eSignature signals — B2B contracts require legal electronic signatures; integrations with DocuSign, HelloSign, or PandaDoc streamline procurement." });
 
   // Only a site that takes payments issues invoices; sites with no payments used to be told
   // to generate VAT invoices. Read from visible copy, one sentence at a time.
@@ -158,11 +150,7 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
         : { status: "INCONCLUSIVE" as const, detail: "The page takes payments but does not mention invoices. Invoices normally live in the billing area behind sign-in or on the pricing FAQ, so their absence here is not evidence either way." }),
   });
 
-  const hasInsurance = /professional.*indemnity|liability.*insurance|insurance.*certificate|indemnity.*insurance/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "insurance_mention", label: "Professional indemnity insurance", status: hasInsurance ? "PASS" : "WARN", detail: hasInsurance ? "Professional indemnity insurance signals detected." : "No insurance mention — enterprise and government procurement often require proof of professional indemnity insurance as a condition of contracting." });
 
-  const hasRopa = /records of processing|processing activities|ropa|article.*30|data.*processing.*register/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "gdpr_ropa_maintained", label: "ROPA (Records of Processing Activities)", status: hasRopa ? "PASS" : "WARN", detail: hasRopa ? "ROPA reference detected." : "No ROPA reference — GDPR Article 30 requires maintaining a record of all data processing activities. Enterprise DPOs will ask to see it." });
 
   // Bounded phrases only: the old unbounded `.*` joined e.g. a `data-testid` attribute to a word
   // "retention" 770KB later in minified HTML. A verb/object statement must name a duration
@@ -178,8 +166,6 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
     new RegExp(String.raw`\b(?:data|information|records|logs)\s+(?:is|are|will be|may be|is only|are only)\s+(?:retained|kept|stored|held)\b[^.<]{0,40}?${retentionDuration}`, "i").test(html);
   checks.push({ category: CATEGORY, checkKey: "data_retention_schedule", label: "Data retention schedule published", status: hasDataRetention ? "PASS" : "WARN", detail: hasDataRetention ? "Data retention schedule signals detected." : "No data retention schedule found on the scanned page — UK/EU GDPR (Art. 13(2)(a)) requires your privacy notice to state how long personal data is kept. If your privacy policy already states retention periods, this does not apply." });
 
-  const hasVendorDueDiligence = /vendor.*assessment|supplier.*due.*diligence|third.*party.*risk|sub.processor.*review|vendor.*security/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "supplier_due_diligence", label: "Vendor / sub-processor due diligence", status: hasVendorDueDiligence ? "PASS" : "WARN", detail: hasVendorDueDiligence ? "Vendor due diligence signals detected." : "No vendor due diligence signals — document your process for assessing sub-processors; enterprise DPOs require evidence of third-party risk management." });
 
   // The duty (Modern Slavery Act 2015 s.54) falls on UK commercial organisations with
   // turnover of £36m or more, which a web page cannot show. So: not UK is not applicable,
@@ -195,11 +181,7 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
         : { status: "INCONCLUSIVE" as const, detail: `UK signals found (${ukWhy}), but the homepage has no modern slavery statement link. The duty applies only to organisations with turnover of £36m or more, which Pulse cannot see; those must link to the statement from a prominent place on their homepage.` }),
   });
 
-  const hasAntiBribery = /anti.bribery|bribery.*act|anti.*corruption|gifts.*hospitality.*policy/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "bribery_act_policy", label: "Anti-bribery policy (UK Bribery Act)", status: isUkProduct ? (hasAntiBribery ? "PASS" : "WARN") : "PASS", detail: isUkProduct ? (hasAntiBribery ? "Anti-bribery policy signals detected." : "UK signals detected — the UK Bribery Act 2010 requires organisations to have 'adequate procedures' to prevent bribery; an anti-bribery policy is the key evidence.") : "Not applicable." });
 
-  const hasWhistleblower = /whistleblow|speak.*up|raise.*concern|report.*misconduct|ethics.*hotline|confidential.*report/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "whistleblower_policy", label: "Whistleblower / speak-up policy", status: hasWhistleblower ? "PASS" : "WARN", detail: hasWhistleblower ? "Whistleblower / speak-up policy signals detected." : "No whistleblower policy detected — EU Whistleblower Protection Directive requires organisations with >50 employees to have a formal reporting channel." });
 
   return checks;
 }

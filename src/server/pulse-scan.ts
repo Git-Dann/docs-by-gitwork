@@ -1,4 +1,5 @@
 import { CATEGORIES, type CheckCategory } from "./pulse-checks/categories";
+import { privacyNoticeRightsChecks } from "./pulse-checks/privacy-notice-rights";
 import { applyLanguageApplicability, languageTechStack } from "@/server/pulse-checks/repo-language";
 import { errorMonitoringTool, hostingPlatformOf, isFirstPartyHost, RESPONSE_TIME_FAIL_MS, responseTimeVerdict } from "@/server/pulse-checks/web-basics";
 import { detectCi, detectDependencyUpdates, detectLinter, detectTests, type Detection, type RepoBasicsInput } from "@/server/pulse-checks/repo-basics";
@@ -4840,6 +4841,16 @@ export async function runUrlChecks(
           : "Not assessed — Pulse could not read a privacy policy linked from this page, so whether it carries a 'last updated' date is unknown.",
     });
 
+    // Data-subject rights the notice must state (GDPR Art. 13/14), read from the same policy.
+    const homepageIsPolicy = legalPageConfirms("privacy", contentHtml);
+    checks.push(...privacyNoticeRightsChecks(
+      homepageIsPolicy
+        ? { url: baseUrl, html: contentHtml }
+        : privacyPolicyRead && privacyPolicyUrl && privacyPolicyPage
+          ? { url: privacyPolicyUrl, html: privacyPolicyPage.body }
+          : null,
+    ));
+
     const linksCookiePolicy = linksPathContaining(pageResult.html, ["cookie-policy", "cookiepolicy", "cookies", "cookie"]);
     checks.push(routePageCheck(
       "Legal & Compliance", "cookie_policy_page", "Dedicated cookie policy page",
@@ -5055,7 +5066,6 @@ export async function runUrlChecks(
     if (!ctx.hasBackend) {
       skipChecks(checks, "Observability", [
         ["uptime_monitoring", "External uptime monitoring"],
-        ["log_aggregation", "Centralised log aggregation"],
         ["apm_signals", "Application Performance Monitoring (APM)"],
         ["real_user_monitoring", "Real User Monitoring (RUM)"],
       ], "Skipped — no backend or server-side signals detected on this project.");
@@ -5071,16 +5081,8 @@ export async function runUrlChecks(
         : "No uptime monitoring — you won't know about outages before users tweet about them.",
     });
 
-    const logAggregationSignals = ["papertrail", "logtail", "logflare", "axiom", "betterstack", "baselime"].some((s) => htmlLower.includes(s));
-    checks.push({
-      category: CATEGORIES.OBSERVABILITY,
-      checkKey: "log_aggregation",
-      label: "Centralised log aggregation",
-      status: logAggregationSignals ? "PASS" : "WARN",
-      detail: logAggregationSignals
-        ? "Log aggregation service detected."
-        : "No log aggregation — debugging production issues without centralised logs takes 10× longer.",
-    });
+    // Log shipping is read from the repository (repo-operations.ts): a vendor name in the
+    // page's HTML says nothing about where the server's logs go.
 
     const apmSignals = ["newrelic", "dynatrace", "appdynamics", "elastic apm", "scout apm", "sentry performance"].some((s) => htmlLower.includes(s));
     checks.push({
@@ -6175,7 +6177,6 @@ export async function runUrlChecks(
       ["SaaS Readiness", "in_app_notifications", "In-app notification system"],
       // Additional Observability
       ["Observability", "uptime_monitoring", "External uptime monitoring"],
-      ["Observability", "log_aggregation", "Centralised log aggregation"],
       ["Observability", "apm_signals", "Application Performance Monitoring (APM)"],
       ["Observability", "real_user_monitoring", "Real User Monitoring (RUM)"],
       // Additional Payments
@@ -6237,12 +6238,9 @@ export async function runUrlChecks(
       // Legal Extended
       ["Legal & Compliance", "gdpr_article13_notice", "GDPR Art. 13/14 data collection notice"],
       ["Legal & Compliance", "gdpr_right_to_access", "GDPR Art. 15 — right to access data"],
-      ["Legal & Compliance", "gdpr_right_to_erasure_ui", "GDPR Art. 17 — right to erasure UI"],
       ["Legal & Compliance", "gdpr_right_to_portability", "GDPR Art. 20 — data portability"],
       ["Legal & Compliance", "gdpr_right_to_object", "GDPR Art. 21 — right to object"],
       ["Legal & Compliance", "gdpr_lawful_basis_stated", "GDPR lawful basis stated"],
-      ["Legal & Compliance", "gdpr_breach_notification", "GDPR breach notification procedure"],
-      ["Legal & Compliance", "gdpr_records_processing", "GDPR records of processing (Art. 30)"],
       ["Legal & Compliance", "uk_gdpr_ico_registration", "ICO registration number"],
       ["Legal & Compliance", "eu_representative_contact", "EU Art. 27 representative"],
       ["Legal & Compliance", "eprivacy_pecr_compliance", "UK PECR / ePrivacy compliance"],
@@ -6346,9 +6344,7 @@ export async function runUrlChecks(
       ["Roles & Permissions", "guest_anonymous_mode", "Guest / view-only mode"],
       ["Roles & Permissions", "read_only_role", "Read-only role available"],
       ["Roles & Permissions", "data_export_permission", "Data export restricted by role"],
-      ["Roles & Permissions", "workspace_tenant_isolation", "Workspace / tenant isolation"],
       ["Roles & Permissions", "permission_inheritance", "Permission inheritance (groups)"],
-      ["Roles & Permissions", "gdpr_data_access_control", "GDPR data subject access by role"],
       // Email Deliverability
       ["Email Deliverability", "dkim_record_present", "DKIM DNS record present"],
       ["Email Deliverability", "bimi_record_present", "BIMI DNS record present"],
@@ -6356,31 +6352,16 @@ export async function runUrlChecks(
       ["Email Deliverability", "tls_rpt_record", "TLS-RPT reporting record"],
       ["Email Deliverability", "spf_hardfail", "SPF -all (hardfail)"],
       ["Email Deliverability", "dmarc_quarantine_reject", "DMARC quarantine or reject policy"],
-      ["Email Deliverability", "email_unsubscribe_signal", "Unsubscribe / List-Unsubscribe signal"],
       ["Email Deliverability", "transactional_subdomain", "Transactional email subdomain"],
-      ["Email Deliverability", "can_spam_address", "CAN-SPAM physical address in email"],
-      ["Email Deliverability", "casl_double_optin", "CASL double opt-in signals"],
-      ["Email Deliverability", "plain_text_email", "Plain text email alternative"],
-      ["Email Deliverability", "bounce_handling_signal", "Bounce handling / list hygiene"],
       ["Email Deliverability", "email_preview_configured", "Email preview text configured"],
-      ["Email Deliverability", "email_warm_up_signals", "Reputable ESP detected"],
-      ["Email Deliverability", "mailing_list_segmentation", "Email list segmentation signals"],
       // Observability Extended
       ["Observability", "alert_pagerduty_opsgenie", "PagerDuty / OpsGenie alerting"],
       ["Observability", "on_call_configured", "On-call rotation configured"],
-      ["Observability", "distributed_tracing", "Distributed tracing (Jaeger / DataDog)"],
-      ["Observability", "custom_business_metrics", "Custom business metrics dashboards"],
       ["Observability", "synthetic_monitoring", "Synthetic / ping monitoring"],
-      ["Observability", "structured_logging", "Structured JSON logging"],
       ["Observability", "log_retention_policy", "Log retention policy configured"],
       ["Observability", "audit_log_api_export", "Audit log accessible via API"],
-      ["Observability", "db_performance_monitoring", "Database performance monitoring"],
-      ["Observability", "queue_depth_monitoring", "Message queue depth monitoring"],
       ["Observability", "cost_monitoring_signals", "Cloud cost alerting"],
-      ["Observability", "error_budget_policy", "SLO / error budget policy"],
-      ["Observability", "incident_runbooks", "Incident runbooks documented"],
       ["Observability", "post_mortem_culture", "Post-mortem process signals"],
-      ["Observability", "deployment_frequency_tracking", "Deploy frequency tracked (DORA)"],
       // Infrastructure Extended
       ["Infrastructure", "ipv6_dns_record", "IPv6 AAAA DNS record"],
       ["Infrastructure", "multi_region_signals", "Multi-region deployment signals"],
@@ -6417,10 +6398,8 @@ export async function runUrlChecks(
       ["Payments", "sepa_bank_transfer", "SEPA / bank transfer (EU)"],
       ["Payments", "paypal_integration", "PayPal integration"],
       ["Payments", "three_ds_sca_compliant", "3D Secure / PSD2 SCA compliant"],
-      ["Payments", "fraud_detection_tool", "Fraud detection (Stripe Radar / Kount)"],
       ["Payments", "pci_saq_evidence", "PCI SAQ / scope reduction evidence"],
       ["Payments", "regional_payment_methods", "Regional payment methods (Klarna / iDEAL)"],
-      ["Payments", "chargeback_prevention", "Chargeback prevention tools"],
       ["Payments", "subscription_proration", "Subscription proration"],
       ["Payments", "invoicing_capability", "Invoice generation for B2B"],
       ["Payments", "tax_automation", "Tax automation (Avalara / TaxJar)"],
@@ -6474,8 +6453,6 @@ export async function runUrlChecks(
       ["Global Distribution", "transfer_impact_assessment", "SCCs / transfer impact assessment"],
       ["Global Distribution", "local_legal_notice", "Local legal notice (Mentions Légales)"],
       // Code Quality Extended
-      ["Code Quality", "github_branch_protection", "Branch protection rules"],
-      ["Code Quality", "github_required_reviews", "Required PR approvals"],
       ["Code Quality", "github_codeowners", "CODEOWNERS file"],
       ["Code Quality", "github_code_scanning", "Code scanning (CodeQL / Snyk)"],
       ["Code Quality", "github_secret_scanning", "Secret scanning enabled"],
@@ -6483,7 +6460,6 @@ export async function runUrlChecks(
       ["Code Quality", "github_issue_templates", "Issue templates"],
       ["Code Quality", "commit_signing_enabled", "Signed commits (GPG / sigstore)"],
       ["Code Quality", "release_automation", "Release automation (semantic-release)"],
-      ["Code Quality", "stale_bot_configured", "Stale issue / PR bot"],
       // Mobile Extended
       ["Mobile & Accessibility", "web_push_notifications", "Web Push Notifications"],
       ["Mobile & Accessibility", "push_permission_polite", "Polite push permission prompt"],
@@ -6502,15 +6478,9 @@ export async function runUrlChecks(
       ["Business Operations", "uk_companies_house_number", "UK Companies House registration number"],
       ["Business Operations", "eu_director_info", "Director / responsible person named"],
       ["Business Operations", "support_sla_documented", "Support SLA / response times"],
-      ["Business Operations", "esignature_support", "eSignature / contract workflow"],
       ["Business Operations", "invoice_generation_b2b", "Invoice / tax invoice generation"],
-      ["Business Operations", "insurance_mention", "Professional indemnity insurance"],
-      ["Business Operations", "gdpr_ropa_maintained", "ROPA (Records of Processing Activities)"],
       ["Business Operations", "data_retention_schedule", "Data retention schedule"],
-      ["Business Operations", "supplier_due_diligence", "Vendor / sub-processor due diligence"],
       ["Business Operations", "modern_slavery_statement", "Modern Slavery Act statement"],
-      ["Business Operations", "bribery_act_policy", "Anti-bribery policy"],
-      ["Business Operations", "whistleblower_policy", "Whistleblower / speak-up policy"],
       // API Quality
       ["API Quality", "api_versioning_present", "API versioning (/v1/, /v2/)"],
       ["API Quality", "api_rate_limit_documented", "Rate limits documented"],
@@ -7504,7 +7474,6 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["SaaS Readiness", "in_app_notifications", "In-app notification system"],
     // Additional Observability
     ["Observability", "uptime_monitoring", "External uptime monitoring"],
-    ["Observability", "log_aggregation", "Centralised log aggregation"],
     ["Observability", "apm_signals", "Application Performance Monitoring (APM)"],
     ["Observability", "real_user_monitoring", "Real User Monitoring (RUM)"],
     // Additional Payments
@@ -7566,12 +7535,9 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     // Legal Extended
     ["Legal & Compliance", "gdpr_article13_notice", "GDPR Art. 13/14 data collection notice"],
     ["Legal & Compliance", "gdpr_right_to_access", "GDPR Art. 15 — right to access data"],
-    ["Legal & Compliance", "gdpr_right_to_erasure_ui", "GDPR Art. 17 — right to erasure UI"],
     ["Legal & Compliance", "gdpr_right_to_portability", "GDPR Art. 20 — data portability"],
     ["Legal & Compliance", "gdpr_right_to_object", "GDPR Art. 21 — right to object"],
     ["Legal & Compliance", "gdpr_lawful_basis_stated", "GDPR lawful basis stated"],
-    ["Legal & Compliance", "gdpr_breach_notification", "GDPR breach notification procedure"],
-    ["Legal & Compliance", "gdpr_records_processing", "GDPR records of processing (Art. 30)"],
     ["Legal & Compliance", "uk_gdpr_ico_registration", "ICO registration number"],
     ["Legal & Compliance", "eu_representative_contact", "EU Art. 27 representative"],
     ["Legal & Compliance", "eprivacy_pecr_compliance", "UK PECR / ePrivacy compliance"],
@@ -7675,9 +7641,7 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Roles & Permissions", "guest_anonymous_mode", "Guest / view-only mode"],
     ["Roles & Permissions", "read_only_role", "Read-only role available"],
     ["Roles & Permissions", "data_export_permission", "Data export restricted by role"],
-    ["Roles & Permissions", "workspace_tenant_isolation", "Workspace / tenant isolation"],
     ["Roles & Permissions", "permission_inheritance", "Permission inheritance (groups)"],
-    ["Roles & Permissions", "gdpr_data_access_control", "GDPR data subject access by role"],
     // Email Deliverability
     ["Email Deliverability", "dkim_record_present", "DKIM DNS record present"],
     ["Email Deliverability", "bimi_record_present", "BIMI DNS record present"],
@@ -7685,31 +7649,16 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Email Deliverability", "tls_rpt_record", "TLS-RPT reporting record"],
     ["Email Deliverability", "spf_hardfail", "SPF -all (hardfail)"],
     ["Email Deliverability", "dmarc_quarantine_reject", "DMARC quarantine or reject policy"],
-    ["Email Deliverability", "email_unsubscribe_signal", "Unsubscribe / List-Unsubscribe signal"],
     ["Email Deliverability", "transactional_subdomain", "Transactional email subdomain"],
-    ["Email Deliverability", "can_spam_address", "CAN-SPAM physical address in email"],
-    ["Email Deliverability", "casl_double_optin", "CASL double opt-in signals"],
-    ["Email Deliverability", "plain_text_email", "Plain text email alternative"],
-    ["Email Deliverability", "bounce_handling_signal", "Bounce handling / list hygiene"],
     ["Email Deliverability", "email_preview_configured", "Email preview text configured"],
-    ["Email Deliverability", "email_warm_up_signals", "Reputable ESP detected"],
-    ["Email Deliverability", "mailing_list_segmentation", "Email list segmentation signals"],
     // Observability Extended
     ["Observability", "alert_pagerduty_opsgenie", "PagerDuty / OpsGenie alerting"],
     ["Observability", "on_call_configured", "On-call rotation configured"],
-    ["Observability", "distributed_tracing", "Distributed tracing (Jaeger / DataDog)"],
-    ["Observability", "custom_business_metrics", "Custom business metrics dashboards"],
     ["Observability", "synthetic_monitoring", "Synthetic / ping monitoring"],
-    ["Observability", "structured_logging", "Structured JSON logging"],
     ["Observability", "log_retention_policy", "Log retention policy configured"],
     ["Observability", "audit_log_api_export", "Audit log accessible via API"],
-    ["Observability", "db_performance_monitoring", "Database performance monitoring"],
-    ["Observability", "queue_depth_monitoring", "Message queue depth monitoring"],
     ["Observability", "cost_monitoring_signals", "Cloud cost alerting"],
-    ["Observability", "error_budget_policy", "SLO / error budget policy"],
-    ["Observability", "incident_runbooks", "Incident runbooks documented"],
     ["Observability", "post_mortem_culture", "Post-mortem process signals"],
-    ["Observability", "deployment_frequency_tracking", "Deploy frequency tracked (DORA)"],
     // Infrastructure Extended
     ["Infrastructure", "ipv6_dns_record", "IPv6 AAAA DNS record"],
     ["Infrastructure", "multi_region_signals", "Multi-region deployment signals"],
@@ -7746,10 +7695,8 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Payments", "sepa_bank_transfer", "SEPA / bank transfer (EU)"],
     ["Payments", "paypal_integration", "PayPal integration"],
     ["Payments", "three_ds_sca_compliant", "3D Secure / PSD2 SCA compliant"],
-    ["Payments", "fraud_detection_tool", "Fraud detection (Stripe Radar / Kount)"],
     ["Payments", "pci_saq_evidence", "PCI SAQ / scope reduction evidence"],
     ["Payments", "regional_payment_methods", "Regional payment methods (Klarna / iDEAL)"],
-    ["Payments", "chargeback_prevention", "Chargeback prevention tools"],
     ["Payments", "subscription_proration", "Subscription proration"],
     ["Payments", "invoicing_capability", "Invoice generation for B2B"],
     ["Payments", "tax_automation", "Tax automation (Avalara / TaxJar)"],
@@ -7803,8 +7750,6 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Global Distribution", "transfer_impact_assessment", "SCCs / transfer impact assessment"],
     ["Global Distribution", "local_legal_notice", "Local legal notice (Mentions Légales)"],
     // Code Quality Extended
-    ["Code Quality", "github_branch_protection", "Branch protection rules"],
-    ["Code Quality", "github_required_reviews", "Required PR approvals"],
     ["Code Quality", "github_codeowners", "CODEOWNERS file"],
     ["Code Quality", "github_code_scanning", "Code scanning (CodeQL / Snyk)"],
     ["Code Quality", "github_secret_scanning", "Secret scanning enabled"],
@@ -7812,7 +7757,6 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Code Quality", "github_issue_templates", "Issue templates"],
     ["Code Quality", "commit_signing_enabled", "Signed commits (GPG / sigstore)"],
     ["Code Quality", "release_automation", "Release automation (semantic-release)"],
-    ["Code Quality", "stale_bot_configured", "Stale issue / PR bot"],
     // Mobile Extended
     ["Mobile & Accessibility", "web_push_notifications", "Web Push Notifications"],
     ["Mobile & Accessibility", "push_permission_polite", "Polite push permission prompt"],
@@ -7831,15 +7775,9 @@ export function skipAllChecks(inputType: PulseScanInputType, platform?: string):
     ["Business Operations", "uk_companies_house_number", "UK Companies House registration number"],
     ["Business Operations", "eu_director_info", "Director / responsible person named"],
     ["Business Operations", "support_sla_documented", "Support SLA / response times"],
-    ["Business Operations", "esignature_support", "eSignature / contract workflow"],
     ["Business Operations", "invoice_generation_b2b", "Invoice / tax invoice generation"],
-    ["Business Operations", "insurance_mention", "Professional indemnity insurance"],
-    ["Business Operations", "gdpr_ropa_maintained", "ROPA (Records of Processing Activities)"],
     ["Business Operations", "data_retention_schedule", "Data retention schedule"],
-    ["Business Operations", "supplier_due_diligence", "Vendor / sub-processor due diligence"],
     ["Business Operations", "modern_slavery_statement", "Modern Slavery Act statement"],
-    ["Business Operations", "bribery_act_policy", "Anti-bribery policy"],
-    ["Business Operations", "whistleblower_policy", "Whistleblower / speak-up policy"],
     // API Quality
     ["API Quality", "api_versioning_present", "API versioning (/v1/, /v2/)"],
     ["API Quality", "api_rate_limit_documented", "Rate limits documented"],
