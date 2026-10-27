@@ -25,7 +25,8 @@ export function DemoPulseReport({ scanId }: { scanId: string }) {
       subtitle="AI project validation — checks, gaps and a fix roadmap."
     >
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
+        {/* PulseScanResults draws its own back link once a scan is complete, as on /app. */}
+        {scan?.status !== "COMPLETED" && <div className="flex items-center gap-3">
           <Link
             href="/demo/pulse"
             className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
@@ -34,7 +35,7 @@ export function DemoPulseReport({ scanId }: { scanId: string }) {
             All scans
           </Link>
           {scan ? <PulseScanStatusBadge status={scan.status} /> : null}
-        </div>
+        </div>}
 
         {scan ? (
           <PulseScanResults scan={scan} />

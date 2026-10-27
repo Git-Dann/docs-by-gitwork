@@ -8186,3 +8186,40 @@ for anyone with `canGenerateAi`. It is not on a scan's own report (`/app/pulse/[
 - Demo: the same nav with `base="/demo/pulse"` (`DemoPulseNav`, no New scan), plus new
   `/demo/pulse/monitors` and `/demo/pulse/growth` (demo monitors and embed config added to
   `dev-demo-data.ts`). Verified at 390 · 768 · 1440 and with `audit:clipping`: 0 findings.
+
+### 84.17 Findings: one list, triaged, carried between scans (`pulse-findings`)
+
+A scan used to show the same problem up to six times: AI-written blockers, gaps, quick wins, a
+priority plan, a readiness checklist and two "fix first" lists. None of them could be acted on.
+
+- **The list.** The scan page's "All checks" tab is now **Findings**. It holds one list of failing and
+  warning checks, ranked by `rankFindings`, in five views: open, on the board, fixed, dismissed and
+  couldn't check. The by-category view of every check is one click away. The AI write-up is the
+  summary only. Its duplicate lists were removed from Summary and Plan. Plan keeps opportunities,
+  roadmap, stack and the estimate. A `gaps` deep link lands on Findings.
+- **The rules** are in `src/lib/pulse-findings.ts` and are pure:
+  - A decision (`ACCEPTED_RISK` or `FALSE_POSITIVE`) outranks a board task.
+  - A task marked done while the check still fails reads "Task done, still failing", never fixed.
+  - **Fixed is never stored.** A check is fixed when it passes now after the team acted on it, or
+    after it failed on the previous scan (from the diff).
+  - A task deleted from the board makes its finding open again.
+- **Storage:** `PulseFindingState` (additive), one row per `(workspace, targetKey, checkKey)`. It is
+  keyed on the **project** (`targetKey`), not the scan, so a decision carries to every later scan of
+  the same site or repo.
+  - Tasks made with the older per-check "+ Task" button carry `metadata.pulseCheckKey`, and are
+    read as on the board.
+  - Sending to the board is idempotent.
+  - Routes:
+    - `GET`/`PUT /api/pulse/scans/[id]/findings`
+    - `POST /api/pulse/scans/[id]/findings/task`
+  - Reads need scan access; writes also need `pulse.manage`, now exposed client-side as
+    `usePermissions().canManagePulse`.
+- **The score does not change** when a finding is dismissed. It measures what Pulse found, and the
+  Dismissed view says so.
+- **The demo's Northwind scan carries a real scan's 289 checks** (`src/lib/demo/demo-pulse-recorded.ts`).
+  They come from a python.org lite scan, renamed. They are stored as a `JSON.parse`d string, because as
+  a literal the type checker ran out of memory. Regenerate the file rather than hand-editing it. The
+  demo applies findings writes in memory, but the demo user has no `pulse.manage`, so the actions show
+  only for a real user.
+- ⚠️ **`tsc` on main sits at the edge of Node's default 4GB heap** and ran out of memory
+  intermittently. CI already used 6144; `npm run verify` now does too.
