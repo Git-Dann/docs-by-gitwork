@@ -594,6 +594,11 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "graphql_signal", category: CATEGORIES.SAAS, label: "GraphQL API" },
   { key: "search_functionality", category: CATEGORIES.SAAS, label: "Search functionality" },
   { key: "cookie_consent_granular", category: CATEGORIES.LEGAL, label: "Granular cookie consent (accept/reject all)" },
+  // Measured in a fresh browser (pulse-agents/consent-tracking-agent.ts): what the page
+  // sends before a choice, and after pressing Reject.
+  { key: "consent_no_tracking_before_choice", category: CATEGORIES.LEGAL, label: "No tracking requests are sent before a consent choice" },
+  { key: "consent_no_tracking_cookies_before_choice", category: CATEGORIES.LEGAL, label: "No tracking cookies are set before a consent choice" },
+  { key: "consent_reject_honoured", category: CATEGORIES.LEGAL, label: "Rejecting cookies stops tracking" },
   { key: "newsletter_signup", category: CATEGORIES.SAAS, label: "Newsletter / email list capture" },
   { key: "repo_parse", category: CATEGORIES.CODE_QUALITY, label: "Repository URL" },
   { key: "has_readme", category: CATEGORIES.CODE_QUALITY, label: "README.md" },

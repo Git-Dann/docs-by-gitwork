@@ -96,6 +96,10 @@ export const CHECK_JURISDICTIONS: Record<string, JurisdictionCode[]> = {
   gdpr_dpo_contact: ["EU", "UK"],
   gdpr_dpa_list_public: ["EU", "UK"],
   cookie_consent_granular: ["EU", "UK"],
+  // PECR reg. 6 / ePrivacy art. 5(3): consent before non-essential storage.
+  consent_no_tracking_before_choice: ["EU", "UK"],
+  consent_no_tracking_cookies_before_choice: ["EU", "UK"],
+  consent_reject_honoured: ["EU", "UK"],
   transfer_impact_assessment: ["EU", "UK"],
   vat_number_displayed: ["EU", "UK"],
 

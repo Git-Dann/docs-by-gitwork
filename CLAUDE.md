@@ -7931,3 +7931,45 @@ with PageSpeed. Measuring takes 0.5–1s; with launch and navigation it is 1.7�
   on controls that are only a picture of the product. The evidence names each element. Nothing on the
   page marks the mock-up as decorative, so it is reported rather than guessed away.
 - **Standards:** `inclusive_access_01–05` and `11` can now be refuted by these checks. Live checks: 1,252.
+
+### 84.8 Consent before tracking (`consent-tracking`)
+
+The static checks can tell whether a cookie banner is *mentioned*. They cannot tell whether the site
+waits for the answer. A second browser collector now does: `pulse-agents/consent-tracking-agent.ts`
+launches a **fresh** Chromium, so the visit is a first visit with no stored consent. It watches
+requests and cookies for 6 seconds with nothing clicked, then presses the banner's first-layer Reject
+control, reloads, and watches again. The verdicts are pure functions in
+`pulse-checks/consent-tracking.ts`. It runs alongside `rendered-a11y`, under the same conditions
+(an internal website scan).
+- **Checks:** `consent_no_tracking_before_choice`, `consent_no_tracking_cookies_before_choice` and
+  `consent_reject_honoured`. They are tagged EU + UK in `jurisdictions.ts` and feed the standards
+  rows `deep_privacy_01` and `deep_privacy_08`. Live checks: 1,255.
+- **Only beacons count, not scripts.** Loading `gtag/js` or `fbevents.js` is fine; only the request
+  that reports a visit counts. DoubleClick is matched on beacon paths only, because
+  `securepubads…/pagead/purl_config` is ad-serving set-up (a false FAIL on which.co.uk).
+  Cookieless analytics (Plausible, Fathom) is not a tracker.
+- ⚠️ **Advertising and analytics are judged differently, because the law differs.**
+  - Advertising before a choice always fails.
+  - Analytics before a choice fails where the EU applies (or the markets are unknown).
+  - For a UK-only scan, analytics is a WARN that states the conditions of the UK exemption.
+    Since 5 Feb 2026, PECR Sch. A1 para 5 (from the Data (Use and Access) Act 2025) allows analytics
+    used to improve the service without consent, provided visitors are told, can easily object, and
+    the data is used for nothing else.
+  - The scan's markets are passed in from `resolveTargetMarkets`.
+  - Don't flatten analytics into "needs consent" again: that is now false in the UK.
+- **Consent Mode:** a Google request with `gcs=G100` is the cookieless ping and is a WARN, not a
+  FAIL.
+- ⚠️ **A block page is never judged.** To a headless browser, Akamai and Imperva serve a 15–26-word
+  block page to John Lewis, Argos, ASOS, Boots and Currys. The first version scored that page as
+  "clean". Under `MIN_PAGE_WORDS` (50) with no banner, or matching bot-wall wording, every key is
+  INCONCLUSIVE.
+- **Reject:** the first-layer button is found by its wording (UK and EU languages) or by the big
+  consent platforms' ids. Pulse searches open shadow roots and up to 12 frames. Pulse never presses
+  Accept. A cookie that was already set before the choice is not blamed on Reject.
+- **Verified on real sites (27 Oct 2026):**
+  - gov.uk, Nationwide and Monzo pass all three.
+  - The Guardian's first layer has no reject button, so `consent_reject_honoured` is INCONCLUSIVE.
+  - gitwork.co.uk fails: GA4 with Google Signals sends to DoubleClick and sets `_ga` before any
+    choice, and there is no banner.
+  - The BBC sets Chartbeat, Piano and DotMetrics cookies before a choice, and Chartbeat keeps
+    pinging after "Reject additional cookies". For a UK-only scan these are WARNs.

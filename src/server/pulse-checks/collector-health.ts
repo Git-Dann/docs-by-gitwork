@@ -28,7 +28,7 @@ export interface CollectorExecution {
 export const SOURCE_ONLY_COLLECTORS = ["repo-shape", "github-checks", "code-agent"] as const;
 
 /** The mirror: collectors that only ever run against a live deployed URL. */
-export const URL_ONLY_COLLECTORS = ["url-checks", "browser-agent", "deploy-agent", "rendered-a11y"] as const;
+export const URL_ONLY_COLLECTORS = ["url-checks", "browser-agent", "deploy-agent", "rendered-a11y", "consent-tracking"] as const;
 
 export function sourceCollectorsUnavailable(reason: string): CollectorExecution[] {
   return SOURCE_ONLY_COLLECTORS.map((name) => ({ name, outcome: "NOT_APPLICABLE" as const, reason }));

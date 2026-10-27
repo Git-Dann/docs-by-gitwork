@@ -216,6 +216,9 @@ export const DERIVED_STANDARDS: readonly StandardsDerivation[] = [
   d("deep_ai_data_02", ["pulse_ai_unscoped_retrieval"], "Retrieval with no user or tenant scope ignores current access."),
 
   // ── Deep: privacy, accessibility, UX ──────────────────────────────────────
+  // Measured in a fresh browser (consent-tracking.ts) on the scanned page only.
+  d("deep_privacy_01", ["consent_no_tracking_before_choice", "consent_no_tracking_cookies_before_choice"], "Analytics or advertising that sends data or sets cookies before the visitor chooses fails the control on the scanned page. Other forms of optional collection are not tested."),
+  d("deep_privacy_08", ["consent_reject_honoured"], "Tracking that still runs after the visitor presses Reject does not honour the declared consent. Only the scanned page and the first-layer Reject are tested."),
   d("deep_privacy_03", ["legal_depth_consent_withdrawal"], "Consent that cannot be withdrawn does not stop optional processing."),
   d("deep_privacy_05", ["legal_depth_export_authorization"], "Personal-data exports with no access control or expiry fail the control."),
   d("deep_privacy_07", ["saas_depth_account_deletion_workflow"], "A deletion flow that misses data or processors is not tracked to completion."),
