@@ -1018,6 +1018,7 @@ export const CHECK_RELEVANCE: Record<string, RelevanceRule> = {
   "spa_content_rendered_for_scan": { surface: "META", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "OTHER"], presence: true, feature: null },
   "wcag22_consistent_help": { surface: "WEB_PAGE", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "OTHER"], presence: true, feature: null },
   "wcag22_dragging_alternative": { surface: "WEB_PAGE", platforms: ["WEB_APP", "SAAS"], presence: false, feature: null },
+  "dependency_copyleft_licences": { surface: "REPO_ANY", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "API_BACKEND", "CLI_TOOL", "OTHER"], presence: false, feature: null },
   "secrets_in_git_history": { surface: "REPO_ANY", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "API_BACKEND", "CLI_TOOL", "OTHER"], presence: false, feature: null },
   "branch_protection": { surface: "REPO_ANY", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "API_BACKEND", "CLI_TOOL", "OTHER"], presence: false, feature: null },
   "build_time": { surface: "WEB_HTTP", platforms: ["WEB_APP", "SAAS", "MARKETING_SITE", "API_BACKEND", "OTHER"], presence: false, feature: null },

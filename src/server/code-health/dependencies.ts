@@ -966,6 +966,8 @@ export async function auditDependencies(input: {
   files: string[];
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /** Receives the parsed, de-duplicated packages (for the licence review). */
+  onPackages?: (packages: LockedPackage[]) => void;
 }): Promise<DependencyAudit> {
   const now = input.now ?? Date.now;
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -1124,6 +1126,7 @@ export async function auditDependencies(input: {
       notes.push(`${merged.size} packages were found; the first ${MAX_PACKAGES} (declared ones first) were checked.`);
     }
 
+    input.onPackages?.(all);
     const result: DependencyAudit = { ...base("checked", null), lockfiles, packages: all.length };
     if (all.length === 0) {
       result.reason = notes.length > 0 ? notes.join(" ") : null;

@@ -6,6 +6,10 @@ import { codeHealthChecks, codeHealthUnavailable, dependencyChecks, structureChe
 import { CloneError, withCheckout } from "./clone";
 import { auditDependencies } from "./dependencies";
 import { historySecretsCheck, scanDeletedSecrets, type HistorySecretsResult } from "./history-secrets";
+import { auditLicences, licenceCheck, type LicenceAudit } from "./licences";
+import type { LockedPackage } from "./dependencies";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { CodeHealthReport } from "@/types/code-health";
 
 export type { CodeHealthReport } from "@/types/code-health";
@@ -35,12 +39,14 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
     const branch = meta?.default_branch ?? null;
     const since = new Date(Date.now() - HISTORY_MONTHS * 30.44 * 86_400_000).toISOString().slice(0, 10);
     let historySecrets: PulseScanCheckInput | null = null;
+    let licences: LicenceAudit | null = null;
     const report = await withCheckout(slug, { sizeKb: meta?.size ?? null, historySince: withHistory ? since : null }, async (c) => {
       const { report: measuredReport, measured } = await analyseCheckout({ repo: slug, branch, commit: c.commit, dir: c.dir, files: c.files });
       // The lockfile audit and the history are independent reads of the same checkout: they
       // run side by side, and neither failing can take the measure (or the other) with it.
+      let lockedPackages: LockedPackage[] = [];
       const [dependencies, history, deletedSecrets] = await Promise.all([
-        auditDependencies({ dir: c.dir, files: c.files }),
+        auditDependencies({ dir: c.dir, files: c.files, onPackages: (p) => { lockedPackages = p; } }),
         withHistory
           ? c
               .git(logArgs(since))
@@ -57,6 +63,8 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
             })
           : Promise.resolve(null),
       ]);
+      // Licences of the libraries the project declares, against its own licence.
+      licences = await auditLicences(lockedPackages, await projectLicence(c.dir, c.files)).catch(() => null);
       if (withHistory) {
         historySecrets = historySecretsCheck(
           deletedSecrets,
@@ -70,6 +78,8 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
     });
     const checks = [...codeHealthChecks(report), ...structureChecks(report), ...dependencyChecks(report)];
     if (historySecrets) checks.push(historySecrets);
+    // Only when the library audit found lockfiles: no pinned libraries, nothing to review.
+    if (report.dependencies?.status === "checked") checks.push(licenceCheck(licences));
     return { report, checks, unavailable: null };
   } catch (error) {
     if (error instanceof CloneError) {
@@ -85,6 +95,25 @@ export async function runCodeHealth(repoInput: string, opts: { history?: boolean
     console.error(`[code-health] ${slug}:`, error);
     return unavailable("the measure failed part-way. This is on our side.");
   }
+}
+
+/** The project's own licence: the root LICENSE/COPYING text and package.json's field. */
+async function projectLicence(dir: string, files: string[]): Promise<{ licenceText: string | null; manifestLicence: string | null }> {
+  const read = (path: string) => readFile(join(dir, path), "utf8").then((t) => t.slice(0, 4000)).catch(() => null);
+  const licenceFile = files.find((f) => /^(LICEN[CS]E|COPYING)(\.(md|txt))?$/i.test(f));
+  const licenceText = licenceFile ? await read(licenceFile) : null;
+  let manifestLicence: string | null = null;
+  if (files.includes("package.json")) {
+    try {
+      // The whole manifest: a truncated one would not parse.
+      const text = await readFile(join(dir, "package.json"), "utf8").catch(() => "{}");
+      const pkg = JSON.parse(text) as { license?: unknown };
+      if (typeof pkg.license === "string") manifestLicence = pkg.license;
+    } catch {
+      /* not JSON: leave it unknown */
+    }
+  }
+  return { licenceText, manifestLicence };
 }
 
 function unavailable(reason: string): CodeHealthResult {

@@ -8050,3 +8050,28 @@ works like this:
 - **Validated on public repos (27 Oct 2026):** asvarshini/SafeRoute's deleted `backend/.env` was
   read from history and flagged. Two other "remove .env" commits turned out to edit
   `docker-compose.yml` and delete `.env.example`, and both correctly pass.
+
+### 84.12 Library licence review (`code-health/licences.ts`)
+
+`dependency_copyleft_licences` (LEGAL). The lockfile audit already knows every pinned
+(ecosystem, name, version), and `auditDependencies` hands that list over through `onPackages`. For
+the libraries the project **declares itself** (direct only, at most 300), the licence is looked up in
+**deps.dev**. That's Google's free API with no key, covering npm, PyPI, Go, Cargo, Maven, NuGet and
+RubyGems.
+- **What is flagged:**
+  - AGPL and SSPL (network copyleft), which reach users of a web service.
+  - GPL (strong copyleft), which applies on distribution.
+  - It is always a **WARN for a licence review, never a FAIL**: Pulse can't see how the software is
+    distributed or whether there's a commercial licence.
+- **What is not flagged:**
+  - LGPL, MPL and EPL.
+  - Dual licences with a permissive option ("MIT OR GPL").
+  - `GPL … WITH <exception>`.
+  - Same-family libraries in a project that is itself GPL or AGPL. That's read from its LICENSE
+    file or package.json `license`.
+- ⚠️ deps.dev's `non-standard` means "couldn't map to SPDX", and counts as **unknown**, not clean.
+  Under 80% known is INCONCLUSIVE. MySQL's Python connector, which is GPL with an exception, is
+  one example.
+- Validated against live deps.dev data: PyQt5 is GPL-3.0 and flagged, the MariaDB JDBC client is
+  LGPL and not flagged, and Flask passes with 22 of 25 identified. No check is emitted when the
+  library audit found no lockfile.
