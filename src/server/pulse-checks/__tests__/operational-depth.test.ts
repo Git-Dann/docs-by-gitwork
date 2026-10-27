@@ -27,16 +27,16 @@ const at = (checks: PulseScanCheckInput[], key: string) => {
 };
 
 describe("operational-depth catalogue contract", () => {
-  it("registers and emits exactly 117 executable controls", () => {
-    expect(OPERATIONAL_DEPTH_RULES).toHaveLength(117);
-    expect(OPERATIONAL_DEPTH_REGISTRY).toHaveLength(117);
-    expect(new Set(OPERATIONAL_DEPTH_KEYS).size).toBe(117);
+  it("registers and emits exactly 120 executable controls", () => {
+    expect(OPERATIONAL_DEPTH_RULES).toHaveLength(120);
+    expect(OPERATIONAL_DEPTH_REGISTRY).toHaveLength(120);
+    expect(new Set(OPERATIONAL_DEPTH_KEYS).size).toBe(120);
 
     const emitted = evaluateOperationalDepthChecks(snap({ "README.md": "empty project" }));
     expect(emitted.map((check) => check.checkKey).sort()).toEqual([...OPERATIONAL_DEPTH_KEYS].sort());
   });
 
-  it("adds eight controls to each selected high-value category, less the three withdrawn in October 2026", () => {
+  it("adds eight controls to each selected high-value category", () => {
     const counts = new Map<string, number>();
     for (const row of OPERATIONAL_DEPTH_REGISTRY) {
       counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
@@ -48,14 +48,14 @@ describe("operational-depth catalogue contract", () => {
       Authentication: 8,
       "Business Operations": 8,
       "Email Deliverability": 8,
-      "Global Distribution": 7,
+      "Global Distribution": 8,
       Infrastructure: 8,
       "Legal & Compliance": 8,
       "Missing Pages": 8,
       Observability: 8,
       Payments: 8,
       Performance: 8,
-      "Roles & Permissions": 6,
+      "Roles & Permissions": 8,
       "SaaS Readiness": 8,
       "Vibe Code Hygiene": 8,
     });
@@ -67,7 +67,10 @@ describe("operational-depth catalogue contract", () => {
       const adverse = evaluateOperationalRuleText(rule, rule.adverseFixture);
 
       expect(positive.status, `${rule.key} positive fixture`).toBe("PASS");
-      expect(adverse.status, `${rule.key} adverse fixture`).toBe(rule.onMissing);
+      // A rule restored as presence-only reports a MISSING safeguard as INCONCLUSIVE, but a
+      // forbidden construct it actually sees (default_deny: a declared allow default) still fails.
+      if (rule.absentIsUnknown) expect(["INCONCLUSIVE", rule.onMissing], `${rule.key} adverse fixture`).toContain(adverse.status);
+      else expect(adverse.status, `${rule.key} adverse fixture`).toBe(rule.onMissing);
       expect(adverse.detail, `${rule.key} remediation`).toMatch(/Remediation:/);
     }
   });

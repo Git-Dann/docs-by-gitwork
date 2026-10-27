@@ -357,9 +357,11 @@ describe("WITHHELD", () => {
     }
     // October 2026: the unobservable ones were retired (catalogue-compat.ts) or rebuilt on
     // real evidence, so nothing is held back any more.
-    for (const key of ["fraud_detection_tool", "gdpr_right_to_erasure_ui", "github_branch_protection"]) {
+    for (const key of ["gdpr_right_to_erasure_ui", "github_branch_protection"]) {
       expect(isRetiredCheck(key), key).toBe(true);
     }
+    // Rebuilt on repository evidence rather than withdrawn (repo-practices.ts).
+    expect(isRetiredCheck("fraud_detection_tool")).toBe(false);
     for (const key of ["dns_ttl_healthy", "early_hints_support"]) expect(WITHHELD[key], key).toBeUndefined();
   });
 });

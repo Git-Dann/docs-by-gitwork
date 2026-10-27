@@ -8223,3 +8223,46 @@ priority plan, a readiness checklist and two "fix first" lists. None of them cou
   only for a real user.
 - ⚠️ **`tsc` on main sits at the edge of Node's default 4GB heap** and ran out of memory
   intermittently. CI already used 6144; `npm run verify` now does too.
+
+### 84.18 Checks are rebuilt, not withdrawn (`repo-practices.ts`)
+
+⚠️ **Rule from Dan, 27 Oct 2026:** do not remove useful Pulse checks. Rebuild them on evidence Pulse
+can read. A key can be retired only when it duplicates a live check (SUPERSEDED_BY, MERGED_INTO or
+ALIAS_OF), and a WITHDRAWN retirement needs Dan's sign-off. `withheld-rebuilt.test.ts` fails if any
+key is WITHDRAWN.
+
+§84.13 had withdrawn 24 checks with nothing in their place. They were rebuilt the same day:
+
+- **15 from the repository (`repo-practices.ts`):**
+  - deployments recorded;
+  - server-side product events;
+  - double opt-in and contact segmentation;
+  - a dedicated sending provider;
+  - plain-text part (Rails views with no `.text.erb` are a WARN);
+  - postal address in marketing templates;
+  - breach procedure and record of processing in the docs;
+  - e-signature (optional);
+  - fraud screening (Stripe Radar is on by default, and a merchant of record carries the liability);
+  - dispute handling;
+  - one-time-code attempt limits and resend cooldown (home-made codes with neither are a WARN when
+    most of the source was read);
+  - stale triage (optional).
+- **4 from the website (`business-operations.ts`):** anti-bribery policy, whistleblowing channel,
+  sub-processor list and insurance. Each is a PASS with the quote when the site names it, otherwise
+  INCONCLUSIVE, because none of them has to be published.
+- **3 operational-depth rules**, restored with `absentIsUnknown`. A guard or deny default Pulse doesn't
+  recognise reads exactly like none, so a missing one is INCONCLUSIVE. A forbidden construct it sees
+  (a declared allow default) still fails.
+- **2 duplicates now point at live checks:** `gdpr_ropa_maintained` → `gdpr_records_processing`, and
+  `gdpr_data_access_control` → the repository ownership and tenant-scope rules.
+
+Result: **1,711 active checks**, and 18 retired keys, every one with a live successor.
+
+Validated against 8 real repositories, which found 5 false positives, each fixed with a test:
+- `@vercel/analytics` was read as server-side events.
+- `@react-email` was read as a sending provider.
+- A template's `text:` prop was read as a plain-text part.
+- Documenso's own packages were read as an e-signature integration.
+- A CSS colour `#D1D5DB` was read as a UK postcode.
+
+Confirmed true: maybe-finance's Rails mailers send HTML only.

@@ -30,9 +30,11 @@ const ops = (files: Record<string, string>, extra: string[] = []) => evaluateRep
 const statusOf = (checks: PulseScanCheckInput[], key: string) => checks.find((c) => c.checkKey === key)?.status;
 
 describe("nothing is withheld any more", () => {
-  it("has an empty WITHHELD list and 40 retired keys", () => {
+  it("has an empty WITHHELD list, and every retired key points at a live successor", () => {
     expect(Object.keys(WITHHELD)).toEqual([]);
-    expect(Object.keys(RETIRED_CHECKS)).toHaveLength(40);
+    // No check is withdrawn outright: each retirement names the check that answers it now.
+    expect(Object.entries(RETIRED_CHECKS).filter(([, r]) => r.relationship === "WITHDRAWN").map(([k]) => k)).toEqual([]);
+    expect(Object.keys(RETIRED_CHECKS)).toHaveLength(18);
   });
 });
 

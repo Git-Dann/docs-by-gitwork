@@ -3,8 +3,8 @@
   "catalogueVersion": "pulse-controls-2026.10",
   "totals": {
     "keys": 1729,
-    "registered": 1689,
-    "retired": 40
+    "registered": 1711,
+    "retired": 18
   },
   "keys": [
     "about_page",

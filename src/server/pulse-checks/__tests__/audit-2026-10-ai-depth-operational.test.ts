@@ -24,6 +24,7 @@ describe("confidence and status ceiling", () => {
     for (const check of evaluateOperationalDepthChecks(snap(files))) {
       expect(check.confidence, check.checkKey).not.toBe("HIGH");
     }
+    expect(at(files, "roles_depth_server_authorization").status).toBe("INCONCLUSIVE"); // Restored as presence-only (Oct 2026): an unrecognised guard reads like none, so absence is INCONCLUSIVE, not WARN.
     expect(at(files, "roles_depth_tenant_query_scope").status).toBe("WARN");
   });
 
@@ -36,6 +37,43 @@ describe("confidence and status ceiling", () => {
     for (const rule of OPERATIONAL_DEPTH_RULES) {
       if (rule.onMissing === "FAIL") expect(rule.forbidden?.length ?? 0, rule.key).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("roles_depth_server_authorization", () => {
+  it("is not in scope for an app that merely uses the word 'admin'", () => {
+    expect(at({
+      "src/copy.ts": `export const help = "Ask your administrator or workspace admin to invite you.";`,
+      "src/settings.tsx": `<p>Contact an admin</p>`,
+    }, "roles_depth_server_authorization").status).toBe("SKIPPED");
+  });
+
+  it("accepts common guard idioms the fixed list used to miss", () => {
+    for (const guard of [
+      `@UseGuards(RolesGuard)\n@Delete("admin/users/:id") remove() {}\nif (user.role === "admin") {}`,
+      `const session = await getServerSession(authOptions); if (!isAdmin(session)) throw new Error("forbidden"); const r = "/admin/users";`,
+      `@login_required\ndef admin_panel(request):\n  if user.role == "admin": pass\npath = "/admin/"`,
+    ]) {
+      expect(at({ "src/a.ts": guard }, "roles_depth_server_authorization").status, guard).toBe("PASS");
+    }
+  });
+});
+
+describe("roles_depth_default_deny", () => {
+  const policy = `export function can(user, action) { return hasPermission(user, action); }`;
+
+  it("does not pass on an unrelated return false", () => {
+    expect(at({ "src/p.ts": `${policy}\nfunction isEmpty(s) { if (s.length) return false; return true; }` }, "roles_depth_default_deny").status).toBe("INCONCLUSIVE"); // Restored as presence-only (Oct 2026): an unrecognised guard reads like none, so absence is INCONCLUSIVE, not WARN.
+  });
+
+  it("does not FAIL on 'default' and 'allow' near each other in prose or identifiers", () => {
+    const check = at({ "src/p.ts": `${policy}\n// by default allowed origins come from config\nconst defaultAllowedHosts = [];` }, "roles_depth_default_deny");
+    expect(check.status).not.toBe("FAIL");
+  });
+
+  it("FAILs a policy that declares an allow default, and passes a declared deny default", () => {
+    expect(at({ "src/p.ts": `${policy}\nconst config = { defaultEffect: "allow" };` }, "roles_depth_default_deny").status).toBe("FAIL");
+    expect(at({ "src/p.ts": `${policy}\nconst config = { defaultEffect: "deny" };` }, "roles_depth_default_deny").status).toBe("PASS");
   });
 });
 

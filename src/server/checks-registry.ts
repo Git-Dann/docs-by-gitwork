@@ -1284,6 +1284,27 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "social_app_store_link", category: CATEGORIES.SOCIAL_MARKETING, label: "App store links" },
   { key: "social_community_link", category: CATEGORIES.SOCIAL_MARKETING, label: "A community to join" },
   { key: "social_review_platform", category: CATEGORIES.SOCIAL_MARKETING, label: "Third-party review profile" },
+
+  // ─── Rebuilt from the withdrawn list (Oct 2026, repo-practices.ts / business-operations.ts) ───
+  { key: "deployment_frequency_tracking", category: CATEGORIES.OBSERVABILITY, label: "Deployments are recorded" },
+  { key: "custom_business_metrics", category: CATEGORIES.OBSERVABILITY, label: "Product events are tracked from the server" },
+  { key: "casl_double_optin", category: CATEGORIES.EMAIL, label: "Mailing-list sign-ups are confirmed by email" },
+  { key: "mailing_list_segmentation", category: CATEGORIES.EMAIL, label: "Email contacts are segmented" },
+  { key: "email_warm_up_signals", category: CATEGORIES.EMAIL, label: "Email is sent through a dedicated provider" },
+  { key: "plain_text_email", category: CATEGORIES.EMAIL, label: "Emails include a plain-text version" },
+  { key: "can_spam_address", category: CATEGORIES.EMAIL, label: "Marketing emails include a postal address" },
+  { key: "gdpr_breach_notification", category: CATEGORIES.LEGAL, label: "A data-breach procedure is written down" },
+  { key: "gdpr_records_processing", category: CATEGORIES.LEGAL, label: "Records of processing are kept (GDPR Art. 30)" },
+  { key: "esignature_support", category: CATEGORIES.BUSINESS_OPS, label: "Contracts can be signed electronically" },
+  { key: "chargeback_prevention", category: CATEGORIES.PAYMENTS, label: "Card disputes are handled in the product" },
+  { key: "fraud_detection_tool", category: CATEGORIES.PAYMENTS, label: "Card payments are screened for fraud" },
+  { key: "otp_attempt_limiting", category: CATEGORIES.AUTHENTICATION, label: "One-time codes lock out after repeated wrong guesses" },
+  { key: "otp_resend_cooldown", category: CATEGORIES.AUTHENTICATION, label: "One-time codes cannot be resent without a wait" },
+  { key: "stale_bot_configured", category: CATEGORIES.CODE_QUALITY, label: "Inactive issues and pull requests are triaged automatically" },
+  { key: "bribery_act_policy", category: CATEGORIES.BUSINESS_OPS, label: "Anti-bribery policy published" },
+  { key: "whistleblower_policy", category: CATEGORIES.BUSINESS_OPS, label: "Whistleblowing channel published" },
+  { key: "supplier_due_diligence", category: CATEGORIES.BUSINESS_OPS, label: "Sub-processor list published" },
+  { key: "insurance_mention", category: CATEGORIES.BUSINESS_OPS, label: "Business insurance stated" },
 ];
 
 /** All unique categories in display order */

@@ -15,6 +15,10 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["invoice_generation_b2b", "Invoice / tax invoice generation"],
   ["data_retention_schedule", "Data retention schedule published"],
   ["modern_slavery_statement", "Modern Slavery Act statement"],
+  ["insurance_mention", "Business insurance stated"],
+  ["supplier_due_diligence", "Sub-processor list published"],
+  ["whistleblower_policy", "Whistleblowing channel published"],
+  ["bribery_act_policy", "Anti-bribery policy published"],
 ];
 
 export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
@@ -180,6 +184,41 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
         ? { status: "PASS" as const, detail: `The page links to or names a modern slavery statement ("${slaveryStatement}").`, evidence: slaveryStatement }
         : { status: "INCONCLUSIVE" as const, detail: `UK signals found (${ukWhy}), but the homepage has no modern slavery statement link. The duty applies only to organisations with turnover of £36m or more, which Pulse cannot see; those must link to the statement from a prominent place on their homepage.` }),
   });
+
+  // Company policies a buyer's due diligence asks for. Withdrawn in October 2026 as keyword
+  // guesses, rebuilt as what they can honestly be: the site names or links the policy (PASS,
+  // quoted), or it does not, which says nothing about whether one exists (INCONCLUSIVE).
+  const policyLink = (re: RegExp): string | null => {
+    const a = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = a.exec(html)) !== null) {
+      const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      if (re.test(text) || re.test(m[1])) return text || m[1];
+    }
+    return null;
+  };
+  const policy = (key: string, label: string, re: RegExp, found: string, unseen: string) => {
+    const seen = findClaim(proseRuns(ctx.contentHtml ?? html), re) ?? policyLink(re);
+    checks.push(seen
+      ? claimSeen({ category: CATEGORY, checkKey: key, label }, found, seen)
+      : claimUnseen({ category: CATEGORY, checkKey: key, label }, unseen));
+  };
+  policy("bribery_act_policy", "Anti-bribery policy published",
+    /\banti[- ]?(?:bribery|corruption)\b|\bbribery act\b/i,
+    "The site names or links an anti-bribery policy.",
+    "The scanned page does not name or link an anti-bribery policy. The UK Bribery Act requires adequate internal procedures, which need not be published, so this does not show one is missing; large buyers often ask to see it.");
+  policy("whistleblower_policy", "Whistleblowing channel published",
+    /\bwhistle[- ]?blow(?:ing|er)\b|\bspeak[- ]up (?:policy|line|channel)\b/i,
+    "The site names or links a whistleblowing or speak-up channel.",
+    "The scanned page does not name a whistleblowing channel. The EU Whistleblowing Directive requires an internal channel at 50 or more employees, which need not be on the website, so this does not show one is missing.");
+  policy("supplier_due_diligence", "Sub-processor list published",
+    /\bsub[- ]?processors?\b/i,
+    "The site names or links its list of sub-processors.",
+    "The scanned page does not link a sub-processor list. Business customers' data-protection teams ask for one (GDPR Art. 28); it is often on a trust or legal page this check did not read.");
+  policy("insurance_mention", "Business insurance stated",
+    /\b(?:professional indemnity|public liability|cyber(?:security)? (?:liability )?insurance|errors (?:and|&) omissions|liability insurance)\b/i,
+    "The site states the business's insurance cover.",
+    "The scanned page does not state any insurance cover. Procurement teams often ask for proof of professional indemnity or cyber insurance; it is rarely published, so this does not show there is none.");
 
 
 

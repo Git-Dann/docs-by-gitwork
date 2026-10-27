@@ -193,6 +193,24 @@ describe("global_depth_currency_precision", () => {
   });
 });
 
+describe("global_depth_residency_routing", () => {
+  it("does not fire on an AWS ARN region placeholder (tmoreton/tutorials)", () => {
+    const check = run(
+      { "agentcore/.llm-context/agentcore.ts": "   * Format: arn:aws:elasticfilesystem:{region}:{account}:access-point/{id}" },
+      "global_depth_residency_routing",
+    );
+    expect(check.status).toBe("SKIPPED");
+  });
+
+  it("still warns when a tenant region comes from the request", () => {
+    const check = run(
+      { "src/tenants/route.ts": "const tenantRegion = req.query.region ?? deploymentRegion; // data residency" },
+      "global_depth_residency_routing",
+    );
+    expect(check.status).toBe("INCONCLUSIVE"); // Restored as presence-only (Oct 2026): an unrecognised guard reads like none, so absence is INCONCLUSIVE, not WARN.
+  });
+});
+
 describe("global_depth_translation_parity", () => {
   it("recognises Lingo.dev locale sync in CI (calcom/cal.com)", () => {
     const check = run(

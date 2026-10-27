@@ -37,6 +37,7 @@ import { evaluateCleanlinessChecks } from "./code-cleanliness";
 import { evaluateCiWorkflowChecks } from "./ci-workflows";
 import { evaluateRepoCollaborationChecks } from "./repo-collaboration";
 import { classifyEmailPaths, evaluateRepoOperationsChecks } from "./repo-operations";
+import { evaluateRepoPracticeChecks } from "./repo-practices";
 import { evaluateContainerChecks } from "./containers";
 import { evaluateServiceDepthChecks } from "./service-depth";
 import { evaluateOperationalDepthChecks } from "./operational-depth";
@@ -918,7 +919,7 @@ export async function runCiWorkflowChecks(
   if (!snapshot || !snapshot.accessible) return { checks: [] };
   // The collaboration files (CODEOWNERS, templates, release and scanning tools) read the
   // same snapshot and the same workflow files, so they ride on this collector.
-  return { checks: [...evaluateCiWorkflowChecks(snapshot), ...evaluateRepoCollaborationChecks(snapshot), ...evaluateRepoOperationsChecks(snapshot)] };
+  return { checks: [...evaluateCiWorkflowChecks(snapshot), ...evaluateRepoCollaborationChecks(snapshot), ...evaluateRepoOperationsChecks(snapshot), ...evaluateRepoPracticeChecks(snapshot)] };
 }
 
 /**
