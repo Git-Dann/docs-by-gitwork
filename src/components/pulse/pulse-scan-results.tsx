@@ -19,10 +19,8 @@ import {
   DocumentArrowDownIcon,
   EllipsisHorizontalIcon,
   EnvelopeIcon,
-  ExclamationTriangleIcon,
   LinkIcon,
   LightBulbIcon,
-  MinusCircleIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
   XCircleIcon,
@@ -32,7 +30,6 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan, usePulseFindings } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
-import { rankFindings } from "@/server/pulse-checks/priority";
 import { PlainScanBox } from "@/components/pulse/code-health-sections";
 import { PulseFindings } from "@/components/pulse/pulse-findings";
 import { buildFindings, countByView } from "@/lib/pulse-findings";
@@ -51,12 +48,11 @@ import type { FixAgentResult } from "@/lib/api";
 import { STATUS_WORDS, STATUS_LEGEND } from "@/lib/pulse-status-words";
 import { GATE_LABEL, ReleaseGateBanner } from "@/components/pulse/release-gate-banner";
 import { cn, formatRelative } from "@/lib/format";
-import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, ProductionBlocker, ProductionReadinessItem, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, BrowserAgentInsights, CodeAgentInsights, DeployAgentInsights, ScoreBreakdown, PulseScanDiff, GateEvaluationRecord, ReleaseDecisionState } from "@/types/pulse";
+import type { PulseScanRecord, PulseScanCheckRecord, PulseScanCheckInput, TechStackRecommendation, InfrastructureStack, DiscoveryKit, CompetitorData, ScoreBreakdown, PulseScanDiff, GateEvaluationRecord } from "@/types/pulse";
 import { AI_MATURITY_LABELS } from "@/types/pulse";
 import {
   PulseCheckStatusIcon,
   PulseScanStatusBadge,
-  PulseUrgencyBadge,
   PulseEffortBadge,
   PulseValueBadge,
 } from "@/components/pulse/pulse-shared";
@@ -444,22 +440,6 @@ function DiscoveryTab({ kit }: { kit: DiscoveryKit }) {
   );
 }
 
-function ReadinessStatusIcon({ status }: { status: ProductionReadinessItem["status"] }) {
-  if (status === "DONE") return <CheckCircleIcon className="h-4 w-4 text-emerald-500" />;
-  if (status === "PARTIAL") return <MinusCircleIcon className="h-4 w-4 text-amber-500" />;
-  return <XCircleIcon className="h-4 w-4 text-red-500" />;
-}
-
-function groupReadinessByCategory(items: ProductionReadinessItem[]) {
-  const map = new Map<string, ProductionReadinessItem[]>();
-  for (const item of items) {
-    const list = map.get(item.category) ?? [];
-    list.push(item);
-    map.set(item.category, list);
-  }
-  return map;
-}
-
 function StackPriorityBadge({ priority }: { priority: TechStackRecommendation["priority"] }) {
   const styles =
     priority === "HIGH"
@@ -723,181 +703,6 @@ function VitalMetric({
     <div className={cn("flex items-center justify-between rounded-[10px] border px-3 py-2", color)}>
       <span className="text-xs font-medium">{label}</span>
       <span className="font-mono text-xs font-bold">{value}</span>
-    </div>
-  );
-}
-
-function CodeInsightsCard({ insights }: { insights: NonNullable<CodeAgentInsights> }) {
-  return (
-    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-5">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-[var(--text-1)]">Code Intelligence</p>
-        <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
-          GitHub GraphQL
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {/* Vulnerabilities */}
-        <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Vulnerabilities</p>
-          {insights.vulnerabilities.length === 0 ? (
-            <p className="mt-1 text-sm font-semibold text-emerald-600">None found</p>
-          ) : (
-            <p className="mt-1 text-sm font-semibold text-red-600">
-              {insights.vulnerabilities.filter((v) => v.severity === "CRITICAL").length} critical,{" "}
-              {insights.vulnerabilities.filter((v) => v.severity === "HIGH").length} high
-            </p>
-          )}
-        </div>
-        {/* Branch protection */}
-        <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Branch protection</p>
-          <p className={cn("mt-1 text-sm font-semibold", insights.branchProtected ? "text-emerald-600" : "text-red-600")}>
-            {insights.branchProtected ? (insights.requiresReviews ? "Protected + reviews" : "Protected") : "Not protected"}
-          </p>
-        </div>
-        {/* PR reviews */}
-        {insights.prReviewRate !== null && (
-          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">PR reviews</p>
-            <p className={cn("mt-1 text-sm font-semibold",
-              insights.prReviewRate >= 0.7 ? "text-emerald-600"
-              : insights.prReviewRate >= 0.3 ? "text-amber-600"
-              : "text-red-600"
-            )}>
-              {Math.round(insights.prReviewRate * 100)}% reviewed
-            </p>
-          </div>
-        )}
-        {/* Commit velocity */}
-        {insights.commitVelocity !== null && (
-          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Velocity</p>
-            <p className="mt-1 text-sm font-semibold text-[var(--text-1)]">
-              {insights.commitVelocity} commits/wk
-              {insights.uniqueContributors !== null && (
-                <span className="ml-1 text-xs font-normal text-[var(--text-3)]">· {insights.uniqueContributors} {insights.uniqueContributors === 1 ? "contributor" : "contributors"}</span>
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DeployInsightsCard({ insights }: { insights: NonNullable<DeployAgentInsights> }) {
-  if (!insights.platform && insights.recentDeployments === null) return null;
-  const successRate = insights.recentDeployments && insights.failedDeployments !== null
-    ? (insights.recentDeployments - insights.failedDeployments) / insights.recentDeployments
-    : null;
-
-  return (
-    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-5">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-[var(--text-1)]">Deploy Intelligence</p>
-        <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
-          {insights.platform === "vercel" ? "Vercel" : insights.platform ?? "Deploy"}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {successRate !== null && insights.recentDeployments !== null && (
-          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Success rate</p>
-            <p className={cn("mt-1 text-sm font-semibold",
-              successRate >= 0.9 ? "text-emerald-600"
-              : successRate >= 0.7 ? "text-amber-600"
-              : "text-red-600"
-            )}>
-              {insights.recentDeployments - (insights.failedDeployments ?? 0)}/{insights.recentDeployments} deployments
-            </p>
-          </div>
-        )}
-        {insights.avgBuildMs !== null && (
-          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Avg build time</p>
-            <p className={cn("mt-1 text-sm font-semibold",
-              insights.avgBuildMs < 60_000 ? "text-emerald-600"
-              : insights.avgBuildMs < 180_000 ? "text-amber-600"
-              : "text-red-600"
-            )}>
-              {Math.round(insights.avgBuildMs / 1000)}s
-            </p>
-          </div>
-        )}
-        {insights.buildWarnings.length > 0 && (
-          <div className="rounded-[10px] bg-[var(--surface-1)] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-4)]">Build warnings</p>
-            <p className="mt-1 text-sm font-semibold text-amber-600">
-              {insights.buildWarnings.length} warning{insights.buildWarnings.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-        )}
-      </div>
-      {insights.buildWarnings.length > 0 && (
-        <div className="mt-3 space-y-1 border-t border-[var(--border-2)] pt-3">
-          {insights.buildWarnings.slice(0, 3).map((w, i) => (
-            <p key={i} className="truncate text-xs text-[var(--text-3)]">{w}</p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WebVitalsCard({ insights }: { insights: BrowserAgentInsights }) {
-  const lcpMs = insights.lcp;
-  const fcpMs = insights.fcp;
-  const tbtMs = insights.tbt;
-  const cls = insights.cls;
-
-  const lcpStatus = lcpMs === null ? "FAIL" : lcpMs <= 2500 ? "PASS" : lcpMs <= 4000 ? "WARN" : "FAIL";
-  const fcpStatus = fcpMs === null ? "FAIL" : fcpMs <= 1800 ? "PASS" : fcpMs <= 3000 ? "WARN" : "FAIL";
-  const tbtStatus = tbtMs === null ? "FAIL" : tbtMs <= 200 ? "PASS" : tbtMs <= 600 ? "WARN" : "FAIL";
-  const clsStatus = cls === null ? "FAIL" : cls <= 0.1 ? "PASS" : cls <= 0.25 ? "WARN" : "FAIL";
-
-  const formatMs = (ms: number | null) => ms !== null ? (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`) : "—";
-
-  return (
-    <div className="rounded-[10px] border border-[var(--border-2)] bg-white p-5">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-[var(--text-1)]">Core Web Vitals</p>
-        <span className="rounded-full bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-4)]">
-          Lighthouse · mobile
-        </span>
-      </div>
-
-      {/* 4-score grid */}
-      <div className="mb-4 grid grid-cols-4 gap-2">
-        <VitalScore label="Performance" score={insights.performanceScore} />
-        <VitalScore label="Accessibility" score={insights.accessibilityScore} />
-        <VitalScore label="SEO" score={insights.seoScore} />
-        <VitalScore label="Best practices" score={insights.bestPracticesScore} />
-      </div>
-
-      {/* Individual metrics */}
-      {(lcpMs !== null || fcpMs !== null || tbtMs !== null || cls !== null) && (
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {lcpMs !== null && <VitalMetric label="LCP" value={formatMs(lcpMs)} status={lcpStatus} />}
-          {fcpMs !== null && <VitalMetric label="FCP" value={formatMs(fcpMs)} status={fcpStatus} />}
-          {tbtMs !== null && <VitalMetric label="TBT" value={formatMs(tbtMs)} status={tbtStatus} />}
-          {cls !== null && <VitalMetric label="CLS" value={cls.toFixed(3)} status={clsStatus} />}
-        </div>
-      )}
-
-      {insights.cruxCategory && (
-        <p className="mt-3 text-xs text-[var(--text-4)]">
-          Chrome UX Report (real users):{" "}
-          <span className={cn(
-            "font-semibold",
-            insights.cruxCategory === "FAST" ? "text-emerald-600"
-            : insights.cruxCategory === "AVERAGE" ? "text-amber-600"
-            : "text-red-600",
-          )}>
-            {insights.cruxCategory.toLowerCase()}
-          </span>
-        </p>
-      )}
     </div>
   );
 }
@@ -1771,14 +1576,12 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
     }
   }
 
-  const readinessByCategory = llm ? groupReadinessByCategory(llm.productionReadinessChecklist ?? []) : new Map();
 
   const scorecard = scan.complianceScorecard ?? [];
   const complianceMissing = scorecard.reduce((n, e) => n + e.failing, 0);
   const primary = PRIMARY_OF[activeTab];
   const inSummary = primary === "summary";
   const inTechnical = primary === "technical";
-  const failCount = scan.checks.filter((c) => c.status === "FAIL").length;
   const tabs: Array<{ id: PrimaryTab; to: Tab; label: string; count?: number; badgeColor?: "red" | "amber" }> = [
     { id: "summary", to: "overview", label: "Summary" },
     { id: "checks", to: "checks", label: "Findings", count: openFindingCount || undefined, badgeColor: "red" as const },

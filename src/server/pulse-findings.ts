@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { targetKey } from "@/lib/pulse-projects";
 import { findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
@@ -20,7 +21,7 @@ class FindingError extends Error {
 const SCAN_SELECT = {
   id: true, workspaceId: true, clientId: true, inputUrl: true, inputGithubRepo: true, projectName: true,
   checks: { select: { checkKey: true, label: true, category: true, status: true, detail: true, evidence: true } },
-} as const;
+} as const satisfies Prisma.PulseScanSelect;
 
 async function loadScan(scanId: string) {
   const scan = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: SCAN_SELECT });
