@@ -27,6 +27,7 @@ import { answeredByCodeHealth, runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type Co
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { runRenderedA11yAgent } from "@/server/pulse-agents/rendered-a11y-agent";
 import { runConsentTrackingAgent } from "@/server/pulse-agents/consent-tracking-agent";
+import { runSiteCrawlAgent } from "@/server/pulse-agents/site-crawl-agent";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { applyAbsencePolicy } from "@/server/pulse-checks/absence-policy";
@@ -307,7 +308,7 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // on the internal path (it launches Chromium, so it rides the same switch as rendering).
     const runRenderedA11y = collectorPlan.browser && renderJs && !storeTarget && !urlTargetBlocked
       && relevanceCtx.target.kind === "website";
-    const [deployOutcome, browserOutcome, a11yOutcome, consentOutcome] = await Promise.all([
+    const [deployOutcome, browserOutcome, a11yOutcome, consentOutcome, crawlOutcome] = await Promise.all([
       collectorPlan.deploy
         ? Promise.allSettled([runDeployAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
@@ -321,6 +322,11 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       // the test needs an empty profile — a first visit with no stored consent.
       runRenderedA11y
         ? Promise.allSettled([runConsentTrackingAgent(safeUrl, resolveTargetMarkets(input.targetMarkets, detectedMarkets).effective)]).then(([result]) => result)
+        : Promise.resolve(null),
+      // Same conditions again: a reachable website, internal path. Reads up to 15 pages
+      // of the site, so it is never offered to the anonymous public scan.
+      runRenderedA11y
+        ? Promise.allSettled([runSiteCrawlAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
     ]);
 
@@ -363,6 +369,13 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       if (consentOutcome.status === "fulfilled") pending.push(ingest(consentOutcome.value.checks));
     } else {
       collectorExecutions.push({ name: "consent-tracking", outcome: "NOT_APPLICABLE" });
+    }
+
+    if (crawlOutcome) {
+      collectorExecutions.push(collectorOutcome("site-crawl", crawlOutcome));
+      if (crawlOutcome.status === "fulfilled") pending.push(ingest(crawlOutcome.value.checks));
+    } else {
+      collectorExecutions.push({ name: "site-crawl", outcome: "NOT_APPLICABLE" });
     }
 
     // The source collectors are not merely absent from a URL scan — they are
