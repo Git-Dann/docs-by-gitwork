@@ -9,13 +9,11 @@ import {
   DocumentTextIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
-  PlusIcon,
   SignalIcon,
   TrashIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { usePulseScans, useDeletePulseScan, useMonitors } from "@/hooks/use-pulse";
-import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatRelative } from "@/lib/format";
 import { describeScanSubject, detectStoreTarget } from "@/lib/pulse-store-url";
 import type { PulseScanListItem, PulseScanStatus, PulseScanInputType } from "@/types/pulse";
@@ -25,7 +23,6 @@ import {
   HealthScorePill,
   MonitorDot,
 } from "@/components/pulse/pulse-shared";
-import { Button } from "@/components/ui/button";
 import { githubRepoLabel } from "@/lib/github";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -440,9 +437,6 @@ function ScanRow({
 export function PulseScanListView() {
   const { data, isLoading, error } = usePulseScans();
   const { data: monitorsData } = useMonitors();
-  // Running a scan spends AI tokens → gated to admins by default. Non-generators still
-  // view existing scans; the API also enforces this.
-  const { canGenerateAi } = usePermissions();
   const { mutateAsync: bulkDelete, isPending: bulkDeleting } = useDeletePulseScan();
 
   const [search, setSearch] = useState("");
@@ -660,13 +654,7 @@ export function PulseScanListView() {
             <option value="SCORE_LOW">Score: low → high</option>
           </select>
 
-          {canGenerateAi && (
-            <Link href="/app/pulse/new" className="shrink-0">
-              <Button variant="primary" size="sm" leadingIcon={<PlusIcon className="h-4 w-4" />} className="whitespace-nowrap">
-                New scan
-              </Button>
-            </Link>
-          )}
+          {/* New scan lives in the Pulse nav above this list (PulseNav). */}
         </div>
       </div>
 

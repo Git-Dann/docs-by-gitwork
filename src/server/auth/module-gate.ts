@@ -97,6 +97,11 @@ export const INTERNAL_ONLY_PREFIXES = [
   // Configuration for OUR public scanner widget — nothing to do with a guest's own
   // scans, and it sits under /app/pulse so the module grant would otherwise cover it.
   "/app/pulse/embed",
+  // Pulse → Growth (our sales page, embed and captured leads) and Pulse → Monitors. Both
+  // were `InternalOnly` panels on the Pulse landing page; as their own routes they get the
+  // same audience rule at the gate. The nav items are hidden to match (src/lib/pulse-nav.ts).
+  "/app/pulse/growth",
+  "/app/pulse/monitors",
   "/app/team",
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)

@@ -8161,3 +8161,28 @@ LRU: 2,000 entries, 50MB, with a 2MB cap per body.
 - A `304` with a token does **not** count against the 5,000/hour limit, which was measured.
 - Rescans of unchanged repos now cost close to nothing. A first scan still costs full price.
 - ⚠️ Unauthenticated 304s still count, so don't try to prove the saving with tokenless curl.
+
+### 84.16 Pulse has its own navigation (`src/lib/pulse-nav.ts`, `pulse-nav.tsx`)
+
+The Pulse landing page used to stack everything. Each concern now has a page, and `PulseNav`
+(segmented control, the wiki doc-tabs shape) sits at the top of each, with **New scan** on the right
+for anyone with `canGenerateAi`. It is not on a scan's own report (`/app/pulse/[scanId]`).
+
+| Item | Route | What is on it |
+|---|---|---|
+| Projects | `/app/pulse` | Projects / all scans, "What Pulse checks". Project pages and `/new` count as Projects |
+| Monitors | `/app/pulse/monitors` | `PulseMonitorsPanel` (now a numbered card with an empty state) |
+| Portfolio | `/app/pulse/portfolio` | Code portfolio 01–03, then workspace scan health (`04 // SCAN HEALTH`) |
+| Compare | `/app/pulse/compare` | Unchanged |
+| Growth | `/app/pulse/growth` | Sales page, public embed, About Pulse share card, leads. `/embed` counts as Growth |
+
+- ⚠️ **Monitors and Growth are internal-only twice**, exactly as their panels were on the old landing
+  page: their routes are in `INTERNAL_ONLY_PREFIXES` (module gate), and the content is inside
+  `InternalOnly`. The nav hides them from external roles and while the account loads. Add a nav item
+  and you must decide its `internal` flag; `pulse-nav.test.tsx` fails if the flag and the gate disagree,
+  or if any item has no app page or demo page.
+- `PulseTopCards` is gone; its four cards take a `number` prop and live on Portfolio and Growth.
+  The scan list's own New scan button moved into the nav.
+- Demo: the same nav with `base="/demo/pulse"` (`DemoPulseNav`, no New scan), plus new
+  `/demo/pulse/monitors` and `/demo/pulse/growth` (demo monitors and embed config added to
+  `dev-demo-data.ts`). Verified at 390 · 768 · 1440 and with `audit:clipping`: 0 findings.

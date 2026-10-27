@@ -120,7 +120,7 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
   return (
     <div className="widget-card">
       <div className="widget-header">
-        <span className="widget-header-label">PROJECTS</span>
+        <span className="widget-header-label">01 // PROJECTS</span>
         {toggle}
       </div>
         <div className="widget-body space-y-4">
@@ -333,7 +333,7 @@ export function PulseComparePage({ from, to }: { from: string; to: string }) {
   return (
     <div className="widget-card">
       <div className="widget-header">
-        <span className="widget-header-label">WHAT CHANGED</span>
+        <span className="widget-header-label">01 // WHAT CHANGED</span>
         <span className="widget-header-right"><ScoreChange diff={diff} /></span>
       </div>
       <div className="widget-body space-y-4">

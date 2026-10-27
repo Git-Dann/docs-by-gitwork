@@ -4035,7 +4035,8 @@ export function resolveDemoApi(
       };
     }
   }
-  if (pathname === "/api/pulse/monitors") return { monitors: [] };
+  if (pathname === "/api/pulse/monitors") return { monitors: demoPulseMonitors(Date.now()) };
+  if (pathname === "/api/workspace/pulse-embed") return demoPulseEmbedConfig;
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
   if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
   if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
@@ -4144,3 +4145,22 @@ const demoLeadChecks = [
   { checkKey: "ssl_valid", category: "Security", label: "SSL certificate", status: "PASS", detail: "Valid, expires in 74 days." },
   { checkKey: "meta_description", category: "SEO", label: "Meta description", status: "INCONCLUSIVE", detail: "The page renders with JavaScript, so its content isn't in the page source." },
 ];
+
+// ─── Pulse → Monitors / Growth (demo) ────────────────────────────────────────
+// Added for the Pulse nav's Monitors and Growth pages. Fictional projects.
+function demoPulseMonitors(now: number) {
+  const ago = (h: number) => new Date(now - h * 3_600_000).toISOString();
+  const base = { inputType: "URL", inputGithubRepo: null, webhookSecret: "", alertThreshold: 10, webhookUrl: "", lastDigestAt: null };
+  return [
+    { ...base, id: "mon-northwind", projectName: "Northwind Studio", inputUrl: "https://northwind.example", lastScanId: "scan-northwind", lastHealthScore: 72, isActive: true, frequency: "WEEKLY", lastRunAt: ago(30), createdAt: ago(900), digestEmails: ["ops@northwind.example"] },
+    { ...base, id: "mon-cadenza", projectName: "Cadenza", inputUrl: "https://cadenza.example", lastScanId: "scan-cadenza", lastHealthScore: 48, isActive: true, frequency: "DAILY", lastRunAt: ago(5), createdAt: ago(400), digestEmails: [] },
+  ];
+}
+
+const demoPulseEmbedConfig = {
+  enabled: true,
+  freeCheckKeys: null,
+  bookingUrl: "https://gitwork.co.uk/contact",
+  turnstileSiteKey: null,
+  turnstileConfigured: true,
+};

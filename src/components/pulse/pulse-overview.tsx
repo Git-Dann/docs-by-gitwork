@@ -110,9 +110,14 @@ export function CardHeader({
 export function PulseOverview({
   collapsed = false,
   onToggle,
+  number = "01",
+  title = "PORTFOLIO",
 }: {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Section number and title, so a page can place the card in its own `NN //` sequence. */
+  number?: string;
+  title?: string;
 }) {
   const { data: stats, isLoading } = usePulseStats();
   const { data: portfolioData } = usePulsePortfolio();
@@ -147,8 +152,8 @@ export function PulseOverview({
   return (
     <article className="widget-card h-full">
       <CardHeader
-        number="01"
-        title="PORTFOLIO"
+        number={number}
+        title={title}
         status={`${stats.totalScans} scan${stats.totalScans !== 1 ? "s" : ""}`}
         collapsed={collapsed}
         onToggle={onToggle}
