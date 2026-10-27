@@ -42,9 +42,12 @@ export function ToggleSwitch({ checked, disabled, onChange }: { checked: boolean
 export function PulseEmbedTopCard({
   collapsed = false,
   onToggle,
+  number = "04",
 }: {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Section number, so a page can place the card in its own `NN //` sequence. */
+  number?: string;
 }) {
   const { data, isLoading, isError, error, refetch, isFetching } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
@@ -60,7 +63,7 @@ export function PulseEmbedTopCard({
   return (
     <article className="widget-card h-full">
       <CardHeader
-        number="04"
+        number={number}
         title="PUBLIC EMBED"
         status={data ? (data.enabled ? "Enabled" : "Disabled") : undefined}
         collapsed={collapsed}

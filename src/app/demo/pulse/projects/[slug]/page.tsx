@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DemoShell } from "@/components/demo/demo-shell";
+import { DemoPulseNav } from "@/components/demo/demo-pulse-nav";
 import { PulseProjectPage } from "@/components/pulse/pulse-projects";
 
 export const metadata: Metadata = { title: "Foundry — Pulse project demo", robots: { index: false, follow: false } };
@@ -9,6 +10,7 @@ export default async function DemoPulseProjectPage({ params }: { params: Promise
   const { slug } = await params;
   return (
     <DemoShell active="Pulse" title="Project history" subtitle="Every scan of this project, how it is trending, and what changed.">
+      <DemoPulseNav />
       <PulseProjectPage slug={slug} />
     </DemoShell>
   );

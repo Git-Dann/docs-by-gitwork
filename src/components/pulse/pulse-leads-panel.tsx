@@ -346,8 +346,8 @@ function LeadModal({ lead, initialMode, onClose }: { lead: PulseLeadView | null;
 
 // ─── The list ─────────────────────────────────────────────────────────────────
 
-export function PulseLeadsPanel() {
-  const { data, isLoading } = usePulseLeads();
+export function PulseLeadsPanel({ number = "01" }: { number?: string }) {
+  const { data, isLoading, isError } = usePulseLeads();
   const [open, setOpen] = useState<{ id: string; mode: Mode } | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -368,13 +368,33 @@ export function PulseLeadsPanel() {
   const visible = filtered.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
   const openLead = open ? leads.find((l) => l.id === open.id) ?? null : null;
 
-  if (isLoading || leads.length === 0) return null; // quietly absent until leads exist
+  // On its own page now (Pulse → Growth), so it says what is happening rather than
+  // rendering nothing: an empty page reads as a broken one.
+  const heading = (
+    <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--text-2)]">
+      <span className="text-[var(--brand-700)]">{number}</span>{" // LEADS"}
+    </p>
+  );
+  if (isLoading || isError || leads.length === 0) {
+    return (
+      <div className="space-y-2">
+        {heading}
+        <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-sm text-[var(--text-3)]">
+          {isLoading
+            ? "Loading leads…"
+            : isError
+              ? "Leads could not be loaded."
+              : "No leads yet. Someone who runs the public scanner and leaves their details appears here."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-[var(--text-1)]">Pulse leads</p>
+          {heading}
           <span className="rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--text-3)]">{leads.length}</span>
         </div>
         <label className="relative w-full sm:w-64">

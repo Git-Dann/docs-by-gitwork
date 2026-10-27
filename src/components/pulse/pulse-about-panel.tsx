@@ -21,11 +21,14 @@ export function PulseAboutPanel({
   areas,
   collapsed = false,
   onToggle,
+  number = "02",
 }: {
   checks: number;
   areas: number;
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Section number, so a page can place the card in its own `NN //` sequence. */
+  number?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const figures = `${checks.toLocaleString("en-GB")} checks · ${areas} areas`;
@@ -39,7 +42,7 @@ export function PulseAboutPanel({
 
   return (
     <article className="widget-card h-full">
-      <CardHeader number="02" title="ABOUT PULSE" status="Share" collapsed={collapsed} onToggle={onToggle} />
+      <CardHeader number={number} title="ABOUT PULSE" status="Share" collapsed={collapsed} onToggle={onToggle} />
 
       {collapsed ? (
         <div className="flex flex-1 items-center justify-between gap-3 p-4">

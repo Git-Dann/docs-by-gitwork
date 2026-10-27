@@ -24,7 +24,9 @@ export function useDemoLinkReroute() {
     const pulseScanMatch = href.match(/^\/app\/pulse\/([^/?#]+)/);
     const pulseProjectMatch = href.match(/^\/app\/pulse\/projects\/([^/?#]+)/);
     const pulseCompareMatch = href.match(/^\/app\/pulse\/compare(\?.*)?$/);
-    if (pulseProjectMatch) router.push(`/demo/pulse/projects/${pulseProjectMatch[1]}`);
+    // The embed settings page has no demo; its home in the nav is Growth.
+    if (/^\/app\/pulse\/embed(\?.*)?$/.test(href)) router.push("/demo/pulse/growth");
+    else if (pulseProjectMatch) router.push(`/demo/pulse/projects/${pulseProjectMatch[1]}`);
     else if (pulseCompareMatch) router.push(`/demo/pulse/compare${pulseCompareMatch[1] ?? ""}`);
     else if (devSignalMatch) router.push(`/demo/devsignal/${devSignalMatch[1]}`);
     else if (/^\/app\/codeclear\/devsignal$/.test(href)) router.push("/demo/devsignal");

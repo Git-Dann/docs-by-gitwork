@@ -28,9 +28,12 @@ const SALES_PAGE_URL = "https://foundry.gitwork.co.uk/production-ready";
 export function PulseSalesPagePanel({
   collapsed = false,
   onToggle,
+  number = "03",
 }: {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Section number, so a page can place the card in its own `NN //` sequence. */
+  number?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -43,7 +46,7 @@ export function PulseSalesPagePanel({
 
   return (
     <article className="widget-card h-full">
-      <CardHeader number="03" title="SALES PAGE" status="Live" collapsed={collapsed} onToggle={onToggle} />
+      <CardHeader number={number} title="SALES PAGE" status="Live" collapsed={collapsed} onToggle={onToggle} />
 
       {collapsed ? (
         <div className="flex flex-1 items-center justify-between gap-3 p-4">
@@ -88,7 +91,7 @@ export function PulseSalesPagePanel({
 
           {/* One button, because there is only one real destination. A second
               "Leads" button pointed at /app/pulse/leads, which does not exist —
-              the leads panel is further down THIS page. */}
+              the leads panel is on the same page (Pulse → Growth). */}
           <a href={SALES_PAGE_URL} target="_blank" rel="noopener noreferrer" className="mt-auto block pt-3">
             <Button variant="secondary" size="sm" className="w-full">Open page ↗</Button>
           </a>

@@ -22,32 +22,52 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-export function PulseMonitorsPanel() {
-  const { data, isLoading } = useMonitors();
+/**
+ * Scheduled re-scans of a project. Its own page since Pulse got a nav (Pulse → Monitors), so
+ * it is a numbered widget card with an empty state: a page that renders nothing reads as
+ * broken. Monitors are created from a scan's results.
+ */
+export function PulseMonitorsPanel({ number = "01" }: { number?: string }) {
+  const { data, isLoading, isError } = useMonitors();
   const { mutate: update } = useUpdateMonitor();
   const { mutate: remove, isPending: removing, variables: removingId } = useDeleteMonitor();
 
   const monitors = data?.monitors ?? [];
-  if (isLoading || monitors.length === 0) return null; // quietly absent until monitors exist
 
   return (
-    <div className="app-card p-5">
-      <div className="mb-4">
-        <p className="text-sm font-semibold text-[var(--text-1)]">Continuous monitoring</p>
-        <p className="mt-0.5 text-xs text-[var(--text-4)]">
-          Scheduled re-scans. Alerts fire on a health drop or a new confirmed critical issue (e.g. RLS turned off).
-          Add recipients to send a weekly summary email after the re-scan.
-        </p>
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">{`${number} // MONITORS`}</span>
+        {monitors.length > 0 && (
+          <span className="widget-header-right">
+            {monitors.length} {monitors.length === 1 ? "monitor" : "monitors"}
+          </span>
+        )}
       </div>
+      <div className="widget-body">
+      <p className="mb-4 text-xs text-[var(--text-4)]">
+        Scheduled re-scans. Alerts fire on a health drop or a new confirmed critical issue (for example RLS turned off).
+        Add recipients to send a weekly summary email after the re-scan.
+      </p>
+      {isLoading ? (
+        <p className="text-sm text-[var(--text-3)]">Loading monitors…</p>
+      ) : isError ? (
+        <p className="text-sm text-[var(--danger-700)]">Monitors could not be loaded.</p>
+      ) : monitors.length === 0 ? (
+        <p className="text-sm text-[var(--text-3)]">
+          Nothing is being monitored yet. Open a scan and choose Monitor to re-scan it on a schedule.
+        </p>
+      ) : (
       <div className="space-y-2">
         {monitors.map((m) => {
           const target = m.inputUrl ?? m.inputGithubRepo ?? m.projectName;
           return (
             <div key={m.id} className="rounded-[8px] border border-[var(--border-2)] px-3 py-2">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[var(--text-1)]">{m.projectName}</p>
-                <p className="truncate text-xs text-[var(--text-4)]">{target} · last run {timeAgo(m.lastRunAt)}</p>
+              {/* Its own line on a phone: beside the controls the name was cut to one letter. */}
+              <div className="min-w-0 flex-1 basis-full sm:basis-0">
+                <p className="truncate text-sm font-medium text-[var(--text-1)]" title={m.projectName}>{m.projectName}</p>
+                <p className="truncate text-xs text-[var(--text-4)]" title={target}>{target} · last run {timeAgo(m.lastRunAt)}</p>
               </div>
               {m.lastScanId ? (
                 <Link href={`/app/pulse/${m.lastScanId}`} className={cn("text-sm font-bold tabular-nums", scoreTone(m.lastHealthScore))}>
@@ -89,6 +109,8 @@ export function PulseMonitorsPanel() {
             </div>
           );
         })}
+      </div>
+      )}
       </div>
     </div>
   );
