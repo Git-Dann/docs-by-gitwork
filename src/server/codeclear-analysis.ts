@@ -124,11 +124,15 @@ async function githubRequest<T>(path: string): Promise<T> {
   }
 }
 
-async function safeGithubRequest<T>(path: string, fallback: T): Promise<T> {
+/**
+ * A read that may fail. Null means "we could not look" and must never be scored as
+ * zero commits or zero languages; the 409 an empty repository answers IS readable.
+ */
+async function readOrNull<T>(path: string, ifEmpty: T): Promise<T | null> {
   try {
     return await githubRequest<T>(path);
-  } catch {
-    return fallback;
+  } catch (error) {
+    return classifyTreeFailure(error, hasGithubToken()) === "EMPTY" ? ifEmpty : null;
   }
 }
 
@@ -370,6 +374,7 @@ function detectRepoSignals(tree: RepoTree | null) {
 
 /** Points the five file-tree signals are worth — only awardable if we read the tree. */
 const FILE_SIGNAL_POINTS = 10 + 14 + 10 + 8 + 8; // docs, tests, CI, lint, manifest
+const COMMIT_POINTS = 10;
 
 function buildHealthScore(input: {
   stars: number;
@@ -381,7 +386,7 @@ function buildHealthScore(input: {
   hasCi: boolean | null;
   hasLint: boolean | null;
   hasManifest: boolean | null;
-  recentCommitCount: number;
+  recentCommitCount: number | null;
 }) {
   let score = 35;
 
@@ -394,16 +399,18 @@ function buildHealthScore(input: {
 
   score += Math.min(10, Math.round(input.stars / 40));
   score += Math.min(7, Math.round(input.forks / 25));
-  score += Math.min(10, input.recentCommitCount);
+  if (input.recentCommitCount !== null) score += Math.min(10, input.recentCommitCount);
 
   // Repo tree unreadable — the five file signals were not observed, so they must not
   // be scored as absent. Rescale what WAS observed over the points that were actually
   // available, the same way Pulse's score-breakdown excludes SKIPPED checks from both
   // sides of the ratio. Without this an unreadable repo lost 50 of ~100 points for
   // reasons that have nothing to do with the candidate.
-  if (!input.readable) {
-    const observed = score; // no file-signal points can have been added above
-    const available = 100 - FILE_SIGNAL_POINTS;
+  // Commits that could not be read are excluded the same way.
+  const missing = (input.readable ? 0 : FILE_SIGNAL_POINTS) + (input.recentCommitCount === null ? COMMIT_POINTS : 0);
+  if (missing > 0) {
+    const observed = score; // no points can have been added for what was not read
+    const available = 100 - missing;
     return clampScore(Math.round((observed / available) * 100));
   }
 
@@ -513,20 +520,18 @@ export async function analyzeGitHubProfile(githubHandle: string) {
   const repoDetails = await Promise.all(
     selectedRepos.map(async (repo) => {
       const [languages, contents, commits] = await Promise.all([
-        safeGithubRequest<Record<string, number>>(`/repos/${repo.full_name}/languages`, {}),
+        readOrNull<Record<string, number>>(`/repos/${repo.full_name}/languages`, {}),
         // NOT safeGithubRequest: an unreadable tree must stay distinguishable from an
         // empty one, or its signals get scored as absent. See readRepoTree.
         readRepoTree(repo.full_name),
-        safeGithubRequest<Array<{ sha: string }>>(
-          `/repos/${repo.full_name}/commits?per_page=20`,
-          [],
-        ),
+        readOrNull<Array<{ sha: string }>>(`/repos/${repo.full_name}/commits?per_page=20`, []),
       ]);
 
       const signals = detectRepoSignals(contents.tree);
-      const recentCommitCount = commits.length;
+      // Null when the commits could not be read: not "0 recent commits".
+      const recentCommitCount = commits === null ? null : commits.length;
       const recentActivity = isRecent(repo.pushed_at);
-      const languagesList: GitHubLanguageUsage[] = Object.entries(languages)
+      const languagesList: GitHubLanguageUsage[] | null = languages === null ? null : Object.entries(languages)
         .sort((left, right) => right[1] - left[1])
         .map(([language, bytes]) => ({ language, bytes }));
 
@@ -558,7 +563,8 @@ export async function analyzeGitHubProfile(githubHandle: string) {
         hasLint: signals.hasLint,
         hasManifest: signals.hasManifest,
         topics: repo.topics ?? [],
-        languages: languagesList,
+        languages: languagesList ?? [],
+        languagesReadable: languagesList !== null,
         pushedAt: repo.pushed_at,
         updatedAt: repo.updated_at,
         healthScore,
@@ -575,7 +581,9 @@ export async function analyzeGitHubProfile(githubHandle: string) {
   }
   const scored = [...measuredHealth.values()].filter((h) => h.score !== null);
 
-  const aggregatedLanguages = aggregateLanguages(repoDetails.map((repo) => {
+  // Languages only from repos whose language breakdown could be read.
+  const languageKnown = repoDetails.filter((repo) => repo.languagesReadable !== false);
+  const aggregatedLanguages = aggregateLanguages(languageKnown.map((repo) => {
     const map: Record<string, number> = {};
     for (const language of repo.languages) {
       map[language.language] = language.bytes;
@@ -588,6 +596,7 @@ export async function analyzeGitHubProfile(githubHandle: string) {
   // produced red flags like "Limited visible test coverage" about repositories nobody
   // had looked inside. Same defect as the per-repo score, one level up.
   const readableRepos = repoDetails.filter((repo) => repo.treeReadable);
+  const commitKnown = repoDetails.filter((repo) => repo.recentCommitCount !== null);
   const unreadableRepos = repoDetails.filter((repo) => !repo.treeReadable);
   // Null — unknown — when nothing could be read. It used to divide by 1 and report 0%,
   // which then scored as "no docs/tests/CI" and fed the recommended code-quality score.
@@ -602,7 +611,7 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     averageStars: repoDetails.length
       ? Math.round(repoDetails.reduce((sum, repo) => sum + repo.stars, 0) / repoDetails.length)
       : 0,
-    languageCount: aggregatedLanguages.length,
+    languageCount: languageKnown.length > 0 ? aggregatedLanguages.length : null,
     topLanguages: aggregatedLanguages.slice(0, 5),
     recentRepoRatio: repoDetails.length
       ? Math.round(
@@ -618,11 +627,11 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     unreadableReasons: [
       ...new Set(unreadableRepos.map((repo) => repo.treeUnreadableReason ?? "REQUEST_FAILED")),
     ],
-    averageRecentCommitCount: repoDetails.length
-      ? Math.round(
-          repoDetails.reduce((sum, repo) => sum + repo.recentCommitCount, 0) / repoDetails.length,
-        )
-      : 0,
+    averageRecentCommitCount: commitKnown.length
+      ? Math.round(commitKnown.reduce((sum, repo) => sum + (repo.recentCommitCount ?? 0), 0) / commitKnown.length)
+      : repoDetails.length
+        ? null
+        : 0,
     averageHealthScore: repoDetails.length
       ? Math.round(
           repoDetails.reduce((sum, repo) => sum + repo.healthScore, 0) / repoDetails.length,
@@ -656,11 +665,18 @@ export async function analyzeGitHubProfile(githubHandle: string) {
     redFlags.push("Limited visible CI coverage.");
   }
 
+  // Language breadth and commit cadence are worth up to 12 each. One we could not read
+  // is excluded and the other stands in for both, not counted as zero.
+  const depthExtras = [
+    metrics.languageCount === null ? null : Math.min(12, metrics.languageCount * 2),
+    metrics.averageRecentCommitCount === null ? null : Math.min(12, metrics.averageRecentCommitCount),
+  ].filter((v): v is number => v !== null);
+  const depthBase = 42 + metrics.averageHealthScore * 0.34;
   const recommendedTechnicalDepth = clampScore(
-    42 +
-      metrics.averageHealthScore * 0.34 +
-      Math.min(12, metrics.languageCount * 2) +
-      Math.min(12, metrics.averageRecentCommitCount),
+    depthBase +
+      (depthExtras.length > 0
+        ? (depthExtras.reduce((a, b) => a + b, 0) / (depthExtras.length * 12)) * 24
+        : (depthBase / 76) * 24),
   );
   const recommendedCodeQuality = weightedScore(28, [
     { weight: 0.18, value: metrics.docsCoverage },
@@ -779,8 +795,10 @@ export function buildChecksFromAnalysis(args: {
       category: "GitHub Activity",
       checkKey: "commit_cadence",
       label: "Commit cadence",
-      status: band(metrics.averageRecentCommitCount, 10, 3),
-      detail: `${metrics.averageRecentCommitCount} commits per repo on average (recent)`,
+      status: metrics.averageRecentCommitCount === null ? "SKIPPED" : band(metrics.averageRecentCommitCount, 10, 3),
+      detail: metrics.averageRecentCommitCount === null
+        ? "Couldn't read the sampled repositories' commits, so commit cadence is unknown."
+        : `${metrics.averageRecentCommitCount} commits per repo on average (recent)`,
       weight: 1,
       sortOrder: 12,
     },
@@ -788,8 +806,10 @@ export function buildChecksFromAnalysis(args: {
       category: "GitHub Activity",
       checkKey: "language_breadth",
       label: "Language breadth",
-      status: band(metrics.languageCount, 3, 2),
-      detail: `${metrics.languageCount} languages across sampled repos`,
+      status: metrics.languageCount === null ? "SKIPPED" : band(metrics.languageCount, 3, 2),
+      detail: metrics.languageCount === null
+        ? "Couldn't read the sampled repositories' languages, so breadth is unknown."
+        : `${metrics.languageCount} languages across sampled repos`,
       weight: 1,
       sortOrder: 13,
     },

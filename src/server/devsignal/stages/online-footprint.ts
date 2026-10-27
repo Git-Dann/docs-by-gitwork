@@ -58,7 +58,7 @@ export const onlineFootprintRunner: DevSignalStageRunner = {
           label: "Technical depth",
           score: analysis.recommendedTechnicalDepth,
           maxScore: 100,
-          rationale: `${analysis.metrics.languageCount} languages, avg health ${Math.round(analysis.metrics.averageHealthScore)}`,
+          rationale: `${analysis.metrics.languageCount ?? "unknown"} languages, avg health ${Math.round(analysis.metrics.averageHealthScore)}`,
         },
         {
           key: "code_quality",

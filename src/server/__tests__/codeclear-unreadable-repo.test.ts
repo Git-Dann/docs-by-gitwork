@@ -30,7 +30,7 @@ const RECENT = new Date().toISOString();
 type TreeReply = { status: number; body?: unknown; headers?: Record<string, string> };
 
 /** Stub GitHub: one user with two repos, whose tree endpoint answers `tree`. */
-function stubGithub(tree: TreeReply) {
+function stubGithub(tree: TreeReply, side: { commits?: TreeReply; languages?: TreeReply } = {}) {
   const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
     new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers });
 
@@ -53,8 +53,8 @@ function stubGithub(tree: TreeReply) {
         })));
       }
       if (url.includes("/git/trees/")) return json(tree.status, tree.body ?? "", tree.headers);
-      if (url.includes("/languages")) return json(200, { Python: 100 });
-      if (url.includes("/commits")) return json(200, [{ sha: "a" }, { sha: "b" }]);
+      if (url.includes("/languages")) return side.languages ? json(side.languages.status, side.languages.body ?? "") : json(200, { Python: 100 });
+      if (url.includes("/commits")) return side.commits ? json(side.commits.status, side.commits.body ?? "") : json(200, [{ sha: "a" }, { sha: "b" }]);
       return json(404, "{}");
     }),
   );
@@ -185,5 +185,36 @@ describe("weighted score excludes unknowns from both sides", () => {
     const withUnknown = weightedScoreForTest(28, [{ weight: 0.2, value: null }, { weight: 0.3, value: 60 }]);
     expect(withUnknown).toBe(28 + 0.5 * 60);
     expect(withUnknown).toBeGreaterThan(withZero);
+  });
+});
+
+describe("commits and languages that could not be read are unknown, not zero", () => {
+  const refused: TreeReply = { status: 403, body: '{"message":"Resource not accessible by personal access token"}' };
+
+  it("reports unknown cadence and breadth, and SKIPs those checks", async () => {
+    stubGithub(readableNoSignals, { commits: refused, languages: refused });
+    const a = await analyzeGitHubProfile("dev");
+    expect(a.repoSnapshot.map((r) => r.recentCommitCount)).toEqual([null, null]);
+    expect(a.metrics.averageRecentCommitCount).toBeNull();
+    expect(a.metrics.languageCount).toBeNull();
+    const byKey = Object.fromEntries(buildChecksFromAnalysis({ metrics: a.metrics, redFlags: a.redFlags }).map((c) => [c.checkKey, c]));
+    expect(byKey.commit_cadence.status).toBe("SKIPPED");
+    expect(byKey.language_breadth.status).toBe("SKIPPED");
+  });
+
+  it("scores above a repo that really has no recent commits", async () => {
+    stubGithub(readableNoSignals, { commits: refused });
+    const unknown = await analyzeGitHubProfile("dev");
+    stubGithub(readableNoSignals, { commits: { status: 200, body: [] } });
+    const none = await analyzeGitHubProfile("dev");
+    expect(none.metrics.averageRecentCommitCount).toBe(0);
+    expect(unknown.repoSnapshot[0].healthScore).toBeGreaterThan(none.repoSnapshot[0].healthScore);
+    expect(unknown.recommendedTechnicalDepth).toBeGreaterThan(none.recommendedTechnicalDepth);
+  });
+
+  it("an empty repository's 409 is a real zero", async () => {
+    stubGithub(readableNoSignals, { commits: { status: 409, body: '{"message":"Git Repository is empty."}' } });
+    const a = await analyzeGitHubProfile("dev");
+    expect(a.metrics.averageRecentCommitCount).toBe(0);
   });
 });

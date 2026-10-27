@@ -2123,7 +2123,10 @@ Vercel before the migration and absent on the VPS after it. Consequences, all si
   is `null` when no sampled repo was read, recommended scores exclude unknown terms from both
   sides (`weightedScore`), coverage checks go SKIPPED with "Couldn't read …: <reason>", and the
   reason (`NO_TOKEN` / `NO_ACCESS` / `RATE_LIMITED` / `NOT_FOUND`) is stored per repo. Our lack
-  of access is never a red flag. Tests: `codeclear-unreadable-repo.test.ts`.
+  of access is never a red flag. Commits and languages that cannot be read are `null` too:
+  `commit_cadence` and `language_breadth` are then SKIPPED, and their points are excluded from the
+  health and technical-depth scores rather than scored as zero. An empty repository's 409 still
+  counts as zero commits. Tests: `codeclear-unreadable-repo.test.ts`.
 
 ### What changed
 

@@ -213,7 +213,8 @@ export interface GitHubRepoSnapshot {
   stars: number;
   forks: number;
   size: number;
-  recentCommitCount: number;
+  /** Null when the commits could not be read (not zero commits). */
+  recentCommitCount: number | null;
   recentActivity: boolean;
   /** False when the repo's file tree could not be read (private / no token / rate
    *  limited). The has* flags below are then UNASSESSED, not negative — they are all
@@ -231,6 +232,8 @@ export interface GitHubRepoSnapshot {
   hasManifest: boolean | null;
   topics: string[];
   languages: GitHubLanguageUsage[];
+  /** False when the language breakdown could not be read (`languages` is then empty, not "none"). */
+  languagesReadable?: boolean;
   pushedAt: string;
   updatedAt: string;
   healthScore: number;
@@ -255,7 +258,8 @@ export interface GitHubAnalysisMetrics {
   selectedRepoCount: number;
   totalStars: number;
   averageStars: number;
-  languageCount: number;
+  /** Null when no sampled repo's languages could be read. */
+  languageCount: number | null;
   topLanguages: GitHubLanguageUsage[];
   recentRepoRatio: number;
   /** Coverage over the repos whose tree was READ. Null when none could be read — unknown,
@@ -268,7 +272,8 @@ export interface GitHubAnalysisMetrics {
   /** Sampled repos whose tree could not be read, and why (distinct reasons). */
   unreadableRepoCount?: number;
   unreadableReasons?: RepoUnreadableReason[];
-  averageRecentCommitCount: number;
+  /** Null when no sampled repo's commits could be read. */
+  averageRecentCommitCount: number | null;
   averageHealthScore: number;
   /** Repos whose source was measured, and their average code health (null when none). */
   codeHealthMeasured?: number;
