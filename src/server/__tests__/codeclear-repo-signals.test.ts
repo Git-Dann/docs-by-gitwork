@@ -36,7 +36,7 @@ describe("unreadable is distinguishable from empty", () => {
   it("marks a null tree unreadable", () => {
     const s = detectRepoSignalsForTest(null);
     expect(s.readable).toBe(false);
-    expect(s.hasTests).toBe(false); // false, but `readable` says it means nothing
+    expect(s.hasTests).toBeNull(); // unknown — never false for a repo nobody read
   });
 
   it("marks a genuinely empty repo READABLE", () => {
