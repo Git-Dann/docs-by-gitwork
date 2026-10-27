@@ -8082,3 +8082,82 @@ RubyGems.
 - Validated against live deps.dev data: PyQt5 is GPL-3.0 and flagged, the MariaDB JDBC client is
   LGPL and not flagged, and Flask passes with 22 of 25 identified. No check is emitted when the
   library audit found no lockfile.
+
+### 84.13 The withheld list is empty (`repo-operations.ts`, `privacy-notice-rights.ts`)
+
+There were 56 checks in `WITHHELD`, all of them keyword guesses over a website's HTML. Each one
+was either rebuilt or retired, and `WITHHELD` is now `{}`. Adding a key back needs a reason, and
+the key stays only until its defect is fixed.
+
+- **Rebuilt (16), each on the evidence that answers it:**
+  - From the repository (`repo-operations.ts`, run inside `runCiWorkflowChecks`):
+    - Paging and alerting (Terraform, Alertmanager, Prometheus rules).
+    - On-call and escalation.
+    - Budgets (Terraform, Infracost).
+    - Log shipping and log retention (Terraform, Compose, manifests).
+    - Incident reviews.
+    - Synthetic checks (Checkly, Terraform, scheduled workflows).
+    - Automated accessibility tests.
+    - AI route rate limiting.
+    - Email preview text. Email layouts and templates are read from their own budget,
+      `selectEmailTemplates`.
+  - From the privacy policy (`privacy-notice-rights.ts`): the rights of access and portability.
+    Portability applies only when the notice relies on consent or a contract.
+  - From the domain's own name servers (`authoritative-ttl.ts`): DNS TTL, using a raw UDP query,
+    because Node's resolver hides a CNAME's TTL.
+  - Over HTTP/2 (`early-hints.ts`): early hints, sent as a browser. Cloudflare sends a 103 to
+    browsers only.
+  - From the release pipeline: the App Bundle check. Any current AGP can build a bundle, so the
+    only defect is APK uploads to Play.
+- **Retired (40):** RETIRED_CHECKS in `catalogue-compat.ts`, version `pulse-controls-2026.10`.
+  - 20 are SUPERSEDED_BY, MERGED_INTO or ALIAS_OF a live check that reads real evidence.
+  - 20 are WITHDRAWN because no scan can answer them: internal policies, back-office tooling, and
+    things only visible after signing in.
+- ⚠️ **A practice set up in a vendor's dashboard leaves no file.** Its absence from code is
+  INCONCLUSIVE, never a WARN. The only adverse verdicts are defects the files themselves show:
+  - a CloudWatch log group without `retention_in_days` (where `0` means forever);
+  - an AI route with no limiter in a repository that uses none, with most of the source read;
+  - email templates and layouts that were all read and none sets preview text;
+  - an English privacy notice that omits a right.
+- Validated against real data, which found 5 false positives:
+  - vercel/chatbot's own `checkIpRateLimit` wasn't recognised.
+  - A library `server.ts` was read as a route.
+  - The React Email preview app and components were read as templates (documenso, cal.com).
+  - A Storybook a11y panel was counted as a test (mastodon).
+  - gov.uk's rights list, split across items, was missed.
+
+  All five are fixed, with tests. maybe-finance's email WARN and Shopify's portability WARN were
+  checked by hand and are true.
+
+### 84.14 Multi-page crawl (`site-crawl.ts`, `pulse-agents/site-crawl-agent.ts`)
+
+Internal website scans now read up to 15 pages, not just the homepage. It runs behind the same
+switch as rendered-a11y. It never runs on the public embed, MCP, repo or store scans.
+
+- **Which pages:**
+  - Pages come from the homepage's links and the sitemap.
+  - Pricing, signup, login, contact, about, product, blog, checkout and docs are picked first.
+  - robots.txt is respected.
+- **Limits:** 4 at a time, 8s per page, a 45s budget, then up to 40 links and 10 sitemap URLs
+  checked. Every request goes through `fetchScannableUrl` (the SSRF guard).
+- **13 `crawl_*` checks:**
+  - broken internal links;
+  - titles, meta descriptions, html lang and viewport;
+  - mixed content and http form actions;
+  - canonicals and noindex on key pages;
+  - security-header consistency across pages;
+  - sitemap URLs and image alt text;
+  - a pages-read row.
+- **Not counted as pages:** soft 404s (the homepage or a catch-all answer), app shells, bot walls,
+  and 401/403/429/5xx responses.
+- A PASS needs 2 readable pages beyond the homepage.
+- It was run against 13 real sites, and 10 false positives were fixed. The validation notes are in
+  the commit.
+
+### 84.15 GitHub conditional requests (`src/lib/github-cache.ts`)
+
+`githubRequest` now remembers ETag and Last-Modified per (URL, Accept, token hash) in an in-process
+LRU: 2,000 entries, 50MB, with a 2MB cap per body.
+- A `304` with a token does **not** count against the 5,000/hour limit, which was measured.
+- Rescans of unchanged repos now cost close to nothing. A first scan still costs full price.
+- ⚠️ Unauthenticated 304s still count, so don't try to prove the saving with tokenless curl.
