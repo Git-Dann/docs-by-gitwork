@@ -9,6 +9,7 @@
  * check that passes now, after failing before.
  */
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { ChevronDownIcon, EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
@@ -22,6 +23,7 @@ import {
   buildFindings,
   compareFindings,
   countByView,
+  findingTaskHref,
   stageLabel,
   type Finding,
   type FindingDecision,
@@ -160,6 +162,7 @@ export function PulseFindings({
               const key = f.check.checkKey;
               const tier = tierOf(key);
               const expanded = open === key;
+              const taskHref = f.task ? findingTaskHref(f.task) : null;
               return (
                 <li key={key} className="px-3 py-2.5">
                   <div className="flex flex-wrap items-start gap-x-3 gap-y-2 sm:flex-nowrap">
@@ -182,18 +185,25 @@ export function PulseFindings({
                         {f.task?.assigneeName ? ` · ${f.task.assigneeName}` : ""}
                       </span>
                     </button>
-                    {canManage && (
+                    {(canManage || taskHref) && (
                       <div className="flex shrink-0 items-center gap-1.5 pl-10 sm:pl-0">
-                        {f.stage === "open" && clientId && (
+                        {taskHref && (
+                          <Link href={taskHref} className="whitespace-nowrap text-xs text-[var(--brand-600)] hover:underline" title={f.task?.title}>
+                            View task
+                          </Link>
+                        )}
+                        {canManage && f.stage === "open" && clientId && (
                           <Button size="xs" variant="secondary" disabled={busy === key} onClick={() => run(key, () => send.mutateAsync(key))}>
                             {busy === key ? "Sending…" : "Send to board"}
                           </Button>
                         )}
-                        <FindingMenu
-                          finding={f}
-                          onDecide={(decision) => { setNote(""); setDialog({ check: f.check, decision }); }}
-                          onReopen={() => run(key, () => decide.mutateAsync({ checkKey: key, decision: null }))}
-                        />
+                        {canManage && (
+                          <FindingMenu
+                            finding={f}
+                            onDecide={(decision) => { setNote(""); setDialog({ check: f.check, decision }); }}
+                            onReopen={() => run(key, () => decide.mutateAsync({ checkKey: key, decision: null }))}
+                          />
+                        )}
                       </div>
                     )}
                   </div>

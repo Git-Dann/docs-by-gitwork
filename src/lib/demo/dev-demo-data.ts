@@ -3670,7 +3670,7 @@ function demoFindingSeed(scanId: string) {
   const tasks: import("@/lib/pulse-findings").FindingTask[] = [];
   if (scanId === "scan-northwind" && warns.length >= 2) {
     states.push({ checkKey: warns[0], decision: null, note: null, taskId: "demo-pulse-task-1", decidedByName: null, decidedAt: null });
-    tasks.push({ id: "demo-pulse-task-1", status: "DOING", title: "[Pulse] finding", assigneeName: "Alex Rivera" });
+    tasks.push({ id: "demo-pulse-task-1", status: "DOING", title: "[Pulse] finding", assigneeName: "Alex Rivera", clientSlug: WIKI_CLIENT.slug });
     states.push({ checkKey: warns[1], decision: "ACCEPTED_RISK", note: "Marketing site only; no user data on these pages.", taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-2) });
   }
   return { states, tasks };
@@ -3692,7 +3692,8 @@ function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: st
   };
   if (isTask && method === "POST" && checkKey) {
     const id = `demo-pulse-task-${store.tasks.length + 2}`;
-    store.tasks.push({ id, status: "TODO", title: `[Pulse] ${checkKey}`, assigneeName: null });
+    const slug = CLIENTS.find((c) => c.id === scan.clientId)?.slug ?? null;
+    store.tasks.push({ id, status: "TODO", title: `[Pulse] ${checkKey}`, assigneeName: null, clientSlug: slug });
     upsert({ taskId: id });
     return { taskId: id, created: true, targetKey: targetKey(scan), clientId: scan.clientId, ...store };
   }

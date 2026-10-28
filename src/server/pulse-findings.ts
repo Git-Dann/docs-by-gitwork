@@ -106,11 +106,12 @@ export async function loadFindingStates(
   const taskRows = taskIds.length
     ? await prisma.task.findMany({
       where: { id: { in: taskIds } },
-      select: { id: true, status: true, title: true, assignees: { select: { name: true, email: true }, take: 1 } },
+      select: { id: true, status: true, title: true, client: { select: { slug: true } }, assignees: { select: { name: true, email: true }, take: 1 } },
     })
     : [];
   const taskById = new Map<string, FindingTask>(taskRows.map((t) => [t.id, {
     id: t.id, status: t.status, title: t.title, assigneeName: t.assignees[0]?.name ?? t.assignees[0]?.email ?? null,
+    clientSlug: t.client?.slug ?? null,
   }]));
 
   for (const [key, states] of statesOf) {

@@ -41,7 +41,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("@/server/tasks", () => ({
   createTask: async (_u: unknown, input: Record<string, unknown>) => {
-    const t = { id: `t${db.tasks.length + 1}`, status: "TODO", title: input.title, clientId: input.clientId, metadata: input.metadata, assignees: [] };
+    const t = { id: `t${db.tasks.length + 1}`, status: "TODO", title: input.title, clientId: input.clientId, metadata: input.metadata, assignees: [], client: { slug: "acme" } };
     db.tasks.push(t);
     db.created.push(input);
     return t;
@@ -103,10 +103,11 @@ describe("finding storage", () => {
   });
 
   it("a task made with the older '+ Task' button counts as on the board", async () => {
-    db.tasks.push({ id: "old", status: "DOING", title: "[Pulse] CSP", clientId: "c1", metadata: { source: "pulse_scan", pulseCheckKey: "csp_header" }, assignees: [] });
+    db.tasks.push({ id: "old", status: "DOING", title: "[Pulse] CSP", clientId: "c1", metadata: { source: "pulse_scan", pulseCheckKey: "csp_header" }, assignees: [], client: { slug: "acme" } });
     const { states, tasks } = await getFindingStates("s1");
     expect(states).toEqual([expect.objectContaining({ checkKey: "csp_header", taskId: "old" })]);
     expect(tasks.map((t) => t.id)).toEqual(["old"]);
+    expect(tasks[0].clientSlug).toBe("acme");
     expect((await sendFindingToBoard(user, "s1", "csp_header")).created).toBe(false);
   });
 
