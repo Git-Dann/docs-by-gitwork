@@ -41,7 +41,15 @@ describe("support_sla_documented reads a bounded window of visible text", () => 
   it("still passes a stated response time", async () => {
     expect((await check(page("<p>Our team will reply within 24 hours.</p>"), "shop.example.com", "support_sla_documented")).status).toBe("PASS");
     expect((await check(page("<h2>Support response times</h2>"), "shop.example.com", "support_sla_documented")).status).toBe("PASS");
-    expect((await check(page("<p>99.9% uptime SLA</p>"), "shop.example.com", "support_sla_documented")).status).toBe("PASS");
+    expect((await check(page("<p>15-minute response SLA</p>"), "shop.example.com", "support_sla_documented")).status).toBe("PASS");
+  });
+
+  // An uptime SLA promises availability, not a support response time (linear.app's pricing
+  // page), and "response times may be longer than usual" promises nothing (basecamp.com/support).
+  it("does not read an uptime SLA or an unquantified 'response times' as a support commitment", async () => {
+    expect((await check(page("<p>99.9% uptime SLA</p>"), "shop.example.com", "support_sla_documented")).status).toBe("WARN");
+    expect((await check(page("<p>99.95% uptime SLA, our highest priority support, and more.</p>"), "shop.example.com", "support_sla_documented")).status).toBe("WARN");
+    expect((await check(page("<p>We read and respond to every message, though response times may be a bit longer than usual right now.</p>"), "shop.example.com", "support_sla_documented")).status).toBe("WARN");
   });
 });
 

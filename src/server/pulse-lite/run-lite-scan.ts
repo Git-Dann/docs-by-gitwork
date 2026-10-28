@@ -28,6 +28,7 @@ import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
 import { runRenderedA11yAgent } from "@/server/pulse-agents/rendered-a11y-agent";
 import { runConsentTrackingAgent } from "@/server/pulse-agents/consent-tracking-agent";
 import { runSiteCrawlAgent } from "@/server/pulse-agents/site-crawl-agent";
+import { CRAWL_EVIDENCE_KEYS, crawlEvidencePages, upgradeFromCrawl } from "@/server/pulse-checks/crawl-evidence";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { applyAbsencePolicy } from "@/server/pulse-checks/absence-policy";
@@ -155,7 +156,21 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   // say) changes nothing — see private-repo.ts.
   let repoIsPrivate: RepoVisibility = null;
 
-  const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
+  // Checks that read only the homepage but can be answered from other pages of the site
+  // (crawl-evidence.ts). While a crawl may still run they are held here, first writer
+  // wins as everywhere else, and ingested once the crawl has finished, so persistence
+  // stays append-only.
+  const awaitingCrawl = new Map<string, PulseScanCheckInput>();
+  let holdForCrawl = false;
+  const ingest = (input0: PulseScanCheckInput[]): Promise<void> => {
+    let batch = input0;
+    if (holdForCrawl) {
+      batch = [];
+      for (const c of input0) {
+        if (!CRAWL_EVIDENCE_KEYS.has(c.checkKey)) batch.push(c);
+        else if (!awaitingCrawl.has(c.checkKey)) awaitingCrawl.set(c.checkKey, c);
+      }
+    }
     const fresh: PulseScanCheckInput[] = [];
     for (const c of applyCheckPolicy(batch, input.checkPolicy).map((c) => applyAbsencePolicy(applyPrivateRepoPolicy(c, repoIsPrivate), relevanceCtx.target.kind))) {
       if (seen.has(c.checkKey) || heldBack.has(c.checkKey)) continue;
@@ -213,6 +228,8 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // the site as what it is, a marketing site, and the gate applies the product's
     // real platform to decide which presence checks to show.
     const SOURCE_ONLY = new Set(["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "CLI_TOOL"]);
+    // The crawl rides the same switch as rendering and never reads a store listing.
+    holdForCrawl = renderJs && !store;
     const urlEnginePlatform = !store && SOURCE_ONLY.has(normalizePulsePlatform(input.platform)) ? "MARKETING_SITE" : input.platform;
     const urlResult = await runUrlChecks(safeUrl, urlEnginePlatform, onWave, input.targetMarkets, {
       renderJs,
@@ -377,6 +394,14 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     } else {
       collectorExecutions.push({ name: "site-crawl", outcome: "NOT_APPLICABLE" });
     }
+
+    // The held homepage-only checks, improved by the pages the crawl read where they can be.
+    // With no crawl, or a failed one, they go in exactly as the homepage left them.
+    holdForCrawl = false;
+    const held = [...awaitingCrawl.values()];
+    awaitingCrawl.clear();
+    const crawlObservation = crawlOutcome?.status === "fulfilled" ? crawlOutcome.value.observation : null;
+    if (held.length > 0) pending.push(ingest(crawlObservation ? upgradeFromCrawl(held, crawlEvidencePages(crawlObservation)) : held));
 
     // The source collectors are not merely absent from a URL scan — they are
     // UNAVAILABLE, and for a reason the customer can act on. Recording nothing

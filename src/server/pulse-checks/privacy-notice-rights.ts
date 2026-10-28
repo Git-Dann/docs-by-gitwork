@@ -21,9 +21,9 @@ import type { PulseScanCheckInput } from "@/types/pulse";
 import { CATEGORIES } from "./categories";
 import { documentLanguage } from "./jurisdictions";
 
-const ACCESS =
+export const ACCESS_RIGHT_CLAIM =
   /\bright\s+(?:of|to)\s+(?:request\s+)?access\b|\bsubject\s+access\s+requests?\b|\bcop(?:y|ies)\s+of\s+(?:the\s+|your\s+|that\s+|this\s+|any\s+|all\s+)?(?:personal\s+)?(?:data|information)\b|\b(?:request|obtain|ask\s+for)\s+access\s+to\s+(?:the\s+|your\s+|any\s+)?(?:personal\s+)?(?:data|information)\b|\baccess\s+(?:to\s+)?(?:the\s+)?personal\s+(?:data|information)\s+(?:that\s+)?we\s+hold\b|\bright\s+to\s+know\b/i;
-const PORTABILITY =
+export const PORTABILITY_RIGHT_CLAIM =
   /\bportab(?:ility|le)\b|\bmachine[- ]readable\b|\bstructured,\s+commonly[- ]used\b|\b(?:transmit|transfer)\s+(?:it|them|that\s+data|your\s+(?:personal\s+)?(?:data|information))\s+(?:directly\s+)?to\s+(?:another|a\s+third)\s+(?:controller|organi[sz]ation|service|company|party|provider)\b/i;
 /**
  * The policy relies on consent or a contract for some processing. The right to portability
@@ -81,8 +81,8 @@ export interface PrivacyPolicyRead {
 /** The two rights checks from the policy Pulse read, or null when none could be read. Pure. */
 export function privacyNoticeRightsChecks(policy: PrivacyPolicyRead | null): PulseScanCheckInput[] {
   const specs = [
-    { key: "gdpr_right_to_access", label: "Privacy policy explains the right of access (GDPR Art. 15)", re: ACCESS, right: "the right of access (asking for a copy of their personal data)" },
-    { key: "gdpr_right_to_portability", label: "Privacy policy explains the right to data portability (GDPR Art. 20)", re: PORTABILITY, right: "the right to data portability (receiving their data in a machine-readable format to take elsewhere)" },
+    { key: "gdpr_right_to_access", label: "Privacy policy explains the right of access (GDPR Art. 15)", re: ACCESS_RIGHT_CLAIM, right: "the right of access (asking for a copy of their personal data)" },
+    { key: "gdpr_right_to_portability", label: "Privacy policy explains the right to data portability (GDPR Art. 20)", re: PORTABILITY_RIGHT_CLAIM, right: "the right to data portability (receiving their data in a machine-readable format to take elsewhere)" },
   ];
   if (!policy) {
     return specs.map((s) => ({

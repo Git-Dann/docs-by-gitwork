@@ -23,16 +23,20 @@ import {
   pageIdentity,
   parseRobots,
   selectPages,
+  selectTrustPages,
   siteCrawlUnavailable,
   sitemapLocs,
   type CrawlCandidate,
   type CrawlObservation,
   type CrawledPage,
   type FetchedPage,
+  type FoundLink,
+  type TrustTopic,
   type LinkCheck,
   type RobotsRules,
   type SitemapCheck,
 } from "@/server/pulse-checks/site-crawl";
+import { pageAnchors } from "@/server/pulse-checks/page-claims";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 const USER_AGENT = "Gitwork-Pulse/1.0";
@@ -98,8 +102,12 @@ async function fetchOne(
   opts: { method?: "GET" | "HEAD"; maxBytes?: number; timeoutMs?: number; follow?: boolean } = {},
 ): Promise<FetchedPage> {
   const empty: FetchedPage = { url, finalUrl: url, status: 0, contentType: "", headers: {}, body: "" };
-  const timeout = Math.min(opts.timeoutMs ?? CRAWL_LIMITS.pageTimeoutMs, remaining(budget));
+  const full = opts.timeoutMs ?? CRAWL_LIMITS.pageTimeoutMs;
+  const timeout = Math.min(full, remaining(budget));
   if (timeout < 500) return empty;
+  // A request cut short because the crawl's own budget ran out says nothing about the
+  // host, so only a request that had its full time counts towards the host breaker.
+  const budgetCut = timeout < full;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
@@ -114,7 +122,7 @@ async function fetchOne(
       {},
       { followRedirects: opts.follow ?? true },
     ).catch((e) => {
-      if (controller.signal.aborted) recordTimeout(url);
+      if (controller.signal.aborted && !budgetCut) recordTimeout(url);
       throw e;
     });
     const headers = keptHeaders(res);
@@ -199,6 +207,21 @@ export async function runSiteCrawlAgent(homeUrl: string): Promise<SiteCrawlResul
     // Internal links found on every page that is really a page.
     const ctx = { home, catchAllBody: catchAll.status === 200 ? catchAll.body : null };
     const readablePages = [home, ...pages.filter((p) => classifyPage(p.fetch, ctx) === "page").map((p) => p.fetch)];
+
+    // Legal and trust pages, for the checks that ask what the business publishes
+    // (crawl-evidence.ts): linked from the pages read, then one hop on from those.
+    const fetchedIds = new Set<string>([pageIdentity(homeBase), ...pages.map((p) => pageIdentity(p.fetch.finalUrl || p.fetch.url)), ...selected.map((c) => pageIdentity(c.url))]);
+    const linksOn = (list: FetchedPage[]): FoundLink[] =>
+      list.flatMap((page) => pageAnchors(page.body).map((a) => ({ href: a.href, text: a.text, base: page.finalUrl || page.url })));
+    const readTrust = async (picks: Array<{ url: string; topic: TrustTopic }>) => {
+      for (const p of picks) fetchedIds.add(pageIdentity(p.url));
+      const got = await pool(picks, CRAWL_LIMITS.concurrency, (p) => fetchOne(p.url, budget));
+      return picks.map((p, i) => ({ fetch: got[i], topic: p.topic }));
+    };
+    const trustPages = await readTrust(selectTrustPages(linksOn(readablePages), homeBase, fetchedIds, CRAWL_LIMITS.maxTrustPages, rules));
+    const trustReadable = trustPages.filter((t) => classifyPage(t.fetch, ctx) === "page").map((t) => t.fetch);
+    for (const t of trustReadable) fetchedIds.add(pageIdentity(t.finalUrl || t.url));
+    trustPages.push(...await readTrust(selectTrustPages(linksOn(trustReadable), homeBase, fetchedIds, CRAWL_LIMITS.maxTrustSecondHop, rules)));
     const linkSources = new Map<string, { url: string; from: Set<string> }>();
     for (const page of readablePages) {
       const base = page.finalUrl || page.url;
@@ -250,6 +273,7 @@ export async function runSiteCrawlAgent(homeUrl: string): Promise<SiteCrawlResul
       sitemap: { read: sitemap.read, urlCount: sitemap.urls.length, checks: sitemapChecks },
       robotsBlocked,
       budgetExhausted: remaining(budget) <= 0,
+      trustPages,
     };
     return { checks: evaluateSiteCrawl(observation), observation };
   } catch (error) {

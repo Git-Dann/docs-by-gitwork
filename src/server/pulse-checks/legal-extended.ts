@@ -5,6 +5,11 @@ import { claimNotApplicable, claimSeen, claimUnseen, findClaim, pageAnchors, pro
 import { isDmaGatekeeperHost } from "./legal-claims";
 import { cardDataHandling } from "./payment-page-evidence";
 
+/** A lawful basis for processing, named as such. */
+export const LAWFUL_BASIS_CLAIM = /\b(?:lawful|legal)\s+bas(?:is|es)\b|\blegitimate\s+interests?\b|\bArt(?:icle|\.)\s*6\s*(?:\(1\)|of\s+the\s+(?:UK\s+)?GDPR)/i;
+/** A named GDPR Art. 27 representative in the EU. */
+export const EU_REPRESENTATIVE_CLAIM = /\b(?:EU|EEA|European(?:\s+Union)?)\s+(?:GDPR\s+|data\s+protection\s+)?representatives?\b|\bArt(?:icle|\.)\s*27\b/i;
+
 export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { pageResult } = ctx;
   const html = pageResult.html;
@@ -29,7 +34,7 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   // The bare words `consent` and `contract` matched every cookie banner, 'contractor'
   // and 'smart contract'. The run has to name a lawful basis as such.
   const lawfulBase = { category: CATEGORIES.LEGAL, checkKey: "gdpr_lawful_basis_stated", label: "Lawful basis stated in privacy policy" };
-  const lawfulQuote = findClaim(claimRuns, /\b(?:lawful|legal)\s+bas(?:is|es)\b|\blegitimate\s+interests?\b|\bArt(?:icle|\.)\s*6\s*(?:\(1\)|of\s+the\s+(?:UK\s+)?GDPR)/i);
+  const lawfulQuote = findClaim(claimRuns, LAWFUL_BASIS_CLAIM);
   checks.push(lawfulQuote
     ? claimSeen(lawfulBase, "The page names the lawful basis for processing personal data.", lawfulQuote)
     : claimUnseen(lawfulBase, `The scanned page does not name a lawful basis for processing. ${notInPrivacyPolicy}`));
@@ -43,7 +48,7 @@ export async function runLegalExtended(ctx: ExtendedCheckContext): Promise<Pulse
   // targets people in the EU; the page cannot show either, so only a named representative
   // is a finding.
   const euRepBase = { category: CATEGORIES.LEGAL, checkKey: "eu_representative_contact", label: "EU Art. 27 representative for non-EU companies" };
-  const euRepQuote = findClaim(claimRuns, /\b(?:EU|EEA|European(?:\s+Union)?)\s+(?:GDPR\s+|data\s+protection\s+)?representatives?\b|\bArt(?:icle|\.)\s*27\b/i);
+  const euRepQuote = findClaim(claimRuns, EU_REPRESENTATIVE_CLAIM);
   checks.push(euRepQuote
     ? claimSeen(euRepBase, "The page names an EU representative under GDPR Art. 27.", euRepQuote)
     : claimUnseen(euRepBase, `The scanned page does not name an EU representative. Art. 27 applies only to an organisation with no establishment in the EU that offers goods or services to, or monitors, people there; Pulse cannot tell either from a web page. ${notInPrivacyPolicy}`));

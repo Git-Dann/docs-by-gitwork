@@ -37,6 +37,9 @@ export const CRAWL_LIMITS = {
   maxLinkChecks: 40,
   /** Sitemap URLs whose status is checked. */
   maxSitemapChecks: 10,
+  /** Legal and trust pages linked from the pages read, then one hop further from those. */
+  maxTrustPages: 6,
+  maxTrustSecondHop: 4,
 } as const;
 
 /** Readable pages beyond the homepage needed before a crawl check may PASS. */
@@ -215,6 +218,85 @@ export function selectPages(
     taken.add(c.url);
   }
   return { selected, robotsBlocked };
+}
+
+// ── Trust and legal pages ───────────────────────────────────────────────────
+//
+// A business publishes its sub-processor list, privacy notice, company details and
+// policies on legal and trust pages, not the homepage. The checks that ask about them
+// (crawl-evidence.ts) need those pages, which the pick above rarely reaches. So they are
+// fetched as a separate, small set: from the links of every page already read, and one
+// hop further from the trust pages themselves (a privacy policy that links "Your rights").
+
+export type TrustTopic =
+  | "subprocessors" | "privacy" | "rights" | "trust" | "security" | "legal" | "terms"
+  | "imprint" | "ethics" | "sla";
+
+/** In priority order. A link matches on its path or its readable text. */
+const TRUST_PATTERNS: ReadonlyArray<{ topic: TrustTopic; path: RegExp; text: RegExp }> = [
+  { topic: "subprocessors", path: /(?:^|\/)(?:sub-?processors?|subprocessor-list|sub-processor-list)(?:[/.]|$)/i, text: /^\s*(?:list of\s+)?sub-?processors?\b/i },
+  { topic: "privacy", path: /(?:^|\/)(?:privacy(?:-policy|-notice|-statement)?|data-protection|datenschutz|gdpr)(?:[/.]|$)/i, text: /^\s*(?:our\s+)?(?:privacy(?:\s+(?:policy|notice|statement|centre|center))?|data protection(?:\s+(?:policy|notice))?|gdpr)\s*$/i },
+  { topic: "rights", path: /(?:^|\/)(?:your-(?:privacy-)?rights|privacy-rights|data-subject-(?:rights|requests?)|individual-rights)(?:[/.]|$)/i, text: /\b(?:your\s+(?:privacy\s+|data\s+)?rights|data\s+subject\s+rights|individual\s+rights|privacy\s+rights)\b/i },
+  { topic: "trust", path: /(?:^|\/)(?:trust(?:-center|-centre)?|compliance)(?:[/.]|$)/i, text: /^\s*(?:trust(?:\s+(?:center|centre|portal))?|compliance)\s*$/i },
+  { topic: "security", path: /(?:^|\/)security(?:[/.]|$)/i, text: /^\s*security\s*$/i },
+  { topic: "legal", path: /(?:^|\/)(?:legal|policies)(?:[/.]|$)/i, text: /^\s*(?:legal|policies|legal notices?)\s*$/i },
+  { topic: "terms", path: /(?:^|\/)(?:terms(?:-of-(?:service|use))?|tos|terms-and-conditions)(?:[/.]|$)/i, text: /^\s*terms(?:\s+(?:of\s+(?:service|use)|(?:and|&)\s+conditions))?\s*$/i },
+  { topic: "imprint", path: /(?:^|\/)(?:imprint|impressum|legal-notice|mentions-legales|company-information)(?:[/.]|$)/i, text: /^\s*(?:imprint|impressum|legal notice|mentions l[ée]gales|company information)\s*$/i },
+  { topic: "ethics", path: /(?:^|\/)(?:modern-?slavery[\w-]*|whistle-?blow[\w-]*|speak-?up|anti-?bribery[\w-]*|code-of-conduct|ethics)(?:[/.]|$)/i, text: /\bmodern slavery\b|\bwhistle-?blow|\bspeak[- ]up\b|\banti-?bribery\b|\bcode of conduct\b|^\s*ethics\s*$/i },
+  { topic: "sla", path: /(?:^|\/)(?:sla|service-level-agreement|support-policy)(?:[/.]|$)/i, text: /^\s*(?:sla|service level agreement|support policy)\s*$/i },
+];
+
+export function trustTopic(url: string, text = ""): TrustTopic | null {
+  const path = pathOf(url);
+  for (const { topic, path: p, text: t } of TRUST_PATTERNS) if (p.test(path) || (text && t.test(text))) return topic;
+  return null;
+}
+
+export interface FoundLink {
+  href: string;
+  text: string;
+  /** The page the link was found on, to resolve it against. */
+  base: string;
+}
+
+/**
+ * Up to `limit` legal and trust pages to read: one per topic first, in priority order and
+ * shallowest first, then any others. Pages in `exclude` (already read, the homepage) and
+ * robots-disallowed pages never appear.
+ */
+export function selectTrustPages(
+  links: FoundLink[],
+  home: string,
+  exclude: ReadonlySet<string>,
+  limit: number,
+  robots: RobotsRules | null,
+): Array<{ url: string; topic: TrustTopic }> {
+  const byId = new Map<string, { url: string; topic: TrustTopic }>();
+  for (const link of links) {
+    const url = normaliseCandidate(link.href, link.base, home);
+    if (!url) continue;
+    const id = pageIdentity(url);
+    if (exclude.has(id) || byId.has(id) || isHomePath(url)) continue;
+    const topic = trustTopic(url, link.text);
+    if (!topic) continue;
+    if (robots && !robotsAllows(robots, pathAndQuery(url))) continue;
+    byId.set(id, { url, topic });
+  }
+  const priority = (t: TrustTopic) => TRUST_PATTERNS.findIndex((p) => p.topic === t);
+  const ordered = [...byId.values()].sort((a, b) => priority(a.topic) - priority(b.topic) || depth(a.url) - depth(b.url));
+  const picked: Array<{ url: string; topic: TrustTopic }> = [];
+  const topics = new Set<TrustTopic>();
+  for (const c of ordered) {
+    if (picked.length >= limit) break;
+    if (topics.has(c.topic)) continue;
+    picked.push(c);
+    topics.add(c.topic);
+  }
+  for (const c of ordered) {
+    if (picked.length >= limit) break;
+    if (!picked.includes(c)) picked.push(c);
+  }
+  return picked;
 }
 
 function pathAndQuery(url: string): string {
@@ -611,6 +693,11 @@ export interface CrawlObservation {
   sitemap: { read: boolean; urlCount: number; checks: SitemapCheck[] };
   robotsBlocked: number;
   budgetExhausted: boolean;
+  /**
+   * Legal and trust pages read for the content checks (crawl-evidence.ts). Not judged by
+   * the crawl_* checks, which keep to the pages a visitor reaches first.
+   */
+  trustPages?: Array<{ fetch: FetchedPage; topic: TrustTopic }>;
 }
 
 // ── Evaluation ──────────────────────────────────────────────────────────────

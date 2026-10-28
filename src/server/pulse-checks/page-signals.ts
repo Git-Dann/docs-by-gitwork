@@ -67,7 +67,7 @@ export function appIconSizesVerdict(base: Base, html: string): PulseScanCheckInp
  * register reference. A bare suffix does not count: '© … Inc.' may name a third party,
  * and 'AB' is a word in many languages.
  */
-const COMPANY_REGISTRATION = new RegExp([
+export const COMPANY_REGISTRATION = new RegExp([
   String.raw`\bcompany\s+(?:registration\s+)?(?:number|no\.?|reg(?:istration)?\.?\s*(?:number|no\.?)?)\s*[:#.]?\s*(?:[A-Z]{2})?\s?\d{5,8}\b`,
   String.raw`\b(?:company\s+)?registered\s+(?:in|under\s+the\s+laws\s+of)\s+(?:England|Scotland|Wales|Northern\s+Ireland|(?:the\s+Republic\s+of\s+)?Ireland|the\s+Netherlands|Germany|France|Delaware)\b`,
   String.raw`\bregistered\s+office\b`,
