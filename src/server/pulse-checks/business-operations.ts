@@ -5,6 +5,103 @@ import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 const CATEGORY = CATEGORIES.BUSINESS_OPS;
 
+// An actual time range or round-the-clock statement in readable text. `9.*5` matched
+// any 9 followed later by a 5, which is effectively every page.
+const day = String.raw`(?:Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:r(?:s(?:day)?)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)`;
+const ampm = String.raw`\d{1,2}(?:[:.][0-5]\d)?\s*(?:am|pm|a\.m\.|p\.m\.)`;
+const h24 = String.raw`(?:[01]?\d|2[0-3])[:.][0-5]\d`;
+const range = String.raw`\s*(?:-|–|—|to|until|till)\s*`;
+// A bare time range is not opening hours (cal.com shows "12 PM - 1 PM" as a booking slot),
+// so it counts only in a run that also names a day or says what the hours are for.
+const hoursContext = String.raw`(?=.*\b(?:${day}|weekdays?|weekends?|daily|every\s+day|open(?:ing)?|hours|office|support|available|lines|call\s+us|closed)\b)`;
+/** Opening or support hours, tested one run of readable text at a time. */
+export const BUSINESS_HOURS_CLAIM = new RegExp(
+  String.raw`^${hoursContext}.*?(?:${ampm}${range}${ampm}|${h24}${range}${h24})|\b${day}${range}${day}\b[^.!?]{0,40}\d|\b(?:open|available|support(?:ed)?|staffed|here)\s+24\s*(?:\/|x)\s*7\b|\b24\s*(?:\/|x)\s*7\s+(?:support|help|service|customer)|\b24\s+hours\s+a\s+day\b`,
+  "i",
+);
+
+// A company number is 8 characters: 8 digits, or a 2-letter prefix (SC, NI, OC…) + 6
+// digits; older numbers are often written without the leading zero (7 digits).
+const companyNumber = String.raw`(?:[A-Z]{2}\d{6}|\d{7,8})\b`;
+/** A UK company registration number, stated as one. */
+export const UK_COMPANY_NUMBER_CLAIM = new RegExp(String.raw`\bcompany (?:registration )?(?:number|no\.?|reg(?:istration)?\.? no\.?)\s*:?\s*${companyNumber}|\b(?:registered|registration) (?:number|no\.?)\s*:?\s*${companyNumber}|\bregistered in (?:england|wales|scotland|northern ireland)(?: (?:and|&) wales)?(?:[^.]|\bno\.){0,60}?\b${companyNumber}|\bco\.? (?:reg\.? )?no\.?\s*:?\s*${companyNumber}|\bcrn\s*:?\s*${companyNumber}|\bcompanies house[^.]{0,40}?\b${companyNumber}`, "i");
+
+// Word-bounded role names: "dpo" is inside "endpoint", and "art director" is a job
+// title in a portfolio, not the company's responsible person.
+export const DIRECTOR_ROLE_CLAIM = /\b(?:managing director|company director|chief executive(?: officer)?|ceo|geschäftsführer(?:in)?|gérant|amministratore delegato|data protection officer|responsible person|vertretungsberechtigt)\b/i;
+
+// Bounded to a short window of visible text: the old /response.*time/ joined a
+// "response" in one script to a "time" thousands of characters later. An uptime SLA is a
+// promise about availability, not about how fast support answers, so it does not count
+// (linear.app's pricing page lists "Uptime SLA" and states no response time), and an SLA
+// and "support" in one sentence must not be separated by a comma: atlassian.com/government
+// reads "99.95% uptime SLA, our highest priority support". "Response times" counts only
+// with a duration: basecamp.com/support says "response times may be a bit longer than
+// usual right now", which promises nothing.
+export const SUPPORT_SLA_CLAIM = /\b(?:first[- ]response|resolution)\s+(?:times?|SLAs?)\b|\b(?:support|response)\s+SLAs?\b|\bsupport\s+response\s+times?\b|\bresponse\s+times?\b[^.]{0,40}?\b(?:\d+|one|two|24|48|72)\s*(?:business |working )?(?:minutes?|mins?|hours?|hrs?|days?)\b|\b(?:reply|respond|response|get back to you)\b[^.]{0,30}?\bwithin\s+(?:\d+|one|two|three|four|24|48|72)\s*(?:business |working )?(?:hours?|hrs?|days?|minutes?|mins?)\b|\bSLA\b[^.,;]{0,40}?\b(?:support|response)\b|\bsupport\b[^.,;]{0,40}?\bSLA\b|\b\d+\s*(?:hour|hr|business[- ]day|working[- ]day)s?\s+response\b/i;
+
+export const INVOICE_CLAIM = /\b(?:download|generate|get|receive|view)\w*\s+(?:your\s+)?(?:VAT\s+|tax\s+|PDF\s+)?invoices?\b|\b(?:VAT|tax) invoices?\b|\binvoices? (?:are |is )?(?:sent|emailed|generated|available)\b|\binvoice (?:history|PDFs?)\b|\bpay by invoice\b/i;
+
+// Bounded phrases only: the old unbounded `.*` joined e.g. a `data-testid` attribute to a word
+// "retention" 770KB later in minified HTML. A verb/object statement must name a duration
+// ("for 7 years", "for as long as…"), so product copy such as "Store files for free" is not read
+// as a retention schedule.
+// A count must be a count of time units: "for 3rd parties" or "for one low price" is not a period.
+const retentionUnit = String.raw`(?:hours?|days?|weeks?|months?|years?)\b`;
+const retentionDuration = String.raw`\b(?:for|until)\s+(?:up to\s+|at least\s+|a maximum of\s+|no longer than\s+)?(?:\d+(?:\s*(?:-|–|to)\s*\d+)?\s*${retentionUnit}|(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s+(?:\(\d+\)\s+)?${retentionUnit}|as long as|(?:a |the )?(?:period|duration|length|life)\b)`;
+const retentionObject = String.raw`(?:(?:your|the|any|all|such|our)\s+)?(?:(?:personal|customer|user|account|usage)\s+)*(?:data|information|records|logs)\b`;
+/** Each way a data retention statement is written. Any one of them is a statement. */
+export const DATA_RETENTION_CLAIMS: readonly RegExp[] = [
+  /\bdata retention\b|\bretention (?:policy|policies|period|periods|schedule)\b|\b(?:security|storage) and retention\b|\bretention of (?:your )?(?:personal )?(?:data|information)\b|\bhow long (?:do |will |)we (?:keep|retain|store|hold)\b|\bdeleted?\b[^.<]{0,80}?\bafter\s+\d+\s*(?:day|week|month|year)s?\b|\bkept for (?:up to )?\d+\s*(?:day|week|month|year)s?\b/i,
+  new RegExp(String.raw`\b(?:retain|keep|store|hold)(?:s|ed|ing)?\s+${retentionObject}[^.<]{0,60}?${retentionDuration}`, "i"),
+  new RegExp(String.raw`\b(?:data|information|records|logs)\s+(?:is|are|will be|may be|is only|are only)\s+(?:retained|kept|stored|held)\b[^.<]{0,40}?${retentionDuration}`, "i"),
+];
+
+export const MODERN_SLAVERY_CLAIM = /\bmodern slavery(?: act)?(?: (?:and human trafficking )?statement)?\b/i;
+
+/**
+ * Company policies a buyer's due diligence asks for. Withdrawn in October 2026 as keyword
+ * guesses, rebuilt as what they can honestly be: the site names or links the policy (PASS,
+ * quoted), or it does not, which says nothing about whether one exists (INCONCLUSIVE).
+ */
+export const COMPANY_POLICY_CLAIMS = {
+  bribery_act_policy: {
+    label: "Anti-bribery policy published",
+    re: /\banti[- ]?(?:bribery|corruption)\b|\bbribery act\b/i,
+    found: "The site names or links an anti-bribery policy.",
+    unseen: "The scanned page does not name or link an anti-bribery policy. The UK Bribery Act requires adequate internal procedures, which need not be published, so this does not show one is missing; large buyers often ask to see it.",
+  },
+  whistleblower_policy: {
+    label: "Whistleblowing channel published",
+    re: /\bwhistle[- ]?blow(?:ing|er)\b|\bspeak[- ]up (?:policy|line|channel)\b/i,
+    found: "The site names or links a whistleblowing or speak-up channel.",
+    unseen: "The scanned page does not name a whistleblowing channel. The EU Whistleblowing Directive requires an internal channel at 50 or more employees, which need not be on the website, so this does not show one is missing.",
+  },
+  supplier_due_diligence: {
+    label: "Sub-processor list published",
+    re: /\bsub[- ]?processors?\b/i,
+    found: "The site names or links its list of sub-processors.",
+    unseen: "The scanned page does not link a sub-processor list. Business customers' data-protection teams ask for one (GDPR Art. 28); it is often on a trust or legal page this check did not read.",
+  },
+  insurance_mention: {
+    label: "Business insurance stated",
+    re: /\b(?:professional indemnity|public liability|cyber(?:security)? (?:liability )?insurance|errors (?:and|&) omissions|liability insurance)\b/i,
+    found: "The site states the business's insurance cover.",
+    unseen: "The scanned page does not state any insurance cover. Procurement teams often ask for proof of professional indemnity or cyber insurance; it is rarely published, so this does not show there is none.",
+  },
+} as const;
+
+/** The first link (text, or href when it has none) whose text or address matches. */
+export function linkClaim(html: string, re: RegExp): string | null {
+  const a = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = a.exec(html)) !== null) {
+    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (re.test(text) || re.test(m[1])) return text || m[1];
+  }
+  return null;
+}
+
 const ALL_CHECKS: Array<[string, string]> = [
   ["physical_address_footer", "Physical address in footer"],
   ["business_hours_displayed", "Business hours displayed"],
@@ -50,20 +147,8 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
     /\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?)\s\d[ABD-HJLNP-UW-Z]{2}\b/.test(html);
   checks.push({ category: CATEGORY, checkKey: "physical_address_footer", label: "Physical address in footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical address detected." : "No postal address found on the scanned page — UK companies must show their registered office address on their website and the EU e-Commerce Directive requires a geographic address to be easily accessible (a contact or legal page also satisfies this); CAN-SPAM separately requires one in commercial emails." });
 
-  // An actual time range or round-the-clock statement in readable text. `9.*5` matched
-  // any 9 followed later by a 5, which is effectively every page.
   const hoursBase = { category: CATEGORY, checkKey: "business_hours_displayed", label: "Business hours displayed" };
-  const day = String.raw`(?:Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:r(?:s(?:day)?)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)`;
-  const ampm = String.raw`\d{1,2}(?:[:.][0-5]\d)?\s*(?:am|pm|a\.m\.|p\.m\.)`;
-  const h24 = String.raw`(?:[01]?\d|2[0-3])[:.][0-5]\d`;
-  const range = String.raw`\s*(?:-|–|—|to|until|till)\s*`;
-  // A bare time range is not opening hours (cal.com shows "12 PM - 1 PM" as a booking slot),
-  // so it counts only in a run that also names a day or says what the hours are for.
-  const hoursContext = String.raw`(?=.*\b(?:${day}|weekdays?|weekends?|daily|every\s+day|open(?:ing)?|hours|office|support|available|lines|call\s+us|closed)\b)`;
-  const hoursQuote = findClaim(proseRuns(ctx.contentHtml ?? html), new RegExp(
-    String.raw`^${hoursContext}.*?(?:${ampm}${range}${ampm}|${h24}${range}${h24})|\b${day}${range}${day}\b[^.!?]{0,40}\d|\b(?:open|available|support(?:ed)?|staffed|here)\s+24\s*(?:\/|x)\s*7\b|\b24\s*(?:\/|x)\s*7\s+(?:support|help|service|customer)|\b24\s+hours\s+a\s+day\b`,
-    "i",
-  ));
+  const hoursQuote = findClaim(proseRuns(ctx.contentHtml ?? html), BUSINESS_HOURS_CLAIM);
   checks.push(hoursQuote
     ? claimSeen(hoursBase, "The page shows when the business or support team is available.", hoursQuote)
     : claimUnseen(hoursBase, "The scanned page does not show opening or support hours. They are often on a contact page, which this check does not read, so this does not show they are missing. Showing when people can expect a reply reduces frustration."));
@@ -110,10 +195,7 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   });
   // A registered company: the page says it is one, or names its company form.
   const isUkCompany = isUkProduct && (/\b(?:ltd|limited|plc|llp)\b/i.test(visibleText) || /\bregistered in (?:england|wales|scotland|northern ireland)\b|\bcompanies house\b/i.test(visibleText));
-  // A company number is 8 characters: 8 digits, or a 2-letter prefix (SC, NI, OC…) + 6
-  // digits; older numbers are often written without the leading zero (7 digits).
-  const companyNumber = String.raw`(?:[A-Z]{2}\d{6}|\d{7,8})\b`;
-  const hasCompaniesHouse = new RegExp(String.raw`\bcompany (?:registration )?(?:number|no\.?|reg(?:istration)?\.? no\.?)\s*:?\s*${companyNumber}|\b(?:registered|registration) (?:number|no\.?)\s*:?\s*${companyNumber}|\bregistered in (?:england|wales|scotland|northern ireland)(?: (?:and|&) wales)?(?:[^.]|\bno\.){0,60}?\b${companyNumber}|\bco\.? (?:reg\.? )?no\.?\s*:?\s*${companyNumber}|\bcrn\s*:?\s*${companyNumber}|\bcompanies house[^.]{0,40}?\b${companyNumber}`, "i").test(visibleText);
+  const hasCompaniesHouse = UK_COMPANY_NUMBER_CLAIM.test(visibleText);
   const ukWhy = ukReasons.join(", ");
   checks.push({
     category: CATEGORY, checkKey: "uk_companies_house_number", label: "UK Companies House registration number",
@@ -126,9 +208,7 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
           : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "Only a registered company must show a number, and the page does not say whether this business is one.", detail: `UK signals found (${ukWhy}), but the page does not show that this is a registered company (no Ltd, PLC or LLP), so whether a company number is required cannot be established. Sole traders and partnerships have none.` }),
   });
 
-  // Word-bounded role names: "dpo" is inside "endpoint", and "art director" is a job
-  // title in a portfolio, not the company's responsible person.
-  const directorRole = /\b(?:managing director|company director|chief executive(?: officer)?|ceo|geschäftsführer(?:in)?|gérant|amministratore delegato|data protection officer|responsible person|vertretungsberechtigt)\b/i.exec(visibleText)?.[0];
+  const directorRole = DIRECTOR_ROLE_CLAIM.exec(visibleText)?.[0];
   checks.push({
     category: CATEGORY, checkKey: "eu_director_info", label: "Director / responsible person named",
     ...(directorRole
@@ -136,15 +216,13 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
       : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "Where it is required, the responsible person is named on an Impressum or legal page this check does not read.", detail: "The scanned page does not name a director or responsible person. Most sites have no duty to; where one exists (e.g. a German Impressum under DDG §5) it is met on a legal page rather than the homepage, so this is not a finding." }),
   });
 
-  // Bounded to a short window of visible text: the old /response.*time/ joined a
-  // "response" in one script to a "time" thousands of characters later.
-  const hasSupportSla = /\b(?:support|response|first[- ]response|resolution)\s+(?:times?|SLAs?)\b|\b(?:reply|respond|response|get back to you)\b[^.]{0,30}?\bwithin\s+(?:\d+|one|two|three|four|24|48|72)\s*(?:business |working )?(?:hours?|hrs?|days?|minutes?|mins?)\b|\bSLA\b[^.]{0,40}?\b(?:support|response|uptime)\b|\b(?:support|uptime)\b[^.]{0,40}?\bSLA\b|\b\d+\s*(?:hour|hr|business[- ]day|working[- ]day)s?\s+response\b/i.test(visibleText);
+  const hasSupportSla = SUPPORT_SLA_CLAIM.test(visibleText);
   checks.push({ category: CATEGORY, checkKey: "support_sla_documented", label: "Support SLA / response times documented", status: hasSupportSla ? "PASS" : "WARN", detail: hasSupportSla ? "Support response-time commitment found on the scanned page." : "No support response time found on the scanned page — enterprise buyers ask for documented response times in vendor assessments. If a support or SLA page states them, this does not apply." });
 
 
   // Only a site that takes payments issues invoices; sites with no payments used to be told
   // to generate VAT invoices. Read from visible copy, one sentence at a time.
-  const invoicePhrase = /\b(?:download|generate|get|receive|view)\w*\s+(?:your\s+)?(?:VAT\s+|tax\s+|PDF\s+)?invoices?\b|\b(?:VAT|tax) invoices?\b|\binvoices? (?:are |is )?(?:sent|emailed|generated|available)\b|\binvoice (?:history|PDFs?)\b|\bpay by invoice\b/i.exec(visibleText)?.[0];
+  const invoicePhrase = INVOICE_CLAIM.exec(visibleText)?.[0];
   checks.push({
     category: CATEGORY, checkKey: "invoice_generation_b2b", label: "Invoice / tax invoice generation",
     ...(!ctx.ctx.isPaymentEnabled
@@ -155,26 +233,14 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
   });
 
 
-
-  // Bounded phrases only: the old unbounded `.*` joined e.g. a `data-testid` attribute to a word
-  // "retention" 770KB later in minified HTML. A verb/object statement must name a duration
-  // ("for 7 years", "for as long as…"), so product copy such as "Store files for free" is not read
-  // as a retention schedule.
-  // A count must be a count of time units: "for 3rd parties" or "for one low price" is not a period.
-  const retentionUnit = String.raw`(?:hours?|days?|weeks?|months?|years?)\b`;
-  const retentionDuration = String.raw`\b(?:for|until)\s+(?:up to\s+|at least\s+|a maximum of\s+|no longer than\s+)?(?:\d+(?:\s*(?:-|–|to)\s*\d+)?\s*${retentionUnit}|(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s+(?:\(\d+\)\s+)?${retentionUnit}|as long as|(?:a |the )?(?:period|duration|length|life)\b)`;
-  const retentionObject = String.raw`(?:(?:your|the|any|all|such|our)\s+)?(?:(?:personal|customer|user|account|usage)\s+)*(?:data|information|records|logs)\b`;
-  const hasDataRetention =
-    /\bdata retention\b|\bretention (?:policy|policies|period|periods|schedule)\b|\b(?:security|storage) and retention\b|\bretention of (?:your )?(?:personal )?(?:data|information)\b|\bhow long (?:do |will |)we (?:keep|retain|store|hold)\b|\bdeleted?\b[^.<]{0,80}?\bafter\s+\d+\s*(?:day|week|month|year)s?\b|\bkept for (?:up to )?\d+\s*(?:day|week|month|year)s?\b/i.test(html) ||
-    new RegExp(String.raw`\b(?:retain|keep|store|hold)(?:s|ed|ing)?\s+${retentionObject}[^.<]{0,60}?${retentionDuration}`, "i").test(html) ||
-    new RegExp(String.raw`\b(?:data|information|records|logs)\s+(?:is|are|will be|may be|is only|are only)\s+(?:retained|kept|stored|held)\b[^.<]{0,40}?${retentionDuration}`, "i").test(html);
+  const hasDataRetention = DATA_RETENTION_CLAIMS.some((re) => re.test(html));
   checks.push({ category: CATEGORY, checkKey: "data_retention_schedule", label: "Data retention schedule published", status: hasDataRetention ? "PASS" : "WARN", detail: hasDataRetention ? "Data retention schedule signals detected." : "No data retention schedule found on the scanned page — UK/EU GDPR (Art. 13(2)(a)) requires your privacy notice to state how long personal data is kept. If your privacy policy already states retention periods, this does not apply." });
 
 
   // The duty (Modern Slavery Act 2015 s.54) falls on UK commercial organisations with
   // turnover of £36m or more, which a web page cannot show. So: not UK is not applicable,
   // a statement or a link to one passes, and anything else is unestablished.
-  const slaveryStatement = /\bmodern slavery(?: act)?(?: (?:and human trafficking )?statement)?\b/i.exec(visibleText)?.[0]
+  const slaveryStatement = MODERN_SLAVERY_CLAIM.exec(visibleText)?.[0]
     ?? (/\shref\s*=\s*["'][^"']*modern[-_]?slavery[^"']*["']/i.test(html) ? "a link to a modern slavery page" : null);
   checks.push({
     category: CATEGORY, checkKey: "modern_slavery_statement", label: "Modern Slavery Act statement (UK)",
@@ -185,41 +251,11 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
         : { status: "INCONCLUSIVE" as const, detail: `UK signals found (${ukWhy}), but the homepage has no modern slavery statement link. The duty applies only to organisations with turnover of £36m or more, which Pulse cannot see; those must link to the statement from a prominent place on their homepage.` }),
   });
 
-  // Company policies a buyer's due diligence asks for. Withdrawn in October 2026 as keyword
-  // guesses, rebuilt as what they can honestly be: the site names or links the policy (PASS,
-  // quoted), or it does not, which says nothing about whether one exists (INCONCLUSIVE).
-  const policyLink = (re: RegExp): string | null => {
-    const a = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = a.exec(html)) !== null) {
-      const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-      if (re.test(text) || re.test(m[1])) return text || m[1];
-    }
-    return null;
-  };
-  const policy = (key: string, label: string, re: RegExp, found: string, unseen: string) => {
-    const seen = findClaim(proseRuns(ctx.contentHtml ?? html), re) ?? policyLink(re);
-    checks.push(seen
-      ? claimSeen({ category: CATEGORY, checkKey: key, label }, found, seen)
-      : claimUnseen({ category: CATEGORY, checkKey: key, label }, unseen));
-  };
-  policy("bribery_act_policy", "Anti-bribery policy published",
-    /\banti[- ]?(?:bribery|corruption)\b|\bbribery act\b/i,
-    "The site names or links an anti-bribery policy.",
-    "The scanned page does not name or link an anti-bribery policy. The UK Bribery Act requires adequate internal procedures, which need not be published, so this does not show one is missing; large buyers often ask to see it.");
-  policy("whistleblower_policy", "Whistleblowing channel published",
-    /\bwhistle[- ]?blow(?:ing|er)\b|\bspeak[- ]up (?:policy|line|channel)\b/i,
-    "The site names or links a whistleblowing or speak-up channel.",
-    "The scanned page does not name a whistleblowing channel. The EU Whistleblowing Directive requires an internal channel at 50 or more employees, which need not be on the website, so this does not show one is missing.");
-  policy("supplier_due_diligence", "Sub-processor list published",
-    /\bsub[- ]?processors?\b/i,
-    "The site names or links its list of sub-processors.",
-    "The scanned page does not link a sub-processor list. Business customers' data-protection teams ask for one (GDPR Art. 28); it is often on a trust or legal page this check did not read.");
-  policy("insurance_mention", "Business insurance stated",
-    /\b(?:professional indemnity|public liability|cyber(?:security)? (?:liability )?insurance|errors (?:and|&) omissions|liability insurance)\b/i,
-    "The site states the business's insurance cover.",
-    "The scanned page does not state any insurance cover. Procurement teams often ask for proof of professional indemnity or cyber insurance; it is rarely published, so this does not show there is none.");
-
+  for (const [key, spec] of Object.entries(COMPANY_POLICY_CLAIMS)) {
+    const base = { category: CATEGORY, checkKey: key, label: spec.label };
+    const seen = findClaim(proseRuns(ctx.contentHtml ?? html), spec.re) ?? linkClaim(html, spec.re);
+    checks.push(seen ? claimSeen(base, spec.found, seen) : claimUnseen(base, spec.unseen));
+  }
 
 
   return checks;

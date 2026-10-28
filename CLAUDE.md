@@ -8383,3 +8383,46 @@ key changed. Each now rests on what the page does, in `src/server/pulse-checks/v
     Keep them as functions, or pass the numbers in as props.
   - Tests that check something is rendered on the page read `readScanPageSource()`
     (`src/components/pulse/__tests__/scan-page-source.ts`), not the one file.
+
+### 84.21 Homepage-only checks answered from the crawl (`crawl-evidence.ts`)
+
+Several checks ask what a business publishes and read only the homepage, or one fetched privacy
+policy. A site that publishes the thing on a legal or trust page came back INCONCLUSIVE. The
+internal crawl (§84.14) now feeds them.
+
+- **More pages:** after its normal pick, the crawl reads up to 6 legal and trust pages linked from
+  the pages it read (`selectTrustPages`: sub-processors, privacy, "your rights", trust, security,
+  legal, terms, imprint, ethics, SLA), then up to 4 more one hop on (a privacy policy that links
+  "Your rights"). Same-site, robots.txt respected, same SSRF guard and budget. They are kept in
+  `observation.trustPages` and are not judged by the `crawl_*` checks.
+- **18 checks** in `CRAWL_EVIDENCE_RULES`: business hours, VAT number, UK company number, company
+  registration, director or responsible person, support response time, invoices, data retention,
+  anti-bribery, whistleblowing, sub-processor list, insurance, lawful basis, EU representative (both
+  keys), transfer mechanism, and the rights of access and portability. Modern slavery is a 19th: a
+  statement found off the homepage stays INCONCLUSIVE (the Act wants a homepage link) and the
+  detail says where it is.
+- **Only an upgrade.** INCONCLUSIVE becomes PASS when a crawled page says it. A WARN is upgraded
+  only where its own text says another page satisfies it (support SLA, data retention, UK company
+  number). Nothing becomes FAIL or WARN, and a PASS is never replaced.
+- **Same matchers.** Each rule reuses the homepage check's own regex (now exported), so the two
+  cannot disagree. The PASS names the URL and quotes the text.
+- **Only real pages, of the right kind.** Pages must pass `classifyPage` (no soft 404s, catch-all
+  answers, bot walls or errors) and not be an empty shell. Blog posts and customer stories never
+  count. Retention, transfers and sub-processors need a legal or trust page; hours, SLAs and
+  invoices need a support, contact, help or pricing page; the rights checks need an English
+  privacy page.
+- **Wiring:** `runLiteScan` holds these keys back while a crawl may run (`holdForCrawl`), then
+  ingests them once, upgraded or as they were. Persistence stays append-only. The public scan
+  never crawls, so its answers are unchanged.
+- Validated on 8 real sites. False positives found and fixed:
+  - Atlassian's "24/7 support to employees and customers" on /enterprise read as its own hours.
+  - Its "uptime SLA, our highest priority support" read as a support response time.
+  - Stripe's "Invoice PDF" product feature read as invoices for Stripe's customers.
+  - gov.uk's privacy notice gave the ICO's phone hours, not its own.
+  - Linear's "Uptime SLA" and Basecamp's "response times may be a bit longer" read as a support
+    SLA. This also changed the homepage check (`SUPPORT_SLA_CLAIM`): an uptime SLA and an
+    unquantified "response times" no longer count.
+- Crawl requests cut short by the crawl's own budget no longer count towards the host breaker.
+- ⚠️ `runLiteScan` runs the crawl after the URL checks. If those trip the host breaker (2 timeouts),
+  the crawl reads nothing and every one of these keeps its homepage answer. This was seen from a
+  local machine and was not fixed here.
