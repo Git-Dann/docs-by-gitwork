@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { targetKey } from "@/lib/pulse-projects";
-import { findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
+import { countOpenFindings, findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { createTask } from "@/server/tasks";
 
@@ -36,23 +36,45 @@ export interface FindingsResponse {
   tasks: FindingTask[];
 }
 
-/** The decisions and tasks for the scan's project. */
-export async function getFindingStates(scanId: string): Promise<FindingsResponse> {
-  const { scan, key } = await loadScan(scanId);
-  const rows = await prisma.pulseFindingState.findMany({ where: { workspaceId: scan.workspaceId, targetKey: key } });
+/** One project to read findings for: its key, and the client whose board its tasks are on. */
+export interface FindingTarget {
+  targetKey: string;
+  clientId: string | null;
+}
 
-  // Tasks made with the older per-check "+ Task" button carry the check key in their
-  // metadata but have no state row; they count as sent to the board.
-  const legacy = scan.clientId
-    ? await prisma.task.findMany({
-      where: { clientId: scan.clientId, archivedAt: null, metadata: { path: ["source"], equals: "pulse_scan" } },
-      select: { id: true, metadata: true },
-    })
-    : [];
-  const legacyByCheck = new Map<string, string>();
+/**
+ * The decisions and board tasks for many projects at once, in a fixed number of queries
+ * however many projects there are (the Projects list reads every project's). One scan's
+ * read goes through here too, so the list and the scan page cannot disagree.
+ */
+export async function loadFindingStates(
+  workspaceId: string,
+  targets: FindingTarget[],
+): Promise<Map<string, { states: FindingState[]; tasks: FindingTask[] }>> {
+  const out = new Map<string, { states: FindingState[]; tasks: FindingTask[] }>();
+  if (targets.length === 0) return out;
+  const keys = [...new Set(targets.map((t) => t.targetKey))];
+  const clientIds = [...new Set(targets.map((t) => t.clientId).filter((x): x is string => Boolean(x)))];
+
+  const [rows, legacy] = await Promise.all([
+    prisma.pulseFindingState.findMany({ where: { workspaceId, targetKey: { in: keys } } }),
+    // Tasks made with the older per-check "+ Task" button carry the check key in their
+    // metadata but have no state row; they count as sent to the board.
+    clientIds.length
+      ? prisma.task.findMany({
+        where: { clientId: { in: clientIds }, archivedAt: null, metadata: { path: ["source"], equals: "pulse_scan" } },
+        select: { id: true, clientId: true, metadata: true },
+      })
+      : Promise.resolve([]),
+  ]);
+
+  const legacyByClient = new Map<string, Map<string, string>>();
   for (const t of legacy) {
     const ck = (t.metadata as Record<string, unknown> | null)?.["pulseCheckKey"];
-    if (typeof ck === "string" && !legacyByCheck.has(ck)) legacyByCheck.set(ck, t.id);
+    if (typeof ck !== "string" || !t.clientId) continue;
+    const m = legacyByClient.get(t.clientId) ?? new Map<string, string>();
+    if (!m.has(ck)) m.set(ck, t.id);
+    legacyByClient.set(t.clientId, m);
   }
 
   const deciderIds = [...new Set(rows.map((r) => r.decidedById).filter((x): x is string => Boolean(x)))];
@@ -61,34 +83,82 @@ export async function getFindingStates(scanId: string): Promise<FindingsResponse
     : [];
   const nameOf = new Map(deciders.map((u) => [u.id, u.name ?? u.email ?? null]));
 
-  const states: FindingState[] = rows.map((r) => ({
-    checkKey: r.checkKey,
-    decision: r.decision,
-    note: r.note,
-    taskId: r.taskId ?? legacyByCheck.get(r.checkKey) ?? null,
-    decidedByName: r.decidedById ? nameOf.get(r.decidedById) ?? null : null,
-    decidedAt: r.decidedAt?.toISOString() ?? null,
-  }));
-  const seen = new Set(states.map((s) => s.checkKey));
-  for (const [checkKey, taskId] of legacyByCheck) {
-    if (!seen.has(checkKey)) states.push({ checkKey, decision: null, note: null, taskId, decidedByName: null, decidedAt: null });
+  const statesOf = new Map<string, FindingState[]>();
+  for (const t of targets) {
+    if (statesOf.has(t.targetKey)) continue;
+    const legacyByCheck = (t.clientId && legacyByClient.get(t.clientId)) || new Map<string, string>();
+    const states: FindingState[] = rows.filter((r) => r.targetKey === t.targetKey).map((r) => ({
+      checkKey: r.checkKey,
+      decision: r.decision,
+      note: r.note,
+      taskId: r.taskId ?? legacyByCheck.get(r.checkKey) ?? null,
+      decidedByName: r.decidedById ? nameOf.get(r.decidedById) ?? null : null,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+    }));
+    const seen = new Set(states.map((s) => s.checkKey));
+    for (const [checkKey, taskId] of legacyByCheck) {
+      if (!seen.has(checkKey)) states.push({ checkKey, decision: null, note: null, taskId, decidedByName: null, decidedAt: null });
+    }
+    statesOf.set(t.targetKey, states);
   }
 
-  const taskIds = [...new Set(states.map((s) => s.taskId).filter((x): x is string => Boolean(x)))];
+  const taskIds = [...new Set([...statesOf.values()].flat().map((s) => s.taskId).filter((x): x is string => Boolean(x)))];
   const taskRows = taskIds.length
     ? await prisma.task.findMany({
       where: { id: { in: taskIds } },
       select: { id: true, status: true, title: true, assignees: { select: { name: true, email: true }, take: 1 } },
     })
     : [];
-  const tasks: FindingTask[] = taskRows.map((t) => ({
+  const taskById = new Map<string, FindingTask>(taskRows.map((t) => [t.id, {
     id: t.id, status: t.status, title: t.title, assigneeName: t.assignees[0]?.name ?? t.assignees[0]?.email ?? null,
-  }));
-  // A task deleted from the board is not "on the board".
-  const live = new Set(tasks.map((t) => t.id));
-  for (const s of states) if (s.taskId && !live.has(s.taskId)) s.taskId = null;
+  }]));
 
-  return { targetKey: key, clientId: scan.clientId, states, tasks };
+  for (const [key, states] of statesOf) {
+    // A task deleted from the board is not "on the board".
+    for (const s of states) if (s.taskId && !taskById.has(s.taskId)) s.taskId = null;
+    const ids = new Set(states.map((s) => s.taskId).filter(Boolean));
+    out.set(key, { states, tasks: [...ids].map((id) => taskById.get(id as string)!) });
+  }
+  return out;
+}
+
+/** The decisions and tasks for the scan's project. */
+export async function getFindingStates(scanId: string): Promise<FindingsResponse> {
+  const { scan, key } = await loadScan(scanId);
+  const found = (await loadFindingStates(scan.workspaceId, [{ targetKey: key, clientId: scan.clientId }])).get(key)!;
+  return { targetKey: key, clientId: scan.clientId, states: found.states, tasks: found.tasks };
+}
+
+/**
+ * Open findings for each project's newest completed scan, keyed by scan id. A fixed number
+ * of queries for the whole list: the checks of every scan in one read, and the decisions
+ * and tasks of every project in `loadFindingStates`.
+ */
+export async function countOpenFindingsForScans(scanIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (scanIds.length === 0) return out;
+  const scans = await prisma.pulseScan.findMany({
+    where: { id: { in: scanIds } },
+    select: { id: true, workspaceId: true, clientId: true, inputUrl: true, inputGithubRepo: true, projectName: true },
+  });
+  if (scans.length === 0) return out;
+  const checks = await prisma.pulseScanCheck.findMany({
+    where: { scanId: { in: scans.map((s) => s.id) } },
+    select: { scanId: true, checkKey: true, status: true },
+  });
+  const checksOf = new Map<string, { checkKey: string; status: string }[]>();
+  for (const c of checks) checksOf.set(c.scanId, [...(checksOf.get(c.scanId) ?? []), c]);
+
+  const byWorkspace = new Map<string, typeof scans>();
+  for (const s of scans) byWorkspace.set(s.workspaceId, [...(byWorkspace.get(s.workspaceId) ?? []), s]);
+  for (const [workspaceId, list] of byWorkspace) {
+    const found = await loadFindingStates(workspaceId, list.map((s) => ({ targetKey: targetKey(s), clientId: s.clientId })));
+    for (const s of list) {
+      const f = found.get(targetKey(s));
+      out.set(s.id, countOpenFindings(checksOf.get(s.id) ?? [], f?.states ?? [], f?.tasks ?? []));
+    }
+  }
+  return out;
 }
 
 /** Record (or clear, with `null`) a decision about one finding. */

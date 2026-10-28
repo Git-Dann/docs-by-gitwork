@@ -18,7 +18,8 @@ import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA
 import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
 import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
-import { buildProjects, decodeTargetKey, targetKey } from "@/lib/pulse-projects";
+import { buildProjects, decodeTargetKey, targetKey, type PulseProject } from "@/lib/pulse-projects";
+import { countOpenFindings } from "@/lib/pulse-findings";
 import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
@@ -3915,6 +3916,17 @@ function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: st
   return { targetKey: targetKey(scan), clientId: scan.clientId, ...store };
 }
 
+/** Each demo project's open findings, by the same rule and the same in-memory decisions as its scan page. */
+function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
+  return projects.map((p) => {
+    const scan = p.latestCompletedScanId ? (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[p.latestCompletedScanId] : undefined;
+    if (!scan || !p.latestCompletedScanId) return p;
+    const store = demoFindingStore.get(p.latestCompletedScanId) ?? demoFindingSeed(p.latestCompletedScanId);
+    demoFindingStore.set(p.latestCompletedScanId, store);
+    return { ...p, openFindings: countOpenFindings(scan.checks, store.states, store.tasks) };
+  });
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -4225,13 +4237,13 @@ export function resolveDemoApi(
   // Pulse (AI project validation) — 3 seeded reports.
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
   if (pathname === "/api/pulse/code-portfolio") return demoCodePortfolio();
-  if (pathname === "/api/pulse/projects") return { projects: buildProjects(demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[]) };
+  if (pathname === "/api/pulse/projects") return { projects: demoWithOpenFindings(buildProjects(demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[])) };
   {
     const pp = pathname.match(/^\/api\/pulse\/projects\/([^/]+)$/);
     if (pp) {
       const key = decodeTargetKey(pp[1]);
       const scans = (demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[]).filter((sc) => targetKey(sc) === key).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-      return scans.length ? { project: buildProjects(scans)[0], scans } : { project: null, scans: [] };
+      return scans.length ? { project: demoWithOpenFindings(buildProjects(scans))[0], scans } : { project: null, scans: [] };
     }
   }
   if (pathname === "/api/pulse/stats") return demoPulseStats;

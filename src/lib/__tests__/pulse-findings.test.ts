@@ -2,7 +2,7 @@
 // both ways: the input that must produce the stage, and a neighbouring one that must not.
 
 import { describe, expect, it } from "vitest";
-import { buildFindings, countByView, findingTask, stageLabel, type FindingState, type FindingTask } from "@/lib/pulse-findings";
+import { buildFindings, countByView, countOpenFindings, findingTask, stageLabel, type FindingState, type FindingTask } from "@/lib/pulse-findings";
 
 const check = (checkKey: string, status: string, label = checkKey) => ({ checkKey, label, category: "Security", status, detail: `${label} detail` });
 const state = (checkKey: string, patch: Partial<FindingState> = {}): FindingState => ({
@@ -79,5 +79,14 @@ describe("the views", () => {
     const counts = countByView(f);
     expect(counts).toEqual({ open: 2, in_progress: 1, fixed: 1, dismissed: 1, unchecked: 1 });
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(f.length);
+  });
+
+  it("the Projects list's open count agrees with the Findings tab's Open view", () => {
+    const checks = [check("a", "FAIL"), check("b", "WARN"), check("c", "FAIL"), check("d", "PASS"), check("g", "FAIL")];
+    const states = [state("b", { taskId: "t1" }), state("c", { decision: "ACCEPTED_RISK" }), state("g", { taskId: "t2" })];
+    const tasks = [task("t1", "DOING"), task("t2", "DONE")];
+    expect(countOpenFindings(checks, states, tasks)).toBe(countByView(buildFindings(checks, states, tasks)).open);
+    expect(countOpenFindings(checks, states, tasks)).toBe(2); // a, and g (task done, still failing)
+    expect(countOpenFindings(checks, [], [])).toBe(4);
   });
 });

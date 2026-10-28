@@ -127,6 +127,19 @@ export function countByView(findings: Finding[]): Record<FindingView, number> {
   return counts;
 }
 
+/**
+ * How many findings a scan has open, by the same rule the Findings tab counts with. Used
+ * where only the number is wanted (the Projects list), so it needs only key and status.
+ */
+export function countOpenFindings(
+  checks: { checkKey: string; status: string }[],
+  states: FindingState[],
+  tasks: FindingTask[],
+): number {
+  const full = checks.map((c) => ({ checkKey: c.checkKey, status: c.status, label: c.checkKey, category: "", detail: null }));
+  return countByView(buildFindings(full, states, tasks)).open;
+}
+
 /** What a stage says in a row, in plain words. */
 export function stageLabel(f: Finding): string {
   switch (f.stage) {

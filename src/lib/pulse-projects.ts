@@ -67,6 +67,14 @@ export interface PulseProject {
   latestScanId: string;
   latestStatus: PulseScanListItem["status"];
   latestScore: number | null;
+  /** The newest COMPLETED scan, the one the score and the open findings come from. */
+  latestCompletedScanId: string | null;
+  /**
+   * Open findings on that scan, counted with the Findings tab's own rule
+   * (src/lib/pulse-findings.ts). Null until the server (or demo) has counted them,
+   * and when there is no completed scan.
+   */
+  openFindings: number | null;
   lastScannedAt: string;
   /** Completed scores, oldest first, with dates and links. */
   history: ProjectPoint[];
@@ -145,6 +153,8 @@ export function buildProjects(scans: PulseScanListItem[], now: number = Date.now
       latestScanId: latest.id,
       latestStatus: latest.status,
       latestScore: last?.score ?? null,
+      latestCompletedScanId: last?.scanId ?? null,
+      openFindings: null,
       lastScannedAt: latest.createdAt,
       history: history.slice(-24),
       change,
