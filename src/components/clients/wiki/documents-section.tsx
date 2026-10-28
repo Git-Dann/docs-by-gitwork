@@ -644,7 +644,7 @@ export function DocumentsManager({
   drive?: WikiDriveSection;
 }) {
   const withDrive = hasDriveTab(drive, "team");
-  const [tab, setTab] = useState<ResourcesTab>("resources");
+  const [tab, setTab] = useState<ResourcesTab>(documents.length === 0 && withDrive ? "drive" : "resources");
   const createLink = useCreateWikiLinkDoc(slug);
   const uploadFile = useUploadWikiFileDoc(slug);
   const remove = useDeleteWikiDoc(slug);
