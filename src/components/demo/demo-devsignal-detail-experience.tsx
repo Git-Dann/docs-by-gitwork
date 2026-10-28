@@ -8,7 +8,7 @@ import { AssessmentDetail } from "@/components/codeclear/devsignal/assessment-de
  */
 export function DemoDevSignalDetailExperience({ id }: { id: string }) {
   return (
-    <DemoShell active="Code" title="Code" subtitle="Assessment review">
+    <DemoShell active="Hiring" title="Hiring" subtitle="Assessment review">
       <AssessmentDetail id={id} />
     </DemoShell>
   );

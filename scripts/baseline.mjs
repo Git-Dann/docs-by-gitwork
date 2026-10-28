@@ -168,8 +168,17 @@ async function visit(browser, path, [w, h]) {
   } catch (e) {
     errors.push(`navigation: ${e.message.split('\n')[0]}`)
   }
-  await page.waitForTimeout(400)
-  const content = await page.evaluate(CONTENT).catch(() => null)
+  // Demo data loads after first paint, and in dev mode that can be later than network
+  // idle. Read until two reads 400ms apart agree (up to ~4s), so a slow query can't
+  // record — or fail — a half-loaded page. Seen on /demo/pulse/monitors' count.
+  let content = null
+  for (let i = 0; i < 10; i++) {
+    await page.waitForTimeout(400)
+    const next = await page.evaluate(CONTENT).catch(() => null)
+    const settled = content !== null && JSON.stringify(next) === JSON.stringify(content)
+    content = next
+    if (settled) break
+  }
   const clipping = await page.evaluate(AUDIT).catch(() => [])
   await ctx.close()
   return { status, errors, content, clippingCount: Array.isArray(clipping) ? clipping.length : 0, clipping }
