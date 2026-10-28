@@ -48,7 +48,7 @@ export function activeDeveloperWhere(emails: string[]): Prisma.CandidateWhereInp
 }
 
 /**
- * Developer records only. Since Staff (CLAUDE.md §86) a Candidate row can be anyone on
+ * Developer records only. Since Staff (CLAUDE.md §87) a Candidate row can be anyone on
  * the team, and only developers have a GitHub handle. Every developer-facing list —
  * Developers, Pipeline, the Overview's counts, and the iOS Dev Directory, which reads
  * the same endpoint — filters on this, so they show exactly the rows they did before.

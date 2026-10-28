@@ -8526,7 +8526,7 @@ was checked by pointing the demo at it temporarily. Post-deploy: link a client's
 Portal → Documents → Drive, press **Show to client** on the wiki's Resources, then open the share
 link as a client user and open a Google Doc. It should preview as a PDF.
 
-## 85. Recent Changes (October 2026) — Foundry for other businesses: the baseline and Phase 0
+## 86. Recent Changes (October 2026) — Foundry for other businesses: the baseline and Phase 0
 
 The start of making Foundry usable by other businesses. **The plan is `docs/multi-tenant-roadmap.md`
 — read it before touching anything in this programme.** The rule above every phase: Gitwork sees no
@@ -8601,7 +8601,7 @@ across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a writ
 **Not verified:** any of this against production data, the console in dark mode (the demo shell
 ignores the theme switch), and the iOS app (its repo isn't in this session yet).
 
-## 86. Recent Changes (October 2026) — Code becomes Staff (Phase 1, web)
+## 87. Recent Changes (October 2026) — Code becomes Staff (Phase 1, web)
 
 The module is now **Staff** (sidebar: Staff, "People and availability"), a roster of everyone on
 the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenant-roadmap.md`.

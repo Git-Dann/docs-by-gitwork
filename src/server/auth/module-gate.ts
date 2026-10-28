@@ -38,7 +38,7 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   // silently regate admin-only DevSignal onto `codeclear`, which STAFF auto-inherits.
   { prefix: "/app/codeclear", module: "codeclear" }, // legacy (still owns candidates/, pipeline/, devsignal/**)
   { prefix: "/app/code", module: "codeclear" }, // was the canonical route; now redirects to /app/staff
-  // Staff (formerly Code, CLAUDE.md §86). Same permission id: it is stored in every role
+  // Staff (formerly Code, CLAUDE.md §87). Same permission id: it is stored in every role
   // matrix and member override, so renaming it would silently revoke Staff from everyone.
   { prefix: "/app/staff", module: "codeclear" },
   { prefix: "/app/docs", module: "proposals" }, // canonical

@@ -71,7 +71,7 @@ const analysisTone: Record<
 type CodeTab = { href: string; label: string; devsignal?: boolean };
 
 /**
- * Staff (formerly Code, CLAUDE.md §86): the people, then Hiring — the developer
+ * Staff (formerly Code, CLAUDE.md §87): the people, then Hiring — the developer
  * vetting that used to be the whole module. Hiring is a workspace module of its own
  * (`devsignal`, src/lib/workspace-modules.ts), so a business without it sees Staff only.
  */

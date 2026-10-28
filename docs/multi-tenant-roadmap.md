@@ -4,12 +4,12 @@
 
 | Step | State |
 |---|---|
-| Baseline check (`npm run test:baseline`) | Done, CLAUDE.md §85.1 |
-| Phase 0.1 Workspace module switch | Done, §85.2 |
-| Phase 0.2 Workspace AI keys win | Done, §85.3 |
-| Phase 0.3 Secrets encrypted at rest | Done for new writes; backfill of existing values awaits a decision, §85.4 |
-| Phase 0.4 Platform admin + console (businesses, modules, AI keys, activity) | Done, §85.5 |
-| Phase 1 Staff (web): People roster, Staff/Hiring split, schema, record linking | Done, CLAUDE.md §86 |
+| Baseline check (`npm run test:baseline`) | Done, CLAUDE.md §86.1 |
+| Phase 0.1 Workspace module switch | Done, §86.2 |
+| Phase 0.2 Workspace AI keys win | Done, §86.3 |
+| Phase 0.3 Secrets encrypted at rest | Done for new writes; backfill of existing values awaits a decision, §86.4 |
+| Phase 0.4 Platform admin + console (businesses, modules, AI keys, activity) | Done, §86.5 |
+| Phase 1 Staff (web): People roster, Staff/Hiring split, schema, record linking | Done, CLAUDE.md §87 |
 | Phase 1 Staff (iOS) | Draft PR [Git-Dann/foundry-ios#1](https://github.com/Git-Dann/foundry-ios/pull/1): tabs follow workspace modules. Unbuilt, needs a Mac build |
 
 ## Context

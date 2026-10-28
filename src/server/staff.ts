@@ -1,5 +1,5 @@
 /**
- * Staff: the people roster (CLAUDE.md §86). Builds one list of everyone on the team
+ * Staff: the people roster (CLAUDE.md §87). Builds one list of everyone on the team
  * from two sources that used to live apart:
  *   - workspace members (people who sign in: role, leave, country), and
  *   - Staff records (Candidate rows: job title, clients, rates, CV, GitHub).

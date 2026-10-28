@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Staff → People: everyone on the team in one list (CLAUDE.md §86). Members who sign in
+ * Staff → People: everyone on the team in one list (CLAUDE.md §87). Members who sign in
  * and Staff records (developers and contractors who don't) side by side, with job title,
  * department, employment type and the clients they're on.
  *

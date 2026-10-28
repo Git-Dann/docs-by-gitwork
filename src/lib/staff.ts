@@ -1,6 +1,6 @@
 /**
  * Staff (formerly Code): the people roster — everyone on the team, not only developers.
- * See CLAUDE.md §86 and docs/multi-tenant-roadmap.md, Phase 1.
+ * See CLAUDE.md §87 and docs/multi-tenant-roadmap.md, Phase 1.
  *
  * A person on the roster is a workspace member (someone who signs in), a Staff record
  * (the Candidate row: job title, clients, rates, CV…), or both, linked by
