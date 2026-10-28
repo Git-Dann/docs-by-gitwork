@@ -35,7 +35,7 @@ export async function POST(
       select: {
         id: true,
         aiProvider: true,
-        anthropicApiKey: true, anthropicModel: true,
+        anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true,
         openaiApiKey: true, openaiModel: true,
         geminiApiKey: true, geminiModel: true,
         localLlmUrl: true, localLlmModel: true,

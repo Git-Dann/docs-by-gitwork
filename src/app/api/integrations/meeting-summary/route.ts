@@ -13,6 +13,7 @@ import { getSlackBotToken } from "@/server/slack/client";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { lightModelFor, DEFAULT_MODELS } from "@/server/ai-provider";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -62,10 +63,10 @@ export async function POST(req: NextRequest) {
     // model switch (e.g. Sonnet → Opus) invalidates entries automatically.
 
     if (provider === "OPENAI") {
-      apiKey = process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+      apiKey = aiKeyFor("OPENAI", workspace, "env");
       model = workspace.openaiModel ?? DEFAULT_MODELS.OPENAI;
     } else if (provider === "GEMINI") {
-      apiKey = process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+      apiKey = aiKeyFor("GEMINI", workspace, "env");
       model = workspace.geminiModel ?? DEFAULT_MODELS.GEMINI;
       baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
     } else if (provider === "LOCAL") {
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
       model = workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL;
       baseUrl = workspace.localLlmUrl ?? "http://localhost:11434/v1";
     } else {
-      apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      apiKey = aiKeyFor("ANTHROPIC", workspace, "env");
       model = workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC;
     }
 

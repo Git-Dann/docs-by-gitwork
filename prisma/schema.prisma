@@ -292,6 +292,10 @@ model Workspace {
   /// only `enabledModules`, refused even to the workspace's own Super Admins.
   modulesRestricted           Boolean                    @default(false)
   enabledModules              String[]                   @default([])
+  /// May this workspace fall back on the SERVER's AI keys (ANTHROPIC_API_KEY …)?
+  /// true for every workspace that existed before the switch (Gitwork). A new business
+  /// is created with false, so it only ever spends its own keys. src/server/ai-keys.ts.
+  platformAiKeysAllowed       Boolean                    @default(true)
   anthropicApiKey             String?
   anthropicModel              String?
   aiProvider                  String                     @default("ANTHROPIC")

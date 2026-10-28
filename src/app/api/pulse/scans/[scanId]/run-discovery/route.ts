@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -32,10 +33,10 @@ export async function POST(
     const aiConfig = {
       provider: p,
       apiKey: (() => {
-        if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-        if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+        if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
+        if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
         if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
-        return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+        return aiKeyFor("ANTHROPIC", workspace, "env");
       })(),
       model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI)
            : p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI)

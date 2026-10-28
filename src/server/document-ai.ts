@@ -30,6 +30,7 @@ import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import type { ProposalDocument, ProposalSection, SectionKey } from "@/types/proposal";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor } from "@/server/ai-keys";
 
 const DEFAULT_MODEL = DEFAULT_MODELS.ANTHROPIC;
 
@@ -53,11 +54,11 @@ export class AiNotConfiguredError extends Error {
 async function loadWorkspaceAnthropic(workspaceId: string) {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { aiProvider: true, anthropicApiKey: true, anthropicModel: true },
+    select: { aiProvider: true, anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true },
   });
   if (!workspace) throw new Error("Workspace not found.");
 
-  const apiKey = workspace.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  const apiKey = aiKeyFor("ANTHROPIC", workspace, "workspace");
   if (!apiKey) {
     throw new AiNotConfiguredError();
   }

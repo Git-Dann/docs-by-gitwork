@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { workspace } = await ensureBaseRecords();
     const ws = await prisma.workspace.findUnique({
       where: { id: workspace.id },
-      select: { aiProvider: true, anthropicApiKey: true, anthropicModel: true },
+      select: { aiProvider: true, anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true },
     });
     if (!ws || (ws.aiProvider ?? "ANTHROPIC") !== "ANTHROPIC" || !ws.anthropicApiKey) {
       throw new AiNotConfiguredError();

@@ -62,6 +62,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           slackBotTokenEncrypted: true,
           aiProvider: true,
           anthropicApiKey: true,
+          platformAiKeysAllowed: true,
           anthropicModel: true,
           openaiApiKey: true,
           openaiModel: true,

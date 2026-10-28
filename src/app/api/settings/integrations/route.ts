@@ -9,6 +9,7 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { recordAuditEntry } from "@/server/audit-log";
 import { authTest, getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor, aiKeySource } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export async function GET() {
       select: {
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         anthropicModel: true,
         openaiApiKey: true,
         openaiModel: true,
@@ -69,21 +71,23 @@ export async function GET() {
       },
     });
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY ?? workspace?.anthropicApiKey ?? null;
-    const openaiKey = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
-    const geminiKey = process.env.GEMINI_API_KEY ?? workspace?.geminiApiKey ?? null;
+    // The same rule the AI calls use (src/server/ai-keys.ts), so Settings never shows a
+    // key the workspace cannot actually use.
+    const anthropicKey = aiKeyFor("ANTHROPIC", workspace, "env");
+    const openaiKey = aiKeyFor("OPENAI", workspace, "env");
+    const geminiKey = aiKeyFor("GEMINI", workspace, "env");
     const externalKey = process.env.API_KEY ?? workspace?.externalApiKey ?? null;
 
     return apiOk({
       aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
       anthropicKeyMasked: anthropicKey ? maskKey(anthropicKey) : null,
-      anthropicKeySource: process.env.ANTHROPIC_API_KEY ? "env" : workspace?.anthropicApiKey ? "database" : null,
+      anthropicKeySource: aiKeySource("ANTHROPIC", workspace, "env"),
       anthropicModel: workspace?.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC,
       openaiKeyMasked: openaiKey ? maskKey(openaiKey) : null,
-      openaiKeySource: process.env.OPENAI_API_KEY ? "env" : workspace?.openaiApiKey ? "database" : null,
+      openaiKeySource: aiKeySource("OPENAI", workspace, "env"),
       openaiModel: workspace?.openaiModel ?? DEFAULT_MODELS.OPENAI,
       geminiKeyMasked: geminiKey ? maskKey(geminiKey) : null,
-      geminiKeySource: process.env.GEMINI_API_KEY ? "env" : workspace?.geminiApiKey ? "database" : null,
+      geminiKeySource: aiKeySource("GEMINI", workspace, "env"),
       geminiModel: workspace?.geminiModel ?? DEFAULT_MODELS.GEMINI,
       localLlmUrl: workspace?.localLlmUrl ?? "",
       localLlmModel: workspace?.localLlmModel ?? DEFAULT_MODELS.LOCAL,
@@ -254,6 +258,7 @@ export async function PUT(request: NextRequest) {
         id: true,
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         openaiApiKey: true,
         geminiApiKey: true,
         externalApiKey: true,

@@ -60,6 +60,7 @@ type LoadedAssessment = Prisma.DevSignalAssessmentGetPayload<{
         id: true;
         aiProvider: true;
         anthropicApiKey: true;
+        platformAiKeysAllowed: true;
         anthropicModel: true;
         openaiApiKey: true;
         openaiModel: true;
@@ -82,6 +83,7 @@ async function loadByToken(token: string): Promise<LoadedAssessment | null> {
           id: true,
           aiProvider: true,
           anthropicApiKey: true,
+          platformAiKeysAllowed: true,
           anthropicModel: true,
           openaiApiKey: true,
           openaiModel: true,

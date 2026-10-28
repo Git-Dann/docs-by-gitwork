@@ -36,6 +36,7 @@ import {
 const AI_FIELD_SELECT = {
   aiProvider: true,
   anthropicApiKey: true,
+  platformAiKeysAllowed: true,
   anthropicModel: true,
   openaiApiKey: true,
   openaiModel: true,

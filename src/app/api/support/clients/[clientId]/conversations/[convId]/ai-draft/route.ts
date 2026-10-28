@@ -7,6 +7,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,10 +29,10 @@ export async function POST(
     let baseUrl: string | null = null;
 
     if (provider === "OPENAI") {
-      apiKey = process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+      apiKey = aiKeyFor("OPENAI", workspace, "env");
       model = workspace.openaiModel ?? DEFAULT_MODELS.OPENAI;
     } else if (provider === "GEMINI") {
-      apiKey = process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
+      apiKey = aiKeyFor("GEMINI", workspace, "env");
       model = workspace.geminiModel ?? DEFAULT_MODELS.GEMINI;
       baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
     } else if (provider === "LOCAL") {
@@ -39,7 +40,7 @@ export async function POST(
       model = workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL;
       baseUrl = workspace.localLlmUrl ?? "http://localhost:11434/v1";
     } else {
-      apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      apiKey = aiKeyFor("ANTHROPIC", workspace, "env");
       model = workspace.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC;
     }
 

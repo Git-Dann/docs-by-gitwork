@@ -5,6 +5,7 @@ import { scoreVideoTranscript } from "../video-scoring";
 
 const noAiWorkspace = {
   aiProvider: "ANTHROPIC",
+  platformAiKeysAllowed: true,
   anthropicApiKey: null,
   anthropicModel: null,
   openaiApiKey: null,
