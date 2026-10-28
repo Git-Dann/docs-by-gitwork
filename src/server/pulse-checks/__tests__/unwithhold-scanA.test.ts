@@ -32,7 +32,10 @@ import { WITHHELD } from "../check-relevance-data";
 
 const SAAS: ProjectContext = { isPaymentEnabled: true, isAuthEnabled: true, isSaas: true, isMobileApp: false, hasBackend: true, authMethod: "unknown" };
 
-function ctx(html: string, hostname = "example.com", project: Partial<ProjectContext> = {}): ExtendedCheckContext {
+// `example.invalid` never resolves (RFC 2606), so collectors that probe the host (the
+// security-whitepaper path, status pages) fail at once instead of reaching the real
+// example.com over the network, which timed this file out under load.
+function ctx(html: string, hostname = "example.invalid", project: Partial<ProjectContext> = {}): ExtendedCheckContext {
   return {
     pageResult: { ok: true, status: 200, headers: {}, html, responseTimeMs: 10, finalUrl: `https://${hostname}/` },
     httpsUrl: `https://${hostname}`,
