@@ -1,5 +1,16 @@
 # Foundry for other businesses: the multi-tenant roadmap
 
+## Progress
+
+| Step | State |
+|---|---|
+| Baseline check (`npm run test:baseline`) | Done, CLAUDE.md §85.1 |
+| Phase 0.1 Workspace module switch | Done, §85.2 |
+| Phase 0.2 Workspace AI keys win | Done, §85.3 |
+| Phase 0.3 Secrets encrypted at rest | Done for new writes; backfill of existing values awaits a decision, §85.4 |
+| Phase 0.4 Platform admin + console (businesses, modules, AI keys, activity) | Done, §85.5 |
+| Phase 1 Staff | Next |
+
 ## Context
 
 Dan wants to offer Foundry to other small businesses as a project planner/tracker. Each business would:

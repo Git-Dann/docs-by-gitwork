@@ -117,7 +117,10 @@ broken or lost content. See `docs/build-checklist.md` §4a.
    `UNGATED_APP_PREFIXES` if it's open to every member) in `src/server/auth/module-gate.ts`. Miss
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
    default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
-   ended up ungated.
+   ended up ungated. **If the page belongs to a module, also put its path in that module's entry
+   in `src/lib/workspace-modules.ts`** — the switch for which modules a *business* has, checked
+   before any role (a business without Pulse is refused Pulse even as its own Super Admin). A test
+   fails if a gated path has no module there.
 7. **The renderer is the limit — not the editor — and there are TWO of them.** Text fields store
    Markdown, and anything the renderer can't draw prints **verbatim on the client's document**.
    `renderLines` (`src/lib/markdown.tsx`) draws bold, italic, code, links and bulleted / numbered /
