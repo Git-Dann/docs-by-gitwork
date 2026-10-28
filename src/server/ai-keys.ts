@@ -15,6 +15,8 @@
  * See docs/multi-tenant-roadmap.md, Phase 0.
  */
 
+import { readSecret } from "@/server/stored-secret";
+
 export type KeyedAiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "GROQ";
 
 export interface WorkspaceAiKeys {
@@ -41,13 +43,13 @@ function present(key: string | null | undefined): string | null {
 function ownKey(provider: KeyedAiProvider, ws: WorkspaceAiKeys): string | null {
   switch (provider) {
     case "ANTHROPIC":
-      return present(ws.anthropicApiKey);
+      return present(readSecret(ws.anthropicApiKey));
     case "GEMINI":
-      return present(ws.geminiApiKey);
+      return present(readSecret(ws.geminiApiKey));
     // Groq is OpenAI-compatible and has always reused the OpenAI key field.
     case "OPENAI":
     case "GROQ":
-      return present(ws.openaiApiKey);
+      return present(readSecret(ws.openaiApiKey));
   }
 }
 

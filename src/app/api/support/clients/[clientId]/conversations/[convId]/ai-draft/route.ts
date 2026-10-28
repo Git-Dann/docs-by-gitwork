@@ -8,6 +8,7 @@ import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -36,7 +37,7 @@ export async function POST(
       model = workspace.geminiModel ?? DEFAULT_MODELS.GEMINI;
       baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
     } else if (provider === "LOCAL") {
-      apiKey = workspace.openaiApiKey ?? "local";
+      apiKey = readSecret(workspace.openaiApiKey) ?? "local";
       model = workspace.localLlmModel ?? DEFAULT_MODELS.LOCAL;
       baseUrl = workspace.localLlmUrl ?? "http://localhost:11434/v1";
     } else {

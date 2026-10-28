@@ -3,6 +3,7 @@ import { isAtLeast } from "@/types/auth";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import nodemailer from "nodemailer";
 import { readSmtpPassword } from "@/server/smtp-password";
+import { readSecret } from "@/server/stored-secret";
 
 // Workspace email. Reads the config from the DB on each send — it is small and
 // infrequent, so no cache. Two providers, chosen in Settings → Integrations → Email:
@@ -74,13 +75,14 @@ export async function sendWorkspaceEmail(msg: EmailMessage): Promise<SendResult>
     if (ws.emailProvider && ws.emailProvider !== "RESEND") {
       return { ok: false, error: `Email provider ${ws.emailProvider} is not supported` };
     }
-    if (!ws.emailApiKey) {
+    const resendKey = readSecret(ws.emailApiKey);
+    if (!resendKey) {
       return { ok: false, error: "Workspace email is not configured: no Resend API key" };
     }
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${ws.emailApiKey}`,
+        Authorization: `Bearer ${resendKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

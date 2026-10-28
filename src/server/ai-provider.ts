@@ -17,6 +17,7 @@ import {
   type AiUsageContext,
 } from "@/server/ai-usage";
 import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export interface WorkspaceAiFields {
   aiProvider: string;
@@ -88,7 +89,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "LOCAL") {
     return {
       provider,
-      apiKey: ws.openaiApiKey ?? "local",
+      apiKey: readSecret(ws.openaiApiKey) ?? "local",
       model: ws.localLlmModel ?? DEFAULT_MODELS.LOCAL,
       baseUrl: ws.localLlmUrl ?? "http://localhost:11434/v1",
     };

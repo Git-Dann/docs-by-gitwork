@@ -9,6 +9,7 @@ import { getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { MAX_DIGEST_RECIPIENTS, maybeSendWeeklyDigest, parseDigestEmails } from "@/server/pulse-agents/monitor-digest";
 import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export type MonitorFrequency = "DAILY" | "WEEKLY" | "OFF";
 
@@ -162,7 +163,7 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
     apiKey: (() => {
       if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
       if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
       return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :

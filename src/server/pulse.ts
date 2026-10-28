@@ -62,6 +62,7 @@ import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { aiKeyFor } from "@/server/ai-keys";
 import { loadCheckPolicy } from "@/server/check-config";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
+import { readSecret } from "@/server/stored-secret";
 
 export const pulseInclude = {
   client: {
@@ -813,7 +814,7 @@ export async function createPulseScanRecord(input: {
     apiKey: (() => {
       if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
       if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
       return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
@@ -909,7 +910,7 @@ export async function retryPulseScan(scanId: string): Promise<{
     apiKey: (() => {
       if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
       if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
       return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
@@ -971,7 +972,7 @@ export async function reanalysePulseScan(
     apiKey: (() => {
       if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
       if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
       return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI)
