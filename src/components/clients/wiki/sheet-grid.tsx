@@ -42,6 +42,8 @@ import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalList
 import {
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
+  ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
   Bars2Icon,
   CheckIcon,
   ChevronDownIcon,
@@ -99,6 +101,28 @@ import {
   stageSummary,
 } from "@/lib/wiki-sheet-board";
 import { STAGE_HINT, STAGE_LABEL, STAGE_ORDER, STAGE_STYLE, type RequestStage } from "@/lib/wiki-request-stage";
+import {
+  STAGE_SORT_KEY,
+  encodeSort,
+  inView,
+  parseSort,
+  readStoredSort,
+  sortChoices,
+  sortSheetRows,
+  writeStoredSort,
+  type SheetSort,
+  type SheetView,
+} from "@/lib/wiki-sheet-sort";
+import {
+  EMPTY_HISTORY,
+  historyKey,
+  recordEdit,
+  takeRedo,
+  takeUndo,
+  type CellChange,
+  type SheetEdit,
+  type SheetHistory,
+} from "@/lib/wiki-sheet-history";
 import type {
   SheetCellValue,
   SheetColumn,
@@ -165,6 +189,74 @@ function draftFor(column: SheetColumn, value: SheetCellValue | undefined): strin
 
 function isPrintable(e: React.KeyboardEvent): boolean {
   return e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey;
+}
+
+/** Fields that own ⌘Z themselves — undo there means "undo my typing", not "undo a cell". */
+function isTextEntry(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable || el.tagName === "TEXTAREA" || el.tagName === "SELECT") return true;
+  if (el.tagName !== "INPUT") return false;
+  return !["checkbox", "radio", "button", "submit", "reset", "file", "range", "color"].includes((el as HTMLInputElement).type);
+}
+
+/**
+ * The sheet last clicked or focused. With several sheets on one page, ⌘Z pressed with nothing
+ * focused (after clicking a toolbar button, say) undoes in the sheet you were just working in.
+ */
+let lastActiveSheet: string | null = null;
+
+/**
+ * Workstream | Done. A row whose task is done leaves the workstream on its own — nobody has to
+ * move it — and comes back if its task is reopened, because the split is read off the stage.
+ * `value` is null while the removed rows are showing (neither half is selected then).
+ */
+function ViewSwitch({
+  value,
+  workstream,
+  done,
+  onChange,
+}: {
+  value: SheetView | null;
+  workstream: number;
+  done: number;
+  onChange: (v: SheetView) => void;
+}) {
+  const options: { v: SheetView; label: string; count: number }[] = [
+    { v: "workstream", label: "Workstream", count: workstream },
+    { v: "done", label: "Done", count: done },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Workstream or done"
+      data-sheet-view
+      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+    >
+      {options.map((o) => {
+        const on = o.v === value;
+        return (
+          <button
+            key={o.v}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(o.v)}
+            className={`inline-flex h-full items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 text-[11px] tracking-[0.05em] uppercase transition-colors ${
+              on
+                ? "bg-[var(--surface-0)] font-semibold text-[var(--brand-700)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+            }`}
+            style={{ fontFamily: MONO }}
+          >
+            {o.label}
+            <span className={`rounded-[4px] px-1 text-[10px] ${on ? "bg-[var(--brand-50)] text-[var(--brand-700)]" : "bg-[var(--surface-0)] text-[var(--text-3)]"}`}>
+              {o.count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function StageChip({ stage }: { stage: RequestStage | null }) {
@@ -721,6 +813,21 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   const [stage, setStage] = useState<StageFilter>("all");
   const [assignee, setAssignee] = useState<string>("all");
   const [showDeleted, setShowDeleted] = useState(false);
+  // Rows whose task is done leave the workstream for the Done view. Always opens on the
+  // workstream: that is the list people come to work from.
+  const [view, setView] = useState<SheetView>("workstream");
+  // This viewer's sort, remembered in their browser. A view, never a write — "Sheet order"
+  // is the stored drag order, untouched by sorting.
+  const [sort, setSortState] = useState<SheetSort | null>(null);
+  useEffect(() => {
+    setSortState(parseSort(readStoredSort(sheet.id), columns));
+  }, [sheet.id, columns]);
+  const setSort = (next: SheetSort | null) => {
+    setSortState(next);
+    writeStoredSort(sheet.id, next);
+    setLimit(CHUNK);
+  };
+  const sortOptions = useMemo(() => sortChoices(columns), [columns]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<{ rowId: string; col: number } | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -843,32 +950,58 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
 
   const live = useMemo(() => rows.filter((r) => !r.deletedAt), [rows]);
   const deletedCount = rows.length - live.length;
+  // The live rows in the chosen half — what the filters, counts and summary work over.
+  const inThisView = useMemo(() => live.filter((r) => inView(r, view)), [live, view]);
+  const doneCount = live.length - live.filter((r) => inView(r, "workstream")).length;
   const visible = useMemo(() => {
-    const base = showDeleted ? rows.filter((r) => r.deletedAt) : live;
+    const base = showDeleted ? rows.filter((r) => r.deletedAt) : inThisView;
     const byStage =
       stage === "all" ? base : base.filter((r) => (stage === "none" ? !r.stage : r.stage === stage));
     const byAssignee = byStage.filter((r) => matchesAssignee(r, assignee));
-    return fuzzySearch(byAssignee, query, (r) => [rowSearchText(columns, r.cells)]);
-  }, [rows, live, showDeleted, stage, assignee, query, columns]);
-  const assignees = useMemo(() => assigneeOptions(live), [live]);
-  const summary = useMemo(() => stageSummary(live), [live]);
+    const found = fuzzySearch(byAssignee, query, (r) => [rowSearchText(columns, r.cells)]);
+    return sortSheetRows(found, columns, sort);
+  }, [rows, inThisView, showDeleted, stage, assignee, query, columns, sort]);
+  const assignees = useMemo(() => assigneeOptions(inThisView), [inThisView]);
+  const summary = useMemo(() => stageSummary(inThisView), [inThisView]);
   const shown = visible.slice(0, limit);
   const stagesPresent = useMemo(
-    () => STAGE_ORDER.filter((s) => live.some((r) => r.stage === s)),
-    [live],
+    () => STAGE_ORDER.filter((s) => inThisView.some((r) => r.stage === s)),
+    [inThisView],
   );
+  const switchView = (next: SheetView) => {
+    if (next === view && !showDeleted) return;
+    setView(next);
+    setShowDeleted(false);
+    setStage("all");
+    setAssignee("all");
+    setSelected(new Set());
+    setLimit(CHUNK);
+  };
+
+  /* ── undo / redo (the history is this tab's only — see wiki-sheet-history.ts) ── */
+
+  const historyRef = useRef<SheetHistory>(EMPTY_HISTORY);
+  const [, setHistoryTick] = useState(0);
+  const setHistory = useCallback((h: SheetHistory) => {
+    historyRef.current = h;
+    setHistoryTick((t) => t + 1);
+  }, []);
+  const remember = useCallback((edit: SheetEdit) => setHistory(recordEdit(historyRef.current, edit)), [setHistory]);
+  // The latest rows, for an undo that runs after several renders.
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   /* ── saving ── */
 
-  const saveCell = useCallback(
-    async (row: WikiSheetRow, column: SheetColumn, raw: CommitValue) => {
-      const res = coerceCellValue(column, raw);
-      if (!res.ok) {
-        setSave({ kind: "error", message: res.error });
-        return false;
-      }
+  /**
+   * Write one already-valid value. `sink` is where the change is remembered for undo: a bulk
+   * set collects into its own list (one undo step for the lot), an undo/redo records nothing.
+   */
+  const writeCell = useCallback(
+    async (row: WikiSheetRow, column: SheetColumn, next: SheetCellValue | null, sink: CellChange[] | "record" | "none") => {
       const before = row.cells[column.id];
-      const next = res.value;
       if (sameCellValue(before, next)) return true;
       const key = `${row.id}:${column.id}`;
       pending.current.set(key, next);
@@ -886,6 +1019,9 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
         await updateWikiSheetCellsApi(target, sheet.id, row.id, { [column.id]: next });
         pending.current.delete(key);
         setSave({ kind: "saved" });
+        const change: CellChange = { rowId: row.id, colId: column.id, before: before ?? null, after: next };
+        if (Array.isArray(sink)) sink.push(change);
+        else if (sink === "record") remember({ kind: "cells", label: `edit to "${column.title}"`, changes: [change] });
         return true;
       } catch (err) {
         pending.current.delete(key);
@@ -902,7 +1038,19 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
         return false;
       }
     },
-    [internal, sheet.id, target],
+    [internal, sheet.id, target, remember],
+  );
+
+  const saveCell = useCallback(
+    async (row: WikiSheetRow, column: SheetColumn, raw: CommitValue, sink: CellChange[] | "record" = "record") => {
+      const res = coerceCellValue(column, raw);
+      if (!res.ok) {
+        setSave({ kind: "error", message: res.error });
+        return false;
+      }
+      return writeCell(row, column, res.value, sink);
+    },
+    [writeCell],
   );
 
   /* ── navigation ── */
@@ -1052,36 +1200,47 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
 
   // The order of a filtered or searched subset is ambiguous (move B above D among 3 shown
   // rows — where do the 40 hidden ones go?), so a drag only exists over the whole sheet.
+  // A sorted view has no "position" to drop into either. The Workstream / Done split is
+  // fine: a row moves next to the visible row it was dropped on, and the other half keeps
+  // its place in the sheet order.
   const filtered = Boolean(query.trim()) || stage !== "all" || assignee !== "all" || showDeleted;
-  const canReorder = internal && target.mode === "internal" && !filtered;
+  const canReorder = internal && target.mode === "internal" && !filtered && !sort;
   const reorderBlockedReason = !internal
     ? null
-    : filtered
-      ? "Clear the search and filter to reorder rows"
-      : null;
+    : sort
+      ? "Switch the sort back to Sheet order to move rows"
+      : filtered
+        ? "Clear the search and filter to reorder rows"
+        : null;
 
-  const reorder = async (nextLive: string[]) => {
-    if (target.mode !== "internal") return;
+  const reorder = async (nextLive: string[], record = true) => {
+    if (target.mode !== "internal") return false;
     const before = rows;
+    const beforeOrder = live.map((r) => r.id);
     pendingOrder.current = nextLive;
     setRows((rs) => overlay(rs));
     try {
       await reorderWikiSheetRowsApi(target.slug, sheet.id, nextLive);
       pendingOrder.current = null;
+      if (record) remember({ kind: "order", label: "row move", before: beforeOrder, after: nextLive });
       onRefresh();
+      return true;
     } catch (err) {
       pendingOrder.current = null;
       setRows(before);
       setNotice(`Couldn't move the row — ${errorMessage(err)}`);
+      return false;
     }
   };
 
+  // Alt+↑/↓ steps past the rows this view hides — moving a workstream row "up one" means
+  // above the workstream row above it, not above a done row you can't see.
   const moveRowBy = (rowId: string, delta: number) => {
-    const ids = live.map((r) => r.id);
+    const ids = visible.map((r) => r.id);
     const i = ids.indexOf(rowId);
     const j = i + delta;
     if (i < 0 || j < 0 || j >= ids.length) return;
-    void reorder(moveRow(ids, rowId, ids[j]));
+    void reorder(moveRow(live.map((r) => r.id), rowId, ids[j]));
   };
 
   const sensors = useSensors(
@@ -1225,6 +1384,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
         setStage("all");
         setAssignee("all");
         setShowDeleted(false);
+        setView("workstream");
         const firstEditable = columns.findIndex((c) => canEditCol(c));
         if (firstEditable >= 0) focusCell(id, firstEditable);
       }
@@ -1237,8 +1397,8 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
     }
   };
 
-  const bulk = async (action: "delete" | "restore" | "send", ids: string[]) => {
-    if (busy || ids.length === 0) return;
+  const bulk = async (action: "delete" | "restore" | "send", ids: string[], record = true): Promise<boolean> => {
+    if (busy || ids.length === 0) return false;
     setBusy(true);
     setNotice(null);
     setBatchError(null);
@@ -1263,12 +1423,19 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
       } else {
         const stamp = action === "delete" ? new Date().toISOString() : null;
         setRows((rs) => rs.map((r) => (ids.includes(r.id) ? { ...r, deletedAt: stamp } : r)));
-        setNotice(`${ids.length} row${ids.length === 1 ? "" : "s"} ${action === "delete" ? "removed" : "restored"}.`);
+        const n = `${ids.length} row${ids.length === 1 ? "" : "s"}`;
+        setNotice(`${n} ${action === "delete" ? "removed" : "restored"}.${record && internal ? " ⌘Z to undo." : ""}`);
+        // Only the team can restore, so only the team's removals can be undone.
+        if (record && internal) {
+          remember({ kind: "rows", label: `${action === "delete" ? "removing" : "restoring"} ${n}`, action, rowIds: ids });
+        }
       }
       setSelected(new Set());
       onRefresh();
+      return true;
     } catch (err) {
       setNotice(errorMessage(err));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -1328,19 +1495,101 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
     let ok = 0;
     let failed = 0;
     const queue = [...targets];
+    const changes: CellChange[] = [];
     const worker = async () => {
       for (let r = queue.shift(); r; r = queue.shift()) {
-        if (await saveCell(r, column, raw)) ok += 1;
+        if (await saveCell(r, column, raw, changes)) ok += 1;
         else failed += 1;
       }
     };
     await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
+    // The whole bulk set is ONE undo step — undoing it one cell at a time would be absurd.
+    remember({ kind: "cells", label: `"${column.title}" on ${changes.length} row${changes.length === 1 ? "" : "s"}`, changes });
     setBusy(false);
     const shownValue = check.value === null ? "cleared" : `set to ${cellText(column, check.value)}`;
     setNotice(
       `"${column.title}" ${shownValue} on ${ok} row${ok === 1 ? "" : "s"}${failed ? ` · ${failed} couldn't be saved` : ""}.`,
     );
   };
+
+  /** Apply one history step. Writes go through the ordinary routes, so the server's rules hold. */
+  const applyEdit = async (edit: SheetEdit): Promise<{ ok: boolean; skipped: number }> => {
+    if (edit.kind === "cells") {
+      let failed = 0;
+      let skipped = 0;
+      const queue = [...edit.changes];
+      const worker = async () => {
+        for (let c = queue.shift(); c; c = queue.shift()) {
+          const row = rowsRef.current.find((r) => r.id === c.rowId);
+          const column = columns.find((x) => x.id === c.colId);
+          // A row removed or a column deleted since: nothing to put back into.
+          if (!row || row.deletedAt || !column || !canEditCol(column)) {
+            skipped += 1;
+            continue;
+          }
+          if (!(await writeCell(row, column, c.after, "none"))) failed += 1;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
+      return { ok: failed === 0, skipped };
+    }
+    const existing = new Set(rowsRef.current.map((r) => r.id));
+    if (edit.kind === "rows") {
+      const ids = edit.rowIds.filter((id) => existing.has(id));
+      return { ok: ids.length > 0 && (await bulk(edit.action, ids, false)), skipped: edit.rowIds.length - ids.length };
+    }
+    const liveIds = new Set(rowsRef.current.filter((r) => !r.deletedAt).map((r) => r.id));
+    return { ok: await reorder(edit.after.filter((id) => liveIds.has(id)), false), skipped: 0 };
+  };
+
+  const applying = useRef(false);
+  const step = async (which: "undo" | "redo") => {
+    if (applying.current || busy || editing) return;
+    const next = which === "undo" ? takeUndo(historyRef.current) : takeRedo(historyRef.current);
+    if (!next) {
+      setNotice(which === "undo" ? "Nothing to undo." : "Nothing to redo.");
+      return;
+    }
+    const label = next.apply.label;
+    setHistory(next.history);
+    applying.current = true;
+    try {
+      const { ok, skipped } = await applyEdit(next.apply);
+      const done = which === "undo" ? "Undid" : "Redid";
+      setNotice(
+        ok
+          ? `${done} ${label}.${skipped ? ` ${skipped} row${skipped === 1 ? " has" : "s have"} gone since, so ${skipped === 1 ? "it was" : "they were"} left.` : ""}`
+          : `Couldn't ${which} ${label}.`,
+      );
+    } finally {
+      applying.current = false;
+    }
+  };
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  });
+  const sectionRef = useRef<HTMLElement>(null);
+  // ⌘Z / Ctrl+Z anywhere in this sheet, or with nothing focused after working in it. A text
+  // field keeps its own undo — undoing your typing, not a cell.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const which = historyKey(e);
+      if (!which || e.defaultPrevented || isTextEntry(e.target)) return;
+      const t = e.target instanceof Node ? e.target : null;
+      const inside = Boolean(t && sectionRef.current?.contains(t));
+      const idle = !t || t === document.body || t === document.documentElement;
+      // The batch bar is portalled to <body>, so it is outside the section in the DOM.
+      const batchBar = t instanceof Element && Boolean(t.closest("[data-sheet-batch-bar]"));
+      if (!inside && !((idle || batchBar) && lastActiveSheet === sheet.id)) return;
+      e.preventDefault();
+      void stepRef.current(which);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sheet.id]);
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
 
   // Drop selections whose rows have gone (§50.8: a stale selection makes every button a no-op).
   useEffect(() => {
@@ -1357,6 +1606,18 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
     return () => clearTimeout(t);
   }, [save]);
 
+  const emptyText =
+    query || stage !== "all" || assignee !== "all"
+      ? "No rows match."
+      : showDeleted
+        ? "No removed rows."
+        : view === "done"
+          ? "Nothing done yet. A row moves here when its task is done on the board."
+          : live.length > 0
+            ? "Everything here is done. It's under Done."
+            : canAddRows
+              ? "No rows yet — add one or paste from a spreadsheet."
+              : "No rows yet.";
   const gridTemplate = `${SELECT_W}px ${columns.map((c) => `${widthOf(c)}px`).join(" ")} ${BOARD_W}px`;
   const minWidth = SELECT_W + columns.reduce((n, c) => n + widthOf(c), 0) + BOARD_W;
   // Where the live guide line sits while a column edge is being dragged.
@@ -1372,7 +1633,17 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   );
   return (
     <SheetImageUploadContext.Provider value={uploadImage}>
-    <section className="widget-card" aria-label={sheet.title}>
+    <section
+      ref={sectionRef}
+      className="widget-card"
+      aria-label={sheet.title}
+      onPointerDownCapture={() => {
+        lastActiveSheet = sheet.id;
+      }}
+      onFocusCapture={() => {
+        lastActiveSheet = sheet.id;
+      }}
+    >
       <div className="widget-header gap-3">
         <span
           className="widget-header__label min-w-0 truncate"
@@ -1396,6 +1667,12 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
 
       {/* Toolbar. While rows are selected, the batch bar floats at the bottom (as on the task board). */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-1)] px-3 py-2.5">
+        <ViewSwitch
+          value={showDeleted ? null : view}
+          workstream={live.length - doneCount}
+          done={doneCount}
+          onChange={switchView}
+        />
         <label className="relative flex min-w-[180px] flex-1 items-center sm:max-w-[280px]">
           <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 h-4 w-4 text-[var(--text-4)]" />
           <input
@@ -1442,7 +1719,44 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
             ))}
           </select>
         )}
+        <select
+          value={encodeSort(sort)}
+          onChange={(e) => setSort(parseSort(e.target.value, columns))}
+          aria-label="Sort rows"
+          title="Sort is just for you — the sheet's own order is kept"
+          data-sheet-sort
+          className="app-input app-select-chevron h-8 w-auto max-w-[220px] py-0 pr-8 pl-2 text-base sm:text-[13px]"
+        >
+          <option value="">Sheet order</option>
+          {sortOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1" data-sheet-history>
+            <button
+              type="button"
+              className="app-button app-button-secondary app-button-xs px-2"
+              disabled={!canUndo || busy}
+              onClick={() => void step("undo")}
+              aria-label="Undo"
+              title="Undo (⌘Z / Ctrl+Z)"
+            >
+              <ArrowUturnLeftIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="app-button app-button-secondary app-button-xs px-2"
+              disabled={!canRedo || busy}
+              onClick={() => void step("redo")}
+              aria-label="Redo"
+              title="Redo (⇧⌘Z / Ctrl+Y)"
+            >
+              <ArrowUturnRightIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
           {canAddRows && (
             <button
               type="button"
@@ -1654,6 +1968,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                       key={c.id}
                       role="columnheader"
                       data-col-head={c.id}
+                      aria-sort={sort?.key === c.id ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
                       title={`${c.title} · ${COLUMN_TYPE_LABEL[c.type]}${!canEditCol(c) ? " · read-only" : ""}`}
                       className={`group/head flex min-w-0 items-center gap-1.5 border-l border-[var(--border-1)] px-2 py-2 text-[10px] font-semibold tracking-[0.1em] text-[var(--text-3)] uppercase ${
                         ci === 0 && pin ? "sticky z-10 bg-[var(--surface-1)]" : "relative"
@@ -1663,6 +1978,11 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                       <span className="truncate" data-head-title>
                         {c.title}
                       </span>
+                      {sort?.key === c.id && (
+                        <span className="shrink-0 text-[var(--brand-700)]" data-head-sort aria-hidden="true">
+                          {sort.dir === "asc" ? "↑" : "↓"}
+                        </span>
+                      )}
                       {c.id === titleCol?.id && internal && <span className="shrink-0 text-[var(--text-4)]">· title</span>}
                       {!canEditCol(c) && (
                         <span className="shrink-0 text-[var(--text-4)]" aria-label="read-only">
@@ -1701,14 +2021,20 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                   role="columnheader"
                   className={`${pin ? "sticky right-0" : ""} z-10 border-l border-[var(--border-1)] bg-[var(--surface-1)] px-2 py-2 text-[10px] font-semibold tracking-[0.1em] text-[var(--text-3)] uppercase`}
                   style={{ fontFamily: MONO }}
+                  aria-sort={sort?.key === STAGE_SORT_KEY ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
                 >
                   Board
+                  {sort?.key === STAGE_SORT_KEY && (
+                    <span className="ml-1.5 text-[var(--brand-700)]" aria-hidden="true">
+                      {sort.dir === "asc" ? "↑" : "↓"}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {shown.length === 0 && (
                 <p className="sticky left-0 px-4 py-8 text-center text-sm text-[var(--text-4)]" style={{ maxWidth: "100%" }}>
-                  {query || stage !== "all" || assignee !== "all" ? "No rows match." : showDeleted ? "No removed rows." : canAddRows ? "No rows yet — add one or paste from a spreadsheet." : "No rows yet."}
+                  {emptyText}
                 </p>
               )}
 
@@ -1924,7 +2250,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
           <ul className="divide-y divide-[var(--border-1)] sm:hidden" aria-label={`${sheet.title} rows`}>
             {shown.length === 0 && (
               <li className="px-4 py-8 text-center text-sm text-[var(--text-4)]">
-                {query || stage !== "all" || assignee !== "all" ? "No rows match." : "No rows yet."}
+                {emptyText}
               </li>
             )}
             {shown.map((row) => {
@@ -2011,7 +2337,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
 
           <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border-1)] px-4 py-2 text-[11px] text-[var(--text-4)]">
             <span style={{ fontFamily: MONO }} className="tracking-[0.08em] uppercase">
-              {visible.length} of {showDeleted ? deletedCount : live.length} rows
+              {visible.length} of {showDeleted ? deletedCount : inThisView.length} {showDeleted ? "removed" : view === "done" ? "done" : "in the workstream"}
             </span>
             {visible.length > shown.length && (
               <button type="button" className="app-button app-button-link app-button-xs" onClick={() => setLimit((l) => l + CHUNK)}>
@@ -2030,7 +2356,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                 {showDeleted ? "Back to the sheet" : `Removed rows (${deletedCount})`}
               </button>
             )}
-            <span className="ml-auto hidden md:inline">Enter to edit · Tab / arrows to move · Esc to cancel</span>
+            <span className="ml-auto hidden md:inline">Enter to edit · Tab / arrows to move · Esc to cancel · ⌘Z to undo</span>
           </div>
         </>
       )}

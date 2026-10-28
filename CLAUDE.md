@@ -7297,6 +7297,31 @@ or drop an image into it. The team, the client (wherever they may edit), and Cla
   - ⚠️ Sharp runs only after the byte sniff has confirmed PNG, JPEG, GIF or WebP, because sharp
     would also render an SVG.
 
+### 73.5 Sort, a Done view, and ⌘Z
+
+- **Sort** (`src/lib/wiki-sheet-sort.ts`, pure). A toolbar dropdown with two choices per
+  column plus the Board. It is a **view, never a write**: the stored drag order is untouched
+  and "Sheet order" brings it back. Kept per viewer per sheet in `localStorage`.
+  - A dropdown column sorts by its **option order**, labelled with its first and last options
+    ("Priority · High → Low"), because A→Z would give High, Low, Medium.
+  - Text sorts naturally and ignores case. An unset checkbox is unticked, not empty.
+  - **Empty cells go last in both directions.** Ties keep the sheet order. Media can't be sorted.
+  - Dragging rows is off while sorted, with a tooltip saying why.
+- **Workstream | Done** (`ViewSwitch`). A row whose task is DONE (or CLOSED) leaves the
+  workstream on its own and comes back if the task is reopened, because it is read off the
+  derived stage (§47.2), never stored. Opens on Workstream. Filters, counts and the stage strip
+  work over the chosen half. A drag inside one half lands next to the row it was dropped on;
+  Alt+↑/↓ steps over the rows the half hides.
+- **Undo / redo** (`src/lib/wiki-sheet-history.ts`, pure). ⌘Z / Ctrl+Z, and ⇧⌘Z / Ctrl+Y,
+  plus two toolbar buttons. Undoable: cell edits (a bulk set is one step), the team removing or
+  restoring rows, and moving a row. Not undoable: sending to the board and adding a row.
+  - Undo writes through the ordinary routes, so the server's edit rules still apply.
+  - A text field keeps its own ⌘Z. With several sheets on a page, ⌘Z with nothing focused goes
+    to the sheet last clicked (`lastActiveSheet`). The batch bar is portalled, so it is
+    matched by `[data-sheet-batch-bar]`.
+  - History lives in the tab only and is gone on reload. A client's removals aren't recorded,
+    because only the team can restore.
+
 ## 74. Recent Changes (October 2026) — Big Wedge revenue on Metrics, and "so far this month"
 
 The Big Wedge adapter now maps a
