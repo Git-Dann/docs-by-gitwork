@@ -32,6 +32,18 @@ export interface FindingTask {
   status: string;
   title: string;
   assigneeName: string | null;
+  /** The slug of the client whose board it is on, for the link to it. */
+  clientSlug: string | null;
+}
+
+/**
+ * Where a finding's task is on the client's board: the same deep link the task
+ * notifications and the Desk use (`?task=` opens the task on the board). Null when the
+ * board is not known.
+ */
+export function findingTaskHref(task: Pick<FindingTask, "id" | "clientSlug">): string | null {
+  if (!task.clientSlug) return null;
+  return `/app/portal/${encodeURIComponent(task.clientSlug)}/tasks?task=${encodeURIComponent(task.id)}`;
 }
 
 export type FindingStage =

@@ -2,13 +2,13 @@
 // both ways: the input that must produce the stage, and a neighbouring one that must not.
 
 import { describe, expect, it } from "vitest";
-import { buildFindings, countByView, countOpenFindings, findingTask, stageLabel, type FindingState, type FindingTask } from "@/lib/pulse-findings";
+import { buildFindings, countByView, countOpenFindings, findingTaskHref, findingTask, stageLabel, type FindingState, type FindingTask } from "@/lib/pulse-findings";
 
 const check = (checkKey: string, status: string, label = checkKey) => ({ checkKey, label, category: "Security", status, detail: `${label} detail` });
 const state = (checkKey: string, patch: Partial<FindingState> = {}): FindingState => ({
   checkKey, decision: null, note: null, taskId: null, decidedByName: null, decidedAt: null, ...patch,
 });
-const task = (id: string, status: string): FindingTask => ({ id, status, title: id, assigneeName: null });
+const task = (id: string, status: string): FindingTask => ({ id, status, title: id, assigneeName: null, clientSlug: "acme" });
 const stageOf = (findings: ReturnType<typeof buildFindings>, key: string) => findings.find((f) => f.check.checkKey === key)?.stage;
 
 describe("what a finding is", () => {
@@ -88,5 +88,10 @@ describe("the views", () => {
     expect(countOpenFindings(checks, states, tasks)).toBe(countByView(buildFindings(checks, states, tasks)).open);
     expect(countOpenFindings(checks, states, tasks)).toBe(2); // a, and g (task done, still failing)
     expect(countOpenFindings(checks, [], [])).toBe(4);
+  });
+
+  it("a finding on the board links to the task on that client's board, and only when the board is known", () => {
+    expect(findingTaskHref({ id: "t 1", clientSlug: "acme" })).toBe("/app/portal/acme/tasks?task=t%201");
+    expect(findingTaskHref({ id: "t1", clientSlug: null })).toBeNull();
   });
 });

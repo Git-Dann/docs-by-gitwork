@@ -3883,7 +3883,7 @@ function demoFindingSeed(scanId: string) {
   if (seed && has(seed.task) && has(seed.accept)) {
     const id = `demo-pulse-task-${scanId}`;
     states.push({ checkKey: seed.task, decision: null, note: null, taskId: id, decidedByName: null, decidedAt: null });
-    tasks.push({ id, status: "DOING", title: seed.title, assigneeName: seed.assignee });
+    tasks.push({ id, status: "DOING", title: seed.title, assigneeName: seed.assignee, clientSlug: scanId === "scan-northwind" ? WIKI_CLIENT.slug : null });
     states.push({ checkKey: seed.accept, decision: "ACCEPTED_RISK", note: seed.note, taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-1) });
   }
   return { states, tasks };
@@ -3905,7 +3905,8 @@ function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: st
   };
   if (isTask && method === "POST" && checkKey) {
     const id = `demo-pulse-task-${store.tasks.length + 2}`;
-    store.tasks.push({ id, status: "TODO", title: `[Pulse] ${checkKey}`, assigneeName: null });
+    const slug = CLIENTS.find((c) => c.id === scan.clientId)?.slug ?? null;
+    store.tasks.push({ id, status: "TODO", title: `[Pulse] ${checkKey}`, assigneeName: null, clientSlug: slug });
     upsert({ taskId: id });
     return { taskId: id, created: true, targetKey: targetKey(scan), clientId: scan.clientId, ...store };
   }
