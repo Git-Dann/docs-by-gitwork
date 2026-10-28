@@ -8460,3 +8460,15 @@ Left as they are, on purpose: ~200 Tailwind palette classes (`emerald-*`, `red-*
 across `components/pulse/`. `globals.css` remaps those families for dark mode, so they render
 correctly; converting them to tokens is a tidy-up, not a fix. The scan page's cover keeps the
 Foundry wordmark because it is the same component as the shared report.
+
+**Follow-up (same day): the Projects list pages, filters and sorts.** Dan, on the live list of
+42 projects: it needed pagination, filters and sorting, newest first. The rules are pure, in
+`src/lib/pulse-projects.ts` (`filterProjects`, `sortProjectsBy`, `projectKind`), and tested.
+- **Opens newest first** (`DEFAULT_PROJECT_SORT`), not by urgency. Urgency is now a filter
+  ("Needs a look", "Has urgent findings") and the two stat figures toggle those filters.
+- Every column but Needs sorts; one column at a time, a second click reverses it, and a
+  project with no value (no score yet) goes last in **both** directions. Phones have no headers,
+  so they get a sort dropdown.
+- Filters: status, type (website / repository / store listing, told apart by host) and client.
+  Type and client only appear when there is more than one choice.
+- 20 per page with the shared `Pager`; any filter or sort change goes back to page one.

@@ -4,7 +4,22 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { usePulseCompare, usePulseProject, usePulseProjects } from "@/hooks/use-pulse";
 import { cn, formatDate } from "@/lib/format";
-import { projectAverage, type PulseProject, type ProjectPoint } from "@/lib/pulse-projects";
+import {
+  DEFAULT_PROJECT_FILTERS,
+  DEFAULT_PROJECT_SORT,
+  SORT_START,
+  filterProjects,
+  projectAverage,
+  projectKind,
+  sortProjectsBy,
+  type ProjectFilters,
+  type ProjectPoint,
+  type ProjectSortKey,
+  type ProjectStatusFilter,
+  type PulseProject,
+  type SortDir,
+} from "@/lib/pulse-projects";
+import { Pager } from "@/components/ui/pager";
 import { ScanDiffBody, ScoreChange } from "./pulse-scan-diff";
 import { buttonStyles } from "@/components/ui/button";
 
@@ -75,6 +90,26 @@ function Stat({ label, value, note, tone, onClick, pressed }: { label: string; v
   );
 }
 
+/** Projects per page: enough to scan in one screen, few enough that the newest are never buried. */
+const PAGE_SIZE = 20;
+
+/** A column header that sorts. One column at a time; clicking it again reverses it. */
+function SortHeader({ label, k, sort, onSort, align = "left", title }: { label: string; k: ProjectSortKey; sort: { key: ProjectSortKey; dir: SortDir }; onSort: (k: ProjectSortKey) => void; align?: "left" | "right"; title?: string }) {
+  const active = sort.key === k;
+  return (
+    <th className={align === "right" ? "text-right" : "text-left"} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"} title={title}>
+      <button
+        type="button"
+        onClick={() => onSort(k)}
+        className={cn("inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-[var(--text-1)]", align === "right" && "flex-row-reverse", active ? "text-[var(--text-1)]" : "")}
+      >
+        {label}
+        <span aria-hidden className={cn("text-[9px]", active ? "opacity-100" : "opacity-0")}>{sort.dir === "asc" ? "▲" : "▼"}</span>
+      </button>
+    </th>
+  );
+}
+
 /** What a project needs, in plain words: the most important reason, and how many more. */
 function Needs({ project }: { project: PulseProject }) {
   if (project.running) return <span className="text-xs text-[var(--text-3)]">Scanning now…</span>;
@@ -140,18 +175,28 @@ export function ScoreChart({ points, height = 180 }: { points: ProjectPoint[]; h
 
 export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
   const [view, setView] = useState<"projects" | "scans">("projects");
-  const [query, setQuery] = useState("");
-  const [onlyAttention, setOnlyAttention] = useState(false);
+  const [filters, setFiltersState] = useState<ProjectFilters>(DEFAULT_PROJECT_FILTERS);
+  const [sort, setSortState] = useState(DEFAULT_PROJECT_SORT);
+  const [page, setPage] = useState(0);
   const { data, isLoading, error } = usePulseProjects();
   const projects = useMemo(() => data?.projects ?? [], [data]);
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return projects.filter(
-      (p) =>
-        (!onlyAttention || p.attention.length > 0) &&
-        (!q || p.name.toLowerCase().includes(q) || p.target.toLowerCase().includes(q) || (p.clientName ?? "").toLowerCase().includes(q)),
-    );
-  }, [projects, query, onlyAttention]);
+  const matching = useMemo(() => sortProjectsBy(filterProjects(projects, filters), sort.key, sort.dir), [projects, filters, sort]);
+  // Any change to what is shown starts again at page one, so a filter never lands on an empty page.
+  const setFilters = (patch: Partial<ProjectFilters>) => { setFiltersState((f) => ({ ...f, ...patch })); setPage(0); };
+  const setSort = (key: ProjectSortKey) => {
+    setSortState((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: SORT_START[key] }));
+    setPage(0);
+  };
+  const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const shown = matching.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+  const clients = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of projects) if (p.clientId) m.set(p.clientId, p.clientName ?? "Unnamed client");
+    return [...m].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [projects]);
+  const kinds = useMemo(() => new Set(projects.map(projectKind)), [projects]);
+  const filtered = filters.query.trim() !== "" || filters.status !== "all" || filters.kind !== "all" || filters.client !== "all";
   const needing = projects.filter((p) => p.attention.length > 0).length;
   const urgent = projects.reduce((n, p) => n + (p.urgentFindings ?? 0), 0);
   const counted = projects.some((p) => p.urgentFindings !== null);
@@ -205,27 +250,76 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                   value={String(needing)}
                   note={needing ? "failed, falling, stale or urgent" : "nothing stands out"}
                   tone={needing ? "bad" : "good"}
-                  onClick={needing ? () => setOnlyAttention((v) => !v) : undefined}
-                  pressed={onlyAttention}
+                  onClick={needing ? () => setFilters({ status: filters.status === "attention" ? "all" : "attention" }) : undefined}
+                  pressed={filters.status === "attention"}
                 />
-                <Stat label="Urgent findings" value={counted ? String(urgent) : "—"} note="ranked P1, still open" tone={!counted ? undefined : urgent ? "bad" : "good"} />
+                <Stat
+                  label="Urgent findings"
+                  value={counted ? String(urgent) : "—"}
+                  note="ranked P1, still open"
+                  tone={!counted ? undefined : urgent ? "bad" : "good"}
+                  onClick={urgent ? () => setFilters({ status: filters.status === "urgent" ? "all" : "urgent" }) : undefined}
+                  pressed={filters.status === "urgent"}
+                />
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  value={filters.query}
+                  onChange={(e) => setFilters({ query: e.target.value })}
                   placeholder="Search projects, sites, repos or clients"
                   aria-label="Search projects"
-                  className="app-input min-w-[220px] flex-1 text-base sm:text-sm"
+                  className="app-input min-w-[220px] flex-1 basis-full text-base sm:basis-auto sm:text-sm"
                 />
-                <label className="flex items-center gap-2 text-sm text-[var(--text-2)]">
-                  <input type="checkbox" checked={onlyAttention} onChange={(e) => setOnlyAttention(e.target.checked)} />
-                  Needs a look only
-                </label>
+                <select value={filters.status} onChange={(e) => setFilters({ status: e.target.value as ProjectStatusFilter })} aria-label="Filter by status" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:flex-none sm:basis-auto sm:text-sm">
+                  <option value="all">Any status</option>
+                  <option value="attention">Needs a look</option>
+                  <option value="urgent">Has urgent findings</option>
+                  <option value="on_track">On track</option>
+                  <option value="failed">Last scan failed</option>
+                </select>
+                {kinds.size > 1 && (
+                  <select value={filters.kind} onChange={(e) => setFilters({ kind: e.target.value as ProjectFilters["kind"] })} aria-label="Filter by type" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:flex-none sm:basis-auto sm:text-sm">
+                    <option value="all">Any type</option>
+                    {kinds.has("website") && <option value="website">Websites</option>}
+                    {kinds.has("repo") && <option value="repo">Repositories</option>}
+                    {kinds.has("store") && <option value="store">Store listings</option>}
+                    {kinds.has("description") && <option value="description">Descriptions</option>}
+                  </select>
+                )}
+                {clients.length > 0 && (
+                  <select value={filters.client} onChange={(e) => setFilters({ client: e.target.value })} aria-label="Filter by client" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:max-w-[220px] sm:flex-none sm:basis-auto sm:text-sm">
+                    <option value="all">Any client</option>
+                    {clients.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    <option value="none">No client</option>
+                  </select>
+                )}
+                {/* Phones have no column headers to click, so the sort is a control of its own. */}
+                <select
+                  value={`${sort.key}:${sort.dir}`}
+                  onChange={(e) => { const [key, dir] = e.target.value.split(":") as [ProjectSortKey, SortDir]; setSortState({ key, dir }); setPage(0); }}
+                  aria-label="Sort projects"
+                  className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:hidden"
+                >
+                  <option value="lastChecked:desc">Newest first</option>
+                  <option value="lastChecked:asc">Oldest first</option>
+                  <option value="score:asc">Lowest score</option>
+                  <option value="score:desc">Highest score</option>
+                  <option value="urgent:desc">Most urgent findings</option>
+                  <option value="open:desc">Most open findings</option>
+                  <option value="name:asc">Name A to Z</option>
+                </select>
+                {filtered && (
+                  <button type="button" onClick={() => { setFiltersState(DEFAULT_PROJECT_FILTERS); setPage(0); }} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
+                    Clear filters
+                  </button>
+                )}
               </div>
+              {filtered && projects.length > 0 && (
+                <p className="text-xs text-[var(--text-3)]">{matching.length} of {projects.length} projects match.</p>
+              )}
               {shown.length === 0 ? (
-                <p className="text-sm text-[var(--text-3)]">{projects.length === 0 ? "No scans yet. Run one with New scan." : "No project matches."}</p>
+                <p className="text-sm text-[var(--text-3)]">{projects.length === 0 ? "No scans yet. Run one with New scan." : "No project matches these filters."}</p>
               ) : (
                 <>
                   {/* Phones: one card per project, so the score and what needs doing are never
@@ -257,13 +351,13 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                     <table className="app-table app-table--dense min-w-[760px]">
                       <thead>
                         <tr>
-                          <th className="text-left">Project</th>
+                          <SortHeader label="Project" k="name" sort={sort} onSort={setSort} />
                           <th className="text-left">Needs</th>
-                          <th className="text-right">Score</th>
-                          <th className="text-left">Since last check</th>
-                          <th className="text-right" title="Open findings the Findings tab ranks P1">Urgent</th>
-                          <th className="text-right" title="Failing or warning checks on the latest scan that nobody has sent to the board, fixed or dismissed">Open</th>
-                          <th className="text-left">Last checked</th>
+                          <SortHeader label="Score" k="score" sort={sort} onSort={setSort} align="right" />
+                          <SortHeader label="Since last check" k="change" sort={sort} onSort={setSort} />
+                          <SortHeader label="Urgent" k="urgent" sort={sort} onSort={setSort} align="right" title="Open findings the Findings tab ranks P1" />
+                          <SortHeader label="Open" k="open" sort={sort} onSort={setSort} align="right" title="Failing or warning checks on the latest scan that nobody has sent to the board, fixed or dismissed" />
+                          <SortHeader label="Last checked" k="lastChecked" sort={sort} onSort={setSort} />
                         </tr>
                       </thead>
                       <tbody>
@@ -288,6 +382,7 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                       </tbody>
                     </table>
                   </div>
+                  <Pager page={current} pageSize={PAGE_SIZE} total={matching.length} onPage={setPage} label="Project pages" />
                 </>
               )}
             </>

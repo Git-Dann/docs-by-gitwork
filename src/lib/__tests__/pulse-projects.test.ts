@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFindingCounts, buildProjects, decodeTargetKey, sortProjects, encodeTargetKey, projectAverage, targetKey } from "@/lib/pulse-projects";
+import { DEFAULT_PROJECT_FILTERS, DEFAULT_PROJECT_SORT, applyFindingCounts, buildProjects, decodeTargetKey, filterProjects, projectKind, sortProjects, sortProjectsBy, encodeTargetKey, projectAverage, targetKey } from "@/lib/pulse-projects";
 import type { PulseScanListItem } from "@/types/pulse";
 
 const NOW = Date.parse("2026-10-26T12:00:00Z");
@@ -79,5 +79,43 @@ describe("urgent findings decide whether a project needs a look", () => {
   it("leaves both counts unknown when the scan could not be counted", () => {
     const [p] = buildProjects([scan({})], NOW);
     expect(applyFindingCounts(p, null)).toMatchObject({ openFindings: null, urgentFindings: null, attention: [] });
+  });
+});
+
+describe("the Projects list: newest first, filters and sorting", () => {
+  const all = buildProjects([
+    scan({ inputUrl: "https://old.com", healthScore: 40, createdAt: day(30), clientId: "c1", clientName: "Acme" }),
+    scan({ inputUrl: "https://new.com", healthScore: 90, createdAt: day(1) }),
+    scan({ inputUrl: null, inputType: "GITHUB_REPO", inputGithubRepo: "acme/api", healthScore: 70, createdAt: day(5), clientId: "c1", clientName: "Acme" }),
+    scan({ inputUrl: "https://apps.apple.com/gb/app/thing/id123", healthScore: null, status: "FAILED", createdAt: day(3) }),
+  ], NOW);
+  const targets = (ps: typeof all) => ps.map((p) => p.target);
+
+  it("opens newest first, whatever the urgency order the server sent", () => {
+    expect(DEFAULT_PROJECT_SORT).toEqual({ key: "lastChecked", dir: "desc" });
+    expect(targets(sortProjectsBy(all, "lastChecked", "desc"))).toEqual(["https://new.com", "https://apps.apple.com/gb/app/thing/id123", "acme/api", "https://old.com"]);
+  });
+  it("sorts by score both ways, with projects that have no score last either way", () => {
+    // The scoreless project is the NEWEST here, so a sort that let nulls fall through to the
+    // newest-first tie-break would put it at the top.
+    const withFresh = buildProjects([
+      scan({ inputUrl: "https://a.com", healthScore: 50, createdAt: day(9) }),
+      scan({ inputUrl: "https://b.com", healthScore: 60, createdAt: day(8) }),
+      scan({ inputUrl: "https://fresh.com", healthScore: null, status: "FAILED", createdAt: day(0) }),
+    ], NOW);
+    for (const dir of ["asc", "desc"] as const) expect(sortProjectsBy(withFresh, "score", dir).at(-1)!.target).toBe("https://fresh.com");
+    expect(targets(sortProjectsBy(all, "score", "asc")).at(-1)).toBe("https://apps.apple.com/gb/app/thing/id123");
+    expect(targets(sortProjectsBy(all, "score", "desc"))).toEqual(["https://new.com", "acme/api", "https://old.com", "https://apps.apple.com/gb/app/thing/id123"]);
+    expect(targets(sortProjectsBy(all, "score", "asc"))[0]).toBe("https://old.com");
+  });
+  it("tells websites, repositories and store listings apart", () => {
+    expect(all.map(projectKind).sort()).toEqual(["repo", "store", "website", "website"]);
+    expect(targets(filterProjects(all, { ...DEFAULT_PROJECT_FILTERS, kind: "store" }))).toEqual(["https://apps.apple.com/gb/app/thing/id123"]);
+  });
+  it("filters by client, by no client, and by status", () => {
+    expect(filterProjects(all, { ...DEFAULT_PROJECT_FILTERS, client: "c1" })).toHaveLength(2);
+    expect(filterProjects(all, { ...DEFAULT_PROJECT_FILTERS, client: "none" })).toHaveLength(2);
+    expect(targets(filterProjects(all, { ...DEFAULT_PROJECT_FILTERS, status: "failed" }))).toEqual(["https://apps.apple.com/gb/app/thing/id123"]);
+    expect(filterProjects(all, { ...DEFAULT_PROJECT_FILTERS, status: "on_track" }).every((p) => p.attention.length === 0)).toBe(true);
   });
 });

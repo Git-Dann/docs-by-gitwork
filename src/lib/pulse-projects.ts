@@ -8,6 +8,7 @@
  */
 
 import type { PulseScanListItem } from "@/types/pulse";
+import { detectStoreTarget } from "@/lib/pulse-store-url";
 
 /**
  * One key for "the same thing", used everywhere scans are matched (list, history, diff,
@@ -207,4 +208,80 @@ export function sortProjects(projects: PulseProject[]): PulseProject[] {
 export function projectAverage(projects: PulseProject[]): number | null {
   const scores = projects.map((p) => p.latestScore).filter((s): s is number => s !== null);
   return scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+}
+
+// ─── The Projects list: filter, sort, page ────────────────────────────────────
+
+/** What a project is, for the type filter. Store listings are URLs, so they are told apart by host. */
+export type ProjectKind = "website" | "repo" | "store" | "description";
+export function projectKind(p: Pick<PulseProject, "inputType" | "target">): ProjectKind {
+  if (p.inputType === "GITHUB_REPO") return "repo";
+  if (p.inputType === "FREE_TEXT") return "description";
+  return detectStoreTarget(p.target) ? "store" : "website";
+}
+
+export type ProjectStatusFilter = "all" | "attention" | "urgent" | "on_track" | "failed";
+
+export interface ProjectFilters {
+  query: string;
+  status: ProjectStatusFilter;
+  kind: ProjectKind | "all";
+  /** A client id, "none" for projects with no client, or "all". */
+  client: string;
+}
+
+export const DEFAULT_PROJECT_FILTERS: ProjectFilters = { query: "", status: "all", kind: "all", client: "all" };
+
+export function filterProjects(projects: PulseProject[], f: ProjectFilters): PulseProject[] {
+  const q = f.query.trim().toLowerCase();
+  return projects.filter((p) => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.target.toLowerCase().includes(q) && !(p.clientName ?? "").toLowerCase().includes(q)) return false;
+    if (f.kind !== "all" && projectKind(p) !== f.kind) return false;
+    if (f.client === "none" ? p.clientId !== null : f.client !== "all" && p.clientId !== f.client) return false;
+    switch (f.status) {
+      case "attention": return p.attention.length > 0;
+      case "urgent": return (p.urgentFindings ?? 0) > 0;
+      case "on_track": return p.attention.length === 0 && !p.running;
+      case "failed": return p.latestStatus === "FAILED";
+      default: return true;
+    }
+  });
+}
+
+export type ProjectSortKey = "name" | "score" | "change" | "urgent" | "open" | "lastChecked";
+export type SortDir = "asc" | "desc";
+
+/** What a header click starts with: newest, highest and most first; names A to Z. */
+export const SORT_START: Record<ProjectSortKey, SortDir> = { name: "asc", score: "desc", change: "desc", urgent: "desc", open: "desc", lastChecked: "desc" };
+
+/** The list opens newest first. */
+export const DEFAULT_PROJECT_SORT: { key: ProjectSortKey; dir: SortDir } = { key: "lastChecked", dir: "desc" };
+
+/**
+ * Sort projects by one column. A project with no value for it (no score yet, not counted)
+ * goes to the bottom in either direction, so "highest score" never opens on a dash. Ties
+ * fall back to newest first.
+ */
+export function sortProjectsBy(projects: PulseProject[], key: ProjectSortKey, dir: SortDir): PulseProject[] {
+  const val = (p: PulseProject): number | string | null => {
+    switch (key) {
+      case "name": return p.name.toLowerCase();
+      case "score": return p.latestScore;
+      case "change": return p.change?.by ?? null;
+      case "urgent": return p.urgentFindings;
+      case "open": return p.openFindings;
+      case "lastChecked": return Date.parse(p.lastScannedAt);
+    }
+  };
+  const sign = dir === "asc" ? 1 : -1;
+  return [...projects].sort((a, b) => {
+    const va = val(a), vb = val(b);
+    if (va === null && vb !== null) return 1;
+    if (vb === null && va !== null) return -1;
+    if (va !== null && vb !== null && va !== vb) {
+      const c = typeof va === "string" ? va.localeCompare(vb as string) : (va as number) - (vb as number);
+      if (c !== 0) return c * sign;
+    }
+    return Date.parse(b.lastScannedAt) - Date.parse(a.lastScannedAt);
+  });
 }
