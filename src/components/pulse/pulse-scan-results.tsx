@@ -28,11 +28,11 @@ import {
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan, usePulseFindings } from "@/hooks/use-pulse";
+import { useCreatePulseScan, useSharePulseScan, useUnsharePulseScan, useRunFixAgent, useCreateMonitor, useRunBrowserAgent, useRunDiscoveryKit, useReanalysePulseScan, useGeneratePulseProposal, usePulseBenchmarks, usePulseScanHistory, usePulseScanDiff, useEmailPulseAudit, useRenamePulseScan, usePulseFindings, useSendPulseFindingToBoard } from "@/hooks/use-pulse";
 import { computeGrades } from "@/server/pulse-checks/grades";
 import { PlainScanBox } from "@/components/pulse/code-health-sections";
 import { PulseFindings } from "@/components/pulse/pulse-findings";
-import { buildFindings, countByView } from "@/lib/pulse-findings";
+import { buildFindings, countByView, findingTaskHref, stageLabel } from "@/lib/pulse-findings";
 import { ScanDiffBody, ScoreChange } from "@/components/pulse/pulse-scan-diff";
 import { encodeTargetKey, targetKey } from "@/lib/pulse-projects";
 import { policyDisposition } from "@/server/pulse-checks/policy-disposition";
@@ -40,7 +40,6 @@ import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
 import { describeScanSubject, detectStoreTarget, STORE_NAME } from "@/lib/pulse-store-url";
 import { computePillarBreakdown } from "@/server/pulse-checks/pillars";
-import { useBatchCreateTasks, useTasks } from "@/hooks/use-tasks";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useStarterList } from "@/hooks/use-starters";
 import { recommendStartersForScan } from "@/lib/starters-recommend";
@@ -1271,12 +1270,14 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const { data: diffData } = usePulseScanDiff(scan.id, scan.status === "COMPLETED");
   const scanDiff = diffData?.diff ?? null;
   // Open findings for the tab badge: the same rule the Findings list applies.
-  const openFindingCount = countByView(buildFindings(
+  const scanFindings = buildFindings(
     scan.checks,
     findingData?.states ?? [],
     findingData?.tasks ?? [],
     new Set((scanDiff?.fixed ?? []).map((d) => d.checkKey)),
-  )).open;
+  );
+  const openFindingCount = countByView(scanFindings).open;
+  const findingByKey = new Map(scanFindings.map((f) => [f.check.checkKey, f]));
   const grades = computeGrades(scan.checks);
   const { mutateAsync: createScan, isPending: rescanning } = useCreatePulseScan();
   const { mutateAsync: shareScan, isPending: sharing } = useSharePulseScan();
@@ -1315,46 +1316,15 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
   const [scanTitle, setScanTitle] = useState(scan.projectName);
   const renameTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Scan → Action: "+ Task" on failing checks creates a Portal task on the linked
-  // client's board. We read the client's tasks to show "Added" for checks that
-  // already have a task (idempotent across reloads).
-  const { mutateAsync: createCheckTasks } = useBatchCreateTasks();
-  const { data: clientTasks } = useTasks(
-    scan.clientId ? { clientId: scan.clientId } : {},
-    { enabled: Boolean(scan.clientId) },
-  );
-  const [addedCheckKeys, setAddedCheckKeys] = useState<Set<string>>(new Set());
+  // "+ Task" in the by-category view goes through the same findings write as the
+  // Findings list, so both record a PulseFindingState and show the same state.
+  const sendFinding = useSendPulseFindingToBoard(scan.id);
   const [pendingCheckKey, setPendingCheckKey] = useState<string | null>(null);
 
-  const existingPulseCheckKeys = new Set<string>();
-  for (const t of clientTasks ?? []) {
-    const meta = t.metadata as Record<string, unknown> | null;
-    if (meta?.["source"] === "pulse_scan" && typeof meta["pulseCheckKey"] === "string") {
-      existingPulseCheckKeys.add(meta["pulseCheckKey"] as string);
-    }
-  }
-
   async function addCheckTask(check: PulseScanCheckRecord) {
-    if (!scan.clientId) return;
     setPendingCheckKey(check.checkKey);
     try {
-      await createCheckTasks({
-        clientId: scan.clientId,
-        tasks: [
-          {
-            title: `[Pulse] ${check.label}`,
-            description: [check.detail, check.evidence].filter(Boolean).join("\n\n") || undefined,
-            priority: check.status === "FAIL" ? "HIGH" : "MEDIUM",
-            metadata: {
-              source: "pulse_scan",
-              pulseScanId: scan.id,
-              pulseCheckKey: check.checkKey,
-              pulseCategory: check.category,
-            },
-          },
-        ],
-      });
-      setAddedCheckKeys((s) => new Set(s).add(check.checkKey));
+      await sendFinding.mutateAsync(check.checkKey);
     } catch {
       /* swallow — button stays actionable */
     } finally {
@@ -2909,30 +2879,44 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
                                 <p className="mt-0.5 font-mono text-[10px] leading-4 text-[var(--text-4)]">{check.evidence}</p>
                               )}
                             </div>
-                            {scan.clientId && (check.status === "FAIL" || check.status === "WARN") && (() => {
-                              const added = addedCheckKeys.has(check.checkKey) || existingPulseCheckKeys.has(check.checkKey);
+                            {(check.status === "FAIL" || check.status === "WARN") && (() => {
+                              const finding = findingByKey.get(check.checkKey);
+                              const taskHref = finding?.task ? findingTaskHref(finding.task) : null;
+                              if (finding?.task) {
+                                const chip = (
+                                  <>
+                                    <CheckCircleIcon className="h-3 w-3" />
+                                    {finding.stage === "task_done" ? "Task done" : "On board"}
+                                  </>
+                                );
+                                const cls = "mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-[5px] border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700";
+                                return taskHref
+                                  ? <Link href={taskHref} className={cn(cls, "hover:underline")} title={`On this client's task board: ${finding.task.title}`}>{chip}</Link>
+                                  : <span className={cls} title="On this client's task board">{chip}</span>;
+                              }
+                              if (finding?.stage === "accepted" || finding?.stage === "false_positive") {
+                                return (
+                                  <span className="mt-0.5 inline-flex shrink-0 items-center rounded-[5px] border border-[var(--border-2)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-3)]" title={stageLabel(finding)}>
+                                    Dismissed
+                                  </span>
+                                );
+                              }
+                              if (!scan.clientId || !canManagePulse) return null;
                               const pending = pendingCheckKey === check.checkKey;
                               return (
                                 <button
                                   type="button"
-                                  disabled={added || pending}
+                                  disabled={pending}
                                   onClick={() => addCheckTask(check)}
-                                  className={cn(
-                                    "mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-[5px] border px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-default",
-                                    added
-                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                      : "border-[var(--border-2)] text-[var(--text-2)] hover:border-[var(--accent)] hover:text-[var(--accent)]",
-                                  )}
-                                  title={added ? "On this client's task board" : "Add to this client's task board"}
+                                  className="mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-[5px] border border-[var(--border-2)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-2)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:cursor-default"
+                                  title="Add to this client's task board"
                                 >
                                   {pending ? (
                                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                  ) : added ? (
-                                    <CheckCircleIcon className="h-3 w-3" />
                                   ) : (
                                     <PlusIcon className="h-3 w-3" />
                                   )}
-                                  {added ? "Added" : "Task"}
+                                  Task
                                 </button>
                               );
                             })()}
