@@ -2942,6 +2942,11 @@ model PulseFindingState {
   decidedAt   DateTime?
   /// The scan the last change was made on.
   scanId      String?
+  /// A short hash of the check's detail and evidence when the decision was made, so a
+  /// dismissal can reopen when the finding changes (src/lib/pulse-findings.ts).
+  decisionFingerprint String?
+  /// The check's status (FAIL / WARN) when the decision was made.
+  decisionStatus      String?
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 

@@ -24,6 +24,12 @@ export interface FindingState {
   taskId: string | null;
   decidedByName: string | null;
   decidedAt: string | null;
+  /** `findingFingerprint` of the check when the decision was made. Null on older decisions. */
+  fingerprint?: string | null;
+  /** The check's status (FAIL / WARN) when the decision was made. */
+  decisionStatus?: string | null;
+  /** A scan of this project after the decision passed the check (derived by the server). */
+  passedSinceDecision?: boolean;
 }
 
 /** The board task a finding was sent to, as the board sees it now. */
@@ -48,6 +54,7 @@ export function findingTaskHref(task: Pick<FindingTask, "id" | "clientSlug">): s
 
 export type FindingStage =
   | "open"            // failing or warning, nobody has acted
+  | "reopened"        // was dismissed, but the finding has changed since (see staleDecision)
   | "in_progress"     // sent to the board, task not done
   | "task_done"       // task marked done but the check still fails on this scan
   | "fixed"           // the check passes now, after failing before or after a decision
@@ -69,6 +76,46 @@ export interface Finding<C extends FindingCheck = FindingCheck> {
   stage: FindingStage;
   state: FindingState | null;
   task: FindingTask | null;
+  /** Why a dismissal no longer holds, when it does not. */
+  reopened: ReopenReason | null;
+}
+
+/**
+ * Why a decision no longer covers what this scan found:
+ * - `returned`: a later scan passed the check, and it fails again. The decision was about
+ *   the old instance; this is a new one. Applies to both decisions.
+ * - `worse`: it was a warning when decided and is a failure now. Applies to both decisions:
+ *   a risk accepted as a warning was not accepted as a failure.
+ * - `changed`: what Pulse found (the detail and evidence) is materially different. Applies
+ *   to "not a real issue" only: that judgement was about what Pulse reported, so a different
+ *   report needs a fresh look. An accepted risk is about the issue itself, so new wording of
+ *   the same failure does not reopen it.
+ */
+export type ReopenReason = "returned" | "worse" | "changed";
+
+/**
+ * A short, stable fingerprint of what a check found, used to tell whether a dismissed
+ * finding has changed. Numbers are folded to `#` and whitespace and case are ignored, so
+ * "3 pages" becoming "4 pages" is the same finding, while a different header, path or
+ * message is not. FNV-1a, so it is identical in the browser and on the server.
+ */
+export function findingFingerprint(check: { detail?: string | null; evidence?: string | null }): string {
+  const text = `${check.detail ?? ""}\n${check.evidence ?? ""}`.toLowerCase().replace(/\d+/g, "#").replace(/\s+/g, " ").trim();
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/** Whether a decision still covers a failing check (null), or why it does not. */
+export function staleDecision(check: FindingCheck, state: FindingState | null): ReopenReason | null {
+  if (!state?.decision || !ADVERSE.has(check.status)) return null;
+  if (state.passedSinceDecision) return "returned";
+  if (state.decisionStatus === "WARN" && check.status === "FAIL") return "worse";
+  if (state.decision === "FALSE_POSITIVE" && state.fingerprint && state.fingerprint !== findingFingerprint(check)) return "changed";
+  return null;
 }
 
 const ADVERSE = new Set(["FAIL", "WARN"]);
@@ -95,20 +142,22 @@ export function buildFindings<C extends FindingCheck>(
     const state = stateOf.get(check.checkKey) ?? null;
     const task = state?.taskId ? taskOf.get(state.taskId) ?? null : null;
     let stage: FindingStage | null = null;
+    const reopened = staleDecision(check, state);
     if (ADVERSE.has(check.status)) {
-      // A decision outranks a task: someone looked at the work and chose to stop.
-      if (state?.decision === "ACCEPTED_RISK") stage = "accepted";
-      else if (state?.decision === "FALSE_POSITIVE") stage = "false_positive";
+      // A decision outranks a task: someone looked at the work and chose to stop. A decision
+      // that no longer covers what was found does not (see staleDecision).
+      if (state?.decision === "ACCEPTED_RISK" && !reopened) stage = "accepted";
+      else if (state?.decision === "FALSE_POSITIVE" && !reopened) stage = "false_positive";
       // A task the board says is done, on a check that still fails, is not fixed. Saying
       // so is the point: "done" on the board and failing in the product disagree.
       else if (task) stage = DONE.has(task.status) ? "task_done" : "in_progress";
-      else stage = "open";
+      else stage = reopened ? "reopened" : "open";
     } else if (UNCHECKED.has(check.status)) {
       stage = "unchecked";
     } else if (check.status === "PASS" && (state || previouslyAdverse.has(check.checkKey))) {
       stage = "fixed";
     }
-    if (stage) out.push({ check, stage, state, task });
+    if (stage) out.push({ check, stage, state, task, reopened });
   }
   return out;
 }
@@ -125,7 +174,7 @@ export function compareFindings(a: Finding, b: Finding, rank?: (checkKey: string
 
 /** The views the list offers, in order, and which stages each holds. */
 export const FINDING_VIEWS: { id: FindingView; label: string; stages: FindingStage[] }[] = [
-  { id: "open", label: "Open", stages: ["open", "task_done"] },
+  { id: "open", label: "Open", stages: ["open", "reopened", "task_done"] },
   { id: "in_progress", label: "On the board", stages: ["in_progress"] },
   { id: "fixed", label: "Fixed", stages: ["fixed"] },
   { id: "dismissed", label: "Dismissed", stages: ["accepted", "false_positive"] },
@@ -144,11 +193,11 @@ export function countByView(findings: Finding[]): Record<FindingView, number> {
  * where only the number is wanted (the Projects list), so it needs only key and status.
  */
 export function countOpenFindings(
-  checks: { checkKey: string; status: string }[],
+  checks: { checkKey: string; status: string; detail?: string | null; evidence?: string | null }[],
   states: FindingState[],
   tasks: FindingTask[],
 ): number {
-  const full = checks.map((c) => ({ checkKey: c.checkKey, status: c.status, label: c.checkKey, category: "", detail: null }));
+  const full = checks.map((c) => ({ checkKey: c.checkKey, status: c.status, label: c.checkKey, category: "", detail: c.detail ?? null, evidence: c.evidence ?? null }));
   return countByView(buildFindings(full, states, tasks)).open;
 }
 
@@ -157,6 +206,7 @@ export function stageLabel(f: Finding): string {
   switch (f.stage) {
     case "open": return f.check.status === "FAIL" ? "Failing" : "Warning";
     case "in_progress": return f.task && ["DOING", "IN_REVIEW"].includes(f.task.status) ? "In progress" : "On the board";
+    case "reopened": return f.reopened === "returned" ? "Failing again after passing" : f.reopened === "worse" ? "Worse since dismissed" : "Changed since dismissed";
     case "task_done": return "Task done, still failing";
     case "fixed": return "Fixed";
     case "accepted": return "Risk accepted";

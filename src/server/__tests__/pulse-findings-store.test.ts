@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   scans: [] as Record<string, unknown>[],
   checks: [] as Record<string, unknown>[],
   queries: 0,
+  passes: [] as Record<string, unknown>[],
   states: [] as Record<string, unknown>[],
   tasks: [] as Record<string, unknown>[],
   created: [] as Record<string, unknown>[],
@@ -19,7 +20,12 @@ vi.mock("@/lib/prisma", () => ({
       findMany: async ({ where }: { where: { id: { in: string[] } } }) => { db.queries++; return db.scans.filter((s) => where.id.in.includes(s.id as string)); },
     },
     pulseScanCheck: {
-      findMany: async ({ where }: { where: { scanId: { in: string[] } } }) => { db.queries++; return db.checks.filter((c) => where.scanId.in.includes(c.scanId as string)); },
+      findMany: async ({ where }: { where: { scanId?: { in: string[] }; checkKey?: { in: string[] } } }) => {
+        db.queries++;
+        if (where.scanId) return db.checks.filter((c) => where.scanId!.in.includes(c.scanId as string));
+        // Passes after a decision: rows carry their scan, as the select asks.
+        return db.passes.filter((p) => where.checkKey!.in.includes(p.checkKey as string));
+      },
     },
     pulseFindingState: {
       findMany: async ({ where }: { where: { targetKey: { in: string[] } } }) => { db.queries++; return db.states.filter((s) => where.targetKey.in.includes(s.targetKey as string)); },
@@ -52,9 +58,9 @@ import { countOpenFindingsForScans, getFindingStates, sendFindingToBoard, setFin
 
 const user = { id: "u1", role: "ADMIN" } as unknown as Parameters<typeof sendFindingToBoard>[0];
 
-function scan(id: string, clientId: string | null = "c1") {
+function scan(id: string, clientId: string | null = "c1", createdAt = new Date("2026-10-01")) {
   return {
-    id, workspaceId: "ws", clientId, inputUrl: "https://www.example.com/", inputGithubRepo: null, projectName: "x",
+    id, workspaceId: "ws", clientId, createdAt, inputUrl: "https://www.example.com/", inputGithubRepo: null, projectName: "x",
     checks: [{ checkKey: "csp_header", label: "Content-Security-Policy", category: "Security", status: "FAIL", detail: "none", evidence: null }],
   };
 }
@@ -68,6 +74,7 @@ describe("finding storage", () => {
     db.scans = [];
     db.checks = [];
     db.queries = 0;
+    db.passes = [];
   });
 
   it("a decision made on one scan is read back for the next scan of the same project", async () => {
@@ -135,7 +142,27 @@ describe("finding storage", () => {
     );
     const counts = await countOpenFindingsForScans(["a", "b", "c"]);
     expect(Object.fromEntries(counts)).toEqual({ a: 0, b: 2, c: 2 });
-    // scans, checks, states, legacy tasks, live tasks: the same five reads for three projects as for three hundred.
+    // scans, checks, states, legacy tasks, live tasks (plus one for later passes when there are decisions):
+    // the same reads for three projects as for three hundred.
     expect(db.queries).toBe(5);
+  });
+
+  it("a decision records what it was made about, and clearing it clears that too", async () => {
+    await setFindingDecision(user, "s1", "csp_header", "FALSE_POSITIVE", "wrong");
+    expect(db.states[0]).toMatchObject({ decisionFingerprint: expect.stringMatching(/^[0-9a-f]{8}$/), decisionStatus: "FAIL" });
+    await setFindingDecision(user, "s1", "csp_header", null, null);
+    expect(db.states[0]).toMatchObject({ decisionFingerprint: null, decisionStatus: null });
+  });
+
+  it("a pass of the same project after the decision is reported; one before it, on another project, or after the scan being read is not", async () => {
+    const decidedAt = new Date("2026-09-01");
+    db.states.push({ workspaceId: "ws", targetKey: "url:example.com", checkKey: "csp_header", decision: "ACCEPTED_RISK", decidedAt, taskId: null });
+    const pass = (at: string, url: string) => ({ checkKey: "csp_header", scan: { createdAt: new Date(at), inputUrl: url, inputGithubRepo: null, projectName: "x" } });
+    const read = async () => (await getFindingStates("s1")).states[0].passedSinceDecision;
+
+    db.passes = [pass("2026-08-01", "https://example.com"), pass("2026-09-15", "https://other.com"), pass("2026-10-05", "https://example.com")];
+    expect(await read()).toBe(false); // before the decision, another site, after the scan being read
+    db.passes.push(pass("2026-09-15", "https://www.example.com/"));
+    expect(await read()).toBe(true);
   });
 });

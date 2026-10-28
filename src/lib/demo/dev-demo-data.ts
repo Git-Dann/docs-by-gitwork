@@ -19,7 +19,7 @@ import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
 import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
 import { buildProjects, decodeTargetKey, targetKey, type PulseProject } from "@/lib/pulse-projects";
-import { countOpenFindings } from "@/lib/pulse-findings";
+import { countOpenFindings, findingFingerprint } from "@/lib/pulse-findings";
 import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
@@ -3886,6 +3886,10 @@ function demoFindingSeed(scanId: string) {
     tasks.push({ id, status: "DOING", title: seed.title, assigneeName: seed.assignee, clientSlug: scanId === "scan-northwind" ? WIKI_CLIENT.slug : null });
     states.push({ checkKey: seed.accept, decision: "ACCEPTED_RISK", note: seed.note, taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-1) });
   }
+  if (scanId === "scan-northwind" && warns[2]) {
+    // Dismissed as not a real issue on an earlier scan, about a different report: back in Open.
+    states.push({ checkKey: warns[2], decision: "FALSE_POSITIVE", note: "The banner is set by the CDN, not the page.", taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-30), fingerprint: "00000000", decisionStatus: "WARN", passedSinceDecision: false });
+  }
   return { states, tasks };
 }
 
@@ -3912,7 +3916,11 @@ function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: st
   }
   if (method === "PUT" && checkKey) {
     const decision = body.decision === "ACCEPTED_RISK" || body.decision === "FALSE_POSITIVE" ? body.decision : null;
-    upsert({ decision, note: decision && typeof body.note === "string" ? body.note : null, decidedByName: "Alex Rivera", decidedAt: new Date().toISOString() });
+    const check = scan.checks.find((c) => c.checkKey === checkKey);
+    upsert({
+      decision, note: decision && typeof body.note === "string" ? body.note : null, decidedByName: "Alex Rivera", decidedAt: new Date().toISOString(),
+      fingerprint: decision && check ? findingFingerprint(check) : null, decisionStatus: decision && check ? check.status : null, passedSinceDecision: false,
+    });
   }
   return { targetKey: targetKey(scan), clientId: scan.clientId, ...store };
 }
