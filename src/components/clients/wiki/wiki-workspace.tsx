@@ -1541,7 +1541,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     // ── Resources — clean list of links / Foundry docs / uploaded files.
     if (activeSection === "documents") {
-      return <DocumentsManager slug={slug} documents={wiki!.documents.documents} />;
+      return <DocumentsManager slug={slug} documents={wiki!.documents.documents} drive={wiki!.drive} />;
     }
 
     // ── Client intake — bugs/feedback/requests stay in Wiki until promoted by Admin+.

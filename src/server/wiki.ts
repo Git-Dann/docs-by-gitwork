@@ -57,6 +57,8 @@ import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSecti
 import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
 import { loadWikiPlatforms } from "./wiki-platforms";
 import { EMPTY_PLATFORMS, type WikiPlatformsSection } from "@/lib/wiki-platforms";
+import { forPublicDrive, loadWikiDrive } from "./wiki-drive";
+import { EMPTY_DRIVE, type WikiDriveSection } from "@/lib/client-drive";
 import type { WikiEstimatesSection } from "@/types/wiki-estimates";
 import type { WikiComparisonsSection } from "@/types/wiki-comparisons";
 import type { WikiSheetsSection } from "@/types/wiki-sheets";
@@ -458,6 +460,8 @@ export interface WikiDTO {
   meetings: WikiMeetingsSection;
   /** The client's platforms as links, with renewal dates — see src/server/wiki-platforms.ts. */
   clientPlatforms: WikiPlatformsSection;
+  /** The files in the client's linked Google Drive folder — see src/server/wiki-drive.ts. */
+  drive: WikiDriveSection;
   /**
    * Pushed AM/PM developer standups for this client — today, plus the days
    * in the last two weeks that had one. See src/server/wiki-standups.ts. Only
@@ -1097,6 +1101,7 @@ async function buildDTO(
     metrics,
     meetings,
     clientPlatforms,
+    drive,
   ] = await Promise.all([
     settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
     settle(
@@ -1162,6 +1167,7 @@ async function buildDTO(
     settle("metrics", () => loadWikiMetrics(wiki.clientId), EMPTY_METRICS),
     settle("meetings", () => loadWikiMeetings(wiki.clientId), EMPTY_MEETINGS),
     settle("platforms", () => loadWikiPlatforms(wiki.clientId), EMPTY_PLATFORMS),
+    settle("drive", () => loadWikiDrive(wiki.clientId), EMPTY_DRIVE),
   ]);
   return {
     id: wiki.id,
@@ -1232,6 +1238,7 @@ async function buildDTO(
     metrics,
     meetings,
     clientPlatforms,
+    drive,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -3345,6 +3352,8 @@ function forPublic(dto: WikiDTO): WikiDTO {
     // Deleted rows and who on our team holds each task stay on the server; nothing at all
     // leaves while the section is off.
     sheets: forPublicSheets(dto.sheets),
+    // Whose Google account reads the folder for the client is ours, not theirs.
+    drive: forPublicDrive(dto.drive),
   };
 
   // ⚠️ Computed on the TRIMMED copy, never on `dto`. The predicates read the very

@@ -1563,6 +1563,13 @@ model ClientWiki {
   /// Whether the Platforms section is enabled — the client's platforms from Portal, as
   /// links. Logins and internal notes never leave Portal.
   platformsEnabled    Boolean                @default(false)
+  /// Whether the Drive section is enabled — the files in the client's linked Google Drive
+  /// folder (`WorkspaceClient.googleDriveFolderUrl`), on their wiki. Off until someone turns
+  /// it on. A client has no Gitwork Google account, so their copy is read with the Google
+  /// sign-in of `driveReaderUserId`: the team member who turned it on. The team always reads
+  /// with their own.
+  driveEnabled        Boolean                @default(false)
+  driveReaderUserId   String?
   /// Whether the Comparisons section is enabled — feature/plan comparison tables (Free vs
   /// Pro, the client vs competitors). Client-facing, so off until someone turns it on.
   comparisonsEnabled  Boolean                @default(false)

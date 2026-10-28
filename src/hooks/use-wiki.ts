@@ -92,6 +92,7 @@ import {
   setWikiMeetingsEnabledApi,
   setWikiMeetingSharedApi,
   setWikiPlatformsEnabledApi,
+  setWikiDriveEnabled as setWikiDriveEnabledApi,
   updateWikiInsightBoardApi,
   type WikiInsightBoardInput,
   setWikiIntakeCategoriesApi,
@@ -522,6 +523,21 @@ export function useSetWikiPlatformsEnabled(slug: string) {
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiPlatformsEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/**
+ * Switch the Drive section on (making YOU the Google account the client's copy reads with) or
+ * off. Switching on is refused unless your Drive can open the client's folder — the error says why.
+ */
+export function useSetWikiDriveEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiDriveEnabledApi(slug, enabled),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["client-drive"] });
+    },
   });
 }
 

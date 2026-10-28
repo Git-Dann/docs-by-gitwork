@@ -174,7 +174,14 @@ export function WikiPublicView({
     }
 
     if (activeSection === "documents") {
-      return <DocumentsList documents={wiki.documents.documents} fileBase={`/api/wiki/${token}`} />;
+      return (
+        <DocumentsList
+          documents={wiki.documents.documents}
+          fileBase={`/api/wiki/${token}`}
+          drive={wiki.drive}
+          driveTarget={{ mode: "public", token }}
+        />
+      );
     }
 
     if (activeSection === "intake") {

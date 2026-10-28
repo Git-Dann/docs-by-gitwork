@@ -376,3 +376,53 @@ describe("sheets — the one section the client writes to, and how", () => {
     expect(access).toContain("assertClientAccessBySlug(user, slug)");
   });
 });
+
+describe("Drive — the client's Google Drive files, a tab of Resources", () => {
+  const routes = [
+    "app/api/wiki/[token]/drive/route.ts",
+    "app/api/wiki/[token]/drive/thumbnail/[fileId]/route.ts",
+    "app/api/wiki/[token]/drive/file/[fileId]/route.ts",
+  ];
+
+  it.each(routes)("%s resolves access and rate-limits before it touches Drive", (rel) => {
+    const src = read(rel);
+    expect(src).toContain("resolveWikiDriveAccess(req, token)");
+    expect(src).toContain("assertWikiDriveRate(req,");
+    expect(src.indexOf("resolveWikiDriveAccess(")).toBeLessThan(src.indexOf("readerDrive("));
+    expect(src.indexOf("assertWikiDriveRate(")).toBeLessThan(src.indexOf("readerDrive("));
+  });
+
+  it("the resolver checks the flag, that a per-section link is the Resources one, and the login", () => {
+    const src = read("server/wiki-drive.ts");
+    expect(src).toContain("driveEnabled");
+    expect(src).toContain('onlySection !== "documents"');
+    expect(src).toContain("resolveWikiAccessUser(wiki.id, cookieValue)");
+  });
+
+  it("an archived teammate's Google account is never used for a client (§57)", () => {
+    const src = read("server/wiki-drive.ts");
+    expect(src.slice(src.indexOf("export async function readerDrive("))).toContain("...ACTIVE_MEMBER");
+  });
+
+  it("the client's copy doesn't say whose Google account reads it, and loads through settle()", () => {
+    const wiki = read("server/wiki.ts");
+    const fn = wiki.slice(wiki.indexOf("function forPublic("), wiki.indexOf("export async function resolvePublicWiki"));
+    expect(fn).toContain("drive: forPublicDrive(dto.drive)");
+    expect(read("server/wiki-drive.ts")).toContain("{ enabled: true, linked: true, reader: null }");
+    expect(wiki).toContain('settle("drive", () => loadWikiDrive(wiki.clientId), EMPTY_DRIVE)');
+  });
+
+  it("switching it on lends the SIGNED-IN person's Google account, never the 'view as' user", () => {
+    expect(read("app/api/clients/[slug]/wiki/drive/route.ts")).toContain(
+      "setWikiDriveEnabled(client.id, enabled, session?.user?.id ?? null)",
+    );
+  });
+
+  it("Resources shows the client a Drive tab only once it's shown to them, on a linked folder", () => {
+    const available = declBlock(read("lib/wiki-client-visibility.ts"), "const availableSections");
+    expect(available).toContain("wiki.drive.enabled && wiki.drive.linked");
+    expect(read("components/clients/wiki/wiki-drive-section.tsx")).toContain(
+      'audience === "team" ? drive.linked : drive.enabled && drive.linked',
+    );
+  });
+});
