@@ -8262,6 +8262,16 @@ priority plan, a readiness checklist and two "fix first" lists. None of them cou
   a literal the type checker ran out of memory. Regenerate the file rather than hand-editing it. The
   demo applies findings writes in memory, but the demo user has no `pulse.manage`, so the actions show
   only for a real user.
+- **Cadenza and Fairway carry real scans too** (`demo-pulse-recorded-cadenza.ts`, `-fairway.ts`):
+  - Cadenza is a repo scan of `bradtraversy/proshop-v2` (84, 192 checks, plus its code-health
+    report). Fairway is a rendered URL scan of a small UK golf club's site (81, 264 checks).
+  - Both are renamed throughout: repo, file and screen names, host, page slugs, crest URL and
+    nameserver. The scores, tech stacks and code health come from the recordings. Diffs and
+    finding seeds use the recorded check keys.
+  - ⚠️ Real lite scans of small sites and repos all landed at 79–92. The `/pulse/features`
+    examples need a middling (<75) and a weak (<50) result, so they keep the old hand-written
+    scans (`exampleScanCadenza` / `exampleScanFairway`). All three `/demo/pulse` projects are
+    now green.
 - ⚠️ **`tsc` on main sits at the edge of Node's default 4GB heap** and ran out of memory
   intermittently. CI already used 6144; `npm run verify` now does too.
 

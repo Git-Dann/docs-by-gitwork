@@ -56,7 +56,8 @@ describe("summarisePortfolio", () => {
 
   it("names the codebase that needs attention first by urgency, not by score", () => {
     // cadenza scores higher than fairway but has serious security holes, so it comes first.
-    expect(p.headline).toContain("First: cadenza-app/cadenza. 2 serious security holes.");
+    // Its report is the recorded demo scan: 9 critical + 43 high advisories.
+    expect(p.headline).toContain("First: cadenza-app/cadenza. 52 serious security holes.");
     for (const t of [p.headline, ...p.lines.map((l) => l.text)]) expect(t, t).not.toMatch(JARGON);
   });
 

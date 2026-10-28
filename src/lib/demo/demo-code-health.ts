@@ -1,10 +1,11 @@
 import { EFFORT_HOURS } from "@/server/code-health/rules";
 import type { CodeHealthReport, DebtItem } from "@/types/code-health";
+import { RECORDED_CADENZA_CODE_HEALTH } from "@/lib/demo/demo-pulse-recorded-cadenza";
 
 /**
- * Mock code-health report for the demo Cadenza repo scan. Fictional repo and paths;
- * the shape and the proportions follow real measured repositories, so the panel is
- * exercised with a realistic mix of severities and kinds.
+ * Mock code-health report: fictional repo and paths, with the shape and proportions of real
+ * measured repositories. It is the base the portfolio's other demo repos are derived from, and
+ * a fixture for tests. The /demo/pulse Cadenza scan itself carries a real (renamed) measure.
  */
 const d = (o: Omit<DebtItem, "reason"> & { reason?: string }): DebtItem => ({ reason: "", effortHours: EFFORT_HOURS[o.kind][o.severity], ...o });
 
@@ -132,7 +133,8 @@ export const DEMO_CODE_HEALTH: CodeHealthReport = {
  * person, and never audited for libraries (no lockfile).
  */
 export const DEMO_PORTFOLIO_REPORTS: { report: CodeHealthReport; scanId: string; projectName: string; clientName: string; history: number[] }[] = [
-  { report: DEMO_CODE_HEALTH, scanId: "scan-cadenza", projectName: "cadenza (github)", clientName: "Cadenza", history: [62, 66, 68, 71] },
+  // Cadenza is the repo scan in /demo/pulse, so it uses that scan's real (renamed) code measure.
+  { report: RECORDED_CADENZA_CODE_HEALTH, scanId: "scan-cadenza", projectName: "cadenza (github)", clientName: "Cadenza", history: [RECORDED_CADENZA_CODE_HEALTH.score - 6, RECORDED_CADENZA_CODE_HEALTH.score - 3, RECORDED_CADENZA_CODE_HEALTH.score - 1, RECORDED_CADENZA_CODE_HEALTH.score] },
   {
     scanId: "scan-northwind",
     projectName: "northwind (github)",
