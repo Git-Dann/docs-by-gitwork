@@ -8,13 +8,14 @@
           "content": [
             "Backstage",
             "Care",
-            "Code",
             "Docs",
             "Foundry HQ",
             "Foundry — live product demo · Foundry",
+            "Hiring",
             "Portal",
             "Pulse",
             "See what Foundry can do —by using the real thing, right now.",
+            "Staff",
             "Studio",
             "Wiki"
           ]
@@ -24,13 +25,14 @@
           "content": [
             "Backstage",
             "Care",
-            "Code",
             "Docs",
             "Foundry HQ",
             "Foundry — live product demo · Foundry",
+            "Hiring",
             "Portal",
             "Pulse",
             "See what Foundry can do —by using the real thing, right now.",
+            "Staff",
             "Studio",
             "Wiki"
           ]
@@ -40,13 +42,14 @@
           "content": [
             "Backstage",
             "Care",
-            "Code",
             "Docs",
             "Foundry HQ",
             "Foundry — live product demo · Foundry",
+            "Hiring",
             "Portal",
             "Pulse",
             "See what Foundry can do —by using the real thing, right now.",
+            "Staff",
             "Studio",
             "Wiki"
           ]
@@ -137,7 +140,7 @@
             "# // DEVELOPERS# active",
             "# // DEVS",
             "# // DOCS",
-            "# // DOCUMENTS# linked",
+            "# // DOCUMENTSLinked #Drive",
             "# // LIFECYCLE",
             "# // MEETING NOTESGrab noteScribe",
             "# // NOTES",
@@ -157,7 +160,7 @@
             "# // DEVELOPERS# active",
             "# // DEVS",
             "# // DOCS",
-            "# // DOCUMENTS# linked",
+            "# // DOCUMENTSLinked #Drive",
             "# // LIFECYCLE",
             "# // MEETING NOTESGrab noteScribe",
             "# // NOTES",
@@ -177,7 +180,7 @@
             "# // DEVELOPERS# active",
             "# // DEVS",
             "# // DOCS",
-            "# // DOCUMENTS# linked",
+            "# // DOCUMENTSLinked #Drive",
             "# // LIFECYCLE",
             "# // MEETING NOTESGrab noteScribe",
             "# // NOTES",
@@ -398,8 +401,8 @@
             "#//Pending",
             "#//Pipeline config",
             "#//Promoted",
-            "Code",
             "Foundry — DevSignal demo · Foundry",
+            "Hiring",
             "Vetting — staging review"
           ]
         }
@@ -582,13 +585,14 @@
           "content": [
             "Backstage",
             "Care",
-            "Code",
             "Docs",
             "Foundry HQ",
+            "Hiring",
             "Northwind — live product demo · Foundry",
             "Portal",
             "Pulse",
             "See what Northwind can do —by using the real thing, right now.",
+            "Staff",
             "Studio",
             "Wiki"
           ]
@@ -598,13 +602,14 @@
           "content": [
             "Backstage",
             "Care",
-            "Code",
             "Docs",
             "Foundry HQ",
+            "Hiring",
             "Northwind — live product demo · Foundry",
             "Portal",
             "Pulse",
             "See what Northwind can do —by using the real thing, right now.",
+            "Staff",
             "Studio",
             "Wiki"
           ]
@@ -614,13 +619,14 @@
           "content": [
             "Backstage",
             "Care",
-            "Code",
             "Docs",
             "Foundry HQ",
+            "Hiring",
             "Northwind — live product demo · Foundry",
             "Portal",
             "Pulse",
             "See what Northwind can do —by using the real thing, right now.",
+            "Staff",
             "Studio",
             "Wiki"
           ]
@@ -1073,8 +1079,8 @@
             "#//Leadership interview",
             "#//Score breakdown",
             "#//Stage results",
-            "Code",
             "Foundry — DevSignal demo · Foundry",
+            "Hiring",
             "Octavia Catelyn"
           ]
         }
@@ -1117,8 +1123,8 @@
             "#//Leadership interview",
             "#//Score breakdown",
             "#//Stage results",
-            "Code",
             "Foundry — DevSignal demo · Foundry",
+            "Hiring",
             "Octavia Catelyn"
           ]
         }
@@ -1161,8 +1167,8 @@
             "#//Leadership interview",
             "#//Score breakdown",
             "#//Stage results",
-            "Code",
             "Foundry — DevSignal demo · Foundry",
+            "Hiring",
             "Octavia Catelyn"
           ]
         }
@@ -1323,6 +1329,303 @@
       }
     },
     "/demo/pulse/scan-northwind": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "northwind.co"
+          ]
+        }
+      }
+    },
+    "/demo/staff": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//People# on the team",
+            "Foundry — Staff demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//People# on the team",
+            "Foundry — Staff demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//People# on the team",
+            "Foundry — Staff demo · Foundry",
+            "Staff"
+          ]
+        }
+      }
+    },
+    "/demo/docs/d4": {
+      "viewports": {
+        "390": {
+          "clipping": 13,
+          "content": [
+            "# // DOCUMENTREP-# · v#.# · APPROVEDSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Foundry — Document builder · Foundry",
+            "Search rollout report."
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTREP-# · v#.# · APPROVEDSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Foundry — Document builder · Foundry",
+            "Search rollout report."
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTREP-# · v#.# · APPROVEDSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Docs",
+            "Foundry — Document builder · Foundry",
+            "Search rollout report."
+          ]
+        }
+      }
+    },
+    "/demo/docs/d5": {
+      "viewports": {
+        "390": {
+          "clipping": 7,
+          "content": [
+            "# // DOCUMENTHAND-# · v#.# · PRODUCT + TECH SIGN OFFSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Component library handover.",
+            "Foundry — Document builder · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTHAND-# · v#.# · PRODUCT + TECH SIGN OFFSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Component library handover.",
+            "Foundry — Document builder · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTHAND-# · v#.# · PRODUCT + TECH SIGN OFFSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Component library handover.",
+            "Docs",
+            "Foundry — Document builder · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/docs/d6": {
+      "viewports": {
+        "390": {
+          "clipping": 2,
+          "content": [
+            "# // DOCUMENTv#.# · DRAFTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Data export notes.",
+            "Foundry — Document builder · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTv#.# · DRAFTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Data export notes.",
+            "Foundry — Document builder · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTv#.# · DRAFTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Data export notes.",
+            "Docs",
+            "Foundry — Document builder · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/devsignal/ds-2": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Hiring",
+            "Octavia Catelyn"
+          ]
+        }
+      }
+    },
+    "/demo/devsignal/ds-5": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Hiring",
+            "Octavia Catelyn"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-fairway-api": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "northwind.co"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-fairway-prev": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "northwind.co"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-cadenza-prev": {
       "viewports": {
         "390": {
           "clipping": 0,
