@@ -5,6 +5,7 @@
  *   node scripts/baseline.mjs                 # check against tests/baseline/snapshot.json
  *   node scripts/baseline.mjs --update        # record a new snapshot (deliberate changes only)
  *   node scripts/baseline.mjs --url=http://localhost:3100
+ *   node scripts/baseline.mjs --only=/demo/care   # just the pages starting with that path
  *
  * Written for the multi-tenant work (docs/multi-tenant-roadmap.md), where the
  * rule is "Gitwork sees zero change unless the change is deliberate". `/app` is
@@ -49,6 +50,11 @@ const UPDATE = args.includes('--update')
 const BASE = (args.find((a) => a.startsWith('--url='))?.split('=')[1] ?? 'http://localhost:3100').replace(/\/$/, '')
 const VIEWPORTS = [[390, 844], [768, 1024], [1440, 900]]
 const MAX_PAGES = 80
+// --only narrows a check run to pages starting with that path, for a quick loop
+// while working. It never records: a partial snapshot would drop every other page.
+const ONLY = args.find((a) => a.startsWith('--only='))?.split('=')[1] ?? null
+if (ONLY && UPDATE) { console.error('--only cannot be combined with --update'); process.exit(2) }
+const inScope = (p) => !ONLY || p.startsWith(ONLY)
 
 // Pages that are always visited. Others are found by following /demo links.
 const SEEDS = [
@@ -179,7 +185,7 @@ async function main() {
   const failures = await checkGates()
   const browser = await chromium.launch({ executablePath: findChromium(), args: ['--no-sandbox'] })
   const pages = {}
-  const queue = [...new Set([...SEEDS, ...Object.keys(previous?.pages ?? {})])]
+  const queue = [...new Set([...SEEDS, ...Object.keys(previous?.pages ?? {})])].filter(inScope)
   const seen = new Set(queue)
   const families = {}
 
@@ -209,7 +215,7 @@ async function main() {
             p = p.replace(rule[0], rule[1])
             if (!seen.has(p)) families[rule[2]] = (families[rule[2]] ?? 0) + 1
           }
-          if (!seen.has(p) && !SKIP.some((re) => re.test(p))) { seen.add(p); queue.push(p) }
+          if (!seen.has(p) && inScope(p) && !SKIP.some((re) => re.test(p))) { seen.add(p); queue.push(p) }
         }
       }
       if (previous?.pages?.[path]?.viewports?.[key]) {
@@ -227,7 +233,7 @@ async function main() {
   }
   await browser.close()
 
-  for (const path of Object.keys(previous?.pages ?? {})) {
+  for (const path of Object.keys(previous?.pages ?? {}).filter(inScope)) {
     if (!pages[path]) failures.push(`MISSING   ${path}: on the baseline, not reached this run`)
   }
 

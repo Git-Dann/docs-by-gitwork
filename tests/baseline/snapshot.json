@@ -1,0 +1,1355 @@
+{
+  "recordedAgainst": "http://localhost:3100",
+  "pages": {
+    "/demo": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Backstage",
+            "Care",
+            "Code",
+            "Docs",
+            "Foundry HQ",
+            "Foundry — live product demo · Foundry",
+            "Portal",
+            "Pulse",
+            "See what Foundry can do —by using the real thing, right now.",
+            "Studio",
+            "Wiki"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Backstage",
+            "Care",
+            "Code",
+            "Docs",
+            "Foundry HQ",
+            "Foundry — live product demo · Foundry",
+            "Portal",
+            "Pulse",
+            "See what Foundry can do —by using the real thing, right now.",
+            "Studio",
+            "Wiki"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Backstage",
+            "Care",
+            "Code",
+            "Docs",
+            "Foundry HQ",
+            "Foundry — live product demo · Foundry",
+            "Portal",
+            "Pulse",
+            "See what Foundry can do —by using the real thing, right now.",
+            "Studio",
+            "Wiki"
+          ]
+        }
+      }
+    },
+    "/demo/summary": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // CADENZA# DEVS",
+            "# // FAIRWAY NINE# DEVS",
+            "# // LANTERN LOGISTICS# DEV",
+            "# // NORTHWIND STUDIO# DEVS",
+            "# // ORRERY HEALTH# DEVS",
+            "# // THE PORTFOLIOShow # hidden",
+            "Foundry — Client summary demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // CADENZA# DEVS",
+            "# // FAIRWAY NINE# DEVS",
+            "# // LANTERN LOGISTICS# DEV",
+            "# // NORTHWIND STUDIO# DEVS",
+            "# // ORRERY HEALTH# DEVS",
+            "# // THE PORTFOLIOShow # hidden",
+            "Foundry — Client summary demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // CADENZA# DEVS",
+            "# // FAIRWAY NINE# DEVS",
+            "# // LANTERN LOGISTICS# DEV",
+            "# // NORTHWIND STUDIO# DEVS",
+            "# // ORRERY HEALTH# DEVS",
+            "# // THE PORTFOLIOShow # hidden",
+            "Client summary",
+            "Foundry — Client summary demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/dev": {
+      "viewports": {
+        "390": {
+          "clipping": 2,
+          "content": [
+            "# // MY CLIENTSPortal",
+            "# // MY DAYWednesday, Oct #",
+            "# // MY TASKS# open",
+            "Foundry — Developer demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // MY CLIENTSPortal",
+            "# // MY DAYWednesday, Oct #",
+            "# // MY TASKS# open",
+            "Foundry — Developer demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 3,
+          "content": [
+            "# // MY CLIENTSPortal",
+            "# // MY DAYWednesday, Oct #",
+            "# // MY TASKS# open",
+            "Foundry HQ",
+            "Foundry — Developer demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/portal": {
+      "viewports": {
+        "390": {
+          "clipping": 9,
+          "content": [
+            "# // CLIENT RECORDCare",
+            "# // CONTACT",
+            "# // DESIGNS",
+            "# // DEVELOPERS# active",
+            "# // DEVS",
+            "# // DOCS",
+            "# // DOCUMENTS# linked",
+            "# // LIFECYCLE",
+            "# // MEETING NOTESGrab noteScribe",
+            "# // NOTES",
+            "# // PLATFORMS",
+            "# // SLACK ACTIVITYnorthwind-internal",
+            "# // STUDIES",
+            "Foundry — Client portal demo · Foundry",
+            "Northwind Studio"
+          ]
+        },
+        "768": {
+          "clipping": 3,
+          "content": [
+            "# // CLIENT RECORDCare",
+            "# // CONTACT",
+            "# // DESIGNS",
+            "# // DEVELOPERS# active",
+            "# // DEVS",
+            "# // DOCS",
+            "# // DOCUMENTS# linked",
+            "# // LIFECYCLE",
+            "# // MEETING NOTESGrab noteScribe",
+            "# // NOTES",
+            "# // PLATFORMS",
+            "# // SLACK ACTIVITYnorthwind-internal",
+            "# // STUDIES",
+            "Foundry — Client portal demo · Foundry",
+            "Northwind Studio"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // CLIENT RECORDCare",
+            "# // CONTACT",
+            "# // DESIGNS",
+            "# // DEVELOPERS# active",
+            "# // DEVS",
+            "# // DOCS",
+            "# // DOCUMENTS# linked",
+            "# // LIFECYCLE",
+            "# // MEETING NOTESGrab noteScribe",
+            "# // NOTES",
+            "# // PLATFORMS",
+            "# // SLACK ACTIVITYnorthwind-internal",
+            "# // STUDIES",
+            "Foundry — Client portal demo · Foundry",
+            "Northwind Studio",
+            "Portal"
+          ]
+        }
+      }
+    },
+    "/demo/tasks": {
+      "viewports": {
+        "390": {
+          "clipping": 2,
+          "content": [
+            "Foundry — Tasks demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Tasks demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Tasks demo · Foundry",
+            "Northwind Studio — Tasks"
+          ]
+        }
+      }
+    },
+    "/demo/docs": {
+      "viewports": {
+        "390": {
+          "clipping": 1,
+          "content": [
+            "# // DOCUMENT LIBRARY# DOCS · # FAV · # ARCHIVED",
+            "Foundry — Docs demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENT LIBRARY# DOCS · # FAV · # ARCHIVED",
+            "Foundry — Docs demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENT LIBRARY# DOCS · # FAV · # ARCHIVED",
+            "Docs",
+            "Foundry — Docs demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/care": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // Across all clients#/# WAITING",
+            "# // Clients#",
+            "Foundry — Care demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // Across all clients#/# WAITING",
+            "# // Clients#",
+            "Foundry — Care demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // Across all clients#/# WAITING",
+            "# // Clients#",
+            "Care",
+            "Foundry — Care demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/backstage": {
+      "viewports": {
+        "390": {
+          "clipping": 2,
+          "content": [
+            "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
+            "Foundry — Backstage demo · Foundry",
+            "October #"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
+            "Foundry — Backstage demo · Foundry",
+            "October #"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
+            "Backstage",
+            "Foundry — Backstage demo · Foundry",
+            "October #"
+          ]
+        }
+      }
+    },
+    "/demo/wiki": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Client wiki demo · Foundry",
+            "Northwind Studio.",
+            "Northwind Studio/# // WIKIEdit",
+            "i // DAILY UPDATES# TODAY"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Client wiki demo · Foundry",
+            "Northwind Studio.",
+            "Northwind Studio/# // WIKIEdit",
+            "i // DAILY UPDATES# TODAY"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Client wiki demo · Foundry",
+            "Northwind Studio.",
+            "Northwind Studio/# // WIKIEdit",
+            "i // DAILY UPDATES# TODAY"
+          ]
+        }
+      }
+    },
+    "/demo/studio": {
+      "viewports": {
+        "390": {
+          "clipping": 1,
+          "content": [
+            "Foundry — Studio demo · Foundry",
+            "One brand, every channel.",
+            "Say hello to Northwind Studio. Now live."
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Studio demo · Foundry",
+            "One brand, every channel.",
+            "Say hello to Northwind Studio. Now live."
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Foundry — Studio demo · Foundry",
+            "One brand, every channel.",
+            "Say hello to Northwind Studio. Now live.",
+            "Studio"
+          ]
+        }
+      }
+    },
+    "/demo/devsignal": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Assessed",
+            "#//Avg score",
+            "#//Completion funnel",
+            "#//Outcomes",
+            "#//Pending",
+            "#//Pipeline config",
+            "#//Promoted",
+            "Foundry — DevSignal demo · Foundry",
+            "Vetting — staging review"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Assessed",
+            "#//Avg score",
+            "#//Completion funnel",
+            "#//Outcomes",
+            "#//Pending",
+            "#//Pipeline config",
+            "#//Promoted",
+            "Foundry — DevSignal demo · Foundry",
+            "Vetting — staging review"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Assessed",
+            "#//Avg score",
+            "#//Completion funnel",
+            "#//Outcomes",
+            "#//Pending",
+            "#//Pipeline config",
+            "#//Promoted",
+            "Code",
+            "Foundry — DevSignal demo · Foundry",
+            "Vetting — staging review"
+          ]
+        }
+      }
+    },
+    "/demo/pulse": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // PROJECTSBy projectAll scans",
+            "Foundry — Pulse demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // PROJECTSBy projectAll scans",
+            "Foundry — Pulse demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // PROJECTSBy projectAll scans",
+            "Foundry — Pulse demo · Foundry",
+            "Pulse"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/monitors": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // MONITORS# monitors",
+            "Foundry — Pulse monitors demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // MONITORS# monitors",
+            "Foundry — Pulse monitors demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // MONITORS# monitors",
+            "Foundry — Pulse monitors demo · Foundry",
+            "Monitors"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/portfolio": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // CODE PORTFOLIO# repositories",
+            "# // REPOSITORIESmost urgent first",
+            "# // SCAN HEALTH# scans",
+            "# // WHERE TO SPEND THE NEXT # DAYS#% of measured risk",
+            "Foundry — Code portfolio demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // CODE PORTFOLIO# repositories",
+            "# // REPOSITORIESmost urgent first",
+            "# // SCAN HEALTH# scans",
+            "# // WHERE TO SPEND THE NEXT # DAYS#% of measured risk",
+            "Foundry — Code portfolio demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // CODE PORTFOLIO# repositories",
+            "# // REPOSITORIESmost urgent first",
+            "# // SCAN HEALTH# scans",
+            "# // WHERE TO SPEND THE NEXT # DAYS#% of measured risk",
+            "Foundry — Code portfolio demo · Foundry",
+            "Portfolio"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/compare": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // PICK A PROJECT# with two or more scans",
+            "Foundry — Pulse compare demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // PICK A PROJECT# with two or more scans",
+            "Foundry — Pulse compare demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // PICK A PROJECT# with two or more scans",
+            "Compare scans",
+            "Foundry — Pulse compare demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/growth": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // ABOUT PULSEShare",
+            "# // PUBLIC EMBEDEnabled",
+            "# // SALES PAGELive",
+            "Foundry — Pulse growth demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // ABOUT PULSEShare",
+            "# // PUBLIC EMBEDEnabled",
+            "# // SALES PAGELive",
+            "Foundry — Pulse growth demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // ABOUT PULSEShare",
+            "# // PUBLIC EMBEDEnabled",
+            "# // SALES PAGELive",
+            "Foundry — Pulse growth demo · Foundry",
+            "Growth"
+          ]
+        }
+      }
+    },
+    "/demo/pulse-embed": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Foundry by Gitwork",
+            "How healthy is your build?"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Foundry by Gitwork",
+            "How healthy is your build?"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Foundry by Gitwork",
+            "How healthy is your build?"
+          ]
+        }
+      }
+    },
+    "/demo/Northwind": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Backstage",
+            "Care",
+            "Code",
+            "Docs",
+            "Foundry HQ",
+            "Northwind — live product demo · Foundry",
+            "Portal",
+            "Pulse",
+            "See what Northwind can do —by using the real thing, right now.",
+            "Studio",
+            "Wiki"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Backstage",
+            "Care",
+            "Code",
+            "Docs",
+            "Foundry HQ",
+            "Northwind — live product demo · Foundry",
+            "Portal",
+            "Pulse",
+            "See what Northwind can do —by using the real thing, right now.",
+            "Studio",
+            "Wiki"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Backstage",
+            "Care",
+            "Code",
+            "Docs",
+            "Foundry HQ",
+            "Northwind — live product demo · Foundry",
+            "Portal",
+            "Pulse",
+            "See what Northwind can do —by using the real thing, right now.",
+            "Studio",
+            "Wiki"
+          ]
+        }
+      }
+    },
+    "/portal/login": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Client Portal — Sign in | Foundry by Gitwork · Foundry",
+            "Welcome back"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Client Portal — Sign in | Foundry by Gitwork · Foundry",
+            "See your project the moment you sign in.",
+            "Welcome back"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Client Portal — Sign in | Foundry by Gitwork · Foundry",
+            "See your project the moment you sign in.",
+            "Welcome back"
+          ]
+        }
+      }
+    },
+    "/login": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Foundry by Gitwork",
+            "Welcome back"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Foundry by Gitwork",
+            "From prompt to production.",
+            "Welcome back"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Foundry by Gitwork",
+            "From prompt to production.",
+            "Welcome back"
+          ]
+        }
+      }
+    },
+    "/pulse-overview": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Any product. Any platform. Any codebase.",
+            "Everything you need for the discovery call",
+            "Foundry by Gitwork",
+            "Millions of products built with AI. Almost none of them production-ready.",
+            "Scan any site right now",
+            "Three steps to a closed engagement",
+            "Try it now.",
+            "We diagnose anyvibe-coded productin # seconds.",
+            "Your model. Your data. Your choice.",
+            "over #,# checks.# categories.Built for AI products."
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Any product. Any platform. Any codebase.",
+            "Everything you need for the discovery call",
+            "Foundry by Gitwork",
+            "Millions of products built with AI. Almost none of them production-ready.",
+            "Scan any site right now",
+            "Three steps to a closed engagement",
+            "Try it now.",
+            "We diagnose anyvibe-coded productin # seconds.",
+            "Your model. Your data. Your choice.",
+            "over #,# checks.# categories.Built for AI products."
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Any product. Any platform. Any codebase.",
+            "Everything you need for the discovery call",
+            "Foundry by Gitwork",
+            "Millions of products built with AI. Almost none of them production-ready.",
+            "Scan any site right now",
+            "Three steps to a closed engagement",
+            "Try it now.",
+            "We diagnose anyvibe-coded productin # seconds.",
+            "Your model. Your data. Your choice.",
+            "over #,# checks.# categories.Built for AI products."
+          ]
+        }
+      }
+    },
+    "/production-ready": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "A scanner that admits what it does not know.",
+            "Every measurement, free. The interpretation is the conversation.",
+            "Find out before your users do.",
+            "Is your app actually production-ready? · Gitwork · Foundry",
+            "Nothing about “it works” tells you it is ready.",
+            "The questions everyone has.",
+            "Three steps. The first one is the only one you have to do.",
+            "Your app works on your machine.Is it production‑ready?"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "A scanner that admits what it does not know.",
+            "Every measurement, free. The interpretation is the conversation.",
+            "Find out before your users do.",
+            "Is your app actually production-ready? · Gitwork · Foundry",
+            "Nothing about “it works” tells you it is ready.",
+            "The questions everyone has.",
+            "Three steps. The first one is the only one you have to do.",
+            "Your app works on your machine.Is it production‑ready?"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "A scanner that admits what it does not know.",
+            "Every measurement, free. The interpretation is the conversation.",
+            "Find out before your users do.",
+            "Is your app actually production-ready? · Gitwork · Foundry",
+            "Nothing about “it works” tells you it is ready.",
+            "The questions everyone has.",
+            "Three steps. The first one is the only one you have to do.",
+            "Your app works on your machine.Is it production‑ready?"
+          ]
+        }
+      }
+    },
+    "/pulse/features": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#,# checks, in # sections",
+            "Is it ready to launch? Pulse answers that.",
+            "One scan, four steps",
+            "Pulse · what it is and what it does · Foundry",
+            "Three example reports",
+            "Three ways in, # kinds of product",
+            "What a result looks like",
+            "What else Pulse does"
+          ]
+        },
+        "768": {
+          "clipping": 8,
+          "content": [
+            "#,# checks, in # sections",
+            "Is it ready to launch? Pulse answers that.",
+            "One scan, four steps",
+            "Pulse · what it is and what it does · Foundry",
+            "Three example reports",
+            "Three ways in, # kinds of product",
+            "What a result looks like",
+            "What else Pulse does"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#,# checks, in # sections",
+            "Is it ready to launch? Pulse answers that.",
+            "One scan, four steps",
+            "Pulse · what it is and what it does · Foundry",
+            "Three example reports",
+            "Three ways in, # kinds of product",
+            "What a result looks like",
+            "What else Pulse does"
+          ]
+        }
+      }
+    },
+    "/api-docs": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "API Reference",
+            "API Reference — Foundry by Gitwork · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "API Reference",
+            "API Reference — Foundry by Gitwork · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "API Reference",
+            "API Reference — Foundry by Gitwork · Foundry"
+          ]
+        }
+      }
+    },
+    "/embed/pulse": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Free Site Health Check — Gitwork Pulse · Foundry",
+            "Free site health check"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Free Site Health Check — Gitwork Pulse · Foundry",
+            "Free site health check"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Free Site Health Check — Gitwork Pulse · Foundry",
+            "Free site health check"
+          ]
+        }
+      }
+    },
+    "/context": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Active Work & Known Issues",
+            "Conventions",
+            "Foundry by Gitwork — AI Context",
+            "Key File Locations",
+            "Module Map",
+            "Project Context — Foundry by Gitwork · Foundry",
+            "Tech Stack",
+            "Upcoming (Next Sessions)",
+            "What It Is"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Active Work & Known Issues",
+            "Conventions",
+            "Foundry by Gitwork — AI Context",
+            "Key File Locations",
+            "Module Map",
+            "Project Context — Foundry by Gitwork · Foundry",
+            "Tech Stack",
+            "Upcoming (Next Sessions)",
+            "What It Is"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Active Work & Known Issues",
+            "Conventions",
+            "Foundry by Gitwork — AI Context",
+            "Key File Locations",
+            "Module Map",
+            "Project Context — Foundry by Gitwork · Foundry",
+            "Tech Stack",
+            "Upcoming (Next Sessions)",
+            "What It Is"
+          ]
+        }
+      }
+    },
+    "/demo/docs/d1": {
+      "viewports": {
+        "390": {
+          "clipping": 5,
+          "content": [
+            "# // DOCUMENTHAND-# · v#.# · ACCEPTEDSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "API handover.",
+            "Foundry — Document builder · Foundry",
+            "Signed by the parties."
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTHAND-# · v#.# · ACCEPTEDSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "API handover.",
+            "Foundry — Document builder · Foundry",
+            "Signed by the parties."
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTHAND-# · v#.# · ACCEPTEDSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "API handover.",
+            "Docs",
+            "Foundry — Document builder · Foundry",
+            "Signed by the parties."
+          ]
+        }
+      }
+    },
+    "/demo/docs/d2": {
+      "viewports": {
+        "390": {
+          "clipping": 13,
+          "content": [
+            "# // DOCUMENTREP-# · v#.# · SENTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Foundry — Document builder · Foundry",
+            "Sprint # report."
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTREP-# · v#.# · SENTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Foundry — Document builder · Foundry",
+            "Sprint # report."
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTREP-# · v#.# · SENTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Docs",
+            "Foundry — Document builder · Foundry",
+            "Sprint # report."
+          ]
+        }
+      }
+    },
+    "/demo/docs/d3": {
+      "viewports": {
+        "390": {
+          "clipping": 6,
+          "content": [
+            "# // DOCUMENTBRF-# · v#.# · DRAFTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Booking integration brief.",
+            "Foundry — Document builder · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTBRF-# · v#.# · DRAFTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Booking integration brief.",
+            "Foundry — Document builder · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // DOCUMENTBRF-# · v#.# · DRAFTSAVED JUST NOW",
+            "# // OUTLINE# BLOCKS",
+            "Booking integration brief.",
+            "Docs",
+            "Foundry — Document builder · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/vet/demo-token-octocat": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "Coding challenge",
+            "Foundry — DevSignal candidate demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "Coding challenge",
+            "Foundry — DevSignal candidate demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "Coding challenge",
+            "Foundry — DevSignal candidate demo · Foundry"
+          ]
+        }
+      }
+    },
+    "/demo/devsignal/ds-4": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Code",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        }
+      }
+    },
+    "/demo/devsignal/ds-3": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Code",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        }
+      }
+    },
+    "/demo/devsignal/ds-1": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "#//Compliance",
+            "#//Decision",
+            "#//Delivery outcomes",
+            "#//Leadership interview",
+            "#//Score breakdown",
+            "#//Stage results",
+            "Code",
+            "Foundry — DevSignal demo · Foundry",
+            "Octavia Catelyn"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/projects/url%3Afairwaynine.co.uk": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry",
+            "Project history"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/projects/repo%3Acadenza-app%2Fcadenza": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry",
+            "Project history"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/projects/url%3Aapp.northwind.co": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // COMPARE TWO SCANS",
+            "# // EVERY SCAN",
+            "# // HOW IT IS GOING# scans",
+            "Foundry — Pulse project demo · Foundry",
+            "Project history"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-fairway": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (-#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (-#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (-#)",
+            "Foundry — Pulse report demo · Foundry",
+            "fairwaynine.co.uk"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-cadenza": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "cadenza (github)"
+          ]
+        }
+      }
+    },
+    "/demo/pulse/scan-northwind": {
+      "viewports": {
+        "390": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "768": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry"
+          ]
+        },
+        "1440": {
+          "clipping": 0,
+          "content": [
+            "# // WHERE IT STANDSpublished weights",
+            "CHANGES SINCE LAST SCAN# → # (+#)",
+            "Foundry — Pulse report demo · Foundry",
+            "northwind.co"
+          ]
+        }
+      }
+    }
+  }
+}
