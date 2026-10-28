@@ -72,7 +72,8 @@ export function renderChecksTab(v: ScanView) {
           <div className="widget-card">
             <div className="widget-header">
               <span className="widget-header-label">{`${sectionNo()} // HEALTH CHECKS`}</span>
-              <span className="widget-header-right">{failCount} {STATUS_WORDS.FAIL.toLowerCase()} · {warnCount} {STATUS_WORDS.WARN.toLowerCase()} · {passCount} {STATUS_WORDS.PASS.toLowerCase()}</span>
+              {/* The filter chips below carry the same counts; on a phone this line would be cut off. */}
+              <span className="widget-header-right hidden sm:inline">{failCount} {STATUS_WORDS.FAIL.toLowerCase()} · {warnCount} {STATUS_WORDS.WARN.toLowerCase()} · {passCount} {STATUS_WORDS.PASS.toLowerCase()}</span>
             </div>
             <div className="widget-body space-y-3">
             {/* Selected markets — shown HERE, beside the checks, not only as a
@@ -189,8 +190,8 @@ export function renderChecksTab(v: ScanView) {
                       <span className="text-[var(--text-4)]">
                         {isExpanded ? <ChevronDownIcon className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
                       </span>
-                      <span className="flex-1 text-sm font-semibold text-[var(--text-1)]">{category}</span>
-                      <div className="flex items-center gap-2">
+                      <span className="min-w-[7rem] flex-1 text-sm font-semibold text-[var(--text-1)]">{category}</span>
+                      <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                         {failed > 0 && (
                           <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{failed} failed</span>
                         )}
