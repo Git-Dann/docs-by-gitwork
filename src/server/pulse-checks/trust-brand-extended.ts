@@ -2,7 +2,8 @@ import { CATEGORIES } from "./categories";
 import type { ExtendedCheckContext, PulseScanCheckInput } from "./_types";
 import { pageTitle } from "./path-probe";
 import { probeTopicPage, topicPageCheck } from "./missing-pages-extended";
-import { claimSeen, claimUnseen, pageAnchors, proseRuns } from "./page-claims";
+import { claimSeen, claimUnseen, findClaim, pageAnchors, proseRuns } from "./page-claims";
+import { AWARD_CLAIM, CONFERENCE_CLAIM, githubOrgLink, INVESTOR_CLAIM, proseClaimVerdict, statusEvidence, UPTIME_CLAIM } from "./vendor-evidence";
 
 export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { httpsUrl } = ctx;
@@ -28,8 +29,11 @@ export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<
     checks.push(claimUnseen(caseBase, `The scanned page carries only ${anchors.length} links, too few to judge its navigation (often a page that draws its menu with JavaScript), so whether it links case studies could not be established.`));
   }
 
-  const hasAwards = /award|winner.*award|award.*winner|recognized.*by|badge.*certified|badge.*award|forbes.*cloud|inc.*500|gartner/i.test(html);
-  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "awards_recognition", label: "Industry awards / recognition badges", status: hasAwards ? "PASS" : "WARN", detail: hasAwards ? "Awards / recognition signals detected." : "No awards or recognition signals — industry awards (Gartner Cool Vendor, G2 Leader) are powerful third-party validation." });
+  // What the page says in readable text or a badge's alt text, quoted. `award` anywhere in
+  // the HTML (a CSS class, a JSON key, "rewards") and `gartner` in a script used to pass.
+  const prose = ctx.contentHtml ?? html;
+  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "awards_recognition", label: "Industry awards / recognition badges",
+    ...proseClaimVerdict(prose, AWARD_CLAIM, "The page names an award or recognition.", "No awards or recognition signals — industry awards (Gartner Cool Vendor, G2 Leader) are powerful third-party validation.") });
 
   const hasSecurityWhitepaper = /security.*whitepaper|whitepaper.*security|security.*documentation|security.*overview.*pdf|download.*security/i.test(html);
   // The route only counts when it answers with a page that names itself as a
@@ -40,8 +44,10 @@ export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<
     "Security documentation signals detected.",
     "No security whitepaper — a downloadable security whitepaper is requested in almost every enterprise procurement process."));
 
-  const hasGithubOrg = /github\.com\/[a-z0-9-]+\/|open.*source|github.*org|our.*github/i.test(html);
-  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "github_org_public", label: "Public GitHub organisation", status: hasGithubOrg ? "PASS" : "WARN", detail: hasGithubOrg ? "Public GitHub organisation signals detected." : "No public GitHub presence — a public GitHub org with active repos demonstrates engineering quality and commitment to open source." });
+  // A link to a GitHub account or repository. "open source" in a sentence, or a github.com
+  // URL inside a script, is not a GitHub organisation.
+  const githubLink = githubOrgLink(prose);
+  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "github_org_public", label: "Public GitHub organisation", status: githubLink ? "PASS" : "WARN", evidence: githubLink ?? undefined, detail: githubLink ? `The page links a GitHub account or repository (${githubLink}).` : "No public GitHub presence — a public GitHub org with active repos demonstrates engineering quality and commitment to open source." });
 
   // Whole titles in readable text: 'cto' is inside 'vector', 'factory' and 'director'.
   const ctoBase = { category: CATEGORIES.TRUST_BRAND, checkKey: "cto_technical_bio", label: "CTO / technical lead bio" };
@@ -50,19 +56,29 @@ export async function runTrustBrandExtended(ctx: ExtendedCheckContext): Promise<
     ? claimSeen(ctoBase, "The page names a technical leader.", ctoQuote)
     : claimUnseen(ctoBase, "The scanned page does not name a CTO or head of engineering. Leadership bios usually sit on an About or Team page, which this check does not read, so this does not show there is none."));
 
-  const hasInvestorBacking = /backed.*by|investor|seed.*round|series.*[a-c]|y combinator|techstars|sequoia|andreessen|accel/i.test(html);
-  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "investor_backing_listed", label: "VC / accelerator backing mentioned", status: hasInvestorBacking ? "PASS" : "WARN", detail: hasInvestorBacking ? "Investor backing signals detected." : "No investor backing signals — listing notable investors or accelerators (YC, Techstars) signals product viability to risk-averse enterprise buyers." });
+  // Readable text only. `accel` is inside "accelerate", `investor` in an investor-relations
+  // link of any listed company, and `series.*[a-c]` matched almost every page.
+  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "investor_backing_listed", label: "VC / accelerator backing mentioned",
+    ...proseClaimVerdict(prose, INVESTOR_CLAIM, "The page names its backing.", "No investor backing signals — listing notable investors or accelerators (YC, Techstars) signals product viability to risk-averse enterprise buyers.") });
 
-  const hasConferences = /speaking.*at|talk.*at|keynote|conference|summit.*presentation|featured.*at|appeared.*at/i.test(html);
-  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "conference_speaking", label: "Conference / speaking appearances", status: hasConferences ? "PASS" : "WARN", detail: hasConferences ? "Conference speaking signals detected." : "No conference speaking signals — speaking at industry events builds authority and generates organic PR." });
+  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "conference_speaking", label: "Conference / speaking appearances",
+    ...proseClaimVerdict(prose, CONFERENCE_CLAIM, "The page mentions a speaking appearance.", "No conference speaking signals — speaking at industry events builds authority and generates organic PR.") });
 
-  // A linked hosted status page (status.<domain>, <brand>status.com, <brand>-status.com,
-  // Instatus/BetterUptime/Statuspal) publishes uptime history even when the page
-  // never names the provider — github.com links www.githubstatus.com, linear.app
-  // links linearstatus.com, cal.com links status.cal.com.
-  const linksStatusPage = /href=["']https?:\/\/(?:www\.)?(?:status\.[a-z0-9-]+\.[a-z.]+|[a-z0-9-]+status\.(?:com|io|app|dev|net)|[a-z0-9-]+\.(?:instatus\.com|betteruptime\.com|statuspal\.io))[\/"'?#]/i.test(html);
-  const hasUptimeHistory = /uptime.*histor|historical.*uptime|99\.9.*uptime|99\.99.*uptime|statuspage|status\.io/i.test(html) || linksStatusPage;
-  checks.push({ category: CATEGORIES.TRUST_BRAND, checkKey: "uptime_history_public", label: "Public uptime / reliability history", status: hasUptimeHistory ? "PASS" : "WARN", detail: hasUptimeHistory ? "Public uptime history signals detected." : "No public uptime history — a public status page with historical uptime data (Statuspage, BetterUptime) builds infrastructure trust." });
+  // A status page the site links, opened and confirmed (status.cal.com, linearstatus.com,
+  // acme.statuspage.io), or a status widget; or the page stating its uptime record in
+  // readable text. "statuspage" or "status.io" anywhere in the HTML used to pass.
+  const status = await statusEvidence(prose, ctx.hostname);
+  const uptimeQuote = status.confirmed ? null : findClaim(proseRuns(prose), UPTIME_CLAIM);
+  checks.push({
+    category: CATEGORIES.TRUST_BRAND, checkKey: "uptime_history_public", label: "Public uptime / reliability history",
+    ...(status.confirmed
+      ? { status: "PASS" as const, detail: `The site publishes a status page (${status.confirmed.where}).`, evidence: status.confirmed.where }
+      : uptimeQuote
+        ? { status: "PASS" as const, detail: `The page states its uptime record: "${uptimeQuote}". Pulse has not seen the history behind it.`, evidence: uptimeQuote }
+        : status.unreadable
+          ? { status: "INCONCLUSIVE" as const, detail: `The site links what looks like its status page (${status.unreadable}), but Pulse could not open it.` }
+          : { status: "WARN" as const, detail: "No public uptime history — a public status page with historical uptime data (Statuspage, BetterUptime) builds infrastructure trust." }),
+  });
 
   // Most testimonial cards attribute as "<Name> <Title>, <Company>" (linear.app: "Gabriel
   // Peal Staff Software Engineer, OpenAI"; cal.com: "Guillermo Rauch CEO, Vercel"). Matched

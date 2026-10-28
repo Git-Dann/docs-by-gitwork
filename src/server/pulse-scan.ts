@@ -54,6 +54,12 @@ import {
 } from "./pulse-checks/store-listing";
 
 import { assertHostResponding, recordTimeout } from "./pulse-checks/host-breaker";
+import {
+  amazonAppstoreVerdict, apmVerdict, bnplVerdict, complianceClaim, cryptoPaymentsVerdict,
+  emailProviderVerdict, linkedSocialProfiles, lookupTxt, productHuntVerdict, reviewPlatformEvidence,
+  rumVerdict, spfNamesFor, STATUS_MENTION, statusEvidence, uptimeMonitoringVerdict, walletVerdict,
+  type StatusEvidence,
+} from "./pulse-checks/vendor-evidence";
 
 export const SCAN_VERSION = "pulse-v3";
 
@@ -3756,6 +3762,10 @@ export async function runUrlChecks(
 
     // Legal & Compliance
     const htmlLower = pageResult.html.toLowerCase();
+    // Vendor evidence reads what the page LOADS and LINKS (vendor-evidence.ts). Scripts can be
+    // injected at runtime, so the served HTML and the rendered DOM are both read.
+    const scriptAndContentHtml = contentHtml === pageResult.html ? contentHtml : `${pageResult.html}\n${contentHtml}`;
+    let statusPageEvidence: StatusEvidence = { confirmed: null, unreadable: null };
 
     // Auto-detect the markets this site appears to serve (TLD / lang / currency).
     // Used as the jurisdiction-filter fallback when the user didn't declare markets;
@@ -3907,24 +3917,40 @@ export async function runUrlChecks(
       "No /faq page — reduces support burden and improves onboarding.",
     ));
 
-    // Status page is usually detected by an embedded statuspage/uptime script (a
-    // reliable in-page signal); the route probe only counts off catch-all.
-    const hasStatusSignals = htmlLower.includes("statuspage") || htmlLower.includes("status.io") ||
-      htmlLower.includes("betteruptime") || htmlLower.includes("uptimerobot");
-    // A footer link to the site's own HOSTED status page is the status page. vercel.com links
-    // https://www.vercel-status.com and cal.com links https://status.cal.com/; both were told
-    // they had none because only an embedded widget or a same-host /status counted.
-    // See linksOwnStatusPage for why a substring brand test is not enough.
-    const linksOwnStatusHost = linksOwnStatusPage(stripInertMarkup(contentHtml), hostname);
-    const hasStatusPage = hasStatusSignals || linksOwnStatusHost || statusPagePage === "present";
+    // A status page is the page itself: a hosted status page the site links (status.cal.com,
+    // www.vercel-status.com, acme.statuspage.io), opened and confirmed, or a status widget the
+    // page loads from the provider's own host. The provider's NAME in the HTML (a blog post, a
+    // comparison table, a bundle string) used to pass on its own; it is not a status page.
+    // See vendor-evidence.ts. The route probe still counts off catch-all.
+    statusPageEvidence = await statusEvidence(scriptAndContentHtml, hostname);
+    const statusFound = statusPageEvidence.confirmed;
+    const statusPageVerdict: Pick<PulseScanCheckInput, "status" | "detail"> & { evidence?: string } =
+      statusFound
+        ? {
+          status: "PASS",
+          detail: statusFound.how === "widget"
+            ? `The page embeds a ${statusFound.provider} status widget (${statusFound.where}).`
+            : `The site links its status page at ${statusFound.where}${statusFound.provider ? ` (${statusFound.provider})` : ""}, and Pulse opened it.`,
+          evidence: statusFound.where,
+        }
+        : statusPagePage === "present"
+          ? { status: "PASS", detail: "A /status page is published on the site." }
+          : statusPageEvidence.unreadable
+            ? {
+              status: "INCONCLUSIVE",
+              detail: `The site links what looks like its status page (${statusPageEvidence.unreadable}), but Pulse could not open it to confirm.`,
+            }
+            : STATUS_MENTION.test(pageResult.html)
+              ? {
+                status: "INCONCLUSIVE",
+                detail: "The page mentions a status-page or uptime service but links no status page and loads no status widget, so a status page could not be found from it.",
+              }
+              : { status: "WARN", detail: "No status page — needed to communicate incidents and build operational trust." };
     checks.push({
       category: CATEGORIES.MISSING_PAGES,
       checkKey: "status_page",
       label: "Status / uptime page",
-      status: hasStatusPage ? "PASS" : "WARN",
-      detail: hasStatusPage
-        ? "Status page or uptime monitoring tool detected."
-        : "No status page — needed to communicate incidents and build operational trust.",
+      ...statusPageVerdict,
     });
 
     checks.push(routePageCheck(
@@ -4161,17 +4187,16 @@ export async function runUrlChecks(
       evidence: referrerPolicy ?? undefined,
     });
 
-    // Transactional email detection
-    const emailProviderSignals = ["resend.com", "sendgrid.net", "mailgun.com", "postmarkapp.com", "sparkpostmail", "mandrillapp", "ses.amazonaws.com"];
-    const hasEmailProvider = emailProviderSignals.some((p) => htmlLower.includes(p));
+    // Transactional email provider: who the domain's SPF record authorises to send. A
+    // provider's name in the page HTML (a blog link to resend.com, a docs mention) is not a
+    // provider, and the page cannot show what the server sends with. See vendor-evidence.ts.
+    const spfNames = spfNamesFor(hostname);
+    const spfLookups = await Promise.all(spfNames.map(async (name) => ({ name, lookup: await lookupTxt(name) })));
     checks.push({
       category: CATEGORIES.SAAS,
       checkKey: "email_provider",
       label: "Transactional email provider",
-      status: hasEmailProvider ? "PASS" : "WARN",
-      detail: hasEmailProvider
-        ? "Transactional email provider detected (Resend, SendGrid, Mailgun, Postmark, etc.)."
-        : "No email provider detected — password reset, welcome emails, and payment receipts may not be configured.",
+      ...emailProviderVerdict(spfLookups),
     });
 
     // AI platform watermark detection
@@ -4326,19 +4351,13 @@ export async function runUrlChecks(
         : "No assetlinks.json — Android deep linking not set up (required for Play Store TWA submission).",
     });
 
-    const hasApplePaySignals = htmlLower.includes("applepaysession") || htmlLower.includes("apple-pay-sdk") || htmlLower.includes("apple_pay");
-    const hasGooglePaySignals = htmlLower.includes("pay.google.com") || htmlLower.includes("google.payments") || htmlLower.includes("googlepay");
-    const hasAmazonPaySignals = htmlLower.includes("pay.amazon.com") || htmlLower.includes("amazonpay") || htmlLower.includes("amazon_pay");
-    const hasWalletPayments = hasApplePaySignals || hasGooglePaySignals || hasAmazonPaySignals;
-    const walletNames = [hasApplePaySignals && "Apple Pay", hasGooglePaySignals && "Google Pay", hasAmazonPaySignals && "Amazon Pay"].filter(Boolean).join(", ");
+    // An SDK or button the page loads, or a wallet listed in its readable text or logo alt
+    // text. "googlepay" in a CSS class or "apple_pay" in a config blob is not a wallet.
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "wallet_payments",
       label: "Apple Pay / Google Pay / Amazon Pay",
-      status: hasWalletPayments ? "PASS" : "WARN",
-      detail: hasWalletPayments
-        ? `Wallet payment detected (${walletNames}) — mobile checkout optimised.`
-        : "No wallet payments detected — Apple Pay, Google Pay, and Amazon Pay dramatically improve mobile conversion rates.",
+      ...walletVerdict(scriptAndContentHtml),
     });
     } // end if (ctx.isMobileApp)
 
@@ -5070,48 +5089,35 @@ export async function runUrlChecks(
         ["real_user_monitoring", "Real User Monitoring (RUM)"],
       ], "Skipped — no backend or server-side signals detected on this project.");
     } else {
-    const uptimeSignals = ["statuspage.io", "betteruptime.com", "uptimerobot", "pingdom", "freshping", "checkly", "hyperping"].some((s) => htmlLower.includes(s));
+    // A monitor's status page the site links (opened and confirmed) or its widget/badge.
+    // A vendor's name in the HTML used to pass on its own. See vendor-evidence.ts.
     checks.push({
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "uptime_monitoring",
       label: "External uptime monitoring",
-      status: uptimeSignals ? "PASS" : "WARN",
-      detail: uptimeSignals
-        ? "External uptime monitoring service detected."
-        : "No uptime monitoring — you won't know about outages before users tweet about them.",
+      ...uptimeMonitoringVerdict(statusPageEvidence, pageResult.html),
     });
 
     // Log shipping is read from the repository (repo-operations.ts): a vendor name in the
     // page's HTML says nothing about where the server's logs go.
 
-    const apmSignals = ["newrelic", "dynatrace", "appdynamics", "elastic apm", "scout apm", "sentry performance"].some((s) => htmlLower.includes(s));
+    // An APM vendor's browser agent the page loads, or its init call. "newrelic" in a
+    // comparison table or "sentry performance" in a blog post is not an agent.
     checks.push({
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "apm_signals",
       label: "Application Performance Monitoring (APM)",
-      status: apmSignals ? "PASS" : "WARN",
-      detail: apmSignals
-        ? "APM tool detected — transaction tracing and performance insights available."
-        : "No APM detected — without transaction-level data, slow queries and N+1 problems go undetected.",
+      ...apmVerdict(scriptAndContentHtml),
     });
 
-    // ⚠️ Closed vendor list reported as absence: www.gov.uk self-hosts SpeedCurve LUX
-    // (`vendor/lux/lux-measurer-*.js`, `rum-loader-*.js`) and was told it had no RUM.
-    // Recognise self-hosted LUX and the common browser RUM agents, and say what was read.
-    const rumSignals = [
-      "speedcurve", "web-vitals", "lux.speedcurve", "perfume.js",
-      "lux-measurer", "lux-reporter", "rum-loader",
-      "datadoghq-browser-agent", "dd_rum", "js-agent.newrelic.com", "go-mpulse.net",
-      "static.cloudflareinsights.com", "_vercel/speed-insights", "ruxitagent",
-    ].some((s) => htmlLower.includes(s));
+    // ⚠️ gov.uk self-hosts SpeedCurve LUX (`vendor/lux/lux-measurer-*.js`, `rum-loader-*.js`)
+    // and was once told it had no RUM. Self-hosted LUX is still recognised, now as a script
+    // the page loads rather than a string anywhere in the HTML ("web-vitals" in a blog post).
     checks.push({
       category: CATEGORIES.OBSERVABILITY,
       checkKey: "real_user_monitoring",
       label: "Real User Monitoring (RUM)",
-      status: rumSignals ? "PASS" : "WARN",
-      detail: rumSignals
-        ? "Real User Monitoring signals detected — field Core Web Vitals being collected."
-        : "No Real User Monitoring script recognised in the page HTML (a RUM agent bundled inside your own JavaScript is not visible to this check) — lab performance data doesn't reflect real-world Core Web Vitals across user devices.",
+      ...rumVerdict(scriptAndContentHtml),
     });
     } // end if (ctx.hasBackend)
 
@@ -5137,26 +5143,22 @@ export async function runUrlChecks(
       evidence: trustBadge ?? undefined,
     });
 
-    const hasBnpl = ["klarna", "afterpay", "affirm", "clearpay", "laybuy", "zip pay", "sezzle", "buy now pay later"].some((s) => htmlLower.includes(s));
+    // A BNPL provider's script or messaging element, or a pay-later offer in readable text.
+    // "affirm" is an English word and "klarna" in an article is a mention, not an option.
     checks.push({
       category: CATEGORIES.PAYMENTS,
       checkKey: "bnpl_options",
       label: "Buy Now Pay Later (BNPL)",
-      status: hasBnpl ? "PASS" : "WARN",
-      detail: hasBnpl
-        ? "BNPL option detected — large purchase friction reduced."
-        : "No BNPL option — Klarna/Afterpay increases average order value by up to 45% for higher-priced products.",
+      ...bnplVerdict(scriptAndContentHtml),
     });
 
-    const hasCryptoPayments = ["bitcoin", "ethereum", " usdc", "coinbase commerce", "bitpay", "nowpayments", "crypto payment"].some((s) => htmlLower.includes(s));
+    // A crypto checkout script or link, or "we accept bitcoin" in readable text. The word
+    // "bitcoin" in a news story is not a payment option.
     checks.push({
       category: CATEGORIES.PAYMENTS,
       checkKey: "crypto_payments",
       label: "Cryptocurrency payment option",
-      status: hasCryptoPayments ? "PASS" : "WARN",
-      detail: hasCryptoPayments
-        ? "Cryptocurrency payment option detected."
-        : "No crypto payments — a growing segment prefers crypto; easy to add via Coinbase Commerce.",
+      ...cryptoPaymentsVerdict(scriptAndContentHtml),
     });
     } // end if (ctx.isPaymentEnabled)
 
@@ -5179,15 +5181,13 @@ export async function runUrlChecks(
         : "No Smart App Banner — add <meta name=apple-itunes-app> to drive web-to-native app installs on iOS.",
     });
 
-    const hasAmazonAppStore = htmlLower.includes("amazon.com/apps") || htmlLower.includes("amazon appstore") || htmlLower.includes("amazon underground");
+    // A link to an Amazon Appstore listing. The phrase in readable text with no link is
+    // reported as a mention, not a listing.
     checks.push({
       category: CATEGORIES.APP_STORE,
       checkKey: "amazon_app_store",
       label: "Amazon Appstore / Fire TV presence",
-      status: hasAmazonAppStore ? "PASS" : "WARN",
-      detail: hasAmazonAppStore
-        ? "Amazon Appstore link detected — Fire tablet and Fire TV market addressed."
-        : "No Amazon Appstore link — consider Amazon Appstore for Fire tablet reach and LATAM/emerging market Android users.",
+      ...amazonAppstoreVerdict(contentHtml),
     });
 
     const multipleOgImages = (pageResult.html.match(/property=["']og:image["']/gi) ?? []).length > 1;
@@ -5222,7 +5222,9 @@ export async function runUrlChecks(
         : "No country/region selector — global users expect to set their region for localised pricing and content.",
     });
 
-    const hasComplianceBadge = ["soc 2", "soc2", "iso 27001", "iso27001", "gdpr compliant", "hipaa compliant", "pci dss certified"].some((s) => htmlLower.includes(s));
+    // Readable text or a badge's alt text. "soc2" in a CSS class or a script is not a claim.
+    const complianceQuote = complianceClaim(contentHtml);
+    const hasComplianceBadge = complianceQuote !== null;
     // Certifications normally live on a linked security/trust page, not the homepage:
     // notion.so links /security and anthropic.com links trust.anthropic.com, both listing
     // SOC 2. A link is not proof of a certificate, so it is "could not establish", not PASS.
@@ -5234,7 +5236,7 @@ export async function runUrlChecks(
       label: "Compliance certifications (SOC 2, ISO 27001)",
       status: hasComplianceBadge ? "PASS" : linksTrustPage ? "INCONCLUSIVE" : "WARN",
       detail: hasComplianceBadge
-        ? "Compliance certification badge detected — enterprise trust signals present."
+        ? `The page names a certification: "${complianceQuote}". Pulse has not seen the certificate.`
         : linksTrustPage
           ? "No SOC 2 / ISO 27001 mention on this page, but it links a security or trust page — certifications are normally listed there, and that page was not checked."
           : "No SOC 2, ISO 27001 or similar certification is mentioned on this page. Enterprise buyers commonly ask for SOC 2 Type II; if you hold one, name it on the site or link a security/trust page.",
@@ -5267,26 +5269,31 @@ export async function runUrlChecks(
     });
 
     // ─── Trust & Brand ─────────────────────────────────────────────────────────
-    const hasSocialLinks = ["twitter.com/", "x.com/", "linkedin.com/company", "github.com/", "instagram.com/", "youtube.com/"].some((s) => htmlLower.includes(s));
+    // Profile links (<a href>) on the networks, read from the rendered page. A YouTube embed,
+    // a share intent or a github.com URL inside a script is not a profile.
+    const socialProfiles = linkedSocialProfiles(contentHtml);
     checks.push({
       category: CATEGORIES.TRUST_BRAND,
       checkKey: "social_media_links",
       label: "Social media presence",
-      status: hasSocialLinks ? "PASS" : "WARN",
-      detail: hasSocialLinks
-        ? "Social media links detected — brand is findable and building a public presence."
+      status: socialProfiles.length > 0 ? "PASS" : "WARN",
+      detail: socialProfiles.length > 0
+        ? `The page links profiles on ${socialProfiles.join(", ")}.`
         : "No social media links — add Twitter/X, LinkedIn, and GitHub in the footer for brand credibility.",
     });
 
-    const hasThirdPartyReviews = ["trustpilot", "g2.com", "capterra", "producthunt.com", "getapp.com", "software advice"].some((s) => htmlLower.includes(s));
+    // A link to the site's listing on a review platform, or the platform's own widget.
+    // "trustpilot" anywhere in the HTML used to pass.
+    const reviewEvidence = reviewPlatformEvidence(scriptAndContentHtml);
     checks.push({
       category: CATEGORIES.TRUST_BRAND,
       checkKey: "third_party_reviews",
       label: "Third-party review platform",
-      status: hasThirdPartyReviews ? "PASS" : "WARN",
-      detail: hasThirdPartyReviews
-        ? "Third-party review platform link or widget detected."
+      status: reviewEvidence.length > 0 ? "PASS" : "WARN",
+      detail: reviewEvidence.length > 0
+        ? `The page links or embeds a review profile: ${reviewEvidence.map((e) => `${e.platform} (${e.where})`).join(", ")}.`
         : "No review platform links — Trustpilot or G2 badges add verifiable social proof; 72% of buyers trust reviews.",
+      evidence: reviewEvidence[0]?.where,
     });
 
     const hasPressCoverage = ["as seen in", "featured in", "as featured in", "press coverage", "in the press", "media coverage"].some((s) => htmlLower.includes(s));
@@ -5312,15 +5319,11 @@ export async function runUrlChecks(
         : "No visible founder or team bio — vibe-coded apps feel anonymous; a human face increases conversion.",
     });
 
-    const hasProductHunt = htmlLower.includes("producthunt.com") || htmlLower.includes("product hunt") || htmlLower.includes("ph-badge");
     checks.push({
       category: CATEGORIES.TRUST_BRAND,
       checkKey: "product_hunt_badge",
       label: "Product Hunt launch presence",
-      status: hasProductHunt ? "PASS" : "WARN",
-      detail: hasProductHunt
-        ? "Product Hunt badge or link detected — launch community engaged."
-        : "No Product Hunt presence — a PH launch generates early adopters, press, and social proof.",
+      ...productHuntVerdict(scriptAndContentHtml),
     });
 
     checks.push(routePageCheck(
