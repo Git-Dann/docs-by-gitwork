@@ -32,6 +32,7 @@ import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
 import type { AuthPageContent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
 import { reconcilePulseTasksAfterScan } from "@/server/tasks";
+import { countOpenFindingsForScans } from "@/server/pulse-findings";
 import {
   sendPulseScanCompletedPush,
   sendPulseScanFailedPush,
@@ -306,7 +307,14 @@ async function sameTargetScans(scan: { workspaceId: string; inputType: string; i
 
 /** Every project (one per scanned target), most urgent first, scoped like the scan list. */
 export async function getPulseProjects(params?: { clientIds?: string[] | null; triggeredByUserId?: string | null }): Promise<PulseProject[]> {
-  return buildProjects(await listPulseScans(params));
+  return withOpenFindings(buildProjects(await listPulseScans(params)));
+}
+
+/** Each project's open-findings figure, for its newest completed scan, in one batched read. */
+async function withOpenFindings(projects: PulseProject[]): Promise<PulseProject[]> {
+  const ids = projects.map((p) => p.latestCompletedScanId).filter((x): x is string => Boolean(x));
+  const counts = await countOpenFindingsForScans(ids);
+  return projects.map((p) => ({ ...p, openFindings: p.latestCompletedScanId ? counts.get(p.latestCompletedScanId) ?? null : null }));
 }
 
 /** Every scan of one project, newest first, scoped like the scan list. Null when the project is not visible. */
@@ -316,7 +324,7 @@ export async function getProjectScans(
 ): Promise<{ project: PulseProject; scans: PulseScanListItem[] } | null> {
   const scans = (await listPulseScans(params)).filter((s) => targetKey(s) === key);
   if (scans.length === 0) return null;
-  return { project: buildProjects(scans)[0], scans };
+  return { project: (await withOpenFindings(buildProjects(scans)))[0], scans };
 }
 
 /**

@@ -37,6 +37,21 @@ function Change({ project }: { project: PulseProject }) {
   );
 }
 
+/** The open-findings figure for a project's latest completed scan, linking to that scan. */
+function OpenFindings({ project }: { project: PulseProject }) {
+  if (project.openFindings === null || !project.latestCompletedScanId) return <span className="text-[var(--text-4)]">—</span>;
+  if (project.openFindings === 0) return <span className="text-[var(--success-500)]">None</span>;
+  return (
+    <Link
+      href={`/app/pulse/${project.latestCompletedScanId}`}
+      className="font-medium text-[var(--text-1)] hover:text-[var(--brand-600)] hover:underline"
+      title={`${project.openFindings} open ${project.openFindings === 1 ? "finding" : "findings"} on the latest scan`}
+    >
+      {project.openFindings}
+    </Link>
+  );
+}
+
 /** Score over time with dates on the axis and the score on every point, so it reads without a legend. */
 export function ScoreChart({ points, height = 180 }: { points: ProjectPoint[]; height?: number }) {
   if (points.length < 2) {
@@ -156,12 +171,13 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                 <p className="text-sm text-[var(--text-3)]">{projects.length === 0 ? "No scans yet. Run one with New scan." : "No project matches."}</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="app-table app-table--dense min-w-[760px]">
+                  <table className="app-table app-table--dense min-w-[840px]">
                     <thead>
                       <tr>
                         <th className="text-left">Project</th>
                         <th className="text-left">Needs</th>
                         <th className="text-right">Score</th>
+                        <th className="text-right" title="Failing or warning checks on the latest scan that nobody has sent to the board, fixed or dismissed">Open findings</th>
                         <th className="text-left">Since last check</th>
                         <th className="text-right">Scans</th>
                         <th className="text-left">Last checked</th>
@@ -182,6 +198,9 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                             {p.running ? <span className="text-[var(--text-3)]">Scanning now…</span> : p.attention[0] ?? "On track"}
                           </td>
                           <td className={cn("text-right font-serif text-lg font-bold tabular-nums", scoreClass(p.latestScore))}>{p.latestScore ?? "—"}</td>
+                          <td className="text-right text-xs tabular-nums">
+                            <OpenFindings project={p} />
+                          </td>
                           <td><Change project={p} /></td>
                           <td className="text-right text-xs tabular-nums text-[var(--text-3)]">{p.scanCount}</td>
                           <td className="whitespace-nowrap text-xs text-[var(--text-3)]">{shortDate(p.lastScannedAt)}</td>
@@ -236,6 +255,15 @@ export function PulseProjectPage({ slug }: { slug: string }) {
                 </>
               ) : (
                 "No completed scan yet."
+              )}
+              {project.openFindings !== null && project.latestCompletedScanId && (
+                <>
+                  {" "}
+                  <Link href={`/app/pulse/${project.latestCompletedScanId}`} className="text-[var(--brand-600)] hover:underline">
+                    {project.openFindings === 0 ? "No open findings" : `${project.openFindings} open ${project.openFindings === 1 ? "finding" : "findings"}`}
+                  </Link>{" "}
+                  on the latest scan.
+                </>
               )}
               {project.attention.length > 0 && <span className="text-[var(--danger-700)]"> {project.attention.join(". ")}.</span>}
             </p>
