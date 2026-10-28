@@ -23,6 +23,7 @@ import { annotateTrust } from "@/server/pulse-checks/confidence";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
 import { buildAgentVerdict } from "@/server/pulse-agent";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { readScanPageSource } from "@/components/pulse/__tests__/scan-page-source";
 
 /**
  * "When I give you an iOS link, we report it as an iOS link; Android, Android."
@@ -403,7 +404,7 @@ describe("every path uses the same rule", () => {
   });
 
   it("the report's fallback gate uses the same policy as the scan", () => {
-    const results = src("src/components/pulse/pulse-scan-results.tsx");
+    const results = readScanPageSource();
     expect(results).toMatch(/resolveGatePolicy\(\{\s*targetUrl: scan\.inputUrl,/);
   });
 

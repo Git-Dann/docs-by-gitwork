@@ -4,6 +4,7 @@ import { computeScoreBreakdown } from "../score-breakdown";
 import { computePillarBreakdown, PILLARS } from "../pillars";
 import { CATEGORIES } from "../categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { readScanPageSource } from "@/components/pulse/__tests__/scan-page-source";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Every surface that shows a Pulse number reads the same core.
@@ -26,7 +27,7 @@ function check(category: PulseScanCheckInput["category"], key: string, status: P
 
 describe("the category bars use the shared core", () => {
   it("does not carry its own PASS/WARN arithmetic any more", () => {
-    const report = readFileSync("src/components/pulse/pulse-scan-results.tsx", "utf8");
+    const report = readScanPageSource();
     const fn = report.slice(report.indexOf("function categoryScore("), report.indexOf("function PillarStrip("));
     expect(fn).toContain("computeScoreBreakdown");
     // The old formula, which weighted nothing.
@@ -90,7 +91,7 @@ describe("pillars are actually shipped", () => {
   // They existed for a release as 239 correct lines imported only by their own
   // test. A rollup nobody can see is not a rollup.
   it("renders in the report", () => {
-    const report = readFileSync("src/components/pulse/pulse-scan-results.tsx", "utf8");
+    const report = readScanPageSource();
     expect(report).toContain("computePillarBreakdown");
     expect(report, "the strip must be mounted, not merely defined").toContain("<PillarStrip");
   });
