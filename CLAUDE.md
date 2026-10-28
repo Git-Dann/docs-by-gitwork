@@ -8346,3 +8346,40 @@ key changed. Each now rests on what the page does, in `src/server/pulse-checks/v
   `crypto`, `tax`, `awards`, `investor`. Basecamp's "backed by 37signals" is not investment.
 - ⚠️ A prose claim is the site's statement, not proof. Shopify's homepage describes its own
   checkout ("Shop Pay, PayPal, and Apple Pay"), which `paypal_integration` reads as an option.
+
+### 84.20 Findings follow-ups: counts, task links, one board path, reopening, and a split page
+
+- **Open findings on the Projects list.** Each project row shows the open findings on its newest
+  completed scan (`PulseProject.latestCompletedScanId` / `openFindings`), counted by
+  `countOpenFindings` over the Findings tab's own `buildFindings`/`countByView`. The server reads
+  every project in a fixed number of queries (`loadFindingStates` in `src/server/pulse-findings.ts`,
+  which the scan page's read now goes through too). The demo counts from the same in-memory
+  decisions as its scan page.
+- **Task links.** `FindingTask.clientSlug` comes back with each task, and a finding on the board
+  shows **View task** (`findingTaskHref`: `/app/portal/<slug>/tasks?task=<id>`, the deep link the
+  task notifications and the Desk already use). Visible to anyone who can see the scan.
+- **One send-to-board path.** The by-category view's **+ Task** now calls
+  `useSendPulseFindingToBoard`, so it records a `PulseFindingState` and shows the same state as the
+  Findings list (On board, Task done, Dismissed). It needs `pulse.manage`, like the route.
+  `one-send-to-board-path.test.ts` fails if a Pulse component builds a board task itself again.
+- **A dismissal reopens when the finding changes** (`staleDecision`, pure). A decision now stores
+  `decisionFingerprint` (FNV-1a of detail + evidence, numbers folded, so "3 pages" vs "4 pages" is
+  the same finding) and `decisionStatus` (additive, nullable). The read also reports whether a
+  later scan of the same project passed the check after the decision, up to the scan being viewed.
+  - Either decision reopens when the check passed after it and fails again, or when a warning has
+    become a failure.
+  - "Not a real issue" also reopens when the report itself changed. **An accepted risk does not**:
+    it is about the issue, so new wording of the same failure leaves it accepted.
+  - Decisions made before this change have no fingerprint and never reopen on wording.
+  - A reopened finding sits in Open as "Changed since dismissed" (or "Worse since dismissed",
+    "Failing again after passing") and keeps the old note.
+- **The scan page is split** into `src/components/pulse/scan/`: `use-scan-view.tsx` (all state and
+  derived values, returned as `ScanView`), `scan-toolbar.tsx`, `summary-tab.tsx`,
+  `technical-tab.tsx`, `all-checks-view.tsx`, `plan-tab.tsx`, and the helper components it used to
+  define inline. `pulse-scan-results.tsx` went from 3,076 lines to 138.
+  - ⚠️ The tab renderers are **plain functions called in place** (`renderChecksTab(v)`), not
+    components. That is deliberate: the running section numbers come from one `sectionNo()`
+    counter, and a child component renders after its parent, so it would number out of order.
+    Keep them as functions, or pass the numbers in as props.
+  - Tests that check something is rendered on the page read `readScanPageSource()`
+    (`src/components/pulse/__tests__/scan-page-source.ts`), not the one file.

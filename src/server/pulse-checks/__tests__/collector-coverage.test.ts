@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { readScanPageSource } from "@/components/pulse/__tests__/scan-page-source";
 import {
   collectorCoverage,
   collectorCompletenessCheck,
@@ -127,7 +128,7 @@ describe("coverage travels with the score it explains", () => {
   });
 
   it("is rendered where the score is explained", () => {
-    const report = readFileSync("src/components/pulse/pulse-scan-results.tsx", "utf8");
+    const report = readScanPageSource();
     expect(report).toContain("What Pulse could not check");
     expect(report).toContain("breakdown.collectors");
   });
@@ -135,7 +136,7 @@ describe("coverage travels with the score it explains", () => {
   it("treats a missing record as unknown rather than as everything having run", () => {
     // Scans predating this have no `collectors`, and the panel must stay silent
     // rather than assert full coverage on their behalf.
-    const report = readFileSync("src/components/pulse/pulse-scan-results.tsx", "utf8");
+    const report = readScanPageSource();
     expect(report).toContain("breakdown.collectors && (");
   });
 });

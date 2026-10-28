@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { readScanPageSource } from "@/components/pulse/__tests__/scan-page-source";
 
 /**
  * Every `/api/pulse/scans/[scanId]/*` route must check the caller may touch that scan.
@@ -73,10 +74,7 @@ describe("NotFoundError carries its status", () => {
 
 describe("a guest cannot act AS Gitwork", () => {
   const read = (sub: string) => readFileSync(join(DIR, sub, "route.ts"), "utf8");
-  const results = readFileSync(
-    join(ROOT, "src/components/pulse/pulse-scan-results.tsx"),
-    "utf8",
-  );
+  const results = readScanPageSource(ROOT);
 
   it("the email route refuses an external caller SERVER-side", () => {
     // It sends from Gitwork's email infrastructure to an address in the request body.
@@ -98,7 +96,9 @@ describe("a guest cannot act AS Gitwork", () => {
     for (const label of ["Share report", "Re-scan", "Report", "PDF"]) {
       expect(results, label).toContain(label);
     }
-    const guarded = results.split("canActAsAgency");
-    expect(guarded.length, "the flag should gate exactly two places").toBe(4);
+    // Counted as places the flag GATES something (`canActAsAgency &&` / `canActAsAgency ?`),
+    // since the page is split across files and the name is also declared, returned and read.
+    const guarded = results.match(/canActAsAgency\s*(&&|\?)/g) ?? [];
+    expect(guarded.length, "the flag should gate exactly two places").toBe(2);
   });
 });
