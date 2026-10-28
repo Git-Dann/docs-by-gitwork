@@ -1,4 +1,10 @@
-import { GithubConditionalCache, cacheKey, tokenIdentity, type GithubCacheStats } from "./github-cache";
+import {
+  GithubConditionalCache,
+  cacheKey,
+  tokenIdentity,
+  type GithubCacheStats,
+  type GithubCacheStore,
+} from "./github-cache";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
@@ -77,7 +83,22 @@ function noteRateLimit(response: Response, body: string): boolean {
 // A GET answered `304 Not Modified` does not count against GitHub's primary rate limit, so
 // every GET remembers its ETag / Last-Modified and body (src/lib/github-cache.ts) and sends
 // them back next time. On a 304 the stored body is returned exactly as a 200 would have been.
-const conditionalCache = new GithubConditionalCache();
+//
+// The persistent tier is registered on globalThis by src/instrumentation.ts (server only), not
+// imported here: this file is also bundled for the browser, and a Node built-in or a Prisma
+// import would break that bundle. globalThis also survives Next loading this module twice.
+const STORE_SLOT = Symbol.for("foundry.githubCacheStore");
+type StoreSlot = { [STORE_SLOT]?: GithubCacheStore | null };
+
+/** Attach (or with null, detach) the persistent second tier. Server code only. */
+export function setGithubCacheStore(store: GithubCacheStore | null): void {
+  (globalThis as StoreSlot)[STORE_SLOT] = store;
+}
+
+const conditionalCache = new GithubConditionalCache(
+  {},
+  () => (globalThis as StoreSlot)[STORE_SLOT] ?? null,
+);
 const CACHE_LOG_EVERY = 500;
 let cacheLookupsSinceLog = 0;
 
@@ -86,10 +107,15 @@ export function githubCacheStats(): GithubCacheStats {
   return conditionalCache.stats();
 }
 
-/** Test seam. */
+/** Test seam: empties the in-memory tier, as a restart would. The store is untouched. */
 export function __resetGithubCache(): void {
   conditionalCache.clear();
   cacheLookupsSinceLog = 0;
+}
+
+/** Test seam: wait for background writes to the persistent store. */
+export function __flushGithubCacheWrites(): Promise<void> {
+  return conditionalCache.flush();
 }
 
 function noteCacheLookup(): void {
@@ -99,7 +125,8 @@ function noteCacheLookup(): void {
   const s = conditionalCache.stats();
   console.info(
     `[github] conditional cache: ${s.notModified} served by 304 (not counted against the rate limit), ` +
-      `${s.misses} full reads, ${s.entries} entries, ${Math.round(s.bytes / 1024)} KB.`,
+      `${s.misses} full reads, ${s.restored} restored from the database, ${s.storeErrors} store errors, ` +
+      `${s.entries} entries, ${Math.round(s.bytes / 1024)} KB.`,
   );
 }
 
@@ -107,7 +134,11 @@ export async function githubRequest<T>(path: string): Promise<T> {
   const url = `${GITHUB_API_BASE}${path}`;
   const baseHeaders: Record<string, string> = githubHeaders();
   const key = cacheKey(url, baseHeaders.Accept, tokenIdentity(process.env.GITHUB_TOKEN));
-  const conditional = conditionalCache.conditionalHeaders(key);
+  // Memory, then the persistent store (bounded by a short timeout, never throws).
+  const stored = await conditionalCache.lookup(key);
+  const conditional: Record<string, string> = {};
+  if (stored?.etag) conditional["If-None-Match"] = stored.etag;
+  else if (stored?.lastModified) conditional["If-Modified-Since"] = stored.lastModified;
 
   const response = await fetch(url, {
     headers: { ...baseHeaders, ...conditional },
@@ -116,14 +147,14 @@ export async function githubRequest<T>(path: string): Promise<T> {
 
   noteCacheLookup();
 
-  // 304: GitHub confirmed our stored body is current. Only reachable when we sent a
-  // validator, so a stored entry exists; if it was evicted in the meantime, fall through
-  // to the error path rather than inventing a body.
+  // 304: GitHub confirmed the body we sent validators for is current. Only reachable when we
+  // sent a validator; with nothing stored, fall through to the error path rather than
+  // inventing a body.
   if (response.status === 304) {
-    const entry = conditionalCache.get(key);
-    if (entry) {
+    if (stored) {
+      conditionalCache.get(key); // mark most recently used
       conditionalCache.recordNotModified();
-      return JSON.parse(entry.body) as T;
+      return JSON.parse(stored.body) as T;
     }
   } else {
     conditionalCache.recordMiss();

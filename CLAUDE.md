@@ -6631,8 +6631,8 @@ caching repo snapshots is needed before repo scans are opened widely. URL scans 
 `ETag`/`Last-Modified` back (`src/lib/github-cache.ts`, in-process LRU, 2,000 entries / 50MB,
 keyed on URL + Accept + a hash of the token) and serves the stored body on a 304. An
 authenticated 304 is not counted against the limit (measured), so a rescan of an unchanged repo
-costs close to nothing. A first scan of a new repo still costs full price, and the cache is lost
-on restart.
+costs close to nothing. A first scan of a new repo still costs full price. The validators now
+survive a deploy too: a Postgres second tier (`GithubResponseCache`, §84.15).
 
 ## 61. Recent Changes (October 2026) — The daily Slack updates report subtasks and ongoing work
 
@@ -8186,6 +8186,22 @@ LRU: 2,000 entries, 50MB, with a 2MB cap per body.
 - A `304` with a token does **not** count against the 5,000/hour limit, which was measured.
 - Rescans of unchanged repos now cost close to nothing. A first scan still costs full price.
 - ⚠️ Unauthenticated 304s still count, so don't try to prove the saving with tokenless curl.
+- **It survives deploys.** A second tier in Postgres (`GithubResponseCache`, additive model;
+  `src/server/github-cache-store.ts`) holds the validators and the gzipped body. Lookups read memory,
+  then the table; stored 200s and deletions are written through in the background. Row id is
+  SHA-256 of the cache key, so neither the token nor its hash is stored.
+- **Bounded and pruned on write** — no cron (crons here have a habit of never being installed).
+  At most every 10 minutes a write prunes rows unused for 30 days, then least-recently-used until
+  under 20,000 rows and 500MB compressed. The table is safe to `TRUNCATE` at any time.
+- **A dead database costs one timeout, not one per GET.** A store read slower than 500ms, or one
+  that fails, is a miss, and the store is skipped for 30 seconds. Writes never block a request.
+  A stored body is still only served on GitHub's own 304, so a stale row can't be returned as current.
+- ⚠️ **Wired in `src/instrumentation-node.ts` (loaded by `src/instrumentation.ts`), not imported by
+  `github.ts`.** Keep `instrumentation.ts`'s `if (NEXT_RUNTIME === "nodejs") await import(...)` shape:
+  an early return is not dead-code-eliminated from the edge build, which then fails on `node:`. `github.ts` and
+  `github-cache.ts` are in the browser bundle (two client components import them); a Node built-in
+  or Prisma import there breaks the production build. The store is registered on `globalThis`
+  (`setGithubCacheStore`). `github-cache-persistent.test.ts` fails if either file imports one.
 
 ### 84.16 Pulse has its own navigation (`src/lib/pulse-nav.ts`, `pulse-nav.tsx`)
 
