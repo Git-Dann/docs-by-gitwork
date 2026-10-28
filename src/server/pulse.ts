@@ -24,7 +24,7 @@ import { collectorCoverage, type CollectorExecution } from "@/server/pulse-check
 import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
 import { detectStoreTarget, isPlaceholderStoreName, provisionalStoreProjectName, resolveScanPlatform } from "@/lib/pulse-store-url";
 import { describeDiff, diffChecks } from "@/server/pulse-checks/scan-diff";
-import { buildProjects, targetKey, type PulseProject } from "@/lib/pulse-projects";
+import { applyFindingCounts, buildProjects, sortProjects, targetKey, type PulseProject } from "@/lib/pulse-projects";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
@@ -314,7 +314,7 @@ export async function getPulseProjects(params?: { clientIds?: string[] | null; t
 async function withOpenFindings(projects: PulseProject[]): Promise<PulseProject[]> {
   const ids = projects.map((p) => p.latestCompletedScanId).filter((x): x is string => Boolean(x));
   const counts = await countOpenFindingsForScans(ids);
-  return projects.map((p) => ({ ...p, openFindings: p.latestCompletedScanId ? counts.get(p.latestCompletedScanId) ?? null : null }));
+  return sortProjects(projects.map((p) => applyFindingCounts(p, p.latestCompletedScanId ? counts.get(p.latestCompletedScanId) ?? null : null)));
 }
 
 /** Every scan of one project, newest first, scoped like the scan list. Null when the project is not visible. */

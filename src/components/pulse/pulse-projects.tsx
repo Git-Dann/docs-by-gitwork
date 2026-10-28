@@ -52,6 +52,58 @@ function OpenFindings({ project }: { project: PulseProject }) {
   );
 }
 
+function Stat({ label, value, note, tone, onClick, pressed }: { label: string; value: string; note: string; tone?: "good" | "watch" | "bad"; onClick?: () => void; pressed?: boolean }) {
+  const color = tone === "bad" ? "text-[var(--danger-500)]" : tone === "watch" ? "text-[var(--warning-500)]" : tone === "good" ? "text-[var(--success-500)]" : "text-[var(--text-1)]";
+  const inner = (
+    <>
+      <span className="widget-data-label block">{label}</span>
+      <span className={cn("mt-1 block font-serif text-3xl font-bold leading-none tabular-nums", color)}>{value}</span>
+      <span className="mt-1 block font-mono text-[10px] text-[var(--text-4)]">{note}</span>
+    </>
+  );
+  if (!onClick) return <div>{inner}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      title={pressed ? "Show every project" : "Show only these projects"}
+      className={cn("-m-2 rounded-[6px] p-2 text-left hover:bg-[var(--surface-1)]", pressed && "bg-[var(--brand-50)] ring-1 ring-[var(--brand-600)]/30")}
+    >
+      {inner}
+    </button>
+  );
+}
+
+/** What a project needs, in plain words: the most important reason, and how many more. */
+function Needs({ project }: { project: PulseProject }) {
+  if (project.running) return <span className="text-xs text-[var(--text-3)]">Scanning now…</span>;
+  const [first, ...rest] = project.attention;
+  if (!first) return <span className="text-xs text-[var(--success-500)]">On track</span>;
+  return (
+    <span className="text-xs font-medium text-[var(--danger-700)]" title={project.attention.join(". ")}>
+      {first}
+      {rest.length > 0 && <span className="font-normal text-[var(--text-3)]"> +{rest.length} more</span>}
+    </span>
+  );
+}
+
+function UrgentFindings({ project }: { project: PulseProject }) {
+  if (project.urgentFindings === null || !project.latestCompletedScanId) return <span className="text-[var(--text-4)]">—</span>;
+  if (project.urgentFindings === 0) return <span className="text-[var(--text-4)]">0</span>;
+  return (
+    <Link href={`/app/pulse/${project.latestCompletedScanId}?tab=findings`} className="font-semibold text-[var(--danger-500)] hover:underline">
+      {project.urgentFindings}
+    </Link>
+  );
+}
+
+function findingsLine(p: PulseProject): string {
+  if (p.openFindings === null) return "findings not counted";
+  if (p.openFindings === 0) return "no open findings";
+  return `${p.openFindings} open${p.urgentFindings ? `, ${p.urgentFindings} urgent` : ""}`;
+}
+
 /** Score over time with dates on the axis and the score on every point, so it reads without a legend. */
 export function ScoreChart({ points, height = 180 }: { points: ProjectPoint[]; height?: number }) {
   if (points.length < 2) {
@@ -101,6 +153,8 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
     );
   }, [projects, query, onlyAttention]);
   const needing = projects.filter((p) => p.attention.length > 0).length;
+  const urgent = projects.reduce((n, p) => n + (p.urgentFindings ?? 0), 0);
+  const counted = projects.some((p) => p.urgentFindings !== null);
   const avg = projectAverage(projects);
 
   const toggle = (
@@ -143,16 +197,19 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
           {error && <p className="text-sm text-[var(--danger-700)]">Projects could not be loaded.</p>}
           {data && (
             <>
-              <p className="text-sm leading-6 text-[var(--text-2)]">
-                <strong className="font-semibold text-[var(--text-1)]">{projects.length}</strong> {projects.length === 1 ? "project" : "projects"}
-                {avg !== null && <>, average health <strong className="font-semibold text-[var(--text-1)]">{avg}</strong></>}
-                {". "}
-                {needing > 0 ? (
-                  <span className="text-[var(--danger-700)]">{needing} {needing === 1 ? "needs" : "need"} a look.</span>
-                ) : (
-                  <span className="text-[var(--success-500)]">Nothing needs urgent attention.</span>
-                )}
-              </p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+                <Stat label="Projects" value={String(projects.length)} note={`${projects.reduce((n, p) => n + p.scanCount, 0)} scans in all`} />
+                <Stat label="Average health" value={avg === null ? "—" : String(avg)} note="latest score, each project once" tone={avg === null ? undefined : avg >= 75 ? "good" : avg >= 50 ? "watch" : "bad"} />
+                <Stat
+                  label="Need a look"
+                  value={String(needing)}
+                  note={needing ? "failed, falling, stale or urgent" : "nothing stands out"}
+                  tone={needing ? "bad" : "good"}
+                  onClick={needing ? () => setOnlyAttention((v) => !v) : undefined}
+                  pressed={onlyAttention}
+                />
+                <Stat label="Urgent findings" value={counted ? String(urgent) : "—"} note="ranked P1, still open" tone={!counted ? undefined : urgent ? "bad" : "good"} />
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <input
                   type="search"
@@ -170,45 +227,68 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
               {shown.length === 0 ? (
                 <p className="text-sm text-[var(--text-3)]">{projects.length === 0 ? "No scans yet. Run one with New scan." : "No project matches."}</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="app-table app-table--dense min-w-[840px]">
-                    <thead>
-                      <tr>
-                        <th className="text-left">Project</th>
-                        <th className="text-left">Needs</th>
-                        <th className="text-right">Score</th>
-                        <th className="text-right" title="Failing or warning checks on the latest scan that nobody has sent to the board, fixed or dismissed">Open findings</th>
-                        <th className="text-left">Since last check</th>
-                        <th className="text-right">Scans</th>
-                        <th className="text-left">Last checked</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shown.map((p) => (
-                        <tr key={p.key}>
-                          <td className="max-w-[300px]">
+                <>
+                  {/* Phones: one card per project, so the score and what needs doing are never
+                      off the side of a scrolling table (the column people came for). */}
+                  <ul className="divide-y divide-[var(--border-2)] sm:hidden">
+                    {shown.map((p) => (
+                      <li key={p.key} className="py-3">
+                        <div className="flex items-start gap-3">
+                          <div className="min-w-0 flex-1">
                             <Link href={`/app/pulse/projects/${p.slug}`} className="block truncate text-sm font-medium text-[var(--brand-600)] hover:underline" title={p.target}>
                               {p.name}
                             </Link>
                             <span className="block truncate text-[11px] text-[var(--text-4)]" title={p.target}>
                               {[p.clientName, p.target].filter(Boolean).join(" · ")}
                             </span>
-                          </td>
-                          <td className={cn("min-w-[170px] text-xs", p.attention.length ? "font-medium text-[var(--danger-700)]" : "text-[var(--success-500)]")}>
-                            {p.running ? <span className="text-[var(--text-3)]">Scanning now…</span> : p.attention[0] ?? "On track"}
-                          </td>
-                          <td className={cn("text-right font-serif text-lg font-bold tabular-nums", scoreClass(p.latestScore))}>{p.latestScore ?? "—"}</td>
-                          <td className="text-right text-xs tabular-nums">
-                            <OpenFindings project={p} />
-                          </td>
-                          <td><Change project={p} /></td>
-                          <td className="text-right text-xs tabular-nums text-[var(--text-3)]">{p.scanCount}</td>
-                          <td className="whitespace-nowrap text-xs text-[var(--text-3)]">{shortDate(p.lastScannedAt)}</td>
+                          </div>
+                          <span className={cn("shrink-0 font-serif text-2xl font-bold leading-none tabular-nums", scoreClass(p.latestScore))}>{p.latestScore ?? "—"}</span>
+                        </div>
+                        <p className="mt-1.5"><Needs project={p} /></p>
+                        <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--text-3)]">
+                          <Change project={p} />
+                          <span>{findingsLine(p)}</span>
+                          <span>checked {shortDate(p.lastScannedAt)}</span>
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="hidden overflow-x-auto sm:block">
+                    <table className="app-table app-table--dense min-w-[760px]">
+                      <thead>
+                        <tr>
+                          <th className="text-left">Project</th>
+                          <th className="text-left">Needs</th>
+                          <th className="text-right">Score</th>
+                          <th className="text-left">Since last check</th>
+                          <th className="text-right" title="Open findings the Findings tab ranks P1">Urgent</th>
+                          <th className="text-right" title="Failing or warning checks on the latest scan that nobody has sent to the board, fixed or dismissed">Open</th>
+                          <th className="text-left">Last checked</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {shown.map((p) => (
+                          <tr key={p.key}>
+                            <td className="max-w-[280px]">
+                              <Link href={`/app/pulse/projects/${p.slug}`} className="block truncate text-sm font-medium text-[var(--brand-600)] hover:underline" title={p.target}>
+                                {p.name}
+                              </Link>
+                              <span className="block truncate text-[11px] text-[var(--text-4)]" title={p.target}>
+                                {[p.clientName, p.target].filter(Boolean).join(" · ")}
+                              </span>
+                            </td>
+                            <td className="min-w-[170px]"><Needs project={p} /></td>
+                            <td className={cn("text-right font-serif text-lg font-bold tabular-nums", scoreClass(p.latestScore))}>{p.latestScore ?? "—"}</td>
+                            <td><Change project={p} /></td>
+                            <td className="text-right text-xs tabular-nums"><UrgentFindings project={p} /></td>
+                            <td className="text-right text-xs tabular-nums"><OpenFindings project={p} /></td>
+                            <td className="whitespace-nowrap text-xs text-[var(--text-3)]" title={`${p.scanCount} ${p.scanCount === 1 ? "scan" : "scans"} of this project`}>{shortDate(p.lastScannedAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </>
           )}
@@ -354,7 +434,7 @@ export function PulseProjectPage({ slug }: { slug: string }) {
 
 export function PulseComparePage({ from, to }: { from: string; to: string }) {
   const { data, isLoading, error } = usePulseCompare(to, from);
-  if (!from || !to) return <div className="widget-card"><div className="widget-body text-sm text-[var(--text-3)]">Pick two scans to compare from a project&apos;s page.</div></div>;
+  if (!from || !to) return <ComparePicker />;
   if (isLoading) return <div className="widget-card"><div className="widget-body text-sm text-[var(--text-3)]">Comparing…</div></div>;
   const diff = data?.diff;
   if (error || !diff) return <div className="widget-card"><div className="widget-body text-sm text-[var(--danger-700)]">These two scans could not be compared.</div></div>;
@@ -372,6 +452,60 @@ export function PulseComparePage({ from, to }: { from: string; to: string }) {
           <Link href={`/app/pulse/${to}`} className="text-[var(--brand-600)] hover:underline">open</Link>).
         </p>
         <ScanDiffBody diff={diff} showDate={false} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Compare tab with nothing chosen yet. It used to say "pick two scans from a project's page"
+ * and stop, a tab that sent you somewhere else. It now offers the comparison almost everyone
+ * wants (each project's latest scan against the one before), and the project page for any other pair.
+ */
+function ComparePicker() {
+  const { data, isLoading, error } = usePulseProjects();
+  const comparable = (data?.projects ?? []).filter((p) => p.history.length >= 2);
+  return (
+    <div className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header-label">01 // PICK A PROJECT</span>
+        {data && <span className="widget-header-right">{comparable.length} with two or more scans</span>}
+      </div>
+      <div className="widget-body space-y-3">
+        <p className="text-sm text-[var(--text-3)]">
+          Compare a project&apos;s latest scan with the one before it. To compare any other two, open the project and pick them.
+        </p>
+        {isLoading && <p className="text-sm text-[var(--text-3)]">Loading projects…</p>}
+        {error && <p className="text-sm text-[var(--danger-700)]">Projects could not be loaded.</p>}
+        {data && comparable.length === 0 && (
+          <p className="text-sm text-[var(--text-3)]">No project has two completed scans yet. Scan one again to see what changed.</p>
+        )}
+        {comparable.length > 0 && (
+          <ul className="divide-y divide-[var(--border-2)]">
+            {comparable.map((p) => {
+              const last = p.history[p.history.length - 1];
+              const prev = p.history[p.history.length - 2];
+              const by = last.score - prev.score;
+              return (
+                <li key={p.key} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
+                  <div className="min-w-0 flex-1 basis-[220px]">
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]" title={p.target}>{p.name}</p>
+                    <p className="truncate text-[11px] text-[var(--text-4)]">
+                      {shortDate(prev.at)} ({prev.score}) to {shortDate(last.at)} ({last.score})
+                      {by !== 0 && <span className={by > 0 ? "text-[var(--success-500)]" : "text-[var(--danger-500)]"}> · {by > 0 ? "up" : "down"} {Math.abs(by)}</span>}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 text-xs">
+                    <Link href={`/app/pulse/projects/${p.slug}`} className="text-[var(--text-3)] hover:text-[var(--brand-600)] hover:underline">Other scans</Link>
+                    <Link href={`/app/pulse/compare?from=${prev.scanId}&to=${last.scanId}`} className={buttonStyles({ variant: "secondary", size: "sm" })}>
+                      What changed
+                    </Link>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );

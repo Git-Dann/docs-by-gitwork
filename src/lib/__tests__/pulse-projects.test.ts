@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProjects, decodeTargetKey, encodeTargetKey, projectAverage, targetKey } from "@/lib/pulse-projects";
+import { applyFindingCounts, buildProjects, decodeTargetKey, sortProjects, encodeTargetKey, projectAverage, targetKey } from "@/lib/pulse-projects";
 import type { PulseScanListItem } from "@/types/pulse";
 
 const NOW = Date.parse("2026-10-26T12:00:00Z");
@@ -63,5 +63,21 @@ describe("buildProjects", () => {
       scan({ inputUrl: "https://b.com", healthScore: 100, createdAt: day(1) }),
     ], NOW);
     expect(projectAverage(projects)).toBe(70);
+  });
+});
+
+describe("urgent findings decide whether a project needs a look", () => {
+  it("a project with urgent findings is never 'on track', and sorts above quiet ones", () => {
+    const [quiet, loud] = buildProjects([scan({ inputUrl: "https://a.com", healthScore: 60 }), scan({ inputUrl: "https://b.com", healthScore: 90 })], NOW)
+      .sort((x, y) => x.target.localeCompare(y.target));
+    const out = sortProjects([applyFindingCounts(quiet, { open: 40, urgent: 0 }), applyFindingCounts(loud, { open: 3, urgent: 2 })]);
+    expect(out[0].target).toBe("https://b.com");
+    expect(out[0].attention).toEqual(["2 urgent findings"]);
+    expect(out[0].urgentFindings).toBe(2);
+    expect(out[1].attention).toEqual([]);
+  });
+  it("leaves both counts unknown when the scan could not be counted", () => {
+    const [p] = buildProjects([scan({})], NOW);
+    expect(applyFindingCounts(p, null)).toMatchObject({ openFindings: null, urgentFindings: null, attention: [] });
   });
 });

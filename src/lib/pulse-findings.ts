@@ -14,6 +14,9 @@
  * marked anything (the §47.2 rule: store facts, derive the judgement).
  */
 
+import { computePriority } from "@/server/pulse-checks/priority";
+import { isDerivedRestatement } from "@/server/pulse-checks/standards-derived";
+
 export type FindingDecision = "ACCEPTED_RISK" | "FALSE_POSITIVE";
 
 /** What a person decided about one finding of one project. */
@@ -188,17 +191,39 @@ export function countByView(findings: Finding[]): Record<FindingView, number> {
   return counts;
 }
 
+/** A check as far as the open/urgent counts need it. Priority reads category and certainty. */
+export interface CountableCheck {
+  checkKey: string;
+  status: string;
+  category?: string | null;
+  confidence?: string | null;
+  trustBucket?: string | null;
+  detail?: string | null;
+  evidence?: string | null;
+}
+
 /**
- * How many findings a scan has open, by the same rule the Findings tab counts with. Used
- * where only the number is wanted (the Projects list), so it needs only key and status.
+ * How many findings a scan has open, and how many of those are urgent (P1), by the same
+ * rules the Findings tab counts and ranks with. Used where only the numbers are wanted
+ * (the Projects list), so a project can never read "on track" beside urgent findings the
+ * scan page lists first.
  */
-export function countOpenFindings(
-  checks: { checkKey: string; status: string; detail?: string | null; evidence?: string | null }[],
-  states: FindingState[],
-  tasks: FindingTask[],
-): number {
-  const full = checks.map((c) => ({ checkKey: c.checkKey, status: c.status, label: c.checkKey, category: "", detail: c.detail ?? null, evidence: c.evidence ?? null }));
-  return countByView(buildFindings(full, states, tasks)).open;
+export function openFindingCounts(checks: CountableCheck[], states: FindingState[], tasks: FindingTask[]): { open: number; urgent: number } {
+  const full = checks.map((c) => ({ checkKey: c.checkKey, status: c.status, label: c.checkKey, category: c.category ?? "", detail: c.detail ?? null, evidence: c.evidence ?? null }));
+  const byKey = new Map(checks.map((c) => [c.checkKey, c]));
+  const openStages = FINDING_VIEWS.find((v) => v.id === "open")!.stages;
+  const open = buildFindings(full, states, tasks).filter((f) => openStages.includes(f.stage));
+  const urgent = open.filter((f) => {
+    const c = byKey.get(f.check.checkKey)!;
+    if (isDerivedRestatement(c.checkKey)) return false;
+    return computePriority({ checkKey: c.checkKey, status: c.status, category: c.category ?? "", confidence: c.confidence ?? null, trustBucket: c.trustBucket ?? null } as Parameters<typeof computePriority>[0]).tier === "P1";
+  }).length;
+  return { open: open.length, urgent };
+}
+
+/** How many findings a scan has open. See `openFindingCounts`. */
+export function countOpenFindings(checks: CountableCheck[], states: FindingState[], tasks: FindingTask[]): number {
+  return openFindingCounts(checks, states, tasks).open;
 }
 
 /** What a stage says in a row, in plain words. */

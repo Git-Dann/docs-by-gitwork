@@ -75,6 +75,8 @@ export interface PulseProject {
    * and when there is no completed scan.
    */
   openFindings: number | null;
+  /** Of those, how many the Findings tab ranks P1. Null until counted. */
+  urgentFindings: number | null;
   lastScannedAt: string;
   /** Completed scores, oldest first, with dates and links. */
   history: ProjectPoint[];
@@ -155,6 +157,7 @@ export function buildProjects(scans: PulseScanListItem[], now: number = Date.now
       latestScore: last?.score ?? null,
       latestCompletedScanId: last?.scanId ?? null,
       openFindings: null,
+      urgentFindings: null,
       lastScannedAt: latest.createdAt,
       history: history.slice(-24),
       change,
@@ -169,6 +172,32 @@ export function buildProjects(scans: PulseScanListItem[], now: number = Date.now
   return projects.sort(
     (a, b) =>
       a.rank - b.rank ||
+      (a.latestScore ?? 101) - (b.latestScore ?? 101) ||
+      Date.parse(b.lastScannedAt) - Date.parse(a.lastScannedAt),
+  );
+}
+
+/**
+ * Attach a project's open and urgent finding counts, and let urgent findings decide whether it
+ * needs a look. Without this a project read "On track" in the list while its scan page led
+ * with P1 findings. Shared by the server and the demo so both say the same thing.
+ */
+export function applyFindingCounts(project: PulseProject, counts: { open: number; urgent: number } | null): PulseProject {
+  if (!counts) return { ...project, openFindings: null, urgentFindings: null };
+  const out: PulseProject = { ...project, openFindings: counts.open, urgentFindings: counts.urgent };
+  if (counts.urgent > 0) {
+    out.attention = [...project.attention, `${counts.urgent} urgent ${counts.urgent === 1 ? "finding" : "findings"}`];
+    out.rank = Math.min(project.rank, 3);
+  }
+  return out;
+}
+
+/** Re-sort after counts are attached: the same order `buildProjects` uses. */
+export function sortProjects(projects: PulseProject[]): PulseProject[] {
+  return [...projects].sort(
+    (a, b) =>
+      a.rank - b.rank ||
+      (b.urgentFindings ?? 0) - (a.urgentFindings ?? 0) ||
       (a.latestScore ?? 101) - (b.latestScore ?? 101) ||
       Date.parse(b.lastScannedAt) - Date.parse(a.lastScannedAt),
   );

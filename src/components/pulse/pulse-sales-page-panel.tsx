@@ -60,10 +60,9 @@ export function PulseSalesPagePanel({
       ) : (
         <div className="flex flex-1 flex-col p-4">
           <p className="text-[12px] leading-snug text-[var(--text-4)]">
-            A public page selling the free check, for gitwork.co.uk to link to — the second
-            door to the same scanner the embed serves. Paste a URL, get the score, every
-            triaged finding with its evidence, and what could not be established. No signup,
-            no email. The in-depth review is the ask.
+            The public page gitwork.co.uk links to. It runs the same scanner as the embed: paste
+            a URL, get the score, each finding with its evidence, and what could not be checked.
+            No sign-up, no email. The in-depth review is the ask.
           </p>
 
           <div className="mt-3">

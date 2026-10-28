@@ -82,7 +82,7 @@ export function CodeHealthPanel({ report, num, rows, showMoney = false }: { repo
         <PlainSummaryBox summary={summariseCodeHealth(report, compareToBenchmarks(report))} />
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
           <div>
-            <p className="widget-data-label">Score</p>
+            <p className="widget-data-label" title="How easy the code is to change. Library security holes are counted separately, below.">Code score</p>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="font-serif text-3xl font-bold leading-none tabular-nums text-[var(--text-1)]">{report.score}</span>
               <span

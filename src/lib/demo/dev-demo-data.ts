@@ -18,8 +18,8 @@ import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA
 import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
 import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
-import { buildProjects, decodeTargetKey, targetKey, type PulseProject } from "@/lib/pulse-projects";
-import { countOpenFindings, findingFingerprint } from "@/lib/pulse-findings";
+import { applyFindingCounts, buildProjects, sortProjects, decodeTargetKey, targetKey, type PulseProject } from "@/lib/pulse-projects";
+import { openFindingCounts, findingFingerprint } from "@/lib/pulse-findings";
 import type { CodeHealthReport } from "@/types/code-health";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
@@ -3927,13 +3927,13 @@ function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: st
 
 /** Each demo project's open findings, by the same rule and the same in-memory decisions as its scan page. */
 function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
-  return projects.map((p) => {
+  return sortProjects(projects.map((p) => {
     const scan = p.latestCompletedScanId ? (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[p.latestCompletedScanId] : undefined;
     if (!scan || !p.latestCompletedScanId) return p;
     const store = demoFindingStore.get(p.latestCompletedScanId) ?? demoFindingSeed(p.latestCompletedScanId);
     demoFindingStore.set(p.latestCompletedScanId, store);
-    return { ...p, openFindings: countOpenFindings(scan.checks, store.states, store.tasks) };
-  });
+    return applyFindingCounts(p, openFindingCounts(scan.checks, store.states, store.tasks));
+  }));
 }
 
 export function resolveDemoApi(

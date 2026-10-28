@@ -44,6 +44,9 @@ function Stat({ label, value, note, tone }: { label: string; value: string; note
   );
 }
 
+/** Plan items shown before "Show all": the ones that carry most of the risk. */
+const PLAN_PREVIEW = 8;
+
 function bandClass(band: PortfolioRepo["band"]) {
   return band === "good" ? "text-[var(--success-500)]" : band === "fair" ? "text-[var(--text-2)]" : "text-[var(--danger-500)]";
 }
@@ -52,6 +55,8 @@ export function CodePortfolioView() {
   const { data, isLoading, error } = useCodePortfolio();
   const [dayIdx, setDayIdx] = useState(4);
   const [devs, setDevs] = useState(2);
+  // A 60-day plan can run to dozens of items; the first few carry most of the risk.
+  const [showAll, setShowAll] = useState(false);
   const days = DAY_STEPS[dayIdx];
   const plan = useMemo(() => planPortfolio(data?.items ?? [], days), [data?.items, days]);
 
@@ -119,7 +124,7 @@ export function CodePortfolioView() {
                 <tr>
                   <th className="text-left">Repository</th>
                   <th className="text-left">Needs</th>
-                  <th className="text-right">Score</th>
+                  <th className="text-right" title="How easy the code is to change. Security holes are their own column.">Code score</th>
                   <th className="text-left">Since last check</th>
                   <th className="text-right">Lines</th>
                   <th className="text-right">Tidy-up work</th>
@@ -243,7 +248,7 @@ export function CodePortfolioView() {
 
           {plan.chosen.length > 0 && (
             <ol className="divide-y divide-[var(--border-2)] border-y border-[var(--border-2)]">
-              {plan.chosen.map((it, i) => (
+              {plan.chosen.slice(0, showAll ? undefined : PLAN_PREVIEW).map((it, i) => (
                 <li key={it.repo + it.id} className="grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 py-2.5">
                   <span className="pt-0.5 font-mono text-[10px] tabular-nums text-[var(--text-4)]">{String(i + 1).padStart(2, "0")}</span>
                   <div className="min-w-0">
@@ -264,6 +269,11 @@ export function CodePortfolioView() {
                 </li>
               ))}
             </ol>
+          )}
+          {plan.chosen.length > PLAN_PREVIEW && (
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="text-xs font-medium text-[var(--brand-600)] hover:underline">
+              {showAll ? "Show the first " + PLAN_PREVIEW : `Show all ${plan.chosen.length} pieces of work`}
+            </button>
           )}
 
           <p className="text-xs leading-5 text-[var(--text-3)]">

@@ -8426,3 +8426,37 @@ internal crawl (§84.14) now feeds them.
 - ⚠️ `runLiteScan` runs the crawl after the URL checks. If those trip the host breaker (2 timeouts),
   the crawl reads nothing and every one of these keeps its homepage answer. This was seen from a
   local machine and was not fixed here.
+
+### 84.22 The Pulse pages stopped contradicting themselves (UI review, Oct 2026)
+
+A review of every Pulse page at 1440px and 390px found several places where one number said
+the opposite of the number next to it. Fixed:
+
+- **Projects showed "On track" beside urgent findings.** The list now counts open findings
+  *and* urgent ones (the P1s the Findings tab lists first) with one rule,
+  `openFindingCounts` in `src/lib/pulse-findings.ts`. `applyFindingCounts`
+  (`src/lib/pulse-projects.ts`) adds "N urgent findings" as a reason a project needs a look,
+  and the server and the demo both call it. The page leads with four figures (projects,
+  average health, need a look, urgent findings); clicking "Need a look" filters to those
+  projects. The Scans column is gone; its count is in the Last checked tooltip.
+- **On a phone the score was off the side of a scrolling table.** Below `sm` each project is
+  a card with its score beside the name. The table stays from `sm` up.
+- **"The code is in good shape (95)" sat above "9 critical".** The code score measures how
+  hard the code is to change, not library security holes. The headline now names both when
+  any library has a critical or high hole (`summariseCodeHealth`). The column and the stat
+  are labelled **Code score** in the Technical tab and in Portfolio, so they can't be read
+  as the project's health score.
+- **"192 confirmed issues" beside 101 findings.** The confidence strip counted the derived
+  standards rows, which restate checks already counted. It now skips them, reads
+  "confirmed problems", and uses colour tokens.
+- **The Compare tab was a dead end** ("pick two scans from a project's page"). With nothing
+  chosen it lists each project's latest scan against the one before, with a link to the
+  project page for any other pair.
+- Portfolio's plan shows the first 8 pieces of work, then "Show all".
+- The Projects list's urgent count opens the scan on the Findings tab (`?tab=findings`).
+- Growth card copy: no em dashes, and no "free".
+
+Left as they are, on purpose: ~200 Tailwind palette classes (`emerald-*`, `red-*`, `amber-*`)
+across `components/pulse/`. `globals.css` remaps those families for dark mode, so they render
+correctly; converting them to tokens is a tidy-up, not a fix. The scan page's cover keeps the
+Foundry wordmark because it is the same component as the shared report.

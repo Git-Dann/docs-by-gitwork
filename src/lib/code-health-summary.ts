@@ -55,8 +55,16 @@ export function summariseCodeHealth(report: CodeHealthReport, benchmark: Benchma
   // Overall condition.
   const condition =
     report.band === "good" ? "in good shape" : report.band === "fair" ? "in fair shape, with some areas that will slow work down" : "in poor shape: changes will be slow and risky until it is tidied";
-  const tone: SummaryTone = report.band === "good" ? "good" : report.band === "fair" ? "watch" : "bad";
-  const headline = `The code is ${condition} (${report.score} out of 100).`;
+  // The score measures how hard the code is to change; it does not count the libraries'
+  // published security holes. Saying "in good shape" above "9 critical" contradicted the very
+  // next line, so the headline names both when the libraries have serious holes.
+  const seriousLibs = report.dependencies?.status === "checked"
+    ? report.dependencies.counts.critical + report.dependencies.counts.high
+    : 0;
+  const tone: SummaryTone = seriousLibs > 0 ? "bad" : report.band === "good" ? "good" : report.band === "fair" ? "watch" : "bad";
+  const headline = seriousLibs > 0
+    ? `The code itself is ${report.band === "good" ? "in good shape" : report.band === "fair" ? "in fair shape" : "in poor shape"} (${report.score} out of 100), but ${plural(seriousLibs, "library it uses has a serious", "libraries it uses have serious")} published security ${seriousLibs === 1 ? "hole" : "holes"} to fix first.`
+    : `The code is ${condition} (${report.score} out of 100).`;
 
   if (report.trend && report.trend.scoreDelta !== 0) {
     const up = report.trend.scoreDelta > 0;

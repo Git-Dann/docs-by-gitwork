@@ -78,3 +78,17 @@ describe("words for numbers", () => {
     expect(comparisonWords(1, 20)).toBe("more complicated than almost all");
   });
 });
+
+describe("the headline never calls code with serious library holes simply 'in good shape'", () => {
+  const deps = DEMO_CODE_HEALTH.dependencies!;
+  it("names the serious holes beside the code score", () => {
+    const s = summariseCodeHealth({ ...DEMO_CODE_HEALTH, band: "good", score: 95, dependencies: { ...deps, status: "checked", counts: { ...deps.counts, critical: 9, high: 43 } } });
+    expect(s.headline).toBe("The code itself is in good shape (95 out of 100), but 52 libraries it uses have serious published security holes to fix first.");
+    expect(s.tone).toBe("bad");
+  });
+  it("keeps the plain headline when no library hole is serious", () => {
+    const s = summariseCodeHealth({ ...DEMO_CODE_HEALTH, band: "good", score: 95, dependencies: { ...deps, status: "checked", counts: { ...deps.counts, critical: 0, high: 0 } } });
+    expect(s.headline).toBe("The code is in good shape (95 out of 100).");
+    expect(s.tone).toBe("good");
+  });
+});

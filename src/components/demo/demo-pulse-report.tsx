@@ -22,7 +22,7 @@ export function DemoPulseReport({ scanId }: { scanId: string }) {
     <DemoShell
       active="Pulse"
       title={scan?.projectName ?? "Pulse report"}
-      subtitle="AI project validation — checks, gaps and a fix roadmap."
+      subtitle="Checks, gaps and a fix roadmap for one project."
     >
       <div className="space-y-6">
         {/* PulseScanResults draws its own back link once a scan is complete, as on /app. */}

@@ -141,7 +141,7 @@ describe("finding storage", () => {
       { id: "tc", status: "DONE", title: "x", clientId: "c2", metadata: null, assignees: [] },
     );
     const counts = await countOpenFindingsForScans(["a", "b", "c"]);
-    expect(Object.fromEntries(counts)).toEqual({ a: 0, b: 2, c: 2 });
+    expect(Object.fromEntries([...counts].map(([k, v]) => [k, v.open]))).toEqual({ a: 0, b: 2, c: 2 });
     // scans, checks, states, legacy tasks, live tasks (plus one for later passes when there are decisions):
     // the same reads for three projects as for three hundred.
     expect(db.queries).toBe(5);

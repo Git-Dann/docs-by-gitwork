@@ -1,5 +1,6 @@
 "use client";
 
+import { isDerivedRestatement } from "@/server/pulse-checks/standards-derived";
 import { cn } from "@/lib/format";
 import { AI_MATURITY_LABELS } from "@/types/pulse";
 import { CodeHealthPanel } from "@/components/pulse/code-health-panel";
@@ -22,7 +23,9 @@ export function renderSummaryAnnotations(v: ScanView) {
           and the score-history trend. Secondary/detail context under the cover's primary
           pass/warn/fail strip, rather than a second competing stat block. */}
       {inSummary && (() => {
-        const b = (name: string) => scan.checks.filter((c) => c.trustBucket === name).length;
+        // Counted over the same checks the Findings tab lists: a derived standards row restates a
+        // check already counted, and counting both put "192 confirmed issues" beside 101 findings.
+        const b = (name: string) => scan.checks.filter((c) => c.trustBucket === name && !isDerivedRestatement(c.checkKey)).length;
         const confirmed = b("CONFIRMED"), likely = b("LIKELY"), inconclusive = b("INCONCLUSIVE"), working = b("VERIFIED_WORKING");
         const hasTrust = confirmed + likely + inconclusive + working > 0;
         const hasGrades = grades.length > 0;
@@ -34,9 +37,9 @@ export function renderSummaryAnnotations(v: ScanView) {
             {hasTrust && (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums">
                 <span className="widget-data-label">Confidence</span>
-                {working > 0 && <span className="text-emerald-600">{working} verified working</span>}
-                {confirmed > 0 && <span className="text-red-600">{confirmed} confirmed issue{confirmed !== 1 ? "s" : ""}</span>}
-                {likely > 0 && <span className="text-amber-600">{likely} likely</span>}
+                {working > 0 && <span className="text-[var(--success-500)]">{working} verified working</span>}
+                {confirmed > 0 && <span className="text-[var(--danger-500)]">{confirmed} confirmed {confirmed !== 1 ? "problems" : "problem"}</span>}
+                {likely > 0 && <span className="text-[var(--warning-500)]">{likely} likely</span>}
                 {inconclusive > 0 && <span className="text-[var(--text-3)]">{inconclusive} inconclusive</span>}
               </div>
             )}

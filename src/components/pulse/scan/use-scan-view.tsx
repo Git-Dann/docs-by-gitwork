@@ -66,6 +66,11 @@ export function useScanView(scan: PulseScanRecord) {
   const [emailSent, setEmailSent] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  // `?tab=findings` (from the Projects list's urgent count) opens straight on the findings.
+  // Read after mount, not in the initialiser: the page is server-rendered too.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "findings") setActiveTab("checks");
+  }, []);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(scan.shareToken);

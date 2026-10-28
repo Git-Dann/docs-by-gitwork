@@ -2,7 +2,7 @@
 // both ways: the input that must produce the stage, and a neighbouring one that must not.
 
 import { describe, expect, it } from "vitest";
-import { buildFindings, countByView, countOpenFindings, findingFingerprint, findingTaskHref, staleDecision, findingTask, stageLabel, type FindingState, type FindingTask } from "@/lib/pulse-findings";
+import { buildFindings, countByView, countOpenFindings, openFindingCounts, findingFingerprint, findingTaskHref, staleDecision, findingTask, stageLabel, type FindingState, type FindingTask } from "@/lib/pulse-findings";
 
 const check = (checkKey: string, status: string, label = checkKey) => ({ checkKey, label, category: "Security", status, detail: `${label} detail` });
 const state = (checkKey: string, patch: Partial<FindingState> = {}): FindingState => ({
@@ -143,5 +143,21 @@ describe("a dismissal reopens when the finding changes", () => {
   it("a passing check is never stale, and nothing undecided is", () => {
     expect(staleDecision(c("PASS", "x"), dismissed("FALSE_POSITIVE", { passedSinceDecision: true }))).toBeNull();
     expect(staleDecision(c("FAIL", "x"), state("a"))).toBeNull();
+  });
+});
+
+describe("openFindingCounts: urgent means what the Findings tab ranks P1", () => {
+  const security = { category: "Security", confidence: "HIGH", trustBucket: "CONFIRMED" };
+  it("counts a confirmed security failure as urgent, and a warning as open only", () => {
+    const checks = [
+      { checkKey: "csp_header", status: "FAIL", ...security },
+      { checkKey: "hsts", status: "WARN", category: "Security", confidence: "MEDIUM", trustBucket: "LIKELY" },
+      { checkKey: "ok", status: "PASS", ...security },
+    ];
+    expect(openFindingCounts(checks, [], [])).toEqual({ open: 2, urgent: 1 });
+  });
+  it("an urgent finding someone dismissed is no longer counted", () => {
+    const states: FindingState[] = [{ checkKey: "csp_header", decision: "ACCEPTED_RISK", note: null, taskId: null, decidedByName: null, decidedAt: null }];
+    expect(openFindingCounts([{ checkKey: "csp_header", status: "FAIL", ...security }], states, [])).toEqual({ open: 0, urgent: 0 });
   });
 });

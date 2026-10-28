@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { targetKey } from "@/lib/pulse-projects";
-import { countOpenFindings, findingFingerprint, findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
+import { openFindingCounts, type CountableCheck, findingFingerprint, findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { createTask } from "@/server/tasks";
 
@@ -167,8 +167,8 @@ export async function getFindingStates(scanId: string): Promise<FindingsResponse
  * of queries for the whole list: the checks of every scan in one read, and the decisions
  * and tasks of every project in `loadFindingStates`.
  */
-export async function countOpenFindingsForScans(scanIds: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
+export async function countOpenFindingsForScans(scanIds: string[]): Promise<Map<string, { open: number; urgent: number }>> {
+  const out = new Map<string, { open: number; urgent: number }>();
   if (scanIds.length === 0) return out;
   const scans = await prisma.pulseScan.findMany({
     where: { id: { in: scanIds } },
@@ -178,9 +178,9 @@ export async function countOpenFindingsForScans(scanIds: string[]): Promise<Map<
   // Only failing and warning checks can be open, so only those are read.
   const checks = await prisma.pulseScanCheck.findMany({
     where: { scanId: { in: scans.map((s) => s.id) }, status: { in: ["FAIL", "WARN"] } },
-    select: { scanId: true, checkKey: true, status: true, detail: true, evidence: true },
+    select: { scanId: true, checkKey: true, status: true, category: true, confidence: true, trustBucket: true, detail: true, evidence: true },
   });
-  const checksOf = new Map<string, { checkKey: string; status: string; detail: string | null; evidence: string | null }[]>();
+  const checksOf = new Map<string, CountableCheck[]>();
   for (const c of checks) checksOf.set(c.scanId, [...(checksOf.get(c.scanId) ?? []), c]);
 
   const byWorkspace = new Map<string, typeof scans>();
@@ -189,7 +189,7 @@ export async function countOpenFindingsForScans(scanIds: string[]): Promise<Map<
     const found = await loadFindingStates(workspaceId, list.map((s) => ({ targetKey: targetKey(s), clientId: s.clientId, asOf: s.createdAt })));
     for (const s of list) {
       const f = found.get(targetKey(s));
-      out.set(s.id, countOpenFindings(checksOf.get(s.id) ?? [], f?.states ?? [], f?.tasks ?? []));
+      out.set(s.id, openFindingCounts(checksOf.get(s.id) ?? [], f?.states ?? [], f?.tasks ?? []));
     }
   }
   return out;
