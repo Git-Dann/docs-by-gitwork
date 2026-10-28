@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { targetKey } from "@/lib/pulse-projects";
-import { countOpenFindings, findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
+import { countOpenFindings, findingFingerprint, findingTask, type FindingDecision, type FindingState, type FindingTask } from "@/lib/pulse-findings";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { createTask } from "@/server/tasks";
 
@@ -19,7 +19,7 @@ class FindingError extends Error {
 }
 
 const SCAN_SELECT = {
-  id: true, workspaceId: true, clientId: true, inputUrl: true, inputGithubRepo: true, projectName: true,
+  id: true, workspaceId: true, clientId: true, createdAt: true, inputUrl: true, inputGithubRepo: true, projectName: true,
   checks: { select: { checkKey: true, label: true, category: true, status: true, detail: true, evidence: true } },
 } as const satisfies Prisma.PulseScanSelect;
 
@@ -40,6 +40,8 @@ export interface FindingsResponse {
 export interface FindingTarget {
   targetKey: string;
   clientId: string | null;
+  /** When the scan being read was made: passes after this do not count (an older scan reads as it was). */
+  asOf: Date;
 }
 
 /**
@@ -83,6 +85,33 @@ export async function loadFindingStates(
     : [];
   const nameOf = new Map(deciders.map((u) => [u.id, u.name ?? u.email ?? null]));
 
+  // Did a scan of the same project pass the check after the decision? Then a failure now
+  // is a new instance, and the decision reopens (src/lib/pulse-findings.ts staleDecision).
+  // One read for every decision on every project being loaded.
+  const decided = rows.filter((r) => r.decision && r.decidedAt);
+  const passes = decided.length
+    ? await prisma.pulseScanCheck.findMany({
+      where: {
+        checkKey: { in: [...new Set(decided.map((r) => r.checkKey))] },
+        status: "PASS",
+        scan: {
+          workspaceId,
+          status: "COMPLETED",
+          createdAt: { gt: new Date(Math.min(...decided.map((r) => r.decidedAt!.getTime()))) },
+        },
+      },
+      select: { checkKey: true, scan: { select: { createdAt: true, inputUrl: true, inputGithubRepo: true, projectName: true } } },
+    })
+    : [];
+  const passedSince = (t: FindingTarget, r: { checkKey: string; decision: unknown; decidedAt: Date | null }): boolean => {
+    if (!r.decision || !r.decidedAt) return false;
+    const after = r.decidedAt.getTime();
+    return passes.some((p) => p.checkKey === r.checkKey
+      && p.scan.createdAt.getTime() > after
+      && p.scan.createdAt.getTime() <= t.asOf.getTime()
+      && targetKey(p.scan) === t.targetKey);
+  };
+
   const statesOf = new Map<string, FindingState[]>();
   for (const t of targets) {
     if (statesOf.has(t.targetKey)) continue;
@@ -94,6 +123,9 @@ export async function loadFindingStates(
       taskId: r.taskId ?? legacyByCheck.get(r.checkKey) ?? null,
       decidedByName: r.decidedById ? nameOf.get(r.decidedById) ?? null : null,
       decidedAt: r.decidedAt?.toISOString() ?? null,
+      fingerprint: r.decisionFingerprint ?? null,
+      decisionStatus: r.decisionStatus ?? null,
+      passedSinceDecision: passedSince(t, r),
     }));
     const seen = new Set(states.map((s) => s.checkKey));
     for (const [checkKey, taskId] of legacyByCheck) {
@@ -126,7 +158,7 @@ export async function loadFindingStates(
 /** The decisions and tasks for the scan's project. */
 export async function getFindingStates(scanId: string): Promise<FindingsResponse> {
   const { scan, key } = await loadScan(scanId);
-  const found = (await loadFindingStates(scan.workspaceId, [{ targetKey: key, clientId: scan.clientId }])).get(key)!;
+  const found = (await loadFindingStates(scan.workspaceId, [{ targetKey: key, clientId: scan.clientId, asOf: scan.createdAt }])).get(key)!;
   return { targetKey: key, clientId: scan.clientId, states: found.states, tasks: found.tasks };
 }
 
@@ -140,20 +172,21 @@ export async function countOpenFindingsForScans(scanIds: string[]): Promise<Map<
   if (scanIds.length === 0) return out;
   const scans = await prisma.pulseScan.findMany({
     where: { id: { in: scanIds } },
-    select: { id: true, workspaceId: true, clientId: true, inputUrl: true, inputGithubRepo: true, projectName: true },
+    select: { id: true, workspaceId: true, clientId: true, createdAt: true, inputUrl: true, inputGithubRepo: true, projectName: true },
   });
   if (scans.length === 0) return out;
+  // Only failing and warning checks can be open, so only those are read.
   const checks = await prisma.pulseScanCheck.findMany({
-    where: { scanId: { in: scans.map((s) => s.id) } },
-    select: { scanId: true, checkKey: true, status: true },
+    where: { scanId: { in: scans.map((s) => s.id) }, status: { in: ["FAIL", "WARN"] } },
+    select: { scanId: true, checkKey: true, status: true, detail: true, evidence: true },
   });
-  const checksOf = new Map<string, { checkKey: string; status: string }[]>();
+  const checksOf = new Map<string, { checkKey: string; status: string; detail: string | null; evidence: string | null }[]>();
   for (const c of checks) checksOf.set(c.scanId, [...(checksOf.get(c.scanId) ?? []), c]);
 
   const byWorkspace = new Map<string, typeof scans>();
   for (const s of scans) byWorkspace.set(s.workspaceId, [...(byWorkspace.get(s.workspaceId) ?? []), s]);
   for (const [workspaceId, list] of byWorkspace) {
-    const found = await loadFindingStates(workspaceId, list.map((s) => ({ targetKey: targetKey(s), clientId: s.clientId })));
+    const found = await loadFindingStates(workspaceId, list.map((s) => ({ targetKey: targetKey(s), clientId: s.clientId, asOf: s.createdAt })));
     for (const s of list) {
       const f = found.get(targetKey(s));
       out.set(s.id, countOpenFindings(checksOf.get(s.id) ?? [], f?.states ?? [], f?.tasks ?? []));
@@ -171,10 +204,14 @@ export async function setFindingDecision(
   note: string | null,
 ): Promise<void> {
   const { scan, key } = await loadScan(scanId);
-  if (!scan.checks.some((c) => c.checkKey === checkKey)) throw new FindingError("That check is not part of this scan.", 404);
+  const check = scan.checks.find((c) => c.checkKey === checkKey);
+  if (!check) throw new FindingError("That check is not part of this scan.", 404);
   const data = {
     decision,
     note: decision ? note?.trim().slice(0, 1000) || null : null,
+    // What the decision was made about, so it can reopen when that changes.
+    decisionFingerprint: decision ? findingFingerprint(check) : null,
+    decisionStatus: decision ? check.status : null,
     decidedById: user?.id ?? null,
     decidedAt: new Date(),
     scanId,

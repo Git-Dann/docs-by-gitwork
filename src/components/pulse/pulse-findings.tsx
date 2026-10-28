@@ -28,6 +28,7 @@ import {
   type Finding,
   type FindingDecision,
   type FindingView,
+  type ReopenReason,
 } from "@/lib/pulse-findings";
 import { cn, formatRelative } from "@/lib/format";
 import type { PulseScanCheckRecord, PulseScanDiff } from "@/types/pulse";
@@ -39,6 +40,7 @@ const PAGE = 25;
 
 const STAGE_TONE: Record<string, string> = {
   open: "",
+  reopened: "text-[var(--warning-500)]",
   task_done: "text-[var(--danger-500)]",
   in_progress: "text-[var(--brand-600)]",
   fixed: "text-[var(--success-500)]",
@@ -192,7 +194,7 @@ export function PulseFindings({
                             View task
                           </Link>
                         )}
-                        {canManage && f.stage === "open" && clientId && (
+                        {canManage && (f.stage === "open" || f.stage === "reopened") && clientId && (
                           <Button size="xs" variant="secondary" disabled={busy === key} onClick={() => run(key, () => send.mutateAsync(key))}>
                             {busy === key ? "Sending…" : "Send to board"}
                           </Button>
@@ -219,6 +221,7 @@ export function PulseFindings({
                           {f.state.decidedByName ? ` by ${f.state.decidedByName}` : ""}
                           {f.state.decidedAt ? `, ${formatRelative(f.state.decidedAt)}` : ""}
                           {f.state.note ? `: "${f.state.note}"` : "."}
+                          {f.reopened && ` Back in Open because ${REOPEN_REASON[f.reopened]}.`}
                         </p>
                       )}
                     </div>
@@ -282,6 +285,12 @@ export function PulseFindings({
   );
 }
 
+const REOPEN_REASON: Record<ReopenReason, string> = {
+  returned: "a later scan passed this check and it is failing again",
+  worse: "it was a warning then and is a failure now",
+  changed: "what Pulse found has changed since",
+};
+
 const EMPTY: Record<FindingView, string> = {
   open: "Nothing open. Every failing or warning check is on the board, fixed or dismissed.",
   in_progress: "Nothing has been sent to the board yet.",
@@ -291,7 +300,7 @@ const EMPTY: Record<FindingView, string> = {
 };
 
 function FindingMenu({ finding, onDecide, onReopen }: { finding: Finding; onDecide: (d: FindingDecision) => void; onReopen: () => void }) {
-  const adverse = ["open", "in_progress", "task_done"].includes(finding.stage);
+  const adverse = ["open", "reopened", "in_progress", "task_done"].includes(finding.stage);
   const dismissed = finding.stage === "accepted" || finding.stage === "false_positive";
   if (!adverse && !dismissed) return null;
   return (
