@@ -5744,3 +5744,20 @@ model WikiInsightNode {
   @@index([parentId])
   @@map("WikiInsightNode")
 }
+
+/// Persistent second tier of the GitHub conditional-request cache (src/lib/github-cache.ts,
+/// src/server/github-cache-store.ts, CLAUDE.md §84.15). Lets a rescan after a deploy still be
+/// answered by 304s, which do not count against the shared token's 5,000/hour limit.
+/// `key` is a SHA-256 of (token hash, Accept, URL) — never the token. `body` is gzipped JSON.
+/// Bounded and pruned on write; safe to TRUNCATE at any time (the next GET is a full read).
+model GithubResponseCache {
+  key          String   @id
+  etag         String?
+  lastModified String?
+  body         Bytes
+  size         Int
+  storedAt     DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@index([lastUsedAt])
+}
