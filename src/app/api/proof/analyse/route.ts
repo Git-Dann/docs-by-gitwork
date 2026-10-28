@@ -6,6 +6,7 @@ import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,7 @@ Extract the following fields:
 
 export async function POST(request: Request) {
   const { workspace } = await ensureBaseRecords();
-  const apiKey = process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey;
+  const apiKey = aiKeyFor("ANTHROPIC", workspace, "env");
   if (!apiKey) {
     return NextResponse.json(
       { error: "AI key is not configured. Add an Anthropic key in Settings → Integrations (or ANTHROPIC_API_KEY) to enable brief analysis." },

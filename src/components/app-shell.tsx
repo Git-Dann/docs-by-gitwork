@@ -4,9 +4,10 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  BuildingOffice2Icon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
-  CodeBracketIcon,
+  IdentificationIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
@@ -27,6 +28,7 @@ import { buildPageTitle } from "@/lib/page-title";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast, isExternalRole } from "@/types/auth";
+import { workspaceHasModule } from "@/lib/workspace-modules";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -156,6 +158,7 @@ export function AppShell({
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
   const realPermissions = useMemo(() => account.data?.permissions ?? [], [account.data?.permissions]);
+  const workspaceModules = account.data?.workspaceModules ?? null;
   const isFullAccessAdmin = isAdmin && realPermissions.length === 0;
   const shouldScopeCareNav =
     Boolean(account.data) &&
@@ -237,10 +240,10 @@ export function AppShell({
         module: "pulse",
       },
       {
-        href: "/app/code",
-        label: "Code",
-        description: "Developer vetting",
-        icon: CodeBracketIcon,
+        href: "/app/staff",
+        label: "Staff",
+        description: "People and availability",
+        icon: IdentificationIcon,
         module: "codeclear",
       },
       {
@@ -276,15 +279,20 @@ export function AppShell({
       // everything that isn't a product you'd open daily lives behind an entry
       // point instead — see §4a in CLAUDE.md.
     ];
+    // The business's own module list (src/lib/workspace-modules.ts) applies on top of
+    // everything below, admins included: a Super Admin of a business without Care must
+    // not see Care. Unrestricted workspaces (Gitwork) return null and keep every item.
+    const forWorkspace = (items: NavItem[]) =>
+      items.filter((item) => !item.module || workspaceHasModule(item.module, workspaceModules));
     if (account.isPending) {
       // Pre-/api/account first paint: render from the cached module list if we
       // have one (returning users get their correct nav instantly), else show
       // only the always-on items. Never render the full list then collapse it —
       // that collapse is the flash. Progressive reveal reads clean.
       if (cachedModules) {
-        return all.filter((item) => !item.module || cachedModules.includes(item.module));
+        return forWorkspace(all).filter((item) => !item.module || cachedModules.includes(item.module));
       }
-      return all.filter((item) => !item.module);
+      return forWorkspace(all).filter((item) => !item.module);
     }
 
     // When previewing as another role/user, use the effective permissions from the hook.
@@ -293,14 +301,14 @@ export function AppShell({
     // Staff/Developer → filtered by their permissions.
     if (effectivePermissions !== null) {
       // In preview mode — apply whatever permissions the preview role/user has
-      return all.filter((item) => !item.module || effectivePermissions.includes(item.module));
+      return forWorkspace(all).filter((item) => !item.module || effectivePermissions.includes(item.module));
     }
-    if (isAdmin && realPermissions.length === 0) return all; // Super Admin / full-access admin
-    return all.filter((item) => {
+    if (isAdmin && realPermissions.length === 0) return forWorkspace(all); // Super Admin / full-access admin
+    return forWorkspace(all).filter((item) => {
       if (item.module === "support" && hideCareForScopedUser) return false;
       return !item.module || realPermissions.includes(item.module);
     });
-  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules]);
+  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules, workspaceModules]);
 
   // Analytics + Starters are Super-Admin-only tools, not products, so they no
   // longer take sidebar rows — they're links in the HQ context strip beside DECKS
@@ -363,7 +371,7 @@ export function AppShell({
                 active={Boolean(item.href && isActivePath(pathname, item.href))}
               />
             ))}
-            {isAdmin ? (
+            {isAdmin && workspaceHasModule("handbook", workspaceModules) ? (
               <SidebarNavItem
                 item={{
                   href: "/app/handbook",
@@ -372,6 +380,17 @@ export function AppShell({
                   icon: BookOpenIcon,
                 }}
                 active={Boolean(isActivePath(pathname, "/app/handbook"))}
+              />
+            ) : null}
+            {account.data?.isPlatformAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/platform",
+                  label: "Platform",
+                  description: "All businesses",
+                  icon: BuildingOffice2Icon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/platform"))}
               />
             ) : null}
           </div>
@@ -532,6 +551,10 @@ function ExpandedRail({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
+  // Same query the shell reads (cached), so the rail needs no extra props for these.
+  const accountData = useAccount().data;
+  const workspaceModules = accountData?.workspaceModules ?? null;
+  const isPlatformAdmin = accountData?.isPlatformAdmin ?? false;
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
@@ -588,7 +611,7 @@ function ExpandedRail({
         <div className="mt-4">
           {!collapsed ? <AiSpendCard /> : null}
           <div className="space-y-2">
-            {isAdmin ? (
+            {isAdmin && workspaceHasModule("handbook", workspaceModules) ? (
               <SidebarNavItem
                 item={{
                   href: "/app/handbook",
@@ -597,6 +620,18 @@ function ExpandedRail({
                   icon: BookOpenIcon,
                 }}
                 active={Boolean(isActivePath(pathname, "/app/handbook"))}
+                collapsed={collapsed}
+              />
+            ) : null}
+            {isPlatformAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/platform",
+                  label: "Platform",
+                  description: "All businesses",
+                  icon: BuildingOffice2Icon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/platform"))}
                 collapsed={collapsed}
               />
             ) : null}
@@ -1126,6 +1161,10 @@ function ProfileMenu({
 function isActivePath(pathname: string | null, href: string) {
   if (href === "/app") {
     return pathname === "/app" || Boolean(pathname?.startsWith("/app/projects/"));
+  }
+  // Staff's developer and hiring pages still live under the legacy /app/codeclear prefix.
+  if (href === "/app/staff") {
+    return Boolean(pathname && /^\/app\/(staff|code|codeclear)(\/|$)/.test(pathname));
   }
 
   return pathname === href || (href !== "/app" && Boolean(pathname?.startsWith(href)));

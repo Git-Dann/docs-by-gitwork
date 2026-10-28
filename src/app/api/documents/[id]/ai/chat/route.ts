@@ -39,6 +39,7 @@ import { AiNotConfiguredError } from "@/server/document-ai";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { readSecret } from "@/server/stored-secret";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -99,14 +100,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { workspace } = await ensureBaseRecords();
     const ws = await prisma.workspace.findUnique({
       where: { id: workspace.id },
-      select: { aiProvider: true, anthropicApiKey: true, anthropicModel: true },
+      select: { aiProvider: true, anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true },
     });
     if (!ws || (ws.aiProvider ?? "ANTHROPIC") !== "ANTHROPIC" || !ws.anthropicApiKey) {
       throw new AiNotConfiguredError();
     }
 
     const client = new Anthropic({
-      apiKey: ws.anthropicApiKey,
+      apiKey: readSecret(ws.anthropicApiKey) ?? "",
       timeout: 60_000,
       maxRetries: 1,
     });

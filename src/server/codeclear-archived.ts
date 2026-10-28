@@ -47,6 +47,14 @@ export function activeDeveloperWhere(emails: string[]): Prisma.CandidateWhereInp
   return emails.length ? { NOT: { OR: emailMatches(emails) } } : {};
 }
 
+/**
+ * Developer records only. Since Staff (CLAUDE.md §87) a Candidate row can be anyone on
+ * the team, and only developers have a GitHub handle. Every developer-facing list —
+ * Developers, Pipeline, the Overview's counts, and the iOS Dev Directory, which reads
+ * the same endpoint — filters on this, so they show exactly the rows they did before.
+ */
+export const DEVELOPER_RECORD: Prisma.CandidateWhereInput = { githubHandle: { not: null } };
+
 /** Only the developers whose person has left. Matches nothing when nobody has. */
 export function archivedDeveloperWhere(emails: string[]): Prisma.CandidateWhereInput {
   return emails.length ? { OR: emailMatches(emails) } : { id: { in: [] } };

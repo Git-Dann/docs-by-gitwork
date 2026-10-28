@@ -87,6 +87,10 @@ Run `npm install` on a fresh clone or the hook can't run and will refuse the pus
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
+**Working on the multi-tenant programme (`docs/multi-tenant-roadmap.md`)?** Also run
+`npm run test:baseline` against a local dev server. It fails if any page that worked before has
+broken or lost content. See `docs/build-checklist.md` §4a.
+
 ## 4. Eight traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and
@@ -113,7 +117,10 @@ Report what `verify` actually printed. Never call something verified that you di
    `UNGATED_APP_PREFIXES` if it's open to every member) in `src/server/auth/module-gate.ts`. Miss
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
    default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
-   ended up ungated.
+   ended up ungated. **If the page belongs to a module, also put its path in that module's entry
+   in `src/lib/workspace-modules.ts`** — the switch for which modules a *business* has, checked
+   before any role (a business without Pulse is refused Pulse even as its own Super Admin). A test
+   fails if a gated path has no module there.
 7. **The renderer is the limit — not the editor — and there are TWO of them.** Text fields store
    Markdown, and anything the renderer can't draw prints **verbatim on the client's document**.
    `renderLines` (`src/lib/markdown.tsx`) draws bold, italic, code, links and bulleted / numbered /
@@ -177,14 +184,14 @@ npm run audit:clipping -- --self-test
   |---|---|---|---|
   | Portal | `/app/portal` | `/app/clients` | `clients` |
   | Care | `/app/care` | `/app/support` | `support` |
-  | Code | `/app/code` | `/app/codeclear` | `codeclear` |
+  | Staff (was Code) | `/app/staff` | `/app/code` → redirects; developer and Hiring pages still under `/app/codeclear` | `codeclear` |
   | Docs | `/app/docs` | `/app/proposals` → redirects | `proposals` |
 
   `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is
   canonical, and for which permission gates each route.
 
   **The sidebar is not the full list of surfaces.** It holds the seven products (Foundry HQ ·
-  Pulse · Code · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
+  Pulse · Staff · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
   entry point instead — Studio and the labs in **Settings → Labs**, Analytics and Starters as
   mono links in the **HQ context strip**, Settings and view-as in the **profile flyout**. Adding
   a surface? CLAUDE.md §4a decides where it goes; a new sidebar item is almost never the answer.

@@ -2,12 +2,13 @@ import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAiFields } from "@/server/ai-provider";
 import { recordAiUsage, usageFromOpenAI } from "@/server/ai-usage";
+import { aiKeyFor } from "@/server/ai-keys";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIM = 1536;
 
 function resolveOpenAiKey(ws: WorkspaceAiFields): string | null {
-  return process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null;
+  return aiKeyFor("OPENAI", ws, "env");
 }
 
 export async function generateEmbedding(text: string, apiKey: string, workspaceId?: string): Promise<number[]> {

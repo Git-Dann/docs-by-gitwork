@@ -420,6 +420,10 @@ export function canIssueCountermark(user: EffectiveUser): boolean {
 export function canViewCheckConfig(user: EffectiveUser): boolean {
   return can(user, "settings.agents");
 }
+/** See the Staff roster (the `codeclear` module — the id predates the rename). */
+export function canViewStaff(user: EffectiveUser): boolean {
+  return can(user, "codeclear");
+}
 /** Add/edit/delete candidates + run analysis in Code. */
 export function canManageCode(user: EffectiveUser): boolean {
   return can(user, "code.manage");

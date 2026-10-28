@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { auth } from "@/auth";
 import { isAtLeast } from "@/types/auth";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ async function getPageData() {
       id: true,
       aiProvider: true,
       anthropicApiKey: true,
+      platformAiKeysAllowed: true,
       anthropicModel: true,
       openaiApiKey: true,
       openaiModel: true,
@@ -67,13 +69,13 @@ async function getPageData() {
   type Provider = { id: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; label: string; model: string };
   const configuredProviders: Provider[] = [];
 
-  if (process.env.ANTHROPIC_API_KEY || workspace?.anthropicApiKey) {
+  if (aiKeyFor("ANTHROPIC", workspace, "env")) {
     configuredProviders.push({ id: "ANTHROPIC", label: "Claude", model: workspace?.anthropicModel ?? "claude-sonnet-5" });
   }
-  if (process.env.OPENAI_API_KEY || workspace?.openaiApiKey) {
+  if (aiKeyFor("OPENAI", workspace, "env")) {
     configuredProviders.push({ id: "OPENAI", label: "OpenAI", model: workspace?.openaiModel ?? "gpt-4o" });
   }
-  if (process.env.GEMINI_API_KEY || workspace?.geminiApiKey) {
+  if (aiKeyFor("GEMINI", workspace, "env")) {
     configuredProviders.push({ id: "GEMINI", label: "Gemini", model: workspace?.geminiModel ?? "gemini-2.0-flash" });
   }
   if (workspace?.localLlmUrl) {

@@ -176,6 +176,10 @@ enum GitHubAnalysisScope {
 model User {
   id                        String                  @id @default(cuid())
   email                     String                  @unique
+  /// Gitwork's platform operators (the Platform console, /app/platform). Separate from
+  /// any workspace role: a customer's own Super Admin is never a platform admin. See
+  /// src/server/platform/admin.ts, which also honours a seed list of emails.
+  isPlatformAdmin           Boolean                 @default(false)
   name                      String?
   // ALWAYS a small value safe to embed in API payloads: an external https URL
   // (Google photo) or our served path `/api/avatars/{id}`. NEVER a base64 data
@@ -287,6 +291,15 @@ model Workspace {
   id                          String                     @id @default(cuid())
   name                        String
   slug                        String                     @unique
+  /// Which modules this business has (src/lib/workspace-modules.ts). false = every
+  /// module (Gitwork, and every workspace created before the switch existed); true =
+  /// only `enabledModules`, refused even to the workspace's own Super Admins.
+  modulesRestricted           Boolean                    @default(false)
+  enabledModules              String[]                   @default([])
+  /// May this workspace fall back on the SERVER's AI keys (ANTHROPIC_API_KEY …)?
+  /// true for every workspace that existed before the switch (Gitwork). A new business
+  /// is created with false, so it only ever spends its own keys. src/server/ai-keys.ts.
+  platformAiKeysAllowed       Boolean                    @default(true)
   anthropicApiKey             String?
   anthropicModel              String?
   aiProvider                  String                     @default("ANTHROPIC")
@@ -539,6 +552,8 @@ model WorkspaceMember {
   createdAt           DateTime  @default(now())
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// This person's Staff record (Candidate.memberId), if they have one.
+  staffRecord         Candidate?
 
   @@unique([workspaceId, userId])
   @@index([workspaceId, archivedAt])
@@ -2492,8 +2507,25 @@ model Candidate {
   workspaceId          String
   rateCardPersonId     String?
   name                 String
-  githubHandle         String
+  /// Optional since Staff (Oct 2026): a Staff record can be anyone, not only a
+  /// developer. Postgres allows many NULLs under the unique index below. The API
+  /// still sends a string ("" = none) so older clients that require it keep working.
+  githubHandle         String?
   email                String?
+  /// The account this Staff record belongs to. Replaces the email match the module
+  /// relied on (Candidate.email ↔ User.email), which broke whenever the two differed.
+  /// Filled for existing records by linkStaffRecords (src/server/staff.ts).
+  memberId             String?                @unique
+  member               WorkspaceMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  /// Staff details (src/server/staff.ts). All optional; none is required of a developer.
+  jobTitle             String?
+  department           String?
+  /// EMPLOYEE | CONTRACTOR | FREELANCER (validated in src/lib/staff.ts).
+  employmentType       String?
+  startDate            DateTime?
+  /// Another Staff record in the same workspace. A loose id, like the other cross-record
+  /// links here, so deleting a manager's record can never cascade.
+  managerId            String?
   primaryStack         String
   techStacks           String[]               @default([])
   signalSources        String[]               @default([])

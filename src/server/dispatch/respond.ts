@@ -26,6 +26,7 @@ import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 const AI_FIELDS = {
   aiProvider: true,
   anthropicApiKey: true,
+  platformAiKeysAllowed: true,
   anthropicModel: true,
   openaiApiKey: true,
   openaiModel: true,

@@ -9,6 +9,8 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { recordAuditEntry } from "@/server/audit-log";
 import { authTest, getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor, aiKeySource } from "@/server/ai-keys";
+import { readSecret, storeSecret } from "@/server/stored-secret";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,7 @@ export async function GET() {
       select: {
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         anthropicModel: true,
         openaiApiKey: true,
         openaiModel: true,
@@ -69,21 +72,23 @@ export async function GET() {
       },
     });
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY ?? workspace?.anthropicApiKey ?? null;
-    const openaiKey = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
-    const geminiKey = process.env.GEMINI_API_KEY ?? workspace?.geminiApiKey ?? null;
-    const externalKey = process.env.API_KEY ?? workspace?.externalApiKey ?? null;
+    // The same rule the AI calls use (src/server/ai-keys.ts), so Settings never shows a
+    // key the workspace cannot actually use.
+    const anthropicKey = aiKeyFor("ANTHROPIC", workspace, "env");
+    const openaiKey = aiKeyFor("OPENAI", workspace, "env");
+    const geminiKey = aiKeyFor("GEMINI", workspace, "env");
+    const externalKey = process.env.API_KEY ?? readSecret(workspace?.externalApiKey) ?? null;
 
     return apiOk({
       aiProvider: workspace?.aiProvider ?? "ANTHROPIC",
       anthropicKeyMasked: anthropicKey ? maskKey(anthropicKey) : null,
-      anthropicKeySource: process.env.ANTHROPIC_API_KEY ? "env" : workspace?.anthropicApiKey ? "database" : null,
+      anthropicKeySource: aiKeySource("ANTHROPIC", workspace, "env"),
       anthropicModel: workspace?.anthropicModel ?? DEFAULT_MODELS.ANTHROPIC,
       openaiKeyMasked: openaiKey ? maskKey(openaiKey) : null,
-      openaiKeySource: process.env.OPENAI_API_KEY ? "env" : workspace?.openaiApiKey ? "database" : null,
+      openaiKeySource: aiKeySource("OPENAI", workspace, "env"),
       openaiModel: workspace?.openaiModel ?? DEFAULT_MODELS.OPENAI,
       geminiKeyMasked: geminiKey ? maskKey(geminiKey) : null,
-      geminiKeySource: process.env.GEMINI_API_KEY ? "env" : workspace?.geminiApiKey ? "database" : null,
+      geminiKeySource: aiKeySource("GEMINI", workspace, "env"),
       geminiModel: workspace?.geminiModel ?? DEFAULT_MODELS.GEMINI,
       localLlmUrl: workspace?.localLlmUrl ?? "",
       localLlmModel: workspace?.localLlmModel ?? DEFAULT_MODELS.LOCAL,
@@ -116,7 +121,7 @@ export async function GET() {
       emailFromAddress: workspace?.emailFromAddress ?? null,
       emailFromName: workspace?.emailFromName ?? null,
       emailReplyTo: workspace?.emailReplyTo ?? null,
-      emailApiKeyMasked: workspace?.emailApiKey ? maskKey(workspace.emailApiKey) : null,
+      emailApiKeyMasked: readSecret(workspace?.emailApiKey) ? maskKey(readSecret(workspace?.emailApiKey) ?? "") : null,
       emailSmtpHost: workspace?.emailSmtpHost ?? null,
       emailSmtpPort: workspace?.emailSmtpPort ?? null,
       emailSmtpUser: workspace?.emailSmtpUser ?? null,
@@ -171,16 +176,18 @@ export async function PUT(request: NextRequest) {
     // Build update payload with explicit Prisma-typed fields only
     const data: Parameters<typeof prisma.workspace.updateMany>[0]["data"] = {};
     if (body.aiProvider) data.aiProvider = body.aiProvider;
-    if (body.anthropicApiKey) data.anthropicApiKey = body.anthropicApiKey;
+    // Secrets are written encrypted (src/server/stored-secret.ts) and read through
+    // readSecret, which also accepts the plain values stored before this change.
+    if (body.anthropicApiKey) data.anthropicApiKey = storeSecret(body.anthropicApiKey);
     if (body.anthropicModel) data.anthropicModel = body.anthropicModel;
-    if (body.openaiApiKey) data.openaiApiKey = body.openaiApiKey;
+    if (body.openaiApiKey) data.openaiApiKey = storeSecret(body.openaiApiKey);
     if (body.openaiModel) data.openaiModel = body.openaiModel;
-    if (body.geminiApiKey) data.geminiApiKey = body.geminiApiKey;
+    if (body.geminiApiKey) data.geminiApiKey = storeSecret(body.geminiApiKey);
     if (body.geminiModel) data.geminiModel = body.geminiModel;
     if (body.localLlmUrl) data.localLlmUrl = body.localLlmUrl;
     if (body.localLlmModel) data.localLlmModel = body.localLlmModel;
-    if (body.externalApiKey) data.externalApiKey = body.externalApiKey;
-    if (body.googleServiceAccountJson) data.googleServiceAccountJson = body.googleServiceAccountJson;
+    if (body.externalApiKey) data.externalApiKey = storeSecret(body.externalApiKey);
+    if (body.googleServiceAccountJson) data.googleServiceAccountJson = storeSecret(body.googleServiceAccountJson);
     if (body.googleSubjectEmail) data.googleSubjectEmail = body.googleSubjectEmail;
     if (body.googleCalendarId) data.googleCalendarId = body.googleCalendarId;
     // Slack credentials: encrypt on write, mirror to the legacy plaintext column
@@ -210,7 +217,7 @@ export async function PUT(request: NextRequest) {
     if (body.slackChannels !== undefined) data.slackChannels = body.slackChannels;
     if (body.channelRoutes !== undefined) data.channelRoutes = body.channelRoutes;
     if (body.emailProvider !== undefined) data.emailProvider = body.emailProvider;
-    if (body.emailApiKey) data.emailApiKey = body.emailApiKey;
+    if (body.emailApiKey) data.emailApiKey = storeSecret(body.emailApiKey);
     if (body.emailFromAddress) data.emailFromAddress = body.emailFromAddress;
     if (body.emailFromName) data.emailFromName = body.emailFromName;
     if (body.emailReplyTo) data.emailReplyTo = body.emailReplyTo;
@@ -254,6 +261,7 @@ export async function PUT(request: NextRequest) {
         id: true,
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         openaiApiKey: true,
         geminiApiKey: true,
         externalApiKey: true,
@@ -283,7 +291,7 @@ export async function PUT(request: NextRequest) {
           after: body.aiProvider,
         });
       }
-      if (body.anthropicApiKey && body.anthropicApiKey !== before.anthropicApiKey) {
+      if (body.anthropicApiKey && body.anthropicApiKey !== readSecret(before.anthropicApiKey)) {
         await recordAuditEntry({
           workspaceId: before.id,
           actorId,
@@ -291,7 +299,7 @@ export async function PUT(request: NextRequest) {
           target: "workspace.anthropicApiKey",
         });
       }
-      if (body.openaiApiKey && body.openaiApiKey !== before.openaiApiKey) {
+      if (body.openaiApiKey && body.openaiApiKey !== readSecret(before.openaiApiKey)) {
         await recordAuditEntry({
           workspaceId: before.id,
           actorId,
@@ -299,7 +307,7 @@ export async function PUT(request: NextRequest) {
           target: "workspace.openaiApiKey",
         });
       }
-      if (body.geminiApiKey && body.geminiApiKey !== before.geminiApiKey) {
+      if (body.geminiApiKey && body.geminiApiKey !== readSecret(before.geminiApiKey)) {
         await recordAuditEntry({
           workspaceId: before.id,
           actorId,
@@ -307,7 +315,7 @@ export async function PUT(request: NextRequest) {
           target: "workspace.geminiApiKey",
         });
       }
-      if (body.externalApiKey && body.externalApiKey !== before.externalApiKey) {
+      if (body.externalApiKey && body.externalApiKey !== readSecret(before.externalApiKey)) {
         await recordAuditEntry({
           workspaceId: before.id,
           actorId,

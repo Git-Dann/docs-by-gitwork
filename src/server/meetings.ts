@@ -191,7 +191,7 @@ export async function summariseMeeting(meetingId: string): Promise<void> {
     where: { id: meeting.workspaceId },
     select: {
       aiProvider: true,
-      anthropicApiKey: true, anthropicModel: true,
+      anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true,
       openaiApiKey: true, openaiModel: true,
       geminiApiKey: true, geminiModel: true,
       localLlmUrl: true, localLlmModel: true,

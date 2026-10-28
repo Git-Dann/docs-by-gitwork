@@ -74,6 +74,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     if (!candidate) {
       return apiError("Candidate not found.", 404);
     }
+    // Staff records for people who aren't developers have no handle (src/server/staff.ts).
+    const githubHandle = candidate.githubHandle;
+    if (!githubHandle) return apiError("This person has no GitHub handle. Add one to their profile before running a GitHub analysis.", 400);
 
     const startedRun = await prisma.gitHubAnalysisRun.create({
       data: {
@@ -97,7 +100,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     });
 
     try {
-      const analysis = await analyzeGitHubProfile(candidate.githubHandle);
+      const analysis = await analyzeGitHubProfile(githubHandle);
 
       const completedRun = await prisma.gitHubAnalysisRun.update({
         where: {

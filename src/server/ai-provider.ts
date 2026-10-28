@@ -5,7 +5,7 @@
  * baseUrl) was copy-pasted across several routes (meeting-summary, slack-activity). New code
  * (Scribe) uses this helper instead. Existing routes can be migrated to it incrementally.
  *
- * Env vars take precedence over workspace-stored keys, matching the existing convention.
+ * Which key wins (the server's or the workspace's) is decided in src/server/ai-keys.ts.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -16,6 +16,8 @@ import {
   usageFromOpenAI,
   type AiUsageContext,
 } from "@/server/ai-usage";
+import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export interface WorkspaceAiFields {
   aiProvider: string;
@@ -27,6 +29,8 @@ export interface WorkspaceAiFields {
   geminiModel: string | null;
   localLlmUrl: string | null;
   localLlmModel: string | null;
+  /** See src/server/ai-keys.ts — whether the server's keys may stand in for this workspace's. */
+  platformAiKeysAllowed: boolean;
 }
 
 export type AiProvider = "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL";
@@ -61,7 +65,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "GROQ") {
     return {
       provider: "GROQ",
-      apiKey: ws.openaiApiKey ?? process.env.GROQ_API_KEY ?? null,
+      apiKey: aiKeyFor("GROQ", ws, "workspace"),
       model: ws.openaiModel ?? DEFAULT_MODELS.GROQ,
       baseUrl: "https://api.groq.com/openai/v1",
     };
@@ -69,7 +73,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "OPENAI") {
     return {
       provider,
-      apiKey: process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null,
+      apiKey: aiKeyFor("OPENAI", ws, "env"),
       model: ws.openaiModel ?? DEFAULT_MODELS.OPENAI,
       baseUrl: null,
     };
@@ -77,7 +81,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "GEMINI") {
     return {
       provider,
-      apiKey: process.env.GEMINI_API_KEY ?? ws.geminiApiKey ?? null,
+      apiKey: aiKeyFor("GEMINI", ws, "env"),
       model: ws.geminiModel ?? DEFAULT_MODELS.GEMINI,
       baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     };
@@ -85,7 +89,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "LOCAL") {
     return {
       provider,
-      apiKey: ws.openaiApiKey ?? "local",
+      apiKey: readSecret(ws.openaiApiKey) ?? "local",
       model: ws.localLlmModel ?? DEFAULT_MODELS.LOCAL,
       baseUrl: ws.localLlmUrl ?? "http://localhost:11434/v1",
     };
@@ -94,7 +98,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   // Default: ANTHROPIC (Claude 3.5 Sonnet / Claude Sonnet) using workspace.anthropicApiKey
   return {
     provider: "ANTHROPIC",
-    apiKey: ws.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? null,
+    apiKey: aiKeyFor("ANTHROPIC", ws, "workspace"),
     model: ws.anthropicModel || DEFAULT_MODELS.ANTHROPIC,
     baseUrl: null,
   };

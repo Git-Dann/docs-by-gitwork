@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readSecret } from "@/server/stored-secret";
 
 // ════════════════════════════════════════════════════════════════════════════
 // AI spend — reads REAL billed cost from the provider Cost APIs for the Super-Admin
@@ -43,8 +44,8 @@ function resolveAdminKeys(ws: {
   openaiAdminApiKey?: string | null;
 }): AdminKeys {
   return {
-    anthropic: process.env.ANTHROPIC_ADMIN_KEY?.trim() || ws.anthropicAdminApiKey?.trim() || null,
-    openai: process.env.OPENAI_ADMIN_KEY?.trim() || ws.openaiAdminApiKey?.trim() || null,
+    anthropic: process.env.ANTHROPIC_ADMIN_KEY?.trim() || readSecret(ws.anthropicAdminApiKey)?.trim() || null,
+    openai: process.env.OPENAI_ADMIN_KEY?.trim() || readSecret(ws.openaiAdminApiKey)?.trim() || null,
   };
 }
 

@@ -71,6 +71,9 @@ export const authConfig = {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         session.user.permissions = token.permissions as string[];
+        // null = every module (see src/lib/workspace-modules.ts). A token minted before
+        // this field existed has it undefined, which reads the same way.
+        session.user.workspaceModules = (token.workspaceModules as string[] | null | undefined) ?? null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (session.user as any).sessionVersion = token.sessionVersion;
       }

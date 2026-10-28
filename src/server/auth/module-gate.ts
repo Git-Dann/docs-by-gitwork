@@ -37,7 +37,10 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   // appending it after the two entries below would let a broader prefix match first and
   // silently regate admin-only DevSignal onto `codeclear`, which STAFF auto-inherits.
   { prefix: "/app/codeclear", module: "codeclear" }, // legacy (still owns candidates/, pipeline/, devsignal/**)
-  { prefix: "/app/code", module: "codeclear" }, // canonical
+  { prefix: "/app/code", module: "codeclear" }, // was the canonical route; now redirects to /app/staff
+  // Staff (formerly Code, CLAUDE.md §87). Same permission id: it is stored in every role
+  // matrix and member override, so renaming it would silently revoke Staff from everyone.
+  { prefix: "/app/staff", module: "codeclear" },
   { prefix: "/app/docs", module: "proposals" }, // canonical
   { prefix: "/app/proposals", module: "proposals" }, // legacy
   { prefix: "/app/portal", module: "clients" }, // canonical
@@ -106,6 +109,10 @@ export const INTERNAL_ONLY_PREFIXES = [
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
   "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
+  // The Platform console (every business on Foundry). Platform admins only, enforced by
+  // the page and every /api/platform route via requirePlatformAdmin — a workspace role,
+  // even Super Admin, is not enough. Listed here so no external role ever reaches it.
+  "/app/platform",
 ];
 
 // Lives in types/auth.ts so client components can gate on it without pulling this

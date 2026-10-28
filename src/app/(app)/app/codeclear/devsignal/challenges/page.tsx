@@ -6,7 +6,7 @@ import { DevSignalSubNav } from "@/components/codeclear/devsignal/devsignal-subn
 export default function DevSignalChallengesPage() {
   return (
     <AppShell
-      title="Code"
+      title="Hiring"
       subtitle="DevSignal challenge bank — the coding tasks candidates are assessed on."
     >
       <div className="space-y-6">

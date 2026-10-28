@@ -306,6 +306,7 @@ async function aiExtractCourses(
         select: {
           aiProvider: true,
           anthropicApiKey: true,
+          platformAiKeysAllowed: true,
           anthropicModel: true,
           openaiApiKey: true,
           openaiModel: true,

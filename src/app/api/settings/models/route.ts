@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -105,21 +106,21 @@ export async function GET(request: NextRequest) {
   try {
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
-      select: { anthropicApiKey: true, openaiApiKey: true, geminiApiKey: true, localLlmUrl: true, localLlmModel: true },
+      select: { anthropicApiKey: true, platformAiKeysAllowed: true, openaiApiKey: true, geminiApiKey: true, localLlmUrl: true, localLlmModel: true },
     });
 
     let models: ModelOption[];
 
     if (provider === "ANTHROPIC") {
-      const key = process.env.ANTHROPIC_API_KEY ?? workspace?.anthropicApiKey ?? null;
+      const key = aiKeyFor("ANTHROPIC", workspace, "env");
       if (!key) return apiError("No Claude API key configured", 400);
       models = await fetchAnthropicModels(key);
     } else if (provider === "OPENAI") {
-      const key = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
+      const key = aiKeyFor("OPENAI", workspace, "env");
       if (!key) return apiError("No OpenAI API key configured", 400);
       models = await fetchOpenAIModels(key);
     } else if (provider === "GEMINI") {
-      const key = process.env.GEMINI_API_KEY ?? workspace?.geminiApiKey ?? null;
+      const key = aiKeyFor("GEMINI", workspace, "env");
       if (!key) return apiError("No Gemini API key configured", 400);
       models = await fetchGeminiModels(key);
     } else {

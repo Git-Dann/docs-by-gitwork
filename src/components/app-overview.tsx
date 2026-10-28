@@ -23,6 +23,7 @@ import { DailyRollup } from "@/components/tasks/daily-rollup";
 import { BroadcastComposer } from "@/components/tasks/broadcast-composer";
 import { can } from "@/components/dashboard/dashboard-config";
 import { useAccount } from "@/hooks/use-account";
+import { workspaceHasModule } from "@/lib/workspace-modules";
 import { useClientList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
@@ -289,11 +290,11 @@ export function AppOverview() {
         {/* Super-Admin tools, moved off the sidebar (Aug 2026): neither is a
             product you work in daily, and both were taking a permanent rail row
             for one person. Quiet mono text links. (Deck moved to Settings → Labs, Oct 2026.) */}
-        {isSuperAdmin(role) ? (
-          <>
-            <StripLink href="/app/analytics" label="Analytics" title="Delivery, output & AI usage" />
-            <StripLink href="/app/starters" label="Starters" title="Prompt→Production library" />
-          </>
+        {isSuperAdmin(role) && workspaceHasModule("analytics", account.data?.workspaceModules) ? (
+          <StripLink href="/app/analytics" label="Analytics" title="Delivery, output & AI usage" />
+        ) : null}
+        {isSuperAdmin(role) && workspaceHasModule("starters", account.data?.workspaceModules) ? (
+          <StripLink href="/app/starters" label="Starters" title="Prompt→Production library" />
         ) : null}
       </div>
 

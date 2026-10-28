@@ -4,7 +4,7 @@ import {
   type PipelineStatus as PrismaPipelineStatus,
   type Prisma,
 } from "@prisma/client";
-import { activeDeveloperWhere, archivedDeveloperWhere } from "@/server/codeclear-archived";
+import { DEVELOPER_RECORD, activeDeveloperWhere, archivedDeveloperWhere } from "@/server/codeclear-archived";
 
 /**
  * ⚠️ Every filter that needs alternatives goes in `and`, never as a top-level `OR`.
@@ -43,6 +43,7 @@ export function buildCandidateWhere(
   const and: Prisma.CandidateWhereInput[] = [
     // DevSignal isolation: in-vetting EXTERNAL candidates never appear in Code.
     { NOT: { origin: "EXTERNAL", published: false } },
+    DEVELOPER_RECORD,
     archivedOnly ? archivedDeveloperWhere(archivedEmails) : activeDeveloperWhere(archivedEmails),
   ];
 

@@ -1799,7 +1799,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -8525,3 +8525,119 @@ fixture (`src/lib/demo/demo-drive.ts`), at 1440 and 390 with no overflow, and th
 was checked by pointing the demo at it temporarily. Post-deploy: link a client's folder, open
 Portal → Documents → Drive, press **Show to client** on the wiki's Resources, then open the share
 link as a client user and open a Google Doc. It should preview as a PDF.
+
+## 86. Recent Changes (October 2026) — Foundry for other businesses: the baseline and Phase 0
+
+The start of making Foundry usable by other businesses. **The plan is `docs/multi-tenant-roadmap.md`
+— read it before touching anything in this programme.** The rule above every phase: Gitwork sees no
+change unless the change is deliberate, so every PR in it also runs `npm run test:baseline`
+(`docs/build-checklist.md` §4a).
+
+### 85.1 The baseline (`scripts/baseline.mjs`, `tests/baseline/snapshot.json`)
+
+Visits every `/demo` page plus the public pages at 390, 768 and 1440 px, following demo links into
+individual scans, docs and assessments (they link to the real `/app` routes, so the crawler maps
+them back). It fails on a status error, a crash or console error, a blank page, sideways scroll,
+more clipping findings than recorded, any recorded title, heading or widget header going missing,
+and loosened auth gates. Deliberate changes are re-recorded with `--update` in the same PR;
+`--update` refuses to record a run with a hard failure. `--only=/demo/care` checks one area.
+Proved by breaking `/demo/care` three ways. It found a live bug on its first run: the candidate
+coding-challenge page scrolled 64px sideways on a phone (unbreakable example test lines).
+
+⚠️ It needs a dev server started with any `API_KEY` and `AUTH_SECRET`, or the gate checks see
+local-mode behaviour. A dev server killed mid-run shows as every page failing with
+`ERR_CONNECTION_REFUSED`: that is the server, not the pages. And `pkill -f "next dev"` inside a
+Bash call matches its own command line and kills the shell before the server restarts.
+
+### 85.2 Which modules a business has (`src/lib/workspace-modules.ts`)
+
+`Workspace.modulesRestricted` + `enabledModules` (additive; default unrestricted, so every existing
+workspace, Gitwork included, sees no change). One catalogue maps each module to its page and API
+prefixes, longest prefix wins (Hiring's `/app/codeclear/devsignal` inside Staff's tree). Checked:
+- in the **middleware, before every role check**, so a business's own Super Admin is refused a
+  module it doesn't have (pages redirect to `/app`, APIs answer 403);
+- on `/edge`, which is outside the middleware's `/app` branch;
+- in the sidebar, the HQ strip links and the Settings rail (`hasModule` in `usePermissions`).
+
+The list rides in the session token as `workspaceModules` (null = everything), refreshed on the
+existing five-minute member recheck. ⚠️ A token minted before the field existed has it undefined,
+read as unrestricted: correct today because every workspace is, and Phase 2 must not keep that once
+a restricted workspace exists. Mobile JWTs and API-key callers are not checked yet (Phase 2).
+`DEFAULT_BUSINESS_MODULES` is the bundle a new business gets.
+
+### 85.3 A workspace's AI calls use its own keys (`src/server/ai-keys.ts`)
+
+Server AI keys were read directly in ~14 places, mostly ahead of the workspace's own key. Every
+site now calls `aiKeyFor(provider, ws, prefer)`, keeping the order it had (`prefer`), so a workspace
+with `platformAiKeysAllowed: true` (default; every existing one) behaves exactly as before. A
+business created with it false only ever gets its own key, and with none its AI is off. The flag is
+**required** on the key type, so tsc forced 20 narrowed selects to fetch it. A sweep test fails on
+any new `process.env.*_API_KEY` read outside `ai-keys.ts`.
+
+### 85.4 Workspace secrets encrypted at rest (`src/server/stored-secret.ts`)
+
+AI keys, the Resend key, the external API key and the Google service-account JSON were plain text.
+Now written with `storeSecret` (the same AES-GCM envelope as the SMTP password) and read with
+`readSecret`, which also accepts the plain values already stored: no migration, and each becomes
+encrypted the next time it is saved. ⚠️ An encrypted value is recognised by its exact envelope, not
+by a leading `{` as `readSmtpPassword` does, because a service-account file is plain JSON that also
+starts with `{`. A sweep test fails on a new read of these columns that skips `readSecret`; it found
+Docs AI chat using the stored key raw. **No existing value has been rewritten** — a one-off
+backfill is a decision for Dan.
+
+### 85.5 Platform admin and the Platform console (`/app/platform`)
+
+`User.isPlatformAdmin` plus a seed list (Dan, Harry) in `src/server/platform/admin.ts`, checked live
+from the database, never the token, and separate from workspace roles. `requirePlatformAdmin` goes
+through `requireAuthedUser`, so an archived Gitwork membership removes it, and "view as" drops it.
+The console (sidebar "Platform", platform admins only) lists every business and sets its modules and
+whether it may use Gitwork's AI keys: a draft with Save/Discard; changing Gitwork's own workspace
+needs explicit confirmation (`planWorkspaceUpdate`, pure, in `src/lib/platform-rules.ts`, shared
+with the demo); every change goes to the business's own audit log as
+`platform.workspace.settings_changed`. `src/server/platform/` is the one place allowed to read
+across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a write with
+`{ error, __status }`.
+
+**Not verified:** any of this against production data, the console in dark mode (the demo shell
+ignores the theme switch), and the iOS app (its repo isn't in this session yet).
+
+## 87. Recent Changes (October 2026) — Code becomes Staff (Phase 1, web)
+
+The module is now **Staff** (sidebar: Staff, "People and availability"), a roster of everyone on
+the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenant-roadmap.md`.
+
+- **People** at `/app/staff` (`src/components/staff/staff-roster.tsx`, server `src/server/staff.ts`,
+  rules `src/lib/staff.ts`, API `GET/POST /api/staff`, `PATCH /api/staff/[id]`). It lists every
+  active member, plus Staff records with no active account behind them (contractors,
+  developers who never sign in). Columns: job title, department, type, clients, start date.
+  "Create profile" makes a record for a member who has none; "Add someone" makes one for
+  someone with no login. List needs the `codeclear` permission (now labelled Staff); writes need
+  `code.manage`.
+- **Tabs** (`CodeClearTabs`): Staff = People · Developers · Archived; then Hiring = Overview
+  (`/app/codeclear`, the old landing page) · Pipeline · DevSignal, shown only when the workspace
+  has the `devsignal` module. `/app/code` redirects to `/app/staff`. Page titles say Staff or
+  Hiring. ⚠️ The permission id stays `codeclear`: it is stored in every role matrix and override.
+- **Schema (additive)**: `Candidate.memberId` (unique, FK to WorkspaceMember, SetNull),
+  `jobTitle`, `department`, `employmentType` (EMPLOYEE | CONTRACTOR | FREELANCER, validated in
+  code), `startDate`, `managerId` (loose id to another record). `githubHandle` is now optional:
+  a record can be anyone.
+- **Linking existing records**: `linkStaffRecords` runs on each roster read and sets `memberId`
+  from the old email match, only when exactly one member and one unlinked record share an
+  address. Ambiguous matches are left alone, never guessed. The ~7 places that still match by
+  email (avatar sync, archived devs, client visibility, Backstage directory, mentions, team
+  roster, merge) were deliberately NOT moved to the FK yet: their results are identical while
+  every link comes from the same match, and moving them is a later, separate change.
+- ⚠️ **Developer lists stay developers-only.** `DEVELOPER_RECORD` (`githubHandle` not null, in
+  `codeclear-archived.ts`) is in `buildCandidateWhere` and the Overview counts, so Developers,
+  Pipeline, Overview and the iOS Dev Directory (it reads `/api/codeclear/candidates`) show exactly
+  the rows they did before. Every existing record has a handle.
+- ⚠️ **`githubHandle` is always a string on the wire** (`""` = none). The iOS app decodes
+  `DocsByGitworkCodeClearCandidate.githubHandle` as a required `String`, and a null would fail the
+  whole list (Dev Directory, rate profiles, placement scheduling). GitHub analysis and repo
+  validation refuse a record with no handle with a clear 400.
+- **Known gaps**: `/app/codeclear` (Hiring Overview) belongs to the Staff module in the workspace
+  catalogue, so a business with Staff but not Hiring could still open it by URL (it shows
+  developer stats only). A non-developer placed on a client counts in Portal's dev count and cost,
+  like any placement. Backstage's team directory and Settings → Team still have their own lists;
+  folding them into Staff is still to do. Demo at `/demo/staff`.
+
