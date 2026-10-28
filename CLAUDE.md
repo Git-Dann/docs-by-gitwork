@@ -191,6 +191,12 @@ from an earlier commit. The Prisma client generates fine and TypeScript compiles
 DB never gets the column → `upsert()` calls fail at runtime with *"the column does not exist
 in the current database."*
 
+⚠️ **A new `@unique` is refused even on a brand-new, all-null column** (Oct 2026, §87). Prisma
+counts any added unique constraint as possible data loss, so `Candidate.memberId @unique` blocked
+the whole deploy of #739 while the old image kept serving. Enforce one-per-parent in code and use
+`@@index` instead, or add the constraint by hand first. A scratch Postgres loaded with production's
+schema reproduces the refusal exactly; run `prisma db push` against it before merging.
+
 When shipping a schema change, **before merging**:
 
 1. Run `git diff origin/main -- prisma/schema.prisma` and look for anything dropped — columns,
@@ -8635,6 +8641,8 @@ the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenan
   `DocsByGitworkCodeClearCandidate.githubHandle` as a required `String`, and a null would fail the
   whole list (Dev Directory, rate profiles, placement scheduling). GitHub analysis and repo
   validation refuse a record with no handle with a clear 400.
+- ⚠️ **`memberId` is NOT `@unique`** (see §2): the first deploy failed on exactly that. One record
+  per member is enforced in `src/server/staff.ts`, which reads the earliest (`staffRecords`, a list).
 - **Known gaps**: `/app/codeclear` (Hiring Overview) belongs to the Staff module in the workspace
   catalogue, so a business with Staff but not Hiring could still open it by URL (it shows
   developer stats only). A non-developer placed on a client counts in Portal's dev count and cost,

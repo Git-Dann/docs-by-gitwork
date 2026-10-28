@@ -552,8 +552,10 @@ model WorkspaceMember {
   createdAt           DateTime  @default(now())
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// This person's Staff record (Candidate.memberId), if they have one.
-  staffRecord         Candidate?
+  /// This person's Staff record (Candidate.memberId), if they have one. A list because
+  /// memberId is not unique in the database; src/server/staff.ts keeps it to one and
+  /// reads the earliest.
+  staffRecords        Candidate[]
 
   @@unique([workspaceId, userId])
   @@index([workspaceId, archivedAt])
@@ -2515,7 +2517,10 @@ model Candidate {
   /// The account this Staff record belongs to. Replaces the email match the module
   /// relied on (Candidate.email ↔ User.email), which broke whenever the two differed.
   /// Filled for existing records by linkStaffRecords (src/server/staff.ts).
-  memberId             String?                @unique
+  /// Deliberately NOT @unique: Prisma treats adding a unique constraint as possible
+  /// data loss, so the guarded deploy push refused it (CLAUDE.md §2). One record per
+  /// member is enforced in src/server/staff.ts instead.
+  memberId             String?
   member               WorkspaceMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
   /// Staff details (src/server/staff.ts). All optional; none is required of a developer.
   jobTitle             String?
@@ -2584,6 +2589,7 @@ model Candidate {
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, recheckDueAt])
   @@index([workspaceId, origin, published])
+  @@index([memberId])
 }
 
 /// One row per validation finding. Mirrors PulseScanCheck. The most recent run

@@ -139,7 +139,9 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
         id: true,
         role: true,
         user: { select: { name: true, email: true, avatarUrl: true } },
-        staffRecord: { select: RECORD_SELECT },
+        // Earliest first: memberId is not unique in the database (see the schema), so if a
+        // race ever left two records on one member, every read picks the same one.
+        staffRecords: { select: RECORD_SELECT, orderBy: { createdAt: "asc" }, take: 1 },
       },
     }),
     // Records with no active member behind them: developers and contractors who never
@@ -160,7 +162,7 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
 
   const people: StaffPerson[] = [
     ...members.map((m) => {
-      const r = m.staffRecord;
+      const r = m.staffRecords[0];
       return {
         key: `m:${m.id}`,
         memberId: m.id,
@@ -209,10 +211,10 @@ export async function createStaffRecord(
   if (input.memberId) {
     const member = await prisma.workspaceMember.findFirst({
       where: { id: input.memberId, workspaceId, ...ACTIVE_MEMBER },
-      select: { id: true, staffRecord: { select: { id: true } }, user: { select: { name: true, email: true, avatarUrl: true } } },
+      select: { id: true, staffRecords: { select: { id: true }, orderBy: { createdAt: "asc" }, take: 1 }, user: { select: { name: true, email: true, avatarUrl: true } } },
     });
     if (!member) throw new StaffInputError("That person isn't an active member of this workspace");
-    if (member.staffRecord) return { recordId: member.staffRecord.id };
+    if (member.staffRecords[0]) return { recordId: member.staffRecords[0].id };
     memberId = member.id;
     name = name || member.user.name?.trim() || member.user.email;
     email = member.user.email;
