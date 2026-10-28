@@ -60,6 +60,18 @@ const SEEDS = [
   '/embed/pulse', '/context',
 ]
 
+// Demo pages link to the REAL /app routes (so the demo reads like the product),
+// and the demo shell routes those clicks to its own mirror. Follow them through
+// the same mapping, or the crawl never reaches a single scan, document or
+// assessment. At most PER_FAMILY of each, so a long list doesn't dominate the run.
+const APP_TO_DEMO = [
+  [/^\/app\/pulse\/projects\/([^/]+)$/, '/demo/pulse/projects/$1', 'pulse-project'],
+  [/^\/app\/pulse\/(?!projects|monitors|portfolio|compare|growth|new|embed)([^/]+)$/, '/demo/pulse/$1', 'pulse-scan'],
+  [/^\/app\/docs\/(?!analytics|new)([^/]+)$/, '/demo/docs/$1', 'doc'],
+  [/^\/app\/codeclear\/devsignal\/(?!challenges|model|notice)([^/]+)$/, '/demo/devsignal/$1', 'assessment'],
+]
+const PER_FAMILY = 3
+
 // Paths that must never be crawled into: they mutate, or are not pages.
 const SKIP = [/\/api\//, /\/opengraph-image/, /\.(png|svg|jpg|pdf|zip|json|txt|xml)$/i]
 
@@ -115,7 +127,7 @@ function CONTENT() {
     widgets: texts('.widget-header'),
     bodyChars: (document.body?.innerText || '').trim().length,
     overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    links: [...document.querySelectorAll('a[href^="/demo"]')].map((a) => a.getAttribute('href')),
+    links: [...document.querySelectorAll('a[href^="/demo"], a[href^="/app/"]')].map((a) => a.getAttribute('href')),
   }
 }
 
@@ -169,6 +181,7 @@ async function main() {
   const pages = {}
   const queue = [...new Set([...SEEDS, ...Object.keys(previous?.pages ?? {})])]
   const seen = new Set(queue)
+  const families = {}
 
   while (queue.length && Object.keys(pages).length < MAX_PAGES) {
     const path = queue.shift()
@@ -188,7 +201,14 @@ async function main() {
       }
       if (c) {
         for (const href of c.links) {
-          const p = href.split('#')[0].split('?')[0]
+          let p = href.split('#')[0].split('?')[0]
+          if (p.startsWith('/app/')) {
+            const rule = APP_TO_DEMO.find(([re]) => re.test(p))
+            if (!rule) continue
+            if ((families[rule[2]] ?? 0) >= PER_FAMILY) continue
+            p = p.replace(rule[0], rule[1])
+            if (!seen.has(p)) families[rule[2]] = (families[rule[2]] ?? 0) + 1
+          }
           if (!seen.has(p) && !SKIP.some((re) => re.test(p))) { seen.add(p); queue.push(p) }
         }
       }
@@ -212,13 +232,16 @@ async function main() {
   }
 
   if (UPDATE) {
+    // Gate, crash, status and sideways-scroll failures are never "recordable": a
+    // baseline that starts broken proves nothing. Fix them, then record.
+    const hard = failures.filter((f) => !f.startsWith('CONTENT') && !f.startsWith('CLIPPING') && !f.startsWith('MISSING'))
+    if (hard.length) {
+      console.log(`\n✗ not recorded — fix these first:\n${hard.join('\n')}`)
+      process.exit(1)
+    }
     mkdirSync(dirname(SNAPSHOT), { recursive: true })
     writeFileSync(SNAPSHOT, JSON.stringify({ recordedAgainst: BASE, pages }, null, 2) + '\n')
     console.log(`\nrecorded ${Object.keys(pages).length} pages → ${SNAPSHOT}`)
-    // Gate, crash and status failures are never "recordable": a baseline that
-    // starts broken proves nothing.
-    const hard = failures.filter((f) => !f.startsWith('CONTENT') && !f.startsWith('CLIPPING') && !f.startsWith('MISSING'))
-    if (hard.length) { console.log(hard.join('\n')); process.exit(1) }
     return
   }
 

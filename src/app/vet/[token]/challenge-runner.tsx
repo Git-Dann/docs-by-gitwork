@@ -164,7 +164,7 @@ export function ChallengeRunner({
           {challenge.tests
             .filter((t) => !t.hidden)
             .map((t) => (
-              <div key={t.name} className="font-mono text-xs text-[#6B6B6B]">
+              <div key={t.name} className="font-mono text-xs text-[#6B6B6B] [overflow-wrap:anywhere]">
                 {challenge.functionName}({JSON.stringify(t.args).slice(1, -1)}) → {JSON.stringify(t.expected)}
               </div>
             ))}
