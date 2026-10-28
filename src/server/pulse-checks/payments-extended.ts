@@ -1,6 +1,8 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
-import { cardDataHandling } from "./payment-page-evidence";
+import { cardDataHandling, nonCardPaymentMethods } from "./payment-page-evidence";
+import { findClaim, proseRuns } from "./page-claims";
+import { scriptSrcs } from "./vendor-evidence";
 
 export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { ctx: pctx } = ctx;
@@ -21,6 +23,8 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
     .replace(/&dollar;|&#36;|&#x24;/gi, "$")
     .replace(/\s+/g, " ");
   const checks: PulseScanCheckInput[] = [];
+  const contentHtml = ctx.contentHtml ?? html;
+  const nonCardMethods = nonCardPaymentMethods(contentHtml);
 
   if (!pctx.isPaymentEnabled) {
     return [
@@ -38,8 +42,12 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasSepa = /\bsepa\b|\bbank[\s-]transfers?\b|\bdirect[\s-]debits?\b|\biban\b/i.test(text);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "sepa_bank_transfer", label: "SEPA / bank transfer option (EU)", status: hasSepa ? "PASS" : "WARN", detail: hasSepa ? "SEPA / bank transfer signals detected." : "No SEPA/bank transfer option — EU B2B customers often prefer bank transfer over card. SEPA Direct Debit reduces churn on annual plans." });
 
-  const hasPaypal = /paypal/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "paypal_integration", label: "PayPal integration", status: hasPaypal ? "PASS" : "WARN", detail: hasPaypal ? "PayPal integration detected." : "No PayPal integration — PayPal adds a trusted fallback for customers without credit cards or who distrust card-on-file." });
+  // PayPal's SDK loaded, or PayPal shown as a way to pay in readable text or a logo's alt
+  // text (payment-page-evidence.ts). `/paypal/i` over the HTML matched a footer link to
+  // PayPal's own site, a script string and an article alike.
+  const paypalSdk = /\/\/(?:www\.)?paypal\.com\/sdk\/js|\/\/(?:www\.)?paypalobjects\.com\/api\/checkout/i.test(scriptSrcs(contentHtml).join(" "));
+  const paypalShown = nonCardMethods.includes("PayPal");
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "paypal_integration", label: "PayPal integration", status: paypalSdk || paypalShown ? "PASS" : "WARN", detail: paypalSdk ? "The page loads the PayPal JavaScript SDK." : paypalShown ? "The page shows PayPal as a way to pay (its name in readable text or a logo). Pulse did not reach the checkout." : "No PayPal integration — PayPal adds a trusted fallback for customers without credit cards or who distrust card-on-file." });
 
   // A bare "sca" matched "initial-scale" in the viewport meta, so nearly every page passed.
   // SCA is run by the checkout, so the evidence is a hosted checkout that runs it, or the
@@ -59,8 +67,11 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasPciEvidence = /pci.*compliant|pci.*saq|pci.*dss|pci.*certified|scope.*reduction.*pci/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "pci_saq_evidence", label: "PCI SAQ / scope reduction evidence", status: hasPciEvidence ? "PASS" : "WARN", detail: hasPciEvidence ? "PCI compliance evidence detected." : "No PCI scope reduction evidence — document your PCI DSS approach (SAQ, tokenisation) to reassure enterprise procurement teams." });
 
-  const hasRegionalPayments = /klarna|ideal|sofort|giropay|bancontact|alipay|wechat.*pay|boleto|pix\b|afterpay|clearpay|mollie/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "regional_payment_methods", label: "Regional payment methods (Klarna, iDEAL, etc.)", status: hasRegionalPayments ? "PASS" : "WARN", detail: hasRegionalPayments ? "Regional payment method signals detected." : "No regional payment methods — iDEAL (Netherlands), Klarna (Nordics/Germany), and Boleto (Brazil) can unlock significant local market conversion." });
+  // A provider's SDK host, or the method named as a word in readable text or a logo's alt
+  // text (payment-page-evidence.ts). `ideal` in /…ideal…/i matched the English word.
+  const regional = nonCardMethods.filter((m) => m !== "PayPal" && m !== "SEPA");
+  const hasRegionalPayments = regional.length > 0;
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "regional_payment_methods", label: "Regional payment methods (Klarna, iDEAL, etc.)", status: hasRegionalPayments ? "PASS" : "WARN", evidence: hasRegionalPayments ? regional.join(", ") : undefined, detail: hasRegionalPayments ? `The page shows regional payment methods: ${regional.join(", ")}.` : "No regional payment methods — iDEAL (Netherlands), Klarna (Nordics/Germany), and Boleto (Brazil) can unlock significant local market conversion." });
 
 
   const hasSubs = pctx.isSaas;
@@ -80,8 +91,11 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasInvoicing = /invoice.*generation|tax.*invoice|generate.*invoice|download.*invoice|billing.*invoice|invoice.*pdf/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "invoicing_capability", label: "Invoice generation for B2B", status: hasInvoicing ? "PASS" : "WARN", detail: hasInvoicing ? "Invoice generation signals detected." : "No invoice generation signals — B2B customers require VAT invoices for expense reporting. Stripe Billing and Paddle handle this automatically." });
 
-  const hasTaxAutomation = /taxjar|avalara|stripe.*tax|tax.*calculation.*automatic|automatic.*tax|vat.*calculation/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "tax_automation", label: "Tax automation (Avalara / Stripe Tax)", status: hasTaxAutomation ? "PASS" : "WARN", detail: hasTaxAutomation ? "Tax automation signals detected." : "No tax automation signals — manual tax calculation is a liability risk. Stripe Tax or Avalara handle US sales tax and EU VAT automatically." });
+  // Readable text only, in one sentence. `stripe.*tax` ran from "stripe" in a script to
+  // "tax" anywhere later in the page.
+  const taxQuote = findClaim(proseRuns(contentHtml), /\b(?:Stripe Tax|Avalara|TaxJar|Quaderno|Anrok)\b|\b(?:automatic|automated)\s+(?:sales\s+)?(?:tax|VAT)\s+(?:calculation|collection)\b|\b(?:tax|VAT)\s+(?:is\s+)?(?:calculated|collected)\s+automatically\b/i);
+  const hasTaxAutomation = taxQuote !== null;
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "tax_automation", label: "Tax automation (Avalara / Stripe Tax)", status: hasTaxAutomation ? "PASS" : "WARN", evidence: taxQuote ?? undefined, detail: hasTaxAutomation ? `The page says tax is calculated automatically: "${taxQuote}"` : "No tax automation signals — manual tax calculation is a liability risk. Stripe Tax or Avalara handle US sales tax and EU VAT automatically." });
 
   const hasRefundPolicy = /refund(?:s| policy)?|money.back|satisfaction guarantee|cancel.*within.*day/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_refund_policy", label: "Refund or cancellation policy is discoverable", status: hasRefundPolicy ? "PASS" : "WARN", detail: hasRefundPolicy ? "Refund/cancellation policy signals detected." : "No refund or cancellation policy found on the scanned payment surface. Make the terms discoverable before checkout so customers and support can resolve disputes consistently." });
@@ -89,8 +103,11 @@ export async function runPaymentsExtended(ctx: ExtendedCheckContext): Promise<Pu
   const hasRecurringTerms = /renew(?:s|al|ed)?s+(?:automatically|each|monthly|annually)|recurring (?:billing|charge)|cancel (?:anytime|at any time)|subscription terms/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_recurring_terms", label: "Recurring billing terms are disclosed", status: hasSubs ? (hasRecurringTerms ? "PASS" : "WARN") : "SKIPPED", detail: hasSubs ? (hasRecurringTerms ? "Recurring billing disclosure signals detected." : "No recurring-billing disclosure was found. State renewal cadence, price, and cancellation route before a customer starts a subscription.") : "Not applicable — no subscription product detected." });
 
-  const hasHostedCheckout = /checkout\.stripe\.com|js\.stripe\.com|paypal\.com\/checkout|braintree|adyen|checkout\.paddle\.com|lemon\.squeezy/i.test(html);
-  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_checkout_provider", label: "Checkout provider integration is identifiable", status: hasHostedCheckout ? "PASS" : "WARN", detail: hasHostedCheckout ? "Hosted/tokenized checkout provider signals detected." : "No hosted or tokenized checkout provider signal was found. Do not collect raw card details in your own form unless you deliberately operate within the resulting PCI scope." });
+  // The provider's checkout script or hosted-checkout link (payment-page-evidence.ts), not
+  // the words "braintree" or "adyen" anywhere in the HTML.
+  const checkoutProvider = cardDataHandling(contentHtml).hostedProvider;
+  const hasHostedCheckout = checkoutProvider !== null;
+  checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_checkout_provider", label: "Checkout provider integration is identifiable", status: hasHostedCheckout ? "PASS" : "WARN", evidence: checkoutProvider ?? undefined, detail: hasHostedCheckout ? `The page loads or links ${checkoutProvider}'s hosted checkout or card fields.` : "No hosted or tokenized checkout provider signal was found. Do not collect raw card details in your own form unless you deliberately operate within the resulting PCI scope." });
 
   const hasBillingSupport = /(?:billing|payment|invoice).{0,40}(?:support|help|contact)|href=["'][^"']*(?:billing|support|help|contact)[^"']*["']|mailto:/i.test(html);
   checks.push({ category: CATEGORIES.PAYMENTS, checkKey: "payment_billing_support", label: "Billing support route is discoverable", status: hasBillingSupport ? "PASS" : "WARN", detail: hasBillingSupport ? "Billing support/contact signal detected." : "No billing support route was found on the scanned surface. Make invoice, renewal, and payment-failure help reachable before they become chargebacks." });

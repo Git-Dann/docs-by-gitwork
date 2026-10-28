@@ -8307,3 +8307,32 @@ Validated against 8 real repositories, which found 5 false positives, each fixed
 - A CSS colour `#D1D5DB` was read as a UK postcode.
 
 Confirmed true: maybe-finance's Rails mailers send HTML only.
+
+### 84.19 Vendor names are not evidence (`vendor-evidence.ts`)
+
+27 website checks passed when a vendor's or product's name appeared anywhere in the HTML: a blog
+post naming Pingdom, "newrelic" in a comparison table, "affirm" as an English word, "statuspage" on
+Atlassian's own homepage, `open.*source` running across a whole page. None was withdrawn and no
+key changed. Each now rests on what the page does, in `src/server/pulse-checks/vendor-evidence.ts`:
+
+| Evidence | Checks |
+|---|---|
+| A script the page loads from the vendor's host, or its init call (`NREUM`, `DD_RUM.init(`) | `apm_signals`, `real_user_monitoring` (self-hosted LUX still counts), `bnpl_options`, `crypto_payments`, `wallet_payments`, `payment_checkout_provider` |
+| A link to the vendor-hosted listing or profile (`pageAnchors`), or the platform's own widget | `third_party_reviews`, `social_review_platform`, `g2_capterra_listed` (now G2 and the Capterra network only, as the label says), `product_hunt_badge`, `social_media_links`, `social_profiles_linked`, `social_short_form_video`, `github_org_public`, `amazon_app_store`, `public_roadmap` |
+| The site's status page, linked and **opened** through the SSRF guard (192KB read: linearstatus.com puts its `<title>` 100KB in) | `status_page`, `uptime_monitoring`, `uptime_history_public` |
+| The domain's SPF record (`include:sendgrid.net`, `spf.mtasv.net`…) | `email_provider` |
+| A statement in visible prose or a badge's alt text, quoted | `compliance_certifications`, `investor_backing_listed`, `awards_recognition`, `conference_speaking`, `tax_automation`, `paypal_integration` / `regional_payment_methods` (via `nonCardPaymentMethods`) |
+
+- **Couldn't look is INCONCLUSIVE.** A status link that answers 401/403/429/5xx, an `email_provider`
+  with no recognised sender in SPF (mail may go from another subdomain), a status page on a product
+  that can be updated by hand (Statuspage, own subdomain) for `uptime_monitoring`, and the Amazon
+  Appstore named with no link.
+- Social profiles also count from JSON-LD `sameAs`: atlassian.com draws its footer with JavaScript.
+- Validated against 10 real homepages (linear, vercel, stripe, github, atlassian, posthog, gov.uk,
+  basecamp, shopify; cal.com refused the fetch). Every remaining PASS was checked by hand. Removed
+  false passes include: Atlassian's `status_page` (the word "Statuspage", its own product),
+  `github_org`, `awards`, `investor` (an investor-relations link) and `public_roadmap` (an SVG id);
+  Stripe's `bnpl`, `crypto`, `paypal`, `tax_automation` (product copy and scripts); Linear's
+  `crypto`, `tax`, `awards`, `investor`. Basecamp's "backed by 37signals" is not investment.
+- ⚠️ A prose claim is the site's statement, not proof. Shopify's homepage describes its own
+  checkout ("Shop Pay, PayPal, and Apple Pay"), which `paypal_integration` reads as an option.

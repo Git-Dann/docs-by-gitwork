@@ -22,6 +22,7 @@ vi.mock("@/server/pulse-lite/url-guard", async (orig) => {
 });
 
 import { linksLegalDocument, runUrlChecks } from "@/server/pulse-scan";
+import { resetStatusPageCache } from "../vendor-evidence";
 
 const res = (status: number, body: string | null, contentType = "text/html; charset=utf-8") => {
   const r = new Response(body, { status, headers: body === null ? {} : { "content-type": contentType } });
@@ -35,13 +36,16 @@ const page = (footer: string, head = "") =>
   `<main><h1>Scheduling infrastructure for everyone</h1><p>Acme lets your customers book time with you without the back-and-forth emails. Connect your calendar, set your availability and share one link.</p></main>` +
   `<footer>${footer}</footer></body></html>`;
 
-function serveHomepage(html: string | null, status = 200) {
+function serveHomepage(html: string | null, status = 200, others: Record<string, [number, string]> = {}) {
   route = (url) => {
     const { pathname, hostname } = new URL(url);
     if (hostname === "acme.com" && pathname === "/") return res(status, html);
+    if (others[hostname]) return res(others[hostname][0], others[hostname][1]);
     return res(404, "not found", "text/plain");
   };
 }
+
+const STATUS_PAGE = "<html><head><title>Acme Status</title></head><body><h1>All Systems Operational</h1></body></html>";
 
 async function scan(platform = "WEB_APP") {
   const out = await runUrlChecks("https://acme.com", platform);
@@ -53,16 +57,32 @@ beforeEach(() => {
 });
 
 describe("status_page: a linked hosted status page is a status page", () => {
+  // The link is opened and confirmed (vendor-evidence.ts): a link is not a status page
+  // until the page behind it is one.
+  beforeEach(() => resetStatusPageCache());
+
   it("vercel.com shape: footer links www.<brand>-status.com", async () => {
-    serveHomepage(page(`<a href="https://www.acme-status.com">Status</a>`));
+    serveHomepage(page(`<a href="https://www.acme-status.com">Status</a>`), 200, { "www.acme-status.com": [200, STATUS_PAGE] });
     const { get } = await scan();
     expect(get("status_page")?.status).toBe("PASS");
   }, 30_000);
 
   it("cal.com shape: footer links status.<brand>.com", async () => {
-    serveHomepage(page(`<a href="https://status.acme.com/">Status</a>`));
+    serveHomepage(page(`<a href="https://status.acme.com/">Status</a>`), 200, { "status.acme.com": [200, STATUS_PAGE] });
     const { get } = await scan();
     expect(get("status_page")?.status).toBe("PASS");
+  }, 30_000);
+
+  it("a status link that 404s is not a status page", async () => {
+    serveHomepage(page(`<a href="https://status.acme.com/">Status</a>`));
+    const { get } = await scan();
+    expect(get("status_page")?.status).toBe("WARN");
+  }, 30_000);
+
+  it("a status link that cannot be opened is INCONCLUSIVE, not PASS", async () => {
+    serveHomepage(page(`<a href="https://status.acme.com/">Status</a>`), 200, { "status.acme.com": [403, "Forbidden"] });
+    const { get } = await scan();
+    expect(get("status_page")?.status).toBe("INCONCLUSIVE");
   }, 30_000);
 
   it("still WARNs when only someone else's status page or a tweet /status/ URL is linked", async () => {

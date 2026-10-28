@@ -1,5 +1,6 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
+import { linkedSocialProfiles, reviewPlatformEvidence } from "./vendor-evidence";
 
 /**
  * How a page behaves when somebody posts it — and what to change.
@@ -249,7 +250,10 @@ export async function runSocialMarketingChecks(
   );
 
   // ── Where the audience actually is ─────────────────────────────────────────
-  const linked = NETWORKS.filter(([, re]) => re.test(html)).map(([name]) => name);
+  // Profile LINKS (<a href> with a profile path), not any URL on the host: a YouTube embed,
+  // the iframe API script or a share intent is not a profile (vendor-evidence.ts).
+  const profileNames = linkedSocialProfiles(html);
+  const linked = NETWORKS.map(([name]) => name).filter((name) => profileNames.includes(name));
   const shortForm = linked.filter((n) => n === "TikTok" || n === "Instagram" || n === "YouTube");
   add(
     "social_profiles_linked",
@@ -683,13 +687,16 @@ export async function runSocialMarketingChecks(
       : "No community link (Discord, Slack, Telegram, a subreddit, a forum). Not every product needs one — for a developer tool it is usually the highest-retention channel there is, and it costs nothing to point at.",
   );
 
-  const reviews = /g2\.com\/products|capterra\.|trustpilot\.com|producthunt\.com|getapp\.com|softwareadvice\./i.test(html);
+  // A link to the listing, or the platform's own widget. A host name inside a script or a
+  // "capterra." substring anywhere in the HTML is not a profile.
+  const reviewEvidence = reviewPlatformEvidence(html);
+  const reviews = reviewEvidence.length > 0;
   add(
     "social_review_platform",
     "Third-party review profile",
     reviews ? "PASS" : "WARN",
     reviews
-      ? "A third-party review profile is linked."
+      ? `A third-party review profile is linked: ${reviewEvidence.map((e) => `${e.platform} (${e.where})`).join(", ")}.`
       : "No link to G2, Capterra, Trustpilot or Product Hunt. A testimonial on your own site is a claim; the same words on a platform you do not control are evidence, and buyers check.",
   );
 

@@ -2,14 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 
 // No network: catchAll200 is set so the /security-whitepaper HEAD probe is skipped,
 // and the transport is stubbed defensively.
+// Status hosts answer with a status page so a linked status page can be confirmed.
 vi.mock("@/server/pulse-lite/url-guard", () => ({
-  fetchScannableUrl: async () => new Response(null, { status: 404 }),
+  fetchScannableUrl: async (url: string) => /status/.test(new URL(url).hostname)
+    ? new Response("<html><head><title>Status</title></head><body>All Systems Operational</body></html>", { status: 200, headers: { "content-type": "text/html" } })
+    : new Response(null, { status: 404 }),
 }));
 
 import { runTrustBrandExtended } from "../trust-brand-extended";
+import { resetStatusPageCache } from "../vendor-evidence";
 import type { ExtendedCheckContext } from "../_types";
 
 function ctxFor(html: string, url = "https://example.test"): ExtendedCheckContext {
+  resetStatusPageCache();
   return {
     pageResult: { ok: true, status: 200, headers: {}, html, responseTimeMs: 50, finalUrl: url },
     httpsUrl: url,
@@ -21,20 +26,25 @@ function ctxFor(html: string, url = "https://example.test"): ExtendedCheckContex
   };
 }
 
-async function statusOf(html: string, key: string) {
-  const checks = await runTrustBrandExtended(ctxFor(html));
+async function statusOf(html: string, key: string, url?: string) {
+  const checks = await runTrustBrandExtended(ctxFor(html, url));
   return checks.find((c) => c.checkKey === key)?.status;
 }
 
 describe("uptime_history_public — linked status pages count", () => {
   it("PASSes github.com-style footer linking www.githubstatus.com", async () => {
     const html = `<footer><ul><li><a href="https://www.githubstatus.com" data-analytics-event="footer">Status</a></li><li><a href="https://docs.github.com">Docs</a></li></ul></footer>`;
-    expect(await statusOf(html, "uptime_history_public")).toBe("PASS");
+    expect(await statusOf(html, "uptime_history_public", "https://github.com")).toBe("PASS");
   });
 
   it("PASSes linear.app-style link to linearstatus.com and cal.com-style status.cal.com", async () => {
-    expect(await statusOf(`<a class="Footer_link" href="https://linearstatus.com">Status</a>`, "uptime_history_public")).toBe("PASS");
-    expect(await statusOf(`<a href="https://status.cal.com/" target="_blank">Status</a>`, "uptime_history_public")).toBe("PASS");
+    expect(await statusOf(`<a class="Footer_link" href="https://linearstatus.com">Status</a>`, "uptime_history_public", "https://linear.app")).toBe("PASS");
+    expect(await statusOf(`<a href="https://status.cal.com/" target="_blank">Status</a>`, "uptime_history_public", "https://cal.com")).toBe("PASS");
+  });
+
+  it("does not PASS on another company's status page, or on the word statuspage", async () => {
+    expect(await statusOf(`<a href="https://www.githubstatus.com">GitHub status</a>`, "uptime_history_public")).toBe("WARN");
+    expect(await statusOf(`<p>We compared Atlassian Statuspage and status.io for our customers.</p>`, "uptime_history_public")).toBe("WARN");
   });
 
   it("still WARNs on a page with no status link (news.ycombinator.com-style), even with an order-status path", async () => {

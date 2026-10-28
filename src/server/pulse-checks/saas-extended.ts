@@ -1,6 +1,7 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
 import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
+import { reviewPlatformEvidence, roadmapEvidence } from "./vendor-evidence";
 
 export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const html = ctx.pageResult.html;
@@ -91,16 +92,21 @@ export async function runSaasExtended(ctx: ExtendedCheckContext): Promise<PulseS
   checks.push({ category: CATEGORIES.SAAS, checkKey: "app_marketplace_listed", label: "App marketplace listing", status: hasMarketplace ? "PASS" : "WARN", detail: hasMarketplace ? "App marketplace signals detected." : "No marketplace signals — listing on Zapier, Make, HubSpot, or platform-specific marketplaces drives distribution." });
 
   // Public roadmap
-  const hasRoadmap = /public.*roadmap|product.*roadmap|roadmap\.canny|canny\.io|trello.*roadmap|productboard/i.test(html);
-  checks.push({ category: CATEGORIES.SAAS, checkKey: "public_roadmap", label: "Public product roadmap", status: hasRoadmap ? "PASS" : "WARN", detail: hasRoadmap ? "Public roadmap signals detected." : "No public roadmap — a public roadmap (Canny, Linear, Trello) reduces support queries about upcoming features and builds trust." });
+  // A link to a roadmap board (customer.canny.io, a /roadmap page) or the words in readable
+  // text. "productboard" in a script or `product.*roadmap` across the whole page is not one.
+  const roadmap = roadmapEvidence(ctx.contentHtml ?? html);
+  checks.push({ category: CATEGORIES.SAAS, checkKey: "public_roadmap", label: "Public product roadmap", status: roadmap ? "PASS" : "WARN", evidence: roadmap ?? undefined, detail: roadmap ? `The page ${roadmap}.` : "No public roadmap — a public roadmap (Canny, Linear, Trello) reduces support queries about upcoming features and builds trust." });
 
   // Partner / reseller
   const hasPartner = /partner.*program|reseller.*program|affiliate.*program|channel.*partner|become.*partner|referral.*partner/i.test(html);
   checks.push({ category: CATEGORIES.SAAS, checkKey: "partner_reseller_program", label: "Partner / reseller programme", status: hasPartner ? "PASS" : "WARN", detail: hasPartner ? "Partner / reseller programme signals detected." : "No partner programme signals — a channel partner programme multiplies distribution without proportional headcount." });
 
   // G2 / Capterra
-  const hasReviewPlatform = /g2\.com|capterra\.com|getapp\.com|trustpilot|trustradius|g2.*review|capterra.*review/i.test(html);
-  checks.push({ category: CATEGORIES.SAAS, checkKey: "g2_capterra_listed", label: "G2 or Capterra listing", status: hasReviewPlatform ? "PASS" : "WARN", detail: hasReviewPlatform ? "G2 or Capterra listing signals detected." : "No G2/Capterra listing signals — B2B buyers increasingly use G2 and Capterra for shortlisting; build your presence early." });
+  // A link to the G2 or Capterra-network listing (Capterra, GetApp, Software Advice), or the
+  // platform's own badge. `g2.*review` across the page or a Trustpilot link is not one.
+  const g2Capterra = reviewPlatformEvidence(ctx.contentHtml ?? html).filter((e) => ["G2", "Capterra", "GetApp", "Software Advice"].includes(e.platform));
+  const hasReviewPlatform = g2Capterra.length > 0;
+  checks.push({ category: CATEGORIES.SAAS, checkKey: "g2_capterra_listed", label: "G2 or Capterra listing", status: hasReviewPlatform ? "PASS" : "WARN", evidence: g2Capterra[0]?.where, detail: hasReviewPlatform ? `The page links its listing: ${g2Capterra.map((e) => `${e.platform} (${e.where})`).join(", ")}.` : "No G2/Capterra listing signals — B2B buyers increasingly use G2 and Capterra for shortlisting; build your presence early." });
 
   // Volume discounts
   const hasVolumeDiscount = /volume.*discount|volume.*pricing|seats.*discount|custom.*quote|discount.*team|bulk.*pricing/i.test(html);
