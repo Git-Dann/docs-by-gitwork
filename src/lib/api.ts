@@ -2628,6 +2628,36 @@ export interface ClientMeetingsResponse {
   query?: string | null;
 }
 
+/**
+ * Who reads a client's Drive folder: the team with their own Google sign-in (by client slug),
+ * or the client through their share link (read with the teammate who switched it on).
+ */
+export type DriveTarget = { mode: "internal"; slug: string } | { mode: "public"; token: string };
+
+export function driveBase(target: DriveTarget): string {
+  return target.mode === "internal"
+    ? `/api/clients/${encodeURIComponent(target.slug)}/drive`
+    : `/api/wiki/${encodeURIComponent(target.token)}/drive`;
+}
+
+export async function getClientDrive(
+  target: DriveTarget,
+  view: import("@/lib/client-drive").ClientDriveView,
+  folder?: string | null,
+): Promise<import("@/lib/client-drive").ClientDriveResponse> {
+  const qs = new URLSearchParams({ view });
+  if (view === "folder" && folder) qs.set("folder", folder);
+  return apiFetch(`${driveBase(target)}?${qs.toString()}`);
+}
+
+export async function setWikiDriveEnabled(slug: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/drive`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function getClientMeetings(slug: string, q?: string, all?: boolean): Promise<ClientMeetingsResponse> {
   // `all` = the manual "grab a note" picker: every recent Meet call, unfiltered by name/domain.
   const qs = all ? "?all=1" : q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";

@@ -69,6 +69,7 @@ import { useClientActiveCovers } from "@/hooks/use-backstage";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
+import { ClientDriveFiles } from "@/components/clients/client-drive-files";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import type {
@@ -162,6 +163,8 @@ export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
   const { data, isPending, error } = useClientDetail(slug);
   const [editing, setEditing] = useState(false);
+  // 14 // DOCUMENTS shows Foundry docs + links, or the client's Google Drive folder.
+  const [docsTab, setDocsTab] = useState<"docs" | "drive">("docs");
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
@@ -963,10 +966,17 @@ export function ClientDetail({ slug }: { slug: string }) {
               <span className="widget-header__label--number">14</span>
               {" // DOCUMENTS"}
             </span>
-            <span className="widget-header__status">
-              {proposals.length + documentLinks.length} linked
-            </span>
+            <DocsTabs value={docsTab} onChange={setDocsTab} linkedCount={proposals.length + documentLinks.length} />
           </div>
+          {docsTab === "drive" ? (
+            // The client's Google Drive folder, read with YOUR Google sign-in.
+            <ClientDriveFiles
+              target={{ mode: "internal", slug }}
+              pageSize={8}
+              onLinkFolder={canManageClients ? openEdit : undefined}
+            />
+          ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="app-table min-w-full">
               <thead>
@@ -1027,6 +1037,8 @@ export function ClientDetail({ slug }: { slug: string }) {
             </table>
           </div>
           <ClientDocumentLinks slug={slug} links={documentLinks} canManage={canManageClients} />
+          </>
+          )}
         </section>
 
         <ClientDocActionsModal
@@ -3996,6 +4008,45 @@ function BankField({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The Documents card's two tabs, in the header band: Foundry documents and links, or the
+ * client's Google Drive folder. Mono caps, like the band they sit in; the linked count rides
+ * on its own tab so the band stays one 36px line.
+ */
+function DocsTabs({
+  value,
+  onChange,
+  linkedCount,
+}: {
+  value: "docs" | "drive";
+  onChange: (v: "docs" | "drive") => void;
+  linkedCount: number;
+}) {
+  const tab = (v: "docs" | "drive", label: string) => {
+    const on = value === v;
+    return (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={on}
+        onClick={() => onChange(v)}
+        className={`rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+          on ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+        }`}
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div role="tablist" aria-label="Documents or Drive" className="flex shrink-0 items-center gap-0.5" data-docs-tabs>
+      {tab("docs", `Linked ${linkedCount}`)}
+      {tab("drive", "Drive")}
     </div>
   );
 }

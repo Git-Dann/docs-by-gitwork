@@ -25,6 +25,7 @@ import {
   duplicateProposal,
   getClientDetail,
   getClientMeetings,
+  getClientDrive,
   ingestClientMeeting,
   updateMeetingActionItem,
   linkMeetingActionItemTask,
@@ -718,6 +719,24 @@ export function useClientSlackActivity(slug: string, enabled = true) {
 }
 
 // ─── Scribe (client meeting notes) ─────────────────────────────────────────
+
+/** A client's Google Drive folder — the team's own sign-in, or the client's share link. */
+export function useClientDrive(
+  target: import("@/lib/api").DriveTarget,
+  view: import("@/lib/client-drive").ClientDriveView,
+  folder: string | null = null,
+  enabled = true,
+) {
+  const key = target.mode === "internal" ? target.slug : target.token;
+  return useQuery({
+    queryKey: ["client-drive", target.mode, key, view, view === "folder" ? folder : null],
+    queryFn: () => getClientDrive(target, view, folder),
+    enabled: Boolean(key) && enabled,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
+  });
+}
 
 export function useClientMeetings(slug: string, enabled = true, q = "", all = false) {
   return useQuery({

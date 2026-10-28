@@ -46,7 +46,10 @@ export function clientVisibleSections(wiki: WikiDTO): WikiSection[] {
     ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
       ? (["monitors"] as const)
       : []),
-    ...(wiki.documents.enabled && wiki.documents.documents.length > 0
+    // Resources shows with at least one resource, or with the client's Drive files switched on
+    // (a folder they can see is something in it, even before a resource is added).
+    ...(wiki.documents.enabled &&
+    (wiki.documents.documents.length > 0 || (wiki.drive.enabled && wiki.drive.linked))
       ? (["documents"] as const)
       : []),
     // Requests shows when intake is on OR there are dev-raised blockers to action.

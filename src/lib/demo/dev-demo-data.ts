@@ -47,6 +47,7 @@ import { renderLegalDoc } from "@/lib/launchpad/legal/render";
 import { comparisonLimitError, parseComparisonContent } from "@/lib/wiki-comparisons";
 import type { WikiComparison } from "@/types/wiki-comparisons";
 import { demoSheets, resolveDemoSheets } from "@/lib/demo/demo-sheets";
+import { resolveDemoDrive } from "@/lib/demo/demo-drive";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
@@ -1293,6 +1294,8 @@ const demoWiki: WikiDTO = {
       },
     ],
   },
+  // Drive is on and linked, read as a teammate whose sign-in works.
+  drive: { enabled: true, linked: true, reader: { name: "Dan Lindsay", ready: true } },
   // Three platforms, deliberately one renewing inside a fortnight (amber on the card) and
   // one with no renewal date at all.
   clientPlatforms: {
@@ -3963,6 +3966,8 @@ export function resolveDemoApi(
     case "/api/auth/session":
       return demoSession;
   }
+  // Drive — the team's (by slug) and the client's (by share token) read the same fixture.
+  if (/^\/api\/(clients\/[^/]+|wiki\/[^/]+)\/drive$/.test(pathname)) return resolveDemoDrive(search);
   if (pathname.startsWith("/api/clients/summary")) {
     const result = resolveDemoSummary(pathname, init);
     if (result !== undefined) return result;

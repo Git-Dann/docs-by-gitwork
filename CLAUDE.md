@@ -8482,3 +8482,46 @@ Changes and monitor matching now use the shared `targetKey` (the old list lower-
 so `a.com` and `a.com/` were two projects there). `SortHeader` is exported from
 `pulse-projects.tsx` and shared. ⚠️ `app-select` and `app-input` are 100% wide: in a wrapping
 filter row they need `sm:w-auto`, or each control takes a full row on desktop.
+
+## 85. Recent Changes (October 2026) — A client's Google Drive folder in Portal and the wiki
+
+Clients keep their files in a Google Drive folder (the link already on the client record,
+`googleDriveFolderUrl`). It now shows as a **Drive tab** in two places Dan chose, rather than as
+its own card or wiki section: Portal's **14 // DOCUMENTS** card (8 a page) and the wiki's
+**Resources** page (12 a page). Views: **Added** (newest added, any depth), **Edited** (newest
+changed, with who changed it) and **Browse** (the folder, with breadcrumbs). Nothing is copied into
+Foundry; every look is a live read, so a file put in Drive shows on the next look.
+
+- **Two readers, on purpose.** The TEAM reads with their own Google sign-in (`getUserGoogleAuth`,
+  the existing `drive.readonly` scope), so Drive's own sharing decides what each person sees, and
+  previews use Google's viewer in an iframe. The CLIENT has no Gitwork Google account, so their copy
+  is read with the sign-in of the teammate who pressed **Show to client** (`ClientWiki.driveEnabled`
+  + `driveReaderUserId`, additive). Their files come through Foundry: Google Docs and Slides as
+  PDF, Sheets as Excel, Drawings as PNG, the rest as themselves up to 100 MB. Only PDFs and safe
+  image types are served inline; everything else is a download with `nosniff`.
+- ⚠️ **Only the client's folder, never anything else the reader can see.** Every folder, thumbnail
+  and file id is proven to sit under the client folder first (`crumbsTo`, by walking parents). A
+  folder id from outside falls back to the client folder; a file from outside is a 404. Two
+  sabotage-checked tests pin this. Climbing out of the folder reaches folders the reader can't see,
+  which Drive answers with 404. That means "not under this folder", not an outage.
+- **Show to client** is refused unless the presser's own Drive can open the folder right now, so a
+  client never gets a tab that says "unavailable" on day one. It uses the SIGNED-IN person, never
+  the "view as" user. A reader who is archived (§57) or signs out of Google stops working at once.
+  The team's tab then says so in amber and offers **Read as me**. The client sees only
+  "These files aren't available right now"; whose account it is never reaches their copy
+  (`forPublicDrive`).
+- **Client routes** (`/api/wiki/[token]/drive`, `…/thumbnail/[fileId]`, `…/file/[fileId]`) use the
+  hardened posture: the section on, a per-section link must be the RESOURCES one, a logged-in
+  client user or a Gitwork session, and a per-IP rate limit. They don't use `resolvePublicWiki`,
+  because building the whole wiki per thumbnail would be wasteful; `resolveWikiDriveAccess` is
+  one light query.
+- **Every failure is a sentence, never an empty list (§35):** no folder linked, connect Google,
+  sign in again, your account can't see this folder, Drive didn't answer. The recent views
+  search at most 120 folders, 5 deep, and say so when they hit the limit.
+- Resources is now shown to the client when it has a resource OR Drive is shown to them.
+
+**Not verified against real Drive.** It was driven at `/demo/wiki` and `/demo/portal` against a
+fixture (`src/lib/demo/demo-drive.ts`), at 1440 and 390 with no overflow, and the client's mode
+was checked by pointing the demo at it temporarily. Post-deploy: link a client's folder, open
+Portal → Documents → Drive, press **Show to client** on the wiki's Resources, then open the share
+link as a client user and open a Google Doc. It should preview as a PDF.

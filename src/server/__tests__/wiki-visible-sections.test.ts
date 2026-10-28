@@ -42,6 +42,7 @@ function bare(): AnyWiki {
     metrics: { enabled: false, source: null, metrics: [] },
     meetings: { enabled: false, meetings: [] },
     clientPlatforms: { enabled: false, platforms: [] },
+    drive: { enabled: false, linked: false, reader: null },
     codeHandover: { enabled: false, modules: [] },
   } as unknown as AnyWiki;
 }

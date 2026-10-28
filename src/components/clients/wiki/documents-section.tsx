@@ -26,7 +26,9 @@ import {
   useAddDocToWiki,
   useLinkableWikiDocuments,
 } from "@/hooks/use-wiki";
-import type { WikiDocumentDTO } from "@/lib/api";
+import type { DriveTarget, WikiDocumentDTO } from "@/lib/api";
+import { EMPTY_DRIVE, type WikiDriveSection } from "@/lib/client-drive";
+import { WikiDriveTab, hasDriveTab } from "@/components/clients/wiki/wiki-drive-section";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 
@@ -576,13 +578,21 @@ function DocumentsGrid({
 export function DocumentsList({
   documents,
   fileBase,
+  drive = EMPTY_DRIVE,
+  driveTarget,
 }: {
   documents: WikiDocumentDTO[];
   /** Base path for file downloads: `/api/wiki/<token>` or `/api/clients/<slug>/wiki`. */
   fileBase: string;
+  /** The client's Google Drive files, when the team has shown them — a second tab. */
+  drive?: WikiDriveSection;
+  driveTarget?: DriveTarget;
 }) {
   const { search, kind, page, setPage, filtered, selectKind, selectSearch } = useFilteredDocs(documents);
   const [playing, setPlaying] = useState<WikiDocumentDTO | null>(null);
+  const withDrive = Boolean(driveTarget) && hasDriveTab(drive, "client");
+  // With no resources yet, open on Drive rather than on an empty list.
+  const [tab, setTab] = useState<ResourcesTab>(documents.length === 0 && withDrive ? "drive" : "resources");
 
   return (
     <section className="widget-card">
@@ -593,7 +603,10 @@ export function DocumentsList({
         </span>
       </div>
       <div className="space-y-4 p-6">
-        {documents.length === 0 ? (
+        {withDrive ? <ResourcesTabs value={tab} onChange={setTab} count={documents.length} /> : null}
+        {withDrive && tab === "drive" && driveTarget ? (
+          <WikiDriveTab drive={drive} target={driveTarget} />
+        ) : documents.length === 0 ? (
           <p className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
             No resources yet.
           </p>
@@ -620,7 +633,18 @@ export function DocumentsList({
 const inputCls =
   "w-full rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2 text-[14px] text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]";
 
-export function DocumentsManager({ slug, documents }: { slug: string; documents: WikiDocumentDTO[] }) {
+export function DocumentsManager({
+  slug,
+  documents,
+  drive = EMPTY_DRIVE,
+}: {
+  slug: string;
+  documents: WikiDocumentDTO[];
+  /** The client's Google Drive folder — a second tab, read with your own Google sign-in. */
+  drive?: WikiDriveSection;
+}) {
+  const withDrive = hasDriveTab(drive, "team");
+  const [tab, setTab] = useState<ResourcesTab>("resources");
   const createLink = useCreateWikiLinkDoc(slug);
   const uploadFile = useUploadWikiFileDoc(slug);
   const remove = useDeleteWikiDoc(slug);
@@ -731,6 +755,11 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
       </div>
 
       <div className="space-y-3 p-6">
+        {withDrive ? <ResourcesTabs value={tab} onChange={setTab} count={documents.length} /> : null}
+        {withDrive && tab === "drive" ? (
+          <WikiDriveTab drive={drive} target={{ mode: "internal", slug }} />
+        ) : (
+        <>
         <p className="text-[13px] text-[var(--text-4)]">
           Paste a link (Google Docs, a Foundry doc, anything) or upload a file. Clients see a clean,
           paginated list.
@@ -888,6 +917,8 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
             />
           </>
         )}
+        </>
+        )}
       </div>
 
       <ResourcePlayer doc={playing} onClose={() => setPlaying(null)} />
@@ -904,5 +935,57 @@ export function DocumentsManager({ slug, documents }: { slug: string; documents:
         }}
       />
     </section>
+  );
+}
+
+type ResourcesTab = "resources" | "drive";
+
+/** Resources or the client's Google Drive folder — the same segmented control Sheets uses. */
+function ResourcesTabs({
+  value,
+  onChange,
+  count,
+}: {
+  value: ResourcesTab;
+  onChange: (v: ResourcesTab) => void;
+  count: number;
+}) {
+  const options: { v: ResourcesTab; label: string; count?: number }[] = [
+    { v: "resources", label: "Resources", count },
+    { v: "drive", label: "Google Drive" },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Resources or Google Drive"
+      data-resources-tabs
+      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+    >
+      {options.map((o) => {
+        const on = o.v === value;
+        return (
+          <button
+            key={o.v}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            onClick={() => onChange(o.v)}
+            className={`inline-flex h-full items-center gap-1.5 whitespace-nowrap rounded-[6px] px-2.5 text-[11px] uppercase tracking-[0.05em] transition-colors ${
+              on
+                ? "bg-[var(--surface-0)] font-semibold text-[var(--brand-700)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
+                : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+            }`}
+            style={{ fontFamily: MONO }}
+          >
+            {o.label}
+            {o.count !== undefined ? (
+              <span className={`rounded-[4px] px-1 text-[10px] ${on ? "bg-[var(--brand-50)] text-[var(--brand-700)]" : "bg-[var(--surface-0)] text-[var(--text-3)]"}`}>
+                {o.count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
   );
 }
