@@ -17,6 +17,7 @@ import { splitAvatarInput } from "@/lib/avatar";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { isPasswordLoginAllowed } from "@/types/auth";
 import { resolveWorkspaceModules } from "@/lib/workspace-modules";
+import { isPlatformAdminUserId } from "@/server/platform/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,8 @@ export async function GET() {
         // Read live, not from the session, so the sidebar follows a Platform-console
         // change on the next fetch rather than the next token refresh.
         workspaceModules: resolveWorkspaceModules(workspace),
+        // Gitwork's platform operators see the Platform console (src/server/platform/admin.ts).
+        isPlatformAdmin: await isPlatformAdminUserId(mutableUser.id),
       },
     });
   } catch (error) {

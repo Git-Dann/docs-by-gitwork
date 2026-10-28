@@ -106,6 +106,10 @@ export const INTERNAL_ONLY_PREFIXES = [
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
   "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
+  // The Platform console (every business on Foundry). Platform admins only, enforced by
+  // the page and every /api/platform route via requirePlatformAdmin — a workspace role,
+  // even Super Admin, is not enough. Listed here so no external role ever reaches it.
+  "/app/platform",
 ];
 
 // Lives in types/auth.ts so client components can gate on it without pulling this

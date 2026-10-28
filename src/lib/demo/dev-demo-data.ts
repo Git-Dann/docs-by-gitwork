@@ -52,6 +52,7 @@ import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/typ
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
+import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
 
@@ -3968,6 +3969,10 @@ export function resolveDemoApi(
   }
   // Drive — the team's (by slug) and the client's (by share token) read the same fixture.
   if (/^\/api\/(clients\/[^/]+|wiki\/[^/]+)\/drive$/.test(pathname)) return resolveDemoDrive(search);
+  if (pathname.startsWith("/api/platform/")) {
+    const result = resolveDemoPlatform(pathname, init);
+    if (result !== undefined) return result;
+  }
   if (pathname.startsWith("/api/clients/summary")) {
     const result = resolveDemoSummary(pathname, init);
     if (result !== undefined) return result;

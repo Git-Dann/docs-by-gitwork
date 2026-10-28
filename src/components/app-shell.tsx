@@ -4,6 +4,7 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  BuildingOffice2Icon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
   CodeBracketIcon,
@@ -381,6 +382,17 @@ export function AppShell({
                 active={Boolean(isActivePath(pathname, "/app/handbook"))}
               />
             ) : null}
+            {account.data?.isPlatformAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/platform",
+                  label: "Platform",
+                  description: "All businesses",
+                  icon: BuildingOffice2Icon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/platform"))}
+              />
+            ) : null}
           </div>
         </div>
       )}
@@ -539,8 +551,10 @@ function ExpandedRail({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
-  // Same query the shell reads (cached), so the rail needs no extra prop for it.
-  const workspaceModules = useAccount().data?.workspaceModules ?? null;
+  // Same query the shell reads (cached), so the rail needs no extra props for these.
+  const accountData = useAccount().data;
+  const workspaceModules = accountData?.workspaceModules ?? null;
+  const isPlatformAdmin = accountData?.isPlatformAdmin ?? false;
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
@@ -606,6 +620,18 @@ function ExpandedRail({
                   icon: BookOpenIcon,
                 }}
                 active={Boolean(isActivePath(pathname, "/app/handbook"))}
+                collapsed={collapsed}
+              />
+            ) : null}
+            {isPlatformAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/platform",
+                  label: "Platform",
+                  description: "All businesses",
+                  icon: BuildingOffice2Icon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/platform"))}
                 collapsed={collapsed}
               />
             ) : null}

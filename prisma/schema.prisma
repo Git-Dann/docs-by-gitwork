@@ -176,6 +176,10 @@ enum GitHubAnalysisScope {
 model User {
   id                        String                  @id @default(cuid())
   email                     String                  @unique
+  /// Gitwork's platform operators (the Platform console, /app/platform). Separate from
+  /// any workspace role: a customer's own Super Admin is never a platform admin. See
+  /// src/server/platform/admin.ts, which also honours a seed list of emails.
+  isPlatformAdmin           Boolean                 @default(false)
   name                      String?
   // ALWAYS a small value safe to embed in API payloads: an external https URL
   // (Google photo) or our served path `/api/avatars/{id}`. NEVER a base64 data

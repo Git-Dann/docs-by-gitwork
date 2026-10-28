@@ -31,6 +31,8 @@ const ACTION_LABEL_OVERRIDES: Record<string, string> = {
   "settings.ai_provider.changed": "AI provider changed",
   "settings.ai_key.rotated": "AI key rotated",
   "settings.external_key.rotated": "External key rotated",
+  // Shown in the business's OWN audit log too, so they can see what Gitwork changed.
+  "platform.workspace.settings_changed": "Modules or AI keys changed by Gitwork",
   "integration.mcp.connected": "MCP connected",
   "integration.mcp.revoked": "MCP revoked",
   "integration.mcp.enabled": "MCP enabled",

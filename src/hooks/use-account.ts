@@ -28,6 +28,8 @@ export interface AccountProfile {
    * See src/lib/workspace-modules.ts.
    */
   workspaceModules?: string[] | null;
+  /** Gitwork's platform operators — shows the Platform console. Optional for older caches. */
+  isPlatformAdmin?: boolean;
 }
 
 const ACCOUNT_KEY = ["account", "me"] as const;
