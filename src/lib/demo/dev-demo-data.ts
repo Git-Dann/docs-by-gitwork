@@ -14,6 +14,8 @@
  */
 
 import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
+import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA_SCORE, RECORDED_CADENZA_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-cadenza";
+import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
 import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
 import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
 import { buildProjects, decodeTargetKey, targetKey } from "@/lib/pulse-projects";
@@ -46,7 +48,7 @@ import type { WikiComparison } from "@/types/wiki-comparisons";
 import { demoSheets, resolveDemoSheets } from "@/lib/demo/demo-sheets";
 import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
-import type { PulseScanDiff } from "@/types/pulse";
+import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
@@ -3068,8 +3070,141 @@ const demoScanNorthwind = makeDemoScan({
   },
 });
 
-// Report 2 — Cadenza: promising SaaS with gaps (amber, 63, improving).
+// Report 2 — Cadenza: a repo scan with real gaps (a real scan's checks, renamed).
 const demoScanCadenza = makeDemoScan({
+  id: "scan-cadenza",
+  projectName: "cadenza (github)",
+  clientId: null,
+  clientName: "Cadenza",
+  inputType: "GITHUB_REPO",
+  inputGithubRepo: "cadenza-app/cadenza",
+  platform: "Render",
+  codeHealth: RECORDED_CADENZA_CODE_HEALTH,
+  healthScore: RECORDED_CADENZA_SCORE,
+  previousHealthScore: RECORDED_CADENZA_SCORE - 4,
+  techStack: RECORDED_CADENZA_TECH_STACK,
+  at: atDays(-2),
+  // A real repository scan's checks (renamed to Cadenza), so the repo scan is seen at its real size.
+  checks: demoPulseChecks("scan-cadenza", RECORDED_CADENZA_CHECKS as DemoPulseCheckRow[]),
+  llmAnalysis: {
+    projectClassification: { type: "SaaS", subtype: "Music collaboration tool", confidence: "MEDIUM", signals: ["React front end with an Express API", "Account-based access with admin screens", "MongoDB models"], verticalInsights: ["Version history is a strong retention feature", "Presence indicators help real-time collaboration", "Offline-friendly sync would differentiate"] },
+    executiveSummary: "Cadenza's code is small and readable, but the service around it isn't production-hardened: 80 of its pinned libraries have published vulnerabilities (9 critical), there is no error tracking, no health endpoint, no graceful shutdown and no tests. Most of this is quick to close.",
+    healthNarrative: `At ${RECORDED_CADENZA_SCORE} Cadenza scores well on what it has, up 4 since the last scan. The score hides the gaps that matter for a live service: vulnerable dependencies, no tests and no operational layer.`,
+    strengths: [
+      { title: "Sound basics", detail: "A committed lockfile, pinned versions, HttpOnly and SameSite cookies, and no stack traces returned to the client." },
+      { title: "Readable code", detail: "Low complexity across the codebase, with a handful of long screen components the only real debt." },
+    ],
+    criticalGaps: [
+      { category: "Dependencies", gap: "80 libraries with published vulnerabilities", impact: "Nine are critical, including the database driver; known exploits apply at the versions in the lockfile.", urgency: "CRITICAL" },
+      { category: "Observability", gap: "No error tracking or structured logging", impact: "Production failures go unnoticed until a user reports them, and logs can't be filtered by request.", urgency: "HIGH" },
+      { category: "Code Quality", gap: "No automated tests", impact: "Every change to checkout-style flows is verified by hand, so regressions ship.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Dependency upgrade sprint", description: "Upgrade the critical and high advisories first, then switch on Dependabot to keep them current.", estimatedEffort: "S", businessValue: "HIGH", category: "Security" },
+      { title: "Operational baseline", description: "Error tracking, a health endpoint, SIGTERM handling and request ids.", estimatedEffort: "S", businessValue: "HIGH", category: "Observability" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Production hardening", duration: "1–2 weeks", goals: ["Clear the critical advisories", "Add error tracking", "Add a health endpoint and graceful shutdown", "Cap request body sizes"] },
+      { phase: 2, title: "Confidence to change", duration: "2–4 weeks", goals: ["Tests on the core journeys", "Tag releases", "Split the longest screen components"] },
+    ],
+    techDebt: [
+      { area: "Dependencies", description: "A large backlog of vulnerable library versions across both lockfiles.", severity: "HIGH" },
+      { area: "Duplication", description: "Copied blocks across 23 files, mostly in the screen components.", severity: "MEDIUM" },
+    ],
+    proposalHook: "Cadenza is one short hardening sprint away from being production-ready — the gaps are well understood and quick to close.",
+    productionBlockers: [
+      { category: "Dependencies", blocker: "Critical library vulnerabilities", why: "Known exploits apply at the pinned versions.", urgency: "CRITICAL" },
+      { category: "Observability", blocker: "No error tracking", why: "You can't see or triage production failures.", recommendedService: "Sentry", urgency: "HIGH" },
+    ],
+    productionReadinessChecklist: [
+      { category: "Dependencies", item: "No known vulnerabilities", status: "MISSING", notes: "80 vulnerable, 9 critical." },
+      { category: "Observability", item: "Error tracking", status: "MISSING", notes: "Nothing wired." },
+      { category: "Infrastructure", item: "Health endpoint and graceful shutdown", status: "MISSING", notes: "Neither found." },
+      { category: "Code Quality", item: "Automated tests", status: "MISSING", notes: "No test code found." },
+      { category: "Security", item: "Session cookies", status: "DONE", notes: "HttpOnly and SameSite set." },
+    ],
+    techStackAnalysis: {
+      assessment: "A conventional React and Express stack on MongoDB; the choices are fine, but the operational layer (monitoring, health checks, upgrades) hasn't been built out yet.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Monitoring", current: "None", recommended: "Sentry", reason: "Production visibility is the single biggest win here.", priority: "HIGH" },
+        { area: "Dependencies", current: "Pinned, never upgraded", recommended: "Dependabot with weekly batches", reason: "Keeps the advisory backlog from growing back.", priority: "HIGH" },
+      ],
+      missingForProduction: ["Error tracking", "Health endpoint", "Automated tests", "Dependency upgrades"],
+    },
+    aiMaturityScore: 2,
+  },
+});
+
+// Report 3 — Fairway Nine: the weakest of the three (a real scan's checks, renamed).
+const demoScanFairway = makeDemoScan({
+  id: "scan-fairway",
+  projectName: "fairwaynine.co.uk",
+  clientId: null,
+  clientName: "Fairway Nine",
+  inputType: "URL",
+  inputUrl: "https://fairwaynine.co.uk",
+  platform: "Azure App Service",
+  healthScore: RECORDED_FAIRWAY_SCORE,
+  previousHealthScore: RECORDED_FAIRWAY_SCORE + 4,
+  techStack: RECORDED_FAIRWAY_TECH_STACK,
+  at: atDays(-1),
+  // A real website scan's checks (renamed to Fairway Nine).
+  checks: demoPulseChecks("scan-fairway", RECORDED_FAIRWAY_CHECKS as DemoPulseCheckRow[]),
+  llmAnalysis: {
+    projectClassification: { type: "Service Business", subtype: "Golf club", confidence: "HIGH", signals: ["Course status and green fees pages", "Membership sections", "Club policies"], verticalInsights: ["A fast mobile green-fee booking flow directly lifts revenue", "Structured data for the course improves local search", "Members expect an accessible, readable site"] },
+    executiveSummary: "Fairway Nine's site works and is on HTTPS, but it sends no security headers at all, advertises its server versions, sets session cookies without Secure, and fails basic accessibility on every page read. None of it is hard to fix, and it has slipped since the last scan.",
+    healthNarrative: `At ${RECORDED_FAIRWAY_SCORE} the site is the weakest of the three and down 4 points. The biggest wins (headers, cookie flags, a page language and alt text) are configuration changes rather than a rebuild.`,
+    strengths: [
+      { title: "HTTPS done properly", detail: "A valid certificate and an HTTP to HTTPS redirect." },
+      { title: "Nothing exposed", detail: "No .env, .git, backups or admin pages served to the public." },
+    ],
+    criticalGaps: [
+      { category: "Security", gap: "No security headers", impact: "No CSP, HSTS, X-Frame-Options or X-Content-Type-Options, so the browser has no instructions to protect visitors.", urgency: "HIGH" },
+      { category: "Security", gap: "Session cookies without Secure or SameSite", impact: "The session cookie can travel over plain HTTP and in cross-site requests.", urgency: "HIGH" },
+      { category: "Accessibility", gap: "No page language and missing alt text", impact: "All 15 pages read lack <html lang>, and screen readers get no description of images.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Header and cookie hardening", description: "Add the standard security headers and Secure/SameSite cookies at the web server.", estimatedEffort: "S", businessValue: "HIGH", category: "Security" },
+      { title: "Accessibility pass", description: "Page language, alt text, named dialogs and meta descriptions across the site.", estimatedEffort: "S", businessValue: "MEDIUM", category: "Mobile & Accessibility" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Stabilise & secure", duration: "1 week", goals: ["Add security headers", "Secure the session cookies", "Hide server version banners", "Disable TRACE"] },
+      { phase: 2, title: "Readable for everyone", duration: "1–2 weeks", goals: ["Set the page language", "Add alt text and dialog names", "Write meta descriptions", "Update the privacy policy"] },
+    ],
+    techDebt: [
+      { area: "Server configuration", description: "Default IIS and ASP.NET response headers, including version banners.", severity: "HIGH" },
+      { area: "Content", description: "Pages without descriptions or a declared language.", severity: "MEDIUM" },
+    ],
+    proposalHook: "Fairway Nine has fast, high-impact wins available today — a one-week stabilise sprint would lift it clear of the other two.",
+    productionBlockers: [
+      { category: "Security", blocker: "No security headers", why: "Visitors get none of the browser's built-in protections.", urgency: "HIGH" },
+    ],
+    productionReadinessChecklist: [
+      { category: "Security", item: "Security headers", status: "MISSING", notes: "None set." },
+      { category: "Security", item: "HTTPS", status: "DONE", notes: "Valid certificate with redirect." },
+      { category: "Security", item: "Session cookie flags", status: "MISSING", notes: "No Secure or SameSite." },
+      { category: "Accessibility", item: "Page language and alt text", status: "MISSING", notes: "Absent on every page read." },
+      { category: "Legal & Compliance", item: "Privacy policy", status: "PARTIAL", notes: "Present; no date and no right of access." },
+    ],
+    techStackAnalysis: {
+      assessment: "An ASP.NET site on IIS. The platform is fine for a club site; the issues are configuration the host was left with, not the choice of stack.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Web server", current: "IIS defaults", recommended: "Security headers and cookie flags in web.config", reason: "Immediate protection with no code change.", priority: "HIGH" },
+        { area: "Content", current: "No language or descriptions", recommended: "A template-level accessibility pass", reason: "Fixes every page at once.", priority: "MEDIUM" },
+      ],
+      missingForProduction: ["Security headers", "Secure cookies", "Page language", "Image alt text"],
+    },
+    aiMaturityScore: 1,
+  },
+});
+
+// The /pulse/features example reports need a middling and a weak result. Real lite scans of
+// small sites and repos land at 80 or above, so the public examples keep these two hand-written
+// scans (score 63 and 48); /demo/pulse uses the recorded scans above.
+// Example (public) — Cadenza: promising SaaS with gaps (amber, 63, improving).
+const exampleScanCadenza = makeDemoScan({
   id: "scan-cadenza",
   projectName: "cadenza (github)",
   clientId: null,
@@ -3145,8 +3280,8 @@ const demoScanCadenza = makeDemoScan({
   },
 });
 
-// Report 3 — Fairway Nine: at-risk (red, 48, regressed).
-const demoScanFairway = makeDemoScan({
+// Example (public) — Fairway Nine: at-risk (red, 48, regressed).
+const exampleScanFairway = makeDemoScan({
   id: "scan-fairway",
   projectName: "fairwaynine.co.uk",
   clientId: null,
@@ -3239,8 +3374,8 @@ export function examplePulseReportScans(): Record<string, unknown> {
   });
   return {
     strong: rename(demoScanNorthwind, "northwind.example", "https://app.northwind.example", null),
-    middling: rename(demoScanCadenza, "cadenza (GitHub repo)", null, "example/cadenza"),
-    weak: rename(demoScanFairway, "fairwaynine.example", "https://fairwaynine.example", null),
+    middling: rename(exampleScanCadenza, "cadenza (GitHub repo)", null, "example/cadenza"),
+    weak: rename(exampleScanFairway, "fairwaynine.example", "https://fairwaynine.example", null),
   };
 }
 
@@ -3258,13 +3393,14 @@ function demoCodePortfolio() {
 }
 
 const demoPulseScanList = [
-  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 48, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
-  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: 63, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
+  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
+  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
   { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
   // Earlier scans of the same site, so the demo has a project history and a trend to show.
   { id: "scan-northwind-prev", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 80, generatedProposalId: null, createdAt: atDays(-33), updatedAt: atDays(-33) },
   { id: "scan-northwind-first", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co/", inputGithubRepo: null, status: "COMPLETED", healthScore: 71, generatedProposalId: null, createdAt: atDays(-61), updatedAt: atDays(-61) },
-  { id: "scan-fairway-prev", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 55, generatedProposalId: null, createdAt: atDays(-20), updatedAt: atDays(-20) },
+  { id: "scan-cadenza-prev", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE - 4, generatedProposalId: null, createdAt: atDays(-30), updatedAt: atDays(-30) },
+  { id: "scan-fairway-prev", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE + 4, generatedProposalId: null, createdAt: atDays(-20), updatedAt: atDays(-20) },
 ];
 
 /**
@@ -3318,20 +3454,88 @@ const demoScanDiff: PulseScanDiff = {
   ],
 };
 
+/**
+ * The Cadenza and Fairway diffs, built from their recorded rows so every label, category and
+ * current status is the one the scan page shows. Previous statuses are the demo's story.
+ */
+function recordedDiffItem(rows: { checkKey: string; label: string; category: string; status: string }[], checkKey: string, prevStatus: ScanDiffItem["status"]): ScanDiffItem {
+  const r = rows.find((x) => x.checkKey === checkKey);
+  if (!r) throw new Error(`demo diff: ${checkKey} is not in the recorded scan`);
+  return { checkKey, label: r.label, category: r.category, status: r.status as ScanDiffItem["status"], prevStatus };
+}
+
+const demoScanDiffCadenza: PulseScanDiff = {
+  previousScanId: "scan-cadenza-prev",
+  previousCompletedAt: "2026-09-28T09:00:00.000Z",
+  previousScore: RECORDED_CADENZA_SCORE - 4,
+  currentScore: RECORDED_CADENZA_SCORE,
+  currentCompletedAt: null,
+  summary: "2 fixed, 1 got worse, 1 new issue, and 1 Pulse could not check this time.",
+  scoreChange: 4,
+  fixed: [
+    recordedDiffItem(RECORDED_CADENZA_CHECKS, "web_dependency_pinning", "WARN"),
+    recordedDiffItem(RECORDED_CADENZA_CHECKS, "svc_session_cookie_flags", "FAIL"),
+  ],
+  regressed: [recordedDiffItem(RECORDED_CADENZA_CHECKS, "clean_duplication_cross_file", "PASS")],
+  newIssues: [(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_CADENZA_CHECKS, "svc_express_body_limit", "WARN"))],
+  unverified: [
+    {
+      ...(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_CADENZA_CHECKS, "branch_protection", "FAIL")),
+      prevStatus: "FAIL",
+      reason: "PROBE_INCONCLUSIVE",
+      detail: "This scan could not read the branch rules, so the finding from last time is neither confirmed nor cleared.",
+    },
+  ],
+};
+
+const demoScanDiffFairway: PulseScanDiff = {
+  previousScanId: "scan-fairway-prev",
+  previousCompletedAt: "2026-10-08T09:00:00.000Z",
+  previousScore: RECORDED_FAIRWAY_SCORE + 4,
+  currentScore: RECORDED_FAIRWAY_SCORE,
+  currentCompletedAt: null,
+  summary: "1 fixed, 2 got worse, 1 new issue, and 1 Pulse could not check this time.",
+  scoreChange: -4,
+  fixed: [recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "http_redirect", "FAIL")],
+  regressed: [
+    recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "secure_cookie_attributes", "PASS"),
+    recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "crawl_html_lang", "PASS"),
+  ],
+  newIssues: [(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "api_trace_method", "WARN"))],
+  unverified: [
+    {
+      ...(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "dmarc_record", "WARN")),
+      prevStatus: "WARN",
+      reason: "PROBE_INCONCLUSIVE",
+      detail: "The DNS lookup did not complete this time, so the finding from last time is neither confirmed nor cleared.",
+    },
+  ],
+};
+
+const demoScanDiffs: Record<string, PulseScanDiff> = {
+  "scan-cadenza": demoScanDiffCadenza,
+  "scan-fairway": demoScanDiffFairway,
+};
+
 const demoPulseStats = {
   totalScans: 3,
   completedScans: 3,
-  avgHealthScore: 66,
+  avgHealthScore: Math.round((86 + RECORDED_CADENZA_SCORE + RECORDED_FAIRWAY_SCORE) / 3),
   awaitingFollowUp: 2,
-  totalCriticalGaps: 6,
-  healthTiers: { green: 1, amber: 1, red: 1 },
+  totalCriticalGaps: 8,
+  // Every score is 75 or above, so all three are green: tiers come from the recorded scores.
+  healthTiers: {
+    green: [86, RECORDED_CADENZA_SCORE, RECORDED_FAIRWAY_SCORE].filter((x) => x >= 75).length,
+    amber: [86, RECORDED_CADENZA_SCORE, RECORDED_FAIRWAY_SCORE].filter((x) => x >= 50 && x < 75).length,
+    red: [86, RECORDED_CADENZA_SCORE, RECORDED_FAIRWAY_SCORE].filter((x) => x < 50).length,
+  },
   recentScans: demoPulseScanList,
 };
 
 const demoPulsePortfolio = [
   { key: "client:northwind", clientId: WIKI_CLIENT.id, label: "Northwind Studio", scanCount: 3, latestScanId: "scan-northwind", latestScore: 86, latestStatus: "COMPLETED", lastScannedAt: atDays(-5), delta: 7, sparkline: [71, 74, 79, 86], worstScore: 86, monitor: { active: true, alerting: false }, running: false },
-  { key: "client:cadenza", clientId: null, label: "Cadenza", scanCount: 2, latestScanId: "scan-cadenza", latestScore: 63, latestStatus: "COMPLETED", lastScannedAt: atDays(-2), delta: 5, sparkline: [58, 63], worstScore: 63, monitor: null, running: false },
-  { key: "client:fairway", clientId: null, label: "Fairway Nine", scanCount: 2, latestScanId: "scan-fairway", latestScore: 48, latestStatus: "COMPLETED", lastScannedAt: atDays(-1), delta: -4, sparkline: [52, 48], worstScore: 48, monitor: { active: true, alerting: true }, running: false },
+  { key: "client:cadenza", clientId: null, label: "Cadenza", scanCount: 2, latestScanId: "scan-cadenza", latestScore: RECORDED_CADENZA_SCORE, latestStatus: "COMPLETED", lastScannedAt: atDays(-2), delta: 4, sparkline: [RECORDED_CADENZA_SCORE - 4, RECORDED_CADENZA_SCORE], worstScore: RECORDED_CADENZA_SCORE - 4, monitor: null, running: false },
+  { key: "client:fairway", clientId: null, label: "Fairway Nine", scanCount: 2, latestScanId: "scan-fairway", latestScore: RECORDED_FAIRWAY_SCORE, latestStatus: "COMPLETED", lastScannedAt: atDays(-1), delta: -4, sparkline: [RECORDED_FAIRWAY_SCORE + 4, RECORDED_FAIRWAY_SCORE], worstScore: RECORDED_FAIRWAY_SCORE, monitor: { active: true, alerting: true }, running: false },
 ];
 
 // ─── Resolver used by the fetch interceptor ─────────────────────────────────────
@@ -3667,10 +3871,19 @@ function demoFindingSeed(scanId: string) {
   const warns = scan.checks.filter((c) => c.status === "WARN").map((c) => c.checkKey);
   const states: import("@/lib/pulse-findings").FindingState[] = [];
   const tasks: import("@/lib/pulse-findings").FindingTask[] = [];
-  if (scanId === "scan-northwind" && warns.length >= 2) {
-    states.push({ checkKey: warns[0], decision: null, note: null, taskId: "demo-pulse-task-1", decidedByName: null, decidedAt: null });
-    tasks.push({ id: "demo-pulse-task-1", status: "DOING", title: "[Pulse] finding", assigneeName: "Alex Rivera" });
-    states.push({ checkKey: warns[1], decision: "ACCEPTED_RISK", note: "Marketing site only; no user data on these pages.", taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-2) });
+  // One finding on the board and one accepted risk per scan, chosen from that scan's own warnings.
+  const seeds: Record<string, { task: string; title: string; assignee: string; accept: string; note: string }> = {
+    "scan-northwind": { task: warns[0], title: "[Pulse] finding", assignee: "Alex Rivera", accept: warns[1], note: "Marketing site only; no user data on these pages." },
+    "scan-cadenza": { task: "svc_error_tracking", title: "[Pulse] The service reports errors to a tracker", assignee: "Marco Bianchi", accept: "has_typescript", note: "Staying on JavaScript this year; revisit with the next major release." },
+    "scan-fairway": { task: "hsts_header", title: "[Pulse] HSTS header", assignee: "Alex Rivera", accept: "cdn_detected", note: "Local club site; traffic is too small to justify a CDN." },
+  };
+  const seed = seeds[scanId];
+  const has = (key: string | undefined) => Boolean(key && warns.includes(key));
+  if (seed && has(seed.task) && has(seed.accept)) {
+    const id = `demo-pulse-task-${scanId}`;
+    states.push({ checkKey: seed.task, decision: null, note: null, taskId: id, decidedByName: null, decidedAt: null });
+    tasks.push({ id, status: "DOING", title: seed.title, assigneeName: seed.assignee });
+    states.push({ checkKey: seed.accept, decision: "ACCEPTED_RISK", note: seed.note, taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-1) });
   }
   return { states, tasks };
 }
@@ -4038,7 +4251,10 @@ export function resolveDemoApi(
   if (pathname === "/api/pulse/monitors") return { monitors: demoPulseMonitors(Date.now()) };
   if (pathname === "/api/workspace/pulse-embed") return demoPulseEmbedConfig;
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
-  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
+  {
+    const dm = pathname.match(/^\/api\/pulse\/scans\/([^/]+)\/diff$/);
+    if (dm) return { diff: demoScanDiffs[dm[1]] ?? demoScanDiff };
+  }
   if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
   {
     const fm = pathname.match(/^\/api\/pulse\/scans\/([^/]+)\/findings(\/task)?$/);
@@ -4153,7 +4369,7 @@ function demoPulseMonitors(now: number) {
   const base = { inputType: "URL", inputGithubRepo: null, webhookSecret: "", alertThreshold: 10, webhookUrl: "", lastDigestAt: null };
   return [
     { ...base, id: "mon-northwind", projectName: "Northwind Studio", inputUrl: "https://northwind.example", lastScanId: "scan-northwind", lastHealthScore: 72, isActive: true, frequency: "WEEKLY", lastRunAt: ago(30), createdAt: ago(900), digestEmails: ["ops@northwind.example"] },
-    { ...base, id: "mon-cadenza", projectName: "Cadenza", inputUrl: "https://cadenza.example", lastScanId: "scan-cadenza", lastHealthScore: 48, isActive: true, frequency: "DAILY", lastRunAt: ago(5), createdAt: ago(400), digestEmails: [] },
+    { ...base, id: "mon-cadenza", projectName: "Cadenza", inputUrl: "https://cadenza.example", lastScanId: "scan-cadenza", lastHealthScore: RECORDED_CADENZA_SCORE, isActive: true, frequency: "DAILY", lastRunAt: ago(5), createdAt: ago(400), digestEmails: [] },
   ];
 }
 
