@@ -70,6 +70,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
 import { ClientDriveFiles } from "@/components/clients/client-drive-files";
+import { driveFolderIdFromUrl } from "@/lib/client-drive";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import type {
@@ -163,8 +164,9 @@ export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
   const { data, isPending, error } = useClientDetail(slug);
   const [editing, setEditing] = useState(false);
-  // 14 // DOCUMENTS shows Foundry docs + links, or the client's Google Drive folder.
-  const [docsTab, setDocsTab] = useState<"docs" | "drive">("docs");
+  // 14 // DOCUMENTS shows Foundry docs + links, or the client's Google Drive folder. Null
+  // until someone picks a tab: the card then opens on whichever has something in it.
+  const [docsTab, setDocsTab] = useState<"docs" | "drive" | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
@@ -223,6 +225,10 @@ export function ClientDetail({ slug }: { slug: string }) {
   }
 
   const { client, lifecycle, proposals, proofDocuments, platforms, designs, documentLinks, pulseScans, supportClient, placements, studies, touchpoints } = data;
+  // Nothing linked but a Drive folder is: open on Drive, or the card reads as empty when it isn't.
+  const docsView =
+    docsTab ??
+    (proposals.length + documentLinks.length === 0 && driveFolderIdFromUrl(client.googleDriveFolderUrl) ? "drive" : "docs");
   const isSuggested = client.source === "SUGGESTED";
   // Leads show only the lead workspace + contact/notes — project/delivery info is hidden
   // until they become a client (status flips to ACTIVE via "Convert to client").
@@ -966,9 +972,9 @@ export function ClientDetail({ slug }: { slug: string }) {
               <span className="widget-header__label--number">14</span>
               {" // DOCUMENTS"}
             </span>
-            <DocsTabs value={docsTab} onChange={setDocsTab} linkedCount={proposals.length + documentLinks.length} />
+            <DocsTabs value={docsView} onChange={setDocsTab} linkedCount={proposals.length + documentLinks.length} />
           </div>
-          {docsTab === "drive" ? (
+          {docsView === "drive" ? (
             // The client's Google Drive folder, read with YOUR Google sign-in.
             <ClientDriveFiles
               target={{ mode: "internal", slug }}
