@@ -6,6 +6,7 @@ import { isAtLeast } from "@/types/auth";
 // The /app module gate lives in its own module so it can be unit-tested — importing
 // this middleware would pull NextAuth + the edge runtime into a Node test.
 import { hasModuleAccess } from "@/server/auth/module-gate";
+import { workspaceAllowsPath } from "@/lib/workspace-modules";
 
 const { auth } = NextAuth(authConfig);
 
@@ -266,6 +267,15 @@ export default auth(async (req) => {
       return NextResponse.redirect(loginUrl);
     }
 
+    // Workspace module switch — does this BUSINESS have the module at all? Runs before
+    // every role check below, because a Super Admin of a business without Pulse must not
+    // reach Pulse: the role bypasses are about people inside a workspace, not about what
+    // the workspace was given. Unrestricted workspaces (Gitwork) pass everything. See
+    // src/lib/workspace-modules.ts.
+    if (!workspaceAllowsPath(pathname, req.auth.user.workspaceModules)) {
+      return NextResponse.redirect(new URL("/app", req.url));
+    }
+
     // Starters tools are Super-Admin-ONLY (Foundry-internal; the GitHub repo just stores the
     // sources). This runs before the Admin-bypass module gate so Admins are excluded too.
     if (pathname.startsWith("/app/starters") && !isAtLeast(req.auth.user.role, "SUPER_ADMIN")) {
@@ -362,6 +372,16 @@ export default auth(async (req) => {
           });
         }
       }
+    }
+
+    // Same workspace module switch as the pages above, for a signed-in browser calling an
+    // API that belongs to a module its business does not have. 403, not a redirect: a
+    // fetch needs a status, and "you may not" is the honest answer.
+    if (!isPublic && req.auth?.user && !workspaceAllowsPath(pathname, req.auth.user.workspaceModules)) {
+      return new NextResponse(JSON.stringify({ error: "This workspace does not have that module" }), {
+        status: 403,
+        headers: { ...corsHeadersFor(pathname), "Content-Type": "application/json" },
+      });
     }
 
     // Mobile JWT callers: forward the authenticated user identity downstream

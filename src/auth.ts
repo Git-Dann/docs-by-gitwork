@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
+import { resolveWorkspaceModules } from "@/lib/workspace-modules";
 import { verifyGuestPassword } from "@/server/auth/password-login";
 import { isActiveMember } from "@/server/auth/member-status";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
@@ -140,7 +141,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (tokenId && Date.now() - last > MEMBER_RECHECK_MS) {
           const membership = await prisma.workspaceMember.findFirst({
             where: { userId: tokenId, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-            select: { archivedAt: true, role: true, permissions: true },
+            select: {
+              archivedAt: true,
+              role: true,
+              permissions: true,
+              workspace: { select: { modulesRestricted: true, enabledModules: true } },
+            },
           });
           // null → Auth.js clears the session cookie: signed out on this request.
           if (!membership || !isActiveMember(membership)) return null;
@@ -154,6 +160,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.permissions = Array.isArray(membership.permissions)
             ? (membership.permissions as unknown[]).filter((p): p is string => typeof p === "string")
             : [];
+          // Which modules the business has, refreshed on the same cadence so switching
+          // one off in the Platform console reaches open sessions within five minutes.
+          token.workspaceModules = resolveWorkspaceModules(membership.workspace);
           token.memberCheckedAt = Date.now();
         }
         return token;
@@ -272,6 +281,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Resolve + persist the member's effective permissions from the role matrix so
         // the JWT carries the live set (and the cached column stays in sync).
         token.permissions = membership ? await recomputeMember(membership.id) : [];
+        token.workspaceModules = membership
+          ? resolveWorkspaceModules(
+              await prisma.workspace.findUnique({
+                where: { id: membership.workspaceId },
+                select: { modulesRestricted: true, enabledModules: true },
+              }),
+            )
+          : null;
         // Stamp this fresh sign-in with the current SESSION_VERSION. The `authorized`
         // callback rejects tokens with an older value, forcing teammates with stale
         // sessions to sign in again so their per-user Google refresh token gets captured.

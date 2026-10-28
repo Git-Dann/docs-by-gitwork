@@ -287,6 +287,11 @@ model Workspace {
   id                          String                     @id @default(cuid())
   name                        String
   slug                        String                     @unique
+  /// Which modules this business has (src/lib/workspace-modules.ts). false = every
+  /// module (Gitwork, and every workspace created before the switch existed); true =
+  /// only `enabledModules`, refused even to the workspace's own Super Admins.
+  modulesRestricted           Boolean                    @default(false)
+  enabledModules              String[]                   @default([])
   anthropicApiKey             String?
   anthropicModel              String?
   aiProvider                  String                     @default("ANTHROPIC")

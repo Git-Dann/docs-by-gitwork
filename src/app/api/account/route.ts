@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { splitAvatarInput } from "@/lib/avatar";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { isPasswordLoginAllowed } from "@/types/auth";
+import { resolveWorkspaceModules } from "@/lib/workspace-modules";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export async function GET() {
       }),
       prisma.workspace.findFirst({
         where: { slug: DEFAULT_WORKSPACE_SLUG },
-        select: { showDevRates: true, docsBackupEnabled: true },
+        select: { showDevRates: true, docsBackupEnabled: true, modulesRestricted: true, enabledModules: true },
       }),
     ]);
 
@@ -114,6 +115,9 @@ export async function GET() {
           (membership?.permissions as string[] | null) ?? session.user.permissions ?? [],
         showDevRates: workspace?.showDevRates ?? false,
         docsBackupEnabled: workspace?.docsBackupEnabled ?? false,
+        // Read live, not from the session, so the sidebar follows a Platform-console
+        // change on the next fetch rather than the next token refresh.
+        workspaceModules: resolveWorkspaceModules(workspace),
       },
     });
   } catch (error) {

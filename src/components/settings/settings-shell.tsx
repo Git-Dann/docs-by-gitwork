@@ -18,6 +18,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { segmentedTabClass, segmentedTabsClass } from "@/components/ui/segmented-tabs";
+import { workspaceHasModule } from "@/lib/workspace-modules";
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast, isSuperAdmin } from "@/types/auth";
 
@@ -62,6 +63,11 @@ interface SectionDef {
   superAdminOnly?: boolean;
   /** Matrix permission id that gates this section (per-role). Super Admins bypass. */
   permission?: string;
+  /**
+   * The workspace module this section belongs to (src/lib/workspace-modules.ts). A
+   * business without the module never sees it, Super Admins included.
+   */
+  module?: string;
 }
 
 /**
@@ -143,7 +149,7 @@ const GROUPS: SectionGroup[] = [
         icon: Squares2X2Icon,
         sections: [
           { id: "integrations", label: "Integrations", permission: "settings.integrations" },
-          { id: "mcp", label: "MCP", permission: "mcp.connect" },
+          { id: "mcp", label: "MCP", permission: "mcp.connect", module: "mcp" },
         ],
       },
       {
@@ -153,8 +159,8 @@ const GROUPS: SectionGroup[] = [
         icon: CpuChipIcon,
         sections: [
           { id: "agents", label: "AI agents", permission: "settings.agents" },
-          { id: "checks", label: "Pulse checks", permission: "settings.agents" },
-          { id: "curator", label: "Curator", superAdminOnly: true },
+          { id: "checks", label: "Pulse checks", permission: "settings.agents", module: "pulse" },
+          { id: "curator", label: "Curator", superAdminOnly: true, module: "starters" },
           { id: "foreman", label: "Foreman", adminOnly: true },
         ],
       },
@@ -169,7 +175,7 @@ const GROUPS: SectionGroup[] = [
         label: "Labs",
         description: "Internal tools.",
         icon: BeakerIcon,
-        sections: [{ id: "labs", label: "Labs", superAdminOnly: true }],
+        sections: [{ id: "labs", label: "Labs", superAdminOnly: true, module: "labs" }],
       },
       // Analytics is not here: it is a full page, reached from the HQ context
       // strip. /app/settings/analytics still redirects to it.
@@ -218,7 +224,10 @@ export function SettingsShell({
   const isAdmin = isAtLeast(role, "ADMIN");
   const isSuper = isSuperAdmin(role);
 
+  const workspaceModules = account?.workspaceModules ?? null;
+
   const canSee = (section: SectionDef) => {
+    if (section.module && !workspaceHasModule(section.module, workspaceModules)) return false;
     if (section.superAdminOnly) return isSuper;
     if (section.permission) return isSuper || permissions.includes(section.permission);
     if (section.adminOnly) return isAdmin;

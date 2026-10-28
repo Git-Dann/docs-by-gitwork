@@ -22,6 +22,12 @@ export interface AccountProfile {
   showDevRates: boolean;
   /** Workspace master switch for backing up Docs + client archives to Google Drive. */
   docsBackupEnabled: boolean;
+  /**
+   * The modules this user's business has; null = every module. Optional because a
+   * cached profile from before the field existed lacks it, which reads as null.
+   * See src/lib/workspace-modules.ts.
+   */
+  workspaceModules?: string[] | null;
 }
 
 const ACCOUNT_KEY = ["account", "me"] as const;

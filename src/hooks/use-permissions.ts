@@ -9,6 +9,7 @@
 
 import { useAccount } from "@/hooks/use-account";
 import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
+import { workspaceHasModule } from "@/lib/workspace-modules";
 
 export function usePermissions() {
   const { data, isPending } = useAccount();
@@ -16,11 +17,19 @@ export function usePermissions() {
   const permissions = data?.permissions ?? [];
   const showDevRates = data?.showDevRates ?? false;
   const can = (id: string) => isSuperAdmin(role) || permissions.includes(id);
+  const workspaceModules = data?.workspaceModules ?? null;
 
   return {
     role,
     isPending,
     can,
+    /**
+     * Does this user's BUSINESS have the module (src/lib/workspace-modules.ts)? Separate
+     * from `can`, which is about the person: a Super Admin of a business without Pulse
+     * passes `can("pulse")` and fails this. Hide entry points on this; the middleware is
+     * what actually refuses.
+     */
+    hasModule: (id: string) => workspaceHasModule(id, workspaceModules),
     // Role tier checks — used by gates that don't fit a single permission
     // (e.g. moving devs between Bench / Off Bench, which is admin+ only).
     isAdminOrAbove: isAtLeast(role, "ADMIN"),
