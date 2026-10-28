@@ -87,6 +87,10 @@ Run `npm install` on a fresh clone or the hook can't run and will refuse the pus
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
+**Working on the multi-tenant programme (`docs/multi-tenant-roadmap.md`)?** Also run
+`npm run test:baseline` against a local dev server. It fails if any page that worked before has
+broken or lost content. See `docs/build-checklist.md` §4a.
+
 ## 4. Eight traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and

@@ -178,6 +178,41 @@ What that does and does not buy you:
   hand over a precise capture list — the page, the 2–3 viewports, the specific elements — never
   "please check everything".
 
+### 4a. The baseline: proving nothing broke (`npm run test:baseline`)
+
+Added for the multi-tenant work (`docs/multi-tenant-roadmap.md`), where the rule is that Gitwork
+sees **no change** unless the change is deliberate. `scripts/baseline.mjs` visits every `/demo`
+page (following their links, so new demo pages join automatically) plus the public pages, at 390,
+768 and 1440px. It compares them against `tests/baseline/snapshot.json`:
+
+- **STATUS, CRASH, BLANK, PAGE-X:** the page answers, throws nothing, renders real content and
+  doesn't scroll sideways. Console noise from having no local database or secrets is ignored;
+  anything else in the console fails.
+- **CONTENT:** every title, `h1`/`h2` and widget header recorded at baseline must still be there.
+  Numbers are folded, so dates and counts don't make it flaky. New content is fine; missing
+  content fails.
+- **CLIPPING:** the clipping audit (§3a of the mobile playbook) may not find *more* than it did at
+  baseline.
+- **GATE:** `/app` and `/deck` still redirect to sign-in, `/api` still refuses an unauthenticated
+  call, and `/api/health` still answers.
+
+Run it against a dev server started with any `API_KEY` and `AUTH_SECRET`. Without them the gates
+see local-mode behaviour, not production's.
+
+```bash
+API_KEY=x AUTH_SECRET=y npx next dev -p 3100
+```
+
+```bash
+npm run test:baseline
+```
+
+**A deliberate change is recorded with `npm run test:baseline -- --update` in the same PR**, so the
+diff of `snapshot.json` shows the reviewer exactly what moved. `--update` refuses to record a run
+with a status, crash or gate failure, because a baseline that starts broken proves nothing.
+
+Not in CI (no browser there), so run it locally before every PR in the multi-tenant programme.
+
 ---
 
 ## 5. AI cost discipline
