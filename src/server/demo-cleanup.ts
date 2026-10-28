@@ -56,7 +56,7 @@ export const LEGACY_RATE_CARD_SEED_IDS = [
 ];
 
 export interface DemoCleanupPreview {
-  candidates: Array<{ id: string; name: string; githubHandle: string }>;
+  candidates: Array<{ id: string; name: string; githubHandle: string | null }>;
   ratePeople: Array<{ id: string; name: string; seedIdentifier: string | null }>;
 }
 

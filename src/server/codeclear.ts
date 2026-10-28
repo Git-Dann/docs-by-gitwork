@@ -14,7 +14,7 @@ import type {
 import { deriveCandidateAnalysisState } from "@/types/codeclear";
 import { computeOverallCalibre, effectiveTier } from "@/server/codeclear-scoring";
 import { normalizeToMonthly } from "@/server/rate-card";
-import { activeDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
+import { DEVELOPER_RECORD, activeDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
 
 type SeedCodeClearCandidate = {
   name: string;
@@ -423,7 +423,7 @@ function commonCandidateFields(
   workspaceId: string;
   rateCardPersonId: string | null;
   name: string;
-  githubHandle: string;
+  githubHandle: string | null;
   email: string | null;
   primaryStack: string;
   techStacks: string[];
@@ -458,7 +458,8 @@ function commonCandidateFields(
     workspaceId: candidate.workspaceId,
     rateCardPersonId: candidate.rateCardPersonId ?? null,
     name: candidate.name,
-    githubHandle: candidate.githubHandle,
+    // "" = none. Always a string on the wire: the iOS app decodes it as a required String.
+    githubHandle: candidate.githubHandle ?? "",
     email: candidate.email ?? null,
     primaryStack: candidate.primaryStack,
     techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
@@ -634,7 +635,7 @@ export function serializeActivityRecord(
     createdAt: Date;
     candidate?: {
       name: string;
-      githubHandle: string;
+      githubHandle: string | null;
     };
   },
 ): CodeClearActivityRecord {
@@ -644,7 +645,9 @@ export function serializeActivityRecord(
     eventType: entry.eventType,
     metadata: entry.metadata,
     createdAt: entry.createdAt.toISOString(),
-    candidate: entry.candidate,
+    candidate: entry.candidate
+      ? { name: entry.candidate.name, githubHandle: entry.candidate.githubHandle ?? "" }
+      : undefined,
   };
 }
 
@@ -736,7 +739,7 @@ function buildGitworkRosterCandidates(
 export function getDefaultCodeClearCandidatePayloads(
   workspaceId: string,
   rateCardPeople: CodeClearRateCardSeedPerson[] = [],
-): Prisma.CandidateCreateInput[] {
+): Array<Prisma.CandidateCreateInput & { githubHandle: string }> {
   const rateCardPeopleBySeed = new Map(
     rateCardPeople
       .filter((person) => Boolean(person.seedIdentifier))
@@ -882,7 +885,9 @@ export async function getCodeClearStats(
 ): Promise<CodeClearStatsResponse> {
   // Developers whose person has left are not counted — the Overview's numbers
   // describe the current roster. See src/server/codeclear-archived.ts.
-  const active = activeDeveloperWhere(await archivedTeamEmails(workspaceId));
+  const active: Prisma.CandidateWhereInput = {
+    AND: [activeDeveloperWhere(await archivedTeamEmails(workspaceId)), DEVELOPER_RECORD],
+  };
   const [total, byStatus, scores, recheckDue, recentActivity] = await Promise.all([
     client.candidate.count({
       where: {

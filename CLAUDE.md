@@ -8601,3 +8601,43 @@ across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a writ
 **Not verified:** any of this against production data, the console in dark mode (the demo shell
 ignores the theme switch), and the iOS app (its repo isn't in this session yet).
 
+## 86. Recent Changes (October 2026) — Code becomes Staff (Phase 1, web)
+
+The module is now **Staff** (sidebar: Staff, "People and availability"), a roster of everyone on
+the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenant-roadmap.md`.
+
+- **People** at `/app/staff` (`src/components/staff/staff-roster.tsx`, server `src/server/staff.ts`,
+  rules `src/lib/staff.ts`, API `GET/POST /api/staff`, `PATCH /api/staff/[id]`). It lists every
+  active member, plus Staff records with no active account behind them (contractors,
+  developers who never sign in). Columns: job title, department, type, clients, start date.
+  "Create profile" makes a record for a member who has none; "Add someone" makes one for
+  someone with no login. List needs the `codeclear` permission (now labelled Staff); writes need
+  `code.manage`.
+- **Tabs** (`CodeClearTabs`): Staff = People · Developers · Archived; then Hiring = Overview
+  (`/app/codeclear`, the old landing page) · Pipeline · DevSignal, shown only when the workspace
+  has the `devsignal` module. `/app/code` redirects to `/app/staff`. Page titles say Staff or
+  Hiring. ⚠️ The permission id stays `codeclear`: it is stored in every role matrix and override.
+- **Schema (additive)**: `Candidate.memberId` (unique, FK to WorkspaceMember, SetNull),
+  `jobTitle`, `department`, `employmentType` (EMPLOYEE | CONTRACTOR | FREELANCER, validated in
+  code), `startDate`, `managerId` (loose id to another record). `githubHandle` is now optional:
+  a record can be anyone.
+- **Linking existing records**: `linkStaffRecords` runs on each roster read and sets `memberId`
+  from the old email match, only when exactly one member and one unlinked record share an
+  address. Ambiguous matches are left alone, never guessed. The ~7 places that still match by
+  email (avatar sync, archived devs, client visibility, Backstage directory, mentions, team
+  roster, merge) were deliberately NOT moved to the FK yet: their results are identical while
+  every link comes from the same match, and moving them is a later, separate change.
+- ⚠️ **Developer lists stay developers-only.** `DEVELOPER_RECORD` (`githubHandle` not null, in
+  `codeclear-archived.ts`) is in `buildCandidateWhere` and the Overview counts, so Developers,
+  Pipeline, Overview and the iOS Dev Directory (it reads `/api/codeclear/candidates`) show exactly
+  the rows they did before. Every existing record has a handle.
+- ⚠️ **`githubHandle` is always a string on the wire** (`""` = none). The iOS app decodes
+  `DocsByGitworkCodeClearCandidate.githubHandle` as a required `String`, and a null would fail the
+  whole list (Dev Directory, rate profiles, placement scheduling). GitHub analysis and repo
+  validation refuse a record with no handle with a clear 400.
+- **Known gaps**: `/app/codeclear` (Hiring Overview) belongs to the Staff module in the workspace
+  catalogue, so a business with Staff but not Hiring could still open it by URL (it shows
+  developer stats only). A non-developer placed on a client counts in Portal's dev count and cost,
+  like any placement. Backstage's team directory and Settings → Team still have their own lists;
+  folding them into Staff is still to do. Demo at `/demo/staff`.
+

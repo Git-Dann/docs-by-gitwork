@@ -184,14 +184,14 @@ npm run audit:clipping -- --self-test
   |---|---|---|---|
   | Portal | `/app/portal` | `/app/clients` | `clients` |
   | Care | `/app/care` | `/app/support` | `support` |
-  | Code | `/app/code` | `/app/codeclear` | `codeclear` |
+  | Staff (was Code) | `/app/staff` | `/app/code` → redirects; developer and Hiring pages still under `/app/codeclear` | `codeclear` |
   | Docs | `/app/docs` | `/app/proposals` → redirects | `proposals` |
 
   `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is
   canonical, and for which permission gates each route.
 
   **The sidebar is not the full list of surfaces.** It holds the seven products (Foundry HQ ·
-  Pulse · Code · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
+  Pulse · Staff · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
   entry point instead — Studio and the labs in **Settings → Labs**, Analytics and Starters as
   mono links in the **HQ context strip**, Settings and view-as in the **profile flyout**. Adding
   a surface? CLAUDE.md §4a decides where it goes; a new sidebar item is almost never the answer.

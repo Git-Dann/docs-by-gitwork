@@ -1,0 +1,17 @@
+import { AppShell } from "@/components/app-shell";
+import { CodeClearTabs } from "@/components/codeclear/codeclear-shared";
+import { StaffRoster } from "@/components/staff/staff-roster";
+
+export const dynamic = "force-dynamic";
+
+/** Staff → People (CLAUDE.md §86). Replaces Code as the module's landing page. */
+export default function StaffPage() {
+  return (
+    <AppShell title="Staff" subtitle="Everyone on the team: roles, departments and the clients they're on.">
+      <div className="space-y-5">
+        <CodeClearTabs />
+        <StaffRoster />
+      </div>
+    </AppShell>
+  );
+}

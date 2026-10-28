@@ -7,7 +7,7 @@ import {
   BuildingOffice2Icon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
-  CodeBracketIcon,
+  IdentificationIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
@@ -240,10 +240,10 @@ export function AppShell({
         module: "pulse",
       },
       {
-        href: "/app/code",
-        label: "Code",
-        description: "Developer vetting",
-        icon: CodeBracketIcon,
+        href: "/app/staff",
+        label: "Staff",
+        description: "People and availability",
+        icon: IdentificationIcon,
         module: "codeclear",
       },
       {
@@ -1161,6 +1161,10 @@ function ProfileMenu({
 function isActivePath(pathname: string | null, href: string) {
   if (href === "/app") {
     return pathname === "/app" || Boolean(pathname?.startsWith("/app/projects/"));
+  }
+  // Staff's developer and hiring pages still live under the legacy /app/codeclear prefix.
+  if (href === "/app/staff") {
+    return Boolean(pathname && /^\/app\/(staff|code|codeclear)(\/|$)/.test(pathname));
   }
 
   return pathname === href || (href !== "/app" && Boolean(pathname?.startsWith(href)));

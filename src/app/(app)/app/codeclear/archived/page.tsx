@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default function CodeClearArchivedPage() {
   return (
-    <AppShell title="Code" subtitle="Developers whose Foundry access has been removed.">
+    <AppShell title="Staff" subtitle="Developers whose Foundry access has been removed.">
       <CodeClearArchivedWorkspace />
     </AppShell>
   );

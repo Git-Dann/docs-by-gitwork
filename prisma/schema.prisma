@@ -552,6 +552,8 @@ model WorkspaceMember {
   createdAt           DateTime  @default(now())
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// This person's Staff record (Candidate.memberId), if they have one.
+  staffRecord         Candidate?
 
   @@unique([workspaceId, userId])
   @@index([workspaceId, archivedAt])
@@ -2505,8 +2507,25 @@ model Candidate {
   workspaceId          String
   rateCardPersonId     String?
   name                 String
-  githubHandle         String
+  /// Optional since Staff (Oct 2026): a Staff record can be anyone, not only a
+  /// developer. Postgres allows many NULLs under the unique index below. The API
+  /// still sends a string ("" = none) so older clients that require it keep working.
+  githubHandle         String?
   email                String?
+  /// The account this Staff record belongs to. Replaces the email match the module
+  /// relied on (Candidate.email ↔ User.email), which broke whenever the two differed.
+  /// Filled for existing records by linkStaffRecords (src/server/staff.ts).
+  memberId             String?                @unique
+  member               WorkspaceMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  /// Staff details (src/server/staff.ts). All optional; none is required of a developer.
+  jobTitle             String?
+  department           String?
+  /// EMPLOYEE | CONTRACTOR | FREELANCER (validated in src/lib/staff.ts).
+  employmentType       String?
+  startDate            DateTime?
+  /// Another Staff record in the same workspace. A loose id, like the other cross-record
+  /// links here, so deleting a manager's record can never cascade.
+  managerId            String?
   primaryStack         String
   techStacks           String[]               @default([])
   signalSources        String[]               @default([])

@@ -258,9 +258,10 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
-    product: "Code",
+    product: "Staff",
     permissions: [
-      { id: "codeclear", category: "module", label: "Code", description: "Developer review and validation." },
+      // The id stays `codeclear`: it is stored in every role matrix and member override.
+      { id: "codeclear", category: "module", label: "Staff", description: "The people roster, and developer review." },
       {
         id: "code.manage",
         category: "action",

@@ -9,7 +9,8 @@
 | Phase 0.2 Workspace AI keys win | Done, §85.3 |
 | Phase 0.3 Secrets encrypted at rest | Done for new writes; backfill of existing values awaits a decision, §85.4 |
 | Phase 0.4 Platform admin + console (businesses, modules, AI keys, activity) | Done, §85.5 |
-| Phase 1 Staff | Next |
+| Phase 1 Staff (web): People roster, Staff/Hiring split, schema, record linking | Done, CLAUDE.md §86 |
+| Phase 1 Staff (iOS) | Draft PR on foundry-ios, unbuilt |
 
 ## Context
 

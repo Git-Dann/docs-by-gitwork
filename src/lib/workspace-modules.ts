@@ -54,9 +54,9 @@ export const WORKSPACE_MODULES: WorkspaceModuleDef[] = [
     id: "codeclear",
     label: "Staff",
     description: "The people roster: profiles, placements, rates and availability",
-    pagePrefixes: ["/app/code", "/app/codeclear"],
+    pagePrefixes: ["/app/staff", "/app/code", "/app/codeclear"],
     // Not /api/rate-card: Docs costing reads it too, so it is shared ground.
-    apiPrefixes: ["/api/codeclear"],
+    apiPrefixes: ["/api/staff", "/api/codeclear"],
   },
   {
     id: "devsignal",

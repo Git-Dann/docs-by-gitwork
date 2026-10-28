@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
           },
           select: { id: true, name: true, githubHandle: true },
         });
-        created.push(candidate);
+        created.push({ ...candidate, githubHandle: candidate.githubHandle ?? row.githubHandle });
         // Track new handles so a duplicate within the same import is caught.
         existingHandles.add(row.githubHandle);
       } catch (error) {
