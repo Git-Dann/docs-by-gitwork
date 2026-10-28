@@ -93,8 +93,8 @@ function Stat({ label, value, note, tone, onClick, pressed }: { label: string; v
 /** Projects per page: enough to scan in one screen, few enough that the newest are never buried. */
 const PAGE_SIZE = 20;
 
-/** A column header that sorts. One column at a time; clicking it again reverses it. */
-function SortHeader({ label, k, sort, onSort, align = "left", title }: { label: string; k: ProjectSortKey; sort: { key: ProjectSortKey; dir: SortDir }; onSort: (k: ProjectSortKey) => void; align?: "left" | "right"; title?: string }) {
+/** A column header that sorts. One column at a time; clicking it again reverses it. Shared with All scans. */
+export function SortHeader<K extends string>({ label, k, sort, onSort, align = "left", title }: { label: string; k: K; sort: { key: K; dir: SortDir }; onSort: (k: K) => void; align?: "left" | "right"; title?: string }) {
   const active = sort.key === k;
   return (
     <th className={align === "right" ? "text-right" : "text-left"} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"} title={title}>
@@ -224,9 +224,12 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
 
   if (view === "scans") {
     return (
-      <div className="space-y-3">
-        <div className="flex justify-end">{toggle}</div>
-        {allScans}
+      <div className="widget-card">
+        <div className="widget-header">
+          <span className="widget-header-label">01 // ALL SCANS</span>
+          {toggle}
+        </div>
+        <div className="widget-body">{allScans}</div>
       </div>
     );
   }
@@ -269,9 +272,9 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                   onChange={(e) => setFilters({ query: e.target.value })}
                   placeholder="Search projects, sites, repos or clients"
                   aria-label="Search projects"
-                  className="app-input min-w-[220px] flex-1 basis-full text-base sm:basis-auto sm:text-sm"
+                  className="app-input min-w-[220px] flex-1 basis-full text-base sm:w-auto sm:basis-auto sm:text-sm"
                 />
-                <select value={filters.status} onChange={(e) => setFilters({ status: e.target.value as ProjectStatusFilter })} aria-label="Filter by status" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:flex-none sm:basis-auto sm:text-sm">
+                <select value={filters.status} onChange={(e) => setFilters({ status: e.target.value as ProjectStatusFilter })} aria-label="Filter by status" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:w-auto sm:flex-none sm:basis-auto sm:text-sm">
                   <option value="all">Any status</option>
                   <option value="attention">Needs a look</option>
                   <option value="urgent">Has urgent findings</option>
@@ -279,7 +282,7 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                   <option value="failed">Last scan failed</option>
                 </select>
                 {kinds.size > 1 && (
-                  <select value={filters.kind} onChange={(e) => setFilters({ kind: e.target.value as ProjectFilters["kind"] })} aria-label="Filter by type" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:flex-none sm:basis-auto sm:text-sm">
+                  <select value={filters.kind} onChange={(e) => setFilters({ kind: e.target.value as ProjectFilters["kind"] })} aria-label="Filter by type" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:w-auto sm:flex-none sm:basis-auto sm:text-sm">
                     <option value="all">Any type</option>
                     {kinds.has("website") && <option value="website">Websites</option>}
                     {kinds.has("repo") && <option value="repo">Repositories</option>}
@@ -288,7 +291,7 @@ export function PulseProjectsView({ allScans }: { allScans: React.ReactNode }) {
                   </select>
                 )}
                 {clients.length > 0 && (
-                  <select value={filters.client} onChange={(e) => setFilters({ client: e.target.value })} aria-label="Filter by client" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:max-w-[220px] sm:flex-none sm:basis-auto sm:text-sm">
+                  <select value={filters.client} onChange={(e) => setFilters({ client: e.target.value })} aria-label="Filter by client" className="app-select min-w-0 flex-1 basis-[calc(50%-0.25rem)] text-base sm:max-w-[220px] sm:w-auto sm:flex-none sm:basis-auto sm:text-sm">
                     <option value="all">Any client</option>
                     {clients.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                     <option value="none">No client</option>

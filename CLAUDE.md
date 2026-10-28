@@ -8472,3 +8472,13 @@ Foundry wordmark because it is the same component as the shared report.
 - Filters: status, type (website / repository / store listing, told apart by host) and client.
   Type and client only appear when there is more than one choice.
 - 20 per page with the shared `Pager`; any filter or sort change goes back to page one.
+
+**Follow-up: All scans works the same way** (`src/components/pulse/pulse-scan-list.tsx`, rules in
+`src/lib/pulse-scan-list.ts`). It is now a card like Projects, with inline filters (status, score
+band, type, change since the previous scan, monitoring), sortable headers (project, score,
+change, scanned), newest first, 20 a page and one card per scan on phones. Bulk delete stays, and
+ticks clear on any page, filter or sort change, so "Delete selected" never reaches rows off screen.
+Changes and monitor matching now use the shared `targetKey` (the old list lower-cased the raw URL,
+so `a.com` and `a.com/` were two projects there). `SortHeader` is exported from
+`pulse-projects.tsx` and shared. ⚠️ `app-select` and `app-input` are 100% wide: in a wrapping
+filter row they need `sm:w-auto`, or each control takes a full row on desktop.
