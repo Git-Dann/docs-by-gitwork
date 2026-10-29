@@ -17,11 +17,20 @@ import { SessionProvider } from "next-auth/react";
 import { Cog8ToothIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
+import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
 import { filterModules, readDemoModules, readDemoColor, brandCssVars } from "@/lib/demo/demo-config";
+
+/** The command menu speaks in /app links; on the demo they open the demo's own pages. */
+function demoHref(href: string): string {
+  if (href.startsWith("/app/portal")) return "/demo/portal";
+  if (href.startsWith("/app/docs/")) return `/demo/docs/${href.slice("/app/docs/".length)}`;
+  if (href.startsWith("/app/settings")) return "/demo";
+  return href;
+}
 
 export function DemoShell({
   active,
@@ -194,7 +203,10 @@ export function DemoShell({
                 </h1>
                 <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{withBrand(subtitle)}</p>
               </div>
-              <HalloweenToggle className="shrink-0" />
+              <div className="flex shrink-0 items-center gap-1">
+                <CommandMenuButton className="mr-1" />
+                <HalloweenToggle className="shrink-0" />
+              </div>
             </header>
 
             <main className="min-h-0 flex-1 overflow-auto px-6 pb-24 pt-6 sm:px-8">
@@ -216,6 +228,14 @@ export function DemoShell({
           </DemoErrorBoundary>
         ) : null}
         {mounted ? <HalloweenFogFront /> : null}
+        {mounted ? (
+          <CommandMenu
+            pages={nav}
+            canSeeClients={nav.some((m) => m.id === "portal")}
+            canSeeDocs={nav.some((m) => m.id === "docs")}
+            mapHref={demoHref}
+          />
+        ) : null}
       </div>
     </SessionProvider>
   );

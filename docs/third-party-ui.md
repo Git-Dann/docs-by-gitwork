@@ -1,51 +1,38 @@
 # Third-party UI components
 
-UI source vendored into this repo from other projects, with the licence each one ships under.
-MIT requires the copyright notice and permission notice to travel with every copy, so **do not
-delete a licence block here while its files are still in the tree.**
+UI components vendored into Foundry from other projects. Each entry names the source, the files it
+landed in, what was changed, and the licence text, which must travel with the code. MIT requires the
+notice to stay with every copy, so **do not delete a licence block while its files are in the tree.**
+Which components and why: `docs/easyui-adoption.md`.
 
-When you vendor something new: put it in its own folder under `src/components/ui/<project>/`,
-give every file a header naming the upstream path and licence and listing exactly what Foundry
-changed, and add a section below with the licence text copied verbatim.
+When you vendor something new: put it in its own folder under `src/components/ui/<project>/`, give
+every file a header naming the upstream path and licence and listing what Foundry changed, and add
+its row below.
 
 ---
 
 ## EasyUI
 
-- **Upstream:** https://github.com/Surajmaurya1/easyui · docs at https://easyui.site/components
-- **Licence:** MIT (text below, copied verbatim from the repo's `LICENSE`)
-- **Vendored:** October 2026
+- **Source:** https://github.com/Surajmaurya1/easyui · docs at https://easyui.site/components
+- **Licence:** MIT (full text below, copied verbatim from the repo's `LICENSE`)
 
-| Foundry file | Upstream file |
-|---|---|
-| `src/components/ui/easyui/funnel-chart.tsx` | `src/components/ui/FunnelChart.tsx` |
-| `src/components/ui/easyui/activity-heatmap.tsx` | `src/components/ui/ActivityHeatmap.tsx` |
-| `src/components/ui/easyui/chart-primitives.tsx` | `src/lib/chart-primitives.tsx` (the parts those two use) + `pctText` from `src/lib/dashboard-chart-utils.ts` |
+| Component | Upstream file | Foundry file |
+|---|---|---|
+| Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
+| Funnel Chart | `src/components/ui/FunnelChart.tsx` | `src/components/ui/easyui/funnel-chart.tsx` |
+| Activity Heatmap | `src/components/ui/ActivityHeatmap.tsx` | `src/components/ui/easyui/activity-heatmap.tsx` |
+| Chart primitives | `src/lib/chart-primitives.tsx` (the parts the charts use) + `pctText` from `src/lib/dashboard-chart-utils.ts` | `src/components/ui/easyui/chart-primitives.tsx` |
 
-**What Foundry changed, and why.** Layout, shapes, bridges, loss chips, summary lines, motion
-and interaction are upstream's. The changes are limited to what Foundry needs:
+**Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
+place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
+only), accessibility where it was missing, and `prefers-reduced-motion` support. Layout, shapes and
+motion are upstream's. The header comment in each Foundry file lists that file's own changes.
 
-- **Colours are Foundry tokens.** Upstream uses fixed neutral / white / black values and
-  Tailwind `dark:` variants, and is tuned for a dark page. Foundry's dark mode is a
-  `data-theme` attribute and its palette is the `--text-*` / `--surface-*` / `--border-*` /
-  `--brand-*` tokens, so every colour was mapped to a token. The funnel's per-stage ramp and the
-  heatmap's ramp run along the brand blue scale instead of indigo→teal / emerald; the loss red is
-  `--danger-500`. Both read correctly on cream (light) and navy (dark).
-- **Imports** point at Foundry's copy of the primitives; `cx` is Foundry's `cn`.
-- **Locale** is en-GB for numbers and dates.
-- **Honesty fix in the funnel:** a stage *larger* than the one before shows "+N%"; upstream
-  prints "−N%" either way. "Biggest drop" is omitted when nothing dropped (upstream: "−0%").
-- **Focus:** the app's global `:focus-visible` outline is switched off inline on each chart's SVG
-  so only the component's own focus ring shows.
-- **Funnel gradient ids** come from `useId` so two funnels on one page don't share `<defs>`.
-
-`prefers-reduced-motion` is honoured exactly as upstream (framer-motion's `useReducedMotion`,
-plus the heatmap's own media query).
-
-⚠️ The funnel's bridges use a vertical SVG gradient fill. DESIGN.md says no gradients; this one
+**Charts.** Number and date formatting is en-GB. The funnel shows "+N%" when a stage is *larger*
+than the one before (upstream prints "−N%" either way), omits "Biggest drop" when nothing dropped,
+and takes its gradient ids from `useId` so two funnels on one page don't share `<defs>`.
+⚠️ The funnel's bridges keep upstream's vertical SVG gradient. DESIGN.md says no gradients; this one
 is kept on purpose because the bridge shape *is* the design being adopted.
-
-### Licence
 
 ```
 MIT License
