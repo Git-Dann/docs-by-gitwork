@@ -16,6 +16,7 @@ import {
   ListBulletIcon,
   CalendarDaysIcon,
   TagIcon,
+  ViewColumnsIcon,
   ArchiveBoxIcon,
   ShareIcon,
   CheckIcon,
@@ -33,6 +34,7 @@ import {
   useTasks,
   useUpdateTask,
   useFeatureBlocks,
+  useBoardColumns,
   useDeleteFeatureBlock,
   useMilestones,
   useTimelineShare,
@@ -53,6 +55,10 @@ import { TaskImportModal } from "@/components/tasks/task-import-modal";
 import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
 import { PlanHealthStrip, type PlanFilter } from "@/components/tasks/plan-health-strip";
+import { BoardColumnsModal } from "@/components/tasks/board-columns-modal";
+import type { BoardColumnDef } from "@/lib/tasks/board-columns";
+
+const NO_COLUMNS: BoardColumnDef[] = [];
 
 // The Gantt (day-scale axis, zoom, dependency rendering) is the heaviest of the
 // three views and only shown behind the "gantt" tab — load it on demand so the
@@ -88,6 +94,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
   const [managingCategories, setManagingCategories] = useState(false);
+  const [managingColumns, setManagingColumns] = useState(false);
   const [pushingToSlack, setPushingToSlack] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [scribeSourceTask, setScribeSourceTask] = useState<TaskDTO | null>(null);
@@ -136,6 +143,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   });
   const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
+  const { data: boardColumns = NO_COLUMNS } = useBoardColumns(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
   const { data: meetingsData } = useClientMeetings(slug, Boolean(clientId));
   // Archived tab: only-archived tasks, fetched lazily when the tab is open.
@@ -306,21 +314,6 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* How much recent work landed on the plan — silent when the board is healthy. */}
-      {view !== "archived" ? (
-        <PlanHealthStrip
-          tasks={tasks}
-          blocks={blocks}
-          clientName={client.name}
-          filter={planFilter.kind}
-          onFilter={(kind, ids) => {
-            setPlanFilter({ kind, ids: new Set(ids) });
-            // The list is where these get dealt with: select, then move or close in bulk.
-            if (kind) switchView("list");
-          }}
-        />
-      ) : null}
-
       {/* Search + filters (board + list only) */}
       {view !== "gantt" && view !== "archived" ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -340,6 +333,30 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           >
             Categories
           </Button>
+          {view === "board" && clientId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              leadingIcon={<ViewColumnsIcon className="h-4 w-4" />}
+              onClick={() => setManagingColumns(true)}
+            >
+              Columns
+            </Button>
+          ) : null}
+          {/* How much recent work landed on the plan — one line, silent when the board is healthy. */}
+          <div className="ml-auto">
+            <PlanHealthStrip
+              tasks={tasks}
+              blocks={blocks}
+              clientName={client.name}
+              filter={planFilter.kind}
+              onFilter={(kind, ids) => {
+                setPlanFilter({ kind, ids: new Set(ids) });
+                // The list is where these get dealt with: select, then move or close in bulk.
+                if (kind) switchView("list");
+              }}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -367,6 +384,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       ) : view === "board" ? (
         <TaskBoard
           tasks={filtered}
+          columns={boardColumns}
           showClient={false}
           onCardClick={setOpenTaskId}
           onScribeSourceClick={setScribeSourceTask}
@@ -448,6 +466,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           tasks={tasks}
           onClose={() => setPushingToSlack(false)}
         />
+      ) : null}
+      {managingColumns && clientId ? (
+        <BoardColumnsModal clientId={clientId} columns={boardColumns} onClose={() => setManagingColumns(false)} />
       ) : null}
       {managingCategories && clientId ? (
         <CategoryManagerModal

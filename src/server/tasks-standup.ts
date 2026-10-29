@@ -7,6 +7,7 @@
 // everyone's pushed. Slack posting is best-effort/fire-and-forget — a missing
 // token or channel never fails the request (mirrors onboarding-notify.ts).
 
+import { columnNameFor, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { reportOwnerIds, type ReportTask } from "@/lib/standup-report";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -506,8 +507,10 @@ async function postStandupToSlack(
       slackChannelId: true,
       slackInternalChannelId: true,
       slackExternalChannelId: true,
+      taskBoardColumns: true,
     },
   });
+  const columnsByClient = new Map(clients.map((c) => [c.id, parseBoardColumns(c.taskBoardColumns)] as const));
   const channelByClient = new Map(
     clients.map((c) => [c.id, c.slackInternalChannelId ?? c.slackChannelId] as const),
   );
@@ -538,6 +541,7 @@ async function postStandupToSlack(
       clientName: t.client.name,
       clientSlug: t.client.slug,
       blockName: t.featureBlock?.name ?? null,
+      columnName: columnNameFor(t, columnsByClient.get(t.client.id) ?? []),
       dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
       status: t.status,
       description: t.description,

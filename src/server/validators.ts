@@ -1130,6 +1130,20 @@ export const taskUpdateSchema = z.object({
 export const taskMoveSchema = z.object({
   status: taskStatusSchema,
   orderKey: z.number().finite(),
+  /** A custom board column inside `status`, or null/absent for the status column itself. */
+  boardColumnId: z.string().max(40).nullish(),
+});
+
+export const boardColumnsSchema = z.object({
+  columns: z
+    .array(
+      z.object({
+        id: z.string().regex(/^col_[a-z0-9]{6,24}$/),
+        name: z.string().trim().min(1, "Name the column").max(40),
+        stage: z.enum(["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"]),
+      }),
+    )
+    .max(12, "A board can have up to 12 extra columns"),
 });
 
 export const taskCommentSchema = z.object({

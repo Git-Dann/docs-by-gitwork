@@ -31,6 +31,7 @@ import type {
   TaskAttentionDTO,
 } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
+import { BoardColumnError, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
@@ -98,6 +99,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     // legacy UI_DONE row to In Review on read — it renders/behaves as In Review
     // everywhere and can be moved on normally. No new task can be set to it.
     status: (row.status === "UI_DONE" ? "IN_REVIEW" : row.status) as TaskStatus,
+    boardColumnId: row.boardColumnId,
     priority: row.priority as TaskPriority,
     label: row.label as TaskLabel | null,
     orderKey: row.orderKey,
@@ -140,6 +142,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     description: null,
     acceptanceCriteria: null,
     status: task.status,
+    boardColumnId: task.boardColumnId,
     priority: task.priority,
     label: task.label,
     orderKey: task.orderKey,
@@ -342,8 +345,10 @@ function statusTimestamps(
   prevStatus: TaskStatus | null,
   nextStatus: TaskStatus,
   row: { startedAt: Date | null },
-): { startedAt?: Date | null; completedAt?: Date | null } {
-  const out: { startedAt?: Date | null; completedAt?: Date | null } = {};
+): { startedAt?: Date | null; completedAt?: Date | null; boardColumnId?: null } {
+  const out: { startedAt?: Date | null; completedAt?: Date | null; boardColumnId?: null } = {};
+  // A custom board column is a lane inside one status, so leaving the status leaves the lane.
+  if (prevStatus !== null && prevStatus !== nextStatus) out.boardColumnId = null;
   const startedStates: TaskStatus[] = ["DOING", "IN_REVIEW", "UI_DONE", "DONE"];
   if (startedStates.includes(nextStatus) && !row.startedAt) {
     out.startedAt = new Date();
@@ -963,14 +968,22 @@ export async function updateTask(
 export async function moveTask(
   user: EffectiveUser,
   id: string,
-  input: { status: TaskStatus; orderKey: number },
+  input: { status: TaskStatus; orderKey: number; boardColumnId?: string | null },
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
     where: { id, workspaceId: user.workspaceId },
-    select: { clientId: true, status: true, startedAt: true },
+    select: { clientId: true, status: true, startedAt: true, client: { select: { taskBoardColumns: true } } },
   });
   if (!existing) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, existing.clientId);
+
+  // Only a column this client has, inside the status being moved to.
+  const column = input.boardColumnId
+    ? parseBoardColumns(existing.client.taskBoardColumns).find((c) => c.id === input.boardColumnId)
+    : undefined;
+  if (input.boardColumnId && (!column || column.stage !== input.status)) {
+    throw new BoardColumnError("That column isn't on this board any more. Refresh and try again.");
+  }
 
   const row = await prisma.task.update({
     where: { id },
@@ -978,6 +991,7 @@ export async function moveTask(
       status: input.status,
       orderKey: input.orderKey,
       ...statusTimestamps(existing.status as TaskStatus, input.status, existing),
+      boardColumnId: column?.id ?? null,
     },
     include: taskInclude,
   });

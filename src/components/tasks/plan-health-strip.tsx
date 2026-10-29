@@ -13,9 +13,10 @@ import { TASK_STATUS_LABELS, type FeatureBlockDTO, type TaskDTO } from "@/types/
 export type PlanFilter = "stale" | "unplanned" | null;
 
 /**
- * The plan's health in one strip above the board: how much of the last 30 days' work
- * landed on the plan, and how much of the plan is being left alone. Silent on a healthy
- * board — see `planHealthWorthShowing`.
+ * The plan's health in one line at the end of the filter row: how much of the last 30 days'
+ * work landed on the plan, and two chips that filter to what's off it or left alone. Silent on
+ * a healthy board — see `planHealthWorthShowing`. The explanations live in the tooltips, so the
+ * board keeps the room.
  */
 export function PlanHealthStrip({
   tasks,
@@ -36,75 +37,45 @@ export function PlanHealthStrip({
 
   const share =
     health.doneInWindow === 0 ? null : Math.round((health.donePlanned / health.doneInWindow) * 100);
+  const offPlan = health.unplannedIds.length;
 
   return (
-    <section
-      className="rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-0)]"
-      aria-label="Plan health"
-      data-plan-health
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border-2)] px-3 py-2">
-        <span className="widget-data-label">PLAN · LAST {health.windowDays} DAYS</span>
-        {share !== null ? (
-          <span className="hidden font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)] sm:inline">
-            {share}% of done work was on the plan
-          </span>
-        ) : null}
-      </div>
-      <div className="divide-y divide-[var(--border-2)]">
-        {health.doneUnplanned > 0 || health.unplannedOpen > 0 ? (
-          <Line
-            figure={health.doneUnplanned}
-            text={
-              <>
-                of {health.doneInWindow} done {health.doneInWindow === 1 ? "task was" : "tasks were"} outside
-                the plan
-                {health.unplannedOpen > 0 ? (
-                  <span className="text-[var(--text-4)]"> · {health.unplannedOpen} open ones too</span>
-                ) : null}
-              </>
-            }
-            hint="Work in no category doesn't count toward phase progress, the timeline or the client's Delivery page."
+    <div className="flex flex-wrap items-center gap-1.5" aria-label="Plan health" data-plan-health>
+      <span
+        className="widget-data-label whitespace-nowrap"
+        title={`Of the ${health.doneInWindow} tasks done in the last ${health.windowDays} days, ${health.donePlanned} were in a category.`}
+      >
+        {share !== null ? `PLAN · ${share}% ON IT` : "PLAN"}
+      </span>
+      {offPlan > 0 ? (
+        <>
+          <Chip
             active={filter === "unplanned"}
-            action={
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  leadingIcon={<SparklesIcon className="h-4 w-4" />}
-                  onClick={() => setSorting(true)}
-                >
-                  Sort into categories
-                </Button>
-                <FilterToggle
-                  active={filter === "unplanned"}
-                  onClick={() => onFilter(filter === "unplanned" ? null : "unplanned", health.unplannedIds)}
-                />
-              </>
-            }
-          />
-        ) : null}
-        {health.plannedStale > 0 ? (
-          <Line
-            figure={health.plannedStale}
-            text={
-              <>
-                of {health.plannedOpen} planned {health.plannedOpen === 1 ? "task hasn't" : "tasks haven't"} been
-                touched in {health.staleDays}+ days
-              </>
-            }
-            hint="Pick them up, close the ones already done, or remove them if the plan changed."
-            active={filter === "stale"}
-            action={
-              <FilterToggle
-                active={filter === "stale"}
-                onClick={() => onFilter(filter === "stale" ? null : "stale", health.staleIds)}
-              />
-            }
-          />
-        ) : null}
-      </div>
+            onClick={() => onFilter(filter === "unplanned" ? null : "unplanned", health.unplannedIds)}
+            title={`${health.doneUnplanned} done in the last ${health.windowDays} days and ${health.unplannedOpen} open, in no category. Work in no category doesn't count toward phase progress, the timeline or the client's Delivery page.`}
+          >
+            {offPlan} off plan
+          </Chip>
+          <button
+            type="button"
+            onClick={() => setSorting(true)}
+            aria-label="Sort into categories"
+            title="Sort into categories"
+            className="rounded-[6px] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--brand-700)]"
+          >
+            <SparklesIcon className="h-4 w-4" />
+          </button>
+        </>
+      ) : null}
+      {health.plannedStale > 0 ? (
+        <Chip
+          active={filter === "stale"}
+          onClick={() => onFilter(filter === "stale" ? null : "stale", health.staleIds)}
+          title={`${health.plannedStale} of ${health.plannedOpen} planned tasks haven't been touched in ${health.staleDays}+ days. Pick them up, close the ones already done, or remove them if the plan changed.`}
+        >
+          {health.plannedStale} untouched {health.staleDays}d+
+        </Chip>
+      ) : null}
       {sorting ? (
         <PlanSortModal
           tasks={tasks.filter((t) => health.unplannedIds.includes(t.id))}
@@ -114,53 +85,38 @@ export function PlanHealthStrip({
           onClose={() => setSorting(false)}
         />
       ) : null}
-    </section>
-  );
-}
-
-function Line({
-  figure,
-  text,
-  hint,
-  action,
-  active,
-}: {
-  figure: number;
-  text: React.ReactNode;
-  hint: string;
-  action: React.ReactNode;
-  active: boolean;
-}) {
-  return (
-    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5", active && "bg-[var(--surface-1)]")}>
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span
-          className="text-[24px] leading-none text-[var(--text-1)]"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          {figure}
-        </span>
-        <div className="min-w-0">
-          <p className="text-[13px] text-[var(--text-2)]">{text}</p>
-          <p className="text-[11px] text-[var(--text-4)]">{hint}</p>
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>
     </div>
   );
 }
 
-function FilterToggle({ active, onClick }: { active: boolean; onClick: () => void }) {
+/** A filter toggle that reads as a count. Active shows an × to clear it. */
+function Chip({
+  active,
+  onClick,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Button
+    <button
       type="button"
-      size="sm"
-      variant={active ? "secondary" : "tertiary"}
-      leadingIcon={active ? <XMarkIcon className="h-4 w-4" /> : undefined}
       onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-[6px] border px-2 py-1 font-mono text-[11px] tracking-[0.02em] transition",
+        active
+          ? "border-[var(--brand-400)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+          : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-2)] hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]",
+      )}
     >
-      {active ? "Clear filter" : "Show them"}
-    </Button>
+      {children}
+      {active ? <XMarkIcon className="h-3.5 w-3.5" aria-hidden /> : null}
+    </button>
   );
 }
 

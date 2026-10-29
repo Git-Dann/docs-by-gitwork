@@ -1108,6 +1108,9 @@ model WorkspaceClient {
   /// Gitwork product/account leads shown on the client wiki header (User ids,
   /// display order preserved). Distinct from the delivery team (devs via placements).
   productTeamUserIds       String[]                  @default([])
+  /// Extra task-board columns for this client: [{ id, name, stage }]. Each is a lane inside
+  /// one of the five statuses (src/lib/tasks/board-columns.ts), so no status is ever added.
+  taskBoardColumns         Json?
   website                  String?
   addressLine1             String?
   addressLine2             String?
@@ -4571,6 +4574,9 @@ model Task {
   /// Fractional sort key for drag-ordering within a status column. New cards
   /// get (max+1); a card dropped between two others gets the midpoint.
   orderKey           Float        @default(0)
+  /// The client's own board column this task sits in, if any. Only honoured while that column
+  /// still exists and belongs to the task's status — otherwise it shows in its status column.
+  boardColumnId      String?
   dueDate            DateTime?
   /// Stamped the first time the task enters DOING; drives "started" displays.
   startedAt          DateTime?

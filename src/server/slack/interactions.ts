@@ -12,6 +12,7 @@
  * Slack are authoritative — we never trust a raw taskId from the client.
  */
 
+import { columnNameFor, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { prisma } from "@/lib/prisma";
 import { getSlackBotToken, openView, updateMessage, deleteMessage } from "./client";
 import {
@@ -124,9 +125,10 @@ async function refreshStandupCard(opts: {
           title: true,
           description: true,
           status: true,
+          boardColumnId: true,
           dueDate: true,
           featureBlock: { select: { name: true } },
-          client: { select: { slug: true, name: true } },
+          client: { select: { slug: true, name: true, taskBoardColumns: true } },
         },
       },
     },
@@ -145,6 +147,10 @@ async function refreshStandupCard(opts: {
         clientName: r.task.client.name,
         clientSlug: r.task.client.slug,
         blockName: r.task.featureBlock?.name ?? null,
+        columnName: columnNameFor(
+          { status: r.task.status === "UI_DONE" ? "IN_REVIEW" : r.task.status, boardColumnId: r.task.boardColumnId },
+          parseBoardColumns(r.task.client.taskBoardColumns),
+        ),
         dueDate: r.task.dueDate ? r.task.dueDate.toISOString().slice(0, 10) : null,
         status: r.task.status,
         description: r.task.description,

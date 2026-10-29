@@ -13,6 +13,7 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
 import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA_SCORE, RECORDED_CADENZA_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-cadenza";
 import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
@@ -155,6 +156,7 @@ function mkTask(
     description: partial.description ?? null,
     acceptanceCriteria: null,
     status: partial.status,
+    boardColumnId: null,
     priority: partial.priority ?? "MEDIUM",
     label: null,
     orderKey: (orderSeq += 100),
@@ -3941,6 +3943,8 @@ function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
   }));
 }
 
+let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -4199,6 +4203,13 @@ export function resolveDemoApi(
 
   // Tasks — feature blocks + milestones (per-client tasks page).
   if (pathname === "/api/feature-blocks") return demoFeatureBlocks;
+  if (pathname === "/api/board-columns") {
+    // Writes land in the fixture, so a column added in the demo survives the refetch.
+    if (init?.method === "PUT" && typeof init.body === "string") {
+      demoBoardColumns = parseBoardColumns((JSON.parse(init.body) as { columns?: unknown }).columns);
+    }
+    return demoBoardColumns;
+  }
   if (pathname === "/api/milestones") return demoMilestones;
   // Push-to-Slack composer prefs (so the modal renders with sensible defaults).
   if (pathname === "/api/tasks/push-prefs")

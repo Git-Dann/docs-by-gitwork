@@ -1,4 +1,5 @@
 import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, SavedCostingConfig } from "@/types/costing";
+import type { BoardColumnDef } from "@/lib/tasks/board-columns";
 import type { ReportTask } from "@/lib/standup-report";
 import type { WikiLinkDTO } from "@/server/wiki-links";
 import type {
@@ -3124,7 +3125,7 @@ export function deleteTaskAttachment(taskId: string, attachmentId: string): Prom
 
 export function moveTask(
   id: string,
-  input: { status: TaskStatus; orderKey: number },
+  input: { status: TaskStatus; orderKey: number; boardColumnId?: string | null },
 ): Promise<TaskDTO> {
   return apiFetch(`/api/tasks/${id}/move`, {
     method: "POST",
@@ -3381,6 +3382,18 @@ export function updateRolePermissions(matrix: RoleMatrix): Promise<{ matrix: Rol
 }
 
 // ─── Feature blocks ("lists") + timeline share ─────────────────────────────
+
+export function getBoardColumns(clientId: string): Promise<BoardColumnDef[]> {
+  return apiFetch(`/api/board-columns?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function saveBoardColumns(clientId: string, columns: BoardColumnDef[]): Promise<BoardColumnDef[]> {
+  return apiFetch(`/api/board-columns?clientId=${encodeURIComponent(clientId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ columns }),
+  });
+}
 
 export function listFeatureBlocks(clientId: string): Promise<FeatureBlockDTO[]> {
   return apiFetch(`/api/feature-blocks?clientId=${encodeURIComponent(clientId)}`);
