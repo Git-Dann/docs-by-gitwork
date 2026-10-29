@@ -19,6 +19,7 @@ its row below.
 | Component | Upstream file | Foundry file |
 |---|---|---|
 | Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
+| Undo Toast | `src/components/ui/UndoToast.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/undo-toast.tsx` |
 | Funnel Chart | `src/components/ui/FunnelChart.tsx` | `src/components/ui/easyui/funnel-chart.tsx` |
 | Activity Heatmap | `src/components/ui/ActivityHeatmap.tsx` | `src/components/ui/easyui/activity-heatmap.tsx` |
 | Chart primitives | `src/lib/chart-primitives.tsx` (the parts the charts use) + `pctText` from `src/lib/dashboard-chart-utils.ts` | `src/components/ui/easyui/chart-primitives.tsx` |
@@ -27,6 +28,9 @@ its row below.
 place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
 only), accessibility where it was missing, and `prefers-reduced-motion` support. Layout, shapes and
 motion are upstream's. The header comment in each Foundry file lists that file's own changes.
+
+**Undo Toast.** The countdown's pause maths is corrected, "Restored" shows only once an async undo
+succeeds, and a `stacked` mode lets `ToastProvider` (`src/components/ui/toast.tsx`) stack it.
 
 **Charts.** Number and date formatting is en-GB. The funnel shows "+N%" when a stage is *larger*
 than the one before (upstream prints "−N%" either way), omits "Biggest drop" when nothing dropped,

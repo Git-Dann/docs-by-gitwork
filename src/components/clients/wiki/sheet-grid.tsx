@@ -54,6 +54,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { MONO } from "@/components/analytics/analytics-widgets";
 import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
 import {
   addWikiSheetColumnsApi,
   addWikiSheetRowsApi,
@@ -839,6 +840,7 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
   const [blockId, setBlockId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const { undo: undoToast } = useToast();
   // A failed batch action is shown IN the floating bar, where the button was pressed. Shown
   // only above the grid, it was out of sight and the click read as "nothing happened".
   const [batchError, setBatchError] = useState<string | null>(null);
@@ -1427,7 +1429,14 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
         setNotice(`${n} ${action === "delete" ? "removed" : "restored"}.${record && internal ? " ⌘Z to undo." : ""}`);
         // Only the team can restore, so only the team's removals can be undone.
         if (record && internal) {
-          remember({ kind: "rows", label: `${action === "delete" ? "removing" : "restoring"} ${n}`, action, rowIds: ids });
+          const edit: SheetEdit = { kind: "rows", label: `${action === "delete" ? "removing" : "restoring"} ${n}`, action, rowIds: ids };
+          remember(edit);
+          // The team's Remove has no confirm: rows are soft-deleted, and this toast is the way back.
+          if (action === "delete") {
+            undoToast(`${n[0].toUpperCase()}${n.slice(1)} removed`, () => undoRowRemoval(edit), {
+              description: sheet.title,
+            });
+          }
         }
       }
       setSelected(new Set());
@@ -1439,6 +1448,26 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
     } finally {
       setBusy(false);
     }
+  };
+
+  const bulkRef = useRef(bulk);
+  useEffect(() => {
+    bulkRef.current = bulk;
+  });
+  /**
+   * The undo toast's inverse for a team removal: restore the rows that are still removed,
+   * then drop that step from the ⌘Z history so a later ⌘Z doesn't restore them a second time.
+   * Restore is the existing soft-delete inverse (`setSheetRowsDeleted(…, false)`) through the
+   * ordinary route, so the server's row limit still applies.
+   */
+  const undoRowRemoval = async (edit: SheetEdit) => {
+    if (edit.kind !== "rows") return;
+    const ids = edit.rowIds.filter((id) => rowsRef.current.find((r) => r.id === id)?.deletedAt);
+    if (ids.length > 0 && !(await bulkRef.current("restore", ids, false))) {
+      throw new Error("The rows couldn't be restored. Show removed rows to bring them back.");
+    }
+    const h = historyRef.current;
+    setHistory({ past: h.past.filter((e) => e !== edit), future: h.future.filter((e) => e !== edit) });
   };
 
   const copyTsv = async () => {
@@ -1844,7 +1873,9 @@ export function SheetGrid({ sheet, target, mode, people, featureBlocks, onRefres
                   className="app-button app-button-secondary app-button-xs"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(`Remove ${deletable.length} row${deletable.length === 1 ? "" : "s"}?${internal ? " You can restore them." : ""}`)) {
+                    // The team gets an Undo toast instead of a confirm: rows are soft-deleted and
+                    // the team can restore them. A client cannot restore, so they still confirm.
+                    if (internal || window.confirm(`Remove ${deletable.length} row${deletable.length === 1 ? "" : "s"}?`)) {
                       void bulk("delete", deletable.map((r) => r.id));
                     }
                   }}
