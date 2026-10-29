@@ -92,7 +92,7 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet|login|portal\\/login)(?:\\/|$)/.test(p),fdark=/^\\/edge(?:\\/|$)/.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var dark=fdark||(!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)));document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
+            __html: `(function(){try{var p=location.pathname,force=/^\\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet|login|portal\\/login)(?:\\/|$)/.test(p),fdark=/^\\/edge(?:\\/|$)/.test(p);var m=localStorage.getItem('gitwork.theme.v1')||'system';var hw=null;try{hw=localStorage.getItem('foundry.halloween.v1');}catch(e){}var dt=new Date(),mo=dt.getMonth(),dd=dt.getDate();var hal=/^\\/(app|demo)(?:\\/|$)/.test(p)&&(hw==='on'||(hw!=='off'&&((mo===9&&dd>=20)||(mo===10&&dd<=2))));var dark=fdark||hal||(!force&&(m==='dark'||(m==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches)));document.documentElement.setAttribute('data-theme',dark?'dark':'light');if(hal)document.documentElement.setAttribute('data-halloween','');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
           }}
         />
         {/*

@@ -172,6 +172,59 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
+/* ── Halloween (seasonal) ──────────────────────────────────────────────────
+   Toggled by the pumpkin (src/components/seasonal/halloween.tsx) and always paired with
+   data-theme="dark", so every dark remap below still applies. Midnight indigo surfaces,
+   pumpkin orange in place of Gitwork Blue. Primary buttons keep dark mode's dark-text-on-
+   light-fill rule, which on #FB8B3C is ~8:1. */
+[data-theme="dark"][data-halloween] {
+  --surface-canvas: #0A0918;
+  --surface-0: #131129;
+  --surface-1: #1B1836;
+  --surface-2: #252146;
+  --surface-brand: #2B1A14;
+  --surface-brand-soft: #1D1533;
+  --surface-brand-strong: #3B2416;
+
+  --text-1: #F4F2FF;
+  --text-2: #E2DFF5;
+  --text-3: #B8B3D8;
+  --text-4: #9893BE;
+
+  --border-1: rgba(196, 181, 253, 0.22);
+  --border-2: rgba(196, 181, 253, 0.13);
+  --border-3: rgba(196, 181, 253, 0.08);
+
+  --brand-50: #24140A;
+  --brand-100: #33190A;
+  --brand-200: #452209;
+  --brand-300: #9A4A12;
+  --brand-400: #F97316;
+  --brand-500: #FB8B3C;
+  --brand-600: #FB923C;
+  --brand-700: #FDA65E;
+  --brand-800: #FDC08E;
+  --brand-900: #FED7B5;
+  --brand-focus-ring: rgba(251, 139, 60, 0.42);
+  --brand-gradient: linear-gradient(135deg, #FDBA74 0%, #F97316 50%, #C2410C 100%);
+}
+
+/* Hardcoded blue utilities follow the brand while it's orange. */
+[data-theme="dark"][data-halloween] .bg-blue-600,
+[data-theme="dark"][data-halloween] .bg-blue-700 {
+  background-color: var(--brand-500) !important;
+  color: #0B0B0C !important;
+}
+/* White text on the brand fill (badges, avatars) would be ~2.4:1 on orange. */
+[data-theme="dark"][data-halloween] .bg-\[var\(--brand-600\)\].text-white,
+[data-theme="dark"][data-halloween] .bg-\[var\(--brand-700\)\].text-white {
+  color: #0B0B0C !important;
+}
+[data-theme="dark"][data-halloween] .text-blue-600,
+[data-theme="dark"][data-halloween] .text-blue-700 {
+  color: var(--brand-700) !important;
+}
+
 /* Dark-mode remap of hardcoded light literals.
  *
  * Many cards/inputs/buttons across the app hardcode `bg-white` (a Tailwind
@@ -1959,3 +2012,47 @@ h2, h3, h4, h5 {
 .color-input-fill::-webkit-color-swatch-wrapper { padding: 0; }
 .color-input-fill::-webkit-color-swatch { border: none; border-radius: 6px; }
 .color-input-fill::-moz-color-swatch { border: none; border-radius: 6px; }
+
+/* ── Halloween scene (src/components/seasonal/halloween.tsx) ── */
+/* The page background behind the scene goes see-through, so the scene shows in the gaps between
+   cards and never on top of them. Cards, inputs and buttons keep their own surfaces. */
+[data-halloween] .halloween-clear {
+  background: transparent !important;
+}
+
+.halloween-fog {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 30vh;
+  min-height: 200px;
+  /* In front of the content: a veil, not a wall — text under it has to stay readable. */
+  opacity: 0.42;
+  mix-blend-mode: screen;
+  -webkit-mask-image: linear-gradient(to top, #000 10%, rgba(0, 0, 0, 0.45) 45%, transparent);
+  mask-image: linear-gradient(to top, #000 10%, rgba(0, 0, 0, 0.45) 45%, transparent);
+}
+
+.halloween-drift {
+  animation: halloween-drift linear infinite;
+  will-change: transform;
+}
+@keyframes halloween-drift {
+  from { transform: translateX(-12vw); }
+  to { transform: translateX(112vw); }
+}
+.halloween-bob { animation: halloween-bob 4.5s ease-in-out infinite; }
+@keyframes halloween-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+/* Wings beat sideways (a horizontal squeeze), never a vertical pulse. */
+.halloween-flap { animation: halloween-flap 0.35s ease-in-out infinite; }
+@keyframes halloween-flap {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.6); }
+}
+.halloween-glow { filter: drop-shadow(0 0 10px rgba(214, 208, 255, 0.55)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .halloween-drift { display: none; }
+}

@@ -31,6 +31,11 @@ const ALLOWED: Record<string, string> = {
   // system→stored flash that script exists to prevent.
   "src/components/providers/theme-provider.tsx → readStoredMode":
     "context-only; the anti-flash script in layout.tsx owns the first paint",
+  // Same shape as readStoredMode: it decides `data-halloween` (set by the anti-flash script
+  // before paint) and goes into context. Everything that renders from it waits for mount
+  // (useHalloweenShown in seasonal/halloween.tsx).
+  "src/components/providers/theme-provider.tsx → readHalloween":
+    "context-only; renderers wait for mount and the anti-flash script owns the first paint",
   // `<Modal open={open}>` returns null while closed and this modal is always
   // mounted closed (team-card.tsx), so the server emits no markup for it. The
   // stored channel is only ever read into a field the user opens after
