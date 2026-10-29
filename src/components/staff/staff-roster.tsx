@@ -48,7 +48,7 @@ function formatStart(date: string | null): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-function DetailsDialog({
+export function DetailsDialog({
   person,
   people,
   onClose,
@@ -57,6 +57,8 @@ function DetailsDialog({
   people: StaffPerson[];
   onClose: () => void;
 }) {
+  const [preferredName, setPreferredName] = useState(person.preferredName ?? "");
+  const [pronouns, setPronouns] = useState(person.pronouns ?? "");
   const [jobTitle, setJobTitle] = useState(person.jobTitle ?? "");
   const [department, setDepartment] = useState(person.department ?? "");
   const [employmentType, setEmploymentType] = useState<EmploymentType | "">(person.employmentType ?? "");
@@ -73,6 +75,8 @@ function DetailsDialog({
   const save = async () => {
     setError(null);
     const details = {
+      preferredName: preferredName || null,
+      pronouns: pronouns || null,
       jobTitle: jobTitle || null,
       department: department || null,
       employmentType: employmentType || null,
@@ -98,6 +102,14 @@ function DetailsDialog({
           </p>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
+          <label className={field}>
+            Preferred name
+            <input className="app-input mt-1 w-full" value={preferredName} maxLength={80} placeholder={person.name} onChange={(e) => setPreferredName(e.target.value)} />
+          </label>
+          <label className={field}>
+            Pronouns
+            <input className="app-input mt-1 w-full" value={pronouns} maxLength={30} placeholder="e.g. she/her" onChange={(e) => setPronouns(e.target.value)} />
+          </label>
           <label className={field}>
             Job title
             <input className="app-input mt-1 w-full" value={jobTitle} maxLength={80} onChange={(e) => setJobTitle(e.target.value)} />
@@ -229,6 +241,24 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
 /** People per page: one screen on a laptop, so the list never becomes a scroll. */
 const PAGE_SIZE = 20;
 
+/** The person's name, linking to their profile when they have a Staff record. */
+function PersonName({ person, basePath }: { person: StaffPerson; basePath: string }) {
+  if (!person.recordId) {
+    return (
+      <p className="truncate font-medium text-[var(--text-1)]" title={person.name}>
+        {person.name}
+      </p>
+    );
+  }
+  return (
+    <p className="truncate font-medium" title={person.name}>
+      <Link href={`${basePath}/${person.recordId}`} className="text-[var(--text-1)] hover:text-[var(--brand-600)] hover:underline">
+        {person.name}
+      </Link>
+    </p>
+  );
+}
+
 function roleLine(p: StaffPerson): string {
   return `${p.role ? ROLE_LABEL[p.role] ?? p.role : "No login"}${p.email ? ` · ${p.email}` : ""}`;
 }
@@ -255,8 +285,8 @@ function RowActions({
   return (
     <div className="flex shrink-0 justify-end gap-1.5">
       {person.isDeveloper && person.recordId && showDevProfile ? (
-        <Link href={`/app/codeclear/candidates/${person.recordId}`} className="app-button app-button-tertiary app-button-xs">
-          Profile
+        <Link href={`/app/codeclear/candidates/${person.recordId}`} className="app-button app-button-tertiary app-button-xs" title="Scores, GitHub analysis and CV">
+          Dev profile
         </Link>
       ) : null}
       {canEdit ? (
@@ -268,7 +298,8 @@ function RowActions({
   );
 }
 
-export function StaffRoster() {
+/** `basePath`: where profiles live. The demo passes /demo/staff, since /app is behind sign-in. */
+export function StaffRoster({ basePath = "/app/staff" }: { basePath?: string } = {}) {
   const roster = useStaffRoster();
   const { canManageCode, hasModule } = usePermissions();
   const [filter, setFilterState] = useState<StaffFilter>({});
@@ -389,7 +420,7 @@ export function StaffRoster() {
                 <li key={p.key} className="flex items-start gap-3 py-3">
                   <PersonAvatar person={p} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>{p.name}</p>
+                    <PersonName person={p} basePath={basePath} />
                     <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={roleLine(p)}>{roleLine(p)}</p>
                     <p className="mt-1 text-[13px] text-[var(--text-2)]">
                       {[jobTitleOf(p), clientsOf(p)].filter(Boolean).join(" · ") || "No details yet"}
@@ -430,7 +461,7 @@ export function StaffRoster() {
                           <div className="flex min-w-0 items-center gap-3">
                             <PersonAvatar person={p} />
                             <div className="min-w-0">
-                              <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>{p.name}</p>
+                              <PersonName person={p} basePath={basePath} />
                               <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={roleLine(p)}>
                                 {roleLine(p)}
                               </p>

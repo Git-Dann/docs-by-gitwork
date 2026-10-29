@@ -8,11 +8,12 @@
  * share the same rules.
  */
 
-export const EMPLOYMENT_TYPES = ["EMPLOYEE", "CONTRACTOR", "FREELANCER"] as const;
+export const EMPLOYMENT_TYPES = ["EMPLOYEE", "DIRECTOR", "CONTRACTOR", "FREELANCER"] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
 export const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
   EMPLOYEE: "Employee",
+  DIRECTOR: "Director",
   CONTRACTOR: "Contractor",
   FREELANCER: "Freelancer",
 };
@@ -33,6 +34,8 @@ export interface StaffPerson {
   memberId: string | null;
   recordId: string | null;
   name: string;
+  preferredName: string | null;
+  pronouns: string | null;
   email: string | null;
   avatarUrl: string | null;
   /** Their role in Foundry, or null when they have a record but no account. */
@@ -56,6 +59,8 @@ export interface StaffRoster {
 
 /** Editable Staff details (PATCH /api/staff/[recordId]). */
 export interface StaffDetailsUpdate {
+  preferredName?: string | null;
+  pronouns?: string | null;
   jobTitle?: string | null;
   department?: string | null;
   employmentType?: EmploymentType | null;
@@ -117,6 +122,8 @@ export function normaliseStaffDetails(input: StaffDetailsUpdate): { ok: true; va
     return t;
   };
   for (const [key, max, label] of [
+    ["preferredName", 80, "Preferred name"],
+    ["pronouns", 30, "Pronouns"],
     ["jobTitle", 80, "Job title"],
     ["department", 60, "Department"],
   ] as const) {
@@ -128,7 +135,7 @@ export function normaliseStaffDetails(input: StaffDetailsUpdate): { ok: true; va
   }
   if (input.employmentType !== undefined) {
     if (input.employmentType !== null && !isEmploymentType(input.employmentType)) {
-      return { ok: false, error: "Employment type must be Employee, Contractor or Freelancer" };
+      return { ok: false, error: "Employment type must be Employee, Director, Contractor or Freelancer" };
     }
     out.employmentType = input.employmentType;
   }

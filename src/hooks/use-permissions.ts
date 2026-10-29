@@ -49,6 +49,9 @@ export function usePermissions() {
     /** Triage Pulse findings (send to board, accept risk, dismiss). Mirrors server canManagePulse. */
     canManagePulse: can("pulse.manage"),
     canManageCode: can("code.manage"),
+    // HR (docs/hr-platform.md): per-person grants, never role defaults.
+    canManageHr: can("hr.manage"),
+    canViewHrSensitive: can("hr.viewSensitive"),
     // DevSignal vetting pipeline — admin-only feature perm (default-off).
     canManageDevSignal: can("devsignal"),
     // Editing scoring weights + calibration is Super Admin only.

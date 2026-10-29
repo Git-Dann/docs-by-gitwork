@@ -93,6 +93,8 @@ const RECORD_SELECT = {
   startDate: true,
   managerId: true,
   memberId: true,
+  preferredName: true,
+  pronouns: true,
   placements: {
     where: { endDate: null },
     select: { clientName: true, client: { select: { name: true, slug: true } } },
@@ -105,6 +107,8 @@ function recordFields(r: RecordRow | null | undefined) {
   if (!r) {
     return {
       recordId: null,
+      preferredName: null,
+      pronouns: null,
       jobTitle: null,
       department: null,
       employmentType: null,
@@ -117,6 +121,8 @@ function recordFields(r: RecordRow | null | undefined) {
   }
   return {
     recordId: r.id,
+    preferredName: r.preferredName,
+    pronouns: r.pronouns,
     jobTitle: r.jobTitle,
     department: r.department,
     employmentType: isEmploymentType(r.employmentType) ? r.employmentType : null,
@@ -237,6 +243,8 @@ export async function createStaffRecord(
       githubHandle: null,
       primaryStack: "",
       origin: "INTERNAL",
+      preferredName: details.value.preferredName ?? null,
+      pronouns: details.value.pronouns ?? null,
       jobTitle: details.value.jobTitle ?? null,
       department: details.value.department ?? null,
       employmentType: details.value.employmentType ?? null,
@@ -265,6 +273,8 @@ export async function updateStaffDetails(workspaceId: string, recordId: string, 
   await prisma.candidate.update({
     where: { id: recordId },
     data: {
+      ...(v.preferredName !== undefined ? { preferredName: v.preferredName } : {}),
+      ...(v.pronouns !== undefined ? { pronouns: v.pronouns } : {}),
       ...(v.jobTitle !== undefined ? { jobTitle: v.jobTitle } : {}),
       ...(v.department !== undefined ? { department: v.department } : {}),
       ...(v.employmentType !== undefined ? { employmentType: v.employmentType } : {}),

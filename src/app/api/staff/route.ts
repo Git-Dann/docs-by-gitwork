@@ -28,6 +28,8 @@ const createSchema = z
     memberId: z.string().min(1).max(64).optional(),
     name: z.string().max(200).optional(),
     email: z.string().email().max(200).nullable().optional(),
+    preferredName: z.string().max(200).nullable().optional(),
+    pronouns: z.string().max(100).nullable().optional(),
     jobTitle: z.string().max(200).nullable().optional(),
     department: z.string().max(200).nullable().optional(),
     employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),

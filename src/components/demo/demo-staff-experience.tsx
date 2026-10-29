@@ -12,7 +12,7 @@ import { StaffRoster } from "@/components/staff/staff-roster";
 export function DemoStaffExperience() {
   return (
     <DemoShell active="Staff" title="Staff" subtitle="Everyone on the team: roles, departments and the clients they're on.">
-      <StaffRoster />
+      <StaffRoster basePath="/demo/staff" />
     </DemoShell>
   );
 }

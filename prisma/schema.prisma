@@ -441,6 +441,7 @@ model Workspace {
   rateCardPeople              RateCardPerson[]
   proofDocuments              ProofDocument[]
   candidates                  Candidate[]
+  suppliers                   Supplier[]
   pulseScans                  PulseScan[]
   pulseMonitors               PulseMonitor[]
   supportClients              SupportClient[]
@@ -2531,12 +2532,24 @@ model Candidate {
   /// Staff details (src/server/staff.ts). All optional; none is required of a developer.
   jobTitle             String?
   department           String?
-  /// EMPLOYEE | CONTRACTOR | FREELANCER (validated in src/lib/staff.ts).
+  /// EMPLOYEE | DIRECTOR | CONTRACTOR | FREELANCER (validated in src/lib/staff.ts).
   employmentType       String?
   startDate            DateTime?
   /// Another Staff record in the same workspace. A loose id, like the other cross-record
   /// links here, so deleting a manager's record can never cascade.
   managerId            String?
+  /// HR employment details (docs/hr-platform.md). Edited by `hr.manage` only.
+  /// The partner company that supplies this person (Supplier.id, loose like managerId).
+  supplierId           String?
+  /// Preferred name and pronouns: directory fields, shown to everyone.
+  preferredName        String?
+  pronouns             String?
+  /// Contract end (fixed term) or leaving date. Day precision.
+  endDate              DateTime?
+  probationEndsOn      DateTime?
+  noticePeriodWeeks    Int?
+  /// Days worked per week (0.5 to 7): drives pro-rata leave in a later phase.
+  daysPerWeek          Float?
   primaryStack         String
   techStacks           String[]               @default([])
   signalSources        String[]               @default([])
@@ -5819,4 +5832,60 @@ model GithubResponseCache {
   lastUsedAt   DateTime @default(now())
 
   @@index([lastUsedAt])
+}
+
+/// A company that supplies people to the workspace (docs/hr-platform.md). Gitwork's
+/// developers all come through one partner today; each developer under it keeps their
+/// own Staff record, which points here by Candidate.supplierId.
+model Supplier {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  name              String
+  companyNumber     String?
+  vatNumber         String?
+  country           String?
+  contactName       String?
+  contactEmail      String?
+  agreementRenewsOn DateTime?
+  notes             String?
+  /// Archived rather than deleted: people's records still point at it.
+  archivedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, archivedAt])
+}
+
+/// The sensitive tier of a Staff record: date of birth, home address, NI number, ID,
+/// right to work and emergency contacts. One encrypted JSON envelope (src/lib/encryption.ts),
+/// never stored or logged in plain text. Only the person and `hr.viewSensitive` read it,
+/// and every read by someone else is written to HrAccessLog. recordId is Candidate.id,
+/// loose like the other links on that model.
+model StaffSensitive {
+  id          String   @id @default(cuid())
+  workspaceId String
+  recordId    String   @unique
+  payload     String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+/// Who looked at or changed someone's HR record, and when. Written by src/server/hr/;
+/// read by `hr.manage` on the profile. Never holds the values themselves, only what kind
+/// of thing happened (see HR_ACCESS_ACTIONS in src/lib/hr.ts).
+model HrAccessLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  recordId    String
+  actorUserId String?
+  actorName   String?
+  action      String
+  detail      String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, recordId, createdAt])
 }

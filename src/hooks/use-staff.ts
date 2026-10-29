@@ -32,6 +32,11 @@ export function useUpdateStaffDetails() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(update),
       }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: STAFF_KEY }),
+    onSuccess: (_data, { recordId }) => {
+      void qc.invalidateQueries({ queryKey: STAFF_KEY });
+      // The profile page too. Not the whole ["staff"] tree: refetching personal details
+      // would be a second, logged look nobody asked for.
+      void qc.invalidateQueries({ queryKey: ["staff", "profile", recordId] });
+    },
   });
 }

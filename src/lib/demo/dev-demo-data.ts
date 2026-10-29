@@ -75,7 +75,9 @@ export const demoSession = {
     // column, no bulk bar, no channels/settings screen and no triage controls — a
     // deliberately crippled view of the product. Mutations are no-ops here anyway,
     // since the interceptor answers every /api/* call with canned data.
-    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage"],
+    // `hr.manage` + `hr.viewSensitive` so /demo/staff shows the HR cards (employment,
+    // personal details, the access log, Suppliers) the way HR sees them.
+    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage", "hr.manage", "hr.viewSensitive"],
   },
   expires: "2099-01-01T00:00:00.000Z",
 };
