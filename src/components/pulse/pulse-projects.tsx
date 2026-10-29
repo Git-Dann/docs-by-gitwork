@@ -20,6 +20,7 @@ import {
   type SortDir,
 } from "@/lib/pulse-projects";
 import { Pager } from "@/components/ui/pager";
+import { SortHeader } from "@/components/ui/sort-header";
 import { ScanDiffBody, ScoreChange } from "./pulse-scan-diff";
 import { buttonStyles } from "@/components/ui/button";
 
@@ -93,22 +94,8 @@ function Stat({ label, value, note, tone, onClick, pressed }: { label: string; v
 /** Projects per page: enough to scan in one screen, few enough that the newest are never buried. */
 const PAGE_SIZE = 20;
 
-/** A column header that sorts. One column at a time; clicking it again reverses it. Shared with All scans. */
-export function SortHeader<K extends string>({ label, k, sort, onSort, align = "left", title }: { label: string; k: K; sort: { key: K; dir: SortDir }; onSort: (k: K) => void; align?: "left" | "right"; title?: string }) {
-  const active = sort.key === k;
-  return (
-    <th className={align === "right" ? "text-right" : "text-left"} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"} title={title}>
-      <button
-        type="button"
-        onClick={() => onSort(k)}
-        className={cn("inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-[var(--text-1)]", align === "right" && "flex-row-reverse", active ? "text-[var(--text-1)]" : "")}
-      >
-        {label}
-        <span aria-hidden className={cn("text-[9px]", active ? "opacity-100" : "opacity-0")}>{sort.dir === "asc" ? "▲" : "▼"}</span>
-      </button>
-    </th>
-  );
-}
+/** Moved to components/ui so Staff and Platform can use it without importing Pulse. */
+export { SortHeader };
 
 /** What a project needs, in plain words: the most important reason, and how many more. */
 function Needs({ project }: { project: PulseProject }) {

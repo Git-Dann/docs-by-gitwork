@@ -8,6 +8,8 @@ export interface PlatformWorkspace {
   name: string;
   slug: string;
   createdAt: string;
+  /** When its settings last changed. Sent back with a save so a stale draft is refused. */
+  updatedAt: string;
   /** Gitwork's own workspace — the one the platform runs as. Changes to it need confirming. */
   isHome: boolean;
   activeMembers: number;
@@ -32,4 +34,22 @@ export interface PlatformWorkspaceUpdate {
   platformAiKeysAllowed?: boolean;
   /** Required to change Gitwork's own workspace, which every Gitwork user works in. */
   confirmHome?: boolean;
+  /** The business's updatedAt when the draft was opened. A newer one means someone else saved. */
+  expectedUpdatedAt?: string;
+}
+
+/** One page of businesses, and how many match in total. */
+export interface PlatformWorkspacePage {
+  workspaces: PlatformWorkspace[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** One page of platform activity. */
+export interface PlatformAuditPage {
+  entries: PlatformAuditItem[];
+  total: number;
+  page: number;
+  pageSize: number;
 }

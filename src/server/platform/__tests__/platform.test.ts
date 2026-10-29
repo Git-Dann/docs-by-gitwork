@@ -48,7 +48,7 @@ describe("planWorkspaceUpdate", () => {
   it("refuses to change Gitwork's own workspace without confirmation", () => {
     expect(() => planWorkspaceUpdate(home, { modulesRestricted: true })).toThrow(/Gitwork's own workspace/);
     expect(() => planWorkspaceUpdate(home, { platformAiKeysAllowed: false })).toThrow(PlatformInputError);
-    expect(planWorkspaceUpdate(home, { modulesRestricted: true, confirmHome: true }).changed).toBe(true);
+    expect(planWorkspaceUpdate(home, { modulesRestricted: true, enabledModules: ["clients"], confirmHome: true }).changed).toBe(true);
     // Saving Gitwork with nothing changed needs no confirmation.
     expect(planWorkspaceUpdate(home, {}).changed).toBe(false);
   });

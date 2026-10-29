@@ -8607,6 +8607,27 @@ across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a writ
 **Not verified:** any of this against production data, the console in dark mode (the demo shell
 ignores the theme switch), and the iOS app (its repo isn't in this session yet).
 
+### 85.6 The console is built for many businesses (Oct 2026)
+
+- **The list is paged in the database.** `GET /api/platform/workspaces?q=&page=&pageSize=&sort=&dir=&modules=&ai=`
+  returns `{ workspaces, total, page, pageSize }`: 20 a page (max 50), newest first, search on name
+  and slug, filters for modules (every / chosen) and AI keys (Gitwork's / own). The page is clamped
+  to the last one, so a narrowing filter never shows an empty page. A bad value is a 400 naming it
+  (`parsePlatformWorkspaceQuery`), never a silent default.
+- **Pure twins.** `applyPlatformQuery` (in `platform-rules.ts`) does the same search, filter, sort and
+  paging in memory for the demo and tests; `platformWorkspaceWhere` is the server's Prisma version.
+  Change one, change both.
+- **A business opens in the house two-column popup** (`.app-dialog-fixed`: Overview, Modules, AI keys,
+  Activity), kept in `?business=<id>` so a link opens it. `GET /api/platform/workspaces/[id]` serves it.
+  Closing with unsaved changes asks first.
+- **Validation in `planWorkspaceUpdate`:** "chosen modules" with none chosen is refused (it would lock
+  everyone out of everything but Settings), and a save carrying an older `expectedUpdatedAt` is a
+  **409**, so two people editing one business can't silently undo each other. The Gitwork check runs
+  first, then the empty-module check.
+- Activity (`GET /api/platform/audit?page=&workspaceId=`) is paged and filters to one business.
+- `/demo/platform` carries 45 businesses and runs the same rules, so paging, refusals and the 409
+  can be driven there.
+
 ## 87. Recent Changes (October 2026) — Code becomes Staff (Phase 1, web)
 
 The module is now **Staff** (sidebar: Staff, "People and availability"), a roster of everyone on
@@ -8648,4 +8669,11 @@ the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenan
   developer stats only). A non-developer placed on a client counts in Portal's dev count and cost,
   like any placement. Backstage's team directory and Settings → Team still have their own lists;
   folding them into Staff is still to do. Demo at `/demo/staff`.
+- **Placeholder accounts are hidden** (`seedAccountUserWhere` / `isSeedAccount`, the filter Team and
+  Backstage use), so the bootstrap "Foundry Owner" and seeded "admin" are not listed as people.
+- **The table never clips.** It is `table-fixed`, edge to edge in the card, in its own scroller;
+  Started shows from `lg`, Department from `xl`, Type from `2xl`, so Clients always keeps room. Below
+  `md` each person is a card. Sortable Person, Job title and Started (`sortStaffBy`: blanks last both
+  ways), 20 a page. Avatars use the shared `Avatar`, which falls back to initials when an image fails.
+  `SortHeader` now lives in `src/components/ui/sort-header.tsx`.
 

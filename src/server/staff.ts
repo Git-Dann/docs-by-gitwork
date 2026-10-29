@@ -12,6 +12,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { activeDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
+import { isSeedAccount, seedAccountUserWhere } from "@/server/seed-accounts";
 import {
   departmentsOf,
   isEmploymentType,
@@ -134,7 +135,9 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
   const archivedEmails = await archivedTeamEmails(workspaceId);
   const [members, records] = await Promise.all([
     prisma.workspaceMember.findMany({
-      where: { workspaceId, ...ACTIVE_MEMBER },
+      // Placeholder accounts (the bootstrap "Foundry Owner", the seeded "admin") are not
+      // people on the team. Same filter Team and Backstage use.
+      where: { workspaceId, ...ACTIVE_MEMBER, user: seedAccountUserWhere() },
       select: {
         id: true,
         role: true,
@@ -161,7 +164,7 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
   ]);
 
   const people: StaffPerson[] = [
-    ...members.map((m) => {
+    ...members.filter((m) => !isSeedAccount(m.user)).map((m) => {
       const r = m.staffRecords[0];
       return {
         key: `m:${m.id}`,
@@ -174,7 +177,7 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
         ...recordFields(r),
       };
     }),
-    ...records.map((r) => ({
+    ...records.filter((r) => !isSeedAccount(r)).map((r) => ({
       key: `r:${r.id}`,
       memberId: null,
       name: r.name,
