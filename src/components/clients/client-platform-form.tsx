@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { EyeIcon, EyeSlashIcon, ClipboardIcon, CheckIcon, LockClosedIcon, PlusIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { PreviewImagePicker } from "@/components/ui/preview-image-picker";
 import { usePlatformLoginActions } from "@/hooks/use-proposals";
@@ -826,12 +827,7 @@ export function ClientPlatformFormModal({
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">
                       Renews on
                     </span>
-                    <input
-                      value={form.renewsOn}
-                      onChange={(e) => set("renewsOn", e.target.value)}
-                      className="app-input"
-                      type="date"
-                    />
+                    <DatePicker value={form.renewsOn} onChange={(next) => set("renewsOn", next)} />
                   </label>
                 </div>
 

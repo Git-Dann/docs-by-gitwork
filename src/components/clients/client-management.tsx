@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import {
   useBulkDeleteClients,
@@ -1066,7 +1067,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
                 </label>
                 <label className="block">
                   <span className="app-field-label">Next follow-up</span>
-                  <input value={followUp} onChange={(e) => setFollowUp(e.target.value)} className="app-input" type="date" />
+                  <DatePicker value={followUp} onChange={setFollowUp} />
                 </label>
               </div>
 

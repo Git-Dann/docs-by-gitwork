@@ -7,6 +7,7 @@ import {
   useCreateExpense,
   useUploadReceipt,
 } from "@/hooks/use-backstage";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useBackstageAccess } from "@/components/backstage/access";
 import { BackstageModal } from "@/components/backstage/modal";
 import { Button } from "@/components/ui/button";
@@ -185,13 +186,7 @@ export function ExpenseForm({
 
           <label className="block">
             <span className="text-sm font-medium text-[var(--text-2)]">Date</span>
-            <input
-              type="date"
-              value={occurredOn}
-              onChange={(ev) => setOccurredOn(ev.target.value)}
-              required
-              className="app-input mt-1 block w-full"
-            />
+            <DatePicker value={occurredOn} onChange={setOccurredOn} required className="mt-1 w-full" />
           </label>
 
           <label className="block sm:col-span-2">

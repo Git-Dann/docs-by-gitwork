@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PlusIcon } from "@heroicons/react/24/outline";
+import { DateRangePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/format";
 import { useCreateHandover, useHandovers } from "@/hooks/use-handover";
 import { HandoverDetail } from "@/components/backstage/handover-detail";
@@ -93,17 +94,15 @@ export function HandoverTab() {
                   }
                 }}
               />
-              <input
-                className="app-input"
-                type="date"
-                value={startsOn}
-                onChange={(e) => setStartsOn(e.target.value)}
-              />
-              <input
-                className="app-input"
-                type="date"
-                value={endsOn}
-                onChange={(e) => setEndsOn(e.target.value)}
+              <DateRangePicker
+                aria-label="Away dates"
+                placeholder="Away dates"
+                className="sm:col-span-2"
+                value={{ start: startsOn, end: endsOn }}
+                onChange={({ start, end }) => {
+                  setStartsOn(start);
+                  setEndsOn(end);
+                }}
               />
             </div>
             <div className="mt-2 flex items-center gap-2">
