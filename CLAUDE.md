@@ -8945,3 +8945,28 @@ rules: **`docs/hr-platform.md`**). Staff is the record of every person; Backstag
 - `src/components/ui/segmented.tsx` is the in-card pick-one control (Active / Archived on Team and
   on People). `segmented-tabs.ts` stays the settings tab bar.
 - Demos: `/demo/staff/r2` (profile, seen as HR) and `/demo/staff/suppliers`.
+
+## 95. Recent Changes (October 2026) — Roles and permissions, tidied
+
+Settings → People & access read as a list of every permission ever added. Now:
+
+- **Eight permission groups, in sidebar order** (Pulse, Staff, Docs, Portal, Care, Backstage,
+  Platform, Settings) instead of 14. Provenance and Study sit under Pulse, HR and Hiring under
+  Staff, the daily roll-up under Portal, AI, MCP and Studio under Platform. Every label says what
+  the person gets in a few words, and every description is one sentence.
+- ⚠️ **Ids are unchanged.** They are stored in every role matrix and override. Change a label,
+  never an id.
+- **Two permissions retired:** `settings.branding` and `settings.content` controlled nothing (both
+  pages redirect to Document defaults). Removing them from the catalog drops them from stored
+  matrices on the next read (`normalizeMatrix` filters unknown ids).
+- **No more Module / Field / Feature / Action tags.** That was our vocabulary, not the reader's.
+  Only "High risk" remains. One `PermissionLabel` (`src/components/settings/permission-label.tsx`)
+  is shared by the matrix and a member's access editor.
+- **The matrix showed five role headers over four columns**, so Guest wrapped onto its own row with
+  nothing under it. Guests get nothing by role by design, so the matrix shows Super Admin (locked),
+  Admin, Staff and Developer, and says Guests are granted per person.
+- **People & access:** Members first, then one **Add people** card (Invite link / Guest), then one
+  **Invites** card with used invites folded away, then Merge accounts. Numbered in order (two cards
+  were both "05").
+- Invite copy no longer names `@gitwork.co.uk`; the allowed domain becomes per workspace in Phase 3
+  of the multi-tenant roadmap.

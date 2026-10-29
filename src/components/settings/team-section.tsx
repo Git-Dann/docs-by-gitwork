@@ -18,6 +18,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { SettingsCard } from "@/components/settings/settings-card";
+import { Segmented } from "@/components/ui/segmented";
+import { PermissionLabel } from "@/components/settings/permission-label";
 import { UserManagementTable, type ManagedMember } from "@/components/settings/team/user-management-table";
 import { cn } from "@/lib/format";
 import { useClientList } from "@/hooks/use-proposals";
@@ -31,7 +33,6 @@ import {
   isAtLeast,
   isSuperAdmin,
   type ConfigurableRoleId,
-  type PermissionCategory,
   type PermissionPresetId,
   type RoleId,
   type RoleMatrix,
@@ -85,6 +86,8 @@ export function TeamSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
   const [accessMember, setAccessMember] = useState<Member | null>(null);
+  const [addMode, setAddMode] = useState<"invite" | "guest">("invite");
+  const [showPastInvites, setShowPastInvites] = useState(false);
 
   // Guest: name + email + password, because a guest has no Gitwork Google account and
   // therefore cannot use an invite link — the flow every other member uses.
@@ -205,11 +208,57 @@ export function TeamSection() {
     return na.localeCompare(nb);
   });
 
+  // Numbered in the order they appear; cards a viewer can't use are left out, not skipped.
+  let n = 0;
+  const next = () => String(++n).padStart(2, "0");
+
   return (
     <div className="proposal-form-theme space-y-6">
-      {/* Create invite */}
+      {/* Members: the reason anyone opens this page, so it comes first. */}
+      <SettingsCard
+        number={next()}
+        title="Members"
+        right={
+          <span className="text-xs text-[var(--text-4)]">
+            {members.filter((m) => m.status === "active").length} active
+          </span>
+        }
+        bodyClassName="p-0"
+      >
+        {loading ? (
+          <p className="px-6 py-5 text-sm text-[var(--text-3)]">Loading…</p>
+        ) : (
+          <UserManagementTable
+            members={sortedMembers}
+            actorRole={sessionRole}
+            actorUserId={sessionUserId}
+            avatar={(m) => <MemberAvatar user={m.user} size={32} />}
+            accessSummary={(m) => accessSummary(m.role, m.permissions)}
+            onEditAccess={(m) => setAccessMember(m)}
+            onChanged={load}
+          />
+        )}
+      </SettingsCard>
+
+      {/* Add people: an invite link for a work Google account, or a guest with a password. */}
       {isAdmin ? (
-        <SettingsCard number="01" title="Create invite">
+        <SettingsCard
+          number={next()}
+          title="Add people"
+          right={
+            <Segmented
+              label="Add"
+              value={addMode}
+              onChange={setAddMode}
+              options={[
+                { value: "invite", label: "Invite link" },
+                { value: "guest", label: "Guest" },
+              ]}
+            />
+          }
+        >
+          {addMode === "invite" ? (
+            <>
           <div className="flex flex-wrap gap-3">
             <input
               value={label}
@@ -227,15 +276,12 @@ export function TeamSection() {
             </button>
           </div>
           <p className="mt-2 text-xs text-[var(--text-4)]">
-            Anyone with the link can join using their @gitwork.co.uk Google account. They join as a
-            Developer — raise their role in Members below.
+            Anyone with the link can join with their work Google account. They join as a
+            Developer; change their role in Members.
           </p>
-        </SettingsCard>
-      ) : null}
-
-      {/* Guest — the only member who signs in with a password rather than Google. */}
-      {isAdmin ? (
-        <SettingsCard number="02" title="Add a guest">
+            </>
+          ) : (
+            <>
           <div className="flex flex-wrap gap-3">
             <input
               value={guestName}
@@ -271,7 +317,7 @@ export function TeamSection() {
           ) : guestAdded ? (
             <p className="mt-2 text-xs text-[var(--success-500)]">
               {guestAdded} can now sign in. They have <strong>no access to anything</strong> yet —
-              open <strong>Access</strong> on their row below to switch on the products they should
+              open <strong>Access</strong> on their row in Members to switch on the products they should
               see.
             </p>
           ) : (
@@ -281,12 +327,32 @@ export function TeamSection() {
               password yourself; Foundry never emails it.
             </p>
           )}
+            </>
+          )}
         </SettingsCard>
       ) : null}
 
-      {/* Pending invites */}
-      {pendingInvites.length > 0 ? (
-        <SettingsCard number="03" title="Pending invites">
+      {/* Invites: the open ones, with the used and revoked ones folded away. */}
+      {pendingInvites.length > 0 || pastInvites.length > 0 ? (
+        <SettingsCard
+          number={next()}
+          title="Invites"
+          bodyClassName="p-0"
+          right={
+            pastInvites.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowPastInvites((v) => !v)}
+                className="text-xs text-[var(--text-3)] hover:text-[var(--text-1)] hover:underline"
+              >
+                {showPastInvites ? "Hide used" : `Show used (${pastInvites.length})`}
+              </button>
+            ) : undefined
+          }
+        >
+          {pendingInvites.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-[var(--text-3)]">No open invites.</p>
+          ) : null}
           <div className="divide-y divide-[var(--border-2)]">
             {pendingInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
@@ -349,40 +415,8 @@ export function TeamSection() {
                 ) : null}
               </div>
             ))}
-          </div>
-        </SettingsCard>
-      ) : null}
-
-      {/* Members */}
-      <SettingsCard
-        number="04"
-        title="Members"
-        right={
-          <span className="text-xs text-[var(--text-4)]">
-            {members.filter((m) => m.status === "active").length} active
-          </span>
-        }
-        bodyClassName="p-0"
-      >
-        {loading ? (
-          <p className="px-6 py-5 text-sm text-[var(--text-3)]">Loading…</p>
-        ) : (
-          <UserManagementTable
-            members={sortedMembers}
-            actorRole={sessionRole}
-            actorUserId={sessionUserId}
-            avatar={(m) => <MemberAvatar user={m.user} size={32} />}
-            accessSummary={(m) => accessSummary(m.role, m.permissions)}
-            onEditAccess={(m) => setAccessMember(m)}
-            onChanged={load}
-          />
-        )}
-      </SettingsCard>
-
-      {/* Past invites */}
-      {pastInvites.length > 0 ? (
-        <SettingsCard number="05" title="Past invites">
-          <div className="divide-y divide-[var(--border-2)]">
+            {showPastInvites ? (
+              <>
             {pastInvites.map((inv) => (
               <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="min-w-0 flex-1">
@@ -415,6 +449,8 @@ export function TeamSection() {
                 ) : null}
               </div>
             ))}
+              </>
+            ) : null}
           </div>
         </SettingsCard>
       ) : null}
@@ -432,7 +468,7 @@ export function TeamSection() {
       ) : null}
 
       {/* Merge accounts — Super Admin only */}
-      {isSuperAdmin(sessionRole) ? <MergeAccountsCard onMerged={load} /> : null}
+      {isSuperAdmin(sessionRole) ? <MergeAccountsCard number={next()} onMerged={load} /> : null}
     </div>
   );
 }
@@ -443,21 +479,6 @@ export function TeamSection() {
 // matrix (fetched here) provides each role's defaults so we can show what's
 // inherited vs overridden and compute the override delta on save. Save → PATCH
 // /api/team/members/[id]; delete → DELETE.
-
-const CATEGORY_LABEL: Record<PermissionCategory, string> = {
-  module: "Module",
-  field: "Field",
-  feature: "Feature",
-  settings: "Settings",
-  action: "Action",
-};
-const CATEGORY_CHIP: Record<PermissionCategory, string> = {
-  module: "bg-[var(--brand-50)] text-[var(--brand-700)]",
-  field: "bg-amber-50 text-amber-700",
-  feature: "bg-[var(--surface-2)] text-[var(--text-3)]",
-  settings: "bg-violet-50 text-violet-700",
-  action: "bg-sky-50 text-sky-700",
-};
 
 const ALL_MODULE_IDS = PERMISSION_CATALOG.flatMap((g) => g.permissions)
   .filter((p) => p.category === "module")
@@ -776,7 +797,7 @@ function MemberAccessModal({
                           <label
                             key={perm.id}
                             className={cn(
-                              "flex items-start gap-2 rounded-[8px] border bg-white px-3 py-2 text-sm",
+                              "flex items-start gap-2 rounded-[8px] border bg-[var(--surface-0)] px-3 py-2 text-sm",
                               overridden ? "border-[var(--brand-400)]" : "border-[var(--border-3)]",
                               isSuper && "opacity-60",
                             )}
@@ -788,27 +809,16 @@ function MemberAccessModal({
                               onChange={() => togglePermission(perm.id)}
                               disabled={isSuper}
                             />
-                            <span className="min-w-0">
-                              <span className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-medium text-[var(--text-1)]">{perm.label}</span>
-                                <span
-                                  className={cn(
-                                    "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                                    CATEGORY_CHIP[perm.category],
-                                  )}
-                                >
-                                  {CATEGORY_LABEL[perm.category]}
-                                </span>
-                                {overridden ? (
-                                  <span className="rounded-full bg-[var(--surface-brand)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--brand-700)]">
-                                    {checked ? "+ added" : "− removed"}
+                            <PermissionLabel
+                              perm={perm}
+                              note={
+                                overridden ? (
+                                  <span className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--brand-700)]">
+                                    {checked ? "Added" : "Removed"}
                                   </span>
-                                ) : null}
-                              </span>
-                              <span className="mt-0.5 block text-[11px] leading-tight text-[var(--text-4)]">
-                                {perm.description}
-                              </span>
-                            </span>
+                                ) : null
+                              }
+                            />
                           </label>
                         );
                       })}
@@ -844,7 +854,7 @@ function MemberAccessModal({
 // Use when a dev had a placeholder/old email and now has a gitwork email.
 // Transfers all data from the old account into the new one, then deletes the old.
 
-function MergeAccountsCard({ onMerged }: { onMerged: () => void }) {
+function MergeAccountsCard({ number, onMerged }: { number: string; onMerged: () => void }) {
   const [keepEmail, setKeepEmail] = useState("");
   const [mergeEmail, setMergeEmail] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -890,7 +900,7 @@ function MergeAccountsCard({ onMerged }: { onMerged: () => void }) {
   }
 
   return (
-    <SettingsCard number="05" title="Merge accounts">
+    <SettingsCard number={number} title="Merge accounts">
       <p className="text-sm leading-6 text-[var(--text-3)]">
         Use when a team member previously had a placeholder email and has now logged in with their{" "}
         <code className="rounded bg-[var(--surface-2)] px-1 py-0.5 text-xs">@gitwork.co.uk</code>{" "}
