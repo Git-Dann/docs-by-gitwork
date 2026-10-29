@@ -40,6 +40,9 @@ const ALLOWED = new Set([
   "src/components/brief/morning-brief.tsx",
   // Lightbox over an image — dismiss-only, no form, no focusable content.
   "src/components/backstage/receipt-viewer.tsx",
+  // EasyUI's Command Menu, vendored for its design and spring motion (docs/third-party-ui.md). It is
+  // a full dialog in its own right: role="dialog", aria-modal, Escape, a focus trap and focus restore.
+  "src/components/ui/easyui/command-menu.tsx",
 ]);
 
 /**

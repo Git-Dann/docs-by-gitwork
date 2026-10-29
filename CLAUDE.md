@@ -8827,6 +8827,16 @@ The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
   card a future product slots into. These rules are written down here for the first time; they
   follow the existing Foundry lockup (`public/foundry-logo.svg`), so check them before treating
   them as settled.
+- **Leisure Tech and AfterDesk (added later in October 2026).** Leisure Tech is a trading name of
+  Gitwork Group Ltd (its arm for caravan, motorhome and park businesses). It keeps its own identity
+  and names Gitwork as the studio that delivers the software. AfterDesk (AfterDesk Ltd) is its
+  warranty platform, built and run by Gitwork, and REMIT is in build. The architecture page has
+  three columns (offers, Foundry, Leisure Tech), each has its own page, and the product-card page
+  shows Foundry, AfterDesk and an empty slot. Their logos are copied from their own sites into
+  `public/brand/` and the colours sampled from those files. ⚠️ AfterDesk only publishes a white
+  logo, so it is always shown on its navy until a dark version exists. ⚠️ leisuretech.ai gives
+  Gitwork Group Ltd's registered office as Congleton, while `src/lib/gitwork.ts` says Salford Quays;
+  one of them is out of date.
 - **Logos are the real files.** The Gitwork wordmark is `public/email/gitwork-wordmark-ink.png`;
   its paper and white variants are that file used as a CSS mask, with the purple dot put back on
   the paper variant (dot measured at x 456 to 478, y 77 to 98 of 480 x 100). The roundel is the one
@@ -8852,3 +8862,32 @@ The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
   on a temporary scratch page (all 40 slides measured for overflow at 1440, the drawer at 390,
   edit and present mode). Post-deploy: open it from Labs, edit a subtitle as an admin, reload, and
   confirm the edit stayed.
+
+## 92. Recent Changes (October 2026) — ⌘K command menu, and the EasyUI tracker
+
+**⌘K / Ctrl+K opens a command menu** on every `/app` page and the demo. The palette is **EasyUI's own
+Command Menu**, vendored at `src/components/ui/easyui/command-menu.tsx` (MIT, licence in
+`docs/third-party-ui.md`), with colours mapped to Foundry tokens and dialog accessibility added.
+What goes in it is `src/components/command-menu.tsx`, with the rules in `src/lib/command-menu.ts`. It jumps to a product, a client or a document, or switches theme.
+The header has a Search button too, so it can be found without knowing the shortcut.
+
+- **The pages are the shell's own `primaryNav`**, already filtered by module permission and workspace
+  modules, so the menu can never offer a product the sidebar hides. Clients and documents load only
+  after the menu is first opened, and only when the viewer has Portal or Docs (`useClientList` and
+  `useProposalList` gained an `enabled` option for this). A result is only a link; the page it opens
+  does its own gating.
+- Empty query shows pages and actions; clients and documents appear once you type, capped at 6 per
+  group (`GROUP_LIMIT`). Search is the shared `fuzzySearch`, so typos are forgiven.
+- It is the one exception in `one-modal.test.ts`'s allow-list for a vendored dialog: it implements
+  role="dialog", aria-modal, Escape, a focus trap and focus restore itself. The search field carries
+  an inline `outline: none` because the global focus ring is unlayered (§69).
+- **EasyUI components are used as EasyUI built them.** Our first rebuilds "in Foundry's style" looked
+  nothing like the originals, so the rule is now: vendor the real component, keep its design and
+  motion, and change only colours (to Foundry tokens, for light and dark), imports, accessibility and
+  reduced motion.
+- On the demo, `mapHref` sends `/app` links to the demo's own pages.
+
+**`docs/easyui-adoption.md` tracks** the EasyUI-inspired components (undo toast, date picker, activity
+heatmap, funnel chart and the rest): what each is for in Foundry, its status and its PR. Update it in
+the same PR that changes a row.
+

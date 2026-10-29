@@ -67,15 +67,19 @@ import type {
 } from "@/types/client";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
 
-export function useProposalList(filters: {
-  search?: string;
-  status?: string;
-  sort?: string;
-  documentType?: string;
-}) {
+export function useProposalList(
+  filters: {
+    search?: string;
+    status?: string;
+    sort?: string;
+    documentType?: string;
+  },
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["proposals", filters],
     queryFn: () => listProposals(filters),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -120,13 +124,17 @@ export function useArchiveClientToDrive(slug: string) {
   });
 }
 
-export function useClientList(filters?: {
-  search?: string;
-  status?: WorkspaceClientStatus | "ALL";
-}) {
+export function useClientList(
+  filters?: {
+    search?: string;
+    status?: WorkspaceClientStatus | "ALL";
+  },
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
+    enabled: options.enabled ?? true,
     // 60s (was 5min): the acting user's mutations invalidate immediately, but a
     // 5-minute window meant *other* teammates saw stale client state — e.g. a
     // status flipped to ACTIVE still showing PENDING. 60s keeps cross-user state
