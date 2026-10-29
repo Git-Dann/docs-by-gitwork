@@ -8733,3 +8733,34 @@ explanations moved into tooltips. Board and list only.
 dragged a card from In review into QA, and checked 390px (no page overflow).
 **Not verified:** against a real database. Post-deploy, add a column on a client, drag a task into
 it, reload, then push a project update and confirm the line names the column.
+
+## 90. Recent Changes (October 2026) — A Halloween theme, on the demo first
+
+A pumpkin beside the header bell switches on a seasonal theme: dark mode, midnight-indigo
+surfaces, **pumpkin orange as the brand colour**, a solid pumpkin on the bottom-right of the
+sidebar logo, fog rolling along the bottom of the screen, and ghosts and bats drifting across.
+
+- **Where it shows: `HALLOWEEN_PATHS` in `theme-provider.tsx`, `/demo` only for now.** To put it
+  on the app: add `app` to that regex **and** the same regex in `layout.tsx`'s anti-flash script
+  (a test checks they match), then put `<HalloweenToggle />` beside `<NotificationBell />`,
+  `<HalloweenLogoBadge />` inside the logo link and `<HalloweenScene />` in `app-shell.tsx`.
+  Never add a client deliverable or sign-in route.
+- **On by default 20 Oct – 2 Nov** (`halloweenSeason`), unless switched off. Stored in
+  `foundry.halloween.v1` (`on` / `off`).
+- **Colours are tokens:** `[data-theme="dark"][data-halloween]` in `globals.css`, which also
+  points hardcoded `bg-blue-600`/`text-blue-600` at the orange and gives white-on-brand badges
+  dark text (white on orange is ~2.4:1).
+- **Nothing is hand-drawn (Dan's call).**
+  - The toggle is Tabler's `IconPumpkinScary`.
+  - The logo pumpkin and the bats are Microsoft Fluent Emoji (MIT, via Iconify).
+  - The ghosts mix Fluent, Google Noto (Apache-2.0) and Tabler, so no two faces match.
+  - The fog is Vanta's `FOG` shader (MIT) on three.js 0.134. It's loaded only while the theme
+    is on, screened onto the page at 0.42 opacity, and faded upwards so text under it stays
+    readable.
+  - Twemoji was skipped because CC-BY needs attribution.
+- **Hydration:** the setting lives in the browser, so everything that renders from it waits for
+  mount (`useHalloweenShown`). `readHalloween` is in `hydration-safe-storage.test.ts`'s
+  allow-list for the same reason `readStoredMode` is.
+- Reduced motion stills the fog and removes the ghosts and bats. The scene is
+  `pointer-events: none`, `aria-hidden`, hidden in print, and sits at `z-45`: above the Desk
+  drawer, below dialogs.
