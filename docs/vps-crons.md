@@ -29,17 +29,18 @@ authoritative list**, and the schedules below are what the host executes.
 > remove the only thing actually running a job. Either way it is one or the other, never
 > both.
 
-> ### Every job runs per workspace (October 2026)
+> ### Jobs and workspaces (October 2026)
 >
-> Foundry is becoming multi-tenant (`docs/multi-tenant-roadmap.md`). Each job below runs once
-> per workspace, with that workspace's own settings and keys, via `forEachWorkspace`
-> (`src/server/workspaces/for-each.ts`). One workspace's failure is reported in the response and
-> never stops the others. With only Gitwork, every job does what it did before, and the response
-> keeps its old keys (some add a `workspaces` list).
+> Foundry is becoming multi-tenant (`docs/multi-tenant-roadmap.md`). Jobs that already loop
+> over workspaces: `foreman`, `curator`, `retention`, `availability-digest`, the `jobs` reconcile.
+> `docs-gdrive-backup` now does too, via `forEachWorkspace` (`src/server/workspaces/for-each.ts`).
+> One workspace's failure there is reported and never stops the others.
 >
-> Deliberately still Gitwork-only: `meet-transcripts` (its organiser list is Gitwork's), and
-> `wedge-course-feed` / `wedge-keepwarm` (they belong to the client Wedge). The global tidy-ups
-> (`pulse-reconcile`, `member-purge`, the `jobs` drain) have no workspace to loop over.
+> **Still Gitwork-only, deliberately:**
+> - Care's jobs (`support-sync`, `care-digest`, `embed-conversations`, `analytics-snapshot`).
+>   Care is left out of the multi-tenant work for now.
+> - `meet-transcripts`: its organiser list is Gitwork's.
+> - `wedge-course-feed` and `wedge-keepwarm`: they belong to the client Wedge.
 >
 > **Where the two lists disagree today** (compared line by line, July 2026). If Vercel is
 > still firing, these three run twice a day at *different* times, which is why the

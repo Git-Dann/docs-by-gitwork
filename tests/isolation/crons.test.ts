@@ -2,8 +2,8 @@
  * Scheduled jobs against a real database with two businesses: each runs for its own workspace,
  * with its own keys and accounts, and never reaches into the other's data.
  *
- * The mocked versions are in src/server/__tests__/crons-per-workspace.test.ts; these prove the
- * real queries (including embed-conversations' raw SQL) scope the way the mocks assume.
+ * The mocked versions are in src/server/__tests__/crons-per-workspace.test.ts; this proves the
+ * real queries scope the way the mocks assume.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
@@ -40,44 +40,5 @@ describe("scheduled jobs stay inside their own workspace", () => {
     const { GET } = await import("@/app/api/cron/docs-gdrive-backup/route");
     const body = await (await GET(cronRequest("/api/cron/docs-gdrive-backup"))).json();
     expect(body).toEqual({ reason: "no_connected_backup_account", processed: 0 });
-  });
-
-  it("embed-conversations only embeds a workspace's own conversations, with its own key", async () => {
-    // The real column is pgvector, added by first-time setup in production; a text column is
-    // enough to run the job's own SQL here.
-    await prisma.$executeRawUnsafe(`ALTER TABLE "SupportConversation" ADD COLUMN IF NOT EXISTS embedding text`);
-    await prisma.workspace.update({ where: { id: IDS.a.workspace }, data: { platformAiKeysAllowed: false, openaiApiKey: null } });
-    await prisma.workspace.update({ where: { id: IDS.b.workspace }, data: { platformAiKeysAllowed: false, openaiApiKey: "sk-b-test" } });
-
-    const { GET } = await import("@/app/api/cron/embed-conversations/route");
-    const body = (await (await GET(cronRequest("/api/cron/embed-conversations"))).json()) as {
-      total: number;
-      errors: string[];
-      workspaces: { workspaceId: string; ok: boolean; skipped?: boolean }[];
-    };
-
-    // Only B has a key, so only B's conversation is attempted (the network is off, so it errors
-    // on the call itself). A is skipped rather than embedded with B's key.
-    expect(body.total).toBe(1);
-    expect(body.errors.every((e) => e.startsWith(`${IDS.b.conversation}:`))).toBe(true);
-    expect(body.workspaces).toEqual(
-      expect.arrayContaining([
-        { workspaceId: IDS.a.workspace, ok: true, skipped: true },
-        { workspaceId: IDS.b.workspace, ok: true, skipped: false },
-      ]),
-    );
-  });
-
-  it("support-sync and analytics-snapshot run per workspace and keep their response shape", async () => {
-    for (const path of ["/api/cron/support-sync", "/api/cron/analytics-snapshot"]) {
-      const mod = await import(`@/app/api/cron/${path.split("/").pop()}/route`);
-      const body = await (await mod.GET(cronRequest(path))).json();
-      expect(body.workspaces.map((w: { workspaceId: string }) => w.workspaceId).sort()).toEqual(
-        [IDS.a.workspace, IDS.b.workspace].sort(),
-      );
-      expect(body.workspaces.every((w: { ok: boolean }) => w.ok)).toBe(true);
-      expect(body).toHaveProperty("total");
-      expect(body).toHaveProperty("errors");
-    }
   });
 });

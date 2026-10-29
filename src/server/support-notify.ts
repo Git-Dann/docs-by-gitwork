@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
 async function postSlack(botToken: string, channel: string, text: string): Promise<void> {
   try {
@@ -65,8 +66,7 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
     }
 
     if (urgentCount > 0) lines.push(`⚠️  ${urgentCount} urgent`);
-    const base = (process.env.NEXT_PUBLIC_APP_URL ?? "https://foundry.gitwork.co.uk").replace(/\/+$/, "");
-    lines.push(`Review → ${base}/app/care`);
+    lines.push(`Review → https://foundry.gitwork.co.uk/app/care`);
 
     await postSlack(botToken, channel, lines.join("\n"));
   } catch {
@@ -75,11 +75,12 @@ export async function postCareDigest(workspaceId: string): Promise<void> {
 }
 
 /**
- * The daily digest, once per workspace. `postCareDigest` is a no-op for a workspace with no
- * Slack token or no `care.digest` channel, so only businesses that set one up get a post.
+ * Convenience wrapper: resolves the default workspace then posts the digest.
  */
-export async function postCareDigestForEveryWorkspace(): Promise<number> {
-  const workspaces = await prisma.workspace.findMany({ select: { id: true }, orderBy: { createdAt: "asc" } });
-  for (const ws of workspaces) await postCareDigest(ws.id);
-  return workspaces.length;
+export async function postCareDigestForDefaultWorkspace(): Promise<void> {
+  const ws = await prisma.workspace.findFirst({
+    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    select: { id: true },
+  });
+  if (ws) await postCareDigest(ws.id);
 }

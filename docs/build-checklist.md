@@ -266,9 +266,8 @@ The script starts the local PostgreSQL 16 cluster, recreates `foundry_isolation`
 schema. It refuses any database with another name. CI runs the same suite in its own `isolation`
 job against a Postgres service. One run takes about 100 seconds.
 
-Scheduled jobs have their own file, `tests/isolation/crons.test.ts`. It checks that each job runs
-per workspace with that workspace's keys and accounts, and that the docs backup never borrows
-another business's Google account.
+Scheduled jobs have their own file, `tests/isolation/crons.test.ts`. It checks that the docs backup
+never borrows another business's Google account.
 
 **Not covered:** the middleware's module gate (the suite calls handlers directly), webhooks, and
 anything an `after()` would have done.

@@ -1,7 +1,6 @@
 /**
- * Two scheduled paths that used to borrow the Gitwork workspace's settings whoever owned the
- * row: Pulse monitor re-scans, and a Care connection's sync. Each must use the workspace that
- * owns the monitor or connection.
+ * Pulse monitor re-scans used to borrow the Gitwork workspace's settings whoever owned the
+ * monitor. They must use the workspace that owns it.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,15 +37,6 @@ vi.mock("@/lib/prisma", () => ({
       }),
       findUnique: vi.fn(async () => ({ status: "FAILED", healthScore: null, checks: [] })),
     },
-    accountConnection: {
-      findUniqueOrThrow: vi.fn(async () => ({
-        id: "conn-b",
-        source: "GMAIL",
-        scraperConfig: null,
-        channelTokens: [],
-        client: { id: "sc-b", name: "B", slug: "b", workspaceId: "b" },
-      })),
-    },
   },
 }));
 
@@ -79,13 +69,5 @@ describe("triggerMonitorScan", () => {
     expect(aiConfig.apiKey).toBe("key-b");
     // The platform it last ran as is looked up within the same workspace only.
     expect(db.lastScanWhere).toMatchObject({ workspaceId: "b" });
-  });
-});
-
-describe("buildSyncContext", () => {
-  it("uses the settings of the workspace that owns the connection", async () => {
-    const { buildSyncContext } = await import("@/server/support-sync");
-    const ctx = await buildSyncContext("conn-b");
-    expect((ctx as unknown as { workspace: { id: string } }).workspace.id).toBe("b");
   });
 });

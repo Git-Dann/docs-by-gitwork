@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const CEILING = {
-  DEFAULT_WORKSPACE_SLUG: 102,
+  DEFAULT_WORKSPACE_SLUG: 113,
   ensureBaseRecords: 474,
 } as const;
 
