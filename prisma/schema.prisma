@@ -405,6 +405,9 @@ model Workspace {
   /// any user can connect Claude (or any other MCP client). When off, the
   /// authorize/token endpoints return 503 and no new tokens issue.
   mcpEnabled                  Boolean                    @default(false)
+  /// Text edits to the brand guidelines at /guidelines, keyed `<pageId>:<field>`
+  /// (src/lib/guidelines/content.ts). Null = every page shows its default copy.
+  guidelinesOverrides         Json?
   // ── Docs → Google Drive backup ──────────────────────────────────────
   /// Master switch for the Docs Google Drive backup. Off by default; when on, the daily cron
   /// (and the best-effort on-share hook) mirror documents into Drive as native Google Docs.

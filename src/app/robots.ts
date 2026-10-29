@@ -29,6 +29,7 @@ export default function robots(): MetadataRoute.Robots {
           "/deck",
           "/canvas",
           "/edge",
+          "/guidelines",
           // API surface. Gated by API_KEY, but there is nothing here to crawl.
           "/api/",
           // Sales demos: deliberately public so a link can be shared, deliberately

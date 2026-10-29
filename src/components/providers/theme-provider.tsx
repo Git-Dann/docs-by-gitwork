@@ -34,7 +34,7 @@ const EVENT = "gitwork:theme-changed";
  */
 // Kept in sync with the inline anti-flash script in src/app/layout.tsx. The `(?:\/|$)`
 // tail matches both `/demo/…` module pages AND the bare `/demo` hub (no trailing slash).
-const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet|login|portal\/login)(?:\/|$)/;
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|guidelines|onboarding|preview|embed|demo|apply|vet|login|portal\/login)(?:\/|$)/;
 
 /**
  * Routes that must ALWAYS render dark, regardless of the visitor's OS / stored

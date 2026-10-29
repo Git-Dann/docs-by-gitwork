@@ -65,6 +65,12 @@ const ENTRIES: LabEntry[] = [
     note: "A client deck belongs in Docs → + New → Deck.",
   },
   {
+    name: "Brand guidelines",
+    href: "/guidelines",
+    blurb: "The Gitwork brand book as a 16:9 deck: logo, type, colour, and how Foundry sits under Gitwork.",
+    note: "Admins edit the copy from the ⋯ menu.",
+  },
+  {
     name: "Canvas",
     href: "/canvas",
     blurb: "Thirty generative artwork tools. Export SVG, PNG or text for posts, backgrounds and decks.",

@@ -314,6 +314,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | `/report/[token]` · `/docs/[token]` · `/sign/[token]` · `/onboarding/[token]` · `/timeline/[token]` · `/brand/[token]` · `/wiki/[slug]` · `/vet/[token]` | Client & candidate deliverables — the URL token is the credential. All noindex, all disallowed in `robots.ts` |
 | `/demo/**` | 16 white-labelled sales demos. Public by design, noindex, **fully mock** — no demo page imports Prisma or any server module |
 | `/edge` | Corsair Xeneon kiosk board. Session-gated, chrome-free, dark-forced. Entry point now lives in **Settings → Labs** (§4a) rather than a top-level route, per the rule below |
+| `/guidelines` | The Gitwork brand guidelines as a 16:9 deck (§91). Session-gated like `/deck`, forced light, reached from Settings → Labs |
 | `/deck` | Deck slide editor shell (static, `public/deck/index.html`, rewritten in `next.config.ts`). Session-gated. **Do not move it** — four vendored files test `location.pathname.startsWith('/deck')` and a Next rewrite does not change `location.pathname`; `foundry-doc.ts` uses that test to select DOCUMENT MODE, so `/app/deck?doc=` would boot an empty file-mode deck and stop saving |
 | `/canvas` | Canvas artwork tools shell (static, `public/canvas/index.html`, rewritten in `next.config.ts`). Session-gated like `/deck`. Built from `Git-Dann/canvas` — see §63. Reached from Settings → Labs |
 | `/app/pulse/[scanId]/report` | Printable Pulse report (in-app) |
@@ -1805,7 +1806,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -8807,3 +8808,47 @@ A pumpkin beside the header bell switches on a seasonal theme across `/app` and 
   mount (`useHalloweenShown`). `readHalloween` is in `hydration-safe-storage.test.ts`'s
   allow-list for the same reason `readStoredMode` is.
 - Reduced motion stills the fog and removes the ghosts and bats.
+
+## 91. Recent Changes (October 2026) — Brand guidelines at /guidelines (Labs)
+
+The Gitwork brand book as a 16:9 deck: a sidebar of chapters, a top bar with the breadcrumb,
+`p. NN / 40` and previous/next, and every page a slide stacked down the screen. Opened from
+**Settings → Labs**. Built from the Gitwork design system artifact (BG-2026-01: tokens, components,
+README), plus Foundry's own logo files, so it also covers **how Gitwork's products are shown**.
+The source artifact is linked from the top bar ("Design system") and the ⋯ menu
+(`GUIDELINES_SOURCE_URL` in `content.ts`).
+
+- **Content is data:** `src/lib/guidelines/content.ts` holds the chapters, pages and copy (pure,
+  tested). Eight chapters, 40 pages. Each page renders through one of 31 visuals in
+  `src/components/guidelines/slides.tsx`, drawn at 1600 x 900 and scaled by `SlideFrame`.
+- **Products chapter (06):** brand architecture (Gitwork → offers / products → modules), Foundry,
+  the product lockup (name, dot in the product's colour, `by Gitwork` aligned to the dot),
+  endorsement rules, Foundry's seven modules (plain type, never their own logo), and the product
+  card a future product slots into. These rules are written down here for the first time; they
+  follow the existing Foundry lockup (`public/foundry-logo.svg`), so check them before treating
+  them as settled.
+- **Logos are the real files.** The Gitwork wordmark is `public/email/gitwork-wordmark-ink.png`;
+  its paper and white variants are that file used as a CSS mask, with the purple dot put back on
+  the paper variant (dot measured at x 456 to 478, y 77 to 98 of 480 x 100). The roundel is the one
+  `GitworkMark`, now in `src/components/gitwork-mark.tsx` so this page does not pull in the whole
+  Docs cover. The Foundry lockup is `foundry-wordmark-paths.ts`, generated from
+  `public/foundry-logo.svg` by splitting its paths on their three fills (black name, `#9D9D9D`
+  endorsement, `#4F46E5` dot). Regenerate it the same way if that file changes.
+- **Edits are hidden and admin-only.** ⋯ → Edit text (or E) makes each title, subtitle and note
+  editable in place. Saved as `Workspace.guidelinesOverrides` (additive JSON) keyed
+  `<pageId>:<field>` via `PUT /api/guidelines` (`assertAtLeastAdmin`). Only the fields in
+  `EDITABLE_FIELDS` can change, so an edit can change what a page says but never what it shows;
+  `parseOverrides` drops stale keys. Clearing a field, or typing the default back, removes the
+  edit. ⋯ also has Present (P, full screen), Copy link (the URL hash is the page), Print or save
+  as PDF (one slide per 1600 x 900 page), and reset.
+- **Wiring:** `isGuidelinesPath` in the middleware (session-gated like `/deck`), `/guidelines` and
+  `/api/guidelines` in the Labs workspace module, `guidelines` in `FORCE_LIGHT` and the anti-flash
+  script, `robots.ts` disallow. The viewer uses no dark-remapped utility class
+  (`forced-light-routes.test.ts` checks it), because a brand book on paper has to look the same
+  for everyone.
+- **The copy keeps the brand's rules:** no em dashes, never "free", UK spelling. A test reads every
+  title, subtitle and note for those.
+- **Not verified against a database:** `/guidelines` needs a session, so the viewer was checked
+  on a temporary scratch page (all 40 slides measured for overflow at 1440, the drawer at 390,
+  edit and present mode). Post-deploy: open it from Labs, edit a subtitle as an admin, reload, and
+  confirm the edit stayed.
