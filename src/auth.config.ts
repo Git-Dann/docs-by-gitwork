@@ -74,6 +74,9 @@ export const authConfig = {
         // null = every module (see src/lib/workspace-modules.ts). A token minted before
         // this field existed has it undefined, which reads the same way.
         session.user.workspaceModules = (token.workspaceModules as string[] | null | undefined) ?? null;
+        // Carried, not yet trusted: requests are still scoped by the old lookup and this is
+        // only compared against it (src/server/auth/request-workspace.ts).
+        session.user.workspaceId = (token.workspaceId as string | null | undefined) ?? null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (session.user as any).sessionVersion = token.sessionVersion;
       }

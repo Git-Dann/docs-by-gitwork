@@ -8677,3 +8677,29 @@ the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenan
   ways), 20 a page. Avatars use the shared `Avatar`, which falls back to initials when an image fails.
   `SortHeader` now lives in `src/components/ui/sort-header.tsx`.
 
+## 88. Recent Changes (October 2026) — Phase 2 begins in shadow mode
+
+Phase 2 of `docs/multi-tenant-roadmap.md` makes every request find its own workspace. Step 1
+changes **nothing anyone sees**: it carries the workspace in every token and compares it with
+today's answer, which is still the only one used.
+
+- **Tokens carry the workspace.** Web sessions get `workspaceId` at sign-in and on the
+  five-minute member recheck (`auth.ts`, copied to `session.user` in `auth.config.ts`). Mobile
+  and desktop tokens get an optional `wid` claim (`mobile-jwt.ts`), forwarded by the middleware
+  as `x-foundry-user-workspace` (stripped from incoming requests like the other `x-foundry-user-*`
+  headers) and read by `getRequestUser`. ⚠️ Tokens already on phones carry no claim and keep
+  working; a test signs one without it and verifies it.
+- **Shadow comparison** (`src/server/auth/request-workspace.ts`): `requireAuthedUser` records
+  whether the token's workspace agrees with the one it served. It never uses the claimed one, and
+  it never throws. "No claim" (an older token) is counted apart from a real disagreement, and a
+  disagreement is logged once per user/claim/served combination.
+- **Read the counts** at `GET /api/platform/workspace-shadow` (platform admins only; ids only;
+  resets on deploy). The plan is a week with `mismatches: 0` before anything depends on the claim.
+- **Ratchet** (`src/server/auth/__tests__/workspace-lookup-ratchet.test.ts`): `DEFAULT_WORKSPACE_SLUG`
+  and `ensureBaseRecords` may only appear fewer times in `src`, never more. Lower the ceiling
+  in the PR that removes some.
+- Map of every place that resolves a workspace today, for the file-by-file work in step 2:
+  `requireAuthedUser` filters by the Gitwork slug; ~184 files call `ensureBaseRecords()`; ~46 use
+  `DEFAULT_WORKSPACE_SLUG`; crons vary (some loop over workspaces, some use the default, some are
+  global). API-key callers have no identity and resolve to the bootstrap owner.
+

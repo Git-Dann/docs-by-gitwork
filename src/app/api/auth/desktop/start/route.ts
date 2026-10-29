@@ -148,7 +148,13 @@ export async function GET(request: NextRequest) {
   const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
   const permissions = membership ? await recomputeMember(membership.id) : [];
 
-  const token = await signMobileToken({ sub: dbUser.id, email: dbUser.email, role, permissions });
+  const token = await signMobileToken({
+    sub: dbUser.id,
+    email: dbUser.email,
+    role,
+    permissions,
+    workspaceId: membership?.workspaceId ?? null,
+  });
 
   return schemeHandoff(`token=${encodeURIComponent(token)}`, "signedin");
 }

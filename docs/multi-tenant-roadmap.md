@@ -11,6 +11,9 @@
 | Phase 0.4 Platform admin + console (businesses, modules, AI keys, activity) | Done, §86.5 |
 | Phase 1 Staff (web): People roster, Staff/Hiring split, schema, record linking | Done, CLAUDE.md §87 |
 | Phase 1 Staff (iOS) | Draft PR [Git-Dann/foundry-ios#1](https://github.com/Git-Dann/foundry-ios/pull/1): tabs follow workspace modules. Unbuilt, needs a Mac build |
+| Staff and Platform polish (paging, popup, validation, seed accounts hidden) | Done, §86.6 and §87 |
+| Phase 2.1 Workspace carried in every token; shadow comparison | In review, CLAUDE.md §88. Read the counts at `/api/platform/workspace-shadow` |
+| Phase 2.2 Replace single-workspace lookups, file by file | Not started. A ratchet test stops the count growing |
 
 ## Context
 
