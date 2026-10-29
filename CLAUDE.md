@@ -8815,7 +8815,7 @@ The Gitwork brand book as a 16:9 deck: a sidebar of chapters, a top bar with the
 `p. NN / 40` and previous/next, and every page a slide stacked down the screen. Opened from
 **Settings → Labs**. Built from the Gitwork design system artifact (BG-2026-01: tokens, components,
 README), plus Foundry's own logo files, so it also covers **how Gitwork's products are shown**.
-The source artifact is linked from the top bar ("Design system") and the ⋯ menu
+The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
 (`GUIDELINES_SOURCE_URL` in `content.ts`).
 
 - **Content is data:** `src/lib/guidelines/content.ts` holds the chapters, pages and copy (pure,

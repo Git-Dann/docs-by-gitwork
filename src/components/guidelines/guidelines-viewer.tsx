@@ -353,7 +353,7 @@ export function GuidelinesViewer({
                 title="The Gitwork design system these guidelines are built from"
                 className="hidden shrink-0 items-center gap-1.5 rounded-[6px] px-2 py-1 text-[12.5px] text-[#6B6B6B] transition hover:bg-[rgba(12,12,24,0.05)] hover:text-[#1A1A1E] md:flex"
               >
-                Design system
+                Artifact
                 <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
               </a>
               <span className="shrink-0 font-mono text-[12px] tracking-[0.06em] text-[#6B6B6B]" aria-live="polite">
@@ -389,7 +389,7 @@ export function GuidelinesViewer({
                   </MenuItem>
                   <MenuItem>
                     <a href={GUIDELINES_SOURCE_URL} target="_blank" rel="noopener noreferrer" className={menuItem}>
-                      <ArrowTopRightOnSquareIcon className="mr-2.5 h-4 w-4" /> Open the design system
+                      <ArrowTopRightOnSquareIcon className="mr-2.5 h-4 w-4" /> Open the artifact
                     </a>
                   </MenuItem>
                   <MenuItem>
