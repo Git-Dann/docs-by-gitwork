@@ -156,7 +156,8 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
   const monitor = await prisma.pulseMonitor.findUnique({ where: { id: monitorId } });
   if (!monitor || !monitor.isActive) return;
 
-  const { workspace } = await ensureBaseRecords();
+  // The monitor's own workspace: its AI settings run the scan, and the scan is saved there.
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: monitor.workspaceId } });
   const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,
@@ -180,6 +181,7 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
   // different set of checks from the scan it is compared against.
   const lastScan = await prisma.pulseScan.findFirst({
     where: {
+      workspaceId: monitor.workspaceId,
       ...(monitor.inputUrl ? { inputUrl: monitor.inputUrl } : {}),
       ...(monitor.inputGithubRepo ? { inputGithubRepo: monitor.inputGithubRepo } : {}),
       platform: { not: null },
@@ -196,6 +198,7 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
     inputGithubRepo: monitor.inputGithubRepo ?? undefined,
     platform,
     clientId: monitor.clientId ?? undefined,
+    workspaceId: monitor.workspaceId,
   });
 
   await runAnalysis(scan.id, {

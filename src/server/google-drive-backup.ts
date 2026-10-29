@@ -167,10 +167,15 @@ export async function resolveBackupAuth(workspace: {
 
   // The designated backup account = the workspace owner (the User who owns the default records).
   // Fall back to any connected member with a token if the owner hasn't connected Google.
+  // ⚠️ Both are limited to members of THIS workspace: the fallback used to take any user's Google
+  // token in the database, so a second business's documents could have been written into
+  // someone else's Drive. For Gitwork (every such user is a member) the choice is unchanged.
+  const ofThisWorkspace = { memberships: { some: { workspaceId: workspace.id } } };
   const owner = await prisma.user.findFirst({
     where: {
       googleOAuthRefreshToken: { not: null },
       OR: [{ email: "owner@gitwork.io" }, { email: "dan@gitwork.co.uk" }],
+      ...ofThisWorkspace,
     },
     select: { googleOAuthRefreshToken: true, googleOAuthEmail: true },
     orderBy: { createdAt: "asc" },
@@ -179,7 +184,7 @@ export async function resolveBackupAuth(workspace: {
   const account =
     owner ??
     (await prisma.user.findFirst({
-      where: { googleOAuthRefreshToken: { not: null } },
+      where: { googleOAuthRefreshToken: { not: null }, ...ofThisWorkspace },
       select: { googleOAuthRefreshToken: true, googleOAuthEmail: true },
       orderBy: { createdAt: "asc" },
     }));
