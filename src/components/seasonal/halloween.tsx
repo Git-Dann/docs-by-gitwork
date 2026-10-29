@@ -12,9 +12,11 @@
  *     Fluent, Google's Noto (Apache-2.0) and Tabler, so no two faces match;
  *   - the fog is Vanta's FOG shader (MIT) on three.js, loaded only while the theme is on.
  *
- * Nothing here takes a click: the scene is `pointer-events: none`, sits above the Desk drawer
- * (z-40) so the fog rolls over it but below dialogs (z-70), and is hidden from screen readers and
- * print. Reduced motion stills the fog and drops what moves.
+ * The scene sits BEHIND Foundry, never over it: the shell renders it first, at z-0, and the
+ * page background behind it turns see-through (`.halloween-clear`), so the fog and creatures show
+ * in the gutters, gaps and header band and never cover a card, a button or a line of text. It is
+ * also `pointer-events: none`, `aria-hidden` and hidden in print. Reduced motion stills the fog
+ * and drops what moves.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -89,10 +91,11 @@ const BATS = [
   { top: "13%", size: 28, duration: 34, delay: -19 },
 ] as const;
 
+/** Render first inside the shell's `relative` root, with the content above it (`relative z-[1]`). */
 export function HalloweenScene() {
   if (!useHalloweenShown()) return null;
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 z-[45] overflow-hidden print:hidden">
+    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-hidden print:hidden">
       <HalloweenFog />
 
       {GHOSTS.map((g, i) => (

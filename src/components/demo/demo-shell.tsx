@@ -97,9 +97,10 @@ export function DemoShell({
         {brandColor ? (
           <style dangerouslySetInnerHTML={{ __html: `:root{${brandCssVars(brandColor)}}` }} />
         ) : null}
-        <div className="flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+        {mounted ? <HalloweenScene /> : null}
+        <div className="relative z-[1] flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           {/* ── Sidebar (mirrors the real app shell) ── */}
-          <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
+          <aside className="halloween-clear hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
               <div className="flex shrink-0 items-center justify-start border-b border-[var(--border-2)] px-6 pb-5 pt-7">
                 <Link href="/demo" aria-label="All demos" className="relative block w-fit text-left" suppressHydrationWarning>
@@ -172,7 +173,7 @@ export function DemoShell({
           </aside>
 
           {/* ── Content column ── */}
-          <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)]">
+          <div className="halloween-clear flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)]">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--brand-200)] bg-[var(--surface-brand)] px-6 py-2 sm:px-8">
               <p className="text-xs font-medium text-[var(--brand-800)]">
                 <span
@@ -186,7 +187,7 @@ export function DemoShell({
               <HalloweenToggle className="-my-1.5 shrink-0 lg:hidden" />
             </div>
 
-            <header className="hidden items-start justify-between gap-4 border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:flex">
+            <header className="halloween-clear hidden items-start justify-between gap-4 border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:flex">
               <div className="min-w-0 max-w-4xl">
                 <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
                   {withBrand(title)}
@@ -214,7 +215,6 @@ export function DemoShell({
             <DeskDrawer />
           </DemoErrorBoundary>
         ) : null}
-        {mounted ? <HalloweenScene /> : null}
       </div>
     </SessionProvider>
   );

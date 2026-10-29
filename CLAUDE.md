@@ -8743,7 +8743,9 @@ sidebar logo, fog rolling along the bottom of the screen, and ghosts and bats dr
 - **Where it shows: `HALLOWEEN_PATHS` in `theme-provider.tsx`, `/demo` only for now.** To put it
   on the app: add `app` to that regex **and** the same regex in `layout.tsx`'s anti-flash script
   (a test checks they match), then put `<HalloweenToggle />` beside `<NotificationBell />`,
-  `<HalloweenLogoBadge />` inside the logo link and `<HalloweenScene />` in `app-shell.tsx`.
+  `<HalloweenLogoBadge />` inside the logo link and `<HalloweenScene />` as the first child of
+  `app-shell.tsx`'s root. Lift the content above it and add `.halloween-clear` to the
+  backgrounds, the same way `demo-shell.tsx` does.
   Never add a client deliverable or sign-in route.
 - **On by default 20 Oct – 2 Nov** (`halloweenSeason`), unless switched off. Stored in
   `foundry.halloween.v1` (`on` / `off`).
@@ -8761,6 +8763,10 @@ sidebar logo, fog rolling along the bottom of the screen, and ghosts and bats dr
 - **Hydration:** the setting lives in the browser, so everything that renders from it waits for
   mount (`useHalloweenShown`). `readHalloween` is in `hydration-safe-storage.test.ts`'s
   allow-list for the same reason `readStoredMode` is.
-- Reduced motion stills the fog and removes the ghosts and bats. The scene is
-  `pointer-events: none`, `aria-hidden`, hidden in print, and sits at `z-45`: above the Desk
-  drawer, below dialogs.
+- ⚠️ **The scene sits BEHIND Foundry, never over it (Dan's call).** It renders first inside the
+  shell root at `z-0`, the content wrapper is `relative z-[1]`, and the page backgrounds behind
+  it (`.halloween-clear` on the sidebar, content column and header) go transparent while the
+  theme is on. So the fog and creatures show only in gaps and gutters; cards, buttons and text
+  always sit on top. The first version was an overlay, and a ghost covered task titles. It is
+  also `pointer-events: none`, `aria-hidden` and hidden in print. Reduced motion stills the fog
+  and removes the ghosts and bats.
