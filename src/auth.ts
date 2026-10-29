@@ -143,6 +143,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             where: { userId: tokenId, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
             select: {
               archivedAt: true,
+              workspaceId: true,
               role: true,
               permissions: true,
               workspace: { select: { modulesRestricted: true, enabledModules: true } },
@@ -163,6 +164,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Which modules the business has, refreshed on the same cadence so switching
           // one off in the Platform console reaches open sessions within five minutes.
           token.workspaceModules = resolveWorkspaceModules(membership.workspace);
+          token.workspaceId = membership.workspaceId;
           token.memberCheckedAt = Date.now();
         }
         return token;
@@ -281,6 +283,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Resolve + persist the member's effective permissions from the role matrix so
         // the JWT carries the live set (and the cached column stays in sync).
         token.permissions = membership ? await recomputeMember(membership.id) : [];
+        token.workspaceId = membership?.workspaceId ?? null;
         token.workspaceModules = membership
           ? resolveWorkspaceModules(
               await prisma.workspace.findUnique({

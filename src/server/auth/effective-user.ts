@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { recordWorkspaceShadow } from "@/server/auth/request-workspace";
 import { getRequestUser } from "@/server/auth/request-user";
 import { ACTIVE_MEMBER, isActiveMember } from "@/server/auth/member-status";
 import { allowedDocTypes } from "@/lib/templates";
@@ -90,10 +91,14 @@ export class ForbiddenError extends Error {
 // when no identity can be resolved — route handlers catch via fromError.
 export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   let userIdOrEmail: { id?: string; email?: string } = {};
+  // The workspace the caller's token names, for the Phase 2 shadow comparison only.
+  // Nothing below is scoped by it (see src/server/auth/request-workspace.ts).
+  let claimedWorkspace: { id: string | null | undefined; via: "session" | "mobile" } = { id: null, via: "session" };
 
   const mobileUser = getRequestUser(req);
   if (mobileUser) {
     userIdOrEmail = { id: mobileUser.id, email: mobileUser.email };
+    claimedWorkspace = { id: mobileUser.workspaceId, via: "mobile" };
   } else {
     const session = await auth();
     const sessionUser = session?.user;
@@ -102,6 +107,7 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
         id: sessionUser.id ?? undefined,
         email: sessionUser.email ?? undefined,
       };
+      claimedWorkspace = { id: sessionUser.workspaceId, via: "session" };
     }
   }
 
@@ -159,6 +165,14 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     workspaceId: membership.workspaceId,
     membershipId: membership.id,
   };
+
+  // Shadow mode: compare, never decide. The request is served `real.workspaceId` either way.
+  recordWorkspaceShadow({
+    userId: dbUser.id,
+    claimed: claimedWorkspace.id,
+    served: membership.workspaceId,
+    via: claimedWorkspace.via,
+  });
 
   return applyViewAs(req, real);
 }

@@ -8,6 +8,8 @@ declare module "next-auth" {
       permissions: string[];
       /** The modules the user's business has; null = every module. See src/lib/workspace-modules.ts. */
       workspaceModules?: string[] | null;
+      /** The workspace this session is in. Undefined on sessions from before it was carried. */
+      workspaceId?: string | null;
       /** Bumped to force re-auth — see SESSION_VERSION in auth.config.ts. */
       sessionVersion?: number;
     } & DefaultSession["user"];

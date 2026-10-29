@@ -136,6 +136,7 @@ const FOUNDRY_USER_HEADERS = [
   "x-foundry-user-id",
   "x-foundry-user-email",
   "x-foundry-user-role",
+  "x-foundry-user-workspace",
 ] as const;
 
 const CORS_HEADERS = {
@@ -391,6 +392,7 @@ export default auth(async (req) => {
       forwardHeaders.set("x-foundry-user-id", mobileClaims.sub);
       forwardHeaders.set("x-foundry-user-email", mobileClaims.email);
       forwardHeaders.set("x-foundry-user-role", mobileClaims.role);
+      if (mobileClaims.workspaceId) forwardHeaders.set("x-foundry-user-workspace", mobileClaims.workspaceId);
     }
 
     const response = NextResponse.next({

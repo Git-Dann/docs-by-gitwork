@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
       email: dbUser.email,
       role,
       permissions,
+      workspaceId: membership?.workspaceId ?? null,
     });
 
     return apiOk({

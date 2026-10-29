@@ -17,6 +17,12 @@ export type MobileTokenClaims = {
   email: string;
   role: string;
   permissions: string[];
+  /**
+   * The workspace the token was issued for (claim `wid`). Optional, and nothing decides
+   * on it yet: tokens issued before it existed carry none and still read as Gitwork's.
+   * See src/server/auth/request-workspace.ts (Phase 2, shadow mode).
+   */
+  workspaceId?: string | null;
 };
 
 export class MobileTokenError extends Error {
@@ -43,6 +49,7 @@ export async function signMobileToken(
     email: claims.email,
     role: claims.role,
     permissions: claims.permissions,
+    ...(claims.workspaceId ? { wid: claims.workspaceId } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(claims.sub)
@@ -83,5 +90,6 @@ function extractClaims(payload: JWTPayload): MobileTokenClaims {
     email,
     role,
     permissions: Array.isArray(permissions) ? (permissions as string[]) : [],
+    workspaceId: typeof payload.wid === "string" && payload.wid ? payload.wid : null,
   };
 }
