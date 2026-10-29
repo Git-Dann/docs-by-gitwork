@@ -8712,6 +8712,16 @@ without `DATABASE_URL` and during `next build`). `ensureBaseRecords()` only dele
 there is still one run per process and every caller is unchanged. Tests:
 `src/__tests__/first-boot-setup-at-startup.test.ts`.
 
+**The isolation suite (`npm run test:isolation`, CI job `isolation`).** Seeds two businesses into a
+throwaway Postgres (`scripts/isolation-db.sh`, `foundry_isolation` only). It then calls every API
+handler as a Super Admin of one, with the other's ids, in both directions; a response carrying the
+other's marker is a LEAK, and a changed row is a WROTE. Today 63 reads and 32 writes cross: mostly
+Care (`support/clients/[clientId]/*`), wiki sub-routes, team, Docs by id and Pulse scans by id.
+They are recorded in `tests/isolation/known-leaks.json`, and **that list is the Phase 2.2b
+worklist**. The suite fails on a new crossing, and on a fixed one still listed (shrink it with
+`ISOLATION_UPDATE=1`). ⚠️ Never add a new crossing to the list to get green. ⚠️ `rejected` and
+`error` verdicts prove nothing: the suite sends `{}` bodies. Details: `docs/build-checklist.md` §4b.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds

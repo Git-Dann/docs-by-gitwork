@@ -91,6 +91,10 @@ Report what `verify` actually printed. Never call something verified that you di
 `npm run test:baseline` against a local dev server. It fails if any page that worked before has
 broken or lost content. See `docs/build-checklist.md` §4a.
 
+**Touching an API route?** CI's `isolation` job calls every route as one business with another
+business's ids, and fails if anything new crosses. Run it locally with `./scripts/isolation-db.sh`
+then `npm run test:isolation` (§4b).
+
 ## 4. Eight traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and

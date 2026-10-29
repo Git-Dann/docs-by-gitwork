@@ -213,6 +213,62 @@ with a status, crash or gate failure, because a baseline that starts broken prov
 
 Not in CI (no browser there), so run it locally before every PR in the multi-tenant programme.
 
+### 4b. Two businesses can't see each other's data (`npm run test:isolation`)
+
+The gate before any other business can sign in (`docs/multi-tenant-roadmap.md`, Phase 2).
+`tests/isolation/` seeds two businesses into a throwaway Postgres:
+- **A** uses the Gitwork slug.
+- **B** is a second business.
+
+Every text field carries a marker (`ISO-A-…`, `ISO-B-…`).
+
+It then calls **every API route handler** as a Super Admin of one business, with the other
+business's ids in the path, in both directions:
+- **Reads:** every route.
+- **Writes:** PATCH/PUT/POST/DELETE, on every route whose path names the other business's row.
+
+Each call gets a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| `LEAK` | The response contains the other business's marker. |
+| `WROTE` | The other business's rows changed. The rows are read back after every write. |
+| `refused` | 401, 403 or 404. |
+| `rejected` | Another 4xx, usually the empty `{}` body the suite sends. **This proves nothing.** |
+| `isolated` | 2xx with nothing of the other business in it. |
+| `error` | 5xx or a throw. **This proves nothing either.** An `error` on a write often means the route got past its checks and failed on the empty body. |
+| `uncovered` | The suite couldn't fill a path segment. Map it in `harness.ts` (`fill` / `ID_BY_PARENT`). The count can only go down (`UNCOVERED_CEILING`). |
+
+What is real and what is stubbed:
+- **The real code runs:** identity, the access checks and every Prisma query. Identity arrives
+  through the mobile headers the middleware forwards.
+- **Stubbed:** `auth()`, `next/headers`, `next/cache`, `after()` (dropped) and outbound `fetch`
+  (blocked). First-time setup keeps only its lookup ("the Gitwork workspace" = A).
+
+`tests/isolation/known-leaks.json` records the crossings that exist today, because today's code
+still serves the Gitwork workspace to everyone. The suite fails when:
+- a route crosses that is **not** on the list. Fix the route; never add it to the list.
+- a listed crossing **no longer happens**. Rerun with `ISOLATION_UPDATE=1` and commit the smaller
+  file.
+
+**The list is the Phase 2.2b worklist, and an empty list is the gate.** The full result of the
+last run is in `tests/isolation/.report.md` (gitignored).
+
+```bash
+./scripts/isolation-db.sh
+```
+
+```bash
+npm run test:isolation
+```
+
+The script starts the local PostgreSQL 16 cluster, recreates `foundry_isolation` and applies the
+schema. It refuses any database with another name. CI runs the same suite in its own `isolation`
+job against a Postgres service. One run takes about 100 seconds.
+
+**Not covered:** the middleware's module gate (the suite calls handlers directly), cron routes
+(their own tests), webhooks, and anything an `after()` would have done.
+
 ---
 
 ## 5. AI cost discipline

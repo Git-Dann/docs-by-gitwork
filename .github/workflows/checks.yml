@@ -83,3 +83,48 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=6144
         run: npx next build
+
+  # Two businesses must never see or change each other's data (tests/isolation, docs/build-checklist.md §4b).
+  # The one job here that needs a database: a throwaway Postgres service, created fresh per run and
+  # named foundry_isolation, which scripts/isolation-db.sh refuses to run against under any other
+  # name. No secrets. It fails on a NEW cross-business read or write, or on a known one that is
+  # fixed but still listed in tests/isolation/known-leaks.json.
+  isolation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: foundry
+          POSTGRES_PASSWORD: foundry
+          POSTGRES_DB: foundry_isolation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foundry -d foundry_isolation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ISOLATION_DATABASE_URL: postgresql://foundry:foundry@localhost:5432/foundry_isolation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply the schema to the throwaway database
+        run: ./scripts/isolation-db.sh
+
+      - name: Isolation suite
+        run: npm run test:isolation
