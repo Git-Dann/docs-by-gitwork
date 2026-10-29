@@ -36,6 +36,7 @@ import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
 import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenToggle } from "@/components/seasonal/halloween";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
@@ -334,6 +335,7 @@ export function AppShell({
           <HalloweenLogoBadge />
         </span>
         <div className="flex items-center gap-1">
+          <CommandMenuButton className="border-0 bg-transparent p-2" />
           <HalloweenToggle />
           <NotificationBell />
           <button
@@ -506,6 +508,7 @@ export function AppShell({
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  <CommandMenuButton className="mr-1" />
                   <HalloweenToggle />
                   <NotificationBell />
                 </div>
@@ -533,6 +536,12 @@ export function AppShell({
           about people they do not work with, and the dock is on every /app screen. */}
       {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
       <HalloweenFogFront />
+      {/* ⌘K. The pages are this viewer's own nav, so it never offers a product the sidebar hides. */}
+      <CommandMenu
+        pages={primaryNav}
+        canSeeClients={primaryNav.some((item) => item.href === "/app/portal")}
+        canSeeDocs={primaryNav.some((item) => item.href === "/app/docs")}
+      />
     </div>
   );
 }
