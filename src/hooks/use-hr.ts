@@ -5,6 +5,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type {
+  ComingUpItem,
+  MissingDetail,
+  StaffActivity,
   EmploymentUpdate,
   HrAccessEntry,
   SensitiveDetails,
@@ -122,5 +125,21 @@ export function useDeleteStaffRecord() {
   return useMutation({
     mutationFn: (recordId: string) => apiFetch<{ ok: true }>(`/api/staff/${encodeURIComponent(recordId)}`, { method: "DELETE" }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["staff", "roster"] }),
+  });
+}
+
+export function useStaffActivity(recordId: string) {
+  return useQuery({
+    queryKey: ["staff", "activity", recordId],
+    queryFn: () => apiFetch<StaffActivity>(`/api/staff/${encodeURIComponent(recordId)}/activity`),
+  });
+}
+
+/** HR's reminders and missing details. Only fetched for people who hold hr.manage. */
+export function useHrOverview(enabled: boolean) {
+  return useQuery({
+    queryKey: ["staff", "hr-overview"],
+    queryFn: () => apiFetch<{ comingUp: ComingUpItem[]; missing: MissingDetail[] }>("/api/staff/hr-overview"),
+    enabled,
   });
 }

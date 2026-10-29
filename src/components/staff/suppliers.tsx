@@ -10,6 +10,7 @@ import { useState } from "react";
 import { cn } from "@/lib/format";
 import { dateAttention, type SupplierInput, type SupplierRecord } from "@/lib/hr";
 import { Modal } from "@/components/ui/modal";
+import { DatePicker } from "@/components/ui/date-picker";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useSaveSupplier, useSuppliers } from "@/hooks/use-hr";
@@ -68,7 +69,7 @@ function SupplierDialog({ supplier, onClose }: { supplier: SupplierRecord | null
           </label>
           <label className={label}>
             Agreement renews
-            <input type="date" className="app-input mt-1 w-full" value={f.agreementRenewsOn ?? ""} onChange={(e) => set({ agreementRenewsOn: e.target.value })} />
+            <DatePicker className="mt-1 w-full" value={f.agreementRenewsOn ?? ""} onChange={(v) => set({ agreementRenewsOn: v })} />
           </label>
           <label className={label}>
             Contact name

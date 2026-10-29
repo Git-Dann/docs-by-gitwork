@@ -63,6 +63,26 @@ All from the person's profile (`PersonActions` in `staff-profile.tsx`). Rules in
 - **Staff → People → Archived** lists everyone who has left: archived members, archived records,
   and developer records whose person has left. The old Staff → Archived tab redirects there.
 
+## People as cards, and the profile's live side
+
+- **People** is a card grid under headings: **Admins**, **Staff**, **Developers**, **Guests**,
+  **No login** (`groupStaff` in `src/lib/staff.ts`). Each card opens the profile. On hover a
+  person's clients rise from behind the card (EasyUI's macOS Folder Cards motion); the same clients
+  are written on the card, so nothing is hover-only, and reduced motion keeps them still.
+- **Org chart** (Cards / Org chart switch), drawn from the manager field (`buildOrgTree`). A manager
+  not on the list makes their reports roots; a circle is broken rather than looping.
+- **CSV** export of the list shown: name, email, role, title, department, type, start, manager,
+  clients. Never rates or personal details. Formula-looking text is neutralised.
+- **For HR** (`hr.manage`): what's coming up in the next 60 days (contract ends, probation ends,
+  supplier renewals, and right-to-work expiries with `hr.viewSensitive`) and records missing details.
+  `GET /api/staff/hr-overview`. ⚠️ Right-to-work dates come from the encrypted tier in a bulk read for
+  reminders; it isn't written to each person's access log and only the date leaves the server.
+- **Profile**: Overview edits in place (the same form as "Create profile", `DetailsDialog inline`)
+  and shows GitHub and stack for developers. New **Activity** (tasks completed per day over 26 weeks,
+  EasyUI's Activity Heatmap, plus every placement) and **Time off** (leave in the next 90 days; this
+  year's allowance for the person, HR and approvers). `GET /api/staff/[id]/activity`.
+- ⚠️ **Leave types are health-adjacent:** anyone but the person and HR sees "Off", never "Sick".
+
 ## Next
 
 1. **Documents (1b):** per-person vault with a required list per engagement type, expiry reminders,

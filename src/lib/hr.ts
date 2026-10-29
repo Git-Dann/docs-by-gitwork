@@ -443,3 +443,72 @@ export interface StaffProfile {
   hasSensitive: boolean;
   lifecycle: StaffLifecycle;
 }
+
+// ── Activity, availability, coming up ───────────────────────────────────────────
+
+export interface StaffActivity {
+  /** Tasks they completed per day over the last 26 weeks. Empty when they don't sign in. */
+  completedByDay: Array<{ date: string; value: number }>;
+  completedTotal: number;
+  placements: Array<{ clientName: string; slug: string | null; startDate: string; endDate: string | null; allocationPercent: number }>;
+  /** Leave in the next 90 days. `label` is only the type for the person or HR; anyone else sees "Off". */
+  upcomingLeave: Array<{ start: string; end: string; label: string; pending: boolean }>;
+  /** This year's allowance, for the person, HR and leave approvers only. */
+  allowance: { allocated: number; used: number; pending: number; remaining: number } | null;
+  developer: { githubHandle: string; primaryStack: string | null; techStacks: string[] } | null;
+}
+
+export type ComingUpKind = "contract-end" | "probation-end" | "supplier-renewal" | "right-to-work";
+
+export const COMING_UP_LABEL: Record<ComingUpKind, string> = {
+  "contract-end": "Contract ends",
+  "probation-end": "Probation ends",
+  "supplier-renewal": "Agreement renews",
+  "right-to-work": "Right to work expires",
+};
+
+export interface ComingUpItem {
+  kind: ComingUpKind;
+  date: string;
+  /** Who or what: a person's name, or a supplier's. */
+  name: string;
+  /** Where to go to deal with it. */
+  href: string;
+}
+
+export interface MissingDetail {
+  recordId: string;
+  name: string;
+  missing: string[];
+}
+
+export const COMING_UP_DAYS = 60;
+
+/** The dated things HR needs to act on soon (passed ones included), soonest first. */
+export function comingUpWithin(items: ComingUpItem[], today: string, days = COMING_UP_DAYS): ComingUpItem[] {
+  return items
+    .filter((i) => daysUntil(i.date, today) <= days)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+}
+
+/**
+ * What a record is missing that HR will need. Kept to facts the record should have for
+ * everyone: a contractor also needs to be tied to a supplier (or marked as direct by
+ * having an end date), and everyone needs personal details on file.
+ */
+export function missingDetailsFor(p: {
+  employmentType: string | null;
+  startDate: string | null;
+  managerRecordId: string | null;
+  supplierId: string | null;
+  hasSensitive: boolean;
+  isTopOfTree: boolean;
+}): string[] {
+  const out: string[] = [];
+  if (!p.employmentType) out.push("type");
+  if (!p.startDate) out.push("start date");
+  if (!p.managerRecordId && !p.isTopOfTree) out.push("manager");
+  if (p.employmentType === "CONTRACTOR" && !p.supplierId) out.push("supplier");
+  if (!p.hasSensitive) out.push("personal details");
+  return out;
+}
