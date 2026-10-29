@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   GROUP_LIMIT,
   isCommandMenuShortcut,
-  moveHighlight,
   rankCommands,
   type CommandItem,
 } from "@/lib/command-menu";
@@ -52,13 +51,5 @@ describe("isCommandMenuShortcut", () => {
     expect(isCommandMenuShortcut(key("k"))).toBe(false);
     expect(isCommandMenuShortcut(key("k", { metaKey: true, shiftKey: true }))).toBe(false);
     expect(isCommandMenuShortcut(key("k", { ctrlKey: true, altKey: true }))).toBe(false);
-  });
-});
-
-describe("moveHighlight", () => {
-  it("wraps round both ends", () => {
-    expect(moveHighlight(0, -1, 3)).toBe(2);
-    expect(moveHighlight(2, 1, 3)).toBe(0);
-    expect(moveHighlight(0, 1, 0)).toBe(0);
   });
 });

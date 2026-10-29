@@ -8855,8 +8855,10 @@ The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
 
 ## 92. Recent Changes (October 2026) — ⌘K command menu, and the EasyUI tracker
 
-**⌘K / Ctrl+K opens a command menu** on every `/app` page and the demo (`src/components/command-menu.tsx`,
-rules in `src/lib/command-menu.ts`). It jumps to a product, a client or a document, or switches theme.
+**⌘K / Ctrl+K opens a command menu** on every `/app` page and the demo. The palette is **EasyUI's own
+Command Menu**, vendored at `src/components/ui/easyui/command-menu.tsx` (MIT, licence in
+`docs/third-party-ui.md`), with colours mapped to Foundry tokens and dialog accessibility added.
+What goes in it is `src/components/command-menu.tsx`, with the rules in `src/lib/command-menu.ts`. It jumps to a product, a client or a document, or switches theme.
 The header has a Search button too, so it can be found without knowing the shortcut.
 
 - **The pages are the shell's own `primaryNav`**, already filtered by module permission and workspace
@@ -8866,8 +8868,13 @@ The header has a Search button too, so it can be found without knowing the short
   does its own gating.
 - Empty query shows pages and actions; clients and documents appear once you type, capped at 6 per
   group (`GROUP_LIMIT`). Search is the shared `fuzzySearch`, so typos are forgiven.
-- It uses the one `<Modal>` with a fixed height, so the box does not resize as results change. The
-  search field carries an inline `outline: none` because the global focus ring is unlayered (§69).
+- It is the one exception in `one-modal.test.ts`'s allow-list for a vendored dialog: it implements
+  role="dialog", aria-modal, Escape, a focus trap and focus restore itself. The search field carries
+  an inline `outline: none` because the global focus ring is unlayered (§69).
+- **EasyUI components are used as EasyUI built them.** Our first rebuilds "in Foundry's style" looked
+  nothing like the originals, so the rule is now: vendor the real component, keep its design and
+  motion, and change only colours (to Foundry tokens, for light and dark), imports, accessibility and
+  reduced motion.
 - On the demo, `mapHref` sends `/app` links to the demo's own pages.
 
 **`docs/easyui-adoption.md` tracks** the EasyUI-inspired components (undo toast, date picker, activity

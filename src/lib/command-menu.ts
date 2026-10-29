@@ -48,9 +48,3 @@ export function rankCommands(items: readonly CommandItem[], query: string): Comm
 export function isCommandMenuShortcut(e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">): boolean {
   return e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey;
 }
-
-/** Wraps the highlight round the ends of the list, as arrow keys in a menu should. */
-export function moveHighlight(index: number, delta: number, length: number): number {
-  if (length === 0) return 0;
-  return (((index + delta) % length) + length) % length;
-}

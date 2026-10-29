@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRightIcon,
@@ -11,17 +11,11 @@ import {
   MoonIcon,
   SunIcon,
 } from "@heroicons/react/24/outline";
-import { Modal } from "@/components/ui/modal";
 import { useTheme } from "@/components/providers/theme-provider";
+import { EasyCommandMenu, type EasyCommandItem } from "@/components/ui/easyui/command-menu";
 import { useClientList, useProposalList } from "@/hooks/use-proposals";
 import { cn } from "@/lib/format";
-import {
-  COMMAND_GROUPS,
-  isCommandMenuShortcut,
-  moveHighlight,
-  rankCommands,
-  type CommandItem,
-} from "@/lib/command-menu";
+import { isCommandMenuShortcut, rankCommands, type CommandItem } from "@/lib/command-menu";
 
 /** A sidebar entry, as the shell already has it: filtered to what this viewer may open. */
 export interface CommandPage {
@@ -47,8 +41,18 @@ function titleCase(s: string | null | undefined): string {
     .join(" ");
 }
 
+/** The label shown beside each result, in EasyUI's category slot. */
+const CATEGORY_LABEL: Record<CommandItem["group"], string> = {
+  "Go to": "Page",
+  Clients: "Client",
+  Documents: "Document",
+  Actions: "Action",
+};
+
 /**
  * ⌘K / Ctrl+K: jump to any product, client or document, or run an action, without the mouse.
+ * The palette itself is EasyUI's Command Menu (src/components/ui/easyui/command-menu.tsx); this
+ * file decides what is in it.
  *
  * The pages are the shell's own nav, so the menu can never offer a product the sidebar hides.
  * Clients and documents load only once the menu is first opened, and only when the viewer has
@@ -70,27 +74,24 @@ export function CommandMenu({
   const { resolved, setMode } = useTheme();
   const [open, setOpen] = useState(false);
   const [everOpened, setEverOpened] = useState(false);
-  const [query, setQuery] = useState("");
-  const [highlight, setHighlight] = useState(0);
-  const listRef = useRef<HTMLUListElement>(null);
-  const listId = useId();
 
   const clients = useClientList(undefined, { enabled: everOpened && canSeeClients });
   const docs = useProposalList({}, { enabled: everOpened && canSeeDocs });
 
   const show = useCallback(() => {
-    setQuery("");
-    setHighlight(0);
     setEverOpened(true);
     setOpen(true);
   }, []);
+  const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!isCommandMenuShortcut(e)) return;
       e.preventDefault();
-      if (open) setOpen(false);
-      else show();
+      setOpen((wasOpen) => {
+        if (!wasOpen) setEverOpened(true);
+        return !wasOpen;
+      });
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener(OPEN_EVENT, show);
@@ -98,9 +99,9 @@ export function CommandMenu({
       window.removeEventListener("keydown", onKey);
       window.removeEventListener(OPEN_EVENT, show);
     };
-  }, [open, show]);
+  }, [show]);
 
-  const items = useMemo<CommandItem[]>(() => {
+  const commands = useMemo<CommandItem[]>(() => {
     const out: CommandItem[] = pages
       .filter((p) => p.href)
       .map((p) => ({ id: `page:${p.href}`, group: "Go to", label: p.label, hint: p.description, href: p.href }));
@@ -135,135 +136,51 @@ export function CommandMenu({
     return out;
   }, [pages, clients.data, docs.data, resolved]);
 
-  const results = useMemo(() => rankCommands(items, query), [items, query]);
-  const active = results[Math.min(highlight, Math.max(0, results.length - 1))];
-  const loading = (canSeeClients && clients.isLoading) || (canSeeDocs && docs.isLoading);
+  const items = useMemo<EasyCommandItem[]>(() => {
+    const iconFor = (item: CommandItem) => {
+      if (item.group === "Go to") {
+        if (item.href === "/app/settings") return Cog6ToothIcon;
+        return pages.find((p) => p.href === item.href)?.icon ?? ArrowRightIcon;
+      }
+      if (item.group === "Clients") return BuildingOffice2Icon;
+      if (item.group === "Documents") return DocumentTextIcon;
+      return resolved === "dark" ? SunIcon : MoonIcon;
+    };
+    return commands.map((item) => {
+      const Icon = iconFor(item);
+      return {
+        id: item.id,
+        title: item.label,
+        category: CATEGORY_LABEL[item.group],
+        icon: <Icon aria-hidden className="h-4 w-4 shrink-0 text-[var(--text-3)]" />,
+        onSelect: () => {
+          setOpen(false);
+          if (item.action === "toggle-theme") setMode(resolved === "dark" ? "light" : "dark");
+          else if (item.href) router.push(mapHref(item.href));
+        },
+      };
+    });
+  }, [commands, pages, resolved, setMode, router, mapHref]);
 
-  // Keep the highlighted row in view as the arrows move it.
-  useEffect(() => {
-    if (!active) return;
-    document.getElementById(`${listId}-${active.id}`)?.scrollIntoView({ block: "nearest" });
-  }, [active, listId]);
-
-  function run(item: CommandItem) {
-    setOpen(false);
-    if (item.action === "toggle-theme") setMode(resolved === "dark" ? "light" : "dark");
-    else if (item.href) router.push(mapHref(item.href));
-  }
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlight((h) => moveHighlight(h, e.key === "ArrowDown" ? 1 : -1, results.length));
-    } else if (e.key === "Enter" && active) {
-      e.preventDefault();
-      run(active);
-    }
-  }
-
-  const iconFor = (item: CommandItem) => {
-    if (item.group === "Go to") {
-      if (item.href === "/app/settings") return Cog6ToothIcon;
-      return pages.find((p) => p.href === item.href)?.icon ?? ArrowRightIcon;
-    }
-    if (item.group === "Clients") return BuildingOffice2Icon;
-    if (item.group === "Documents") return DocumentTextIcon;
-    return resolved === "dark" ? SunIcon : MoonIcon;
-  };
+  // Foundry's ranking, not EasyUI's substring filter: grouped, capped, typo-tolerant, and clients
+  // and documents only once you type.
+  const rank = useCallback(
+    (list: EasyCommandItem[], query: string) => {
+      const byId = new Map(list.map((i) => [i.id, i]));
+      return rankCommands(commands, query).flatMap((c) => byId.get(c.id) ?? []);
+    },
+    [commands],
+  );
 
   return (
-    <Modal
-      open={open}
-      onClose={() => setOpen(false)}
-      labelledById={`${listId}-label`}
-      // A fixed height, so the box does not resize under the cursor as results change while typing.
-      panelClassName="flex h-[min(460px,75vh)] w-full max-w-[640px] flex-col"
-    >
-      <label id={`${listId}-label`} className="sr-only">
-        Search Foundry
-      </label>
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--border-2)] px-4">
-        <MagnifyingGlassIcon aria-hidden className="h-5 w-5 shrink-0 text-[var(--text-4)]" />
-        {/* The Modal focuses the first focusable element on open, which is this field. */}
-        <input
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setHighlight(0);
-          }}
-          onKeyDown={onKeyDown}
-          placeholder="Search Foundry"
-          role="combobox"
-          aria-expanded
-          aria-controls={listId}
-          aria-labelledby={`${listId}-label`}
-          aria-activedescendant={active ? `${listId}-${active.id}` : undefined}
-          // Inline, because the app's global :focus-visible ring is unlayered CSS that a utility
-          // cannot override (CLAUDE.md §69). The field sits in a ruled header and needs no ring.
-          style={{ outline: "none" }}
-          className="h-14 min-w-0 flex-1 bg-transparent text-[16px] text-[var(--text-1)] placeholder:text-[var(--text-4)] focus:outline-none sm:text-[15px]"
-        />
-        <kbd className="hidden shrink-0 rounded-[4px] border border-[var(--border-1)] px-1.5 py-0.5 font-mono text-[10.5px] text-[var(--text-4)] sm:inline">
-          esc
-        </kbd>
-      </div>
-
-      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-2">
-        {results.length === 0 ? (
-          <li className="px-3 py-10 text-center text-[13.5px] text-[var(--text-3)]">
-            {loading ? "Loading…" : `Nothing matches “${query.trim()}”.`}
-          </li>
-        ) : (
-          COMMAND_GROUPS.map((group) => {
-            const rows = results.filter((r) => r.group === group);
-            if (rows.length === 0) return null;
-            return (
-              <li key={group} role="presentation">
-                <div className="px-3 pb-1 pt-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--text-4)]">
-                  {group}
-                </div>
-                <ul role="presentation">
-                  {rows.map((item) => {
-                    const Icon = iconFor(item);
-                    const on = item.id === active?.id;
-                    return (
-                      <li
-                        key={item.id}
-                        id={`${listId}-${item.id}`}
-                        role="option"
-                        aria-selected={on}
-                        onMouseMove={() => setHighlight(results.indexOf(item))}
-                        onClick={() => run(item)}
-                        className={cn(
-                          "flex cursor-pointer items-center gap-3 rounded-[6px] px-3 py-2",
-                          on ? "bg-[var(--brand-50)] text-[var(--text-1)]" : "text-[var(--text-2)]",
-                        )}
-                      >
-                        <Icon aria-hidden className={cn("h-4 w-4 shrink-0", on ? "text-[var(--brand-600)]" : "text-[var(--text-4)]")} />
-                        <span className="min-w-0 flex-1 truncate text-[14px]" title={item.label}>
-                          {item.label}
-                        </span>
-                        {item.hint ? (
-                          <span className="hidden max-w-[45%] shrink truncate text-[12.5px] text-[var(--text-4)] sm:block" title={item.hint}>
-                            {item.hint}
-                          </span>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </li>
-            );
-          })
-        )}
-      </ul>
-
-      <div className="flex shrink-0 items-center gap-4 border-t border-[var(--border-2)] px-4 py-2 font-mono text-[10.5px] uppercase tracking-[0.1em] text-[var(--text-4)]">
-        <span>↑↓ move</span>
-        <span>↵ open</span>
-        <span className="ml-auto hidden sm:inline">{query.trim() ? "" : "Type to search clients and documents"}</span>
-      </div>
-    </Modal>
+    <EasyCommandMenu
+      isOpen={open}
+      onClose={close}
+      items={items}
+      rank={rank}
+      placeholder="Search Foundry"
+      footerLabel="Foundry"
+    />
   );
 }
 
