@@ -15,10 +15,10 @@ Update this table in the same PR that changes a row.
 | Component | Where it goes in Foundry | Status | PR |
 |---|---|---|---|
 | Command menu (⌘K) | Every app page and the demo: jump to a product, client or document, switch theme. EasyUI's Command Menu, vendored | Shipped | #752 |
-| Undo toast | Sheet row remove, Requests "Mark dealt with", Care close: undo instead of a confirm. EasyUI's Undo Toast, vendored | In review | #753 |
+| Undo toast | Sheet row remove, Requests "Mark dealt with", Care close: undo instead of a confirm. EasyUI's Undo Toast, vendored | Shipped | #753 |
 | Date picker / calendar | Replaces the native date inputs, starting with task, milestone and feature-block forms | In progress | feat/date-picker |
-| Activity heatmap | Developer activity (tasks completed per day) | In progress | feat/heatmap-funnel |
-| Funnel chart | Docs analytics: sent, opened, accepted | In progress | feat/heatmap-funnel |
+| Activity heatmap | Analytics → Portal, "completion activity": tasks completed per day. EasyUI's Activity Heatmap, vendored | In review | #754 |
+| Funnel chart | Docs analytics: created, shared, opened, accepted. EasyUI's Funnel Chart, vendored | In review | #754 |
 | AI agent activity | Foreman, Curator and Dispatch runs as a step timeline | Not started: a run stores a stats summary, not its steps, so the runs must record steps first | |
 | Product tour | A new builder's first week; a client's first wiki visit | Not started: needs a decision on who sees it and when | |
 | Expandable data row | Care table and task list view | Not started: Care's record view may make it redundant | |

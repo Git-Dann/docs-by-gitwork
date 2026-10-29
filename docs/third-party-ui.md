@@ -1,26 +1,42 @@
 # Third-party UI components
 
-UI components vendored into Foundry from other projects. Each entry names the source, the
-files it landed in, what was changed, and the licence text, which must travel with the code.
+UI components vendored into Foundry from other projects. Each entry names the source, the files it
+landed in, what was changed, and the licence text, which must travel with the code. MIT requires the
+notice to stay with every copy, so **do not delete a licence block while its files are in the tree.**
 Which components and why: `docs/easyui-adoption.md`.
+
+When you vendor something new: put it in its own folder under `src/components/ui/<project>/`, give
+every file a header naming the upstream path and licence and listing what Foundry changed, and add
+its row below.
 
 ---
 
 ## EasyUI
 
 - **Source:** https://github.com/Surajmaurya1/easyui · docs at https://easyui.site/components
-- **Licence:** MIT (full text below)
+- **Licence:** MIT (full text below, copied verbatim from the repo's `LICENSE`)
 
 | Component | Upstream file | Foundry file |
 |---|---|---|
 | Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
 | Undo Toast | `src/components/ui/UndoToast.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/undo-toast.tsx` |
+| Funnel Chart | `src/components/ui/FunnelChart.tsx` | `src/components/ui/easyui/funnel-chart.tsx` |
+| Activity Heatmap | `src/components/ui/ActivityHeatmap.tsx` | `src/components/ui/easyui/activity-heatmap.tsx` |
+| Chart primitives | `src/lib/chart-primitives.tsx` (the parts the charts use) + `pctText` from `src/lib/dashboard-chart-utils.ts` | `src/components/ui/easyui/chart-primitives.tsx` |
 
 **Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
-place of lucide), colours mapped to Foundry tokens so it works in light and dark mode, accessibility
-where it was missing, and `prefers-reduced-motion` support. The header comment in each Foundry file
-lists that file's own changes (for example the Undo Toast's corrected pause maths and its `stacked`
-mode for `ToastProvider`, and the Command Menu's focus trap and focus restore).
+place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
+only), accessibility where it was missing, and `prefers-reduced-motion` support. Layout, shapes and
+motion are upstream's. The header comment in each Foundry file lists that file's own changes.
+
+**Undo Toast.** The countdown's pause maths is corrected, "Restored" shows only once an async undo
+succeeds, and a `stacked` mode lets `ToastProvider` (`src/components/ui/toast.tsx`) stack it.
+
+**Charts.** Number and date formatting is en-GB. The funnel shows "+N%" when a stage is *larger*
+than the one before (upstream prints "−N%" either way), omits "Biggest drop" when nothing dropped,
+and takes its gradient ids from `useId` so two funnels on one page don't share `<defs>`.
+⚠️ The funnel's bridges keep upstream's vertical SVG gradient. DESIGN.md says no gradients; this one
+is kept on purpose because the bridge shape *is* the design being adopted.
 
 ```
 MIT License
