@@ -36,10 +36,10 @@ describe("the guidelines deck", () => {
     expect(pageNumber(0)).toBe("01");
   });
 
-  it("covers Foundry as a Gitwork product", () => {
+  it("covers Foundry, Leisure Tech and AfterDesk as Gitwork products", () => {
     const products = CHAPTERS.find((c) => c.id === "products");
     expect(products?.pages.map((p) => p.id)).toEqual(
-      expect.arrayContaining(["foundry", "product-lockup", "foundry-modules", "product-cards"]),
+      expect.arrayContaining(["foundry", "leisure-tech", "afterdesk", "product-lockup", "foundry-modules", "product-cards"]),
     );
   });
 });
