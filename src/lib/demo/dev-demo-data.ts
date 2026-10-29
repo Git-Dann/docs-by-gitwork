@@ -3975,7 +3975,7 @@ export function resolveDemoApi(
     if (result !== undefined) return result;
   }
   if (pathname.startsWith("/api/platform/")) {
-    const result = resolveDemoPlatform(pathname, init);
+    const result = resolveDemoPlatform(pathname, init, search);
     if (result !== undefined) return result;
   }
   if (pathname.startsWith("/api/clients/summary")) {

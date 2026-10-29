@@ -16,11 +16,16 @@ import {
   EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPE_LABEL,
   filterStaff,
+  sortStaffBy,
   type EmploymentType,
   type StaffFilter,
   type StaffPerson,
+  type StaffSortKey,
 } from "@/lib/staff";
+import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
+import { Pager } from "@/components/ui/pager";
+import { SortHeader, type SortDir } from "@/components/ui/sort-header";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useCreateStaffRecord, useStaffRoster, useUpdateStaffDetails } from "@/hooks/use-staff";
 
@@ -32,25 +37,10 @@ const ROLE_LABEL: Record<string, string> = {
   GUEST: "Guest",
 };
 
-function Initials({ person }: { person: StaffPerson }) {
-  const initials = person.name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("");
-  if (person.avatarUrl) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={person.avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />;
-  }
-  return (
-    <span
-      aria-hidden
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] font-mono text-[11px] text-[var(--text-3)]"
-    >
-      {initials || "?"}
-    </span>
-  );
+function PersonAvatar({ person }: { person: StaffPerson }) {
+  // The shared Avatar falls back to initials when a stored photo URL is dead, rather
+  // than showing the browser's broken-image icon.
+  return <Avatar src={person.avatarUrl} name={person.name} size={32} />;
 }
 
 function formatStart(date: string | null): string {
@@ -236,16 +226,77 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** People per page: one screen on a laptop, so the list never becomes a scroll. */
+const PAGE_SIZE = 20;
+
+function roleLine(p: StaffPerson): string {
+  return `${p.role ? ROLE_LABEL[p.role] ?? p.role : "No login"}${p.email ? ` · ${p.email}` : ""}`;
+}
+
+function jobTitleOf(p: StaffPerson): string | null {
+  return p.jobTitle ?? (p.isDeveloper && p.primaryStack ? `${p.primaryStack} developer` : null);
+}
+
+function clientsOf(p: StaffPerson): string | null {
+  return p.currentClients.length ? p.currentClients.map((c) => c.name).join(", ") : null;
+}
+
+function RowActions({
+  person,
+  showDevProfile,
+  canEdit,
+  onEdit,
+}: {
+  person: StaffPerson;
+  showDevProfile: boolean;
+  canEdit: boolean;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 justify-end gap-1.5">
+      {person.isDeveloper && person.recordId && showDevProfile ? (
+        <Link href={`/app/codeclear/candidates/${person.recordId}`} className="app-button app-button-tertiary app-button-xs">
+          Profile
+        </Link>
+      ) : null}
+      {canEdit ? (
+        <button type="button" className="app-button app-button-secondary app-button-xs" onClick={onEdit}>
+          {person.recordId ? "Edit" : "Create profile"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function StaffRoster() {
   const roster = useStaffRoster();
   const { canManageCode, hasModule } = usePermissions();
-  const [filter, setFilter] = useState<StaffFilter>({});
+  const [filter, setFilterState] = useState<StaffFilter>({});
+  const [sort, setSortState] = useState<{ key: StaffSortKey; dir: SortDir }>({ key: "name", dir: "asc" });
+  const [page, setPage] = useState(0);
+  // Any change to what is listed goes back to page one, so the page is never past the end.
+  const setFilter = (next: StaffFilter | ((f: StaffFilter) => StaffFilter)) => {
+    setFilterState(next);
+    setPage(0);
+  };
+  const setSort = (next: (s: { key: StaffSortKey; dir: SortDir }) => { key: StaffSortKey; dir: SortDir }) => {
+    setSortState(next);
+    setPage(0);
+  };
   const [editing, setEditing] = useState<StaffPerson | null>(null);
   const [adding, setAdding] = useState(false);
 
   const people = useMemo(() => roster.data?.people ?? [], [roster.data]);
-  const shown = useMemo(() => filterStaff(people, filter), [people, filter]);
+  const shown = useMemo(() => sortStaffBy(filterStaff(people, filter), sort.key, sort.dir), [people, filter, sort]);
   const showDevProfiles = hasModule("devsignal") || hasModule("codeclear");
+
+  const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const pageRows = shown.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+
+  const onSort = (key: StaffSortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "startDate" ? "desc" : "asc" }));
+  const filtered = Boolean(filter.q || filter.department || filter.employmentType || filter.presence);
 
   return (
     <section className="widget-card">
@@ -255,7 +306,11 @@ export function StaffRoster() {
           <span className="mx-1.5 text-[var(--text-4)]">{"//"}</span>
           People
         </span>
-        {roster.data ? <span className="widget-header__status">{people.length} on the team</span> : null}
+        {roster.data ? (
+          <span className="widget-header__status">
+            {filtered ? `${shown.length} of ${people.length}` : `${people.length} on the team`}
+          </span>
+        ) : null}
       </div>
       <div className="widget-body space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -306,6 +361,11 @@ export function StaffRoster() {
             <option value="no-account">No login</option>
             <option value="no-record">No profile yet</option>
           </select>
+          {filtered ? (
+            <button type="button" className="app-button app-button-tertiary app-button-sm" onClick={() => setFilter({})}>
+              Clear filters
+            </button>
+          ) : null}
           {canManageCode ? (
             <button type="button" className="app-button app-button-secondary app-button-sm sm:ml-auto" onClick={() => setAdding(true)}>
               Add someone
@@ -322,76 +382,94 @@ export function StaffRoster() {
         ) : shown.length === 0 ? (
           <p className="text-sm text-[var(--text-3)]">{people.length ? "Nobody matches these filters." : "Nobody on the team yet."}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="app-table app-table--dense min-w-[860px]">
-              <thead>
-                <tr>
-                  <th className="text-left">Person</th>
-                  <th className="w-[170px] text-left">Job title</th>
-                  <th className="w-[130px] text-left">Department</th>
-                  <th className="w-[110px] text-left">Type</th>
-                  <th className="w-[180px] text-left">Clients</th>
-                  <th className="w-[100px] text-left">Started</th>
-                  <th className="w-[130px] text-right">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((p) => (
-                  <tr key={p.key}>
-                    <td>
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Initials person={p} />
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>
-                            {p.name}
-                          </p>
-                          <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={p.email ?? undefined}>
-                            {p.role ? ROLE_LABEL[p.role] ?? p.role : "No login"}
-                            {p.email ? ` · ${p.email}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="truncate" title={p.jobTitle ?? undefined}>
-                      {p.jobTitle ?? (p.isDeveloper && p.primaryStack ? `${p.primaryStack} developer` : "—")}
-                      {p.managerName ? (
-                        <span className="block truncate text-[11px] text-[var(--text-4)]">Reports to {p.managerName}</span>
-                      ) : null}
-                    </td>
-                    <td className="truncate" title={p.department ?? undefined}>{p.department ?? "—"}</td>
-                    <td>{p.employmentType ? EMPLOYMENT_TYPE_LABEL[p.employmentType] : "—"}</td>
-                    <td className="truncate" title={p.currentClients.map((c) => c.name).join(", ") || undefined}>
-                      {p.currentClients.length ? p.currentClients.map((c) => c.name).join(", ") : "—"}
-                    </td>
-                    <td className="whitespace-nowrap font-mono text-[12px] text-[var(--text-3)]">{formatStart(p.startDate)}</td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1.5">
-                        {p.isDeveloper && p.recordId && showDevProfiles ? (
-                          <Link
-                            href={`/app/codeclear/candidates/${p.recordId}`}
-                            className="app-button app-button-tertiary app-button-xs"
-                          >
-                            Profile
-                          </Link>
-                        ) : null}
-                        {canManageCode ? (
-                          <button
-                            type="button"
-                            className="app-button app-button-secondary app-button-xs"
-                            onClick={() => setEditing(p)}
-                          >
-                            {p.recordId ? "Edit" : "Create profile"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
+          <>
+            {/* Phones: one card per person, so nothing sits off the side of a scrolling table. */}
+            <ul className="divide-y divide-[var(--border-3)] md:hidden" aria-label="People">
+              {pageRows.map((p) => (
+                <li key={p.key} className="flex items-start gap-3 py-3">
+                  <PersonAvatar person={p} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>{p.name}</p>
+                    <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={roleLine(p)}>{roleLine(p)}</p>
+                    <p className="mt-1 text-[13px] text-[var(--text-2)]">
+                      {[jobTitleOf(p), clientsOf(p)].filter(Boolean).join(" · ") || "No details yet"}
+                    </p>
+                    <div className="mt-2">
+                      <RowActions person={p} showDevProfile={showDevProfiles} canEdit={canManageCode} onEdit={() => setEditing(p)} />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* From md: a fixed-layout table, edge to edge in the card. Columns that matter
+                least drop out on narrower screens (Started below lg, Department below xl, Type
+                below 2xl) rather than squeezing Clients to nothing. */}
+            <div className="-mx-4 hidden overflow-x-auto md:block">
+              <table className="app-table app-table--dense w-full table-fixed [&_td:first-child]:pl-4 [&_td:last-child]:pr-4 [&_th:first-child]:pl-4 [&_th:last-child]:pr-4">
+                <thead>
+                  <tr>
+                    <SortHeader label="Person" k="name" sort={sort} onSort={onSort} className="w-[30%]" />
+                    <SortHeader label="Job title" k="jobTitle" sort={sort} onSort={onSort} className="w-[18%]" />
+                    <th className="hidden w-[12%] text-left xl:table-cell">Department</th>
+                    <th className="hidden w-[10%] text-left 2xl:table-cell">Type</th>
+                    <th className="text-left">Clients</th>
+                    <SortHeader label="Started" k="startDate" sort={sort} onSort={onSort} className="hidden w-[90px] lg:table-cell" />
+                    <th className="w-[132px] text-right">
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {pageRows.map((p) => {
+                    const title = jobTitleOf(p);
+                    const clients = clientsOf(p);
+                    return (
+                      <tr key={p.key}>
+                        <td>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <PersonAvatar person={p} />
+                            <div className="min-w-0">
+                              <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>{p.name}</p>
+                              <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={roleLine(p)}>
+                                {roleLine(p)}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <p className="truncate" title={title ?? undefined}>{title ?? "—"}</p>
+                          {p.managerName ? (
+                            <p className="truncate text-[11px] text-[var(--text-4)]" title={`Reports to ${p.managerName}`}>
+                              Reports to {p.managerName}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="hidden xl:table-cell">
+                          <p className="truncate" title={p.department ?? undefined}>{p.department ?? "—"}</p>
+                        </td>
+                        <td className="hidden 2xl:table-cell">
+                          <p className="truncate" title={p.employmentType ? EMPLOYMENT_TYPE_LABEL[p.employmentType] : undefined}>
+                            {p.employmentType ? EMPLOYMENT_TYPE_LABEL[p.employmentType] : "—"}
+                          </p>
+                        </td>
+                        <td>
+                          <p className="truncate" title={clients ?? undefined}>{clients ?? "—"}</p>
+                        </td>
+                        <td className="hidden whitespace-nowrap font-mono text-[12px] text-[var(--text-3)] lg:table-cell">
+                          {formatStart(p.startDate)}
+                        </td>
+                        <td>
+                          <RowActions person={p} showDevProfile={showDevProfiles} canEdit={canManageCode} onEdit={() => setEditing(p)} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pager page={current} pageSize={PAGE_SIZE} total={shown.length} onPage={setPage} label="People pages" />
+          </>
         )}
       </div>
       {editing ? <DetailsDialog person={editing} people={people} onClose={() => setEditing(null)} /> : null}

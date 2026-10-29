@@ -117,7 +117,10 @@ function findChromium() {
 }
 
 /** Numbers change run to run (dates, ages, counts); the words do not. */
-const norm = (s) => s.replace(/\s+/g, ' ').replace(/\d+/g, '#').trim().slice(0, 120)
+// Numbers, weekday and month names are blanked: headings like "MY DAY Wednesday, Oct 28" change
+// every day, and a check that fails after midnight trains everyone to ignore it.
+const DATE_WORDS = /(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day\b|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b|\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sept?(?:ember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b/gi
+const norm = (s) => s.replace(/\s+/g, ' ').replace(/\d+/g, '#').replace(DATE_WORDS, '~').trim().slice(0, 120)
 
 /** Runs in the page: the content a person would notice going missing. */
 function CONTENT() {

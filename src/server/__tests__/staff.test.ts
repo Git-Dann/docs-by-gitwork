@@ -6,7 +6,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 import { planStaffLinks } from "@/server/staff";
 import { buildCandidateWhere } from "@/server/codeclear-candidate-where";
-import { filterStaff, normaliseStaffDetails, sortStaff, type StaffPerson } from "@/lib/staff";
+import { filterStaff, normaliseStaffDetails, sortStaff, sortStaffBy, type StaffPerson } from "@/lib/staff";
 
 const root = join(__dirname, "../../..");
 
@@ -150,5 +150,23 @@ describe("Staff routes are gated", () => {
   it("/app/code redirects to Staff, so old links land somewhere", () => {
     const page = readFileSync(join(root, "src/app/(app)/app/code/page.tsx"), "utf8");
     expect(page).toContain('redirect("/app/staff")');
+  });
+});
+
+describe("sortStaffBy", () => {
+  const p = (name: string, extra: Partial<StaffPerson> = {}): StaffPerson => ({
+    key: name, memberId: null, recordId: null, name, email: null, avatarUrl: null, role: null,
+    jobTitle: null, department: null, employmentType: null, startDate: null, managerRecordId: null,
+    managerName: null, isDeveloper: false, primaryStack: null, currentClients: [], ...extra,
+  });
+  const people = [p("Cara", { startDate: "2024-03-01" }), p("Abe"), p("Bea", { startDate: "2023-01-01" })];
+
+  it("puts people with no start date last in both directions", () => {
+    expect(sortStaffBy(people, "startDate", "asc").map((x) => x.name)).toEqual(["Bea", "Cara", "Abe"]);
+    expect(sortStaffBy(people, "startDate", "desc").map((x) => x.name)).toEqual(["Cara", "Bea", "Abe"]);
+  });
+
+  it("sorts names either way", () => {
+    expect(sortStaffBy(people, "name", "desc").map((x) => x.name)).toEqual(["Cara", "Bea", "Abe"]);
   });
 });

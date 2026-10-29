@@ -141,3 +141,30 @@ export function normaliseStaffDetails(input: StaffDetailsUpdate): { ok: true; va
   if (input.managerRecordId !== undefined) out.managerRecordId = input.managerRecordId || null;
   return { ok: true, value: out };
 }
+
+export type StaffSortKey = "name" | "jobTitle" | "startDate";
+
+/**
+ * Sorts by one column. A person with no value (no job title, no start date) goes last in
+ * BOTH directions, so a column is never led by a run of blanks. Ties fall back to name.
+ */
+export function sortStaffBy(people: StaffPerson[], key: StaffSortKey, dir: "asc" | "desc"): StaffPerson[] {
+  const collator = new Intl.Collator("en-GB", { sensitivity: "base" });
+  const val = (p: StaffPerson): string | null => {
+    if (key === "name") return p.name;
+    if (key === "jobTitle") return p.jobTitle ?? (p.isDeveloper && p.primaryStack ? `${p.primaryStack} developer` : null);
+    return p.startDate;
+  };
+  const sign = dir === "asc" ? 1 : -1;
+  return [...people].sort((a, b) => {
+    const va = val(a);
+    const vb = val(b);
+    if (va === null && vb !== null) return 1;
+    if (vb === null && va !== null) return -1;
+    if (va !== null && vb !== null) {
+      const c = collator.compare(va, vb);
+      if (c !== 0) return c * sign;
+    }
+    return collator.compare(a.name, b.name);
+  });
+}
