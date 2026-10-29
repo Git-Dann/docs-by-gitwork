@@ -32,6 +32,8 @@ import {
   analyticsTh,
   analyticsThStyle,
 } from "@/components/analytics/analytics-widgets";
+import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
+import { formatHeatmapDay, heatmapWeekCount } from "@/lib/charts/activity-heatmap";
 
 function statusColor(s: TaskStatus): string {
   switch (s) {
@@ -167,6 +169,13 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
   const maxCost = Math.max(1, ...topCost.map((c) => c.monthlyCost?.amount ?? 0));
   const hasThroughput = data.throughput.some((b) => b.created > 0 || b.completed > 0);
   const engagementTotal = data.byEngagement.reduce((a, e) => a + e.count, 0);
+  // `?? []` so a response cached by a deploy from before `completedByDay` existed renders empty
+  // rather than throwing on first paint.
+  const completedByDay = data.completedByDay ?? [];
+  const heatData = completedByDay.map((d) => ({ date: d.date, value: d.count }));
+  const heatWeeks = Math.max(1, heatmapWeekCount(completedByDay));
+  const heatActive = completedByDay.filter((d) => d.count > 0);
+  const heatTotal = heatActive.reduce((a, d) => a + d.count, 0);
   const endingSoon = [...data.clients]
     .filter((c) => c.endDate != null)
     .sort((a, b) => (a.daysLeft ?? Infinity) - (b.daysLeft ?? Infinity))
@@ -659,6 +668,52 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
         )}
       </WidgetCard>
 
+      {/* ── Row 9 · Daily completion heatmap (12) ── */}
+      <WidgetCard
+        number="19"
+        label="Completion activity"
+        hint="Tasks the team finished on each day of the selected period, one square per day (UTC). Darker blue = more finished that day. Hover a day, or focus the grid and use the arrow keys, for its count."
+        className="col-span-12"
+        status={<span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>tasks / day</span>}
+      >
+        {completedByDay.length ? (
+          // Capped at the grid's design width (30px labels + 19px per week; EasyUI caps a cell at
+          // 16px) so the summary and legend sit with the grid instead of across a wide card. The
+          // 480px floor keeps it out of EasyUI's compact (<440px) label mode on a short range. On a
+          // narrow screen the component drops its oldest weeks to fit rather than shrinking cells.
+          <div style={{ maxWidth: Math.max(480, 30 + heatWeeks * 19) }}>
+            <ActivityHeatmap
+              data={heatData}
+              weeks={heatWeeks}
+              weekStart={1}
+              endDate={completedByDay[completedByDay.length - 1].date}
+              unit="tasks completed"
+              ariaLabel={`Tasks completed per day. ${heatTotal} completed across ${heatActive.length} of ${completedByDay.length} days.`}
+            />
+            {/* Every fact in the grid, as text: each day with a completion (every other day in the
+                window had none). */}
+            {heatActive.length ? (
+              <details className="mt-3">
+                <summary className="cursor-pointer select-none" style={CAPTION}>
+                  {`Daily counts · ${heatActive.length} day${heatActive.length === 1 ? "" : "s"} with a completion`}
+                </summary>
+                <ul className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-6 gap-y-1">
+                  {[...heatActive].reverse().map((d) => (
+                    <li key={d.date} className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-[var(--text-2)]">{formatHeatmapDay(d.date)}</span>
+                      <span className="tabular-nums" style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-3)" }}>
+                        {d.count}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--text-4)]">No days in this range.</p>
+        )}
+      </WidgetCard>
     </div>
   );
 }
