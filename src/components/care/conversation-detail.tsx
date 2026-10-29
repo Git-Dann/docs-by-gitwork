@@ -17,6 +17,7 @@ import {
   useTriageConversation,
   useSnoozeConversation,
   useCloseConversation,
+  useCloseConversationWithUndo,
   useConversationNotes,
   useAddConversationNote,
   useSendMessage,
@@ -224,6 +225,7 @@ export function ConversationDetail({
   const triage = useTriageConversation(clientId);
   const snooze = useSnoozeConversation(clientId);
   const close = useCloseConversation(clientId);
+  const closeWithUndo = useCloseConversationWithUndo(clientId);
   const addNote = useAddConversationNote(clientId, conversation.id);
   const sendMessage = useSendMessage(clientId, conversation.id);
   const generateDraft = useGenerateAiDraft(clientId);
@@ -365,7 +367,7 @@ export function ConversationDetail({
             <ToolbarButton onClick={() => close.mutate({ convId: conversation.id, reopen: true })}>Reopen</ToolbarButton>
           ) : (
             <>
-              <ToolbarButton tone="affirm" onClick={() => close.mutate({ convId: conversation.id })} title="Close (E)">
+              <ToolbarButton tone="affirm" onClick={() => closeWithUndo(conversation)} title="Close (E)">
                 <CheckIcon className="h-3.5 w-3.5" />
                 Close
               </ToolbarButton>
