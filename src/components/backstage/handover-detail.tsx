@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/format";
 import { renderLines } from "@/lib/markdown";
 import { BackstageModal } from "@/components/backstage/modal";
@@ -660,20 +661,10 @@ function HeaderEditor({ handover, onClose }: { handover: HandoverDTO; onClose: (
         </FieldLabel>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FieldLabel label="First day away">
-            <input
-              className="app-input"
-              type="date"
-              value={startsOn}
-              onChange={(e) => setStartsOn(e.target.value)}
-            />
+            <DatePicker value={startsOn} onChange={setStartsOn} />
           </FieldLabel>
           <FieldLabel label="Last day away">
-            <input
-              className="app-input"
-              type="date"
-              value={endsOn}
-              onChange={(e) => setEndsOn(e.target.value)}
-            />
+            <DatePicker value={endsOn} onChange={setEndsOn} />
           </FieldLabel>
         </div>
         {/* Said here rather than only on the server, so the reason arrives before

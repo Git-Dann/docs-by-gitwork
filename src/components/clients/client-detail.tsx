@@ -34,6 +34,7 @@ import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
@@ -1391,7 +1392,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 <div className="mt-4 space-y-4">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Pick back up (optional)</span>
-                    <input type="date" value={resumeAtInput} onChange={(e) => setResumeAtInput(e.target.value)} className="app-input" />
+                    <DatePicker value={resumeAtInput} onChange={setResumeAtInput} />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Reason (optional)</span>
@@ -3530,12 +3531,7 @@ function ClientEditModal({
                     </label>
                     <label className="block">
                       <span className="app-field-label">End date</span>
-                      <input
-                        type="date"
-                        value={form.endDate}
-                        onChange={(e) => set("endDate", e.target.value)}
-                        className="app-input"
-                      />
+                      <DatePicker value={form.endDate} onChange={(next) => set("endDate", next)} />
                     </label>
                   </div>
 

@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { MarkdownField } from "@/components/proposals/markdown-field";
@@ -453,13 +454,8 @@ export function TaskFormModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Due date</label>
-                <input
-                  type="date"
-                  className="app-input w-full"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
+                <label htmlFor="task-form-due" className="mb-1 block text-xs font-medium text-[var(--text-2)]">Due date</label>
+                <DatePicker id="task-form-due" className="w-full" value={dueDate} onChange={setDueDate} />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Status</label>

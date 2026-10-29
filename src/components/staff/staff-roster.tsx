@@ -11,6 +11,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/format";
 import {
   EMPLOYMENT_TYPES,
@@ -148,7 +149,7 @@ export function DetailsDialog({
           </label>
           <label className={field}>
             Start date
-            <input type="date" className="app-input mt-1 w-full" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <DatePicker className="mt-1 w-full" value={startDate} onChange={setStartDate} />
           </label>
           <label className={cn(field, "sm:col-span-2")}>
             Manager

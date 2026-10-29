@@ -14,6 +14,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Modal } from "@/components/ui/modal";
 import { MONO } from "@/components/analytics/analytics-widgets";
 import { useDeleteWikiEstimate, useSaveWikiEstimate } from "@/hooks/use-wiki";
@@ -266,12 +267,7 @@ export function WikiEstimatesEditor({
 
           <label className="block">
             <span className="app-field-label">Start date</span>
-            <input
-              type="date"
-              className={field}
-              value={draft.startDate}
-              onChange={(e) => set("startDate", e.target.value)}
-            />
+            <DatePicker value={draft.startDate} onChange={(next) => set("startDate", next)} />
             <span className="mt-1 block text-[12px] text-[var(--text-4)]">
               Leave blank if it isn&rsquo;t agreed — the page will say so.
             </span>

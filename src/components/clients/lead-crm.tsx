@@ -27,6 +27,7 @@ import {
   UsersIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/switch";
@@ -498,7 +499,7 @@ function NextStepsCard({ slug, crm, canManage }: { slug: string; crm: LeadCrmSta
               className="app-input min-w-[200px] flex-1"
               aria-label="New action"
             />
-            <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="app-input w-[150px]" aria-label="Due date" />
+            <DatePicker value={due} onChange={setDue} className="w-[150px]" aria-label="Due date" />
             <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="app-select w-[150px]" aria-label="Owner">
               <option value="">Me</option>
               {crm?.people.map((p) => (
@@ -1107,14 +1108,13 @@ export function ConvertLeadModal({
           <div className="space-y-4">
             <label className="block max-w-[220px]">
               <span className="widget-data-label mb-1.5 block">Start date</span>
-              <input
-                type="date"
+              <DatePicker
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  if (proposalId && e.target.value) void loadPlan(proposalId, e.target.value);
+                onChange={(next) => {
+                  setStartDate(next);
+                  if (proposalId && next) void loadPlan(proposalId, next);
                 }}
-                className="app-input w-full"
+                className="w-full"
               />
             </label>
             {previewPlan.isPending && !plan ? (

@@ -23,6 +23,8 @@ its row below.
 | Funnel Chart | `src/components/ui/FunnelChart.tsx` | `src/components/ui/easyui/funnel-chart.tsx` |
 | Activity Heatmap | `src/components/ui/ActivityHeatmap.tsx` | `src/components/ui/easyui/activity-heatmap.tsx` |
 | Chart primitives | `src/lib/chart-primitives.tsx` (the parts the charts use) + `pctText` from `src/lib/dashboard-chart-utils.ts` | `src/components/ui/easyui/chart-primitives.tsx` |
+| Calendar | `src/components/ui/calendar.tsx` | `src/components/ui/easyui/calendar.tsx` |
+| Date Picker | `src/components/ui/date-picker.tsx` | `src/components/ui/easyui/date-picker.tsx` |
 
 **Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
 place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
@@ -37,6 +39,10 @@ than the one before (upstream prints "−N%" either way), omits "Biggest drop" w
 and takes its gradient ids from `useId` so two funnels on one page don't share `<defs>`.
 ⚠️ The funnel's bridges keep upstream's vertical SVG gradient. DESIGN.md says no gradients; this one
 is kept on purpose because the bridge shape *is* the design being adopted.
+
+**Calendar and Date Picker.** Weeks start on Monday, a Today/Clear footer is added, the popover is
+anchored and portalled (Headless UI) so cards and dialogs can't clip it, and Escape closes only the
+calendar, not the dialog around it. EasyUI's 8px and 12px radii are kept, an exception to DESIGN.md.
 
 ```
 MIT License

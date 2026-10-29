@@ -304,6 +304,21 @@ exist.** Note ~8 hand-rolled field constants still diverge from it (CLAUDE.md §
 - Focused: border `2px solid {colors.primary}`, outline `3px solid {colors.primary-soft}`.
 - Error: border `2px solid {colors.danger}`, outline `3px solid {colors.danger-soft}`.
 
+**`DatePicker` / `DateRangePicker`** (`src/components/ui/date-picker.tsx`) — the date field.
+Use it instead of `<input type="date">`, which draws a different control in every browser.
+It is **EasyUI's Date Picker and Calendar, vendored** (`src/components/ui/easyui/`, MIT —
+`docs/third-party-ui.md`), kept to their design on purpose: the gliding selected-day pill,
+the month slide, the spring pop from the trigger and the range preview are theirs.
+- Value contract is the native one: `YYYY-MM-DD`, `""` when empty. Weeks start Monday.
+- Colours are Foundry tokens (light + dark); the selection pill and range band are brand
+  blue. Trigger is 36px like `app-input`, 16px text below `sm`.
+- ⚠️ **Radius exception:** the vendored pieces keep EasyUI's 8px (`rounded-lg`) day cells and
+  trigger and 12px (`rounded-xl`) popover rather than our 6px / 10px — that is their look,
+  and Dan asked for it. Don't "fix" it, and don't copy it into Foundry's own controls.
+- Popover is anchored and portalled (Headless UI), `z-[220]`, so dialogs and `.widget-card`
+  can't clip it; Escape closes the calendar, not the dialog around it.
+- Footer: **Today** and **Clear** (no Clear when `required`) — a Foundry addition.
+
 ### Tables
 
 **`app-table-shell` + `app-table`** — the standard table: 12px sentence-case headers, 14px/16px

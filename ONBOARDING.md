@@ -102,7 +102,8 @@ then `npm run test:isolation` (§4b).
 2. **Don't hand-roll form fields.** Use `app-input` / `app-select` / `app-textarea` from
    `globals.css`. A bare `<select>` gets the native OS chevron with no reserved padding, so long
    values render *underneath the arrow*. This has shipped three separate times; `npm run audit:ui`
-   now catches it.
+   now catches it. For a date, use `<DatePicker>` / `<DateRangePicker>`
+   (`src/components/ui/date-picker.tsx`), not `<input type="date">` — same `YYYY-MM-DD` value.
 3. **The mobile breakpoint is `lg` (1024px), not `md`.** "Mobile" here means phones *and* portrait
    tablets. Check base (<640), the 640–1023 band, and `lg+`.
 4. **Never hardcode a model id.** Resolve via `resolveAiConfig(workspace)`; fallbacks live only in
