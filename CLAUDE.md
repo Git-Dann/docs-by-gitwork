@@ -8852,3 +8852,25 @@ The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
   on a temporary scratch page (all 40 slides measured for overflow at 1440, the drawer at 390,
   edit and present mode). Post-deploy: open it from Labs, edit a subtitle as an admin, reload, and
   confirm the edit stayed.
+
+## 92. Recent Changes (October 2026) — ⌘K command menu, and the EasyUI tracker
+
+**⌘K / Ctrl+K opens a command menu** on every `/app` page and the demo (`src/components/command-menu.tsx`,
+rules in `src/lib/command-menu.ts`). It jumps to a product, a client or a document, or switches theme.
+The header has a Search button too, so it can be found without knowing the shortcut.
+
+- **The pages are the shell's own `primaryNav`**, already filtered by module permission and workspace
+  modules, so the menu can never offer a product the sidebar hides. Clients and documents load only
+  after the menu is first opened, and only when the viewer has Portal or Docs (`useClientList` and
+  `useProposalList` gained an `enabled` option for this). A result is only a link; the page it opens
+  does its own gating.
+- Empty query shows pages and actions; clients and documents appear once you type, capped at 6 per
+  group (`GROUP_LIMIT`). Search is the shared `fuzzySearch`, so typos are forgiven.
+- It uses the one `<Modal>` with a fixed height, so the box does not resize as results change. The
+  search field carries an inline `outline: none` because the global focus ring is unlayered (§69).
+- On the demo, `mapHref` sends `/app` links to the demo's own pages.
+
+**`docs/easyui-adoption.md` tracks** the EasyUI-inspired components (undo toast, date picker, activity
+heatmap, funnel chart and the rest): what each is for in Foundry, its status and its PR. Update it in
+the same PR that changes a row.
+
