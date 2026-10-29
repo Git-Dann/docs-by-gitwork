@@ -12,8 +12,9 @@
 | Phase 1 Staff (web): People roster, Staff/Hiring split, schema, record linking | Done, CLAUDE.md §87 |
 | Phase 1 Staff (iOS) | Draft PR [Git-Dann/foundry-ios#1](https://github.com/Git-Dann/foundry-ios/pull/1): tabs follow workspace modules. Unbuilt, needs a Mac build |
 | Staff and Platform polish (paging, popup, validation, seed accounts hidden) | Done, §86.6 and §87 |
-| Phase 2.1 Workspace carried in every token; shadow comparison | In review, CLAUDE.md §88. Read the counts at `/api/platform/workspace-shadow` |
-| Phase 2.2 Replace single-workspace lookups, file by file | Not started. A ratchet test stops the count growing |
+| Phase 2.1 Workspace carried in every token; shadow comparison | Live 29 Oct 2026 (#743), CLAUDE.md §88. Read the counts at `/api/platform/workspace-shadow` |
+| Phase 2.2a Run first-boot setup at server start-up | Next. Needed before 2.2b, see below |
+| Phase 2.2b Replace single-workspace lookups, file by file | Not started. A ratchet test stops the count growing |
 
 ## Context
 
@@ -117,6 +118,14 @@ Foundry is single-tenant all the way through.
 - Keep `MODULE_PATHS` honest: rename the devsignal entry **in place** (§11).
 
 ### Phase 2: Find the right workspace for every request (the big one)
+
+> **Found while starting 2.2 (29 Oct 2026):** `ensureBaseRecords()` is not just a lookup. Its first
+> call in each server process also runs first-boot setup: schema statements (the pgvector column
+> and index among them), seed data, contract templates and the first-admin bootstrap. So removing a
+> call from a route can, on a fresh container, skip setup another route quietly relied on. Step
+> 2.2a moves that setup to server start-up (`src/instrumentation-node.ts` already runs once there)
+> and keeps `ensureBaseRecords()` as a cheap, already-done lookup. Only then can 2.2b replace call
+> sites with `user.workspaceId`, which today gives the same answer and later switches in one place.
 Every request has to land in the right workspace before any customer can be given access.
 
 - **The active workspace lives in the session.**
