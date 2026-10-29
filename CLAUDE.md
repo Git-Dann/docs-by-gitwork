@@ -8827,6 +8827,16 @@ The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
   card a future product slots into. These rules are written down here for the first time; they
   follow the existing Foundry lockup (`public/foundry-logo.svg`), so check them before treating
   them as settled.
+- **Leisure Tech and AfterDesk (added later in October 2026).** Leisure Tech is a trading name of
+  Gitwork Group Ltd (its arm for caravan, motorhome and park businesses). It keeps its own identity
+  and names Gitwork as the studio that delivers the software. AfterDesk (AfterDesk Ltd) is its
+  warranty platform, built and run by Gitwork, and REMIT is in build. The architecture page has
+  three columns (offers, Foundry, Leisure Tech), each has its own page, and the product-card page
+  shows Foundry, AfterDesk and an empty slot. Their logos are copied from their own sites into
+  `public/brand/` and the colours sampled from those files. ⚠️ AfterDesk only publishes a white
+  logo, so it is always shown on its navy until a dark version exists. ⚠️ leisuretech.ai gives
+  Gitwork Group Ltd's registered office as Congleton, while `src/lib/gitwork.ts` says Salford Quays;
+  one of them is out of date.
 - **Logos are the real files.** The Gitwork wordmark is `public/email/gitwork-wordmark-ink.png`;
   its paper and white variants are that file used as a CSS mask, with the purple dot put back on
   the paper variant (dot measured at x 456 to 478, y 77 to 98 of 480 x 100). The roundel is the one

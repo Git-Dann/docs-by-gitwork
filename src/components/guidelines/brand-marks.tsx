@@ -134,3 +134,50 @@ export function FoundryAppIcon({ size }: { size: number }) {
     />
   );
 }
+
+/** Leisure Tech's colours, sampled from its own logo (leisuretech.ai/brand). */
+export const LEISURE_TECH = {
+  green: "#427257",
+  gold: "#BEA45E",
+  /** The site's theme colour and button fill. */
+  deepGreen: "#2C513E",
+} as const;
+
+/** AfterDesk's colours, read from afterdesk.ai (theme colour and the hero accent). */
+export const AFTERDESK = {
+  navy: "#0A1628",
+  accent: "#7EB3F0",
+} as const;
+
+/** The Leisure Tech lockup: mark, name and the "caravans, motorhomes, parks" line. 1200 x 270. */
+export function LeisureTechLogo({ height, variant = "colour" }: { height: number; variant?: "colour" | "reverse" }) {
+  return (
+    <img
+      src={variant === "colour" ? "/brand/leisure-tech-colour.png" : "/brand/leisure-tech-reverse.png"}
+      alt="Leisure Tech"
+      width={(height * 1200) / 270}
+      height={height}
+      style={{ display: "block" }}
+    />
+  );
+}
+
+/** The AfterDesk lockup. Only a white version is published, so it always sits on AfterDesk navy. 767 x 150. */
+export function AfterDeskLogo({ height }: { height: number }) {
+  return (
+    <img src="/brand/afterdesk-white.png" alt="AfterDesk" width={(height * 767) / 150} height={height} style={{ display: "block" }} />
+  );
+}
+
+/** AfterDesk's app icon (its apple-touch-icon): the white spanner-in-a-speech-bubble on navy. */
+export function AfterDeskIcon({ size }: { size: number }) {
+  return (
+    <img
+      src="/brand/afterdesk-icon.png"
+      alt="AfterDesk"
+      width={size}
+      height={size}
+      style={{ display: "block", objectFit: "cover", borderRadius: size * 0.22, background: AFTERDESK.navy }}
+    />
+  );
+}
