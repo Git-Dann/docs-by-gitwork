@@ -103,7 +103,7 @@
           "clipping": 2,
           "content": [
             "# // MY CLIENTSPortal",
-            "# // MY DAYWednesday, Oct #",
+            "# // MY DAY~, ~ #",
             "# // MY TASKS# open",
             "Foundry — Developer demo · Foundry"
           ]
@@ -112,7 +112,7 @@
           "clipping": 0,
           "content": [
             "# // MY CLIENTSPortal",
-            "# // MY DAYWednesday, Oct #",
+            "# // MY DAY~, ~ #",
             "# // MY TASKS# open",
             "Foundry — Developer demo · Foundry"
           ]
@@ -121,7 +121,7 @@
           "clipping": 3,
           "content": [
             "# // MY CLIENTSPortal",
-            "# // MY DAYWednesday, Oct #",
+            "# // MY DAY~, ~ #",
             "# // MY TASKS# open",
             "Foundry HQ",
             "Foundry — Developer demo · Foundry"
@@ -279,7 +279,7 @@
           "content": [
             "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
             "Foundry — Backstage demo · Foundry",
-            "October #"
+            "~ #"
           ]
         },
         "768": {
@@ -287,7 +287,7 @@
           "content": [
             "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
             "Foundry — Backstage demo · Foundry",
-            "October #"
+            "~ #"
           ]
         },
         "1440": {
@@ -296,7 +296,7 @@
             "# // TEAM CALENDARHolidaysShow holidays forUnited KingdomGBCalendarsOverlay Google CalendarsNo connected calendars yet. ",
             "Backstage",
             "Foundry — Backstage demo · Foundry",
-            "October #"
+            "~ #"
           ]
         }
       }
