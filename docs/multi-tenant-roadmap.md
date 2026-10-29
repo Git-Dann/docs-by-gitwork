@@ -13,7 +13,7 @@
 | Phase 1 Staff (iOS) | Draft PR [Git-Dann/foundry-ios#1](https://github.com/Git-Dann/foundry-ios/pull/1): tabs follow workspace modules. Unbuilt, needs a Mac build |
 | Staff and Platform polish (paging, popup, validation, seed accounts hidden) | Done, §86.6 and §87 |
 | Phase 2.1 Workspace carried in every token; shadow comparison | Live 29 Oct 2026 (#743), CLAUDE.md §88. Read the counts at `/api/platform/workspace-shadow` |
-| Phase 2.2a Run first-boot setup at server start-up | Next. Needed before 2.2b, see below |
+| Phase 2.2a Run first-boot setup at server start-up | Done. `runFirstBootSetup()` starts in `src/instrumentation-node.ts` |
 | Phase 2.2b Replace single-workspace lookups, file by file | Not started. A ratchet test stops the count growing |
 
 ## Context
@@ -154,6 +154,11 @@ Every request has to land in the right workspace before any customer can be give
 - **Generic email domains** (gmail.com and similar) can never be an allowed domain. People on those addresses join by invite only.
 - **Email and password for full members**, extending `password-login.ts`, with reset through the existing forgot-password page.
 - **Invites** reuse the existing invite acceptance.
+- **Onboarding** (Dan, 29 Oct: "we can wrap that up as we go"). Not built yet. Two parts:
+  - **A new business:** sign-up, then a first-run checklist (logo, invite people, connect Slack
+    and Google, add an AI key, first client), on a starter workspace with sample projects.
+  - **A new person joining:** a welcome screen, what their role can see, and how to get the
+    iOS app.
 
 ### Phase 4: Branding per workspace
 Extend `Workspace.branding`:

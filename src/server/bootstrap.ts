@@ -217,8 +217,10 @@ let baseRecordsCache: BaseRecords | null = null;
 let baseRecordsPromise: Promise<BaseRecords> | null = null;
 
 /**
- * Bootstrap the workspace, schema patches and built-in content. Runs once per
- * container.
+ * First-time setup: schema patches, the Gitwork workspace and owner, built-in content and
+ * backfills. Runs once per server process. It is started at server start-up by
+ * src/instrumentation-node.ts, so it is normally finished (or in progress) before the first
+ * request arrives; a request that gets there first awaits the same run.
  *
  * ⚠️ Memoises the PROMISE, not just the resolved value. It previously did
  * `if (cache) return cache; cache = await _ensureBaseRecords()`, so on a cold
@@ -240,7 +242,7 @@ let baseRecordsPromise: Promise<BaseRecords> | null = null;
  * On failure the memo is cleared so a later request can retry; otherwise one
  * transient database blip would poison the container for its whole lifetime.
  */
-export async function ensureBaseRecords(): Promise<BaseRecords> {
+export async function runFirstBootSetup(): Promise<BaseRecords> {
   if (baseRecordsCache) return baseRecordsCache;
   baseRecordsPromise ??= _ensureBaseRecords().then(
     (records) => {
@@ -253,6 +255,16 @@ export async function ensureBaseRecords(): Promise<BaseRecords> {
     },
   );
   return baseRecordsPromise;
+}
+
+/**
+ * The Gitwork workspace, its owner user and the default proposal template, after first-time
+ * setup has run. ~190 call sites use this to find "the" workspace; Phase 2.2 replaces them
+ * with the request's own workspace (docs/multi-tenant-roadmap.md). Same run, same result as
+ * `runFirstBootSetup()`: there is only one memo, so the two can never set up twice.
+ */
+export async function ensureBaseRecords(): Promise<BaseRecords> {
+  return runFirstBootSetup();
 }
 
 async function _ensureBaseRecords() {

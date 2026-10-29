@@ -8703,6 +8703,14 @@ today's answer, which is still the only one used.
   `DEFAULT_WORKSPACE_SLUG`; crons vary (some loop over workspaces, some use the default, some are
   global). API-key callers have no identity and resolve to the bootstrap owner.
 
+**Step 2.2a: first-time setup starts at server start-up.** `ensureBaseRecords()` was two things:
+first-time setup (schema patches incl. pgvector, seeds, admin bootstrap, backfills) and "find the
+Gitwork workspace". Setup only ran on whichever request called it first, so removing call sites
+could have stopped it running at all. The memoised run is now `runFirstBootSetup()`
+(`src/server/bootstrap.ts`), started by `src/instrumentation-node.ts` (not awaited; skipped
+without `DATABASE_URL` and during `next build`). `ensureBaseRecords()` only delegates to it, so
+there is still one run per process and every caller is unchanged. Tests:
+`src/__tests__/first-boot-setup-at-startup.test.ts`.
 
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
