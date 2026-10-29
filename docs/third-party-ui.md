@@ -19,6 +19,7 @@ its row below.
 | Component | Upstream file | Foundry file |
 |---|---|---|
 | Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
+| Undo Toast | `src/components/ui/UndoToast.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/undo-toast.tsx` |
 | Calendar | `src/components/ui/calendar.tsx` | `src/components/ui/easyui/calendar.tsx` |
 | Date Picker | `src/components/ui/date-picker.tsx` | `src/components/ui/easyui/date-picker.tsx` |
 
@@ -26,6 +27,9 @@ its row below.
 place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
 only), accessibility where it was missing, and `prefers-reduced-motion` support. Layout, shapes and
 motion are upstream's. The header comment in each Foundry file lists that file's own changes.
+
+**Undo Toast.** The countdown's pause maths is corrected, "Restored" shows only once an async undo
+succeeds, and a `stacked` mode lets `ToastProvider` (`src/components/ui/toast.tsx`) stack it.
 
 **Calendar and Date Picker.** Weeks start on Monday, a Today/Clear footer is added, the popover is
 anchored and portalled (Headless UI) so cards and dialogs can't clip it, and Escape closes only the

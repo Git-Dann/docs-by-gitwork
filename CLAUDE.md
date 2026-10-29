@@ -8891,3 +8891,23 @@ The header has a Search button too, so it can be found without knowing the short
 heatmap, funnel chart and the rest): what each is for in Foundry, its status and its PR. Update it in
 the same PR that changes a row.
 
+## 93. Recent Changes (October 2026) — Undo toasts (EasyUI, vendored)
+
+`useToast().undo(title, onUndo, { description, variant })` shows **EasyUI's Undo Toast**,
+vendored (MIT) at `src/components/ui/easyui/undo-toast.tsx`, licence in
+`docs/third-party-ui.md`. Same look, countdown bar and spring as easyui.site; colours mapped to
+tokens (light + dark), pauses on hover **and focus**, Escape closes, no motion under
+`prefers-reduced-motion`.
+
+- **The action has already happened; Undo runs its inverse.** Nothing is deferred, so a toast
+  that times out changes nothing. Offer it **only where a real server-side inverse exists** —
+  never over a hard delete (`deleteTask`, `deleteWikiIntakeItem` are hard deletes: keep their
+  confirms). An inverse that throws shows "Couldn't undo", never "Restored".
+- **Restore what it was, not a default.** Requests' Undo puts back the request's old status
+  (PROMOTED/TRIAGED), not the NEW that Reopen sets; Care's puts back new/open and is not offered
+  from snoozed (setting SNOOZED back would leave `closedAt` stamped).
+- Adopted: sheet row Remove (team — the confirm is gone; clients still confirm, they can't
+  restore), Requests "Mark dealt with" (row, detail and batch), Care close (button and `E`).
+- **Vendoring third-party UI:** put it under `src/components/ui/<source>/`, name the upstream
+  file, licence and every change in a header comment, and add the licence text to
+  `docs/third-party-ui.md`.

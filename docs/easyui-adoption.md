@@ -14,8 +14,8 @@ Update this table in the same PR that changes a row.
 
 | Component | Where it goes in Foundry | Status | PR |
 |---|---|---|---|
-| Command menu (⌘K) | Every app page and the demo: jump to a product, client or document, switch theme. EasyUI's Command Menu, vendored | In review | #752 |
-| Undo toast | Reversible actions (close, archive, soft delete) instead of a confirm | In progress | feat/undo-toast |
+| Command menu (⌘K) | Every app page and the demo: jump to a product, client or document, switch theme. EasyUI's Command Menu, vendored | Shipped | #752 |
+| Undo toast | Sheet row remove, Requests "Mark dealt with", Care close: undo instead of a confirm. EasyUI's Undo Toast, vendored | Shipped | #753 |
 | Date picker / calendar | Replaces 21 of the 31 native date inputs (tasks, milestones, leave, expenses, platforms, CRM and more). EasyUI's Calendar and Date Picker, vendored | In review | #755 |
 | Activity heatmap | Developer activity (tasks completed per day) | In progress | feat/heatmap-funnel |
 | Funnel chart | Docs analytics: sent, opened, accepted | In progress | feat/heatmap-funnel |
