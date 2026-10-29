@@ -22,6 +22,7 @@ Update this table in the same PR that changes a row.
 | AI agent activity | Foreman, Curator and Dispatch runs as a step timeline | Not started: a run stores a stats summary, not its steps, so the runs must record steps first | |
 | Product tour | A new builder's first week; a client's first wiki visit | Not started: needs a decision on who sees it and when | |
 | Expandable data row | Care table and task list view | Not started: Care's record view may make it redundant | |
+| macOS Folder Cards (motion only) | Staff → People cards: a person's clients rise from behind their card on hover, like cards from a folder's pocket. Adapted, not vendored: the component is a folder you open into a grid, which doesn't fit a person card, so the card keeps EasyUI's spring (350/25) and pocket-card geometry (near full width, inset per layer) and nothing else | Shipped | this PR |
 
 ## Not adopted, and why
 

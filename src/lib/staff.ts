@@ -177,3 +177,99 @@ export function sortStaffBy(people: StaffPerson[], key: StaffSortKey, dir: "asc"
     return collator.compare(a.name, b.name);
   });
 }
+
+// ── Grouping, org chart, export (People as cards) ──────────────────────────────
+
+export type StaffGroupId = "admins" | "staff" | "developers" | "guests" | "no-login";
+
+export const STAFF_GROUP_LABEL: Record<StaffGroupId, string> = {
+  admins: "Admins",
+  staff: "Staff",
+  developers: "Developers",
+  guests: "Guests",
+  "no-login": "No login",
+};
+
+const GROUP_ORDER: StaffGroupId[] = ["admins", "staff", "developers", "guests", "no-login"];
+
+/** Which heading someone sits under: their Foundry role, or "No login" for a record only. */
+export function staffGroupOf(p: Pick<StaffPerson, "role">): StaffGroupId {
+  switch (p.role) {
+    case "SUPER_ADMIN":
+    case "ADMIN":
+      return "admins";
+    case "STAFF":
+      return "staff";
+    case "DEVELOPER":
+      return "developers";
+    case "GUEST":
+      return "guests";
+    default:
+      return p.role ? "staff" : "no-login";
+  }
+}
+
+/** People under their headings, in heading order, keeping the order they came in. Empty groups are left out. */
+export function groupStaff(people: StaffPerson[]): Array<{ id: StaffGroupId; label: string; people: StaffPerson[] }> {
+  const by = new Map<StaffGroupId, StaffPerson[]>();
+  for (const p of people) {
+    const g = staffGroupOf(p);
+    by.set(g, [...(by.get(g) ?? []), p]);
+  }
+  return GROUP_ORDER.filter((g) => by.has(g)).map((g) => ({ id: g, label: STAFF_GROUP_LABEL[g], people: by.get(g)! }));
+}
+
+export interface OrgNode {
+  person: StaffPerson;
+  reports: OrgNode[];
+}
+
+/**
+ * The org chart, drawn from each record's manager. A manager who isn't on the list
+ * (archived, or not on this view) makes their reports roots rather than vanishing, and
+ * a loop (A manages B manages A) is broken rather than recursing forever.
+ */
+export function buildOrgTree(people: StaffPerson[]): OrgNode[] {
+  const byRecord = new Map(people.filter((p) => p.recordId).map((p) => [p.recordId!, p]));
+  const children = new Map<string, StaffPerson[]>();
+  const roots: StaffPerson[] = [];
+  for (const p of people) {
+    const m = p.managerRecordId;
+    if (m && byRecord.has(m) && m !== p.recordId) children.set(m, [...(children.get(m) ?? []), p]);
+    else roots.push(p);
+  }
+  const seen = new Set<string>();
+  const build = (p: StaffPerson): OrgNode => {
+    seen.add(p.key);
+    const kids = (p.recordId ? children.get(p.recordId) ?? [] : []).filter((k) => !seen.has(k.key));
+    return { person: p, reports: sortStaff(kids).map(build) };
+  };
+  const tree = sortStaff(roots).map(build);
+  // Anyone only reachable through a loop becomes a root, so nobody is dropped.
+  for (const p of sortStaff(people)) if (!seen.has(p.key)) tree.push(build(p));
+  return tree;
+}
+
+/** One CSV cell: quoted when needed, and formula-looking text neutralised for spreadsheets. */
+function csvCell(v: string | null | undefined): string {
+  let s = v ?? "";
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** The roster as CSV (no rates, no personal details): what an accountant or a spreadsheet needs. */
+export function staffToCsv(people: StaffPerson[]): string {
+  const header = ["Name", "Email", "Role", "Job title", "Department", "Type", "Started", "Manager", "Clients"];
+  const rows = people.map((p) => [
+    p.name,
+    p.email,
+    p.role ?? "No login",
+    p.jobTitle,
+    p.department,
+    p.employmentType ? EMPLOYMENT_TYPE_LABEL[p.employmentType] : null,
+    p.startDate,
+    p.managerName,
+    p.currentClients.map((c) => c.name).join("; "),
+  ]);
+  return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+}

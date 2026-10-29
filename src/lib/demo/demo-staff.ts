@@ -158,6 +158,43 @@ function demoLifecycle(p: StaffPerson) {
   };
 }
 
+// A stable pseudo-random week of work per person, so the heatmap looks lived-in and doesn't flicker.
+function demoActivity(p: StaffPerson) {
+  const days: Array<{ date: string; value: number }> = [];
+  let seed = [...(p.recordId ?? "x")].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rand = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
+  const today = new Date();
+  for (let i = 26 * 7 - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - i));
+    const weekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+    days.push({ date: d.toISOString().slice(0, 10), value: p.memberId && !weekend ? Math.floor(rand() * 5) : 0 });
+  }
+  const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  return {
+    completedByDay: p.memberId ? days : [],
+    completedTotal: days.reduce((a, d) => a + d.value, 0),
+    placements: p.currentClients.map((c, i) => ({ clientName: c.name, slug: c.slug, startDate: `2025-0${i + 3}-01`, endDate: null, allocationPercent: i ? 50 : 100 })),
+    upcomingLeave: p.memberId ? [{ start: inDays(12), end: inDays(16), label: "Annual leave", pending: false }] : [],
+    allowance: p.memberId ? { allocated: 25, used: 14, pending: 0, remaining: 11 } : null,
+    developer: p.isDeveloper ? { githubHandle: "alihassan", primaryStack: p.primaryStack, techStacks: ["TypeScript", "Swift"] } : null,
+  };
+}
+
+function demoHrOverview() {
+  const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  return {
+    comingUp: [
+      { kind: "probation-end", date: inDays(12), name: "Tom Okafor", href: "/app/staff/r2" },
+      { kind: "supplier-renewal", date: inDays(22), name: "Indus Dev Partners", href: "/app/staff/suppliers" },
+      { kind: "contract-end", date: inDays(48), name: "Carlos Mendes", href: "/app/staff/r5" },
+    ],
+    missing: [
+      { recordId: "r3", name: "Ali Hassan", missing: ["start date", "personal details"] },
+      { recordId: "r5", name: "Carlos Mendes", missing: ["manager", "personal details"] },
+    ],
+  };
+}
+
 /** Settings → Team's archive and restore, which Staff uses for anyone who signs in. */
 export function resolveDemoTeamArchive(pathname: string, method: string): unknown {
   const m = pathname.match(/^\/api\/team\/members\/([^/]+)\/(archive|restore)$/);
@@ -191,7 +228,8 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
     if (typeof body.archived === "boolean") s.archived = body.archived;
     return { ok: true };
   }
-  const m = pathname.match(/^\/api\/staff\/([^/]+)(?:\/(employment|personal|access-log|archive))?$/);
+  if (pathname === "/api/staff/hr-overview") return demoHrOverview();
+  const m = pathname.match(/^\/api\/staff\/([^/]+)(?:\/(employment|personal|access-log|archive|activity))?$/);
   if (!m) return undefined;
   const recordId = decodeURIComponent(m[1]);
   const p = people.find((x) => x.recordId === recordId);
@@ -203,6 +241,7 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
     return { ok: true, name: p.name };
   }
   if (!m[2]) return method === "GET" ? demoProfile(p) : undefined;
+  if (m[2] === "activity") return demoActivity(p);
   if (m[2] === "archive" && method === "POST") {
     if (p.memberId) return { error: "They sign in to Foundry, so they're archived on their login.", __status: 400 };
     p.archivedAt = body.archived === false ? null : new Date().toISOString();

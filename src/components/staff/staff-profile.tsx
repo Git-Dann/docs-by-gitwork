@@ -25,16 +25,20 @@ import {
   formatNiNumber,
   type EmergencyContact,
   type SensitiveDetails,
+  type StaffActivity,
   type StaffProfile,
 } from "@/lib/hr";
 import { Avatar } from "@/components/ui/avatar";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
+import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useStaffRoster } from "@/hooks/use-staff";
 import {
   useAccessLog,
   useDeleteStaffRecord,
   useSetArchived,
+  useStaffActivity,
   useStaffPersonal,
   useStaffProfile,
   useSuppliers,
@@ -168,11 +172,11 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
             </label>
             <label className={label}>
               Contract end or leaving date
-              <input type="date" className="app-input mt-1 w-full" value={endDate} onChange={(ev) => setEndDate(ev.target.value)} />
+              <DatePicker className="mt-1 w-full" value={endDate} onChange={setEndDate} />
             </label>
             <label className={label}>
               Probation ends
-              <input type="date" className="app-input mt-1 w-full" value={probationEndsOn} onChange={(ev) => setProbationEndsOn(ev.target.value)} />
+              <DatePicker className="mt-1 w-full" value={probationEndsOn} onChange={setProbationEndsOn} />
             </label>
             <label className={label}>
               Notice period (weeks)
@@ -263,7 +267,7 @@ function PersonalForm({ initial, recordId, onDone }: { initial: SensitiveDetails
       <div className="grid gap-4 sm:grid-cols-2">
         <label className={label}>
           Date of birth
-          <input type="date" className="app-input mt-1 w-full" value={d.dateOfBirth ?? ""} max={today()} onChange={(ev) => set({ dateOfBirth: ev.target.value || null })} />
+          <DatePicker className="mt-1 w-full" value={d.dateOfBirth ?? ""} max={today()} onChange={(v) => set({ dateOfBirth: v || null })} />
         </label>
         <label className={label}>
           NI number
@@ -287,7 +291,7 @@ function PersonalForm({ initial, recordId, onDone }: { initial: SensitiveDetails
         </label>
         <label className={label}>
           Right to work expires
-          <input type="date" className="app-input mt-1 w-full" value={d.rightToWorkExpiry ?? ""} onChange={(ev) => set({ rightToWorkExpiry: ev.target.value || null })} />
+          <DatePicker className="mt-1 w-full" value={d.rightToWorkExpiry ?? ""} onChange={(v) => set({ rightToWorkExpiry: v || null })} />
         </label>
       </div>
       <ContactsEditor contacts={d.emergencyContacts} onChange={(emergencyContacts) => set({ emergencyContacts })} />
@@ -531,10 +535,97 @@ function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath:
   );
 }
 
+// ── Activity and time off ───────────────────────────────────────────────────────
+
+/** Tasks they completed per day (EasyUI's Activity Heatmap), and every client they've been placed on. */
+function ActivityCard({ activity, hasLogin, number }: { activity: StaffActivity | undefined; hasLogin: boolean; number: string }) {
+  return (
+    <WidgetCard number={number} name="Activity" status={activity && hasLogin ? `${activity.completedTotal} tasks in 26 weeks` : undefined} statusTone="muted">
+      {!activity ? (
+        <p className="text-[13px] text-[var(--text-3)]">Loading…</p>
+      ) : (
+        <div className="space-y-5">
+          {hasLogin ? (
+            <ActivityHeatmap
+              data={activity.completedByDay}
+              weeks={26}
+              weekStart={1}
+              unit="tasks completed"
+              ariaLabel={`Tasks completed per day: ${activity.completedTotal} in the last 26 weeks.`}
+            />
+          ) : (
+            <p className="text-[13px] text-[var(--text-3)]">They don&apos;t sign in, so there&apos;s no task activity.</p>
+          )}
+          <div>
+            <p className="widget-data-label text-[var(--text-4)]">Placements</p>
+            {activity.placements.length ? (
+              <ul className="mt-2 divide-y divide-[var(--border-3)]">
+                {activity.placements.map((pl, i) => (
+                  <li key={`${pl.clientName}:${pl.startDate}:${i}`} className="flex items-baseline justify-between gap-3 py-2 text-[13px]">
+                    <span className="min-w-0 truncate text-[var(--text-1)]" title={pl.clientName}>
+                      {pl.clientName}
+                      {pl.allocationPercent < 100 ? <span className="text-[var(--text-3)]"> · {pl.allocationPercent}%</span> : null}
+                    </span>
+                    <span className="shrink-0 font-mono text-[12px] text-[var(--text-3)]">
+                      {formatDate(pl.startDate)} – {pl.endDate ? formatDate(pl.endDate) : "now"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-[13px] text-[var(--text-3)]">None yet.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </WidgetCard>
+  );
+}
+
+/** Leave in the next 90 days and, for the person, HR and approvers, this year's allowance. */
+function TimeOffCard({ activity, number }: { activity: StaffActivity | undefined; number: string }) {
+  const a = activity?.allowance;
+  return (
+    <WidgetCard number={number} name="Time off" status="Next 90 days" statusTone="muted">
+      {!activity ? (
+        <p className="text-[13px] text-[var(--text-3)]">Loading…</p>
+      ) : (
+        <div className="space-y-4">
+          {a ? (
+            <dl className="grid grid-cols-3 gap-4">
+              <Field label="Allowance">{a.allocated} days</Field>
+              <Field label="Used">{a.used}{a.pending ? <span className="text-[var(--text-3)]"> +{a.pending} pending</span> : null}</Field>
+              <Field label="Left">{a.remaining}</Field>
+            </dl>
+          ) : null}
+          {activity.upcomingLeave.length ? (
+            <ul className="divide-y divide-[var(--border-3)]">
+              {activity.upcomingLeave.map((l) => (
+                <li key={`${l.start}:${l.end}`} className="flex items-baseline justify-between gap-3 py-2 text-[13px]">
+                  <span className="text-[var(--text-1)]">
+                    {l.label}
+                    {l.pending ? <span className="text-[var(--text-3)]"> · waiting for approval</span> : null}
+                  </span>
+                  <span className="shrink-0 font-mono text-[12px] text-[var(--text-3)]">
+                    {l.start === l.end ? formatDate(l.start) : `${formatDate(l.start)} – ${formatDate(l.end)}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[13px] text-[var(--text-3)]">Nothing booked.</p>
+          )}
+        </div>
+      )}
+    </WidgetCard>
+  );
+}
+
 // ── The page ────────────────────────────────────────────────────────────────────
 
 export function StaffProfileView({ recordId, basePath = "/app/staff" }: { recordId: string; basePath?: string }) {
   const profile = useStaffProfile(recordId);
+  const activity = useStaffActivity(recordId);
   const roster = useStaffRoster();
   const [editingDirectory, setEditingDirectory] = useState(false);
 
@@ -561,14 +652,24 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
   // them), so a short card never stretches to match a tall one beside it.
   let n = 0;
   const next = () => String(++n).padStart(2, "0");
+  const dev = activity.data?.developer ?? null;
   const overview = (
     <WidgetCard
       number={next()}
       name="Overview"
       status={p.role ? ROLE_LABEL[p.role] ?? p.role : "No login"}
       statusTone={p.role ? "info" : "muted"}
-      action={p.access.editDirectory && rosterPerson ? <HeaderAction onClick={() => setEditingDirectory(true)} label="Edit overview">Edit</HeaderAction> : undefined}
+      action={
+        p.access.editDirectory && rosterPerson && !editingDirectory ? (
+          <HeaderAction onClick={() => setEditingDirectory(true)} label="Edit overview">
+            Edit
+          </HeaderAction>
+        ) : undefined
+      }
     >
+      {editingDirectory && rosterPerson ? (
+        <DetailsDialog inline person={rosterPerson} people={roster.data?.people ?? []} onClose={() => setEditingDirectory(false)} />
+      ) : (
       <dl className="grid gap-4 sm:grid-cols-2">
         {p.preferredName && p.preferredName !== p.name ? <Field label="Legal name">{p.name}</Field> : null}
         <Field label="Email">{p.email ?? "—"}</Field>
@@ -586,13 +687,25 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
         <Field label="Clients" className="sm:col-span-2">
           {p.currentClients.length ? p.currentClients.map((c) => c.name).join(", ") : "—"}
         </Field>
+        {dev ? (
+          <>
+            <Field label="GitHub">
+              <a href={`https://github.com/${dev.githubHandle}`} target="_blank" rel="noreferrer noopener" className="hover:text-[var(--brand-600)] hover:underline">
+                {dev.githubHandle}
+              </a>
+            </Field>
+            <Field label="Stack">{[dev.primaryStack, ...dev.techStacks.filter((t) => t !== dev.primaryStack)].filter(Boolean).slice(0, 4).join(", ") || "—"}</Field>
+          </>
+        ) : null}
       </dl>
+      )}
     </WidgetCard>
   );
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
+  const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
+  const activityCard = <ActivityCard activity={activity.data} hasLogin={p.lifecycle.hasLogin} number={next()} />;
   const personal = p.access.sensitive ? <PersonalCard profile={p} number={next()} /> : null;
   const accessLog = p.access.accessLog ? <AccessLogCard recordId={p.recordId} number={next()} /> : null;
-  const hasPrivate = Boolean(personal || accessLog);
 
   return (
     <div className="space-y-5">
@@ -627,29 +740,20 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
         </p>
       ) : null}
 
-      {hasPrivate ? (
-        <div className="grid items-start gap-5 lg:grid-cols-2">
-          <div className="min-w-0 space-y-5">
-            {overview}
-            {employment}
-          </div>
-          <div className="min-w-0 space-y-5">
-            {personal}
-            {accessLog}
-          </div>
-        </div>
-      ) : employment ? (
-        <div className="grid items-start gap-5 lg:grid-cols-2">
+      {/* Two independent columns: the person and their work on the left, what they've done
+          and what's private on the right. Reading order matches the numbering. */}
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <div className="min-w-0 space-y-5">
           {overview}
           {employment}
+          {timeOff}
         </div>
-      ) : (
-        overview
-      )}
-
-      {editingDirectory && rosterPerson ? (
-        <DetailsDialog person={rosterPerson} people={roster.data?.people ?? []} onClose={() => setEditingDirectory(false)} />
-      ) : null}
+        <div className="min-w-0 space-y-5">
+          {activityCard}
+          {personal}
+          {accessLog}
+        </div>
+      </div>
     </div>
   );
 }

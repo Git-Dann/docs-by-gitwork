@@ -8970,3 +8970,18 @@ Settings → People & access read as a list of every permission ever added. Now:
   were both "05").
 - Invite copy no longer names `@gitwork.co.uk`; the allowed domain becomes per workspace in Phase 3
   of the multi-tenant roadmap.
+
+## 96. Recent Changes (October 2026) — Staff: grouped cards, org chart, HR reminders, a fuller profile
+
+- **People is cards, grouped under headings** (Admins, Staff, Developers, Guests, No login), not a
+  table. Sort by name or newest; Cards / Org chart switch; CSV export (no rates, no personal
+  details). The pager went: a team fits on one page, and the headings do the organising.
+- **On hover, a person's clients rise from behind their card**, using EasyUI's macOS Folder Cards
+  spring and pocket-card geometry (sheets nearly the card's full width). ⚠️ The card's motion
+  wrapper needs its own `z-10`: its transform makes a stacking context, and without it the tabs
+  paint over the card.
+- **For HR** card on People (`hr.manage`): coming up in 60 days, and records missing details.
+- **Profile:** Overview edits in place; Activity (EasyUI heatmap + placements) and Time off cards.
+  ⚠️ Leave TYPE is shown only to the person and HR; everyone else sees "Off".
+- Details: `docs/hr-platform.md`. Demo: `/demo/staff`, `/demo/staff/r3`.
+
