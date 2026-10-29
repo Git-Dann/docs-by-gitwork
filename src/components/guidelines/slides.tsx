@@ -12,7 +12,20 @@ import {
   type GuidelinePage,
   type VisualId,
 } from "@/lib/guidelines/content";
-import { FONT, FOUNDRY, FoundryAppIcon, FoundryWordmark, GW, GitworkRoundel, GitworkWordmark } from "./brand-marks";
+import {
+  AFTERDESK,
+  AfterDeskIcon,
+  AfterDeskLogo,
+  FONT,
+  FOUNDRY,
+  FoundryAppIcon,
+  FoundryWordmark,
+  GW,
+  GitworkRoundel,
+  GitworkWordmark,
+  LEISURE_TECH,
+  LeisureTechLogo,
+} from "./brand-marks";
 import { GuideText, useGuide } from "./guide-context";
 
 /*
@@ -101,7 +114,7 @@ export function CoverSlide({ page }: { page: GuidelinePage }) {
           {[
             ["Owner", "Gitwork Group Ltd"],
             ["Version", GUIDELINES_VERSION],
-            ["Covers", "Gitwork and Foundry"],
+            ["Covers", "Gitwork and its products"],
             ["Pages", String(PAGE_COUNT)],
           ].map(([k, v]) => (
             <div key={k}>
@@ -1187,48 +1200,47 @@ function Architecture() {
   const box = (children: ReactNode, style: CSSProperties = {}) => (
     <div style={{ background: GW.white, border: `1px solid ${GW.paperRule}`, borderRadius: 14, padding: "18px 20px", ...style }}>{children}</div>
   );
+  const row = (name: string, line?: string) => (
+    <div key={name} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: `1px solid ${GW.paperRule}` }}>
+      <span style={body(17, GW.text, { fontWeight: 600 })}>{name}</span>
+      {line ? <span style={body(14, GW.muted, { textAlign: "right" })}>{line}</span> : null}
+    </div>
+  );
   return (
     <div style={{ ...fill, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "center" }}>
         {box(
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <GitworkWordmark height={40} />
+            <GitworkWordmark height={38} />
             <Caption>Masterbrand</Caption>
           </div>,
-          { padding: "18px 28px" },
+          { padding: "16px 26px" },
         )}
       </div>
-      {/* Connectors: one stem down from Gitwork, splitting to the two columns below. */}
-      <svg aria-hidden width="100%" height="56" viewBox="0 0 1000 56" preserveAspectRatio="none" style={{ display: "block" }}>
-        <path d="M500 0 V28 M250 28 H750 M250 28 V56 M750 28 V56" stroke={GW.ink} strokeWidth="1.5" fill="none" />
+      {/* One stem down from Gitwork, splitting to the three columns below. */}
+      <svg aria-hidden width="100%" height="48" viewBox="0 0 1000 48" preserveAspectRatio="none" style={{ display: "block" }}>
+        <path d="M500 0 V24 M163 24 H837 M163 24 V48 M500 24 V48 M837 24 V48" stroke={GW.ink} strokeWidth="1.5" fill="none" />
       </svg>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, flex: 1 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20, flex: 1 }}>
         {box(
           <>
             <Caption>Offers · services we sell</Caption>
-            <div style={{ marginTop: 14 }}>
-              {OFFERS.map((o) => (
-                <div key={o.name} style={{ display: "flex", justifyContent: "space-between", padding: "11px 0", borderBottom: `1px solid ${GW.paperRule}` }}>
-                  <span style={body(18, GW.text, { fontWeight: 600 })}>{o.name}</span>
-                  <span style={body(16, GW.muted)}>{o.line}</span>
-                </div>
-              ))}
-            </div>
-            <div style={body(15, GW.muted, { marginTop: 14 })}>Named in plain type. No logos of their own.</div>
+            <div style={{ marginTop: 10 }}>{OFFERS.map((o) => row(o.name))}</div>
+            <div style={body(14, GW.muted, { marginTop: 12 })}>Plain type. No logos of their own.</div>
           </>,
         )}
         {box(
           <>
-            <Caption>Products · software we run</Caption>
-            <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 18 }}>
-              <FoundryAppIcon size={56} />
-              <FoundryWordmark height={50} />
+            <Caption>Product · under Gitwork</Caption>
+            <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14 }}>
+              <FoundryAppIcon size={44} />
+              <FoundryWordmark height={40} />
             </div>
-            <div style={{ marginTop: 18, borderTop: `1px solid ${GW.paperRule}`, paddingTop: 14 }}>
+            <div style={{ marginTop: 16, borderTop: `1px solid ${GW.paperRule}`, paddingTop: 12 }}>
               <Caption>Modules, inside Foundry</Caption>
-              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {MODULES.map(([m]) => (
-                  <span key={m} style={{ border: `1px solid ${GW.paperRule}`, borderRadius: 6, padding: "5px 10px", ...body(15, GW.text) }}>
+                  <span key={m} style={{ border: `1px solid ${GW.paperRule}`, borderRadius: 6, padding: "4px 9px", ...body(14, GW.text) }}>
                     {m}
                   </span>
                 ))}
@@ -1236,6 +1248,20 @@ function Architecture() {
             </div>
           </>,
           { borderColor: FOUNDRY.indigo },
+        )}
+        {box(
+          <>
+            <Caption>Industry arm · Leisure Tech</Caption>
+            <div style={{ marginTop: 16 }}>
+              <LeisureTechLogo height={40} />
+            </div>
+            <div style={{ marginTop: 16, borderTop: `1px solid ${GW.paperRule}`, paddingTop: 4 }}>
+              {row("AfterDesk", "Live")}
+              {row("REMIT", "In build")}
+            </div>
+            <div style={body(14, GW.muted, { marginTop: 12 })}>Platforms built and run by Gitwork.</div>
+          </>,
+          { borderColor: LEISURE_TECH.green },
         )}
       </div>
     </div>
@@ -1287,6 +1313,95 @@ function Foundry() {
           </div>
         </div>
         <div style={body(15, GW.muted, { marginTop: "auto" })}>Numbered panels, DM Serif figures, mono labels. foundry.gitwork.co.uk</div>
+      </Card>
+    </div>
+  );
+}
+
+function LeisureTech() {
+  return (
+    <div style={{ ...fill, display: "grid", gridTemplateColumns: "1.25fr 1fr", gridTemplateRows: "1fr 1fr", gap: 20 }}>
+      <Card style={{ display: "flex", flexDirection: "column" }}>
+        <Caption>The lockup</Caption>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <LeisureTechLogo height={84} />
+        </div>
+      </Card>
+      <Card>
+        <Caption>Its own identity</Caption>
+        {[
+          [LEISURE_TECH.green, "Leisure green", LEISURE_TECH.green],
+          [LEISURE_TECH.gold, "Leisure gold", LEISURE_TECH.gold],
+        ].map(([c, n, hex]) => (
+          <div key={n} style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 14 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 10, background: c }} />
+            <div style={body(17, GW.text, { fontWeight: 600 })}>
+              {n} <span style={mono(12, GW.muted)}>{hex}</span>
+            </div>
+          </div>
+        ))}
+        <div style={body(15, GW.muted, { marginTop: 14 })}>Archivo for headings. leisuretech.ai</div>
+      </Card>
+      <div style={{ background: LEISURE_TECH.deepGreen, borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <LeisureTechLogo height={46} variant="reverse" />
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={mono(12, GW.white)}>Software delivered by</span>
+          <GitworkWordmark height={24} variant="white" />
+        </div>
+      </div>
+      <Card>
+        <Caption>How Gitwork appears</Caption>
+        <div style={{ marginTop: 14 }}>
+          <ArrowList
+            size={17}
+            items={[
+              "Leisure Tech leads its own pages, in its own colours",
+              "Gitwork is named as the studio: Software delivered by Gitwork",
+              "The footer says Leisure Tech is a trading name of Gitwork Group Ltd",
+            ]}
+          />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AfterDesk() {
+  return (
+    <div style={{ ...fill, display: "grid", gridTemplateColumns: "1.25fr 1fr", gridTemplateRows: "1.2fr 1fr", gap: 20 }}>
+      <div style={{ gridRow: "1 / span 2", background: AFTERDESK.navy, borderRadius: 14, padding: "24px 28px", display: "flex", flexDirection: "column", color: GW.white }}>
+        <Caption color="rgba(255,255,255,0.7)">The lockup, on its navy</Caption>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <AfterDeskLogo height={84} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, borderTop: "1px solid rgba(255,255,255,0.16)", paddingTop: 16 }}>
+          <AfterDeskIcon size={56} />
+          <div>
+            <div style={body(17, GW.white, { fontWeight: 600 })}>One platform for service, warranty and repair</div>
+            <div style={mono(12, "rgba(255,255,255,0.7)", { marginTop: 4 })}>afterdesk.ai · AfterDesk Ltd</div>
+          </div>
+        </div>
+      </div>
+      <Card>
+        <Caption>Colour and type</Caption>
+        {[
+          [AFTERDESK.navy, "AfterDesk navy", AFTERDESK.navy],
+          [AFTERDESK.accent, "Sky accent", AFTERDESK.accent],
+        ].map(([c, n, hex]) => (
+          <div key={n} style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 14 }}>
+            <span style={{ width: 40, height: 40, borderRadius: 10, background: c, boxShadow: `inset 0 0 0 1px ${GW.paperRule}` }} />
+            <div style={body(17, GW.text, { fontWeight: 600 })}>
+              {n} <span style={mono(12, GW.muted)}>{hex}</span>
+            </div>
+          </div>
+        ))}
+        <div style={body(15, GW.muted, { marginTop: 14 })}>Inter throughout.</div>
+      </Card>
+      <Card>
+        <Caption>Before it goes on paper</Caption>
+        <div style={body(17, GW.text, { marginTop: 12, lineHeight: 1.45 })}>
+          AfterDesk only publishes a white logo, so for now it always sits on its navy. A dark version is needed before it can appear on a paper page.
+        </div>
       </Card>
     </div>
   );
@@ -1425,47 +1540,68 @@ function Modules() {
   );
 }
 
+interface ProductSlot {
+  mark: ReactNode;
+  lockup: ReactNode;
+  line: string;
+  where: string;
+  status: string;
+  /** Who it sits under, when that is not Gitwork directly. */
+  under?: string;
+}
+
+const PRODUCT_SLOTS: (ProductSlot | null)[] = [
+  {
+    mark: <FoundryAppIcon size={56} />,
+    lockup: <FoundryWordmark height={40} />,
+    line: "Proposals, clients, support and production-readiness checks in one place.",
+    where: "foundry.gitwork.co.uk",
+    status: "Live",
+  },
+  {
+    mark: <AfterDeskIcon size={56} />,
+    lockup: (
+      <span style={{ display: "inline-block", background: AFTERDESK.navy, borderRadius: 8, padding: "8px 12px" }}>
+        <AfterDeskLogo height={24} />
+      </span>
+    ),
+    line: "Warranty, service and repair for caravan and leisure dealerships.",
+    where: "afterdesk.ai",
+    status: "Live",
+    under: "A Leisure Tech platform",
+  },
+  null,
+];
+
 function ProductCards() {
-  const slot = (filled: boolean) => (
-    <div
-      style={{
-        borderRadius: 14,
-        padding: "26px 26px",
-        display: "flex",
-        flexDirection: "column",
-        background: filled ? GW.white : "transparent",
-        border: filled ? `1px solid ${GW.paperRule}` : `1.5px dashed ${GW.muted}`,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        {filled ? (
-          <FoundryAppIcon size={64} />
-        ) : (
-          <span style={{ width: 64, height: 64, borderRadius: 14, border: `1.5px dashed ${GW.muted}` }} />
-        )}
-        <Badge tone={filled ? "tint" : "ghost"}>{filled ? "Live" : "Next"}</Badge>
-      </div>
-      <div style={{ marginTop: 26, minHeight: 50 }}>
-        {filled ? <FoundryWordmark height={46} /> : <span style={display(40, { color: GW.muted })}>[Product].</span>}
-      </div>
-      <div style={body(18, filled ? GW.text : GW.muted, { marginTop: 16 })}>
-        {filled ? "Proposals, clients, support and production-readiness checks in one place." : "[One line on what it does.]"}
-      </div>
-      <div style={{ marginTop: "auto", paddingTop: 18, borderTop: `1px solid ${GW.paperRule}`, ...mono(12) }}>
-        {filled ? "foundry.gitwork.co.uk" : "[Where it lives]"}
-      </div>
-    </div>
-  );
   return (
-    <div style={{ ...fill, display: "grid", gridTemplateColumns: "1fr 1fr 0.8fr", gap: 20 }}>
-      {slot(true)}
-      {slot(false)}
-      <div style={{ paddingTop: 6 }}>
-        <Caption>Every card carries</Caption>
-        <div style={{ marginTop: 16 }}>
-          <ArrowList size={18} items={["The product's mark", "Its lockup, never retyped", "One line on what it does", "Where it lives", "Its status: live, beta or next"]} />
+    <div style={{ ...fill, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20 }}>
+      {PRODUCT_SLOTS.map((p, i) => (
+        <div
+          key={i}
+          style={{
+            borderRadius: 14,
+            padding: "24px 24px",
+            display: "flex",
+            flexDirection: "column",
+            background: p ? GW.white : "transparent",
+            border: p ? `1px solid ${GW.paperRule}` : `1.5px dashed ${GW.muted}`,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            {p ? p.mark : <span style={{ width: 56, height: 56, borderRadius: 12, border: `1.5px dashed ${GW.muted}` }} />}
+            <Badge tone={p ? "tint" : "ghost"}>{p ? p.status : "Next"}</Badge>
+          </div>
+          <div style={{ marginTop: 24, minHeight: 44, display: "flex", alignItems: "center" }}>
+            {p ? p.lockup : <span style={display(36, { color: GW.muted })}>[Product].</span>}
+          </div>
+          <div style={mono(11, GW.muted, { marginTop: 10, minHeight: 14 })}>{p ? (p.under ?? "By Gitwork") : "[Who it sits under]"}</div>
+          <div style={body(17, p ? GW.text : GW.muted, { marginTop: 12 })}>{p ? p.line : "[One line on what it does.]"}</div>
+          <div style={{ marginTop: "auto", paddingTop: 16, borderTop: `1px solid ${GW.paperRule}`, ...mono(12) }}>
+            {p ? p.where : "[Where it lives]"}
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -1612,6 +1748,8 @@ const VISUALS: Record<VisualId, () => ReactNode> = {
   "page-geometry": PageGeometry,
   architecture: Architecture,
   foundry: Foundry,
+  "leisure-tech": LeisureTech,
+  afterdesk: AfterDesk,
   "product-lockup": ProductLockup,
   "product-rules": ProductRules,
   modules: Modules,

@@ -2,6 +2,7 @@
 
 UI components vendored into Foundry from other projects. Each entry names the source, the
 files it landed in, what was changed, and the licence text, which must travel with the code.
+Which components and why: `docs/easyui-adoption.md`.
 
 ---
 
@@ -12,14 +13,14 @@ files it landed in, what was changed, and the licence text, which must travel wi
 
 | Component | Upstream file | Foundry file |
 |---|---|---|
+| Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
 | Undo Toast | `src/components/ui/UndoToast.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/undo-toast.tsx` |
 
-**Changes made for Foundry:** imports (`cn` from `@/lib/format`, Heroicons in place of lucide);
-colours mapped to Foundry tokens so it works in light and dark mode; pause while focus is
-inside, Escape to close, recoverable truncated text; `prefers-reduced-motion` support; the
-countdown's pause maths corrected; an async Undo shows "Restored" only once it succeeds;
-a `stacked` mode so `ToastProvider` (`src/components/ui/toast.tsx`) can stack it. The header
-comment in the Foundry file lists each change.
+**Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
+place of lucide), colours mapped to Foundry tokens so it works in light and dark mode, accessibility
+where it was missing, and `prefers-reduced-motion` support. The header comment in each Foundry file
+lists that file's own changes (for example the Undo Toast's corrected pause maths and its `stacked`
+mode for `ToastProvider`, and the Command Menu's focus trap and focus restore).
 
 ```
 MIT License

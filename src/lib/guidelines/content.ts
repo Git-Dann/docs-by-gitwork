@@ -38,6 +38,8 @@ export type VisualId =
   | "page-geometry"
   | "architecture"
   | "foundry"
+  | "leisure-tech"
+  | "afterdesk"
   | "product-lockup"
   | "product-rules"
   | "modules"
@@ -318,8 +320,8 @@ export const CHAPTERS: GuidelineChapter[] = [
       {
         id: "architecture",
         title: "Brand architecture",
-        subtitle: "Studio, offers and products",
-        note: "Gitwork is the masterbrand. Offers are what we sell as a service. Products are software we build and run ourselves. Modules live inside a product and never stand alone.",
+        subtitle: "Studio, offers, products and Leisure Tech",
+        note: "Gitwork is the masterbrand. Offers are what we sell as a service. Products are software we build and run: Foundry under the Gitwork name, AfterDesk and REMIT through Leisure Tech, our leisure industry arm. Modules live inside a product and never stand alone.",
         visual: "architecture",
         keywords: "masterbrand hierarchy",
       },
@@ -330,6 +332,22 @@ export const CHAPTERS: GuidelineChapter[] = [
         note: "Foundry is Gitwork's delivery platform: proposals, clients, support, developer vetting and production-readiness checks in one place. It carries its own wordmark, endorsed by Gitwork.",
         visual: "foundry",
         keywords: "platform foundry logo",
+      },
+      {
+        id: "leisure-tech",
+        title: "Leisure Tech",
+        subtitle: "Our leisure industry arm",
+        note: "Leisure Tech is a trading name of Gitwork Group Ltd: advice, bespoke software and platforms for caravan, motorhome and park businesses. It keeps its own identity, and Gitwork appears as the studio that delivers the software.",
+        visual: "leisure-tech",
+        keywords: "leisuretech caravans motorhomes parks remit",
+      },
+      {
+        id: "afterdesk",
+        title: "AfterDesk",
+        subtitle: "A Leisure Tech platform",
+        note: "AfterDesk is the warranty, service and repair platform for caravan and leisure vehicle dealerships. It belongs to Leisure Tech and is built and run by Gitwork. Like Gitwork and Foundry, its wordmark ends in a full stop.",
+        visual: "afterdesk",
+        keywords: "warranty claims dealers caravan",
       },
       {
         id: "product-lockup",
@@ -359,7 +377,7 @@ export const CHAPTERS: GuidelineChapter[] = [
         id: "product-cards",
         title: "Showing a product",
         subtitle: "On a page or a slide",
-        note: "When a Gitwork page lists products, each one gets the same card: its mark, its name, one line on what it does, and where it lives. A new product takes the next slot.",
+        note: "When a Gitwork page lists products, each one gets the same card: its mark, its lockup, one line on what it does, and where it lives. A Leisure Tech platform says so on its card. A new product takes the next slot.",
         visual: "product-cards",
         keywords: "portfolio card",
       },
