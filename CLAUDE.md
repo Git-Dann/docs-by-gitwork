@@ -8703,3 +8703,33 @@ today's answer, which is still the only one used.
   `DEFAULT_WORKSPACE_SLUG`; crons vary (some loop over workspaces, some use the default, some are
   global). API-key callers have no identity and resolve to the bootstrap owner.
 
+
+## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
+
+A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds
+up to 12 named columns per client. Each one **counts as one of the five statuses**: "QA" counts as
+In review, "Blocked" as Doing.
+
+- **No new status, on purpose.** Standups, project updates, Foreman, the Gantt and the client's
+  Delivery page all read `TaskStatus`. A column is a lane inside a status, so none of them change:
+  a task in QA is still IN_REVIEW. Rules in `src/lib/tasks/board-columns.ts` (pure, tested).
+- **Data (additive):** `WorkspaceClient.taskBoardColumns Json?` (`[{ id, name, stage }]`) and
+  `Task.boardColumnId String?`. API `GET/PUT /api/board-columns?clientId=` (same scope as categories).
+- **Where a task sits is derived** (`laneKeyFor`). It is in a custom column only while that column
+  exists AND belongs to the task's current status, so a status change anywhere else (drawer, batch,
+  MCP) drops it back to the status column. `statusTimestamps` also clears `boardColumnId` on any
+  status change, and removing a column clears it from its tasks.
+- **Slack names the column.** Standups, project updates and re-rendered cards show it at the front
+  of the task line (`• Retry payment · QA · due Fri`). `columnName` on `StandupTaskCardInput`.
+- ⚠️ **`/api/tasks` builds its list from an explicit allow-list** (`taskListResponse`), as does
+  `taskListDTO`. A new `TaskDTO` field missing from either never reaches the board.
+- Names are unique per board, ignoring case and spacing, and can't repeat a status ("Done").
+
+**The plan banner is one line now.** It took ~130px above the board. It's a chip cluster at the
+end of the filter row (`PLAN · 85% ON IT` · `24 off plan` · sort · `40 untouched 21d+`), and the
+explanations moved into tooltips. Board and list only.
+
+**Verified:** at `/demo/tasks` (seeded with a QA column): added a column through the dialog,
+dragged a card from In review into QA, and checked 390px (no page overflow).
+**Not verified:** against a real database. Post-deploy, add a column on a client, drag a task into
+it, reload, then push a project update and confirm the line names the column.

@@ -91,6 +91,8 @@ export type TaskDTO = {
   description: string | null;
   acceptanceCriteria: string | null;
   status: TaskStatus;
+  /** The client's own board column, if any — see src/lib/tasks/board-columns.ts. */
+  boardColumnId: string | null;
   priority: TaskPriority;
   /** Optional ticket-type tag (Backend/Frontend/UI-UX/Research/Design). */
   label: TaskLabel | null;

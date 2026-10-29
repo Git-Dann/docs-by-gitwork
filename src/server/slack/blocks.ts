@@ -37,6 +37,8 @@ export interface StandupTaskCardInput {
    *  share a title. Falls back to grouping by `parentTitle` when absent. */
   parentId?: string | null;
   blockName?: string | null;
+  /** The client's own board column the task sits in ("QA"), when it isn't a plain status column. */
+  columnName?: string | null;
   /** YYYY-MM-DD; overdue formatting is computed against the workdayLabel. */
   dueDate?: string | null;
   clientSlug: string;
@@ -151,6 +153,8 @@ function renderTaskLine(
 ): string {
   const status = t.status ?? "DOING";
   const parts: string[] = [];
+  // The board column says where the work is ("QA"), so it shows even on a compact card.
+  if (t.columnName) parts.push(escapeMrkdwn(t.columnName));
   if (opts.withMeta && t.blockName) parts.push(escapeMrkdwn(t.blockName));
   if (opts.withMeta && t.dueDate) {
     const isOverdue = Boolean(t.dueDate && opts.today && t.dueDate < opts.today && status !== "DONE");

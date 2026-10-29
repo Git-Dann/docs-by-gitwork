@@ -1,5 +1,6 @@
 "use client";
 
+import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import {
   useMutation,
   useQuery,
@@ -35,6 +36,8 @@ import {
   listMemberClients,
   setMemberClients,
   listFeatureBlocks,
+  getBoardColumns,
+  saveBoardColumns,
   createFeatureBlock,
   updateFeatureBlock,
   deleteFeatureBlock,
@@ -65,6 +68,7 @@ const QK = {
   roster: ["tasks", "rollup"] as const,
   memberClients: (memberId: string) => ["tasks", "member-clients", memberId] as const,
   blocks: (clientId: string) => ["tasks", "blocks", clientId] as const,
+  columns: (clientId: string) => ["tasks", "columns", clientId] as const,
   milestones: (clientId: string) => ["tasks", "milestones", clientId] as const,
   share: (slug: string) => ["tasks", "share", slug] as const,
   pushPrefs: ["tasks", "pushPrefs"] as const,
@@ -214,12 +218,21 @@ export function useMoveTask() {
   const qc = useQueryClient();
   const { error } = useToast();
   return useMutation({
-    mutationFn: ({ id, status, orderKey }: { id: string; status: TaskStatus; orderKey: number }) =>
-      moveTask(id, { status, orderKey }),
-    onMutate: async ({ id, status, orderKey }) => {
+    mutationFn: ({
+      id,
+      status,
+      orderKey,
+      boardColumnId = null,
+    }: {
+      id: string;
+      status: TaskStatus;
+      orderKey: number;
+      boardColumnId?: string | null;
+    }) => moveTask(id, { status, orderKey, boardColumnId }),
+    onMutate: async ({ id, status, orderKey, boardColumnId = null }) => {
       await qc.cancelQueries(TASK_LIST_FILTER);
       const prev = patchTaskLists(qc, (tasks) =>
-        tasks.map((t) => (t.id === id ? { ...t, status, orderKey } : t)),
+        tasks.map((t) => (t.id === id ? { ...t, status, orderKey, boardColumnId } : t)),
       );
       return { prev };
     },
@@ -519,6 +532,43 @@ export function useDeleteFeatureBlock() {
   return useMutation({
     mutationFn: (id: string) => deleteFeatureBlock(id),
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+// ─── The client's own board columns ──────────────────────────────────────────
+
+export function useBoardColumns(clientId: string | null) {
+  return useQuery({
+    queryKey: QK.columns(clientId ?? ""),
+    queryFn: () => getBoardColumns(clientId as string),
+    // Re-parsed here so a malformed response can never break the board.
+    select: parseBoardColumns,
+    enabled: Boolean(clientId),
+    staleTime: 60_000,
+  });
+}
+
+/** Saves the whole list. Optimistic, so a new column appears on the click that made it. */
+export function useSaveBoardColumns(clientId: string) {
+  const qc = useQueryClient();
+  const { error } = useToast();
+  return useMutation({
+    mutationFn: (columns: BoardColumnDef[]) => saveBoardColumns(clientId, columns),
+    onMutate: async (columns) => {
+      await qc.cancelQueries({ queryKey: QK.columns(clientId) });
+      const prev = qc.getQueryData<BoardColumnDef[]>(QK.columns(clientId));
+      qc.setQueryData(QK.columns(clientId), columns);
+      return { prev };
+    },
+    onError: (e, _vars, ctx) => {
+      qc.setQueryData(QK.columns(clientId), ctx?.prev);
+      error("Couldn't save the columns", e instanceof Error ? e.message : "Your change was reverted.");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: QK.columns(clientId) });
+      // A removed column's tasks move back to their status column.
+      void qc.invalidateQueries(TASK_LIST_FILTER);
+    },
   });
 }
 
