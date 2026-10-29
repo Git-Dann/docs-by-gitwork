@@ -380,6 +380,42 @@ export function dateAttention(dateStr: string | null, today: string, withinDays 
   return null;
 }
 
+// ── Archive, restore, delete ────────────────────────────────────────────────────
+
+/**
+ * What can be done to a person's whole record, and by whom. Someone who signs in is
+ * archived on their membership (the Settings → Team rule: Admins and above, never
+ * yourself, never someone at or above your rank). Someone without a login is archived
+ * on their record by anyone who manages Staff.
+ */
+export interface StaffLifecycle {
+  hasLogin: boolean;
+  archived: boolean;
+  archivedAt: string | null;
+  /** False once a membership is past its 30-day window. A record-only person is always restorable. */
+  restorable: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
+  /** Why Delete isn't offered, in words; null when it is. */
+  deleteBlockedReason: string | null;
+}
+
+/**
+ * Delete is for a record made by mistake. Anyone with history is archived instead,
+ * because deleting them would erase who did what (placements, analysis, assessments).
+ */
+export function deleteBlockReason(input: {
+  hasLogin: boolean;
+  placements: number;
+  analysisRuns: number;
+  assessments: number;
+}): string | null {
+  if (input.hasLogin) return "They sign in to Foundry, so archive them instead.";
+  if (input.placements) return "They have client placements, so archive them instead.";
+  if (input.analysisRuns || input.assessments) return "They have developer reviews on file, so archive them instead.";
+  return null;
+}
+
 // ── The profile DTO ─────────────────────────────────────────────────────────────
 
 export interface StaffProfile {
@@ -405,4 +441,5 @@ export interface StaffProfile {
   employment: (EmploymentDetails & { supplierName: string | null }) | null;
   /** Whether a sensitive record exists. The values come from a separate, logged request. */
   hasSensitive: boolean;
+  lifecycle: StaffLifecycle;
 }

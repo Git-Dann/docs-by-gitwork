@@ -4,13 +4,16 @@
  *       logged request (./personal).
  * PATCH /api/staff/[id] — a Staff record's directory details (job title, department, type,
  *       start, manager, preferred name, pronouns). Needs `code.manage`.
+ * DELETE /api/staff/[id] — delete a record made by mistake. Refused for anyone with
+ *       history (a login, placements, developer reviews): archive them instead.
  */
 
 import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageCode, requireAuthedUser } from "@/server/auth/effective-user";
 import { updateStaffDetails } from "@/server/staff";
-import { getStaffProfile } from "@/server/hr/profile";
+import { deleteRecord, getStaffProfile } from "@/server/hr/profile";
+import { recordAuditEntry } from "@/server/audit-log";
 import { EMPLOYMENT_TYPES } from "@/lib/staff";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +46,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     assertCan(user, canManageCode, "manage Staff");
     const { id } = await params;
     await updateStaffDetails(user.workspaceId, id, updateSchema.parse(await request.json()));
+    return apiOk({ ok: true });
+  } catch (error) {
+    return fromError(error);
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const user = await requireAuthedUser(request);
+    const { id } = await params;
+    const { name } = await deleteRecord(user, id);
+    await recordAuditEntry({
+      workspaceId: user.workspaceId,
+      actorId: user.id,
+      action: "staff.record.deleted",
+      target: `staff:${id}`,
+      metadata: { name },
+    });
     return apiOk({ ok: true });
   } catch (error) {
     return fromError(error);

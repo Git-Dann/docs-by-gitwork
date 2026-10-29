@@ -14,6 +14,7 @@ import { ArchiveBoxIcon, ArrowUturnLeftIcon, PencilIcon } from "@heroicons/react
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
+import { Segmented } from "@/components/ui/segmented";
 import {
   ROLES,
   canManageRole,
@@ -136,32 +137,15 @@ export function UserManagementTable({
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-2)] px-6 py-3">
-        {/* Segmented control — the platform's pick-one control (DESIGN.md). */}
-        <div className="inline-flex rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5">
-          {(
-            [
-              ["active", `Active`, active.length],
-              ["archived", `Archived`, archived.length],
-            ] as const
-          ).map(([key, label, count]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.08em] transition",
-                tab === key
-                  ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[var(--shadow-sm)]"
-                  : "text-[var(--text-3)] hover:text-[var(--text-1)]",
-              )}
-            >
-              {label}
-              <span className="rounded-[4px] bg-[var(--surface-2)] px-1.5 text-[10px] text-[var(--text-3)]">
-                {count}
-              </span>
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Show"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "active", label: "Active", count: active.length },
+            { value: "archived", label: "Archived", count: archived.length },
+          ]}
+        />
         <p className="text-xs text-[var(--text-4)]">
           {tab === "active"
             ? "Archiving removes access immediately. You can restore anyone for 30 days."

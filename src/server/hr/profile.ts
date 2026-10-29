@@ -36,6 +36,9 @@ import {
   type StaffProfile,
 } from "@/lib/hr";
 import { StaffInputError } from "@/server/staff";
+import { canRestore } from "@/server/auth/member-status";
+import { canManageRole, isAtLeast } from "@/types/auth";
+import { deleteBlockReason, type StaffLifecycle } from "@/lib/hr";
 
 const day = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const toDate = (v: string | null) => (v ? new Date(`${v}T00:00:00Z`) : null);
@@ -63,7 +66,9 @@ const PROFILE_SELECT = {
   probationEndsOn: true,
   noticePeriodWeeks: true,
   daysPerWeek: true,
-  member: { select: { role: true, user: { select: { name: true, email: true, avatarUrl: true } } } },
+  archivedAt: true,
+  member: { select: { role: true, archivedAt: true, user: { select: { name: true, email: true, avatarUrl: true } } } },
+  _count: { select: { placements: true, githubAnalysisRuns: true, devSignalAssessments: true } },
   placements: {
     where: { endDate: null },
     select: { clientName: true, client: { select: { name: true, slug: true } } },
@@ -118,6 +123,37 @@ async function writeLog(user: EffectiveUser, recordId: string, action: HrAccessA
   });
 }
 
+type ProfileRecord = Prisma.CandidateGetPayload<{ select: typeof PROFILE_SELECT }>;
+
+/**
+ * Archive / restore / delete, for this viewer. Someone who signs in follows the
+ * Settings → Team rule exactly (Admin and above, not yourself, not at or above your
+ * rank) because the same routes do the work; a record-only person needs Staff manage.
+ */
+export function lifecycleFor(user: EffectiveUser, record: ProfileRecord, relation: ProfileRelation): StaffLifecycle {
+  const member = record.member;
+  const hasLogin = Boolean(member);
+  const archivedAt = member ? member.archivedAt : record.archivedAt;
+  const canArchive = member
+    ? isAtLeast(user.role, "ADMIN") && relation !== "self" && canManageRole(user.role, member.role)
+    : canManageCode(user) || canManageHr(user);
+  const blocked = deleteBlockReason({
+    hasLogin,
+    placements: record._count.placements,
+    analysisRuns: record._count.githubAnalysisRuns,
+    assessments: record._count.devSignalAssessments,
+  });
+  return {
+    hasLogin,
+    archived: Boolean(archivedAt),
+    archivedAt: archivedAt ? archivedAt.toISOString() : null,
+    restorable: member ? !member.archivedAt || canRestore(member) : true,
+    canArchive,
+    canDelete: canManageCode(user) && !blocked,
+    deleteBlockedReason: blocked,
+  };
+}
+
 export async function getStaffProfile(user: EffectiveUser, recordId: string): Promise<StaffProfile> {
   const { record, relation, access } = await loadRecord(user, recordId);
   // 404 rather than 403: someone without Staff access learns nothing about whether the id exists.
@@ -169,7 +205,39 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
         }
       : null,
     hasSensitive: Boolean(sensitive),
+    lifecycle: lifecycleFor(user, record, relation),
   };
+}
+
+/** Archive or restore someone WITHOUT a login. A member is archived through Settings → Team's routes. */
+export async function setRecordArchived(user: EffectiveUser, recordId: string, archived: boolean): Promise<void> {
+  const { record, relation } = await loadRecord(user, recordId);
+  if (record.member) {
+    throw new StaffInputError("They sign in to Foundry, so they're archived on their login. Use Archive on their profile.");
+  }
+  if (!lifecycleFor(user, record, relation).canArchive) throw new ForbiddenError("You don't have permission to archive people");
+  await prisma.candidate.update({
+    where: { id: record.id },
+    data: archived ? { archivedAt: new Date(), archivedById: user.id } : { archivedAt: null, archivedById: null },
+  });
+}
+
+/**
+ * Delete a record made by mistake. Refused for anyone with history (see deleteBlockReason):
+ * they are archived instead. Their personal details go with them; the access log stays.
+ */
+export async function deleteRecord(user: EffectiveUser, recordId: string): Promise<{ name: string }> {
+  const { record, relation } = await loadRecord(user, recordId);
+  const lifecycle = lifecycleFor(user, record, relation);
+  if (lifecycle.deleteBlockedReason) throw new StaffInputError(lifecycle.deleteBlockedReason);
+  if (!lifecycle.canDelete) throw new ForbiddenError("You don't have permission to delete people");
+  await prisma.$transaction([
+    prisma.staffSensitive.deleteMany({ where: { recordId: record.id } }),
+    // Nobody keeps pointing at a manager who no longer exists.
+    prisma.candidate.updateMany({ where: { workspaceId: user.workspaceId, managerId: record.id }, data: { managerId: null } }),
+    prisma.candidate.delete({ where: { id: record.id } }),
+  ]);
+  return { name: record.name };
 }
 
 export async function updateEmployment(user: EffectiveUser, recordId: string, input: EmploymentUpdate): Promise<void> {

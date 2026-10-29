@@ -8937,4 +8937,11 @@ rules: **`docs/hr-platform.md`**). Staff is the record of every person; Backstag
   Archived, never deleted. `Candidate.supplierId` is a loose id.
 - `employmentType` gains **DIRECTOR**. Staff records gain `preferredName`, `pronouns`, `endDate`,
   `probationEndsOn`, `noticePeriodWeeks` and `daysPerWeek`. All additive.
+- **Archive, restore and delete from the profile.** Someone who signs in goes through Settings →
+  Team's archive/restore routes, so there is one way to take someone's access away. Someone without
+  a login is archived on their record (`Candidate.archivedAt`). Delete is only offered for a record
+  with no login, placements or developer reviews. ⚠️ Don't widen it: deleting someone with history
+  erases who did what. **People → Archived** replaces the old Archived tab, which now redirects.
+- `src/components/ui/segmented.tsx` is the in-card pick-one control (Active / Archived on Team and
+  on People). `segmented-tabs.ts` stays the settings tab bar.
 - Demos: `/demo/staff/r2` (profile, seen as HR) and `/demo/staff/suppliers`.

@@ -97,3 +97,30 @@ export function useSaveSupplier() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["staff", "suppliers"] }),
   });
 }
+
+/**
+ * Archive or restore a person. Someone who signs in goes through Settings → Team's own
+ * routes (by membership); someone without a login is archived on their Staff record.
+ */
+export function useSetArchived() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ recordId, memberId, archived }: { recordId: string; memberId: string | null; archived: boolean }): Promise<unknown> =>
+      memberId
+        ? apiFetch(`/api/team/members/${encodeURIComponent(memberId)}/${archived ? "archive" : "restore"}`, { method: "POST" })
+        : apiFetch(`/api/staff/${encodeURIComponent(recordId)}/archive`, { method: "POST", ...json({ archived }) }),
+    onSuccess: (_d, { recordId }) => {
+      void qc.invalidateQueries({ queryKey: ["staff", "roster"] });
+      void qc.invalidateQueries({ queryKey: ["staff", "profile", recordId] });
+    },
+  });
+}
+
+/** Delete a record made by mistake. The server refuses anyone with history. */
+export function useDeleteStaffRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (recordId: string) => apiFetch<{ ok: true }>(`/api/staff/${encodeURIComponent(recordId)}`, { method: "DELETE" }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["staff", "roster"] }),
+  });
+}

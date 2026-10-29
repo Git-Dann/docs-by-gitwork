@@ -12,10 +12,13 @@ const db = vi.hoisted(() => ({
   logs: [] as Array<Record<string, unknown>>,
   suppliers: [] as Array<{ id: string; workspaceId: string; archivedAt: Date | null }>,
   updates: [] as Array<Record<string, unknown>>,
+  deleted: [] as string[],
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    // The operations handed in are already-started promises; the transaction just awaits them.
+    $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
     candidate: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         const r = db.records.find(
@@ -24,10 +27,25 @@ vi.mock("@/lib/prisma", () => ({
             (where.id === undefined || x.id === where.id) &&
             (where.memberId === undefined || x.memberId === where.memberId),
         );
-        return r ? { ...r, member: null, placements: [] } : null;
+        return r
+          ? {
+              ...r,
+              member: r.member ?? null,
+              placements: [],
+              _count: r._count ?? { placements: 0, githubAnalysisRuns: 0, devSignalAssessments: 0 },
+            }
+          : null;
       }),
       update: vi.fn(async (args: Record<string, unknown>) => {
         db.updates.push(args);
+        return {};
+      }),
+      updateMany: vi.fn(async (args: Record<string, unknown>) => {
+        db.updates.push(args);
+        return { count: 0 };
+      }),
+      delete: vi.fn(async (args: { where: { id: string } }) => {
+        db.deleted.push(args.where.id);
         return {};
       }),
     },
@@ -44,6 +62,10 @@ vi.mock("@/lib/prisma", () => ({
         db.sensitive.set(where.recordId, create.payload);
         return {};
       }),
+      deleteMany: vi.fn(async ({ where }: { where: { recordId: string } }) => {
+        db.sensitive.delete(where.recordId);
+        return { count: 1 };
+      }),
     },
     hrAccessLog: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -55,13 +77,14 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => null) }));
+
 // Encryption is exercised in its own tests; here it only has to round-trip.
 vi.mock("@/lib/encryption", () => ({
   encrypt: (s: string) => `enc:${s}`,
   decrypt: (s: string) => s.replace(/^enc:/, ""),
 }));
 
-import { getSensitive, getStaffProfile, updateEmployment, updateSensitive } from "@/server/hr/profile";
+import { deleteRecord, getSensitive, getStaffProfile, setRecordArchived, updateEmployment, updateSensitive } from "@/server/hr/profile";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 
 const user = (over: Partial<EffectiveUser> = {}): EffectiveUser => ({
@@ -87,6 +110,7 @@ beforeEach(() => {
   db.logs = [];
   db.updates = [];
   db.suppliers = [{ id: "s1", workspaceId: "w1", archivedAt: null }];
+  db.deleted = [];
 });
 
 describe("getStaffProfile", () => {
@@ -168,5 +192,62 @@ describe("updateEmployment", () => {
     await updateEmployment(hr, "r-other", { supplierId: "s1", noticePeriodWeeks: 4 });
     expect(db.updates[0]).toMatchObject({ where: { id: "r-other" }, data: { supplierId: "s1", noticePeriodWeeks: 4 } });
     expect(db.logs).toEqual([expect.objectContaining({ action: "UPDATE_EMPLOYMENT", detail: "supplierId, noticePeriodWeeks" })]);
+  });
+});
+
+describe("archive and delete", () => {
+  const manager = () => user({ role: "ADMIN", permissions: ["codeclear", "code.manage"] });
+  const noLogin = { id: "r-contractor", workspaceId: "w1", memberId: null, managerId: null, name: "Contractor", email: null, member: null };
+  const withLogin = (role: string) => ({
+    ...noLogin,
+    id: "r-member",
+    memberId: "m-member",
+    member: { role, archivedAt: null, user: { name: "Member", email: "m@gitwork.co.uk", avatarUrl: null } },
+  });
+
+  it("archives someone without a login on their record", async () => {
+    db.records.push(noLogin);
+    await setRecordArchived(manager(), "r-contractor", true);
+    expect(db.updates[0]).toMatchObject({ where: { id: "r-contractor" }, data: { archivedById: "u-viewer" } });
+  });
+
+  it("refuses to archive a record for someone who signs in: that goes through their membership", async () => {
+    db.records.push(withLogin("STAFF"));
+    await expect(setRecordArchived(manager(), "r-member", true)).rejects.toMatchObject({ status: 400 });
+    expect(db.updates).toHaveLength(0);
+  });
+
+  it("follows the Settings → Team rank rule for someone who signs in", async () => {
+    db.records.push(withLogin("ADMIN"));
+    expect((await getStaffProfile(manager(), "r-member")).lifecycle.canArchive).toBe(false);
+    expect((await getStaffProfile(user({ role: "SUPER_ADMIN" }), "r-member")).lifecycle.canArchive).toBe(true);
+  });
+
+  it("never lets Staff archive someone who signs in, even a Developer below them", async () => {
+    db.records.push(withLogin("DEVELOPER"));
+    const staff = user({ permissions: ["codeclear", "code.manage", "hr.manage"] });
+    expect((await getStaffProfile(staff, "r-member")).lifecycle.canArchive).toBe(false);
+    expect((await getStaffProfile(manager(), "r-member")).lifecycle.canArchive).toBe(true);
+  });
+
+  it("deletes a record with no history, with its personal details", async () => {
+    db.records.push(noLogin);
+    db.sensitive.set("r-contractor", "enc:{}");
+    await deleteRecord(manager(), "r-contractor");
+    expect(db.deleted).toEqual(["r-contractor"]);
+    expect(db.sensitive.has("r-contractor")).toBe(false);
+  });
+
+  it("refuses to delete anyone with history, and says why", async () => {
+    db.records.push({ ...noLogin, _count: { placements: 2, githubAnalysisRuns: 0, devSignalAssessments: 0 } });
+    await expect(deleteRecord(manager(), "r-contractor")).rejects.toThrow(/placements/);
+    db.records.push(withLogin("STAFF"));
+    await expect(deleteRecord(manager(), "r-member")).rejects.toThrow(/sign in/);
+    expect(db.deleted).toHaveLength(0);
+  });
+
+  it("refuses to delete without Staff manage", async () => {
+    db.records.push(noLogin);
+    await expect(deleteRecord(user(), "r-contractor")).rejects.toMatchObject({ status: 403 });
   });
 });

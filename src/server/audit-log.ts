@@ -32,6 +32,10 @@ export type AuditAction =
   | "team.member.purged"
   | "team.password.reset"
   | "roles.matrix.updated"
+  // Staff (people without a login; members go through team.member.*)
+  | "staff.record.archived"
+  | "staff.record.restored"
+  | "staff.record.deleted"
   // Integrations
   | "integration.google.connected"
   | "integration.google.disconnected"

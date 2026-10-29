@@ -50,6 +50,8 @@ export interface StaffPerson {
   isDeveloper: boolean;
   primaryStack: string | null;
   currentClients: StaffClient[];
+  /** Set only in the archived view: when they were archived (membership or record). */
+  archivedAt: string | null;
 }
 
 export interface StaffRoster {

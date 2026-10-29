@@ -8,6 +8,7 @@ import { departmentsOf, normaliseStaffDetails, sortStaff, type StaffPerson, type
 import {
   EMPTY_SENSITIVE,
   changedSensitiveFields,
+  deleteBlockReason,
   normaliseEmployment,
   normaliseSensitive,
   normaliseSupplier,
@@ -26,6 +27,7 @@ const base = (over: Partial<StaffPerson> & Pick<StaffPerson, "key" | "name">): S
   recordId: null,
   preferredName: null,
   pronouns: null,
+  archivedAt: null,
   email: null,
   avatarUrl: null,
   role: null,
@@ -46,6 +48,10 @@ const people: StaffPerson[] = [
   base({ key: "m:2", memberId: "m2", recordId: "r2", name: "Tom Okafor", email: "tom@northwind.co", role: "ADMIN", jobTitle: "Delivery lead", department: "Delivery", employmentType: "EMPLOYEE", startDate: "2021-09-06", managerRecordId: "r1", currentClients: [{ name: "Acme Retail", slug: "acme" }, { name: "Fairway Nine", slug: "fairway" }] }),
   base({ key: "m:3", memberId: "m3", recordId: "r3", name: "Ali Hassan", email: "ali@northwind.co", role: "DEVELOPER", department: "Engineering", employmentType: "CONTRACTOR", isDeveloper: true, primaryStack: "React Native", managerRecordId: "r2", currentClients: [{ name: "Acme Retail", slug: "acme" }] }),
   base({ key: "m:4", memberId: "m4", name: "Bea Lindqvist", email: "bea@northwind.co", role: "STAFF" }),
+  // No login and no history: the one record Delete is offered on.
+  base({ key: "r:6", recordId: "r6", name: "Jo Reed", email: "jo@example.com", jobTitle: "Copywriter", employmentType: "FREELANCER" }),
+  // Someone who has left, so People → Archived has a row.
+  base({ key: "r:7", recordId: "r7", name: "Dana Pike", email: "dana@example.com", jobTitle: "QA contractor", employmentType: "CONTRACTOR", archivedAt: "2026-10-02T09:00:00.000Z" }),
   base({ key: "r:5", recordId: "r5", name: "Carlos Mendes", email: "carlos@freelance.dev", jobTitle: "Brand designer", department: "Design", employmentType: "FREELANCER", startDate: "2025-11-17", currentClients: [{ name: "Fairway Nine", slug: "fairway" }] }),
 ];
 
@@ -134,7 +140,32 @@ function demoProfile(p: StaffPerson): StaffProfile {
     access,
     employment: { ...e, supplierName: suppliers.find((s) => s.id === e.supplierId)?.name ?? null },
     hasSensitive: sensitive.has(p.recordId!),
+    lifecycle: demoLifecycle(p),
   };
+}
+
+// The demo viewer is an Admin with Staff manage, so every action the rules allow is offered.
+function demoLifecycle(p: StaffPerson) {
+  const blocked = deleteBlockReason({ hasLogin: Boolean(p.memberId), placements: p.currentClients.length, analysisRuns: p.isDeveloper ? 1 : 0, assessments: 0 });
+  return {
+    hasLogin: Boolean(p.memberId),
+    archived: Boolean(p.archivedAt),
+    archivedAt: p.archivedAt,
+    restorable: true,
+    canArchive: p.role !== "SUPER_ADMIN",
+    canDelete: !blocked,
+    deleteBlockedReason: blocked,
+  };
+}
+
+/** Settings → Team's archive and restore, which Staff uses for anyone who signs in. */
+export function resolveDemoTeamArchive(pathname: string, method: string): unknown {
+  const m = pathname.match(/^\/api\/team\/members\/([^/]+)\/(archive|restore)$/);
+  if (!m || method !== "POST") return undefined;
+  const p = people.find((x) => x.memberId === decodeURIComponent(m[1]));
+  if (!p) return { error: "Member not found", __status: 404 };
+  p.archivedAt = m[2] === "archive" ? new Date().toISOString() : null;
+  return { ok: true };
 }
 
 function resolveDemoHr(pathname: string, method: string, body: Record<string, unknown>): unknown {
@@ -160,12 +191,23 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
     if (typeof body.archived === "boolean") s.archived = body.archived;
     return { ok: true };
   }
-  const m = pathname.match(/^\/api\/staff\/([^/]+)(?:\/(employment|personal|access-log))?$/);
+  const m = pathname.match(/^\/api\/staff\/([^/]+)(?:\/(employment|personal|access-log|archive))?$/);
   if (!m) return undefined;
   const recordId = decodeURIComponent(m[1]);
   const p = people.find((x) => x.recordId === recordId);
-  if (!p) return m[2] || method === "GET" ? { error: "Staff record not found", __status: 404 } : undefined;
+  if (!p) return m[2] || method === "GET" || method === "DELETE" ? { error: "Staff record not found", __status: 404 } : undefined;
+  if (!m[2] && method === "DELETE") {
+    const reason = demoLifecycle(p).deleteBlockedReason;
+    if (reason) return { error: reason, __status: 400 };
+    people.splice(people.indexOf(p), 1);
+    return { ok: true, name: p.name };
+  }
   if (!m[2]) return method === "GET" ? demoProfile(p) : undefined;
+  if (m[2] === "archive" && method === "POST") {
+    if (p.memberId) return { error: "They sign in to Foundry, so they're archived on their login.", __status: 400 };
+    p.archivedAt = body.archived === false ? null : new Date().toISOString();
+    return { ok: true };
+  }
   if (m[2] === "employment" && method === "PATCH") {
     const v = normaliseEmployment(body);
     if (!v.ok) return { error: v.error, __status: 400 };
@@ -196,7 +238,7 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
   return undefined;
 }
 
-export function resolveDemoStaff(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+export function resolveDemoStaff(pathname: string, init?: { method?: string; body?: unknown }, search?: URLSearchParams): unknown {
   const body = (typeof init?.body === "string" ? JSON.parse(init.body) : {}) as StaffDetailsUpdate & {
     memberId?: string;
     name?: string;
@@ -220,7 +262,11 @@ export function resolveDemoStaff(pathname: string, init?: { method?: string; bod
     }
     return { recordId };
   }
-  if (pathname === "/api/staff") return { people: sortStaff(people), departments: departmentsOf(people) };
+  if (pathname === "/api/staff") {
+    const archivedView = search?.get("view") === "archived";
+    const shown = people.filter((p) => Boolean(p.archivedAt) === archivedView);
+    return { people: sortStaff(shown), departments: departmentsOf(shown) };
+  }
   const m = pathname.match(/^\/api\/staff\/([^/]+)$/);
   if (m && init?.method === "PATCH") {
     const p = people.find((x) => x.recordId === decodeURIComponent(m[1]));

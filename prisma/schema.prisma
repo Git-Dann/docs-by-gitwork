@@ -2550,6 +2550,11 @@ model Candidate {
   noticePeriodWeeks    Int?
   /// Days worked per week (0.5 to 7): drives pro-rata leave in a later phase.
   daysPerWeek          Float?
+  /// Archived from Staff (docs/hr-platform.md). Only for someone with NO login: a person
+  /// who signs in is archived on their membership (WorkspaceMember.archivedAt), so the
+  /// two can never disagree about whether someone has left.
+  archivedAt           DateTime?
+  archivedById         String?
   primaryStack         String
   techStacks           String[]               @default([])
   signalSources        String[]               @default([])

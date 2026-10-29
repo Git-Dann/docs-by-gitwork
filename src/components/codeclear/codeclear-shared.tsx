@@ -78,9 +78,7 @@ type CodeTab = { href: string; label: string; devsignal?: boolean };
 const staffTabs: readonly CodeTab[] = [
   { href: "/app/staff", label: "People" },
   { href: "/app/codeclear/candidates", label: "Developers" },
-  // Developers whose person has been archived in Settings → Team. Derived from
-  // there, never set here — see src/server/codeclear-archived.ts.
-  { href: "/app/codeclear/archived", label: "Archived" },
+  // Leavers (developers included) are under People → Archived, not a tab of their own.
 ];
 
 const hiringTabs: readonly CodeTab[] = [

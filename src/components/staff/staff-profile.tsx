@@ -12,6 +12,7 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeftIcon, EyeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
@@ -32,6 +33,8 @@ import { DetailsDialog } from "@/components/staff/staff-roster";
 import { useStaffRoster } from "@/hooks/use-staff";
 import {
   useAccessLog,
+  useDeleteStaffRecord,
+  useSetArchived,
   useStaffPersonal,
   useStaffProfile,
   useSuppliers,
@@ -439,6 +442,95 @@ function AccessLogCard({ recordId, number, className }: { recordId: string; numb
   );
 }
 
+// ── Archive / restore / delete ──────────────────────────────────────────────────
+
+/**
+ * The record-level actions, beside the name. Each asks once before it acts: archiving
+ * someone who signs in removes their Foundry access immediately, and delete cannot be
+ * undone. Delete only appears when the record has no history (the server decides).
+ */
+function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath: string }) {
+  const router = useRouter();
+  const l = profile.lifecycle;
+  const [confirm, setConfirm] = useState<"archive" | "delete" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const setArchived = useSetArchived();
+  const remove = useDeleteStaffRecord();
+  const busy = setArchived.isPending || remove.isPending;
+
+  const run = async () => {
+    setError(null);
+    try {
+      if (confirm === "delete") {
+        await remove.mutateAsync(profile.recordId);
+        router.push(basePath);
+        return;
+      }
+      await setArchived.mutateAsync({ recordId: profile.recordId, memberId: l.hasLogin ? profile.memberId : null, archived: !l.archived });
+      setConfirm(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+  };
+
+  if (confirm) {
+    const sentence =
+      confirm === "delete"
+        ? `Delete ${profile.name}'s record for good?`
+        : l.hasLogin
+          ? `Archive ${profile.name}? Their Foundry access stops now. You can restore them for 30 days. Their Google account is separate.`
+          : `Archive ${profile.name}? They leave every list and can be restored any time.`;
+    return (
+      <div className="flex max-w-md flex-col items-end gap-2 text-right">
+        <p className="text-[13px] text-[var(--text-2)]">{sentence}</p>
+        {error ? (
+          <p role="alert" className="text-[13px] text-[var(--danger-500)]">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex gap-2">
+          <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm(null)} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" className="app-button app-button-danger app-button-sm" onClick={() => void run()} disabled={busy}>
+            {busy ? "Working…" : confirm === "delete" ? "Delete" : "Archive"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {profile.isDeveloper ? (
+        <Link href={`/app/codeclear/candidates/${profile.recordId}`} className="app-button app-button-tertiary app-button-sm">
+          Dev profile
+        </Link>
+      ) : null}
+      {l.canArchive && l.archived && l.restorable ? (
+        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => void run()} disabled={busy}>
+          {busy ? "Restoring…" : "Restore"}
+        </button>
+      ) : null}
+      {l.canArchive && !l.archived ? (
+        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setConfirm("archive")}>
+          Archive
+        </button>
+      ) : null}
+      {l.canDelete ? (
+        <button type="button" className="app-button app-button-tertiary app-button-sm text-[var(--danger-500)]" onClick={() => setConfirm("delete")}>
+          Delete
+        </button>
+      ) : null}
+      {error ? (
+        <p role="alert" className="basis-full text-right text-[13px] text-[var(--danger-500)]">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // ── The page ────────────────────────────────────────────────────────────────────
 
 export function StaffProfileView({ recordId, basePath = "/app/staff" }: { recordId: string; basePath?: string }) {
@@ -521,12 +613,19 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
             </p>
           </div>
         </div>
-        {p.isDeveloper ? (
-          <Link href={`/app/codeclear/candidates/${p.recordId}`} className="app-button app-button-tertiary app-button-sm">
-            Dev profile
-          </Link>
-        ) : null}
+        <PersonActions profile={p} basePath={basePath} />
       </div>
+
+      {p.lifecycle.archived ? (
+        <p className="rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 text-[13px] text-[var(--text-2)]">
+          Archived{p.lifecycle.archivedAt ? ` on ${formatDate(p.lifecycle.archivedAt.slice(0, 10))}` : ""}.{" "}
+          {p.lifecycle.restorable
+            ? p.lifecycle.hasLogin
+              ? "They have no access to Foundry and can be restored for 30 days from then."
+              : "They can be restored any time."
+            : "Past the 30-day window: reinstate them from Settings → People & access."}
+        </p>
+      ) : null}
 
       {hasPrivate ? (
         <div className="grid items-start gap-5 lg:grid-cols-2">

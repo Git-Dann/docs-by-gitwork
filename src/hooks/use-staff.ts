@@ -6,8 +6,12 @@ import type { StaffDetailsUpdate, StaffRoster } from "@/lib/staff";
 
 const STAFF_KEY = ["staff", "roster"] as const;
 
-export function useStaffRoster() {
-  return useQuery({ queryKey: STAFF_KEY, queryFn: () => apiFetch<StaffRoster>("/api/staff") });
+/** The roster. `archived` lists who has left (restorable members, archived records). */
+export function useStaffRoster(view: "active" | "archived" = "active") {
+  return useQuery({
+    queryKey: [...STAFF_KEY, view],
+    queryFn: () => apiFetch<StaffRoster>(view === "archived" ? "/api/staff?view=archived" : "/api/staff"),
+  });
 }
 
 export function useCreateStaffRecord() {

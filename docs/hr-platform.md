@@ -47,6 +47,22 @@ Payroll, pensions and benefits stay with the accountant.
 - A record from another workspace, or a profile the viewer may not see, answers **404**, so its
   existence isn't revealed.
 
+## Edit, archive, restore, delete
+
+All from the person's profile (`PersonActions` in `staff-profile.tsx`). Rules in
+`lifecycleFor` (`src/server/hr/profile.ts`) and `deleteBlockReason` (`src/lib/hr.ts`):
+
+- **Someone who signs in** is archived and restored through Settings → Team's own routes
+  (`/api/team/members/[memberId]/archive|restore`): Admins and above, never yourself, never someone
+  at or above your rank, restorable for 30 days. One path, so access and the roster can't disagree.
+- **Someone without a login** is archived on their record (`Candidate.archivedAt`,
+  `POST /api/staff/[id]/archive`) by anyone with Staff manage or `hr.manage`. Restorable any time.
+- **Delete** (`DELETE /api/staff/[id]`) only for a record with no login, no placements and no
+  developer reviews. Anyone with history is archived instead, and the API says why. Deleting removes
+  their personal details too; access-log entries stay. Audited as `staff.record.*`.
+- **Staff → People → Archived** lists everyone who has left: archived members, archived records,
+  and developer records whose person has left. The old Staff → Archived tab redirects there.
+
 ## Next
 
 1. **Documents (1b):** per-person vault with a required list per engagement type, expiry reminders,
