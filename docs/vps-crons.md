@@ -28,6 +28,19 @@ authoritative list**, and the schedules below are what the host executes.
 > and the Vercel copy is pure duplication. Do NOT delete it before confirming, or you may
 > remove the only thing actually running a job. Either way it is one or the other, never
 > both.
+
+> ### Jobs and workspaces (October 2026)
+>
+> Foundry is becoming multi-tenant (`docs/multi-tenant-roadmap.md`). Jobs that already loop
+> over workspaces: `foreman`, `curator`, `retention`, `availability-digest`, the `jobs` reconcile.
+> `docs-gdrive-backup` now does too, via `forEachWorkspace` (`src/server/workspaces/for-each.ts`).
+> One workspace's failure there is reported and never stops the others.
+>
+> **Still Gitwork-only, deliberately:**
+> - Care's jobs (`support-sync`, `care-digest`, `embed-conversations`, `analytics-snapshot`).
+>   Care is left out of the multi-tenant work for now.
+> - `meet-transcripts`: its organiser list is Gitwork's.
+> - `wedge-course-feed` and `wedge-keepwarm`: they belong to the client Wedge.
 >
 > **Where the two lists disagree today** (compared line by line, July 2026). If Vercel is
 > still firing, these three run twice a day at *different* times, which is why the

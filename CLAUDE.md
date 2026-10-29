@@ -8722,6 +8722,23 @@ worklist**. The suite fails on a new crossing, and on a fixed one still listed (
 `ISOLATION_UPDATE=1`). ⚠️ Never add a new crossing to the list to get green. ⚠️ `rejected` and
 `error` verdicts prove nothing: the suite sends `{}` bodies. Details: `docs/build-checklist.md` §4b.
 
+**Scheduled jobs run per workspace.** `forEachWorkspace` (`src/server/workspaces/for-each.ts`)
+runs a job once per matching workspace, in order, catching each failure so one business can't stop
+the others. `docs-gdrive-backup` loops through it. Pulse monitors scan on the monitor's own workspace
+(`createPulseScanRecord({ workspaceId })`). Two of these used to cross between businesses:
+- `resolveBackupAuth` fell back to any user's Google token in the database;
+- monitor scans were saved to Gitwork whoever owned the monitor.
+
+⚠️ **Care's jobs are deliberately untouched** (Dan, 29 Oct 2026: Care is a broken product and is
+left out of the multi-tenant work for now). Those jobs are `support-sync`, `care-digest`,
+`embed-conversations` and `analytics-snapshot` (the Care analytics connector). They still run on
+the Gitwork workspace only. `embed-conversations` still selects unembedded conversations from
+every workspace, which only matters once another business has Care. Fix it when Care is brought
+in. Also Gitwork-only by design: `meet-transcripts`, `wedge-course-feed`, `wedge-keepwarm`.
+
+Tests: `src/server/__tests__/crons-per-workspace.test.ts`, `monitor-workspace.test.ts`,
+`tests/isolation/crons.test.ts`.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds

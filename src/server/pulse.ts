@@ -805,8 +805,14 @@ export async function createPulseScanRecord(input: {
    *  push to route the completion notification to a single user vs. the whole
    *  workspace. */
   triggeredByUserId?: string | null;
+  /** The workspace the scan belongs to, and whose AI settings it runs on. Omitted = the
+   *  Gitwork workspace, as every request-driven caller still is until Phase 2.2b. A scheduled
+   *  caller (monitors) passes the owner's, or a second business's scan would land in Gitwork. */
+  workspaceId?: string;
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = input.workspaceId
+    ? await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } })
+    : (await ensureBaseRecords()).workspace;
   // Use only what the workspace has explicitly configured — no silent fallbacks.
   const p = (input.aiProvider ?? workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {

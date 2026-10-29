@@ -19,6 +19,7 @@ export const maxDuration = 30;
 export async function GET(request: NextRequest) {
   try {
     assertCron(request);
+    // Gitwork only, by design: the feed belongs to Gitwork's client Wedge.
     const { workspace } = await ensureBaseRecords();
     const client = await prisma.workspaceClient.findFirst({
       where: { workspaceId: workspace.id, slug: "wedge" },

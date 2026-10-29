@@ -16,6 +16,7 @@ export const maxDuration = 120;
 export async function GET(request: NextRequest) {
   try {
     assertCron(request);
+    // Gitwork only, by design: the feed belongs to Gitwork's client Wedge.
     const { workspace } = await ensureBaseRecords();
     const results = await runWedgeCourseFeed(workspace.id);
     return apiOk({ results });

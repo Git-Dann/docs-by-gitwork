@@ -50,6 +50,8 @@ export async function GET(request: NextRequest) {
   try {
     assertCron(request);
 
+    // Gitwork only, deliberately: SCRIBE_ORGANISER_EMAILS above are Gitwork addresses. Per-workspace
+    // once organisers become a workspace setting (docs/multi-tenant-roadmap.md, Phase 5).
     const workspace = await prisma.workspace.findFirst({
       where: { slug: DEFAULT_WORKSPACE_SLUG },
       select: { id: true },
