@@ -46,11 +46,10 @@ const FORCE_DARK = /^\/edge(?:\/|$)/;
 
 /**
  * The Halloween theme (src/components/seasonal/halloween.tsx): dark, with pumpkin orange as the
- * brand colour, fog and ghosts. Only on these routes — the demo first; add `app` when it's
- * approved. Never on a client deliverable or a sign-in page. Kept in sync with the anti-flash
- * script in src/app/layout.tsx.
+ * brand colour, fog and ghosts. Only on the app and the demo — never on a client deliverable
+ * or a sign-in page. Kept in sync with the anti-flash script in src/app/layout.tsx.
  */
-export const HALLOWEEN_PATHS = /^\/demo(?:\/|$)/;
+export const HALLOWEEN_PATHS = /^\/(app|demo)(?:\/|$)/;
 export const HALLOWEEN_KEY = "foundry.halloween.v1";
 
 /** On by default from 20 October to 2 November, unless someone switched it off. */

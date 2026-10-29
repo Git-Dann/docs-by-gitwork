@@ -36,6 +36,7 @@ import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenToggle } from "@/components/seasonal/halloween";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
 // The Desk is a client-only interactive drawer that pulls in a heavy subtree
@@ -322,12 +323,18 @@ export function AppShell({
     // (e.g. the paged-document's off-screen measurer at left:-99999) attaches to this root and
     // grows the whole PAGE — the page then scrolls past the viewport even though <main> is bounded.
     // demo-shell.tsx already clips here; keep the two in sync.
-    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]">
+    // `isolate` lets the Halloween scene sit at -z-10: above this background, under everything else.
+    <div className="relative isolate flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]">
+      <HalloweenScene />
       {/* ── Mobile top bar (hidden on lg+) ── */}
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+        <span className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+          <HalloweenLogoBadge />
+        </span>
         <div className="flex items-center gap-1">
+          <HalloweenToggle />
           <NotificationBell />
           <button
             type="button"
@@ -450,7 +457,7 @@ export function AppShell({
             content (and any bottom pagination bars) never sits underneath it. */}
         {/* flex-1 is what gives this column a bounded height below lg (as a flex child of the
             wrapper above); at lg+ the grid row bounds it and flex-1 is inert on a grid item. */}
-        <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)] pb-12">
+        <div className="flex min-h-0 flex-1 flex-col halloween-clear bg-[var(--surface-canvas)] pb-12">
           {/* View-as preview banner */}
           {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
@@ -480,7 +487,7 @@ export function AppShell({
                 is information the user can no longer reach. */}
           {!hideContentHeader && (
             <header className={cn(
-              "hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 py-3 sm:px-8 lg:flex lg:items-center",
+              "halloween-clear hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 py-3 sm:px-8 lg:flex lg:items-center",
               HEADER_BAND_MIN,
             )}>
               <div className="flex w-full items-center justify-between gap-4">
@@ -498,7 +505,8 @@ export function AppShell({
                     <p title={subtitle} className="mt-0.5 truncate text-[13px] leading-5 text-[var(--text-3)]">{subtitle}</p>
                   ) : null}
                 </div>
-                <div className="shrink-0">
+                <div className="flex shrink-0 items-center gap-1">
+                  <HalloweenToggle />
                   <NotificationBell />
                 </div>
               </div>
@@ -524,6 +532,7 @@ export function AppShell({
           flow, the Gmail/Slack inbox. All of it is either meaningless to a guest or
           about people they do not work with, and the dock is on every /app screen. */}
       {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
+      <HalloweenFogFront />
     </div>
   );
 }
@@ -566,8 +575,11 @@ function ExpandedRail({
         )}
       >
         {!collapsed ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+          <span className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+            <HalloweenLogoBadge />
+          </span>
         ) : null}
         <button
           type="button"

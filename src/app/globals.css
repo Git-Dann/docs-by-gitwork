@@ -2025,8 +2025,8 @@ h2, h3, h4, h5 {
   inset: auto 0 0 0;
   height: 30vh;
   min-height: 200px;
-  /* Behind the content, so it can be denser than an overlay could. */
-  opacity: 0.7;
+  /* In front of the content: a veil, not a wall — text under it has to stay readable. */
+  opacity: 0.42;
   mix-blend-mode: screen;
   -webkit-mask-image: linear-gradient(to top, #000 10%, rgba(0, 0, 0, 0.45) 45%, transparent);
   mask-image: linear-gradient(to top, #000 10%, rgba(0, 0, 0, 0.45) 45%, transparent);

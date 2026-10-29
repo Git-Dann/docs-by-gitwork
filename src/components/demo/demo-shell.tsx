@@ -10,7 +10,7 @@
  * `src/lib/demo/dev-demo-data.ts` for the canned data. No auth, no database.
  */
 
-import { HalloweenLogoBadge, HalloweenScene, HalloweenToggle } from "@/components/seasonal/halloween";
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenToggle } from "@/components/seasonal/halloween";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
@@ -91,16 +91,16 @@ export function DemoShell({
   return (
     <SessionProvider session={demoSession as never}>
       <div
-        className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
+        className="relative isolate flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
         onClickCapture={handleDemoNav}
       >
         {brandColor ? (
           <style dangerouslySetInnerHTML={{ __html: `:root{${brandCssVars(brandColor)}}` }} />
         ) : null}
         {mounted ? <HalloweenScene /> : null}
-        <div className="relative z-[1] flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           {/* ── Sidebar (mirrors the real app shell) ── */}
-          <aside className="halloween-clear hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
+          <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
               <div className="flex shrink-0 items-center justify-start border-b border-[var(--border-2)] px-6 pb-5 pt-7">
                 <Link href="/demo" aria-label="All demos" className="relative block w-fit text-left" suppressHydrationWarning>
@@ -173,7 +173,7 @@ export function DemoShell({
           </aside>
 
           {/* ── Content column ── */}
-          <div className="halloween-clear flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)]">
+          <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)] halloween-clear">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--brand-200)] bg-[var(--surface-brand)] px-6 py-2 sm:px-8">
               <p className="text-xs font-medium text-[var(--brand-800)]">
                 <span
@@ -215,6 +215,7 @@ export function DemoShell({
             <DeskDrawer />
           </DemoErrorBoundary>
         ) : null}
+        {mounted ? <HalloweenFogFront /> : null}
       </div>
     </SessionProvider>
   );

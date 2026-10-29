@@ -12,11 +12,13 @@
  *     Fluent, Google's Noto (Apache-2.0) and Tabler, so no two faces match;
  *   - the fog is Vanta's FOG shader (MIT) on three.js, loaded only while the theme is on.
  *
- * The scene sits BEHIND Foundry, never over it: the shell renders it first, at z-0, and the
- * page background behind it turns see-through (`.halloween-clear`), so the fog and creatures show
- * in the gutters, gaps and header band and never cover a card, a button or a line of text. It is
- * also `pointer-events: none`, `aria-hidden` and hidden in print. Reduced motion stills the fog
- * and drops what moves.
+ * Two layers, and neither ever takes a click (`pointer-events: none`, `aria-hidden`, no print):
+ *   - `HalloweenScene` (ghosts, bats) sits BEHIND Foundry: `-z-10` inside the shell root, which
+ *     is `isolate`, with the page backgrounds see-through (`.halloween-clear`). So they show in
+ *     gaps and gutters and never cover a card, a button or a line of text.
+ *   - `HalloweenFogFront` sits in FRONT: a faint band along the bottom, above the Desk drawer
+ *     (z-40) and below dialogs (z-70), light enough that text under it stays readable.
+ * Reduced motion stills the fog and drops what moves.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -91,12 +93,11 @@ const BATS = [
   { top: "13%", size: 28, duration: 34, delay: -19 },
 ] as const;
 
-/** Render first inside the shell's `relative` root, with the content above it (`relative z-[1]`). */
+/** Ghosts and bats, behind the content. Render inside the shell root, which must be `isolate`. */
 export function HalloweenScene() {
   if (!useHalloweenShown()) return null;
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-hidden print:hidden">
-      <HalloweenFog />
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden print:hidden">
 
       {GHOSTS.map((g, i) => (
         <span
@@ -123,6 +124,16 @@ export function HalloweenScene() {
           </span>
         </span>
       ))}
+    </div>
+  );
+}
+
+/** The fog, in front of the content. */
+export function HalloweenFogFront() {
+  if (!useHalloweenShown()) return null;
+  return (
+    <div aria-hidden className="pointer-events-none fixed inset-0 z-[45] overflow-hidden print:hidden">
+      <HalloweenFog />
     </div>
   );
 }
