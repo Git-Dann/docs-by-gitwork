@@ -191,6 +191,11 @@ function isCanvasPath(pathname: string): boolean {
   return pathname === "/canvas" || pathname.startsWith("/canvas/");
 }
 
+/** The brand guidelines (src/app/guidelines). An internal page outside /app, gated like Deck. */
+function isGuidelinesPath(pathname: string): boolean {
+  return pathname === "/guidelines" || pathname.startsWith("/guidelines/");
+}
+
 export default auth(async (req) => {
   const { pathname } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
@@ -239,7 +244,7 @@ export default auth(async (req) => {
   // local editor, so any signed-in member can open one. `/canvas` is the same
   // kind of shell (the artwork tools) and is gated the same way.
   const isAppPage = pathname === "/app" || pathname.startsWith("/app/");
-  if (isAppPage || isDeckPath(pathname) || isCanvasPath(pathname)) {
+  if (isAppPage || isDeckPath(pathname) || isCanvasPath(pathname) || isGuidelinesPath(pathname)) {
     const userAgent = req.headers.get("user-agent");
     // The unfurl/OG bypass exists so an /app entity page can render its card —
     // Deck has no metadata worth unfurling, so it never skips the session check.

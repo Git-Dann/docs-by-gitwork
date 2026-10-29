@@ -61,7 +61,7 @@ describe("forced-light routes", () => {
 
   it("matches the routes it claims to, and nothing adjacent", () => {
     const re = new RegExp(`^\\/(${providerList})(?:\\/|$)`);
-    for (const path of ["/login", "/portal/login", "/docs/abc", "/report/abc", "/sign/abc"]) {
+    for (const path of ["/login", "/portal/login", "/docs/abc", "/report/abc", "/sign/abc", "/guidelines"]) {
       expect(re.test(path), `${path} should be forced light`).toBe(true);
     }
     // Must not swallow the app or a lookalike segment.
@@ -82,7 +82,11 @@ describe("theme-locked sign-in pages", () => {
     expect(remapped.has("bg-white")).toBe(true);
   });
 
-  it.each(["src/app/login/page.tsx", "src/components/portal/portal-login-form.tsx"])(
+  it.each([
+    "src/app/login/page.tsx",
+    "src/components/portal/portal-login-form.tsx",
+    "src/components/guidelines/guidelines-viewer.tsx",
+  ])(
     "%s uses no dark-remapped utility class",
     (rel) => {
       const source = readFileSync(join(ROOT, rel), "utf8");

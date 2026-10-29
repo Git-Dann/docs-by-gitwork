@@ -117,9 +117,9 @@ export const WORKSPACE_MODULES: WorkspaceModuleDef[] = [
   {
     id: "labs",
     label: "Labs",
-    description: "Experiments: Studio, Deck, Canvas and the Edge board",
-    pagePrefixes: ["/app/studio", "/app/settings/labs", "/deck", "/canvas", "/edge"],
-    apiPrefixes: [],
+    description: "Experiments: Studio, Deck, Canvas, the Edge board and the brand guidelines",
+    pagePrefixes: ["/app/studio", "/app/settings/labs", "/deck", "/canvas", "/edge", "/guidelines"],
+    apiPrefixes: ["/api/guidelines"],
   },
   {
     id: "mcp",
