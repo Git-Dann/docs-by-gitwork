@@ -1,12 +1,9 @@
-import { AppShell } from "@/components/app-shell";
-import { CodeClearArchivedWorkspace } from "@/components/codeclear/codeclear-archived-workspace";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+/**
+ * The old Staff → Archived tab. Everyone who has left, developers included, is now under
+ * Staff → People → Archived (docs/hr-platform.md), so old links land there.
+ */
 export default function CodeClearArchivedPage() {
-  return (
-    <AppShell title="Staff" subtitle="Developers whose Foundry access has been removed.">
-      <CodeClearArchivedWorkspace />
-    </AppShell>
-  );
+  redirect("/app/staff?view=archived");
 }

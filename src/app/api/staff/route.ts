@@ -1,6 +1,7 @@
 /**
  * GET  /api/staff — the people roster: every active member plus Staff records with no
- *      account behind them (src/server/staff.ts). Needs the Staff module permission.
+ *      account behind them (src/server/staff.ts). `?view=archived` lists who has left.
+ *      Needs the Staff module permission.
  * POST /api/staff — create a Staff record, for a member ({ memberId }) or for someone who
  *      doesn't sign in ({ name, email? }). Needs `code.manage`.
  */
@@ -17,7 +18,8 @@ export async function GET(request: Request) {
   try {
     const user = await requireAuthedUser(request);
     assertCan(user, canViewStaff, "view Staff");
-    return apiOk(await listStaff(user.workspaceId));
+    const view = new URL(request.url).searchParams.get("view") === "archived" ? "archived" : "active";
+    return apiOk(await listStaff(user.workspaceId, view));
   } catch (error) {
     return fromError(error);
   }
@@ -28,6 +30,8 @@ const createSchema = z
     memberId: z.string().min(1).max(64).optional(),
     name: z.string().max(200).optional(),
     email: z.string().email().max(200).nullable().optional(),
+    preferredName: z.string().max(200).nullable().optional(),
+    pronouns: z.string().max(100).nullable().optional(),
     jobTitle: z.string().max(200).nullable().optional(),
     department: z.string().max(200).nullable().optional(),
     employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),

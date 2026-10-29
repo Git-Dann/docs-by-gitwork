@@ -8911,3 +8911,37 @@ tokens (light + dark), pauses on hover **and focus**, Escape closes, no motion u
 - **Vendoring third-party UI:** put it under `src/components/ui/<source>/`, name the upstream
   file, licence and every change in a header comment, and add the licence text to
   `docs/third-party-ui.md`.
+
+## 94. Recent Changes (October 2026) — People & HR, Phase 1a: profiles, personal details, suppliers
+
+The first slice of the HR platform (spec: the "Foundry People & HR — spec" doc; build notes and
+rules: **`docs/hr-platform.md`**). Staff is the record of every person; Backstage will read it.
+
+- **Two new permissions, `hr.manage` and `hr.viewSensitive`, and no role has them by default.**
+  `DEFAULT_ROLE_PERMISSIONS.ADMIN` is now every id **except** `HR_PERMISSION_IDS`. Personal and
+  health data is granted to a named person (Siân), never inherited from a role. Super Admins
+  always have both.
+- **A profile page per person** at `/app/staff/[id]`, linked from People. One rule,
+  `profileAccess` in `src/lib/hr.ts`, decides each tier for the page, the API and the demo:
+  - directory: anyone with Staff;
+  - employment (supplier, contract end, probation, notice, days per week): the person, their
+    manager and `hr.manage`;
+  - sensitive (date of birth, address, NI number, ID, right to work, emergency contacts): the
+    person and `hr.viewSensitive` only. A manager never sees it.
+- **The sensitive tier is encrypted** (one envelope per person, `StaffSensitive`). Every look by
+  anyone but the person, and every change, goes to `HrAccessLog`, which names the fields and never
+  the values. ⚠️ The page fetches personal details only when Show is pressed, and the query is
+  never refetched in the background. A refetch is a second logged look, so don't add a broad
+  `["staff"]` invalidation.
+- **Suppliers** at `/app/staff/suppliers` (HR only): the partner company developers come through.
+  Archived, never deleted. `Candidate.supplierId` is a loose id.
+- `employmentType` gains **DIRECTOR**. Staff records gain `preferredName`, `pronouns`, `endDate`,
+  `probationEndsOn`, `noticePeriodWeeks` and `daysPerWeek`. All additive.
+- **Archive, restore and delete from the profile.** Someone who signs in goes through Settings →
+  Team's archive/restore routes, so there is one way to take someone's access away. Someone without
+  a login is archived on their record (`Candidate.archivedAt`). Delete is only offered for a record
+  with no login, placements or developer reviews. ⚠️ Don't widen it: deleting someone with history
+  erases who did what. **People → Archived** replaces the old Archived tab, which now redirects.
+- `src/components/ui/segmented.tsx` is the in-card pick-one control (Active / Archived on Team and
+  on People). `segmented-tabs.ts` stays the settings tab bar.
+- Demos: `/demo/staff/r2` (profile, seen as HR) and `/demo/staff/suppliers`.

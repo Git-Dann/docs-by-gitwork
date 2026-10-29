@@ -438,6 +438,14 @@ export function canViewCheckConfig(user: EffectiveUser): boolean {
 export function canViewStaff(user: EffectiveUser): boolean {
   return can(user, "codeclear");
 }
+/** HR: employment details, suppliers and the HR access log (docs/hr-platform.md). */
+export function canManageHr(user: EffectiveUser): boolean {
+  return can(user, "hr.manage");
+}
+/** HR: the sensitive tier of a person record (date of birth, address, NI, ID, emergency contacts). */
+export function canViewHrSensitive(user: EffectiveUser): boolean {
+  return can(user, "hr.viewSensitive");
+}
 /** Add/edit/delete candidates + run analysis in Code. */
 export function canManageCode(user: EffectiveUser): boolean {
   return can(user, "code.manage");
