@@ -19,7 +19,7 @@ import {
   useSyncSupportClient,
   useBatchTriageConversations,
   useMarkConversationRead,
-  useCloseConversation,
+  useCloseConversationWithUndo,
   useSnoozeConversation,
   useUpdateSupportClient,
 } from "@/hooks/use-support";
@@ -332,7 +332,7 @@ export function ClientCockpit({
   const sync = useSyncSupportClient(client.id);
   const batch = useBatchTriageConversations(client.id);
   const markRead = useMarkConversationRead(client.id);
-  const close = useCloseConversation(client.id);
+  const closeWithUndo = useCloseConversationWithUndo(client.id);
   const snooze = useSnoozeConversation(client.id);
   const { canManageSupport } = usePermissions();
 
@@ -475,7 +475,7 @@ export function ClientCockpit({
           const conv = conversations[focusedIndex];
           if (conv && canManageSupport) {
             e.preventDefault();
-            close.mutate({ convId: conv.id });
+            closeWithUndo(conv);
             // Hold position rather than following the row out of the view it just left, so a
             // run of closes walks down the queue instead of bouncing back to the top.
             setFocusedIndex((i) => Math.min(i, conversations.length - 2));

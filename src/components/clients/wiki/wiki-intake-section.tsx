@@ -53,6 +53,7 @@ import {
   useWikiMentionables,
 } from "@/hooks/use-wiki";
 import { RequestThread } from "@/components/clients/wiki/request-thread";
+import { useToast } from "@/components/ui/toast";
 
 /** A full-width labelled action in a request's details card. */
 const sideBtn =
@@ -191,6 +192,7 @@ export function WikiIntakeSection({
   const createInternal = useCreateWikiIntakeItem(slug);
   const createPublic = useCreatePublicWikiIntakeItem(token ?? "");
   const updateItem = useUpdateWikiIntakeItem(slug);
+  const { undo: undoToast } = useToast();
   const deleteItem = useDeleteWikiIntakeItem(slug);
   const promoteItem = usePromoteWikiIntakeItem(slug);
   const uploadImageInternal = useUploadWikiIntakeItemImage(slug);
@@ -497,12 +499,15 @@ export function WikiIntakeSection({
    * that actually completed, leaving the failed ones ticked and ready to retry.
    */
   async function batchSetStatus(status: "CLOSED" | "NEW") {
+    // What each closed request was before, so Undo can put it back exactly (see setDealtWith).
+    const closed: { id: string; before: WikiIntakeItemRecord["status"] }[] = [];
     await runBatch("Could not update every request.", async () => {
       const done: string[] = [];
       try {
         for (const item of selectedRows) {
           if (item.status !== status) {
             await updateItem.mutateAsync({ id: item.id, data: { status } });
+            if (status === "CLOSED") closed.push({ id: item.id, before: item.status });
           }
           done.push(item.id);
         }
@@ -510,6 +515,43 @@ export function WikiIntakeSection({
         dropFromSelection(done);
       }
     });
+    // Offered even after a partial batch: the ones that did close can still come back.
+    if (closed.length > 0) {
+      undoToast(
+        `${closed.length} request${closed.length === 1 ? "" : "s"} marked dealt with`,
+        async () => {
+          for (const c of closed) await updateItem.mutateAsync({ id: c.id, data: { status: c.before } });
+        },
+        { variant: "success" },
+      );
+    }
+  }
+
+  /**
+   * Mark one request dealt with, or reopen it.
+   *
+   * Closing offers Undo, and Undo restores the status the request HAD — not NEW, which is
+   * what the Reopen button sets. A PROMOTED or TRIAGED request reopened as NEW would lose
+   * its place, so "undo" and "reopen" are deliberately different operations. The PATCH
+   * route accepts any status, so this is the exact inverse of the close.
+   */
+  async function setDealtWith(item: WikiIntakeItemRecord) {
+    if (item.status === "CLOSED") {
+      await runRowAction(item.id, "Could not update that request.", () =>
+        updateItem.mutateAsync({ id: item.id, data: { status: "NEW" } }),
+      );
+      return;
+    }
+    const before = item.status;
+    const ok = await runRowAction(item.id, "Could not update that request.", () =>
+      updateItem.mutateAsync({ id: item.id, data: { status: "CLOSED" } }),
+    );
+    if (ok) {
+      undoToast("Request marked dealt with", () => updateItem.mutateAsync({ id: item.id, data: { status: before } }), {
+        description: item.title,
+        variant: "success",
+      });
+    }
   }
 
   async function batchPromote() {
@@ -1125,16 +1167,7 @@ export function WikiIntakeSection({
                                   ? `Reopen ${item.title}`
                                   : `Mark ${item.title} dealt with`
                               }
-                              onClick={() =>
-                                void runRowAction(item.id, "Could not update that request.", () =>
-                                  updateItem.mutateAsync({
-                                    id: item.id,
-                                    data: {
-                                      status: item.status === "CLOSED" ? "NEW" : "CLOSED",
-                                    },
-                                  }),
-                                )
-                              }
+                              onClick={() => void setDealtWith(item)}
                               className="rounded-[6px] border border-[var(--border-2)] p-1.5 text-[var(--text-3)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
                             >
                               {/* Create task is the stack-plus beside this one. Both
@@ -1409,14 +1442,7 @@ export function WikiIntakeSection({
                                             ? "Put this request back on the open list."
                                             : "Files the request as dealt with. Any task already created from it is not affected."
                                         }
-                                        onClick={() =>
-                                          void runRowAction(item.id, "Could not update that request.", () =>
-                                            updateItem.mutateAsync({
-                                              id: item.id,
-                                              data: { status: item.status === "CLOSED" ? "NEW" : "CLOSED" },
-                                            }),
-                                          )
-                                        }
+                                        onClick={() => void setDealtWith(item)}
                                         className={sideBtn}
                                       >
                                         {item.status === "CLOSED" ? (

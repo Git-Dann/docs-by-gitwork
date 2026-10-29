@@ -1,14 +1,26 @@
-# Third-party UI code
+# Third-party UI components
 
-Components copied into Foundry from other projects, with the licence each one requires us to keep.
-Every vendored file names its source in a header comment and points here.
+UI components vendored into Foundry from other projects. Each entry names the source, the
+files it landed in, what was changed, and the licence text, which must travel with the code.
+Which components and why: `docs/easyui-adoption.md`.
+
+---
 
 ## EasyUI
 
-- Source: https://github.com/Surajmaurya1/easyui (https://easyui.site)
-- Used in: `src/components/ui/easyui/` (see `docs/easyui-adoption.md` for which components and why)
-- Changes: colours mapped to Foundry tokens for light and dark, imports and icons swapped for what
-  Foundry ships, dialog accessibility added where missing. Each file's header lists its changes.
+- **Source:** https://github.com/Surajmaurya1/easyui · docs at https://easyui.site/components
+- **Licence:** MIT (full text below)
+
+| Component | Upstream file | Foundry file |
+|---|---|---|
+| Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
+| Undo Toast | `src/components/ui/UndoToast.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/undo-toast.tsx` |
+
+**Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
+place of lucide), colours mapped to Foundry tokens so it works in light and dark mode, accessibility
+where it was missing, and `prefers-reduced-motion` support. The header comment in each Foundry file
+lists that file's own changes (for example the Undo Toast's corrected pause maths and its `stacked`
+mode for `ToastProvider`, and the Command Menu's focus trap and focus restore).
 
 ```
 MIT License
