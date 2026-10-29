@@ -2,9 +2,11 @@
  * Cross-document analytics dashboard (Phase 1) — /app/docs/analytics.
  *
  * Consumes GET /api/documents/analytics (the same endpoint the iOS analytics screen uses): the
- * funnel (documents → shared → viewed → sent → accepted/declined), open + win rates, average
- * time-to-first-open, the most-viewed-documents leaderboard, and the most-read section types
- * across every shared document. Filterable by document type and time window.
+ * funnel (created → shared → opened → accepted, drawn by EasyUI's `<FunnelChart>`, vendored at
+ * `src/components/ui/easyui/`, with a loss chip between every stage), open + win rates, average time-to-first-open, the most-viewed-documents
+ * leaderboard, and the most-read section types across every shared document. Filterable by
+ * document type and time window. "Sent" stays a KPI rather than a funnel stage: it is a status
+ * set, not a step every accepted document passed through.
  */
 
 "use client";
@@ -16,6 +18,8 @@ import {
   formatRate,
   useWorkspaceDocAnalytics,
 } from "@/hooks/use-document-analytics";
+import { MONO, WidgetCard } from "@/components/analytics/analytics-widgets";
+import { FunnelChart } from "@/components/ui/easyui/funnel-chart";
 
 const TYPE_OPTIONS = [
   "ALL",
@@ -44,6 +48,8 @@ export function DocsAnalyticsDashboard() {
   const days = RANGE_OPTIONS[rangeIdx].days;
 
   const { data, isPending, error } = useWorkspaceDocAnalytics({ documentType, days });
+  // Card numbers follow render order: with no status mix, 03/04 become 02/03.
+  const n = (slot: 3 | 4) => String(data && data.byStatus.length > 0 ? slot : slot - 1).padStart(2, "0");
 
   return (
     <div className="space-y-5">
@@ -116,93 +122,37 @@ export function DocsAnalyticsDashboard() {
             <Kpi label="Avg to open" value={formatDuration(data.rates.avgTimeToFirstOpenMs)} />
           </div>
 
+          {/* 01 funnel (+ 02 status mix beside it) · then the two leaderboards. Numbered in render
+              order, so the sequence stays unbroken when there is no status mix to show. */}
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            {/* Top documents */}
-            <section className="widget-card overflow-hidden">
-              <div className="widget-header">
-                <span className="widget-header-label">MOST-VIEWED DOCUMENTS</span>
+            <WidgetCard
+              number="01"
+              label="Funnel"
+              hint="How many documents made it to each step: created, shared with the client, opened by them, and accepted. The chip between two steps is how many fell away; hover a step for its count."
+              className={data.byStatus.length > 0 ? "" : "lg:col-span-2"}
+              bodyClassName="p-5"
+            >
+              {/* Capped at EasyUI's own demo width (max-w-lg) so a wide card adds whitespace,
+                  not a wider drawing. */}
+              <div className="max-w-lg">
+                <FunnelChart
+                  ariaLabel="Document funnel from created to accepted"
+                  valueLabel="Documents"
+                  stages={[
+                    { label: "Created", value: data.totals.documents },
+                    { label: "Shared with client", value: data.totals.shared },
+                    { label: "Opened", value: data.totals.viewed },
+                    { label: "Accepted", value: data.totals.accepted },
+                  ]}
+                />
               </div>
-              <div className="p-2">
-                {data.topDocuments.length === 0 ? (
-                  <p className="p-4 text-sm text-[var(--text-3)]">No views recorded in this window.</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left font-mono text-[10px] uppercase tracking-[1px] text-[var(--text-3)]">
-                        <th className="px-3 py-2 font-semibold">Document</th>
-                        <th className="px-3 py-2 text-right font-semibold">Views</th>
-                        <th className="hidden px-3 py-2 text-right font-semibold sm:table-cell">Last opened</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.topDocuments.map((d) => (
-                        <tr key={d.id} className="border-t border-[var(--border-2)]">
-                          <td className="px-3 py-2">
-                            <Link
-                              href={`/app/docs/${d.id}`}
-                              className="font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]"
-                            >
-                              {d.title}
-                            </Link>
-                            <div className="text-[11px] text-[var(--text-3)]">
-                              {[d.documentNumber, d.clientName, d.status].filter(Boolean).join(" · ")}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-[var(--text-2)]">{d.views}</td>
-                          <td className="hidden px-3 py-2 text-right text-[11px] text-[var(--text-3)] sm:table-cell">
-                            {d.lastViewedAt ? new Date(d.lastViewedAt).toLocaleDateString() : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </section>
+              <p className="mt-3" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--text-4)" }}>
+                {`Documents created in this window · ${data.totals.declined.toLocaleString("en-GB")} declined`}
+              </p>
+            </WidgetCard>
 
-            {/* Top sections */}
-            <section className="widget-card overflow-hidden">
-              <div className="widget-header">
-                <span className="widget-header-label">MOST-READ SECTIONS</span>
-              </div>
-              <div className="p-5">
-                {data.topSections.length === 0 ? (
-                  <p className="text-sm text-[var(--text-3)]">No section engagement yet.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {data.topSections.map((s) => {
-                      const max = data.topSections[0]?.totalDwellMs || 1;
-                      const pct = Math.max(3, Math.round((s.totalDwellMs / max) * 100));
-                      return (
-                        <li key={s.sectionKey}>
-                          <div className="flex items-baseline justify-between gap-3 text-xs">
-                            <span className="truncate text-[var(--text-2)]">{s.sectionKey}</span>
-                            <span className="shrink-0 tabular-nums text-[var(--text-3)]">
-                              {formatDuration(s.totalDwellMs)}
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-1)]">
-                            <div
-                              className="h-full rounded-full bg-[var(--brand-500,#6366f1)]"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </section>
-          </div>
-
-          {/* Status breakdown */}
-          {data.byStatus.length > 0 && (
-            <section className="widget-card overflow-hidden">
-              <div className="widget-header">
-                <span className="widget-header-label">BY STATUS</span>
-              </div>
-              <div className="flex flex-wrap gap-2 p-5">
+            {data.byStatus.length > 0 ? (
+              <WidgetCard number="02" label="By status" bodyClassName="flex flex-wrap content-start gap-2 p-5">
                 {data.byStatus.map((s) => (
                   <span
                     key={s.status}
@@ -212,9 +162,79 @@ export function DocsAnalyticsDashboard() {
                     <span className="tabular-nums font-semibold text-[var(--text-1)]">{s.count}</span>
                   </span>
                 ))}
-              </div>
-            </section>
-          )}
+              </WidgetCard>
+            ) : null}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            {/* Top documents */}
+            <WidgetCard number={n(3)} label="Most-viewed documents" bodyClassName="p-2">
+              {data.topDocuments.length === 0 ? (
+                <p className="p-4 text-sm text-[var(--text-3)]">No views recorded in this window.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left font-mono text-[10px] uppercase tracking-[1px] text-[var(--text-3)]">
+                      <th className="px-3 py-2 font-semibold">Document</th>
+                      <th className="px-3 py-2 text-right font-semibold">Views</th>
+                      <th className="hidden px-3 py-2 text-right font-semibold sm:table-cell">Last opened</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.topDocuments.map((d) => (
+                      <tr key={d.id} className="border-t border-[var(--border-2)]">
+                        <td className="px-3 py-2">
+                          <Link
+                            href={`/app/docs/${d.id}`}
+                            className="font-medium text-[var(--text-1)] hover:text-[var(--brand-700)]"
+                          >
+                            {d.title}
+                          </Link>
+                          <div className="text-[11px] text-[var(--text-3)]">
+                            {[d.documentNumber, d.clientName, d.status].filter(Boolean).join(" · ")}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-[var(--text-2)]">{d.views}</td>
+                        <td className="hidden px-3 py-2 text-right text-[11px] text-[var(--text-3)] sm:table-cell">
+                          {d.lastViewedAt ? new Date(d.lastViewedAt).toLocaleDateString() : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </WidgetCard>
+
+            {/* Top sections */}
+            <WidgetCard number={n(4)} label="Most-read sections" bodyClassName="p-5">
+              {data.topSections.length === 0 ? (
+                <p className="text-sm text-[var(--text-3)]">No section engagement yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.topSections.map((s) => {
+                    const max = data.topSections[0]?.totalDwellMs || 1;
+                    const pct = Math.max(3, Math.round((s.totalDwellMs / max) * 100));
+                    return (
+                      <li key={s.sectionKey}>
+                        <div className="flex items-baseline justify-between gap-3 text-xs">
+                          <span className="truncate text-[var(--text-2)]">{s.sectionKey}</span>
+                          <span className="shrink-0 tabular-nums text-[var(--text-3)]">
+                            {formatDuration(s.totalDwellMs)}
+                          </span>
+                        </div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-1)]">
+                          <div
+                            className="h-full rounded-full bg-[var(--brand-500,#6366f1)]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </WidgetCard>
+          </div>
         </>
       ) : null}
     </div>

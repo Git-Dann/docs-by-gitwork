@@ -20,6 +20,9 @@ its row below.
 |---|---|---|
 | Command Menu | `src/components/ui/CommandMenu.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/command-menu.tsx` |
 | Undo Toast | `src/components/ui/UndoToast.tsx` (+ `springSnappy` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/undo-toast.tsx` |
+| Funnel Chart | `src/components/ui/FunnelChart.tsx` | `src/components/ui/easyui/funnel-chart.tsx` |
+| Activity Heatmap | `src/components/ui/ActivityHeatmap.tsx` | `src/components/ui/easyui/activity-heatmap.tsx` |
+| Chart primitives | `src/lib/chart-primitives.tsx` (the parts the charts use) + `pctText` from `src/lib/dashboard-chart-utils.ts` | `src/components/ui/easyui/chart-primitives.tsx` |
 | Calendar | `src/components/ui/calendar.tsx` | `src/components/ui/easyui/calendar.tsx` |
 | Date Picker | `src/components/ui/date-picker.tsx` | `src/components/ui/easyui/date-picker.tsx` |
 
@@ -30,6 +33,12 @@ motion are upstream's. The header comment in each Foundry file lists that file's
 
 **Undo Toast.** The countdown's pause maths is corrected, "Restored" shows only once an async undo
 succeeds, and a `stacked` mode lets `ToastProvider` (`src/components/ui/toast.tsx`) stack it.
+
+**Charts.** Number and date formatting is en-GB. The funnel shows "+N%" when a stage is *larger*
+than the one before (upstream prints "−N%" either way), omits "Biggest drop" when nothing dropped,
+and takes its gradient ids from `useId` so two funnels on one page don't share `<defs>`.
+⚠️ The funnel's bridges keep upstream's vertical SVG gradient. DESIGN.md says no gradients; this one
+is kept on purpose because the bridge shape *is* the design being adopted.
 
 **Calendar and Date Picker.** Weeks start on Monday, a Today/Clear footer is added, the popover is
 anchored and portalled (Headless UI) so cards and dialogs can't clip it, and Escape closes only the

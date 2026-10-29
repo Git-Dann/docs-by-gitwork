@@ -410,6 +410,30 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
+    // People & HR (docs/hr-platform.md). Neither id is a module, and ADMIN does not get
+    // them by default (see DEFAULT_ROLE_PERMISSIONS): HR records hold personal and health
+    // data, so who can read them is always a decision made per person.
+    product: "HR",
+    permissions: [
+      {
+        id: "hr.manage",
+        category: "feature",
+        label: "Manage HR records",
+        description:
+          "Edit employment details (supplier, contract end, probation, notice, working pattern), manage suppliers and read the HR access log.",
+        highRisk: true,
+      },
+      {
+        id: "hr.viewSensitive",
+        category: "field",
+        label: "View sensitive personal details",
+        description:
+          "Date of birth, home address, NI number, ID, right to work and emergency contacts. Every view is logged. Super Admins always have it.",
+        highRisk: true,
+      },
+    ],
+  },
+  {
     product: "Tasks",
     permissions: [
       {
@@ -554,6 +578,9 @@ export const ALL_PERMISSIONS: readonly PermissionDef[] = PERMISSION_CATALOG.flat
 /** Every permission id — the resolved set for SUPER_ADMIN. */
 export const ALL_PERMISSION_IDS: string[] = ALL_PERMISSIONS.map((p) => p.id);
 
+/** HR permissions: never part of a role's defaults, only granted to a named person. */
+export const HR_PERMISSION_IDS: readonly string[] = ["hr.manage", "hr.viewSensitive"];
+
 const PERMISSION_BY_ID = new Map<string, PermissionDef>(ALL_PERMISSIONS.map((p) => [p.id, p]));
 
 export function isValidPermissionId(id: string): boolean {
@@ -599,7 +626,8 @@ const MODULE_IDS = MODULE_PERMISSIONS.map((m) => m.id);
  *    no Study (admin-only feature perm), no rate or cost visibility, no seeAllClients.
  */
 export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
-  ADMIN: [...ALL_PERMISSION_IDS],
+  // Everything except HR: personal and health data is granted per person, never by role.
+  ADMIN: ALL_PERMISSION_IDS.filter((id) => !HR_PERMISSION_IDS.includes(id)),
   STAFF: [
     ...MODULE_IDS,
     "seeAllClients",

@@ -78,9 +78,7 @@ type CodeTab = { href: string; label: string; devsignal?: boolean };
 const staffTabs: readonly CodeTab[] = [
   { href: "/app/staff", label: "People" },
   { href: "/app/codeclear/candidates", label: "Developers" },
-  // Developers whose person has been archived in Settings → Team. Derived from
-  // there, never set here — see src/server/codeclear-archived.ts.
-  { href: "/app/codeclear/archived", label: "Archived" },
+  // Leavers (developers included) are under People → Archived, not a tab of their own.
 ];
 
 const hiringTabs: readonly CodeTab[] = [
@@ -95,12 +93,14 @@ const hiringTabs: readonly CodeTab[] = [
  *  tab stays lit when you drill in. */
 export function isTabActive(href: string, pathname: string): boolean {
   if (href === "/app/codeclear") return pathname === "/app/codeclear";
+  // People owns profiles (/app/staff/[id]) but not its sibling tab, Suppliers.
+  if (href === "/app/staff") return pathname === href || (pathname.startsWith("/app/staff/") && !pathname.startsWith("/app/staff/suppliers"));
   return pathname === href || pathname.startsWith(href + "/");
 }
 
 export function CodeClearTabs() {
   const pathname = usePathname();
-  const { canManageDevSignal, hasModule } = usePermissions();
+  const { canManageDevSignal, canManageHr, hasModule } = usePermissions();
   // DevSignal (dev vetting) is permission-gated — only show its tab to those who can reach it.
   const hiring = hasModule("devsignal") ? hiringTabs.filter((t) => !t.devsignal || canManageDevSignal) : [];
 
@@ -126,6 +126,8 @@ export function CodeClearTabs() {
   return (
     <nav aria-label="Staff" className="flex flex-wrap items-center gap-2">
       {staffTabs.map(tab)}
+      {/* HR only: the companies people are supplied through (docs/hr-platform.md). */}
+      {canManageHr ? tab({ href: "/app/staff/suppliers", label: "Suppliers" }) : null}
       {hiring.length ? (
         <>
           <span aria-hidden className="mx-1 h-5 w-px bg-[var(--border-2)]" />
@@ -145,10 +147,13 @@ export function WidgetCard({
   children,
   className,
   bodyClassName,
+  action,
 }: {
   number: string;
   name: string;
   status?: string;
+  /** A small control in the header, beside the status (e.g. Edit), so it costs no row of its own. */
+  action?: React.ReactNode;
   statusTone?: "info" | "success" | "warning" | "danger" | "muted";
   children: React.ReactNode;
   className?: string;
@@ -173,10 +178,15 @@ export function WidgetCard({
           <span className="mx-1.5 text-[var(--text-4)]">{"//"}</span>
           {name}
         </span>
-        {status ? (
-          <span className="widget-header__status">
-            <span className={cn("widget-status-dot", dotTone)} aria-hidden />
-            {status}
+        {status || action ? (
+          <span className="flex min-w-0 items-center gap-3">
+            {status ? (
+              <span className="widget-header__status">
+                <span className={cn("widget-status-dot", dotTone)} aria-hidden />
+                {status}
+              </span>
+            ) : null}
+            {action}
           </span>
         ) : null}
       </div>

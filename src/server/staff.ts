@@ -11,7 +11,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
-import { activeDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
+import { activeDeveloperWhere, archivedDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
 import { isSeedAccount, seedAccountUserWhere } from "@/server/seed-accounts";
 import {
   departmentsOf,
@@ -93,6 +93,9 @@ const RECORD_SELECT = {
   startDate: true,
   managerId: true,
   memberId: true,
+  preferredName: true,
+  pronouns: true,
+  archivedAt: true,
   placements: {
     where: { endDate: null },
     select: { clientName: true, client: { select: { name: true, slug: true } } },
@@ -105,6 +108,8 @@ function recordFields(r: RecordRow | null | undefined) {
   if (!r) {
     return {
       recordId: null,
+      preferredName: null,
+      pronouns: null,
       jobTitle: null,
       department: null,
       employmentType: null,
@@ -117,6 +122,8 @@ function recordFields(r: RecordRow | null | undefined) {
   }
   return {
     recordId: r.id,
+    preferredName: r.preferredName,
+    pronouns: r.pronouns,
     jobTitle: r.jobTitle,
     department: r.department,
     employmentType: isEmploymentType(r.employmentType) ? r.employmentType : null,
@@ -130,17 +137,29 @@ function recordFields(r: RecordRow | null | undefined) {
   };
 }
 
-export async function listStaff(workspaceId: string): Promise<StaffRoster> {
+/**
+ * The roster. `active` is everyone on the team now; `archived` is everyone who has left:
+ * members archived in the last 30 days (restorable), records archived from Staff, and
+ * developer records whose person has left (the old Archived tab, folded in here).
+ */
+export async function listStaff(workspaceId: string, view: "active" | "archived" = "active"): Promise<StaffRoster> {
   await linkStaffRecords(workspaceId);
   const archivedEmails = await archivedTeamEmails(workspaceId);
+  const archived = view === "archived";
   const [members, records] = await Promise.all([
+    // includes-archived: the archived view exists to list them; the active view keeps ACTIVE_MEMBER.
     prisma.workspaceMember.findMany({
       // Placeholder accounts (the bootstrap "Foundry Owner", the seeded "admin") are not
       // people on the team. Same filter Team and Backstage use.
-      where: { workspaceId, ...ACTIVE_MEMBER, user: seedAccountUserWhere() },
+      where: {
+        workspaceId,
+        ...(archived ? { archivedAt: { not: null } } : ACTIVE_MEMBER),
+        user: seedAccountUserWhere(),
+      },
       select: {
         id: true,
         role: true,
+        archivedAt: true,
         user: { select: { name: true, email: true, avatarUrl: true } },
         // Earliest first: memberId is not unique in the database (see the schema), so if a
         // race ever left two records on one member, every read picks the same one.
@@ -151,14 +170,21 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
     // sign in. Leavers are excluded the same way the developer lists exclude them, and
     // so are DevSignal's external candidates, who are not on the team.
     prisma.candidate.findMany({
-      where: {
-        workspaceId,
-        AND: [
-          activeDeveloperWhere(archivedEmails),
-          { NOT: { origin: "EXTERNAL" } },
-          { OR: [{ memberId: null }, { member: { archivedAt: { not: null } } }] },
-        ],
-      },
+      where: archived
+        ? {
+            workspaceId,
+            memberId: null,
+            AND: [{ NOT: { origin: "EXTERNAL" } }, { OR: [{ archivedAt: { not: null } }, archivedDeveloperWhere(archivedEmails)] }],
+          }
+        : {
+            workspaceId,
+            archivedAt: null,
+            AND: [
+              activeDeveloperWhere(archivedEmails),
+              { NOT: { origin: "EXTERNAL" } },
+              { OR: [{ memberId: null }, { member: { archivedAt: { not: null } } }] },
+            ],
+          },
       select: RECORD_SELECT,
     }),
   ]);
@@ -175,6 +201,7 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
         role: m.role,
         managerName: null,
         ...recordFields(r),
+        archivedAt: m.archivedAt ? m.archivedAt.toISOString() : null,
       };
     }),
     ...records.filter((r) => !isSeedAccount(r)).map((r) => ({
@@ -186,6 +213,7 @@ export async function listStaff(workspaceId: string): Promise<StaffRoster> {
       role: null,
       managerName: null,
       ...recordFields(r),
+      archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
     })),
   ];
 
@@ -237,6 +265,8 @@ export async function createStaffRecord(
       githubHandle: null,
       primaryStack: "",
       origin: "INTERNAL",
+      preferredName: details.value.preferredName ?? null,
+      pronouns: details.value.pronouns ?? null,
       jobTitle: details.value.jobTitle ?? null,
       department: details.value.department ?? null,
       employmentType: details.value.employmentType ?? null,
@@ -265,6 +295,8 @@ export async function updateStaffDetails(workspaceId: string, recordId: string, 
   await prisma.candidate.update({
     where: { id: recordId },
     data: {
+      ...(v.preferredName !== undefined ? { preferredName: v.preferredName } : {}),
+      ...(v.pronouns !== undefined ? { pronouns: v.pronouns } : {}),
       ...(v.jobTitle !== undefined ? { jobTitle: v.jobTitle } : {}),
       ...(v.department !== undefined ? { department: v.department } : {}),
       ...(v.employmentType !== undefined ? { employmentType: v.employmentType } : {}),

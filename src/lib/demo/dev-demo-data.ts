@@ -54,7 +54,7 @@ import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
-import { resolveDemoStaff } from "@/lib/demo/demo-staff";
+import { resolveDemoStaff, resolveDemoTeamArchive } from "@/lib/demo/demo-staff";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
 
@@ -75,7 +75,9 @@ export const demoSession = {
     // column, no bulk bar, no channels/settings screen and no triage controls — a
     // deliberately crippled view of the product. Mutations are no-ops here anyway,
     // since the interceptor answers every /api/* call with canned data.
-    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage"],
+    // `hr.manage` + `hr.viewSensitive` so /demo/staff shows the HR cards (employment,
+    // personal details, the access log, Suppliers) the way HR sees them.
+    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage", "hr.manage", "hr.viewSensitive"],
   },
   expires: "2099-01-01T00:00:00.000Z",
 };
@@ -3974,8 +3976,12 @@ export function resolveDemoApi(
   }
   // Drive — the team's (by slug) and the client's (by share token) read the same fixture.
   if (/^\/api\/(clients\/[^/]+|wiki\/[^/]+)\/drive$/.test(pathname)) return resolveDemoDrive(search);
+  if (pathname.startsWith("/api/team/members/")) {
+    const result = resolveDemoTeamArchive(pathname, init?.method ?? "GET");
+    if (result !== undefined) return result;
+  }
   if (pathname === "/api/staff" || pathname.startsWith("/api/staff/")) {
-    const result = resolveDemoStaff(pathname, init);
+    const result = resolveDemoStaff(pathname, init, search);
     if (result !== undefined) return result;
   }
   if (pathname.startsWith("/api/platform/")) {

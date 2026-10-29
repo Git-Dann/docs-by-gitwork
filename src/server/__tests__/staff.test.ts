@@ -78,6 +78,9 @@ const person = (over: Partial<StaffPerson>): StaffPerson => ({
   key: over.key ?? "k",
   memberId: null,
   recordId: null,
+  preferredName: null,
+  pronouns: null,
+  archivedAt: null,
   name: "Someone",
   email: null,
   avatarUrl: null,
@@ -155,7 +158,7 @@ describe("Staff routes are gated", () => {
 
 describe("sortStaffBy", () => {
   const p = (name: string, extra: Partial<StaffPerson> = {}): StaffPerson => ({
-    key: name, memberId: null, recordId: null, name, email: null, avatarUrl: null, role: null,
+    key: name, memberId: null, recordId: null, name, preferredName: null, pronouns: null, archivedAt: null, email: null, avatarUrl: null, role: null,
     jobTitle: null, department: null, employmentType: null, startDate: null, managerRecordId: null,
     managerName: null, isDeveloper: false, primaryStack: null, currentClients: [], ...extra,
   });

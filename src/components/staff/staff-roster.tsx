@@ -26,9 +26,11 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
 import { Pager } from "@/components/ui/pager";
+import { Segmented } from "@/components/ui/segmented";
 import { SortHeader, type SortDir } from "@/components/ui/sort-header";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useCreateStaffRecord, useStaffRoster, useUpdateStaffDetails } from "@/hooks/use-staff";
+import { useSetArchived } from "@/hooks/use-hr";
 
 const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -49,7 +51,7 @@ function formatStart(date: string | null): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-function DetailsDialog({
+export function DetailsDialog({
   person,
   people,
   onClose,
@@ -58,6 +60,8 @@ function DetailsDialog({
   people: StaffPerson[];
   onClose: () => void;
 }) {
+  const [preferredName, setPreferredName] = useState(person.preferredName ?? "");
+  const [pronouns, setPronouns] = useState(person.pronouns ?? "");
   const [jobTitle, setJobTitle] = useState(person.jobTitle ?? "");
   const [department, setDepartment] = useState(person.department ?? "");
   const [employmentType, setEmploymentType] = useState<EmploymentType | "">(person.employmentType ?? "");
@@ -74,6 +78,8 @@ function DetailsDialog({
   const save = async () => {
     setError(null);
     const details = {
+      preferredName: preferredName || null,
+      pronouns: pronouns || null,
       jobTitle: jobTitle || null,
       department: department || null,
       employmentType: employmentType || null,
@@ -99,6 +105,14 @@ function DetailsDialog({
           </p>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
+          <label className={field}>
+            Preferred name
+            <input className="app-input mt-1 w-full" value={preferredName} maxLength={80} placeholder={person.name} onChange={(e) => setPreferredName(e.target.value)} />
+          </label>
+          <label className={field}>
+            Pronouns
+            <input className="app-input mt-1 w-full" value={pronouns} maxLength={30} placeholder="e.g. she/her" onChange={(e) => setPronouns(e.target.value)} />
+          </label>
           <label className={field}>
             Job title
             <input className="app-input mt-1 w-full" value={jobTitle} maxLength={80} onChange={(e) => setJobTitle(e.target.value)} />
@@ -230,6 +244,24 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
 /** People per page: one screen on a laptop, so the list never becomes a scroll. */
 const PAGE_SIZE = 20;
 
+/** The person's name, linking to their profile when they have a Staff record. */
+function PersonName({ person, basePath }: { person: StaffPerson; basePath: string }) {
+  if (!person.recordId) {
+    return (
+      <p className="truncate font-medium text-[var(--text-1)]" title={person.name}>
+        {person.name}
+      </p>
+    );
+  }
+  return (
+    <p className="truncate font-medium" title={person.name}>
+      <Link href={`${basePath}/${person.recordId}`} className="text-[var(--text-1)] hover:text-[var(--brand-600)] hover:underline">
+        {person.name}
+      </Link>
+    </p>
+  );
+}
+
 function roleLine(p: StaffPerson): string {
   return `${p.role ? ROLE_LABEL[p.role] ?? p.role : "No login"}${p.email ? ` · ${p.email}` : ""}`;
 }
@@ -247,17 +279,40 @@ function RowActions({
   showDevProfile,
   canEdit,
   onEdit,
+  archived = false,
 }: {
   person: StaffPerson;
   showDevProfile: boolean;
   canEdit: boolean;
   onEdit: () => void;
+  archived?: boolean;
 }) {
+  const restore = useSetArchived();
+  const { isAdminOrAbove, canManageCode, canManageHr } = usePermissions();
+  // The server enforces the full rule; this only decides whether to offer the button.
+  const canRestore = person.memberId ? isAdminOrAbove : canManageCode || canManageHr;
+  if (archived) {
+    return (
+      <div className="flex shrink-0 justify-end gap-1.5">
+        {canRestore && (person.recordId || person.memberId) ? (
+          <button
+            type="button"
+            className="app-button app-button-secondary app-button-xs"
+            disabled={restore.isPending}
+            title={restore.error instanceof Error ? restore.error.message : undefined}
+            onClick={() => restore.mutate({ recordId: person.recordId ?? "", memberId: person.memberId, archived: false })}
+          >
+            {restore.isPending ? "Restoring…" : restore.isError ? "Couldn't restore" : "Restore"}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="flex shrink-0 justify-end gap-1.5">
       {person.isDeveloper && person.recordId && showDevProfile ? (
-        <Link href={`/app/codeclear/candidates/${person.recordId}`} className="app-button app-button-tertiary app-button-xs">
-          Profile
+        <Link href={`/app/codeclear/candidates/${person.recordId}`} className="app-button app-button-tertiary app-button-xs" title="Scores, GitHub analysis and CV">
+          Dev profile
         </Link>
       ) : null}
       {canEdit ? (
@@ -269,8 +324,13 @@ function RowActions({
   );
 }
 
-export function StaffRoster() {
-  const roster = useStaffRoster();
+/** `basePath`: where profiles live. The demo passes /demo/staff, since /app is behind sign-in. */
+export function StaffRoster({
+  basePath = "/app/staff",
+  initialView = "active",
+}: { basePath?: string; initialView?: "active" | "archived" } = {}) {
+  const [view, setViewState] = useState<"active" | "archived">(initialView);
+  const roster = useStaffRoster(view);
   const { canManageCode, hasModule } = usePermissions();
   const [filter, setFilterState] = useState<StaffFilter>({});
   const [sort, setSortState] = useState<{ key: StaffSortKey; dir: SortDir }>({ key: "name", dir: "asc" });
@@ -282,6 +342,10 @@ export function StaffRoster() {
   };
   const setSort = (next: (s: { key: StaffSortKey; dir: SortDir }) => { key: StaffSortKey; dir: SortDir }) => {
     setSortState(next);
+    setPage(0);
+  };
+  const setView = (next: "active" | "archived") => {
+    setViewState(next);
     setPage(0);
   };
   const [editing, setEditing] = useState<StaffPerson | null>(null);
@@ -309,12 +373,21 @@ export function StaffRoster() {
         </span>
         {roster.data ? (
           <span className="widget-header__status">
-            {filtered ? `${shown.length} of ${people.length}` : `${people.length} on the team`}
+            {filtered ? `${shown.length} of ${people.length}` : view === "archived" ? `${people.length} archived` : `${people.length} on the team`}
           </span>
         ) : null}
       </div>
       <div className="widget-body space-y-4">
         <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            label="Show"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "archived", label: "Archived" },
+            ]}
+          />
           <input
             type="search"
             className="app-input min-w-[200px] flex-1 sm:max-w-xs"
@@ -367,7 +440,7 @@ export function StaffRoster() {
               Clear filters
             </button>
           ) : null}
-          {canManageCode ? (
+          {canManageCode && view === "active" ? (
             <button type="button" className="app-button app-button-secondary app-button-sm sm:ml-auto" onClick={() => setAdding(true)}>
               Add someone
             </button>
@@ -381,7 +454,9 @@ export function StaffRoster() {
             Could not load the team: {roster.error instanceof Error ? roster.error.message : "unknown error"}
           </p>
         ) : shown.length === 0 ? (
-          <p className="text-sm text-[var(--text-3)]">{people.length ? "Nobody matches these filters." : "Nobody on the team yet."}</p>
+          <p className="text-sm text-[var(--text-3)]">
+            {people.length ? "Nobody matches these filters." : view === "archived" ? "Nobody has been archived." : "Nobody on the team yet."}
+          </p>
         ) : (
           <>
             {/* Phones: one card per person, so nothing sits off the side of a scrolling table. */}
@@ -390,13 +465,13 @@ export function StaffRoster() {
                 <li key={p.key} className="flex items-start gap-3 py-3">
                   <PersonAvatar person={p} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>{p.name}</p>
+                    <PersonName person={p} basePath={basePath} />
                     <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={roleLine(p)}>{roleLine(p)}</p>
                     <p className="mt-1 text-[13px] text-[var(--text-2)]">
                       {[jobTitleOf(p), clientsOf(p)].filter(Boolean).join(" · ") || "No details yet"}
                     </p>
                     <div className="mt-2">
-                      <RowActions person={p} showDevProfile={showDevProfiles} canEdit={canManageCode} onEdit={() => setEditing(p)} />
+                      <RowActions person={p} showDevProfile={showDevProfiles} canEdit={canManageCode && view === "active"} onEdit={() => setEditing(p)} archived={view === "archived"} />
                     </div>
                   </div>
                 </li>
@@ -415,7 +490,11 @@ export function StaffRoster() {
                     <th className="hidden w-[12%] text-left xl:table-cell">Department</th>
                     <th className="hidden w-[10%] text-left 2xl:table-cell">Type</th>
                     <th className="text-left">Clients</th>
-                    <SortHeader label="Started" k="startDate" sort={sort} onSort={onSort} className="hidden w-[90px] lg:table-cell" />
+                    {view === "archived" ? (
+                      <th className="hidden w-[90px] text-left lg:table-cell">Archived</th>
+                    ) : (
+                      <SortHeader label="Started" k="startDate" sort={sort} onSort={onSort} className="hidden w-[90px] lg:table-cell" />
+                    )}
                     <th className="w-[132px] text-right">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -431,7 +510,7 @@ export function StaffRoster() {
                           <div className="flex min-w-0 items-center gap-3">
                             <PersonAvatar person={p} />
                             <div className="min-w-0">
-                              <p className="truncate font-medium text-[var(--text-1)]" title={p.name}>{p.name}</p>
+                              <PersonName person={p} basePath={basePath} />
                               <p className="truncate font-mono text-[11px] text-[var(--text-4)]" title={roleLine(p)}>
                                 {roleLine(p)}
                               </p>
@@ -458,10 +537,10 @@ export function StaffRoster() {
                           <p className="truncate" title={clients ?? undefined}>{clients ?? "—"}</p>
                         </td>
                         <td className="hidden whitespace-nowrap font-mono text-[12px] text-[var(--text-3)] lg:table-cell">
-                          {formatStart(p.startDate)}
+                          {view === "archived" ? formatStart(p.archivedAt?.slice(0, 10) ?? null) : formatStart(p.startDate)}
                         </td>
                         <td>
-                          <RowActions person={p} showDevProfile={showDevProfiles} canEdit={canManageCode} onEdit={() => setEditing(p)} />
+                          <RowActions person={p} showDevProfile={showDevProfiles} canEdit={canManageCode && view === "active"} onEdit={() => setEditing(p)} archived={view === "archived"} />
                         </td>
                       </tr>
                     );
