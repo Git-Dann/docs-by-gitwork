@@ -41,6 +41,7 @@ import {
   ymd,
   type Delta,
 } from "@/server/analytics/portal-analytics-helpers";
+import { countByDay, type HeatmapDay } from "@/lib/charts/activity-heatmap";
 import type { ClientHealth } from "@/types/client";
 
 export interface PortalAnalyticsOptions {
@@ -134,6 +135,12 @@ export interface PortalAnalytics {
     absentCount: number;
   };
   throughput: Array<{ bucket: string; created: number; completed: number }>;
+  /**
+   * Top-level tasks completed per UTC day across the range — always daily, whatever `bucket` the
+   * throughput series uses, and gapless (every day present, zeros included). Feeds the activity
+   * heatmap. Derived from the same completed-task fetch as `throughput`; no extra query.
+   */
+  completedByDay: HeatmapDay[];
   /** Histogram of DOING→DONE lead time over tasks completed in range (that carry a startedAt). */
   leadTimeBuckets: Array<{ label: string; count: number }>;
   byStatus: Array<{ status: TaskStatus; count: number }>;
@@ -389,6 +396,13 @@ export async function getPortalAnalytics(
     from,
     to,
     bucket,
+  );
+
+  // Daily completions for the activity heatmap — same rows, always day-grained (pure, gapless).
+  const completedByDay = countByDay(
+    completedRows.map((r) => r.completedAt).filter((d): d is Date => d != null),
+    from,
+    to,
   );
 
   // Per-dev completion + lead tallies from the single completed fetch (pure).
@@ -666,6 +680,7 @@ export async function getPortalAnalytics(
     capacity,
     checkins,
     throughput,
+    completedByDay,
     leadTimeBuckets,
     byStatus: statusGroups
       .map((g) => ({ status: g.status, count: g._count._all }))
