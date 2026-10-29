@@ -17,30 +17,17 @@ import {
   PERMISSION_CATALOG,
   ROLES,
   type ConfigurableRoleId,
-  type PermissionCategory,
   type PermissionDef,
   type RoleMatrix,
 } from "@/types/auth";
+import { PermissionLabel } from "@/components/settings/permission-label";
 
-const CATEGORY_LABEL: Record<PermissionCategory, string> = {
-  module: "Module",
-  field: "Field",
-  feature: "Feature",
-  settings: "Settings",
-  action: "Action",
-};
-
-const CATEGORY_CHIP: Record<PermissionCategory, string> = {
-  module: "bg-[var(--brand-50)] text-[var(--brand-700)]",
-  field: "bg-amber-50 text-amber-700",
-  feature: "bg-[var(--surface-2)] text-[var(--text-3)]",
-  settings: "bg-violet-50 text-violet-700",
-  action: "bg-sky-50 text-sky-700",
-};
-
+// The matrix edits three roles. Super Admin always has everything (shown locked), and
+// Guests get nothing by role: each guest is granted access per person on Members.
 const CONFIGURABLE: ConfigurableRoleId[] = ["ADMIN", "STAFF", "DEVELOPER"];
+const COLUMNS = ROLES.filter((r) => r.id === "SUPER_ADMIN" || (CONFIGURABLE as string[]).includes(r.id));
 
-// Shared column template: permission label + the four role columns.
+// Shared column template: permission label + one column per role shown.
 const GRID = "grid grid-cols-[minmax(0,1fr)_repeat(4,64px)] items-center gap-x-2";
 
 function sameMatrix(a: RoleMatrix, b: RoleMatrix): boolean {
@@ -155,9 +142,8 @@ export function RolesSection() {
         }
       >
         <p className="max-w-2xl text-xs text-[var(--text-4)]">
-          Define what each role can do. Tick a box to grant that role a permission. Changes apply to
-          everyone with the role (plus any per-person overrides set on the Members tab). Super
-          Admins always have everything and can&apos;t be limited.
+          What each role gets by default. A person can be given more, or less, on Members. Super
+          Admins always have everything; Guests start with nothing and are granted access per person.
         </p>
 
         {loading || !matrix ? (
@@ -175,7 +161,7 @@ export function RolesSection() {
                 <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]">
                   Permission
                 </span>
-                {ROLES.map((r) => (
+                {COLUMNS.map((r) => (
                   <span key={r.id} className="text-center">
                     <span className="block text-xs font-semibold text-[var(--text-1)]">{r.label}</span>
                     {!r.configurable ? (
@@ -214,11 +200,11 @@ export function RolesSection() {
           ) : dirty ? (
             "Unsaved changes."
           ) : (
-            "Module changes show in the sidebar after the member's next sign-in; field and feature changes apply immediately."
+            "Changes reach everyone within five minutes."
           )}
         </p>
         <Button type="button" variant="primary" onClick={save} loading={saving} disabled={!dirty}>
-          Save matrix
+          Save
         </Button>
       </div>
     </div>
@@ -264,7 +250,7 @@ function ProductGroup({
           <span className="truncate text-sm font-semibold text-[var(--text-1)]">{product}</span>
           <span className="shrink-0 text-[11px] text-[var(--text-4)]">{total}</span>
         </span>
-        <span className="text-center text-[10px] font-medium uppercase text-[var(--text-4)]">all</span>
+        <span className="text-center text-xs text-[var(--text-4)]">all</span>
         {CONFIGURABLE.map((role) => {
           const label = summary(role);
           return (
@@ -286,20 +272,7 @@ function ProductGroup({
           {permissions.map((perm) => (
             <div key={perm.id} className={cn(GRID, "px-3 py-2.5")}>
               <div className="min-w-0 pr-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-sm font-medium text-[var(--text-1)]">{perm.label}</span>
-                  <span
-                    className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-medium", CATEGORY_CHIP[perm.category])}
-                  >
-                    {CATEGORY_LABEL[perm.category]}
-                  </span>
-                  {perm.highRisk ? (
-                    <span className="rounded-full bg-[var(--danger-50)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--danger-700)]">
-                      High-risk
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-0.5 text-[11px] leading-tight text-[var(--text-4)]">{perm.description}</p>
+                <PermissionLabel perm={perm} />
               </div>
               {/* Super Admin — always on, locked. */}
               <div className="flex items-center justify-center">

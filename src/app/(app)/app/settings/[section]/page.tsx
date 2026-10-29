@@ -111,8 +111,6 @@ const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
 // grant/remove each per role; ADMIN holds them all by default (see DEFAULT_ROLE_PERMISSIONS).
 const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = {
   general: "settings.general",
-  branding: "settings.branding",
-  content: "settings.content",
   templates: "settings.templates",
   integrations: "settings.integrations",
   agents: "settings.agents",
