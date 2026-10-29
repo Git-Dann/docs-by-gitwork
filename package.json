@@ -18,6 +18,7 @@
     "deck:verify": "node vendor/bento/scripts/verify-shell.mjs",
     "audit:clipping": "node scripts/audit-clipping.mjs",
     "test:baseline": "node scripts/baseline.mjs",
+    "test:isolation": "vitest run -c vitest.isolation.config.ts",
     "audit:ui": "node scripts/audit-ui-standards.mjs",
     "audit:dependencies": "npm audit --omit=dev --audit-level=high && npm audit --audit-level=critical",
     "verify": "npm run db:generate && NODE_OPTIONS=--max-old-space-size=6144 npx tsc --noEmit && npm run lint && npm test && npm run audit:dependencies && npm run audit:ui -- --self-test && npm run audit:ui",
