@@ -9257,3 +9257,28 @@ where most outages were reported by the client first.
 Not built yet (in the competitor report's top ten): request headers/auth, a second probe
 location, incident records with acknowledge, email/webhook channels, client incident updates,
 long-term SLA history, escalation.
+
+## 107. Recent Changes (October 2026) — Monitors: request headers, a second location, incidents
+
+- **Headers, sign-in and a body for HTTP checks** (`src/lib/monitor-request.ts`). "Name: value"
+  per line, or the username/password helper (writes `Authorization: Basic …`). Stored encrypted
+  (`requestHeaders` / `requestBody`, `storeSecret`); the browser only ever gets header NAMES, and
+  the client's copy gets none. Host, lengths and connection headers are refused. ⚠️ With headers
+  or a body set, redirects to another origin are refused (`sameOriginRedirectsOnly`), or a 302
+  would hand the token to another host.
+- **A second check location** (`src/server/wiki-monitors/remote.ts`, route `/api/monitor-probe`).
+  When a check fails from the VPS, the same check runs from this app's Vercel deployment (another
+  network and region). Rules in `combineLocations`: both failed → DOWN, confirmed; only the VPS
+  failed → DEGRADED with the reason (no page, counts as up), never UP; second location
+  unavailable → the VPS result stands. Configured by `MONITOR_REMOTE_PROBE_URL` +
+  `MONITOR_PROBE_SECRET` on the VPS (synced by `deploy.yml`) and `MONITOR_PROBE_SECRET` on Vercel.
+  Unset → checks behave exactly as before. The route 404s without the secret and reads no database.
+- **Incidents** (`WikiMonitorIncident` + `…Update`, additive; rules in `src/lib/monitor-incidents.ts`).
+  One per outage: opened when the down/unstable alert fires (unstable escalating to down updates the
+  same one), resolved by the recovery alert. **Acknowledge** and **Post update** (status + message,
+  "Show to the client" on by default) on the client's Monitors page and on the Gitwork all-clients
+  board (`POST /api/clients/[slug]/wiki/monitors/incidents/[incidentId]`, signed-in, client access
+  checked). Posting also acknowledges.
+- **The client sees incidents on their status board**: public updates only, no names from our side
+  ("Gitwork is on it" once acknowledged). `publicIncident` in `forPublic`.
+- Not built: an Acknowledge button inside the Slack alert, emailing client users on updates.

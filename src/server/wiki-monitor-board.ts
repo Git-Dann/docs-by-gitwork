@@ -11,9 +11,15 @@
 import { prisma } from "@/lib/prisma";
 import { isStale } from "@/lib/monitor-alerts";
 import type { BoardClient } from "@/lib/monitor-board";
+import type { IncidentDTO } from "@/lib/monitor-incidents";
+import { loadWikiIncidents } from "@/server/wiki-monitors";
+
+export type BoardIncident = IncidentDTO & { clientSlug: string; clientName: string };
 
 export interface MonitorBoardDTO {
   clients: BoardClient[];
+  /** Every open incident across these clients, newest first. */
+  incidents: BoardIncident[];
   /** When this was read, so the page can say how fresh it is. */
   readAt: string;
 }
@@ -42,6 +48,7 @@ export async function loadMonitorBoard(
       name: true,
       wiki: {
         select: {
+          id: true,
           monitors: {
             where: { enabled: true },
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -83,8 +90,17 @@ export async function loadMonitorBoard(
     uptime.set(row.monitorId, u);
   }
 
+  const wikiIds = clients.flatMap((c) => (c.wiki ? [c.wiki.id] : []));
+  const incidents: BoardIncident[] = (await loadWikiIncidents(wikiIds))
+    .filter((i) => !i.resolvedAt)
+    .flatMap((i) => {
+      const owner = clients.find((c) => c.wiki?.monitors.some((m) => m.id === i.monitorId));
+      return owner ? [{ ...i, clientSlug: owner.slug, clientName: owner.name }] : [];
+    });
+
   return {
     readAt: now.toISOString(),
+    incidents,
     clients: clients.map((c) => ({
       clientId: c.id,
       slug: c.slug,

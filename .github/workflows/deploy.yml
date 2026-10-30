@@ -113,6 +113,8 @@ jobs:
           # See src/server/bigwedge-api-auth.ts.
           BIGWEDGE_API_USERNAME: ${{ secrets.BIGWEDGE_API_USERNAME }}
           BIGWEDGE_API_PASSWORD: ${{ secrets.BIGWEDGE_API_PASSWORD }}
+          MONITOR_REMOTE_PROBE_URL: ${{ secrets.MONITOR_REMOTE_PROBE_URL }}
+          MONITOR_PROBE_SECRET: ${{ secrets.MONITOR_PROBE_SECRET }}
           # Upload storage (src/server/blob-storage.ts, docs/blob-storage.md). All
           # optional: unset → uploads stay in Postgres exactly as before. Setting the
           # driver to s3 without the BLOB_S3_* values makes uploads FAIL loudly — set
@@ -134,7 +136,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           # Passed over the SSH channel, never interpolated into a logged command line.
-          envs: FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD,BLOB_STORAGE_DRIVER,BLOB_S3_BUCKET,BLOB_S3_REGION,BLOB_S3_ENDPOINT,BLOB_S3_ACCESS_KEY_ID,BLOB_S3_SECRET_ACCESS_KEY
+          envs: FOUNDRY_GITHUB_TOKEN,PROVENANCE_SIGNING_SECRET,ASSAY_SIGNING_SECRET,BIGWEDGE_API_USERNAME,BIGWEDGE_API_PASSWORD,MONITOR_REMOTE_PROBE_URL,MONITOR_PROBE_SECRET,BLOB_STORAGE_DRIVER,BLOB_S3_BUCKET,BLOB_S3_REGION,BLOB_S3_ENDPOINT,BLOB_S3_ACCESS_KEY_ID,BLOB_S3_SECRET_ACCESS_KEY
           script: |
             cd /opt/apps/foundry
 
@@ -186,6 +188,8 @@ jobs:
             upsert_env ASSAY_SIGNING_SECRET "${ASSAY_SIGNING_SECRET:-}"
             upsert_env BIGWEDGE_API_USERNAME "${BIGWEDGE_API_USERNAME:-}"
             upsert_env BIGWEDGE_API_PASSWORD "${BIGWEDGE_API_PASSWORD:-}"
+            upsert_env MONITOR_REMOTE_PROBE_URL "${MONITOR_REMOTE_PROBE_URL:-}"
+            upsert_env MONITOR_PROBE_SECRET "${MONITOR_PROBE_SECRET:-}"
             # ⚠️ APNs. Until now these were only ever set by hand on the box, which
             # is exactly how GITHUB_TOKEN went missing in production for months
             # (§35) — and a missing APNs config makes EVERY push silently no-op,

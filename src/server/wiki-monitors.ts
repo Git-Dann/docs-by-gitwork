@@ -7,7 +7,7 @@
  * rolling uptime %, average latency, and a recent-status strip for the public board.
  */
 
-import type { WikiMonitor, WikiMonitorStatus, WikiMonitorType } from "@prisma/client";
+import type { Prisma, WikiMonitor, WikiMonitorStatus, WikiMonitorType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { runProbe, type MonitorStatus } from "./wiki-monitors/index";
 import { dispatchNotification } from "@/server/notifications";
@@ -28,6 +28,17 @@ import {
 import { suggestMonitors, type MonitorSuggestion } from "@/lib/monitor-suggestions";
 import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
 import { heartbeatCheckDue, inMaintenance } from "@/lib/monitor-expiry";
+import { combineLocations } from "@/lib/monitor-request";
+import {
+  incidentChangeFor,
+  isIncidentStatus,
+  sortIncidents,
+  type IncidentDTO,
+  type IncidentStatus,
+} from "@/lib/monitor-incidents";
+import { storeSecret } from "@/server/stored-secret";
+import { monitorHeaders } from "./wiki-monitors/http";
+import { remoteProbe } from "./wiki-monitors/remote";
 import { randomBytes } from "node:crypto";
 
 /** The URL a job calls each time it runs. Add /fail to report a failed run. */
@@ -79,6 +90,12 @@ export interface WikiMonitorDTO {
   ssl: { expiresAt: string | null; issuer: string | null; error: string | null; checkedAt: string } | null;
   /** Domain registration, from RDAP. */
   domain: { name: string; expiresAt: string | null; error: string | null; checkedAt: string } | null;
+  /** Names of the extra request headers (never their values). Empty in the client's copy. */
+  headerNames: string[];
+  /** A request body is set (POST checks). */
+  hasBody: boolean;
+  /** When the last failure was checked from the second location, what it found. */
+  remoteNote: string | null;
 }
 
 /** Retention window for check history + the widest uptime window. */
@@ -163,6 +180,9 @@ async function buildMonitorDTO(m: WikiMonitor): Promise<WikiMonitorDTO> {
       m.domain && m.domainCheckedAt
         ? { name: m.domain, expiresAt: m.domainExpiresAt?.toISOString() ?? null, error: m.domainError, checkedAt: m.domainCheckedAt.toISOString() }
         : null,
+    headerNames: Object.keys(monitorHeaders(m.requestHeaders)),
+    hasBody: !!m.requestBody,
+    remoteNote: m.lastRemoteNote,
     history: recent
       .reverse()
       .map((c) => ({
@@ -177,19 +197,74 @@ async function buildMonitorDTO(m: WikiMonitor): Promise<WikiMonitorDTO> {
 export interface WikiMonitorsSection {
   enabled: boolean;
   monitors: WikiMonitorDTO[];
+  /** Open incidents, then those resolved in the last 30 days (max 20). */
+  incidents: IncidentDTO[];
+}
+
+const INCIDENT_WINDOW_DAYS = 30;
+
+const INCIDENT_INCLUDE = {
+  monitor: { select: { name: true } },
+  updates: { orderBy: { createdAt: "asc" } },
+} as const satisfies Prisma.WikiMonitorIncidentInclude;
+
+type IncidentRow = Prisma.WikiMonitorIncidentGetPayload<{ include: typeof INCIDENT_INCLUDE }>;
+
+export function serializeIncident(i: IncidentRow): IncidentDTO {
+  const updates = i.updates.map((u) => ({
+    id: u.id,
+    status: (isIncidentStatus(u.status) ? u.status : "investigating") as IncidentStatus,
+    message: u.message,
+    isPublic: u.isPublic,
+    automatic: u.automatic,
+    authorName: u.authorName,
+    createdAt: u.createdAt.toISOString(),
+  }));
+  return {
+    id: i.id,
+    monitorId: i.monitorId,
+    monitorName: i.monitor.name,
+    kind: i.kind === "flaky" ? "flaky" : "down",
+    title: i.title,
+    startedAt: i.startedAt.toISOString(),
+    resolvedAt: i.resolvedAt?.toISOString() ?? null,
+    acknowledgedAt: i.acknowledgedAt?.toISOString() ?? null,
+    acknowledgedByName: i.acknowledgedByName,
+    status: i.resolvedAt ? "resolved" : (updates[updates.length - 1]?.status ?? "investigating"),
+    updates,
+  };
+}
+
+/** A wiki's incidents for its Monitors section: every open one, then recent resolved ones. */
+export async function loadWikiIncidents(wikiIds: string[]): Promise<IncidentDTO[]> {
+  if (wikiIds.length === 0) return [];
+  const rows = await prisma.wikiMonitorIncident.findMany({
+    where: {
+      wikiId: { in: wikiIds },
+      OR: [{ resolvedAt: null }, { resolvedAt: { gte: daysAgo(INCIDENT_WINDOW_DAYS) } }],
+    },
+    orderBy: { startedAt: "desc" },
+    take: 20 * wikiIds.length,
+    include: INCIDENT_INCLUDE,
+  });
+  return sortIncidents(rows.map(serializeIncident));
 }
 
 export async function loadWikiMonitors(clientId: string): Promise<WikiMonitorsSection> {
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId },
     select: {
+      id: true,
       monitorsEnabled: true,
       monitors: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
     },
   });
-  if (!wiki) return { enabled: false, monitors: [] };
-  const monitors = await Promise.all(wiki.monitors.map(buildMonitorDTO));
-  return { enabled: wiki.monitorsEnabled, monitors };
+  if (!wiki) return { enabled: false, monitors: [], incidents: [] };
+  const [monitors, incidents] = await Promise.all([
+    Promise.all(wiki.monitors.map(buildMonitorDTO)),
+    loadWikiIncidents([wiki.id]),
+  ]);
+  return { enabled: wiki.monitorsEnabled, monitors, incidents: incidents.slice(0, 20) };
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -219,6 +294,26 @@ export interface MonitorInput {
   /** Pause alerts until this time (null ends maintenance). */
   maintenanceUntil?: Date | null;
   maintenanceNote?: string | null;
+  /** HTTP: extra headers. Undefined keeps what's saved; null or {} clears them. */
+  requestHeaders?: Record<string, string> | null;
+  /** HTTP: a request body for POST checks. Undefined keeps; null or "" clears. */
+  requestBody?: string | null;
+}
+
+/**
+ * What the browser and API callers send. Headers travel as "Name: value" text, which the route
+ * parses (headersField) before it becomes MonitorInput.
+ */
+export type MonitorWireInput = Omit<MonitorInput, "requestHeaders" | "maintenanceUntil"> & {
+  requestHeaders?: string | null;
+  maintenanceUntil?: Date | string | null;
+};
+
+function storedHeaders(h: Record<string, string> | null | undefined): string | null {
+  return h && Object.keys(h).length > 0 ? storeSecret(JSON.stringify(h)) : null;
+}
+function storedBody(b: string | null | undefined): string | null {
+  return b && b.trim() ? storeSecret(b) : null;
 }
 
 /** Enable/disable the Monitors section for a wiki (the sidebar add/remove). */
@@ -240,6 +335,8 @@ export async function createMonitor(clientId: string, input: MonitorInput): Prom
       target: token ? heartbeatPingUrl(token) : input.target.trim(),
       heartbeatToken: token,
       graceMinutes: input.graceMinutes ?? null,
+      requestHeaders: input.type === "HTTP" ? storedHeaders(input.requestHeaders) : null,
+      requestBody: input.type === "HTTP" ? storedBody(input.requestBody) : null,
       method: input.method?.trim() || "GET",
       expectedStatus: input.expectedStatus ?? null,
       keyword: input.keyword?.trim() || null,
@@ -283,6 +380,8 @@ export async function updateMonitor(
       ...(input.graceMinutes !== undefined ? { graceMinutes: input.graceMinutes } : {}),
       ...(input.maintenanceUntil !== undefined ? { maintenanceUntil: input.maintenanceUntil } : {}),
       ...(input.maintenanceNote !== undefined ? { maintenanceNote: input.maintenanceNote?.trim() || null } : {}),
+      ...(input.requestHeaders !== undefined ? { requestHeaders: storedHeaders(input.requestHeaders) } : {}),
+      ...(input.requestBody !== undefined ? { requestBody: storedBody(input.requestBody) } : {}),
     },
   });
   return buildMonitorDTO(updated);
@@ -331,7 +430,11 @@ export async function loadMonitorSuggestions(clientId: string): Promise<MonitorS
  * Off for "Check now" and a just-added monitor, which a person is waiting on.
  */
 export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: boolean } = { confirm: true }): Promise<void> {
-  const result = await runProbe(monitor);
+  const local = await runProbe(monitor);
+  // A failure from Foundry's own server is checked again from a second location before it
+  // counts: only-we-can't-reach-it is a network problem, not an outage (combineLocations).
+  const remote = local.status === "DOWN" ? await remoteProbe(monitor) : null;
+  const result = combineLocations(local, remote);
   const now = new Date();
   // The checks before this one, since the last alert cleared — the "3 of the last 6" window.
   // Filtered by alertClearedAt so an outage already reported and recovered isn't re-counted.
@@ -394,10 +497,16 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
         alertClearedAt: state.alertClearedAt,
         // Checked again, so the watchdog may speak up again if checks ever stop.
         staleAlertedAt: null,
+        lastRemoteNote: result.note,
       },
     }),
   ]);
-  if (alert) await sendMonitorAlert(monitor, alert, { statusCode: result.statusCode, error: result.error });
+  if (alert) {
+    await recordIncident(monitor, alert, result.error, now).catch((err) =>
+      console.error("[wiki-monitors] could not record incident", err),
+    );
+    await sendMonitorAlert(monitor, alert, { statusCode: result.statusCode, error: result.error });
+  }
 
   if (!maintenance && opts.confirm && shouldConfirm(result.status as ProbeStatus, decision.state)) {
     await new Promise((r) => setTimeout(r, CONFIRM_AFTER_MS));
@@ -600,4 +709,108 @@ export async function recordHeartbeatPing(token: string, ok: boolean): Promise<b
   });
   await runMonitorCheck(fresh, { confirm: false });
   return true;
+}
+
+
+// ─── Incidents ───────────────────────────────────────────────────────────────
+
+/** Open an incident when an alert fires, or resolve the open one when it recovers. */
+async function recordIncident(
+  monitor: WikiMonitor,
+  alert: NonNullable<ReturnType<typeof nextAlertState>["alert"]>,
+  error: string | null,
+  now: Date,
+): Promise<void> {
+  const change = incidentChangeFor(alert, monitor.name, error);
+  if (!change) return;
+  const open = await prisma.wikiMonitorIncident.findFirst({
+    where: { monitorId: monitor.id, resolvedAt: null },
+    orderBy: { startedAt: "desc" },
+  });
+  if ("open" in change) {
+    if (!open) {
+      await prisma.wikiMonitorIncident.create({
+        data: {
+          wikiId: monitor.wikiId,
+          monitorId: monitor.id,
+          kind: change.open.kind,
+          title: change.open.title,
+          startedAt: "since" in alert ? alert.since : now,
+          updates: { create: { status: "investigating", message: change.open.message, automatic: true } },
+        },
+      });
+    } else if (open.kind === "flaky" && change.open.kind === "down") {
+      // Unstable became down: the same outage, worse.
+      await prisma.wikiMonitorIncident.update({
+        where: { id: open.id },
+        data: {
+          kind: "down",
+          title: change.open.title,
+          updates: { create: { status: "investigating", message: change.open.message, automatic: true } },
+        },
+      });
+    }
+    return;
+  }
+  if (open) {
+    await prisma.wikiMonitorIncident.update({
+      where: { id: open.id },
+      data: {
+        resolvedAt: now,
+        updates: { create: { status: "resolved", message: change.resolve.message, automatic: true } },
+      },
+    });
+  }
+}
+
+async function incidentForClient(clientId: string, incidentId: string) {
+  return prisma.wikiMonitorIncident.findFirst({
+    where: { id: incidentId, monitor: { wiki: { clientId } } },
+    include: INCIDENT_INCLUDE,
+  });
+}
+
+/** Someone has picked it up. Idempotent: the first person to acknowledge is the one recorded. */
+export async function acknowledgeIncident(
+  clientId: string,
+  incidentId: string,
+  by: { userId: string; name: string },
+): Promise<IncidentDTO | null> {
+  const found = await incidentForClient(clientId, incidentId);
+  if (!found) return null;
+  if (!found.acknowledgedAt) {
+    await prisma.wikiMonitorIncident.updateMany({
+      where: { id: incidentId, acknowledgedAt: null },
+      data: { acknowledgedAt: new Date(), acknowledgedById: by.userId, acknowledgedByName: by.name },
+    });
+  }
+  const fresh = await incidentForClient(clientId, incidentId);
+  return fresh ? serializeIncident(fresh) : null;
+}
+
+/**
+ * A person's update. "resolved" closes the incident; any other status on a closed incident
+ * reopens it. Posting also acknowledges, since someone is clearly on it.
+ */
+export async function addIncidentUpdate(
+  clientId: string,
+  incidentId: string,
+  input: { status: IncidentStatus; message: string; isPublic: boolean },
+  by: { userId: string; name: string },
+): Promise<IncidentDTO | null> {
+  const found = await incidentForClient(clientId, incidentId);
+  if (!found) return null;
+  const now = new Date();
+  await prisma.wikiMonitorIncident.update({
+    where: { id: incidentId },
+    data: {
+      resolvedAt: input.status === "resolved" ? (found.resolvedAt ?? now) : null,
+      ...(found.acknowledgedAt ? {} : { acknowledgedAt: now, acknowledgedById: by.userId, acknowledgedByName: by.name }),
+      updates: {
+        create: { status: input.status, message: input.message.trim(), isPublic: input.isPublic, authorName: by.name },
+      },
+    },
+  });
+  const fresh = await incidentForClient(clientId, incidentId);
+  return fresh ? serializeIncident(fresh) : null;
 }

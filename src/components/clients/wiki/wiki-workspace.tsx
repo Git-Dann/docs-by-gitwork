@@ -1544,11 +1544,11 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         return (
           <div className="space-y-4">
             <AgencyMonitorBoard slug={slug} number="01" />
-            <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} number="02" label="OUR SERVICES" />
+            <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} incidents={wiki!.monitors.incidents ?? []} number="02" label="OUR SERVICES" />
           </div>
         );
       }
-      return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} />;
+      return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} incidents={wiki!.monitors.incidents ?? []} />;
     }
 
     // ── Resources — clean list of links / Foundry docs / uploaded files.

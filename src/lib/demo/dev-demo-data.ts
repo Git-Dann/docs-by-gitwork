@@ -1021,21 +1021,42 @@ const demoWiki: WikiDTO = {
         expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5,
         status: "UP", checkedAt: atDays(0), latencyMs: 142, statusCode: 200, error: null,
         uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140), stale: false,
-        heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(62), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
+        headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(62), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon2", name: "API", type: "HTTP", target: "https://api.northwind.co/health", method: "GET",
         expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5,
         status: "UP", checkedAt: atDays(0), latencyMs: 88, statusCode: 200, error: null,
         uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]), stale: false,
-        heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(11), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
+        headerNames: ["Authorization"], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(11), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon3", name: "Web app", type: "HTTP", target: "https://app.northwind.co", method: "GET",
         expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5,
         status: "DEGRADED", checkedAt: atDays(0), latencyMs: 1340, statusCode: 200, error: null,
         uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]), stale: false,
-        heartbeat: null, maintenance: null, ssl: null, domain: null,
+        headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: null, domain: null,
+      },
+    ],
+    incidents: [
+      {
+        id: "inc1", monitorId: "mon3", monitorName: "Web app", kind: "flaky", title: "Web app is unstable",
+        startedAt: atDays(-0.02), resolvedAt: null, acknowledgedAt: atDays(-0.015), acknowledgedByName: "Harry Brown",
+        status: "identified",
+        updates: [
+          { id: "u1", status: "investigating", message: "Detected automatically: Web app is failing some of its checks.", isPublic: true, automatic: true, authorName: null, createdAt: atDays(-0.02) },
+          { id: "u2", status: "identified", message: "The database host is restarting after a provider maintenance window. Expect service back within 15 minutes.", isPublic: true, automatic: false, authorName: "Harry Brown", createdAt: atDays(-0.012) },
+          { id: "u3", status: "identified", message: "Provider ticket #48213 raised.", isPublic: false, automatic: false, authorName: "Harry Brown", createdAt: atDays(-0.01) },
+        ],
+      },
+      {
+        id: "inc2", monitorId: "mon2", monitorName: "API", kind: "down", title: "API is down",
+        startedAt: atDays(-6), resolvedAt: atDays(-5.98), acknowledgedAt: atDays(-5.995), acknowledgedByName: "Dan Lindsay",
+        status: "resolved",
+        updates: [
+          { id: "u4", status: "investigating", message: "Detected automatically: API stopped responding (Timed out after 15s).", isPublic: true, automatic: true, authorName: null, createdAt: atDays(-6) },
+          { id: "u5", status: "resolved", message: "API is responding again after 29 min.", isPublic: true, automatic: true, authorName: null, createdAt: atDays(-5.98) },
+        ],
       },
     ],
   },
@@ -3975,6 +3996,16 @@ function demoMonitorBoard() {
   });
   return {
     readAt: new Date(now).toISOString(),
+    incidents: [
+      {
+        id: "binc1", monitorId: "bm-wedge-api", monitorName: "Big Wedge app API", kind: "down" as const,
+        title: "Big Wedge app API is down", startedAt: ago(14), resolvedAt: null, acknowledgedAt: null,
+        acknowledgedByName: null, status: "investigating" as const, clientSlug: "wedge", clientName: "Big Wedge Golf",
+        updates: [
+          { id: "bu1", status: "investigating" as const, message: "Detected automatically: Big Wedge app API stopped responding (Unexpected status 503) · also failed from a second location (Vercel iad1).", isPublic: true, automatic: true, authorName: null, createdAt: ago(14) },
+        ],
+      },
+    ],
     clients: [
       {
         clientId: "cl-gitwork",

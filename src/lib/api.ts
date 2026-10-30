@@ -4586,8 +4586,8 @@ export async function updateWikiPlatformsApi(slug: string, platforms: string[]):
 }
 
 // ─── Wiki monitors (uptime) ─────────────────────────────────────────────────
-import type { WikiMonitorDTO, MonitorInput } from "@/server/wiki-monitors";
-export type { WikiMonitorDTO, WikiMonitorsSection, MonitorInput } from "@/server/wiki-monitors";
+import type { WikiMonitorDTO, MonitorWireInput as MonitorInput } from "@/server/wiki-monitors";
+export type { WikiMonitorDTO, WikiMonitorsSection, MonitorWireInput as MonitorInput } from "@/server/wiki-monitors";
 
 export async function createWikiMonitorApi(slug: string, input: MonitorInput): Promise<WikiMonitorDTO> {
   return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors`, {

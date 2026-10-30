@@ -1776,6 +1776,13 @@ model WikiMonitor {
   domainCheckedAt DateTime?
   domainError     String?
   domainAlertedTier String?
+  /// HTTP: extra request headers (auth etc.) as encrypted JSON {name: value}. Never sent to the browser.
+  requestHeaders  String?
+  /// HTTP: request body for POST checks, encrypted.
+  requestBody     String?
+  /// Where the latest check was confirmed from when it failed locally (second location), if anywhere.
+  lastRemoteNote  String?
+  incidents       WikiMonitorIncident[]
   checks          WikiMonitorCheck[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
@@ -1786,6 +1793,48 @@ model WikiMonitor {
 
 /// One probe result for a WikiMonitor — the history behind uptime % and the
 /// recent-status bar strip. Pruned by the cron beyond the retention window.
+/// An outage on a monitor: opened when its down/unstable alert fires, resolved on recovery.
+/// Acknowledged by a person; carries updates, some shown to the client (src/lib/monitor-incidents.ts).
+model WikiMonitorIncident {
+  id                 String                      @id @default(cuid())
+  wikiId             String
+  monitorId          String
+  monitor            WikiMonitor                 @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  /// "down" | "flaky"
+  kind               String
+  title              String
+  startedAt          DateTime
+  resolvedAt         DateTime?
+  acknowledgedAt     DateTime?
+  acknowledgedById   String?
+  acknowledgedByName String?
+  updates            WikiMonitorIncidentUpdate[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@index([wikiId, startedAt])
+  @@index([monitorId, resolvedAt])
+  @@map("WikiMonitorIncident")
+}
+
+model WikiMonitorIncidentUpdate {
+  id         String              @id @default(cuid())
+  incidentId String
+  incident   WikiMonitorIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  /// investigating | identified | monitoring | resolved
+  status     String
+  message    String
+  /// Shown on the client's board. Internal notes are false.
+  isPublic   Boolean             @default(true)
+  /// Written by Foundry (detected / resolved) rather than a person.
+  automatic  Boolean             @default(false)
+  authorName String?
+  createdAt  DateTime            @default(now())
+
+  @@index([incidentId, createdAt])
+  @@map("WikiMonitorIncidentUpdate")
+}
+
 model WikiMonitorCheck {
   id         String            @id @default(cuid())
   monitorId  String

@@ -44,6 +44,7 @@ export type SideIds = {
   intakeItem: string;
   wikiMonitor: string;
   heartbeatToken: string;
+  monitorIncident: string;
   wikiDocument: string;
   changelog: string;
   platform: string;
@@ -97,6 +98,7 @@ export function idsFor(side: Side): SideIds {
     intakeItem: id(side, "intake"),
     wikiMonitor: id(side, "wiki-monitor"),
     heartbeatToken: id(side, "hb-token"),
+    monitorIncident: id(side, "incident"),
     wikiDocument: id(side, "wiki-doc"),
     changelog: id(side, "changelog"),
     platform: id(side, "platform"),
@@ -232,6 +234,13 @@ export async function seedSide(db: PrismaClient, side: Side) {
   await db.wikiMonitor.create({
     data: { id: `${i.wikiMonitor}-hb`, wikiId: i.wiki, name: m(side, "heartbeat"), type: "HEARTBEAT", target: `https://iso-${side}.test/hb`, heartbeatToken: i.heartbeatToken },
   });
+  await db.wikiMonitorIncident.create({
+    data: {
+      id: i.monitorIncident, wikiId: i.wiki, monitorId: i.wikiMonitor, kind: "down", title: m(side, "incident"),
+      startedAt: new Date("2026-10-01T00:00:00Z"),
+      updates: { create: { status: "investigating", message: m(side, "incident update"), automatic: true } },
+    },
+  });
   await db.wikiDocument.create({ data: { id: i.wikiDocument, wikiId: i.wiki, title: m(side, "wiki-document") } });
   await db.clientChangelogEntry.create({ data: { id: i.changelog, wikiId: i.wiki, platform: "WEB", version: "1.0.0", title: m(side, "changelog") } });
   await db.clientPlatform.create({ data: { id: i.platform, clientId: i.client, name: m(side, "platform") } });
@@ -288,6 +297,7 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.wikiSheet.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" }, include: { rows: { orderBy: { id: "asc" } } } }),
     db.clientWikiIntakeItem.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
     db.wikiMonitor.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
+    db.wikiMonitorIncident.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" }, include: { updates: { orderBy: { id: "asc" } } } }),
     db.wikiDocument.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
     db.clientChangelogEntry.findMany({ where: { wikiId: i.wiki }, orderBy: { id: "asc" } }),
     db.clientPlatform.findMany({ where: { clientId: i.client }, orderBy: { id: "asc" } }),

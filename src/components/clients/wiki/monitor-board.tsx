@@ -10,6 +10,7 @@
  */
 
 import Link from "next/link";
+import { IncidentCard } from "./monitor-incidents";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { useWikiMonitorBoard } from "@/hooks/use-wiki";
 import {
@@ -249,6 +250,19 @@ export function AgencyMonitorBoard({ slug, number = "01" }: { slug: string; numb
                 <p className="mt-0.5 text-[13px] text-[var(--text-3)]">{summary.sub}</p>
               </div>
             </div>
+
+            {(data?.incidents ?? []).length > 0 ? (
+              <div>
+                <p className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                  Open incidents · {data!.incidents.length}
+                </p>
+                <ul className="space-y-2">
+                  {data!.incidents.map((i) => (
+                    <IncidentCard key={i.id} incident={i} slug={i.clientSlug} clientName={i.clientName} audience="team" />
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {monitored.map((c) => (
               <ClientGroup key={c.clientId} client={c} />
