@@ -31,6 +31,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
+import { DeveloperCard, DeveloperNotesCard } from "@/components/staff/developer-card";
 import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -452,11 +453,6 @@ function PersonActions({ profile, basePath }: { profile: StaffProfile; basePath:
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {profile.isDeveloper ? (
-        <Link href={`/app/codeclear/candidates/${profile.recordId}`} className="app-button app-button-tertiary app-button-sm">
-          Dev profile
-        </Link>
-      ) : null}
       {l.canArchive && l.archived && l.restorable ? (
         <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => void run()} disabled={busy}>
           {busy ? "Restoring…" : "Restore"}
@@ -507,14 +503,21 @@ function ActivityCard({ activity, hasLogin, number }: { activity: StaffActivity 
             {activity.placements.length ? (
               <ul className="mt-2 divide-y divide-[var(--border-3)]">
                 {activity.placements.map((pl, i) => (
-                  <li key={`${pl.clientName}:${pl.startDate}:${i}`} className="flex items-baseline justify-between gap-3 py-2 text-[13px]">
-                    <span className="min-w-0 truncate text-[var(--text-1)]" title={pl.clientName}>
-                      {pl.clientName}
-                      {pl.allocationPercent < 100 ? <span className="text-[var(--text-3)]"> · {pl.allocationPercent}%</span> : null}
-                    </span>
-                    <span className="shrink-0 font-mono text-[12px] text-[var(--text-3)]">
-                      {formatDate(pl.startDate)} – {pl.endDate ? formatDate(pl.endDate) : "now"}
-                    </span>
+                  <li key={`${pl.clientName}:${pl.startDate}:${i}`} className="py-2 text-[13px]">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span
+                        className="min-w-0 truncate text-[var(--text-1)]"
+                        title={[pl.clientName, pl.projectName].filter(Boolean).join(" · ")}
+                      >
+                        {pl.clientName}
+                        {pl.projectName && pl.projectName !== pl.clientName ? <span className="text-[var(--text-3)]"> · {pl.projectName}</span> : null}
+                        {pl.allocationPercent < 100 ? <span className="text-[var(--text-3)]"> · {pl.allocationPercent}%</span> : null}
+                      </span>
+                      <span className="shrink-0 font-mono text-[12px] text-[var(--text-3)]">
+                        {formatDate(pl.startDate)} – {pl.endDate ? formatDate(pl.endDate) : "now"}
+                      </span>
+                    </div>
+                    {pl.notes ? <p className="mt-0.5 text-[12px] text-[var(--text-3)]">{pl.notes}</p> : null}
                   </li>
                 ))}
               </ul>
@@ -611,6 +614,9 @@ export function StaffProfileView({
   let n = 0;
   const next = () => String(++n).padStart(2, "0");
   const dev = activity.data?.developer ?? null;
+  // One page per developer: their Code side (and notes) sits here, on Staff. Not in Me, where
+  // a developer reads their own HR record; the Code side is the team's view of them.
+  const showDeveloper = mode === "staff" && p.isDeveloper;
   const overview = (
     <WidgetCard
       number={next()}
@@ -645,7 +651,7 @@ export function StaffProfileView({
         <Field label="Clients" className="sm:col-span-2">
           {p.currentClients.length ? p.currentClients.map((c) => c.name).join(", ") : "—"}
         </Field>
-        {dev ? (
+        {dev && !showDeveloper ? (
           <>
             <Field label="GitHub">
               <a href={`https://github.com/${dev.githubHandle}`} target="_blank" rel="noreferrer noopener" className="hover:text-[var(--brand-600)] hover:underline">
@@ -659,8 +665,10 @@ export function StaffProfileView({
       )}
     </WidgetCard>
   );
+  const developer = showDeveloper ? <DeveloperCard recordId={p.recordId} number={next()} /> : null;
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
   const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
+  const notes = showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={next()} /> : null;
   const activityCard = <ActivityCard activity={activity.data} hasLogin={p.lifecycle.hasLogin} number={next()} />;
   // Documents are personal: the person, their manager (only what's shared with them) and HR.
   const documents = p.access.employment ? <DocumentsCard recordId={p.recordId} number={next()} /> : null;
@@ -707,8 +715,10 @@ export function StaffProfileView({
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <div className="min-w-0 space-y-5">
           {overview}
+          {developer}
           {employment}
           {timeOff}
+          {notes}
         </div>
         <div className="min-w-0 space-y-5">
           {activityCard}

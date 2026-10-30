@@ -5,6 +5,7 @@
  */
 
 import { departmentsOf, normaliseStaffDetails, sortStaff, type StaffPerson, type StaffDetailsUpdate } from "@/lib/staff";
+import type { CodeClearCandidateDetail, CodeClearNoteRecord } from "@/types/codeclear";
 import {
   EMPTY_SENSITIVE,
   changedSensitiveFields,
@@ -438,4 +439,78 @@ export function resolveDemoStaff(pathname: string, init?: { method?: string; bod
     return { ok: true };
   }
   return undefined;
+}
+
+// ── Code's side of a developer (Staff profile → Developer card) ──────────────────
+
+const candidateEdits = new Map<string, Partial<CodeClearCandidateDetail>>();
+const candidateNotes = new Map<string, CodeClearNoteRecord[]>([
+  ["r3", [{ id: "n1", candidateId: "r3", body: "Strong on React Native performance work; pair him with Tom on the Acme release.", createdBy: "Tom Okafor", createdAt: "2026-09-14T10:00:00.000Z" }]],
+]);
+
+function demoCandidate(recordId: string): CodeClearCandidateDetail | null {
+  const p = people.find((x) => x.recordId === recordId);
+  if (!p || !p.isDeveloper) return null;
+  const now = "2026-10-01T00:00:00.000Z";
+  return {
+    id: recordId,
+    workspaceId: "demo",
+    rateCardPersonId: null,
+    name: p.name,
+    githubHandle: "alihassan",
+    email: p.email,
+    primaryStack: p.primaryStack ?? "TypeScript",
+    techStacks: [p.primaryStack ?? "TypeScript", "TypeScript", "Swift"],
+    signalSources: [],
+    location: "Lahore",
+    bio: null,
+    wikiBio: "Mobile, end to end",
+    status: "PLACED" as CodeClearCandidateDetail["status"],
+    tier: "TIER_2",
+    tierManualOverride: null,
+    effectiveTier: "TIER_2",
+    origin: "INTERNAL",
+    devGroup: "BENCH",
+    published: false,
+    avatarUrl: null,
+    linkedinUrl: "https://www.linkedin.com/in/example",
+    cvUrl: null,
+    portfolioUrl: null,
+    yearsExperience: 6,
+    hourlyRate: null,
+    currency: "USD",
+    monthlyRate: 4200,
+    monthlyRateCurrency: "USD",
+    timezone: "Asia/Karachi",
+    availability: "ENGAGED",
+    recheckDueAt: null,
+    createdAt: now,
+    updatedAt: now,
+    score: null,
+    scoreDraft: null,
+    latestGitHubAnalysis: null,
+    githubAnalysisRuns: [],
+    placements: [],
+    notes: candidateNotes.get(recordId) ?? [],
+    activityLog: [],
+    checks: [],
+    analysisState: "NEVER_RUN",
+    currentClients: p.currentClients.map((c) => ({ id: c.slug, name: c.name, slug: c.slug })),
+    ...candidateEdits.get(recordId),
+  };
+}
+
+export function resolveDemoCandidate(pathname: string, init?: { method?: string; body?: unknown }): unknown {
+  const m = pathname.match(/^\/api\/codeclear\/candidates\/([^/]+)(\/notes)?$/);
+  if (!m) return undefined;
+  const id = decodeURIComponent(m[1]);
+  if (!demoCandidate(id)) return { error: "Not found", __status: 404 };
+  const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+  if (m[2] && init?.method === "POST") {
+    const note: CodeClearNoteRecord = { id: `n${Date.now()}`, candidateId: id, body: String(body.body ?? ""), createdBy: "You", createdAt: new Date().toISOString() };
+    candidateNotes.set(id, [note, ...(candidateNotes.get(id) ?? [])]);
+    return { note };
+  }
+  if (!m[2] && init?.method === "PATCH") candidateEdits.set(id, { ...candidateEdits.get(id), ...body });
+  return { candidate: demoCandidate(id) };
 }

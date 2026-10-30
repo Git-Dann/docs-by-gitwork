@@ -12,28 +12,20 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
 import { CvModal } from "./cv-modal";
 import { Avatar } from "@/components/ui/avatar";
 import {
-  useAddCodeClearCandidateNote,
   useBulkUpdateCodeClearCandidates,
   useCodeClearCandidate,
   useDeleteCodeClearCandidate,
-  useUpdateCodeClearCandidate,
 } from "@/hooks/use-codeclear";
 import { CurrentClientPicker } from "@/components/codeclear/current-client-picker";
 import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatMoney, useUsdToGbpRate } from "@/hooks/use-fx";
 import { cn, formatDate } from "@/lib/format";
-import { type CandidateAvailability } from "@/types/codeclear";
-import {
-  CandidateProfileForm,
-  emptyCandidateProfile,
-  type CandidateProfileValue,
-} from "@/components/codeclear/candidate-profile-form";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
+import { AvailabilityBadge, CandidateNotes, EditDevModal, ExternalLinks, HeroStat } from "@/components/codeclear/candidate-parts";
 
 /**
  * Full-page dev profile. Replaces the old drawer with a calmer, dedicated
@@ -42,14 +34,16 @@ import { WidgetCard } from "@/components/codeclear/codeclear-shared";
  *
  * Edit is a modal-ish overlay using the shared CandidateProfileForm so the
  * profile page stays read-mode by default.
+ *
+ * ⚠️ This is now the page for EXTERNAL (Hiring) candidates only. Anyone on the team is sent to
+ * their Staff page, which carries the same developer parts (candidate-parts.tsx) beside their
+ * HR record: one page per developer. Staff deliberately leaves Hiring's candidates out.
  */
 export function CodeClearCandidateProfile({ candidateId }: { candidateId: string }) {
   const router = useRouter();
   const candidateQuery = useCodeClearCandidate(candidateId);
   const clientsQuery = useClientList();
-  const updateCandidate = useUpdateCodeClearCandidate(candidateId);
   const deleteCandidate = useDeleteCodeClearCandidate();
-  const addNote = useAddCodeClearCandidateNote(candidateId);
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
 
   const candidate = candidateQuery.data?.candidate ?? null;
@@ -63,49 +57,14 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
   const [showEdit, setShowEdit] = useState(false);
   const [showCv, setShowCv] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [editForm, setEditForm] = useState<CandidateProfileValue>(emptyCandidateProfile);
-  const [noteBody, setNoteBody] = useState("");
 
-  // Hydrate the edit form whenever the modal opens or the candidate changes.
+  // One page per developer: someone on the team has their Staff page, with these same parts.
+  const teamMember = candidate !== null && candidate.origin !== "EXTERNAL";
   useEffect(() => {
-    if (!candidate || !showEdit) return;
-    setEditForm({
-      name: candidate.name,
-      githubHandle: candidate.githubHandle,
-      email: candidate.email ?? "",
-      primaryStack: candidate.primaryStack,
-      techStacks: candidate.techStacks.length ? candidate.techStacks : [candidate.primaryStack],
-      location: candidate.location ?? "",
-      bio: candidate.bio ?? "",
-      wikiBio: candidate.wikiBio ?? "",
-      linkedinUrl: candidate.linkedinUrl ?? "",
-      cvUrl: candidate.cvUrl ?? "",
-      portfolioUrl: candidate.portfolioUrl ?? "",
-      yearsExperience:
-        candidate.yearsExperience != null ? String(candidate.yearsExperience) : "",
-      // Pre-fill from the candidate's stored hourlyRate first; fall back
-      // to the linked rate-card monthly figure so devs paid on a monthly
-      // retainer (like Jamal) see their actual rate on first open. The
-      // form's "Monthly rate" label is fixed — PATCH writes through to
-      // RateCardPerson with billingPeriod=MONTH.
-      hourlyRate:
-        candidate.hourlyRate != null
-          ? String(candidate.hourlyRate)
-          : candidate.monthlyRate != null
-            ? String(candidate.monthlyRate)
-            : "",
-      currency:
-        candidate.currency ?? candidate.monthlyRateCurrency ?? "USD",
-      timezone: candidate.timezone ?? "",
-      availability: candidate.availability ?? "",
-      origin: candidate.origin,
-      // Profile edit doesn't manage clients here — the hero already has the
-      // live current-client picker. Kept empty to satisfy the type.
-      clientIds: [],
-    });
-  }, [candidate, showEdit]);
+    if (teamMember) router.replace(`/app/staff/${encodeURIComponent(candidateId)}`);
+  }, [teamMember, router, candidateId]);
 
-  if (candidateQuery.isLoading) {
+  if (candidateQuery.isLoading || teamMember) {
     return <ProfileSkeleton />;
   }
 
@@ -127,38 +86,9 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
     );
   }
 
-  async function handleSaveEdit() {
-    await updateCandidate.mutateAsync({
-      name: editForm.name,
-      githubHandle: editForm.githubHandle,
-      email: editForm.email || null,
-      primaryStack: editForm.primaryStack,
-      techStacks: editForm.techStacks.length ? editForm.techStacks : [editForm.primaryStack],
-      location: editForm.location || null,
-      bio: editForm.bio || null,
-      wikiBio: editForm.wikiBio || null,
-      linkedinUrl: editForm.linkedinUrl || null,
-      cvUrl: editForm.cvUrl || null,
-      portfolioUrl: editForm.portfolioUrl || null,
-      yearsExperience:
-        editForm.yearsExperience !== "" ? Number(editForm.yearsExperience) : null,
-      hourlyRate: editForm.hourlyRate !== "" ? Number(editForm.hourlyRate) : null,
-      currency: editForm.currency || null,
-      timezone: editForm.timezone || null,
-      availability: editForm.availability || null,
-    });
-    setShowEdit(false);
-  }
-
   async function confirmDelete() {
     await deleteCandidate.mutateAsync(candidateId);
     router.push("/app/codeclear/candidates");
-  }
-
-  async function handleAddNote() {
-    if (!noteBody.trim()) return;
-    await addNote.mutateAsync({ body: noteBody.trim() });
-    setNoteBody("");
   }
 
   return (
@@ -427,44 +357,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         status={candidate.notes.length > 0 ? `${candidate.notes.length}` : "EMPTY"}
         statusTone="muted"
       >
-        <div className="space-y-3">
-          <div className="flex items-start gap-2">
-            <textarea
-              value={noteBody}
-              onChange={(event) => setNoteBody(event.target.value)}
-              placeholder="Add a note about this dev — strengths, gaps, anything worth remembering."
-              className="app-input min-h-[64px] flex-1 resize-y text-sm"
-              rows={2}
-            />
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={handleAddNote}
-              disabled={!noteBody.trim() || addNote.isPending}
-            >
-              Add
-            </Button>
-          </div>
-
-          {candidate.notes.length ? (
-            <ul className="space-y-2">
-              {candidate.notes.map((note) => (
-                <li
-                  key={note.id}
-                  className="rounded-[10px] border border-[var(--border-2)] bg-white px-4 py-3"
-                >
-                  <p className="text-sm leading-6 text-[var(--text-2)]">{note.body}</p>
-                  <p className="mt-2 font-mono text-[11px] text-[var(--text-4)]">
-                    {note.createdBy} · {formatDate(note.createdAt)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="py-2 text-center text-sm text-[var(--text-4)]">No notes yet.</p>
-          )}
-        </div>
+        <CandidateNotes candidate={candidate} />
       </WidgetCard>
 
       {/* Edit modal */}
@@ -475,43 +368,7 @@ export function CodeClearCandidateProfile({ candidateId }: { candidateId: string
         candidateName={candidate.name}
       />
 
-      {/* The same shared <Modal> as Add Dev — this was its hand-rolled twin,
-          holding the same form with no focus trap, no Escape and a height that
-          moved with the content. */}
-      <Modal
-        open={showEdit}
-        onClose={() => setShowEdit(false)}
-        title={`01 // EDIT DEV`}
-        panelClassName="app-dialog-fixed w-full max-w-2xl"
-      >
-        <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-              <p className="mb-4 text-sm text-[var(--text-4)]">
-                Editing {candidate.name}. Changes apply immediately on Save.
-              </p>
-              <CandidateProfileForm value={editForm} onChange={setEditForm} />
-            </div>
-            <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-2)] px-6 py-4">
-              <Button type="button" variant="secondary" size="sm" onClick={() => setShowEdit(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                onClick={handleSaveEdit}
-                loading={updateCandidate.isPending}
-                disabled={
-                  !editForm.name.trim() ||
-                  !editForm.githubHandle.trim() ||
-                  !editForm.primaryStack.trim()
-                }
-              >
-                Save
-              </Button>
-            </div>
-        </>
-      </Modal>
+      {showEdit ? <EditDevModal candidate={candidate} onClose={() => setShowEdit(false)} /> : null}
 
       {showDeleteConfirm ? (
         <DeleteCandidateConfirmModal
@@ -590,85 +447,6 @@ function DeleteCandidateConfirmModal({
           </Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function HeroStat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="border-r border-[var(--border-2)] px-6 py-4 last:border-r-0">
-      <p className="widget-data-label">{label}</p>
-      <p className="mt-1 flex items-baseline gap-1.5 font-display text-[28px] font-normal leading-[1.1] tracking-[-0.02em] text-[var(--text-1)]">
-        {value}
-        {sub ? <span className="widget-data-label text-[var(--text-4)]">{sub}</span> : null}
-      </p>
-    </div>
-  );
-}
-
-function AvailabilityBadge({ availability }: { availability: CandidateAvailability | null }) {
-  if (!availability) return null;
-  const label =
-    availability === "AVAILABLE"
-      ? "Available"
-      : availability === "ENGAGED"
-        ? "Engaged"
-        : "Unavailable";
-  const tone =
-    availability === "AVAILABLE"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : availability === "ENGAGED"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-[var(--border-2)] bg-[var(--surface-1)] text-[var(--text-3)]";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em]",
-        tone,
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
-function ExternalLinks({
-  linkedinUrl,
-  cvUrl,
-  portfolioUrl,
-}: {
-  linkedinUrl: string | null;
-  cvUrl: string | null;
-  portfolioUrl: string | null;
-}) {
-  const links = [
-    linkedinUrl ? { href: linkedinUrl, label: "LinkedIn" } : null,
-    cvUrl ? { href: cvUrl, label: "CV" } : null,
-    portfolioUrl ? { href: portfolioUrl, label: "Portfolio" } : null,
-  ].filter((entry): entry is { href: string; label: string } => entry !== null);
-  if (links.length === 0) return null;
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      {links.map((link) => (
-        <a
-          key={link.label}
-          href={link.href}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-0.5 font-mono text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-3)] transition hover:border-[var(--brand-400)] hover:text-[var(--brand-700)]"
-        >
-          {link.label}
-          <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-        </a>
-      ))}
     </div>
   );
 }
