@@ -293,3 +293,22 @@ describe("a month that cannot be read is an error, never an empty month", () => 
     await expect(bigwedgeAdapter.fetchMonth(ctx)).rejects.toThrow(/503/);
   });
 });
+
+describe("retired metrics", () => {
+  it("⚠️ an all-time count stored in an older month is not shown", async () => {
+    const { withoutRetired } = await import("@/server/wiki-metrics");
+    const sept = {
+      period: "2026-09",
+      capturedAt: "2026-10-16T10:49:59.610Z",
+      metrics: [
+        { key: "users_total", label: "Total users", value: 111676 },
+        { key: "users_new", label: "New users", value: 4712 },
+        { key: "users_returning", label: "Returning users", value: 20742 },
+      ],
+    };
+    const out = withoutRetired([sept], bigwedgeAdapter.retiredKeys);
+    expect(out[0].metrics.map((m) => m.key)).toEqual(["users_new"]);
+    // Nothing retired → nothing changes.
+    expect(withoutRetired([sept], undefined)[0].metrics).toHaveLength(3);
+  });
+});

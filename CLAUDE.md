@@ -9198,3 +9198,7 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
   `cash_revenue` doesn't follow the date range, so it isn't this month's takings.
 - **Settings' "What the client sees" is an accordion**, folded by default.
 - **The monitor board** shows "Last check" (the newest actual probe) and a Refresh now button.
+- **Retired metrics** (`AnalyticsAdapter.retiredKeys`): keys an adapter stopped reporting
+  because they were wrong for a month are left out on read, so months stored before the change
+  don't still show or star them. Big Wedge retires `users_total` and `users_returning`, which
+  are all-time counts.
