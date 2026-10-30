@@ -5,12 +5,14 @@ import type { WikiMonitor } from "@prisma/client";
 import type { MonitorConnector, MonitorProbeResult } from "./types";
 import { httpConnector } from "./http";
 import { tcpConnector } from "./tcp";
+import { heartbeatConnector } from "./heartbeat";
 
 export type { MonitorConnector, MonitorProbeResult, MonitorStatus } from "./types";
 
 const CONNECTORS: Record<string, MonitorConnector> = {
   [httpConnector.key]: httpConnector,
   [tcpConnector.key]: tcpConnector,
+  [heartbeatConnector.key]: heartbeatConnector,
 };
 
 /** Type metadata for the UI's "add monitor" picker (key, label, hint). */

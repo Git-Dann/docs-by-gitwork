@@ -9229,3 +9229,31 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
   one row in Settings, and can never be featured or take a headline slot.
 - **The three Big Wedge reads run at once.** The report alone takes ~4s at Big Wedge; the month,
   the day before and feedback were read one after another.
+
+## 106. Recent Changes (October 2026) — Monitors: expiry, heartbeats, maintenance
+
+From a competitor review (UptimeRobot, Better Stack, Healthchecks, Cronitor) and a search of Slack,
+where most outages were reported by the client first.
+
+- **SSL + domain expiry** (`src/server/wiki-monitor-expiry.ts`, rules in `src/lib/monitor-expiry.ts`).
+  The `jobs` worker reads a few monitors per tick: each HTTPS certificate twice a day
+  (`readCertificate`, Pulse's helper), each registrable domain once a day over **RDAP**
+  (`rdap.org`). Warnings at SSL 30/14/3 days and domain 30/7 days, plus "expired", each **once
+  per tier** (`sslAlertedTier` / `domainAlertedTier`), cleared on renewal. A failed read keeps
+  the last tier: "could not look" is not "renewed". Monitors sharing a domain share one lookup
+  and one alert. Hosts on a platform suffix (`*.vercel.app`) have no domain to renew.
+- **Heartbeat monitors** (`HEARTBEAT` type, `wiki-monitors/heartbeat.ts`). Foundry gives the
+  monitor a ping URL, `/api/public/heartbeat/<token>` (`/fail` reports a failed run). Down when
+  no ping arrives within the interval plus grace (default a fifth of the interval, 5–60 min),
+  or at once on `/fail`. Checked the minute the deadline passes (`heartbeatCheckDue`). A ping
+  runs a check immediately, so a recovery is announced straight away. ⚠️ The ping URL is the
+  credential: `forPublic` strips it (and the target) from the client's copy.
+- **Maintenance windows** (`maintenanceUntil` / `maintenanceNote`). Alerts are paused, checks
+  keep running, and the board says "Maintenance". The alert state is frozen and the fail streak
+  restarts when the window ends. Set from the card's "Maintenance…" picker (1 h / 4 h / 24 h).
+- **Cards** show one mono line: SSL days, domain days, maintenance, last ping. Amber inside the
+  warning window, red near or past expiry.
+
+Not built yet (in the competitor report's top ten): request headers/auth, a second probe
+location, incident records with acknowledge, email/webhook channels, client incident updates,
+long-term SLA history, escalation.

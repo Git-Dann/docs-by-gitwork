@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { drainJobs } from "@/server/jobs/runner";
 import { enqueueJob } from "@/server/jobs/queue";
 import { checkMonitorsWatchdog } from "@/server/wiki-monitors";
+import { checkMonitorExpiries } from "@/server/wiki-monitor-expiry";
 import { refreshRunningMonths } from "@/server/wiki-metrics";
 import { sendHrDigests } from "@/server/hr/digest";
 
@@ -67,6 +68,12 @@ export async function GET(request: NextRequest) {
       return { stale: 0 };
     });
 
+    // ── Certificate + domain expiry for monitors ── (a few per tick; read twice / once a day)
+    const expiries = await checkMonitorExpiries().catch((err) => {
+      console.error("[jobs] monitor expiry checks failed", err);
+      return null;
+    });
+
     // ── Wiki Metrics: the month still running, every 15 minutes ── (reads capture times only
     // unless one is over an hour old; a failure here must not fail the job worker)
     const metrics = await refreshRunningMonths().catch((err) => {
@@ -84,6 +91,7 @@ export async function GET(request: NextRequest) {
       reconciled,
       ...drain,
       staleMonitors: monitors.stale,
+      monitorExpiries: expiries,
       metricsRefreshed: metrics?.refreshed.length ?? null,
       hrDigest,
     });

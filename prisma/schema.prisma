@@ -1753,6 +1753,29 @@ model WikiMonitor {
   alertKind       String?
   /// When the last alert cleared. Failures before it never count toward a new one.
   alertClearedAt  DateTime?
+  /// HEARTBEAT: the secret in the ping URL (/api/public/heartbeat/<token>).
+  heartbeatToken  String?            @unique
+  /// HEARTBEAT: last ping, and whether the job said it succeeded (false = /fail).
+  lastPingAt      DateTime?
+  lastPingOk      Boolean?
+  /// HEARTBEAT: minutes after the expected ping before it counts as missed.
+  graceMinutes    Int?
+  /// Alerts are paused until this time (planned work). Checks still run.
+  maintenanceUntil DateTime?
+  maintenanceNote String?
+  /// HTTPS certificate, read daily (src/server/wiki-monitor-expiry.ts).
+  sslExpiresAt    DateTime?
+  sslIssuer       String?
+  sslCheckedAt    DateTime?
+  sslError        String?
+  /// Last SSL warning tier sent ("30d" | "14d" | "3d" | "expired") — once per tier.
+  sslAlertedTier  String?
+  /// Domain registration expiry, from RDAP.
+  domain          String?
+  domainExpiresAt DateTime?
+  domainCheckedAt DateTime?
+  domainError     String?
+  domainAlertedTier String?
   checks          WikiMonitorCheck[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
@@ -1780,6 +1803,8 @@ model WikiMonitorCheck {
 enum WikiMonitorType {
   HTTP
   TCP
+  /// The job pings Foundry; DOWN when a ping is overdue (src/server/wiki-monitors/heartbeat.ts).
+  HEARTBEAT
 }
 
 enum WikiMonitorStatus {
