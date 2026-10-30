@@ -1753,8 +1753,10 @@ model WikiMonitor {
   alertKind       String?
   /// When the last alert cleared. Failures before it never count toward a new one.
   alertClearedAt  DateTime?
-  /// HEARTBEAT: the secret in the ping URL (/api/public/heartbeat/<token>).
-  heartbeatToken  String?            @unique
+  /// HEARTBEAT: the secret in the ping URL (/api/public/heartbeat/<token>). 144 random bits, so
+  /// unique in practice. ⚠️ Deliberately NOT @unique: the guarded `prisma db push` refuses any new
+  /// unique constraint and blocks the whole deploy (CLAUDE.md §2) — it did, on 30 Oct 2026.
+  heartbeatToken  String?
   /// HEARTBEAT: last ping, and whether the job said it succeeded (false = /fail).
   lastPingAt      DateTime?
   lastPingOk      Boolean?
@@ -1788,6 +1790,7 @@ model WikiMonitor {
   updatedAt       DateTime           @updatedAt
 
   @@index([wikiId])
+  @@index([heartbeatToken])
   @@map("WikiMonitor")
 }
 
