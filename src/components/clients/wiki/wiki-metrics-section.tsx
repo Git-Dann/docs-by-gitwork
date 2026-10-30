@@ -52,6 +52,16 @@ function Header({ n, label, status }: { n: string; label: string; status?: strin
   );
 }
 
+/** "4 min ago" today, "30 Oct, 13:00" before that — always the real time of the fetch. */
+function whenRefreshed(iso: string, now = Date.now()): string {
+  const t = new Date(iso).getTime();
+  const min = Math.floor((now - t) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`;
+  return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
 function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
@@ -413,9 +423,15 @@ function tileGroup(t: MetricTileGroup<PeriodMetric>): string {
 function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetricsSection; slug: string }) {
   const refresh = useRefreshWikiMetrics(slug);
   const update = useUpdateWikiMetrics(slug);
+  // The newest capture of anything on the page: the running month when there is one.
+  const lastRefreshed =
+    [metrics.capturedAt, metrics.monthToDate?.capturedAt ?? null]
+      .filter((x): x is string => Boolean(x))
+      .sort()
+      .at(-1) ?? null;
 
-  // Opening the section is what keeps it current: no cron to forget to install, and the
-  // client's API is only ever called because someone at Gitwork looked. Once per mount.
+  // Opening the section also refreshes anything behind (the running month is kept fresh in
+  // the background too — refreshRunningMonths, from the jobs worker). Once per mount.
   const autoRan = useRef(false);
   useEffect(() => {
     if (autoRan.current || !metrics.source || !metrics.needsRefresh) return;
@@ -461,9 +477,12 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
               <span className="text-[var(--text-4)]">Source: </span>
               {metrics.sourceLabel ?? "Not connected"}
             </p>
-            {metrics.capturedAt ? (
-              <p className="mt-0.5 text-[12px] text-[var(--text-4)]">
-                Last fetched {shortDate(metrics.capturedAt)}
+            {lastRefreshed ? (
+              // The newest fetch of anything shown — not the headline month's. That said "Last
+              // fetched 16 Oct" while October so far had been fetched that day.
+              <p className="mt-0.5 text-[12px] text-[var(--text-4)]" title={new Date(lastRefreshed).toLocaleString("en-GB")}>
+                Last refreshed {whenRefreshed(lastRefreshed)}
+                {metrics.monthToDate ? " · updates itself hourly" : ""}
               </p>
             ) : null}
           </div>
@@ -475,7 +494,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
               className="app-button app-button-utility app-button-xs inline-flex items-center gap-1.5"
             >
               <ArrowPathIcon className={`h-4 w-4 ${refresh.isPending ? "animate-spin" : ""}`} />
-              {refresh.isPending ? "Refreshing…" : "Refresh"}
+              {refresh.isPending ? "Refreshing…" : "Refresh now"}
             </button>
           ) : null}
         </div>
@@ -502,14 +521,29 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
         {metrics.source !== "care" ? <ApiSourcePicker metrics={metrics} slug={slug} /> : null}
 
         {rows.length > 0 ? (
-          <div>
-            <p
-              className="mb-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+          /* Folded by default: a dozen-plus rows of star/eye toggles is set once and rarely
+             touched, and open it pushed everything else in Settings off the screen. The
+             summary still says how many are shown, hidden and starred. */
+          <details className="group rounded-[8px] border border-[var(--border-1)]">
+            <summary
+              className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-[11px] uppercase tracking-[0.1em] text-[var(--text-3)] hover:text-[var(--text-1)] [&::-webkit-details-marker]:hidden"
               style={{ fontFamily: MONO }}
             >
-              What the client sees · ★ leads the headline row and the dashboard card (up to {FEATURED_MAX})
+              <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
+              <span className="min-w-0 flex-1">What the client sees</span>
+              <span className="shrink-0 text-[var(--text-4)]">
+                {rows.length - rows.filter((m) => m.hidden).length} shown
+                {rows.some((m) => m.hidden) ? ` · ${rows.filter((m) => m.hidden).length} hidden` : ""}
+                {` · ${rows.filter((m) => m.featured).length} ★`}
+              </span>
+            </summary>
+            <p
+              className="border-t border-[var(--border-1)] px-3 py-2 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+              style={{ fontFamily: MONO }}
+            >
+              ★ leads the headline row and the dashboard card (up to {FEATURED_MAX})
             </p>
-            <ul className="divide-y divide-[var(--border-1)] rounded-[8px] border border-[var(--border-1)]">
+            <ul className="divide-y divide-[var(--border-1)] border-t border-[var(--border-1)]">
               {rows.map((m) => (
                 <li key={m.key} className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
@@ -553,7 +587,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         ) : null}
       </div>
     </section>

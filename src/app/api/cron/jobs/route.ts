@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { drainJobs } from "@/server/jobs/runner";
 import { enqueueJob } from "@/server/jobs/queue";
 import { checkMonitorsWatchdog } from "@/server/wiki-monitors";
+import { refreshRunningMonths } from "@/server/wiki-metrics";
 import { sendHrDigests } from "@/server/hr/digest";
 
 export const dynamic = "force-dynamic";
@@ -66,13 +67,26 @@ export async function GET(request: NextRequest) {
       return { stale: 0 };
     });
 
+    // ── Wiki Metrics: the month still running, about hourly ── (reads capture times only
+    // unless one is over an hour old; a failure here must not fail the job worker)
+    const metrics = await refreshRunningMonths().catch((err) => {
+      console.error("[jobs] running-month metrics refresh failed", err);
+      return null;
+    });
+
     // ── HR's Monday digest ── (does nothing outside Monday 08:00+ UK, or once sent this week)
     const hrDigest = await sendHrDigests().catch((err) => {
       console.error("[jobs] HR digest failed", err);
       return null;
     });
 
-    return apiOk({ reconciled, ...drain, staleMonitors: monitors.stale, hrDigest });
+    return apiOk({
+      reconciled,
+      ...drain,
+      staleMonitors: monitors.stale,
+      metricsRefreshed: metrics?.refreshed.length ?? null,
+      hrDigest,
+    });
   } catch (error) {
     return fromError(error);
   }

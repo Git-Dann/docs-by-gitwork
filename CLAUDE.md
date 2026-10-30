@@ -9182,3 +9182,19 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
   heading's dot stays still. Skeleton while loading, a pulse on the Live label while refreshing.
 - **Slack:** alerts keep GitHub Status's layout; the button is now **View all monitors**, opening
   this board. The linked title still goes to the client's own monitors.
+
+## 105. Recent Changes (October 2026) — Live figures stay live: Metrics and the monitor board
+
+- **The running month refreshes itself.** `refreshRunningMonths` runs from the every-minute
+  `jobs` worker. It reads stored capture times, and only calls a client's API when that client's
+  running month is over `MONTH_TO_DATE_STALE_MS` (1h) old. A failed fetch waits
+  `RUNNING_MONTH_RETRY_MS` (15 min) before retrying. Before this, "October so far" refreshed only
+  when someone at Gitwork opened the page, so it trailed Big Wedge's own admin (131 vs 134
+  subscriptions).
+- **Refresh now always re-reads the running month** (`force`). Before, it skipped one under an
+  hour old, so the button could do nothing.
+- **Last refreshed is the newest real fetch** of anything on the page, not the headline month's.
+- **Big Wedge's total estimated revenue** stays on the running month as an as-of-now total. Their
+  `cash_revenue` doesn't follow the date range, so it isn't this month's takings.
+- **Settings' "What the client sees" is an accordion**, folded by default.
+- **The monitor board** shows "Last check" (the newest actual probe) and a Refresh now button.

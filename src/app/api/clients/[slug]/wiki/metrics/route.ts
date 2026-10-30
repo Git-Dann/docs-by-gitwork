@@ -77,7 +77,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "refresh the metrics section");
     const clientId = await clientIdFor((await params).slug);
     if (!clientId) return apiError("Client not found", 404);
-    return apiOk(await refreshWikiMetrics(clientId));
+    // A person pressed Refresh now: re-read the running month even if it is fresh, or the
+    // button would quietly do nothing for up to an hour.
+    return apiOk(await refreshWikiMetrics(clientId, new Date(), { force: true }));
   } catch (err) {
     return fromError(err);
   }
