@@ -9133,3 +9133,32 @@ Three defects Dan found on Staff → People, all live.
   Type and Sort sit two-up.
 
 The demo roster gained a fuller team under Tom so `/demo/staff` exercises the stacked column.
+
+## 103. Recent Changes (October 2026) — Clients approve releases from their own Changelog
+
+Luke at Big Wedge asked for an "Approve" button in Foundry. One existed, but it sat at the
+foot of each release, under all the notes, and only on the team's page: the client's page was
+read-only.
+
+- **The pending status is the button.** A pending release's status chip is a split control:
+  **● Pending | ✓ Approve**, the green half doing the one thing it's waiting for. Once
+  approved it reads **✓ Approved**, with "Approved by <name> · <date>" under the title.
+- **A callout leads the page** whenever anything is pending: "1 release is waiting for (your)
+  approval". It names each version, links to its notes, and carries the button. It is built
+  from every release, not the filtered list, so a filter can't hide one; a test pins that.
+  The old bar at the foot of the card is gone.
+- **Clients approve on their own page:** `POST /api/wiki/[token]/changelog/approve`, in
+  `src/server/wiki-changelog-access.ts`.
+  - Anyone the page itself lets in may approve: a signed-in client user or a Gitwork session.
+  - A per-section link must be for the Changelog.
+  - A client can approve, never un-approve. Ids outside the wiki and already-approved entries
+    are ignored.
+  - The approver's name comes from their session, never from the request.
+- **Recorded:** `approvedAt` and `approvedByName` on `ClientChangelogEntry` (additive). They are
+  set on approval, cleared on going back to pending, and named in the Slack ping ("…approved for
+  iOS by Luke McFarland").
+- ⚠️ **The internal changelog routes checked nothing.** `PATCH`/`DELETE …/changelog/[id]` acted
+  on any id, unauthenticated beyond the middleware session, so any member could approve or
+  delete any client's release. Create used the default workspace. All three now require
+  Developer+ with access to that client, and scope every entry to the client in the URL (404
+  otherwise). Developer, not `canManageClients`, because developers write release notes.

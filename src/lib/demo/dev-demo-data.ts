@@ -924,12 +924,12 @@ const demoWiki: WikiDTO = {
   changelog: [
     // One release still waiting for approval, on two platforms, so the approve bar and the
     // "Pending 1" count can be seen — a demo of only approved releases cannot show them.
-    { id: "cl0a", platform: "IOS", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline", releasedAt: null, createdAt: atDays(0), status: "PENDING" },
-    { id: "cl0b", platform: "ANDROID", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline\n- Picture-in-picture during a party", releasedAt: null, createdAt: atDays(0), status: "PENDING" },
-    { id: "cl1", platform: "IOS", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Smarter storage management\n- Fixes for AirPlay handoff", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED" },
-    { id: "cl2", platform: "ANDROID", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Chromecast reliability improvements", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED" },
-    { id: "cl3", platform: "WEB", version: "2.8.1", title: "Faster search", body: "- New search index, ~3x faster results\n- Keyboard navigation in the results list", releasedAt: atDays(-9), createdAt: atDays(-10), status: "APPROVED" },
-    { id: "cl4", platform: "IOS", version: "3.1.0", title: "New player controls", body: "- Redesigned scrubber\n- Playback speed control", releasedAt: atDays(-24), createdAt: atDays(-25), status: "APPROVED" },
+    { id: "cl0a", platform: "IOS", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline", releasedAt: null, createdAt: atDays(0), status: "PENDING", approvedAt: null, approvedByName: null },
+    { id: "cl0b", platform: "ANDROID", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline\n- Picture-in-picture during a party", releasedAt: null, createdAt: atDays(0), status: "PENDING", approvedAt: null, approvedByName: null },
+    { id: "cl1", platform: "IOS", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Smarter storage management\n- Fixes for AirPlay handoff", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
+    { id: "cl2", platform: "ANDROID", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Chromecast reliability improvements", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
+    { id: "cl3", platform: "WEB", version: "2.8.1", title: "Faster search", body: "- New search index, ~3x faster results\n- Keyboard navigation in the results list", releasedAt: atDays(-9), createdAt: atDays(-10), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
+    { id: "cl4", platform: "IOS", version: "3.1.0", title: "New player controls", body: "- Redesigned scrubber\n- Playback speed control", releasedAt: atDays(-24), createdAt: atDays(-25), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
   ],
   // Mirrors the real Wedge board's two shapes so both are verifiable here: genuine
   // requests extracted from feedback, and the unnamed rows a failed classifier

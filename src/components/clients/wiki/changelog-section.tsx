@@ -154,6 +154,9 @@ type VersionGroup = {
   createdAt: string;
   /** APPROVED only when ALL platform entries are approved; else PENDING */
   status: string;
+  /** Who approved it and when: the latest approval across its platforms. */
+  approvedByName: string | null;
+  approvedAt: string | null;
   entries: ChangelogEntryRecord[];
 };
 
@@ -169,10 +172,16 @@ function groupByVersion(entries: ChangelogEntryRecord[]): VersionGroup[] {
         releasedAt: entry.releasedAt,
         createdAt: entry.createdAt,
         status: entry.status ?? "PENDING",
+        approvedByName: entry.approvedByName ?? null,
+        approvedAt: entry.approvedAt ?? null,
         entries: [entry],
       });
     } else {
       existing.entries.push(entry);
+      if (entry.approvedAt && (!existing.approvedAt || entry.approvedAt > existing.approvedAt)) {
+        existing.approvedAt = entry.approvedAt;
+        existing.approvedByName = entry.approvedByName ?? null;
+      }
       // Any pending entry makes the whole group pending
       if ((entry.status ?? "PENDING") !== "APPROVED") {
         existing.status = "PENDING";
@@ -273,6 +282,13 @@ interface Props {
   /** Called with the version string to edit the whole version group. */
   onEdit?: (version: string) => void;
   readOnly?: boolean;
+  /**
+   * May approve a pending release. Defaults to `!readOnly` (the team); the client's page
+   * passes it too, since approving is the one thing a client does here.
+   */
+  canApprove?: boolean;
+  /** Changes the wording only: the client is asked for "your approval". */
+  audience?: "team" | "client";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -285,6 +301,8 @@ export function ChangelogSection({
   onToggleStatus,
   onEdit,
   readOnly = false,
+  canApprove = !readOnly,
+  audience = "team",
 }: Props) {
   const [platformFilter, setPlatformFilter] = useState<FilterPlatform>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -298,6 +316,8 @@ export function ChangelogSection({
   const [confirmDeleteVersion, setConfirmDeleteVersion] = useState<string | null>(null);
   /** Version where the copy was just triggered — shows a brief ✓ */
   const [copiedVersion, setCopiedVersion] = useState<string | null>(null);
+  /** An approval that failed, by version, said where it was clicked rather than lost. */
+  const [approveError, setApproveError] = useState<Record<string, string>>({});
 
   // Build the platform filter tab list
   const ALL_ORDERED: FilterPlatform[] = ["IOS", "ANDROID", "FIRESTICK", "WEB"];
@@ -339,15 +359,28 @@ export function ChangelogSection({
   async function handleToggle(group: VersionGroup) {
     const newStatus = group.status === "APPROVED" ? "PENDING" : "APPROVED";
     setProcessingVersion(group.version);
+    setApproveError((prev) => {
+      const next = { ...prev };
+      delete next[group.version];
+      return next;
+    });
     try {
       await onToggleStatus(
         group.entries.map((e) => e.id),
         newStatus,
       );
+    } catch (err) {
+      setApproveError((prev) => ({
+        ...prev,
+        [group.version]: err instanceof Error ? err.message : "Couldn't save. Please try again.",
+      }));
     } finally {
       setProcessingVersion(null);
     }
   }
+
+  /** Every pending release, whatever the filters: the callout must not hide one. */
+  const pendingGroups = groups.filter((g) => g.status !== "APPROVED");
 
   async function handleCopy(group: VersionGroup) {
     const platform = getActivePlatform(group);
@@ -362,8 +395,65 @@ export function ChangelogSection({
     }
   }
 
+  const fmtDay = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
   return (
     <div>
+      {/* ── Waiting for approval ───────────────────────────────
+          A release waiting for approval is the one thing on this page someone has to act on,
+          so it leads the page, with the button, instead of sitting at the foot of a long card.
+          Built from every release, not the filtered list, so a filter can't hide one. */}
+      {canApprove && pendingGroups.length > 0 && (
+        <div
+          role="region"
+          aria-label="Releases waiting for approval"
+          className="mb-5 rounded-[10px] border border-amber-300 bg-amber-50 px-4 py-3"
+        >
+          <p className="text-[13px] font-semibold text-amber-900">
+            {pendingGroups.length === 1 ? "1 release is" : `${pendingGroups.length} releases are`} waiting for{" "}
+            {audience === "client" ? "your approval" : "approval"}
+          </p>
+          <ul className="mt-2 space-y-2">
+            {pendingGroups.map((g) => (
+              <li key={g.version} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <a
+                  href={`#release-${g.version}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setPlatformFilter("ALL");
+                    setStatusFilter("ALL");
+                    requestAnimationFrame(() =>
+                      document.getElementById(`release-${g.version}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                    );
+                  }}
+                  className="min-w-0 text-[13px] text-amber-900 underline-offset-2 hover:underline"
+                >
+                  <span className="font-semibold" style={{ fontFamily: MONO }}>
+                    v{g.version}
+                  </span>{" "}
+                  {g.title}
+                  <span className="ml-1.5 text-[12px] text-amber-700">· read the notes</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void handleToggle(g)}
+                  disabled={processingVersion === g.version}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-[6px] bg-emerald-600 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <CheckIcon className="h-3.5 w-3.5" />
+                  {processingVersion === g.version ? "Approving…" : `Approve v${g.version}`}
+                </button>
+                {approveError[g.version] ? (
+                  <p role="alert" className="w-full text-[12px] text-red-700">
+                    {approveError[g.version]}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── Filter bar ─────────────────────────────────────────────
           Two segmented controls (the platform's pick-one control, DESIGN.md). Status
           carries counts so "1 pending" is visible without clicking — a pending release is
@@ -440,7 +530,8 @@ export function ChangelogSection({
               return (
                 <div
                   key={group.version}
-                  className="group relative flex gap-4 pl-10"
+                  id={`release-${group.version}`}
+                  className="group relative flex scroll-mt-4 gap-4 pl-10"
                 >
                   {/* Timeline dot */}
                   <div
@@ -487,19 +578,63 @@ export function ChangelogSection({
                         <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
                           {dateStr}
                         </span>
-                        <span
-                          className={[
-                            "rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]",
-                            isApproved
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-amber-50 text-amber-700",
-                          ].join(" ")}
-                          style={{ fontFamily: MONO }}
-                        >
-                          {isApproved ? "✓ Approved" : "● Pending"}
-                        </span>
+                        {isApproved ? (
+                          <span
+                            className="rounded-[4px] bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-emerald-700"
+                            style={{ fontFamily: MONO }}
+                            title={
+                              group.approvedByName
+                                ? `Approved by ${group.approvedByName}${group.approvedAt ? ` on ${fmtDay(group.approvedAt)}` : ""}`
+                                : undefined
+                            }
+                          >
+                            ✓ Approved
+                          </span>
+                        ) : canApprove ? (
+                          // Pending AND the way out of pending, in one control where people
+                          // look for a release's status: the status half says where it is, the
+                          // green half does the one thing it's waiting for.
+                          <span className="inline-flex overflow-hidden rounded-[6px] border border-amber-300 shadow-sm">
+                            <span
+                              className="inline-flex items-center gap-1.5 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-amber-800"
+                              style={{ fontFamily: MONO }}
+                            >
+                              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                              Pending
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggle(group)}
+                              disabled={isProcessing}
+                              aria-label={`Approve v${group.version}`}
+                              className="inline-flex items-center gap-1 bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              <CheckIcon className="h-3.5 w-3.5" />
+                              {isProcessing ? "Approving…" : "Approve"}
+                            </button>
+                          </span>
+                        ) : (
+                          <span
+                            className="rounded-[4px] bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-amber-700"
+                            style={{ fontFamily: MONO }}
+                          >
+                            ● Pending
+                          </span>
+                        )}
                       </div>
                     </div>
+
+                    {isApproved && group.approvedByName ? (
+                      <p className="mt-1.5 text-[11px] text-emerald-700" style={{ fontFamily: MONO }}>
+                        Approved by {group.approvedByName}
+                        {group.approvedAt ? ` · ${fmtDay(group.approvedAt)}` : ""}
+                      </p>
+                    ) : null}
+                    {approveError[group.version] ? (
+                      <p role="alert" className="mt-1.5 text-[12px] text-red-700">
+                        {approveError[group.version]}
+                      </p>
+                    ) : null}
 
                     {/* ── Actions ─────────────────────────────── */}
                     <div className="mt-2.5 flex flex-wrap items-center gap-1">
@@ -638,28 +773,6 @@ export function ChangelogSection({
                       </p>
                     )}
 
-                    {/* ── Approve ─────────────────────────────── The action a pending
-                        release is waiting for, so it is a real button with a sentence, not a
-                        status pill that happened to be clickable. */}
-                    {!readOnly && !isApproved && (
-                      <div className="-mx-4 -mb-3.5 mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-b-[10px] border-t border-amber-200 bg-amber-50 px-4 py-2.5">
-                        <span className="text-[12px] text-amber-800">
-                          Waiting for approval
-                          {hasMultiplePlatforms
-                            ? ` — check the notes for ${group.entries.length === 2 ? "both" : `all ${group.entries.length}`} platforms first.`
-                            : "."}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void handleToggle(group)}
-                          disabled={isProcessing}
-                          className="ml-auto inline-flex items-center gap-1.5 rounded-[6px] bg-emerald-600 px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                          <CheckIcon className="h-3.5 w-3.5" />
-                          {isProcessing ? "Approving…" : "Approve release"}
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </div>
               );

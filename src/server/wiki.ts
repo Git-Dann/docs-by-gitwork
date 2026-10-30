@@ -92,6 +92,9 @@ export interface ChangelogEntryRecord {
   createdAt: string;
   /** "PENDING" | "APPROVED" */
   status: string;
+  /** When it was approved, and the name of whoever approved it (client or teammate). */
+  approvedAt: string | null;
+  approvedByName: string | null;
 }
 
 export interface CourseRequestRecord {
@@ -514,6 +517,8 @@ function serializeEntry(e: {
   releasedAt: Date | null;
   createdAt: Date;
   status: WikiEntryStatus;
+  approvedAt?: Date | null;
+  approvedByName?: string | null;
 }): ChangelogEntryRecord {
   return {
     id: e.id,
@@ -524,6 +529,8 @@ function serializeEntry(e: {
     releasedAt: e.releasedAt ? e.releasedAt.toISOString() : null,
     createdAt: e.createdAt.toISOString(),
     status: e.status,
+    approvedAt: e.status === "APPROVED" && e.approvedAt ? e.approvedAt.toISOString() : null,
+    approvedByName: e.status === "APPROVED" ? e.approvedByName ?? null : null,
   };
 }
 
@@ -1500,28 +1507,58 @@ export async function addChangelogEntry(
  * clause is atomic at the database level — only one concurrent caller's
  * update can match a row still not-APPROVED, so only one gets count > 0.
  */
-async function markApprovedOnce(entryId: string): Promise<boolean> {
+async function markApprovedOnce(entryId: string, byName: string | null = null): Promise<boolean> {
   const result = await prisma.clientChangelogEntry.updateMany({
     where: { id: entryId, status: { not: "APPROVED" } },
-    data: { status: "APPROVED" },
+    data: { status: "APPROVED", approvedAt: new Date(), approvedByName: byName },
   });
   return result.count > 0;
 }
 
-/** Update the status of a single changelog entry. */
+/** Back to PENDING forgets who approved it: an old approval must not read as current. */
+const UNAPPROVED = { approvedAt: null, approvedByName: null } as const;
+
+/** Update the status of a single changelog entry. `byName` is who approved it, when approving. */
 export async function updateChangelogEntryStatus(
   entryId: string,
   status: WikiEntryStatus,
+  byName: string | null = null,
 ): Promise<ChangelogEntryRecord> {
-  const approvedNow = status === "APPROVED" && (await markApprovedOnce(entryId));
+  const approvedNow = status === "APPROVED" && (await markApprovedOnce(entryId, byName));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
-    data: { status },
+    data: status === "PENDING" ? { status, ...UNAPPROVED } : { status },
   });
   if (approvedNow) {
-    notifyClientSlackChangelogApproved(entry);
+    notifyClientSlackChangelogApproved({ ...entry, approvedBy: byName });
   }
   return serializeEntry(entry);
+}
+
+/**
+ * Approve releases from the client's own wiki page (POST /api/wiki/[token]/changelog/approve).
+ * Only entries of THIS wiki, and only ones still pending: a client can approve, never un-approve,
+ * and an id from another client's wiki matches nothing. Returns how many were approved.
+ */
+export async function approveChangelogEntries(wikiId: string, ids: string[], byName: string): Promise<number> {
+  const pending = await prisma.clientChangelogEntry.findMany({
+    where: { wikiId, id: { in: ids }, status: { not: "APPROVED" } },
+    select: { id: true },
+  });
+  let approved = 0;
+  for (const { id } of pending) {
+    if (!(await markApprovedOnce(id, byName))) continue;
+    approved += 1;
+    const entry = await prisma.clientChangelogEntry.findUnique({ where: { id } });
+    if (entry) notifyClientSlackChangelogApproved({ ...entry, approvedBy: byName });
+  }
+  return approved;
+}
+
+/** The wiki a changelog entry belongs to, for scoping a write to the client in the URL. */
+export async function changelogEntryWikiId(entryId: string): Promise<string | null> {
+  const row = await prisma.clientChangelogEntry.findUnique({ where: { id: entryId }, select: { wikiId: true } });
+  return row?.wikiId ?? null;
 }
 
 /** Update an existing changelog entry's editable fields (by id). */
@@ -1534,8 +1571,9 @@ export async function updateChangelogEntry(
     releasedAt?: string | null;
     status?: WikiEntryStatus;
   },
+  byName: string | null = null,
 ): Promise<ChangelogEntryRecord> {
-  const approvedNow = input.status === "APPROVED" && (await markApprovedOnce(entryId));
+  const approvedNow = input.status === "APPROVED" && (await markApprovedOnce(entryId, byName));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: {
@@ -1546,10 +1584,11 @@ export async function updateChangelogEntry(
         ? { releasedAt: input.releasedAt ? new Date(input.releasedAt) : null }
         : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.status === "PENDING" ? UNAPPROVED : {}),
     },
   });
   if (approvedNow) {
-    notifyClientSlackChangelogApproved(entry);
+    notifyClientSlackChangelogApproved({ ...entry, approvedBy: byName });
   }
   return serializeEntry(entry);
 }

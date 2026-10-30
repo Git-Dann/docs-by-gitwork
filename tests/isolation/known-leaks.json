@@ -42,8 +42,6 @@
     "GET /api/templates b→a",
     "GET /api/templates/[id] a→b",
     "GET /api/templates/[id] b→a",
-    "PATCH /api/clients/[slug]/wiki/changelog/[id] a→b",
-    "PATCH /api/clients/[slug]/wiki/changelog/[id] b→a",
     "PATCH /api/clients/[slug]/wiki/documents/[id] b→a",
     "PATCH /api/clients/[slug]/wiki/intake-items/[id] a→b",
     "PATCH /api/clients/[slug]/wiki/intake-items/[id] b→a",
@@ -66,8 +64,6 @@
   ],
   "writes": [
     "DELETE /api/clients/[slug]/platforms/[platformId] a→b",
-    "DELETE /api/clients/[slug]/wiki/changelog/[id] a→b",
-    "DELETE /api/clients/[slug]/wiki/changelog/[id] b→a",
     "DELETE /api/clients/[slug]/wiki/documents/[id] b→a",
     "DELETE /api/clients/[slug]/wiki/intake-items/[id] a→b",
     "DELETE /api/clients/[slug]/wiki/intake-items/[id] b→a",
