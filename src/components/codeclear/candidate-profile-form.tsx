@@ -108,7 +108,7 @@ export function CandidateProfileForm({
   const stacksQuery = useTechStacks();
   const { canViewRates } = usePermissions();
   const stackOptions =
-    stacksQuery.data?.stacks.map((stack) => stack.name) ?? TECH_STACK_OPTIONS;
+    stacksQuery.data?.stacks?.map((stack) => stack.name) ?? TECH_STACK_OPTIONS;
 
   function patch<K extends keyof CandidateProfileValue>(key: K, next: CandidateProfileValue[K]) {
     onChange({ ...value, [key]: next });

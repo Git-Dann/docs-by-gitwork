@@ -155,8 +155,26 @@ off. Me mode drops the way back to People and the archive/delete controls; nothi
   - Runs from the every-minute `jobs` worker, not a cron line of its own, because several
     documented cron lines were never installed and a digest that never runs looks like a quiet week.
 
+## One page per developer
+
+A developer's Staff page is now their only page. Staff and Code share an id (a Staff record is
+the developer's `Candidate` row), so nothing moved in the data.
+
+- **Developer card** (`src/components/staff/developer-card.tsx`), on Staff only, not in Me: GitHub,
+  stack, location, links, availability, Bench or Off Bench (admins move them), the monthly rate
+  (`code.viewRates`), the current-client picker, CV and Edit (`code.manage`). **Notes** sits
+  below Time off. Overview stops repeating GitHub and stack when the card is there.
+- **Shared parts** (`src/components/codeclear/candidate-parts.tsx`): the hero readouts, the
+  edit-dev dialog (`candidateToForm` / `formToCandidatePatch`) and the notes, used by both pages.
+- **Placements** on the Activity card now show each placement's project and notes, which the old
+  Engagements card did.
+- **`/app/codeclear/candidates/[id]`** now serves Hiring's external candidates only, and sends
+  anyone on the team to `/app/staff/[id]` (client-side, after the record loads; a skeleton shows
+  meanwhile). Old links and bookmarks keep working. Client detail's team links go straight to Staff.
+- **Delete changes for team members:** it follows Staff's rules now (no login, no placements, no
+  analysis; otherwise archive), where the old page deleted any developer outright.
+
 ## Next
 
 1. E-signature for contracts and NDAs, and policies to sign from Me.
-2. One page per developer: the developer review folded into the Staff profile.
-3. Phases 2 to 4: see the spec doc.
+2. Phases 2 to 4: see the spec doc.

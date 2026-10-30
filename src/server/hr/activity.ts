@@ -57,7 +57,15 @@ export async function getStaffActivity(user: EffectiveUser, recordId: string, no
       member: { select: { userId: true } },
       placements: {
         orderBy: { startDate: "desc" },
-        select: { clientName: true, startDate: true, endDate: true, allocationPercent: true, client: { select: { name: true, slug: true } } },
+        select: {
+          clientName: true,
+          projectName: true,
+          notes: true,
+          startDate: true,
+          endDate: true,
+          allocationPercent: true,
+          client: { select: { name: true, slug: true } },
+        },
       },
     },
   });
@@ -108,6 +116,8 @@ export async function getStaffActivity(user: EffectiveUser, recordId: string, no
     placements: record.placements.map((p) => ({
       clientName: p.client?.name ?? p.clientName,
       slug: p.client?.slug ?? null,
+      projectName: p.projectName?.trim() || null,
+      notes: p.notes?.trim() || null,
       startDate: day(p.startDate),
       endDate: p.endDate ? day(p.endDate) : null,
       allocationPercent: p.allocationPercent,

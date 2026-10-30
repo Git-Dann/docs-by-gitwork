@@ -9041,3 +9041,19 @@ Details: `docs/hr-platform.md`.
   `hr.manage` grant. A test caught this; the first cut sent Siân's digest to Dan too.
   ⚠️ Right-to-work dates (encrypted tier) are counted, never listed, because email leaves Foundry.
 
+## 100. Recent Changes (October 2026) — One page per developer
+
+Details: `docs/hr-platform.md`.
+
+- A developer's **Staff page is their page**. Its new **Developer** card and **Notes** card carry
+  everything the Code review page did (GitHub, stack, links, availability, Bench, rate, current
+  clients, CV, edit, notes), built from one shared file, `src/components/codeclear/candidate-parts.tsx`,
+  which the review page uses too. Placements gain their project and notes.
+- `/app/codeclear/candidates/[id]` redirects anyone on the team to `/app/staff/[id]` and is now
+  Hiring's page for **external** candidates only. ⚠️ Staff deliberately excludes `origin: EXTERNAL`,
+  so do not redirect those. `candidate-profile-redirect.test.tsx` pins both directions.
+- ⚠️ Deleting a team member now follows Staff's rules (archive unless there's nothing attached),
+  not the review page's unconditional delete.
+- `candidate-profile-form.tsx` and `HandoverCard` tolerate a missing list from their API instead of
+  crashing (the demo's catch-all returns `{}`).
+

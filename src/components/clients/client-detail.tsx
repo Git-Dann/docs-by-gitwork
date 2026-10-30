@@ -2402,7 +2402,7 @@ function ClientDevelopersSection({
           {active.map((p) => (
             <Link
               key={p.id}
-              href={`/app/codeclear/candidates/${p.candidateId}`}
+              href={`/app/staff/${p.candidateId}`}
               className="flex items-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-1)] hover:border-[var(--brand-700)] hover:text-[var(--brand-700)] transition-colors"
             >
               <Avatar name={p.candidateName} />

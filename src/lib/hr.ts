@@ -462,7 +462,16 @@ export interface StaffActivity {
   /** Tasks they completed per day over the last 26 weeks. Empty when they don't sign in. */
   completedByDay: Array<{ date: string; value: number }>;
   completedTotal: number;
-  placements: Array<{ clientName: string; slug: string | null; startDate: string; endDate: string | null; allocationPercent: number }>;
+  placements: Array<{
+    clientName: string;
+    slug: string | null;
+    /** The project within the client, and any note on the placement (from Code's Engagements). */
+    projectName: string | null;
+    notes: string | null;
+    startDate: string;
+    endDate: string | null;
+    allocationPercent: number;
+  }>;
   /** Leave in the next 90 days. `label` is only the type for the person or HR; anyone else sees "Off". */
   upcomingLeave: Array<{ start: string; end: string; label: string; pending: boolean }>;
   /** This year's allowance, for the person, HR and leave approvers only. */

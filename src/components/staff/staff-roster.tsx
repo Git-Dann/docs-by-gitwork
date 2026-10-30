@@ -5,8 +5,9 @@
  * and Staff records (developers and contractors who don't) side by side, with job title,
  * department, employment type and the clients they're on.
  *
- * Developer profiles (scores, GitHub analysis, CV) still live at
- * /app/codeclear/candidates/[id]; a developer's row links there.
+ * A developer's Code side (GitHub, Bench, rate, clients, CV, notes) is on their Staff page
+ * too: one page per developer. /app/codeclear/candidates/[id] now serves Hiring's external
+ * candidates only and sends anyone on the team here.
  */
 
 import Link from "next/link";
