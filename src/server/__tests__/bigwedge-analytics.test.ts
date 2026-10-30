@@ -13,6 +13,7 @@ vi.mock("@/server/support-analytics/types", async (orig) => ({
 vi.mock("@/server/bigwedge-api-auth", () => ({ bigWedgeBearer: (...a: unknown[]) => bearer(...a) }));
 
 import {
+  NOW_KEYS,
   bigwedgeAdapter,
   currencyUnit,
   dayBeforeMonth,
@@ -73,12 +74,16 @@ describe("what is shown", () => {
       "New users=8466",
       "Active users=7837",
       "Monthly active users=7646",
+      "Daily active users=269",
+      "Daily / monthly active=3.28",
       "Rounds played=21399",
       "Rounds started=25010",
       "Scores entered=301204",
       "Rounds per active user=2.73",
-      // August's report has no `mrr` and no subscription counts, so only this one shows.
+      // August's report has no `mrr` and no subscription counts.
       "Premium subscribers=2",
+      "Revenue per subscriber / month=0",
+      "Premium share of users=0",
     ]);
   });
 
@@ -115,18 +120,38 @@ describe("revenue", () => {
       "Monthly subscriptions=5",
       "Yearly subscriptions=5",
       "MRR=39.75",
+      "Revenue per subscriber / month=3.98",
+      "Premium share of users=0.1%",
+      "Subscription churn=0%",
     ]);
   });
 
-  it("total, monthly and yearly share ONE Subscriptions card, in that order", () => {
+  it("total, monthly, yearly and premium share are ONE Subscriptions card, total first", () => {
     const parts = metricsFromReport(OCTOBER_SO_FAR)
       .filter((m) => m.card?.id === "subs")
       .map((m) => `${m.card!.part}=${m.value}`);
-    expect(parts).toEqual(["Total=10", "Monthly=5", "Yearly=5"]);
+    expect(parts).toEqual(["Total=10", "Monthly=5", "Yearly=5", "Of all users=0.1"]);
+  });
+
+  it("related figures share a card, so the page reads in a few lines, not a wall of tiles", () => {
+    const report = {
+      data: {
+        revenue: { arpu: 3.36, average_revenue_per_user: 22.94 },
+        retention: { dau: 428, dau_mau_ratio: 5.9 },
+      },
+    };
+    const cards = (id: string) =>
+      metricsFromReport(report)
+        .filter((m) => m.card?.id === id)
+        .map((m) => m.card!.part);
+    expect(cards("per_sub")).toEqual(["A month", "In total"]);
+    expect(cards("daily")).toEqual(["Daily", "Of monthly active"]);
   });
 
   it("⚠️ has no currency symbol when the report names no currency — never a guessed £", () => {
-    for (const m of metricsFromReport(OCTOBER_SO_FAR)) expect(m.unit, m.key).toBeUndefined();
+    for (const m of metricsFromReport(OCTOBER_SO_FAR).filter((x) => x.money)) expect(m.unit, m.key).toBeUndefined();
+    // A percentage still says so.
+    expect(metricsFromReport(OCTOBER_SO_FAR).find((x) => x.key === "premium_share")?.unit).toBe("%");
   });
 
   it("puts the report's currency on money figures only", () => {
@@ -310,5 +335,81 @@ describe("retired metrics", () => {
     expect(out[0].metrics.map((m) => m.key)).toEqual(["users_new"]);
     // Nothing retired → nothing changes.
     expect(withoutRetired([sept], undefined)[0].metrics).toHaveLength(3);
+  });
+});
+
+describe("everything the live report carries (30 Oct 2026)", () => {
+  /** The live October report's shape and figures, trimmed of user names. */
+  const LIVE_OCT = {
+    status: true,
+    data: {
+      user_growth: { new_users: 3918, user_growth_pct: -16.8, total_users: 113774, active_users: 7255 },
+      business_growth: { premium_users: 139, free_vs_premium_ratio: { free_pct: 99.8, premium_pct: 0.2 }, user_churn_rate: 0 },
+      revenue: { currency: "GBP", cash_revenue: 3188.61, monthly_revenue: 3188.61, mrr: 467.02, arpu: 3.36, average_revenue_per_user: 22.94, active_monthly_subs: 40, active_yearly_subs: 99 },
+      engagement: { rounds_created: 14404, rounds_played: 7672, avg_rounds_per_user: 1.99, score_entries: 115059, engagement_growth_pct: -23.42, top_active_users: [{ username: "x", count: 1 }] },
+      retention: { returning_users: 20886, dau: 428, mau: 7255, dau_mau_ratio: 5.9 },
+      golf_metrics: { average_handicap: 21.56, average_scores: 5.63 },
+    },
+    filters: { applied_filter: "custom" },
+  };
+  const at = (now: string) => ({ baseUrl: "https://apiv1.bigwedgegolf.com", year: 2026, month: 10, now: new Date(now) });
+
+  it("shows the running month's figures, today's ones included, plus recent feedback", async () => {
+    getJson.mockImplementation(async (url: string) =>
+      url.includes("feedback") ? { total_count: 762, recent_count_30_days: 43, recent_count_7_days: 20 } : LIVE_OCT,
+    );
+    const snap = await bigwedgeAdapter.fetchMonth(at("2026-10-30T20:00:00Z"));
+    const v = Object.fromEntries(snap.metrics.map((m) => [m.key, m.value]));
+    expect(v).toMatchObject({
+      users_dau: 428,
+      users_stickiness: 5.9,
+      golf_handicap: 21.56,
+      revenue_arpu: 3.36,
+      revenue_per_sub: 22.94,
+      premium_share: 0.2,
+      churn_rate: 0,
+      feedback_30d: 43,
+      feedback_7d: 20,
+    });
+    // Never names (top_active_users), never all-time counts, never unexplained ratios.
+    expect(snap.metrics.some((m) => /users_total|users_returning|average_scores|growth_pct/.test(m.key))).toBe(false);
+  });
+
+  it("⚠️ a finished month's own read drops every today's-state figure", async () => {
+    getJson.mockImplementation(async () => LIVE_OCT);
+    const snap = await bigwedgeAdapter.fetchMonth(at("2026-11-01T00:10:00Z"));
+    const keys = snap.metrics.map((m) => m.key);
+    for (const k of NOW_KEYS) expect(keys, k).not.toContain(k);
+    expect(keys).not.toContain("feedback_30d");
+    // …while the month's own counts stay.
+    expect(keys).toContain("users_new");
+    // And every one of them is carried from the month's last capture instead.
+    for (const k of NOW_KEYS) expect(bigwedgeAdapter.carryAtMonthEnd, k).toContain(k);
+  });
+
+  it("asks for the month, the day before and feedback at the same time, not one after another", async () => {
+    const started: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    getJson.mockImplementation(async (url: string) => {
+      started.push(url);
+      await gate;
+      return url.includes("feedback") ? { recent_count_30_days: 1 } : LIVE_OCT;
+    });
+    const pending = bigwedgeAdapter.fetchMonth(at("2026-10-30T20:00:00Z"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(started).toHaveLength(3);
+    release();
+    await pending;
+  });
+
+  it("a failed feedback read leaves feedback out and the month intact", async () => {
+    getJson.mockImplementation(async (url: string) => {
+      if (url.includes("feedback")) throw new Error("503");
+      return LIVE_OCT;
+    });
+    const snap = await bigwedgeAdapter.fetchMonth(at("2026-10-30T20:00:00Z"));
+    expect(snap.metrics.some((m) => m.key.startsWith("feedback"))).toBe(false);
+    expect(snap.metrics.some((m) => m.key === "users_new")).toBe(true);
   });
 });

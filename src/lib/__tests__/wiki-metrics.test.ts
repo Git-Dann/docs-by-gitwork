@@ -366,11 +366,11 @@ describe("the month still running (\"October so far\")", () => {
     expect(v?.metrics.find((x) => x.key === "mrr")?.hidden).toBe(true);
   });
 
-  it("is fetched first when missing or older than an hour, and not otherwise", () => {
-    // NOW is 12:00. 11:30 is fresh; 10:30 is behind (it used to be six hours, which read as
+  it("is fetched first when missing or older than 15 minutes, and not otherwise", () => {
+    // NOW is 12:00. 11:50 is fresh; 11:30 is behind (it used to be six hours, which read as
     // wrong next to the client's own live admin).
-    const fresh = [snap("2026-10", "2026-10-15T11:30:00Z"), ...SNAPS.slice(1)];
-    expect(periodsToFetch([snap("2026-10", "2026-10-15T10:30:00Z"), ...SNAPS.slice(1)], NOW, { monthToDate: true })[0]).toBe("2026-10");
+    const fresh = [snap("2026-10", "2026-10-15T11:50:00Z"), ...SNAPS.slice(1)];
+    expect(periodsToFetch([snap("2026-10", "2026-10-15T11:30:00Z"), ...SNAPS.slice(1)], NOW, { monthToDate: true })[0]).toBe("2026-10");
     expect(periodsToFetch(fresh, NOW, { monthToDate: true })[0]).not.toBe("2026-10");
     expect(periodsToFetch(SNAPS.slice(1), NOW, { monthToDate: true })[0]).toBe("2026-10");
     const stale = [snap("2026-10", "2026-10-15T05:00:00Z"), ...SNAPS.slice(1)];

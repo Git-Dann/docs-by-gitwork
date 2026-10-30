@@ -9187,7 +9187,7 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
 
 - **The running month refreshes itself.** `refreshRunningMonths` runs from the every-minute
   `jobs` worker. It reads stored capture times, and only calls a client's API when that client's
-  running month is over `MONTH_TO_DATE_STALE_MS` (1h) old. A failed fetch waits
+  running month is over `MONTH_TO_DATE_STALE_MS` (15 min) old. A failed fetch waits
   `RUNNING_MONTH_RETRY_MS` (15 min) before retrying. Before this, "October so far" refreshed only
   when someone at Gitwork opened the page, so it trailed Big Wedge's own admin (131 vs 134
   subscriptions).
@@ -9205,7 +9205,7 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
 - **A finished month keeps its month-end figures** (`AnalyticsAdapter.carryAtMonthEnd`,
   `carryMonthEndFigures`). Big Wedge's subscription counts, MRR and revenue total are as of now
   for any range, so the read that finalises a month can't give them. They're carried from that
-  month's last capture taken during the month (hourly, so within about an hour of month end).
+  month's last capture taken during the month (every 15 minutes, so within 15 minutes of month end).
   Nothing is carried from a capture taken outside the month.
 - **Outages are confirmed in seconds.** A first failure is re-checked after `CONFIRM_AFTER_MS`
   (20s) in the same run instead of on the next one, so "down" lands about 20s after it's spotted.
@@ -9215,3 +9215,14 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
   box they'd be reporting. Down → the run fails, and GitHub emails whoever last edited the
   schedule. If the `SLACK_OPS_WEBHOOK_URL` secret is set, it also posts once per outage, plus once
   on recovery.
+- **Wedge shows everything its report carries that's meaningful** (checked against the live API
+  on 30 Oct 2026). Added: daily active users, daily/monthly active (stickiness), average handicap,
+  revenue per subscriber per month, revenue per subscription, premium share, churn, and feedback
+  in the last 7 and 30 days (a separate `/feedback/stats/` read). Fields marked `now` on `FIELDS`
+  are today's state for any range: shown on the running month, dropped from a finished month's
+  own read, and carried from its last capture instead (`NOW_KEYS` ⊂ `carryAtMonthEnd`). Left out
+  on purpose: `top_active_users` (usernames), `average_scores` (meaning not documented), the
+  growth percentages (trends are worked out from the months), and the course and game-mode lists
+  (they need a list widget, not a figure).
+- **The three Big Wedge reads run at once.** The report alone takes ~4s at Big Wedge; the month,
+  the day before and feedback were read one after another.

@@ -56,17 +56,30 @@ const FIELDS: {
   key: string;
   label: string;
   group: string;
-  path: [string, string];
+  /** Where it lives under `data`, e.g. ["business_growth", "free_vs_premium_ratio", "premium_pct"]. */
+  path: string[];
   money?: boolean;
+  /** "%" for a percentage. Money takes the report's currency instead. */
+  unit?: string;
+  /**
+   * Today's state, whatever range is asked (checked against the live API). Shown for the month
+   * still running; a finished month keeps it only from its last capture during the month
+   * (`carryAtMonthEnd`), never from a read made after the month ended.
+   */
+  now?: true;
   card?: { id: string; title: string; part: string };
 }[] = [
   { key: "users_new", label: "New users", group: "Users", path: ["user_growth", "new_users"] },
   { key: "users_active", label: "Active users", group: "Users", path: ["user_growth", "active_users"] },
   { key: "users_mau", label: "Monthly active users", group: "Users", path: ["retention", "mau"] },
+  { key: "users_dau", label: "Daily active users", group: "Users", path: ["retention", "dau"], now: true, card: { id: "daily", title: "Daily active users", part: "Daily" } },
+  // How many of the month's active users come back on a given day — the "stickiness" figure.
+  { key: "users_stickiness", label: "Daily / monthly active", group: "Users", path: ["retention", "dau_mau_ratio"], unit: "%", now: true, card: { id: "daily", title: "Daily active users", part: "Of monthly active" } },
   { key: "rounds_played", label: "Rounds played", group: "Golf", path: ["engagement", "rounds_played"] },
   { key: "rounds_created", label: "Rounds started", group: "Golf", path: ["engagement", "rounds_created"] },
   { key: "score_entries", label: "Scores entered", group: "Golf", path: ["engagement", "score_entries"] },
   { key: "rounds_per_user", label: "Rounds per active user", group: "Golf", path: ["engagement", "avg_rounds_per_user"] },
+  { key: "golf_handicap", label: "Average handicap", group: "Golf", path: ["golf_metrics", "average_handicap"], now: true },
   // ── Revenue (Premium launched 20 Oct 2026) ──
   // Worked out against the live API, because it is easy to misread: the subscription counts
   // are subscriptions ACTIVE during the range, not ones started in it, and `mrr` is their
@@ -78,11 +91,20 @@ const FIELDS: {
   { key: "subs_monthly", label: "Monthly subscriptions", group: "Revenue", path: ["revenue", "active_monthly_subs"], card: { id: "subs", title: "Subscriptions", part: "Monthly" } },
   { key: "subs_yearly", label: "Yearly subscriptions", group: "Revenue", path: ["revenue", "active_yearly_subs"], card: { id: "subs", title: "Subscriptions", part: "Yearly" } },
   { key: "revenue_mrr", label: "MRR", group: "Revenue", path: ["revenue", "mrr"], money: true },
+  // Both match Big Wedge's own admin ("estimated average recurring revenue per subscriber per
+  // month" and "estimated revenue per subscription"), checked on 30 Oct 2026.
+  { key: "revenue_arpu", label: "Revenue per subscriber / month", group: "Revenue", path: ["revenue", "arpu"], money: true, now: true, card: { id: "per_sub", title: "Per subscriber", part: "A month" } },
+  { key: "revenue_per_sub", label: "Revenue per subscription", group: "Revenue", path: ["revenue", "average_revenue_per_user"], money: true, now: true, card: { id: "per_sub", title: "Per subscriber", part: "In total" } },
+  { key: "premium_share", label: "Premium share of users", group: "Revenue", path: ["business_growth", "free_vs_premium_ratio", "premium_pct"], unit: "%", now: true, card: { id: "subs", title: "Subscriptions", part: "Of all users" } },
+  { key: "churn_rate", label: "Subscription churn", group: "Revenue", path: ["business_growth", "user_churn_rate"], unit: "%", now: true },
   // Cash actually taken in the range, a yearly plan counted IN FULL in the month it is paid.
   // Big Wedge added it on 21 Oct 2026, but it does NOT yet follow the date range — so it is
   // only shown once `revenueIsRangeScoped` says it does. Until then the estimate stands in.
   { key: "revenue_cash", label: "Revenue this month", group: "Revenue", path: ["revenue", "cash_revenue"], money: true },
 ];
+
+/** Every field that is today's state for any range — dropped from a finished month's own read. */
+export const NOW_KEYS: string[] = FIELDS.filter((f) => f.now).map((f) => f.key);
 
 /**
  * Big Wedge's plan prices. Its API carries NO prices or payment amounts anywhere (checked
@@ -171,11 +193,14 @@ export function metricsFromReport(json: unknown): AnalyticsMetric[] {
   const money = currencyUnit(revenue.currency);
   const out: AnalyticsMetric[] = [];
   for (const f of FIELDS) {
-    const section = data[f.path[0]];
-    const value = section && typeof section === "object" ? (section as Record<string, unknown>)[f.path[1]] : undefined;
+    const value = f.path.reduce<unknown>(
+      (at, k) => (at && typeof at === "object" ? (at as Record<string, unknown>)[k] : undefined),
+      data,
+    );
     if (typeof value === "number" && Number.isFinite(value)) {
       const m: AnalyticsMetric = { key: f.key, label: f.label, value, group: f.group };
       if (f.card) m.card = f.card;
+      if (f.unit) m.unit = f.unit;
       if (f.money) {
         m.money = true;
         if (money) m.unit = money;
@@ -191,11 +216,20 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
   const bearer = await bigWedgeBearer({ baseUrl: base, storedToken: ctx.apiToken });
   if (!bearer.ok) throw new Error(bearer.error);
 
-  const { from, to } = monthRange(ctx.year, ctx.month, ctx.now ?? new Date());
-  const report = await getJson<unknown>(
-    `${base}/api/v1/analytics/overall-report/?start_date=${from}&end_date=${to}`,
-    bearer.token,
-  );
+  const now = ctx.now ?? new Date();
+  const running = isRunningMonth(ctx.year, ctx.month, now);
+  const { from, to } = monthRange(ctx.year, ctx.month, now);
+  const day = dayBeforeMonth(ctx.year, ctx.month);
+  // All three reads at once. The report alone takes ~4s at Big Wedge (30 Oct 2026); asked one
+  // after another a refresh took twice that. The day-before and feedback reads may fail
+  // without failing the month — what depends on them is left out, never guessed.
+  const [reportRead, beforeRead, feedbackRead] = await Promise.allSettled([
+    getJson<unknown>(`${base}/api/v1/analytics/overall-report/?start_date=${from}&end_date=${to}`, bearer.token),
+    getJson<unknown>(`${base}/api/v1/analytics/overall-report/?start_date=${day}&end_date=${day}`, bearer.token),
+    running ? getJson<unknown>(`${base}/api/v1/feedback/stats/`, bearer.token) : Promise.resolve(undefined),
+  ]);
+  if (reportRead.status === "rejected") throw reportRead.reason;
+  const report = reportRead.value;
   // If the range was not honoured the figures are "this month so far", whatever month was
   // asked for — storing them under another month would be a confident wrong figure.
   const applied = (report as { filters?: { applied_filter?: unknown } })?.filters?.applied_filter;
@@ -208,6 +242,22 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
   if (metrics.length === 0) {
     throw new Error("Big Wedge's analytics report answered but carried none of the expected figures.");
   }
+  // Today's-state figures say nothing about a month that has ended (see `now` on FIELDS).
+  if (!running) {
+    const nowKeys = new Set(NOW_KEYS);
+    for (let i = metrics.length - 1; i >= 0; i--) if (nowKeys.has(metrics[i].key)) metrics.splice(i, 1);
+  }
+  // Feedback: only "the last 30 days" exists, so it belongs to the month still running.
+  const recent = (feedbackRead.status === "fulfilled" ? feedbackRead.value : undefined) as
+    | { recent_count_30_days?: unknown; recent_count_7_days?: unknown }
+    | undefined;
+  if (running && typeof recent?.recent_count_30_days === "number") {
+    const card = { id: "feedback", title: "Feedback received" };
+    metrics.push({ key: "feedback_30d", label: "Feedback, last 30 days", value: recent.recent_count_30_days, group: "Feedback", card: { ...card, part: "Last 30 days" } });
+    if (typeof recent.recent_count_7_days === "number") {
+      metrics.push({ key: "feedback_7d", label: "Feedback, last 7 days", value: recent.recent_count_7_days, group: "Feedback", card: { ...card, part: "Last 7 days" } });
+    }
+  }
 
   // Revenue needs the day BEFORE the month too, for two reasons: to work the total out when
   // Big Wedge does not report it, and to check that the revenue it does report is for THIS
@@ -216,13 +266,8 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
   const counts = subCounts(report);
   const reportsCash = metrics.some((m) => m.key === "revenue_cash");
   if (counts || reportsCash) {
-    let before: unknown = undefined;
-    try {
-      const day = dayBeforeMonth(ctx.year, ctx.month);
-      before = await getJson<unknown>(`${base}/api/v1/analytics/overall-report/?start_date=${day}&end_date=${day}`, bearer.token);
-    } catch {
-      // Handled below as "could not check".
-    }
+    // Read alongside the month above; a failure here is "could not check".
+    const before: unknown = beforeRead.status === "fulfilled" ? beforeRead.value : undefined;
     const scoped = before === undefined ? null : revenueIsRangeScoped(report, before);
     const drop = (keep: (m: AnalyticsMetric) => boolean) => {
       for (let i = metrics.length - 1; i >= 0; i--) if (!keep(metrics[i])) metrics.splice(i, 1);
@@ -287,8 +332,8 @@ export const bigwedgeAdapter: AnalyticsAdapter = {
   // still hold them.
   retiredKeys: ["users_total", "users_returning"],
   // Today's state for any range asked, so a finished month keeps them from its last capture
-  // during the month (refreshed hourly, so within about an hour of month end).
-  carryAtMonthEnd: ["premium_subscribers", "subs_monthly", "subs_yearly", "revenue_mrr", "revenue_total"],
+  // during the month (refreshed every 15 minutes, so within 15 minutes of month end).
+  carryAtMonthEnd: ["premium_subscribers", "subs_monthly", "subs_yearly", "revenue_mrr", "revenue_total", ...NOW_KEYS],
   hint: "User analytics, month by month. Foundry logs in with the Big Wedge service account; a token is only a fallback.",
   fetchMonth,
 };

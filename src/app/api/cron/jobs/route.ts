@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
       return { stale: 0 };
     });
 
-    // ── Wiki Metrics: the month still running, about hourly ── (reads capture times only
+    // ── Wiki Metrics: the month still running, every 15 minutes ── (reads capture times only
     // unless one is over an hour old; a failure here must not fail the job worker)
     const metrics = await refreshRunningMonths().catch((err) => {
       console.error("[jobs] running-month metrics refresh failed", err);

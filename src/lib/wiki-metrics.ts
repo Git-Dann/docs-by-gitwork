@@ -133,8 +133,8 @@ export function isFinal(s: Pick<StoredSnapshot, "period" | "capturedAt">): boole
  *
  * Big Wedge's subscription counts, MRR and revenue total are today's state whatever range is
  * asked (see `revenueIsRangeScoped`), so the read that finalises a month cannot give them. The
- * last capture taken DURING that month can: the running month is refreshed hourly, so that is
- * within about an hour of month end. Those `keys` are carried from it into the final figures
+ * last capture taken DURING that month can: the running month is refreshed every 15 minutes, so
+ * that is within 15 minutes of month end. Those `keys` are carried from it into the final figures
  * when the final read lacks them. Nothing is carried from a capture taken outside the month.
  */
 export function carryMonthEndFigures(
@@ -258,12 +258,12 @@ export function selectMonthToDate(
 }
 
 /**
- * How old the running month's figures may get. An hour, not six: the month still running is
+ * How old the running month's figures may get: 15 minutes (it was six hours, then an hour): the month still running is
  * the one people compare with the client's own live admin, and six hours behind read as wrong
  * (Big Wedge, 30 Oct 2026: 131 subscriptions in Foundry, 134 in their admin). It is refreshed
  * in the background (`refreshRunningMonths`), so a client reading it never waits on a fetch.
  */
-export const MONTH_TO_DATE_STALE_MS = 60 * 60 * 1000;
+export const MONTH_TO_DATE_STALE_MS = 15 * 60 * 1000;
 
 /** True when the running month has no capture, or one older than MONTH_TO_DATE_STALE_MS. */
 export function monthToDateStale(snapshots: StoredSnapshot[], now: Date): boolean {

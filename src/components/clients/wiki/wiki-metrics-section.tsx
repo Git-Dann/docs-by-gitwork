@@ -482,7 +482,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
               // fetched 16 Oct" while October so far had been fetched that day.
               <p className="mt-0.5 text-[12px] text-[var(--text-4)]" title={new Date(lastRefreshed).toLocaleString("en-GB")}>
                 Last refreshed {whenRefreshed(lastRefreshed)}
-                {metrics.monthToDate ? " · updates itself hourly" : ""}
+                {metrics.monthToDate ? " · updates itself every 15 min" : ""}
               </p>
             ) : null}
           </div>

@@ -48,8 +48,8 @@ beforeEach(() => {
 });
 
 describe("refreshRunningMonths", () => {
-  it("refreshes a running month over an hour old", async () => {
-    setup("wedge-1", "bigwedge", ago(90));
+  it("refreshes a running month over 15 minutes old", async () => {
+    setup("wedge-1", "bigwedge", ago(20));
     const r = await refreshRunningMonths(NOW);
     expect(r.refreshed).toEqual(["wedge-1"]);
     expect(fetchMonth).toHaveBeenCalled();
@@ -57,7 +57,7 @@ describe("refreshRunningMonths", () => {
   });
 
   it("⚠️ leaves a fresh one alone — no call to the client's API", async () => {
-    setup("wedge-2", "bigwedge", ago(20));
+    setup("wedge-2", "bigwedge", ago(5));
     const r = await refreshRunningMonths(NOW);
     expect(r.refreshed).toEqual([]);
     expect(fetchMonth).not.toHaveBeenCalled();
