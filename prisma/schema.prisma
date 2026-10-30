@@ -2113,6 +2113,10 @@ model ClientChangelogEntry {
   releasedAt DateTime?
   /// Review state — PENDING until the release notes are approved for publishing.
   status     WikiEntryStatus @default(PENDING)
+  /// When, and by whom (a client user's or a teammate's display name), it was approved.
+  /// Set on the move to APPROVED, cleared on the move back to PENDING.
+  approvedAt     DateTime?
+  approvedByName String?
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 

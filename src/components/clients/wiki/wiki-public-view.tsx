@@ -117,6 +117,29 @@ export function WikiPublicView({
     (onlySection as WikiSection) ?? deepLink ?? "dashboard",
   );
   const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
+  const [changelog, setChangelog] = useState(wiki.changelog);
+
+  // The client approves a release from here. Only approving: a client never un-approves,
+  // and the server ignores anything not pending (src/server/wiki-changelog-access.ts).
+  const handleApproveRelease = useCallback(
+    async (ids: string[], status: string) => {
+      if (status !== "APPROVED") return;
+      const res = await apiFetch<{ approved: number; approvedByName: string }>(`/api/wiki/${token}/changelog/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const at = new Date().toISOString();
+      setChangelog((prev) =>
+        prev.map((e) =>
+          ids.includes(e.id) && e.status !== "APPROVED"
+            ? { ...e, status: "APPROVED", approvedAt: at, approvedByName: res.approvedByName }
+            : e,
+        ),
+      );
+    },
+    [token],
+  );
 
   const handleSetStatus = useCallback(
     async (ids: string[], status: string) => {
@@ -303,11 +326,13 @@ export function WikiPublicView({
     if (activeSection === "changelog") {
       return (
         <ChangelogSection
-          entries={wiki.changelog}
+          entries={changelog}
           onAdd={() => {}}
           onDelete={async () => {}}
-          onToggleStatus={async () => {}}
+          onToggleStatus={handleApproveRelease}
           readOnly
+          canApprove
+          audience="client"
         />
       );
     }

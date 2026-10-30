@@ -81,6 +81,8 @@ export interface ChangelogPing {
   version: string;
   title: string;
   platform: string;
+  /** Who approved it, named in the approval ping. */
+  approvedBy?: string | null;
 }
 
 /**
@@ -118,7 +120,8 @@ export function changelogPendingText(clientName: string, pings: ChangelogPing[])
 export function changelogApprovedText(clientName: string, pings: ChangelogPing[]): string {
   const { version, title } = pings[0];
   const on = platformList(pings.map((p) => p.platform));
-  return `:white_check_mark: *${clientName}* changelog *v${version}* approved${on ? ` for ${on}` : ""} — "${title}"`;
+  const by = pings.find((p) => p.approvedBy)?.approvedBy;
+  return `:white_check_mark: *${clientName}* changelog *v${version}* approved${on ? ` for ${on}` : ""}${by ? ` by ${by}` : ""} — "${title}"`;
 }
 
 const pingKey = (p: ChangelogPing) => `${p.wikiId}\u0000${p.version}`;

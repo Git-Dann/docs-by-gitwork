@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { addChangelogEntry } from "@/server/wiki";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { resolveInternalChangelog } from "@/server/wiki-changelog-access";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -20,16 +19,13 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
-    const workspaceId = workspace.id;
-    const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId, slug } },
-      select: { id: true },
-    });
-    if (!client) return apiError("Client not found", 404);
+    // In the caller's own workspace (it used the default workspace), and only for a client
+    // they can see.
+    const { clientId } = await resolveInternalChangelog(req, slug, "add to this changelog");
+    if (!clientId) return apiError("Client not found", 404);
 
     const body = bodySchema.parse(await req.json());
-    const entry = await addChangelogEntry(client.id, body);
+    const entry = await addChangelogEntry(clientId, body);
     return apiOk(entry);
   } catch (err) {
     return fromError(err);
