@@ -36,6 +36,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useCreateStaffRecord, useStaffRoster, useUpdateStaffDetails } from "@/hooks/use-staff";
 import { useDocumentSettings, useHrOverview, useSetArchived, useUpdateDocumentSettings } from "@/hooks/use-hr";
 import { STAFF_DOCUMENT_LABEL, STAFF_DOCUMENT_TYPES, type HrDocumentSettings } from "@/lib/hr-documents";
+import { StaffHrTour, useStaffHrTour } from "@/components/staff/staff-hr-tour";
 import { COMING_UP_LABEL, dateAttention } from "@/lib/hr";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -485,14 +486,14 @@ function DocumentSettingsDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function HrOverviewCard({ basePath }: { basePath: string }) {
+function HrOverviewCard({ basePath, onTour }: { basePath: string; onTour: () => void }) {
   const overview = useHrOverview(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const data = overview.data;
   const appHref = (href: string) => (basePath === "/app/staff" ? href : href.replace("/app/staff", basePath));
   return (
-    <section className="widget-card">
+    <section className="widget-card" data-tour="staff-hr">
       <div className="widget-header">
         <span className="widget-header__label">
           <span className="widget-header__label--number">02</span>
@@ -503,6 +504,7 @@ function HrOverviewCard({ basePath }: { basePath: string }) {
           <span className="widget-header__status">Next 60 days</span>
           <button
             type="button"
+            data-tour="staff-doc-settings"
             onClick={() => setSettingsOpen(true)}
             className="font-mono text-[10px] font-semibold uppercase tracking-[1px] text-[var(--brand-600)] hover:underline"
           >
@@ -560,6 +562,11 @@ function HrOverviewCard({ basePath }: { basePath: string }) {
           )}
         </div>
       </div>
+      <div className="border-t border-[var(--border-3)] px-4 py-2">
+        <button type="button" onClick={onTour} className="text-[12px] text-[var(--text-3)] hover:text-[var(--text-1)] hover:underline">
+          Show the tour again
+        </button>
+      </div>
       {settingsOpen ? <DocumentSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
     </section>
   );
@@ -597,6 +604,8 @@ export function StaffRoster({
   const tree = useMemo(() => buildOrgTree(shown), [shown]);
   const filtered = Boolean(filter.q || filter.department || filter.employmentType);
   const archived = view === "archived";
+  // The tour points at the cards and the For HR card, so it waits for both to be on screen.
+  const tour = useStaffHrTour({ canManageHr, archived, hasPeople: groups.length > 0 && layout === "cards" });
 
   return (
     <div className="space-y-5">
@@ -614,7 +623,7 @@ export function StaffRoster({
           ) : null}
         </div>
         <div className="widget-body space-y-5">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2" data-tour="staff-filters">
             <Segmented
               label="Show"
               value={view}
@@ -709,8 +718,8 @@ export function StaffRoster({
           ) : layout === "org" && !archived ? (
             <OrgBranch nodes={tree} basePath={basePath} />
           ) : (
-            groups.map((g) => (
-              <div key={g.id}>
+            groups.map((g, gi) => (
+              <div key={g.id} data-tour={gi === 0 ? "staff-people" : undefined}>
                 <p className="widget-data-label mb-1 text-[var(--text-4)]">
                   {g.label} <span className="text-[var(--text-4)]">· {g.people.length}</span>
                 </p>
@@ -732,7 +741,8 @@ export function StaffRoster({
         {editing ? <DetailsDialog person={editing} people={people} onClose={() => setEditing(null)} /> : null}
         {adding ? <AddPersonDialog onClose={() => setAdding(false)} /> : null}
       </section>
-      {canManageHr && !archived ? <HrOverviewCard basePath={basePath} /> : null}
+      {canManageHr && !archived ? <HrOverviewCard basePath={basePath} onTour={tour.start} /> : null}
+      {canManageHr ? <StaffHrTour open={tour.open} onClose={tour.close} /> : null}
     </div>
   );
 }

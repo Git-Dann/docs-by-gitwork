@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { drainJobs } from "@/server/jobs/runner";
 import { enqueueJob } from "@/server/jobs/queue";
 import { checkMonitorsWatchdog } from "@/server/wiki-monitors";
+import { sendHrDigests } from "@/server/hr/digest";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -65,7 +66,13 @@ export async function GET(request: NextRequest) {
       return { stale: 0 };
     });
 
-    return apiOk({ reconciled, ...drain, staleMonitors: monitors.stale });
+    // ── HR's Monday digest ── (does nothing outside Monday 08:00+ UK, or once sent this week)
+    const hrDigest = await sendHrDigests().catch((err) => {
+      console.error("[jobs] HR digest failed", err);
+      return null;
+    });
+
+    return apiOk({ reconciled, ...drain, staleMonitors: monitors.stale, hrDigest });
   } catch (error) {
     return fromError(error);
   }

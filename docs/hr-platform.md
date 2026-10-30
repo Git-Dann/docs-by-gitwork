@@ -134,9 +134,29 @@ off. Me mode drops the way back to People and the archive/delete controls; nothi
 - **Grid:** Me makes the Super Admin row six units. Six columns wait for 1400px (146px cards at
   1280 otherwise); below that the row is two columns with Team full width.
 
+## The Staff tour, and the Monday HR digest
+
+- **Tour** (`src/components/staff/staff-hr-tour.tsx`, rule in `src/lib/staff-tour.ts`): EasyUI's
+  Product Tour over the real page. It opens on its own once, for someone with `hr.manage`, on the
+  active list, once the team has loaded. It walks the people cards, the filters, the For HR card
+  and Document settings, and ends on how personal details are logged. "Seen" is remembered per
+  browser (unreadable storage counts as seen); **Show the tour again** sits at the foot of For HR.
+- **Digest** (`src/server/hr/digest.ts`, wording and timing in `src/lib/hr-digest.ts`): on
+  Mondays from 08:00 UK time, each person with `hr.manage` gets what's coming up in the next 30
+  days, how many documents are waiting to be checked and whose record is incomplete, in the bell
+  (`hr.weekly_digest`, in-app only) and by email. A quiet week sends nothing.
+  - **Who:** active members whose permissions include `hr.manage`. A Super Admin only with an
+    explicit grant: `resolveEffectivePermissions` hands them everything, and a digest to people who
+    could look but never asked is noise.
+  - **Once a week:** `Workspace.hrDigestWeek` is claimed with a conditional update before sending.
+    A Monday the worker misses is skipped, not sent late.
+  - **No personal details by email:** right-to-work dates come from the encrypted tier, so they're
+    counted ("1 right-to-work date: see Staff"), not listed.
+  - Runs from the every-minute `jobs` worker, not a cron line of its own, because several
+    documented cron lines were never installed and a digest that never runs looks like a quiet week.
+
 ## Next
 
 1. E-signature for contracts and NDAs, and policies to sign from Me.
-2. A first-visit tour of Staff for HR, and a weekly HR digest.
-3. One page per developer: the developer review folded into the Staff profile.
-4. Phases 2 to 4: see the spec doc.
+2. One page per developer: the developer review folded into the Staff profile.
+3. Phases 2 to 4: see the spec doc.

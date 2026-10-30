@@ -60,6 +60,8 @@ export const NOTIFICATION_EVENTS = [
   "wiki.sheet_client_edit",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
+  // HR's Monday digest: what's coming up, to check and incomplete (src/server/hr/digest.ts)
+  "hr.weekly_digest",
   // A message a person wrote and addressed to you (src/server/team-messages.ts)
   "team.message",
 ] as const;
@@ -123,6 +125,10 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.
   "foreman.digest": ["inApp", "push", "slack"],
+  // In-app only: the same digest is also emailed directly by src/server/hr/digest.ts (the
+  // dispatcher's email channel is still deferred), so listing "email" here would one day
+  // send it twice. Never Slack: it names people and what their records lack.
+  "hr.weekly_digest": ["inApp"],
   // ⚠️ The ONLY event routed to `mobile`, and the reason that channel exists.
   //
   // Everything else in this table is something the system noticed. This is the one
