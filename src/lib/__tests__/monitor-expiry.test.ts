@@ -9,6 +9,7 @@ import {
   heartbeatStatus,
   heartbeatCheckDue,
   heartbeatDeadline,
+  sslTier,
 } from "../monitor-expiry";
 
 const NOW = new Date("2026-10-30T12:00:00Z");
@@ -108,5 +109,20 @@ describe("heartbeats", () => {
     expect(heartbeatCheckDue({ ...base, lastPingAt, lastCheckedAt: new Date(NOW.getTime() - 0.5 * MIN) }, NOW)).toBe(false);
     // On time and recently checked — not due.
     expect(heartbeatCheckDue({ ...base, lastPingAt: new Date(NOW.getTime() - 10 * MIN), lastCheckedAt: new Date(NOW.getTime() - 5 * MIN) }, NOW)).toBe(false);
+  });
+});
+
+describe("certificates that renew themselves", () => {
+  it("says nothing at 30 days for Let's Encrypt and other ACME issuers — that is renewal on schedule", () => {
+    expect(sslTier(inDays(29), "Let's Encrypt", NOW)).toBeNull();
+    expect(sslTier(inDays(29), "Google Trust Services", NOW)).toBeNull();
+  });
+  it("still warns once renewal has evidently failed", () => {
+    expect(sslTier(inDays(13), "Let's Encrypt", NOW)).toBe("14d");
+    expect(sslTier(inDays(-1), "Let's Encrypt", NOW)).toBe("expired");
+  });
+  it("keeps the 30-day warning for certificates renewed by hand", () => {
+    expect(sslTier(inDays(29), "DigiCert Inc", NOW)).toBe("30d");
+    expect(sslTier(inDays(29), null, NOW)).toBe("30d");
   });
 });

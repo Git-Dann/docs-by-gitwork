@@ -18,6 +18,23 @@ export function daysLeft(expiresAt: Date, now: Date): number {
   return Math.floor((expiresAt.getTime() - now.getTime()) / DAY_MS);
 }
 
+/**
+ * Issuers whose certificates renew themselves around 30 days out (ACME and managed certificates).
+ * For these, 30 days left is renewal happening on schedule, not a problem — so warning starts at
+ * 14 days, by which time the renewal has evidently failed.
+ */
+const AUTO_RENEWING_ISSUER = /let'?s ?encrypt|isrg|google trust services|zerossl|amazon|cloudflare/i;
+
+export function isAutoRenewingIssuer(issuer: string | null | undefined): boolean {
+  return !!issuer && AUTO_RENEWING_ISSUER.test(issuer);
+}
+
+/** The SSL tier for a certificate, allowing for issuers that renew on their own. */
+export function sslTier(expiresAt: Date | null, issuer: string | null, now: Date): ExpiryTier | null {
+  const tier = expiryTier("ssl", expiresAt, now);
+  return tier === "30d" && isAutoRenewingIssuer(issuer) ? null : tier;
+}
+
 /** Which warning tier an expiry is in, or null when it is comfortably far off. */
 export function expiryTier(kind: "ssl" | "domain", expiresAt: Date | null, now: Date): ExpiryTier | null {
   if (!expiresAt) return null;

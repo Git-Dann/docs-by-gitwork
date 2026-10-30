@@ -9242,6 +9242,11 @@ where most outages were reported by the client first.
   per tier** (`sslAlertedTier` / `domainAlertedTier`), cleared on renewal. A failed read keeps
   the last tier: "could not look" is not "renewed". Monitors sharing a domain share one lookup
   and one alert. Hosts on a platform suffix (`*.vercel.app`) have no domain to renew.
+  ⚠️ **One alert per certificate, not per monitor:** monitors on the same host share one TLS read,
+  one stored tier and one post (two Foundry monitors on one host posted twice, 30 Oct 2026).
+  **Auto-renewing issuers** (Let's Encrypt, Google Trust Services, ZeroSSL, Amazon, Cloudflare)
+  skip the 30-day warning: they renew themselves around then, so it is noise. They warn from 14
+  days, when renewal has evidently failed (`sslTier`).
 - **Heartbeat monitors** (`HEARTBEAT` type, `wiki-monitors/heartbeat.ts`). Foundry gives the
   monitor a ping URL, `/api/public/heartbeat/<token>` (`/fail` reports a failed run). Down when
   no ping arrives within the interval plus grace (default a fifth of the interval, 5–60 min),
