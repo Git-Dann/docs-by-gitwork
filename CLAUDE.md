@@ -9163,7 +9163,7 @@ read-only.
   Developer+ with access to that client, and scope every entry to the client in the URL (404
   otherwise). Developer, not `canManageClients`, because developers write release notes.
 
-## 79. Recent Changes (October 2026) — Every client's monitors on the Gitwork wiki
+## 104. Recent Changes (October 2026) — Every client's monitors on the Gitwork wiki
 
 The Gitwork client (`gitwork`, `src/lib/agency-client.ts`) is us, and its wiki's Monitors section
 now opens with an **all-clients board** (`monitor-board.tsx`) above Gitwork's own monitors: a
