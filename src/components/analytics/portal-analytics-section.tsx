@@ -34,6 +34,7 @@ import {
 } from "@/components/analytics/analytics-widgets";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { formatHeatmapDay, heatmapWeekCount } from "@/lib/charts/activity-heatmap";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 function statusColor(s: TaskStatus): string {
   switch (s) {
@@ -141,7 +142,7 @@ export function PortalAnalyticsSection({ days }: { days?: number }) {
     return (
       <div className="grid grid-cols-12 gap-4">
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="col-span-12 h-36 animate-pulse rounded-[10px] bg-[var(--surface-1)] sm:col-span-6 lg:col-span-3" />
+          <Skeleton key={i} className="col-span-12 h-36 rounded-[10px] sm:col-span-6 lg:col-span-3" />
         ))}
       </div>
     );

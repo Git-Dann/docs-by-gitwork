@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
 import { cn } from "@/lib/format";
+import { Spinner } from "@/components/ui/motion/spinner";
 
 /**
  * A tiny "Saved · just now" / "Saving…" pip designed to live in a SettingsCard's `right`
@@ -49,7 +50,7 @@ export function SavedIndicator({
           className,
         )}
       >
-        <span className="inline-block h-2 w-2 animate-spin rounded-full border border-[var(--text-4)] border-t-transparent" />
+        <Spinner size="xs" tone="muted" />
         Saving…
       </span>
     );

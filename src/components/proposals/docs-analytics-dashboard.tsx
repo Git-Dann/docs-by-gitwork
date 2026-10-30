@@ -20,6 +20,7 @@ import {
 } from "@/hooks/use-document-analytics";
 import { MONO, WidgetCard } from "@/components/analytics/analytics-widgets";
 import { FunnelChart } from "@/components/ui/easyui/funnel-chart";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 const TYPE_OPTIONS = [
   "ALL",
@@ -96,7 +97,7 @@ export function DocsAnalyticsDashboard() {
       {isPending && !data ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+            <Skeleton key={i} className="h-24 rounded-[10px]" />
           ))}
         </div>
       ) : null}

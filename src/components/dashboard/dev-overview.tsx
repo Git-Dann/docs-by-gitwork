@@ -10,6 +10,7 @@ import { MyDay } from "@/components/tasks/my-day";
 import { NewTaskButton } from "@/components/tasks/new-task-button";
 import { cn } from "@/lib/format";
 import type { TaskStatus } from "@/types/tasks";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 const PAGE_SIZE = 5;
 
@@ -122,7 +123,7 @@ export function DevOverview() {
 
           {tasksQuery.isPending || !userId ? (
             <div className="widget-body">
-              <div className="h-24 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+              <Skeleton className="h-24 rounded-[8px]" />
             </div>
           ) : allTasks.length === 0 ? (
             <div className="widget-body">
@@ -178,7 +179,7 @@ export function DevOverview() {
 
           {clientsQuery.isPending ? (
             <div className="widget-body">
-              <div className="h-24 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+              <Skeleton className="h-24 rounded-[8px]" />
             </div>
           ) : clients.length === 0 ? (
             <div className="widget-body">

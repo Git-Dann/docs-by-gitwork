@@ -16,6 +16,7 @@ import { TaskPriorityBadge, TaskLabelBadge } from "@/components/tasks/task-badge
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import { useAccount } from "@/hooks/use-account";
 import { PlanQuickAdd } from "@/components/tasks/plan-quick-add";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 /** "From the plan" shows this many before "Show all". */
 const FROM_PLAN_PREVIEW = 4;
@@ -54,7 +55,7 @@ export function MyDay() {
   }, [data]);
 
   if (isPending || !data) {
-    return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <SkeletonBlock />;
   }
 
   async function start(task: TaskDTO) {

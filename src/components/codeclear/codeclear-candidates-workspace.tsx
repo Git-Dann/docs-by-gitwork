@@ -44,6 +44,7 @@ import {
   type CandidateProfileValue,
 } from "@/components/codeclear/candidate-profile-form";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 /** Card grid (default) vs the dense table. Persisted in the URL as ?view=. */
 type DevViewMode = "cards" | "table";
@@ -509,10 +510,7 @@ export function CodeClearCandidatesWorkspace() {
           // branch isn't hit again.
           <div className="mt-5 space-y-2">
             {Array.from({ length: 5 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="h-12 animate-pulse rounded-[8px] bg-[var(--surface-1)]"
-              />
+              <Skeleton key={idx} className="h-12 rounded-[8px]" />
             ))}
           </div>
         ) : (

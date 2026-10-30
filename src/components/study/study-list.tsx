@@ -10,6 +10,8 @@ import { PERSONA_COLORS } from "@/config/study-personas";
 import { cn, formatDate } from "@/lib/format";
 import { Button, buttonStyles } from "@/components/ui/button";
 import type { StudyListItem } from "@/server/study";
+import { Skeleton } from "@/components/ui/motion/skeleton";
+import { StatusDot } from "@/components/ui/motion/status-dot";
 
 type Filter = "all" | "running" | "draft" | "completed";
 
@@ -47,7 +49,7 @@ function StatusChip({ status }: { status: string }) {
       )}
     >
       {status === "RUNNING" || status === "PLAN_GENERATING" ? (
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+        <StatusDot tone="warning" motion="pulse" size="xs" />
       ) : null}
       {STATUS_LABEL[status] ?? status}
     </span>
@@ -269,7 +271,7 @@ export function StudyList() {
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {[1, 2].map((i) => (
-            <div key={i} className="h-40 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+            <Skeleton key={i} className="h-40 rounded-[10px] border border-[var(--border-2)]" />
           ))}
         </div>
       ) : filtered.length === 0 ? (

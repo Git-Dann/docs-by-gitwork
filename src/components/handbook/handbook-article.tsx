@@ -21,6 +21,7 @@ import { Button, buttonStyles } from "@/components/ui/button";
 import { ArticleMarkdown } from "@/components/handbook/article-markdown";
 import { ArticleHero } from "@/components/handbook/article-hero";
 import { HandbookForm } from "@/components/handbook/handbook-form";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 export function HandbookArticleView({ articleId }: { articleId: string }) {
   const router = useRouter();
@@ -33,7 +34,7 @@ export function HandbookArticleView({ articleId }: { articleId: string }) {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-3xl">
-        <div className="h-72 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+        <Skeleton className="h-72 rounded-[10px] border border-[var(--border-2)]" />
       </div>
     );
   }

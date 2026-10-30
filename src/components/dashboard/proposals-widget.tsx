@@ -4,6 +4,7 @@ import Link from "next/link";
 import { DocumentTextIcon } from "@heroicons/react/24/solid";
 import { useProposalList } from "@/hooks/use-proposals";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT:            "bg-[var(--surface-2)] text-[#475569]",
@@ -30,7 +31,7 @@ export default function ProposalsWidget({ size, index }: { size: WidgetSize; ind
   const { data, isLoading } = useProposalList({});
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const proposals = data?.proposals ?? [];

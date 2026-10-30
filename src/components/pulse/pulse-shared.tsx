@@ -7,6 +7,7 @@ import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { PULSE_FRAMEWORK, PULSE_EXECUTABLE_CHECK_TOTAL, PULSE_EVIDENCE_REQUIREMENT_TOTAL, PULSE_CATEGORY_TOTAL, type PulseFrameworkCategory } from "@/config/pulse-framework";
 import type { PulseCheckStatus, PulseScanStatus, PulseUrgency, PulseBusinessValue, PulseEffort } from "@/types/pulse";
+import { StatusDot } from "@/components/ui/motion/status-dot";
 
 // ── Framework coverage ─────────────────────────────────────────────────────────
 // Categories grouped into four themes so "what Pulse checks" reads as a capability
@@ -129,12 +130,7 @@ export function MonitorDot({ monitor }: { monitor: { active: boolean; alerting: 
     return <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[var(--border-3)]" title="Not monitored" />;
   }
   if (monitor.alerting) {
-    return (
-      <span className="relative inline-flex h-2 w-2" title="Monitor alerting">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-      </span>
-    );
+    return <StatusDot tone="danger" motion="ping" size="sm" label="Monitor alerting" />;
   }
   return <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" title="Monitored" />;
 }
@@ -174,7 +170,7 @@ export function PulseScanStatusBadge({ status }: { status: PulseScanStatus }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium", styles[status])}>
       {status === "RUNNING" && (
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+        <StatusDot tone="info" motion="pulse" size="xs" />
       )}
       {labels[status]}
     </span>

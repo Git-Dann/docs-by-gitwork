@@ -14,6 +14,7 @@ import { useChecks, useSaveCheck, useResetCheck, useCheckStats, type CheckConfig
 import { CHECK_CATEGORIES } from "@/server/checks-registry";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 
 const SEVERITY_LABELS: Record<string, string> = {
   WARN: "Warning",
@@ -75,10 +76,7 @@ export function ChecksPanel() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-3)]">
-        <ArrowPathIcon className="size-4 animate-spin" />
-        Loading checks…
-      </div>
+      <LoadingState label="Loading checks…" className="py-8" />
     );
   }
 

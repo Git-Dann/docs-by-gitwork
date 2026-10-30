@@ -8,8 +8,10 @@
  * The colours are tokens (`[data-halloween]` in globals.css), set by the ThemeProvider, which
  * also decides where it can show (`HALLOWEEN_PATHS`). Nothing is drawn here:
  *   - the toggle is Tabler's outline pumpkin, to match the bell beside it;
- *   - the pumpkin and bats are Microsoft's Fluent Emoji (MIT, via Iconify); the ghosts mix
- *     Fluent, Google's Noto (Apache-2.0) and Tabler, so no two faces match;
+ *   - the pumpkin is Microsoft's Fluent Emoji (MIT, via Iconify); the ghosts mix Fluent,
+ *     Google's Noto (Apache-2.0) and Tabler, so no two faces match;
+ *   - the bats are a Lottie (public/motion/bat.json) on the shared player (ui/motion/lottie);
+ *   - the spider peeks from the top-right corner and drops when clicked (halloween-spider.tsx);
  *   - the fog is Vanta's FOG shader (MIT) on three.js, loaded only while the theme is on.
  *
  * Two layers, and neither ever takes a click (`pointer-events: none`, `aria-hidden`, no print):
@@ -26,10 +28,11 @@ import { Icon } from "@iconify/react";
 import jackOLantern from "@iconify-icons/fluent-emoji-flat/jack-o-lantern";
 import fluentGhost from "@iconify-icons/fluent-emoji-flat/ghost";
 import notoGhost from "@iconify-icons/noto/ghost";
-import batIcon from "@iconify-icons/fluent-emoji-flat/bat";
 import { IconGhost3Filled, IconPumpkinScary } from "@tabler/icons-react";
 import { cn } from "@/lib/format";
 import { useTheme } from "@/components/providers/theme-provider";
+import { Lottie } from "@/components/ui/motion/lottie";
+import { HalloweenSpider } from "@/components/seasonal/halloween-spider";
 
 /** The setting lives in the browser, so the server always renders "off"; match it until mounted. */
 function useHalloweenShown(): boolean {
@@ -88,10 +91,17 @@ function Ghost({ face, size }: { face: GhostFace; size: number }) {
   return <Icon icon={face === "noto" ? notoGhost : fluentGhost} width={size} height={size} className="halloween-glow" />;
 }
 
+/**
+ * The bats are a Lottie (public/motion/bat.json): a black silhouette beating its wings, drawn in
+ * a deep violet so it reads against the midnight ground, with the same glow as the ghosts.
+ * One file, fetched once, shared by every bat.
+ */
 const BATS = [
-  { top: "7%", size: 34, duration: 26, delay: -4 },
-  { top: "13%", size: 28, duration: 34, delay: -19 },
+  { top: "5%", size: 84, duration: 26, delay: -4 },
+  { top: "12%", size: 64, duration: 34, delay: -19 },
+  { top: "31%", size: 52, duration: 41, delay: -30 },
 ] as const;
+const BAT_COLOR = "#2B2550";
 
 /** Ghosts and bats, behind the content. Render inside the shell root, which must be `isolate`. */
 export function HalloweenScene() {
@@ -119,13 +129,20 @@ export function HalloweenScene() {
           className="halloween-drift absolute left-0"
           style={{ top: b.top, animationDuration: `${b.duration}s`, animationDelay: `${b.delay}s` }}
         >
-          <span className="halloween-flap block">
-            <Icon icon={batIcon} width={b.size} height={b.size} />
-          </span>
+          <Lottie src="/motion/bat.json" color={BAT_COLOR} speed={0.9 + i * 0.12} className="halloween-bat-glow" style={{ width: b.size, height: b.size }} />
         </span>
       ))}
     </div>
   );
+}
+
+/**
+ * The spider in the top-right corner (halloween-spider.tsx). Render it only where the shell
+ * shows its header band: it hangs in that band's right gutter.
+ */
+export function HalloweenSpiderSlot() {
+  if (!useHalloweenShown()) return null;
+  return <HalloweenSpider />;
 }
 
 /** The fog, in front of the content. */

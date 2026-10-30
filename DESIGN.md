@@ -1119,6 +1119,11 @@ The full token and component reference lives with its source, in `Git-Dann/canva
 | Standard | 200ms | ease-in-out | Panel slide, widget expand |
 | Gentle | 300ms | ease-in-out | Modal open, drawer slide |
 
+**Use the motion library, not a new animation.** Spinners, skeletons, status dots, entrances,
+count-ups and Lottie illustrations are shared components in `src/components/ui/motion/`, catalogued
+in `docs/motion.md` and live in Settings → Labs → Motion library. CSS motion goes still on its own
+under reduced motion (layout.tsx); JS-driven motion (framer-motion, rAF, Lottie) must check for itself.
+
 ---
 
 ## Iteration Guide

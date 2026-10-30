@@ -37,6 +37,7 @@ import { StarterForm } from "@/components/starters/starter-form";
 import { StarterPromptEditor, type StarterEditorPicks } from "@/components/starters/starter-prompt-editor";
 import { StarterVersionsModal } from "@/components/starters/starter-versions-modal";
 import type { StarterType } from "@/server/starters";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 const TYPE_LABEL: Record<StarterType, string> = {
   PROMPT: "Prompt",
@@ -86,7 +87,7 @@ export function StarterDetail({ starterId }: { starterId: string }) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   if (isLoading) {
-    return <div className="h-64 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />;
+    return <SkeletonBlock className="border border-[var(--border-2)]" />;
   }
   if (!starter) {
     return (

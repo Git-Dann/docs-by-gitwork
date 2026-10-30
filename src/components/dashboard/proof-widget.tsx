@@ -4,12 +4,13 @@ import Link from "next/link";
 import { ClipboardDocumentCheckIcon } from "@heroicons/react/24/solid";
 import { useProofDocuments } from "@/hooks/use-proof";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 export default function ProofWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = useProofDocuments();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const docs = data?.documents ?? [];

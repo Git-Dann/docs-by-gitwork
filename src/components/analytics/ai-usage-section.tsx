@@ -21,6 +21,7 @@ import {
   analyticsTh,
   analyticsThStyle,
 } from "@/components/analytics/analytics-widgets";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 export function AiUsageSection({ days }: { days?: number }) {
   const { data, isPending, error } = useAiUsageAnalytics({ days });
@@ -33,7 +34,7 @@ export function AiUsageSection({ days }: { days?: number }) {
     return (
       <div className="grid grid-cols-12 items-start gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="col-span-12 h-40 animate-pulse rounded-[10px] bg-[var(--surface-1)] sm:col-span-6 lg:col-span-4" />
+          <Skeleton key={i} className="col-span-12 h-40 rounded-[10px] sm:col-span-6 lg:col-span-4" />
         ))}
       </div>
     );

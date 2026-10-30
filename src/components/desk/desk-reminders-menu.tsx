@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardDocumentListIcon, PlusIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 import {
   useDeskReminders,
   useCreateDeskReminder,
@@ -128,7 +129,7 @@ function RemindersPanel() {
 
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {reminders.isPending ? (
-          <div className="h-16 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-16 rounded-[8px]" />
         ) : items.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-[var(--text-4)]">
             Nothing jotted down yet.

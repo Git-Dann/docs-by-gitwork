@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import { useProposalList } from "@/hooks/use-proposals";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 const SIGN_OFF = ["IN_REVIEW", "PRODUCT_SIGN_OFF", "TECH_SIGN_OFF"];
 const STATUS_LABEL: Record<string, string> = {
@@ -32,7 +33,7 @@ export function ProposalsSignoffCard() {
 
       <div className="widget-body space-y-1.5">
         {isLoading ? (
-          <div className="h-24 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-24 rounded-[8px]" />
         ) : awaiting.length === 0 ? (
           <p className="py-6 text-center text-xs text-[var(--text-4)]">Nothing awaiting sign-off.</p>
         ) : (

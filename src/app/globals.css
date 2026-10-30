@@ -2013,6 +2013,16 @@ h2, h3, h4, h5 {
 .color-input-fill::-webkit-color-swatch { border: none; border-radius: 6px; }
 .color-input-fill::-moz-color-swatch { border: none; border-radius: 6px; }
 
+/* ── Motion: sheet entrances (docs/motion.md) ──
+   Side drawers and bottom sheets arrive the same way everywhere: the backdrop fades, the
+   panel slides in from its edge. Reduced motion is handled by the global rule in layout.tsx. */
+.motion-backdrop-in { animation: motion-fade-in 180ms ease-out both; }
+.motion-sheet-right { animation: motion-sheet-right 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.motion-sheet-up { animation: motion-sheet-up 240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes motion-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes motion-sheet-right { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes motion-sheet-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+
 /* ── Halloween scene (src/components/seasonal/halloween.tsx) ── */
 /* The page background behind the scene goes see-through, so the scene shows in the gaps between
    cards and never on top of them. Cards, inputs and buttons keep their own surfaces. */
@@ -2045,13 +2055,9 @@ h2, h3, h4, h5 {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-14px); }
 }
-/* Wings beat sideways (a horizontal squeeze), never a vertical pulse. */
-.halloween-flap { animation: halloween-flap 0.35s ease-in-out infinite; }
-@keyframes halloween-flap {
-  0%, 100% { transform: scaleX(1); }
-  50% { transform: scaleX(0.6); }
-}
 .halloween-glow { filter: drop-shadow(0 0 10px rgba(214, 208, 255, 0.55)); }
+/* The bat is a dark silhouette; a rim of the ghosts' light picks its shape out of the night. */
+.halloween-bat-glow { filter: drop-shadow(0 0 1px rgba(214, 208, 255, 0.7)) drop-shadow(0 0 8px rgba(176, 160, 255, 0.45)); }
 
 @media (prefers-reduced-motion: reduce) {
   .halloween-drift { display: none; }

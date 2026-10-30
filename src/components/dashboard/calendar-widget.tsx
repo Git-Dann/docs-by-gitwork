@@ -7,6 +7,7 @@ import { cn } from "@/lib/format";
 import { getCalendarEvents } from "@/lib/api";
 import type { CalendarEvent } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 function formatTime(iso: string): string {
   if (!iso.includes("T")) return "All day";
@@ -69,7 +70,7 @@ export default function CalendarWidget({ size, index }: { size: WidgetSize; inde
   });
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   // ── sm size: mini view ──────────────────────────────────────────────────────

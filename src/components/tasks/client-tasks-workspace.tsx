@@ -57,6 +57,7 @@ import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tas
 import { PlanHealthStrip, type PlanFilter } from "@/components/tasks/plan-health-strip";
 import { BoardColumnsModal } from "@/components/tasks/board-columns-modal";
 import type { BoardColumnDef } from "@/lib/tasks/board-columns";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 const NO_COLUMNS: BoardColumnDef[] = [];
 
@@ -235,7 +236,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   }
 
   if (clientLoading || !client) {
-    return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <SkeletonBlock />;
   }
 
   return (
@@ -363,7 +364,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       {/* Content */}
       {view === "archived" ? (
         archivedLoading ? (
-          <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+          <SkeletonBlock />
         ) : archivedTasks.length === 0 ? (
           <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center text-sm text-[var(--text-4)]">
             No archived tasks yet. Done tasks auto-archive after 30 days, or archive them manually.
@@ -380,7 +381,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           />
         )
       ) : tasksLoading && view !== "gantt" ? (
-        <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+        <SkeletonBlock />
       ) : view === "board" ? (
         <TaskBoard
           tasks={filtered}

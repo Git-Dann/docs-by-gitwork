@@ -8,6 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getCalendarEvents, generateMeetingSummary, getIntegrations } from "@/lib/api";
 import type { CalendarEvent, SlackChannel } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
+import { Spinner } from "@/components/ui/motion/spinner";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 function formatDate(iso: string): string {
   try {
@@ -142,7 +144,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
   }
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   if (!data?.connected) {
@@ -251,7 +253,7 @@ export default function MeetingSummaryWidget({ size }: { size: WidgetSize }) {
             {/* Panel body */}
             {generating === selected ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4">
-                <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                <Spinner size="lg" tone="brand" />
                 <p className="text-xs text-[var(--text-3)]">Generating summary…</p>
               </div>
             ) : activeSummary ? (

@@ -18,6 +18,7 @@ import {
   formatDuration,
   useDocumentAnalytics,
 } from "@/hooks/use-document-analytics";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 export function DocumentAnalyticsPanel({ documentId }: { documentId: string }) {
   const { data, isPending, error } = useDocumentAnalytics(documentId);
@@ -43,7 +44,7 @@ export function DocumentAnalyticsPanel({ documentId }: { documentId: string }) {
         </div>
         <div className="space-y-3 p-5 sm:p-6">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-4 w-full animate-pulse rounded bg-[var(--surface-1)]" />
+            <Skeleton key={i} className="h-4 w-full rounded" />
           ))}
         </div>
       </section>

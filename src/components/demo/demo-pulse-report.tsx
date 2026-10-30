@@ -13,6 +13,7 @@ import { usePulseScan } from "@/hooks/use-pulse";
 import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { DemoShell } from "@/components/demo/demo-shell";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 export function DemoPulseReport({ scanId }: { scanId: string }) {
   const { data } = usePulseScan(scanId);
@@ -40,7 +41,7 @@ export function DemoPulseReport({ scanId }: { scanId: string }) {
         {scan ? (
           <PulseScanResults scan={scan} />
         ) : (
-          <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+          <SkeletonBlock />
         )}
       </div>
     </DemoShell>

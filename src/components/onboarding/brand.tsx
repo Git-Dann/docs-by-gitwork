@@ -11,7 +11,7 @@
  * sit dead-centre; tall steps (the code editor) grow and scroll naturally.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 export const BRAND = {
   cream: "#F2EDE4",
@@ -194,16 +194,5 @@ export function ProgressBar({ labels, current }: { labels: string[]; current: nu
   );
 }
 
-/** Fade + slight rise on mount — used per-step (key on the step) for smooth transitions. */
-export function FadeIn({ children, className = "" }: { children: ReactNode; className?: string }) {
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setShown(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-  return (
-    <div className={`${className} transition-all duration-300 ease-out ${shown ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}>
-      {children}
-    </div>
-  );
-}
+/** Fade + slight rise on mount — key it on the step. Lives in the shared motion library. */
+export { FadeIn } from "@/components/ui/motion/fade-in";
