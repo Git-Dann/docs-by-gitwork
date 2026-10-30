@@ -21,7 +21,6 @@ import {
   EMPTY_SENSITIVE,
   HR_ACCESS_LABEL,
   MAX_EMERGENCY_CONTACTS,
-  dateAttention,
   formatNiNumber,
   type EmergencyContact,
   type SensitiveDetails,
@@ -31,6 +30,8 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
+import { DocumentsCard } from "@/components/staff/staff-documents";
+import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useStaffRoster } from "@/hooks/use-staff";
@@ -53,61 +54,6 @@ const ROLE_LABEL: Record<string, string> = {
   DEVELOPER: "Developer",
   GUEST: "Guest",
 };
-
-const today = () => new Date().toISOString().slice(0, 10);
-
-function formatDate(d: string | null): string {
-  if (!d) return "—";
-  return new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
-
-/** A label over a value, in the house data-label voice. */
-function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn("min-w-0", className)}>
-      <dt className="widget-data-label text-[var(--text-4)]">{label}</dt>
-      <dd className="mt-1 break-words text-[14px] text-[var(--text-1)]">{children}</dd>
-    </div>
-  );
-}
-
-/** A date that is passed or coming up within 30 days gets a chip saying so. */
-function DateWithAttention({ value }: { value: string | null }) {
-  const attention = dateAttention(value, today());
-  return (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      {formatDate(value)}
-      {attention ? (
-        <span
-          className={cn(
-            "rounded-[4px] border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.8px]",
-            attention === "passed"
-              ? "border-[var(--danger-500)] text-[var(--danger-500)]"
-              : "border-[var(--warning-500)] text-[var(--warning-500)]",
-          )}
-        >
-          {attention === "passed" ? "Passed" : "Soon"}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-const label = "block text-[12px] font-medium text-[var(--text-2)]";
-
-/** The one control a card's header carries, in the header's own mono voice: no extra row. */
-function HeaderAction({ children, onClick, label }: { children: React.ReactNode; onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-[1px] text-[var(--brand-600)] hover:underline"
-    >
-      {children}
-    </button>
-  );
-}
 
 // ── 02 // EMPLOYMENT ────────────────────────────────────────────────────────────
 
@@ -704,6 +650,8 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
   const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
   const activityCard = <ActivityCard activity={activity.data} hasLogin={p.lifecycle.hasLogin} number={next()} />;
+  // Documents are personal: the person, their manager (only what's shared with them) and HR.
+  const documents = p.access.employment ? <DocumentsCard recordId={p.recordId} number={next()} /> : null;
   const personal = p.access.sensitive ? <PersonalCard profile={p} number={next()} /> : null;
   const accessLog = p.access.accessLog ? <AccessLogCard recordId={p.recordId} number={next()} /> : null;
 
@@ -750,6 +698,7 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
         </div>
         <div className="min-w-0 space-y-5">
           {activityCard}
+          {documents}
           {personal}
           {accessLog}
         </div>

@@ -4,6 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
+import type { HrDocumentSettings, StaffDocumentsView } from "@/lib/hr-documents";
 import type {
   ComingUpItem,
   MissingDetail,
@@ -141,5 +142,89 @@ export function useHrOverview(enabled: boolean) {
     queryKey: ["staff", "hr-overview"],
     queryFn: () => apiFetch<{ comingUp: ComingUpItem[]; missing: MissingDetail[] }>("/api/staff/hr-overview"),
     enabled,
+  });
+}
+
+// ── Documents ───────────────────────────────────────────────────────────────────
+
+const docsKey = (recordId: string) => ["staff", "documents", recordId] as const;
+
+export function useStaffDocuments(recordId: string) {
+  return useQuery({
+    queryKey: docsKey(recordId),
+    queryFn: () => apiFetch<StaffDocumentsView>(`/api/staff/${encodeURIComponent(recordId)}/documents`),
+  });
+}
+
+/** Everything that changes a person's documents refreshes their list, their access log and HR's reminders. */
+export function useDocumentsInvalidate(recordId: string) {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: docsKey(recordId) });
+    void qc.invalidateQueries({ queryKey: ["staff", "access-log", recordId] });
+    void qc.invalidateQueries({ queryKey: ["staff", "hr-overview"] });
+  };
+}
+
+export function useRequestDocument(recordId: string) {
+  const done = useDocumentsInvalidate(recordId);
+  return useMutation({
+    mutationFn: (input: { type: string; note?: string | null }) =>
+      apiFetch(`/api/staff/${encodeURIComponent(recordId)}/documents/request`, { method: "POST", ...json(input) }),
+    onSuccess: done,
+  });
+}
+
+export function useLinkDocument(recordId: string) {
+  const done = useDocumentsInvalidate(recordId);
+  return useMutation({
+    mutationFn: (input: { type: string; title?: string | null; link: string; expiresOn?: string | null; visibility?: string | null }) =>
+      apiFetch(`/api/staff/${encodeURIComponent(recordId)}/documents/link`, { method: "POST", ...json(input) }),
+    onSuccess: done,
+  });
+}
+
+export function useUpdateDocument(recordId: string) {
+  const done = useDocumentsInvalidate(recordId);
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string; review?: "accept" | "reject"; note?: string | null; expiresOn?: string | null; visibility?: string }) =>
+      apiFetch(`/api/staff/documents/${encodeURIComponent(id)}`, { method: "PATCH", ...json(input) }),
+    onSuccess: done,
+  });
+}
+
+export function useDeleteDocument(recordId: string) {
+  const done = useDocumentsInvalidate(recordId);
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/staff/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    onSuccess: done,
+  });
+}
+
+export function useRetryDriveCopy(recordId: string) {
+  const done = useDocumentsInvalidate(recordId);
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/api/staff/documents/${encodeURIComponent(id)}/drive`, { method: "POST" }),
+    onSuccess: done,
+  });
+}
+
+export function useDocumentSettings(enabled: boolean) {
+  return useQuery({
+    queryKey: ["staff", "document-settings"],
+    queryFn: () => apiFetch<HrDocumentSettings>("/api/staff/document-settings"),
+    enabled,
+  });
+}
+
+export function useUpdateDocumentSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: HrDocumentSettings) =>
+      apiFetch<HrDocumentSettings>("/api/staff/document-settings", { method: "PATCH", ...json(settings) }),
+    onSuccess: (saved) => {
+      qc.setQueryData(["staff", "document-settings"], saved);
+      void qc.invalidateQueries({ queryKey: ["staff", "documents"] });
+    },
   });
 }

@@ -164,13 +164,23 @@ export async function resolveBackupAuth(workspace: {
   docsBackupEnabled: boolean;
 }): Promise<{ client: OAuth2Client; ownerEmail: string | null } | null> {
   if (!workspace.docsBackupEnabled) return null;
+  return resolveWorkspaceGoogleAccount(workspace.id);
+}
 
-  // The designated backup account = the workspace owner (the User who owns the default records).
-  // Fall back to any connected member with a token if the owner hasn't connected Google.
-  // ⚠️ Both are limited to members of THIS workspace: the fallback used to take any user's Google
-  // token in the database, so a second business's documents could have been written into
-  // someone else's Drive. For Gitwork (every such user is a member) the choice is unchanged.
-  const ofThisWorkspace = { memberships: { some: { workspaceId: workspace.id } } };
+/**
+ * The Google account a workspace's Drive copies are written with: the workspace owner,
+ * else the first member with Google connected. Shared by the Docs backup and the HR
+ * documents copy (src/server/hr/documents-drive.ts), each of which has its own on-switch.
+ *
+ * ⚠️ Both lookups are limited to members of THIS workspace: the fallback used to take any
+ * user's Google token in the database, so a second business's documents could have been
+ * written into someone else's Drive. For Gitwork (every such user is a member) the choice
+ * is unchanged.
+ */
+export async function resolveWorkspaceGoogleAccount(
+  workspaceId: string,
+): Promise<{ client: OAuth2Client; ownerEmail: string | null } | null> {
+  const ofThisWorkspace = { memberships: { some: { workspaceId } } };
   const owner = await prisma.user.findFirst({
     where: {
       googleOAuthRefreshToken: { not: null },

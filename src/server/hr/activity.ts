@@ -29,6 +29,7 @@ import {
   type StaffActivity,
 } from "@/lib/hr";
 import { getLeaveAllowance } from "@/server/backstage";
+import { outstandingRequired, STAFF_DOCUMENT_LABEL, type StaffDocumentType } from "@/lib/hr-documents";
 
 const DAY_MS = 86_400_000;
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -142,7 +143,7 @@ export async function getHrOverview(
   if (!canManageHr(user)) throw new ForbiddenError("You don't have permission to see HR reminders");
   const today = day(now);
 
-  const [records, suppliers, sensitive] = await Promise.all([
+  const [records, suppliers, sensitive, documents] = await Promise.all([
     prisma.candidate.findMany({
       where: {
         workspaceId: user.workspaceId,
@@ -168,6 +169,10 @@ export async function getHrOverview(
       select: { name: true, agreementRenewsOn: true },
     }),
     prisma.staffSensitive.findMany({ where: { workspaceId: user.workspaceId }, select: { recordId: true, payload: true } }),
+    prisma.staffDocument.findMany({
+      where: { workspaceId: user.workspaceId },
+      select: { recordId: true, type: true, title: true, status: true, expiresOn: true, createdAt: true },
+    }),
   ]);
 
   const nameOf = (r: (typeof records)[number]) => r.member?.user.name?.trim() || r.name;
@@ -194,6 +199,16 @@ export async function getHrOverview(
     }
   }
 
+  const docsByRecord = new Map<string, typeof documents>();
+  for (const d of documents) docsByRecord.set(d.recordId, [...(docsByRecord.get(d.recordId) ?? []), d]);
+  const recordName = new Map(records.map((r) => [r.id, nameOf(r)]));
+  for (const d of documents) {
+    const name = recordName.get(d.recordId);
+    if (name && d.status === "ON_FILE" && d.expiresOn) {
+      items.push({ kind: "document-expiry", date: day(d.expiresOn), name: `${name} · ${d.title}`, href: `/app/staff/${d.recordId}` });
+    }
+  }
+
   const missing: MissingDetail[] = records
     // Developer-vetting records without a login and without a type are Hiring's, not the team's.
     .filter((r) => r.member || r.employmentType || !r.githubHandle)
@@ -207,7 +222,13 @@ export async function getHrOverview(
         supplierId: r.supplierId,
         hasSensitive: sensitiveIds.has(r.id),
         isTopOfTree: r.member?.role === "SUPER_ADMIN" || r.employmentType === "DIRECTOR",
-      }),
+      }).concat(
+        outstandingRequired(
+          r.employmentType,
+          (docsByRecord.get(r.id) ?? []).map((d) => ({ type: d.type, status: d.status, expiresOn: d.expiresOn ? day(d.expiresOn) : null, createdAt: d.createdAt.toISOString() })),
+          today,
+        ).map((t: StaffDocumentType) => STAFF_DOCUMENT_LABEL[t].toLowerCase()),
+      ),
     }))
     .filter((m) => m.missing.length)
     .sort((a, b) => b.missing.length - a.missing.length || a.name.localeCompare(b.name));

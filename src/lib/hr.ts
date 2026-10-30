@@ -54,13 +54,25 @@ export function profileAccess(input: {
 
 // ── Access log ──────────────────────────────────────────────────────────────────
 
-export const HR_ACCESS_ACTIONS = ["VIEW_SENSITIVE", "UPDATE_SENSITIVE", "UPDATE_EMPLOYMENT"] as const;
+export const HR_ACCESS_ACTIONS = [
+  "VIEW_SENSITIVE",
+  "UPDATE_SENSITIVE",
+  "UPDATE_EMPLOYMENT",
+  "DOWNLOAD_DOCUMENT",
+  "ADD_DOCUMENT",
+  "REVIEW_DOCUMENT",
+  "DELETE_DOCUMENT",
+] as const;
 export type HrAccessAction = (typeof HR_ACCESS_ACTIONS)[number];
 
 export const HR_ACCESS_LABEL: Record<HrAccessAction, string> = {
   VIEW_SENSITIVE: "Viewed personal details",
   UPDATE_SENSITIVE: "Changed personal details",
   UPDATE_EMPLOYMENT: "Changed employment details",
+  DOWNLOAD_DOCUMENT: "Opened a document",
+  ADD_DOCUMENT: "Added a document",
+  REVIEW_DOCUMENT: "Checked a document",
+  DELETE_DOCUMENT: "Deleted a document",
 };
 
 export interface HrAccessEntry {
@@ -458,13 +470,14 @@ export interface StaffActivity {
   developer: { githubHandle: string; primaryStack: string | null; techStacks: string[] } | null;
 }
 
-export type ComingUpKind = "contract-end" | "probation-end" | "supplier-renewal" | "right-to-work";
+export type ComingUpKind = "contract-end" | "probation-end" | "supplier-renewal" | "right-to-work" | "document-expiry";
 
 export const COMING_UP_LABEL: Record<ComingUpKind, string> = {
   "contract-end": "Contract ends",
   "probation-end": "Probation ends",
   "supplier-renewal": "Agreement renews",
   "right-to-work": "Right to work expires",
+  "document-expiry": "Document expires",
 };
 
 export interface ComingUpItem {

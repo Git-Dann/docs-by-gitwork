@@ -76,7 +76,7 @@ const PROFILE_SELECT = {
 } as const satisfies Prisma.CandidateSelect;
 
 /** The viewer's relation to a record: their own, one of their reports, or anyone else. */
-async function relationTo(
+export async function relationTo(
   user: EffectiveUser,
   record: { memberId: string | null; managerId: string | null },
 ): Promise<ProfileRelation> {
@@ -110,7 +110,7 @@ async function loadRecord(user: EffectiveUser, recordId: string) {
   return { record, relation, access: accessFor(user, relation) };
 }
 
-async function writeLog(user: EffectiveUser, recordId: string, action: HrAccessAction, detail?: string | null) {
+export async function writeLog(user: EffectiveUser, recordId: string, action: HrAccessAction, detail?: string | null) {
   await prisma.hrAccessLog.create({
     data: {
       workspaceId: user.workspaceId,

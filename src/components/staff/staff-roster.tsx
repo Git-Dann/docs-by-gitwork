@@ -34,7 +34,8 @@ import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useCreateStaffRecord, useStaffRoster, useUpdateStaffDetails } from "@/hooks/use-staff";
-import { useHrOverview, useSetArchived } from "@/hooks/use-hr";
+import { useDocumentSettings, useHrOverview, useSetArchived, useUpdateDocumentSettings } from "@/hooks/use-hr";
+import { STAFF_DOCUMENT_LABEL, STAFF_DOCUMENT_TYPES, type HrDocumentSettings } from "@/lib/hr-documents";
 import { COMING_UP_LABEL, dateAttention } from "@/lib/hr";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -413,8 +414,80 @@ function OrgBranch({ nodes, basePath }: { nodes: OrgNode[]; basePath: string }) 
 
 // ── HR: coming up and missing details ──────────────────────────────────────────
 
+/**
+ * This business's document settings: which types people may add themselves (otherwise HR
+ * adds them, or asks), and whether uploads are copied to Google Drive. Both off by default.
+ */
+function DocumentSettingsDialog({ onClose }: { onClose: () => void }) {
+  const current = useDocumentSettings(true);
+  const save = useUpdateDocumentSettings();
+  const [draft, setDraft] = useState<HrDocumentSettings | null>(null);
+  const value = draft ?? current.data ?? null;
+  const toggle = (t: (typeof STAFF_DOCUMENT_TYPES)[number]) =>
+    value &&
+    setDraft({
+      ...value,
+      selfUploadTypes: value.selfUploadTypes.includes(t) ? value.selfUploadTypes.filter((x) => x !== t) : [...value.selfUploadTypes, t],
+    });
+  return (
+    <Modal open onClose={onClose} title="01 // DOCUMENT SETTINGS" panelClassName="w-full max-w-lg">
+      <div className="space-y-5 px-5 py-4">
+        {!value ? (
+          <p className="text-[13px] text-[var(--text-3)]">Loading…</p>
+        ) : (
+          <>
+            <div>
+              <p className="widget-data-label text-[var(--text-4)]">People can add their own</p>
+              <p className="mt-1 text-[12px] text-[var(--text-3)]">
+                Anything else is added by HR, or asked for. What people add waits for HR to check it.
+              </p>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {STAFF_DOCUMENT_TYPES.map((t) => (
+                  <label key={t} className="flex items-center gap-2 text-[13px] text-[var(--text-1)]">
+                    <input type="checkbox" checked={value.selfUploadTypes.includes(t)} onChange={() => toggle(t)} />
+                    {STAFF_DOCUMENT_LABEL[t]}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-start gap-2 text-[13px] text-[var(--text-1)]">
+              <input type="checkbox" className="mt-0.5" checked={value.driveEnabled} onChange={(e) => setDraft({ ...value, driveEnabled: e.target.checked })} />
+              <span>
+                Copy uploads to Google Drive
+                <span className="block text-[12px] text-[var(--text-3)]">
+                  Into a &ldquo;Foundry HR&rdquo; folder, one folder per person, in the workspace owner&apos;s Drive. Opening a file
+                  straight from Drive isn&apos;t in Foundry&apos;s access log, so share that folder with HR only.
+                </span>
+              </span>
+            </label>
+          </>
+        )}
+        {save.error ? (
+          <p role="alert" className="text-[13px] text-[var(--danger-500)]">
+            {save.error instanceof Error ? save.error.message : "Could not save"}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-[var(--border-2)] px-5 py-3">
+        <button type="button" className="app-button app-button-secondary app-button-sm" onClick={onClose} disabled={save.isPending}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="app-button app-button-primary app-button-sm"
+          disabled={!draft || save.isPending}
+          onClick={() => draft && save.mutate(draft, { onSuccess: onClose })}
+        >
+          {save.isPending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function HrOverviewCard({ basePath }: { basePath: string }) {
   const overview = useHrOverview(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const data = overview.data;
   const appHref = (href: string) => (basePath === "/app/staff" ? href : href.replace("/app/staff", basePath));
@@ -426,7 +499,16 @@ function HrOverviewCard({ basePath }: { basePath: string }) {
           <span className="mx-1.5 text-[var(--text-4)]">{"//"}</span>
           For HR
         </span>
-        <span className="widget-header__status">Next 60 days</span>
+        <span className="flex items-center gap-3">
+          <span className="widget-header__status">Next 60 days</span>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="font-mono text-[10px] font-semibold uppercase tracking-[1px] text-[var(--brand-600)] hover:underline"
+          >
+            Document settings
+          </button>
+        </span>
       </div>
       <div className="widget-body grid gap-6 md:grid-cols-2">
         <div className="min-w-0">
@@ -478,6 +560,7 @@ function HrOverviewCard({ basePath }: { basePath: string }) {
           )}
         </div>
       </div>
+      {settingsOpen ? <DocumentSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
     </section>
   );
 }

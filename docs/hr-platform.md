@@ -83,6 +83,38 @@ All from the person's profile (`PersonActions` in `staff-profile.tsx`). Rules in
   year's allowance for the person, HR and approvers). `GET /api/staff/[id]/activity`.
 - ⚠️ **Leave types are health-adjacent:** anyone but the person and HR sees "Off", never "Sick".
 
+## Documents (Phase 1b)
+
+On the person's profile (and Backstage → Me). Rules in `src/lib/hr-documents.ts`, server in
+`src/server/hr/documents.ts`, API under `/api/staff/[id]/documents`, `/api/staff/documents/[docId]`
+and `/api/staff/document-settings`.
+
+- **Who sees a document** (`canSeeDocument`): HR sees all; the person sees all but HR-only ones;
+  their manager sees only those marked for the manager; nobody else, whatever Staff access they
+  have. A document is personal.
+- **Required list** per engagement (`REQUIRED_DOCUMENTS`): employees contract, NDA, right to work,
+  starter checklist; directors contract, NDA, right to work; contractors NDA and photo ID (the
+  partner's agreement and insurance belong on the supplier); freelancers NDA. A required type is
+  on file, expiring (30 days), expired, to check, requested, sent back or missing; the best
+  document wins. Shown to the person and HR only.
+- **Who adds what** (`canUploadType`): HR adds any type, on file at once. The person adds a type HR
+  allows (Document settings, off by default) or has asked for ("Ask for it" on a missing type),
+  and it waits as **to check** until HR accepts or sends it back with a note.
+- **Files** are checked by their contents, not their name (the Launchpad rules, 10 MB), stored like
+  every other upload (`placeUpload`), served as attachments with nosniff and a sandboxing CSP. A
+  file already in Drive can be attached by link instead (HR only; https Drive/Docs links only).
+- **Logged:** every open by someone other than the person, and every add, check and delete.
+  Names the document type, never its contents.
+- **Google Drive copy** (Document settings, off by default): each file is copied after the
+  response into a "Foundry HR" folder with one folder per person, in the workspace owner's Drive
+  (`resolveWorkspaceGoogleAccount`, now shared with the Docs backup). Best-effort: a failure is
+  shown on the document with Retry; deleting a document bins its Drive copy. ⚠️ Opening a file
+  straight from Drive isn't in Foundry's access log; share that folder with HR only.
+- **HR reminders** now include documents expiring in 60 days, and missing required documents
+  appear under Missing details.
+- **Uploads** use EasyUI's Animated File Upload (vendored). The same component now handles task
+  screenshots and the new-document wizard.
+
 ## Next
 
 1. **Documents (1b):** per-person vault with a required list per engagement type, expiry reminders,
