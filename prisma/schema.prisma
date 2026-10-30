@@ -495,6 +495,11 @@ model Workspace {
   /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
   aiUsageLoggingEnabled       Boolean                    @default(true)
   teamMessages TeamMessage[]
+  /// HR documents (docs/hr-platform.md): { selfUploadTypes: string[], driveEnabled: boolean }.
+  /// Read through parseHrDocumentSettings, never directly.
+  hrDocumentSettings          Json?
+  /// The "Foundry HR" root folder in the workspace's Drive, cached once made.
+  hrDriveFolderId             String?
 }
 
 /**
@@ -2555,6 +2560,8 @@ model Candidate {
   /// two can never disagree about whether someone has left.
   archivedAt           DateTime?
   archivedById         String?
+  /// This person's folder in the HR Drive copy (docs/hr-platform.md), cached once made.
+  hrDriveFolderId      String?
   primaryStack         String
   techStacks           String[]               @default([])
   signalSources        String[]               @default([])
@@ -5893,4 +5900,44 @@ model HrAccessLog {
   createdAt   DateTime @default(now())
 
   @@index([workspaceId, recordId, createdAt])
+}
+
+/// A document on a person's HR record (docs/hr-platform.md, Phase 1b): a file stored like
+/// every other upload (src/server/blob-storage.ts), a link to a file already in Google
+/// Drive, or a request for one that hasn't arrived yet. Access is decided by
+/// documentAccess (src/lib/hr-documents.ts); every download by someone other than the
+/// person is written to HrAccessLog. recordId is Candidate.id, loose like the other links.
+model StaffDocument {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  recordId       String
+  /// One of STAFF_DOCUMENT_TYPES (src/lib/hr-documents.ts).
+  type           String
+  title          String
+  /// ON_FILE | TO_CHECK (a person's own upload, waiting for HR) | REQUESTED | REJECTED
+  status         String    @default("ON_FILE")
+  /// PERSON_HR (default) | HR_ONLY | MANAGER (the person, HR and their manager)
+  visibility     String    @default("PERSON_HR")
+  filename       String?
+  mime           String?
+  size           Int?
+  bytes          Bytes?
+  storageKey     String?
+  /// A Google Drive link instead of a file. Never fetched by the server.
+  link           String?
+  expiresOn      DateTime?
+  /// What HR asked for (REQUESTED) or why it was sent back (REJECTED).
+  note           String?
+  uploadedById   String?
+  uploadedBySelf Boolean   @default(false)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  driveFileId    String?
+  driveSyncedAt  DateTime?
+  driveError     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([workspaceId, recordId])
+  @@index([workspaceId, expiresOn])
 }

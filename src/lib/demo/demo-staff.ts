@@ -21,6 +21,17 @@ import {
   type SupplierInput,
   type SupplierRecord,
 } from "@/lib/hr";
+import {
+  STAFF_DOCUMENT_LABEL,
+  STAFF_DOCUMENT_TYPES,
+  isStaffDocumentType,
+  normaliseDocumentMeta,
+  parseHrDocumentSettings,
+  requirementsFor,
+  safeDriveLink,
+  type HrDocumentSettings,
+  type StaffDocumentRecord,
+} from "@/lib/hr-documents";
 
 const base = (over: Partial<StaffPerson> & Pick<StaffPerson, "key" | "name">): StaffPerson => ({
   memberId: null,
@@ -205,6 +216,109 @@ export function resolveDemoTeamArchive(pathname: string, method: string): unknow
   return { ok: true };
 }
 
+// ── Documents: the demo viewer is HR ──────────────────────────────────────────────
+
+let docSettings: HrDocumentSettings = { selfUploadTypes: ["PHOTO_ID", "CERTIFICATE"], driveEnabled: true };
+let docSeq = 10;
+const demoDocs = new Map<string, StaffDocumentRecord[]>([
+  [
+    "r2",
+    [
+      { id: "d1", type: "CONTRACT", title: "Contract", status: "ON_FILE", visibility: "PERSON_HR", filename: "tom-okafor-contract.pdf", size: 182_000, link: null, hasFile: true, expiresOn: null, note: null, uploadedBySelf: false, createdAt: "2021-09-01T09:00:00.000Z", drive: { state: "copied", error: null } },
+      { id: "d2", type: "RIGHT_TO_WORK", title: "Right to work", status: "ON_FILE", visibility: "PERSON_HR", filename: "passport.jpg", size: 640_000, link: null, hasFile: true, expiresOn: new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10), note: null, uploadedBySelf: false, createdAt: "2021-09-01T09:00:00.000Z", drive: { state: "copied", error: null } },
+      { id: "d3", type: "NDA", title: "NDA", status: "TO_CHECK", visibility: "PERSON_HR", filename: "nda-signed.pdf", size: 98_000, link: null, hasFile: true, expiresOn: null, note: null, uploadedBySelf: true, createdAt: new Date().toISOString(), drive: { state: "failed", error: "Nobody in this workspace has connected Google." } },
+    ],
+  ],
+  [
+    "r3",
+    [{ id: "d4", type: "NDA", title: "NDA", status: "ON_FILE", visibility: "PERSON_HR", filename: null, size: null, link: "https://drive.google.com/file/d/demo/view", hasFile: false, expiresOn: null, note: null, uploadedBySelf: false, createdAt: "2025-03-01T09:00:00.000Z", drive: null }],
+  ],
+]);
+
+function demoDocumentsView(p: StaffPerson) {
+  const docs = demoDocs.get(p.recordId!) ?? [];
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    documents: docs,
+    required: requirementsFor(p.employmentType, docs.map((d) => ({ type: d.type, status: d.status, expiresOn: d.expiresOn, createdAt: d.createdAt })), today),
+    uploadTypes: [...STAFF_DOCUMENT_TYPES],
+    canManage: true,
+    settings: docSettings,
+  };
+}
+
+function resolveDemoDocuments(pathname: string, method: string, body: unknown): unknown {
+  if (pathname === "/api/staff/document-settings") {
+    if (method === "PATCH") docSettings = parseHrDocumentSettings(body);
+    return docSettings;
+  }
+  const one = pathname.match(/^\/api\/staff\/documents\/([^/]+)(?:\/(drive))?$/);
+  if (one) {
+    for (const [recordId, list] of demoDocs) {
+      const d = list.find((x) => x.id === one[1]);
+      if (!d) continue;
+      if (one[2] === "drive") {
+        d.drive = { state: "copied", error: null };
+        return { ok: true };
+      }
+      if (method === "DELETE") {
+        demoDocs.set(recordId, list.filter((x) => x.id !== d.id));
+        log(recordId, "DELETE_DOCUMENT", STAFF_DOCUMENT_LABEL[d.type]);
+        return { ok: true };
+      }
+      const b = (body ?? {}) as { review?: string; note?: string | null };
+      if (b.review) {
+        d.status = b.review === "accept" ? "ON_FILE" : "REJECTED";
+        d.note = b.review === "reject" ? b.note ?? null : d.note;
+        log(recordId, "REVIEW_DOCUMENT", `${STAFF_DOCUMENT_LABEL[d.type]}: ${b.review === "accept" ? "accepted" : "sent back"}`);
+      }
+      return d;
+    }
+    return { error: "Document not found", __status: 404 };
+  }
+  const m = pathname.match(/^\/api\/staff\/([^/]+)\/documents(?:\/(request|link))?$/);
+  if (!m) return undefined;
+  const p = people.find((x) => x.recordId === decodeURIComponent(m[1]));
+  if (!p) return { error: "Staff record not found", __status: 404 };
+  const list = demoDocs.get(p.recordId!) ?? [];
+  if (method === "GET") return demoDocumentsView(p);
+  const fields: Record<string, unknown> =
+    body instanceof FormData ? Object.fromEntries([...body.entries()].filter(([, v]) => typeof v === "string")) : ((body ?? {}) as Record<string, unknown>);
+  if (m[2] === "request") {
+    if (!isStaffDocumentType(fields.type)) return { error: "Choose what kind of document to ask for", __status: 400 };
+    const d: StaffDocumentRecord = { id: `d${++docSeq}`, type: fields.type, title: STAFF_DOCUMENT_LABEL[fields.type], status: "REQUESTED", visibility: "PERSON_HR", filename: null, size: null, link: null, hasFile: false, expiresOn: null, note: null, uploadedBySelf: false, createdAt: new Date().toISOString(), drive: null };
+    demoDocs.set(p.recordId!, [d, ...list]);
+    return d;
+  }
+  const meta = normaliseDocumentMeta(fields);
+  if (!meta.ok) return { error: meta.error, __status: 400 };
+  let link: string | null = null;
+  if (m[2] === "link") {
+    link = safeDriveLink(fields.link);
+    if (!link) return { error: "Paste a Google Drive or Google Docs link (https://drive.google.com/…)", __status: 400 };
+  }
+  const file = body instanceof FormData ? body.get("file") : null;
+  const d: StaffDocumentRecord = {
+    id: `d${++docSeq}`,
+    type: meta.value.type,
+    title: meta.value.type === "OTHER" && file instanceof File ? file.name : meta.value.title,
+    status: "ON_FILE",
+    visibility: meta.value.visibility,
+    filename: file instanceof File ? file.name : null,
+    size: file instanceof File ? file.size : null,
+    link,
+    hasFile: file instanceof File,
+    expiresOn: meta.value.expiresOn,
+    note: null,
+    uploadedBySelf: false,
+    createdAt: new Date().toISOString(),
+    drive: file instanceof File ? { state: docSettings.driveEnabled ? "copied" : "off", error: null } : null,
+  };
+  demoDocs.set(p.recordId!, [d, ...list.filter((x) => !(x.status === "REQUESTED" && x.type === d.type))]);
+  log(p.recordId!, "ADD_DOCUMENT", STAFF_DOCUMENT_LABEL[d.type]);
+  return d;
+}
+
 function resolveDemoHr(pathname: string, method: string, body: Record<string, unknown>): unknown {
   if (pathname === "/api/staff/suppliers") {
     if (method === "POST") {
@@ -278,6 +392,12 @@ function resolveDemoHr(pathname: string, method: string, body: Record<string, un
 }
 
 export function resolveDemoStaff(pathname: string, init?: { method?: string; body?: unknown }, search?: URLSearchParams): unknown {
+  const docs = resolveDemoDocuments(
+    pathname,
+    init?.method ?? "GET",
+    typeof FormData !== "undefined" && init?.body instanceof FormData ? init.body : typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+  );
+  if (docs !== undefined) return docs;
   const body = (typeof init?.body === "string" ? JSON.parse(init.body) : {}) as StaffDetailsUpdate & {
     memberId?: string;
     name?: string;

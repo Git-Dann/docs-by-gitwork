@@ -48,6 +48,7 @@ export type SideIds = {
   platform: string;
   meeting: string;
   candidate: string;
+  staffDocument: string;
   placement: string;
   rateCardPerson: string;
   leave: string;
@@ -99,6 +100,7 @@ export function idsFor(side: Side): SideIds {
     platform: id(side, "platform"),
     meeting: id(side, "meeting"),
     candidate: id(side, "candidate"),
+    staffDocument: id(side, "staff-document"),
     placement: id(side, "placement"),
     rateCardPerson: id(side, "rate"),
     leave: id(side, "leave"),
@@ -234,6 +236,9 @@ export async function seedSide(db: PrismaClient, side: Side) {
   });
 
   await db.candidate.create({ data: { id: i.candidate, workspaceId: i.workspace, name: m(side, "candidate"), primaryStack: "TypeScript", email: `cand@iso-${side}.test` } });
+  await db.staffDocument.create({
+    data: { id: i.staffDocument, workspaceId: i.workspace, recordId: i.candidate, type: "NDA", title: m(side, "staff-document"), link: "https://drive.google.com/file/d/iso" },
+  });
   await db.placement.create({ data: { id: i.placement, candidateId: i.candidate, clientName: m(side, "placement-client"), projectName: m(side, "placement"), startDate: now } });
   await db.rateCardPerson.create({ data: { id: i.rateCardPerson, workspaceId: i.workspace, name: m(side, "rate-person"), area: "Engineering", sourceRate: 500, sourceCurrencyCode: "GBP" } });
 
@@ -283,6 +288,7 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.clientPlatform.findMany({ where: { clientId: i.client }, orderBy: { id: "asc" } }),
     db.meeting.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.candidate.findMany({ where: ws, orderBy: { id: "asc" } }),
+    db.staffDocument.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.placement.findMany({ where: { candidateId: i.candidate }, orderBy: { id: "asc" } }),
     db.rateCardPerson.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.leaveRequest.findMany({ where: ws, orderBy: { id: "asc" } }),

@@ -105,6 +105,8 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
       return inWiki ? victim.wikiMonitor : victim.monitor;
     case "placementId":
       return victim.placement;
+    case "docId":
+      return victim.staffDocument;
     case "id":
       return ID_BY_PARENT[stripParams(before)]?.(victim) ?? null;
     default:

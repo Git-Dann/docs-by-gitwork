@@ -189,7 +189,7 @@ export async function seedProjectPlan(input: ProjectPlanRequest): Promise<{ resu
 // tell the server whose data to scope this request to. Mirrors the localStorage
 // keys in src/lib/view-as.ts (USER-mode preview stores the target's user id).
 // The server only honours it for a real Super Admin caller (see effective-user.ts).
-function viewAsHeaders(): Record<string, string> {
+export function viewAsHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
   try {
     const role = window.localStorage.getItem("foundry_view_as_role");

@@ -8985,3 +8985,25 @@ Settings → People & access read as a list of every permission ever added. Now:
   ⚠️ Leave TYPE is shown only to the person and HR; everyone else sees "Off".
 - Details: `docs/hr-platform.md`. Demo: `/demo/staff`, `/demo/staff/r3`.
 
+## 97. Recent Changes (October 2026) — HR documents, with Google Drive copies
+
+The documents vault from the HR spec (Phase 1b). Rules and details: `docs/hr-platform.md`.
+
+- **A Documents card on each profile**: a required list per engagement type, what's on file, and
+  adding more. One rule each for who sees a document (`canSeeDocument`: HR all, the person all but
+  HR-only, a manager only what's shared with managers, nobody else) and who may add which type
+  (`canUploadType`). A person's own upload waits as "to check" until HR accepts it.
+- **Model:** `StaffDocument` (file, Drive link or request), `Workspace.hrDocumentSettings`
+  (`{ selfUploadTypes, driveEnabled }`, both off by default), `Workspace.hrDriveFolderId`,
+  `Candidate.hrDriveFolderId`. All additive.
+- **Drive:** each upload is copied into a "Foundry HR" folder in the workspace owner's Drive when
+  the business turns it on. `resolveWorkspaceGoogleAccount` (in `google-drive-backup.ts`) is now the
+  one account lookup for every Drive copy; the Docs backup calls it too. ⚠️ Opening a file in Drive
+  isn't in Foundry's access log.
+- **EasyUI's Animated File Upload, vendored** (`src/components/ui/easyui/animated-file-upload.tsx`,
+  with `uploadWithProgress` for real progress and the view-as headers). Used for HR documents,
+  task screenshots and the new-document wizard. Deliberately not on Launchpad's requirement rows:
+  a drop zone per row would swamp the list.
+- **Shared profile parts** (`src/components/staff/profile-parts.tsx`): Field, dates, the header
+  action. The profile, the Documents card and Backstage → Me use the same pieces.
+

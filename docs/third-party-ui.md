@@ -25,6 +25,7 @@ its row below.
 | Chart primitives | `src/lib/chart-primitives.tsx` (the parts the charts use) + `pctText` from `src/lib/dashboard-chart-utils.ts` | `src/components/ui/easyui/chart-primitives.tsx` |
 | Calendar | `src/components/ui/calendar.tsx` | `src/components/ui/easyui/calendar.tsx` |
 | Date Picker | `src/components/ui/date-picker.tsx` | `src/components/ui/easyui/date-picker.tsx` |
+| Animated File Upload | `src/components/ui/AnimatedFileUpload.tsx` (+ `springSnappy`, `springGentle` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/animated-file-upload.tsx` |
 
 **Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
 place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
@@ -43,6 +44,14 @@ is kept on purpose because the bridge shape *is* the design being adopted.
 **Calendar and Date Picker.** Weeks start on Monday, a Today/Clear footer is added, the popover is
 anchored and portalled (Headless UI) so cards and dialogs can't clip it, and Escape closes only the
 calendar, not the dialog around it. EasyUI's 8px and 12px radii are kept, an exception to DESIGN.md.
+
+**Animated File Upload.** `uploadHandler` is required (upstream falls back to a simulated upload
+with a random timer, which would show "Ready" for a file that never left the page). Added
+`removeCompletedAfterMs` and `onFileRemoved`, a polite live region and an accessible name on the
+drop zone. Reduced motion keeps the progress bar (it carries information) and drops the rest.
+`uploadWithProgress` beside it does the real upload with progress and Foundry's view-as headers.
+Used for HR documents, task screenshots and the new-document wizard; not on Launchpad rows, where
+a drop zone per requirement would swamp the list. EasyUI's 12px radius is kept.
 
 ```
 MIT License
