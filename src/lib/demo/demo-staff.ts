@@ -59,6 +59,13 @@ const people: StaffPerson[] = [
   base({ key: "m:1", memberId: "m1", recordId: "r1", name: "Priya Shah", email: "priya@northwind.co", role: "SUPER_ADMIN", jobTitle: "Managing director", department: "Leadership", employmentType: "EMPLOYEE", startDate: "2019-04-01" }),
   base({ key: "m:2", memberId: "m2", recordId: "r2", name: "Tom Okafor", email: "tom@northwind.co", role: "ADMIN", jobTitle: "Delivery lead", department: "Delivery", employmentType: "EMPLOYEE", startDate: "2021-09-06", managerRecordId: "r1", currentClients: [{ name: "Acme Retail", slug: "acme" }, { name: "Fairway Nine", slug: "fairway" }] }),
   base({ key: "m:3", memberId: "m3", recordId: "r3", name: "Ali Hassan", email: "ali@northwind.co", role: "DEVELOPER", department: "Engineering", employmentType: "CONTRACTOR", isDeveloper: true, primaryStack: "React Native", managerRecordId: "r2", currentClients: [{ name: "Acme Retail", slug: "acme" }] }),
+  // The rest of the team signs in with no manager set (how Gitwork works: the admins manage),
+  // so the org chart places them by role. Ali -> Tom -> Priya is the one reporting line set.
+  base({ key: "r:8", memberId: "m8", role: "DEVELOPER", recordId: "r8", name: "Sana Malik", email: "sana@northwind.co", department: "Engineering", employmentType: "CONTRACTOR", isDeveloper: true, primaryStack: "Flutter", currentClients: [{ name: "Fairway Nine", slug: "fairway" }] }),
+  base({ key: "r:9", memberId: "m9", role: "DEVELOPER", recordId: "r9", name: "Owen Hart", email: "owen@northwind.co", department: "Engineering", employmentType: "CONTRACTOR", isDeveloper: true, primaryStack: "Next.js" }),
+  base({ key: "r:10", memberId: "m10", role: "DEVELOPER", recordId: "r10", name: "Mei Tan", email: "mei@northwind.co", department: "Engineering", employmentType: "EMPLOYEE", isDeveloper: true, primaryStack: "iOS" }),
+  base({ key: "r:11", memberId: "m11", role: "DEVELOPER", recordId: "r11", name: "Femi Bello", email: "femi@northwind.co", department: "Engineering", employmentType: "EMPLOYEE", isDeveloper: true, primaryStack: "Node" }),
+  base({ key: "r:12", memberId: "m12", role: "STAFF", recordId: "r12", name: "Lena Novak", email: "lena@northwind.co", jobTitle: "Product designer", department: "Design", employmentType: "EMPLOYEE", startDate: "2024-02-12" }),
   base({ key: "m:4", memberId: "m4", name: "Bea Lindqvist", email: "bea@northwind.co", role: "STAFF" }),
   // No login and no history: the one record Delete is offered on.
   base({ key: "r:6", recordId: "r6", name: "Jo Reed", email: "jo@example.com", jobTitle: "Copywriter", employmentType: "FREELANCER" }),

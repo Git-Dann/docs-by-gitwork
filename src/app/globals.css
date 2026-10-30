@@ -2013,6 +2013,33 @@ h2, h3, h4, h5 {
 .color-input-fill::-webkit-color-swatch { border: none; border-radius: 6px; }
 .color-input-fill::-moz-color-swatch { border: none; border-radius: 6px; }
 
+/* ── Staff org chart (src/components/staff/org-chart.tsx) ──
+   A top-down tree drawn with borders: each <li> draws the half-lines either side of its top
+   edge, each nested <ul> drops a line from its parent. The first and last child round off the
+   corners; an only child just hangs straight down. */
+.org-tree ul { position: relative; display: flex; justify-content: center; padding-top: 20px; }
+.org-tree > ul { padding-top: 0; }
+.org-tree li { position: relative; display: flex; flex-direction: column; align-items: center; padding: 20px 8px 0; list-style: none; }
+.org-tree > ul > li { padding-top: 0; }
+.org-tree li::before,
+.org-tree li::after { content: ""; position: absolute; top: 0; right: 50%; width: 50%; height: 20px; border-top: 1px solid var(--border-1); }
+.org-tree li::after { right: auto; left: 50%; border-left: 1px solid var(--border-1); }
+.org-tree > ul > li::before,
+.org-tree > ul > li::after,
+.org-tree li:only-child::before,
+.org-tree li:only-child::after { display: none; }
+.org-tree li:only-child { padding-top: 0; }
+.org-tree li:first-child::before,
+.org-tree li:last-child::after { border: 0 none; }
+.org-tree li:last-child::before { border-right: 1px solid var(--border-1); border-radius: 0 8px 0 0; }
+.org-tree li:first-child::after { border-radius: 8px 0 0 0; }
+.org-tree ul ul::before,
+.org-tree .org-stack::before { content: ""; position: absolute; top: 0; left: 50%; height: 20px; border-left: 1px solid var(--border-1); }
+/* A long run of leaves under one manager: a column, not a row screens wide. The line runs
+   down the middle behind the cards (which are opaque and sit above it), showing in the gaps. */
+.org-tree .org-stack { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 20px; }
+.org-tree .org-stack::before { bottom: 22px; height: auto; }
+
 /* ── Motion: sheet entrances (docs/motion.md) ──
    Side drawers and bottom sheets arrive the same way everywhere: the backdrop fades, the
    panel slides in from its edge. Reduced motion is handled by the global rule in layout.tsx. */

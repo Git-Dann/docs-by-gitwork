@@ -9106,3 +9106,30 @@ and four drawers sliding in four ways. They are now shared components in
 worktree's. Start the worktree's own server via a temporary `launch.json` entry
 (`npm --prefix <worktree> run dev -- -p <port>`) and drive it headlessly with playwright-core at
 2× DPR. The pane downscales a 1440 viewport too far to judge a 30px sprite.
+
+## 102. Recent Changes (October 2026) — Staff: a real org chart, leads' clients, and a steadier toolbar
+
+Three defects Dan found on Staff → People, all live.
+
+- **The org chart was a list.** It drew only from the manager field, and nobody has one set:
+  Gitwork keeps no list of who manages whom, because the admins are the managers. So
+  `org-chart.tsx` now places people by role (`orgTiers` in `src/lib/staff.ts`):
+  - Leadership (Super Admins) → Admins → Staff / Developers / Guests / No login, joined down the
+    middle.
+  - A manager set on a profile wins. That person hangs under their manager as a branch, with
+    border-drawn lines (`.org-tree` in globals.css).
+  - More than four leaf reports stack in a column. Wider than the card, the chart scrolls in its
+    own frame and opens centred.
+  - Nobody has to fill anything in for it to make sense. An earlier cut asked HR to pick
+    everyone's manager; Dan's call was that the admins are the managers.
+- **You and Harry read "No clients".** A person's clients came only from Code placements, which
+  is how *developers* are on a project. Leads are on one through the client's **product team**
+  (`productTeamUserIds`). `src/server/staff-clients.ts` merges both, ACTIVE clients only. It is
+  used by the roster cards and the profile. `ClientAssignment` is deliberately not read: it is an
+  access grant.
+- **The toolbar's actions landed wherever the row wrapped.** It is now two fixed rows: switches
+  and actions on top, search and filters below, with every control 36px (`Segmented` gets
+  `h-9`). On a phone the actions ride beside the layout switch; Department takes its own row and
+  Type and Sort sit two-up.
+
+The demo roster gained a fuller team under Tom so `/demo/staff` exercises the stacked column.

@@ -10,6 +10,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { mergeStaffClients, productTeamClientsByUser } from "@/server/staff-clients";
 import { decrypt, encrypt } from "@/lib/encryption";
 import {
   canManageCode,
@@ -67,7 +68,7 @@ const PROFILE_SELECT = {
   noticePeriodWeeks: true,
   daysPerWeek: true,
   archivedAt: true,
-  member: { select: { role: true, archivedAt: true, user: { select: { name: true, email: true, avatarUrl: true } } } },
+  member: { select: { role: true, archivedAt: true, user: { select: { id: true, name: true, email: true, avatarUrl: true } } } },
   _count: { select: { placements: true, githubAnalysisRuns: true, devSignalAssessments: true } },
   placements: {
     where: { endDate: null },
@@ -159,7 +160,7 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
   // 404 rather than 403: someone without Staff access learns nothing about whether the id exists.
   if (!access.directory) throw notFound();
 
-  const [manager, supplier, sensitive] = await Promise.all([
+  const [manager, supplier, sensitive, ledBy] = await Promise.all([
     record.managerId
       ? prisma.candidate.findFirst({
           where: { id: record.managerId, workspaceId: user.workspaceId },
@@ -170,6 +171,8 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
       ? prisma.supplier.findFirst({ where: { id: record.supplierId, workspaceId: user.workspaceId }, select: { name: true } })
       : null,
     access.sensitive ? prisma.staffSensitive.findUnique({ where: { recordId }, select: { id: true } }) : null,
+    // Leads are on a client through its product team, not a placement (staff-clients.ts).
+    record.member ? productTeamClientsByUser(user.workspaceId, [record.member.user.id]) : null,
   ]);
 
   const u = record.member?.user;
@@ -188,9 +191,10 @@ export async function getStaffProfile(user: EffectiveUser, recordId: string): Pr
     startDate: day(record.startDate),
     managerRecordId: record.managerId,
     managerName: manager ? manager.member?.user.name?.trim() || manager.name : null,
-    currentClients: record.placements
-      .map((p) => (p.client ? { name: p.client.name, slug: p.client.slug } : { name: p.clientName, slug: null }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
+    currentClients: mergeStaffClients(
+      record.placements.map((p) => (p.client ? { name: p.client.name, slug: p.client.slug } : { name: p.clientName, slug: null })),
+      (record.member && ledBy?.get(record.member.user.id)) || [],
+    ),
     isDeveloper: Boolean(record.githubHandle),
     relation,
     access,

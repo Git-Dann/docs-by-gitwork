@@ -24,7 +24,6 @@ import {
   buildOrgTree,
   groupStaff,
   staffToCsv,
-  type OrgNode,
   type EmploymentType,
   type StaffFilter,
   type StaffPerson,
@@ -39,6 +38,7 @@ import { useDocumentSettings, useHrOverview, useSetArchived, useUpdateDocumentSe
 import { STAFF_DOCUMENT_LABEL, STAFF_DOCUMENT_TYPES, type HrDocumentSettings } from "@/lib/hr-documents";
 import { StaffHrTour, useStaffHrTour } from "@/components/staff/staff-hr-tour";
 import { COMING_UP_LABEL, dateAttention } from "@/lib/hr";
+import { OrgChart } from "@/components/staff/org-chart";
 
 const ROLE_LABEL: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -385,35 +385,6 @@ function clientsOf(p: StaffPerson): string | null {
 
 // ── Org chart ───────────────────────────────────────────────────────────────────
 
-function OrgBranch({ nodes, basePath }: { nodes: OrgNode[]; basePath: string }) {
-  return (
-    <ul className="space-y-1">
-      {nodes.map((n) => (
-        <li key={n.person.key}>
-          <div className="flex items-center gap-2.5 py-1">
-            <Avatar src={n.person.avatarUrl} name={n.person.name} size={28} />
-            <div className="min-w-0">
-              {n.person.recordId ? (
-                <Link href={`${basePath}/${n.person.recordId}`} className="truncate text-[14px] font-medium text-[var(--text-1)] hover:text-[var(--brand-600)] hover:underline">
-                  {n.person.preferredName || n.person.name}
-                </Link>
-              ) : (
-                <span className="truncate text-[14px] font-medium text-[var(--text-1)]">{n.person.name}</span>
-              )}
-              <span className="ml-2 text-[12px] text-[var(--text-3)]">{subtitleOf(n.person)}</span>
-            </div>
-          </div>
-          {n.reports.length ? (
-            <div className="ml-3.5 border-l border-[var(--border-2)] pl-5">
-              <OrgBranch nodes={n.reports} basePath={basePath} />
-            </div>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 // ── HR: coming up and missing details ──────────────────────────────────────────
 
 /**
@@ -624,85 +595,100 @@ export function StaffRoster({
           ) : null}
         </div>
         <div className="widget-body space-y-5">
-          <div className="flex flex-wrap items-center gap-2" data-tour="staff-filters">
-            <Segmented
-              label="Show"
-              value={view}
-              onChange={setView}
-              options={[
-                { value: "active", label: "Active" },
-                { value: "archived", label: "Archived" },
-              ]}
-            />
-            <input
-              type="search"
-              className="app-input min-w-[180px] flex-1 sm:max-w-xs"
-              placeholder="Search people…"
-              aria-label="Search people"
-              value={filter.q ?? ""}
-              onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
-            />
-            {roster.data?.departments.length ? (
+          {/* Two rows, the same at every width: what you're looking at and what you can do on
+              top, narrowing it down below. One wrapping row put the actions wherever they
+              happened to fall, a different place at every window size. Everything is 36px tall,
+              so the rows line up. */}
+          <div className="space-y-3" data-tour="staff-filters">
+            {/* One flat row: on a phone the switches wrap and the actions ride along beside the
+                second one (ml-auto), rather than taking a line of their own. */}
+            <div className="flex flex-wrap items-center gap-2">
+                <Segmented
+                  label="Show"
+                  className="h-9"
+                  value={view}
+                  onChange={setView}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "archived", label: "Archived" },
+                  ]}
+                />
+                {!archived ? (
+                  <Segmented
+                    label="Layout"
+                    className="h-9"
+                    value={layout}
+                    onChange={setLayout}
+                    options={[
+                      { value: "cards", label: "Cards" },
+                      { value: "org", label: "Org chart" },
+                    ]}
+                  />
+                ) : null}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  className="app-button app-button-tertiary app-button-sm"
+                  onClick={() => downloadCsv(shown)}
+                  disabled={!shown.length}
+                  title="Download this list as a spreadsheet (no rates or personal details)"
+                >
+                  <ArrowDownTrayIcon aria-hidden className="h-4 w-4" />
+                  CSV
+                </button>
+                {canManageCode && !archived ? (
+                  <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setAdding(true)}>
+                    Add someone
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                className="app-input min-w-[200px] flex-1"
+                placeholder="Search people…"
+                aria-label="Search people"
+                value={filter.q ?? ""}
+                onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))}
+              />
+              {/* On a phone: department across the row (its names run long), type and sort two-up. Inline from sm. */}
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+              {roster.data?.departments.length ? (
+                <select
+                  className="app-select col-span-2 w-full min-w-0 sm:w-auto"
+                  aria-label="Department"
+                  value={filter.department ?? ""}
+                  onChange={(e) => setFilter((f) => ({ ...f, department: e.target.value || null }))}
+                >
+                  <option value="">All departments</option>
+                  {roster.data.departments.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
               <select
-                className="app-select w-full sm:w-auto"
-                aria-label="Department"
-                value={filter.department ?? ""}
-                onChange={(e) => setFilter((f) => ({ ...f, department: e.target.value || null }))}
+                className="app-select w-full min-w-0 sm:w-auto"
+                aria-label="Type"
+                value={filter.employmentType ?? ""}
+                onChange={(e) => setFilter((f) => ({ ...f, employmentType: (e.target.value || null) as EmploymentType | null }))}
               >
-                <option value="">All departments</option>
-                {roster.data.departments.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
+                <option value="">All types</option>
+                {EMPLOYMENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {EMPLOYMENT_TYPE_LABEL[t]}
                   </option>
                 ))}
               </select>
-            ) : null}
-            <select
-              className="app-select w-full sm:w-auto"
-              aria-label="Type"
-              value={filter.employmentType ?? ""}
-              onChange={(e) => setFilter((f) => ({ ...f, employmentType: (e.target.value || null) as EmploymentType | null }))}
-            >
-              <option value="">All types</option>
-              {EMPLOYMENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {EMPLOYMENT_TYPE_LABEL[t]}
-                </option>
-              ))}
-            </select>
-            {layout === "cards" ? (
-              <select className="app-select w-full sm:w-auto" aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as StaffSortKey)}>
-                <option value="name">By name</option>
-                <option value="startDate">Newest first</option>
-              </select>
-            ) : null}
-            <div className="flex items-center gap-2 sm:ml-auto">
-              {!archived ? (
-                <Segmented
-                  label="Layout"
-                  value={layout}
-                  onChange={setLayout}
-                  options={[
-                    { value: "cards", label: "Cards" },
-                    { value: "org", label: "Org chart" },
-                  ]}
-                />
+              {layout === "cards" ? (
+                <select className="app-select w-full min-w-0 sm:w-auto" aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as StaffSortKey)}>
+                  <option value="name">By name</option>
+                  <option value="startDate">Newest first</option>
+                </select>
               ) : null}
-              <button
-                type="button"
-                className="app-button app-button-tertiary app-button-sm"
-                onClick={() => downloadCsv(shown)}
-                disabled={!shown.length}
-                title="Download this list as a spreadsheet (no rates or personal details)"
-              >
-                <ArrowDownTrayIcon aria-hidden className="h-4 w-4" />
-                CSV
-              </button>
-              {canManageCode && !archived ? (
-                <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setAdding(true)}>
-                  Add someone
-                </button>
-              ) : null}
+              </div>
             </div>
           </div>
 
@@ -717,7 +703,7 @@ export function StaffRoster({
               {people.length ? "Nobody matches these filters." : archived ? "Nobody has been archived." : "Nobody on the team yet."}
             </p>
           ) : layout === "org" && !archived ? (
-            <OrgBranch nodes={tree} basePath={basePath} />
+            <OrgChart tree={tree} basePath={basePath} subtitle={subtitleOf} />
           ) : (
             groups.map((g, gi) => (
               <div key={g.id} data-tour={gi === 0 ? "staff-people" : undefined}>
