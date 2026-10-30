@@ -9007,3 +9007,22 @@ The documents vault from the HR spec (Phase 1b). Rules and details: `docs/hr-pla
 - **Shared profile parts** (`src/components/staff/profile-parts.tsx`): Field, dates, the header
   action. The profile, the Documents card and Backstage → Me use the same pieces.
 
+## 98. Recent Changes (October 2026) — Backstage → Me
+
+Phase 1c of the HR spec. Details: `docs/hr-platform.md`.
+
+- **Me is the person's own Staff profile**, not a second copy: `StaffProfileView` takes
+  `mode="me"`, which only removes the link back to People and the archive/delete controls. What
+  they can see and edit is still decided by `profileAccess` on the server (relation `self`).
+- `GET /api/staff/me` returns their record id (after `linkStaffRecords`, so HR's record with
+  their email is found). `POST` makes one for an active member who has none: name and email only.
+  ⚠️ `memberId` is unique; the create catches the P2002 from a double click and returns the
+  winner's record.
+- **Card 01 on Backstage** shows what HR is waiting on from them (documents requested or sent
+  back), and only where the business has Staff.
+- ⚠️ **Six units at `xl` is 146px a card.** It's `min-[1400px]:grid-cols-6`, and the
+  two-column rule for that case is `sm:max-[1399px]:grid-cols-2`. Tailwind emits arbitrary
+  `min-[…]` variants before named breakpoints, so a plain `sm:grid-cols-2` wins and six columns
+  never appear. Measured at 1024, 1280 and 1440; `bento-grid.test.ts` pins both classes.
+- `HandoverCard` now treats a non-array reply as empty (the demo's catch-all returns `{}`).
+

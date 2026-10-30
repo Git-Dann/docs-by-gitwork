@@ -5,7 +5,8 @@ import { join } from "node:path";
 /**
  * The Backstage bento row must be exactly full at EVERY permission level.
  *
- * Two of its four cards are gated — Expenses is Super Admin, Handover is Admin —
+ * Three of its five cards are gated — Me needs the business to have Staff, Expenses
+ * is Super Admin, Handover is Admin —
  * so a hard-coded column count leaves a hole for everybody else, which is the
  * gap the house card-grid rule exists to prevent. The column count follows the
  * units that actually render, and Team counts as two because it spans two.
@@ -22,31 +23,31 @@ const overview = stripComments(read("src/components/backstage/backstage-overview
 const team = stripComments(read("src/components/backstage/team-card.tsx"));
 
 /** The units formula, mirrored from the component so the arithmetic is testable. */
-function units(opts: { canManageExpenses: boolean; isAdmin: boolean }): number {
-  return 1 + 2 + (opts.canManageExpenses ? 1 : 0) + (opts.isAdmin ? 1 : 0);
+function units(opts: { showMe: boolean; canManageExpenses: boolean; isAdmin: boolean }): number {
+  return (opts.showMe ? 1 : 0) + 1 + 2 + (opts.canManageExpenses ? 1 : 0) + (opts.isAdmin ? 1 : 0);
 }
 
 describe("backstage bento — the row is exactly full", () => {
   it("every permission level lands on a whole number of columns with a class to match", () => {
-    const levels = [
-      { name: "super admin", canManageExpenses: true, isAdmin: true, expected: 5 },
-      { name: "admin", canManageExpenses: false, isAdmin: true, expected: 4 },
-      { name: "staff", canManageExpenses: false, isAdmin: false, expected: 3 },
-    ];
+    const levels = [true, false].flatMap((showMe) => [
+      { name: `super admin${showMe ? " + Me" : ""}`, showMe, canManageExpenses: true, isAdmin: true, expected: 5 + (showMe ? 1 : 0) },
+      { name: `admin${showMe ? " + Me" : ""}`, showMe, canManageExpenses: false, isAdmin: true, expected: 4 + (showMe ? 1 : 0) },
+      { name: `staff${showMe ? " + Me" : ""}`, showMe, canManageExpenses: false, isAdmin: false, expected: 3 + (showMe ? 1 : 0) },
+    ]);
     for (const level of levels) {
       expect(units(level), level.name).toBe(level.expected);
       // ⚠️ Tailwind only emits classes it can find as LITERAL TEXT. A computed
       // `xl:grid-cols-${n}` compiles fine and produces no CSS, so the grid would
       // silently fall back to two columns — invisible to tsc and to lint.
-      expect(overview, `${level.name} needs xl:grid-cols-${level.expected}`).toContain(
-        `xl:grid-cols-${level.expected}`,
-      );
+      // Six waits for 1400px: at 1280 it's 146px a card (measured). See XL_COLS.
+      const cls = level.expected === 6 ? "min-[1400px]:grid-cols-6" : `xl:grid-cols-${level.expected}`;
+      expect(overview, `${level.name} needs ${cls}`).toContain(cls);
     }
   });
 
   it("the component computes units the same way this test does", () => {
     expect(overview).toMatch(
-      /const units = 1 \+ 2 \+ \(canManageExpenses \? 1 : 0\) \+ \(isAdmin \? 1 : 0\);/,
+      /const units = \(showMe \? 1 : 0\) \+ 1 \+ 2 \+ \(canManageExpenses \? 1 : 0\) \+ \(isAdmin \? 1 : 0\);/,
     );
   });
 
@@ -70,22 +71,27 @@ describe("backstage bento — the row is exactly full", () => {
    * one card — so the odd/even sum is its own.
    */
   it("an odd number of cards fills its row between sm and xl", () => {
-    const counts = [
-      { name: "super admin", canManageExpenses: true, isAdmin: true, cards: 4 },
-      { name: "admin", canManageExpenses: false, isAdmin: true, cards: 3 },
-      { name: "staff", canManageExpenses: false, isAdmin: false, cards: 2 },
-    ];
+    const counts = [true, false].flatMap((showMe) => [
+      { name: "super admin", showMe, canManageExpenses: true, isAdmin: true, cards: 4 + (showMe ? 1 : 0) },
+      { name: "admin", showMe, canManageExpenses: false, isAdmin: true, cards: 3 + (showMe ? 1 : 0) },
+      { name: "staff", showMe, canManageExpenses: false, isAdmin: false, cards: 2 + (showMe ? 1 : 0) },
+    ]);
     for (const c of counts) {
-      const cards = 2 + (c.canManageExpenses ? 1 : 0) + (c.isAdmin ? 1 : 0);
+      const cards = (c.showMe ? 1 : 0) + 2 + (c.canManageExpenses ? 1 : 0) + (c.isAdmin ? 1 : 0);
       expect(cards, c.name).toBe(c.cards);
     }
     expect(overview).toMatch(
-      /const cardCount = 2 \+ \(canManageExpenses \? 1 : 0\) \+ \(isAdmin \? 1 : 0\);/,
+      /const cardCount = \(showMe \? 1 : 0\) \+ 2 \+ \(canManageExpenses \? 1 : 0\) \+ \(isAdmin \? 1 : 0\);/,
     );
     expect(overview).toContain("sm:max-xl:[&>*:last-child]:col-span-2");
     // `max-xl` is load-bearing: without it the span survives into the five-column
     // row and breaks the exact fit it exists to protect.
     expect(overview).not.toMatch(/(?<!max-xl:)\[&>\*:last-child\]:col-span-2/);
+    // ⚠️ Six units must not be plain `xl:grid-cols-6` — 146px cards at 1280.
+    expect(overview).not.toContain('"xl:grid-cols-6"');
+    // …and its two-column rule must stop at 1399px, or `sm:grid-cols-2` outranks the
+    // arbitrary `min-[1400px]` variant and the row never goes to six (measured at 1440).
+    expect(overview).toContain('units === 6 ? "sm:max-[1399px]:grid-cols-2"');
     expect(overview).toContain("${fillOddRow}");
   });
 
