@@ -20,6 +20,7 @@ import {
   mostSevereTier,
   rdapExpiry,
   shouldAnnounceTier,
+  sslTier,
   type ExpiryTier,
 } from "@/lib/monitor-expiry";
 
@@ -116,49 +117,62 @@ const OWNER = {
   wiki: { select: { client: { select: { name: true, slug: true, workspaceId: true } } } },
 } as const satisfies Prisma.WikiMonitorSelect;
 
-/** Certificates: HTTPS monitors not read in 12 h. */
+/**
+ * Certificates: one TLS read per (workspace, host) not read in 12 h. Monitors on the same host
+ * share one certificate, so they share one read, one stored tier and ONE alert — two monitors on
+ * foundry.gitwork.co.uk posted the same warning twice (30 Oct 2026).
+ */
 async function checkCertificates(now: Date): Promise<number> {
-  const due = await prisma.wikiMonitor.findMany({
-    where: {
-      enabled: true,
-      type: "HTTP",
-      target: { startsWith: "https://" },
-      OR: [{ sslCheckedAt: null }, { sslCheckedAt: { lt: new Date(now.getTime() - SSL_EVERY_MS) } }],
-    },
+  const monitors = await prisma.wikiMonitor.findMany({
+    where: { enabled: true, type: "HTTP", target: { startsWith: "https://" } },
     orderBy: { sslCheckedAt: { sort: "asc", nulls: "first" } },
-    take: PER_RUN,
-    select: { id: true, name: true, target: true, type: true, sslAlertedTier: true, ...OWNER },
+    select: { id: true, name: true, target: true, type: true, sslAlertedTier: true, sslCheckedAt: true, ...OWNER },
   });
+  const groups = new Map<string, typeof monitors>();
+  for (const m of monitors) {
+    const host = monitorHost(m.type, m.target);
+    if (!host) continue;
+    const key = `${m.wiki.client.workspaceId}|${host}`;
+    groups.set(key, [...(groups.get(key) ?? []), m]);
+  }
+  const due = [...groups.entries()]
+    .filter(([, list]) => list.some((m) => !m.sslCheckedAt || now.getTime() - m.sslCheckedAt.getTime() >= SSL_EVERY_MS))
+    .slice(0, PER_RUN);
+
   await Promise.all(
-    due.map(async (m) => {
-      const host = monitorHost(m.type, m.target);
-      const reading = host ? await readCertificate(host) : { ok: false as const, reason: "no hostname" };
+    due.map(async ([key, list]) => {
+      const host = key.split("|")[1];
+      const reading = await readCertificate(host);
       const expiresAt = reading.ok ? reading.validTo : null;
-      const tier = expiryTier("ssl", expiresAt, now);
-      const announceIt = expiresAt !== null && shouldAnnounceTier("ssl", m.sslAlertedTier, tier);
-      await prisma.wikiMonitor.update({
-        where: { id: m.id },
+      const issuer = reading.ok ? reading.issuer : null;
+      const tier = sslTier(expiresAt, issuer, now);
+      const previous = mostSevereTier("ssl", list.map((m) => m.sslAlertedTier));
+      const announceIt = expiresAt !== null && shouldAnnounceTier("ssl", previous, tier);
+      await prisma.wikiMonitor.updateMany({
+        where: { id: { in: list.map((m) => m.id) } },
         data: {
           sslCheckedAt: now,
           sslExpiresAt: expiresAt,
-          sslIssuer: reading.ok ? reading.issuer : null,
+          sslIssuer: issuer,
           sslError: reading.ok ? reading.authorizationError : reading.reason,
           // A failed read keeps the last tier — "could not look" is not "renewed".
-          ...(reading.ok ? { sslAlertedTier: announceIt ? tier : tier === null ? null : m.sslAlertedTier } : {}),
+          ...(reading.ok ? { sslAlertedTier: announceIt ? tier : tier === null ? null : previous } : {}),
         },
       });
       if (announceIt && tier && expiresAt) {
-        const c = m.wiki.client;
+        // One alert per certificate, naming every monitor that sits on it.
+        const c = list[0].wiki.client;
+        const names = [...new Set(list.map((m) => m.name))];
         announce({
           workspaceId: c.workspaceId,
           clientName: c.name,
           clientSlug: c.slug,
           what: "SSL certificate",
-          subject: `${m.name} (${host})`,
+          subject: `${host} (${names.join(", ")})`,
           tier,
           expiresAt,
           now,
-          groupKey: `clients.monitor_alert:ssl:${m.id}:${tier}`,
+          groupKey: `clients.monitor_alert:ssl:${c.workspaceId}:${host}:${tier}`,
         });
       }
     }),
