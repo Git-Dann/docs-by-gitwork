@@ -282,6 +282,10 @@ export const bigwedgeAdapter: AnalyticsAdapter = {
   requiresToken: false,
   // Premium launched mid-month — waiting for 1 November to see October would be useless.
   monthToDate: true,
+  // All-time counts the date range never changed (111,675 for August, 111,676 for September):
+  // a flat line that claims no change. Dropped from new captures in Oct 2026; older months
+  // still hold them.
+  retiredKeys: ["users_total", "users_returning"],
   hint: "User analytics, month by month. Foundry logs in with the Big Wedge service account; a token is only a fallback.",
   fetchMonth,
 };

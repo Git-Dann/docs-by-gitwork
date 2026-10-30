@@ -84,6 +84,12 @@ export interface AnalyticsAdapter {
    * complete month. Off by default: it is one more call to the client's API per refresh.
    */
   monthToDate?: boolean;
+  /**
+   * Metric keys this adapter used to report and no longer does because they were wrong for a
+   * month (e.g. an all-time count). Months stored before the change still carry them, so they
+   * are left out on read rather than shown — or starred — from an old capture.
+   */
+  retiredKeys?: string[];
   fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot>;
 }
 

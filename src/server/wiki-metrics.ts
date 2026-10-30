@@ -110,6 +110,13 @@ function toStored(rows: { period: string; capturedAt: Date; metrics: unknown }[]
   }));
 }
 
+/** Stored months, minus metrics the adapter has retired (see `AnalyticsAdapter.retiredKeys`). */
+export function withoutRetired(snapshots: StoredSnapshot[], retired: string[] | undefined): StoredSnapshot[] {
+  if (!retired?.length) return snapshots;
+  const gone = new Set(retired);
+  return snapshots.map((s) => ({ ...s, metrics: s.metrics.filter((m) => !gone.has(m?.key)) }));
+}
+
 /** The Care connection behind this Portal client, if any. */
 async function findCareConnection(clientId: string) {
   const care = await prisma.supportClient.findFirst({
@@ -160,13 +167,16 @@ export async function loadWikiMetrics(
     source = "care";
     mode = modeForAdapter(care.adapterKey);
     sourceLabel = `Care analytics — ${getAdapter(care.adapterKey ?? undefined)?.label ?? care.careName}`;
-    snapshots = toStored(
-      await prisma.supportAnalyticsSnapshot.findMany({
-        where: { clientId: care.careId },
-        orderBy: { period: "desc" },
-        take: 24,
-        select: { period: true, capturedAt: true, metrics: true },
-      }),
+    snapshots = withoutRetired(
+      toStored(
+        await prisma.supportAnalyticsSnapshot.findMany({
+          where: { clientId: care.careId },
+          orderBy: { period: "desc" },
+          take: 24,
+          select: { period: true, capturedAt: true, metrics: true },
+        }),
+      ),
+      getAdapter(care.adapterKey ?? undefined)?.retiredKeys,
     );
   } else if (cfg.apiEndpoint) {
     source = "api";
