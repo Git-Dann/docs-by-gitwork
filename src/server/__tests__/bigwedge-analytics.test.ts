@@ -212,6 +212,12 @@ describe("revenue taken — the total MRR cannot give", () => {
     expect(snap.metrics.some((m) => m.key === "revenue_cash")).toBe(false);
     // True NOW, and October is the month still running, so these stay.
     expect(snap.metrics.find((m) => m.key === "subs_yearly")?.value).toBe(11);
+    // …and so does Big Wedge's total, as of now and named as such — what their admin shows.
+    expect(snap.metrics.find((m) => m.key === "revenue_total")).toMatchObject({
+      label: "Total estimated revenue",
+      value: 373.81,
+      money: true,
+    });
     expect(snap.metrics.some((m) => m.key === "users_new")).toBe(true);
   });
 
@@ -220,6 +226,7 @@ describe("revenue taken — the total MRR cannot give", () => {
     const snap = await bigwedgeAdapter.fetchMonth({ ...ctx, month: 9, now: new Date("2026-10-22T09:00:00Z") });
     expect(snap.metrics.some((m) => m.group === "Revenue")).toBe(false);
     expect(snap.metrics.find((m) => m.key === "users_new")?.value).toBe(4712);
+    expect(snap.metrics.some((m) => m.key === "revenue_total")).toBe(false);
   });
 
   it("drops Big Wedge's total when the day before cannot be read to check it", async () => {

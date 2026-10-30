@@ -365,8 +365,11 @@ describe("the month still running (\"October so far\")", () => {
     expect(v?.metrics.find((x) => x.key === "mrr")?.hidden).toBe(true);
   });
 
-  it("is fetched first when missing or older than six hours, and not otherwise", () => {
-    const fresh = [snap("2026-10", "2026-10-15T10:00:00Z"), ...SNAPS.slice(1)];
+  it("is fetched first when missing or older than an hour, and not otherwise", () => {
+    // NOW is 12:00. 11:30 is fresh; 10:30 is behind (it used to be six hours, which read as
+    // wrong next to the client's own live admin).
+    const fresh = [snap("2026-10", "2026-10-15T11:30:00Z"), ...SNAPS.slice(1)];
+    expect(periodsToFetch([snap("2026-10", "2026-10-15T10:30:00Z"), ...SNAPS.slice(1)], NOW, { monthToDate: true })[0]).toBe("2026-10");
     expect(periodsToFetch(fresh, NOW, { monthToDate: true })[0]).not.toBe("2026-10");
     expect(periodsToFetch(SNAPS.slice(1), NOW, { monthToDate: true })[0]).toBe("2026-10");
     const stale = [snap("2026-10", "2026-10-15T05:00:00Z"), ...SNAPS.slice(1)];
@@ -519,5 +522,14 @@ describe("the headline row", () => {
     const idx = headlineTileIndexes(tiles, ["u1", "u1", "u2", "u3", "g1", "g2"]);
     expect(idx).toHaveLength(HEADLINE_COUNT);
     expect(new Set(idx).size).toBe(HEADLINE_COUNT);
+  });
+});
+
+describe("Refresh now", () => {
+  it("re-reads a running month that is still fresh when forced", () => {
+    const NOW2 = new Date("2026-10-15T12:00:00Z");
+    const fresh = [{ period: "2026-10", capturedAt: "2026-10-15T11:50:00Z", metrics: [{ key: "a", label: "a", value: 1 }] }];
+    expect(periodsToFetch(fresh, NOW2, { monthToDate: true })).not.toContain("2026-10");
+    expect(periodsToFetch(fresh, NOW2, { monthToDate: true, force: true })[0]).toBe("2026-10");
   });
 });

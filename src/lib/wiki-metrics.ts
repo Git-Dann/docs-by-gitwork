@@ -234,12 +234,20 @@ export function selectMonthToDate(
   return metrics.length ? { period, capturedAt: snap.capturedAt, metrics } : null;
 }
 
-/** True when the running month has no capture, or one older than CURRENT_STALE_MS. */
+/**
+ * How old the running month's figures may get. An hour, not six: the month still running is
+ * the one people compare with the client's own live admin, and six hours behind read as wrong
+ * (Big Wedge, 30 Oct 2026: 131 subscriptions in Foundry, 134 in their admin). It is refreshed
+ * in the background (`refreshRunningMonths`), so a client reading it never waits on a fetch.
+ */
+export const MONTH_TO_DATE_STALE_MS = 60 * 60 * 1000;
+
+/** True when the running month has no capture, or one older than MONTH_TO_DATE_STALE_MS. */
 export function monthToDateStale(snapshots: StoredSnapshot[], now: Date): boolean {
   const period = periodOf(now);
   const snap = snapshots.find((s) => s.period === period);
   const t = snap ? Date.parse(snap.capturedAt) : NaN;
-  return !Number.isFinite(t) || now.getTime() - t > CURRENT_STALE_MS;
+  return !Number.isFinite(t) || now.getTime() - t > MONTH_TO_DATE_STALE_MS;
 }
 
 export interface MetricsView {
@@ -366,7 +374,8 @@ export function selectMetricsView(input: {
 export function periodsToFetch(
   snapshots: StoredSnapshot[],
   now: Date,
-  opts: { monthToDate?: boolean } = {},
+  /** `force`: fetch the running month even when it is fresh — the "Refresh now" button. */
+  opts: { monthToDate?: boolean; force?: boolean } = {},
 ): string[] {
   const finalPeriods = new Set(snapshots.filter(isSettled).map((s) => s.period));
   const lastComplete = addMonths(periodOf(now), -1);
@@ -374,7 +383,7 @@ export function periodsToFetch(
     (p) => !finalPeriods.has(p),
   );
   // The running month first: it is the one someone opened the page to see.
-  return opts.monthToDate && monthToDateStale(snapshots, now) ? [periodOf(now), ...months] : months;
+  return opts.monthToDate && (opts.force || monthToDateStale(snapshots, now)) ? [periodOf(now), ...months] : months;
 }
 
 /** A GET endpoint on the client's API Docs page that can be called as-is. */

@@ -34,6 +34,7 @@ import {
   endpointUrl,
   listMetricEndpoints,
   modeForAdapter,
+  monthToDateStale,
   periodOf,
   periodsToFetch,
   readMetricsConfig,
@@ -211,9 +212,58 @@ function errorText(err: unknown): string {
  * those come back in `failed`, so the editor can say what went wrong while the section
  * keeps showing the last good figures.
  */
+/**
+ * Keep every running month fresh without anyone opening the page. Called from the every-minute
+ * `jobs` worker; it reads stored capture times only (no client API call) unless a running month
+ * is older than MONTH_TO_DATE_STALE_MS, so in practice each client's API is asked about once an
+ * hour. Before this, the running month was refreshed only when someone at Gitwork opened the
+ * section, so a client reading it saw figures from whenever that last was.
+ *
+ * Capped per run and one client at a time — these are calls to the client's own API.
+ */
+/**
+ * When each client's running month was last ATTEMPTED (in this process). A failed fetch does not
+ * move the stored capture time, so without this a broken client API would be asked every minute.
+ */
+const lastAttempt = new Map<string, number>();
+export const RUNNING_MONTH_RETRY_MS = 15 * 60 * 1000;
+
+export async function refreshRunningMonths(
+  now: Date = new Date(),
+  limit = 3,
+): Promise<{ checked: number; refreshed: string[]; failed: string[] }> {
+  const wikis = await prisma.clientWiki.findMany({
+    where: { metricsEnabled: true },
+    select: { clientId: true },
+  });
+  const refreshed: string[] = [];
+  const failed: string[] = [];
+  for (const { clientId } of wikis) {
+    if (refreshed.length + failed.length >= limit) break;
+    const care = await findCareConnection(clientId);
+    if (!care || getAdapter(care.adapterKey ?? undefined)?.monthToDate !== true) continue;
+    const stored = toStored(
+      await prisma.supportAnalyticsSnapshot.findMany({
+        where: { clientId: care.careId, period: periodOf(now) },
+        select: { period: true, capturedAt: true, metrics: true },
+      }),
+    );
+    if (!monthToDateStale(stored, now)) continue;
+    const tried = lastAttempt.get(clientId);
+    if (tried !== undefined && now.getTime() - tried < RUNNING_MONTH_RETRY_MS) continue;
+    lastAttempt.set(clientId, now.getTime());
+    const result = await refreshWikiMetrics(clientId, now).catch(() => null);
+    if (result && result.failed.length === 0) refreshed.push(clientId);
+    else failed.push(clientId);
+  }
+  return { checked: wikis.length, refreshed, failed };
+}
+
 export async function refreshWikiMetrics(
   clientId: string,
   now: Date = new Date(),
+  /** `force`: also re-read a running month that is still fresh — a person pressed Refresh now. */
+  opts: { force?: boolean } = {},
 ): Promise<MetricsRefreshResult> {
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId },
@@ -238,6 +288,7 @@ export async function refreshWikiMetrics(
       mode === "monthly"
         ? periodsToFetch(existing, now, {
             monthToDate: getAdapter(care.adapterKey ?? undefined)?.monthToDate === true,
+            force: opts.force,
           })
         : [periodOf(now)];
     const result: MetricsRefreshResult = { source: "care", fetched: [], failed: [] };

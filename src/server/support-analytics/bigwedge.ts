@@ -235,8 +235,20 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
       // "Revenue this month" would be a confident wrong figure, so it goes. The counts and
       // MRR are true NOW, which is right for the month still running and wrong for any
       // month that has ended, so a finished month keeps no revenue figures at all.
-      drop((m) => m.key !== "revenue_cash");
-      if (!isRunningMonth(ctx.year, ctx.month, ctx.now ?? new Date())) drop((m) => m.group !== "Revenue");
+      if (isRunningMonth(ctx.year, ctx.month, ctx.now ?? new Date())) {
+        // …but as of NOW it is exactly what Big Wedge's own admin shows as "Total estimated
+        // revenue" (every active plan at its price: 39 × 5.45 + 95 × 29.99 ≈ £3,063 on 30 Oct
+        // 2026). So the month still running keeps it, named for what it is, not as this
+        // month's takings.
+        const cash = metrics.find((m) => m.key === "revenue_cash");
+        if (cash) {
+          cash.key = "revenue_total";
+          cash.label = "Total estimated revenue";
+        }
+      } else {
+        drop((m) => m.key !== "revenue_cash");
+        drop((m) => m.group !== "Revenue");
+      }
     } else if (scoped === null && reportsCash) {
       // Could not check the range, so Big Wedge's total cannot be trusted as this month's.
       drop((m) => m.key !== "revenue_cash");
