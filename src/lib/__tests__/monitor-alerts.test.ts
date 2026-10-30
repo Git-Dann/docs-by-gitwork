@@ -261,6 +261,19 @@ describe("the Slack post — laid out like GitHub Status", () => {
     expect(blocks.at(-1)?.elements?.[0].text).toBe("Foundry uptime monitoring");
   });
 
+  it("the button can point somewhere else, like GitHub's 'View all updates'", () => {
+    const withButton = alertBlocks({
+      heading: "x", title: "x", url: "https://foundry.gitwork.co.uk/app/portal/fellas-loaded/wiki#monitors",
+      description: "x", footer: "x", services: [],
+      button: { label: "View all monitors", url: "https://foundry.gitwork.co.uk/app/portal/gitwork/wiki#monitors" },
+    }) as { type: string; text?: { text: string }; elements?: { text?: { text: string } | string; url?: string }[] }[];
+    const button = withButton.find((b) => b.type === "actions")?.elements?.[0];
+    expect(button?.url).toBe("https://foundry.gitwork.co.uk/app/portal/gitwork/wiki#monitors");
+    expect(JSON.stringify(button?.text)).toContain("View all monitors");
+    // The title still links to the client's own monitors.
+    expect(withButton[1].text?.text).toContain("/app/portal/fellas-loaded/wiki#monitors");
+  });
+
   it("headings for every kind of update", () => {
     expect(incidentHeading("flaky")).toBe("Incident: Degraded");
     expect(incidentHeading("recovered")).toBe("Incident: Resolved");

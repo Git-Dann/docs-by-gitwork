@@ -40,6 +40,7 @@ import {
   deleteWikiMonitorApi,
   runWikiMonitorApi,
   getWikiMonitorSuggestionsApi,
+  getWikiMonitorBoardApi,
   setWikiMonitorsEnabledApi,
   setWikiIntakeEnabledApi,
   setWikiCodeEnabledApi,
@@ -996,6 +997,19 @@ export function useWikiMonitorSuggestions(slug: string) {
   return useQuery({
     queryKey: ["client-wiki", slug, "monitor-suggestions"],
     queryFn: () => getWikiMonitorSuggestionsApi(slug),
+  });
+}
+
+/**
+ * The all-clients board on the Gitwork wiki. Re-read every minute — the checker runs every
+ * minute while anything is failing, so the board is never more than a minute behind it.
+ */
+export function useWikiMonitorBoard(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "monitor-board"],
+    queryFn: () => getWikiMonitorBoardApi(slug),
+    enabled,
+    refetchInterval: 60_000,
   });
 }
 

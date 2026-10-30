@@ -2,6 +2,7 @@ import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, 
 import type { BoardColumnDef } from "@/lib/tasks/board-columns";
 import type { ReportTask } from "@/lib/standup-report";
 import type { WikiLinkDTO } from "@/server/wiki-links";
+import type { MonitorBoardDTO } from "@/server/wiki-monitor-board";
 import type {
   HandoverDTO,
   HandoverInput,
@@ -4616,6 +4617,13 @@ export async function getWikiMonitorSuggestionsApi(
   slug: string,
 ): Promise<{ suggestions: { name: string; target: string }[] }> {
   return apiFetch(`/api/clients/${slug}/wiki/monitors/suggestions`);
+}
+
+/** Every client's monitors — only the agency's own wiki (slug `gitwork`) answers. */
+export async function getWikiMonitorBoardApi(
+  slug: string,
+): Promise<MonitorBoardDTO> {
+  return apiFetch(`/api/clients/${slug}/wiki/monitors/board`);
 }
 
 export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {

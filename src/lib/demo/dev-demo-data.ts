@@ -3947,6 +3947,66 @@ function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
 
 let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
 
+function demoMonitorBoard() {
+  const now = Date.now();
+  const ago = (min: number) => new Date(now - min * 60000).toISOString();
+  let n = 0;
+  const m = (name: string, target: string, over: Record<string, unknown> = {}) => ({
+    id: `board-${++n}`,
+    name,
+    target,
+    status: "UP",
+    stale: false,
+    alertKind: null,
+    latencyMs: 40 + n * 13,
+    statusCode: 200,
+    error: null,
+    checkedAt: ago(1),
+    downSince: null,
+    uptime24h: 100,
+    ...over,
+  });
+  return {
+    readAt: new Date(now).toISOString(),
+    clients: [
+      {
+        clientId: "cl-gitwork",
+        slug: "gitwork",
+        name: "Gitwork",
+        monitors: [
+          m("Foundry — app", "https://foundry.gitwork.co.uk/api/health"),
+          m("Foundry — marketing", "https://foundry.gitwork.co.uk/"),
+          m("gitwork.co.uk", "https://gitwork.co.uk/"),
+        ],
+      },
+      {
+        clientId: "cl-northwind",
+        slug: "northwind",
+        name: "Northwind Studio",
+        monitors: [
+          m("Production API", "https://api.northwind.co/health", {
+            status: "DOWN",
+            statusCode: 503,
+            latencyMs: null,
+            alertKind: "down",
+            downSince: ago(7),
+            uptime24h: 97.2,
+          }),
+          m("Website", "https://northwind.co/"),
+        ],
+      },
+      {
+        clientId: "cl-bigwedge",
+        slug: "fairway-nine",
+        name: "Fairway Nine",
+        monitors: [m("Booking app", "https://app.fairwaynine.com/", { status: "DEGRADED", latencyMs: 4210, uptime24h: 100 })],
+      },
+      { clientId: "cl-cadenza", slug: "cadenza", name: "Cadenza", monitors: [m("Website", "https://cadenza.app/")] },
+      { clientId: "cl-kestrel", slug: "kestrel", name: "Kestrel", monitors: [] },
+    ],
+  };
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -4009,6 +4069,11 @@ export function resolveDemoApi(
   }
   // Monitors → "From this client's Platforms". Two URLs nothing watches yet, so the
   // one-click suggestions render (the catch-all's `{}` would hide the block entirely).
+  // Monitors → the all-clients board (only the agency's wiki shows it). One client down, one
+  // slow, one with nothing monitored, so every state of the board can be seen.
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/board$/.test(pathname)) {
+    return demoMonitorBoard();
+  }
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/suggestions$/.test(pathname)) {
     return {
       suggestions: [

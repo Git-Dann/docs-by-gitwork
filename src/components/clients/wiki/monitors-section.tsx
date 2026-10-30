@@ -219,7 +219,18 @@ const EMPTY_FORM: FormState = {
 const inputCls =
   "w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 text-[14px] text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]";
 
-export function MonitorsManager({ slug, monitors }: { slug: string; monitors: WikiMonitorDTO[] }) {
+export function MonitorsManager({
+  slug,
+  monitors,
+  number = "01",
+  label = "SYSTEM MONITORS",
+}: {
+  slug: string;
+  monitors: WikiMonitorDTO[];
+  /** The card's `NN //` number — 02 on the Gitwork wiki, where the all-clients board is 01. */
+  number?: string;
+  label?: string;
+}) {
   const create = useCreateWikiMonitor(slug);
   const update = useUpdateWikiMonitor(slug);
   const remove = useDeleteWikiMonitor(slug);
@@ -283,8 +294,8 @@ export function MonitorsManager({ slug, monitors }: { slug: string; monitors: Wi
     <section className="widget-card">
       <div className="widget-header flex items-center justify-between">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          <span className="widget-header__label--number">01</span>
-          {" // SYSTEM MONITORS"}
+          <span className="widget-header__label--number">{number}</span>
+          {` // ${label}`}
         </span>
         <button
           type="button"
