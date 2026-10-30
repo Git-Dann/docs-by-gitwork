@@ -15,8 +15,10 @@ import {
   WINDOW,
   alertBlocks,
   alertMessage,
+  CONFIRM_AFTER_MS,
   checkEveryMs,
   incidentHeading,
+  shouldConfirm,
   isStale,
   nextAlertState,
   staleMessage,
@@ -206,7 +208,7 @@ export async function createMonitor(clientId: string, input: MonitorInput): Prom
   // Adding a monitor implies the section is on.
   await prisma.clientWiki.update({ where: { id: wikiId }, data: { monitorsEnabled: true } });
   // Best-effort immediate probe so the operator sees a status right away.
-  await runMonitorCheck(monitor).catch(() => {});
+  await runMonitorCheck(monitor, { confirm: false }).catch(() => {});
   const fresh = await prisma.wikiMonitor.findUnique({ where: { id: monitor.id } });
   return buildMonitorDTO(fresh ?? monitor);
 }
@@ -249,7 +251,7 @@ export async function deleteMonitor(clientId: string, monitorId: string): Promis
 export async function checkMonitorNow(clientId: string, monitorId: string): Promise<WikiMonitorDTO | null> {
   const monitor = await prisma.wikiMonitor.findFirst({ where: { id: monitorId, wiki: { clientId } } });
   if (!monitor) return null;
-  await runMonitorCheck(monitor);
+  await runMonitorCheck(monitor, { confirm: false });
   const fresh = await prisma.wikiMonitor.findUnique({ where: { id: monitorId } });
   return fresh ? buildMonitorDTO(fresh) : null;
 }
@@ -273,8 +275,14 @@ export async function loadMonitorSuggestions(clientId: string): Promise<MonitorS
 
 // ─── Probing ────────────────────────────────────────────────────────────────
 
-/** Probe one monitor, persist the check, update its state, and alert on an outage or recovery. */
-export async function runMonitorCheck(monitor: WikiMonitor): Promise<void> {
+/**
+ * Probe one monitor, persist the check, update its state, and alert on an outage or recovery.
+ *
+ * `confirm` (on for scheduled checks): a FIRST failure is re-checked after CONFIRM_AFTER_MS in
+ * the same run, so an outage is confirmed — and alerted — in seconds, not on the next run.
+ * Off for "Check now" and a just-added monitor, which a person is waiting on.
+ */
+export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: boolean } = { confirm: true }): Promise<void> {
   const result = await runProbe(monitor);
   const now = new Date();
   // The checks before this one, since the last alert cleared — the "3 of the last 6" window.
@@ -329,6 +337,12 @@ export async function runMonitorCheck(monitor: WikiMonitor): Promise<void> {
     }),
   ]);
   if (alert) await sendMonitorAlert(monitor, alert, { statusCode: result.statusCode, error: result.error });
+
+  if (opts.confirm && shouldConfirm(result.status as ProbeStatus, state)) {
+    await new Promise((r) => setTimeout(r, CONFIRM_AFTER_MS));
+    const fresh = await prisma.wikiMonitor.findUnique({ where: { id: monitor.id } });
+    if (fresh?.enabled) await runMonitorCheck(fresh, { confirm: false });
+  }
 }
 
 /** Who and where to tell: the monitor's client, for the message and the link back. */

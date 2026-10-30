@@ -138,6 +138,19 @@ export function nextAlertState(
  */
 export const FAILING_RECHECK_MINUTES = 1;
 
+/**
+ * How long after a FIRST failure to check again, instead of waiting for the next run. Two
+ * failures in a row is still the rule (one blip never pages anyone), but the second one comes
+ * 20 seconds later rather than minutes later — so a real outage alerts within about 20 seconds
+ * of being spotted, and a blip that recovers in that time stays quiet.
+ */
+export const CONFIRM_AFTER_MS = 20_000;
+
+/** Re-check straight away: this check failed, it is the first in a row, and nothing is open. */
+export function shouldConfirm(status: ProbeStatus, state: Pick<AlertState, "failStreak" | "alertKind">): boolean {
+  return status === "DOWN" && state.failStreak === 1 && state.alertKind === null;
+}
+
 /** Failing = the last check failed, a failure streak is running, or an alert is still open. */
 export function isFailing(m: { lastStatus: string; failStreak: number; alertKind: string | null }): boolean {
   return m.lastStatus === "DOWN" || m.failStreak > 0 || m.alertKind !== null;

@@ -9202,3 +9202,16 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
   because they were wrong for a month are left out on read, so months stored before the change
   don't still show or star them. Big Wedge retires `users_total` and `users_returning`, which
   are all-time counts.
+- **A finished month keeps its month-end figures** (`AnalyticsAdapter.carryAtMonthEnd`,
+  `carryMonthEndFigures`). Big Wedge's subscription counts, MRR and revenue total are as of now
+  for any range, so the read that finalises a month can't give them. They're carried from that
+  month's last capture taken during the month (hourly, so within about an hour of month end).
+  Nothing is carried from a capture taken outside the month.
+- **Outages are confirmed in seconds.** A first failure is re-checked after `CONFIRM_AFTER_MS`
+  (20s) in the same run instead of on the next one, so "down" lands about 20s after it's spotted.
+  "Check now" and a just-added monitor skip the wait.
+- **Foundry is watched from outside.** `.github/workflows/foundry-watchdog.yml` checks
+  `/api/health` from GitHub's runners every 5 minutes, because Foundry's own monitors run on the
+  box they'd be reporting. Down → the run fails, and GitHub emails whoever last edited the
+  schedule. If the `SLACK_OPS_WEBHOOK_URL` secret is set, it also posts once per outage, plus once
+  on recovery.

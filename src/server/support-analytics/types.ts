@@ -90,6 +90,11 @@ export interface AnalyticsAdapter {
    * are left out on read rather than shown — or starred — from an old capture.
    */
   retiredKeys?: string[];
+  /**
+   * Metrics the source can only report as of now. A finished month keeps them from its last
+   * capture taken during the month (`carryMonthEndFigures`), instead of losing them.
+   */
+  carryAtMonthEnd?: string[];
   fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot>;
 }
 
