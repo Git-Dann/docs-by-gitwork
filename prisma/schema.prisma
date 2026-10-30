@@ -500,6 +500,8 @@ model Workspace {
   hrDocumentSettings          Json?
   /// The "Foundry HR" root folder in the workspace's Drive, cached once made.
   hrDriveFolderId             String?
+  /// ISO week ("2026-W45") the weekly HR digest last went out for (src/server/hr/digest.ts). Claimed before sending, so two runs can't both send.
+  hrDigestWeek                String?
 }
 
 /**

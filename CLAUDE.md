@@ -9026,3 +9026,18 @@ Phase 1c of the HR spec. Details: `docs/hr-platform.md`.
   never appear. Measured at 1024, 1280 and 1440; `bento-grid.test.ts` pins both classes.
 - `HandoverCard` now treats a non-array reply as empty (the demo's catch-all returns `{}`).
 
+## 99. Recent Changes (October 2026) — A Staff tour for HR, and a Monday HR digest
+
+Details: `docs/hr-platform.md`.
+
+- **EasyUI's Product Tour, vendored** (`src/components/ui/easyui/product-tour.tsx`). First use: a
+  one-time tour of Staff for whoever holds `hr.manage`, replayable from the For HR card. Targets are
+  `data-tour` attributes on the roster. ⚠️ An empty `steps` must return before the step effect runs
+  too, not only from the render (it read `steps[0].target` and threw).
+- **Weekly HR digest** (`src/server/hr/digest.ts`): Monday 08:00+ UK, in-app (`hr.weekly_digest`)
+  and email, to people granted `hr.manage`. Quiet weeks send nothing. Run from the `jobs` worker, so
+  it needs no crontab line. `Workspace.hrDigestWeek` (additive) is the once-a-week claim.
+  ⚠️ A Super Admin resolves to every permission, so they're a recipient only with an explicit
+  `hr.manage` grant. A test caught this; the first cut sent Siân's digest to Dan too.
+  ⚠️ Right-to-work dates (encrypted tier) are counted, never listed, because email leaves Foundry.
+

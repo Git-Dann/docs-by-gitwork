@@ -26,6 +26,7 @@ its row below.
 | Calendar | `src/components/ui/calendar.tsx` | `src/components/ui/easyui/calendar.tsx` |
 | Date Picker | `src/components/ui/date-picker.tsx` | `src/components/ui/easyui/date-picker.tsx` |
 | Animated File Upload | `src/components/ui/AnimatedFileUpload.tsx` (+ `springSnappy`, `springGentle` from `src/lib/motion-tokens.ts`) | `src/components/ui/easyui/animated-file-upload.tsx` |
+| Product Tour | `src/components/ui/ProductTour.tsx` | `src/components/ui/easyui/product-tour.tsx` |
 
 **Changes made for Foundry, for every component:** imports (`cn` from `@/lib/format`, Heroicons in
 place of lucide), colours mapped to Foundry tokens so it works in light and dark mode (EasyUI is dark
@@ -52,6 +53,12 @@ drop zone. Reduced motion keeps the progress bar (it carries information) and dr
 `uploadWithProgress` beside it does the real upload with progress and Foundry's view-as headers.
 Used for HR documents, task screenshots and the new-document wizard; not on Launchpad rows, where
 a drop zone per requirement would swamp the list. EasyUI's 12px radius is kept.
+
+**Product Tour.** The spotlight, springs, docked phone card and keyboard handling are upstream's.
+Next uses the primary button's colours in both themes (white on Foundry's dark-mode blue fails contrast), the
+step slide also snaps under reduced motion, the dialog's name is a `label` prop, and an empty tour
+renders nothing. The demo and its lucide icon are not vendored. EasyUI's 16px card radius is kept.
+Used for the first-visit Staff tour for HR.
 
 ```
 MIT License
