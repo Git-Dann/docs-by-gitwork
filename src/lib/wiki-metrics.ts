@@ -48,6 +48,23 @@ export interface MetricCard {
   title: string;
   /** This metric's caption inside it, e.g. "Monthly". */
   part: string;
+  /**
+   * A ranked list ("Most played courses") rather than a figure with a breakdown: every part is
+   * a row, none is the headline, and it is hidden as one (`listHideKey`) and never featured.
+   */
+  list?: boolean;
+}
+
+/** The one key that hides a whole list — its items are hidden together, never one by one. */
+export function listHideKey(cardId: string): string {
+  return `list:${cardId}`;
+}
+
+/** Hidden by its own key, or — for a list item — by its list's key. */
+export function isHiddenMetric(m: { key: string; card?: unknown }, hidden: Set<string>): boolean {
+  if (hidden.has(m.key)) return true;
+  const card = readMetricCard(m.card);
+  return Boolean(card?.list && hidden.has(listHideKey(card.id)));
 }
 
 /** A stored `card`, or null when it is missing or malformed. */
@@ -55,7 +72,7 @@ export function readMetricCard(raw: unknown): MetricCard | null {
   if (!raw || typeof raw !== "object") return null;
   const c = raw as Record<string, unknown>;
   return typeof c.id === "string" && c.id && typeof c.title === "string" && typeof c.part === "string"
-    ? { id: c.id, title: c.title, part: c.part }
+    ? { id: c.id, title: c.title, part: c.part, ...(c.list === true ? { list: true } : {}) }
     : null;
 }
 
@@ -133,8 +150,8 @@ export function isFinal(s: Pick<StoredSnapshot, "period" | "capturedAt">): boole
  *
  * Big Wedge's subscription counts, MRR and revenue total are today's state whatever range is
  * asked (see `revenueIsRangeScoped`), so the read that finalises a month cannot give them. The
- * last capture taken DURING that month can: the running month is refreshed hourly, so that is
- * within about an hour of month end. Those `keys` are carried from it into the final figures
+ * last capture taken DURING that month can: the running month is refreshed every 15 minutes, so
+ * that is within 15 minutes of month end. Those `keys` are carried from it into the final figures
  * when the final read lacks them. Nothing is carried from a capture taken outside the month.
  */
 export function carryMonthEndFigures(
@@ -251,19 +268,19 @@ export function selectMonthToDate(
       group: m.group ?? null,
       money: m.money === true,
       card: readMetricCard(m.card),
-      hidden: hidden.has(m.key),
+      hidden: isHiddenMetric(m, hidden),
     });
   }
   return metrics.length ? { period, capturedAt: snap.capturedAt, metrics } : null;
 }
 
 /**
- * How old the running month's figures may get. An hour, not six: the month still running is
+ * How old the running month's figures may get: 15 minutes (it was six hours, then an hour): the month still running is
  * the one people compare with the client's own live admin, and six hours behind read as wrong
  * (Big Wedge, 30 Oct 2026: 131 subscriptions in Foundry, 134 in their admin). It is refreshed
  * in the background (`refreshRunningMonths`), so a client reading it never waits on a fetch.
  */
-export const MONTH_TO_DATE_STALE_MS = 60 * 60 * 1000;
+export const MONTH_TO_DATE_STALE_MS = 15 * 60 * 1000;
 
 /** True when the running month has no capture, or one older than MONTH_TO_DATE_STALE_MS. */
 export function monthToDateStale(snapshots: StoredSnapshot[], now: Date): boolean {
@@ -356,7 +373,10 @@ export function selectMetricsView(input: {
     return true;
   });
 
-  const visibleKeys = rows.filter((m) => !hidden.has(m.key)).map((m) => m.key);
+  // A list item is never featured: it is one row of a ranking, not a figure on its own.
+  const visibleKeys = rows
+    .filter((m) => !isHiddenMetric(m, hidden) && !readMetricCard(m.card)?.list)
+    .map((m) => m.key);
   const chosen = (input.featuredKeys ?? []).filter((k) => visibleKeys.includes(k));
   // Nothing chosen (or every choice now hidden/gone) → the first visible metrics lead.
   const featured = new Set((chosen.length > 0 ? chosen : visibleKeys).slice(0, FEATURED_MAX));
@@ -370,7 +390,7 @@ export function selectMetricsView(input: {
     money: m.money === true,
     card: readMetricCard(m.card),
     previous: prevByKey.has(m.key) ? prevByKey.get(m.key)! : null,
-    hidden: hidden.has(m.key),
+    hidden: isHiddenMetric(m, hidden),
     featured: featured.has(m.key),
     history: historyPeriods.map((p) => {
       const v = byPeriod.get(p)?.metrics.find((x) => x?.key === m.key)?.value;
@@ -514,7 +534,12 @@ export function tilesFor<T extends { card?: MetricCard | null }>(metrics: T[]): 
     cards.set(c.id, tile);
     out.push(tile);
   }
-  return out.map((t) => (t.kind === "card" && t.parts.length === 1 ? { kind: "single", metric: t.parts[0] } : t));
+  // A one-part card is just a figure — unless it is a list, which is a list however short.
+  return out.map((t) =>
+    t.kind === "card" && t.parts.length === 1 && !(t.parts[0].card as MetricCard | null | undefined)?.list
+      ? { kind: "single", metric: t.parts[0] }
+      : t,
+  );
 }
 
 // ─── Viewing a chosen period (the page's time-frame control) ─────────────────────────────
@@ -627,8 +652,13 @@ export function headlineTileIndexes<T extends { key: string; group: string | nul
   const keysOf = (t: MetricTileGroup<T>) => (t.kind === "single" ? [t.metric.key] : t.parts.map((p) => p.key));
   const groupOf = (t: MetricTileGroup<T>) => (t.kind === "single" ? t.metric.group : t.parts[0]?.group) ?? "";
   const picked: number[] = [];
+  // A list is never a headline figure — it has no single number to lead with.
+  const isList = (i: number) => {
+    const t = tiles[i];
+    return t?.kind === "card" && Boolean((t.parts[0] as { card?: MetricCard | null })?.card?.list);
+  };
   const take = (i: number) => {
-    if (picked.length < n && i >= 0 && !picked.includes(i)) picked.push(i);
+    if (picked.length < n && i >= 0 && !picked.includes(i) && !isList(i)) picked.push(i);
   };
   for (const k of featuredKeys) take(tiles.findIndex((t) => keysOf(t).includes(k)));
   // One from each group in turn, each group's tiles in their own order.

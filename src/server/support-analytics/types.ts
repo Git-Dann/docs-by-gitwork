@@ -24,7 +24,7 @@ export interface AnalyticsMetric {
   /** A sum of money — shown to two decimals. */
   money?: boolean;
   /** Shown in one card with the metrics naming the same id (see `MetricCard`). */
-  card?: { id: string; title: string; part: string };
+  card?: { id: string; title: string; part: string; list?: boolean };
 }
 
 /** A single month's snapshot for one connection. */

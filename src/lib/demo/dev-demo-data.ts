@@ -1256,6 +1256,10 @@ const demoWiki: WikiDTO = {
         { key: "users.new", label: "New users", value: 812, unit: null, group: "Users", hidden: false },
         { key: "eng.sessions", label: "Sessions", value: 24150, unit: null, group: "Engagement", hidden: false },
         { key: "eng.orders", label: "Orders placed", value: 3870, unit: null, group: "Engagement", hidden: false },
+        // A ranked list, the way Big Wedge's most played courses render.
+        { key: "top_1", label: "Top product #1", value: 912, unit: null, group: "Engagement", hidden: false, card: { id: "top", title: "Most ordered · orders", part: "Weekly protein box", list: true } },
+        { key: "top_2", label: "Top product #2", value: 640, unit: null, group: "Engagement", hidden: false, card: { id: "top", title: "Most ordered · orders", part: "Recovery shake bundle with a long name that has to truncate", list: true } },
+        { key: "top_3", label: "Top product #3", value: 388, unit: null, group: "Engagement", hidden: false, card: { id: "top", title: "Most ordered · orders", part: "Starter pack", list: true } },
         // Three metrics in one card, the way Big Wedge's Subscriptions card renders.
         { key: "subs.active", label: "Active subscriptions", value: 1251, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Total" } },
         { key: "subs.monthly", label: "Monthly subscriptions", value: 1004, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Monthly" } },

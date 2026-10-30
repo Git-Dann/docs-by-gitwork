@@ -226,8 +226,8 @@ function errorText(err: unknown): string {
 /**
  * Keep every running month fresh without anyone opening the page. Called from the every-minute
  * `jobs` worker; it reads stored capture times only (no client API call) unless a running month
- * is older than MONTH_TO_DATE_STALE_MS, so in practice each client's API is asked about once an
- * hour. Before this, the running month was refreshed only when someone at Gitwork opened the
+ * is older than MONTH_TO_DATE_STALE_MS, so in practice each client's API is asked every 15
+ * minutes. Before this, the running month was refreshed only when someone at Gitwork opened the
  * section, so a client reading it saw figures from whenever that last was.
  *
  * Capped per run and one client at a time — these are calls to the client's own API.
