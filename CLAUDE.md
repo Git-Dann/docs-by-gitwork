@@ -9286,4 +9286,9 @@ long-term SLA history, escalation.
   checked). Posting also acknowledges.
 - **The client sees incidents on their status board**: public updates only, no names from our side
   ("Gitwork is on it" once acknowledged). `publicIncident` in `forPublic`.
+- **One post per client, not per service** (`shouldPostAlert`, `GROUP_ALERTS_WITHIN_MS` = 10 min).
+  A second service going down within 10 minutes of another on the same client is folded into the
+  first post, whose list already shows every service. "Back" is posted once, when nothing on the
+  client is still out. Incidents are still recorded per monitor. ⚠️ So a partial recovery (one
+  service back while another is still down) is silent until the whole client is back.
 - Not built: an Acknowledge button inside the Slack alert, emailing client users on updates.

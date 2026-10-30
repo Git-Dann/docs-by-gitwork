@@ -156,6 +156,37 @@ export function isFailing(m: { lastStatus: string; failStreak: number; alertKind
   return m.lastStatus === "DOWN" || m.failStreak > 0 || m.alertKind !== null;
 }
 
+/**
+ * How long after one service on a client is announced as down that another going down on the same
+ * client is folded into it instead of posted again. A shared cause (a server, a provider) takes
+ * several monitors down within minutes of each other; one post listing every service says it once.
+ */
+export const GROUP_ALERTS_WITHIN_MS = 10 * 60 * 1000;
+
+export interface SiblingAlert {
+  /** The sibling's open alert ("down" | "flaky"), or null. */
+  alertKind: string | null;
+  /** When the sibling's outage was announced. */
+  alertedDownAt: Date | null;
+}
+
+/**
+ * Whether this alert should be posted, given the other monitors on the same client.
+ *
+ * - **Down / unstable**: not when another service on the client was announced down within
+ *   `GROUP_ALERTS_WITHIN_MS` and is still out — that post already lists every service with its
+ *   status. The incident is still recorded on this monitor either way.
+ * - **Recovered / stable**: only when nothing else on the client is still out, so the "back" post
+ *   comes once, when the client is actually back, rather than once per service.
+ */
+export function shouldPostAlert(kind: NonNullable<AlertDecision>["kind"], siblings: SiblingAlert[], now: Date): boolean {
+  const stillOut = siblings.filter((s) => s.alertKind === "down" || s.alertKind === "flaky");
+  if (kind === "recovered" || kind === "stable") return stillOut.length === 0;
+  return !stillOut.some(
+    (s) => s.alertedDownAt && now.getTime() - s.alertedDownAt.getTime() <= GROUP_ALERTS_WITHIN_MS,
+  );
+}
+
 /** How often a monitor is checked right now: its own interval, or every minute while failing. */
 export function checkEveryMs(m: {
   intervalMinutes: number;
