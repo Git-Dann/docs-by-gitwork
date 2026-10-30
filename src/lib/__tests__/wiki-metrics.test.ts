@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addMonths,
+  carryMonthEndFigures,
   endpointUrl,
   formatMetric,
   isFinal,
@@ -531,5 +532,39 @@ describe("Refresh now", () => {
     const fresh = [{ period: "2026-10", capturedAt: "2026-10-15T11:50:00Z", metrics: [{ key: "a", label: "a", value: 1 }] }];
     expect(periodsToFetch(fresh, NOW2, { monthToDate: true })).not.toContain("2026-10");
     expect(periodsToFetch(fresh, NOW2, { monthToDate: true, force: true })[0]).toBe("2026-10");
+  });
+});
+
+describe("a finished month keeps its as-of-now figures from month end", () => {
+  const KEYS = ["subs_monthly", "revenue_total"];
+  const partial = {
+    period: "2026-10",
+    capturedAt: "2026-10-31T23:05:00Z",
+    metrics: [
+      { key: "users_new", label: "New", value: 4000 },
+      { key: "subs_monthly", label: "Monthly", value: 41 },
+      { key: "revenue_total", label: "Total estimated revenue", value: 3200, money: true },
+    ],
+  };
+  const fresh = [{ key: "users_new", label: "New", value: 4100 }];
+
+  it("carries the named keys the final read lacks, from the last capture during the month", () => {
+    const out = carryMonthEndFigures(fresh, partial, KEYS);
+    expect(out.map((m) => `${m.key}=${m.value}`)).toEqual(["users_new=4100", "subs_monthly=41", "revenue_total=3200"]);
+  });
+
+  it("never overwrites what the final read did return", () => {
+    const out = carryMonthEndFigures([...fresh, { key: "subs_monthly", label: "Monthly", value: 42 }], partial, KEYS);
+    // Exactly once, and the final read's value — not a second copy from month end.
+    expect(out.filter((m) => m.key === "subs_monthly").map((m) => m.value)).toEqual([42]);
+  });
+
+  it("⚠️ carries nothing from a capture taken outside the month", () => {
+    expect(carryMonthEndFigures(fresh, { ...partial, capturedAt: "2026-11-01T00:10:00Z" }, KEYS)).toBe(fresh);
+    expect(carryMonthEndFigures(fresh, { ...partial, capturedAt: "2026-09-30T22:00:00Z" }, KEYS)).toBe(fresh);
+  });
+
+  it("does nothing for an adapter that names no keys", () => {
+    expect(carryMonthEndFigures(fresh, partial, undefined)).toBe(fresh);
   });
 });

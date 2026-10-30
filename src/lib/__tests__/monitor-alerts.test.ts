@@ -10,6 +10,7 @@ import {
   alertBlocks,
   checkEveryMs,
   incidentHeading,
+  shouldConfirm,
   alertMessage,
   formatDuration,
   isStale,
@@ -288,5 +289,23 @@ describe("the Slack post — laid out like GitHub Status", () => {
     });
     expect(many.length).toBeLessThanOrEqual(50);
     expect(JSON.stringify(many)).toContain("+60 more");
+  });
+});
+
+describe("a first failure is confirmed straight away", () => {
+  it("re-checks only the first failure in a row, with nothing open", () => {
+    expect(shouldConfirm("DOWN", { failStreak: 1, alertKind: null })).toBe(true);
+    // Already confirmed (the alert fires on the second), or an alert is already open.
+    expect(shouldConfirm("DOWN", { failStreak: 2, alertKind: "down" })).toBe(false);
+    expect(shouldConfirm("DOWN", { failStreak: 1, alertKind: "flaky" })).toBe(false);
+    expect(shouldConfirm("UP", { failStreak: 0, alertKind: null })).toBe(false);
+    expect(shouldConfirm("DEGRADED", { failStreak: 0, alertKind: null })).toBe(false);
+  });
+
+  it("two quick failures alert as down", () => {
+    const first = nextAlertState(fresh, "DOWN", t(0));
+    expect(shouldConfirm("DOWN", first.state)).toBe(true);
+    const second = nextAlertState(first.state, "DOWN", new Date(t(0).getTime() + 20_000), ["DOWN"]);
+    expect(second.alert?.kind).toBe("down");
   });
 });

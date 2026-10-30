@@ -286,6 +286,9 @@ export const bigwedgeAdapter: AnalyticsAdapter = {
   // a flat line that claims no change. Dropped from new captures in Oct 2026; older months
   // still hold them.
   retiredKeys: ["users_total", "users_returning"],
+  // Today's state for any range asked, so a finished month keeps them from its last capture
+  // during the month (refreshed hourly, so within about an hour of month end).
+  carryAtMonthEnd: ["premium_subscribers", "subs_monthly", "subs_yearly", "revenue_mrr", "revenue_total"],
   hint: "User analytics, month by month. Foundry logs in with the Big Wedge service account; a token is only a fallback.",
   fetchMonth,
 };

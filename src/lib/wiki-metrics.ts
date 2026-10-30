@@ -129,6 +129,29 @@ export function isFinal(s: Pick<StoredSnapshot, "period" | "capturedAt">): boole
 }
 
 /**
+ * A month's figures as it closed, for metrics the source can only report AS OF NOW.
+ *
+ * Big Wedge's subscription counts, MRR and revenue total are today's state whatever range is
+ * asked (see `revenueIsRangeScoped`), so the read that finalises a month cannot give them. The
+ * last capture taken DURING that month can: the running month is refreshed hourly, so that is
+ * within about an hour of month end. Those `keys` are carried from it into the final figures
+ * when the final read lacks them. Nothing is carried from a capture taken outside the month.
+ */
+export function carryMonthEndFigures(
+  fresh: MetricValue[],
+  partial: StoredSnapshot | undefined,
+  keys: string[] | undefined,
+): MetricValue[] {
+  if (!keys?.length || !partial) return fresh;
+  const t = Date.parse(partial.capturedAt);
+  const start = periodEnd(addMonths(partial.period, -1)).getTime();
+  if (!Number.isFinite(t) || t < start || isFinal(partial)) return fresh;
+  const have = new Set(fresh.map((m) => m.key));
+  const carried = partial.metrics.filter((m) => keys.includes(m?.key) && !have.has(m.key));
+  return carried.length ? [...fresh, ...carried] : fresh;
+}
+
+/**
  * A stored month that can stand as that month's figures: final AND carrying at least one
  * number. Older adapters stored an EMPTY month when a read failed; treating that as final
  * would show "nothing happened" for it and never fetch it again (CLAUDE.md §35).

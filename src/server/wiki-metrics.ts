@@ -35,6 +35,7 @@ import {
   listMetricEndpoints,
   modeForAdapter,
   monthToDateStale,
+  carryMonthEndFigures,
   periodOf,
   periodsToFetch,
   readMetricsConfig,
@@ -313,10 +314,19 @@ export async function refreshWikiMetrics(
         if (snap.metrics.length === 0) {
           throw new Error("The connector answered, but returned no numbers for this month.");
         }
+        // A finished month keeps the as-of-now figures from its last capture during it.
+        const metricsToStore =
+          period === periodOf(now)
+            ? snap.metrics
+            : carryMonthEndFigures(
+                snap.metrics as MetricValue[],
+                existing.find((s) => s.period === period),
+                getAdapter(care.adapterKey ?? undefined)?.carryAtMonthEnd,
+              );
         await prisma.supportAnalyticsSnapshot.upsert({
           where: { clientId_period: { clientId: care.careId, period } },
-          create: { clientId: care.careId, period, metrics: snap.metrics as object, capturedAt: now },
-          update: { metrics: snap.metrics as object, capturedAt: now },
+          create: { clientId: care.careId, period, metrics: metricsToStore as object, capturedAt: now },
+          update: { metrics: metricsToStore as object, capturedAt: now },
         });
         result.fetched.push(period);
       } catch (err) {
