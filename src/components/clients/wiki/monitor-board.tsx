@@ -10,6 +10,7 @@
  */
 
 import Link from "next/link";
+import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { useWikiMonitorBoard } from "@/hooks/use-wiki";
 import {
   monitorState,
@@ -178,6 +179,12 @@ export function AgencyMonitorBoard({ slug, number = "01" }: { slug: string; numb
   const summary = summariseBoard(clients);
   const { monitored, unmonitored } = orderBoard(clients);
   const lead = STATE[LEVEL[summary.level]];
+  const lastCheck =
+    clients
+      .flatMap((c) => c.monitors.map((m) => m.checkedAt))
+      .filter((x): x is string => Boolean(x))
+      .sort()
+      .at(-1) ?? null;
 
   return (
     <section className="widget-card">
@@ -186,19 +193,30 @@ export function AgencyMonitorBoard({ slug, number = "01" }: { slug: string; numb
           <span className="widget-header__label--number">{number}</span>
           {" // ALL CLIENTS"}
         </span>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] hover:text-[var(--text-1)]"
-          style={{ fontFamily: MONO }}
-          title="Refreshes every minute"
-        >
-          <span className="inline-flex items-center gap-1.5">
-            {/* Pulses only while a refresh is in flight — "working on it". */}
-            <StatusDot tone="brand" size="xs" motion={isFetching ? "pulse" : "none"} />
-            {data ? `Live · ${relTime(data.readAt)}` : "Live"}
-          </span>
-        </button>
+        <div className="flex min-w-0 items-center gap-3">
+          {/* The newest real check, not when the page last read the database — the board
+              re-reads every minute, but a service is only as fresh as its last check. */}
+          {lastCheck ? (
+            <span
+              className="hidden truncate text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] sm:inline"
+              style={{ fontFamily: MONO }}
+              title={new Date(lastCheck).toLocaleString("en-GB")}
+            >
+              Last check {relTime(lastCheck)}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-60"
+            style={{ fontFamily: MONO }}
+            title="Updates itself every minute"
+          >
+            <ArrowPathIcon className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} aria-hidden />
+            {isFetching ? "Refreshing…" : "Refresh now"}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-6 p-5 sm:p-6">
