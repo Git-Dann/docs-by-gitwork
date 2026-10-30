@@ -102,6 +102,8 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
       return victim.task;
     case "studyId":
       return victim.study;
+    case "incidentId":
+      return victim.monitorIncident;
     case "monitorId":
       return inWiki ? victim.wikiMonitor : victim.monitor;
     case "placementId":

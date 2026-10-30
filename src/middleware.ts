@@ -104,6 +104,8 @@ const PUBLIC_API_PATHS = [
   "/api/public/wiki-items",
   // Heartbeat pings from client cron jobs — the token in the path is the credential.
   "/api/public/heartbeat",
+  // Second check location for monitors: its own shared-secret check (wiki-monitors/remote.ts).
+  "/api/monitor-probe",
   // Public webhook ingest — per-connection token in the URL path is the auth.
   "/api/support/webhook",
   // Inbound GitHub webhook for Pulse monitors — per-monitor HMAC signature is the auth.

@@ -10,6 +10,9 @@ import {
   useWikiMonitorSuggestions,
 } from "@/hooks/use-wiki";
 import type { WikiMonitorDTO, MonitorInput } from "@/lib/api";
+import type { IncidentDTO } from "@/lib/monitor-incidents";
+import { IncidentList } from "./monitor-incidents";
+import { basicAuthValue } from "@/lib/monitor-request";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -126,6 +129,12 @@ function MonitorFacts({ m }: { m: WikiMonitorDTO }) {
       title: m.heartbeat.lastPingOk === false ? "The last run reported a failure" : `Expected every ${m.intervalMinutes} min`,
     });
   }
+  if (m.remoteNote && m.status !== "UP") {
+    facts.push({ key: "remote", text: m.remoteNote, color: "var(--text-3)", title: "Checked from a second location after it failed from Foundry's server" });
+  }
+  if (m.headerNames.length > 0) {
+    facts.push({ key: "auth", text: "Signed in", color: "var(--text-4)", title: `Sends ${m.headerNames.join(", ")}` });
+  }
   if (facts.length === 0) return null;
   return (
     <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-[0.04em]" style={{ fontFamily: MONO }}>
@@ -180,7 +189,7 @@ function StatusPill({ status, label }: { status: Status; label?: string }) {
 }
 
 // ── Public / read-only status board ─────────────────────────────────────────
-export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] }) {
+export function MonitorStatusBoard({ monitors, incidents = [] }: { monitors: WikiMonitorDTO[]; incidents?: IncidentDTO[] }) {
   const visible = monitors.filter((m) => m.enabled);
   const ov = overall(monitors);
   const ovMeta = META[ov];
@@ -211,6 +220,8 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
                   : "Service disruption"}
           </span>
         </div>
+
+        <IncidentList incidents={incidents} slug="" audience="client" />
 
         {visible.length === 0 ? (
           <p className="rounded-[10px] border border-dashed border-[rgba(0,0,0,0.12)] px-4 py-8 text-center text-[13px] text-[var(--text-4)]">
@@ -275,6 +286,12 @@ type FormState = {
   degradedMs: string;
   intervalMinutes: string;
   graceMinutes: string;
+  /** New headers, "Name: value" per line. Blank keeps what's saved. */
+  headersText: string;
+  /** Saved header names (values never come back from the server). */
+  savedHeaders: string[];
+  clearHeaders: boolean;
+  body: string;
 };
 const EMPTY_FORM: FormState = {
   name: "",
@@ -286,6 +303,10 @@ const EMPTY_FORM: FormState = {
   degradedMs: "",
   intervalMinutes: "5",
   graceMinutes: "",
+  headersText: "",
+  savedHeaders: [],
+  clearHeaders: false,
+  body: "",
 };
 
 const inputCls =
@@ -294,11 +315,13 @@ const inputCls =
 export function MonitorsManager({
   slug,
   monitors,
+  incidents = [],
   number = "01",
   label = "SYSTEM MONITORS",
 }: {
   slug: string;
   monitors: WikiMonitorDTO[];
+  incidents?: IncidentDTO[];
   /** The card's `NN //` number — 02 on the Gitwork wiki, where the all-clients board is 01. */
   number?: string;
   label?: string;
@@ -334,6 +357,10 @@ export function MonitorsManager({
       degradedMs: m.degradedMs?.toString() ?? "",
       intervalMinutes: m.intervalMinutes.toString(),
       graceMinutes: m.heartbeat?.graceMinutes?.toString() ?? "",
+      headersText: "",
+      savedHeaders: m.headerNames,
+      clearHeaders: false,
+      body: "",
     });
     setEditing(m.id);
     setError(null);
@@ -350,6 +377,13 @@ export function MonitorsManager({
       type: form.type,
       target: heartbeat ? "" : form.target.trim(),
       graceMinutes: heartbeat && form.graceMinutes.trim() ? Number(form.graceMinutes) : null,
+      // Headers: new text replaces; "remove" clears; otherwise leave what's saved alone.
+      ...(form.type === "HTTP" && form.headersText.trim()
+        ? { requestHeaders: form.headersText }
+        : form.clearHeaders
+          ? { requestHeaders: null }
+          : {}),
+      ...(form.type === "HTTP" && form.method === "POST" && form.body.trim() ? { requestBody: form.body } : {}),
       method: form.type === "HTTP" ? form.method || "GET" : "GET",
       expectedStatus: form.expectedStatus.trim() ? Number(form.expectedStatus) : null,
       keyword: form.type === "HTTP" && form.keyword.trim() ? form.keyword.trim() : null,
@@ -360,8 +394,8 @@ export function MonitorsManager({
       if (editing === "new") await create.mutateAsync(payload);
       else if (editing) await update.mutateAsync({ id: editing, input: payload });
       setEditing(null);
-    } catch {
-      setError("Couldn't save the monitor. Check the values and try again.");
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "Couldn't save the monitor. Check the values and try again.");
     }
   }
 
@@ -472,6 +506,10 @@ export function MonitorsManager({
               </div>
             )}
 
+            {form.type === "HTTP" && (
+              <RequestOptions form={form} setForm={setForm} />
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <label className="text-[12px] font-medium text-[var(--text-2)]">
                 {form.type === "HEARTBEAT" ? "Expected every (min)" : "Interval (min)"}
@@ -528,6 +566,8 @@ export function MonitorsManager({
             </div>
           </div>
         )}
+
+        <IncidentList incidents={incidents} slug={slug} audience="team" />
 
         <MonitorSuggestions
           slug={slug}
@@ -655,7 +695,7 @@ export function MonitorsManager({
               Show what the client sees
             </summary>
             <div className="pt-3">
-              <MonitorStatusBoard monitors={monitors} />
+              <MonitorStatusBoard monitors={monitors} incidents={incidents} />
             </div>
           </details>
         )}
@@ -784,5 +824,98 @@ function MaintenanceControl({
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * Headers (an API key, a bearer token, a sign-in) and a POST body for HTTP checks. Values are
+ * stored encrypted and never sent back to the browser, so editing shows the saved names only.
+ */
+function RequestOptions({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+  const [showSignIn, setShowSignIn] = useState(false);
+
+  function addLine(line: string) {
+    const rest = form.headersText
+      .split(/\r?\n/)
+      .filter((l) => l.trim() && !l.toLowerCase().startsWith("authorization:"));
+    setForm({ ...form, headersText: [...rest, line].join("\n"), clearHeaders: false });
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-[12px] font-medium text-[var(--text-2)]">
+        Request headers (optional)
+        <textarea
+          className={`mt-1 min-h-[64px] ${inputCls}`}
+          style={{ fontFamily: MONO }}
+          value={form.headersText}
+          onChange={(e) => setForm({ ...form, headersText: e.target.value, clearHeaders: false })}
+          placeholder={
+            form.savedHeaders.length
+              ? "Leave blank to keep the saved headers"
+              : "One per line, e.g.\nAuthorization: Bearer <token>\nX-Api-Key: <key>"
+          }
+          spellCheck={false}
+          autoComplete="off"
+        />
+      </label>
+      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        {form.savedHeaders.length > 0 && !form.clearHeaders ? (
+          <>
+            <span className="text-[var(--text-3)]">Saved: {form.savedHeaders.join(", ")}</span>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, clearHeaders: true, headersText: "" })}
+              className="text-[var(--danger-500)] hover:underline"
+            >
+              Remove saved headers
+            </button>
+          </>
+        ) : form.clearHeaders ? (
+          <span className="text-[var(--warning-500)]">Saved headers will be removed when you save.</span>
+        ) : null}
+        <button type="button" onClick={() => setShowSignIn((v) => !v)} className="text-[var(--brand-700)] hover:underline">
+          {showSignIn ? "Hide sign-in" : "Add a username and password"}
+        </button>
+      </div>
+      {showSignIn ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <input className={`${inputCls} max-w-[180px]`} placeholder="Username" value={user} onChange={(e) => setUser(e.target.value)} autoComplete="off" />
+          <input className={`${inputCls} max-w-[180px]`} placeholder="Password" type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="new-password" />
+          <button
+            type="button"
+            disabled={!user}
+            onClick={() => {
+              addLine(`Authorization: ${basicAuthValue(user, pass)}`);
+              setUser("");
+              setPass("");
+              setShowSignIn(false);
+            }}
+            className="rounded-[7px] border border-[var(--border-2)] px-3 py-2 text-[13px] text-[var(--text-2)] hover:bg-[var(--surface-1)] disabled:opacity-50"
+          >
+            Add
+          </button>
+        </div>
+      ) : null}
+      {form.method === "POST" ? (
+        <label className="block text-[12px] font-medium text-[var(--text-2)]">
+          Request body (optional)
+          <textarea
+            className={`mt-1 min-h-[64px] ${inputCls}`}
+            style={{ fontFamily: MONO }}
+            value={form.body}
+            onChange={(e) => setForm({ ...form, body: e.target.value })}
+            placeholder='e.g. {"ping": true}. Leave blank to keep what&apos;s saved.'
+            spellCheck={false}
+          />
+        </label>
+      ) : null}
+      <p className="text-[11px] text-[var(--text-4)]">
+        Stored encrypted and only sent to this monitor&apos;s own address. Redirects to another
+        site are refused while headers are set.
+      </p>
+    </div>
   );
 }

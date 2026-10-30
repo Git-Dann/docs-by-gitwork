@@ -70,3 +70,9 @@ export const tcpConnector: MonitorConnector = {
     });
   },
 };
+
+/** One TCP check by target alone — what the second-location probe route runs. */
+export function probeTcp(target: string): Promise<MonitorProbeResult> {
+  // The connector reads nothing but `target`.
+  return tcpConnector.run({ target } as WikiMonitor);
+}

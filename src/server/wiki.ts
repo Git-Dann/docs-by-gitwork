@@ -37,6 +37,7 @@ import {
   type IntakeCategory,
 } from "@/lib/wiki-intake-categories";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
+import { publicIncident } from "@/lib/monitor-incidents";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
 import {
@@ -1126,7 +1127,7 @@ async function buildDTO(
       { blocks: [], milestones: [], unassigned: [] },
     ),
     settle("designSystem", () => loadWikiDesignSystem(wiki.clientId), null),
-    settle("monitors", () => loadWikiMonitors(wiki.clientId), { enabled: false, monitors: [] }),
+    settle("monitors", () => loadWikiMonitors(wiki.clientId), { enabled: false, monitors: [], incidents: [] }),
     settle("codeHandover", () => loadWikiCodeHandover(wiki.clientId), { enabled: false, modules: [] }),
     settle("team", () => loadWikiTeam(wiki.clientId), []),
     settle("productTeam", () => loadWikiProductTeam(wiki.clientId), []),
@@ -3394,11 +3395,15 @@ function forPublic(dto: WikiDTO): WikiDTO {
     // Whose Google account reads the folder for the client is ours, not theirs.
     drive: forPublicDrive(dto.drive),
     // A heartbeat's ping URL is its credential — anyone holding it can mark the job healthy.
+    // Header names say how a client's API is protected; internal incident notes and who on our
+    // team picked an incident up are ours.
     monitors: {
       ...dto.monitors,
-      monitors: dto.monitors.monitors.map((m) =>
-        m.heartbeat ? { ...m, target: "", heartbeat: { ...m.heartbeat, pingUrl: null } } : m,
-      ),
+      monitors: dto.monitors.monitors.map((m) => {
+        const base = { ...m, headerNames: [], hasBody: false };
+        return m.heartbeat ? { ...base, target: "", heartbeat: { ...m.heartbeat, pingUrl: null } } : base;
+      }),
+      incidents: (dto.monitors.incidents ?? []).map(publicIncident),
     },
   };
 

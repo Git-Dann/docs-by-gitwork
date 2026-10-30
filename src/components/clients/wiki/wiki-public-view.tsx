@@ -193,7 +193,7 @@ export function WikiPublicView({
     }
 
     if (activeSection === "monitors") {
-      return <MonitorStatusBoard monitors={wiki.monitors.monitors} />;
+      return <MonitorStatusBoard monitors={wiki.monitors.monitors} incidents={wiki.monitors.incidents ?? []} />;
     }
 
     if (activeSection === "documents") {
