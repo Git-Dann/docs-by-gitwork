@@ -9222,7 +9222,10 @@ checked), Gitwork's services first, then any client with trouble worst-first, th
   are today's state for any range: shown on the running month, dropped from a finished month's
   own read, and carried from its last capture instead (`NOW_KEYS` ⊂ `carryAtMonthEnd`). Left out
   on purpose: `top_active_users` (usernames), `average_scores` (meaning not documented), the
-  growth percentages (trends are worked out from the months), and the course and game-mode lists
-  (they need a list widget, not a figure).
+  growth percentages (trends are worked out from the months).
+- **Lists** (`MetricCard.list`): a ranked list rather than a figure — Big Wedge's most played
+  courses (keyed by rank, since the courses change month to month) and game-mode share (keyed by
+  name). A list renders as rows with no trend, is hidden as one (`listHideKey` → `list:<id>`), is
+  one row in Settings, and can never be featured or take a headline slot.
 - **The three Big Wedge reads run at once.** The report alone takes ~4s at Big Wedge; the month,
   the day before and feedback were read one after another.

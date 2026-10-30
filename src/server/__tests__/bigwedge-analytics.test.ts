@@ -18,6 +18,7 @@ import {
   currencyUnit,
   dayBeforeMonth,
   estimateRevenueTaken,
+  listsFromReport,
   metricsFromReport,
   monthRange,
   revenueIsRangeScoped,
@@ -411,5 +412,47 @@ describe("everything the live report carries (30 Oct 2026)", () => {
     const snap = await bigwedgeAdapter.fetchMonth(at("2026-10-30T20:00:00Z"));
     expect(snap.metrics.some((m) => m.key.startsWith("feedback"))).toBe(false);
     expect(snap.metrics.some((m) => m.key === "users_new")).toBe(true);
+  });
+});
+
+describe("the report's rankings, as lists", () => {
+  const REPORT = {
+    data: {
+      golf_metrics: {
+        most_played_courses: [
+          { course_name: "Old Course", club_name: "St Andrews Links", count: 312 },
+          { course_name: "Wentworth", club_name: "Wentworth Club", count: 200 },
+          { course_name: "", club_name: "Brechin Golf Club", count: 90 },
+          { course_name: "No count", club_name: "x" },
+        ],
+      },
+      game_modes: {
+        most_used_mode: "Stroke play",
+        distribution: [
+          { mode_name: "Stroke play", count: 900, percentage: 81.5 },
+          { mode_name: "Stableford", count: 200, percentage: 18.5 },
+        ],
+      },
+      engagement: { top_active_users: [{ username: "someone", count: 99 }] },
+    },
+  };
+
+  it("courses are ranked rows keyed by rank, the club added only when it says something new", () => {
+    const rows = listsFromReport(REPORT).filter((m) => m.card?.id === "courses");
+    expect(rows.map((m) => `${m.key}|${m.card!.part}|${m.value}`)).toEqual([
+      "course_1|Old Course · St Andrews Links|312",
+      "course_2|Wentworth|200",
+      "course_3|Brechin Golf Club|90",
+    ]);
+    expect(rows.every((m) => m.card?.list)).toBe(true);
+  });
+
+  it("game modes are keyed by name and shown as a share", () => {
+    const rows = listsFromReport(REPORT).filter((m) => m.card?.id === "modes");
+    expect(rows.map((m) => `${m.key}=${m.value}${m.unit}`)).toEqual(["mode_stroke_play=81.5%", "mode_stableford=18.5%"]);
+  });
+
+  it("⚠️ never reads a user name", () => {
+    expect(JSON.stringify(listsFromReport(REPORT))).not.toContain("someone");
   });
 });

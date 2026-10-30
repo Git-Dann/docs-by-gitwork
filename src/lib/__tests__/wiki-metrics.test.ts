@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   addMonths,
   carryMonthEndFigures,
+  isHiddenMetric,
+  listHideKey,
   endpointUrl,
   formatMetric,
   isFinal,
@@ -566,5 +568,51 @@ describe("a finished month keeps its as-of-now figures from month end", () => {
 
   it("does nothing for an adapter that names no keys", () => {
     expect(carryMonthEndFigures(fresh, partial, undefined)).toBe(fresh);
+  });
+});
+
+describe("lists (most played courses, game modes)", () => {
+  const card = (id: string, part: string) => ({ id, title: id, part, list: true });
+  const listSnap = (capturedAt: string) => ({
+    period: "2026-09",
+    capturedAt,
+    metrics: [
+      { key: "users_new", label: "New", value: 100, group: "Users" },
+      { key: "course_1", label: "#1", value: 300, group: "Golf", card: card("courses", "Old Course") },
+      { key: "course_2", label: "#2", value: 200, group: "Golf", card: card("courses", "New Course") },
+    ],
+  });
+
+  it("a list stays a list even with one item, and its rows keep their order", () => {
+    const tiles = tilesFor([{ key: "course_1", card: card("courses", "Old Course") }]);
+    expect(tiles[0].kind).toBe("card");
+  });
+
+  it("⚠️ hiding the list hides every item; its items are never featured", () => {
+    const v = selectMetricsView({
+      mode: "monthly",
+      now: new Date("2026-10-15T12:00:00Z"),
+      snapshots: [listSnap("2026-10-02T09:00:00Z")],
+      hiddenKeys: [listHideKey("courses")],
+    });
+    expect(v.metrics.filter((m) => m.key.startsWith("course_")).every((m) => m.hidden)).toBe(true);
+    expect(v.metrics.some((m) => m.key.startsWith("course_") && m.featured)).toBe(false);
+    expect(isHiddenMetric({ key: "course_1", card: card("courses", "x") }, new Set([listHideKey("courses")]))).toBe(true);
+    expect(isHiddenMetric({ key: "users_new" }, new Set([listHideKey("courses")]))).toBe(false);
+  });
+
+  it("a list never takes a headline slot", () => {
+    const tiles = tilesFor([
+      { key: "course_1", group: "Golf", card: card("courses", "a") },
+      { key: "course_2", group: "Golf", card: card("courses", "b") },
+      { key: "users_new", group: "Users", card: null },
+    ]);
+    const picked = headlineTileIndexes(tiles, ["course_1"]);
+    expect(picked.every((i) => tiles[i].kind === "single")).toBe(true);
+  });
+
+  it("the stored card keeps its list flag", () => {
+    expect(readMetricCard({ id: "c", title: "t", part: "p", list: true })?.list).toBe(true);
+    expect(readMetricCard({ id: "c", title: "t", part: "p" })?.list).toBeUndefined();
   });
 });

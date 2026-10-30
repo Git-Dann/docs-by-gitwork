@@ -180,6 +180,60 @@ export function currencyUnit(code: unknown): string | undefined {
   return ({ GBP: "£", USD: "$", EUR: "€" } as Record<string, string>)[c] ?? c;
 }
 
+/** "Strokeplay" → "strokeplay" — a stable key part from a name. */
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "item";
+}
+
+/**
+ * The report's two rankings, as list rows (`card.list`): the month's most played courses (by
+ * rounds) and how rounds split across game modes. Courses are keyed by RANK — the courses
+ * change month to month, so a rank is the only stable key, and a list shows no trends. Game
+ * modes are a fixed set, so they are keyed by name. User names (`top_active_users`) are never
+ * read.
+ */
+export function listsFromReport(json: unknown): AnalyticsMetric[] {
+  const data = (json as { data?: Record<string, unknown> })?.data;
+  if (!data || typeof data !== "object") return [];
+  const out: AnalyticsMetric[] = [];
+  const courses = (data.golf_metrics as { most_played_courses?: unknown } | undefined)?.most_played_courses;
+  if (Array.isArray(courses)) {
+    courses.slice(0, 5).forEach((c, i) => {
+      const row = c as { course_name?: unknown; club_name?: unknown; count?: unknown };
+      if (typeof row.count !== "number" || !Number.isFinite(row.count)) return;
+      const course = typeof row.course_name === "string" ? row.course_name.trim() : "";
+      const club = typeof row.club_name === "string" ? row.club_name.trim() : "";
+      // "Old Course · St Andrews Links" — the club adds nothing when it is the same name.
+      const name = course && club && !club.toLowerCase().includes(course.toLowerCase()) ? `${course} · ${club}` : course || club;
+      if (!name) return;
+      out.push({
+        key: `course_${i + 1}`,
+        label: `Most played course #${i + 1}`,
+        value: row.count,
+        group: "Golf",
+        card: { id: "courses", title: "Most played courses · rounds", part: name, list: true },
+      });
+    });
+  }
+  const modes = (data.game_modes as { distribution?: unknown } | undefined)?.distribution;
+  if (Array.isArray(modes)) {
+    for (const m of modes) {
+      const row = m as { mode_name?: unknown; percentage?: unknown };
+      if (typeof row.mode_name !== "string" || !row.mode_name.trim()) continue;
+      if (typeof row.percentage !== "number" || !Number.isFinite(row.percentage)) continue;
+      out.push({
+        key: `mode_${slug(row.mode_name)}`,
+        label: `Game mode: ${row.mode_name.trim()}`,
+        value: row.percentage,
+        unit: "%",
+        group: "Golf",
+        card: { id: "modes", title: "Game modes · share of rounds", part: row.mode_name.trim(), list: true },
+      });
+    }
+  }
+  return out;
+}
+
 /** The metrics in one report response. Fields the response lacks are left out, never zeroed. */
 export function metricsFromReport(json: unknown): AnalyticsMetric[] {
   const data =
@@ -238,7 +292,7 @@ async function fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot
       `Big Wedge ignored the date range (it applied "${String(applied)}"), so these figures are not for ${monthLabel(ctx.year, ctx.month)}.`,
     );
   }
-  const metrics = metricsFromReport(report);
+  const metrics = [...metricsFromReport(report), ...listsFromReport(report)];
   if (metrics.length === 0) {
     throw new Error("Big Wedge's analytics report answered but carried none of the expected figures.");
   }

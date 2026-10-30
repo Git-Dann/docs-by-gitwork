@@ -18,6 +18,7 @@ import { StarIcon as StarSolid } from "@heroicons/react/24/solid";
 import { AreaSparkline, MONO, SERIF, TrendBadge } from "@/components/analytics/analytics-widgets";
 import {
   FEATURED_MAX,
+  listHideKey,
   SO_FAR,
   formatMetric,
   headlineTileIndexes,
@@ -187,7 +188,45 @@ function asOf(iso: string): string {
  * underneath as supporting detail. The first part is the headline (it is listed first by the
  * adapter); the rest break it down. Each part is still its own metric underneath.
  */
+/**
+ * A ranked list — "Most played courses", "Game modes". Every part is a row; there is no
+ * headline figure and no trend (a ranking reshuffles month to month, so a change per row would
+ * compare different courses).
+ */
+function ListTile({ title, parts }: { title: string; parts: PeriodMetric[] }) {
+  return (
+    <div className="flex min-w-0 flex-col rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3.5 py-3">
+      <p
+        className="truncate text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
+        style={{ fontFamily: MONO }}
+        title={title}
+      >
+        {title}
+      </p>
+      <ol className="mt-2 space-y-1.5">
+        {parts.map((p, i) => {
+          const name = p.card?.part ?? p.label;
+          return (
+            <li key={p.key} className="flex min-w-0 items-baseline gap-2 text-[13px]">
+              <span className="w-4 shrink-0 text-right text-[11px] tabular-nums text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[var(--text-1)]" title={name}>
+                {name}
+              </span>
+              <span className="shrink-0 tabular-nums text-[var(--text-2)]" style={{ fontFamily: MONO }}>
+                {formatMetric(p.value, p.unit, p.money)}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 function CardTile({ title, parts, size = "md" }: { title: string; parts: PeriodMetric[]; size?: "md" | "lg" }) {
+  if (parts[0]?.card?.list) return <ListTile title={title} parts={parts} />;
   const [main, ...rest] = parts;
   const lg = size === "lg";
   const text = formatMetric(main.value, main.unit, main.money);
@@ -445,10 +484,36 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
   // has to be hideable — otherwise the first anyone could hide it is after the client saw it.
   const wholeMonthKeys = new Set(metrics.metrics.map((m) => m.key));
   const runningOnly = (metrics.monthToDate?.metrics ?? []).filter((m) => !wholeMonthKeys.has(m.key));
-  const rows: { key: string; label: string; value: number; unit: string | null; money?: boolean; hidden: boolean; featured: boolean; canFeature: boolean }[] = [
+  type Row = { key: string; label: string; value: number; unit: string | null; money?: boolean; hidden: boolean; featured: boolean; canFeature: boolean; isList?: boolean };
+  const all: (Row & { card?: { id: string; title: string; list?: boolean } | null })[] = [
     ...metrics.metrics.map((m) => ({ ...m, canFeature: true })),
     ...runningOnly.map((m) => ({ ...m, featured: false, canFeature: false })),
   ];
+  // A list is ONE row here — hidden or shown as a whole, never featured — however many items
+  // it has. Its value is the number of items.
+  const rows: Row[] = [];
+  const listRows = new Map<string, Row>();
+  for (const m of all) {
+    if (m.card?.list) {
+      const held = listRows.get(m.card.id);
+      if (held) {
+        held.value += 1;
+        continue;
+      }
+      const row: Row = {
+        key: listHideKey(m.card.id),
+        label: m.card.title,
+        value: 1,
+        unit: null,
+        hidden: m.hidden,
+        featured: false,
+        canFeature: false,
+        isList: true,
+      };
+      listRows.set(m.card.id, row);
+      rows.push(row);
+    } else rows.push(m);
+  }
   const hidden = rows.filter((m) => m.hidden).map((m) => m.key);
 
   function toggleHidden(key: string) {
@@ -551,7 +616,7 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
                       {m.label}
                     </p>
                     <p className="truncate text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }} title={m.key}>
-                      {formatMetric(m.value, m.unit, m.money)} · {m.key}
+                      {m.isList ? `List · ${m.value} ${m.value === 1 ? "item" : "items"}` : `${formatMetric(m.value, m.unit, m.money)} · ${m.key}`}
                     </p>
                   </div>
                   <button
@@ -561,7 +626,9 @@ function MetricsSettings({ n, metrics, slug }: { n: string; metrics: WikiMetrics
                     className="rounded-[6px] p-1.5 text-[var(--text-3)] hover:bg-[var(--surface-1)] disabled:opacity-40"
                     aria-label={m.featured ? `Stop featuring ${m.label}` : `Feature ${m.label} on the dashboard`}
                     title={
-                      !m.canFeature
+                      m.isList
+                        ? "A list can't lead the dashboard"
+                        : !m.canFeature
                         ? "Can be featured once a whole month has it"
                         : m.featured
                           ? "Featured on the dashboard"
