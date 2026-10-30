@@ -701,7 +701,7 @@ export async function runDueMonitors(): Promise<{ checked: number; pruned: numbe
  */
 export async function recordHeartbeatPing(token: string, ok: boolean): Promise<boolean> {
   if (!token || token.length > 64) return false;
-  const monitor = await prisma.wikiMonitor.findUnique({ where: { heartbeatToken: token } });
+  const monitor = await prisma.wikiMonitor.findFirst({ where: { heartbeatToken: token } });
   if (!monitor || monitor.type !== "HEARTBEAT" || !monitor.enabled) return false;
   const fresh = await prisma.wikiMonitor.update({
     where: { id: monitor.id },
