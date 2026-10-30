@@ -10,12 +10,13 @@ import { useStaffingAlerts } from "@/hooks/use-backstage";
 import type { WidgetSize } from "@/components/app-overview";
 import type { StaffingAlert } from "@/types/backstage";
 import { formatDateRange, formatDay } from "@/components/backstage/format";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 export default function BackstageWidget(_: { size: WidgetSize }) {
   const { data, isLoading } = useStaffingAlerts();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const alerts = data?.alerts ?? [];

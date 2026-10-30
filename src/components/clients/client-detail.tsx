@@ -36,6 +36,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/motion/spinner";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
@@ -1692,7 +1693,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
                     </div>
                     <button type="button" disabled={busy || !c.meetingCode} onClick={() => void fetchNotes(c)}
                       className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50">
-                      {busy ? (<><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Fetching</>) : (<><SparklesIcon className="h-3 w-3" />Fetch notes</>)}
+                      {busy ? (<><Spinner tone="inverse" />Fetching</>) : (<><SparklesIcon className="h-3 w-3" />Fetch notes</>)}
                     </button>
                   </div>
                 );
@@ -1896,7 +1897,7 @@ function GrabNoteModal({
                       className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
                       {busy ? (
-                        <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Grabbing</>
+                        <><Spinner tone="inverse" />Grabbing</>
                       ) : (
                         <><PlusIcon className="h-3 w-3" />{c.meetingCode ? "Grab" : "No link"}</>
                       )}
@@ -2238,7 +2239,7 @@ function MeetingNotesTaskRail({
                       title={added ? "Click to remove from the task board" : "Add to this client's task board"}
                     >
                       {adding ? (
-                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        <Spinner />
                       ) : added ? (
                         <>
                           <CheckCircleIcon className="h-3 w-3 group-hover:hidden" />
@@ -2329,7 +2330,7 @@ function MeetingNotesTaskRail({
               className="inline-flex w-full items-center justify-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {isCreatingManualTask ? (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <Spinner tone="inverse" />
               ) : (
                 <PlusIcon className="h-3 w-3" />
               )}

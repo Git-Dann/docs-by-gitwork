@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LinkIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { useClientList } from "@/hooks/use-proposals";
 import { useAddWikiLink, useRemoveWikiLink, useWikiLinks } from "@/hooks/use-wiki-links";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 /**
  * `05 // LINKED CLIENTS` — other clients whose delivery work shows on this wiki.
@@ -53,7 +54,7 @@ export function WikiLinkedClients({ slug, clientId, n = "01" }: { slug: string; 
         </p>
 
         {links.isLoading ? (
-          <div className="h-10 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-10 rounded-[8px]" />
         ) : rows.length === 0 ? (
           <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-[13px] text-[var(--text-3)]">
             No linked clients. This wiki shows only its own work.

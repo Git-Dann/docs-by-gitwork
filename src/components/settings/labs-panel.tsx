@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowsPointingOutIcon, ArrowTopRightOnSquareIcon, SparklesIcon } from "@heroicons/react/24/outline";
 
 import { BadgeStudio } from "@/components/settings/labs/badge-studio";
+import { MotionLibrary } from "@/components/settings/labs/motion-library";
 
 /**
  * Labs — the home for internal and experimental surfaces that are real enough to use
@@ -32,7 +33,7 @@ interface LabEntry {
   /** Opens in a new tab. Mutually exclusive with `panel`. */
   href?: string;
   /** Opens in place, inside this section's gate. */
-  panel?: "badges";
+  panel?: "badges" | "motion";
   /** Runs a server action and then opens what it created. */
   action?: "block-gallery";
   blurb: string;
@@ -51,6 +52,12 @@ const ENTRIES: LabEntry[] = [
     panel: "badges",
     blurb: "Foundry Approved marks and the Pulse score badge, with the snippet that installs each one.",
     note: "Codes FA-01 … PS-04. See docs/badges.md.",
+  },
+  {
+    name: "Motion library",
+    panel: "motion",
+    blurb: "Every shared piece of motion, live: spinners, skeletons, entrances, toasts, Lottie.",
+    note: "Written up in docs/motion.md.",
   },
   {
     name: "Studio",
@@ -199,6 +206,7 @@ export function LabsPanel() {
       </p>
 
       <BadgeStudio open={panel === "badges"} onClose={() => setPanel(null)} />
+      <MotionLibrary open={panel === "motion"} onClose={() => setPanel(null)} />
     </div>
   );
 }

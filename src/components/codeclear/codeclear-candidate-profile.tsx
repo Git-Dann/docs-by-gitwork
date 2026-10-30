@@ -26,6 +26,7 @@ import { formatMoney, useUsdToGbpRate } from "@/hooks/use-fx";
 import { cn, formatDate } from "@/lib/format";
 import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { AvailabilityBadge, CandidateNotes, EditDevModal, ExternalLinks, HeroStat } from "@/components/codeclear/candidate-parts";
+import { Skeleton, SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 /**
  * Full-page dev profile. Replaces the old drawer with a calmer, dedicated
@@ -454,11 +455,11 @@ function DeleteCandidateConfirmModal({
 function ProfileSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="h-4 w-32 animate-pulse rounded bg-[var(--surface-1)]" />
-      <div className="h-48 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+      <Skeleton className="h-4 w-32 rounded" />
+      <Skeleton className="h-48 rounded-[10px]" />
       <div className="grid gap-6 xl:grid-cols-2">
-        <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
-        <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+        <SkeletonBlock />
+        <SkeletonBlock />
       </div>
     </div>
   );

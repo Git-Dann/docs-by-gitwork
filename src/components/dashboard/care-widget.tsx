@@ -6,6 +6,7 @@ import { cn } from "@/lib/format";
 import { useSupportClients, useClientQueueSummaries } from "@/hooks/use-support";
 import { formatAge, isLongWait } from "@/components/care/care-constants";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 /**
  * Care on HQ: which client is being let down right now.
@@ -31,7 +32,7 @@ export default function CareWidget({ index }: { size: WidgetSize; index: number 
   const summariesQ = useClientQueueSummaries();
 
   if (clientsQ.isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const clients = clientsQ.data?.clients ?? [];

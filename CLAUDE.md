@@ -9057,3 +9057,52 @@ Details: `docs/hr-platform.md`.
 - `candidate-profile-form.tsx` and `HandoverCard` tolerate a missing list from their API instead of
   crashing (the demo's catch-all returns `{}`).
 
+
+## 101. Recent Changes (October 2026) — A motion library, Lottie bats and a spider that drops
+
+An audit of every animation in the app found the same thing hand-rolled over and over: 13 ring
+spinners in five sizes and two styles, ~73 identical skeleton blocks, five pulsing status dots,
+and four drawers sliding in four ways. They are now shared components in
+**`src/components/ui/motion/`**, catalogued in **`docs/motion.md`** and live in
+**Settings → Labs → Motion library** (a two-pane popup: pick a piece, see it move, copy the import).
+
+- **The pieces:** `Spinner` (`<Button loading>` draws it), `LoadingState`, `Skeleton` and its
+  presets, `StatusDot` (pulse or ping), `FadeIn` (moved from onboarding/brand.tsx, which
+  re-exports it), the `motion-backdrop-in` / `motion-sheet-right` / `motion-sheet-up` classes for
+  drawers, `useCountUp`, and `Lottie`.
+- **About 60 files migrated** onto them, all behaviour-preserving. Left alone on purpose:
+  - refresh buttons that spin while refetching;
+  - pulsing text placeholders;
+  - card-grid skeletons whose cards are fills, not outlines;
+  - check-explorer's breakpoint-switched sheet;
+  - the public scanner's tickers, because the embed is an external contract.
+- **`Lottie`** is the only Lottie player.
+  - It loads lottie-web's light build (MIT, `5.13.0`) and the JSON from `public/motion/` on first
+    mount, so neither is in any bundle.
+  - It pauses off-screen and in background tabs, and shows a still frame under reduced motion.
+  - `color` recolours a file without editing it, and a bad file renders nothing.
+  - ⚠️ The light build has no expression engine.
+- **⚠️ Reduced motion:** `layout.tsx` stops all CSS motion globally. JS motion (framer-motion,
+  rAF, Lottie) must check for itself, which every piece here does.
+- **`Skeleton` honours a radius you pass.** `cn` doesn't merge Tailwind classes, and in the
+  compiled CSS `rounded-[6px]` would otherwise beat a plain `rounded`.
+
+**Halloween:**
+- **The bats** are now Dan's "Bat - Halloween" Lottie (`public/motion/bat.json`), recoloured
+  `#2B2550` with a violet rim glow, replacing the Fluent emoji.
+- **The spider** (`halloween-spider.tsx`) peeks from the top-right corner, dips on hover, and drops
+  on its thread when clicked. It bounces, sways, then climbs back after 5s.
+  - It is a framer-motion spring, not the supplied Lottie's timeline, which only moved it 9 units
+    in a 32-unit frame. The art is that file's sprite (`public/motion/spider.webp`).
+  - It must not break: desktop only, and only where AppShell shows the header band (it hangs in
+    the band's 32px right gutter). Only the sprite takes clicks; it sits below dialogs; hammering it
+    just retargets the spring; unmount clears its timer.
+  - `halloween-spider.test.tsx` pins this. Removing the timer cleanup, the click-through frame or
+    the desktop-only class each fails it.
+  - ⚠️ **The art is Spider-Man (Marvel).** It is internal-only and deliberately not mounted on the
+    public `/demo` pages; a test asserts that. Swap the sprite before it ever goes anywhere public.
+
+**Verification technique:** the preview pane runs the primary checkout's dev server, not a
+worktree's. Start the worktree's own server via a temporary `launch.json` entry
+(`npm --prefix <worktree> run dev -- -p <port>`) and drive it headlessly with playwright-core at
+2× DPR. The pane downscales a 1440 viewport too far to judge a 30px sprite.

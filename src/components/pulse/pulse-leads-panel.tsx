@@ -27,6 +27,7 @@ import { cn, formatDate, formatRelative } from "@/lib/format";
 import { CAPTURE_LIMITS, captureFieldErrors } from "@/lib/pulse-capture";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { PulseLeadView } from "@/server/pulse-lite/leads-admin";
+import { StatusDot } from "@/components/ui/motion/status-dot";
 
 /** Leads per page. Matches the scan list's density. */
 const PAGE_SIZE = 10;
@@ -58,9 +59,7 @@ function displayName(lead: { name: string | null; email: string }): string {
 
 /** The visitor's report, in one line: what a teammate needs before replying to them. */
 function ReportStatus({ report }: { report: PulseLeadView["report"] }) {
-  const dot = (cls: string, pulse = false) => (
-    <span className={cn("size-1.5 shrink-0 rounded-full", cls, pulse && "animate-pulse")} aria-hidden="true" />
-  );
+  const dot = (cls: string) => <span className={cn("size-1.5 shrink-0 rounded-full", cls)} aria-hidden="true" />;
   const base = "inline-flex items-center gap-1.5 text-xs";
   switch (report.state) {
     case "sent":
@@ -70,7 +69,7 @@ function ReportStatus({ report }: { report: PulseLeadView["report"] }) {
         </span>
       );
     case "preparing":
-      return <span className={cn(base, "text-[var(--text-2)]")}>{dot("bg-[var(--brand-500)]", true)}Being prepared</span>;
+      return <span className={cn(base, "text-[var(--text-2)]")}><StatusDot tone="brand" motion="pulse" size="xs" />Being prepared</span>;
     case "failed":
       return <span className={cn(base, "text-[var(--danger-500)]")} title={report.error ?? undefined}>{dot("bg-[var(--danger-500)]")}Not sent</span>;
     case "untracked":

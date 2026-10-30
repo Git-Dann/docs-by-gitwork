@@ -25,6 +25,7 @@ import {
 } from "@/hooks/use-tasks";
 
 import { TaskAvatar } from "@/components/tasks/task-avatar";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 const PAGE_SIZE = 5;
 
@@ -145,7 +146,7 @@ export function DailyRollup({
 
       <div className="widget-body space-y-3">
         {isPending ? (
-          <div className="h-32 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-32 rounded-[8px]" />
         ) : total === 0 ? (
           <p className="py-6 text-center text-xs text-[var(--text-4)]">
             No developers on the roster yet — run the team seed to populate it.
@@ -300,7 +301,7 @@ export function DailyRollup({
         <div className="flex min-h-0 flex-1 flex-col">
           {preview.isPending ? (
             <div className="min-h-0 flex-1 p-4">
-              <div className="h-full animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+              <Skeleton className="h-full rounded-[8px]" />
             </div>
           ) : preview.isError ? (
             <div className="flex min-h-0 flex-1 items-center justify-center p-6">

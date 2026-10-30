@@ -5,6 +5,7 @@ import { usePulseStats, usePulseScans } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { WidgetSize } from "@/components/app-overview";
 import type { PulseScanListItem } from "@/types/pulse";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 /**
  * `NN // PULSE` on Foundry HQ.
@@ -111,7 +112,7 @@ export default function PulseWidget({ size, index }: { size: WidgetSize; index: 
 
   const loading = isExternal ? mineQuery.isLoading : statsQuery.isLoading;
   if (loading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   // ── A guest: their own scans, and nothing about anyone else's ──────────────

@@ -28,6 +28,7 @@ import type {
 import type { CourseBackendData, CourseIntegration, RunJobResult } from "@/server/bigwedge-course-api";
 import type { GolfClubDTO } from "@/server/golf-clubs";
 import type { UserDataSnapshot } from "@/server/bigwedge-user-data";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'Times New Roman', Georgia, serif";
@@ -1270,11 +1271,7 @@ function UserDataView({ state }: { state: ReturnType<typeof useGolfUserData> }) 
 // ── shared states ─────────────────────────────────────────────────────────────
 
 function Loading({ label }: { label: string }) {
-  return (
-    <div className="flex items-center justify-center py-20">
-      <div className="text-sm text-[var(--text-4)]">{label}</div>
-    </div>
-  );
+  return <LoadingState label={label} className="justify-center py-20" />;
 }
 
 function ErrorState({ onRetry, label }: { onRetry: () => void; label: string }) {

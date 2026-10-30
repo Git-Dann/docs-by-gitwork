@@ -10,6 +10,7 @@ import { findingTaskHref, stageLabel } from "@/lib/pulse-findings";
 import Link from "next/link";
 import { StatusLegend, categoryScore } from "./scan-helpers";
 import type { ScanView } from "./use-scan-view";
+import { Spinner } from "@/components/ui/motion/spinner";
 
 export function renderChecksTab(v: ScanView) {
   const { addCheckTask, canManagePulse, checkStatusFilter, checksByCategory, checksSortBySeverity, checksView, expandedCategories, findingByKey, pendingCheckKey, primary, scan, scanDiff, sectionNo, setCheckStatusFilter, setChecksSortBySeverity, setChecksView, toggleCategory } = v;
@@ -297,7 +298,7 @@ export function renderChecksTab(v: ScanView) {
                                   title="Add to this client's task board"
                                 >
                                   {pending ? (
-                                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    <Spinner />
                                   ) : (
                                     <PlusIcon className="h-3 w-3" />
                                   )}

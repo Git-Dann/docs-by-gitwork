@@ -130,8 +130,7 @@ export function BlockPalette({
 
       {/* Panel */}
       <div
-        className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-[var(--shadow-lg)]"
-        style={{ animation: "blockPaletteSlide 220ms ease-out" }}
+        className="motion-sheet-right absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-[var(--shadow-lg)]"
       >
         {/* Header */}
         <div className="widget-header">
@@ -354,13 +353,6 @@ export function BlockPalette({
         </div>
       </div>
 
-      {/* Slide-in animation keyframes */}
-      <style jsx>{`
-        @keyframes blockPaletteSlide {
-          from { transform: translateX(40px); opacity: 0; }
-          to   { transform: translateX(0);    opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }

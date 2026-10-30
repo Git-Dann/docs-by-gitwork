@@ -13,6 +13,7 @@ import {
 import { SettingsCard } from "@/components/settings/settings-card";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/format";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 import {
   useForemanStatus,
   useForemanRuns,
@@ -57,10 +58,7 @@ export function ForemanPanel() {
 
   if (isLoading || !status) {
     return (
-      <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-3)]">
-        <ArrowPathIcon className="size-4 animate-spin" />
-        Loading Foreman…
-      </div>
+      <LoadingState label="Loading Foreman…" className="py-8" />
     );
   }
 
@@ -304,9 +302,7 @@ function FindingsManager({ narrative }: { narrative: string | null }) {
       {narrative ? <p className="mb-3 text-sm leading-relaxed text-[var(--text-2)]">{narrative}</p> : null}
 
       {isLoading ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-[var(--text-3)]">
-          <ArrowPathIcon className="size-4 animate-spin" /> Loading findings…
-        </div>
+        <LoadingState label="Loading findings…" className="py-4" />
       ) : findings.length === 0 ? (
         <p className="text-sm text-[var(--text-3)]">No findings in the latest run — delivery looks clear.</p>
       ) : (

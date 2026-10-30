@@ -20,6 +20,7 @@ import { cn, formatDate } from "@/lib/format";
 import { buttonStyles } from "@/components/ui/button";
 import { recommendStartersForScan } from "@/lib/starters-recommend";
 import type { StarterListItem, StarterType } from "@/server/starters";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 type Filter = "all" | StarterType;
 type SortOption = "featured" | "az" | "za" | "recent" | "used";
@@ -497,10 +498,7 @@ export function StarterList() {
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-40 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]"
-            />
+            <Skeleton key={i} className="h-40 rounded-[10px] border border-[var(--border-2)]" />
           ))}
         </div>
       ) : sorted.length === 0 ? (

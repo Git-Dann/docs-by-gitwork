@@ -7,6 +7,7 @@ import { cn } from "@/lib/format";
 import { useCreateHandover, useHandovers } from "@/hooks/use-handover";
 import { HandoverDetail } from "@/components/backstage/handover-detail";
 import type { HandoverSummaryDTO } from "@/types/handover";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 /**
  * Backstage → Handover.
@@ -127,7 +128,7 @@ export function HandoverTab() {
         ) : null}
 
         {list.isLoading ? (
-          <div className="h-[132px] animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-[132px] rounded-[10px]" />
         ) : (list.data ?? []).length === 0 ? (
           <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-6 text-center text-sm text-[var(--text-3)]">
             No handovers yet.

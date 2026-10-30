@@ -83,3 +83,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## Lottie player and animation files
+
+- **lottie-web** `5.13.0` (Airbnb, MIT). This is an npm dependency, not vendored. Only its light
+  build (`lottie-web/build/player/lottie_light`) is imported, and only by
+  `src/components/ui/motion/lottie.tsx`, which loads it lazily (docs/motion.md).
+- **`public/motion/bat.json`** is the "Bat - Halloween" Lottie supplied by Dan in October 2026,
+  exported from LottieFiles (AE plugin). Only its comp name was changed; the colour is set at
+  runtime.
+- **`public/motion/spider.webp`** is the sprite taken from the supplied `animation_spider.json`,
+  resized to 120×248. ⚠️ The artwork is **Spider-Man**, a Marvel character. It is used only in the
+  internal Halloween theme, never on public pages, and is replaceable with any sprite of the same
+  shape.

@@ -11,6 +11,7 @@ import {
   useReviewExpense,
 } from "@/hooks/use-backstage";
 import type { LeaveType } from "@/types/backstage";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   ANNUAL: "Annual leave",
@@ -84,7 +85,7 @@ export function ApprovalsCard() {
 
       <div className="widget-body space-y-3">
         {loading ? (
-          <div className="h-24 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-24 rounded-[8px]" />
         ) : total === 0 ? (
           <p className="py-6 text-center text-xs text-[var(--text-4)]">Nothing awaiting approval. All clear.</p>
         ) : (

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/format";
 import type { TaskDTO, TaskStatus } from "@/types/tasks";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 /**
  * A capped list with a "Show N more" reveal, so long sections (action items, tasks,
@@ -271,7 +272,7 @@ export function DeskEmpty({ children }: { children: React.ReactNode }) {
 
 /** Skeleton block while a section loads. */
 export function DeskSkeleton() {
-  return <div className="h-16 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+  return <Skeleton className="h-16 rounded-[8px]" />;
 }
 
 /** "Connect Google" empty state shared by Meetings + Inbox tabs. */

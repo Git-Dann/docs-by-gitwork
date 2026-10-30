@@ -28,6 +28,7 @@ import { useClientList } from "@/hooks/use-proposals";
 import { useStaffingAlerts } from "@/hooks/use-backstage";
 import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
 import { useViewAs } from "@/lib/view-as";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 export type WidgetSize = "sm" | "md" | "lg";
 
@@ -188,7 +189,7 @@ export function AppOverview() {
   // Wait for role/permissions so a restricted developer never flashes the full
   // agency grid before their task-focused view loads.
   if (account.isPending) {
-    return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <SkeletonBlock />;
   }
 
   const role = account.data?.role ?? "";

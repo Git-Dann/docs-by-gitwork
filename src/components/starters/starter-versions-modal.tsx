@@ -5,6 +5,7 @@ import { ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import { useRestoreStarterVersion, useStarterVersion, useStarterVersions } from "@/hooks/use-starters";
 import { useToast } from "@/components/ui/toast";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 // Version history as a fixed-height, two-column popup (the DESIGN.md "list + inspector" pattern):
 // versions on the left, the selected snapshot on the right. Super-Admin only. Auto-snapshot on save
@@ -95,7 +96,7 @@ function VersionDetail({
   onRestore: (versionId: string, version: number) => void;
 }) {
   const { data, isLoading } = useStarterVersion(starterId, versionId);
-  if (isLoading) return <div className="h-40 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />;
+  if (isLoading) return <Skeleton className="h-40 rounded-[8px]" />;
   if (!data) return null;
   const snap = data.snapshot;
   return (

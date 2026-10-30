@@ -38,6 +38,7 @@ import { useState, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/motion/spinner";
 import type {
   AuditLog,
   ClientHealthScore,
@@ -93,6 +94,7 @@ import { useClientList } from "@/hooks/use-proposals";
 import { usePermissions } from "@/hooks/use-permissions";
 import { TicketsKanban } from "./tickets-kanban";
 import { PerformanceStrip } from "./performance-strip";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 // ─── health badge ────────────────────────────────────────────────────────────
 
@@ -1081,7 +1083,7 @@ function AddConnectorModal({
                       className="flex h-9 items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                     >
                       {fetchingChannels ? (
-                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                        <Spinner tone="brand" />
                       ) : tokenChecked ? (
                         <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />
                       ) : (
@@ -1898,7 +1900,7 @@ function InboxView({ clientId }: { clientId: string }) {
             {(convosLoading || semanticSearch.isPending) && (
               <div className="space-y-2">
                 {[...Array(3)].map((_, i) => (
-                  <div key={i} className="h-14 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                  <Skeleton key={i} className="h-14 rounded-[10px]" />
                 ))}
               </div>
             )}
@@ -1979,7 +1981,7 @@ function InboxView({ clientId }: { clientId: string }) {
                 {msgsLoading && (
                   <div className="space-y-2">
                     {[...Array(2)].map((_, i) => (
-                      <div key={i} className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+                      <Skeleton key={i} className="h-16 rounded-[10px]" />
                     ))}
                   </div>
                 )}
@@ -1993,7 +1995,7 @@ function InboxView({ clientId }: { clientId: string }) {
                         disabled={syncConn.isPending}
                         className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                       >
-                        <BoltIcon className={cn("h-3.5 w-3.5", syncConn.isPending && "animate-spin")} />
+                        {syncConn.isPending ? <Spinner /> : <BoltIcon className="h-3.5 w-3.5" />}
                         {syncConn.isPending ? "Syncing…" : "Sync Now to pull messages"}
                       </button>
                     )}
@@ -2073,7 +2075,7 @@ function InboxView({ clientId }: { clientId: string }) {
                           title="Generate AI draft"
                           className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
                         >
-                          <SparklesIcon className={cn("h-3.5 w-3.5 text-violet-500", generateDraft.isPending && "animate-spin")} />
+                          {generateDraft.isPending ? <Spinner /> : <SparklesIcon className="h-3.5 w-3.5 text-violet-500" />}
                           {generateDraft.isPending ? "Drafting…" : "AI Draft"}
                         </button>
                         )}
@@ -2368,7 +2370,7 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
                   disabled={syncConn.isPending}
                   className="flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                 >
-                  <BoltIcon className={cn("h-3 w-3", syncConn.isPending && "animate-spin")} />
+                  {syncConn.isPending ? <Spinner /> : <BoltIcon className="h-3 w-3" />}
                   {syncConn.isPending ? "Syncing…" : "Sync Now"}
                 </button>
               </div>
@@ -2410,7 +2412,7 @@ function SubredditView({ clientId, onGoToConnectors }: { clientId: string; onGoT
                     ))}
                   </div>
                 )}
-                {msgsLoading && <div className="h-16 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />}
+                {msgsLoading && <Skeleton className="h-16 rounded-[10px]" />}
                 {!msgsLoading && postMessages.length === 0 && (
                   <p className="py-6 text-center text-sm text-[var(--text-4)]">No message body synced for this post.</p>
                 )}
@@ -3363,7 +3365,7 @@ function ReportBuilder({
               className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)] disabled:opacity-50"
             >
               {fetchingApi ? (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                <Spinner tone="brand" />
               ) : (
                 <ArrowPathIcon className="h-3 w-3" />
               )}
@@ -3465,7 +3467,7 @@ function ReportBuilder({
                   className="flex items-center gap-1 rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-700)] transition hover:bg-[var(--mist)] disabled:opacity-50"
                 >
                   {writingSummary ? (
-                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                    <Spinner tone="brand" />
                   ) : (
                     <SparklesIcon className="h-3 w-3" />
                   )}
@@ -4064,7 +4066,7 @@ function EditConnectorModal({
                   className="flex h-9 items-center gap-1.5 rounded-[8px] border border-[var(--border-2)] bg-white px-3 text-xs font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                 >
                   {fetchingChannels ? (
-                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                    <Spinner tone="brand" />
                   ) : tokenChecked ? (
                     <CheckCircleIcon className="h-3.5 w-3.5 text-emerald-500" />
                   ) : (
@@ -4544,20 +4546,20 @@ export function ConnectorsView({ clientId, clientSlug, showAgentLogs = true }: {
         {[...Array(3)].map((_, i) => (
           <div key={i} className="app-card overflow-hidden p-0 flex flex-col">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border-2)]">
-              <div className="h-8 w-8 shrink-0 rounded-[6px] animate-pulse bg-[var(--surface-1)]" />
+              <Skeleton className="h-8 w-8 shrink-0" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-3 w-28 animate-pulse rounded bg-[var(--surface-1)]" />
-                <div className="h-2.5 w-16 animate-pulse rounded bg-[var(--surface-1)]" />
+                <Skeleton className="h-3 w-28 rounded" />
+                <Skeleton className="h-2.5 w-16 rounded" />
               </div>
-              <div className="h-5 w-16 shrink-0 animate-pulse rounded-md bg-[var(--surface-1)]" />
+              <Skeleton className="h-5 w-16 shrink-0 rounded-md" />
             </div>
             <div className="flex-1 space-y-2 px-4 py-3">
-              <div className="h-2.5 w-3/4 animate-pulse rounded bg-[var(--surface-1)]" />
-              <div className="h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-1)]" />
+              <Skeleton className="h-2.5 w-3/4 rounded" />
+              <Skeleton className="h-2.5 w-1/2 rounded" />
             </div>
             <div className="flex items-center gap-2 border-t border-[var(--border-2)] px-4 py-2.5">
-              <div className="h-6 w-20 animate-pulse rounded-[6px] bg-[var(--surface-1)]" />
-              <div className="ml-auto h-7 w-7 animate-pulse rounded-[6px] bg-[var(--surface-1)]" />
+              <Skeleton className="h-6 w-20" />
+              <Skeleton className="ml-auto h-7 w-7" />
             </div>
           </div>
         ))}
@@ -4801,7 +4803,7 @@ export function ConnectorsView({ clientId, clientSlug, showAgentLogs = true }: {
                       disabled={isThisPending}
                       className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
                     >
-                      <BoltIcon className={cn("h-3 w-3", isSyncPending && "animate-spin")} />
+                      {isSyncPending ? <Spinner /> : <BoltIcon className="h-3 w-3" />}
                       {isSyncPending ? "Syncing…" : isResyncPending ? "Re-syncing…" : "Sync now"}
                     </button>
                   ) : null}
@@ -5233,7 +5235,7 @@ function AgentsView({ clientId }: { clientId: string }) {
                   >
                     {pending ? (
                       <>
-                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                        <Spinner tone="brand" />
                         Running…
                       </>
                     ) : (
@@ -5552,8 +5554,8 @@ export function SupportDashboard() {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-pulse rounded-full bg-[var(--surface-1)]" />
-          <div className="h-3 w-32 animate-pulse rounded-full bg-[var(--surface-1)]" />
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <Skeleton className="h-3 w-32 rounded-full" />
         </div>
       </div>
     );

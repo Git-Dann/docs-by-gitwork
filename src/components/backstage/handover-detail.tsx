@@ -16,6 +16,7 @@ import {
   useUpdateHandoverItem,
 } from "@/hooks/use-handover";
 import type { HandoverClientDTO, HandoverDTO } from "@/types/handover";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 /**
  * The handover, read by somebody covering.
@@ -68,7 +69,7 @@ export function HandoverDetail({ id, onBack }: { id: string; onBack: () => void 
   }, [data]);
 
   if (query.isLoading) {
-    return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <SkeletonBlock />;
   }
   if (query.isError || !data) {
     return (

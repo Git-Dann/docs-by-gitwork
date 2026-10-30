@@ -37,7 +37,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
-import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenToggle } from "@/components/seasonal/halloween";
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot, HalloweenToggle } from "@/components/seasonal/halloween";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
 // The Desk is a client-only interactive drawer that pulls in a heavy subtree
@@ -536,6 +536,8 @@ export function AppShell({
           about people they do not work with, and the dock is on every /app screen. */}
       {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
       <HalloweenFogFront />
+      {/* Hangs in the header band's right gutter, so only where there is a band. */}
+      {hideContentHeader ? null : <HalloweenSpiderSlot />}
       {/* ⌘K. The pages are this viewer's own nav, so it never offers a product the sidebar hides. */}
       <CommandMenu
         pages={primaryNav}
