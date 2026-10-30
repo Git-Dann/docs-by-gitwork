@@ -54,6 +54,7 @@ vi.mock("@/lib/prisma", () => ({
         db.suppliers.find((s) => s.id === where.id && s.workspaceId === where.workspaceId && !s.archivedAt) ?? null,
       ),
     },
+    workspaceClient: { findMany: vi.fn(async () => []) },
     staffSensitive: {
       findUnique: vi.fn(async ({ where }: { where: { recordId: string } }) =>
         db.sensitive.has(where.recordId) ? { id: "x", payload: db.sensitive.get(where.recordId) } : null,

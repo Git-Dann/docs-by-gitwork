@@ -69,8 +69,22 @@ All from the person's profile (`PersonActions` in `staff-profile.tsx`). Rules in
   **No login** (`groupStaff` in `src/lib/staff.ts`). Each card opens the profile. On hover a
   person's clients rise from behind the card (EasyUI's macOS Folder Cards motion); the same clients
   are written on the card, so nothing is hover-only, and reduced motion keeps them still.
-- **Org chart** (Cards / Org chart switch), drawn from the manager field (`buildOrgTree`). A manager
-  not on the list makes their reports roots; a circle is broken rather than looping.
+- **A person's clients** are the ACTIVE clients they're placed on in Code, plus those whose
+  **product team** they're on (`WorkspaceClient.productTeamUserIds`, the leads in the wiki header).
+  The product team is how product and account leads are on a project, so without it they read
+  "No clients". `ClientAssignment` is not read, because it grants a developer access, which isn't the
+  same as being on the project. See `src/server/staff-clients.ts`, used by the roster and the profile.
+- **Org chart** (Cards / Org chart switch, `org-chart.tsx`). Gitwork keeps no list of who manages
+  whom: the admins are the managers. So the chart places people by role (`orgTiers`):
+  1. Leadership (Super Admins)
+  2. Admins
+  3. Everyone else, under the cards' headings: Staff, Developers, Guests and No login.
+
+  The tiers are joined down the middle. A manager set on someone's profile wins: that person
+  hangs under their manager as a branch with lines, built by `buildOrgTree`. More than four leaf
+  reports stack in a column. A chart wider than its card scrolls in its own frame and opens
+  centred. The first version drew only from the manager field, and with none set it read as a
+  plain list.
 - **CSV** export of the list shown: name, email, role, title, department, type, start, manager,
   clients. Never rates or personal details. Formula-looking text is neutralised.
 - **For HR** (`hr.manage`): what's coming up in the next 60 days (contract ends, probation ends,

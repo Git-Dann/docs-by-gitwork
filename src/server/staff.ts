@@ -10,6 +10,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { mergeStaffClients, productTeamClientsByUser } from "@/server/staff-clients";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { activeDeveloperWhere, archivedDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
 import { isSeedAccount, seedAccountUserWhere } from "@/server/seed-accounts";
@@ -160,7 +161,7 @@ export async function listStaff(workspaceId: string, view: "active" | "archived"
         id: true,
         role: true,
         archivedAt: true,
-        user: { select: { name: true, email: true, avatarUrl: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
         // Earliest first: memberId is not unique in the database (see the schema), so if a
         // race ever left two records on one member, every read picks the same one.
         staffRecords: { select: RECORD_SELECT, orderBy: { createdAt: "asc" }, take: 1 },
@@ -189,9 +190,13 @@ export async function listStaff(workspaceId: string, view: "active" | "archived"
     }),
   ]);
 
+  // Product and account leads are on a client through its product team, not a placement.
+  const ledBy = await productTeamClientsByUser(workspaceId, members.map((m) => m.user.id));
+
   const people: StaffPerson[] = [
     ...members.filter((m) => !isSeedAccount(m.user)).map((m) => {
       const r = m.staffRecords[0];
+      const fields = recordFields(r);
       return {
         key: `m:${m.id}`,
         memberId: m.id,
@@ -200,7 +205,8 @@ export async function listStaff(workspaceId: string, view: "active" | "archived"
         avatarUrl: m.user.avatarUrl ?? r?.avatarUrl ?? null,
         role: m.role,
         managerName: null,
-        ...recordFields(r),
+        ...fields,
+        currentClients: mergeStaffClients(fields.currentClients, ledBy.get(m.user.id) ?? []),
         archivedAt: m.archivedAt ? m.archivedAt.toISOString() : null,
       };
     }),

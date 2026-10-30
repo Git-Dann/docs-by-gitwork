@@ -250,6 +250,30 @@ export function buildOrgTree(people: StaffPerson[]): OrgNode[] {
   return tree;
 }
 
+export interface OrgTier {
+  id: "leadership" | "admins" | Exclude<StaffGroupId, "admins">;
+  label: string;
+  nodes: OrgNode[];
+}
+
+/**
+ * The org chart's tiers. Gitwork has no list of who manages whom: the admins are the
+ * managers. So anyone without a manager is placed by role: Super Admins as leadership, then
+ * Admins, then everyone else under the same headings as the cards. Someone whose manager IS
+ * set hangs under that person instead, so a real reporting line always wins over the default.
+ */
+export function orgTiers(tree: OrgNode[]): OrgTier[] {
+  const by = new Map<OrgTier["id"], OrgNode[]>();
+  for (const n of tree) {
+    const id: OrgTier["id"] =
+      n.person.role === "SUPER_ADMIN" ? "leadership" : n.person.role === "ADMIN" ? "admins" : (staffGroupOf(n.person) as Exclude<StaffGroupId, "admins">);
+    by.set(id, [...(by.get(id) ?? []), n]);
+  }
+  const order: OrgTier["id"][] = ["leadership", "admins", "staff", "developers", "guests", "no-login"];
+  const label = (id: OrgTier["id"]) => (id === "leadership" ? "Leadership" : STAFF_GROUP_LABEL[id]);
+  return order.filter((id) => by.has(id)).map((id) => ({ id, label: label(id), nodes: by.get(id)! }));
+}
+
 /** One CSV cell: quoted when needed, and formula-looking text neutralised for spreadsheets. */
 function csvCell(v: string | null | undefined): string {
   let s = v ?? "";

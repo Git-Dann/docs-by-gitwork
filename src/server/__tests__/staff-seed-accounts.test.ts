@@ -15,6 +15,8 @@ vi.mock("@/lib/prisma", () => ({
       ),
       updateMany: vi.fn(),
     },
+    // Product-team clients (staff-clients.ts): none here, this test is about seed accounts.
+    workspaceClient: { findMany: vi.fn(async () => []) },
     workspaceMember: {
       findMany: vi.fn(async (args: { where?: unknown; select?: { staffRecords?: unknown } }) => {
         if (args.select && "staffRecords" in args.select) {
