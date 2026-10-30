@@ -19,6 +19,7 @@ import {
   checkEveryMs,
   incidentHeading,
   shouldConfirm,
+  shouldPostAlert,
   isStale,
   nextAlertState,
   staleMessage,
@@ -563,6 +564,13 @@ async function sendMonitorAlert(
   try {
     const client = await monitorOwner(monitor.wikiId);
     if (!client) return;
+    // One post per client, not per service: a second service going down minutes after the first
+    // is already in that post's list, and "back" is said once, when the whole client is back.
+    const siblings = await prisma.wikiMonitor.findMany({
+      where: { wikiId: monitor.wikiId, enabled: true, id: { not: monitor.id } },
+      select: { alertKind: true, alertedDownAt: true },
+    });
+    if (!shouldPostAlert(alert.kind, siblings, new Date())) return;
     const { title, body } = alertMessage(
       { clientName: client.name, monitorName: monitor.name, target: monitor.target },
       alert,
