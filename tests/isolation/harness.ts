@@ -81,6 +81,7 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
       if (before[0] === "docs") return attacker.documentToken;
       if (before[0] === "onboarding") return attacker.onboardingToken;
       if (["report", "badge/pulse", "public/pulse/report"].includes(parent)) return attacker.scanShareToken;
+      if (parent === "public/heartbeat") return attacker.heartbeatToken;
       return null;
     }
     case "scanId":
