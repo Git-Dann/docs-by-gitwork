@@ -27,6 +27,13 @@ import {
 } from "@/lib/monitor-alerts";
 import { suggestMonitors, type MonitorSuggestion } from "@/lib/monitor-suggestions";
 import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
+import { heartbeatCheckDue, inMaintenance } from "@/lib/monitor-expiry";
+import { randomBytes } from "node:crypto";
+
+/** The URL a job calls each time it runs. Add /fail to report a failed run. */
+export function heartbeatPingUrl(token: string): string {
+  return `${appBaseUrl()}/api/public/heartbeat/${token}`;
+}
 
 // ─── DTOs ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +71,14 @@ export interface WikiMonitorDTO {
    * the last result — a monitor whose checker stopped kept showing UP for 2½ months (Aug–Oct 2026).
    */
   stale: boolean;
+  /** HEARTBEAT monitors only. `pingUrl` is null in the client's copy — it is the credential. */
+  heartbeat: { pingUrl: string | null; lastPingAt: string | null; lastPingOk: boolean | null; graceMinutes: number | null } | null;
+  /** Alerts paused until this time (null = not in maintenance). */
+  maintenance: { until: string; note: string | null } | null;
+  /** HTTPS certificate, read daily. Null until first read, or for non-HTTPS monitors. */
+  ssl: { expiresAt: string | null; issuer: string | null; error: string | null; checkedAt: string } | null;
+  /** Domain registration, from RDAP. */
+  domain: { name: string; expiresAt: string | null; error: string | null; checkedAt: string } | null;
 }
 
 /** Retention window for check history + the widest uptime window. */
@@ -128,6 +143,26 @@ async function buildMonitorDTO(m: WikiMonitor): Promise<WikiMonitorDTO> {
     avgLatencyMs:
       latencyAgg._avg.latencyMs != null ? Math.round(latencyAgg._avg.latencyMs) : null,
     stale: isStale(m, new Date()),
+    heartbeat:
+      m.type === "HEARTBEAT"
+        ? {
+            pingUrl: m.heartbeatToken ? heartbeatPingUrl(m.heartbeatToken) : null,
+            lastPingAt: m.lastPingAt?.toISOString() ?? null,
+            lastPingOk: m.lastPingOk,
+            graceMinutes: m.graceMinutes,
+          }
+        : null,
+    maintenance:
+      m.maintenanceUntil && inMaintenance(m, new Date())
+        ? { until: m.maintenanceUntil.toISOString(), note: m.maintenanceNote }
+        : null,
+    ssl: m.sslCheckedAt
+      ? { expiresAt: m.sslExpiresAt?.toISOString() ?? null, issuer: m.sslIssuer, error: m.sslError, checkedAt: m.sslCheckedAt.toISOString() }
+      : null,
+    domain:
+      m.domain && m.domainCheckedAt
+        ? { name: m.domain, expiresAt: m.domainExpiresAt?.toISOString() ?? null, error: m.domainError, checkedAt: m.domainCheckedAt.toISOString() }
+        : null,
     history: recent
       .reverse()
       .map((c) => ({
@@ -179,6 +214,11 @@ export interface MonitorInput {
   degradedMs?: number | null;
   intervalMinutes?: number;
   enabled?: boolean;
+  /** HEARTBEAT: minutes after the expected ping before it counts as missed. */
+  graceMinutes?: number | null;
+  /** Pause alerts until this time (null ends maintenance). */
+  maintenanceUntil?: Date | null;
+  maintenanceNote?: string | null;
 }
 
 /** Enable/disable the Monitors section for a wiki (the sidebar add/remove). */
@@ -190,12 +230,16 @@ export async function setWikiMonitorsEnabled(clientId: string, enabled: boolean)
 export async function createMonitor(clientId: string, input: MonitorInput): Promise<WikiMonitorDTO> {
   const wikiId = await ensureWiki(clientId);
   const max = await prisma.wikiMonitor.aggregate({ where: { wikiId }, _max: { sortOrder: true } });
+  // A heartbeat has no target to fetch — its "target" is the URL the job calls.
+  const token = input.type === "HEARTBEAT" ? randomBytes(18).toString("base64url") : null;
   const monitor = await prisma.wikiMonitor.create({
     data: {
       wikiId,
       name: input.name.trim(),
       type: input.type,
-      target: input.target.trim(),
+      target: token ? heartbeatPingUrl(token) : input.target.trim(),
+      heartbeatToken: token,
+      graceMinutes: input.graceMinutes ?? null,
       method: input.method?.trim() || "GET",
       expectedStatus: input.expectedStatus ?? null,
       keyword: input.keyword?.trim() || null,
@@ -218,23 +262,27 @@ export async function updateMonitor(
   monitorId: string,
   input: Partial<MonitorInput>,
 ): Promise<WikiMonitorDTO | null> {
-  const monitor = await prisma.wikiMonitor.findFirst({
+  const existing = await prisma.wikiMonitor.findFirst({
     where: { id: monitorId, wiki: { clientId } },
-    select: { id: true },
+    select: { id: true, type: true },
   });
-  if (!monitor) return null;
+  if (!existing) return null;
   const updated = await prisma.wikiMonitor.update({
     where: { id: monitorId },
     data: {
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-      ...(input.type !== undefined ? { type: input.type } : {}),
-      ...(input.target !== undefined ? { target: input.target.trim() } : {}),
+      // A heartbeat's type and ping URL are fixed — changing either would orphan the job's URL.
+      ...(input.type !== undefined && existing.type !== "HEARTBEAT" && input.type !== "HEARTBEAT" ? { type: input.type } : {}),
+      ...(input.target !== undefined && existing.type !== "HEARTBEAT" ? { target: input.target.trim() } : {}),
       ...(input.method !== undefined ? { method: input.method.trim() || "GET" } : {}),
       ...(input.expectedStatus !== undefined ? { expectedStatus: input.expectedStatus } : {}),
       ...(input.keyword !== undefined ? { keyword: input.keyword?.trim() || null } : {}),
       ...(input.degradedMs !== undefined ? { degradedMs: input.degradedMs } : {}),
       ...(input.intervalMinutes !== undefined ? { intervalMinutes: input.intervalMinutes } : {}),
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+      ...(input.graceMinutes !== undefined ? { graceMinutes: input.graceMinutes } : {}),
+      ...(input.maintenanceUntil !== undefined ? { maintenanceUntil: input.maintenanceUntil } : {}),
+      ...(input.maintenanceNote !== undefined ? { maintenanceNote: input.maintenanceNote?.trim() || null } : {}),
     },
   });
   return buildMonitorDTO(updated);
@@ -296,7 +344,7 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
     take: WINDOW - 1,
     select: { status: true },
   });
-  const { state, alert } = nextAlertState(
+  const decision = nextAlertState(
     {
       failStreak: monitor.failStreak,
       downSince: monitor.downSince,
@@ -308,6 +356,19 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
     now,
     recent.reverse().map((c) => c.status as ProbeStatus),
   );
+  // Planned work: checks still run and are recorded, but nothing is announced and no outage
+  // builds up — the alert state stays as it was, and the streak starts again when it ends.
+  const maintenance = inMaintenance(monitor, now);
+  const state = maintenance
+    ? {
+        failStreak: 0,
+        downSince: null,
+        alertedDownAt: monitor.alertedDownAt,
+        alertKind: monitor.alertKind,
+        alertClearedAt: monitor.alertClearedAt,
+      }
+    : decision.state;
+  const alert = maintenance ? null : decision.alert;
   await prisma.$transaction([
     prisma.wikiMonitorCheck.create({
       data: {
@@ -338,7 +399,7 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
   ]);
   if (alert) await sendMonitorAlert(monitor, alert, { statusCode: result.statusCode, error: result.error });
 
-  if (opts.confirm && shouldConfirm(result.status as ProbeStatus, state)) {
+  if (!maintenance && opts.confirm && shouldConfirm(result.status as ProbeStatus, decision.state)) {
     await new Promise((r) => setTimeout(r, CONFIRM_AFTER_MS));
     const fresh = await prisma.wikiMonitor.findUnique({ where: { id: monitor.id } });
     if (fresh?.enabled) await runMonitorCheck(fresh, { confirm: false });
@@ -505,7 +566,11 @@ export async function runDueMonitors(): Promise<{ checked: number; pruned: numbe
   ).filter(
     // Every minute while failing, its own interval otherwise (checkEveryMs). The cron runs
     // every minute so a failing monitor is actually picked up that often.
-    (m) => !m.lastCheckedAt || now - m.lastCheckedAt.getTime() >= checkEveryMs(m),
+    (m) =>
+      m.type === "HEARTBEAT"
+        ? // No network — checked on its interval and again the minute a ping is overdue.
+          heartbeatCheckDue(m, new Date(now)) || (m.failStreak > 0 && now - (m.lastCheckedAt?.getTime() ?? 0) >= checkEveryMs(m))
+        : !m.lastCheckedAt || now - m.lastCheckedAt.getTime() >= checkEveryMs(m),
   );
 
   const BATCH = 5;
@@ -518,4 +583,21 @@ export async function runDueMonitors(): Promise<{ checked: number; pruned: numbe
   });
 
   return { checked: due.length, pruned: pruned.count };
+}
+
+/**
+ * A job pinged its heartbeat URL. Records the ping, then checks the monitor straight away so
+ * a recovery (or a reported failure) is announced now, not on the next scheduled run.
+ * Returns false for an unknown token or a paused monitor.
+ */
+export async function recordHeartbeatPing(token: string, ok: boolean): Promise<boolean> {
+  if (!token || token.length > 64) return false;
+  const monitor = await prisma.wikiMonitor.findUnique({ where: { heartbeatToken: token } });
+  if (!monitor || monitor.type !== "HEARTBEAT" || !monitor.enabled) return false;
+  const fresh = await prisma.wikiMonitor.update({
+    where: { id: monitor.id },
+    data: { lastPingAt: new Date(), lastPingOk: ok },
+  });
+  await runMonitorCheck(fresh, { confirm: false });
+  return true;
 }

@@ -3393,6 +3393,13 @@ function forPublic(dto: WikiDTO): WikiDTO {
     sheets: forPublicSheets(dto.sheets),
     // Whose Google account reads the folder for the client is ours, not theirs.
     drive: forPublicDrive(dto.drive),
+    // A heartbeat's ping URL is its credential — anyone holding it can mark the job healthy.
+    monitors: {
+      ...dto.monitors,
+      monitors: dto.monitors.monitors.map((m) =>
+        m.heartbeat ? { ...m, target: "", heartbeat: { ...m.heartbeat, pingUrl: null } } : m,
+      ),
+    },
   };
 
   // ⚠️ Computed on the TRIMMED copy, never on `dto`. The predicates read the very

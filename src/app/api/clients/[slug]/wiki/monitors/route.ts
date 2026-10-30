@@ -9,14 +9,19 @@ export const maxDuration = 60;
 
 const monitorInputSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(["HTTP", "TCP"]),
-  target: z.string().min(1),
+  type: z.enum(["HTTP", "TCP", "HEARTBEAT"]),
+  // A heartbeat has no target — Foundry gives it a ping URL instead.
+  target: z.string().default(""),
   method: z.string().optional(),
   expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
   keyword: z.string().max(200).nullable().optional(),
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+}).refine((v) => v.type === "HEARTBEAT" || v.target.trim().length > 0, {
+  message: "A target is required",
+  path: ["target"],
 });
 
 const toggleSchema = z.object({ enabled: z.boolean() });

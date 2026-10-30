@@ -43,6 +43,7 @@ export type SideIds = {
   sheetRow: string;
   intakeItem: string;
   wikiMonitor: string;
+  heartbeatToken: string;
   wikiDocument: string;
   changelog: string;
   platform: string;
@@ -95,6 +96,7 @@ export function idsFor(side: Side): SideIds {
     sheetRow: id(side, "sheet-row"),
     intakeItem: id(side, "intake"),
     wikiMonitor: id(side, "wiki-monitor"),
+    heartbeatToken: id(side, "hb-token"),
     wikiDocument: id(side, "wiki-doc"),
     changelog: id(side, "changelog"),
     platform: id(side, "platform"),
@@ -227,6 +229,9 @@ export async function seedSide(db: PrismaClient, side: Side) {
   });
   await db.clientWikiIntakeItem.create({ data: { id: i.intakeItem, wikiId: i.wiki, title: m(side, "request"), description: m(side, "request-body") } });
   await db.wikiMonitor.create({ data: { id: i.wikiMonitor, wikiId: i.wiki, name: m(side, "uptime"), target: `https://iso-${side}.test` } });
+  await db.wikiMonitor.create({
+    data: { id: `${i.wikiMonitor}-hb`, wikiId: i.wiki, name: m(side, "heartbeat"), type: "HEARTBEAT", target: `https://iso-${side}.test/hb`, heartbeatToken: i.heartbeatToken },
+  });
   await db.wikiDocument.create({ data: { id: i.wikiDocument, wikiId: i.wiki, title: m(side, "wiki-document") } });
   await db.clientChangelogEntry.create({ data: { id: i.changelog, wikiId: i.wiki, platform: "WEB", version: "1.0.0", title: m(side, "changelog") } });
   await db.clientPlatform.create({ data: { id: i.platform, clientId: i.client, name: m(side, "platform") } });

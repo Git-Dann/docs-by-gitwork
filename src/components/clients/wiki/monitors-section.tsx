@@ -30,7 +30,9 @@ const DOT: Record<Status, string> = {
 const TYPE_OPTIONS = [
   { value: "HTTP", label: "HTTP / HTTPS", hint: "https://api.example.com/health" },
   { value: "TCP", label: "TCP port", hint: "db.example.com:5432" },
+  { value: "HEARTBEAT", label: "Heartbeat (cron / job)", hint: "" },
 ] as const;
+type MonitorType = (typeof TYPE_OPTIONS)[number]["value"];
 
 const SEVERITY: Record<Status, number> = { UP: 0, UNKNOWN: 1, DEGRADED: 2, DOWN: 3 };
 
@@ -66,7 +68,74 @@ function shownStatus(m: WikiMonitorDTO): Status {
   return m.stale ? "UNKNOWN" : m.status;
 }
 function statusLabel(m: WikiMonitorDTO): string {
+  if (m.maintenance) return "Maintenance";
   return m.stale ? "Not checking" : META[m.status].label;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Amber inside the warning window, red once inside the last few days or expired. */
+function expiryTone(iso: string, warnDays: number, urgentDays: number): string {
+  const d = (new Date(iso).getTime() - Date.now()) / DAY_MS;
+  if (d < urgentDays) return "var(--danger-500)";
+  if (d < warnDays) return "var(--warning-500)";
+  return "var(--text-4)";
+}
+function daysText(iso: string): string {
+  const d = Math.floor((new Date(iso).getTime() - Date.now()) / DAY_MS);
+  if (d < 0) return "expired";
+  return `${d}d`;
+}
+
+/**
+ * Certificate, domain and maintenance at a glance — one mono line, coloured only when
+ * something needs doing. Renders nothing for a monitor with none of the three.
+ */
+function MonitorFacts({ m }: { m: WikiMonitorDTO }) {
+  const facts: { key: string; text: string; color: string; title: string }[] = [];
+  if (m.maintenance) {
+    facts.push({
+      key: "maint",
+      text: `Maintenance until ${new Date(m.maintenance.until).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`,
+      color: "var(--brand-600)",
+      title: m.maintenance.note ?? "Alerts are paused",
+    });
+  }
+  if (m.ssl?.expiresAt) {
+    facts.push({
+      key: "ssl",
+      text: `SSL ${daysText(m.ssl.expiresAt)}`,
+      color: expiryTone(m.ssl.expiresAt, 14, 3),
+      title: `Certificate expires ${new Date(m.ssl.expiresAt).toLocaleDateString()}${m.ssl.issuer ? ` · ${m.ssl.issuer}` : ""}`,
+    });
+  } else if (m.ssl?.error) {
+    facts.push({ key: "ssl", text: "SSL ?", color: "var(--text-4)", title: `Certificate could not be read: ${m.ssl.error}` });
+  }
+  if (m.domain?.expiresAt) {
+    facts.push({
+      key: "domain",
+      text: `Domain ${daysText(m.domain.expiresAt)}`,
+      color: expiryTone(m.domain.expiresAt, 30, 7),
+      title: `${m.domain.name} registration expires ${new Date(m.domain.expiresAt).toLocaleDateString()}`,
+    });
+  }
+  if (m.heartbeat) {
+    facts.push({
+      key: "ping",
+      text: m.heartbeat.lastPingAt ? `Pinged ${relTime(m.heartbeat.lastPingAt)}` : "No ping yet",
+      color: m.heartbeat.lastPingOk === false ? "var(--danger-500)" : "var(--text-4)",
+      title: m.heartbeat.lastPingOk === false ? "The last run reported a failure" : `Expected every ${m.intervalMinutes} min`,
+    });
+  }
+  if (facts.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] uppercase tracking-[0.04em]" style={{ fontFamily: MONO }}>
+      {facts.map((f) => (
+        <span key={f.key} style={{ color: f.color }} title={f.title}>
+          {f.text}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /** The recent-status bar strip (oldest → newest). */
@@ -182,6 +251,7 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
                     {m.stale ? `Last checked ${relTime(m.checkedAt)}` : `Checked ${relTime(m.checkedAt)}`}
                   </span>
                 </div>
+                <MonitorFacts m={m} />
                 {!m.stale && m.status === "DOWN" && m.error && (
                   <p className="mt-1.5 text-[12px] text-rose-600">{m.error}</p>
                 )}
@@ -197,13 +267,14 @@ export function MonitorStatusBoard({ monitors }: { monitors: WikiMonitorDTO[] })
 // ── Editor / manager (workspace) ────────────────────────────────────────────
 type FormState = {
   name: string;
-  type: "HTTP" | "TCP";
+  type: MonitorType;
   target: string;
   method: string;
   expectedStatus: string;
   keyword: string;
   degradedMs: string;
   intervalMinutes: string;
+  graceMinutes: string;
 };
 const EMPTY_FORM: FormState = {
   name: "",
@@ -214,6 +285,7 @@ const EMPTY_FORM: FormState = {
   keyword: "",
   degradedMs: "",
   intervalMinutes: "5",
+  graceMinutes: "",
 };
 
 const inputCls =
@@ -261,20 +333,23 @@ export function MonitorsManager({
       keyword: m.keyword ?? "",
       degradedMs: m.degradedMs?.toString() ?? "",
       intervalMinutes: m.intervalMinutes.toString(),
+      graceMinutes: m.heartbeat?.graceMinutes?.toString() ?? "",
     });
     setEditing(m.id);
     setError(null);
   }
 
   async function submit() {
-    if (!form.name.trim() || !form.target.trim()) {
-      setError("Name and target are required.");
+    const heartbeat = form.type === "HEARTBEAT";
+    if (!form.name.trim() || (!heartbeat && !form.target.trim())) {
+      setError(heartbeat ? "A name is required." : "Name and target are required.");
       return;
     }
     const payload: MonitorInput = {
       name: form.name.trim(),
       type: form.type,
-      target: form.target.trim(),
+      target: heartbeat ? "" : form.target.trim(),
+      graceMinutes: heartbeat && form.graceMinutes.trim() ? Number(form.graceMinutes) : null,
       method: form.type === "HTTP" ? form.method || "GET" : "GET",
       expectedStatus: form.expectedStatus.trim() ? Number(form.expectedStatus) : null,
       keyword: form.type === "HTTP" && form.keyword.trim() ? form.keyword.trim() : null,
@@ -329,7 +404,8 @@ export function MonitorsManager({
                 <select
                   className="app-select-compact mt-1 w-full"
                   value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value as "HTTP" | "TCP" })}
+                  onChange={(e) => setForm({ ...form, type: e.target.value as MonitorType })}
+                  disabled={editing !== "new" && (form.type === "HEARTBEAT")}
                 >
                   {TYPE_OPTIONS.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -340,16 +416,25 @@ export function MonitorsManager({
               </label>
             </div>
 
-            <label className="block text-[12px] font-medium text-[var(--text-2)]">
-              Target
-              <input
-                className={`mt-1 ${inputCls}`}
-                value={form.target}
-                onChange={(e) => setForm({ ...form, target: e.target.value })}
-                placeholder={typeHint}
-                style={{ fontFamily: MONO }}
-              />
-            </label>
+            {form.type === "HEARTBEAT" ? (
+              <p className="text-[12px] text-[var(--text-3)]">
+                Foundry gives this monitor a ping URL. Add a request to it at the end of the job
+                (for example <code style={{ fontFamily: MONO }}>curl -fsS &lt;url&gt;</code>), or
+                call <code style={{ fontFamily: MONO }}>&lt;url&gt;/fail</code> when the run fails.
+                If no ping arrives within the interval plus grace, it goes down.
+              </p>
+            ) : (
+              <label className="block text-[12px] font-medium text-[var(--text-2)]">
+                Target
+                <input
+                  className={`mt-1 ${inputCls}`}
+                  value={form.target}
+                  onChange={(e) => setForm({ ...form, target: e.target.value })}
+                  placeholder={typeHint}
+                  style={{ fontFamily: MONO }}
+                />
+              </label>
+            )}
 
             {form.type === "HTTP" && (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -389,7 +474,7 @@ export function MonitorsManager({
 
             <div className="grid grid-cols-2 gap-3">
               <label className="text-[12px] font-medium text-[var(--text-2)]">
-                Interval (min)
+                {form.type === "HEARTBEAT" ? "Expected every (min)" : "Interval (min)"}
                 <input
                   className={`mt-1 ${inputCls}`}
                   value={form.intervalMinutes}
@@ -397,16 +482,29 @@ export function MonitorsManager({
                   inputMode="numeric"
                 />
               </label>
-              <label className="text-[12px] font-medium text-[var(--text-2)]">
-                Slow after (ms, optional)
-                <input
-                  className={`mt-1 ${inputCls}`}
-                  value={form.degradedMs}
-                  onChange={(e) => setForm({ ...form, degradedMs: e.target.value })}
-                  placeholder="e.g. 2000 → Degraded"
-                  inputMode="numeric"
-                />
-              </label>
+              {form.type === "HEARTBEAT" ? (
+                <label className="text-[12px] font-medium text-[var(--text-2)]">
+                  Grace (min, optional)
+                  <input
+                    className={`mt-1 ${inputCls}`}
+                    value={form.graceMinutes}
+                    onChange={(e) => setForm({ ...form, graceMinutes: e.target.value })}
+                    placeholder="default: a fifth of the interval"
+                    inputMode="numeric"
+                  />
+                </label>
+              ) : (
+                <label className="text-[12px] font-medium text-[var(--text-2)]">
+                  Slow after (ms, optional)
+                  <input
+                    className={`mt-1 ${inputCls}`}
+                    value={form.degradedMs}
+                    onChange={(e) => setForm({ ...form, degradedMs: e.target.value })}
+                    placeholder="e.g. 2000 → Degraded"
+                    inputMode="numeric"
+                  />
+                </label>
+              )}
             </div>
 
             {error && <p className="text-[12px] text-rose-600">{error}</p>}
@@ -496,11 +594,18 @@ export function MonitorsManager({
                     {m.stale ? `Last checked ${relTime(m.checkedAt)}` : `Checked ${relTime(m.checkedAt)}`}
                   </span>
                 </div>
+                <MonitorFacts m={m} />
+                {m.heartbeat?.pingUrl ? <PingUrl url={m.heartbeat.pingUrl} /> : null}
                 {!m.stale && m.status === "DOWN" && m.error ? (
                   <p className="mt-1.5 break-words text-[12px] text-[var(--danger-500)]">{m.error}</p>
                 ) : null}
 
                 <div className="mt-auto flex items-center justify-end gap-1 pt-3">
+                  <MaintenanceControl
+                    monitor={m}
+                    busy={update.isPending}
+                    onSet={(until) => update.mutate({ id: m.id, input: { maintenanceUntil: until } })}
+                  />
                   <button
                     type="button"
                     title="Check now"
@@ -603,5 +708,81 @@ function MonitorSuggestions({
         ))}
       </ul>
     </div>
+  );
+}
+
+/** The heartbeat's ping URL with a copy button — the one thing the job's owner needs. */
+function PingUrl({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2 flex min-w-0 items-center gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] px-2 py-1">
+      <code className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-2)]" style={{ fontFamily: MONO }} title={url}>
+        {url}
+      </code>
+      <button
+        type="button"
+        onClick={() => {
+          void navigator.clipboard?.writeText(url).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          });
+        }}
+        className="shrink-0 text-[11px] font-medium text-[var(--brand-700)] hover:underline"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+const PAUSE_OPTIONS = [
+  { label: "Pause alerts 1 h", hours: 1 },
+  { label: "Pause alerts 4 h", hours: 4 },
+  { label: "Pause alerts 24 h", hours: 24 },
+] as const;
+
+/**
+ * Planned work: pause alerts for a while. Checks keep running and the board says
+ * "Maintenance"; alerts resume on their own when the window ends.
+ */
+function MaintenanceControl({
+  monitor,
+  busy,
+  onSet,
+}: {
+  monitor: WikiMonitorDTO;
+  busy: boolean;
+  onSet: (until: Date | null) => void;
+}) {
+  if (monitor.maintenance) {
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => onSet(null)}
+        className="mr-auto rounded-[6px] px-2 py-1 text-[11px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
+      >
+        End maintenance
+      </button>
+    );
+  }
+  return (
+    <select
+      aria-label={`Pause alerts for ${monitor.name}`}
+      disabled={busy}
+      value=""
+      onChange={(e) => {
+        const hours = Number(e.target.value);
+        if (hours > 0) onSet(new Date(Date.now() + hours * 60 * 60 * 1000));
+      }}
+      className="app-select-compact mr-auto max-w-[150px] text-[11px]"
+    >
+      <option value="">Maintenance…</option>
+      {PAUSE_OPTIONS.map((o) => (
+        <option key={o.hours} value={o.hours}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }

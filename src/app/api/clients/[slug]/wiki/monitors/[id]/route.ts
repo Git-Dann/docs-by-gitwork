@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(["HTTP", "TCP"]).optional(),
+  type: z.enum(["HTTP", "TCP", "HEARTBEAT"]).optional(),
   target: z.string().min(1).optional(),
   method: z.string().optional(),
   expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
@@ -15,6 +15,10 @@ const updateSchema = z.object({
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+  /** Pause alerts until this time; null ends maintenance now. */
+  maintenanceUntil: z.coerce.date().nullable().optional(),
+  maintenanceNote: z.string().max(200).nullable().optional(),
 });
 
 async function resolveClientId(slug: string): Promise<string | null> {
