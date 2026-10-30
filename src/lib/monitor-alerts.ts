@@ -296,6 +296,11 @@ export function alertBlocks(input: {
   description: string;
   services: ServiceRow[];
   footer: string;
+  /**
+   * The button under the service list — GitHub's "View all updates". Defaults to "Open in
+   * Foundry" on `url`; monitor alerts point it at the all-clients board instead.
+   */
+  button?: { label: string; url: string };
 }): unknown[] {
   const shown = input.services.slice(0, 20);
   const more = input.services.length - shown.length;
@@ -310,7 +315,13 @@ export function alertBlocks(input: {
     ...(more > 0 ? [{ type: "context", elements: [{ type: "mrkdwn", text: `+${more} more` }] }] : []),
     {
       type: "actions",
-      elements: [{ type: "button", text: { type: "plain_text", text: "Open in Foundry" }, url: input.url }],
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: input.button?.label ?? "Open in Foundry" },
+          url: input.button?.url ?? input.url,
+        },
+      ],
     },
     { type: "context", elements: [{ type: "mrkdwn", text: esc(input.footer) }] },
   ];

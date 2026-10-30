@@ -24,6 +24,7 @@ import {
   type ServiceRow,
 } from "@/lib/monitor-alerts";
 import { suggestMonitors, type MonitorSuggestion } from "@/lib/monitor-suggestions";
+import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
 
 // ─── DTOs ───────────────────────────────────────────────────────────────────
 
@@ -343,6 +344,11 @@ function appBaseUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL ?? "https://foundry.gitwork.co.uk").replace(/\/+$/, "");
 }
 
+/** Every alert's button — GitHub Status's "View all updates" — opens the all-clients board. */
+function allMonitorsButton() {
+  return { label: "View all monitors", url: `${appBaseUrl()}/app/portal/${AGENCY_CLIENT_SLUG}/wiki#monitors` };
+}
+
 /** Every monitor on the wiki with its status as of now — the post's services list. */
 async function serviceRows(wikiId: string): Promise<ServiceRow[]> {
   const now = new Date();
@@ -397,6 +403,7 @@ async function sendMonitorAlert(
         description: body,
         services: await serviceRows(monitor.wikiId),
         footer: "Foundry uptime monitoring · re-checked every minute while anything is failing",
+        button: allMonitorsButton(),
       }),
     });
   } catch (err) {
@@ -453,6 +460,7 @@ export async function checkMonitorsWatchdog(now: Date = new Date()): Promise<{ s
             "These monitors have not been checked recently, so their status can't be trusted. The wiki-monitors job may have stopped.",
           services: list.map((m) => ({ name: `${m.wiki.client.name} — ${m.name}`, state: "stale" as const })),
           footer: "Foundry uptime monitoring · watchdog",
+          button: allMonitorsButton(),
         }),
         target: { kind: "admins" },
         groupKey: "clients.monitor_alert:stale",

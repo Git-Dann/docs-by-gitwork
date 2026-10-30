@@ -9162,3 +9162,23 @@ read-only.
   delete any client's release. Create used the default workspace. All three now require
   Developer+ with access to that client, and scope every entry to the client in the URL (404
   otherwise). Developer, not `canManageClients`, because developers write release notes.
+
+## 104. Recent Changes (October 2026) — Every client's monitors on the Gitwork wiki
+
+The Gitwork client (`gitwork`, `src/lib/agency-client.ts`) is us, and its wiki's Monitors section
+now opens with an **all-clients board** (`monitor-board.tsx`) above Gitwork's own monitors: a
+headline (`All systems operational` / `1 service down — Fellas Loaded` / degraded / not being
+checked), Gitwork's services first, then any client with trouble worst-first, then the rest, and a
+"Not monitored" list of active clients with no monitors. Each client links to its own Monitors section.
+
+- **Rules are pure** (`src/lib/monitor-board.ts`): a stale monitor is never shown as its last
+  result, and "operational" needs every monitor checked and answering.
+- **Fast:** `loadMonitorBoard` is two queries for any number of monitors (the monitors, and one
+  `groupBy` for 24h uptime). The page re-reads it every minute.
+- **Internal only.** `GET /api/clients/[slug]/wiki/monitors/board` answers for `gitwork` and
+  404s for every other slug. It needs a signed-in person, and a restricted user sees only
+  clients they can already open. It is not in the wiki DTO, so no share link can show it.
+- **Motion** (`docs/motion.md`): only a DOWN service pings (headline + its card); the client
+  heading's dot stays still. Skeleton while loading, a pulse on the Live label while refreshing.
+- **Slack:** alerts keep GitHub Status's layout; the button is now **View all monitors**, opening
+  this board. The linked title still goes to the client's own monitors.

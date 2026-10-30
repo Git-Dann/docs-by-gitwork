@@ -58,6 +58,8 @@ import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { MonitorsManager } from "./monitors-section";
+import { AgencyMonitorBoard } from "./monitor-board";
+import { isAgencyClient } from "@/lib/agency-client";
 import { DocumentsManager } from "./documents-section";
 import { WikiAccessSettings } from "./wiki-access-settings";
 import {
@@ -1536,6 +1538,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     // ── Monitors — automated uptime checks (HTTP/TCP connectors).
     if (activeSection === "monitors") {
+      // Gitwork's own wiki also carries every client's monitors — Gitwork is the one watching
+      // all of them. Its own services are managed in the card below, like any client's.
+      if (isAgencyClient(slug)) {
+        return (
+          <div className="space-y-4">
+            <AgencyMonitorBoard slug={slug} number="01" />
+            <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} number="02" label="OUR SERVICES" />
+          </div>
+        );
+      }
       return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} />;
     }
 
