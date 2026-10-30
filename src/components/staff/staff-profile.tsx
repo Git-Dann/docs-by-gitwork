@@ -569,7 +569,19 @@ function TimeOffCard({ activity, number }: { activity: StaffActivity | undefined
 
 // ── The page ────────────────────────────────────────────────────────────────────
 
-export function StaffProfileView({ recordId, basePath = "/app/staff" }: { recordId: string; basePath?: string }) {
+/**
+ * `mode="me"` is the same record opened by its owner from Backstage → Me: no way back to
+ * People and no archive or delete, but every card works exactly as it does on Staff.
+ */
+export function StaffProfileView({
+  recordId,
+  basePath = "/app/staff",
+  mode = "staff",
+}: {
+  recordId: string;
+  basePath?: string;
+  mode?: "staff" | "me";
+}) {
   const profile = useStaffProfile(recordId);
   const activity = useStaffActivity(recordId);
   const roster = useStaffRoster();
@@ -657,10 +669,12 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
 
   return (
     <div className="space-y-5">
-      <Link href={basePath} className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-3)] hover:text-[var(--text-1)]">
-        <ArrowLeftIcon aria-hidden className="h-4 w-4" />
-        People
-      </Link>
+      {mode === "staff" ? (
+        <Link href={basePath} className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-3)] hover:text-[var(--text-1)]">
+          <ArrowLeftIcon aria-hidden className="h-4 w-4" />
+          People
+        </Link>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-4">
@@ -674,7 +688,7 @@ export function StaffProfileView({ recordId, basePath = "/app/staff" }: { record
             </p>
           </div>
         </div>
-        <PersonActions profile={p} basePath={basePath} />
+        {mode === "staff" ? <PersonActions profile={p} basePath={basePath} /> : null}
       </div>
 
       {p.lifecycle.archived ? (

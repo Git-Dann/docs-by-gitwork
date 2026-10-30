@@ -149,10 +149,11 @@ export function useHrOverview(enabled: boolean) {
 
 const docsKey = (recordId: string) => ["staff", "documents", recordId] as const;
 
-export function useStaffDocuments(recordId: string) {
+export function useStaffDocuments(recordId: string, enabled = true) {
   return useQuery({
     queryKey: docsKey(recordId),
     queryFn: () => apiFetch<StaffDocumentsView>(`/api/staff/${encodeURIComponent(recordId)}/documents`),
+    enabled: enabled && !!recordId,
   });
 }
 
@@ -226,5 +227,23 @@ export function useUpdateDocumentSettings() {
       qc.setQueryData(["staff", "document-settings"], saved);
       void qc.invalidateQueries({ queryKey: ["staff", "documents"] });
     },
+  });
+}
+
+// ── Backstage → Me ──────────────────────────────────────────────────────────────
+
+export function useMyStaffRecord(enabled = true) {
+  return useQuery({
+    queryKey: ["staff", "me"],
+    queryFn: () => apiFetch<{ recordId: string | null }>("/api/staff/me"),
+    enabled,
+  });
+}
+
+export function useSetUpMyRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<{ recordId: string }>("/api/staff/me", { method: "POST" }),
+    onSuccess: (r) => qc.setQueryData(["staff", "me"], r),
   });
 }

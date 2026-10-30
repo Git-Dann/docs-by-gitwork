@@ -1,12 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowRightIcon, BanknotesIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { ArrowRightIcon, BanknotesIcon, ClockIcon, UserCircleIcon } from "@heroicons/react/24/outline";
 import { useExpenses, useLeaveAllowance } from "@/hooks/use-backstage";
 import { useHandovers } from "@/hooks/use-handover";
 import { CalendarTab } from "@/components/backstage/calendar-tab";
 import { TeamCard } from "@/components/backstage/team-card";
 import { useBackstageAccess } from "@/components/backstage/access";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useMyStaffRecord, useStaffDocuments } from "@/hooks/use-hr";
 
 /**
  * Written out in full because Tailwind only emits classes it can find as literal
@@ -17,15 +19,31 @@ const XL_COLS: Record<number, string> = {
   3: "xl:grid-cols-3",
   4: "xl:grid-cols-4",
   5: "xl:grid-cols-5",
+  /**
+   * Six units is a Super Admin with Me. At `xl` (1280px) that's 146px a card and every
+   * line of copy wraps three times, so six columns wait for 1400px (~172px, the width the
+   * five-card row already gets at 1280). Between `xl` and 1400 the grid stays at two
+   * columns, where Team's `xl:col-span-2` makes it a full row: Me + Leave, Team,
+   * Expenses + Handover, with no gaps.
+   *
+   * ⚠️ Tailwind emits arbitrary `min-[…]` variants BEFORE the named breakpoints, so a
+   * plain `sm:grid-cols-2` beside this wins the cascade and six columns never appear
+   * (measured: two columns at 1440). The two-column rule is bounded to below 1400 for
+   * this case, so the two never overlap.
+   */
+  6: "min-[1400px]:grid-cols-6",
 };
 
-export type BackstageArea = "leave" | "expenses" | "approvals" | "handover";
+export type BackstageArea = "me" | "leave" | "expenses" | "approvals" | "handover";
 
 // Backstage landing — a bento grid of navigational cards (HQ dashboard pattern,
 // see app-overview.tsx + DESIGN.md) over the full team calendar. Cards show a
 // headline figure and open their area on click; the calendar stays visible. No tabs.
 export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) => void }) {
   const { canManageExpenses, canApprove, isAdmin } = useBackstageAccess();
+  // Me is the person's Staff record, so it shows only where the business has Staff.
+  const { hasModule } = usePermissions();
+  const showMe = hasModule("codeclear");
 
   let n = 0;
   const num = () => String(++n).padStart(2, "0");
@@ -39,7 +57,7 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
    * hole for everyone else, which is the gap the house card-grid rule exists to
    * prevent. Team counts as two because it spans two from `xl`.
    */
-  const units = 1 + 2 + (canManageExpenses ? 1 : 0) + (isAdmin ? 1 : 0);
+  const units = (showMe ? 1 : 0) + 1 + 2 + (canManageExpenses ? 1 : 0) + (isAdmin ? 1 : 0);
 
   /**
    * Between `sm` and `xl` the grid is two columns and every card is one unit, so
@@ -52,13 +70,14 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
    * `max-xl` is load-bearing. Without it the span survives into the five-column
    * row and breaks the exact fit it exists to protect.
    */
-  const cardCount = 2 + (canManageExpenses ? 1 : 0) + (isAdmin ? 1 : 0);
+  const cardCount = (showMe ? 1 : 0) + 2 + (canManageExpenses ? 1 : 0) + (isAdmin ? 1 : 0);
   const fillOddRow =
     cardCount % 2 === 1 ? "sm:max-xl:[&>*:last-child]:col-span-2" : "";
 
   return (
     <div className="space-y-3">
-      <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${XL_COLS[units]} ${fillOddRow}`}>
+      <div className={`grid grid-cols-1 gap-3 ${units === 6 ? "sm:max-[1399px]:grid-cols-2" : "sm:grid-cols-2"} ${XL_COLS[units]} ${fillOddRow}`}>
+        {showMe ? <MeCard number={num()} onOpen={onOpen} /> : null}
         <LeaveCard number={num()} onOpen={onOpen} />
         {/* Approvals + absences share one card: both are single-figure "state of
             the team today" readouts, so two boxes was noise. The approvals half
@@ -126,6 +145,33 @@ function Figure({ value, unit }: { value: number | string; unit: string }) {
 }
 
 // ── Cards ───────────────────────────────────────────────────────────────────
+
+/**
+ * Me — what HR is waiting on from YOU: documents asked for and documents sent back.
+ * A required document you can't add yourself isn't counted; it's HR's to chase, and a
+ * figure you can do nothing about is noise.
+ */
+function MeCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
+  const me = useMyStaffRecord();
+  const recordId = me.data?.recordId ?? "";
+  const docs = useStaffDocuments(recordId, !!recordId);
+  const todo = (docs.data?.documents ?? []).filter((d) => d.status === "REQUESTED" || d.status === "REJECTED").length;
+  return (
+    <Card number={number} title="ME" area="me" onOpen={onOpen}>
+      {me.isPending ? (
+        <Figure value="—" unit="to do" />
+      ) : !recordId ? (
+        <>
+          <UserCircleIcon className="h-7 w-7 text-[var(--brand-500)]" />
+          <p className="mt-1 text-sm font-medium text-[var(--text-1)]">Set up your record</p>
+        </>
+      ) : (
+        <Figure value={docs.isPending ? "—" : todo} unit="to send HR" />
+      )}
+      <p className="text-xs text-[var(--text-3)]">Your details, documents &amp; time off</p>
+    </Card>
+  );
+}
 function LeaveCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
   const allowance = useLeaveAllowance();
   const pending = allowance.data?.pending ?? 0;
@@ -162,7 +208,7 @@ function ExpensesCard({ number, onOpen }: { number: string; onOpen: (a: Backstag
  */
 function HandoverCard({ number, onOpen }: { number: string; onOpen: (a: BackstageArea) => void }) {
   const list = useHandovers();
-  const rows = list.data ?? [];
+  const rows = Array.isArray(list.data) ? list.data : [];
   const live = rows.filter((h) => h.status !== "ENDED");
   // Clients still to write up — the gap, not the total. A handover is "done"
   // when every client on it says something.

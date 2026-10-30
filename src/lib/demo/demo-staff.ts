@@ -403,6 +403,8 @@ export function resolveDemoStaff(pathname: string, init?: { method?: string; bod
     name?: string;
     email?: string | null;
   };
+  // Backstage → Me: the demo viewer is Tom (r2).
+  if (pathname === "/api/staff/me") return { recordId: "r2" };
   const hr = resolveDemoHr(pathname, init?.method ?? "GET", body as Record<string, unknown>);
   if (hr !== undefined) return hr;
   if (pathname === "/api/staff" && init?.method === "POST") {

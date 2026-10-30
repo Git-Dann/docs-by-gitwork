@@ -305,3 +305,55 @@ export async function updateStaffDetails(workspaceId: string, recordId: string, 
     },
   });
 }
+
+/**
+ * The signed-in person's own Staff record (Backstage → Me). Earliest first, like every
+ * other read of a member's record (memberId isn't unique in the database).
+ */
+export async function getOwnStaffRecordId(workspaceId: string, membershipId: string): Promise<string | null> {
+  await linkStaffRecords(workspaceId);
+  const own = await prisma.candidate.findFirst({
+    where: { workspaceId, memberId: membershipId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return own?.id ?? null;
+}
+
+/**
+ * Set up the signed-in person's own record, when HR hasn't yet. Anyone can do this for
+ * themselves (it holds nothing but their name and email to start with); setting up a
+ * record for SOMEONE ELSE still needs Staff manage (createStaffRecord). Idempotent.
+ */
+export async function createOwnStaffRecord(workspaceId: string, membershipId: string): Promise<{ recordId: string }> {
+  const existing = await getOwnStaffRecordId(workspaceId, membershipId);
+  if (existing) return { recordId: existing };
+  const member = await prisma.workspaceMember.findFirst({
+    where: { id: membershipId, workspaceId, ...ACTIVE_MEMBER },
+    select: { id: true, user: { select: { name: true, email: true, avatarUrl: true } } },
+  });
+  if (!member) throw new StaffInputError("You're not an active member of this workspace");
+  try {
+    const created = await prisma.candidate.create({
+      data: {
+        workspaceId,
+        name: member.user.name?.trim() || member.user.email,
+        email: member.user.email,
+        avatarUrl: member.user.avatarUrl ?? null,
+        memberId: member.id,
+        githubHandle: null,
+        primaryStack: "",
+        origin: "INTERNAL",
+      },
+      select: { id: true },
+    });
+    return { recordId: created.id };
+  } catch (err) {
+    // memberId is unique, so a second click that raced this one fails here. Theirs won;
+    // hand back the record it made rather than an error.
+    if ((err as { code?: string }).code !== "P2002") throw err;
+    const raced = await getOwnStaffRecordId(workspaceId, membershipId);
+    if (!raced) throw err;
+    return { recordId: raced };
+  }
+}

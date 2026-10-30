@@ -115,11 +115,28 @@ and `/api/staff/document-settings`.
 - **Uploads** use EasyUI's Animated File Upload (vendored). The same component now handles task
   screenshots and the new-document wizard.
 
+## Backstage → Me (Phase 1c)
+
+A person's own HR record, at Backstage → **Me** (card 01, or `?area=me`). It is their Staff
+profile opened as themselves (`StaffProfileView mode="me"`), so the cards and the rules are the
+ones HR sees and the two can't drift: overview, employment, personal details (theirs to edit, no
+reveal step), documents (what HR asked for, plus the types HR lets people add), activity and time
+off. Me mode drops the way back to People and the archive/delete controls; nothing else changes.
+
+- **Finding the record:** `GET /api/staff/me` runs the email linking first, so a record HR made
+  with the person's address is found rather than duplicated.
+- **No record yet:** "Set up my record" (`POST /api/staff/me`) makes one holding only their
+  name and email, for an active member only. `memberId` is unique, so a double click can't make
+  two; the losing request gets the winner's record.
+- **The card** counts what HR is waiting on from them: documents asked for or sent back. A
+  required document they can't add isn't counted; that's HR's to chase.
+- **Only where the business has Staff** (`hasModule("codeclear")`), because Me is a Staff record.
+- **Grid:** Me makes the Super Admin row six units. Six columns wait for 1400px (146px cards at
+  1280 otherwise); below that the row is two columns with Team full width.
+
 ## Next
 
-1. **Documents (1b):** per-person vault with a required list per engagement type, expiry reminders,
-   view/download logging, e-signature for contracts and NDAs. HR uploads by default; HR can turn on
-   developer self-upload per document type, or request one document from one person. Developer
-   uploads wait as "to check" until HR accepts them.
-2. **Backstage → Me (1c):** a person's own details, documents and policies to sign.
-3. Phases 2 to 4: see the spec doc.
+1. E-signature for contracts and NDAs, and policies to sign from Me.
+2. A first-visit tour of Staff for HR, and a weekly HR digest.
+3. One page per developer: the developer review folded into the Staff profile.
+4. Phases 2 to 4: see the spec doc.
