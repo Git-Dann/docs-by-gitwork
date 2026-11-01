@@ -297,6 +297,28 @@ export const SEED_CLUBS: GolfClubInput[] = [
   { manufacturer: "Odyssey", category: "Putter", modelName: "Ai-ONE Square 2 Square #7", modelFamily: "Ai-ONE", modelYear: 2025, specs: { headStyle: "Mallet", zeroTorque: true }, variants: lengthVariants(["33", "34", "35"]) },
   { manufacturer: "Odyssey", category: "Putter", modelName: "Ai-ONE Square 2 Square Jailbird", modelFamily: "Ai-ONE", modelYear: 2025, specs: { headStyle: "Mallet", zeroTorque: true }, variants: lengthVariants(["33", "34", "35"]) },
   { manufacturer: "Odyssey", category: "Putter", modelName: "Ai-ONE Square 2 Square Double Wide", modelFamily: "Ai-ONE", modelYear: 2025, specs: { headStyle: "Mallet", zeroTorque: true }, variants: lengthVariants(["33", "34", "35"]) },
+
+  // ── Catalogue refresh (Nov 2026) ─────────────────────────────────────────
+  // Drivers
+  { manufacturer: "Cobra", category: "Driver", modelName: "DS-Adapt X", modelFamily: "DS-Adapt", modelYear: 2025, specs: { adjustableLoft: true }, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "Cobra", category: "Driver", modelName: "DS-Adapt Max-K", modelFamily: "DS-Adapt", modelYear: 2025, specs: { forgiveness: "Max", adjustableLoft: true }, variants: loftVariants(["9", "10.5", "12"]) },
+  { manufacturer: "Tour Edge", category: "Driver", modelName: "Exotics E725", modelFamily: "Exotics", modelYear: 2025, specs: { headSizeCc: 460, moiGmm2: 10000, forgiveness: "Max" }, variants: loftVariants(["9", "10.5", "12"]) },
+
+  // Iron sets
+  { manufacturer: "Titleist", category: "Iron Set", modelName: "T100 (2025)", modelFamily: "T-Series", modelYear: 2025, specs: { profile: "Players", forged: true }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Titleist", category: "Iron Set", modelName: "T150 (2025)", modelFamily: "T-Series", modelYear: 2025, specs: { profile: "Players" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Titleist", category: "Iron Set", modelName: "T350 (2025)", modelFamily: "T-Series", modelYear: 2025, specs: { profile: "Game improvement" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "TaylorMade", category: "Iron Set", modelName: "P790 (2025)", modelFamily: "P·790", modelYear: 2025, specs: { profile: "Players distance", construction: "Hollow body", setComposition: "4-PW, AW" }, variants: flexRSX.map((f) => ({ name: `4-AW ${f}`, flex: f })) },
+  { manufacturer: "Callaway", category: "Iron Set", modelName: "Apex Ai200", modelFamily: "Apex", modelYear: 2024, specs: { profile: "Players distance" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Callaway", category: "Iron Set", modelName: "Apex Ai300", modelFamily: "Apex", modelYear: 2024, specs: { profile: "Game improvement" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+
+  // Wedges
+  { manufacturer: "Titleist", category: "Wedge", modelName: "Vokey SM11", modelFamily: "Vokey SM", modelYear: 2026, variants: loftVariants(["44", "46", "48", "50", "52", "54", "56", "58", "60"], ["Wedge"]) },
+
+  // Putters
+  { manufacturer: "Scotty Cameron", category: "Putter", modelName: "Studio Style Newport 2", modelFamily: "Studio Style", modelYear: 2025, specs: { headStyle: "Blade", insert: "Studio Carbon Steel" }, variants: lengthVariants(["33", "34", "35"]) },
+  { manufacturer: "Scotty Cameron", category: "Putter", modelName: "Studio Style Fastback 1.5", modelFamily: "Studio Style", modelYear: 2025, specs: { headStyle: "Mid-mallet", insert: "Studio Carbon Steel" }, variants: lengthVariants(["33", "34", "35"]) },
+  { manufacturer: "Scotty Cameron", category: "Putter", modelName: "Studio Style Catalina", modelFamily: "Studio Style", modelYear: 2025, specs: { headStyle: "Mid-mallet", insert: "Studio Carbon Steel" }, variants: lengthVariants(["33", "34", "35"]) },
 ];
 
 // ── persistence ────────────────────────────────────────────────────────────────
@@ -307,7 +329,7 @@ export const SEED_CLUBS: GolfClubInput[] = [
  * existing rows are preserved and new models are added (never wipes). Skips once
  * the workspace is already at the current version.
  */
-export const GOLF_CLUBS_SEED_VERSION = 3;
+export const GOLF_CLUBS_SEED_VERSION = 4;
 
 export async function seedGolfClubs(workspaceId: string): Promise<number> {
   const ws = await prisma.workspace.findUnique({
