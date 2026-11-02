@@ -11,7 +11,8 @@ import {
   normalizeOverrides,
   resolveEffectivePermissions,
 } from "@/types/auth";
-import type { EffectiveUser } from "@/server/auth/effective-user";
+import { canConnectMcp, type EffectiveUser } from "@/server/auth/effective-user";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 /**
  * Extract a bearer token from the Authorization header and resolve it to an
@@ -32,14 +33,27 @@ export async function validateMcpBearer(req: Request): Promise<EffectiveUser | n
   const validated = await validateAccessToken(token);
   if (!validated) return null;
 
-  return resolveEffectiveUserById(validated.user.id);
+  return resolveMcpActor(validated.user.id);
+}
+
+/**
+ * The person behind an MCP token, re-checked on EVERY call and every refresh — not just when
+ * they first connected. Null when they've been archived or removed, or no longer hold
+ * `mcp.connect`. Before this, both were only checked at /api/oauth/authorize, so an archived
+ * member (or one whose MCP permission was taken away) kept working MCP access for as long as
+ * Claude kept refreshing — 30 days at a time.
+ */
+export async function resolveMcpActor(userId: string): Promise<EffectiveUser | null> {
+  const user = await resolveEffectiveUserById(userId);
+  if (!user || !canConnectMcp(user)) return null;
+  return user;
 }
 
 /**
  * Resolve a user id (from a bearer token or a NextAuth session) to the same
  * EffectiveUser shape every server module understands — membership in the
  * default workspace + role + matrix/override-resolved permissions. Returns null
- * when the user has no membership. Shared by the MCP bearer path and the OAuth
+ * when the user has no ACTIVE membership (none, or archived). Shared by the MCP bearer path and the OAuth
  * consent/authorize flow so both apply identical per-user scoping.
  */
 export async function resolveEffectiveUserById(
@@ -51,6 +65,8 @@ export async function resolveEffectiveUserById(
     where: {
       userId,
       workspace: { slug: DEFAULT_WORKSPACE_SLUG },
+      // An archived member has no access anywhere in Foundry (§57), MCP included.
+      ...ACTIVE_MEMBER,
     },
     include: {
       workspace: { select: { rolePermissions: true } },

@@ -9373,3 +9373,20 @@ Pick **Christmas** in Settings → Appearance.
 - `data-christmas` is set by the anti-flash script and the provider (`christmas` in `useTheme()`),
   the same way as `data-halloween`.
 
+
+## 110. Recent Changes (November 2026) — MCP access re-checked on every call
+
+Reviewed after a developer (Nasir) was given the MCP. Three fixes:
+
+- **Taking someone's access away now cuts off their MCP.** `resolveEffectiveUserById`
+  (`src/server/mcp/auth.ts`) only finds an ACTIVE membership, and `resolveMcpActor` also needs
+  `mcp.connect`. It runs on every `/api/mcp` call and on every token refresh
+  (`/api/oauth/token`). A refused refresh revokes the token, so the connection dies rather
+  than retrying. Before this, both were only checked when someone first connected, so an
+  archived member or a revoked permission kept working for as long as Claude kept refreshing.
+- **`list_members`** returns current members only, with email only for Admins.
+- **Documents are limited to the caller's clients** (`src/server/mcp/document-scope.ts`):
+  their assigned clients plus client-less documents they own, or everything with
+  `seeAllClients`. `list_documents` and `update_document` both use it; out-of-scope ids read
+  "Document not found". ⚠️ The web Docs list is NOT scoped this way yet: a developer still
+  sees every client's lightweight documents there.
