@@ -15,6 +15,11 @@ export interface SeasonalThemeDef {
 
 export const SEASONAL_THEMES: SeasonalThemeDef[] = [
   { id: "halloween", label: "Halloween", description: "Dark, pumpkin orange, fog, ghosts and bats." },
+  {
+    id: "christmas",
+    label: "Christmas",
+    description: "Festive red, a tree on the logo, and snow that settles on the tops of cards. Keeps each person's light or dark mode.",
+  },
 ];
 
 export const DEFAULT_SEASONAL_THEME = SEASONAL_THEMES[0].id;

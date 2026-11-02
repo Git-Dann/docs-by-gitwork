@@ -11,6 +11,7 @@
  */
 
 import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene } from "@/components/seasonal/halloween";
+import { ChristmasLogoBadge, ChristmasSnow } from "@/components/seasonal/christmas";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
@@ -133,6 +134,7 @@ export function DemoShell({
                     />
                   )}
                   <HalloweenLogoBadge />
+                  <ChristmasLogoBadge />
                 </Link>
               </div>
               <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
@@ -226,6 +228,7 @@ export function DemoShell({
           </DemoErrorBoundary>
         ) : null}
         {mounted ? <HalloweenFogFront /> : null}
+        {mounted ? <ChristmasSnow /> : null}
         {mounted ? (
           <CommandMenu
             pages={nav}

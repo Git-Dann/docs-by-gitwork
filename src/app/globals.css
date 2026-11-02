@@ -225,6 +225,61 @@
   color: var(--brand-700) !important;
 }
 
+/* ── Christmas (seasonal) ──────────────────────────────────────────────────
+   Set from Settings → Appearance (src/lib/seasonal-themes.ts). Unlike Halloween it keeps each
+   person's light/dark mode: only the brand moves, from Gitwork Blue to a festive red. Snow is
+   drawn by src/components/seasonal/christmas.tsx. Light: white on #B91C1C is ~6.5:1. */
+[data-theme="light"][data-christmas],
+:root[data-christmas]:not([data-theme="dark"]) {
+  --surface-brand: #FEF2F2;
+  --surface-brand-soft: #FEF2F2;
+  --surface-brand-strong: #FEE2E2;
+  --brand-50: #FEF2F2;
+  --brand-100: #FEE2E2;
+  --brand-200: #FEE2E2;
+  --brand-300: #FECACA;
+  --brand-400: #EF4444;
+  --brand-500: #DC2626;
+  --brand-600: #B91C1C;
+  --brand-700: #B91C1C;
+  --brand-800: #7F1D1D;
+  --brand-900: #7F1D1D;
+  --brand-focus-ring: rgba(185, 28, 28, 0.18);
+  --brand-gradient: linear-gradient(135deg, #EF4444 0%, #B91C1C 46%, #7F1D1D 100%);
+}
+[data-theme="dark"][data-christmas] {
+  --surface-brand: #2A1416;
+  --surface-brand-soft: #2A1416;
+  --surface-brand-strong: #3A1A1D;
+  --brand-50: #24100F;
+  --brand-100: #321514;
+  --brand-200: #3A1A1D;
+  --brand-300: #A33A3A;
+  --brand-400: #F06A6A;
+  --brand-500: #F87171;
+  --brand-600: #F87171;
+  --brand-700: #FCA5A5;
+  --brand-800: #FECACA;
+  --brand-900: #FEE2E2;
+  --brand-focus-ring: rgba(248, 113, 113, 0.40);
+  --brand-gradient: linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #B91C1C 100%);
+}
+/* Hardcoded blue utilities follow the brand while it's red. */
+[data-christmas] .bg-blue-600,
+[data-christmas] .bg-blue-700 {
+  background-color: var(--brand-600) !important;
+}
+[data-theme="dark"][data-christmas] .bg-blue-600,
+[data-theme="dark"][data-christmas] .bg-blue-700,
+[data-theme="dark"][data-christmas] .bg-\[var\(--brand-600\)\].text-white,
+[data-theme="dark"][data-christmas] .bg-\[var\(--brand-700\)\].text-white {
+  color: #0B0B0C !important;
+}
+[data-christmas] .text-blue-600,
+[data-christmas] .text-blue-700 {
+  color: var(--brand-700) !important;
+}
+
 /* Dark-mode remap of hardcoded light literals.
  *
  * Many cards/inputs/buttons across the app hardcode `bg-white` (a Tailwind

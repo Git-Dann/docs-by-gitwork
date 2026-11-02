@@ -52,14 +52,19 @@ const FORCE_DARK = /^\/edge(?:\/|$)/;
  */
 export const HALLOWEEN_PATHS = /^\/(app|demo)(?:\/|$)/;
 
-/** Is Halloween the seasonal theme in force? Copied from the workspace setting into storage. */
-function readHalloween(): boolean {
-  if (typeof window === "undefined") return false;
+/** The seasonal theme in force (an id, or null), copied from the workspace setting into storage. */
+function readSeasonalTheme(): string | null {
+  if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(SEASONAL_KEY) === "halloween";
+    const v = window.localStorage.getItem(SEASONAL_KEY);
+    return v && v !== "off" ? v : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function seasonalOn(path: string | null | undefined, seasonal: string | null, id: string): boolean {
+  return seasonal === id && !!path && HALLOWEEN_PATHS.test(path);
 }
 
 function halloweenOn(path: string | null | undefined, wanted: boolean): boolean {
@@ -76,6 +81,8 @@ type ThemeContextValue = {
   setMode: (mode: ThemeMode) => void;
   /** The Halloween theme is showing on this route. */
   halloween: boolean;
+  /** The Christmas theme is showing on this route (snow; keeps the user's light/dark mode). */
+  christmas: boolean;
   /** This route can show it (so the pumpkin toggle is offered). */
 };
 
@@ -114,10 +121,11 @@ function resolveTheme(mode: ThemeMode, path: string | null | undefined, hallowee
   return mode;
 }
 
-function applyTheme(resolved: "light" | "dark", halloween = false) {
+function applyTheme(resolved: "light" | "dark", halloween = false, christmas = false) {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", resolved);
     document.documentElement.toggleAttribute("data-halloween", halloween);
+    document.documentElement.toggleAttribute("data-christmas", christmas);
   }
 }
 
@@ -127,27 +135,29 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Lazy-init from storage on the client so the first applied value matches the
   // anti-flash script (avoids a system→stored flicker). SSR returns "system".
   const [mode, setModeState] = useState<ThemeMode>(() => readStoredMode());
-  const [wantsHalloween, setWantsHalloween] = useState<boolean>(() => readHalloween());
+  const [seasonal, setSeasonal] = useState<string | null>(() => readSeasonalTheme());
+  const wantsHalloween = seasonal === "halloween";
   const [resolved, setResolved] = useState<"light" | "dark">(() =>
     typeof window === "undefined"
       ? "light"
-      : resolveTheme(readStoredMode(), window.location.pathname, readHalloween()),
+      : resolveTheme(readStoredMode(), window.location.pathname, readSeasonalTheme() === "halloween"),
   );
   const halloween = halloweenOn(pathname, wantsHalloween);
+  const christmas = seasonalOn(pathname, seasonal, "christmas");
 
   // Re-resolve + apply whenever the mode or the route changes (route matters for
   // the forced-light deliverable pages on client-side navigation).
   useEffect(() => {
     const next = resolveTheme(mode, pathname, wantsHalloween);
     setResolved(next);
-    applyTheme(next, halloweenOn(pathname, wantsHalloween));
-  }, [mode, pathname, wantsHalloween]);
+    applyTheme(next, halloweenOn(pathname, wantsHalloween), seasonalOn(pathname, seasonal, "christmas"));
+  }, [mode, pathname, wantsHalloween, seasonal]);
 
   // Sync across tabs / components, and follow live OS changes while in `system`.
   useEffect(() => {
     const onModeChanged = () => {
       setModeState(readStoredMode());
-      setWantsHalloween(readHalloween());
+      setSeasonal(readSeasonalTheme());
     };
     window.addEventListener(EVENT, onModeChanged);
     window.addEventListener("storage", onModeChanged);
@@ -156,9 +166,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const onSystemChanged = () => {
       if (readStoredMode() === "system") {
         const path = window.location.pathname;
-        const next = resolveTheme("system", path, readHalloween());
+        const st = readSeasonalTheme();
+        const next = resolveTheme("system", path, st === "halloween");
         setResolved(next);
-        applyTheme(next, halloweenOn(path, readHalloween()));
+        applyTheme(next, halloweenOn(path, st === "halloween"), seasonalOn(path, st, "christmas"));
       }
     };
     mq.addEventListener("change", onSystemChanged);
@@ -199,7 +210,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           } catch {
             /* storage blocked — still applies for this page */
           }
-          setWantsHalloween(setting.active === "halloween");
+          setSeasonal(setting.active);
         })
         .catch(() => {
           /* keep what's stored: a failed read must not flip the theme */
@@ -222,6 +233,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         forcedLight: isForcedLight(pathname) && !halloween,
         setMode,
         halloween,
+        christmas,
       }}
     >
       {children}

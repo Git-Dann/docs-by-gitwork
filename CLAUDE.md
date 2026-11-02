@@ -9353,3 +9353,21 @@ in the workspace. Supersedes §90's date window and per-browser toggle.
   so it shows whatever the same browser last saw on `/app`.
 - No date default any more: it is off until an admin turns it on.
 
+### 109.1 The Christmas theme
+
+Pick **Christmas** in Settings → Appearance.
+- **Keeps each person's light or dark mode** (unlike Halloween, which forces dark). Only the brand
+  moves: Gitwork Blue → festive red (`[data-christmas]` in globals.css; white on `#B91C1C` is
+  ~6.5:1 in light, dark text on `#F87171` in dark). A Fluent Emoji tree sits on the logo.
+- **Snow that settles on cards** (`src/components/seasonal/christmas.tsx`, physics in
+  `src/lib/seasonal/snow.ts`, pure and tested). It uses bounding-box collision: flakes fall over
+  the page, and one that reaches the top edge of a `.widget-card` (or `[data-snow-surface]`) joins
+  that card's pile. Piles are 4px columns, capped at 9px, thinner at the corners, and melt slowly.
+  - Piles sit ABOVE a card's top edge, so snow never covers content.
+  - A card counts only if its top edge is on screen and not covered (`elementFromPoint`,
+    re-checked every 600ms). Positions are read every frame, so piles follow scrolling.
+  - One fixed canvas at z-45 (above content, below dialogs), `pointer-events: none`, hidden in
+    print. Nothing runs under reduced motion, and rAF stops in a background tab.
+- `data-christmas` is set by the anti-flash script and the provider (`christmas` in `useTheme()`),
+  the same way as `data-halloween`.
+
