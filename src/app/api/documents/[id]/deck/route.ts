@@ -25,6 +25,7 @@ import {
   canManageDocs,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -33,9 +34,10 @@ interface RouteContext {
 /** A deck's JSON can carry embedded images; cap it so one paste can't fill the DB. */
 const MAX_DECK_BYTES = 8 * 1024 * 1024;
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const document = await prisma.document.findUnique({
       where: { id },
       select: { id: true, title: true, documentType: true, deckDoc: true, metadata: true },
@@ -57,6 +59,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageDocs, "edit documents");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
 
     const body = (await request.json()) as { doc?: unknown; title?: unknown };
     if (!body?.doc || typeof body.doc !== "object") return apiError("A deck document is required", 400);

@@ -14,6 +14,8 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -47,6 +49,7 @@ function mergeShape(original: unknown, candidate: unknown): unknown | null {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = schema.parse(await request.json());
 
     const section = await prisma.documentSection.findFirst({

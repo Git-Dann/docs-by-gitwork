@@ -110,6 +110,10 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
       return victim.placement;
     case "docId":
       return victim.staffDocument;
+    case "commentId":
+      return victim.documentComment;
+    case "versionId":
+      return victim.documentVersion;
     case "id":
       return ID_BY_PARENT[stripParams(before)]?.(victim) ?? null;
     default:

@@ -16,6 +16,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -31,6 +32,7 @@ const PRESENCE_TTL_MS = 30_000;
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = heartbeatSchema.parse(await request.json());
 
     // Identify the real signed-in operator so "editing now" shows the actual teammate, not the
@@ -61,9 +63,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const cutoff = new Date(Date.now() - PRESENCE_TTL_MS);
 
     const active = await prisma.editorPresence.findMany({

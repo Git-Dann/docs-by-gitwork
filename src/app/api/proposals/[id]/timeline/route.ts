@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { proposalTimelineSchema } from "@/server/validators";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageDocs, "edit documents");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const payload = proposalTimelineSchema.parse(await request.json());
 
     const existing = await prisma.document.findUnique({ where: { id } });

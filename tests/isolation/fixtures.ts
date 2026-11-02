@@ -30,6 +30,9 @@ export type SideIds = {
   featureBlock: string;
   milestone: string;
   document: string;
+  documentChild: string;
+  documentComment: string;
+  documentVersion: string;
   documentToken: string;
   scan: string;
   scanShareToken: string;
@@ -84,6 +87,9 @@ export function idsFor(side: Side): SideIds {
     featureBlock: id(side, "block"),
     milestone: id(side, "milestone"),
     document: id(side, "doc"),
+    documentChild: id(side, "doc-child"),
+    documentComment: id(side, "doc-comment"),
+    documentVersion: id(side, "doc-version"),
     documentToken: id(side, "doc-token"),
     scan: id(side, "scan"),
     scanShareToken: id(side, "scan-token"),
@@ -174,6 +180,17 @@ export async function seedSide(db: PrismaClient, side: Side) {
       isShared: true,
       sections: { create: [{ key: "prose", title: m(side, "section"), sortOrder: 0, data: json({ body: m(side, "section-body") }) }] },
     },
+  });
+  // What the document's sub-routes read: a child (relations), a comment and a version. Without
+  // them those routes answer 200 with nothing to leak, which proves nothing.
+  await db.document.create({
+    data: { id: i.documentChild, workspaceId: i.workspace, ownerId: i.user, title: m(side, "document-child"), parentId: i.document },
+  });
+  await db.documentComment.create({
+    data: { id: i.documentComment, documentId: i.document, authorKind: "WORKSPACE", authorName: m(side, "comment-author"), authorUserId: i.user, body: m(side, "document-comment") },
+  });
+  await db.documentVersion.create({
+    data: { id: i.documentVersion, documentId: i.document, version: "v1.0", sectionsSnapshot: json([]), costSnapshot: json([]), timelineSnapshot: json([]), changelog: m(side, "document-version"), createdById: i.user },
   });
 
   await db.pulseScan.create({
@@ -287,7 +304,16 @@ export async function snapshotSide(db: PrismaClient, side: Side): Promise<string
     db.taskComment.findMany({ where: { taskId: i.task }, orderBy: { id: "asc" } }),
     db.featureBlock.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.milestone.findMany({ where: ws, orderBy: { id: "asc" } }),
-    db.document.findMany({ where: ws, orderBy: { id: "asc" }, include: { sections: { orderBy: { id: "asc" } } } }),
+    db.document.findMany({
+      where: ws,
+      orderBy: { id: "asc" },
+      include: {
+        sections: { orderBy: { id: "asc" } },
+        comments: { orderBy: { id: "asc" } },
+        versions: { orderBy: { id: "asc" } },
+        signatureRequests: { orderBy: { id: "asc" } },
+      },
+    }),
     db.pulseScan.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.pulseMonitor.findMany({ where: ws, orderBy: { id: "asc" } }),
     db.supportClient.findMany({ where: ws, orderBy: { id: "asc" } }),
