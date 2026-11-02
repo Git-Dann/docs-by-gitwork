@@ -138,20 +138,25 @@ function ClientCard({ client, canOpen }: { client: BoardClient; canOpen: boolean
       data-client-card={client.slug}
     >
       <div
-        className="flex items-center gap-2.5 border-b px-4 py-3"
+        // Fixed height, so every card's header lines up across the grid (Gitwork's
+        // "Our services" tag sits on the name's line rather than adding a second one).
+        className="flex h-12 shrink-0 items-center gap-2.5 border-b px-4"
         // Every header carries its state's tint — green when all is operational — so the
         // grid reads at a glance; a card in trouble also gets a coloured border.
         style={{ borderColor: "var(--border-1)", background: meta.tint }}
       >
         <Dot state={worst} still />
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <p className="truncate text-[15px] font-medium text-[var(--text-1)]" title={client.name}>
             {client.name}
           </p>
           {isAgency ? (
-            <p className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+            <span
+              className="hidden shrink-0 text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] sm:inline"
+              style={{ fontFamily: MONO }}
+            >
               Our services
-            </p>
+            </span>
           ) : null}
         </div>
         <span

@@ -9335,6 +9335,8 @@ this page only reads them.
 - Every client card's header carries its state's tint, green when all is operational, with the
   label "Operational · 3/3". Label text uses the `-700` palette shades (`LABEL_TEXT`): the `-500`
   tokens are ~3:1 on their own `-50` tint.
+- Every card header is a fixed `h-12`, so headers line up across the grid. Gitwork's "Our
+  services" tag sits on the name's line (hidden below `sm`) rather than adding a second line.
 
 ## 109. Recent Changes (November 2026) — Seasonal themes are a workspace setting
 
