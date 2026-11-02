@@ -260,7 +260,7 @@ async function resolveClient(
   const needle = input.trim();
   if (!needle) throw new Error("Client identifier is required.");
 
-  const result = await listDerivedClients({ search: undefined });
+  const result = await listDerivedClients(user.workspaceId, { search: undefined });
   let clients = result.clients;
   if (!canSeeAllClients(user)) {
     const allowed = new Set(await assignedClientIds(user));
@@ -940,7 +940,7 @@ const TOOLS: ToolDef[] = [
     },
     handler: async (user, args) => {
       const parsed = listClientsSchema.parse(args);
-      const result = await listDerivedClients({ search: parsed.search });
+      const result = await listDerivedClients(user.workspaceId, { search: parsed.search });
       let clients = result.clients;
       if (!canSeeAllClients(user)) {
         const allowed = new Set(await assignedClientIds(user));
@@ -984,7 +984,7 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       assertCan(user, canManageClients, "create clients");
       const input = createClientSchema.parse(args);
-      const client = await createClientRecord(input);
+      const client = await createClientRecord(user.workspaceId, input);
       return textResult(
         { id: client.id, slug: client.slug, name: client.name, status: client.status },
         `Created client "${client.name}" (slug: ${client.slug}, ${client.status}).`,
@@ -1013,7 +1013,7 @@ const TOOLS: ToolDef[] = [
       assertCan(user, canManageClients, "update clients");
       const { client, ...fields } = updateClientSchema.parse(args);
       const resolved = await resolveClient(user, client);
-      const updated = await updateClientRecord(resolved.slug, fields);
+      const updated = await updateClientRecord(user.workspaceId, resolved.slug, fields);
       if (!updated) return textResult({ error: "Client not found." }, "Client not found.");
       return textResult(
         { id: updated.id, slug: updated.slug, name: updated.name },
@@ -1081,7 +1081,7 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       const parsed = listPlatformsSchema.parse(args);
       const resolved = await resolveClient(user, parsed.client);
-      const detail = await getDerivedClientDetail(resolved.slug);
+      const detail = await getDerivedClientDetail(user.workspaceId, resolved.slug);
       if (!detail) return textResult({ error: "Client not found." }, "Client not found.");
       const platforms = detail.platforms.map((p) => ({
         id: p.id,
@@ -2110,6 +2110,7 @@ const TOOLS: ToolDef[] = [
       const parsed = setClientStatusSchema.parse(args);
       const resolved = await resolveClient(user, parsed.client);
       const updated = await setClientStatus(
+        user.workspaceId,
         resolved.slug,
         parsed.status as WorkspaceClientStatus,
         user,
@@ -2892,7 +2893,7 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       const parsed = getClientSchema.parse(args);
       const resolved = await resolveClient(user, parsed.client);
-      const detail = await getDerivedClientDetail(resolved.slug);
+      const detail = await getDerivedClientDetail(user.workspaceId, resolved.slug);
       if (!detail) return textResult({ error: "Client not found." }, "Client not found.");
       const c = detail.client;
       const activeDevs = detail.placements

@@ -4,6 +4,7 @@ import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/au
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { createLeadAction } from "@/server/crm/service";
 import { leadActionCreateSchema } from "@/server/validators";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "add a lead action");
     await assertClientAccessBySlug(user, slug);
     const input = leadActionCreateSchema.parse(await request.json());
-    const action = await createLeadAction(slug, input, user);
+    const action = await createLeadAction(await requestWorkspaceId(user), slug, input, user);
     if (!action) return apiError("Client not found", 404);
     return apiOk({ action }, { status: 201 });
   } catch (error) {

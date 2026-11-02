@@ -5,6 +5,7 @@ import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { attachWikiIntakeCommentImage, getWikiIntakeCommentImageBytes } from "@/server/wiki";
 import { internalCommentViewer } from "@/server/wiki-comment-viewer";
 import { imageResponse, readReplyImageUpload } from "@/server/wiki-reply-image-upload";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const upload = await readReplyImageUpload(req);
     if (!upload.ok) return upload.response;
     const comment = await attachWikiIntakeCommentImage(
-      { slug },
+      { slug, workspaceId: user.workspaceId },
       id,
       commentId,
       internalCommentViewer(user),
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     // Scoped like the request's own screenshot: only people who can see this client.
     await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const thumb = new URL(req.url).searchParams.get("thumb") === "1";
-    return imageResponse(await getWikiIntakeCommentImageBytes({ slug }, id, commentId, thumb ? "thumb" : "full"));
+    return imageResponse(await getWikiIntakeCommentImageBytes({ slug, workspaceId: await workspaceIdForRequest(req) }, id, commentId, thumb ? "thumb" : "full"));
   } catch (err) {
     return fromError(err);
   }

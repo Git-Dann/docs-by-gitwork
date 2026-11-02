@@ -3,6 +3,7 @@ import { REQUEST_MAX_TITLE } from "@/lib/wiki-request-title";
 import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
 import { deleteWikiIntakeItem, updateWikiIntakeItem } from "@/server/wiki";
+import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
 
 const patchSchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).optional(),
@@ -17,16 +18,18 @@ const patchSchema = z.object({
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {
   try {
-    const { id } = await params;
+    const { slug, id } = await params;
+    await requireRowOfClient("intakeItem", id, await requireClientIdForSlug(slug, req));
     return apiOk(await updateWikiIntakeItem(id, patchSchema.parse(await req.json())));
   } catch (err) {
     return fromError(err);
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ slug: string; id: string }> }) {
   try {
-    const { id } = await params;
+    const { slug, id } = await params;
+    await requireRowOfClient("intakeItem", id, await requireClientIdForSlug(slug, req));
     await deleteWikiIntakeItem(id);
     return apiOk({ deleted: true });
   } catch (err) {

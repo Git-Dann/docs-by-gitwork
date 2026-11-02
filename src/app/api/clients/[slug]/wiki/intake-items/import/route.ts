@@ -17,12 +17,11 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { importWikiIntakeItems } from "@/server/wiki";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { intakeCommonFields } from "@/server/wiki-intake-vocab";
 import { IMPORT_MAX_ROWS, IMPORT_MAX_TITLE } from "@/lib/wiki-intake-import-limits";
-
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const itemSchema = z.object({
   ...intakeCommonFields,
@@ -48,9 +47,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     assertCan(user, canManageClients, "import requests");
 
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);

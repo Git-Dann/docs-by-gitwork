@@ -26,10 +26,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const user = await requireAuthedUser(req);
     const { slug, id, commentId } = await params;
     const { body, mentionIds } = patchSchema.parse(await req.json());
-    const wikiId = await wikiIdForClientSlug(slug);
+    const wikiId = await wikiIdForClientSlug(slug, user.workspaceId);
     if (!wikiId) return apiError("Wiki not found", 404);
     const mentions = await resolveMentions(wikiId, "internal", mentionIds ?? []);
-    const comment = await editWikiIntakeComment({ slug }, id, commentId, internalCommentViewer(user), body, mentions);
+    const comment = await editWikiIntakeComment({ slug, workspaceId: user.workspaceId }, id, commentId, internalCommentViewer(user), body, mentions);
     if (!comment) return apiError("Reply not found", 404);
     return apiOk(comment);
   } catch (err) {
@@ -42,7 +42,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAuthedUser(req);
     const { slug, id, commentId } = await params;
-    const comment = await deleteWikiIntakeComment({ slug }, id, commentId, internalCommentViewer(user));
+    const comment = await deleteWikiIntakeComment({ slug, workspaceId: user.workspaceId }, id, commentId, internalCommentViewer(user));
     if (!comment) return apiError("Reply not found", 404);
     return apiOk(comment);
   } catch (err) {

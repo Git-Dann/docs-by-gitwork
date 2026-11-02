@@ -96,6 +96,12 @@ function fill(param: string, before: string[], attacker: SideIds, victim: SideId
       return victim.user;
     case "platformId":
       return victim.platform;
+    case "loginId":
+      return victim.platformLogin;
+    case "designId":
+      return victim.design;
+    case "linkId":
+      return victim.documentLink;
     case "ticketId":
       return victim.ticket;
     case "taskId":
@@ -150,6 +156,7 @@ const ID_BY_PARENT: Record<string, (v: SideIds) => string> = {
   "clients/*/wiki/documents": (v) => v.wikiDocument,
   "wiki/*/documents": (v) => v.wikiDocument,
   "clients/*/wiki/changelog": (v) => v.changelog,
+  "clients/*/wiki/course-requests": (v) => v.courseRequest,
   "clients/*/meetings": (v) => v.meeting,
   "clients/*/crm/actions": (v) => v.leadAction,
   "platform/workspaces": (v) => v.workspace,

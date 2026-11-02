@@ -4,6 +4,7 @@ import { deleteClientDesign, updateClientDesign } from "@/server/clients";
 import { clientDesignUpdateSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { slug, designId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    await requireRowOfClient("design", designId, await requireClientIdForSlug(slug, request));
     const body = clientDesignUpdateSchema.parse(await request.json());
     const design = await updateClientDesign(designId, body);
 
@@ -32,6 +34,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { slug, designId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    await requireRowOfClient("design", designId, await requireClientIdForSlug(slug, request));
     await deleteClientDesign(designId);
     return apiOk({ deleted: true });
   } catch (error) {

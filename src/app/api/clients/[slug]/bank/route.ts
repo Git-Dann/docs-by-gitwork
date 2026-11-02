@@ -4,6 +4,7 @@ import { revealClientBank } from "@/server/clients";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { recordAuditEntry } from "@/server/audit-log";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function POST(
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "reveal bank details");
     await assertClientAccessBySlug(user, slug);
-    const bank = await revealClientBank(slug);
+    const bank = await revealClientBank(await requestWorkspaceId(user), slug);
     if (!bank) return apiError("No bank details on file", 404);
     // Audit the decryption of sensitive bank data (append-only, never blocks the read).
     void recordAuditEntry({

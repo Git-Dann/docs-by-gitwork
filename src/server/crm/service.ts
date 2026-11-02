@@ -6,7 +6,6 @@
 import type { LeadStage } from "@prisma/client";
 import { revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { effectiveLeadDomains } from "@/server/crm/sync";
@@ -26,10 +25,9 @@ import type {
 /** How long a sync claim is honoured before the panel stops showing "Syncing…". */
 const SYNC_CLAIM_MS = 5 * 60_000;
 
-async function findLead(slug: string) {
-  const { workspace } = await ensureBaseRecords();
+async function findLead(workspaceId: string, slug: string) {
   const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    where: { workspaceId_slug: { workspaceId, slug } },
     select: {
       id: true,
       workspaceId: true,
@@ -117,8 +115,8 @@ function orderActions(actions: LeadActionDTO[]): LeadActionDTO[] {
   });
 }
 
-export async function getLeadCrmStatus(slug: string, viewer: EffectiveUser | null): Promise<LeadCrmStatus | null> {
-  const client = await findLead(slug);
+export async function getLeadCrmStatus(workspaceId: string, slug: string, viewer: EffectiveUser | null): Promise<LeadCrmStatus | null> {
+  const client = await findLead(workspaceId, slug);
   if (!client) return null;
 
   const [members, suggestionRows, actionRows, me] = await Promise.all([
@@ -194,10 +192,11 @@ export class CrmInputError extends Error {
 
 /** Turn automation on/off, set the lead's domains and owner, or resume a pinned stage. */
 export async function updateLeadCrmSettings(
+  workspaceId: string,
   slug: string,
   input: { enabled?: boolean; emailDomains?: string[]; ownerId?: string | null; pinned?: false },
 ): Promise<boolean> {
-  const client = await findLead(slug);
+  const client = await findLead(workspaceId, slug);
   if (!client) return false;
 
   const data: Record<string, unknown> = {};
@@ -233,12 +232,13 @@ export async function updateLeadCrmSettings(
 
 /** Accept (apply the stage) or dismiss a stage suggestion. */
 export async function resolveStageSuggestion(
+  workspaceId: string,
   slug: string,
   suggestionId: string,
   action: "accept" | "dismiss",
   actor: EffectiveUser | null,
 ): Promise<boolean> {
-  const client = await findLead(slug);
+  const client = await findLead(workspaceId, slug);
   if (!client) return false;
   const suggestion = await prisma.clientTouchpoint.findFirst({
     where: { id: suggestionId, clientId: client.id, type: "SUGGESTION" },
@@ -285,11 +285,12 @@ export async function resolveStageSuggestion(
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 export async function createLeadAction(
+  workspaceId: string,
   slug: string,
   input: { title: string; dueAt?: string | null; ownerId?: string | null },
   actor: EffectiveUser | null,
 ): Promise<LeadActionDTO | null> {
-  const client = await findLead(slug);
+  const client = await findLead(workspaceId, slug);
   if (!client) return null;
   const title = input.title.replace(/\s+/g, " ").trim();
   if (!title) throw new CrmInputError("An action needs a title.");
@@ -322,6 +323,7 @@ function parseDue(value: string | null | undefined): Date | null {
  * owns is an action nobody does.
  */
 export async function updateLeadAction(
+  workspaceId: string,
   slug: string,
   actionId: string,
   input: {
@@ -332,7 +334,7 @@ export async function updateLeadAction(
   },
   actor: EffectiveUser | null,
 ): Promise<LeadActionDTO | null> {
-  const client = await findLead(slug);
+  const client = await findLead(workspaceId, slug);
   if (!client) return null;
   const action = await prisma.leadAction.findFirst({ where: { id: actionId, clientId: client.id } });
   if (!action) return null;
@@ -376,8 +378,8 @@ export async function updateLeadAction(
   return dto;
 }
 
-export async function deleteLeadAction(slug: string, actionId: string): Promise<boolean> {
-  const client = await findLead(slug);
+export async function deleteLeadAction(workspaceId: string, slug: string, actionId: string): Promise<boolean> {
+  const client = await findLead(workspaceId, slug);
   if (!client) return false;
   const deleted = await prisma.leadAction.deleteMany({ where: { id: actionId, clientId: client.id } });
   return deleted.count > 0;
@@ -442,8 +444,8 @@ async function findConversionProposal(client: { id: string; workspaceId: string;
   return { id: chosen.id, title: chosen.title || "Untitled proposal", accepted: !!accepted, linked: chosen.clientId === client.id };
 }
 
-export async function getConversionPreview(slug: string): Promise<ConvertPreview | null> {
-  const client = await findLead(slug);
+export async function getConversionPreview(workspaceId: string, slug: string): Promise<ConvertPreview | null> {
+  const client = await findLead(workspaceId, slug);
   if (!client) return null;
   const domains = effectiveLeadDomains(client);
   const [emailRows, proposal, openActions] = await Promise.all([
@@ -469,15 +471,16 @@ export async function getConversionPreview(slug: string): Promise<ConvertPreview
  * actions and history stay on the record; it is the same client, now active.
  */
 export async function convertLeadToClient(
+  workspaceId: string,
   slug: string,
   input: { fields: ConvertField[] },
   actor: EffectiveUser | null,
 ): Promise<ConvertResult | null> {
-  const client = await findLead(slug);
+  const client = await findLead(workspaceId, slug);
   if (!client) return null;
   if (client.status !== "LEAD") throw new CrmInputError("Only a lead can be converted.");
 
-  const preview = await getConversionPreview(slug);
+  const preview = await getConversionPreview(workspaceId, slug);
   if (!preview) return null;
   const wanted = new Set(input.fields);
   const data: Record<string, unknown> = {};
@@ -532,7 +535,7 @@ export async function listLeadsForScheduledSync(): Promise<string[]> {
 }
 
 /** The lead's id for a slug, or null. */
-export async function getLeadIdBySlug(slug: string): Promise<string | null> {
-  const client = await findLead(slug);
+export async function getLeadIdBySlug(workspaceId: string, slug: string): Promise<string | null> {
+  const client = await findLead(workspaceId, slug);
   return client?.id ?? null;
 }

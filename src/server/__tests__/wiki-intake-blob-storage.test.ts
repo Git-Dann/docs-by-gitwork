@@ -234,7 +234,7 @@ describe("reply screenshots", () => {
     store.objects.set("k-reply", PNG);
     db.comments = [reply()];
     __setBlobStoreForTests({ driver: "postgres", store });
-    expect(await getWikiIntakeCommentImageBytes({ slug: "acme" }, "i1", "r1")).toEqual({
+    expect(await getWikiIntakeCommentImageBytes({ slug: "acme", workspaceId: "ws-1" }, "i1", "r1")).toEqual({
       bytes: PNG,
       mime: "image/png",
     });
@@ -246,7 +246,7 @@ describe("reply screenshots", () => {
     store.objects.set(thumbKeyOf("k-reply"), PNG);
     db.comments = [reply()];
     __setBlobStoreForTests({ driver: "s3", store });
-    await deleteWikiIntakeComment({ slug: "acme" }, "i1", "r1", {
+    await deleteWikiIntakeComment({ slug: "acme", workspaceId: "ws-1" }, "i1", "r1", {
       kind: "team",
       userId: "u1",
       isAdmin: false,

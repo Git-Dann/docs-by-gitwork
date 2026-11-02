@@ -8,11 +8,11 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { auth } from "@/auth";
 import { setWikiDriveEnabled, WikiDriveSetupError } from "@/server/wiki-drive";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const bodySchema = z.object({ enabled: z.boolean() });
 
@@ -22,9 +22,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     assertCan(user, canManageClients, "manage the Drive section");
     const { slug } = await params;
     await assertClientAccessBySlug(user, slug);
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);

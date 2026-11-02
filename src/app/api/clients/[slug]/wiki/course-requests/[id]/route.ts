@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { updateCourseRequest, deleteCourseRequest } from "@/server/wiki";
+import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -15,7 +16,8 @@ export async function PATCH(
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    const { id } = await params;
+    const { slug, id } = await params;
+    await requireRowOfClient("courseRequest", id, await requireClientIdForSlug(slug, req));
     const body = patchSchema.parse(await req.json());
     const request = await updateCourseRequest(id, body);
     return apiOk(request);
@@ -25,11 +27,12 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
-    const { id } = await params;
+    const { slug, id } = await params;
+    await requireRowOfClient("courseRequest", id, await requireClientIdForSlug(slug, req));
     await deleteCourseRequest(id);
     return apiOk({ deleted: true });
   } catch (err) {

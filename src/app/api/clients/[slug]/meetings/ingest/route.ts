@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { ingestMeeting } from "@/server/meetings";
 import { meetingIngestSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { recordAuditEntry } from "@/server/audit-log";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 // Synchronous: fetch the Meet transcript + one Claude summarise call. Comfortably under 60s
@@ -27,13 +27,13 @@ type RouteContext = { params: Promise<{ slug: string }> };
  */
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const { slug } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const body = meetingIngestSchema.parse(await req.json());
 
     const client = await prisma.workspaceClient.findFirst({
-      where: { slug, workspaceId: workspace.id },
+      where: { slug, workspaceId },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const session = await auth().catch(() => null);
 
     const meeting = await ingestMeeting({
-      workspaceId: workspace.id,
+      workspaceId,
       clientId: client.id,
       ownerUserId: session?.user?.id ?? null,
       client: googleAuth.client,
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     // Audit the (paid) AI summarisation trigger — who fetched notes for which client/event.
     void recordAuditEntry({
-      workspaceId: workspace.id,
+      workspaceId,
       actorId: session?.user?.id ?? null,
       action: "client.meeting.ingested",
       target: slug,

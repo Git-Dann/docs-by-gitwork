@@ -14,7 +14,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { provisionClientChannels } from "@/server/slack/provisioning";
 
@@ -34,13 +34,12 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    await ensureBaseRecords();
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "provision Slack channels");
     const { slug } = await params;
 
     const client = await prisma.workspaceClient.findFirst({
-      where: { slug, workspaceId: user!.workspaceId },
+      where: { slug, workspaceId: await requestWorkspaceId(user) },
       select: { id: true },
     });
     if (!client) return apiError("Client not found.", 404);

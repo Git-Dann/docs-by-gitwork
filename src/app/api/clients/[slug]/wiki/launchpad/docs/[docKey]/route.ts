@@ -30,7 +30,7 @@ export async function PATCH(
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug, docKey } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const body = launchpadDocPatchSchema.parse(await req.json());
@@ -50,7 +50,7 @@ export async function POST(
     const user = await getEffectiveUserOrNull(req);
     assertCan(user, canManageClients, "manage the Launchpad");
     const { slug, docKey } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const { approved } = launchpadDocApproveSchema.parse(await req.json());

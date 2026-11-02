@@ -2,20 +2,20 @@ import { NextRequest } from "next/server";
 import { apiError, fromError } from "@/lib/api-response";
 import { getDocumentFileByClient } from "@/server/wiki-documents";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const maxDuration = 60;
 
 // Internal download of an uploaded wiki document (editor side).
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
     const { slug, id } = await params;
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);

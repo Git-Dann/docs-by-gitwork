@@ -4,6 +4,7 @@ import { deleteClientRecord, getDerivedClientDetail, updateClientRecord } from "
 import { clientUpdateSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
-    const client = await getDerivedClientDetail(slug);
+    const client = await getDerivedClientDetail(await workspaceIdForRequest(request), slug);
 
     if (!client) {
       return apiError("Client not found", 404);
@@ -36,7 +37,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "delete clients");
     const { slug } = await context.params;
     await assertClientAccessBySlug(user, slug);
-    const deleted = await deleteClientRecord(slug);
+    const deleted = await deleteClientRecord(await requestWorkspaceId(user), slug);
 
     if (!deleted) {
       return apiError("Client not found", 404);
@@ -55,7 +56,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { slug } = await context.params;
     await assertClientAccessBySlug(user, slug);
     const body = clientUpdateSchema.parse(await request.json());
-    const client = await updateClientRecord(slug, body);
+    const client = await updateClientRecord(await requestWorkspaceId(user), slug, body);
 
     if (!client) {
       return apiError("Client not found", 404);

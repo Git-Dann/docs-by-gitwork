@@ -4,6 +4,7 @@ import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/au
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { convertLeadToClient, getConversionPreview } from "@/server/crm/service";
 import { crmConvertSchema } from "@/server/validators";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "convert a lead");
     await assertClientAccessBySlug(user, slug);
-    const preview = await getConversionPreview(slug);
+    const preview = await getConversionPreview(await requestWorkspaceId(user), slug);
     if (!preview) return apiError("Client not found", 404);
     return apiOk({ preview });
   } catch (error) {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "convert a lead");
     await assertClientAccessBySlug(user, slug);
     const input = crmConvertSchema.parse(await request.json());
-    const result = await convertLeadToClient(slug, input, user);
+    const result = await convertLeadToClient(await requestWorkspaceId(user), slug, input, user);
     if (!result) return apiError("Client not found", 404);
     return apiOk({ result });
   } catch (error) {
