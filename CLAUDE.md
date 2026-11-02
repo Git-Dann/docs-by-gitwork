@@ -8786,6 +8786,21 @@ the caller's workspace. They used to look the slug up in Gitwork's (`ensureBaseR
 - **Left as it was:** `getClientNameBySlug` (page titles) takes an optional workspace and still
   defaults to Gitwork. Pages are scoped separately.
 
+**Phase 2.2b, Team and admin (Nov 2026).** People & access, invites, the rate card, the audit log
+and the Staff schedule work inside the caller's workspace.
+- `src/server/team.ts`: `listMembers` / `listInvites` / `createInvite` take a workspace. The
+  member and invite writes find their row by id **and** workspace (`MemberActor.workspaceId`;
+  `findInvite`), so another business's id reads as not found. `updateMember` takes the actor.
+- Every `/api/team/**` route resolves the caller with `requireTeamAdmin` (a database read, §57),
+  not `auth()` + the session role. `invites/[id]` had no admin check at all, and `reset-password`
+  could reset any user's password in any workspace; both are fixed.
+  `src/app/api/team/__tests__/team-routes-scoped.test.ts` fails on a team route that uses the
+  Gitwork slug, `ensureBaseRecords` or the session role.
+- ⚠️ **Not changed, for Dan:**
+  - `DELETE /api/team/[userId]` still hard-deletes the User row, now only inside the caller's
+    workspace. Nothing in the app calls it.
+  - `reset-password` has no rank check, so an Admin can reset a Super Admin's password.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds

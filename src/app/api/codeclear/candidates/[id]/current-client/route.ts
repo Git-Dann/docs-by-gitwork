@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { currentClientUpdateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +24,11 @@ type RouteContext = {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
     const { id: candidateId } = await context.params;
 
     const candidate = await prisma.candidate.findFirst({
-      where: { id: candidateId, workspaceId: workspace.id },
+      where: { id: candidateId, workspaceId },
       select: { id: true },
     });
 
@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     let client: { id: string; name: string } | null = null;
     if (body.clientId) {
       const found = await prisma.workspaceClient.findFirst({
-        where: { id: body.clientId, workspaceId: workspace.id },
+        where: { id: body.clientId, workspaceId },
         select: { id: true, name: true },
       });
       if (!found) {
