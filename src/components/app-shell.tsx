@@ -39,6 +39,7 @@ import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
 import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot } from "@/components/seasonal/halloween";
+import { ChristmasLogoBadge, ChristmasSnow } from "@/components/seasonal/christmas";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
 // The Desk is a client-only interactive drawer that pulls in a heavy subtree
@@ -342,6 +343,7 @@ export function AppShell({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
           <HalloweenLogoBadge />
+          <ChristmasLogoBadge />
         </span>
         <div className="flex items-center gap-1">
           <CommandMenuButton className="border-0 bg-transparent p-2" />
@@ -543,6 +545,7 @@ export function AppShell({
           about people they do not work with, and the dock is on every /app screen. */}
       {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
       <HalloweenFogFront />
+      <ChristmasSnow />
       {/* Hangs in the header band's right gutter, so only where there is a band. */}
       {hideContentHeader ? null : <HalloweenSpiderSlot />}
       {/* ⌘K. The pages are this viewer's own nav, so it never offers a product the sidebar hides. */}
@@ -597,6 +600,7 @@ function ExpandedRail({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
             <HalloweenLogoBadge />
+            <ChristmasLogoBadge />
           </span>
         ) : null}
         <button

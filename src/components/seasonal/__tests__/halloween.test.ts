@@ -31,5 +31,7 @@ describe("Halloween theme", () => {
     expect(layout).toContain("var hal=/^\\\\/(app|demo)(?:\\\\/|$)/.test(p)");
     expect(layout).toContain(`'${SEASONAL_KEY}'`);
     expect(layout).toContain("sv==='halloween'");
+    expect(layout).toContain("sv==='christmas'");
+    expect(SEASONAL_THEMES.map((t) => t.id)).toContain("christmas");
   });
 });
