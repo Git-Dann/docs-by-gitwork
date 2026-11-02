@@ -9391,7 +9391,7 @@ Reviewed after a developer (Nasir) was given the MCP. Three fixes:
   "Document not found". ⚠️ The web Docs list is NOT scoped this way yet: a developer still
   sees every client's lightweight documents there.
 
-## 92. Recent Changes (November 2026) — Pulse → AI search (stage 1: Google positions + AI visits)
+## 111. Recent Changes (November 2026) — Pulse → AI search (stage 1: Google positions + AI visits)
 
 A page at **`/app/pulse/ai-search`** (Pulse nav → AI search, internal-only like Growth) showing how
 Gitwork shows up for buyers: how many Google searches we appear in, how many sit in the top 10 and
