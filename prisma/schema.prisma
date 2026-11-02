@@ -502,6 +502,10 @@ model Workspace {
   hrDriveFolderId             String?
   /// ISO week ("2026-W45") the weekly HR digest last went out for (src/server/hr/digest.ts). Claimed before sending, so two runs can't both send.
   hrDigestWeek                String?
+  /// Seasonal theme for the whole workspace (src/lib/seasonal-themes.ts), set by an Admin in
+  /// Settings → Appearance. Off by default; `seasonalTheme` keeps the choice while it's off.
+  seasonalThemeEnabled        Boolean                    @default(false)
+  seasonalTheme               String                     @default("halloween")
 }
 
 /**

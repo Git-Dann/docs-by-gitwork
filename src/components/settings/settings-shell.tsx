@@ -12,6 +12,7 @@ import {
   DocumentDuplicateIcon,
   BeakerIcon,
   ShieldCheckIcon,
+  SparklesIcon,
   Squares2X2Icon,
   UserCircleIcon,
   UserGroupIcon,
@@ -43,6 +44,7 @@ export type SettingsSectionId =
   | "checks"
   | "curator"
   | "foreman"
+  | "appearance"
   | "mcp"
   | "agents-checks" // legacy — redirects to "agents"
   // System
@@ -134,6 +136,13 @@ const GROUPS: SectionGroup[] = [
           { id: "onboarding", label: "Onboarding", adminOnly: true },
           { id: "launchpad", label: "Launchpad", adminOnly: true },
         ],
+      },
+      {
+        id: "appearance",
+        label: "Appearance",
+        description: "Seasonal themes.",
+        icon: SparklesIcon,
+        sections: [{ id: "appearance", label: "Appearance", adminOnly: true }],
       },
       {
         id: "people",

@@ -10,7 +10,7 @@
  * `src/lib/demo/dev-demo-data.ts` for the canned data. No auth, no database.
  */
 
-import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenToggle } from "@/components/seasonal/halloween";
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene } from "@/components/seasonal/halloween";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
@@ -193,7 +193,6 @@ export function DemoShell({
                 </span>
                 {withBrand("Foundry — the developer experience, running on sample data.")}
               </p>
-              <HalloweenToggle className="-my-1.5 shrink-0 lg:hidden" />
             </div>
 
             <header className="halloween-clear hidden items-start justify-between gap-4 border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:flex">
@@ -205,7 +204,6 @@ export function DemoShell({
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <CommandMenuButton className="mr-1" />
-                <HalloweenToggle className="shrink-0" />
               </div>
             </header>
 

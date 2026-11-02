@@ -105,6 +105,17 @@ function MonitorRow({ m }: { m: BoardMonitor }) {
   );
 }
 
+/** The header label's text colour. The -500 tokens sit at ~3:1 on their own -50 tint, too
+ *  faint for 11px text; the -700 shades clear AA and are remapped for dark mode in globals.css. */
+const LABEL_TEXT: Record<BoardMonitorState, string> = {
+  up: "text-emerald-700",
+  slow: "text-amber-700",
+  flaky: "text-amber-700",
+  down: "text-red-700",
+  stale: "text-[var(--text-3)]",
+  pending: "text-[var(--text-3)]",
+};
+
 function ClientCard({ client, canOpen }: { client: BoardClient; canOpen: boolean }) {
   const states = client.monitors.map(monitorState);
   const worst = worstState(states) ?? "pending";
@@ -122,13 +133,15 @@ function ClientCard({ client, canOpen }: { client: BoardClient; canOpen: boolean
 
   return (
     <li
-      className="flex min-w-0 flex-col rounded-[10px] border bg-[var(--surface-0)]"
+      className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border bg-[var(--surface-0)]"
       style={{ borderColor: healthy ? "var(--border-2)" : meta.color }}
       data-client-card={client.slug}
     >
       <div
         className="flex items-center gap-2.5 border-b px-4 py-3"
-        style={{ borderColor: "var(--border-1)", background: healthy ? undefined : meta.tint }}
+        // Every header carries its state's tint — green when all is operational — so the
+        // grid reads at a glance; a card in trouble also gets a coloured border.
+        style={{ borderColor: "var(--border-1)", background: meta.tint }}
       >
         <Dot state={worst} still />
         <div className="min-w-0 flex-1">
@@ -142,10 +155,10 @@ function ClientCard({ client, canOpen }: { client: BoardClient; canOpen: boolean
           ) : null}
         </div>
         <span
-          className="shrink-0 text-[11px] uppercase tracking-[0.08em]"
-          style={{ fontFamily: MONO, color: healthy ? "var(--text-3)" : meta.color }}
+          className={`shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] ${LABEL_TEXT[worst]}`}
+          style={{ fontFamily: MONO }}
         >
-          {healthy ? `${up}/${states.length} up` : meta.label}
+          {healthy ? `Operational · ${up}/${states.length}` : meta.label}
         </span>
       </div>
       <ul className="divide-y divide-[var(--border-1)] px-4 py-3">

@@ -38,7 +38,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
-import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot, HalloweenToggle } from "@/components/seasonal/halloween";
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot } from "@/components/seasonal/halloween";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
 // The Desk is a client-only interactive drawer that pulls in a heavy subtree
@@ -345,7 +345,6 @@ export function AppShell({
         </span>
         <div className="flex items-center gap-1">
           <CommandMenuButton className="border-0 bg-transparent p-2" />
-          <HalloweenToggle />
           <NotificationBell />
           <button
             type="button"
@@ -518,7 +517,6 @@ export function AppShell({
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <CommandMenuButton className="mr-1" />
-                  <HalloweenToggle />
                   <NotificationBell />
                 </div>
               </div>
