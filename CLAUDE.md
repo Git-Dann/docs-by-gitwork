@@ -9423,5 +9423,29 @@ the previous period of the same length. For Gitwork's own sales, not a client fe
 - **AI sources match by host, never substring** (`classifyAiSource`): `notchatgpt.com` and
   `openai.com` don't count. The GA4 regex only narrows the report; the classifier decides.
 - Demo at `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-search.ts`, run through the real rules).
-- **Stage 2, not built:** asking a fixed list of buyer questions to AI engines on a schedule and
-  counting answers that name or cite Gitwork. Needs the question list from Dan/Harry first.
+
+### 111.1 Buyer questions (stage 2)
+
+Card `01 // BUYER QUESTIONS` at the top of the page. A list of buyer questions (12 UK examples
+ship in `EXAMPLE_BUYER_QUESTIONS`, editable under "Edit questions", admins) is put to **ChatGPT,
+Claude, Perplexity and Gemini** with each one's own web search on and a UK location
+(`src/server/ai-answers-engines.ts`). Each answer is judged by `judgeAnswer`
+(`src/lib/ai-answers.ts`, pure): **named** = a brand name as a whole word; **cited** = a cited
+source (or a link in the text) whose host is one of our domains, never a substring. Gemini's
+sources are Google redirect links, so a title that is *exactly* a domain counts too.
+- **Only cited sources count**, never every page a search looked at.
+- **A failed or refused answer is "Couldn't ask"** and is left out of both sides of every figure.
+- **Every tick can be read back:** the excerpt and sources of each answer open under the question.
+- **Change vs the previous run** uses only the question × assistant pairs both runs asked
+  (`comparableSummaries`), so editing the list never shows as a rise or fall.
+- **Runs:** "Ask now" (admins, `POST /api/pulse/ai-search/answers`, runs in `after()`, the page
+  polls every 5s) and weekly from the every-minute `jobs` worker (`startDueAnswerRuns`) once the
+  questions are **saved** (unsaved examples are never asked on their own). One run at a time; a
+  run still "running" after 30 minutes was cut short by a restart and is shown as such.
+  Stored in `AiAnswerRun` (additive); config in `Workspace.aiAnswersConfig`.
+- **Keys:** the workspace's AI keys via `aiKeyFor` (Anthropic, OpenAI, Gemini), plus the new
+  server-only `PERPLEXITY_API_KEY` (synced by `deploy.yml`). An assistant without a key is listed
+  with what it needs and skipped. Models are `AI_ANSWER_MODELS` in `ai-provider.ts` (dated; a
+  retired id shows as "Couldn't ask" with the provider's error). Usage is logged as `PULSE`,
+  operation `ai_search.answers.<engine>`. Each run is questions × assistants paid calls.
+- Demo: `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-answers.ts`, judged by the real rules).

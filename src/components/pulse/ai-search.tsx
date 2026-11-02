@@ -12,6 +12,7 @@ import { AreaSparkline, MONO, SERIF, StatTile, TrendBadge, WidgetCard } from "@/
 import { Button } from "@/components/ui/button";
 import { Pager } from "@/components/ui/pager";
 import { SortHeader } from "@/components/ui/sort-header";
+import { AiAnswersCard } from "@/components/pulse/ai-answers";
 import { useAiSearchReport, useRefreshAiSearch, useSaveAiSearchConfig } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatRelative } from "@/lib/format";
@@ -57,6 +58,7 @@ export function AiSearchView() {
 
   return (
     <div className="space-y-6">
+      <AiAnswersCard number="01" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <RangeControl value={range} onChange={setRange} />
         <div className="flex flex-wrap items-center gap-3">
@@ -79,11 +81,11 @@ export function AiSearchView() {
       ) : null}
 
       {query.isError ? (
-        <WidgetCard number="01" label="AI search">
+        <WidgetCard number="02" label="Google and AI visits">
           <p className="text-sm text-[var(--danger-500)]">{(query.error as Error).message}</p>
         </WidgetCard>
       ) : !report ? (
-        <WidgetCard number="01" label="At a glance">
+        <WidgetCard number="02" label="At a glance">
           <p className="text-sm text-[var(--text-3)]">Reading Search Console and Google Analytics…</p>
         </WidgetCard>
       ) : (
@@ -195,7 +197,7 @@ function Report({ report }: { report: AiSearchReport }) {
   return (
     <>
       <WidgetCard
-        number="01"
+        number="02"
         label="At a glance"
         status={google || visits ? "vs the period before" : undefined}
         hint="Google figures are average positions per search, from Search Console. AI visits are sessions GA4 recorded from an AI assistant."
@@ -214,7 +216,7 @@ function Report({ report }: { report: AiSearchReport }) {
       </WidgetCard>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <WidgetCard number="02" label="AI assistants" status={syncStatus(vf)}>
+        <WidgetCard number="03" label="AI assistants" status={syncStatus(vf)}>
           {visits ? (
             <div className="space-y-3">
               <AssistantsTable data={visits.data} />
@@ -229,12 +231,12 @@ function Report({ report }: { report: AiSearchReport }) {
             <SourceMessage state={report.aiVisits} />
           )}
         </WidgetCard>
-        <WidgetCard number="03" label="Pages AI sends people to" status={syncStatus(vf)}>
+        <WidgetCard number="04" label="Pages AI sends people to" status={syncStatus(vf)}>
           {visits ? <PagesTable data={visits.data} /> : <SourceMessage state={report.aiVisits} />}
         </WidgetCard>
       </div>
 
-      <WidgetCard number="04" label="Google searches" status={syncStatus(gf)}>
+      <WidgetCard number="05" label="Google searches" status={syncStatus(gf)}>
         {google ? (
           <div className="space-y-3">
             <QueriesTable data={google.data} />
@@ -245,7 +247,7 @@ function Report({ report }: { report: AiSearchReport }) {
         )}
       </WidgetCard>
 
-      <SetupCard number="05" report={report} />
+      <SetupCard number="06" report={report} />
     </>
   );
 }

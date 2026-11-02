@@ -17,7 +17,7 @@
 
 import { readSecret } from "@/server/stored-secret";
 
-export type KeyedAiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "GROQ";
+export type KeyedAiProvider = "ANTHROPIC" | "OPENAI" | "GEMINI" | "GROQ" | "PERPLEXITY";
 
 export interface WorkspaceAiKeys {
   // Optional so a query that only needs one provider's key can select just that one.
@@ -33,6 +33,9 @@ const ENV_VAR: Record<KeyedAiProvider, string> = {
   OPENAI: "OPENAI_API_KEY",
   GEMINI: "GEMINI_API_KEY",
   GROQ: "GROQ_API_KEY",
+  // Only Pulse → AI search asks Perplexity. There is no workspace field for it yet, so a
+  // workspace that may not use the server's keys has no Perplexity key at all.
+  PERPLEXITY: "PERPLEXITY_API_KEY",
 };
 
 /** Blank and whitespace keys are no key: a saved empty field must not shadow a real one. */
@@ -50,6 +53,8 @@ function ownKey(provider: KeyedAiProvider, ws: WorkspaceAiKeys): string | null {
     case "OPENAI":
     case "GROQ":
       return present(readSecret(ws.openaiApiKey));
+    case "PERPLEXITY":
+      return null;
   }
 }
 

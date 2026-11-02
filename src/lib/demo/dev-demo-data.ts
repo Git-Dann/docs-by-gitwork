@@ -15,6 +15,7 @@
 
 import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
 import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
+import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
 import { parseAiSearchRange } from "@/lib/ai-search";
 import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
 import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA_SCORE, RECORDED_CADENZA_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-cadenza";
@@ -4398,6 +4399,21 @@ export function resolveDemoApi(
   }
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
+  if (pathname === "/api/pulse/ai-search/answers") {
+    if (init?.method === "POST") return demoStartAiAnswersRun();
+    return { report: demoAiAnswersReport() };
+  }
+  if (pathname === "/api/pulse/ai-search/answers/config" && init?.method === "PUT") {
+    let body: unknown = init.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = null;
+      }
+    }
+    return demoSaveAiAnswersConfig(body);
+  }
   if (pathname === "/api/pulse/ai-search") {
     return { report: demoAiSearchReport(parseAiSearchRange(search?.get("range")), { refresh: search?.get("refresh") === "1" }) };
   }
