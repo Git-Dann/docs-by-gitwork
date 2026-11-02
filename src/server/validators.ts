@@ -11,6 +11,7 @@ import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
+import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
 import type { SheetColumnType } from "@/types/wiki-sheets";
 
 export const documentStatusSchema = z.enum([
@@ -2495,3 +2496,32 @@ export const sheetRowsBulkSchema = z.object({
 export const sheetOrderSchema = z.object({
   order: z.array(z.string().min(1).max(64)).max(SHT.maxRows),
 });
+
+// ─── AI search (Pulse → AI search) ───────────────────────────────────────────
+// Blank clears a field. Anything else must be a real property, or it's refused with a sentence.
+export const aiSearchConfigSchema = z
+  .object({
+    searchConsoleSite: z.string().trim().max(300),
+    ga4PropertyId: z.string().trim().max(40),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.searchConsoleSite && !normaliseSearchConsoleSite(v.searchConsoleSite)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["searchConsoleSite"],
+        message: "Use sc-domain:example.com for a domain property, or the full URL (https://example.com/) for a URL-prefix one.",
+      });
+    }
+    if (v.ga4PropertyId && !normaliseGa4PropertyId(v.ga4PropertyId)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ga4PropertyId"],
+        message: "The GA4 property id is the number under Admin → Property details, e.g. 412345678.",
+      });
+    }
+  })
+  .transform((v) => ({
+    searchConsoleSite: v.searchConsoleSite ? normaliseSearchConsoleSite(v.searchConsoleSite) : null,
+    ga4PropertyId: v.ga4PropertyId ? normaliseGa4PropertyId(v.ga4PropertyId) : null,
+  }));

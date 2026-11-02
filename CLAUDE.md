@@ -1807,7 +1807,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -9390,3 +9390,30 @@ Reviewed after a developer (Nasir) was given the MCP. Three fixes:
   `seeAllClients`. `list_documents` and `update_document` both use it; out-of-scope ids read
   "Document not found". ⚠️ The web Docs list is NOT scoped this way yet: a developer still
   sees every client's lightweight documents there.
+
+## 92. Recent Changes (November 2026) — Pulse → AI search (stage 1: Google positions + AI visits)
+
+A page at **`/app/pulse/ai-search`** (Pulse nav → AI search, internal-only like Growth) showing how
+Gitwork shows up for buyers: how many Google queries we appear for, how many sit in the top 10 and
+top 3, and visits from AI assistants (ChatGPT, Perplexity, Claude, Gemini, Copilot…), each against
+the previous period of the same length. For Gitwork's own sales, not a client feature.
+
+- **Read live, never stored.** `src/server/ai-search.ts` calls the Search Console API
+  (`searchanalytics.query`, by query) and the GA4 Data API (`runReport`, filtered to AI sources),
+  cached 15 minutes per workspace and range; **Refresh** bypasses it. Only a report that read
+  something is cached. Rules are pure in `src/lib/ai-search.ts` (periods, source matching, counts).
+- **Credentials: the workspace Google service account** (Settings → Integrations), not anyone's
+  sign-in. Adding these scopes to sign-in would make every teammate sign in again. The service
+  account is added once as a read-only user on the Search Console property (Restricted) and the
+  GA4 property (Viewer); the page shows its email with Copy. Properties are set in `05 // SETUP`
+  (admins; `PUT /api/pulse/ai-search/config`), stored on `Workspace.aiSearchConfig` (additive).
+- **Periods lag on purpose:** Search Console ends 3 days back, GA4 1 day back, so a period is
+  never compared half-complete against a full one. Each card states its dates.
+- **Top 10 / top 3 use Google's average position per query**, inclusive (≤10, ≤3).
+- **AI sources match by host, never substring** (`classifyAiSource`): `notchatgpt.com` and
+  `openai.com` don't count. The GA4 regex only narrows the report; the classifier decides.
+- **A source that can't be read says why, never shows 0** (§35): not set up / no service account /
+  Google refused it (naming the email to add and where) / didn't answer.
+- Demo at `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-search.ts`, run through the real rules).
+- **Stage 2, not built:** asking a fixed list of buyer questions to AI engines on a schedule and
+  counting answers that name or cite Gitwork. Needs the question list from Dan/Harry first.

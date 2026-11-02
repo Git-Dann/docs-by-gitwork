@@ -370,6 +370,9 @@ model Workspace {
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
   dispatchConfig              Json? // Dispatch settings: { enabled, recentDays, maxEvidenceItems, perChannelPerHour, allowExternalChannels }
+  /// AI search (Pulse → AI search): { searchConsoleSite, ga4PropertyId }. Read through
+  /// parseAiSearchConfig (src/lib/ai-search.ts); read with the workspace Google service account.
+  aiSearchConfig              Json?
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
