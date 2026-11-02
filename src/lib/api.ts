@@ -1552,6 +1552,28 @@ export async function getAiSearchReport(
   return apiFetch(`/api/pulse/ai-search?range=${range}${refresh ? "&refresh=1" : ""}`);
 }
 
+export async function getAiAnswersReport(): Promise<{ report: import("@/lib/ai-answers").AiAnswersReport }> {
+  return apiFetch("/api/pulse/ai-search/answers");
+}
+
+export async function startAiAnswersRun(): Promise<{ runId: string; alreadyRunning: boolean }> {
+  return apiFetch("/api/pulse/ai-search/answers", { method: "POST" });
+}
+
+export async function saveAiAnswersConfig(input: {
+  questions: string[];
+  brandNames: string[];
+  domains: string[];
+  engines: string[];
+  autoWeekly: boolean;
+}): Promise<{ config: import("@/lib/ai-answers").AiAnswersConfig }> {
+  return apiFetch("/api/pulse/ai-search/answers/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function saveAiSearchConfig(input: {
   searchConsoleSite: string;
   ga4PropertyId: string;

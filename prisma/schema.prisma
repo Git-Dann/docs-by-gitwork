@@ -373,6 +373,8 @@ model Workspace {
   /// AI search (Pulse → AI search): { searchConsoleSite, ga4PropertyId }. Read through
   /// parseAiSearchConfig (src/lib/ai-search.ts); read with the workspace Google service account.
   aiSearchConfig              Json?
+  /// Pulse → AI search buyer questions (src/lib/ai-answers.ts). Null = the built-in examples, not yet saved.
+  aiAnswersConfig             Json?
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -6048,4 +6050,26 @@ model AiSearchSync {
   updatedAt   DateTime @updatedAt
 
   @@index([workspaceId])
+}
+
+/// Pulse → AI search: one run of buyer questions put to the AI assistants (src/lib/ai-answers.ts).
+/// The answers are kept so every "named" and "cited" can be checked by reading them.
+model AiAnswerRun {
+  id          String    @id @default(cuid())
+  workspaceId String
+  /// running | done | failed. A "running" row past 30 minutes is read as interrupted.
+  status      String
+  /// manual | weekly
+  trigger     String
+  startedById String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  /// BuyerQuestion[] and the engines this run set out to ask.
+  questions   Json
+  engines     Json
+  /// AnswerResult[]
+  results     Json
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, startedAt])
 }

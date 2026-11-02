@@ -58,6 +58,21 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
   LOCAL: "llama3.1",
 };
 
+/**
+ * The model each assistant is asked with in Pulse → AI search (buyer questions). Chosen to be
+ * close to what a person gets in that company's own app, with web search on.
+ *
+ * ⚠️ Version-pinned, like LIGHT_MODELS below: a retired id makes every answer from that
+ * assistant fail. It fails loudly (the page shows the assistant as "couldn't ask" with the
+ * provider's error), but it still needs a review. Reviewed 2 Nov 2026.
+ */
+export const AI_ANSWER_MODELS = {
+  chatgpt: "gpt-5",
+  claude: "claude-opus-5-5",
+  perplexity: "sonar",
+  gemini: "gemini-2.5-flash",
+} as const;
+
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   const provider = (ws.aiProvider || (process.env.GROQ_API_KEY ? "GROQ" : "ANTHROPIC")) as AiProvider;

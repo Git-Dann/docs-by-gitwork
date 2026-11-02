@@ -12,6 +12,7 @@ import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
 import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
+import { AI_ANSWER_LIMITS, AI_ENGINE_IDS, normaliseBrandName, normaliseDomain } from "@/lib/ai-answers";
 import type { SheetColumnType } from "@/types/wiki-sheets";
 
 export const documentStatusSchema = z.enum([
@@ -2525,3 +2526,28 @@ export const aiSearchConfigSchema = z
     searchConsoleSite: v.searchConsoleSite ? normaliseSearchConsoleSite(v.searchConsoleSite) : null,
     ga4PropertyId: v.ga4PropertyId ? normaliseGa4PropertyId(v.ga4PropertyId) : null,
   }));
+
+// ─── AI search: buyer questions ──────────────────────────────────────────────
+export const aiAnswersConfigSchema = z
+  .object({
+    questions: z
+      .array(z.string().trim().min(1).max(AI_ANSWER_LIMITS.maxQuestionLength))
+      .min(1, "Add at least one question.")
+      .max(AI_ANSWER_LIMITS.maxQuestions, `Up to ${AI_ANSWER_LIMITS.maxQuestions} questions.`),
+    brandNames: z
+      .array(z.string().trim())
+      .min(1, "Add the name the answers should mention.")
+      .max(AI_ANSWER_LIMITS.maxBrandNames),
+    domains: z.array(z.string().trim()).min(1, "Add the domain the answers should cite.").max(AI_ANSWER_LIMITS.maxDomains),
+    engines: z.array(z.enum(AI_ENGINE_IDS as [string, ...string[]])).min(1, "Pick at least one assistant to ask."),
+    autoWeekly: z.boolean(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    v.brandNames.forEach((b, i) => {
+      if (!normaliseBrandName(b)) ctx.addIssue({ code: "custom", path: ["brandNames", i], message: "A name is 2 to 60 characters." });
+    });
+    v.domains.forEach((d, i) => {
+      if (!normaliseDomain(d)) ctx.addIssue({ code: "custom", path: ["domains", i], message: `"${d}" isn't a domain. Use the form gitwork.co.uk.` });
+    });
+  });
