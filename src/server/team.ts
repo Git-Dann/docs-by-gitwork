@@ -188,7 +188,28 @@ export async function reinstateMemberByEmail(email: string, role: RoleId, actor:
   if (!user) return { status: "not-found" as const };
   const existing = user.memberships[0];
   if (existing && !existing.archivedAt) return { status: "already-active" as const };
-  if (existing) return { status: "archived" as const, memberId: existing.id }; // use Restore
+  // Still inside the restore window: Restore brings them back exactly as they were.
+  if (existing && canRestore(existing)) return { status: "archived" as const, memberId: existing.id };
+
+  // Archived past the window but not yet purged (the purge cron only tidies rows; until it
+  // runs the old membership is still there). Treat it as gone: reuse the row, but with the
+  // role chosen now and no old per-person overrides — what a fresh membership would have.
+  // Before this, Restore refused ("reinstate instead") and reinstate refused ("use Restore"),
+  // so nobody past the window could ever be brought back.
+  if (existing) {
+    await prisma.workspaceMember.update({
+      where: { id: existing.id },
+      data: {
+        archivedAt: null,
+        archivedById: null,
+        role,
+        permissions: [],
+        permissionOverrides: { grant: [], revoke: [] },
+      },
+    });
+    await recomputeMember(existing.id);
+    return { status: "reinstated" as const, memberId: existing.id };
+  }
 
   const member = await prisma.workspaceMember.create({
     data: { workspaceId: workspace.id, userId: user.id, role, permissions: [] },
