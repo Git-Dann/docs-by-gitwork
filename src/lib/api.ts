@@ -1545,6 +1545,24 @@ export async function unsharePulseScan(scanId: string): Promise<{ isShared: bool
   );
 }
 
+export async function getAiSearchReport(
+  range: number,
+  refresh = false,
+): Promise<{ report: import("@/lib/ai-search").AiSearchReport }> {
+  return apiFetch(`/api/pulse/ai-search?range=${range}${refresh ? "&refresh=1" : ""}`);
+}
+
+export async function saveAiSearchConfig(input: {
+  searchConsoleSite: string;
+  ga4PropertyId: string;
+}): Promise<{ config: import("@/lib/ai-search").AiSearchConfig }> {
+  return apiFetch("/api/pulse/ai-search/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listPulseLeads(): Promise<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }> {
   return apiFetch<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }>("/api/pulse/leads");
 }

@@ -14,6 +14,8 @@
  */
 
 import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
+import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
+import { parseAiSearchRange } from "@/lib/ai-search";
 import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
 import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA_SCORE, RECORDED_CADENZA_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-cadenza";
 import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
@@ -4396,6 +4398,9 @@ export function resolveDemoApi(
   }
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
+  if (pathname === "/api/pulse/ai-search") {
+    return { report: demoAiSearchReport(parseAiSearchRange(search?.get("range")), { refresh: search?.get("refresh") === "1" }) };
+  }
   if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };
   {
     const lp = pathname.match(/^\/api\/pulse\/leads\/([^/]+)\/preview$/);

@@ -370,6 +370,9 @@ model Workspace {
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
   dispatchConfig              Json? // Dispatch settings: { enabled, recentDays, maxEvidenceItems, perChannelPerHour, allowExternalChannels }
+  /// AI search (Pulse → AI search): { searchConsoleSite, ga4PropertyId }. Read through
+  /// parseAiSearchConfig (src/lib/ai-search.ts); read with the workspace Google service account.
+  aiSearchConfig              Json?
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -6027,4 +6030,22 @@ model StaffDocument {
 
   @@index([workspaceId, recordId])
   @@index([workspaceId, expiresOn])
+}
+
+/// Pulse → AI search: the last sync of one workspace's report for one range (7, 28 or 90
+/// days). Each source in `report` carries when it was last read and, when the latest read
+/// failed, the last good one. Overwritten on every sync; deleted when the properties change,
+/// so figures from a previous property are never shown as this one's.
+model AiSearchSync {
+  /// `${workspaceId}:${range}`
+  id          String   @id
+  workspaceId String
+  range       Int
+  /// AiSearchReport (src/lib/ai-search.ts).
+  report      Json
+  /// When this sync ran.
+  attemptedAt DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
 }

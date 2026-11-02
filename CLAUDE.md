@@ -1807,7 +1807,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -9390,3 +9390,38 @@ Reviewed after a developer (Nasir) was given the MCP. Three fixes:
   `seeAllClients`. `list_documents` and `update_document` both use it; out-of-scope ids read
   "Document not found". ⚠️ The web Docs list is NOT scoped this way yet: a developer still
   sees every client's lightweight documents there.
+
+## 111. Recent Changes (November 2026) — Pulse → AI search (stage 1: Google positions + AI visits)
+
+A page at **`/app/pulse/ai-search`** (Pulse nav → AI search, internal-only like Growth) showing how
+Gitwork shows up for buyers: how many Google searches we appear in, how many sit in the top 10 and
+top 3, and visits from AI assistants (ChatGPT, Perplexity, Claude, Gemini, Copilot…), each against
+the previous period of the same length. For Gitwork's own sales, not a client feature.
+
+- **Credentials: the workspace Google service account** (Settings → Integrations), not anyone's
+  sign-in. Adding these scopes to sign-in would make every teammate sign in again. The service
+  account is added once as a read-only user on the Search Console property (Restricted) and the
+  GA4 property (Viewer); the page shows its email with Copy. Properties are set in `05 // SETUP`
+  (admins; `PUT /api/pulse/ai-search/config`), stored on `Workspace.aiSearchConfig` (additive).
+- **The last sync is stored** in `AiSearchSync` (one row per workspace × range, additive). The page
+  serves it while it is under 30 minutes old and re-reads Google otherwise; **Sync now** forces a
+  read. Concurrent syncs of one range share one run. No cron: the page syncs itself when opened.
+- **Truth rules** (`src/server/ai-search.ts`, pure parts in `src/lib/ai-search.ts`), each tested by
+  breaking it:
+  - The Google period ends on the day before Search Console's own `firstIncompleteDate`, and every
+    figure is read with `dataState: "final"`. Never "today minus a guess".
+  - GA4 has no completeness signal, so its period ends 2 days back (Google documents up to 48h).
+  - **A failed sync keeps the last good figures** (`mergeSync`), shown greyed with "couldn't be
+    synced … these are the last good figures, synced <time>". It never becomes a zero, and a
+    working source is never held back by a failing one. Figures over 24h old are flagged.
+  - Every card states "Data to <day> · synced <time>" and the page header the last sync.
+  - **What Google withholds is stated:** the share of impressions from searches Google won't list
+    (its totals vs the listed rows), GA4 thresholding (`subjectToThresholding` — Google Signals is
+    on), the `(other)` row, and row caps. AI visits note that some AI clicks arrive as direct.
+  - Changing the properties deletes the stored syncs, so old figures can't pass as the new one's.
+- **Top 10 / top 3 use Google's average position per search**, inclusive (≤10, ≤3).
+- **AI sources match by host, never substring** (`classifyAiSource`): `notchatgpt.com` and
+  `openai.com` don't count. The GA4 regex only narrows the report; the classifier decides.
+- Demo at `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-search.ts`, run through the real rules).
+- **Stage 2, not built:** asking a fixed list of buyer questions to AI engines on a schedule and
+  counting answers that name or cite Gitwork. Needs the question list from Dan/Harry first.

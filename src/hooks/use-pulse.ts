@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PulseScanRecord } from "@/types/pulse";
 import {
   listPulseScans,
+  getAiSearchReport,
+  saveAiSearchConfig,
   createPulseScan,
   getPulseScan,
   getPulsePortfolio,
@@ -430,6 +432,31 @@ export function useCreateMonitor() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });
     },
+  });
+}
+
+/** Pulse → AI search for a range. `refresh` re-reads Google rather than the 15-minute cache. */
+export function useAiSearchReport(range: number) {
+  return useQuery({
+    queryKey: ["ai-search", range],
+    queryFn: () => getAiSearchReport(range).then((r) => r.report),
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useRefreshAiSearch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (range: number) => getAiSearchReport(range, true).then((r) => r.report),
+    onSuccess: (report) => qc.setQueryData(["ai-search", report.range], report),
+  });
+}
+
+export function useSaveAiSearchConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveAiSearchConfig,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-search"] }),
   });
 }
 
