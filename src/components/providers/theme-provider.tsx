@@ -1,5 +1,6 @@
 "use client";
 
+import { SEASONAL_CHANGED_EVENT, SEASONAL_KEY, type SeasonalThemeSetting } from "@/lib/seasonal-themes";
 import {
   createContext,
   useCallback,
@@ -50,25 +51,15 @@ const FORCE_DARK = /^\/edge(?:\/|$)/;
  * or a sign-in page. Kept in sync with the anti-flash script in src/app/layout.tsx.
  */
 export const HALLOWEEN_PATHS = /^\/(app|demo)(?:\/|$)/;
-export const HALLOWEEN_KEY = "foundry.halloween.v1";
 
-/** On by default from 20 October to 2 November, unless someone switched it off. */
-export function halloweenSeason(now: Date): boolean {
-  const m = now.getMonth();
-  const d = now.getDate();
-  return (m === 9 && d >= 20) || (m === 10 && d <= 2);
-}
-
+/** Is Halloween the seasonal theme in force? Copied from the workspace setting into storage. */
 function readHalloween(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const v = window.localStorage.getItem(HALLOWEEN_KEY);
-    if (v === "on") return true;
-    if (v === "off") return false;
+    return window.localStorage.getItem(SEASONAL_KEY) === "halloween";
   } catch {
-    /* storage blocked — fall back to the season */
+    return false;
   }
-  return halloweenSeason(new Date());
 }
 
 function halloweenOn(path: string | null | undefined, wanted: boolean): boolean {
@@ -86,8 +77,6 @@ type ThemeContextValue = {
   /** The Halloween theme is showing on this route. */
   halloween: boolean;
   /** This route can show it (so the pumpkin toggle is offered). */
-  halloweenAvailable: boolean;
-  setHalloween: (on: boolean) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -191,15 +180,38 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event(EVENT));
   }, []);
 
-  const setHalloween = useCallback((on: boolean) => {
-    try {
-      window.localStorage.setItem(HALLOWEEN_KEY, on ? "on" : "off");
-    } catch {
-      /* ignore — still update in-memory + broadcast below */
-    }
-    setWantsHalloween(on);
-    window.dispatchEvent(new Event(EVENT));
-  }, []);
+  // The seasonal theme is a WORKSPACE setting (Settings → Appearance). Read it on the app
+  // (never on the demo, which has no session) and copy it into storage, so the anti-flash
+  // script paints it on the next load before React runs.
+  const onApp = !!pathname && /^\/app(?:\/|$)/.test(pathname);
+  useEffect(() => {
+    if (!onApp) return;
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/settings/seasonal-theme", { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body: { data?: SeasonalThemeSetting } | SeasonalThemeSetting | null) => {
+          if (cancelled || !body) return;
+          const setting = ("data" in body ? body.data : body) as SeasonalThemeSetting | undefined;
+          if (!setting || typeof setting.enabled !== "boolean") return;
+          try {
+            window.localStorage.setItem(SEASONAL_KEY, setting.active ?? "off");
+          } catch {
+            /* storage blocked — still applies for this page */
+          }
+          setWantsHalloween(setting.active === "halloween");
+        })
+        .catch(() => {
+          /* keep what's stored: a failed read must not flip the theme */
+        });
+    };
+    load();
+    window.addEventListener(SEASONAL_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SEASONAL_CHANGED_EVENT, load);
+    };
+  }, [onApp]);
 
   return (
     <ThemeContext.Provider
@@ -210,8 +222,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         forcedLight: isForcedLight(pathname) && !halloween,
         setMode,
         halloween,
-        halloweenAvailable: !!pathname && HALLOWEEN_PATHS.test(pathname),
-        setHalloween,
       }}
     >
       {children}

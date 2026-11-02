@@ -45,6 +45,8 @@ export async function loadMonitorBoard(
   const clients = await prisma.workspaceClient.findMany({
     where: {
       workspaceId,
+      // Only the clients Portal lists: a hidden client (demo, test, a duplicate) is not one.
+      hidden: false,
       // Active clients, plus any client that still has an enabled monitor — a paused or
       // archived client whose service we still watch must not vanish from the board.
       OR: [{ status: "ACTIVE" }, { wiki: { monitors: { some: { enabled: true } } } }],

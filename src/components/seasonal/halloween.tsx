@@ -28,8 +28,7 @@ import { Icon } from "@iconify/react";
 import jackOLantern from "@iconify-icons/fluent-emoji-flat/jack-o-lantern";
 import fluentGhost from "@iconify-icons/fluent-emoji-flat/ghost";
 import notoGhost from "@iconify-icons/noto/ghost";
-import { IconGhost3Filled, IconPumpkinScary } from "@tabler/icons-react";
-import { cn } from "@/lib/format";
+import { IconGhost3Filled } from "@tabler/icons-react";
 import { useTheme } from "@/components/providers/theme-provider";
 import { Lottie } from "@/components/ui/motion/lottie";
 import { HalloweenSpider } from "@/components/seasonal/halloween-spider";
@@ -40,28 +39,6 @@ function useHalloweenShown(): boolean {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return mounted && halloween;
-}
-
-export function HalloweenToggle({ className }: { className?: string }) {
-  const { halloweenAvailable, setHalloween } = useTheme();
-  const halloween = useHalloweenShown();
-  if (!halloweenAvailable) return null;
-  return (
-    <button
-      type="button"
-      onClick={() => setHalloween(!halloween)}
-      aria-pressed={halloween}
-      aria-label={halloween ? "Turn off the Halloween theme" : "Turn on the Halloween theme"}
-      title={halloween ? "Turn off the Halloween theme" : "Halloween theme"}
-      className={cn(
-        "rounded-[6px] p-2 transition hover:bg-[var(--surface-1)]",
-        halloween ? "text-[var(--brand-400)] drop-shadow-[0_0_8px_rgba(249,115,22,0.55)]" : "text-[var(--text-2)]",
-        className,
-      )}
-    >
-      <IconPumpkinScary className="h-6 w-6" stroke={1.75} />
-    </button>
-  );
 }
 
 /** A solid pumpkin sitting on the bottom-right of the logo. Place inside a `relative` wrapper. */

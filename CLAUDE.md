@@ -9327,3 +9327,29 @@ this page only reads them.
   and the pager is always laid out (hidden on a single page). The "some subfolders weren't
   searched" note moved into that line.
 
+### 108.2 Monitors page: current clients only, coloured headers
+
+- The board (and so "Not monitored") lists only clients Portal lists: `hidden: false` in
+  `loadMonitorBoard`. Hidden demo/test clients (Acme Health, Northwind Labs, Testing Portal,
+  syed-project) no longer appear.
+- Every client card's header carries its state's tint, green when all is operational, with the
+  label "Operational · 3/3". Label text uses the `-700` palette shades (`LABEL_TEXT`): the `-500`
+  tokens are ~3:1 on their own `-50` tint.
+
+## 109. Recent Changes (November 2026) — Seasonal themes are a workspace setting
+
+The pumpkin in the header is gone. **Settings → Appearance** (Admins and Super Admins) has one
+switch, "Show a seasonal theme", and while it's on, a dropdown of themes. It applies to everyone
+in the workspace. Supersedes §90's date window and per-browser toggle.
+
+- **Catalogue:** `SEASONAL_THEMES` in `src/lib/seasonal-themes.ts` (Halloween today). Adding
+  Christmas = one entry there, plus its styles and a `data-*` attribute alongside `data-halloween`.
+- **Stored on the workspace:** `seasonalThemeEnabled` (default false) + `seasonalTheme` (keeps
+  the choice while off). Additive. `GET /api/settings/seasonal-theme` (any member),
+  `PUT` (Admin+, only a shipped theme id).
+- **Applied by the theme provider** on `/app` pages: it reads the setting, copies the active id
+  (or `off`) into localStorage `foundry.seasonal.v1`, and the anti-flash script in `layout.tsx`
+  paints from that on the next load. A failed read keeps what's stored. The demo has no session,
+  so it shows whatever the same browser last saw on `/app`.
+- No date default any more: it is off until an admin turns it on.
+

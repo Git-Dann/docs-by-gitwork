@@ -1,14 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { HALLOWEEN_PATHS, halloweenSeason } from "@/components/providers/theme-provider";
+import { HALLOWEEN_PATHS } from "@/components/providers/theme-provider";
+import { SEASONAL_KEY, SEASONAL_THEMES, activeSeasonalTheme, isSeasonalThemeId } from "@/lib/seasonal-themes";
 
 describe("Halloween theme", () => {
-  it("is in season from 20 October to 2 November", () => {
-    expect(halloweenSeason(new Date(2026, 9, 19))).toBe(false);
-    expect(halloweenSeason(new Date(2026, 9, 20))).toBe(true);
-    expect(halloweenSeason(new Date(2026, 9, 31))).toBe(true);
-    expect(halloweenSeason(new Date(2026, 10, 2))).toBe(true);
-    expect(halloweenSeason(new Date(2026, 10, 3))).toBe(false);
+  it("is a workspace setting: off unless an admin switches it on, and only to a theme we ship", () => {
+    expect(activeSeasonalTheme(false, "halloween")).toBeNull();
+    expect(activeSeasonalTheme(true, "halloween")).toBe("halloween");
+    expect(activeSeasonalTheme(true, "easter-2019")).toBeNull();
+    expect(activeSeasonalTheme(true, null)).toBeNull();
+    expect(SEASONAL_THEMES.every((t) => isSeasonalThemeId(t.id))).toBe(true);
+  });
+
+  it("has no date default and no header toggle any more", () => {
+    const shell = readFileSync("src/components/app-shell.tsx", "utf8");
+    expect(shell).not.toContain("HalloweenToggle");
+    expect(readFileSync("src/components/providers/theme-provider.tsx", "utf8")).not.toContain("halloweenSeason");
   });
 
   it("shows on the app and the demo, never on a client deliverable or a sign-in page", () => {
@@ -22,6 +29,7 @@ describe("Halloween theme", () => {
     // The script runs before React, so a page that disagrees would flash the wrong theme.
     const layout = readFileSync("src/app/layout.tsx", "utf8");
     expect(layout).toContain("var hal=/^\\\\/(app|demo)(?:\\\\/|$)/.test(p)");
-    expect(layout).toContain("'foundry.halloween.v1'");
+    expect(layout).toContain(`'${SEASONAL_KEY}'`);
+    expect(layout).toContain("sv==='halloween'");
   });
 });
