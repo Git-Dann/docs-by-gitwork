@@ -8741,6 +8741,18 @@ in. Also Gitwork-only by design: `meet-transcripts`, `wedge-course-feed`, `wedge
 Tests: `src/server/__tests__/crons-per-workspace.test.ts`, `monitor-workspace.test.ts`,
 `tests/isolation/crons.test.ts`.
 
+**Phase 2.2b, Docs (Nov 2026).** Documents, proposals and templates are now looked up inside the
+caller's workspace (`src/server/documents-scope.ts`), so another business's id reads as a 404,
+the same as an id that doesn't exist. The workspace is the one `requireAuthedUser` already serves
+(Gitwork, today), not the token's claim, so no Gitwork row stops matching. The workspace API key
+(no user) still resolves to Gitwork's workspace, as before. Templates show the workspace's own
+plus Foundry's stock ones (`workspaceId` null). 18 entries left `known-leaks.json`.
+⚠️ Not yet scoped: the other `documents/[id]/*` and `proposals/[id]/*` sub-routes (activity, AI,
+deck, DocuSeal, signatures, costing, engagement, export, PDF, relations, timeline, bulk). The suite
+doesn't flag them: either its `{}` body is rejected, or the response holds no seeded marker text.
+Neither proves they're isolated.
+They're the next 2.2b PR.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds
