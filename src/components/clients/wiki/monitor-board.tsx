@@ -31,7 +31,7 @@ import { SkeletonCards } from "@/components/ui/motion/skeleton";
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'DM Serif Display', Georgia, serif";
 
-const STATE: Record<BoardMonitorState, { label: string; color: string; tint: string }> = {
+export const STATE: Record<BoardMonitorState, { label: string; color: string; tint: string }> = {
   up: { label: "Up", color: "var(--success-500)", tint: "var(--success-50)" },
   slow: { label: "Slow", color: "var(--warning-500)", tint: "var(--warning-50)" },
   flaky: { label: "Unstable", color: "var(--warning-500)", tint: "var(--warning-50)" },
@@ -40,7 +40,7 @@ const STATE: Record<BoardMonitorState, { label: string; color: string; tint: str
   pending: { label: "Waiting", color: "var(--text-3)", tint: "var(--surface-1)" },
 };
 
-const LEVEL: Record<BoardLevel, BoardMonitorState> = {
+export const LEVEL: Record<BoardLevel, BoardMonitorState> = {
   operational: "up",
   degraded: "flaky",
   outage: "down",
@@ -48,7 +48,7 @@ const LEVEL: Record<BoardLevel, BoardMonitorState> = {
   empty: "pending",
 };
 
-function relTime(iso: string | null): string {
+export function relTime(iso: string | null): string {
   if (!iso) return "never";
   const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (s < 60) return "just now";
@@ -58,7 +58,7 @@ function relTime(iso: string | null): string {
 }
 
 /** "api.fellasloaded.com/api/feed/categories/" — the scheme is noise on a card this size. */
-function shortTarget(target: string): string {
+export function shortTarget(target: string): string {
   return target.replace(/^https?:\/\//, "");
 }
 
@@ -75,7 +75,7 @@ const TONE: Record<BoardMonitorState, StatusDotTone> = {
  * The motion library's status dot (docs/motion.md). Only a DOWN service pings — "look at this"
  * stays rare, so on a healthy board nothing moves and a failure is the one thing that does.
  */
-function Dot({ state, still = false }: { state: BoardMonitorState; still?: boolean }) {
+export function Dot({ state, still = false }: { state: BoardMonitorState; still?: boolean }) {
   return <StatusDot tone={TONE[state]} motion={state === "down" && !still ? "ping" : "none"} />;
 }
 

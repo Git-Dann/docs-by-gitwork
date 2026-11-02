@@ -41,6 +41,7 @@ import {
   runWikiMonitorApi,
   getWikiMonitorSuggestionsApi,
   getWikiMonitorBoardApi,
+  getMonitorsPageApi,
   setWikiMonitorsEnabledApi,
   setWikiIntakeEnabledApi,
   setWikiCodeEnabledApi,
@@ -1133,5 +1134,15 @@ export function useSetWikiDocumentsEnabled(slug: string) {
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiDocumentsEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** The Monitors page (/app/monitors): every client's monitors, re-read each minute. */
+export function useMonitorsPage(enabled = true) {
+  return useQuery({
+    queryKey: ["monitors-page"],
+    queryFn: () => getMonitorsPageApi(),
+    enabled,
+    refetchInterval: 60_000,
   });
 }

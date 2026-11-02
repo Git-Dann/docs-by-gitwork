@@ -24,6 +24,15 @@ export interface MonitorBoardDTO {
   readAt: string;
 }
 
+export interface MonitorsPageDTO extends MonitorBoardDTO {
+  /**
+   * Clients this person can open in Portal, so the page links only where the link works:
+   * null = every client. Seeing a client's monitors here does not grant access to the
+   * client — the page shows status, and managing a monitor stays in that client's wiki.
+   */
+  openableClientIds: string[] | null;
+}
+
 /**
  * @param clientIds null = every client in the workspace; otherwise only these (a restricted
  *   user sees the clients they could open anyway — the board never widens anyone's view).

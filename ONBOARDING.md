@@ -195,8 +195,8 @@ npm run audit:clipping -- --self-test
   `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is
   canonical, and for which permission gates each route.
 
-  **The sidebar is not the full list of surfaces.** It holds the seven products (Foundry HQ ·
-  Pulse · Staff · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
+  **The sidebar is not the full list of surfaces.** It holds the products (Foundry HQ ·
+  Pulse · Staff · Docs · Portal · Care · Monitors · Backstage) plus Handbook, and everything else has an
   entry point instead — Studio and the labs in **Settings → Labs**, Analytics and Starters as
   mono links in the **HQ context strip**, Settings and view-as in the **profile flyout**. Adding
   a surface? CLAUDE.md §4a decides where it goes; a new sidebar item is almost never the answer.

@@ -333,6 +333,20 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     ],
   },
   {
+    // Every client's uptime monitors on one page (/app/monitors). A MODULE, so STAFF and
+    // ADMIN inherit it by default and `reconcileNewPermissions` adds it to saved matrices
+    // on boot; DEVELOPER does not, so a developer gets it only when granted per person.
+    product: "Monitors",
+    permissions: [
+      {
+        id: "monitors",
+        category: "module",
+        label: "Monitors",
+        description: "See every client's uptime monitors and open incidents in one place.",
+      },
+    ],
+  },
+  {
     product: "Backstage",
     permissions: [
       { id: "backstage", category: "module", label: "Backstage", description: "Book leave, claim expenses, see the team calendar." },

@@ -76,8 +76,10 @@ export const WORKSPACE_MODULES: WorkspaceModuleDef[] = [
     id: "clients",
     label: "Portal",
     description: "Clients, projects, tasks and client wikis",
-    pagePrefixes: ["/app/portal", "/app/clients", "/app/projects"],
-    apiPrefixes: [],
+    // /app/monitors reads the uptime monitors that live in client wikis, so a business
+    // without Portal has none to show.
+    pagePrefixes: ["/app/portal", "/app/clients", "/app/projects", "/app/monitors"],
+    apiPrefixes: ["/api/monitors"],
   },
   {
     id: "support",

@@ -13,6 +13,7 @@ import {
   DocumentTextIcon,
   HomeModernIcon,
   LifebuoyIcon,
+  ServerStackIcon,
   SignalIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -88,6 +89,7 @@ const ALL_NAV_MODULES = [
   "proposals",
   "clients",
   "support",
+  "monitors",
   "backstage",
   "studio",
 ];
@@ -268,6 +270,13 @@ export function AppShell({
         description: "Support and aftercare",
         icon: LifebuoyIcon,
         module: "support",
+      },
+      {
+        href: "/app/monitors",
+        label: "Monitors",
+        description: "Client uptime",
+        icon: ServerStackIcon,
+        module: "monitors",
       },
       {
         href: "/app/backstage",
