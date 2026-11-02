@@ -4399,7 +4399,7 @@ export function resolveDemoApi(
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
   if (pathname === "/api/pulse/ai-search") {
-    return { report: demoAiSearchReport(parseAiSearchRange(search?.get("range"))) };
+    return { report: demoAiSearchReport(parseAiSearchRange(search?.get("range")), { refresh: search?.get("refresh") === "1" }) };
   }
   if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };
   {

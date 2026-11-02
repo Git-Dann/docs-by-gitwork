@@ -1,65 +1,82 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowPathIcon, CheckIcon, DocumentDuplicateIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowPathIcon,
+  CheckIcon,
+  DocumentDuplicateIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
 import { AreaSparkline, MONO, SERIF, StatTile, TrendBadge, WidgetCard } from "@/components/analytics/analytics-widgets";
 import { Button } from "@/components/ui/button";
 import { Pager } from "@/components/ui/pager";
 import { SortHeader } from "@/components/ui/sort-header";
 import { useAiSearchReport, useRefreshAiSearch, useSaveAiSearchConfig } from "@/hooks/use-pulse";
 import { usePermissions } from "@/hooks/use-permissions";
-import { cn, formatDate } from "@/lib/format";
+import { cn, formatRelative } from "@/lib/format";
 import {
   AI_SEARCH_RANGES,
   DEFAULT_AI_SEARCH_RANGE,
   changeBetween,
+  filterQueries,
   formatPeriod,
+  freshnessOf,
+  lastKnown,
   type AiSearchRange,
   type AiSearchReport,
   type AiVisitsReport,
+  type Freshness,
   type GoogleReport,
-  filterQueries,
   type QueryBand,
   type QueryComparison,
   type QuerySortKey,
   type SourceState,
+  type SourceSync,
 } from "@/lib/ai-search";
 
 /**
  * Pulse → AI search: how Gitwork shows up on Google and through AI assistants. Shared by the
  * app page and the demo. Internal-only content; the CALLER wraps it (`InternalOnly`).
  *
- * Every figure says which period it covers, because the two sources lag differently
- * (Search Console 3 days, GA4 1), and every source that couldn't be read says why rather
- * than showing a zero.
+ * Every card says when its figures were read and the last day they cover. A source whose
+ * latest sync failed keeps showing its last good figures, marked as such, with the reason;
+ * a source never read shows why rather than a zero.
  */
 export function AiSearchView() {
   const [range, setRange] = useState<AiSearchRange>(DEFAULT_AI_SEARCH_RANGE);
   const query = useAiSearchReport(range);
   const refresh = useRefreshAiSearch();
   const report = query.data;
+  // Re-render each minute so "synced 4m ago" stays true while the page is open.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <RangeControl value={range} onChange={setRange} />
-        <div className="flex items-center gap-3">
-          {report ? (
-            <span className="font-mono text-[11px] uppercase tracking-[0.05em] text-[var(--text-4)]">
-              Updated {formatDate(report.generatedAt)}
-            </span>
-          ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {report ? <LastSync report={report} /> : null}
           <Button
             size="sm"
             variant="secondary"
-            loading={refresh.isPending}
+            loading={refresh.isPending || query.isFetching}
             leadingIcon={<ArrowPathIcon className="h-4 w-4" />}
             onClick={() => refresh.mutate(range)}
           >
-            Refresh
+            {refresh.isPending ? "Syncing…" : "Sync now"}
           </Button>
         </div>
       </div>
+      {refresh.isError ? (
+        <p role="alert" className="text-sm text-[var(--danger-500)]">
+          Sync didn&apos;t run: {(refresh.error as Error).message}
+        </p>
+      ) : null}
 
       {query.isError ? (
         <WidgetCard number="01" label="AI search">
@@ -73,6 +90,73 @@ export function AiSearchView() {
         <Report report={report} />
       )}
     </div>
+  );
+}
+
+function exact(iso: string) {
+  return new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+}
+
+function dayLabel(day: string) {
+  return formatPeriod({ start: day, end: day }).replace(/^\d+–/, "");
+}
+
+/** When the page last asked Google, and whether every source answered. */
+function LastSync({ report }: { report: AiSearchReport }) {
+  const now = new Date();
+  const states = [freshnessOf(report.google, now), freshnessOf(report.aiVisits, now)];
+  const problem = states.some((f) => f.kind === "failing" || f.kind === "stale");
+  return (
+    <span
+      className={cn(
+        "font-mono text-[11px] uppercase tracking-[0.05em]",
+        problem ? "text-[var(--warning-500)]" : "text-[var(--text-4)]",
+      )}
+      title={`Last sync ${exact(report.attemptedAt)}`}
+    >
+      Last sync {formatRelative(report.attemptedAt)}
+      {problem ? " · not all sources up to date" : ""}
+    </span>
+  );
+}
+
+/** The one-line freshness readout in a card's header. */
+function syncStatus(f: Freshness) {
+  if (f.kind === "none") return undefined;
+  const through = `Data to ${dayLabel(f.dataThrough)}`;
+  if (f.kind === "fresh") {
+    return <span title={`Synced ${exact(f.syncedAt)}`}>{through} · synced {formatRelative(f.syncedAt)}</span>;
+  }
+  return (
+    <span className="text-[var(--warning-500)]" title={`Last good sync ${exact(f.syncedAt)}`}>
+      {through} · out of date
+    </span>
+  );
+}
+
+/** Said above a source's figures when they aren't from the latest sync, or are old. */
+function FreshnessNote({ name, f }: { name: string; f: Freshness }) {
+  if (f.kind === "fresh" || f.kind === "none") return null;
+  const text =
+    f.kind === "failing"
+      ? `${name} couldn't be synced ${formatRelative(f.attemptedAt)}: ${f.message} These are the last good figures, synced ${exact(f.syncedAt)}.`
+      : `${name} was last synced ${exact(f.syncedAt)}. Press Sync now for current figures.`;
+  return (
+    <p className="flex items-start gap-2 rounded-[6px] border border-[var(--border-2)] bg-[var(--warning-50)] px-3 py-2 text-sm text-[var(--text-2)]">
+      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning-500)]" />
+      <span>{text}</span>
+    </p>
+  );
+}
+
+function Caveats({ items }: { items: readonly string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <ul className="space-y-1 text-xs text-[var(--text-3)]">
+      {items.map((c) => (
+        <li key={c}>{c}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -103,39 +187,87 @@ function RangeControl({ value, onChange }: { value: AiSearchRange; onChange: (r:
 }
 
 function Report({ report }: { report: AiSearchReport }) {
-  const google = report.google.status === "ok" ? report.google.data : null;
-  const visits = report.aiVisits.status === "ok" ? report.aiVisits.data : null;
+  const now = new Date();
+  const google = lastKnown(report.google);
+  const visits = lastKnown(report.aiVisits);
+  const gf = freshnessOf(report.google, now);
+  const vf = freshnessOf(report.aiVisits, now);
   return (
     <>
       <WidgetCard
         number="01"
         label="At a glance"
-        status={google || visits ? "vs previous period" : undefined}
-        hint="Google figures are average positions from Search Console. AI visits are sessions GA4 recorded from an AI assistant."
+        status={google || visits ? "vs the period before" : undefined}
+        hint="Google figures are average positions per search, from Search Console. AI visits are sessions GA4 recorded from an AI assistant."
       >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <GoogleTile state={report.google} label="Queries we appear for" pick={(s) => s.queries} />
-          <GoogleTile state={report.google} label="Google top 10" pick={(s) => s.top10} ofTotal />
-          <GoogleTile state={report.google} label="Google top 3" pick={(s) => s.top3} ofTotal />
-          <VisitsTile state={report.aiVisits} />
+        <div className="space-y-3">
+          <FreshnessNote name="Search Console" f={gf} />
+          <FreshnessNote name="Google Analytics" f={vf} />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <GoogleTile state={report.google} label="Searches we appear in" pick={(s) => s.queries} />
+            <GoogleTile state={report.google} label="Google top 10" pick={(s) => s.top10} ofTotal />
+            <GoogleTile state={report.google} label="Google top 3" pick={(s) => s.top3} ofTotal />
+            <VisitsTile state={report.aiVisits} />
+          </div>
+          <PeriodLine google={google} visits={visits} />
         </div>
       </WidgetCard>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <WidgetCard number="02" label="AI assistants" status={visits ? formatPeriod(visits.period) : undefined}>
-          {visits ? <AssistantsTable data={visits} /> : <SourceMessage state={report.aiVisits} />}
+        <WidgetCard number="02" label="AI assistants" status={syncStatus(vf)}>
+          {visits ? (
+            <div className="space-y-3">
+              <AssistantsTable data={visits.data} />
+              <Caveats
+                items={[
+                  ...visits.caveats,
+                  "Counts only visits where the assistant passed itself on as the source. Some AI clicks arrive with no referrer and GA4 records them as direct.",
+                ]}
+              />
+            </div>
+          ) : (
+            <SourceMessage state={report.aiVisits} />
+          )}
         </WidgetCard>
-        <WidgetCard number="03" label="Pages AI sends people to" status={visits ? formatPeriod(visits.period) : undefined}>
-          {visits ? <PagesTable data={visits} /> : <SourceMessage state={report.aiVisits} />}
+        <WidgetCard number="03" label="Pages AI sends people to" status={syncStatus(vf)}>
+          {visits ? <PagesTable data={visits.data} /> : <SourceMessage state={report.aiVisits} />}
         </WidgetCard>
       </div>
 
-      <WidgetCard number="04" label="Google queries" status={google ? formatPeriod(google.period) : undefined}>
-        {google ? <QueriesTable data={google} /> : <SourceMessage state={report.google} />}
+      <WidgetCard number="04" label="Google searches" status={syncStatus(gf)}>
+        {google ? (
+          <div className="space-y-3">
+            <QueriesTable data={google.data} />
+            <Caveats items={google.caveats} />
+          </div>
+        ) : (
+          <SourceMessage state={report.google} />
+        )}
       </WidgetCard>
 
       <SetupCard number="05" report={report} />
     </>
+  );
+}
+
+/** Which dates each half of the page covers, so two different lags are never mistaken for one. */
+function PeriodLine({ google, visits }: { google: SourceSync<GoogleReport> | null; visits: SourceSync<AiVisitsReport> | null }) {
+  if (!google && !visits) return null;
+  return (
+    <p className="text-xs text-[var(--text-3)]">
+      {google ? (
+        <>
+          Google: {formatPeriod(google.data.period)}, compared with {formatPeriod(google.data.previousPeriod)}. Ends on the last
+          day Search Console has finished.{" "}
+        </>
+      ) : null}
+      {visits ? (
+        <>
+          AI visits: {formatPeriod(visits.data.period)}, compared with {formatPeriod(visits.data.previousPeriod)}. Ends two days
+          back, once GA4 has finished processing.
+        </>
+      ) : null}
+    </p>
   );
 }
 
@@ -154,7 +286,7 @@ function OfTotal({ n, of }: { n: number; of: number }) {
   );
 }
 
-function Unread({ label, state }: { label: string; state: { status: string; message: string } }) {
+function Unread({ label, state }: { label: string; state: { status: string } }) {
   return (
     <StatTile
       figure={<span className="text-[var(--text-4)]">—</span>}
@@ -175,14 +307,15 @@ function GoogleTile({
   pick: (s: GoogleReport["current"]) => number;
   ofTotal?: boolean;
 }) {
-  if (state.status !== "ok") return <Unread label={label} state={state} />;
-  const { current, previous, truncated } = state.data;
+  const sync = lastKnown(state);
+  if (!sync) return <Unread label={label} state={state} />;
+  const { current, previous, truncated } = sync.data;
   const now = pick(current);
   const before = pick(previous);
   return (
     <StatTile
       figure={
-        <span className="inline-flex flex-wrap items-baseline gap-x-2">
+        <span className={cn("inline-flex flex-wrap items-baseline gap-x-2", state.status !== "ok" && "opacity-60")}>
           <span>{ofTotal ? <OfTotal n={now} of={current.queries} /> : figure(now)}{truncated ? "+" : ""}</span>
           <TrendBadge delta={changeBetween(now, before)} />
         </span>
@@ -195,10 +328,11 @@ function GoogleTile({
 
 function VisitsTile({ state }: { state: SourceState<AiVisitsReport> }) {
   const label = "Visits from AI assistants";
-  if (state.status !== "ok") return <Unread label={label} state={state} />;
-  const { current, previousTotal } = state.data;
+  const sync = lastKnown(state);
+  if (!sync) return <Unread label={label} state={state} />;
+  const { current, previousTotal, period } = sync.data;
   return (
-    <div className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-3">
+    <div className={cn("rounded-[8px] border border-[var(--border-2)] px-3.5 py-3", state.status !== "ok" && "opacity-60")}>
       <div className="flex items-baseline gap-2">
         <span style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1, letterSpacing: "-0.02em" }} className="tabular-nums text-[var(--text-1)]">
           {figure(current.total)}
@@ -208,7 +342,7 @@ function VisitsTile({ state }: { state: SourceState<AiVisitsReport> }) {
       <div className="mt-1.5" style={{ fontFamily: MONO, fontSize: 10, fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-4)" }}>
         {label}
       </div>
-      <div className="mt-2 h-10" title={`Daily, ${formatPeriod(state.data.period)}`}>
+      <div className="mt-2 h-10" title={`Visits per day, ${formatPeriod(period)}`}>
         <AreaSparkline points={current.series.map((d) => d.sessions)} height={40} />
       </div>
       <div className="mt-0.5 text-xs text-[var(--text-3)]">Previous {figure(previousTotal)}</div>
@@ -401,8 +535,12 @@ function QueriesTable({ data }: { data: GoogleReport }) {
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
-function sourceLine(name: string, state: { status: string; message?: string }) {
+function sourceLine(name: string, state: SourceState<unknown>) {
+  const sync = lastKnown(state);
   const ok = state.status === "ok";
+  const detail = ok
+    ? ` · synced ${formatRelative(state.syncedAt)}, data to ${dayLabel(state.dataThrough)}`
+    : ` · ${state.message}${sync ? ` Last good sync ${exact(sync.syncedAt)}.` : ""}`;
   return (
     <li className="flex items-start gap-2 text-sm">
       <span
@@ -414,7 +552,7 @@ function sourceLine(name: string, state: { status: string; message?: string }) {
       />
       <span>
         <span className="font-medium text-[var(--text-1)]">{name}</span>
-        <span className="text-[var(--text-3)]">{ok ? " · reading" : ` · ${"message" in state ? state.message : ""}`}</span>
+        <span className="text-[var(--text-3)]">{detail}</span>
       </span>
     </li>
   );
@@ -434,8 +572,8 @@ function SetupCard({ number, report }: { number: string; report: AiSearchReport 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-3">
           <ul className="space-y-2">
-            {sourceLine("Search Console", report.google)}
-            {sourceLine("Google Analytics", report.aiVisits)}
+            {sourceLine("Search Console", report.google as SourceState<unknown>)}
+            {sourceLine("Google Analytics", report.aiVisits as SourceState<unknown>)}
           </ul>
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-[var(--text-2)]">
             <li>

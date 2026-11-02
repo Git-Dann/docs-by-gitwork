@@ -1,6 +1,7 @@
 import {
   GA4_LAG_DAYS,
-  SEARCH_CONSOLE_LAG_DAYS,
+  googleCaveats,
+  ga4Caveats,
   compareQueries,
   daysIn,
   periodsFor,
@@ -71,8 +72,9 @@ function visits(days: string[], seed: number, scale: number): AiVisitRow[] {
   return rows;
 }
 
-export function demoAiSearchReport(range: AiSearchRange, now = new Date()): AiSearchReport {
-  const sc = periodsFor(range, now, SEARCH_CONSOLE_LAG_DAYS);
+export function demoAiSearchReport(range: AiSearchRange, opts: { refresh?: boolean; now?: Date } = {}): AiSearchReport {
+  const now = opts.now ?? new Date();
+  const sc = periodsFor(range, now, 3);
   const ga = periodsFor(range, now, GA4_LAG_DAYS);
   const nowQ = queries(range * 7, 4, 180);
   const beforeQ = queries(range * 7 + 1, 0, 150);
@@ -80,22 +82,37 @@ export function demoAiSearchReport(range: AiSearchRange, now = new Date()): AiSe
   const beforeV = summariseAiVisits(visits(daysIn(ga.previous), range + 1, 1), ga.previous);
   const pages = ["/", "/services/mvp", "/services/ai", "/case-studies/fellas", "/blog/how-much-does-an-app-cost", "/contact"];
   const total = summariseAiVisits(nowV, ga.current).total;
+  const summary = summariseQueries(nowQ);
+  // Google's totals include the rare searches it won't list, so they sit above the listed sum.
+  const totals = {
+    current: { clicks: Math.round(summary.clicks * 1.12), impressions: Math.round(summary.impressions * 1.18) },
+    previous: { clicks: Math.round(summariseQueries(beforeQ).clicks * 1.1), impressions: Math.round(summariseQueries(beforeQ).impressions * 1.16) },
+  };
+  // "Sync now" in the demo syncs now; otherwise the last sync was 12 minutes ago.
+  const syncedAt = new Date(now.getTime() - (opts.refresh ? 0 : 12 * 60 * 1000)).toISOString();
   return {
     range,
-    generatedAt: now.toISOString(),
+    attemptedAt: syncedAt,
     google: {
       status: "ok",
+      syncedAt,
+      dataThrough: sc.current.end,
+      caveats: googleCaveats({ listedImpressions: summary.impressions, totalImpressions: totals.current.impressions, truncated: false }),
       data: {
         period: sc.current,
         previousPeriod: sc.previous,
-        current: summariseQueries(nowQ),
+        current: summary,
         previous: summariseQueries(beforeQ),
+        totals,
         truncated: false,
         queries: compareQueries(nowQ, beforeQ),
       },
     },
     aiVisits: {
       status: "ok",
+      syncedAt,
+      dataThrough: ga.current.end,
+      caveats: ga4Caveats({ thresholded: true, otherRow: false, truncated: false }),
       data: {
         period: ga.current,
         previousPeriod: ga.previous,

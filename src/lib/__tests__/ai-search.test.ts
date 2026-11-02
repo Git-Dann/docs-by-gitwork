@@ -7,6 +7,12 @@ import {
   daysIn,
   filterQueries,
   formatPeriod,
+  freshnessOf,
+  ga4Caveats,
+  googleCaveats,
+  lastKnown,
+  mergeSync,
+  periodsEnding,
   normaliseGa4PropertyId,
   normaliseSearchConsoleSite,
   parseAiSearchConfig,
@@ -166,5 +172,51 @@ describe("config", () => {
   it("formats a period", () => {
     expect(formatPeriod({ start: "2026-10-01", end: "2026-10-28" })).toBe("1–28 Oct");
     expect(formatPeriod({ start: "2026-09-29", end: "2026-10-26" })).toBe("29 Sep – 26 Oct");
+  });
+});
+
+describe("freshness and carrying over the last good sync", () => {
+  const good = { data: { n: 1 }, syncedAt: "2026-11-02T09:00:00Z", dataThrough: "2026-10-30", caveats: [] };
+  const now = new Date("2026-11-02T10:00:00Z");
+
+  it("a fresh read is fresh; one older than a day is stale", () => {
+    expect(freshnessOf({ status: "ok", ...good }, now).kind).toBe("fresh");
+    expect(freshnessOf({ status: "ok", ...good }, new Date("2026-11-03T10:00:01Z")).kind).toBe("stale");
+  });
+
+  it("a failure keeps the previous good read, and says it is failing", () => {
+    const failed = { status: "error" as const, message: "down", attemptedAt: "2026-11-02T10:00:00Z", lastGood: null };
+    const merged = mergeSync(failed, { status: "ok", ...good });
+    expect(merged.status === "error" && merged.lastGood?.syncedAt).toBe(good.syncedAt);
+    expect(freshnessOf(merged, now)).toMatchObject({ kind: "failing", syncedAt: good.syncedAt, message: "down" });
+    // Two failures in a row still hold the same last good read.
+    const twice = mergeSync({ ...failed, attemptedAt: "2026-11-02T11:00:00Z" }, merged);
+    expect(lastKnown(twice)?.syncedAt).toBe(good.syncedAt);
+  });
+
+  it("a success always replaces the old figures", () => {
+    const next = { status: "ok" as const, ...good, syncedAt: "2026-11-02T10:00:00Z" };
+    expect(mergeSync(next, { status: "ok", ...good })).toBe(next);
+  });
+
+  it("never read at all is 'none', not zero", () => {
+    expect(freshnessOf({ status: "not_configured", message: "x", attemptedAt: "", lastGood: null }, now).kind).toBe("none");
+  });
+});
+
+describe("caveats", () => {
+  it("states the share of impressions from searches Google won't list", () => {
+    expect(googleCaveats({ listedImpressions: 80, totalImpressions: 100, truncated: false })[0]).toContain("20%");
+    expect(googleCaveats({ listedImpressions: 100, totalImpressions: 100, truncated: false })).toEqual([]);
+    expect(googleCaveats({ listedImpressions: 10, totalImpressions: 0, truncated: true })).toHaveLength(1);
+  });
+
+  it("passes on what GA4 says it withheld", () => {
+    expect(ga4Caveats({ thresholded: false, otherRow: false, truncated: false })).toEqual([]);
+    expect(ga4Caveats({ thresholded: true, otherRow: true, truncated: true })).toHaveLength(3);
+  });
+
+  it("periodsEnding ends exactly on the given day", () => {
+    expect(periodsEnding(7, "2026-10-30").current).toEqual({ start: "2026-10-24", end: "2026-10-30" });
   });
 });

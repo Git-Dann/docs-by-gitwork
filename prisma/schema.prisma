@@ -6031,3 +6031,21 @@ model StaffDocument {
   @@index([workspaceId, recordId])
   @@index([workspaceId, expiresOn])
 }
+
+/// Pulse → AI search: the last sync of one workspace's report for one range (7, 28 or 90
+/// days). Each source in `report` carries when it was last read and, when the latest read
+/// failed, the last good one. Overwritten on every sync; deleted when the properties change,
+/// so figures from a previous property are never shown as this one's.
+model AiSearchSync {
+  /// `${workspaceId}:${range}`
+  id          String   @id
+  workspaceId String
+  range       Int
+  /// AiSearchReport (src/lib/ai-search.ts).
+  report      Json
+  /// When this sync ran.
+  attemptedAt DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}

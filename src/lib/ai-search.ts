@@ -15,12 +15,21 @@ export type AiSearchRange = (typeof AI_SEARCH_RANGES)[number];
 export const DEFAULT_AI_SEARCH_RANGE: AiSearchRange = 28;
 
 /**
- * Search Console data lands 2–3 days late, so a period ending yesterday would compare a
- * short current week against a complete previous one. Both periods end this many days back.
+ * Search Console tells us the first day it is still processing (`firstIncompleteDate`), and
+ * both periods end the day before it, so a complete week is never compared against a
+ * half-collected one. This fallback is only used when Google returns no recent days at all.
  */
-export const SEARCH_CONSOLE_LAG_DAYS = 3;
-/** GA4 has yesterday by this morning. */
-export const GA4_LAG_DAYS = 1;
+export const SEARCH_CONSOLE_FALLBACK_LAG_DAYS = 3;
+/**
+ * GA4 gives no completeness signal, and Google documents up to 48 hours of processing. Ending
+ * two days back means every day in the period is finished.
+ */
+export const GA4_LAG_DAYS = 2;
+
+/** A synced report is re-read from Google once it is this old, on the next look at the page. */
+export const SYNC_EVERY_MINUTES = 30;
+/** Figures last read longer ago than this are flagged as out of date, whatever the reason. */
+export const STALE_AFTER_HOURS = 24;
 
 export function parseAiSearchRange(value: string | null | undefined): AiSearchRange {
   const n = Number(value);
@@ -34,11 +43,11 @@ export interface Period {
   end: string;
 }
 
-function isoDay(d: Date): string {
+export function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function addDays(d: Date, days: number): Date {
+export function addDays(d: Date, days: number): Date {
   const out = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   out.setUTCDate(out.getUTCDate() + days);
   return out;
@@ -46,7 +55,12 @@ function addDays(d: Date, days: number): Date {
 
 /** The current period (`range` days, ending `lagDays` before today) and the one before it. */
 export function periodsFor(range: AiSearchRange, today: Date, lagDays: number): { current: Period; previous: Period } {
-  const end = addDays(today, -lagDays);
+  return periodsEnding(range, isoDay(addDays(today, -lagDays)));
+}
+
+/** The current period (`range` days, ending on `endDay`, inclusive) and the one before it. */
+export function periodsEnding(range: AiSearchRange, endDay: string): { current: Period; previous: Period } {
+  const end = new Date(`${endDay}T00:00:00Z`);
   const start = addDays(end, -(range - 1));
   const prevEnd = addDays(start, -1);
   const prevStart = addDays(prevEnd, -(range - 1));
@@ -287,14 +301,74 @@ export function parseAiSearchConfig(raw: unknown): AiSearchConfig {
 
 export type SourceFailure = "not_configured" | "no_credentials" | "no_access" | "error";
 
-export type SourceState<T> = { status: "ok"; data: T } | { status: SourceFailure; message: string };
+/** One successful read of a source: the figures, when we read them, and how far they go. */
+export interface SourceSync<T> {
+  data: T;
+  /** When Foundry read this from Google. */
+  syncedAt: string;
+  /** The last day the figures cover (YYYY-MM-DD). */
+  dataThrough: string;
+  /** What Google withheld or capped, in plain words. Empty when nothing was. */
+  caveats: string[];
+}
+
+/**
+ * A source is either read now, or not — and when it isn't, the last good read is kept
+ * alongside the reason, so the page can show the last known figures clearly labelled as
+ * such instead of either a zero or nothing.
+ */
+export type SourceState<T> =
+  | ({ status: "ok" } & SourceSync<T>)
+  | { status: SourceFailure; message: string; attemptedAt: string; lastGood: SourceSync<T> | null };
+
+export function lastKnown<T>(state: SourceState<T>): SourceSync<T> | null {
+  return state.status === "ok" ? state : state.lastGood;
+}
+
+export type Freshness =
+  /** Read on the last sync, within STALE_AFTER_HOURS. */
+  | { kind: "fresh"; syncedAt: string; dataThrough: string }
+  /** Read on the last sync, but that was too long ago. */
+  | { kind: "stale"; syncedAt: string; dataThrough: string }
+  /** The last sync failed; these are the figures from the one before. */
+  | { kind: "failing"; message: string; attemptedAt: string; syncedAt: string; dataThrough: string }
+  /** Never read. */
+  | { kind: "none"; message: string };
+
+export function freshnessOf<T>(state: SourceState<T>, now: Date): Freshness {
+  const old = (iso: string) => now.getTime() - Date.parse(iso) > STALE_AFTER_HOURS * 3600 * 1000;
+  if (state.status === "ok") {
+    return { kind: old(state.syncedAt) ? "stale" : "fresh", syncedAt: state.syncedAt, dataThrough: state.dataThrough };
+  }
+  if (state.lastGood) {
+    return {
+      kind: "failing",
+      message: state.message,
+      attemptedAt: state.attemptedAt,
+      syncedAt: state.lastGood.syncedAt,
+      dataThrough: state.lastGood.dataThrough,
+    };
+  }
+  return { kind: "none", message: state.message };
+}
+
+/**
+ * Keeps the previous good read when this one failed. A failure never discards figures we
+ * already had, and a success always replaces them.
+ */
+export function mergeSync<T>(next: SourceState<T>, previous: SourceState<T> | null | undefined): SourceState<T> {
+  if (next.status === "ok" || !previous) return next;
+  return { ...next, lastGood: lastKnown(previous) };
+}
 
 export interface GoogleReport {
   period: Period;
   previousPeriod: Period;
   current: QuerySummary;
   previous: QuerySummary;
-  /** Search Console returns at most 25,000 rows; true when we hit that, so counts are "at least". */
+  /** Google's own totals, which include the queries it won't list. */
+  totals: { current: { clicks: number; impressions: number }; previous: { clicks: number; impressions: number } };
+  /** More rows than we read (100,000), so counts are "at least". */
   truncated: boolean;
   queries: QueryComparison[];
 }
@@ -310,10 +384,41 @@ export interface AiVisitsReport {
 
 export interface AiSearchReport {
   range: AiSearchRange;
-  generatedAt: string;
+  /** When the last sync ran, whether or not every source answered. */
+  attemptedAt: string;
   google: SourceState<GoogleReport>;
   aiVisits: SourceState<AiVisitsReport>;
   setup: AiSearchConfig & { serviceAccountEmail: string | null };
+}
+
+/** What Search Console held back, from the gap between its totals and the rows it listed. */
+export function googleCaveats(input: {
+  listedImpressions: number;
+  totalImpressions: number;
+  truncated: boolean;
+}): string[] {
+  const out: string[] = [];
+  if (input.totalImpressions > 0) {
+    const hidden = Math.max(0, input.totalImpressions - input.listedImpressions) / input.totalImpressions;
+    if (hidden >= 0.01) {
+      out.push(
+        `Google doesn't list rare searches, for privacy. They were ${Math.round(hidden * 100)}% of the times we were shown; the query counts leave them out.`,
+      );
+    }
+  }
+  if (input.truncated) out.push("Google listed more than 100,000 searches; only the first 100,000 are counted.");
+  return out;
+}
+
+/** What GA4 said it withheld or rolled up, from its own report metadata. */
+export function ga4Caveats(input: { thresholded: boolean; otherRow: boolean; truncated: boolean }): string[] {
+  const out: string[] = [];
+  if (input.thresholded) {
+    out.push("GA4 hides small numbers to protect privacy (Google Signals is on), so these counts may be slightly low.");
+  }
+  if (input.otherRow) out.push("GA4 grouped some rows as \"(other)\", so a few visits may be missing from the breakdown.");
+  if (input.truncated) out.push("GA4 returned more rows than Foundry read, so the breakdown is incomplete.");
+  return out;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
