@@ -23,6 +23,10 @@ import {
   type Prisma as PrismaTypes,
 } from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
+import { isAtLeast } from "@/types/auth";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import { seedAccountUserWhere } from "@/server/seed-accounts";
+import { canReachDocument, documentScopeWhere } from "@/server/mcp/document-scope";
 import {
   assertCan,
   allowedDocTypesForUser,
@@ -110,7 +114,6 @@ import {
   updateTask,
   addTaskComment,
 } from "@/server/tasks";
-import { listMembers } from "@/server/team";
 import { proposalListSelect, serializeProposalListItem } from "@/server/proposals";
 import { listClientMeetings } from "@/server/meetings";
 import { allocateDocumentNumber, updateDocument } from "@/server/documents";
@@ -2291,20 +2294,27 @@ const TOOLS: ToolDef[] = [
   {
     name: "list_members",
     description:
-      "List workspace members. Returns id, name, email, role. Use to find " +
-      "assigneeIds for create_task / update_task.",
+      "List the workspace's current members: id, name and role (Admins also get email). " +
+      "Use to find assigneeIds for create_task / update_task.",
     inputSchema: {
       type: "object",
       properties: {},
       additionalProperties: false,
     },
-    handler: async () => {
-      const members = await listMembers();
+    handler: async (user) => {
+      // Active members only — an archived person can't be assigned anything — and email only
+      // for Admins: picking an assignee needs a name, not everyone's address.
+      const members = await prisma.workspaceMember.findMany({
+        where: { workspaceId: user.workspaceId, ...ACTIVE_MEMBER, user: seedAccountUserWhere() },
+        select: { id: true, role: true, user: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: "asc" },
+      });
+      const withEmail = isAtLeast(user.role, "ADMIN");
       const projected = members.map((m) => ({
         id: m.user.id,
         memberId: m.id,
         name: m.user.name ?? null,
-        email: m.user.email,
+        ...(withEmail ? { email: m.user.email } : {}),
         role: m.role,
       }));
       return textResult(projected, `${projected.length} workspace member${projected.length === 1 ? "" : "s"}.`);
@@ -2550,6 +2560,15 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       const parsed = updateDocumentSchema.parse(args);
       const { documentId, sections, ...rest } = parsed;
+      // Only documents for the caller's own clients (or their own client-less drafts). Reported
+      // as "not found", like the type gate, so ids outside their scope reveal nothing.
+      const target = await prisma.document.findUnique({
+        where: { id: documentId },
+        select: { workspaceId: true, clientId: true, ownerId: true },
+      });
+      if (!target || !(await canReachDocument(user, target))) {
+        throw new Error("Document not found.");
+      }
       const proposal = await updateDocument(user, documentId, {
         ...rest,
         sections: sections?.map((section, index) => ({
@@ -2787,7 +2806,7 @@ const TOOLS: ToolDef[] = [
         clientLabel = ` for ${c.name}`;
       }
       const where: PrismaTypes.DocumentWhereInput = {
-        workspaceId: user.workspaceId,
+        AND: [await documentScopeWhere(user)],
         documentType,
         ...(parsed.status ? { status: parsed.status as DocumentStatus } : {}),
         ...(clientId ? { clientId } : {}),
