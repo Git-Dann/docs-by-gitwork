@@ -121,3 +121,15 @@ describe("kinds, views and order", () => {
     expect(sortRecent([old, fresh], "edited").map((x) => x.id)).toEqual(["old-added-new-edit", "new-added-old-edit"]);
   });
 });
+
+describe("isScreenshotName", () => {
+  it("matches the ways macOS, Windows and people name screenshots", async () => {
+    const { isScreenshotName } = await import("@/lib/client-drive");
+    for (const n of ["Gitwork-Screenshot 2026-10-14 at 15.15.57@2x.png", "Screen Shot 2020-01-01.png", "screenshot_1.jpg", "Screen Recording 2026.mov", "Screenshots Archive"]) {
+      expect(isScreenshotName(n), n).toBe(true);
+    }
+    for (const n of ["Contract.pdf", "Screens.fig", "Brand guidelines.pdf", "", null]) {
+      expect(isScreenshotName(n), String(n)).toBe(false);
+    }
+  });
+});
