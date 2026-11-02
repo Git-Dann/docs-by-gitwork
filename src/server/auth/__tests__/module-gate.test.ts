@@ -19,6 +19,7 @@ const APP_ROUTE_SEGMENTS = [
   "codeclear",
   "docs",
   "handbook",
+  "monitors",
   "portal",
   "projects",
   "proof",

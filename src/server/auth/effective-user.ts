@@ -434,6 +434,14 @@ export function canIssueCountermark(user: EffectiveUser): boolean {
 export function canViewCheckConfig(user: EffectiveUser): boolean {
   return can(user, "settings.agents");
 }
+/**
+ * The Monitors page: every client's uptime status. Deliberately NOT scoped to assigned
+ * clients — watching every service is the job this permission is granted for. It shows
+ * monitor names, targets and status only; opening a client still needs client access.
+ */
+export function canViewMonitors(user: EffectiveUser): boolean {
+  return can(user, "monitors");
+}
 /** See the Staff roster (the `codeclear` module — the id predates the rename). */
 export function canViewStaff(user: EffectiveUser): boolean {
   return can(user, "codeclear");

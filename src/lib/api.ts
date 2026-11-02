@@ -2,7 +2,7 @@ import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, 
 import type { BoardColumnDef } from "@/lib/tasks/board-columns";
 import type { ReportTask } from "@/lib/standup-report";
 import type { WikiLinkDTO } from "@/server/wiki-links";
-import type { MonitorBoardDTO } from "@/server/wiki-monitor-board";
+import type { MonitorBoardDTO, MonitorsPageDTO } from "@/server/wiki-monitor-board";
 import type {
   HandoverDTO,
   HandoverInput,
@@ -4624,6 +4624,11 @@ export async function getWikiMonitorBoardApi(
   slug: string,
 ): Promise<MonitorBoardDTO> {
   return apiFetch(`/api/clients/${slug}/wiki/monitors/board`);
+}
+
+/** The Monitors page: every client's monitors (needs the `monitors` permission). */
+export async function getMonitorsPageApi(): Promise<MonitorsPageDTO> {
+  return apiFetch("/api/monitors");
 }
 
 export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {

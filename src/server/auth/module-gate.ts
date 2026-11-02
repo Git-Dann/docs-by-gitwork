@@ -49,6 +49,7 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/support", module: "support" }, // legacy
   { prefix: "/app/study", module: "study" }, // optional Pulse tool — admin-only feature perm (default-off)
   { prefix: "/app/backstage", module: "backstage" },
+  { prefix: "/app/monitors", module: "monitors" }, // Staff + Admin by default; granted per developer
   { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (default-off feature perm)
   // These three were reachable by ANY signed-in member — including a developer scoped to
   // neither module — because the gate used to end in an unconditional `return true`. They
@@ -105,6 +106,9 @@ export const INTERNAL_ONLY_PREFIXES = [
   // same audience rule at the gate. The nav items are hidden to match (src/lib/pulse-nav.ts).
   "/app/pulse/growth",
   "/app/pulse/monitors",
+  // Every client's monitor status, by name. A guest granted the Monitors module would
+  // otherwise see the whole client list; the API refuses external roles too.
+  "/app/monitors",
   "/app/team",
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)

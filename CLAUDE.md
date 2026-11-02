@@ -290,6 +290,7 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
 | **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
 | **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
+| **Monitors** | `/app/monitors` | `src/server/wiki-monitor-board.ts` (`loadMonitorBoard`) | Every client's uptime monitors and open incidents on one page. The monitors themselves still live in each client's wiki. Gated by the `monitors` module perm: Staff + Admin by default, granted per developer. Internal-only (no guests). See §108 |
 | **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
 | **Proof** | `/app/proof` | `src/server/proof.ts` | Document sign-off workflow — currently **hidden from nav** (commented out in app-shell.tsx) |
@@ -1805,7 +1806,7 @@ tags exist. Do not invent a fourth.
 
 | Tag | Means | Current members |
 |---|---|---|
-| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
 | `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
@@ -9292,3 +9293,25 @@ long-term SLA history, escalation.
   client is still out. Incidents are still recorded per monitor. ⚠️ So a partial recovery (one
   service back while another is still down) is silent until the whole client is back.
 - Not built: an Acknowledge button inside the Slack alert, emailing client users on updates.
+
+## 108. Recent Changes (November 2026) — Monitors is its own page
+
+The all-clients monitor board (§104) is now a sidebar product, **Monitors** at `/app/monitors`,
+between Care and Backstage. Monitors are still created and run in each client's wiki, as before;
+this page only reads them.
+
+- **Permission `monitors`** (module, `PERMISSION_CATALOG`). STAFF and ADMIN get it by default
+  (`reconcileNewPermissions` adds it to saved matrices on boot). DEVELOPER does not: grant it per
+  person in Settings → Team (first: Waqar). `canViewMonitors` / `usePermissions().canViewMonitors`.
+- **Shows every client's status, not just assigned clients** — watching every service is what the
+  permission is for. A "Manage" link to a client's wiki, and incident Acknowledge / Post update,
+  appear only for clients the person can already open (`openableClientIds`: null = all, from
+  `seeAllClients`; their assigned clients otherwise; none without Portal). Opening a client still
+  goes through Portal's own checks.
+- **Internal only.** `/app/monitors` is in `INTERNAL_ONLY_PREFIXES` and `GET /api/monitors`
+  refuses external roles, so a guest granted the module still can't see the client list.
+- **Page** (`src/components/monitors/monitors-workspace.tsx`): status headline + four figures,
+  open incidents, a searchable grid of client cards (All / Needs attention), and clients with no
+  monitors. Reuses the wiki board's state rules and pieces (`monitor-board.tsx` exports them).
+  Refreshes every minute.
+- Not visually verified (auth-gated, no demo route). Tests: `src/app/api/monitors/__tests__`.
