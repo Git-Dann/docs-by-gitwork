@@ -146,6 +146,19 @@ describe("reinstateMemberByEmail", () => {
     expect(db.created).toBeNull();
   });
 
+  it("reinstates someone archived past the window who hasn't been purged yet", async () => {
+    // Restore refuses them (window passed), so reinstate is the only way back.
+    db.user = { id: "u", memberships: [{ id: "m9", archivedAt: new Date(Date.now() - 32 * DAY) }] };
+    const r = await reinstateMemberByEmail("u@gitwork.co.uk", "DEVELOPER", SA);
+    expect(r).toEqual({ status: "reinstated", memberId: "m9" });
+    expect(db.created).toBeNull(); // the old row is reused, never a second membership
+    expect(db.updates.at(-1)).toMatchObject({
+      archivedAt: null,
+      role: "DEVELOPER",
+      permissionOverrides: { grant: [], revoke: [] },
+    });
+  });
+
   it("refuses to reinstate into a role above the actor's", async () => {
     db.user = { id: "u", memberships: [] };
     await expect(reinstateMemberByEmail("u@gitwork.co.uk", "SUPER_ADMIN", ADMIN)).rejects.toThrow();
