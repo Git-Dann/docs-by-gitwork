@@ -15,6 +15,7 @@ import {
   FOLDER_MIME,
   driveFileKind,
   isDriveId,
+  isScreenshotName,
   sortRecent,
   type ClientDriveCrumb,
   type ClientDriveFile,
@@ -117,6 +118,8 @@ interface FolderNode {
 export async function walkFolders(
   drive: Drive,
   root: RootFolder,
+  /** Folders to leave out, with everything under them (never the client folder itself). */
+  skipFolder: (name: string) => boolean = () => false,
 ): Promise<{ folders: Map<string, FolderNode>; partial: boolean }> {
   const folders = new Map<string, FolderNode>([[root.id, { name: root.name, parent: null }]]);
   let frontier = [root.id];
@@ -137,6 +140,7 @@ export async function walkFolders(
         );
         for (const f of res.files ?? []) {
           if (!f.id || folders.has(f.id)) continue;
+          if (skipFolder(f.name ?? "")) continue;
           if (folders.size >= RECENT_MAX_FOLDERS) {
             partial = true;
             break;
@@ -189,7 +193,8 @@ export async function recentFiles(
   root: RootFolder,
   view: "added" | "edited",
 ): Promise<{ files: ClientDriveFile[]; partial: boolean }> {
-  const { folders, partial } = await walkFolders(drive, root);
+  // Screenshots are left out of the recent views (folders named for them, and the files).
+  const { folders, partial } = await walkFolders(drive, root, isScreenshotName);
   const orderBy = view === "added" ? "createdTime desc" : "modifiedTime desc";
   const batches = await Promise.all(
     chunk([...folders.keys()], PARENTS_PER_QUERY).map((ids) =>
@@ -210,6 +215,7 @@ export async function recentFiles(
     for (const f of batch.files ?? []) {
       if (!f.id || seen.has(f.id)) continue;
       seen.add(f.id);
+      if (isScreenshotName(f.name)) continue;
       const parent = (f.parents ?? []).find((p) => folders.has(p));
       const file = toFile(f, folderPath(folders, parent));
       if (file) files.push(file);

@@ -66,6 +66,9 @@ const KIND_ICON: Record<DriveFileKind, React.ComponentType<React.SVGProps<SVGSVG
   file: DocumentIcon,
 };
 
+/** One row: 40px thumb + 2 × 6px padding + 2px gap. The list reserves `pageSize` of these. */
+const ROW_H = 54;
+
 const VIEWS: { v: ClientDriveView; label: string; hint: string }[] = [
   { v: "added", label: "Added", hint: "Newest files first, by when they were added" },
   { v: "edited", label: "Edited", hint: "Newest files first, by when they were last changed" },
@@ -215,8 +218,10 @@ export function ClientDriveFiles({
         </span>
       </div>
 
+      {/* One line in EVERY view (crumbs in Browse, what the list is in the others), so
+          switching tabs never moves the list or the card's height. */}
       {view === "folder" && ok && data.crumbs.length > 0 ? (
-        <nav aria-label="Folder" className="flex flex-wrap items-center gap-1 px-4 pt-3 text-[12px]">
+        <nav aria-label="Folder" className="flex h-9 min-w-0 items-center gap-1 overflow-hidden px-4 pt-3 text-[12px]">
           {data.crumbs.map((c, i) => {
             const last = i === data.crumbs.length - 1;
             return (
@@ -243,13 +248,31 @@ export function ClientDriveFiles({
             );
           })}
         </nav>
-      ) : null}
+      ) : (
+        <p
+          className="flex h-9 min-w-0 items-center px-4 pt-3 text-[12px] text-[var(--text-4)]"
+          title={
+            ok && data.partial
+              ? "This folder has more subfolders than the recent list searches, so a file deep in it may be missing here. Browse to see everything."
+              : undefined
+          }
+        >
+          <span className="truncate">
+            {ok && data.partial
+              ? "Some deep subfolders weren't searched. Browse to see everything."
+              : VIEWS.find((o) => o.v === view)?.hint}
+          </span>
+        </p>
+      )}
 
       <div className="p-3" data-drive-list>
+        {/* Fixed height: a full page of rows, whatever the view holds (loading, empty, a short
+            last page), so the card never resizes as you click through the tabs. */}
+        <div className="flex flex-col" style={{ minHeight: pageSize * ROW_H }} data-drive-rows>
         {isLoading && !data ? (
-          <p className="px-2 py-8 text-center text-[13px] text-[var(--text-4)]">Reading Drive…</p>
+          <p className="m-auto px-2 py-8 text-center text-[13px] text-[var(--text-4)]">Reading Drive…</p>
         ) : !ok ? (
-          <div className="flex flex-col items-center gap-3 rounded-[6px] border border-dashed border-[var(--border-2)] px-6 py-8 text-center">
+          <div className="m-auto flex flex-col items-center gap-3 rounded-[6px] border border-dashed border-[var(--border-2)] px-6 py-8 text-center">
             <p className="max-w-sm text-[13px] text-[var(--text-3)]">{data?.message ?? "Couldn't read Drive."}</p>
             {data?.state === "no_folder" && onLinkFolder ? (
               <button type="button" onClick={onLinkFolder} className="app-button app-button-secondary app-button-xs">
@@ -258,7 +281,7 @@ export function ClientDriveFiles({
             ) : null}
           </div>
         ) : files.length === 0 ? (
-          <p className="px-2 py-8 text-center text-[13px] text-[var(--text-4)]">
+          <p className="m-auto px-2 py-8 text-center text-[13px] text-[var(--text-4)]">
             {view === "folder" ? "This folder is empty." : "No files in this folder yet."}
           </p>
         ) : (
@@ -313,8 +336,13 @@ export function ClientDriveFiles({
             })}
           </ul>
         )}
-        {ok && pages > 1 ? (
-          <div className="flex items-center justify-between px-1 pt-2.5" data-drive-pager>
+        </div>
+        {/* Always laid out; invisible on a single page, so it costs the same height either way. */}
+        <div
+          className={`flex items-center justify-between px-1 pt-2.5 ${ok && pages > 1 ? "" : "invisible"}`}
+          aria-hidden={ok && pages > 1 ? undefined : true}
+          data-drive-pager
+        >
             <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
               {current * pageSize + 1}–{Math.min(files.length, (current + 1) * pageSize)} of {files.length}
             </span>
@@ -339,13 +367,6 @@ export function ClientDriveFiles({
               </button>
             </span>
           </div>
-        ) : null}
-        {ok && data.partial && view !== "folder" ? (
-          <p className="mt-2 px-2 text-[11px] text-[var(--text-4)]">
-            This folder has more subfolders than the recent list searches, so a file deep in it
-            may be missing here. Browse to see everything.
-          </p>
-        ) : null}
       </div>
 
       {previewIndex >= 0 ? (

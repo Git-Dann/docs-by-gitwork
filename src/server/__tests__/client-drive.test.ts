@@ -165,3 +165,27 @@ describe("what the client's copy serves a file as", () => {
     expect(servedAs("video/mp4", 1000, "small.mp4")).toEqual({ mime: "video/mp4", filename: "small.mp4" });
   });
 });
+
+describe("screenshots stay out of the recent views", () => {
+  const shots: Node[] = [
+    { id: "rootFolder00", name: "Gitwork", mimeType: FOLDER, parents: ["myDrive"] },
+    { id: "archiveFold0", name: "Screenshots Archive", mimeType: FOLDER, parents: ["rootFolder00"] },
+    { id: "monthFolder0", name: "2026-10", mimeType: FOLDER, parents: ["archiveFold0"] },
+    { id: "archived0000", name: "Gitwork-Screenshot 2026-10-14 at 15.15.57@2x.png", mimeType: "image/png", parents: ["monthFolder0"], createdTime: "2026-10-14T15:00:00Z" },
+    { id: "archivedImg0", name: "IMG_1234.png", mimeType: "image/png", parents: ["monthFolder0"], createdTime: "2026-10-16T00:00:00Z" },
+    { id: "looseShot000", name: "Screen Shot 2026-10-15.png", mimeType: "image/png", parents: ["rootFolder00"], createdTime: "2026-10-15T00:00:00Z" },
+    { id: "contract0000", name: "Contract.pdf", mimeType: "application/pdf", parents: ["rootFolder00"], createdTime: "2026-10-01T00:00:00Z" },
+  ];
+
+  it("Added leaves out a screenshots folder and screenshot files, and keeps the rest", async () => {
+    const { drive } = fakeDrive(shots);
+    const res = await readClientDrive(drive, "rootFolder00", "added", null);
+    expect(res?.files.map((f) => f.name)).toEqual(["Contract.pdf"]);
+  });
+
+  it("Browse still shows the screenshots folder", async () => {
+    const { drive } = fakeDrive(shots);
+    const res = await readClientDrive(drive, "rootFolder00", "folder", null);
+    expect(res?.files.map((f) => f.name)).toContain("Screenshots Archive");
+  });
+});

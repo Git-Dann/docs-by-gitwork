@@ -9315,3 +9315,15 @@ this page only reads them.
   monitors. Reuses the wiki board's state rules and pieces (`monitor-board.tsx` exports them).
   Refreshes every minute.
 - Not visually verified (auth-gated, no demo route). Tests: `src/app/api/monitors/__tests__`.
+
+### 108.1 Portal's Drive tab: no screenshots, and a steady height
+
+- **Screenshots are left out of Added and Edited** (`isScreenshotName` in `src/lib/client-drive.ts`).
+  That covers any file named "Screenshot", "Screen Shot" or "Screen Recording", and every folder
+  so named along with everything inside it. Gitwork's "Screenshots Archive" was filling the whole
+  list. Browse still shows them. Applies to the wiki's Drive tab too.
+- **The card is the same height in every tab.** The line under the tabs always holds something
+  (breadcrumbs in Browse, otherwise what the list is). The list reserves `pageSize` rows (`ROW_H`),
+  and the pager is always laid out (hidden on a single page). The "some subfolders weren't
+  searched" note moved into that line.
+

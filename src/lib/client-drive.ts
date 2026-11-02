@@ -221,6 +221,16 @@ export interface WikiDriveSection {
 export const EMPTY_DRIVE: WikiDriveSection = { enabled: false, linked: false, reader: null };
 
 /** Sort newest first by the view's own clock, falling back to the other. Stable. */
+/**
+ * Is this a screenshot (or a folder of them)? Screenshots are kept out of the Added and
+ * Edited views: a folder that archives them (Gitwork's own "Screenshots Archive") would
+ * otherwise fill the whole list. Browse still shows them, so nothing is hidden from someone
+ * who goes looking. Matches by NAME only: "Screenshot", "Screen Shot", "Screen Recording".
+ */
+export function isScreenshotName(name: string | null | undefined): boolean {
+  return /screen[\s_-]?(shot|recording)/i.test(name ?? "");
+}
+
 export function sortRecent(files: readonly ClientDriveFile[], view: "added" | "edited"): ClientDriveFile[] {
   const at = (f: ClientDriveFile) => Date.parse((view === "added" ? f.createdTime : f.modifiedTime) ?? f.modifiedTime ?? f.createdTime ?? "") || 0;
   return files
