@@ -3,8 +3,9 @@
 /**
  * The Monitors page (/app/monitors) — every client's uptime monitors as one card per client.
  *
- * Monitors are still set up and run from each client's wiki (`monitors-section.tsx`); this
- * page reads them all. The status rules live in `src/lib/monitor-board.ts` and the colours,
+ * A monitor belongs to a client's wiki (`monitors-section.tsx`). This page reads every client's,
+ * and its Add monitor popup (`add-monitor-dialog.tsx`) saves straight into the chosen client's
+ * wiki, so a monitor added on either side is the same row and shows on both. The status rules live in `src/lib/monitor-board.ts` and the colours,
  * labels and dot are shared with the wiki's all-clients board, so the two never disagree.
  *
  * Seeing a client here does not open it: a card links to the client's wiki only when this
@@ -14,7 +15,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon, MagnifyingGlassIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { useMonitorsPage } from "@/hooks/use-wiki";
 import {
   monitorState,
@@ -30,6 +31,7 @@ import { Dot, LEVEL, STATE, relTime, shortTarget } from "@/components/clients/wi
 import { IncidentCard } from "@/components/clients/wiki/monitor-incidents";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { SkeletonCards } from "@/components/ui/motion/skeleton";
+import { AddMonitorDialog, type AddMonitorClient } from "./add-monitor-dialog";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'DM Serif Display', Georgia, serif";
@@ -197,12 +199,17 @@ export function MonitorsWorkspace() {
   const { data, isLoading, isError, refetch, isFetching } = useMonitorsPage();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  // The Add monitor popup: closed, or open on a client (null = choose one).
+  const [adding, setAdding] = useState<{ clientId: string | null } | null>(null);
 
   const clients = useMemo(() => data?.clients ?? [], [data]);
   const summary = summariseBoard(clients);
   const { monitored, unmonitored } = useMemo(() => orderBoard(clients), [clients]);
   const openable = data?.openableClientIds ?? null;
   const canOpen = (clientId: string) => openable === null || openable.includes(clientId);
+  const addable: AddMonitorClient[] = clients
+    .filter((c) => canOpen(c.clientId))
+    .map((c) => ({ clientId: c.clientId, slug: c.slug, name: c.name, monitorCount: c.monitors.length }));
   const lead = STATE[LEVEL[summary.level]];
   const lastCheck =
     clients
@@ -242,164 +249,196 @@ export function MonitorsWorkspace() {
   const num = () => String(n++).padStart(2, "0");
 
   return (
-    <FadeIn className="space-y-4">
-      <section className="widget-card">
-        <Header number={num()} label="STATUS">
-          <div className="flex min-w-0 items-center gap-3">
-            {lastCheck ? (
-              <span
-                className="hidden truncate text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] sm:inline"
+    <>
+      <FadeIn className="space-y-4">
+        <section className="widget-card">
+          <Header number={num()} label="STATUS">
+            <div className="flex min-w-0 items-center gap-3">
+              {lastCheck ? (
+                <span
+                  className="hidden truncate text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)] sm:inline"
+                  style={{ fontFamily: MONO }}
+                  title={new Date(lastCheck).toLocaleString("en-GB")}
+                >
+                  Last check {relTime(lastCheck)}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="inline-flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-60"
                 style={{ fontFamily: MONO }}
-                title={new Date(lastCheck).toLocaleString("en-GB")}
+                title="Updates itself every minute"
               >
-                Last check {relTime(lastCheck)}
+                <ArrowPathIcon className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} aria-hidden />
+                {isFetching ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+          </Header>
+          <div className="space-y-4 p-5 sm:p-6">
+            <div className="flex items-center gap-4" role="status">
+              <span
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+                style={{ background: lead.tint, boxShadow: `inset 0 0 0 2px ${lead.color}` }}
+              >
+                <Dot state={LEVEL[summary.level]} />
               </span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="inline-flex shrink-0 items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-3)] hover:text-[var(--text-1)] disabled:opacity-60"
-              style={{ fontFamily: MONO }}
-              title="Updates itself every minute"
-            >
-              <ArrowPathIcon className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} aria-hidden />
-              {isFetching ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-        </Header>
-        <div className="space-y-4 p-5 sm:p-6">
-          <div className="flex items-center gap-4" role="status">
-            <span
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
-              style={{ background: lead.tint, boxShadow: `inset 0 0 0 2px ${lead.color}` }}
-            >
-              <Dot state={LEVEL[summary.level]} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[22px] leading-[1.15] sm:text-[26px]" style={{ fontFamily: SERIF, color: lead.color }}>
-                {summary.headline}
-              </p>
-              <p className="mt-0.5 text-[13px] text-[var(--text-3)]">{summary.sub}</p>
+              <div className="min-w-0">
+                <p className="text-[22px] leading-[1.15] sm:text-[26px]" style={{ fontFamily: SERIF, color: lead.color }}>
+                  {summary.headline}
+                </p>
+                <p className="mt-0.5 text-[13px] text-[var(--text-3)]">{summary.sub}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatTile label="Services up" value={`${summary.up}/${summary.total}`} tone={null} />
+              <StatTile label="Down" value={String(summary.down)} tone={summary.down ? "down" : null} />
+              <StatTile label="Slow or unstable" value={String(summary.degraded)} tone={summary.degraded ? "flaky" : null} />
+              <StatTile label="Not checking" value={String(summary.unchecked)} tone={summary.unchecked ? "stale" : null} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="Services up" value={`${summary.up}/${summary.total}`} tone={null} />
-            <StatTile label="Down" value={String(summary.down)} tone={summary.down ? "down" : null} />
-            <StatTile label="Slow or unstable" value={String(summary.degraded)} tone={summary.degraded ? "flaky" : null} />
-            <StatTile label="Not checking" value={String(summary.unchecked)} tone={summary.unchecked ? "stale" : null} />
-          </div>
-        </div>
-      </section>
-
-      {incidents.length > 0 ? (
-        <section className="widget-card">
-          <Header number={num()} label={`OPEN INCIDENTS · ${incidents.length}`} />
-          <ul className="space-y-2 p-5 sm:p-6">
-            {incidents.map((i) => (
-              <IncidentCard
-                key={i.id}
-                incident={i}
-                slug={i.clientSlug}
-                clientName={i.clientName}
-                audience={canOpen(clients.find((c) => c.slug === i.clientSlug)?.clientId ?? "") ? "team" : "client"}
-              />
-            ))}
-          </ul>
         </section>
-      ) : null}
 
-      <section className="widget-card">
-        <Header number={num()} label={`CLIENTS · ${monitored.length}`} />
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-1)] px-5 py-3 sm:px-6">
-          <div
-            role="tablist"
-            aria-label="Which clients to show"
-            className="inline-flex rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
-          >
-            {(
-              [
-                ["all", `All · ${monitored.length}`],
-                ["attention", `Needs attention · ${needsAttention.length}`],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={filter === id}
-                onClick={() => setFilter(id)}
-                className={`rounded-[4px] px-2.5 py-1 text-[11px] uppercase tracking-[0.08em] ${
-                  filter === id
-                    ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                    : "text-[var(--text-3)] hover:text-[var(--text-1)]"
-                }`}
-                style={{ fontFamily: MONO }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <label className="relative ml-auto flex min-w-[180px] flex-1 items-center sm:max-w-[280px]">
-            <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 h-4 w-4 text-[var(--text-4)]" aria-hidden />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find a client or service"
-              aria-label="Find a client or service"
-              className="app-input h-8 w-full py-0 pl-8 text-base sm:text-[13px]"
-            />
-          </label>
-        </div>
-        <div className="p-5 sm:p-6">
-          {monitored.length === 0 ? (
-            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-3)]">
-              No client has a monitor yet. Add one from a client&apos;s wiki, under Monitors.
-            </p>
-          ) : shown.length === 0 ? (
-            <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-3)]">
-              {filter === "attention" && !q ? "Nothing needs attention. Every service is up." : "No client or service matches that."}
-            </p>
-          ) : (
-            <ul className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {shown.map((c) => (
-                <ClientCard key={c.clientId} client={c} canOpen={canOpen(c.clientId)} />
+        {incidents.length > 0 ? (
+          <section className="widget-card">
+            <Header number={num()} label={`OPEN INCIDENTS · ${incidents.length}`} />
+            <ul className="space-y-2 p-5 sm:p-6">
+              {incidents.map((i) => (
+                <IncidentCard
+                  key={i.id}
+                  incident={i}
+                  slug={i.clientSlug}
+                  clientName={i.clientName}
+                  audience={canOpen(clients.find((c) => c.slug === i.clientSlug)?.clientId ?? "") ? "team" : "client"}
+                />
               ))}
             </ul>
-          )}
-        </div>
-      </section>
+          </section>
+        ) : null}
 
-      {unmonitored.length > 0 ? (
         <section className="widget-card">
-          <Header number={num()} label={`NOT MONITORED · ${unmonitored.length}`} />
-          <ul className="flex flex-wrap gap-2 p-5 sm:p-6">
-            {unmonitored.map((c) => (
-              <li key={c.clientId}>
-                {canOpen(c.clientId) ? (
-                  <Link
-                    href={`/app/portal/${c.slug}/wiki#monitors`}
-                    className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[12px] text-[var(--text-2)] hover:border-[var(--brand-500)] hover:text-[var(--brand-700)]"
-                    title={`Add a monitor for ${c.name}`}
-                  >
-                    {c.name}
-                  </Link>
+          <Header number={num()} label={`CLIENTS · ${monitored.length}`}>
+            {addable.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setAdding({ clientId: null })}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[12px] font-medium text-[var(--brand-700)] transition hover:bg-[var(--surface-1)]"
+              >
+                <PlusIcon className="h-3.5 w-3.5" aria-hidden /> Add monitor
+              </button>
+            ) : null}
+          </Header>
+          <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-1)] px-5 py-3 sm:px-6">
+            <div
+              role="tablist"
+              aria-label="Which clients to show"
+              className="inline-flex rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-1)] p-0.5"
+            >
+              {(
+                [
+                  ["all", `All · ${monitored.length}`],
+                  ["attention", `Needs attention · ${needsAttention.length}`],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === id}
+                  onClick={() => setFilter(id)}
+                  className={`rounded-[4px] px-2.5 py-1 text-[11px] uppercase tracking-[0.08em] ${
+                    filter === id
+                      ? "bg-[var(--surface-0)] text-[var(--brand-700)] shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                      : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+                  }`}
+                  style={{ fontFamily: MONO }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="relative ml-auto flex min-w-[180px] flex-1 items-center sm:max-w-[280px]">
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-2.5 h-4 w-4 text-[var(--text-4)]" aria-hidden />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Find a client or service"
+                aria-label="Find a client or service"
+                className="app-input h-8 w-full py-0 pl-8 text-base sm:text-[13px]"
+              />
+            </label>
+          </div>
+          <div className="p-5 sm:p-6">
+            {monitored.length === 0 ? (
+              <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-3)]">
+                No client has a monitor yet.{" "}
+                {addable.length > 0 ? (
+                  <button type="button" onClick={() => setAdding({ clientId: null })} className="font-medium text-[var(--brand-700)] hover:underline">
+                    Add the first one
+                  </button>
                 ) : (
-                  <span className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[12px] text-[var(--text-3)]">
-                    {c.name}
-                  </span>
+                  "They're added from a client's wiki, under Monitors."
                 )}
-              </li>
-            ))}
-          </ul>
+              </p>
+            ) : shown.length === 0 ? (
+              <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-4 py-6 text-center text-[13px] text-[var(--text-3)]">
+                {filter === "attention" && !q ? "Nothing needs attention. Every service is up." : "No client or service matches that."}
+              </p>
+            ) : (
+              <ul className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {shown.map((c) => (
+                  <ClientCard key={c.clientId} client={c} canOpen={canOpen(c.clientId)} />
+                ))}
+              </ul>
+            )}
+          </div>
         </section>
-      ) : null}
 
-      <p className="px-1 text-[12px] text-[var(--text-4)]">
-        Monitors are set up in each client&apos;s wiki. When a service fails two checks in a row, the ops
-        channel on Slack gets an alert, and another when it&apos;s back.
-      </p>
-    </FadeIn>
+        {unmonitored.length > 0 ? (
+          <section className="widget-card">
+            <Header number={num()} label={`NOT MONITORED · ${unmonitored.length}`} />
+            <ul className="flex flex-wrap gap-2 p-5 sm:p-6">
+              {unmonitored.map((c) => (
+                <li key={c.clientId}>
+                  {canOpen(c.clientId) ? (
+                    <button
+                      type="button"
+                      onClick={() => setAdding({ clientId: c.clientId })}
+                      className="inline-flex items-center gap-1 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[12px] text-[var(--text-2)] hover:border-[var(--brand-500)] hover:text-[var(--brand-700)]"
+                      title={`Add a monitor for ${c.name}`}
+                    >
+                      <PlusIcon className="h-3 w-3" aria-hidden />
+                      {c.name}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[12px] text-[var(--text-3)]">
+                      {c.name}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <p className="px-1 text-[12px] text-[var(--text-4)]">
+          Each monitor lives on its client&apos;s wiki, under Monitors: add it here or there and it shows in
+          both. When a service fails two checks in a row, the ops channel on Slack gets an alert, and
+          another when it&apos;s back.
+        </p>
+      </FadeIn>
+
+      {/* Outside FadeIn on purpose: its transform makes it the containing block for anything
+          `position: fixed`, so a dialog inside it is confined to the content column and pushed
+          off the bottom of the screen instead of centring on the viewport. */}
+      <AddMonitorDialog
+        open={adding !== null}
+        onClose={() => setAdding(null)}
+        clients={addable}
+        initialClientId={adding?.clientId ?? null}
+      />
+    </>
   );
 }
