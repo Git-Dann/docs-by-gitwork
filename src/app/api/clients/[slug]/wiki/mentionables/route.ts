@@ -8,9 +8,9 @@ import { listMentionables, mentionSlackStatus } from "@/server/wiki-intake-menti
  *  plus the client's own people. Names only — no emails. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
-    await requireAuthedUser(req);
+    const user = await requireAuthedUser(req);
     const { slug } = await params;
-    const wikiId = await wikiIdForClientSlug(slug);
+    const wikiId = await wikiIdForClientSlug(slug, user.workspaceId);
     if (!wikiId) return apiError("Wiki not found", 404);
     const [people, slack] = await Promise.all([listMentionables(wikiId, "internal"), mentionSlackStatus(wikiId)]);
     return apiOk({ people, slack });

@@ -14,33 +14,23 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getIntakeWebhook, setIntakeWebhook } from "@/server/wiki-intake-webhook";
 import {
   assertCan,
   canManageClients,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({ url: z.string().trim().max(2000).nullable() });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "view the intake webhook");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await getIntakeWebhook(clientId));
   } catch (err) {
@@ -52,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "set the intake webhook");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { url } = bodySchema.parse(await req.json());
     // setIntakeWebhook rejects non-https and any host that resolves to a private

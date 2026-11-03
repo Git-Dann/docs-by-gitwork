@@ -2,12 +2,12 @@ import { NextRequest } from "next/server";
 import { google } from "googleapis";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { driveResponse } from "@/server/client-drive";
 import { driveFolderIdFromUrl, parseDriveView } from "@/lib/client-drive";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -23,12 +23,12 @@ type RouteContext = { params: Promise<{ slug: string }> };
  */
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const { slug } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
 
     const client = await prisma.workspaceClient.findFirst({
-      where: { slug, workspaceId: workspace.id },
+      where: { slug, workspaceId },
       select: { googleDriveFolderUrl: true },
     });
     if (!client) return apiError("Client not found", 404);

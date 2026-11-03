@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
 import { encryptNullable, decryptNullable } from "@/lib/encryption";
 import { slugifyClientName } from "@/lib/clients";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getDefaultOnboardingForm } from "@/lib/onboarding/default-form";
 import {
   SYSTEM_TEXT_COLUMNS,
@@ -209,8 +208,8 @@ async function resolveForm(
   });
 }
 
-export async function createOnboardingLink(input?: { label?: string; formId?: string }) {
-  const { workspace } = await ensureBaseRecords();
+export async function createOnboardingLink(workspaceId: string, input?: { label?: string; formId?: string }) {
+  const workspace = { id: workspaceId };
   // Snapshot the form's structure onto the row so later edits to the form never
   // change a link that's already out. Falls back to the in-code default.
   const form = await resolveForm(input?.formId);
@@ -333,10 +332,10 @@ export async function createOnboardingLinkForClient(input: {
   return { link: toAdminRecord(row), created: true };
 }
 
-export async function listOnboardingLinks(options?: {
+export async function listOnboardingLinks(workspaceId: string, options?: {
   includeLinked?: boolean;
 }): Promise<{ links: OnboardingAdminRecord[] }> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const rows = await onboardings.findMany({
     where: {
       workspaceId: workspace.id,
@@ -381,10 +380,11 @@ export async function recordOnboardingFirstView(token: string): Promise<void> {
 }
 
 export async function getOnboardingAdmin(
+  workspaceId: string,
   id: string,
 ): Promise<OnboardingAdminRecord | null> {
-  const row = await onboardings.findUnique({
-    where: { id },
+  const row = await onboardings.findFirst({
+    where: { id, workspaceId },
     include: { bankAccount: true },
   });
   if (!row) return null;
@@ -397,6 +397,7 @@ export async function getOnboardingAdmin(
  * the call site — keep that responsibility with the API route, not here.
  */
 export async function revealOnboardingBank(
+  workspaceId: string,
   id: string,
 ): Promise<{
   accountHolder: string | null;
@@ -407,8 +408,8 @@ export async function revealOnboardingBank(
   swiftBic: string | null;
   currency: string | null;
 } | null> {
-  const row = await onboardings.findUnique({
-    where: { id },
+  const row = await onboardings.findFirst({
+    where: { id, workspaceId },
     include: { bankAccount: true },
   });
   if (!row?.bankAccount) return null;
@@ -750,12 +751,13 @@ async function applyOnboardingToExistingClient(
 export async function submitOnboarding(
   token: string,
 ): Promise<OnboardingPublicPayload | null> {
-  const { workspace } = await ensureBaseRecords();
   const row = await onboardings.findUnique({
     where: { accessToken: token },
     include: { bankAccount: true },
   });
   if (!row) return null;
+  // The client is created in the workspace that sent the link, never a default one.
+  const workspace = { id: row.workspaceId };
   if (row.status === "SUBMITTED" || row.status === "LINKED") return getOnboardingByTokenPublic(token);
 
   // Enforce the form's own required fields (the wizard also gates this client-side).
@@ -810,13 +812,13 @@ export async function submitOnboarding(
  * Portal — that's covered by listPendingClients() in clients.ts. Here we jump
  * straight to ACTIVE once the operator has hit Move-to-workflow.
  */
-export async function moveOnboardingToWorkflow(id: string): Promise<{ slug: string }> {
-  const { workspace } = await ensureBaseRecords();
-  const row = await onboardings.findUnique({
-    where: { id },
+export async function moveOnboardingToWorkflow(workspaceId: string, id: string): Promise<{ slug: string }> {
+  const workspace = { id: workspaceId };
+  const row = await onboardings.findFirst({
+    where: { id, workspaceId },
     include: { bankAccount: true },
   });
-  if (!row) throw new Error("Onboarding session not found.");
+  if (!row) throw Object.assign(new Error("Onboarding session not found."), { status: 404 });
   // Idempotent — if this onboarding already produced a client (e.g. via submit),
   // return that client rather than creating a duplicate.
   if (row.workspaceClientId) {
@@ -906,9 +908,9 @@ export async function moveOnboardingToWorkflow(id: string): Promise<{ slug: stri
   return { slug };
 }
 
-export async function deleteOnboardingLink(id: string): Promise<boolean> {
-  const existing = await onboardings.findUnique({
-    where: { id },
+export async function deleteOnboardingLink(workspaceId: string, id: string): Promise<boolean> {
+  const existing = await onboardings.findFirst({
+    where: { id, workspaceId },
     select: { id: true, status: true },
   });
   if (!existing) return false;

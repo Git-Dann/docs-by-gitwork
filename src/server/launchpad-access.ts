@@ -18,7 +18,7 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { resolvePublicWiki } from "@/server/wiki";
 import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-access";
 import { assertWithinRateLimit, clientIpFrom } from "@/server/rate-limit";
@@ -97,10 +97,10 @@ export async function resolveLaunchpadWriter(
  */
 export async function resolveInternalLaunchpadTarget(
   slug: string,
+  req: Request,
 ): Promise<{ clientId: string; wikiId: string } | null> {
-  const { workspace } = await ensureBaseRecords();
   const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    where: { workspaceId_slug: { workspaceId: await workspaceIdForRequest(req), slug } },
     select: { id: true, wiki: { select: { id: true } } },
   });
   if (!client?.wiki) return null;

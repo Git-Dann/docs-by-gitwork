@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { updateMonitor, deleteMonitor } from "@/server/wiki-monitors";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
 import { MAX_BODY, headersField } from "@/lib/monitor-request";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -25,22 +24,13 @@ const updateSchema = z.object({
   maintenanceNote: z.string().max(200).nullable().optional(),
 });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
     const { slug, id } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = updateSchema.parse(await req.json());
     const headers = headersField(body.requestHeaders);
@@ -54,12 +44,12 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> },
 ) {
   try {
     const { slug, id } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const ok = await deleteMonitor(clientId, id);
     if (!ok) return apiError("Monitor not found", 404);

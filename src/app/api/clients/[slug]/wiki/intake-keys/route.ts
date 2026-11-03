@@ -25,8 +25,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { listIntakeKeys, mintIntakeKey, revokeIntakeKey } from "@/server/wiki-intake-keys";
 import {
   assertCan,
@@ -34,25 +32,17 @@ import {
   getEffectiveUserOrNull,
   requireAuthedUser,
 } from "@/server/auth/effective-user";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 export const dynamic = "force-dynamic";
 
 const mintSchema = z.object({ name: z.string().trim().min(1).max(80) });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "view intake keys");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk({ keys: await listIntakeKeys(clientId) });
   } catch (err) {
@@ -66,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     // Recorded so there's an answer to "who issued this key" later.
     const user = await requireAuthedUser(req);
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { name } = mintSchema.parse(await req.json());
     const { key, summary } = await mintIntakeKey(clientId, name, user.id);
@@ -81,7 +71,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "revoke an intake key");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const id = req.nextUrl.searchParams.get("id");
     if (!id) return apiError("Missing key id", 400);

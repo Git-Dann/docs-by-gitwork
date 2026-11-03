@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getUserGoogleAuth } from "@/server/google-auth";
 import { listClientMeetings, findPastClientCalls, listRecentMeetCalls, deriveClientDomains } from "@/server/meetings";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -21,18 +21,18 @@ type RouteContext = { params: Promise<{ slug: string }> };
  */
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const { slug } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(req), slug);
     const q = req.nextUrl.searchParams.get("q")?.trim() || undefined;
 
     const client = await prisma.workspaceClient.findFirst({
-      where: { slug, workspaceId: workspace.id },
+      where: { slug, workspaceId },
       select: { id: true, name: true, website: true, primaryContactEmail: true },
     });
     if (!client) return apiError("Client not found", 404);
 
-    const meetings = await listClientMeetings(workspace.id, client.id, q);
+    const meetings = await listClientMeetings(workspaceId, client.id, q);
 
     // `all=1` → the manual "grab a note" picker: EVERY recent Meet call on the user's calendar,
     // unfiltered by name/domain, so a mis-named call (or an internal-only call) can still be

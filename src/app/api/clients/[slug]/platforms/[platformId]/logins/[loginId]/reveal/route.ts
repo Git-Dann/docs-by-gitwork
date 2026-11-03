@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { revealPlatformLogin } from "@/server/clients";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function POST(
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "reveal platform credentials");
     await assertClientAccessBySlug(user, slug);
-    const credentials = await revealPlatformLogin(slug, platformId, loginId);
+    const credentials = await revealPlatformLogin(await requestWorkspaceId(user), slug, platformId, loginId);
     if (!credentials) return apiError("Login not found", 404);
     return apiOk({ credentials });
   } catch (error) {

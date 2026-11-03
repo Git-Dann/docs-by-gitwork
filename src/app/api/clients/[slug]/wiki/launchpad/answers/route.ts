@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const { answers } = launchpadAnswersSchema.parse(await req.json());

@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { enqueueJob } from "@/server/jobs/queue";
 import { getClientArchiveReadiness } from "@/server/client-archive";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +20,14 @@ export async function GET(
     assertCan(user, canManageClients, "view client archive status");
     await assertClientAccessBySlug(user, slug);
 
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { archivedToDriveAt: true, archiveDriveFolderId: true },
     });
     if (!client) return apiError("Client not found", 404);
 
-    const readiness = await getClientArchiveReadiness(workspace.id);
+    const readiness = await getClientArchiveReadiness(workspaceId);
 
     return apiOk({
       archivedToDriveAt: client.archivedToDriveAt?.toISOString() ?? null,
@@ -53,16 +53,16 @@ export async function POST(
     assertCan(user, canManageClients, "archive a client to Drive");
     await assertClientAccessBySlug(user, slug);
 
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);
 
     // Refuse to enqueue when Drive backup isn't configured — otherwise the job silently skips
     // and the operator is left thinking a copy was saved when nothing left the platform.
-    const readiness = await getClientArchiveReadiness(workspace.id);
+    const readiness = await getClientArchiveReadiness(workspaceId);
     if (!readiness.ready) {
       return apiError(
         readiness.reason === "backup_disabled"
@@ -75,7 +75,7 @@ export async function POST(
     const { id, deduped } = await enqueueJob({
       type: "CLIENT_ARCHIVE",
       payload: { clientId: client.id, reason: "manual" },
-      workspaceId: workspace.id,
+      workspaceId,
       dedupeKey: `client-archive:${client.id}`,
     });
 

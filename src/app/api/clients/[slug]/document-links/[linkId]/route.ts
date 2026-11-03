@@ -4,6 +4,7 @@ import { deleteClientDocumentLink, updateClientDocumentLink } from "@/server/cli
 import { clientDocumentLinkUpdateSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { slug, linkId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    await requireRowOfClient("documentLink", linkId, await requireClientIdForSlug(slug, request));
     const body = clientDocumentLinkUpdateSchema.parse(await request.json());
     const link = await updateClientDocumentLink(linkId, body);
 
@@ -32,6 +34,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { slug, linkId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    await requireRowOfClient("documentLink", linkId, await requireClientIdForSlug(slug, request));
     await deleteClientDocumentLink(linkId);
     return apiOk({ deleted: true });
   } catch (error) {

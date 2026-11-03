@@ -7,9 +7,8 @@ import {
   setWikiDocumentsEnabled,
   MAX_DOCUMENT_BYTES,
 } from "@/server/wiki-documents";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 export const maxDuration = 60;
 
@@ -19,19 +18,10 @@ const linkSchema = z.object({
 });
 const toggleSchema = z.object({ enabled: z.boolean() });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiDocuments(clientId));
   } catch (err) {
@@ -43,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
 
     const contentType = req.headers.get("content-type") ?? "";
@@ -76,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());
     await setWikiDocumentsEnabled(clientId, enabled);

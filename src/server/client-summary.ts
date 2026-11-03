@@ -22,12 +22,12 @@
  * must not become a way around scoping that every other Portal surface applies.
  */
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canViewClientFinancials } from "@/server/auth/effective-user";
 import { computeDistinctDevCount } from "@/server/client-metrics";
 import { listDerivedClients } from "@/server/clients";
 import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 const WINDOW_DAYS = 7;
 
@@ -67,7 +67,8 @@ export async function loadClientSummaryBoard(
   user: EffectiveUser | null,
   now = new Date(),
 ): Promise<ClientSummaryBoard> {
-  const { clients } = await listDerivedClients({
+  const workspaceId = await requestWorkspaceId(user);
+  const { clients } = await listDerivedClients(workspaceId, {
     status: "ACTIVE",
     includePulse: true,
     includeFinancials: user ? canViewClientFinancials(user) : false,
@@ -110,9 +111,8 @@ export async function loadClientSummaryBoard(
 
   const board = buildSummaryBoard(inputs, now);
   // Counted over the VISIBLE clients only, so the figure agrees with the cards below it.
-  const { workspace } = await ensureBaseRecords();
   const devTotal = await computeDistinctDevCount(
-    workspace.id,
+    workspaceId,
     board.cards.map((c) => c.id),
   );
   return { ...board, devTotal, generatedAt: now.toISOString() };
@@ -128,12 +128,12 @@ export async function loadClientSummaryBoard(
  * reported as a miss rather than silently succeeding.
  */
 async function updateSummaryFields(
+  workspaceId: string,
   clientId: string,
   data: { summaryNote?: string | null; summaryNoteAt?: Date | null; summaryHidden?: boolean },
 ): Promise<boolean> {
-  const { workspace } = await ensureBaseRecords();
   const { count } = await prisma.workspaceClient.updateMany({
-    where: { id: clientId, workspaceId: workspace.id },
+    where: { id: clientId, workspaceId },
     data,
   });
   return count > 0;
@@ -148,6 +148,7 @@ async function updateSummaryFields(
  * client", not "when was this particular box last touched".
  */
 export function setClientSummaryNote(
+  workspaceId: string,
   clientId: string,
   next: { note?: string | null; detail?: string | null },
   current: { note: string | null; detail: string | null },
@@ -158,18 +159,18 @@ export function setClientSummaryNote(
     { summaryNoteAt: note || detail ? new Date() : null };
   if (next.note !== undefined) data.summaryNote = next.note;
   if (next.detail !== undefined) data.summaryDetail = next.detail;
-  return updateSummaryFields(clientId, data);
+  return updateSummaryFields(workspaceId, clientId, data);
 }
 
 /** The stored prose, so a partial write can preserve the field it does not touch. */
-export async function getClientSummaryText(clientId: string) {
-  const row = await prisma.workspaceClient.findUnique({
-    where: { id: clientId },
+export async function getClientSummaryText(workspaceId: string, clientId: string) {
+  const row = await prisma.workspaceClient.findFirst({
+    where: { id: clientId, workspaceId },
     select: { summaryNote: true, summaryDetail: true },
   });
   return { note: row?.summaryNote ?? null, detail: row?.summaryDetail ?? null };
 }
 
-export function setClientSummaryHidden(clientId: string, hidden: boolean): Promise<boolean> {
-  return updateSummaryFields(clientId, { summaryHidden: hidden });
+export function setClientSummaryHidden(workspaceId: string, clientId: string, hidden: boolean): Promise<boolean> {
+  return updateSummaryFields(workspaceId, clientId, { summaryHidden: hidden });
 }
