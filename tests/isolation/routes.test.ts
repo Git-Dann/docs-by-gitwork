@@ -101,7 +101,9 @@ function writeReport(all: Outcome[]) {
     ...verdicts.map((v) => `| ${v} | ${count(v)} |`),
     "",
   ];
-  for (const v of ["LEAK", "WROTE", "error", "uncovered"] as const) {
+  // Every verdict but `refused` is listed: `rejected` (a 4xx to the suite's `{}` body) and
+  // `isolated` (2xx with no marker) prove nothing on their own, so they need to be visible.
+  for (const v of ["LEAK", "WROTE", "error", "uncovered", "rejected", "isolated"] as const) {
     const rows = all.filter((o) => o.verdict === v);
     if (rows.length === 0) continue;
     lines.push(`## ${v}`, "");

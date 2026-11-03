@@ -9,7 +9,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { docsWorkspaceId, templateVisibleWhere } from "@/server/documents-scope";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
@@ -34,11 +34,12 @@ const patchSchema = z.object({
   sections: z.array(templateSectionSchema).min(1).max(40).optional(),
 });
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const template = await prisma.documentTemplate.findUnique({
-      where: { id },
+    const workspaceId = await docsWorkspaceId(await getEffectiveUserOrNull(request));
+    const template = await prisma.documentTemplate.findFirst({
+      where: { id, ...templateVisibleWhere(workspaceId) },
       include: { _count: { select: { documents: true } } },
     });
     if (!template) return apiError("Template not found", 404);
@@ -57,12 +58,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "manage templates");
-    await ensureBaseRecords();
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "manage templates");
+    const workspaceId = await docsWorkspaceId(actor);
     const { id } = await context.params;
     const body = patchSchema.parse(await request.json());
 
-    const existing = await prisma.documentTemplate.findUnique({ where: { id } });
+    const existing = await prisma.documentTemplate.findFirst({
+      where: { id, ...templateVisibleWhere(workspaceId) },
+    });
     if (!existing) return apiError("Template not found", 404);
 
     // Editing sections / name / description on a Foundry stock template is blocked. Workspaces
@@ -107,12 +111,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canManageDocs, "manage templates");
-    await ensureBaseRecords();
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canManageDocs, "manage templates");
+    const workspaceId = await docsWorkspaceId(actor);
     const { id } = await context.params;
 
-    const existing = await prisma.documentTemplate.findUnique({
-      where: { id },
+    const existing = await prisma.documentTemplate.findFirst({
+      where: { id, ...templateVisibleWhere(workspaceId) },
       include: { _count: { select: { documents: true } } },
     });
     if (!existing) return apiError("Template not found", 404);

@@ -28,6 +28,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => null) }));
+// An identity-less API-key caller is scoped to Gitwork's workspace, as it always was.
+vi.mock("@/server/bootstrap", () => ({
+  ensureBaseRecords: vi.fn(async () => ({ workspace: { id: "ws-gitwork" } })),
+}));
 
 const findFirst = vi.fn();
 const update = vi.fn();
@@ -177,6 +181,19 @@ describe("PATCH /api/documents/[id] — authorisation", () => {
     const response = await callPatch("doc-1", { title: "Renamed" });
 
     expect(response.status).toBe(200);
+  });
+
+  it("only looks the document up inside the caller's own workspace", async () => {
+    // A row in another business's workspace is never found, so it reads as 404 (not 403), the
+    // same as an id that doesn't exist. The real database proof is tests/isolation.
+    getEffectiveUserOrNull.mockResolvedValue(member({ workspaceId: "ws-canary", permissions: EDITOR }));
+    findFirst.mockResolvedValue(null);
+
+    const response = await callPatch("doc-1", { title: "Renamed" });
+
+    expect(response.status).toBe(404);
+    expect(findFirst.mock.calls[0][0].where).toEqual({ id: "doc-1", workspaceId: "ws-canary" });
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("locks a SENT document against content edits", async () => {

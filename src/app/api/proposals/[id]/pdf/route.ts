@@ -32,6 +32,7 @@ import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
 import { assertCan, canManageDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageDocs, "export documents");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
 
     const doc = await prisma.document.findFirst({
       where: { id },

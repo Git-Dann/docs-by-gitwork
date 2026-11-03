@@ -8741,6 +8741,24 @@ in. Also Gitwork-only by design: `meet-transcripts`, `wedge-course-feed`, `wedge
 Tests: `src/server/__tests__/crons-per-workspace.test.ts`, `monitor-workspace.test.ts`,
 `tests/isolation/crons.test.ts`.
 
+**Phase 2.2b, Docs (Nov 2026).** Documents, proposals and templates are now looked up inside the
+caller's workspace (`src/server/documents-scope.ts`), so another business's id reads as a 404,
+the same as an id that doesn't exist. The workspace is the one `requireAuthedUser` already serves
+(Gitwork, today), not the token's claim, so no Gitwork row stops matching. The workspace API key
+(no user) still resolves to Gitwork's workspace, as before. Templates show the workspace's own
+plus Foundry's stock ones (`workspaceId` null). 18 entries left `known-leaks.json`.
+Every other `documents/[id]/*` and `proposals/[id]/*` handler (activity, AI, deck, DocuSeal,
+signatures, comments, versions, presence, costing, engagement, export, PDF, relations, timeline)
+starts with `requireDocumentInWorkspace(id, user)`. Routes that name a row under the document
+(`comments/[commentId]`, `versions/[versionId]`, `signature-requests/[requestId]`) also run
+`requireRowOfDocument`, or your own document could be used as the key to another business's
+comment. ⚠️ The isolation suite can't prove these route by route (its `{}` bodies stop most writes
+at validation), so `src/server/__tests__/document-routes-scoped.test.ts` fails on any handler under
+those folders that doesn't call the guard. The fixtures now seed a comment, a version and a child
+document per business; before that, those routes answered 200 with nothing to leak and read as
+"isolated". The report lists `rejected` and `isolated` calls too, because neither proves anything
+on its own.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds

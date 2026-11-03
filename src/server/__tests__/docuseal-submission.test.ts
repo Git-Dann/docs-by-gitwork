@@ -63,6 +63,8 @@ vi.mock("@/server/auth/effective-user", () => ({
   canShareDocs: true,
 }));
 
+// The workspace guard is tested in documents-scope / document-routes-scoped; here it passes.
+vi.mock("@/server/documents-scope", () => ({ requireDocumentInWorkspace: vi.fn(async () => undefined) }));
 vi.mock("@/lib/request-origin", () => ({
   originFrom: vi.fn().mockReturnValue("http://localhost:3000"),
 }));

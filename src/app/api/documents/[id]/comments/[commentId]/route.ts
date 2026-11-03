@@ -9,6 +9,8 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { reopenComment, resolveComment } from "@/server/document-comments";
+import { requireDocumentInWorkspace, requireRowOfDocument } from "@/server/documents-scope";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
   params: Promise<{ id: string; commentId: string }>;
@@ -20,7 +22,9 @@ const patchSchema = z.object({
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const { commentId } = await context.params;
+    const { id, commentId } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
+    await requireRowOfDocument("comment", commentId, id);
     const { user } = await ensureBaseRecords();
     const body = patchSchema.parse(await request.json());
 

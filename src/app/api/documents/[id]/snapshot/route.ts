@@ -19,7 +19,8 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { docsWorkspaceId } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -27,13 +28,13 @@ interface RouteContext {
 
 const PRESENCE_TTL_MS = 30_000;
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    await ensureBaseRecords();
     const { id } = await context.params;
+    const workspaceId = await docsWorkspaceId(await getEffectiveUserOrNull(request));
 
-    const doc = await prisma.document.findUnique({
-      where: { id },
+    const doc = await prisma.document.findFirst({
+      where: { id, workspaceId },
       select: {
         id: true,
         title: true,

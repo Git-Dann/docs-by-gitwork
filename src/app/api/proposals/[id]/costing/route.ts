@@ -10,6 +10,7 @@ import {
   canViewCosts,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     assertCan(actor, canManageDocs, "edit documents");
     assertCan(actor, canViewCosts, "edit costs");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, actor);
     const payload = proposalCostingSchema.parse(await request.json());
 
     const existing = await prisma.document.findUnique({ where: { id } });
