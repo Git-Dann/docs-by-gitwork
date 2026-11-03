@@ -111,6 +111,8 @@ export async function GET() {
         // Read live, not from the session, so the sidebar follows a Platform-console
         // change on the next fetch rather than the next token refresh.
         workspaceModules: resolveWorkspaceModules(workspace),
+        // Which business this is, so the account page knows whether a password applies here.
+        workspaceSlug: membership?.workspace.slug ?? null,
         // Gitwork's platform operators see the Platform console (src/server/platform/admin.ts).
         isPlatformAdmin: await isPlatformAdminUserId(mutableUser.id),
       },
@@ -157,7 +159,7 @@ export async function PATCH(request: NextRequest) {
     if (parsed.data.name !== undefined) {
       const membership = await findHomeMembership(session.user.id, session.user.workspaceId ?? null);
       // Read the role from the DATABASE, not the token — a JWT outlives a role change.
-      if (!isPasswordLoginAllowed(membership?.role)) {
+      if (!isPasswordLoginAllowed(membership?.role, membership?.workspace.slug)) {
         return apiError("Your name is managed by Google Workspace.", 400);
       }
       nameUpdate = parsed.data.name;

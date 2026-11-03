@@ -126,7 +126,7 @@ describe("a guest can change their own password", () => {
     expect(routeSource).toMatch(/prisma\.user\.findUnique/);
     // The live membership from the database (src/server/auth/home-membership.ts).
     expect(routeSource).toMatch(/const membership = await findHomeMembership\(/);
-    expect(routeSource).toMatch(/isPasswordLoginAllowed\(membership\?\.role\)/);
+    expect(routeSource).toMatch(/isPasswordLoginAllowed\(membership\?\.role, membership\?\.workspace\.slug\)/);
     expect(
       /isPasswordLoginAllowed\(session/.test(routeSource),
       "the role must not come from the session",
@@ -140,7 +140,7 @@ describe("a guest can change their own password", () => {
   });
 
   it("only shows the field to an account that can use it", () => {
-    expect(panel).toMatch(/isPasswordLoginAllowed\(profile\?\.role\)/);
+    expect(panel).toMatch(/isPasswordLoginAllowed\(profile\?\.role, profile\?\.workspaceSlug\)/);
   });
 
   it("keeps bcrypt and Prisma out of the client bundle", () => {

@@ -1,5 +1,14 @@
 import type { Prisma } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import { HOME_WORKSPACE_SLUG } from "@/lib/platform-rules";
 import { prisma } from "@/lib/prisma";
+import {
+  INVITE_REFUSAL_MESSAGE,
+  inviteRefusal,
+  inviteRole,
+  normaliseEmail,
+  type InviteRefusal,
+} from "@/lib/invite-rules";
 import { dispatchNotification } from "@/server/notifications";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
@@ -422,49 +431,116 @@ export async function updateInviteLabel(workspaceId: string, inviteId: string, l
   });
 }
 
-export async function acceptInvite(token: string, userId: string) {
-  const invite = await prisma.workspaceInvite.findUnique({ where: { token } });
-  if (!invite || invite.status !== "PENDING") return null;
-  if (invite.expiresAt && invite.expiresAt < new Date()) return null;
+export type AcceptInviteResult =
+  | { ok: true; workspaceId: string }
+  | { ok: false; reason: InviteRefusal | "not_found" };
 
-  // Ensure the user is a member of this workspace
+/** Tell the workspace's admins someone joined, on a genuine first join only. */
+async function announceJoin(workspaceId: string, userId: string) {
+  const joiner = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+  const joinerName = joiner?.name?.trim() || joiner?.email || "A new teammate";
+  dispatchNotification({
+    event: "team.member_added",
+    workspaceId,
+    target: { kind: "admins" },
+    title: `${joinerName} joined the workspace`,
+    actionUrl: "/app/settings/team",
+    groupKey: "team.member_added",
+  });
+}
+
+/**
+ * A signed-in person accepts an invite. An invite addressed to someone can only be accepted
+ * by that address, and grants the invite's role (src/lib/invite-rules.ts). Accepting never
+ * lowers an existing member's role.
+ */
+export async function acceptInvite(token: string, userId: string): Promise<AcceptInviteResult> {
+  const invite = await prisma.workspaceInvite.findUnique({ where: { token } });
+  if (!invite) return { ok: false, reason: "not_found" };
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  const refusal = inviteRefusal(invite, user?.email ?? null);
+  if (refusal) return { ok: false, reason: refusal };
+
   const alreadyMember = await prisma.workspaceMember.findUnique({
     where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
     select: { id: true },
   });
-  await prisma.workspaceMember.upsert({
+  const member = await prisma.workspaceMember.upsert({
     where: { workspaceId_userId: { workspaceId: invite.workspaceId, userId } },
     update: {},
-    create: { workspaceId: invite.workspaceId, userId, role: DEFAULT_PROVISIONED_ROLE, permissions: [] },
+    create: { workspaceId: invite.workspaceId, userId, role: inviteRole(invite), permissions: [] },
   });
-
-  // Only on a genuine first join (not a re-accept) — let admins know.
   if (!alreadyMember) {
-    const joiner = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { name: true, email: true },
-    });
-    const joinerName = joiner?.name?.trim() || joiner?.email || "A new teammate";
-    dispatchNotification({
-      event: "team.member_added",
-      workspaceId: invite.workspaceId,
-      target: { kind: "admins" },
-      title: `${joinerName} joined the workspace`,
-      actionUrl: "/app/settings/team",
-      groupKey: "team.member_added",
-    });
+    await recomputeMember(member.id).catch(() => undefined);
+    await announceJoin(invite.workspaceId, userId);
   }
-
-  return prisma.workspaceInvite.update({
+  await prisma.workspaceInvite.update({
     where: { id: invite.id },
     data: { status: "ACCEPTED", acceptedById: userId },
   });
+  return { ok: true, workspaceId: invite.workspaceId };
+}
+
+export type PasswordSignupResult =
+  | { ok: true; email: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Accept an invite by creating an account with a password (multi-tenant Phase 3). Only for
+ * businesses other than Gitwork, whose people have no Gitwork Google account; Gitwork's own
+ * invites still go through Google. ⚠️ An address that already has a Foundry account is
+ * refused: setting a password for it here would take that account over.
+ */
+export async function acceptInviteWithPassword(input: {
+  token: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<PasswordSignupResult> {
+  const invite = await prisma.workspaceInvite.findUnique({
+    where: { token: input.token },
+    include: { workspace: { select: { slug: true } } },
+  });
+  if (!invite) return { ok: false, status: 404, error: "This invite link isn't valid." };
+  if (invite.workspace.slug === HOME_WORKSPACE_SLUG) {
+    return { ok: false, status: 400, error: "Gitwork invites are accepted with a Gitwork Google account." };
+  }
+  const email = normaliseEmail(input.email);
+  const refusal = inviteRefusal(invite, email);
+  if (refusal) return { ok: false, status: 400, error: INVITE_REFUSAL_MESSAGE[refusal] };
+  if (input.password.length < 8) return { ok: false, status: 400, error: "Use at least 8 characters." };
+
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing) {
+    return {
+      ok: false,
+      status: 409,
+      error: "That email already has a Foundry account. Sign in first, then open this link again.",
+    };
+  }
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name: input.name.trim().slice(0, 120) || email.split("@")[0],
+      passwordHash: await bcrypt.hash(input.password, 12),
+      memberships: { create: { workspaceId: invite.workspaceId, role: inviteRole(invite), permissions: [] } },
+    },
+    select: { id: true, email: true, memberships: { select: { id: true } } },
+  });
+  for (const m of user.memberships) await recomputeMember(m.id).catch(() => undefined);
+  await prisma.workspaceInvite.update({
+    where: { id: invite.id },
+    data: { status: "ACCEPTED", acceptedById: user.id },
+  });
+  await announceJoin(invite.workspaceId, user.id);
+  return { ok: true, email: user.email };
 }
 
 export async function getInviteByToken(token: string) {
   return prisma.workspaceInvite.findUnique({
     where: { token },
-    include: { workspace: { select: { name: true } } },
+    include: { workspace: { select: { name: true, slug: true } } },
   });
 }
 

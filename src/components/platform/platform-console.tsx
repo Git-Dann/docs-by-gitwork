@@ -29,6 +29,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { Pager } from "@/components/ui/pager";
 import { SortHeader } from "@/components/ui/sort-header";
+import { AddBusinessDialog } from "@/components/platform/add-business-dialog";
 
 function Panel({
   number,
@@ -130,6 +131,7 @@ function BusinessesPanel({ onOpen }: { onOpen: (id: string) => void }) {
   const filtered = Boolean(q || query.modules !== "any" || query.ai !== "any");
   const data = list.data;
   const sort = { key: query.sort, dir: query.dir };
+  const [adding, setAdding] = useState(false);
 
   return (
     <Panel
@@ -137,8 +139,16 @@ function BusinessesPanel({ onOpen }: { onOpen: (id: string) => void }) {
       title="Businesses"
       status={data ? (filtered ? `${data.total} match` : `${data.total} on Foundry`) : undefined}
     >
+      <AddBusinessDialog open={adding} onClose={() => setAdding(false)} onOpenBusiness={onOpen} />
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="app-button app-button-primary app-button-sm order-last sm:ml-auto"
+            onClick={() => setAdding(true)}
+          >
+            Add business
+          </button>
           <input
             type="search"
             className="app-input min-w-[200px] flex-1 sm:max-w-xs"
@@ -573,7 +583,13 @@ function BusinessDialog({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 /** One line per audit entry: who, which business, what changed. */
-export function describePlatformChange(entry: Pick<PlatformAuditItem, "before" | "after">): string {
+export function describePlatformChange(
+  entry: Pick<PlatformAuditItem, "before" | "after"> & { action?: string },
+): string {
+  if (entry.action === "platform.workspace.created") {
+    const owner = (entry.after as { ownerEmail?: string } | null)?.ownerEmail;
+    return owner ? `created it and invited ${owner} as owner` : "created it";
+  }
   const before = (entry.before ?? {}) as Partial<Draft>;
   const after = (entry.after ?? {}) as Partial<Draft>;
   const parts: string[] = [];

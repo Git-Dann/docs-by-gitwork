@@ -8908,6 +8908,35 @@ workspace the person belongs to is served it; one they don't belong to never is)
 - Tests: `api-key-token.test.ts`, `src/server/__tests__/api-keys.test.ts`,
   `api-keys-routes.test.ts`, `mcp-access.test.ts`.
 
+**Phase 3, first slice: businesses created by us, people sign in with a password (Nov 2026).**
+Dan's calls: no public sign-up page until there's billing; people at a new business use email
+and password. Google is out for them because Foundry's Google sign-in asks for Gmail and Drive
+scopes, which Google only grants to outside users after verification and a yearly assessment.
+- **Platform console → Add business** (`createPlatformBusiness`, `POST /api/platform/workspaces`,
+  platform admins). Creates the workspace with `DEFAULT_BUSINESS_MODULES`, restricted modules
+  and `platformAiKeysAllowed: false`, plus a 14-day owner invite addressed to the owner's email
+  with role `SUPER_ADMIN`. The invite is emailed (`sendWorkspaceEmail`, the new workspace has no
+  email settings, so it uses the server's SMTP) and its link shown to copy. Audited as
+  `platform.workspace.created`. Slugs come from `businessSlug` and can never be `gitwork`.
+- **Invites carry `email` and `role`** (`WorkspaceInvite`, additive). Rules in
+  `src/lib/invite-rules.ts`: an addressed invite accepts only that email; the role defaults to
+  `DEFAULT_PROVISIONED_ROLE`. Gitwork's open label-only invites behave exactly as before.
+- **Accepting with a password** (`acceptInviteWithPassword`, `POST /api/auth/invite/[token]`,
+  public, rate-limited). Creates the account and the membership, then signs straight in.
+  ⚠️ Refused for an email that already has a Foundry account (it would take that account over),
+  and for Gitwork's own invites (Gitwork is Google-only).
+- **Who may use a password:** `isPasswordLoginAllowed(role, workspaceSlug)` in `types/auth.ts`.
+  Gitwork, or an unknown workspace: guests only, as before. Any other business: every role.
+- ⚠️ **The shared recovery key is gone.** `POST /api/auth/forgot-password` used to set ANY
+  user's password on `INITIAL_ADMIN_PASSWORD`, which is why passwords were guest-only. It now
+  emails a single-use, one-hour link (`src/server/auth/password-reset.ts`, `PasswordResetToken`,
+  SHA-256 stored), only to accounts that may use a password, and answers the same either way.
+  `/reset-password` uses it. **Never bring back a reset that doesn't prove control of the mailbox.**
+- **Not done yet:** a first-run checklist for a new business, per-workspace allowed email
+  domains (Google sign-in for a business), choosing role and email on Settings → Team invites,
+  email and password on the iOS app, and a public sign-up page.
+- Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
+
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
 Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,
 so every b→a call is refused before it reaches the code. A route that still reads Gitwork's

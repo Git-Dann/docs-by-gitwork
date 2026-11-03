@@ -8,7 +8,7 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { resolveWorkspaceModules } from "@/lib/workspace-modules";
-import { verifyGuestPassword } from "@/server/auth/password-login";
+import { verifyPassword } from "@/server/auth/password-login";
 import { findHomeMembership } from "@/server/auth/home-membership";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
@@ -83,10 +83,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
-    // Email + password, and ONLY ever for a GUEST — see server/auth/password-login.ts
-    // for why that restriction is structural rather than a policy. Staff and admins
-    // stay Google-only, which is also what keeps the @gitwork.co.uk check below
-    // meaningful for them.
+    // Email + password: Gitwork's guests, and everyone in other businesses
+    // (server/auth/password-login.ts). Gitwork staff stay Google-only. The provider id
+    // stays "guest-password" so existing sessions and forms keep working.
     Credentials({
       id: "guest-password",
       name: "Email and password",
@@ -94,7 +93,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(raw) {
         const email = typeof raw?.email === "string" ? raw.email : "";
         const password = typeof raw?.password === "string" ? raw.password : "";
-        const result = await verifyGuestPassword(email, password);
+        const result = await verifyPassword(email, password);
         // `null` for every failure. NextAuth turns it into one generic error, which is
         // what we want: telling "no such account" apart from "wrong password" is an
         // enumeration oracle.
@@ -111,7 +110,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // must be @gitwork.co.uk" would mean any future provider silently defaults to
       // allowed; an unrecognised provider is refused here instead.
       if (account?.provider === "guest-password") {
-        // Already authenticated in `authorize`, which only returns a user for a GUEST.
+        // Already authenticated in `authorize`, which only returns a user who may use a password.
         return true;
       }
       if (account?.provider === "google") {
