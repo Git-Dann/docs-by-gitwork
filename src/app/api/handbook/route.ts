@@ -7,6 +7,7 @@ import {
 } from "@/server/handbook";
 import { handbookCreateSchema } from "@/server/validators";
 import { assertCan, canManageHandbook, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,8 @@ export async function GET(request: NextRequest) {
     const category = url.searchParams.get("category") ?? undefined;
     const includeArchived = url.searchParams.get("includeArchived") === "true";
     const [articles, categories] = await Promise.all([
-      listHandbookArticles({ q, category, includeArchived }),
-      listHandbookCategories(),
+      listHandbookArticles(await workspaceIdForRequest(request), { q, category, includeArchived }),
+      listHandbookCategories(await workspaceIdForRequest(request)),
     ]);
     return apiOk({ articles, categories });
   } catch (error) {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     assertCan(user, canManageHandbook, "create handbook articles");
     const body = await request.json();
     const data = handbookCreateSchema.parse(body);
-    const article = await createHandbookArticle({
+    const article = await createHandbookArticle(await workspaceIdForRequest(request), {
       title: data.title,
       summary: data.summary ?? null,
       category: data.category ?? null,

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { parseCapture } from "@/lib/pulse-capture";
+import { ensureBaseRecords } from "@/server/bootstrap";
 
 export interface PulseLeadView {
   id: string;
@@ -155,7 +156,9 @@ export async function importLeadToFoundry(leadId: string): Promise<{ scanId: str
   let projectName = lead.targetUrl;
   try { projectName = new URL(lead.targetUrl).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
 
+  // Leads come from the public Pulse embed, which is Gitwork's own sales funnel.
   const { scan, aiConfig } = await createPulseScanRecord({
+    workspaceId: (await ensureBaseRecords()).workspace.id,
     projectName,
     inputType: "URL",
     inputUrl: lead.targetUrl,

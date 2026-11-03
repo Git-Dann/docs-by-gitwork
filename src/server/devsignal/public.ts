@@ -139,7 +139,7 @@ async function buildSession(a: LoadedAssessment): Promise<PublicVetSession> {
   // Same idea for the Starter Fluency fixture — deterministic on the candidate's declared stack,
   // so re-picking on every session load (same pattern as `challenge` above) still lands on the
   // same starter across reloads rather than needing separate persistence.
-  const starterFixture = await pickStarterFixtureFor({ primaryStack: c.primaryStack });
+  const starterFixture = await pickStarterFixtureFor(a.workspace.id, { primaryStack: c.primaryStack });
 
   return {
     token: a.publicToken ?? "",
@@ -276,7 +276,7 @@ export async function submitStarterFluency(
   if (!a || isExpired(a)) return { ok: false };
   assertConsent(a);
 
-  const fixture = await pickStarterFixtureFor({ primaryStack: a.candidate.primaryStack });
+  const fixture = await pickStarterFixtureFor(a.workspace.id, { primaryStack: a.candidate.primaryStack });
   if (!fixture) return { ok: false };
 
   const scored = await scoreStarterFluencyResponse({

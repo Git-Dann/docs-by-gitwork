@@ -11,7 +11,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { slugifyClientName } from "@/lib/clients";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
 import { allFields, isLaunchpadStructure } from "@/lib/launchpad/structure";
 import type {
@@ -27,6 +26,9 @@ const templateInclude = {
 type TemplateRow = Prisma.LaunchpadTemplateGetPayload<{ include: typeof templateInclude }>;
 
 /** Guard a JSON `structure` blob, falling back to the in-code default. */
+/** A workspace sees its own rows plus Foundry's stock ones (`workspaceId` null). */
+const visibleTo = (workspaceId: string) => ({ OR: [{ workspaceId }, { workspaceId: null }] });
+
 export function normalizeStructure(value: Prisma.JsonValue | null): LaunchpadStructure {
   return isLaunchpadStructure(value)
     ? (value as unknown as LaunchpadStructure)
@@ -79,10 +81,10 @@ async function uniqueSlug(name: string): Promise<string> {
   return slug;
 }
 
-export async function listLaunchpadTemplates(options?: {
+export async function listLaunchpadTemplates(workspaceId: string, options?: {
   includeArchived?: boolean;
 }): Promise<{ templates: LaunchpadTemplateSummary[] }> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const rows = await prisma.launchpadTemplate.findMany({
     where: {
       OR: [{ workspaceId: workspace.id }, { workspaceId: null }],
@@ -94,42 +96,42 @@ export async function listLaunchpadTemplates(options?: {
   return { templates: rows.map(toSummary) };
 }
 
-export async function getLaunchpadTemplate(id: string): Promise<LaunchpadTemplateRecord | null> {
-  const row = await prisma.launchpadTemplate.findUnique({ where: { id }, include: templateInclude });
+export async function getLaunchpadTemplate(workspaceId: string, id: string): Promise<LaunchpadTemplateRecord | null> {
+  const row = await prisma.launchpadTemplate.findFirst({ where: { id, ...visibleTo(workspaceId) }, include: templateInclude });
   return row ? toRecord(row) : null;
 }
 
 /** The template a new kit is assigned from: the explicit id if live, else the default. */
-export async function resolveAssignableTemplate(
+export async function resolveAssignableTemplate(workspaceId: string, 
   templateId?: string,
 ): Promise<{ id: string; structure: Prisma.JsonValue; name: string } | null> {
   if (templateId) {
     const byId = await prisma.launchpadTemplate.findFirst({
-      where: { id: templateId, isArchived: false },
+      where: { id: templateId, isArchived: false, ...visibleTo(workspaceId) },
       select: { id: true, structure: true, name: true },
     });
     if (byId) return byId;
   }
   return prisma.launchpadTemplate.findFirst({
-    where: { isArchived: false, isDefault: true },
+    where: { isArchived: false, isDefault: true, ...visibleTo(workspaceId) },
     orderBy: { createdAt: "asc" },
     select: { id: true, structure: true, name: true },
   });
 }
 
-export async function createLaunchpadTemplate(input: {
+export async function createLaunchpadTemplate(workspaceId: string, input: {
   name: string;
   description?: string;
   structure?: LaunchpadStructure;
   cloneFromId?: string;
 }): Promise<LaunchpadTemplateRecord> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
 
   // Seed priority: explicit structure → clone source → the default.
   let structure = input.structure;
   if (!structure && input.cloneFromId) {
-    const source = await prisma.launchpadTemplate.findUnique({
-      where: { id: input.cloneFromId },
+    const source = await prisma.launchpadTemplate.findFirst({
+      where: { id: input.cloneFromId, ...visibleTo(workspaceId) },
       select: { structure: true },
     });
     if (source) structure = normalizeStructure(source.structure);
@@ -151,19 +153,19 @@ export async function createLaunchpadTemplate(input: {
   return toRecord(row);
 }
 
-export async function duplicateLaunchpadTemplate(
+export async function duplicateLaunchpadTemplate(workspaceId: string, 
   id: string,
 ): Promise<LaunchpadTemplateRecord | null> {
-  const source = await prisma.launchpadTemplate.findUnique({ where: { id } });
+  const source = await prisma.launchpadTemplate.findFirst({ where: { id, ...visibleTo(workspaceId) } });
   if (!source) return null;
-  return createLaunchpadTemplate({
+  return createLaunchpadTemplate(workspaceId, {
     name: `${source.name} (copy)`,
     description: source.description ?? undefined,
     structure: normalizeStructure(source.structure),
   });
 }
 
-export async function updateLaunchpadTemplate(
+export async function updateLaunchpadTemplate(workspaceId: string, 
   id: string,
   input: {
     name?: string;
@@ -173,8 +175,8 @@ export async function updateLaunchpadTemplate(
     isArchived?: boolean;
   },
 ): Promise<LaunchpadTemplateRecord | null> {
-  const existing = await prisma.launchpadTemplate.findUnique({
-    where: { id },
+  const existing = await prisma.launchpadTemplate.findFirst({
+    where: { id, ...visibleTo(workspaceId) },
     select: { id: true },
   });
   if (!existing) return null;
@@ -190,7 +192,7 @@ export async function updateLaunchpadTemplate(
   // Promote to default: clear the flag on every other template first (only one default).
   if (input.isDefault === true) {
     await prisma.launchpadTemplate.updateMany({
-      where: { isDefault: true, NOT: { id } },
+      where: { isDefault: true, NOT: { id }, ...visibleTo(workspaceId) },
       data: { isDefault: false },
     });
     data.isDefault = true;
@@ -207,10 +209,10 @@ export async function updateLaunchpadTemplate(
   return toRecord(row);
 }
 
-export async function deleteLaunchpadTemplate(
+export async function deleteLaunchpadTemplate(workspaceId: string, 
   id: string,
 ): Promise<{ deleted: boolean; archived?: boolean } | null> {
-  const row = await prisma.launchpadTemplate.findUnique({ where: { id }, include: templateInclude });
+  const row = await prisma.launchpadTemplate.findFirst({ where: { id, ...visibleTo(workspaceId) }, include: templateInclude });
   if (!row) return null;
   if (row.isDefault) {
     throw new Error("Can't delete the default template. Make another template the default first.");

@@ -4,6 +4,7 @@ import { canSeeAllClients, getEffectiveUserOrNull } from "@/server/auth/effectiv
 import { assignedClientIds } from "@/server/tasks";
 import { getProjectScans } from "@/server/pulse";
 import { decodeTargetKey } from "@/lib/pulse-projects";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!key) return apiError("Project not found", 404);
     const user = await getEffectiveUserOrNull(request);
     const clientIds = user && !canSeeAllClients(user) ? await assignedClientIds(user) : null;
-    const result = await getProjectScans(key, { clientIds, triggeredByUserId: clientIds ? (user?.id ?? null) : null });
+    const result = await getProjectScans(await workspaceIdForRequest(request), key, { clientIds, triggeredByUserId: clientIds ? (user?.id ?? null) : null });
     if (!result) return apiError("Project not found", 404);
     return apiOk(result);
   } catch (error) {

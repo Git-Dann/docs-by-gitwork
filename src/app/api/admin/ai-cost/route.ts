@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { getAiCostSummary } from "@/server/ai-cost";
 import { getRequestUser } from "@/server/auth/request-user";
 import { isSuperAdmin } from "@/types/auth";
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     if (!role || !isSuperAdmin(role)) return apiError("Forbidden", 403);
 
     const ws = await prisma.workspace.findUnique({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: await workspaceIdForRequest(request) },
       select: {
         id: true,
         anthropicAdminApiKey: true,

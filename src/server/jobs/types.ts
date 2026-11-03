@@ -24,16 +24,16 @@ export interface JobPayloads {
     policyKey?: string;
   };
   CURATOR_RUN: {
-    /** Target workspace; omitted = the default base workspace. */
-    workspaceId?: string;
+    /** The workspace to run for. */
+    workspaceId: string;
     /** "prune" = deterministic only; "consolidate" = force LLM pass. Omitted = follow config. */
     mode?: "prune" | "consolidate";
     /** Compute everything but mutate nothing. */
     dryRun?: boolean;
   };
   FOREMAN_RUN: {
-    /** Target workspace; omitted = the default base workspace. */
-    workspaceId?: string;
+    /** The workspace to run for. */
+    workspaceId: string;
     /** Force the AI narrative pass on. Omitted = follow config. */
     consolidate?: boolean;
     /** Compute everything but persist a dry_run marker + never notify. */

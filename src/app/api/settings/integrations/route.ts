@@ -5,7 +5,8 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { decryptNullable, encryptNullable } from "@/lib/encryption";
 import { storeSmtpPassword } from "@/server/smtp-password";
 import { prisma } from "@/lib/prisma";
-import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { requestWorkspaceId, workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAuditEntry } from "@/server/audit-log";
 import { authTest, getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
@@ -172,7 +173,11 @@ const updateSchema = z.object({
 
 export async function PUT(request: NextRequest) {
   try {
-    const workspaceId = await workspaceIdForRequest(request);
+    // These are the workspace's AI keys, Slack token and email credentials: Admins and Super
+    // Admins only (Dan, 3 Nov 2026). The role is read from the database, not the session token.
+    const caller = await getEffectiveUserOrNull(request);
+    assertAtLeastAdmin(caller);
+    const workspaceId = await requestWorkspaceId(caller);
     const body = updateSchema.parse(await request.json());
 
     // Build update payload with explicit Prisma-typed fields only

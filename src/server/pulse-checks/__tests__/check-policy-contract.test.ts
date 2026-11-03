@@ -96,6 +96,6 @@ describe("resetting a check's configuration needs the authority that set it", ()
   it("gates DELETE the same way POST is gated", () => {
     expect(handler).toContain("assertAtLeastAdmin(");
     // Before the request is acted on, not after.
-    expect(handler.indexOf("assertAtLeastAdmin(")).toBeLessThan(handler.indexOf("resetCheckConfig(decodeURIComponent"));
+    expect(handler.indexOf("assertAtLeastAdmin(")).toBeLessThan(handler.indexOf("await resetCheckConfig("));
   });
 });

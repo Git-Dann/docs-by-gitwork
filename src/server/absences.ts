@@ -10,7 +10,6 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { monthGridRange } from "@/server/backstage-gcal";
@@ -84,7 +83,6 @@ function dayUtc(iso?: string): Date {
 
 // Absences overlapping today (start ≤ today ≤ end, treating null end as single-day).
 export async function listTodayAbsences(user: EffectiveUser): Promise<AbsenceDTO[]> {
-  await ensureBaseRecords();
   const today = dayUtc();
   const rows = await prisma.absence.findMany({
     where: {
@@ -104,7 +102,6 @@ export async function listAbsencesForMonth(
   year: number,
   month: number,
 ): Promise<AbsenceDTO[]> {
-  await ensureBaseRecords();
   const { from, to } = monthGridRange(year, month);
   const rows = await prisma.absence.findMany({
     where: {
@@ -123,7 +120,6 @@ export async function listCoverableClients(
   user: EffectiveUser,
   absentUserId: string,
 ): Promise<CoverableClient[]> {
-  await ensureBaseRecords();
   const tasks = await prisma.task.findMany({
     where: {
       workspaceId: user.workspaceId,
@@ -168,7 +164,6 @@ export async function listActiveCoversForClient(
   user: EffectiveUser,
   clientId: string,
 ): Promise<CoverAssignmentDTO[]> {
-  await ensureBaseRecords();
   const rows = await prisma.absence.findMany({
     where: { workspaceId: user.workspaceId, coverClientId: clientId, coverActive: true },
     include: {
@@ -277,7 +272,6 @@ export async function markAbsence(
     coverClientId?: string;
   },
 ): Promise<AbsenceDTO> {
-  await ensureBaseRecords();
 
   // Target must be a real member of this workspace (excludes the seed account).
   const member = await prisma.workspaceMember.findFirst({

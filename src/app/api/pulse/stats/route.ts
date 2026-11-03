@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { getPulseStats } from "@/server/pulse";
 import { assertInternal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     assertInternal(await getEffectiveUserOrNull(request));
-    const stats = await getPulseStats();
+    const stats = await getPulseStats(await workspaceIdForRequest(request));
     return apiOk(stats);
   } catch (error) {
     return fromError(error);

@@ -20,9 +20,10 @@ export interface ApplyOutcome {
   reason?: string;
 }
 
-async function loadProposals(runId: string): Promise<{ workspaceId: string; proposals: CuratorProposal[] } | null> {
-  const run = await prisma.curatorRun.findUnique({
-    where: { id: runId },
+async function loadProposals(workspaceId: string, runId: string): Promise<{ workspaceId: string; proposals: CuratorProposal[] } | null> {
+  // A run in another workspace reads as not found.
+  const run = await prisma.curatorRun.findFirst({
+    where: { id: runId, workspaceId },
     select: { workspaceId: true, proposals: true },
   });
   if (!run) return null;
@@ -37,8 +38,8 @@ async function persist(runId: string, proposals: CuratorProposal[]): Promise<voi
   });
 }
 
-export async function applyProposal(runId: string, proposalId: string): Promise<ApplyOutcome> {
-  const loaded = await loadProposals(runId);
+export async function applyProposal(workspaceId: string, runId: string, proposalId: string): Promise<ApplyOutcome> {
+  const loaded = await loadProposals(workspaceId, runId);
   if (!loaded) return { ok: false, reason: "Run not found" };
 
   const proposal = loaded.proposals.find((p) => p.id === proposalId);
@@ -47,25 +48,25 @@ export async function applyProposal(runId: string, proposalId: string): Promise<
 
   switch (proposal.kind) {
     case "STARTER_ARCHIVE": {
-      const updated = await updateStarter(proposal.target, { isArchived: true, curatorState: "ARCHIVED" });
+      const updated = await updateStarter(loaded.workspaceId, proposal.target, { isArchived: true, curatorState: "ARCHIVED" });
       if (!updated) return { ok: false, reason: "Starter not found" };
       break;
     }
     case "STARTER_CONSOLIDATE":
       return { ok: false, reason: "Consolidation is advisory only — merge manually, then archive the duplicates." };
     case "CHECK_DISABLE":
-      await saveCheckConfig({ checkKey: proposal.target, enabled: false });
+      await saveCheckConfig(loaded.workspaceId, { checkKey: proposal.target, enabled: false });
       break;
     case "CHECK_SEVERITY": {
       const severity = proposal.payload?.severity;
       if (severity !== "WARN" && severity !== "FAIL") return { ok: false, reason: "Invalid severity" };
-      await saveCheckConfig({ checkKey: proposal.target, severityOverride: severity });
+      await saveCheckConfig(loaded.workspaceId, { checkKey: proposal.target, severityOverride: severity });
       break;
     }
     case "CHECK_RELABEL": {
       const label = proposal.payload?.label;
       if (typeof label !== "string" || !label.trim()) return { ok: false, reason: "Invalid label" };
-      await saveCheckConfig({ checkKey: proposal.target, labelOverride: label.trim() });
+      await saveCheckConfig(loaded.workspaceId, { checkKey: proposal.target, labelOverride: label.trim() });
       break;
     }
     default:
@@ -84,8 +85,8 @@ export async function applyProposal(runId: string, proposalId: string): Promise<
   return { ok: true, proposal };
 }
 
-export async function dismissProposal(runId: string, proposalId: string): Promise<ApplyOutcome> {
-  const loaded = await loadProposals(runId);
+export async function dismissProposal(workspaceId: string, runId: string, proposalId: string): Promise<ApplyOutcome> {
+  const loaded = await loadProposals(workspaceId, runId);
   if (!loaded) return { ok: false, reason: "Run not found" };
 
   const proposal = loaded.proposals.find((p) => p.id === proposalId);

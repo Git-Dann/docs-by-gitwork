@@ -4,11 +4,13 @@ import { apiOk, fromError, apiError } from "@/lib/api-response";
 import { listAgentConfigs, saveAgentConfig } from "@/server/agent-config";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
+
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const agents = await listAgentConfigs();
+    const agents = await listAgentConfigs(await workspaceIdForRequest(request));
     return apiOk(agents);
   } catch (e) {
     return fromError(e);
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(req));
     const body = saveSchema.parse(await req.json());
-    await saveAgentConfig(body);
+    await saveAgentConfig(await workspaceIdForRequest(req), body);
     return apiOk({ ok: true });
   } catch (e) {
     if (e instanceof z.ZodError) return apiError(e.message, 400);

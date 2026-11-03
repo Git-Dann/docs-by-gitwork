@@ -8843,8 +8843,29 @@ the whole workspace row read it with `findUniqueOrThrow({ where: { id } })`.
 - ⚠️ Not done, on purpose: `/api/account` and `/api/account/password` still read the Gitwork
   membership by slug. They answer "which workspace am I in", which is what the sign-in switch
   settles; change them with it.
-- ⚠️ Found, not fixed: `PUT /api/settings/integrations` has no permission check, so any signed-in
-  member can change the workspace AI and Slack keys. A role question for Dan, not isolation.
+- `PUT /api/settings/integrations` (AI keys, Slack token, email) is Admins and Super Admins only
+  (Dan, 3 Nov 2026), read from the database role.
+
+**Phase 2.2b, the server modules (Nov 2026).** Handbook, Starters, Starter recipes, onboarding
+forms, Launchpad templates and summaries, Foreman and Curator (queries, runs, proposals, restore),
+Pulse (scan list, projects, portfolio, stats, benchmarks, retry, proposal from scan, monitors,
+check config, agent prompt overrides) and the code portfolio take a `workspaceId` instead of
+picking Gitwork themselves; `tsc` found every caller. Scan creation (`createPulseScanRecord`),
+Foreman and Curator runs now require it.
+- By-id lookups that ignored the workspace now refuse another business's row: onboarding forms
+  and Launchpad templates (own rows plus Foundry's stock ones, `workspaceId` null), Curator runs,
+  and Pulse retry (uses the scan's own workspace and AI keys).
+- The bare `await ensureBaseRecords();` calls left over in tasks, Backstage, absences, standups,
+  milestones, categories, Slack updates and two pages are gone: setup runs at server start.
+- Left on Gitwork on purpose: the public Pulse embed funnel (leads, full-report delivery and its
+  config), the `/apply` careers page, golf clubs, the Wedge jobs, meeting notes, the team-roster
+  seed and the `/api/dev` one-shots. Care stays out entirely (Dan).
+
+**Still to do for multi-tenant (Nov 2026):** the sign-in switch. `auth.ts`, the mobile and desktop
+sign-in, `requireAuthedUser`, password login, MCP auth and admin state, the account routes, the
+settings/analytics/new-scan pages' membership reads and `autoAcceptMatchingInvite` all find the
+membership by the Gitwork slug. They change together to the token's workspace (0 shadow
+mismatches is the evidence). Then per-workspace API keys.
 
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
 Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,

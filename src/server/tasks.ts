@@ -7,7 +7,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
   ForbiddenError,
@@ -386,7 +385,6 @@ export async function listTasks(
     openOnly?: boolean;
   } = {},
 ): Promise<TaskDTO[]> {
-  await ensureBaseRecords();
   const where = await clientScopeWhere(user);
   // Active views exclude archived; the Archived tab passes archived:true for only-archived.
   where.archivedAt = opts.archived ? { not: null } : null;
@@ -534,7 +532,6 @@ export async function getClientTaskSummary(
 /** Workspace-wide status counts, scoped to the caller's visible clients. Powers
  *  the HQ tasks widget with one cheap groupBy — no need to download every task. */
 export async function getWorkspaceTaskCounts(user: EffectiveUser): Promise<TaskCounts> {
-  await ensureBaseRecords();
   const where = await clientScopeWhere(user);
   where.parentId = null; // top-level only, matching the board
   where.archivedAt = null; // active tasks only
@@ -557,7 +554,6 @@ export async function getTaskAttention(
   user: EffectiveUser,
   opts: { mine?: boolean } = {},
 ): Promise<TaskAttentionDTO> {
-  await ensureBaseRecords();
   const scope = await clientScopeWhere(user);
   const now = new Date();
   const startToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -662,7 +658,6 @@ export async function createTask(
     clickupId?: string | null;
   },
 ): Promise<TaskDTO> {
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
   if (input.featureBlockId) {
     await assertBlockInClient(user.workspaceId, input.clientId, input.featureBlockId);
@@ -757,7 +752,6 @@ export async function importTasks(
     dueDate?: string | null;
   }>,
 ): Promise<{ created: number; skipped: number }> {
-  await ensureBaseRecords();
   await assertClientInScope(user, clientId);
 
   // Validate referenced blocks + assignees once (drop anything out of scope).
@@ -1194,7 +1188,6 @@ export async function batchCreateTasks(
     metadata?: Record<string, unknown> | null;
   }>,
 ): Promise<{ created: number; skipped: number; tasks: TaskDTO[] }> {
-  await ensureBaseRecords();
   await assertClientInScope(user, clientId);
   if (!tasks.length) return { created: 0, skipped: 0, tasks: [] };
 

@@ -5,7 +5,6 @@
 // gates with assertAtLeastAdmin); no per-client scope filter is applied.
 
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { monthGridRange } from "@/server/backstage-gcal";
 import type {
@@ -19,7 +18,6 @@ export async function getCalendarTimeline(
   year: number,
   month: number,
 ): Promise<CalendarTimeline> {
-  await ensureBaseRecords();
   const { from, to } = monthGridRange(year, month);
 
   // Only dated blocks that intersect the grid window. The lt/gte comparators

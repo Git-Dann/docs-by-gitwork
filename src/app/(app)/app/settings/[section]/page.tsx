@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { AppShell } from "@/components/app-shell";
 import { AccountSettingsPanel } from "@/components/account-settings-panel";
@@ -264,9 +263,8 @@ export default async function SettingsSectionPage({
   const session = await auth();
   // Resolve role + effective permissions LIVE from the DB (the cache that reconcile +
   // recompute keep current) rather than the JWT — so matrix edits to a Settings section
-  // take effect without forcing a re-login. ensureBaseRecords also runs the catalog
-  // reconcile so newly-added settings permissions are granted before we gate on them.
-  await ensureBaseRecords();
+  // take effect without forcing a re-login. The catalog reconcile that grants newly-added
+  // settings permissions runs in first-boot setup, at server start.
   const sessionUser = session?.user;
   const member =
     sessionUser?.id || sessionUser?.email

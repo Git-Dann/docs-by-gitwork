@@ -4,7 +4,6 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { type EffectiveUser, ForbiddenError } from "@/server/auth/effective-user";
 import { assertClientInScope } from "@/server/tasks";
 import type { FeatureBlockDTO } from "@/types/tasks";
@@ -42,7 +41,6 @@ export async function listFeatureBlocks(
   user: EffectiveUser,
   clientId: string,
 ): Promise<FeatureBlockDTO[]> {
-  await ensureBaseRecords();
   await assertClientInScope(user, clientId);
   const rows = await prisma.featureBlock.findMany({
     where: { workspaceId: user.workspaceId, clientId },
@@ -64,7 +62,6 @@ export async function createFeatureBlock(
     clickupId?: string | null;
   },
 ): Promise<FeatureBlockDTO> {
-  await ensureBaseRecords();
   await assertClientInScope(user, input.clientId);
 
   const top = await prisma.featureBlock.findFirst({

@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getRecipe, updateRecipe, deleteRecipe } from "@/server/starter-recipes";
 import { starterRecipeUpdateSchema } from "@/server/validators";
 import { assertCan, canManageStarters, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "view starter recipes");
     const { id } = await params;
-    const recipe = await getRecipe(id);
+    const recipe = await getRecipe(await workspaceIdForRequest(request), id);
     if (!recipe) return apiError("Recipe not found", 404);
     return apiOk({ recipe });
   } catch (error) {
@@ -24,7 +25,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params;
     const body = await request.json();
     const data = starterRecipeUpdateSchema.parse(body);
-    const recipe = await updateRecipe(id, {
+    const recipe = await updateRecipe(await workspaceIdForRequest(request), id, {
       ...data,
       description: data.description === undefined ? undefined : data.description ?? null,
     });
@@ -39,7 +40,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "delete starter recipes");
     const { id } = await params;
-    const ok = await deleteRecipe(id);
+    const ok = await deleteRecipe(await workspaceIdForRequest(request), id);
     if (!ok) return apiError("Recipe not found", 404);
     return apiOk({ ok: true });
   } catch (error) {
