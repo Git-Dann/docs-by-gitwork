@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownTrayIcon, ArrowsRightLeftIcon } from "@heroicons/react/24/outline";
+import { ArrowDownTrayIcon, ArrowsRightLeftIcon, CheckIcon, LinkIcon } from "@heroicons/react/24/outline";
 import { Modal } from "@/components/ui/modal";
 import type { WikiCodeVersionRecord } from "@/lib/api";
 import {
@@ -25,6 +25,8 @@ import {
   type FileChange,
   type FileChangeStatus,
 } from "@/lib/code-diff";
+import { compareLink } from "@/lib/code-compare-link";
+import { HighlightedLine } from "./code-highlight";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -44,14 +46,19 @@ function byDate(versions: WikiCodeVersionRecord[]): WikiCodeVersionRecord[] {
   return [...versions].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
 
-/** The pair to open on: the given "to" (or the current version) against the one before it. */
+/**
+ * The pair to open on: the given "to" (or the current version) against the given "from",
+ * or else the one before it.
+ */
 export function defaultComparePair(
   versions: WikiCodeVersionRecord[],
   toId?: string | null,
+  fromId?: string | null,
 ): { fromId: string; toId: string } | null {
   if (versions.length < 2) return null;
   const to = versions.find((v) => v.id === toId) ?? versions.find((v) => v.isCurrent) ?? byDate(versions).at(-1)!;
-  const from = previousVersionOf(versions, to.id) ?? byDate(versions).find((v) => v.id !== to.id)!;
+  const chosen = versions.find((v) => v.id === fromId && v.id !== to.id);
+  const from = chosen ?? previousVersionOf(versions, to.id) ?? byDate(versions).find((v) => v.id !== to.id)!;
   return { fromId: from.id, toId: to.id };
 }
 
@@ -64,29 +71,32 @@ function Counts({ added, removed }: { added: number; removed: number }) {
   );
 }
 
-function LineText({ op, partner }: { op: DiffOp; partner: DiffOp | null }) {
-  if (!partner || op.kind === "same") return <>{op.text || " "}</>;
+/**
+ * The range of a changed line to emphasise, or null. Exported for the tests: the colours
+ * and the emphasis are drawn together by `HighlightedLine`, which splits tokens at its edges.
+ */
+export function emphasisRange(op: DiffOp, partner: DiffOp | null): { start: number; end: number } | null {
+  if (!partner || op.kind === "same") return null;
   const oldLine = op.kind === "del" ? op.text : partner.text;
   const newLine = op.kind === "add" ? op.text : partner.text;
-  const text = op.text;
-  if (!worthEmphasising(oldLine, newLine)) return <>{text || " "}</>;
+  if (!worthEmphasising(oldLine, newLine)) return null;
   const { prefix, suffix } = changedSpan(oldLine, newLine);
-  const mid = text.slice(prefix, text.length - suffix);
-  if (!mid) return <>{text || " "}</>;
+  const end = op.text.length - suffix;
+  return end > prefix ? { start: prefix, end } : null;
+}
+
+function LineText({ op, partner }: { op: DiffOp; partner: DiffOp | null }) {
+  const mark = useMemo(() => emphasisRange(op, partner), [op, partner]);
   return (
-    <>
-      {text.slice(0, prefix)}
-      <mark
-        className={`rounded-[2px] text-inherit ${
-          op.kind === "add"
-            ? "bg-[color-mix(in_srgb,var(--success-500)_30%,transparent)]"
-            : "bg-[color-mix(in_srgb,var(--danger-500)_28%,transparent)]"
-        }`}
-      >
-        {mid}
-      </mark>
-      {text.slice(text.length - suffix)}
-    </>
+    <HighlightedLine
+      text={op.text}
+      mark={mark}
+      markClassName={
+        op.kind === "add"
+          ? "bg-[color-mix(in_srgb,var(--success-500)_30%,transparent)]"
+          : "bg-[color-mix(in_srgb,var(--danger-500)_28%,transparent)]"
+      }
+    />
   );
 }
 
@@ -215,16 +225,25 @@ function triggerDownload(filename: string, text: string) {
 export function CodeCompareDialog({
   open,
   onClose,
+  moduleId,
   moduleName,
   versions,
   initialToId = null,
+  initialFromId = null,
+  mode = "internal",
 }: {
   open: boolean;
   onClose: () => void;
+  /** For the shareable link. */
+  moduleId?: string;
   moduleName: string;
   versions: WikiCodeVersionRecord[];
   /** Opened from a version's "changes" chip: compare that version with the one before it. */
   initialToId?: string | null;
+  /** Opened from a shared link: compare against this version instead of the one before. */
+  initialFromId?: string | null;
+  /** Which page the link should open: the team's wiki or the client's share page. */
+  mode?: "internal" | "public";
 }) {
   const ordered = useMemo(() => byDate(versions), [versions]);
   const [fromId, setFromId] = useState("");
@@ -232,17 +251,19 @@ export function CodeCompareDialog({
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
   const [wholeFile, setWholeFile] = useState(false);
   const fileRefs = useRef(new Map<string, HTMLDivElement>());
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Each opening starts on the pair it was opened for. Versions refetching while it's
   // open must not undo a choice, so they're deliberately not a dependency.
   useEffect(() => {
     if (!open) return;
-    const pair = defaultComparePair(versions, initialToId);
+    const pair = defaultComparePair(versions, initialToId, initialFromId);
     setFromId(pair?.fromId ?? "");
     setToId(pair?.toId ?? "");
     setWholeFile(false);
+    setLinkCopied(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialToId]);
+  }, [open, initialToId, initialFromId]);
 
   const from = ordered.find((v) => v.id === fromId) ?? null;
   const to = ordered.find((v) => v.id === toId) ?? null;
@@ -314,6 +335,25 @@ export function CodeCompareDialog({
             />
             Whole files
           </label>
+          {moduleId ? (
+            <button
+              type="button"
+              disabled={!from || !to || from.id === to.id}
+              onClick={() => {
+                if (!from || !to) return;
+                const href = compareLink(window.location.href, { moduleId, fromId: from.id, toId: to.id }, mode);
+                void navigator.clipboard.writeText(href).then(() => {
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 1800);
+                });
+              }}
+              title="A link that opens this comparison"
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)] disabled:opacity-50"
+            >
+              {linkCopied ? <CheckIcon className="h-4 w-4 text-[var(--success-500)]" /> : <LinkIcon className="h-4 w-4" />}
+              {linkCopied ? "Link copied" : "Copy link"}
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={!comparison || comparison.changedFiles === 0}

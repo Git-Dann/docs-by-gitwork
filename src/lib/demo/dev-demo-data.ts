@@ -1111,7 +1111,18 @@ const demoWiki: WikiDTO = {
         // a constant moved into config.h), so Compare has something honest to show.
         versions: [
           {
-            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.\nMove the radio channel into config.h.", isCurrent: true, createdAt: atDays(-3),
+            // Folder paths (src/…) and four files: the file list, a rename (radio.h moved
+            // into src/ unchanged) and the folding of older versions all show in the demo.
+            id: "cv1d", label: "v1.3.0", notes: "Split the radio driver into src/.\nRetry a failed receive once before sleeping.", isCurrent: true, createdAt: atDays(-1),
+            files: [
+              { id: "f5a", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"src/radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p) || radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  /* Sleep between polls to save battery.\n     One retry above covers a missed packet. */\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
+              { id: "f5b", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 750\n" },
+              { id: "f5c", filename: "src/radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+              { id: "f5d", filename: "src/radio.cpp", language: "cpp", content: "#include \"radio.h\"\n\nvoid Radio::begin() {\n  // Tune to the configured channel.\n}\n\nbool Radio::receive(Packet& out) {\n  out.count = 0;\n  return false;\n}\n" },
+            ],
+          },
+          {
+            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.\nMove the radio channel into config.h.", isCurrent: false, createdAt: atDays(-3),
             files: [
               { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  // Sleep between polls to save battery.\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
               { id: "f2", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 500\n" },

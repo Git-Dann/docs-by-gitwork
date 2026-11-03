@@ -9781,3 +9781,36 @@ is a fix after the fact.
   stack" with Show them / Show everyone (`missing=1`, `MISSING_DEVELOPER_DETAILS`, counted in the
   list response as `meta.missingDetails`).
 - A developer with no handle reads **"No GitHub yet"** (`githubLabel`), not a bare "@".
+
+## 114. Recent Changes (November 2026) — Code Handover: edit, uploads, file viewer
+
+A second pass on the wiki's Code Handover (§112).
+
+- **Edit version** (team only, ⋯ on a version row): the New version popup opens prefilled
+  (label, notes, files) and saves through the existing `PATCH versions/[versionId]`. Files replace
+  the version's files wholesale, and the live line reads "Changes from the saved vX".
+- **Uploads**: drop files, a folder or a .zip onto the Files pane, or use **Upload files** (a .zip
+  is accepted there) / **Upload folder**. Paths are kept (`src/radio.h`), and a single folder every
+  path shares is dropped, so a zipped `receiver/` lines up with the previous version's names.
+  The rules are pure, in `src/lib/code-upload.ts`, and mirror the server: text only (NUL bytes =
+  binary), 500,000 characters per file, 200-character paths, 50 files per version. Tooling,
+  dependency and build folders (`.git`, `node_modules`, `.pio`, `build`, `__MACOSX`) and OS files
+  are ignored and counted. Everything else left out is listed with its reason.
+- **Version viewer**: several files get a picker above the code (chips, or a dropdown past
+  `FILE_CHIPS_MAX` = 12) instead of every file stacked. It sits above rather than beside the code,
+  because a module card is often half the page wide. Code has line numbers (`NumberedCode`) and
+  each file has Download beside Copy.
+- **Syntax colours in the compare view**: the tokenizer moved to `code-highlight.tsx` and the
+  viewer and the diff share it. `segmentLine` splits a token where the changed-word emphasis cuts
+  through it, so both keep their colour. `tokenLines` tokenises the whole file first, so a block
+  comment is coloured on every line it spans.
+- **Older versions fold**: the newest three (current first) show, the rest behind
+  "Show N older versions" (`VISIBLE_VERSIONS`).
+- **Copy link** in the compare dialog opens that exact comparison
+  (`src/lib/code-compare-link.ts`). ⚠️ The pair rides in a `?compare=<module>:<from>..<to>` query
+  parameter, never in the hash. The internal wiki routes on an exact `#<section>` hash and rewrites
+  it on every section change, and the client's share page routes on `?section=`, so anything
+  appended to the hash would land on the dashboard or be overwritten. A link to versions that
+  aren't there is ignored. Closing the dialog removes the parameter.
+- Demo: `/demo/wiki#code-handover` (Receiver now has four versions, the newest with `src/` paths
+  and a rename).
