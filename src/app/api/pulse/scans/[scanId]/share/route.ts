@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { revalidateTag } from "next/cache";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 
@@ -16,7 +17,7 @@ export async function POST(
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "share Pulse scans");
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const scan = await getPulseScan(scanId);
+    const scan = await getPulseScan(scanId, await workspaceIdForRequest(request));
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Only completed scans can be shared.", 400);
 
@@ -45,7 +46,7 @@ export async function DELETE(
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "unshare Pulse scans");
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const existing = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: { shareToken: true } });
+    const existing = await prisma.pulseScan.findFirst({ where: { id: scanId, workspaceId: await workspaceIdForRequest(request) }, select: { shareToken: true } });
     await prisma.pulseScan.update({
       where: { id: scanId },
       data: { shareToken: null, isShared: false },

@@ -1,7 +1,8 @@
+import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, requireScanAccess } from "@/server/pulse";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { runFixAgent } from "@/server/pulse-agents/fix-agent";
 import { assertCan, canRunFixAgent, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
@@ -20,12 +21,13 @@ export async function POST(
     assertCan(await getEffectiveUserOrNull(request), canRunFixAgent, "run the fix-agent");
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const scan = await getPulseScan(scanId);
+    const scan = await getPulseScan(scanId, await workspaceIdForRequest(request));
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Only completed scans can be fixed.", 400);
     if (scan.inputType !== "GITHUB_REPO") return apiError("Fix agent only works with GitHub repo scans.", 400);
 
-    const { workspace } = await ensureBaseRecords();
+    // The scan's own workspace and AI keys, never Gitwork's whoever owns the scan.
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: scan.workspaceId } });
     const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
     const aiConfig = {
       provider: p,

@@ -1,7 +1,8 @@
 import { after } from "next/server";
 import { NextRequest } from "next/server";
-import { apiOk, fromError } from "@/lib/api-response";
+import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { triggerPlanGeneration, savePlan, getStudy } from "@/server/study";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { assertCan, canManageStudy, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStudy, "view studies");
     const { studyId } = await params;
-    const study = await getStudy(studyId);
+    const study = await getStudy(studyId, await workspaceIdForRequest(request));
     return apiOk({ plan: study?.plan ?? null });
   } catch (error) {
     return fromError(error);
@@ -23,6 +24,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStudy, "manage study plans");
     const { studyId } = await params;
+    // Another business's study reads as not found before anything is generated or saved.
+    if (!(await getStudy(studyId, await workspaceIdForRequest(request)))) {
+      return apiError("Study not found", 404);
+    }
     const body = await request.json();
 
     if (body.generate === true) {

@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { getPulseScan, requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { generateDiscoveryKit } from "@/server/pulse-ai";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -21,7 +21,7 @@ export async function POST(
   try {
     const { scanId } = await params;
     await requireScanAccess(request, scanId);
-    const scan = await getPulseScan(scanId);
+    const scan = await getPulseScan(scanId, await workspaceIdForRequest(request));
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);
     if (!scan.llmAnalysis) return apiError("AI synthesis must complete before generating discovery prep.", 400);
@@ -29,7 +29,8 @@ export async function POST(
     if (scan.discoveryKit) return apiOk({ kit: scan.discoveryKit });
     assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "generate a Pulse discovery kit");
 
-    const { workspace } = await ensureBaseRecords();
+    // The scan's own workspace and AI keys, never Gitwork's whoever owns the scan.
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: scan.workspaceId } });
     const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
     const aiConfig = {
       provider: p,

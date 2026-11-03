@@ -2667,7 +2667,7 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       assertCan(user, canManagePulse, "read Pulse scans");
       const parsed = pulseResultToolSchema.parse(args);
-      const scan = await getPulseScan(parsed.scanId);
+      const scan = await getPulseScan(parsed.scanId, user.workspaceId);
       if (!scan) return textResult({ error: "Scan not found." }, "Scan not found.");
       const verdict = buildAgentVerdict({
         url: scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName,
