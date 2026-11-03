@@ -67,15 +67,21 @@ export function DeveloperCard({ recordId, number }: { recordId: string; number: 
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-[var(--text-3)]">
             <AvailabilityBadge availability={c.availability} />
-            <a
-              href={`https://github.com/${c.githubHandle}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1 font-mono text-[var(--brand-700)] hover:underline"
-            >
-              @{c.githubHandle}
-              <ArrowTopRightOnSquareIcon aria-hidden className="h-3 w-3" />
-            </a>
+            {c.githubHandle ? (
+              <a
+                href={`https://github.com/${c.githubHandle}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1 font-mono text-[var(--brand-700)] hover:underline"
+              >
+                @{c.githubHandle}
+                <ArrowTopRightOnSquareIcon aria-hidden className="h-3 w-3" />
+              </a>
+            ) : (
+              <span className="font-mono text-[var(--warning-500)]" data-no-github>
+                No GitHub yet: use Edit to add their handle and stack
+              </span>
+            )}
             <span>{[c.primaryStack, ...c.techStacks.filter((t) => t !== c.primaryStack)].filter(Boolean).slice(0, 4).join(", ")}</span>
             {c.location ? <span className="whitespace-nowrap">· {c.location}</span> : null}
             {c.timezone ? <span className="whitespace-nowrap">· {c.timezone}</span> : null}

@@ -12,7 +12,13 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mergeStaffClients, productTeamClientsByUser } from "@/server/staff-clients";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
-import { activeDeveloperWhere, archivedDeveloperWhere, archivedTeamEmails } from "@/server/codeclear-archived";
+import {
+  DEVELOPER_ROLE,
+  activeDeveloperWhere,
+  archivedDeveloperWhere,
+  archivedTeamEmails,
+  isDeveloperRecord,
+} from "@/server/codeclear-archived";
 import { isSeedAccount, seedAccountUserWhere } from "@/server/seed-accounts";
 import {
   departmentsOf,
@@ -81,6 +87,51 @@ export async function linkStaffRecords(workspaceId: string): Promise<number> {
   return links.length;
 }
 
+/**
+ * Gives every active member whose role is Developer a record, so they show under
+ * Developers without anyone making a card by hand. Existing records are linked by email
+ * first, so someone who already has a card isn't given a second one. Idempotent: once
+ * everyone has a record it writes nothing.
+ *
+ * A transaction-scoped advisory lock (per workspace) serialises concurrent callers:
+ * `memberId` can't be @unique (CLAUDE.md §2), so without the lock two page loads at once
+ * could each create a record for the same person.
+ */
+export async function ensureDeveloperRecords(workspaceId: string): Promise<number> {
+  await linkStaffRecords(workspaceId);
+  const where = {
+    workspaceId,
+    role: DEVELOPER_ROLE,
+    staffRecords: { none: {} },
+    user: seedAccountUserWhere(),
+  } satisfies Prisma.WorkspaceMemberWhereInput;
+  // Cheap check outside the lock: the common case is that nobody is missing.
+  if ((await prisma.workspaceMember.count({ where: { ...where, ...ACTIVE_MEMBER } })) === 0) return 0;
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`developer-records:${workspaceId}`}))`;
+    // Re-read under the lock: another request may have made them while we waited.
+    const members = await tx.workspaceMember.findMany({
+      where: { ...where, ...ACTIVE_MEMBER },
+      select: { id: true, user: { select: { name: true, email: true, avatarUrl: true } } },
+    });
+    for (const m of members) {
+      await tx.candidate.create({
+        data: {
+          workspaceId,
+          memberId: m.id,
+          name: m.user.name?.trim() || m.user.email,
+          email: m.user.email,
+          avatarUrl: m.user.avatarUrl ?? null,
+          githubHandle: null,
+          primaryStack: "",
+          origin: "INTERNAL",
+        },
+      });
+    }
+    return members.length;
+  });
+}
+
 const RECORD_SELECT = {
   id: true,
   name: true,
@@ -94,6 +145,7 @@ const RECORD_SELECT = {
   startDate: true,
   managerId: true,
   memberId: true,
+  member: { select: { role: true } },
   preferredName: true,
   pronouns: true,
   archivedAt: true,
@@ -130,7 +182,7 @@ function recordFields(r: RecordRow | null | undefined) {
     employmentType: isEmploymentType(r.employmentType) ? r.employmentType : null,
     startDate: r.startDate ? r.startDate.toISOString().slice(0, 10) : null,
     managerRecordId: r.managerId,
-    isDeveloper: Boolean(r.githubHandle),
+    isDeveloper: isDeveloperRecord(r),
     primaryStack: r.primaryStack || null,
     currentClients: r.placements
       .map((p) => (p.client ? { name: p.client.name, slug: p.client.slug } : { name: p.clientName, slug: null }))

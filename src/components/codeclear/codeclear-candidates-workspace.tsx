@@ -45,6 +45,7 @@ import {
 } from "@/components/codeclear/candidate-profile-form";
 import { ClientAvatar } from "@/components/codeclear/client-avatar";
 import { Skeleton } from "@/components/ui/motion/skeleton";
+import { githubLabel } from "@/lib/github-label";
 
 /** Card grid (default) vs the dense table. Persisted in the URL as ?view=. */
 type DevViewMode = "cards" | "table";
@@ -835,7 +836,7 @@ function DevsRowSection({
                         {candidate.name}
                       </p>
                       <p className="truncate font-mono text-[11px] text-[var(--text-4)]">
-                        @{candidate.githubHandle}
+                        {githubLabel(candidate.githubHandle)}
                       </p>
                     </div>
                   </div>
@@ -913,7 +914,7 @@ function DevCard({
           <span className="text-[var(--text-3)]">{number}</span>
           <span className="text-[var(--text-4)]">{"//"}</span>
           <span className="text-[var(--text-2)] normal-case tracking-normal">
-            @{candidate.githubHandle}
+            {githubLabel(candidate.githubHandle)}
           </span>
         </span>
         <input

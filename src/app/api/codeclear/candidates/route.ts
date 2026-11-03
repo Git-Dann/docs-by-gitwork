@@ -17,6 +17,7 @@ import {
 } from "@/server/validators";
 import { isAtLeast } from "@/types/auth";
 import { requestActor, workspaceIdForRequest } from "@/server/workspaces/scope";
+import { ensureDeveloperRecords } from "@/server/staff";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,8 @@ export async function GET(request: NextRequest) {
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 20);
     const sortBy = searchParams.get("sortBy")?.trim() || "createdAt";
     const sortDir = searchParams.get("sortDir") === "asc" ? "asc" : "desc";
+    // Someone given the Developer role shows here without anyone making them a card.
+    await ensureDeveloperRecords(workspace.id);
     const where = buildCandidateWhere(workspace.id, searchParams, await archivedTeamEmails(workspace.id));
 
     const [items, total, stackRecords] = await Promise.all([

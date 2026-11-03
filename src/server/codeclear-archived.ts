@@ -49,11 +49,24 @@ export function activeDeveloperWhere(emails: string[]): Prisma.CandidateWhereInp
 
 /**
  * Developer records only. Since Staff (CLAUDE.md §87) a Candidate row can be anyone on
- * the team, and only developers have a GitHub handle. Every developer-facing list —
- * Developers, Pipeline, the Overview's counts, and the iOS Dev Directory, which reads
- * the same endpoint — filters on this, so they show exactly the rows they did before.
+ * the team. A record is a developer's when it has a GitHub handle (how every developer
+ * card was made before Staff) OR its person's role in Settings → Team is Developer.
+ * The second half matters for a new hire: their record is made from their account
+ * (`ensureDeveloperRecords`), with no handle until someone adds it, and before this they
+ * were missing from Developers despite being labelled one.
+ *
+ * Every developer-facing list — Developers, Pipeline, the Overview's counts, and the
+ * iOS Dev Directory, which reads the same endpoint — filters on this.
  */
-export const DEVELOPER_RECORD: Prisma.CandidateWhereInput = { githubHandle: { not: null } };
+export const DEVELOPER_ROLE = "DEVELOPER";
+export const DEVELOPER_RECORD: Prisma.CandidateWhereInput = {
+  OR: [{ githubHandle: { not: null } }, { member: { role: DEVELOPER_ROLE } }],
+};
+
+/** The same rule for a record already loaded. */
+export function isDeveloperRecord(r: { githubHandle: string | null; member?: { role: string } | null }): boolean {
+  return Boolean(r.githubHandle) || r.member?.role === DEVELOPER_ROLE;
+}
 
 /** Only the developers whose person has left. Matches nothing when nobody has. */
 export function archivedDeveloperWhere(emails: string[]): Prisma.CandidateWhereInput {

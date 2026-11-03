@@ -31,6 +31,8 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/server/codeclear-archived", () => ({
   archivedTeamEmails: vi.fn(async () => []),
   activeDeveloperWhere: vi.fn(() => ({})),
+  isDeveloperRecord: vi.fn(() => false),
+  DEVELOPER_ROLE: "DEVELOPER",
 }));
 
 import { listStaff } from "@/server/staff";
