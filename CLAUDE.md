@@ -9644,3 +9644,35 @@ sources are Google redirect links, so a title that is *exactly* a domain counts 
   retired id shows as "Couldn't ask" with the provider's error). Usage is logged as `PULSE`,
   operation `ai_search.answers.<engine>`. Each run is questions × assistants paid calls.
 - Demo: `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-answers.ts`, judged by the real rules).
+
+## 112. Recent Changes (November 2026) — Code Handover: compare versions
+
+Requested for a client's firmware handover (PollenIQ's Sender / Receiver): see what changed between
+two versions without downloading both zips.
+
+- **Compare** on each module with two or more versions, on the team's wiki AND the client's share
+  page (the code is already fully shared, so the client sees nothing new). From / To pickers, swap,
+  a file list (Changed / Added / Removed / Renamed / Unchanged with +/− counts), every changed line
+  with old and new line numbers and 3 lines of context, the newer version's release notes,
+  "Ignore whitespace", "Whole files", and **Download .patch**, which `git apply` accepts.
+- **Each version row says what it changed** since the version before it ("Since v1.1.0: 2 files ·
+  +10 −3 · See changes"). "Before" means created earlier, not listed earlier.
+- **The rules are pure, in `src/lib/code-diff.ts`.** It uses Myers' diff (the minimal one; it
+  matched `git diff --minimal` on 200 random cases) after trimming the common start and end. It
+  handles 15,000-line files in ~15ms. Files are matched by name; a removed and an added file with
+  identical contents are a rename. ⚠️ Past `MAX_EDITS` (2,000) changed lines the line diff isn't
+  attempted: the file says so and gives tallied counts, and the patch replaces the whole file
+  (still exact). Never relax that into a guessed alignment. A missing final newline is a real
+  change (it is in git too), and CRLF-only changes are reported as such rather than shown as nothing.
+- **The patch never ignores whitespace**, whatever the view says. Its format was checked line for
+  line against `git diff`, and 300 random version pairs were applied with `git apply` and matched.
+- In-line emphasis marks the changed part of an edited line, widened to whole words
+  (`9600` → `115200`, not `96` → `1152`). There is none on a line that shares only its indentation
+  (`worthEmphasising`), because highlighting a rewritten line end to end says nothing.
+- **New version starts from the current version's files** ("Start empty instead" to opt out), so
+  only what changed is edited. **Upload files** reads text files (binary or over 500,000 characters
+  refused with the reason; same name replaces). A live "Changes from vX" line shows what the draft
+  changes. Only the current version gets the filled Download button.
+- A file with over 400 changed lines starts folded (`FOLD_ABOVE_LINES`).
+- No schema or route change: files were already stored as text.
+- Demo: `/demo/wiki#code-handover` (Receiver has three versions with real edits).

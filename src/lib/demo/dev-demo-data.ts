@@ -1107,17 +1107,30 @@ const demoWiki: WikiDTO = {
         id: "cm1",
         name: "Receiver",
         description: "Firmware for the receiver unit — flash via PlatformIO.",
+        // Three versions with real edits between them (a changed function, a new file,
+        // a constant moved into config.h), so Compare has something honest to show.
         versions: [
           {
-            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.", isCurrent: true, createdAt: atDays(-3),
+            id: "cv1b", label: "v1.2.0", notes: "Add low-power sleep between polls.\nMove the radio channel into config.h.", isCurrent: true, createdAt: atDays(-3),
             files: [
-              { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n\nvoid setup() {\n  Serial.begin(115200);\n}\n\nvoid loop() {\n  // receive + decode\n}\n" },
-              { id: "f2", filename: "config.h", language: "cpp", content: "#define CHANNEL 7\n#define SLEEP_MS 500\n" },
+              { id: "f1", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"config.h\"\n#include \"radio.h\"\n\nRadio radio(CHANNEL);\n\nvoid setup() {\n  Serial.begin(115200);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  // Sleep between polls to save battery.\n  esp_sleep_enable_timer_wakeup(SLEEP_MS * 1000ULL);\n  esp_light_sleep_start();\n}\n" },
+              { id: "f2", filename: "config.h", language: "cpp", content: "#pragma once\n\n#define CHANNEL 7\n#define SLEEP_MS 500\n" },
+              { id: "f2b", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
             ],
           },
           {
-            id: "cv1a", label: "v1.1.0", notes: "Initial handover.", isCurrent: false, createdAt: atDays(-30),
-            files: [{ id: "f3", filename: "main.cpp", language: "cpp", content: "// v1.1 receiver\nvoid setup() {}\nvoid loop() {}\n" }],
+            id: "cv1a", label: "v1.1.0", notes: "Print each reading over serial.", isCurrent: false, createdAt: atDays(-30),
+            files: [
+              { id: "f3", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  Serial.begin(9600);\n  radio.begin();\n  Serial.println(\"receiver ready\");\n}\n\nvoid loop() {\n  Packet p;\n  if (radio.receive(p)) {\n    Serial.print(\"pollen=\");\n    Serial.println(p.count);\n  }\n  delay(500);\n}\n" },
+              { id: "f3b", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
+          },
+          {
+            id: "cv1c", label: "v1.0.0", notes: "Initial handover.", isCurrent: false, createdAt: atDays(-60),
+            files: [
+              { id: "f3c", filename: "main.cpp", language: "cpp", content: "#include <Arduino.h>\n#include \"radio.h\"\n\nRadio radio(7);\n\nvoid setup() {\n  radio.begin();\n}\n\nvoid loop() {\n  Packet p;\n  radio.receive(p);\n  delay(500);\n}\n" },
+              { id: "f3d", filename: "radio.h", language: "cpp", content: "#pragma once\n#include <stdint.h>\n\nstruct Packet { uint16_t count; };\n\nclass Radio {\n public:\n  explicit Radio(uint8_t channel) : channel_(channel) {}\n  void begin();\n  bool receive(Packet& out);\n private:\n  uint8_t channel_;\n};\n" },
+            ],
           },
         ],
       },

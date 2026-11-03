@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import { createPortal } from "react-dom";
 import {
   ArrowDownTrayIcon,
+  ArrowsRightLeftIcon,
+  ArrowUpTrayIcon,
   CheckIcon,
   ChevronRightIcon,
   ClipboardIcon,
@@ -28,6 +30,8 @@ import {
   useDeleteCodeVersion,
   useUpdateCodeVersion,
 } from "@/hooks/use-wiki";
+import { compareVersions, previousVersionOf, summariseComparison, type VersionComparison } from "@/lib/code-diff";
+import { CodeCompareDialog } from "./code-compare";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -331,12 +335,17 @@ function VersionView({
   defaultOpen,
   isInternal,
   slug,
+  changes,
+  onCompare,
 }: {
   moduleName: string;
   version: WikiCodeVersionRecord;
   defaultOpen: boolean;
   isInternal: boolean;
   slug: string;
+  /** What changed since the version before it. Null for the first version. */
+  changes: { since: string; comparison: VersionComparison } | null;
+  onCompare: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const setCurrent = useUpdateCodeVersion(slug);
@@ -365,10 +374,16 @@ function VersionView({
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-2">
+          {/* The current version is the one to take, so it alone gets the filled button;
+              older ones are there for reference. */}
           <button
             type="button"
             onClick={() => void downloadVersionZip(moduleName, version)}
-            className="inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+            className={
+              version.isCurrent
+                ? "inline-flex items-center gap-1.5 rounded-[6px] bg-[var(--brand-600)] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[var(--brand-700)]"
+                : "inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            }
           >
             <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Download .zip
           </button>
@@ -376,6 +391,9 @@ function VersionView({
             <RowMenu
               label={`Version ${version.label} actions`}
               items={[
+                ...(changes
+                  ? [{ label: `Compare with ${changes.since}`, icon: ArrowsRightLeftIcon, onClick: onCompare }]
+                  : []),
                 ...(version.isCurrent
                   ? []
                   : [
@@ -398,6 +416,31 @@ function VersionView({
           )}
         </div>
       </div>
+      {changes ? (
+        <div className="-mt-1 px-3.5 pb-2.5 pl-9">
+          <button
+            type="button"
+            onClick={onCompare}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] text-left text-[11px] text-[var(--text-3)] transition hover:text-[var(--brand-700)]"
+            style={{ fontFamily: MONO }}
+          >
+            <ArrowsRightLeftIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate" title={`Changes since ${changes.since}`}>
+              Since {changes.since}:{" "}
+              {changes.comparison.changedFiles === 0 ? (
+                "no changes"
+              ) : (
+                <>
+                  {changes.comparison.changedFiles} file{changes.comparison.changedFiles === 1 ? "" : "s"} ·{" "}
+                  <span className="text-[var(--success-500)]">+{changes.comparison.added}</span>{" "}
+                  <span className="text-[var(--danger-500)]">−{changes.comparison.removed}</span>
+                </>
+              )}
+            </span>
+            <span className="shrink-0 font-medium text-[var(--brand-700)]">See changes</span>
+          </button>
+        </div>
+      ) : null}
       {open && (
         <div className="border-t border-[var(--border-1)]">
           {version.notes && <ReleaseNotes text={version.notes} />}
@@ -421,16 +464,56 @@ function VersionView({
 type DraftFile = { filename: string; language: string; content: string };
 const emptyFile = (): DraftFile => ({ filename: "", language: "", content: "" });
 
+/** Matches the server's limit per file (`fileSchema` in the versions routes). */
+const MAX_FILE_CHARS = 500_000;
+
+const LANGUAGE_BY_EXT: Record<string, string> = {
+  c: "c", h: "cpp", cpp: "cpp", cc: "cpp", hpp: "cpp", ino: "cpp", py: "python", js: "js", ts: "ts",
+  tsx: "ts", jsx: "js", json: "json", swift: "swift", kt: "kotlin", java: "java", go: "go", rs: "rust",
+  sh: "sh", yml: "yaml", yaml: "yaml", md: "md", txt: "",
+};
+
+/** Read picked files as text. Binary files are refused with a reason rather than mangled. */
+async function readCodeFiles(list: FileList): Promise<{ files: DraftFile[]; refused: string[] }> {
+  const files: DraftFile[] = [];
+  const refused: string[] = [];
+  for (const file of Array.from(list)) {
+    const text = await file.text();
+    if (text.includes("\u0000")) refused.push(`${file.name} (not a text file)`);
+    else if (text.length > MAX_FILE_CHARS) refused.push(`${file.name} (over 500,000 characters)`);
+    else {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      files.push({ filename: file.name, language: LANGUAGE_BY_EXT[ext] ?? "", content: text });
+    }
+  }
+  return { files, refused };
+}
+
+/** Uploaded files replace drafts of the same name, keep the rest, and drop a blank starter row. */
+export function mergeDraftFiles(current: DraftFile[], incoming: DraftFile[]): DraftFile[] {
+  const byName = new Map(incoming.map((f) => [f.filename.trim(), f]));
+  const kept = current
+    .filter((f) => f.filename.trim() || f.content)
+    .map((f) => byName.get(f.filename.trim()) ?? f);
+  const keptNames = new Set(kept.map((f) => f.filename.trim()));
+  const added = incoming.filter((f) => !keptNames.has(f.filename.trim()));
+  const merged = [...kept, ...added];
+  return merged.length ? merged : [emptyFile()];
+}
+
 function AddVersionModal({
   slug,
   moduleId,
   moduleName,
+  base,
   open,
   onClose,
 }: {
   slug: string;
   moduleId: string;
   moduleName: string;
+  /** The current version. A new version starts from its files, so only what changed is edited. */
+  base: WikiCodeVersionRecord | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -439,14 +522,55 @@ function AddVersionModal({
   const [notes, setNotes] = useState("");
   const [makeCurrent, setMakeCurrent] = useState(true);
   const [files, setFiles] = useState<DraftFile[]>([emptyFile()]);
+  const [fromBase, setFromBase] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
+
+  const baseFiles = (b: WikiCodeVersionRecord): DraftFile[] =>
+    b.files.map((f) => ({ filename: f.filename, language: f.language ?? "", content: f.content }));
+
+  // Each opening starts from the current version's files when there is one.
+  useEffect(() => {
+    if (!open) return;
+    setFromBase(Boolean(base));
+    setFiles(base ? baseFiles(base) : [emptyFile()]);
+    // `base` changing under an open form must not overwrite what's being edited.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // What the draft changes against the version it started from, as you type.
+  const draftChanges = useMemo(() => {
+    if (!base) return null;
+    const draft = files
+      .filter((f) => f.filename.trim() && f.content.length > 0)
+      .map((f) => ({ filename: f.filename.trim(), content: f.content }));
+    return compareVersions(base.files, draft);
+  }, [base, files]);
 
   function reset() {
     setLabel("");
     setNotes("");
     setMakeCurrent(true);
     setFiles([emptyFile()]);
+    setFromBase(false);
     setError(null);
+    setNotice(null);
+  }
+
+  async function onUpload(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const { files: read, refused } = await readCodeFiles(list);
+    setFiles((p) => mergeDraftFiles(p, read));
+    setNotice(
+      [
+        read.length ? `Added ${read.length} file${read.length === 1 ? "" : "s"}. A file with the same name was replaced.` : "",
+        refused.length ? `Skipped ${refused.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    if (uploadRef.current) uploadRef.current.value = "";
   }
   function close() {
     reset();
@@ -499,11 +623,60 @@ function AddVersionModal({
             <input type="checkbox" checked={makeCurrent} onChange={(e) => setMakeCurrent(e.target.checked)} className="h-4 w-4 accent-[var(--brand-600)]" />
             Set as the current version
           </label>
+          {base ? (
+            <div className="rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                Changes from {base.label}
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--text-2)]" data-draft-changes>
+                {draftChanges ? summariseComparison(draftChanges) : "No changes"}
+              </p>
+              <p className="mt-1 text-[12px] leading-5 text-[var(--text-4)]">
+                {fromBase
+                  ? `Started from ${base.label}'s files. Replace what changed; anything you remove is removed from this version.`
+                  : "Started empty. Only the files you add will be in this version."}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (fromBase) {
+                    setFiles([emptyFile()]);
+                    setFromBase(false);
+                  } else {
+                    setFiles(baseFiles(base));
+                    setFromBase(true);
+                  }
+                  setNotice(null);
+                }}
+                className="mt-1.5 text-[12px] font-medium text-[var(--brand-700)] hover:underline"
+              >
+                {fromBase ? "Start empty instead" : `Start from ${base.label}'s files`}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* Right — files */}
         <div className="min-h-0 space-y-3 overflow-y-auto p-5">
-          <span className="app-field-label">Files</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="app-field-label">Files</span>
+            <button
+              type="button"
+              onClick={() => uploadRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] px-2.5 py-1 text-[12px] font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]"
+            >
+              <ArrowUpTrayIcon className="h-4 w-4" /> Upload files
+            </button>
+            <input
+              ref={uploadRef}
+              type="file"
+              multiple
+              className="hidden"
+              aria-label="Upload code files"
+              onChange={(e) => void onUpload(e.target.files)}
+            />
+          </div>
+          {notice ? <p className="text-[12px] text-[var(--text-3)]">{notice}</p> : null}
           <div className="space-y-3 pr-0.5">
             {files.map((f, i) => (
               <div key={i} className="space-y-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
@@ -539,7 +712,19 @@ function AddVersionModal({
 
 function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord; slug: string; isInternal: boolean }) {
   const [adding, setAdding] = useState(false);
+  const [comparing, setComparing] = useState<{ toId: string | null } | null>(null);
   const deleteModule = useDeleteCodeModule(slug);
+  const current = module.versions.find((v) => v.isCurrent) ?? null;
+
+  // What each version changed since the one before it, for the line under each row.
+  const changesById = useMemo(() => {
+    const map = new Map<string, { since: string; comparison: VersionComparison }>();
+    for (const v of module.versions) {
+      const prev = previousVersionOf(module.versions, v.id);
+      if (prev) map.set(v.id, { since: prev.label, comparison: compareVersions(prev.files, v.files) });
+    }
+    return map;
+  }, [module.versions]);
 
   return (
     <div className="space-y-3 rounded-[12px] border border-[var(--border-1)] bg-[var(--surface-1)] p-4">
@@ -548,9 +733,19 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
           <h3 className="text-[16px] font-semibold text-[var(--text-1)]">{module.name}</h3>
           {module.description && <p className="mt-0.5 text-[13px] leading-6 text-[var(--text-3)]">{module.description}</p>}
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {module.versions.length >= 2 && (
+            <button
+              type="button"
+              onClick={() => setComparing({ toId: null })}
+              className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-0)]"
+            >
+              <ArrowsRightLeftIcon className="h-4 w-4" /> Compare
+            </button>
+          )}
         {isInternal && (
-          <div className="flex shrink-0 items-center gap-2">
-            <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">
+          <>
+            <button type="button" onClick={() => setAdding(true)} className="inline-flex items-center gap-1.5 rounded-[7px] border border-[var(--border-2)] px-2.5 py-1.5 text-[12px] font-semibold text-[var(--text-2)] transition hover:bg-[var(--surface-0)]">
               <PlusIcon className="h-4 w-4" /> New version
             </button>
             <RowMenu
@@ -566,12 +761,22 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
                 },
               ]}
             />
-          </div>
+          </>
         )}
+        </div>
       </div>
 
       {isInternal && (
-        <AddVersionModal slug={slug} moduleId={module.id} moduleName={module.name} open={adding} onClose={() => setAdding(false)} />
+        <AddVersionModal slug={slug} moduleId={module.id} moduleName={module.name} base={current} open={adding} onClose={() => setAdding(false)} />
+      )}
+      {module.versions.length >= 2 && (
+        <CodeCompareDialog
+          open={comparing !== null}
+          onClose={() => setComparing(null)}
+          moduleName={module.name}
+          versions={module.versions}
+          initialToId={comparing?.toId ?? null}
+        />
       )}
 
       {module.versions.length === 0 ? (
@@ -581,7 +786,16 @@ function ModuleView({ module, slug, isInternal }: { module: WikiCodeModuleRecord
       ) : (
         <div className="space-y-2.5">
           {module.versions.map((v) => (
-            <VersionView key={v.id} moduleName={module.name} version={v} defaultOpen={false} isInternal={isInternal} slug={slug} />
+            <VersionView
+              key={v.id}
+              moduleName={module.name}
+              version={v}
+              defaultOpen={false}
+              isInternal={isInternal}
+              slug={slug}
+              changes={changesById.get(v.id) ?? null}
+              onCompare={() => setComparing({ toId: v.id })}
+            />
           ))}
         </div>
       )}
@@ -684,7 +898,7 @@ export function WikiCodeSection({
         {!isInternal && (
           <p className="max-w-2xl text-[13px] leading-6 text-[var(--text-3)]">
             Source for your hardware, ready to copy or download and flash. The current version is shown first;
-            earlier versions are kept below.
+            earlier versions are kept below. Use Compare to see exactly what changed between any two.
           </p>
         )}
 
