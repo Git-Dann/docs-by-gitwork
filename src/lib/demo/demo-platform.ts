@@ -48,6 +48,7 @@ const workspaces: PlatformWorkspace[] = [
     modulesRestricted: false,
     enabledModules: [],
     platformAiKeysAllowed: true,
+    allowedEmailDomains: [],
   },
   // Deterministic, so the demo looks the same on every load and screenshots compare.
   ...NAMES.map((name, i): PlatformWorkspace => {
@@ -67,6 +68,7 @@ const workspaces: PlatformWorkspace[] = [
           : [...DEFAULT_BUSINESS_MODULES]
         : [],
       platformAiKeysAllowed: i % 6 === 2,
+      allowedEmailDomains: [],
     };
   }),
 ];
@@ -141,6 +143,7 @@ export function resolveDemoPlatform(
       modulesRestricted: true,
       enabledModules: [...DEFAULT_BUSINESS_MODULES],
       platformAiKeysAllowed: false,
+      allowedEmailDomains: [],
     };
     workspaces.splice(1, 0, ws);
     audit.unshift({

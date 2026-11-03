@@ -30,6 +30,7 @@ import { Modal } from "@/components/ui/modal";
 import { Pager } from "@/components/ui/pager";
 import { SortHeader } from "@/components/ui/sort-header";
 import { AddBusinessDialog } from "@/components/platform/add-business-dialog";
+import { SignInDomains } from "@/components/platform/sign-in-domains";
 
 function Panel({
   number,
@@ -300,11 +301,12 @@ export function draftProblem(d: Draft): string | null {
   return null;
 }
 
-type Section = "overview" | "modules" | "ai" | "activity";
+type Section = "overview" | "modules" | "ai" | "signin" | "activity";
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "modules", label: "Modules" },
   { id: "ai", label: "AI keys" },
+  { id: "signin", label: "Sign-in" },
   { id: "activity", label: "Activity" },
 ];
 
@@ -517,6 +519,8 @@ function BusinessDialog({ id, onClose }: { id: string; onClose: () => void }) {
                     </span>
                   </label>
                 </section>
+              ) : section === "signin" ? (
+                <SignInDomains workspace={workspace} />
               ) : (
                 <div className="space-y-3">
                   {audit.isPending ? (
@@ -586,6 +590,10 @@ function BusinessDialog({ id, onClose }: { id: string; onClose: () => void }) {
 export function describePlatformChange(
   entry: Pick<PlatformAuditItem, "before" | "after"> & { action?: string },
 ): string {
+  const domainsAfter = (entry.after as { allowedEmailDomains?: string[] } | null)?.allowedEmailDomains;
+  if (Array.isArray(domainsAfter)) {
+    return domainsAfter.length ? `set its Google sign-in domains to ${domainsAfter.join(", ")}` : "removed its Google sign-in domains";
+  }
   if (entry.action === "platform.workspace.created") {
     const owner = (entry.after as { ownerEmail?: string } | null)?.ownerEmail;
     return owner ? `created it and invited ${owner} as owner` : "created it";

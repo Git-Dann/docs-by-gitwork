@@ -10,6 +10,7 @@ import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions"
 import { resolveWorkspaceModules } from "@/lib/workspace-modules";
 import { verifyPassword } from "@/server/auth/password-login";
 import { findActiveMembershipIn, findHomeMembership } from "@/server/auth/home-membership";
+import { businessGoogleAllowed, businessGoogleConfigured, provisionBusinessGoogleUser } from "@/server/auth/business-google";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 /**
@@ -83,6 +84,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
+    // Google for people at other businesses (src/server/auth/business-google.ts): a second
+    // OAuth client asking only for name and email, so it needs no Gmail/Drive review. Off
+    // until AUTH_GOOGLE_BUSINESS_ID / _SECRET are set.
+    ...(businessGoogleConfigured()
+      ? [
+          Google({
+            id: "google-business",
+            name: "Google (your business)",
+            clientId: process.env.AUTH_GOOGLE_BUSINESS_ID!,
+            clientSecret: process.env.AUTH_GOOGLE_BUSINESS_SECRET!,
+            authorization: { params: { scope: "openid email profile" } },
+          }),
+        ]
+      : []),
     // Email + password: Gitwork's guests, and everyone in other businesses
     // (server/auth/password-login.ts). Gitwork staff stay Google-only. The provider id
     // stays "guest-password" so existing sessions and forms keep working.
@@ -104,7 +119,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       // ⚠️ This callback runs for EVERY provider, so it is written as a positive rule
       // per provider rather than one blanket test. Phrasing it as "not credentials →
       // must be @gitwork.co.uk" would mean any future provider silently defaults to
@@ -119,6 +134,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // the generic "could not sign in" that reads like a broken Google account.
         if (await refusedMembership(user.email)) return "/login?error=AccessRevoked";
         return true;
+      }
+      if (account?.provider === "google-business") {
+        // Google has verified the address. Who it lets in is decided here, never by Google.
+        if (!user.email || (profile as { email_verified?: boolean } | undefined)?.email_verified === false) return false;
+        const verdict = await businessGoogleAllowed(user.email);
+        if (verdict === "revoked") return "/login?error=AccessRevoked";
+        return verdict === "ok";
       }
       return false;
     },
@@ -166,6 +188,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // On first sign-in, look up or create the user in the DB
       if (account && user?.email) {
+        // A business Google sign-in gets its membership from its invite or its domain, and
+        // never goes near Gitwork's provisioning or first-admin bootstrap below.
+        const isBusinessGoogle = account.provider === "google-business";
+        if (isBusinessGoogle && !(await provisionBusinessGoogleUser(user.email, user.name ?? null))) return null;
         let dbUser = await prisma.user.findUnique({
           where: { email: user.email },
           include: {
@@ -197,13 +223,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // only ever run for someone who already holds a Gitwork account.
         const isPasswordSignIn = account.provider === "guest-password";
         const shouldBeSuperAdmin =
-          !isPasswordSignIn && (isKnownSuperAdmin || adminOrAboveCount === 0);
+          !isPasswordSignIn && !isBusinessGoogle && (isKnownSuperAdmin || adminOrAboveCount === 0);
 
         // A password sign-in must never CREATE anything. `authorize` already proved the
         // user exists and is a guest, so reaching this with no row means the account was
         // deleted mid-session — refuse rather than quietly re-provision them,
         // which is what the branch below would otherwise do.
-        if (!dbUser && isPasswordSignIn) return token;
+        if (!dbUser && (isPasswordSignIn || isBusinessGoogle)) return token;
 
         // Auto-provision new Gitwork team members as DEFAULT_PROVISIONED_ROLE
         // (DEVELOPER — the minimal internal role). An Admin raises it in Settings → Team.
@@ -264,6 +290,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // every Gitwork member, else the person's own. Provisioning and the first-admin bootstrap
         // above stay with Gitwork until businesses have their own sign-up.
         const membership = await findHomeMembership(dbUser.id);
+        if (isBusinessGoogle && !membership) return null;
         token.id = dbUser.id;
         // Carry identity from the DB row, not from the provider profile.
         //
@@ -300,7 +327,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Previously this was written to the workspace row, which meant every new sign-in
         // overwrote whoever signed in last — so the dashboard widgets cross-polluted between
         // teammates. Workspace-level token is reserved now for shared org-wide cron sync.
-        if (account.refresh_token) {
+        // Only the MAIN Google client's token: the business client has no Gmail or Drive
+        // scope, and storing its token here would break those widgets.
+        if (account.refresh_token && account.provider === "google") {
           await prisma.user.update({
             where: { id: dbUser.id },
             data: {
@@ -315,7 +344,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Team list. Heuristic match — safe enough for an internal tool. Failures are
         // swallowed so a stale invite never blocks sign-in.
         try {
-          await autoAcceptMatchingInvite(dbUser.id, user.name);
+          if (!isBusinessGoogle) await autoAcceptMatchingInvite(dbUser.id, user.name);
         } catch (err) {
           console.error("[auth] autoAcceptMatchingInvite failed", err);
         }

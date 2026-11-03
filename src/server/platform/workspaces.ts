@@ -23,6 +23,8 @@ import type {
 } from "@/lib/platform-types";
 import { planNewBusiness, planWorkspaceUpdate, type NewBusinessInput, type PlatformWorkspaceQuery } from "@/lib/platform-rules";
 import { DEFAULT_BUSINESS_MODULES } from "@/lib/workspace-modules";
+import { normaliseAllowedDomains } from "@/lib/email-domains";
+import { PlatformInputError } from "@/lib/platform-rules";
 import { escapeHtml, sendWorkspaceEmail } from "@/server/email";
 export { PlatformConflictError, PlatformInputError, planWorkspaceUpdate } from "@/lib/platform-rules";
 
@@ -38,6 +40,7 @@ const WORKSPACE_SELECT = {
   modulesRestricted: true,
   enabledModules: true,
   platformAiKeysAllowed: true,
+  allowedEmailDomains: true,
   _count: { select: { members: { where: { ...ACTIVE_MEMBER } } } },
 } as const satisfies Prisma.WorkspaceSelect;
 
@@ -55,6 +58,7 @@ function toPlatformWorkspace(w: WorkspaceRow): PlatformWorkspace {
     modulesRestricted: w.modulesRestricted,
     enabledModules: w.enabledModules,
     platformAiKeysAllowed: w.platformAiKeysAllowed,
+    allowedEmailDomains: w.allowedEmailDomains,
   };
 }
 
@@ -247,4 +251,35 @@ export async function createPlatformBusiness(actorId: string, input: NewBusiness
     emailed: sent.ok,
     emailError: sent.ok ? null : sent.error,
   };
+}
+
+/**
+ * Set which email domains may sign in to a business with Google (src/lib/email-domains.ts).
+ * A domain another business already lists is refused, so one domain is never two businesses'.
+ */
+export async function setPlatformWorkspaceDomains(actorId: string, workspaceId: string, input: string[]): Promise<PlatformWorkspace> {
+  const current = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true, allowedEmailDomains: true } });
+  if (!current) throw Object.assign(new Error("Workspace not found"), { status: 404 });
+  if (current.slug === DEFAULT_WORKSPACE_SLUG) throw new PlatformInputError("Gitwork signs in with its own Google client.");
+  const next = normaliseAllowedDomains(input);
+  const taken = await prisma.workspace.findFirst({
+    where: { id: { not: workspaceId }, allowedEmailDomains: { hasSome: next } },
+    select: { name: true, allowedEmailDomains: true },
+  });
+  if (taken) {
+    const clash = next.find((d) => taken.allowedEmailDomains.includes(d));
+    throw new PlatformInputError(`${clash} already signs in to ${taken.name}.`);
+  }
+  if (JSON.stringify(next) !== JSON.stringify(current.allowedEmailDomains)) {
+    await prisma.workspace.update({ where: { id: workspaceId }, data: { allowedEmailDomains: next } });
+    await recordAuditEntry({
+      workspaceId,
+      actorId,
+      action: "platform.workspace.settings_changed",
+      target: `workspace.${current.slug}`,
+      before: { allowedEmailDomains: current.allowedEmailDomains },
+      after: { allowedEmailDomains: next },
+    });
+  }
+  return (await getPlatformWorkspace(workspaceId))!;
 }

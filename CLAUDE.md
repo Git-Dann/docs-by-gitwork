@@ -8941,8 +8941,16 @@ scopes, which Google only grants to outside users after verification and a yearl
   (`findActiveMembershipIn`), then refreshes role, permissions and modules.
 - **Getting started** card on HQ (`src/lib/getting-started.ts`, admins, never Gitwork): logo,
   invite the team, AI key, first client. Hidden once all four are done.
-- **Not done yet:** per-workspace allowed email domains (Google sign-in for a business), email and
-  password on the iOS app, and a public sign-up page.
+- **Google sign-in for a business** (`src/server/auth/business-google.ts`): a SECOND Google client,
+  `google-business`, asking only for `openid email profile`, so it needs no Gmail/Drive review.
+  Off until `AUTH_GOOGLE_BUSINESS_ID` / `_SECRET` are set (GitHub secrets, synced by `deploy.yml`);
+  the login button only shows then. Admits someone with an active membership, an addressed
+  invite, or (brand-new accounts only) an email on a domain exactly one business lists in
+  `Workspace.allowedEmailDomains` (Platform console → a business → Sign-in;
+  `src/lib/email-domains.ts` refuses public mail services and gitwork.co.uk). ⚠️ A domain never
+  brings back an archived or removed account. Its refresh token is NOT stored (wrong scopes for
+  the Gmail widgets), and it never touches Gitwork's provisioning or first-admin bootstrap.
+- **Not done yet:** a public sign-up page.
 - Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
 
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
