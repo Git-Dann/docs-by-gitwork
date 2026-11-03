@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { listGolfClubs, clubsToCsv } from "@/server/golf-clubs";
 
 /**
@@ -17,10 +17,9 @@ const DEV_API_ENABLED = process.env.GOLF_DEV_API_ENABLED === "true";
 export async function GET(req: NextRequest) {
   try {
     if (!DEV_API_ENABLED) return apiError("The clubs API is not yet available", 404);
-    const { workspace } = await ensureBaseRecords();
     const sp = req.nextUrl.searchParams;
     const yearRaw = sp.get("year");
-    const clubs = await listGolfClubs(workspace.id, {
+    const clubs = await listGolfClubs(await workspaceIdForRequest(req), {
       manufacturer: sp.get("manufacturer") ?? undefined,
       category: sp.get("category") ?? undefined,
       year: yearRaw ? Number(yearRaw) : undefined,

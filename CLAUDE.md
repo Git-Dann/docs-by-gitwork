@@ -8874,8 +8874,8 @@ workspace the person belongs to is served it; one they don't belong to never is)
   account (Google sign-in is `@gitwork.co.uk` only), the first-admin bootstrap, invite auto-accept,
   and the env `API_KEY` (no user → Gitwork). Each business now has its own keys and MCP
   connections are bound to a workspace (below).
-- No workspace switcher yet: someone in two workspaces lands in Gitwork, or the one their token
-  names.
+- Someone in two workspaces lands in Gitwork, or the one their token names, and can switch
+  (below).
 - ⚠️ **The isolation suite can now see b→a.** With the second test business served its own
   workspace, 9 more Care crossings became visible (`support/**`, b→a). They are not new code,
   they were always there behind the Gitwork-only sign-in. Recorded on the Care worklist in
@@ -8932,9 +8932,30 @@ scopes, which Google only grants to outside users after verification and a yearl
   emails a single-use, one-hour link (`src/server/auth/password-reset.ts`, `PasswordResetToken`,
   SHA-256 stored), only to accounts that may use a password, and answers the same either way.
   `/reset-password` uses it. **Never bring back a reset that doesn't prove control of the mailbox.**
-- **Not done yet:** a first-run checklist for a new business, per-workspace allowed email
-  domains (Google sign-in for a business), choosing role and email on Settings → Team invites,
-  email and password on the iOS app, and a public sign-up page.
+- **Settings → Team invites** take an optional email (only that address can accept) and the role
+  they join with. The inviter can only offer roles they may assign (`canManageRole`), checked again
+  in `createInvite`, so an Admin can't mint a Super Admin invite.
+- **Workspace switcher** (`src/components/workspace-switcher.tsx`, above the profile menu) for
+  someone in more than one business. It calls `useSession().update({ workspaceId })`; the jwt
+  callback switches only to a workspace the person is an ACTIVE member of
+  (`findActiveMembershipIn`), then refreshes role, permissions and modules.
+- **Getting started** card on HQ (`src/lib/getting-started.ts`, admins, never Gitwork): logo,
+  invite the team, AI key, first client. Hidden once all four are done.
+- **Google sign-in for a business** (`src/server/auth/business-google.ts`): a SECOND Google client,
+  `google-business`, asking only for `openid email profile`, so it needs no Gmail/Drive review.
+  Off until `AUTH_GOOGLE_BUSINESS_ID` / `_SECRET` are set (GitHub secrets, synced by `deploy.yml`);
+  the login button only shows then. Admits someone with an active membership, an addressed
+  invite, or (brand-new accounts only) an email on a domain exactly one business lists in
+  `Workspace.allowedEmailDomains` (Platform console → a business → Sign-in;
+  `src/lib/email-domains.ts` refuses public mail services and gitwork.co.uk). ⚠️ A domain never
+  brings back an archived or removed account. Its refresh token is NOT stored (wrong scopes for
+  the Gmail widgets), and it never touches Gitwork's provisioning or first-admin bootstrap.
+- **iOS sign-in with a password** (`POST /api/auth/mobile-password` { email, password }, public,
+  rate-limited per IP and per email). Runs `verifyPassword`, re-reads `findHomeMembership` and
+  refuses again if `isPasswordLoginAllowed` fails, then mints the same token and JSON shape as
+  `mobile-callback`, naming the member's workspace. Every refusal is one 401. ⚠️ It never creates
+  or promotes anyone. The app side is Git-Dann/foundry-ios#1 (unbuilt until a Mac build).
+- **Not done yet:** a public sign-up page.
 - Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
 
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only

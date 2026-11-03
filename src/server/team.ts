@@ -393,13 +393,30 @@ export async function listInvites(workspaceId: string) {
   });
 }
 
-export async function createInvite(workspaceId: string, invitedById: string, label?: string) {
-  const workspace = { id: workspaceId };
+/**
+ * An invite link. Optionally addressed to one email and/or granting a role (multi-tenant
+ * Phase 3). ⚠️ The role must be one the inviter may assign (`canManageRole`), or an Admin
+ * could mint a Super Admin invite. No role = DEFAULT_PROVISIONED_ROLE, as before.
+ */
+export async function createInvite(
+  workspaceId: string,
+  invitedById: string,
+  opts: { label?: string | null; email?: string | null; role?: RoleId | null; inviterRole?: string } = {},
+) {
+  if (opts.role && !canManageRole(opts.inviterRole ?? "", opts.role)) {
+    throw new ForbiddenError("You can't invite someone with that role.");
+  }
+  const email = opts.email ? normaliseEmail(opts.email) : null;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw Object.assign(new Error("Enter a valid email, or leave it blank."), { status: 400 });
+  }
   return prisma.workspaceInvite.create({
     data: {
-      workspaceId: workspace.id,
+      workspaceId,
       invitedById,
-      label: label ?? null,
+      label: opts.label?.trim() || null,
+      email,
+      role: opts.role ?? null,
       status: "PENDING",
     },
   });

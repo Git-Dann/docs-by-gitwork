@@ -40,11 +40,19 @@ describe("every sign-in path refuses a removed or archived member", () => {
       expect.arrayContaining([
         "src/app/api/auth/mobile-callback/route.ts",
         "src/app/api/auth/desktop/start/route.ts",
+        "src/app/api/auth/mobile-password/route.ts",
       ]),
     );
   });
 
-  it.each(signers.map((f) => [relative(process.cwd(), f), f]))(
+  // A path that starts from a Google identity finds or creates the user, so it must refuse
+  // an existing user with no active membership before it creates or promotes anything.
+  const googleSigners = signers.filter((f) => !/verifyPassword\(/.test(readFileSync(f, "utf8")));
+  // A path that starts from a password never creates anyone: verifyPassword is the gate,
+  // and the membership the token names must be re-read and refused before signing.
+  const passwordSigners = signers.filter((f) => /verifyPassword\(/.test(readFileSync(f, "utf8")));
+
+  it.each(googleSigners.map((f) => [relative(process.cwd(), f), f]))(
     "%s checks the member is active before minting",
     (_name, file) => {
       const src = readFileSync(file as string, "utf8");
@@ -54,6 +62,35 @@ describe("every sign-in path refuses a removed or archived member", () => {
       expect(src.indexOf("findHomeMembership(")).toBeLessThan(src.indexOf("signMobileToken("));
       // And the refusal itself, before anything is created or promoted.
       expect(src).toMatch(/if \(dbUser && !\(await findHomeMembership\(/);
+    },
+  );
+
+  it("finds the password path, so the split above cannot drop it silently", () => {
+    expect(passwordSigners.map((f) => relative(process.cwd(), f))).toContain(
+      "src/app/api/auth/mobile-password/route.ts",
+    );
+  });
+
+  it.each(passwordSigners.map((f) => [relative(process.cwd(), f), f]))(
+    "%s verifies the password and refuses an inactive or disallowed member before minting",
+    (_name, file) => {
+      const src = readFileSync(file as string, "utf8");
+      const sign = src.indexOf("signMobileToken(");
+      // The password is checked first, and a failure returns before anything else.
+      expect(src.indexOf("verifyPassword(")).toBeGreaterThan(-1);
+      expect(src.indexOf("verifyPassword(")).toBeLessThan(sign);
+      expect(src).toMatch(/if \(!result\.ok\) return /);
+      // The membership the token names is the ACTIVE one, re-read and refused before signing.
+      const membership = src.indexOf("await findHomeMembership(");
+      expect(membership).toBeGreaterThan(-1);
+      expect(membership).toBeLessThan(sign);
+      expect(src).toMatch(
+        /if \(!membership \|\| !isPasswordLoginAllowed\(membership\.role, membership\.workspace\.slug\)\)/,
+      );
+      // ⚠️ A password never creates or promotes anyone.
+      expect(src).not.toMatch(/\.create\(/);
+      expect(src).not.toMatch(/\.update\(/);
+      expect(src).not.toMatch(/SUPER_ADMIN/);
     },
   );
 

@@ -300,6 +300,9 @@ model Workspace {
   /// true for every workspace that existed before the switch (Gitwork). A new business
   /// is created with false, so it only ever spends its own keys. src/server/ai-keys.ts.
   platformAiKeysAllowed       Boolean                    @default(true)
+  /// Email domains whose people may sign in with Google and join this business as Developers
+  /// (multi-tenant Phase 3, src/lib/email-domains.ts). Never a public mail domain, never Gitwork's.
+  allowedEmailDomains         String[]                   @default([])
   anthropicApiKey             String?
   anthropicModel              String?
   aiProvider                  String                     @default("ANTHROPIC")

@@ -1,5 +1,6 @@
 "use client";
 
+import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
@@ -669,6 +670,7 @@ function ExpandedRail({
                 collapsed={collapsed}
               />
             ) : null}
+            <WorkspaceSwitcher collapsed={collapsed} />
             <ProfileMenu
               viewAs={viewAs}
               viewAsUser={viewAsUser}

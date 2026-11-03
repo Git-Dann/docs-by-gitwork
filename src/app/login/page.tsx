@@ -3,10 +3,10 @@
 import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useSession } from "next-auth/react";
-import { signInWithGoogle, signInWithPassword } from "./actions";
+import { businessGoogleAvailable, signInWithBusinessGoogle, signInWithGoogle, signInWithPassword } from "./actions";
 
 // Match the client portal login (src/components/portal/portal-login-form.tsx):
 // warm cream, violet accent (NOT the Foundry blue token), DM Serif headings,
@@ -153,6 +153,7 @@ function LoginForm() {
                 <input type="hidden" name="callbackUrl" value={callbackUrl} />
                 <GoogleButton />
               </form>
+              <BusinessGoogleSignIn callbackUrl={callbackUrl} />
               <GuestSignIn callbackUrl={callbackUrl} />
             </>
           )}
@@ -166,6 +167,33 @@ function LoginForm() {
         <PlatformPanel />
       </div>
     </div>
+  );
+}
+
+/** "Google (your business)", shown only when that sign-in is switched on. */
+function BusinessGoogleSignIn({ callbackUrl }: { callbackUrl: string }) {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    let live = true;
+    businessGoogleAvailable()
+      .then((v) => live && setAvailable(v))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!available) return null;
+  return (
+    <form action={signInWithBusinessGoogle} className="mt-3">
+      <input type="hidden" name="callbackUrl" value={callbackUrl} />
+      <button
+        type="submit"
+        className="w-full rounded-full border px-4 py-3 text-[15px] font-semibold transition hover:opacity-90"
+        style={{ borderColor: BORDER, color: INK, background: PANEL }}
+      >
+        Not at Gitwork? Sign in with your business&rsquo;s Google
+      </button>
+    </form>
   );
 }
 

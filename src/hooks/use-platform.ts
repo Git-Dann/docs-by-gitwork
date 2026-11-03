@@ -86,3 +86,19 @@ export function useCreatePlatformBusiness() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ROOT }),
   });
 }
+
+/** Set a business's Google sign-in domains (Platform admins only). */
+export function useSetPlatformDomains() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, domains }: { id: string; domains: string[] }) =>
+      (
+        await apiFetch<{ workspace: PlatformWorkspace }>(`/api/platform/workspaces/${encodeURIComponent(id)}/domains`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domains }),
+        })
+      ).workspace,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ROOT }),
+  });
+}
