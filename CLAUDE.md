@@ -9726,3 +9726,27 @@ two versions without downloading both zips.
 - A file with over 400 changed lines starts folded (`FOLD_ABOVE_LINES`).
 - No schema or route change: files were already stored as text.
 - Demo: `/demo/wiki#code-handover` (Receiver has three versions with real edits).
+
+## 113. Recent Changes (November 2026) — A Developer on the team is in Developers
+
+Abdullah Farooq had the Developer role in Settings → Team and was missing from Code → Developers.
+That list only counted records with a GitHub handle, and nothing made a record for a new hire, so a
+developer stayed invisible until someone made them a card by hand. There was also no way in the
+app to add a handle later: a profile with no handle hid its Developer card.
+
+- **A record is a developer's when it has a GitHub handle OR its person's role is Developer**
+  (`DEVELOPER_RECORD` / `isDeveloperRecord` in `src/server/codeclear-archived.ts`, one rule for the
+  list query and for loaded records). The Staff profile's Developer card and job-title fallback use it.
+- **`ensureDeveloperRecords`** (`src/server/staff.ts`) gives every active, non-placeholder member
+  with the Developer role a record, made from their account. It runs before the Developers list and
+  the Overview counts are read. It links existing records by email first, so nobody gets a second
+  card. It creates under a per-workspace advisory lock, because `memberId` can't be `@unique` (§2)
+  and two page loads at once would otherwise both make one. Idempotent: it writes nothing once
+  everyone has a record.
+- A developer with no handle reads **"No GitHub yet"** (`githubLabel`) instead of a bare "@". Their
+  Developer card says to use Edit to add the handle and stack. GitHub analysis still refuses a
+  record with no handle, with a 400.
+- ⚠️ **New sign-ins are provisioned as DEVELOPER** (§57.6), so anyone new now appears under
+  Developers until an admin changes their role. That is the role saying what it says; correct the
+  role, not the list. Changing someone's role away from Developer removes them from the list (their
+  Staff record stays).

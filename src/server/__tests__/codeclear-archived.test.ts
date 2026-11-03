@@ -16,6 +16,7 @@ import {
   activeDeveloperWhere,
   archivedDeveloperWhere,
   archivedTeamEmails,
+  DEVELOPER_RECORD,
 } from "../codeclear-archived";
 import { buildCandidateWhere } from "../codeclear-candidate-where";
 
@@ -92,7 +93,8 @@ describe("the developer list filter", () => {
       [],
     );
     expect(w).not.toHaveProperty("OR");
-    const ors = (w.AND as { OR?: unknown[] }[]).filter((c) => c.OR);
+    // The four filters, besides the developer rule itself (which is an OR too).
+    const ors = (w.AND as { OR?: unknown[] }[]).filter((c) => c.OR && c !== DEVELOPER_RECORD);
     expect(ors).toHaveLength(4);
     const flat = JSON.stringify(ors);
     expect(flat).toContain('"syed"');

@@ -20,6 +20,7 @@ import { useClientDetail, useClientList } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
 import type { CodeClearPlacementRecord } from "@/types/codeclear";
 import { Skeleton } from "@/components/ui/motion/skeleton";
+import { githubLabel } from "@/lib/github-label";
 
 /**
  * Dev-scoped schedule editor. Lists every placement (active + upcoming +
@@ -71,7 +72,7 @@ export function ScheduleEditor({
           <div>
             <p className="text-sm font-semibold text-[var(--text-1)]">{candidate.name}</p>
             <p className="mt-0.5 font-mono text-[11px] text-[var(--text-4)]">
-              @{candidate.githubHandle}
+              {githubLabel(candidate.githubHandle)}
             </p>
           </div>
         </div>
