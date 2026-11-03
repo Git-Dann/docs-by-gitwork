@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assignConversation } from "@/server/support";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,9 @@ export async function POST(
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageSupport, "assign Care conversations");
-    const { convId } = await params;
+    const { clientId, convId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("conversation", convId, clientId);
     const body = (await request.json()) as { assigneeId?: string | null };
     const conversation = await assignConversation(convId, body.assigneeId ?? null, user?.id);
     return apiOk({ conversation });

@@ -2,9 +2,9 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { updateDraftAction } from "@/server/support";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { getChannelAdapter } from "@/server/support-channels";
 import type { SyncContext } from "@/server/support-channels/types";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,9 @@ export async function PATCH(
   { params }: { params: Promise<{ clientId: string; draftId: string }> },
 ) {
   try {
-    const { draftId } = await params;
+    const { clientId, draftId } = await params;
+    const workspaceId = await requireSupportClient(request, clientId);
+    await requireSupportRow("draftAction", draftId, clientId);
     const body = await request.json();
 
     // On approval of a REPLY draft: try to send via the channel adapter.
@@ -48,7 +50,7 @@ export async function PATCH(
         const adapter = conn ? getChannelAdapter(conn.source) : null;
         if (adapter?.sendReply) {
           const workspace = await prisma.workspace.findFirst({
-            where: { slug: DEFAULT_WORKSPACE_SLUG },
+            where: { id: workspaceId },
             select: {
               id: true,
               googleServiceAccountJson: true,

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { updateConnection, deleteConnection } from "@/server/support";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,9 @@ export async function PATCH(
 ) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care connections");
-    const { connId } = await params;
+    const { clientId, connId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("connection", connId, clientId);
     const body = await request.json();
     const connection = await updateConnection(connId, body);
     return apiOk({ connection });
@@ -26,7 +29,9 @@ export async function DELETE(
 ) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageSupport, "manage Care connections");
-    const { connId } = await params;
+    const { clientId, connId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("connection", connId, clientId);
     await deleteConnection(connId);
     return apiOk({ ok: true });
   } catch (error) {

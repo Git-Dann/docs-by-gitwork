@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { resolveAiConfig, completeText } from "@/server/ai-provider";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { getPerformanceMetricsForPeriod } from "@/server/support";
+import { requireSupportClient } from "@/server/support-scope";
 
 function fmtDuration(ms: number | null): string {
   if (ms === null) return "n/a";
@@ -30,6 +30,7 @@ export async function POST(
 ) {
   try {
     const { clientId } = await params;
+    const workspaceId = await requireSupportClient(request, clientId);
     const body = (await request.json().catch(() => ({}))) as {
       periodStart?: string;
       periodEnd?: string;
@@ -44,7 +45,7 @@ export async function POST(
     const [client, workspace] = await Promise.all([
       prisma.supportClient.findUnique({ where: { id: clientId }, select: { name: true } }),
       prisma.workspace.findFirst({
-        where: { slug: DEFAULT_WORKSPACE_SLUG },
+        where: { id: workspaceId },
         select: {
           id: true,
           aiProvider: true,

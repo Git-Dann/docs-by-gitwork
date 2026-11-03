@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { buildSyncContext, syncConnection, runPostSyncHousekeeping } from "@/server/support-sync";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ clientId: string; connId: string }> },
 ) {
   try {
-    const { connId } = await params;
+    const { clientId, connId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("connection", connId, clientId);
     const resync = request.nextUrl.searchParams.get("resync") === "1";
 
     if (resync) {
