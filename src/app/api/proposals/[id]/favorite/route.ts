@@ -8,6 +8,7 @@ import {
   canManageDocs,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { docsWorkspaceId } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const isFavorite = body.isFavorite === true;
 
     const existing = await prisma.document.findFirst({
-      where: { id },
+      where: { id, workspaceId: await docsWorkspaceId(actor) },
       select: { id: true, documentType: true },
     });
     if (!existing) {

@@ -16,6 +16,7 @@ import { disableDocumentShare, enableDocumentShare } from "@/server/documents";
 import { backupDocumentBestEffort } from "@/server/google-drive-backup";
 import { notifyDocumentEvent } from "@/server/slack-notify";
 import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { docsWorkspaceId } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -24,12 +25,13 @@ interface RouteContext {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     // High-risk: mints a public, no-login share link. Gate on docs.share.
-    assertCan(await getEffectiveUserOrNull(request), canShareDocs, "share documents publicly");
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canShareDocs, "share documents publicly");
     const { id } = await context.params;
     if (!id) return apiError("Missing document id", 400);
 
-    const existing = await prisma.document.findUnique({
-      where: { id },
+    const existing = await prisma.document.findFirst({
+      where: { id, workspaceId: await docsWorkspaceId(actor) },
       select: { id: true, archivedAt: true, isShared: true, workspaceId: true, title: true, documentType: true },
     });
 
@@ -64,12 +66,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    assertCan(await getEffectiveUserOrNull(request), canShareDocs, "manage document sharing");
+    const actor = await getEffectiveUserOrNull(request);
+    assertCan(actor, canShareDocs, "manage document sharing");
     const { id } = await context.params;
     if (!id) return apiError("Missing document id", 400);
 
-    const existing = await prisma.document.findUnique({
-      where: { id },
+    const existing = await prisma.document.findFirst({
+      where: { id, workspaceId: await docsWorkspaceId(actor) },
       select: { id: true },
     });
 

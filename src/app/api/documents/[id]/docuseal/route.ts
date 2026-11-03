@@ -18,6 +18,7 @@ import { assertCan, canShareDocs, getEffectiveUserOrNull } from "@/server/auth/e
 import { getDocusealBlocksMeta } from "@/lib/docuseal-block-meta";
 import { computeSectionsHash } from "@/lib/docuseal-sections-hash";
 import type { ProposalSection, SignatureBlockItem } from "@/types/proposal";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canShareDocs, "send document via DocuSeal");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, user);
     if (!id) return apiError("Missing document id", 400);
 
     const doc = await prisma.document.findUnique({

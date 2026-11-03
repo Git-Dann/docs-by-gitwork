@@ -15,6 +15,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError, draftDocument } from "@/server/document-ai";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canGenerateAi, "use AI document authoring");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = draftSchema.parse(await request.json());
     const { workspace } = await ensureBaseRecords();
 

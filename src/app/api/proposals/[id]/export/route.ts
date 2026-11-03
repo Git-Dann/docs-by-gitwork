@@ -10,6 +10,7 @@ import {
   canShareDocs,
   getEffectiveUserOrNull,
 } from "@/server/auth/effective-user";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const actor = await getEffectiveUserOrNull(request);
     assertCan(actor, canManageDocs, "export documents");
     const { id } = await context.params;
+    await requireDocumentInWorkspace(id, actor);
     const payload = proposalExportSchema.parse(await request.json());
 
     const proposal = await prisma.document.findUnique({

@@ -20,6 +20,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => null) }));
+vi.mock("@/server/bootstrap", () => ({
+  ensureBaseRecords: vi.fn(async () => ({ workspace: { id: "ws-gitwork" } })),
+}));
 
 const findFirst = vi.fn();
 const create = vi.fn();
@@ -160,17 +163,16 @@ describe("POST /api/proposals/[id]/duplicate — workspace scoping", () => {
     );
   });
 
-  it("leaves the lookup unscoped for an identity-less API-key caller", async () => {
-    // No per-user identity → no workspace to scope to. Same position as POST /api/proposals,
-    // which writes into the bootstrap workspace for exactly this case. Must not start 401ing
-    // unattended integrations that work today.
+  it("scopes an identity-less API-key caller to Gitwork's workspace", async () => {
+    // No per-user identity: the workspace API key belongs to Gitwork, so the lookup is scoped to
+    // Gitwork (as POST /api/proposals writes there). Must not start 401ing unattended callers.
     seed([documentRow({ id: "mine" })]);
     getEffectiveUserOrNull.mockResolvedValue(null);
 
     const response = await callDuplicate("mine");
 
     expect(response.status).toBe(201);
-    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "mine" } }));
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "mine", workspaceId: WORKSPACE } }));
   });
 });
 

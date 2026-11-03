@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { pullSupportDataIntoDocument } from "@/server/support-report-doc";
+import { requireDocumentInWorkspace } from "@/server/documents-scope";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +17,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = (await request.json().catch(() => ({}))) as {
       clientId?: string;
       periodStart?: string;

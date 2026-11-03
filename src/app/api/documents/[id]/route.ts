@@ -3,6 +3,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { updateDocument } from "@/server/documents";
+import { docsWorkspaceId } from "@/server/documents-scope";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { proposalUpdateSchema } from "@/server/validators";
 
@@ -19,12 +20,13 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    const workspaceId = await docsWorkspaceId(await getEffectiveUserOrNull(request));
 
     const document = await prisma.document.findFirst({
-      where: { id },
+      where: { id, workspaceId },
       include: proposalInclude,
     });
 

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { updateDocument } from "@/server/documents";
 import { proposalUpdateSchema } from "@/server/validators";
+import { docsWorkspaceId } from "@/server/documents-scope";
 import { allowedDocTypesForUser, canViewCosts, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 
 interface RouteContext {
@@ -13,13 +14,13 @@ interface RouteContext {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
+    const user = await getEffectiveUserOrNull(request);
+    const workspaceId = await docsWorkspaceId(user);
 
     // Type-agnostic: any document type (proposal, contract, handover, report, brief, blank)
     // is fetched by id — the editor at /app/docs/[id] is generic. id is a unique cuid.
     const document = await prisma.document.findFirst({
-      where: {
-        id,
-      },
+      where: { id, workspaceId },
       include: proposalInclude,
     });
 
@@ -27,7 +28,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return apiError("Document not found", 404);
     }
 
-    const user = await getEffectiveUserOrNull(request);
     // Type gate: a developer must never open an admin doc type. 404 (not 403) so the doc's
     // existence isn't leaked.
     if (user && !allowedDocTypesForUser(user).includes(document.documentType)) {

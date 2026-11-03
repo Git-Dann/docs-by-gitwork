@@ -11,6 +11,7 @@ import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { planSectionWrites } from "@/server/documents/section-writes";
 import type { proposalUpdateSchema } from "@/server/validators";
+import { docsWorkspaceId } from "@/server/documents-scope";
 import {
   allowedDocTypesForUser,
   assertCan,
@@ -125,8 +126,10 @@ export async function updateDocument(
   // costLineItems and restore the real costing section on save.
   const showCosts = actor ? canViewCosts(actor) : true;
 
+  // Only the caller's own workspace's document (multi-tenant Phase 2.2b): another business's id
+  // reads as not found.
   const existing = await prisma.document.findFirst({
-    where: { id },
+    where: { id, workspaceId: await docsWorkspaceId(actor) },
     include: { sections: true },
   });
 

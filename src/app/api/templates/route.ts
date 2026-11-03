@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { docsWorkspaceId, templateVisibleWhere } from "@/server/documents-scope";
 
 /**
  * GET /api/templates
@@ -14,14 +15,14 @@ import { ensureBaseRecords } from "@/server/bootstrap";
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensureBaseRecords();
-
+    const workspaceId = await docsWorkspaceId(await getEffectiveUserOrNull(request));
     const typeFilter = request.nextUrl.searchParams.get("documentType");
 
     const templates = await prisma.documentTemplate.findMany({
-      where: typeFilter
-        ? { documentType: typeFilter as never }
-        : undefined,
+      where: {
+        ...templateVisibleWhere(workspaceId),
+        ...(typeFilter ? { documentType: typeFilter as never } : {}),
+      },
       orderBy: [{ documentType: "asc" }, { isDefault: "desc" }, { updatedAt: "desc" }],
       include: {
         _count: { select: { documents: true } },

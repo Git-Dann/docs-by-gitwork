@@ -26,6 +26,7 @@ import {
   serializeProposalListItem,
 } from "@/server/proposals";
 import { proposalCreateSchema } from "@/server/validators";
+import { docsWorkspaceId } from "@/server/documents-scope";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +34,6 @@ export async function GET(request: NextRequest) {
     // module; a session alone was enough until a signed-in account existed that does
     // not hold it.
     assertCan(await getEffectiveUserOrNull(request), canViewDocs, "view documents");
-    await ensureBaseRecords();
 
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search")?.trim();
@@ -66,6 +66,8 @@ export async function GET(request: NextRequest) {
     const sortDirection = sortDirectionRaw === "asc" ? "asc" : "desc";
 
     const where: Prisma.DocumentWhereInput = {
+      // Only the caller's own workspace's documents (multi-tenant Phase 2.2b).
+      workspaceId: await docsWorkspaceId(user),
       documentType: documentTypeWhere,
       ...(status && status !== "ALL" ? { status: status as DocumentStatus } : {}),
       ...(search
