@@ -26,7 +26,8 @@ const PROVISIONING_PATHS = [
   "src/auth.ts",
   "src/app/api/auth/mobile-callback/route.ts",
   "src/app/api/auth/desktop/start/route.ts",
-  "src/server/team.ts",
+  // Invite acceptance chooses the role here (inviteRole), for both accept paths in team.ts.
+  "src/lib/invite-rules.ts",
 ];
 
 describe("new members are provisioned as Developer", () => {
@@ -52,6 +53,15 @@ describe("new members are provisioned as Developer", () => {
     expect(src).not.toMatch(/"SUPER_ADMIN" : "STAFF"/);
     expect(src).not.toMatch(/create: \{[^}]*role: "STAFF"/);
     expect(src).not.toMatch(/role \?\? "STAFF"/);
+  });
+
+  it("invite acceptance takes its role from inviteRole, never a literal", () => {
+    const src = code("src/server/team.ts");
+    const creates = src.match(/role: inviteRole\(invite\)/g) ?? [];
+    // acceptInvite and acceptInviteWithPassword.
+    expect(creates.length).toBe(2);
+    expect(src).not.toMatch(/create: \{[^}]*role: "STAFF"/);
+    expect(code("src/lib/invite-rules.ts")).toMatch(/: DEFAULT_PROVISIONED_ROLE;/);
   });
 
   it("the known owners and first-admin bootstrap still become Super Admin", () => {
