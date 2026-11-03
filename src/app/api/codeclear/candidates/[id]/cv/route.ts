@@ -1,3 +1,4 @@
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 /**
  * GET /api/codeclear/candidates/[id]/cv
  *
@@ -28,7 +29,6 @@ import { buildCvData } from "@/lib/cv/build-cv";
 import { renderCvHtml } from "@/lib/cv/render-cv";
 import { prisma } from "@/lib/prisma";
 import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { loadCvAssets } from "@/server/cv-assets";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
 
@@ -51,7 +51,7 @@ function slugify(name: string): string {
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageCode, "export developer CVs");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await context.params;
 
     const candidate = await prisma.candidate.findFirst({

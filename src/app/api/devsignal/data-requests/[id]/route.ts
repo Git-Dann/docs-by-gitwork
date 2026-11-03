@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canManageDevSignal, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { updateDataRequestStatus } from "@/server/devsignal/assessment";
 import { devSignalDataRequestUpdateSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export async function PATCH(
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageDevSignal, "action a DevSignal data request");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id } = await params;
     const body = devSignalDataRequestUpdateSchema.parse(await request.json());
     const result = await updateDataRequestStatus(workspace.id, id, body.status, user?.id ?? null);

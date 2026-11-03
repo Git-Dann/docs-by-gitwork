@@ -8819,6 +8819,25 @@ and the Staff schedule work inside the caller's workspace.
 - ⚠️ Still Gitwork-scoped: the scan **list**, projects and portfolio (they read Gitwork's
   workspace), and `getScanHistory`. Next block.
 
+**Phase 2.2b, Staff, Hiring and DevSignal (Nov 2026).** Every `/api/codeclear/**` and
+`/api/devsignal/**` route reads the caller's workspace (`workspaceIdForRequest`), not Gitwork's.
+- `requestActor(req)` (`src/server/workspaces/scope.ts`) returns the workspace and who to credit.
+  Notes, score changes, GitHub-analysis runs and validations used to be credited to the bootstrap
+  owner ("Foundry Owner"); they now name the signed-in caller. The workspace API key still credits
+  the owner.
+- `src/app/api/codeclear/__tests__/code-routes-scoped.test.ts` fails on any route in those two
+  folders that uses `ensureBaseRecords` or the Gitwork slug.
+- Left on Gitwork on purpose: the public `/apply` flow (`src/server/devsignal/apply.ts`) is
+  Gitwork's own careers page and has no caller to read a workspace from.
+
+**What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
+Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,
+so every b→a call is refused before it reaches the code. A route that still reads Gitwork's
+workspace directly passes the suite and would show Gitwork's data to another business the day
+they can sign in. The `ensureBaseRecords` / `DEFAULT_WORKSPACE_SLUG` ratchet is the real
+remaining worklist, then sign-in switches to the token's workspace (the shadow comparison's
+0 mismatches are the evidence for that).
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds

@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { placementUpdateSchema } from "@/server/validators";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +22,7 @@ type RouteContext = {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage placements");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id: candidateId, placementId } = await context.params;
 
     const placement = await prisma.placement.findFirst({
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage placements");
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const { id: candidateId, placementId } = await context.params;
 
     const placement = await prisma.placement.findFirst({

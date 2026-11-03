@@ -1,8 +1,8 @@
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { applyDemoCleanup, previewDemoCleanup } from "@/server/demo-cleanup";
 import { isAtLeast } from "@/types/auth";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +19,12 @@ async function requireAdminSession() {
  * Returns a dry-run preview of the demo-data cleanup: lists the exact
  * candidates and rate-card people that would be deleted. Admin only.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await requireAdminSession();
     if (!session) return apiError("Forbidden", 403);
 
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const preview = await previewDemoCleanup(workspace.id);
 
     return apiOk({
@@ -43,12 +43,12 @@ export async function GET() {
  * Applies the demo-data cleanup. Idempotent — running it again with nothing
  * left to delete just returns zero counts. Admin only.
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await requireAdminSession();
     if (!session) return apiError("Forbidden", 403);
 
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const result = await applyDemoCleanup(workspace.id);
 
     return apiOk({

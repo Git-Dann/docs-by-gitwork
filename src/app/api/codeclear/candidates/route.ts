@@ -4,7 +4,6 @@ import { archivedTeamEmails } from "@/server/codeclear-archived";
 import { buildCandidateWhere } from "@/server/codeclear-candidate-where";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { buildCodeClearListInclude, serializeCandidateListItem } from "@/server/codeclear";
 import {
   assertCan,
@@ -17,6 +16,7 @@ import {
   candidateCreateSchema,
 } from "@/server/validators";
 import { isAtLeast } from "@/types/auth";
+import { requestActor, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +48,7 @@ function buildCandidateOrderBy(
 
 export async function GET(request: NextRequest) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     // Field gate: blank candidate rates for users without `code.viewRates`.
     // A trusted API_KEY-only call (no user identity) keeps full visibility.
     const user = await getEffectiveUserOrNull(request);
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageCode, "manage candidates");
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
     const body = candidateCreateSchema.parse(await request.json());
 
     const candidate = await prisma.candidate.create({
@@ -163,7 +163,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const effectiveUser = await getEffectiveUserOrNull(request);
     assertCan(effectiveUser, canManageCode, "manage candidates");
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
     const body = candidateBulkUpdateSchema.parse(await request.json());
 
     // Moving devs between Bench / Off Bench is stricter — admin+ only.

@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { candidateNoteSchema } from "@/server/validators";
+import { requestActor } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ type RouteContext = {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(request);
     const { id } = await context.params;
     const body = candidateNoteSchema.parse(await request.json());
     const existing = await prisma.candidate.findFirst({
