@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
-import { archivedTeamEmails } from "@/server/codeclear-archived";
+import { MISSING_DEVELOPER_DETAILS, archivedTeamEmails } from "@/server/codeclear-archived";
 import { buildCandidateWhere } from "@/server/codeclear-candidate-where";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +17,6 @@ import {
 } from "@/server/validators";
 import { isAtLeast } from "@/types/auth";
 import { requestActor, workspaceIdForRequest } from "@/server/workspaces/scope";
-import { ensureDeveloperRecords } from "@/server/staff";
 
 export const dynamic = "force-dynamic";
 
@@ -59,11 +58,15 @@ export async function GET(request: NextRequest) {
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 20);
     const sortBy = searchParams.get("sortBy")?.trim() || "createdAt";
     const sortDir = searchParams.get("sortDir") === "asc" ? "asc" : "desc";
-    // Someone given the Developer role shows here without anyone making them a card.
-    await ensureDeveloperRecords(workspace.id);
-    const where = buildCandidateWhere(workspace.id, searchParams, await archivedTeamEmails(workspace.id));
+    const archivedEmails = await archivedTeamEmails(workspace.id);
+    const where = buildCandidateWhere(workspace.id, searchParams, archivedEmails);
+    // Active developers whose card is missing a handle or stack, whatever the filters, so
+    // the page can say so and offer to show them.
+    const missingWhere: Prisma.CandidateWhereInput = {
+      AND: [buildCandidateWhere(workspace.id, new URLSearchParams(), archivedEmails), MISSING_DEVELOPER_DETAILS],
+    };
 
-    const [items, total, stackRecords] = await Promise.all([
+    const [items, total, stackRecords, missingDetails] = await Promise.all([
       prisma.candidate.findMany({
         where,
         include: buildCodeClearListInclude(),
@@ -84,6 +87,7 @@ export async function GET(request: NextRequest) {
           techStacks: true,
         },
       }),
+      prisma.candidate.count({ where: missingWhere }),
     ]);
 
     const stacks = [...new Set(
@@ -99,6 +103,7 @@ export async function GET(request: NextRequest) {
         totalPages: Math.max(1, Math.ceil(total / pageSize)),
         sortBy,
         sortDir,
+        missingDetails,
       },
       facets: {
         stacks,

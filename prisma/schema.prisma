@@ -594,6 +594,9 @@ model WorkspaceInvite {
   email        String?
   /// The role the person joins with; null = DEFAULT_PROVISIONED_ROLE.
   role         String?
+  /// They're joining as a developer: accepting gives them a Staff record that's listed
+  /// under Code → Developers.
+  isDeveloper  Boolean   @default(false)
   invitedById  String
   acceptedById String?
   createdAt    DateTime  @default(now())
@@ -2624,6 +2627,13 @@ model Candidate {
   /// developer. Postgres allows many NULLs under the unique index below. The API
   /// still sends a string ("" = none) so older clients that require it keep working.
   githubHandle         String?
+  /// This person is a developer: they're listed under Code → Developers. Set when they're
+  /// invited as one or by switching it on in their Staff profile. Separate from the
+  /// permission role on purpose: everyone signs in as DEVELOPER (CLAUDE.md §57.6), so the
+  /// role can't say who writes code. Null = never decided (records from before Nov 2026,
+  /// settled once by backfillDeveloperFlags). A record with a GitHub handle counts as a
+  /// developer either way.
+  isDeveloper          Boolean?
   email                String?
   /// The account this Staff record belongs to. Replaces the email match the module
   /// relied on (Candidate.email ↔ User.email), which broke whenever the two differed.

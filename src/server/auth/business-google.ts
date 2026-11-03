@@ -19,6 +19,7 @@ import { emailDomain, GITWORK_EMAIL_DOMAIN, PUBLIC_EMAIL_DOMAINS } from "@/lib/e
 import { inviteRefusal, inviteRole } from "@/lib/invite-rules";
 import { findHomeMembership } from "@/server/auth/home-membership";
 import { recomputeMember } from "@/server/permissions";
+import { applyInviteDeveloperFlag } from "@/server/staff";
 
 export function businessGoogleConfigured(env: Record<string, string | undefined> = process.env): boolean {
   return Boolean(env.AUTH_GOOGLE_BUSINESS_ID && env.AUTH_GOOGLE_BUSINESS_SECRET);
@@ -86,6 +87,7 @@ export async function provisionBusinessGoogleUser(email: string, name: string | 
   await recomputeMember(member.id).catch(() => undefined);
   if (invite) {
     await prisma.workspaceInvite.update({ where: { id: invite.id }, data: { status: "ACCEPTED", acceptedById: user.id } });
+    await applyInviteDeveloperFlag(invite, member.id);
   }
   return user.id;
 }

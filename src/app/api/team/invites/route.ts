@@ -9,6 +9,7 @@ const inviteSchema = z.object({
   label: z.string().max(120).optional().nullable(),
   email: z.string().trim().max(320).optional().nullable(),
   role: z.enum(ROLE_IDS).optional().nullable(),
+  isDeveloper: z.boolean().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       label: body.label,
       email: body.email || null,
       role: body.role ?? null,
+      isDeveloper: body.isDeveloper ?? false,
       inviterRole: actor.role,
     });
     return apiOk(invite);

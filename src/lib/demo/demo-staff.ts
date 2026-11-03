@@ -5,6 +5,7 @@
  */
 
 import { departmentsOf, normaliseStaffDetails, sortStaff, type StaffPerson, type StaffDetailsUpdate } from "@/lib/staff";
+import { normaliseDeveloperSelfDetails, type OwnDeveloperDetails } from "@/lib/developer-self-details";
 import type { CodeClearCandidateDetail, CodeClearNoteRecord } from "@/types/codeclear";
 import {
   EMPTY_SENSITIVE,
@@ -50,6 +51,7 @@ const base = (over: Partial<StaffPerson> & Pick<StaffPerson, "key" | "name">): S
   managerRecordId: null,
   managerName: null,
   isDeveloper: false,
+  hasGithubHandle: false,
   primaryStack: null,
   currentClients: [],
   ...over,
@@ -412,7 +414,9 @@ export function resolveDemoStaff(pathname: string, init?: { method?: string; bod
     email?: string | null;
   };
   // Backstage → Me: the demo viewer is Tom (r2).
-  if (pathname === "/api/staff/me") return { recordId: "r2" };
+  if (pathname === "/api/staff/me") return { recordId: DEMO_ME };
+  // Their own developer details, through the real rules. Only shown for a developer (Tom isn't).
+  if (pathname === "/api/staff/me/developer") return resolveDemoOwnDeveloper(init);
   const hr = resolveDemoHr(pathname, init?.method ?? "GET", body as Record<string, unknown>);
   if (hr !== undefined) return hr;
   if (pathname === "/api/staff" && init?.method === "POST") {
@@ -454,6 +458,45 @@ const candidateEdits = new Map<string, Partial<CodeClearCandidateDetail>>();
 const candidateNotes = new Map<string, CodeClearNoteRecord[]>([
   ["r3", [{ id: "n1", candidateId: "r3", body: "Strong on React Native performance work; pair him with Tom on the Acme release.", createdBy: "Tom Okafor", createdAt: "2026-09-14T10:00:00.000Z" }]],
 ]);
+
+/** Who Backstage → Me opens as, in the demo. */
+const DEMO_ME = "r2";
+const ownDeveloper = new Map<string, OwnDeveloperDetails>();
+
+function resolveDemoOwnDeveloper(init?: { method?: string; body?: unknown }): OwnDeveloperDetails | null | { error: string; __status: number } {
+  const p = people.find((x) => x.recordId === DEMO_ME);
+  if (!p?.recordId) return null;
+  const current =
+    ownDeveloper.get(p.recordId) ??
+    ({
+      recordId: p.recordId,
+      isDeveloper: p.isDeveloper,
+      githubHandle: null,
+      primaryStack: p.primaryStack,
+      techStacks: [],
+      location: null,
+      timezone: null,
+      linkedinUrl: null,
+      portfolioUrl: null,
+    } satisfies OwnDeveloperDetails);
+  if ((init?.method ?? "GET") !== "PATCH") return current;
+  if (!current.isDeveloper) return { error: "Your profile isn't marked as a developer. Ask an admin to switch it on.", __status: 403 };
+  const r = normaliseDeveloperSelfDetails(JSON.parse(String(init?.body ?? "{}")));
+  if (!r.ok) return { error: r.error, __status: 400 };
+  const v = r.value;
+  const next: OwnDeveloperDetails = {
+    ...current,
+    ...(v.githubHandle ? { githubHandle: v.githubHandle } : {}),
+    ...(v.primaryStack !== undefined ? { primaryStack: v.primaryStack } : {}),
+    ...(v.techStacks !== undefined ? { techStacks: v.techStacks } : {}),
+    ...(v.location !== undefined ? { location: v.location } : {}),
+    ...(v.timezone !== undefined ? { timezone: v.timezone } : {}),
+    ...(v.linkedinUrl !== undefined ? { linkedinUrl: v.linkedinUrl } : {}),
+    ...(v.portfolioUrl !== undefined ? { portfolioUrl: v.portfolioUrl } : {}),
+  };
+  ownDeveloper.set(p.recordId, next);
+  return next;
+}
 
 function demoCandidate(recordId: string): CodeClearCandidateDetail | null {
   const p = people.find((x) => x.recordId === recordId);

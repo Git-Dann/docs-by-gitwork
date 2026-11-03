@@ -92,6 +92,7 @@ const person = (over: Partial<StaffPerson>): StaffPerson => ({
   managerRecordId: null,
   managerName: null,
   isDeveloper: false,
+  hasGithubHandle: false,
   primaryStack: null,
   currentClients: [],
   ...over,
@@ -160,7 +161,7 @@ describe("sortStaffBy", () => {
   const p = (name: string, extra: Partial<StaffPerson> = {}): StaffPerson => ({
     key: name, memberId: null, recordId: null, name, preferredName: null, pronouns: null, archivedAt: null, email: null, avatarUrl: null, role: null,
     jobTitle: null, department: null, employmentType: null, startDate: null, managerRecordId: null,
-    managerName: null, isDeveloper: false, primaryStack: null, currentClients: [], ...extra,
+    managerName: null, isDeveloper: false, hasGithubHandle: false, primaryStack: null, currentClients: [], ...extra,
   });
   const people = [p("Cara", { startDate: "2024-03-01" }), p("Abe"), p("Bea", { startDate: "2023-01-01" })];
 

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { StaffDetailsUpdate, StaffRoster } from "@/lib/staff";
+import type { DeveloperSelfDetails, OwnDeveloperDetails } from "@/lib/developer-self-details";
 
 const STAFF_KEY = ["staff", "roster"] as const;
 
@@ -41,6 +42,33 @@ export function useUpdateStaffDetails() {
       // The profile page too. Not the whole ["staff"] tree: refetching personal details
       // would be a second, logged look nobody asked for.
       void qc.invalidateQueries({ queryKey: ["staff", "profile", recordId] });
+    },
+  });
+}
+
+/** The signed-in person's own developer details (Backstage → Me). Null when they have no record. */
+export function useOwnDeveloperDetails(enabled = true) {
+  return useQuery({
+    queryKey: ["staff", "me", "developer"],
+    queryFn: () => apiFetch<OwnDeveloperDetails | null>("/api/staff/me/developer"),
+    enabled,
+  });
+}
+
+export function useUpdateOwnDeveloperDetails() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeveloperSelfDetails) =>
+      apiFetch<OwnDeveloperDetails>("/api/staff/me/developer", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (saved) => {
+      qc.setQueryData(["staff", "me", "developer"], saved);
+      // Their card on People and in Code reads the same record.
+      void qc.invalidateQueries({ queryKey: STAFF_KEY });
+      void qc.invalidateQueries({ queryKey: ["codeclear"] });
     },
   });
 }

@@ -12,8 +12,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mergeStaffClients, productTeamClientsByUser } from "@/server/staff-clients";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import { normaliseDeveloperSelfDetails, type DeveloperSelfDetails, type OwnDeveloperDetails } from "@/lib/developer-self-details";
 import {
-  DEVELOPER_ROLE,
   activeDeveloperWhere,
   archivedDeveloperWhere,
   archivedTeamEmails,
@@ -87,51 +87,6 @@ export async function linkStaffRecords(workspaceId: string): Promise<number> {
   return links.length;
 }
 
-/**
- * Gives every active member whose role is Developer a record, so they show under
- * Developers without anyone making a card by hand. Existing records are linked by email
- * first, so someone who already has a card isn't given a second one. Idempotent: once
- * everyone has a record it writes nothing.
- *
- * A transaction-scoped advisory lock (per workspace) serialises concurrent callers:
- * `memberId` can't be @unique (CLAUDE.md §2), so without the lock two page loads at once
- * could each create a record for the same person.
- */
-export async function ensureDeveloperRecords(workspaceId: string): Promise<number> {
-  await linkStaffRecords(workspaceId);
-  const where = {
-    workspaceId,
-    role: DEVELOPER_ROLE,
-    staffRecords: { none: {} },
-    user: seedAccountUserWhere(),
-  } satisfies Prisma.WorkspaceMemberWhereInput;
-  // Cheap check outside the lock: the common case is that nobody is missing.
-  if ((await prisma.workspaceMember.count({ where: { ...where, ...ACTIVE_MEMBER } })) === 0) return 0;
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`developer-records:${workspaceId}`}))`;
-    // Re-read under the lock: another request may have made them while we waited.
-    const members = await tx.workspaceMember.findMany({
-      where: { ...where, ...ACTIVE_MEMBER },
-      select: { id: true, user: { select: { name: true, email: true, avatarUrl: true } } },
-    });
-    for (const m of members) {
-      await tx.candidate.create({
-        data: {
-          workspaceId,
-          memberId: m.id,
-          name: m.user.name?.trim() || m.user.email,
-          email: m.user.email,
-          avatarUrl: m.user.avatarUrl ?? null,
-          githubHandle: null,
-          primaryStack: "",
-          origin: "INTERNAL",
-        },
-      });
-    }
-    return members.length;
-  });
-}
-
 const RECORD_SELECT = {
   id: true,
   name: true,
@@ -145,7 +100,7 @@ const RECORD_SELECT = {
   startDate: true,
   managerId: true,
   memberId: true,
-  member: { select: { role: true } },
+  isDeveloper: true,
   preferredName: true,
   pronouns: true,
   archivedAt: true,
@@ -169,6 +124,7 @@ function recordFields(r: RecordRow | null | undefined) {
       startDate: null,
       managerRecordId: null,
       isDeveloper: false,
+      hasGithubHandle: false,
       primaryStack: null,
       currentClients: [],
     };
@@ -183,6 +139,7 @@ function recordFields(r: RecordRow | null | undefined) {
     startDate: r.startDate ? r.startDate.toISOString().slice(0, 10) : null,
     managerRecordId: r.managerId,
     isDeveloper: isDeveloperRecord(r),
+    hasGithubHandle: Boolean(r.githubHandle),
     primaryStack: r.primaryStack || null,
     currentClients: r.placements
       .map((p) => (p.client ? { name: p.client.name, slug: p.client.slug } : { name: p.clientName, slug: null }))
@@ -330,6 +287,8 @@ export async function createStaffRecord(
       employmentType: details.value.employmentType ?? null,
       startDate: details.value.startDate ? new Date(`${details.value.startDate}T00:00:00Z`) : null,
       managerId: details.value.managerRecordId ?? null,
+      // Decided now, by whoever made the record: never inferred from the role later.
+      isDeveloper: details.value.isDeveloper ?? false,
     },
     select: { id: true },
   });
@@ -360,6 +319,7 @@ export async function updateStaffDetails(workspaceId: string, recordId: string, 
       ...(v.employmentType !== undefined ? { employmentType: v.employmentType } : {}),
       ...(v.startDate !== undefined ? { startDate: v.startDate ? new Date(`${v.startDate}T00:00:00Z`) : null } : {}),
       ...(v.managerRecordId !== undefined ? { managerId: v.managerRecordId } : {}),
+      ...(v.isDeveloper !== undefined ? { isDeveloper: v.isDeveloper } : {}),
     },
   });
 }
@@ -376,6 +336,33 @@ export async function getOwnStaffRecordId(workspaceId: string, membershipId: str
     select: { id: true },
   });
   return own?.id ?? null;
+}
+
+/**
+ * Someone joined from an invite that said they're a developer: give them a Staff record (or
+ * use the one they have) and mark it, so they're under Code → Developers from their first day.
+ * Best effort: a failure here must never stop someone joining, so callers go through
+ * `applyInviteDeveloperFlag`, which logs and carries on.
+ */
+export async function markMemberAsDeveloper(workspaceId: string, memberId: string): Promise<string> {
+  await linkStaffRecords(workspaceId);
+  const { recordId } = await createStaffRecord(workspaceId, { memberId, isDeveloper: true });
+  // An existing record comes back as it was: mark it too.
+  await prisma.candidate.update({ where: { id: recordId }, data: { isDeveloper: true } });
+  return recordId;
+}
+
+/** For every invite-acceptance path. Never throws: joining matters more than the flag. */
+export async function applyInviteDeveloperFlag(
+  invite: { isDeveloper: boolean; workspaceId: string },
+  memberId: string | null | undefined,
+): Promise<void> {
+  if (!invite.isDeveloper || !memberId) return;
+  try {
+    await markMemberAsDeveloper(invite.workspaceId, memberId);
+  } catch (error) {
+    console.error("[invite] couldn't mark the new member as a developer", error);
+  }
 }
 
 /**
@@ -413,5 +400,83 @@ export async function createOwnStaffRecord(workspaceId: string, membershipId: st
     const raced = await getOwnStaffRecordId(workspaceId, membershipId);
     if (!raced) throw err;
     return { recordId: raced };
+  }
+}
+
+const OWN_DEVELOPER_SELECT = {
+  id: true,
+  isDeveloper: true,
+  githubHandle: true,
+  primaryStack: true,
+  techStacks: true,
+  location: true,
+  timezone: true,
+  linkedinUrl: true,
+  portfolioUrl: true,
+} as const satisfies Prisma.CandidateSelect;
+
+function ownDeveloper(r: Prisma.CandidateGetPayload<{ select: typeof OWN_DEVELOPER_SELECT }>): OwnDeveloperDetails {
+  return {
+    recordId: r.id,
+    isDeveloper: isDeveloperRecord(r),
+    githubHandle: r.githubHandle,
+    primaryStack: r.primaryStack || null,
+    techStacks: r.techStacks,
+    location: r.location,
+    timezone: r.timezone,
+    linkedinUrl: r.linkedinUrl,
+    portfolioUrl: r.portfolioUrl,
+  };
+}
+
+export async function getOwnDeveloperDetails(workspaceId: string, membershipId: string): Promise<OwnDeveloperDetails | null> {
+  const recordId = await getOwnStaffRecordId(workspaceId, membershipId);
+  if (!recordId) return null;
+  const r = await prisma.candidate.findFirst({ where: { id: recordId, workspaceId }, select: OWN_DEVELOPER_SELECT });
+  return r ? ownDeveloper(r) : null;
+}
+
+/**
+ * Someone fills in their own developer details. Only their own record, and only once they're
+ * a developer (marked, or with a handle): adding a handle must not be a way to put yourself
+ * on the Developers list.
+ */
+export async function updateOwnDeveloperDetails(
+  workspaceId: string,
+  membershipId: string,
+  input: DeveloperSelfDetails,
+): Promise<OwnDeveloperDetails> {
+  const details = normaliseDeveloperSelfDetails(input);
+  if (!details.ok) throw new StaffInputError(details.error);
+  const current = await getOwnDeveloperDetails(workspaceId, membershipId);
+  if (!current) throw Object.assign(new Error("You don't have a Staff profile yet"), { status: 404 });
+  if (!current.isDeveloper) {
+    throw Object.assign(new Error("Your profile isn't marked as a developer. Ask an admin to switch it on."), { status: 403 });
+  }
+  const v = details.value;
+  try {
+    const r = await prisma.candidate.update({
+      where: { id: current.recordId },
+      data: {
+        ...(v.githubHandle ? { githubHandle: v.githubHandle } : {}),
+        // primaryStack is required in the database; blank is stored as "".
+        ...(v.primaryStack !== undefined ? { primaryStack: v.primaryStack ?? "" } : {}),
+        ...(v.techStacks !== undefined ? { techStacks: v.techStacks } : {}),
+        ...(v.location !== undefined ? { location: v.location } : {}),
+        ...(v.timezone !== undefined ? { timezone: v.timezone } : {}),
+        ...(v.linkedinUrl !== undefined ? { linkedinUrl: v.linkedinUrl } : {}),
+        ...(v.portfolioUrl !== undefined ? { portfolioUrl: v.portfolioUrl } : {}),
+      },
+      select: OWN_DEVELOPER_SELECT,
+    });
+    return ownDeveloper(r);
+  } catch (err) {
+    // @@unique([workspaceId, githubHandle]): someone else's profile already has it.
+    if ((err as { code?: string }).code === "P2002") {
+      throw Object.assign(new Error("That GitHub handle is already on someone else's profile. Ask an admin if it's yours."), {
+        status: 409,
+      });
+    }
+    throw err;
   }
 }

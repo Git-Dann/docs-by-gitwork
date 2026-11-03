@@ -32,6 +32,7 @@ import { WidgetCard } from "@/components/codeclear/codeclear-shared";
 import { DetailsDialog } from "@/components/staff/staff-roster";
 import { DocumentsCard } from "@/components/staff/staff-documents";
 import { DeveloperCard, DeveloperNotesCard } from "@/components/staff/developer-card";
+import { MyDeveloperCard } from "@/components/staff/my-developer-card";
 import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from "@/components/staff/profile-parts";
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -638,6 +639,7 @@ export function StaffProfileView({
         {p.preferredName && p.preferredName !== p.name ? <Field label="Legal name">{p.name}</Field> : null}
         <Field label="Email">{p.email ?? "—"}</Field>
         <Field label="Type">{type ?? "—"}</Field>
+        <Field label="Developer">{p.isDeveloper ? "Yes" : "No"}</Field>
         <Field label="Started">{formatDate(p.startDate)}</Field>
         <Field label="Manager">
           {p.managerRecordId && p.managerName ? (
@@ -651,7 +653,8 @@ export function StaffProfileView({
         <Field label="Clients" className="sm:col-span-2">
           {p.currentClients.length ? p.currentClients.map((c) => c.name).join(", ") : "—"}
         </Field>
-        {dev && !showDeveloper ? (
+        {/* In Me a developer's own card shows these, so they aren't repeated here. */}
+        {dev && !showDeveloper && !(mode === "me" && p.isDeveloper) ? (
           <>
             <Field label="GitHub">
               <a href={`https://github.com/${dev.githubHandle}`} target="_blank" rel="noreferrer noopener" className="hover:text-[var(--brand-600)] hover:underline">
@@ -666,6 +669,8 @@ export function StaffProfileView({
     </WidgetCard>
   );
   const developer = showDeveloper ? <DeveloperCard recordId={p.recordId} number={next()} /> : null;
+  // In Me, a developer fills in what only they know (handle, stack, links).
+  const myDeveloper = mode === "me" && p.isDeveloper ? <MyDeveloperCard number={next()} /> : null;
   const employment = p.employment ? <EmploymentCard key={JSON.stringify(p.employment)} profile={p} number={next()} /> : null;
   const timeOff = p.lifecycle.hasLogin ? <TimeOffCard activity={activity.data} number={next()} /> : null;
   const notes = showDeveloper ? <DeveloperNotesCard recordId={p.recordId} number={next()} /> : null;
@@ -716,6 +721,7 @@ export function StaffProfileView({
         <div className="min-w-0 space-y-5">
           {overview}
           {developer}
+          {myDeveloper}
           {employment}
           {timeOff}
           {notes}

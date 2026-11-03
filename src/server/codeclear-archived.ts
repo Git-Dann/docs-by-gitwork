@@ -50,22 +50,29 @@ export function activeDeveloperWhere(emails: string[]): Prisma.CandidateWhereInp
 /**
  * Developer records only. Since Staff (CLAUDE.md §87) a Candidate row can be anyone on
  * the team. A record is a developer's when it has a GitHub handle (how every developer
- * card was made before Staff) OR its person's role in Settings → Team is Developer.
- * The second half matters for a new hire: their record is made from their account
- * (`ensureDeveloperRecords`), with no handle until someone adds it, and before this they
- * were missing from Developers despite being labelled one.
+ * card was made before Staff) OR it's marked as one (`isDeveloper`: invited as a
+ * developer, or switched on in their Staff profile).
+ *
+ * ⚠️ Not the permission role. Everyone signs in as DEVELOPER (§57.6), so a role-based
+ * rule listed every new hire, developer or not. The role was used briefly (Nov 2026);
+ * `backfillDeveloperFlags` turned what it said into the flag once, for the people already here.
  *
  * Every developer-facing list — Developers, Pipeline, the Overview's counts, and the
  * iOS Dev Directory, which reads the same endpoint — filters on this.
  */
 export const DEVELOPER_ROLE = "DEVELOPER";
 export const DEVELOPER_RECORD: Prisma.CandidateWhereInput = {
-  OR: [{ githubHandle: { not: null } }, { member: { role: DEVELOPER_ROLE } }],
+  OR: [{ githubHandle: { not: null } }, { isDeveloper: true }],
+};
+
+/** A developer whose card can't do its job yet: no GitHub handle, or no main stack. */
+export const MISSING_DEVELOPER_DETAILS: Prisma.CandidateWhereInput = {
+  OR: [{ githubHandle: null }, { primaryStack: "" }],
 };
 
 /** The same rule for a record already loaded. */
-export function isDeveloperRecord(r: { githubHandle: string | null; member?: { role: string } | null }): boolean {
-  return Boolean(r.githubHandle) || r.member?.role === DEVELOPER_ROLE;
+export function isDeveloperRecord(r: { githubHandle: string | null; isDeveloper: boolean | null }): boolean {
+  return Boolean(r.githubHandle) || r.isDeveloper === true;
 }
 
 /** Only the developers whose person has left. Matches nothing when nobody has. */

@@ -90,6 +90,7 @@ export function CodeClearCandidatesWorkspace() {
   const [confidenceFilter, setConfidenceFilter] = useState<IdentityConfidence | "">(
     (searchParams.get("identityConfidence") as IdentityConfidence | null) ?? "",
   );
+  const [missingOnly, setMissingOnly] = useState(searchParams.get("missing") === "1");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Cards stay the default; table is the opt-in dense view. Both persist in the
   // URL so a view (and its filters/sort) can be shared or restored on refresh.
@@ -113,7 +114,9 @@ export function CodeClearCandidatesWorkspace() {
     tier: tierFilter || undefined,
     stack: stackFilter,
     identityConfidence: confidenceFilter || undefined,
+    missing: missingOnly || undefined,
   });
+  const missingDetails = candidatesQuery.data?.meta.missingDetails ?? 0;
   const createCandidate = useCreateCodeClearCandidate();
   const queryClient = useQueryClient();
   const bulkUpdate = useBulkUpdateCodeClearCandidates();
@@ -448,6 +451,30 @@ export function CodeClearCandidatesWorkspace() {
               className="ml-auto text-[11px] font-medium text-[var(--text-4)] transition hover:text-[var(--text-2)]"
             >
               Clear selection
+            </button>
+          </div>
+        ) : null}
+
+        {missingDetails > 0 || missingOnly ? (
+          <div
+            data-missing-details
+            className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] px-3.5 py-2.5"
+          >
+            <p className="min-w-0 text-[13px] text-[var(--text-2)]">
+              {missingDetails === 0
+                ? "Everyone has a GitHub handle and a main stack."
+                : `${missingDetails} developer${missingDetails === 1 ? " is" : "s are"} missing a GitHub handle or main stack. They can add them in Backstage → Me.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !missingOnly;
+                setMissingOnly(next);
+                updateQuery({ missing: next ? "1" : null });
+              }}
+              className="shrink-0 text-[12px] font-medium text-[var(--brand-700)] hover:underline"
+            >
+              {missingOnly ? "Show everyone" : "Show them"}
             </button>
           </div>
         ) : null}

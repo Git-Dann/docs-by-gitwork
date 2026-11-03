@@ -9745,26 +9745,39 @@ two versions without downloading both zips.
 - No schema or route change: files were already stored as text.
 - Demo: `/demo/wiki#code-handover` (Receiver has three versions with real edits).
 
-## 113. Recent Changes (November 2026) — A Developer on the team is in Developers
+## 113. Recent Changes (November 2026) — Who is a developer is a fact on their Staff record
 
 Abdullah Farooq had the Developer role in Settings → Team and was missing from Code → Developers.
-That list only counted records with a GitHub handle, and nothing made a record for a new hire, so a
-developer stayed invisible until someone made them a card by hand. There was also no way in the
-app to add a handle later: a profile with no handle hid its Developer card.
+That list only counted records with a GitHub handle, and nothing made a record for a new hire. A
+first fix (#799) also counted the Developer **role** and made records whenever the list loaded.
+That was replaced the same week, for two reasons. Everyone signs in as DEVELOPER (§57.6), so the
+role listed every new hire, developer or not. And a list that writes records when you look at it
+is a fix after the fact.
 
-- **A record is a developer's when it has a GitHub handle OR its person's role is Developer**
-  (`DEVELOPER_RECORD` / `isDeveloperRecord` in `src/server/codeclear-archived.ts`, one rule for the
-  list query and for loaded records). The Staff profile's Developer card and job-title fallback use it.
-- **`ensureDeveloperRecords`** (`src/server/staff.ts`) gives every active, non-placeholder member
-  with the Developer role a record, made from their account. It runs before the Developers list and
-  the Overview counts are read. It links existing records by email first, so nobody gets a second
-  card. It creates under a per-workspace advisory lock, because `memberId` can't be `@unique` (§2)
-  and two page loads at once would otherwise both make one. Idempotent: it writes nothing once
-  everyone has a record.
-- A developer with no handle reads **"No GitHub yet"** (`githubLabel`) instead of a bare "@". Their
-  Developer card says to use Edit to add the handle and stack. GitHub analysis still refuses a
-  record with no handle, with a 400.
-- ⚠️ **New sign-ins are provisioned as DEVELOPER** (§57.6), so anyone new now appears under
-  Developers until an admin changes their role. That is the role saying what it says; correct the
-  role, not the list. Changing someone's role away from Developer removes them from the list (their
-  Staff record stays).
+- **`Candidate.isDeveloper`** (additive, nullable) says someone is a developer. A record counts
+  when it has a GitHub handle OR the flag is on (`DEVELOPER_RECORD` / `isDeveloperRecord` in
+  `src/server/codeclear-archived.ts`). ⚠️ **The role is never read.** A test fails if it comes back.
+- **It's decided by a person, at the right moment:**
+  - **"They're a developer"** on an invite (`WorkspaceInvite.isDeveloper`). Every path that accepts
+    an invite calls `applyInviteDeveloperFlag`, which makes or marks their record. A sweep test
+    fails if one doesn't. It never stops someone joining if it fails.
+  - **The Developer switch** in a person's Staff details and in Add someone. It's shown on and
+    locked when they have a GitHub handle, which lists them anyway.
+- **People already here were settled once** by `backfillDeveloperFlags`
+  (`src/server/staff-developer-flag.ts`, run at server start). It only looks at records and
+  memberships from before `DEVELOPER_FLAG_SINCE` (5 Nov 2026), and sets every such record to true
+  (a handle or the Developer role) or false. So it can't go on reading the role, and it writes
+  nothing once done. It makes a record for a Developer who had none, linking by email first, under
+  an advisory lock.
+- **Developers fill in their own details** in Backstage → Me (`MyDeveloperCard`,
+  `PATCH /api/staff/me/developer`, rules in `src/lib/developer-self-details.ts`). That's their GitHub
+  username (a pasted github.com link is cleaned), stack, location, time zone and links.
+  - Only their own record, and only once it's marked as a developer, so adding a handle can't put
+    someone on the list.
+  - A blank handle means "leave it", never "remove it".
+  - A handle already on someone else's profile is a 409 that says so.
+  - It opens on the form while the handle or stack is missing.
+- **Developers says who's missing details**: "N developers are missing a GitHub handle or main
+  stack" with Show them / Show everyone (`missing=1`, `MISSING_DEVELOPER_DETAILS`, counted in the
+  list response as `meta.missingDetails`).
+- A developer with no handle reads **"No GitHub yet"** (`githubLabel`), not a bare "@".
