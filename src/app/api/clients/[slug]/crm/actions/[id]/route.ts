@@ -4,6 +4,7 @@ import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/au
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { deleteLeadAction, updateLeadAction } from "@/server/crm/service";
 import { leadActionUpdateSchema } from "@/server/validators";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "update a lead action");
     await assertClientAccessBySlug(user, slug);
     const input = leadActionUpdateSchema.parse(await request.json());
-    const action = await updateLeadAction(slug, id, input, user);
+    const action = await updateLeadAction(await requestWorkspaceId(user), slug, id, input, user);
     if (!action) return apiError("Action not found", 404);
     return apiOk({ action });
   } catch (error) {
@@ -33,7 +34,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "delete a lead action");
     await assertClientAccessBySlug(user, slug);
-    const deleted = await deleteLeadAction(slug, id);
+    const deleted = await deleteLeadAction(await requestWorkspaceId(user), slug, id);
     if (!deleted) return apiError("Action not found", 404);
     return apiOk({ deleted: true });
   } catch (error) {

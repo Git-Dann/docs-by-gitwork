@@ -4,6 +4,7 @@ import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/au
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { getLeadCrmStatus, resolveStageSuggestion } from "@/server/crm/service";
 import { crmSuggestionResolveSchema } from "@/server/validators";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "resolve a stage suggestion");
     await assertClientAccessBySlug(user, slug);
     const { action } = crmSuggestionResolveSchema.parse(await request.json());
-    const ok = await resolveStageSuggestion(slug, id, action, user);
+    const ok = await resolveStageSuggestion(await requestWorkspaceId(user), slug, id, action, user);
     if (!ok) return apiError("Suggestion not found", 404);
-    return apiOk({ crm: await getLeadCrmStatus(slug, user) });
+    return apiOk({ crm: await getLeadCrmStatus(await requestWorkspaceId(user), slug, user) });
   } catch (error) {
     return fromError(error);
   }

@@ -11,8 +11,6 @@
 
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   applyLaunchpadPrefill,
   assignLaunchpad,
@@ -21,22 +19,14 @@ import {
 } from "@/server/launchpad";
 import { launchpadAssignSchema, launchpadEnableSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 export const dynamic = "force-dynamic";
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk({ launchpad: await getLaunchpadForClient(clientId) });
   } catch (err) {
@@ -48,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
 
     const { enabled } = launchpadEnableSchema.parse(await req.json());
@@ -77,7 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
 
     const body = launchpadAssignSchema.parse(await req.json());

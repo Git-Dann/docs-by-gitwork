@@ -14,6 +14,7 @@ import {
   resolveDocumentTokens,
   resolvePulseTokens,
 } from "@/lib/starter-merge-variables";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 // Node runtime — Buffer + server-side GitHub fetch + fflate. Starters is Super-Admin-only (same
 // gate as the other /api/starters routes). Returns a Claude Skill `.zip` (folder + SKILL.md at the
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const scanId = request.nextUrl.searchParams.get("scanId");
     if (clientSlug || documentId || scanId) {
       const [clientDetail, document, scan] = await Promise.all([
-        clientSlug ? getDerivedClientDetail(clientSlug) : null,
+        clientSlug ? getDerivedClientDetail(await requestWorkspaceId(user), clientSlug) : null,
         documentId ? prisma.document.findFirst({ where: { id: documentId }, include: proposalInclude }) : null,
         scanId ? getPulseScan(scanId) : null,
       ]);

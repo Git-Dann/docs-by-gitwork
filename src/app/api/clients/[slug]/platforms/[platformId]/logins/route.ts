@@ -4,6 +4,7 @@ import { createPlatformLogin } from "@/server/clients";
 import { platformLoginCreateSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function POST(
     assertCan(user, canManageClients, "manage platform logins");
     await assertClientAccessBySlug(user, slug);
     const body = platformLoginCreateSchema.parse(await request.json());
-    const login = await createPlatformLogin(slug, platformId, body);
+    const login = await createPlatformLogin(await requestWorkspaceId(user), slug, platformId, body);
     if (!login) return apiError("Platform not found", 404);
     return apiOk({ login }, { status: 201 });
   } catch (error) {

@@ -12,6 +12,7 @@ import {
 } from "@/server/auth/effective-user";
 import { isSuperAdmin } from "@/types/auth";
 import { assignedClientIds } from "@/server/tasks";
+import { requestWorkspaceId, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
       return apiOk({ clients: [] });
     }
 
-    const result = await listDerivedClients({ search, status, includeFinancials, includePulse });
+    const result = await listDerivedClients(await requestWorkspaceId(user), { search, status, includeFinancials, includePulse });
 
     if (user && !canSeeAllClients(user)) {
       const allowed = new Set(await assignedClientIds(user));
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageClients, "create clients");
     const body = clientCreateSchema.parse(await request.json());
-    const client = await createClientRecord(body);
+    const client = await createClientRecord(await workspaceIdForRequest(request), body);
     return apiOk({ client }, { status: 201 });
   } catch (error) {
     return fromError(error);

@@ -663,8 +663,8 @@ function reviveDates<T>(obj: T): T {
   return obj;
 }
 
-async function loadClientCollections() {
-  const { workspace } = await ensureBaseRecords();
+async function loadClientCollections(workspaceId: string) {
+  const workspace = { id: workspaceId };
   const raw = await _cachedLoadCollections(workspace.id);
   // Spread first (never mutate the shared cached object), then revive dates.
   return {
@@ -726,7 +726,7 @@ export class ClientNameTakenByDeletedError extends Error {
   }
 }
 
-export async function listDerivedClients(filters?: {
+export async function listDerivedClients(workspaceId: string, filters?: {
   search?: string;
   /** Filter by client status. Default: ACTIVE only. Pass "ALL" to include every status. */
   status?: WorkspaceClientStatus | "ALL";
@@ -737,7 +737,7 @@ export async function listDerivedClients(filters?: {
    *  verified `clients.viewFinancials` (or Super Admin) first. Default false. */
   includeFinancials?: boolean;
 }): Promise<{ clients: ClientListItem[] }> {
-  const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections();
+  const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections(workspaceId);
   const search = filters?.search?.trim().toLowerCase() ?? "";
   const statusFilter = filters?.status ?? "ACTIVE";
   const includePulse = filters?.includePulse ?? true;
@@ -930,7 +930,7 @@ export async function listDerivedClients(filters?: {
   return { clients };
 }
 
-export async function createClientRecord(input: {
+export async function createClientRecord(workspaceId: string, input: {
   name: string;
   logoUrl?: string;
   /** Phase 3: optional Slack channel provisioning. Failures are non-blocking — the
@@ -943,7 +943,7 @@ export async function createClientRecord(input: {
   /** Initial status — omit for a normal ACTIVE client; "LEAD" from the Add-lead flow. */
   status?: WorkspaceClientStatus;
 } & ClientContactInput): Promise<ClientListItem> {
-  const { workspace, proposals } = await loadClientCollections();
+  const { workspace, proposals } = await loadClientCollections(workspaceId);
   const name = normalizeClientName(input.name);
   const slug = slugifyClientName(name);
   const clientKey = getClientLookupKey(name);
@@ -999,13 +999,14 @@ export async function createClientRecord(input: {
 }
 
 export async function updateClientRecord(
+  workspaceId: string,
   slug: string,
   input: {
     name?: string;
     logoUrl?: string;
   } & ClientContactInput,
 ): Promise<ClientListItem | null> {
-  const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections();
+  const { workspace, manualClients, hiddenSlugs, proposals } = await loadClientCollections(workspaceId);
   const mergedClients = mergeClients(manualClients, proposals, hiddenSlugs);
   const current = mergedClients.find((client) => client.slug === slug);
 
@@ -1151,10 +1152,11 @@ export async function updateClientRecord(
  * members before persisting; returns the stored list. Null client → null.
  */
 export async function setClientProductTeam(
+  workspaceId: string,
   slug: string,
   userIds: string[],
 ): Promise<string[] | null> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const client = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { id: true },
@@ -1185,8 +1187,8 @@ export interface DeletedClientItem {
 }
 
 /** Deleted (hidden) clients — what the Portal's Deleted tab lists. */
-export async function listDeletedClients(): Promise<DeletedClientItem[]> {
-  const { workspace } = await ensureBaseRecords();
+export async function listDeletedClients(workspaceId: string): Promise<DeletedClientItem[]> {
+  const workspace = { id: workspaceId };
   const rows = await workspaceClients.findMany({
     where: { workspaceId: workspace.id, hidden: true },
     select: { id: true, name: true, slug: true, logoUrl: true, updatedAt: true },
@@ -1202,8 +1204,8 @@ export async function listDeletedClients(): Promise<DeletedClientItem[]> {
 }
 
 /** Bring a deleted client back, exactly as it was. False when there's no deleted client by that slug. */
-export async function restoreClientRecord(slug: string, actor?: EffectiveUser | null): Promise<boolean> {
-  const { workspace } = await ensureBaseRecords();
+export async function restoreClientRecord(workspaceId: string, slug: string, actor?: EffectiveUser | null): Promise<boolean> {
+  const workspace = { id: workspaceId };
   const existing = await workspaceClients.findFirst({
     where: { workspaceId: workspace.id, slug, hidden: true },
     select: { id: true, name: true },
@@ -1234,11 +1236,12 @@ export async function restoreClientRecord(slug: string, actor?: EffectiveUser | 
  * whole client goes or nothing does.
  */
 export async function purgeClientRecord(
+  workspaceId: string,
   slug: string,
   confirmName: string,
   actor?: EffectiveUser | null,
 ): Promise<"purged" | "not_found" | "name_mismatch"> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const existing = await workspaceClients.findFirst({
     where: { workspaceId: workspace.id, slug, hidden: true },
     select: { id: true, name: true },
@@ -1263,8 +1266,8 @@ export async function purgeClientRecord(
   return "purged";
 }
 
-export async function deleteClientRecord(slug: string): Promise<boolean> {
-  const { workspace, proposals } = await loadClientCollections();
+export async function deleteClientRecord(workspaceId: string, slug: string): Promise<boolean> {
+  const { workspace, proposals } = await loadClientCollections(workspaceId);
 
   // Check for an existing DB row (may be MANUAL or already a hidden suppression record)
   const existing = await workspaceClients.findFirst({
@@ -1349,8 +1352,8 @@ async function serializeTouchpoints(
 const ACTIVITY_WHERE = { NOT: { type: "SUGGESTION" } } as const;
 
 /** List a client's logged touchpoints (most recent first). Null when the client is unknown. */
-export async function listClientTouchpoints(slug: string): Promise<ClientTouchpoint[] | null> {
-  const { workspace } = await ensureBaseRecords();
+export async function listClientTouchpoints(workspaceId: string, slug: string): Promise<ClientTouchpoint[] | null> {
+  const workspace = { id: workspaceId };
   const client = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { id: true },
@@ -1367,11 +1370,12 @@ export async function listClientTouchpoints(slug: string): Promise<ClientTouchpo
 
 /** Log a touchpoint (call/email/meeting/note) against a client. Null when unknown. */
 export async function addClientTouchpoint(
+  workspaceId: string,
   slug: string,
   input: { type: TouchpointType; note?: string | null; occurredAt?: string | null },
   actor?: EffectiveUser | null,
 ): Promise<ClientTouchpoint | null> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const client = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { id: true },
@@ -1395,8 +1399,8 @@ export async function addClientTouchpoint(
   return dto;
 }
 
-export async function getDerivedClientDetail(slug: string): Promise<ClientDetailRecord | null> {
-  const { workspace, manualClients, hiddenSlugs } = await loadClientCollections();
+export async function getDerivedClientDetail(workspaceId: string, slug: string): Promise<ClientDetailRecord | null> {
+  const { workspace, manualClients, hiddenSlugs } = await loadClientCollections(workspaceId);
 
   const proposals = await prisma.document.findMany({
     where: {
@@ -1758,10 +1762,11 @@ export async function deleteClientPlatform(platformId: string): Promise<void> {
  * password) for rows not yet migrated by encryptLegacyPlatformCredentials.
  */
 export async function revealClientPlatform(
+  workspaceId: string,
   slug: string,
   platformId: string,
 ): Promise<ClientPlatformReveal | null> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const client = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { id: true },
@@ -1873,8 +1878,8 @@ function loginSummary(l: {
 }
 
 /** Verify a platform belongs to the slug's client in this workspace. */
-async function platformInClient(slug: string, platformId: string): Promise<boolean> {
-  const { workspace } = await ensureBaseRecords();
+async function platformInClient(workspaceId: string, slug: string, platformId: string): Promise<boolean> {
+  const workspace = { id: workspaceId };
   const p = await clientPlatforms.findFirst({
     where: { id: platformId, client: { workspaceId: workspace.id, slug } },
     select: { id: true },
@@ -1883,19 +1888,20 @@ async function platformInClient(slug: string, platformId: string): Promise<boole
 }
 
 /** Find a login scoped to its platform + the slug's client (null if it doesn't belong). */
-async function findScopedLogin(slug: string, platformId: string, loginId: string) {
-  const { workspace } = await ensureBaseRecords();
+async function findScopedLogin(workspaceId: string, slug: string, platformId: string, loginId: string) {
+  const workspace = { id: workspaceId };
   return clientPlatformLogins.findFirst({
     where: { id: loginId, platformId, platform: { client: { workspaceId: workspace.id, slug } } },
   });
 }
 
 export async function createPlatformLogin(
+  workspaceId: string,
   slug: string,
   platformId: string,
   input: { label?: string; username?: string; password?: string },
 ): Promise<ClientPlatformLoginSummary | null> {
-  if (!(await platformInClient(slug, platformId))) return null;
+  if (!(await platformInClient(workspaceId, slug, platformId))) return null;
   const agg = await clientPlatformLogins.aggregate({ where: { platformId }, _max: { orderKey: true } });
   const login = await clientPlatformLogins.create({
     data: {
@@ -1910,12 +1916,13 @@ export async function createPlatformLogin(
 }
 
 export async function updatePlatformLogin(
+  workspaceId: string,
   slug: string,
   platformId: string,
   loginId: string,
   input: { label?: string | null; username?: string; password?: string },
 ): Promise<ClientPlatformLoginSummary | null> {
-  if (!(await findScopedLogin(slug, platformId, loginId))) return null;
+  if (!(await findScopedLogin(workspaceId, slug, platformId, loginId))) return null;
   const login = await clientPlatformLogins.update({
     where: { id: loginId },
     data: {
@@ -1927,18 +1934,19 @@ export async function updatePlatformLogin(
   return loginSummary(login);
 }
 
-export async function deletePlatformLogin(slug: string, platformId: string, loginId: string): Promise<boolean> {
-  if (!(await findScopedLogin(slug, platformId, loginId))) return false;
+export async function deletePlatformLogin(workspaceId: string, slug: string, platformId: string, loginId: string): Promise<boolean> {
+  if (!(await findScopedLogin(workspaceId, slug, platformId, loginId))) return false;
   await clientPlatformLogins.delete({ where: { id: loginId } });
   return true;
 }
 
 export async function revealPlatformLogin(
+  workspaceId: string,
   slug: string,
   platformId: string,
   loginId: string,
 ): Promise<ClientPlatformReveal | null> {
-  const login = await findScopedLogin(slug, platformId, loginId);
+  const login = await findScopedLogin(workspaceId, slug, platformId, loginId);
   if (!login) return null;
   return { username: decryptNullable(login.usernameCipher), password: decryptNullable(login.passwordCipher) };
 }
@@ -2078,8 +2086,8 @@ export async function getClientIdBySlug(
  * Resolves the default workspace itself so a caller only needs the slug — the
  * pages calling this have the slug from the route and nothing else.
  */
-export async function getClientNameBySlug(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
+export async function getClientNameBySlug(slug: string, workspaceId?: string): Promise<string | null> {
+  const workspace = { id: workspaceId ?? (await ensureBaseRecords()).workspace.id };
   const record = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { name: true },
@@ -2204,12 +2212,13 @@ function buildClientLifecycle(input: {
  * for clients created via onboarding.
  */
 export async function setClientStatus(
+  workspaceId: string,
   slug: string,
   status: WorkspaceClientStatus,
   actor?: EffectiveUser | null,
   options?: { resumeAt?: string | null; pauseNote?: string | null },
 ): Promise<ClientListItem | null> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const previous = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { id: true, name: true, slug: true, status: true },
@@ -2306,8 +2315,8 @@ export async function setClientStatus(
  * this should be invoked from an API route that gates on session and audit-logs
  * the read.
  */
-export async function revealClientBank(slug: string): Promise<ClientBankReveal | null> {
-  const { workspace } = await ensureBaseRecords();
+export async function revealClientBank(workspaceId: string, slug: string): Promise<ClientBankReveal | null> {
+  const workspace = { id: workspaceId };
   const client = await workspaceClients.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
     select: { id: true },

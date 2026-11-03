@@ -22,7 +22,7 @@ export async function PATCH(
     assertCan(user, canManageClients, "manage the Launchpad");
     const { slug, itemId } = await params;
 
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const patch = launchpadItemPatchSchema.parse(await req.json());

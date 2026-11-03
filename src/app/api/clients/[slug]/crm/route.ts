@@ -4,6 +4,7 @@ import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/au
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { getLeadCrmStatus, updateLeadCrmSettings } from "@/server/crm/service";
 import { crmSettingsSchema } from "@/server/validators";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { slug } = await context.params;
     const user = await getEffectiveUserOrNull(request);
     await assertClientAccessBySlug(user, slug);
-    const status = await getLeadCrmStatus(slug, user);
+    const status = await getLeadCrmStatus(await requestWorkspaceId(user), slug, user);
     if (!status) return apiError("Client not found", 404);
     return apiOk({ crm: status });
   } catch (error) {
@@ -33,9 +34,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "change CRM settings");
     await assertClientAccessBySlug(user, slug);
     const input = crmSettingsSchema.parse(await request.json());
-    const ok = await updateLeadCrmSettings(slug, input);
+    const ok = await updateLeadCrmSettings(await requestWorkspaceId(user), slug, input);
     if (!ok) return apiError("Client not found", 404);
-    return apiOk({ crm: await getLeadCrmStatus(slug, user) });
+    return apiOk({ crm: await getLeadCrmStatus(await requestWorkspaceId(user), slug, user) });
   } catch (error) {
     return fromError(error);
   }

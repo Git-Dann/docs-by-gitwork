@@ -2,11 +2,10 @@ import { NextRequest } from "next/server";
 import { REQUEST_MAX_TITLE } from "@/lib/wiki-request-title";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { addWikiIntakeItem, setWikiIntakeEnabled } from "@/server/wiki";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { resolveRequestedBy } from "@/server/wiki-intake-attribution";
+import { clientIdForSlug } from "@/server/clients-scope";
 
 const bodySchema = z.object({
   type: z.enum(["BUG", "FEEDBACK", "TASK", "DESIGN"]).default("FEEDBACK"),
@@ -24,19 +23,10 @@ const bodySchema = z.object({
 
 const toggleSchema = z.object({ enabled: z.boolean() });
 
-async function resolveClientId(slug: string): Promise<string | null> {
-  const { workspace } = await ensureBaseRecords();
-  const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
-    select: { id: true },
-  });
-  return client?.id ?? null;
-}
-
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = bodySchema.parse(await req.json());
     // Internal path: attribute to the signed-in Gitwork user, so a request logged
@@ -62,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const clientId = await resolveClientId(slug);
+    const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const { enabled } = toggleSchema.parse(await req.json());
     await setWikiIntakeEnabled(clientId, enabled);

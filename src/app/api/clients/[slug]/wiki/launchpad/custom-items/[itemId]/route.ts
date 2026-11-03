@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug, itemId } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const patch = launchpadCustomItemPatchSchema.parse(await req.json());
@@ -45,7 +45,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug, itemId } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
 
     const launchpad = await removeLaunchpadCustomItem(target.wikiId, itemId);

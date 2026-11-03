@@ -111,7 +111,7 @@ describe("a summary write cannot escape the workspace", () => {
   it("scopes the write with updateMany + workspaceId", () => {
     const fn = SERVER.slice(SERVER.indexOf("async function updateSummaryFields"));
     expect(fn).toContain("updateMany");
-    expect(fn).toContain("workspaceId: workspace.id");
+    expect(fn).toContain("where: { id: clientId, workspaceId }");
   });
 
   it("does not update a WorkspaceClient by bare id anywhere in this module", () => {
@@ -280,7 +280,7 @@ describe("summary and fuller update are two fields", () => {
      * noticed by whoever wrote it.
      */
     const route = read("src/app/api/clients/summary/[clientId]/route.ts");
-    expect(route).toContain("getClientSummaryText(clientId)");
+    expect(route).toContain("getClientSummaryText(workspaceId, clientId)");
     const server = read("src/server/client-summary.ts");
     const fn = server.slice(server.indexOf("export function setClientSummaryNote"));
     expect(fn.slice(0, 900)).toContain("next.note === undefined ? current.note");

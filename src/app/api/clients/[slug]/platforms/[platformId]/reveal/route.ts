@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { revealClientPlatform } from "@/server/clients";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function POST(
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "reveal platform credentials");
     await assertClientAccessBySlug(user, slug);
-    const credentials = await revealClientPlatform(slug, platformId);
+    const credentials = await revealClientPlatform(await requestWorkspaceId(user), slug, platformId);
     if (!credentials) return apiError("Platform not found", 404);
     return apiOk({ credentials });
   } catch (error) {

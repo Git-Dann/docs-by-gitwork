@@ -2,10 +2,10 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { requireAuthedUser, assertCan, canManageClients } from "@/server/auth/effective-user";
 import { setWikiIntakeCategories } from "@/server/wiki";
 import { MAX_CATEGORY_LABEL, MAX_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 /**
  * The client's own Requests categories. Staff-only: a client PICKS from this
@@ -29,9 +29,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
     const user = await requireAuthedUser(req);
     assertCan(user, canManageClients, "change this client's request categories");
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);

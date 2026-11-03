@@ -21,10 +21,10 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ slug: string; itemId: string; fileId: string }> };
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { slug, itemId, fileId } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
     const file = await getLaunchpadItemFile(target.wikiId, itemId, fileId, {
       requireEnabled: false,
@@ -41,7 +41,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const user = await getEffectiveUserOrNull(req);
     assertCan(user, canManageClients, "manage the Launchpad");
     const { slug, itemId, fileId } = await params;
-    const target = await resolveInternalLaunchpadTarget(slug);
+    const target = await resolveInternalLaunchpadTarget(slug, req);
     if (!target) return apiError("Client not found", 404);
     const name = user?.name?.trim() || user?.email || "Gitwork";
     const launchpad = await deleteLaunchpadItemFile(target.wikiId, itemId, fileId, {

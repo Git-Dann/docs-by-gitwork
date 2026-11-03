@@ -18,11 +18,11 @@
 import type { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { resolvePublicWiki } from "@/server/wiki";
 import { resolveWikiAccessUser, wikiAccessCookieName } from "@/server/wiki-access";
 import { assertWithinRateLimit, clientIpFrom } from "@/server/rate-limit";
 import type { ClientWriter, SheetActor } from "@/server/wiki-sheets";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import {
   ForbiddenError,
@@ -131,9 +131,8 @@ export async function resolveInternalSheets(
     assertCan(user, canManageClients, action);
   }
   await assertClientAccessBySlug(user, slug);
-  const { workspace } = await ensureBaseRecords();
   const client = await prisma.workspaceClient.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+    where: { workspaceId_slug: { workspaceId: await requestWorkspaceId(user), slug } },
     select: { id: true },
   });
   return {

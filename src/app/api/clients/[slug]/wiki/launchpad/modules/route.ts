@@ -3,10 +3,10 @@
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { applyLaunchpadPrefill, setLaunchpadModules } from "@/server/launchpad";
 import { launchpadModulesSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +14,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   try {
     assertCan(await getEffectiveUserOrNull(req), canManageClients, "manage the Launchpad");
     const { slug } = await params;
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
-      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      where: { workspaceId_slug: { workspaceId, slug } },
       select: { id: true },
     });
     if (!client) return apiError("Client not found", 404);

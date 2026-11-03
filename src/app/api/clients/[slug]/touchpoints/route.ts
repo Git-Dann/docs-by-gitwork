@@ -4,6 +4,7 @@ import { addClientTouchpoint, listClientTouchpoints } from "@/server/clients";
 import { touchpointCreateSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requestWorkspaceId, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
-    const touchpoints = await listClientTouchpoints(slug);
+    const touchpoints = await listClientTouchpoints(await workspaceIdForRequest(request), slug);
     if (!touchpoints) return apiError("Client not found", 404);
     return apiOk({ touchpoints });
   } catch (error) {
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     assertCan(user, canManageClients, "log a touchpoint");
     await assertClientAccessBySlug(user, slug);
     const body = touchpointCreateSchema.parse(await request.json());
-    const touchpoint = await addClientTouchpoint(slug, body, user);
+    const touchpoint = await addClientTouchpoint(await requestWorkspaceId(user), slug, body, user);
     if (!touchpoint) return apiError("Client not found", 404);
     return apiOk({ touchpoint }, { status: 201 });
   } catch (error) {

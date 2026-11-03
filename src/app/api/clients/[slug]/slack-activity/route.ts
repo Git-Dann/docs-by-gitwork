@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { getEffectiveUserOrNull, canComputeAiFor } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { resolveAiConfig, completeText, type WorkspaceAiFields } from "@/server/ai-provider";
 import { getSlackBotToken } from "@/server/slack/client";
 import { readSlackChannel } from "@/server/slack-channel-updates";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -40,7 +40,7 @@ type SlackMessage = {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspaceId = await workspaceIdForRequest(request);
     const { slug } = await context.params;
     const user = await getEffectiveUserOrNull(request);
     await assertClientAccessBySlug(user, slug);
@@ -50,13 +50,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const [client, ws] = await Promise.all([
       prisma.workspaceClient.findFirst({
-        where: { slug, workspaceId: workspace.id },
+        where: { slug, workspaceId },
         // Prefer the new dual-channel internal field; fall back to the legacy single-channel
         // field during the Phase-3 → Phase-4 deprecation window.
         select: { slackChannelId: true, slackInternalChannelId: true, name: true },
       }),
       prisma.workspace.findUnique({
-        where: { id: workspace.id },
+        where: { id: workspaceId },
         select: {
           slackBotToken: true,
           slackBotTokenEncrypted: true,
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
 
     const cacheResult = await cachedOrCompute<{ summary: string | null }>({
-      workspaceId: workspace.id,
+      workspaceId,
       cacheKey: `slack-activity:${channelId}`,
       inputsHash,
       canCompute,
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           messages,
           channelName ?? client?.name ?? "this project",
           ws,
-          { module: "SLACK", workspaceId: workspace.id, userId: user?.id, operation: "slackActivitySummary" },
+          { module: "SLACK", workspaceId, userId: user?.id, operation: "slackActivitySummary" },
         );
         return { response: { summary }, modelUsed: ws.aiProvider };
       },

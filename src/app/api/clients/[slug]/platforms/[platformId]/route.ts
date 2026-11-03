@@ -4,6 +4,7 @@ import { deleteClientPlatform, updateClientPlatform } from "@/server/clients";
 import { clientPlatformUpdateSchema } from "@/server/validators";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { requireClientIdForSlug, requireRowOfClient } from "@/server/clients-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { slug, platformId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    await requireRowOfClient("platform", platformId, await requireClientIdForSlug(slug, request));
     const body = clientPlatformUpdateSchema.parse(await request.json());
     const platform = await updateClientPlatform(platformId, body);
 
@@ -32,6 +34,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { slug, platformId } = await context.params;
     await assertClientAccessBySlug(await getEffectiveUserOrNull(request), slug);
+    await requireRowOfClient("platform", platformId, await requireClientIdForSlug(slug, request));
     await deleteClientPlatform(platformId);
     return apiOk({ deleted: true });
   } catch (error) {

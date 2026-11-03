@@ -9,6 +9,7 @@ import {
 import { assertClientAccessBySlug } from "@/server/client-assignments";
 import { getLeadCrmStatus, getLeadIdBySlug } from "@/server/crm/service";
 import { syncLeadCrm } from "@/server/crm/sync";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,10 +29,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageClients, "sync a lead");
     await assertClientAccessBySlug(user, slug);
-    const id = await getLeadIdBySlug(slug);
+    const id = await getLeadIdBySlug(await requestWorkspaceId(user), slug);
     if (!id) return apiError("Client not found", 404);
     const result = await syncLeadCrm(id, { canComputeAi: canComputeAiFor(user) });
-    return apiOk({ result, crm: await getLeadCrmStatus(slug, user) });
+    return apiOk({ result, crm: await getLeadCrmStatus(await requestWorkspaceId(user), slug, user) });
   } catch (error) {
     return fromError(error);
   }

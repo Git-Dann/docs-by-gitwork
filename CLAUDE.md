@@ -8759,6 +8759,33 @@ document per business; before that, those routes answered 200 with nothing to le
 "isolated". The report lists `rejected` and `isolated` calls too, because neither proves anything
 on its own.
 
+**Phase 2.2b, Portal (Nov 2026).** Every `/api/clients/[slug]/**` route now finds its client in
+the caller's workspace. They used to look the slug up in Gitwork's (`ensureBaseRecords()` +
+`workspaceId_slug`), and slugs are unique per workspace only.
+- **One rule:** `requestWorkspaceId(user)` / `workspaceIdForRequest(req)` in
+  `src/server/workspaces/scope.ts`. It returns the served workspace, or Gitwork for a null caller
+  (the API key), the same as today.
+- **One resolver:** `clientIdForSlug` / `requireClientIdForSlug` (`src/server/clients-scope.ts`).
+  A route naming a row under the client (platform, design, document link, request, course
+  request) also runs `requireRowOfClient`.
+- **The shared helpers take a workspace now:**
+  - `src/server/clients.ts`: list, detail, create, update, delete, status, touchpoints, platform
+    logins, bank;
+  - CRM's `findLead`;
+  - `resolveInternalLaunchpadTarget(slug, req)`, `resolveInternalSheets`;
+  - `wikiIdForClientSlug(slug, workspaceId)` (it used to match a slug in ANY workspace);
+  - the intake-comment scope;
+  - onboarding links.
+
+  `tsc` finds every caller, the MCP included (`user.workspaceId`).
+- **Onboarding submit** creates the client in the workspace that sent the link (`row.workspaceId`).
+  It used to always use Gitwork.
+- **Tests:** `src/app/api/clients/__tests__/client-routes-scoped.test.ts` fails on any handler
+  under `clients/[slug]` that names none of the scoped resolvers, and on any `ensureBaseRecords`
+  there.
+- **Left as it was:** `getClientNameBySlug` (page titles) takes an optional workspace and still
+  defaults to Gitwork. Pages are scoped separately.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds
