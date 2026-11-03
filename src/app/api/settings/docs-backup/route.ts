@@ -7,7 +7,6 @@ import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
 import { requireAuthedUser, assertSuperAdmin } from "@/server/auth/effective-user";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +18,7 @@ export async function PATCH(req: Request) {
     assertSuperAdmin(user);
     const { docsBackupEnabled } = patchSchema.parse(await req.json());
     await prisma.workspace.update({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: user.workspaceId },
       data: { docsBackupEnabled },
     });
     return apiOk({ docsBackupEnabled });

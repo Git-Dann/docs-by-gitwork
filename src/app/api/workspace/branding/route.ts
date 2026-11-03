@@ -2,8 +2,7 @@
  * GET  /api/workspace/branding  → current workspace branding JSON (with defaults filled in)
  * PATCH /api/workspace/branding → merge-update the workspace branding JSON
  *
- * The workspace is a singleton (per `bootstrap.ts::ensureBaseRecords()`), so we always operate on
- * the first/only workspace. When multi-workspace lands this becomes per-workspace.
+ * Reads and writes the caller's own workspace (`workspaceIdForRequest`).
  */
 
 import { Prisma } from "@prisma/client";
@@ -12,7 +11,6 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
@@ -20,6 +18,7 @@ import {
   parseWorkspaceBranding,
   type WorkspaceBranding,
 } from "@/server/documents";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const brandingSchema = z.object({
   brandLogoUrl: z.string().max(2048).optional(),
@@ -30,9 +29,9 @@ const brandingSchema = z.object({
   defaultBrandLockup: z.enum(["GITWORK", "CLIENT_X_GITWORK"]).optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     const current = parseWorkspaceBranding(workspace.branding);
     return apiOk({ branding: current });
   } catch (error) {
@@ -43,7 +42,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") {

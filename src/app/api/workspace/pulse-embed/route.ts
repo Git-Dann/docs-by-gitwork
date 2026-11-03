@@ -14,13 +14,13 @@ import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import { encryptNullable } from "@/lib/encryption";
 import { resolveBookingUrl } from "@/server/pulse-embed-config";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import { CHECKS_REGISTRY } from "@/server/checks-registry";
 import { serialiseFreeKeys } from "@/lib/pulse-free-tier";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set(CHECKS_REGISTRY.map((c) => c.key));
 
@@ -35,9 +35,9 @@ const patchSchema = z.object({
   turnstileSecretKey: z.string().min(1).optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     const config = await getPulseEmbedWorkspaceConfig();
     return apiOk({
       enabled: workspace.pulseEmbedEnabled,
@@ -53,7 +53,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") return apiError("Invalid JSON body", 400);
 

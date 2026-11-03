@@ -35,9 +35,9 @@ export async function workspaceIdForRequest(req: Request): Promise<string> {
  */
 export async function requestActor(
   req: Request,
-): Promise<{ workspace: { id: string }; user: { name: string | null; email: string } }> {
+): Promise<{ workspace: { id: string }; user: { id: string; name: string | null; email: string } }> {
   const caller = await getEffectiveUserOrNull(req);
-  if (caller) return { workspace: { id: caller.workspaceId }, user: { name: caller.name, email: caller.email } };
+  if (caller) return { workspace: { id: caller.workspaceId }, user: { id: caller.id, name: caller.name, email: caller.email } };
   const base = await ensureBaseRecords();
-  return { workspace: { id: base.workspace.id }, user: { name: base.user.name, email: base.user.email } };
+  return { workspace: { id: base.workspace.id }, user: { id: base.user.id, name: base.user.name, email: base.user.email } };
 }

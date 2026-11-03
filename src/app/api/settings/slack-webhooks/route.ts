@@ -4,7 +4,7 @@
  *   GET  /api/settings/slack-webhooks      → list all webhook subscriptions for the workspace
  *   POST /api/settings/slack-webhooks      → create a new webhook subscription
  *
- * The workspace is resolved via `ensureBaseRecords()` (single-workspace mode today). The
+ * Everything is scoped to the caller's workspace (`workspaceIdForRequest`). The
  * per-event-kind filter is stored as a JSON array of `DocumentEventKind` strings.
  */
 
@@ -12,8 +12,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const VALID_EVENTS = [
   "DOC_SHARED",
@@ -34,9 +34,9 @@ const createSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const subs = await prisma.slackWebhookSubscription.findMany({
       where: { workspaceId: workspace.id },
       orderBy: { createdAt: "desc" },
@@ -60,7 +60,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const body = createSchema.parse(await request.json());
 
     const created = await prisma.slackWebhookSubscription.create({

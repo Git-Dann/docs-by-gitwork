@@ -2,8 +2,7 @@
  * GET  /api/workspace/defaults → workspace proposal defaults (with built-in fallbacks)
  * PATCH /api/workspace/defaults → merge-update the defaults
  *
- * Single workspace today (per `ensureBaseRecords()`). When multi-workspace lands this needs
- * to become per-tenant — read the active workspace from the session.
+ * Reads and writes the caller's own workspace (`workspaceIdForRequest`).
  */
 
 import { Prisma } from "@prisma/client";
@@ -12,7 +11,6 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import { assertAtLeastAdmin, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import {
@@ -20,6 +18,7 @@ import {
   parseWorkspaceProposalDefaults,
   type WorkspaceProposalDefaults,
 } from "@/server/workspace-defaults";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const snippetSchema = z.object({
   title: z.string().max(200),
@@ -33,9 +32,9 @@ const patchSchema = z.object({
   objectiveSnippets: z.array(snippetSchema).max(50).optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     const defaults = parseWorkspaceProposalDefaults(workspace.proposalDefaults);
     return apiOk({ defaults });
   } catch (error) {
@@ -46,7 +45,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     assertAtLeastAdmin(await getEffectiveUserOrNull(request));
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") return apiError("Invalid JSON body", 400);

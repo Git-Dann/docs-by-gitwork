@@ -6,7 +6,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestActor } from "@/server/workspaces/scope";
 import { createDocumentVersion, listDocumentVersions } from "@/server/document-versions";
 import { requireDocumentInWorkspace } from "@/server/documents-scope";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
     await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
-    const { user } = await ensureBaseRecords();
+    const { user } = await requestActor(request);
     const body = createSchema.parse(await request.json());
 
     const snapshot = await createDocumentVersion({

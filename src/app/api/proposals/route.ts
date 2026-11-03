@@ -7,6 +7,7 @@ import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owne
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { allocateDocumentNumber } from "@/server/documents";
 import {
   allowedDocTypesForUser,
@@ -128,7 +129,8 @@ export async function POST(request: NextRequest) {
     // It's only a last-resort attribution for an unattended API-key call (no session and
     // no mobile JWT → `actor` is null, which assertCan deliberately lets through). Every
     // real caller is attributed to `actor`.
-    const { workspace, user: workspaceOwner, template } = await ensureBaseRecords();
+    const workspace = { id: await requestWorkspaceId(actor) };
+    const { user: workspaceOwner, template } = await ensureBaseRecords();
 
     // Resolve the document type for this new record. Defaults to PROPOSAL so existing callers
     // (the legacy "New document" flow that only knew about proposals) keep working unchanged.

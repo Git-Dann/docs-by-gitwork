@@ -10,12 +10,12 @@
 
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { verifyHostnameDns } from "@/server/custom-hostname";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const ws = await prisma.workspace.findUnique({
       where: { id: workspace.id },
       select: {

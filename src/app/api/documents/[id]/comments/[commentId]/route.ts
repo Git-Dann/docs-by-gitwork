@@ -7,7 +7,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
-import { ensureBaseRecords } from "@/server/bootstrap";
+import { requestActor } from "@/server/workspaces/scope";
 import { reopenComment, resolveComment } from "@/server/document-comments";
 import { requireDocumentInWorkspace, requireRowOfDocument } from "@/server/documents-scope";
 import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
@@ -25,7 +25,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { id, commentId } = await context.params;
     await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     await requireRowOfDocument("comment", commentId, id);
-    const { user } = await ensureBaseRecords();
+    const { user } = await requestActor(request);
     const body = patchSchema.parse(await request.json());
 
     const updated = body.resolved
