@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiOk, fromError } from "@/lib/api-response";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { AGENT_STATES, listAgentStatus, setAgentStatus, summaryAgentState } from "@/server/agent-status";
 
 // Authenticated agent-status beacon — NOT in PUBLIC_API_PATHS, so middleware gates it
@@ -18,16 +19,17 @@ const bodySchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = bodySchema.parse(await request.json());
-    setAgentStatus(body.sessionId, body.state, body.label);
+    setAgentStatus(await workspaceIdForRequest(request), body.sessionId, body.state, body.label);
     return apiOk({ ok: true, state: body.state });
   } catch (error) {
     return fromError(error);
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    return apiOk({ state: summaryAgentState(), agents: listAgentStatus() });
+    const workspaceId = await workspaceIdForRequest(request);
+    return apiOk({ state: summaryAgentState(workspaceId), agents: listAgentStatus(workspaceId) });
   } catch (error) {
     return fromError(error);
   }
