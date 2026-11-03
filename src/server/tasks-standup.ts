@@ -12,7 +12,6 @@ import { reportOwnerIds, type ReportTask } from "@/lib/standup-report";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { groupTasksForDay, type StandupGroupsFor } from "@/lib/wiki-standups";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
   assertCanPublishTaskRollup,
@@ -148,7 +147,6 @@ function updateToDTO(row: DailyUpdateRow | null, workDate: Date): DailyUpdateDTO
 // ─── My Day ─────────────────────────────────────────────────────────────────
 
 export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<MyDayDTO> {
-  await ensureBaseRecords();
   const workDate = parseWorkDate(dateStr);
 
   const tasks = await listTasks(user, { assigneeId: "me" });
@@ -268,7 +266,6 @@ export async function pushDailyUpdate(
   user: EffectiveUser,
   input: { phase: "AM" | "PM"; weekPlan?: string; note?: string; clientIds?: string[] },
 ): Promise<DailyUpdateDTO> {
-  await ensureBaseRecords();
   const workDate = parseWorkDate();
   const now = new Date();
   await assertDailyUpdateCooldown(user, { phase: input.phase, workDate });
@@ -375,7 +372,6 @@ export async function deleteStandupUpdate(
   user: EffectiveUser,
   phase: "AM" | "PM",
 ): Promise<DailyUpdateDTO> {
-  await ensureBaseRecords();
   const workDate = parseWorkDate();
   const kind = phase === "AM" ? "STANDUP_AM" : "STANDUP_PM";
 
@@ -706,7 +702,6 @@ function tallyByAssignee(
 
 export async function getRollupRoster(user: EffectiveUser): Promise<RollupRosterDTO> {
   assertCanPublishTaskRollup(user);
-  await ensureBaseRecords();
   const workDate = parseWorkDate();
   const devIds = await getDeveloperUserIds(user.workspaceId);
 
@@ -894,7 +889,6 @@ async function compileDailyUpdates(
   botToken: string | null;
   workDate: Date;
 }> {
-  await ensureBaseRecords();
   const workDate = parseWorkDate();
   const devIds = await getDeveloperUserIds(user.workspaceId);
 

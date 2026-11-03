@@ -12,7 +12,11 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const API = join(__dirname, "..");
-const FOLDERS = ["settings", "workspace", "documents", "proposals", "snippets", "roles", "rate-card", "integrations"];
+const FOLDERS = [
+  "settings", "workspace", "documents", "proposals", "snippets", "roles", "rate-card", "integrations",
+  "handbook", "starters", "starter-recipes", "onboarding-forms", "launchpad-templates",
+  "foreman", "curator", "pulse", "proof", "admin", "study",
+];
 
 function routes(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

@@ -86,16 +86,16 @@ function buildBrief(s: StarterListItem, description: string | null, whatYouGet: 
 }
 
 /** DB-backed convenience: resolve the catalog, pick a match, build the candidate-safe fixture. */
-export async function pickStarterFixtureFor(criteria: {
+export async function pickStarterFixtureFor(workspaceId: string, criteria: {
   primaryStack?: string | null;
 }): Promise<PublicStarterFixture | null> {
-  const starters = await listStarters();
+  const starters = await listStarters(workspaceId);
   const match = pickBestStarterFixture(starters, criteria) ?? starters.find((s) => ELIGIBLE_TYPES.has(s.type)) ?? null;
   if (!match) return null;
 
   // listStarters() doesn't carry content/description (list-item shape) — fetch the one record
   // we picked to get its public whatYouGet/techStack/description for the brief.
-  const full = await getStarter(match.id);
+  const full = await getStarter(workspaceId, match.id);
 
   return {
     starterId: match.id,

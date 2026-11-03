@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { isSuperAdmin } from "@/types/auth";
 import { AppShell } from "@/components/app-shell";
@@ -13,7 +12,6 @@ export const dynamic = "force-dynamic";
 export default async function AnalyticsPage() {
   // Resolve role live from the DB (matches the Settings super-admin gate) rather than the JWT.
   const session = await auth();
-  await ensureBaseRecords();
   const sessionUser = session?.user;
   const member =
     sessionUser?.id || sessionUser?.email

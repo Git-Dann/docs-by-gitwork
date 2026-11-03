@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageStarters, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { restoreStarterVersion } from "@/server/starter-versions";
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id, versionId } = await params;
     const ok = await restoreStarterVersion(id, versionId, user?.id ?? null);
     if (!ok) return apiError("Starter or version not found", 404);
-    return apiOk({ starter: await getStarter(id) });
+    return apiOk({ starter: await getStarter(await workspaceIdForRequest(request), id) });
   } catch (error) {
     return fromError(error);
   }

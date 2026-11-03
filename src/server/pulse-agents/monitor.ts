@@ -1,7 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import { githubHeaders } from "@/lib/github";
 import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
@@ -55,8 +54,8 @@ function serializeMonitor(record: {
   };
 }
 
-export async function listMonitors(appUrl: string): Promise<MonitorRecord[]> {
-  const { workspace } = await ensureBaseRecords();
+export async function listMonitors(workspaceId: string, appUrl: string): Promise<MonitorRecord[]> {
+  const workspace = { id: workspaceId };
   const monitors = await prisma.pulseMonitor.findMany({
     where: { workspaceId: workspace.id },
     orderBy: { createdAt: "desc" },
@@ -64,7 +63,7 @@ export async function listMonitors(appUrl: string): Promise<MonitorRecord[]> {
   return monitors.map((m) => serializeMonitor(m, appUrl));
 }
 
-export async function createMonitor(input: {
+export async function createMonitor(workspaceId: string, input: {
   projectName: string;
   inputType: "URL" | "GITHUB_REPO" | "FREE_TEXT";
   inputUrl?: string;
@@ -73,7 +72,7 @@ export async function createMonitor(input: {
   alertThreshold?: number;
   frequency?: MonitorFrequency;
 }, appUrl: string): Promise<MonitorRecord> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const monitor = await prisma.pulseMonitor.create({
     data: {
       workspaceId: workspace.id,
@@ -90,11 +89,12 @@ export async function createMonitor(input: {
 }
 
 export async function updateMonitor(
+  workspaceId: string,
   monitorId: string,
   input: { frequency?: MonitorFrequency; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] },
   appUrl: string,
 ): Promise<MonitorRecord | null> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const result = await prisma.pulseMonitor.updateMany({
     where: { id: monitorId, workspaceId: workspace.id },
     data: {
@@ -109,8 +109,8 @@ export async function updateMonitor(
   return monitor ? serializeMonitor(monitor, appUrl) : null;
 }
 
-export async function deleteMonitor(monitorId: string): Promise<void> {
-  const { workspace } = await ensureBaseRecords();
+export async function deleteMonitor(workspaceId: string, monitorId: string): Promise<void> {
+  const workspace = { id: workspaceId };
   await prisma.pulseMonitor.deleteMany({
     where: { id: monitorId, workspaceId: workspace.id },
   });

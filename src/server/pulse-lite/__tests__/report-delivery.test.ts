@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   pulseLiteScan: { findUnique: vi.fn(), update: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
+vi.mock("@/server/bootstrap", () => ({ ensureBaseRecords: vi.fn(async () => ({ workspace: { id: "ws-gitwork" } })) }));
 
 const createPulseScanRecord = vi.fn();
 const runAnalysis = vi.fn();

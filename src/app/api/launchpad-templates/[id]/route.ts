@@ -7,13 +7,14 @@ import {
 } from "@/server/launchpad-templates";
 import { launchpadTemplateUpdateSchema } from "@/server/validators";
 import { assertCan, canManageClients, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const template = await getLaunchpadTemplate(id);
+    const template = await getLaunchpadTemplate(await workspaceIdForRequest(_request), id);
     if (!template) return apiError("Template not found", 404);
     return apiOk({ template });
   } catch (error) {
@@ -30,7 +31,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     );
     const { id } = await params;
     const body = launchpadTemplateUpdateSchema.parse(await request.json());
-    const template = await updateLaunchpadTemplate(id, body);
+    const template = await updateLaunchpadTemplate(await workspaceIdForRequest(request), id, body);
     if (!template) return apiError("Template not found", 404);
     return apiOk({ template });
   } catch (error) {
@@ -49,7 +50,7 @@ export async function DELETE(
       "manage Launchpad templates",
     );
     const { id } = await params;
-    const result = await deleteLaunchpadTemplate(id);
+    const result = await deleteLaunchpadTemplate(await workspaceIdForRequest(request), id);
     if (!result) return apiError("Template not found", 404);
     return apiOk(result);
   } catch (error) {

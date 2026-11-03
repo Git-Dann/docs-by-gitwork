@@ -3,6 +3,7 @@ import { apiOk, fromError } from "@/lib/api-response";
 import { listRecipesWithStarters, createRecipe } from "@/server/starter-recipes";
 import { starterRecipeCreateSchema } from "@/server/validators";
 import { assertCan, canManageStarters, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "view starter recipes");
-    const recipes = await listRecipesWithStarters();
+    const recipes = await listRecipesWithStarters(await workspaceIdForRequest(request));
     return apiOk({ recipes });
   } catch (error) {
     return fromError(error);
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "create starter recipes");
     const body = await request.json();
     const data = starterRecipeCreateSchema.parse(body);
-    const recipe = await createRecipe({
+    const recipe = await createRecipe(await workspaceIdForRequest(request), {
       name: data.name,
       summary: data.summary,
       description: data.description ?? null,

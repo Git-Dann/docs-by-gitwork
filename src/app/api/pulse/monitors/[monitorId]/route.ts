@@ -4,6 +4,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { deleteMonitor, updateMonitor } from "@/server/pulse-agents/monitor";
 import { MAX_DIGEST_RECIPIENTS } from "@/server/pulse-agents/monitor-digest";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function PATCH(
     assertCan(await getEffectiveUserOrNull(request), canManagePulse, "update Pulse monitors");
     const { monitorId } = await params;
     const body = patchSchema.parse(await request.json());
-    const monitor = await updateMonitor(monitorId, body, appUrl(request));
+    const monitor = await updateMonitor(await workspaceIdForRequest(request), monitorId, body, appUrl(request));
     if (!monitor) return apiError("Monitor not found.", 404);
     return apiOk({ monitor });
   } catch (error) {
@@ -44,7 +45,7 @@ export async function DELETE(
   try {
     assertCan(await getEffectiveUserOrNull(_request), canManagePulse, "delete Pulse monitors");
     const { monitorId } = await params;
-    await deleteMonitor(monitorId);
+    await deleteMonitor(await workspaceIdForRequest(_request), monitorId);
     return apiOk({ deleted: true });
   } catch (error) {
     return fromError(error);

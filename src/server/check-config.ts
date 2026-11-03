@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { CHECKS_REGISTRY, type CheckDefinition } from "./checks-registry";
-import { DEFAULT_WORKSPACE_SLUG } from "./proposals";
 import type { PulseScanCheckInput } from "@/types/pulse";
 
 export interface CheckConfigRecord {
@@ -15,18 +14,9 @@ export interface CheckConfigRecord {
   sortOrder: number;
 }
 
-async function getWorkspaceId(explicitWorkspaceId?: string): Promise<string> {
-  if (explicitWorkspaceId) return explicitWorkspaceId;
-  const ws = await prisma.workspace.findFirstOrThrow({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
-    select: { id: true },
-  });
-  return ws.id;
-}
 
 /** Returns all checks (built-in + custom) merged with workspace overrides. */
-export async function listCheckConfigs(): Promise<CheckConfigRecord[]> {
-  const workspaceId = await getWorkspaceId();
+export async function listCheckConfigs(workspaceId: string): Promise<CheckConfigRecord[]> {
 
   const overrides = await prisma.pulseCheckConfig.findMany({
     where: { workspaceId },
@@ -77,8 +67,7 @@ export interface CheckConfigInput {
 }
 
 /** Upserts a per-workspace override for one check. */
-export async function saveCheckConfig(input: CheckConfigInput): Promise<void> {
-  const workspaceId = await getWorkspaceId();
+export async function saveCheckConfig(workspaceId: string, input: CheckConfigInput): Promise<void> {
 
   await prisma.pulseCheckConfig.upsert({
     where: { workspaceId_checkKey: { workspaceId, checkKey: input.checkKey } },
@@ -98,16 +87,14 @@ export async function saveCheckConfig(input: CheckConfigInput): Promise<void> {
 }
 
 /** Removes the workspace override for a check (restores defaults). */
-export async function resetCheckConfig(checkKey: string): Promise<void> {
-  const workspaceId = await getWorkspaceId();
+export async function resetCheckConfig(workspaceId: string, checkKey: string): Promise<void> {
   await prisma.pulseCheckConfig.deleteMany({
     where: { workspaceId, checkKey },
   });
 }
 
 /** Returns a Set of check keys that are disabled for this workspace. */
-export async function getDisabledCheckKeys(): Promise<Set<string>> {
-  const workspaceId = await getWorkspaceId();
+export async function getDisabledCheckKeys(workspaceId: string): Promise<Set<string>> {
   const disabled = await prisma.pulseCheckConfig.findMany({
     where: { workspaceId, enabled: false },
     select: { checkKey: true },
@@ -116,8 +103,7 @@ export async function getDisabledCheckKeys(): Promise<Set<string>> {
 }
 
 /** Returns a map of checkKey → overrides (label, severity) for this workspace. */
-export async function getCheckOverrides(): Promise<Map<string, { labelOverride: string | null; severityOverride: string | null }>> {
-  const workspaceId = await getWorkspaceId();
+export async function getCheckOverrides(workspaceId: string): Promise<Map<string, { labelOverride: string | null; severityOverride: string | null }>> {
   const overrides = await prisma.pulseCheckConfig.findMany({
     where: { workspaceId },
     select: { checkKey: true, labelOverride: true, severityOverride: true },

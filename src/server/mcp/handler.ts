@@ -2411,7 +2411,8 @@ const TOOLS: ToolDef[] = [
       // the route is the only other caller and we want low coupling between
       // the MCP path and the web path until both demonstrably need the same
       // helper. If a third caller shows up, extract into src/server/documents.ts.
-      const { workspace, user: defaultUser, template } = await ensureBaseRecords();
+      const workspace = { id: user.workspaceId };
+      const { user: defaultUser, template } = await ensureBaseRecords();
       const selectedTemplate =
         (await prisma.documentTemplate.findFirst({
           where: { slug: TEMPLATE_SLUG_BY_TYPE[documentType] },
@@ -2634,6 +2635,7 @@ const TOOLS: ToolDef[] = [
         const inputType = parsed.githubRepo ? ("GITHUB_REPO" as const) : ("URL" as const);
         const projectName = parsed.projectName ?? parsed.githubRepo ?? new URL(parsed.url!).hostname;
         const { scan, aiConfig } = await createPulseScanRecord({
+        workspaceId: user.workspaceId,
           projectName,
           inputType,
           inputUrl: parsed.url,
@@ -2860,7 +2862,7 @@ const TOOLS: ToolDef[] = [
         clientId = c.id;
         clientLabel = ` for ${c.name}`;
       }
-      const scans = await listPulseScans(clientId ? { clientId } : undefined);
+      const scans = await listPulseScans(user.workspaceId, clientId ? { clientId } : undefined);
       const cap = parsed.limit ?? 50;
       const trimmed = scans.slice(0, cap).map((s) => ({
         id: s.id,
@@ -3099,7 +3101,7 @@ async function listStarterPrompts(
   user: EffectiveUser,
 ): Promise<Array<{ name: string; title: string; description: string; arguments: [] }>> {
   if (!canManageStarters(user)) return [];
-  const starters = await listStarters();
+  const starters = await listStarters(user.workspaceId);
   // `name` stays the slug (handlePromptGet looks starters up by it); `title` is the human-readable
   // display name — without it, clients that render `name` directly show raw slugs like
   // "prompt-cd2-animation" instead of "Chat Digest".
@@ -3118,11 +3120,11 @@ async function handlePromptGet(
   if (!name || typeof name !== "string") {
     return rpcError(id, ERR_INVALID_PARAMS, "Missing prompt name.");
   }
-  const starter = await getStarterBySlug(name);
+  const starter = await getStarterBySlug(user.workspaceId, name);
   if (!starter) {
     return rpcError(id, ERR_METHOD_NOT_FOUND, `Unknown prompt: ${name}`);
   }
-  await recordStarterUsage(starter.id);
+  await recordStarterUsage(user.workspaceId, starter.id);
   return rpcResult(id, {
     description: starter.summary,
     messages: [

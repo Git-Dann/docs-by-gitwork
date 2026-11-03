@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type { Prisma } from "@prisma/client";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
   ForbiddenError,
@@ -191,7 +190,6 @@ export async function listLeaveRequests(
     cursor?: string;
   } = {},
 ): Promise<LeaveRequestDTO[]> {
-  await ensureBaseRecords();
   const scope = opts.scope ?? "me";
   // Team/all visibility is admins + approvers only. This used to throw for
   // `all` but fall THROUGH for `team` — and because a non-"me" scope drops the
@@ -267,7 +265,6 @@ export async function createLeaveRequest(
     userId?: string; // admin-only: file on behalf of another user
   },
 ): Promise<LeaveRequestDTO> {
-  await ensureBaseRecords();
   const targetUserId =
     input.userId && input.userId !== user.id
       ? (canApproveBackstage(user)
@@ -593,7 +590,6 @@ export async function listExpenses(
     limit?: number;
   } = {},
 ): Promise<ExpenseDTO[]> {
-  await ensureBaseRecords();
   if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const scope = opts.scope ?? "me";
   if (scope === "all" && !canApproveBackstage(user)) {
@@ -645,7 +641,6 @@ export async function createExpense(
     userId?: string;
   },
 ): Promise<ExpenseDTO> {
-  await ensureBaseRecords();
   if (!canManageExpenses(user)) throw new ForbiddenError("Expenses access required");
   const targetUserId =
     input.userId && input.userId !== user.id
@@ -987,7 +982,6 @@ export async function getStaffingAlerts(
   user: EffectiveUser,
   opts: { windowDays?: number } = {},
 ): Promise<StaffingAlertsResponse> {
-  await ensureBaseRecords();
   const windowDays = opts.windowDays ?? 30;
   const now = new Date();
   const fromDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -1145,7 +1139,6 @@ export async function getCalendarMonth(
   year: number,
   month: number, // 1–12
 ): Promise<CalendarMonth> {
-  await ensureBaseRecords();
 
   if (!Number.isInteger(year) || year < 1900 || year > 2100) {
     throw new Error("year out of range");

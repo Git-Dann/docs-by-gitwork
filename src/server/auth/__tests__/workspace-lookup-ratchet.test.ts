@@ -15,8 +15,8 @@ import { describe, expect, it } from "vitest";
  */
 
 const CEILING = {
-  DEFAULT_WORKSPACE_SLUG: 94,
-  ensureBaseRecords: 172,
+  DEFAULT_WORKSPACE_SLUG: 79,
+  ensureBaseRecords: 66,
 } as const;
 
 const root = join(__dirname, "../../../..");

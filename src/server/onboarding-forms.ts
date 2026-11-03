@@ -1,7 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { slugifyClientName } from "@/lib/clients";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getDefaultOnboardingForm } from "@/lib/onboarding/default-form";
 import { isFormStructure } from "@/lib/onboarding/structure";
 import type {
@@ -59,10 +58,13 @@ async function uniqueSlug(name: string): Promise<string> {
   return slug;
 }
 
-export async function listOnboardingForms(options?: {
+/** A workspace sees its own rows plus Foundry's stock ones (`workspaceId` null). */
+const visibleTo = (workspaceId: string) => ({ OR: [{ workspaceId }, { workspaceId: null }] });
+
+export async function listOnboardingForms(workspaceId: string, options?: {
   includeArchived?: boolean;
 }): Promise<{ forms: OnboardingFormSummary[] }> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
   const rows = await prisma.onboardingForm.findMany({
     where: {
       OR: [{ workspaceId: workspace.id }, { workspaceId: null }],
@@ -74,24 +76,24 @@ export async function listOnboardingForms(options?: {
   return { forms: rows.map(toSummary) };
 }
 
-export async function getOnboardingForm(id: string): Promise<OnboardingFormRecord | null> {
-  const row = await prisma.onboardingForm.findUnique({ where: { id }, include: formInclude });
+export async function getOnboardingForm(workspaceId: string, id: string): Promise<OnboardingFormRecord | null> {
+  const row = await prisma.onboardingForm.findFirst({ where: { id, ...visibleTo(workspaceId) }, include: formInclude });
   return row ? toRecord(row) : null;
 }
 
-export async function createOnboardingForm(input: {
+export async function createOnboardingForm(workspaceId: string, input: {
   name: string;
   description?: string;
   structure?: OnboardingFormStructure;
   cloneFromId?: string;
 }): Promise<OnboardingFormRecord> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = { id: workspaceId };
 
   // Seed structure priority: explicit structure → clone source → the default form.
   let structure = input.structure;
   if (!structure && input.cloneFromId) {
-    const source = await prisma.onboardingForm.findUnique({
-      where: { id: input.cloneFromId },
+    const source = await prisma.onboardingForm.findFirst({
+      where: { id: input.cloneFromId, ...visibleTo(workspaceId) },
       select: { steps: true },
     });
     if (source) structure = normalizeStructure(source.steps);
@@ -113,17 +115,17 @@ export async function createOnboardingForm(input: {
   return toRecord(row);
 }
 
-export async function duplicateOnboardingForm(id: string): Promise<OnboardingFormRecord | null> {
-  const source = await prisma.onboardingForm.findUnique({ where: { id } });
+export async function duplicateOnboardingForm(workspaceId: string, id: string): Promise<OnboardingFormRecord | null> {
+  const source = await prisma.onboardingForm.findFirst({ where: { id, ...visibleTo(workspaceId) } });
   if (!source) return null;
-  return createOnboardingForm({
+  return createOnboardingForm(workspaceId, {
     name: `${source.name} (copy)`,
     description: source.description ?? undefined,
     structure: normalizeStructure(source.steps),
   });
 }
 
-export async function updateOnboardingForm(
+export async function updateOnboardingForm(workspaceId: string, 
   id: string,
   input: {
     name?: string;
@@ -133,7 +135,7 @@ export async function updateOnboardingForm(
     isArchived?: boolean;
   },
 ): Promise<OnboardingFormRecord | null> {
-  const existing = await prisma.onboardingForm.findUnique({ where: { id }, select: { id: true } });
+  const existing = await prisma.onboardingForm.findFirst({ where: { id, ...visibleTo(workspaceId) }, select: { id: true } });
   if (!existing) return null;
 
   const data: Prisma.OnboardingFormUpdateInput = {};
@@ -145,7 +147,7 @@ export async function updateOnboardingForm(
   // Promote to default: clear the flag on every other form first (only one default).
   if (input.isDefault === true) {
     await prisma.onboardingForm.updateMany({
-      where: { isDefault: true, NOT: { id } },
+      where: { isDefault: true, NOT: { id }, ...visibleTo(workspaceId) },
       data: { isDefault: false },
     });
     data.isDefault = true;
@@ -158,11 +160,11 @@ export async function updateOnboardingForm(
   return toRecord(row);
 }
 
-export async function deleteOnboardingForm(
+export async function deleteOnboardingForm(workspaceId: string, 
   id: string,
 ): Promise<{ deleted: boolean; archived?: boolean } | null> {
-  const row = await prisma.onboardingForm.findUnique({
-    where: { id },
+  const row = await prisma.onboardingForm.findFirst({
+    where: { id, ...visibleTo(workspaceId) },
     include: formInclude,
   });
   if (!row) return null;

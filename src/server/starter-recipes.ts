@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { listStarters, type StarterListItem } from "@/server/starters";
 
 // ── Starter Recipes ──────────────────────────────────────────────────────────────
@@ -53,10 +52,6 @@ function serializeRecipe(r: StarterRecipeRow): StarterRecipeRecord {
   };
 }
 
-async function getWorkspace() {
-  const { workspace } = await ensureBaseRecords();
-  return workspace;
-}
 
 /** Built-ins have a null workspaceId; workspace-authored recipes carry the workspace id. */
 function scopeWhere(workspaceId: string): Prisma.StarterRecipeWhereInput {
@@ -87,8 +82,8 @@ async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-export async function listRecipes(opts?: { includeArchived?: boolean }): Promise<StarterRecipeRecord[]> {
-  const workspace = await getWorkspace();
+export async function listRecipes(workspaceId: string, opts?: { includeArchived?: boolean }): Promise<StarterRecipeRecord[]> {
+  const workspace = { id: workspaceId };
   const rows = await prisma.starterRecipe.findMany({
     where: { ...scopeWhere(workspace.id), ...(opts?.includeArchived ? {} : { isArchived: false }) },
     orderBy: [{ isDefault: "desc" }, { name: "asc" }],
@@ -98,8 +93,8 @@ export async function listRecipes(opts?: { includeArchived?: boolean }): Promise
 
 /** Recipes with their member Starters resolved — the shape the UI actually renders. Batches
  *  one Starter fetch across every recipe rather than N+1-ing per card. */
-export async function listRecipesWithStarters(): Promise<StarterRecipeWithStarters[]> {
-  const [recipes, allStarters] = await Promise.all([listRecipes(), listStarters()]);
+export async function listRecipesWithStarters(workspaceId: string): Promise<StarterRecipeWithStarters[]> {
+  const [recipes, allStarters] = await Promise.all([listRecipes(workspaceId), listStarters(workspaceId)]);
   const byId = new Map(allStarters.map((s) => [s.id, s]));
   return recipes.map((r) => ({
     ...r,
@@ -107,33 +102,33 @@ export async function listRecipesWithStarters(): Promise<StarterRecipeWithStarte
   }));
 }
 
-export async function getRecipe(id: string): Promise<StarterRecipeWithStarters | null> {
-  const workspace = await getWorkspace();
+export async function getRecipe(workspaceId: string, id: string): Promise<StarterRecipeWithStarters | null> {
+  const workspace = { id: workspaceId };
   const row = await prisma.starterRecipe.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!row) return null;
-  const allStarters = await listStarters();
+  const allStarters = await listStarters(workspaceId);
   const byId = new Map(allStarters.map((s) => [s.id, s]));
   const recipe = serializeRecipe(row);
   return { ...recipe, starters: recipe.starterIds.map((sid) => byId.get(sid)).filter((s): s is StarterListItem => Boolean(s)) };
 }
 
-export async function getRecipeBySlug(slug: string): Promise<StarterRecipeWithStarters | null> {
-  const workspace = await getWorkspace();
+export async function getRecipeBySlug(workspaceId: string, slug: string): Promise<StarterRecipeWithStarters | null> {
+  const workspace = { id: workspaceId };
   const row = await prisma.starterRecipe.findFirst({ where: { slug, ...scopeWhere(workspace.id) } });
   if (!row) return null;
-  const allStarters = await listStarters();
+  const allStarters = await listStarters(workspaceId);
   const byId = new Map(allStarters.map((s) => [s.id, s]));
   const recipe = serializeRecipe(row);
   return { ...recipe, starters: recipe.starterIds.map((sid) => byId.get(sid)).filter((s): s is StarterListItem => Boolean(s)) };
 }
 
-export async function createRecipe(data: {
+export async function createRecipe(workspaceId: string, data: {
   name: string;
   summary: string;
   description?: string | null;
   starterIds?: string[];
 }): Promise<StarterRecipeRecord> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const slug = await uniqueSlug(data.name);
   const row = await prisma.starterRecipe.create({
     data: {
@@ -148,7 +143,7 @@ export async function createRecipe(data: {
   return serializeRecipe(row);
 }
 
-export async function updateRecipe(
+export async function updateRecipe(workspaceId: string, 
   id: string,
   data: {
     name?: string;
@@ -158,7 +153,7 @@ export async function updateRecipe(
     isArchived?: boolean;
   },
 ): Promise<StarterRecipeRecord | null> {
-  const workspace = await getWorkspace();
+  const workspace = { id: workspaceId };
   const existing = await prisma.starterRecipe.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!existing) return null;
   const row = await prisma.starterRecipe.update({
@@ -174,8 +169,8 @@ export async function updateRecipe(
   return serializeRecipe(row);
 }
 
-export async function deleteRecipe(id: string): Promise<boolean> {
-  const workspace = await getWorkspace();
+export async function deleteRecipe(workspaceId: string, id: string): Promise<boolean> {
+  const workspace = { id: workspaceId };
   const existing = await prisma.starterRecipe.findFirst({ where: { id, ...scopeWhere(workspace.id) } });
   if (!existing) return false;
   await prisma.starterRecipe.delete({ where: { id } });

@@ -2,6 +2,8 @@ import { AppShell } from "@/components/app-shell";
 import { PulseNewScanForm } from "@/components/pulse/pulse-new-scan-form";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { headers } from "next/headers";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { auth } from "@/auth";
 import { isAtLeast } from "@/types/auth";
 import { aiKeyFor } from "@/server/ai-keys";
@@ -9,8 +11,9 @@ import { aiKeyFor } from "@/server/ai-keys";
 export const dynamic = "force-dynamic";
 
 async function getPageData() {
+  const workspaceId = await workspaceIdForRequest(new Request("http://foundry.local", { headers: await headers() }));
   const workspace = await prisma.workspace.findFirst({
-    where: { slug: DEFAULT_WORKSPACE_SLUG },
+    where: { id: workspaceId },
     select: {
       id: true,
       aiProvider: true,

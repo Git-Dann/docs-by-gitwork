@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { adoptStarterForScan } from "@/server/starters";
 import { starterAdoptSchema } from "@/server/validators";
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
     assertCan(await getEffectiveUserOrNull(request), canManageStarters, "adopt starters");
     const body = await request.json();
     const { scanId, starterId } = starterAdoptSchema.parse(body);
-    const result = await adoptStarterForScan(scanId, starterId);
+    const result = await adoptStarterForScan(await workspaceIdForRequest(request), scanId, starterId);
     if (!result) return apiError("Scan or starter not found", 404);
     return apiOk(result);
   } catch (error) {
