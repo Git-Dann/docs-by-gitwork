@@ -24,6 +24,7 @@ export type AuditAction =
   | "settings.pulse_embed.updated"
   // Platform console (src/server/platform) — Gitwork acting on a business
   | "platform.workspace.settings_changed"
+  | "platform.workspace.created"
   // Team
   | "team.member.invited"
   | "team.member.role_changed"

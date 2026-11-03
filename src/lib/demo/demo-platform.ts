@@ -16,6 +16,8 @@ import {
   parsePlatformAuditQuery,
   parsePlatformWorkspaceQuery,
   planWorkspaceUpdate,
+  planNewBusiness,
+  type NewBusinessInput,
 } from "@/lib/platform-rules";
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
@@ -116,6 +118,47 @@ export function resolveDemoPlatform(
     } catch (err) {
       return refuse(err);
     }
+  }
+
+  if (pathname === "/api/platform/workspaces" && method === "POST") {
+    let plan: ReturnType<typeof planNewBusiness>;
+    try {
+      plan = planNewBusiness((typeof init?.body === "string" ? JSON.parse(init.body) : {}) as NewBusinessInput);
+    } catch (err) {
+      return refuse(err);
+    }
+    let slug = plan.slug;
+    for (let n = 2; workspaces.some((w) => w.slug === slug); n += 1) slug = `${plan.slug}-${n}`;
+    const now = new Date().toISOString();
+    const ws: PlatformWorkspace = {
+      id: `ws-${slug}`,
+      name: plan.name,
+      slug,
+      createdAt: now,
+      updatedAt: now,
+      isHome: false,
+      activeMembers: 0,
+      modulesRestricted: true,
+      enabledModules: [...DEFAULT_BUSINESS_MODULES],
+      platformAiKeysAllowed: false,
+    };
+    workspaces.splice(1, 0, ws);
+    audit.unshift({
+      id: `pa-${audit.length + 1}`,
+      workspaceId: ws.id,
+      action: "platform.workspace.created",
+      workspaceName: ws.name,
+      actorName: "Demo user",
+      createdAt: now,
+      before: null,
+      after: { name: ws.name, slug, ownerEmail: plan.ownerEmail },
+    });
+    return {
+      workspace: { ...ws },
+      inviteUrl: `https://foundry.gitwork.co.uk/invite/demo-${slug}`,
+      emailed: false,
+      emailError: "The demo doesn't send email.",
+    };
   }
 
   if (pathname === "/api/platform/audit" && method === "GET") {

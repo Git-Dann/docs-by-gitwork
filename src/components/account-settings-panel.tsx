@@ -28,7 +28,7 @@ export function AccountSettingsPanel() {
 
   // A guest has no Google account, so their name is theirs to set — and the copy on this
   // page must not tell them to go and change it in a Google profile they do not have.
-  const ownsOwnName = isPasswordLoginAllowed(profile?.role);
+  const ownsOwnName = isPasswordLoginAllowed(profile?.role, profile?.workspaceSlug);
   const googleAvatarUrl = session?.user?.image ?? "";
 
   const [editing, setEditing] = useState(false);
@@ -129,7 +129,7 @@ export function AccountSettingsPanel() {
       {/* Only an account that actually signs in with a password gets this. For a
           Google account the field is dead weight and inviting them to set one would
           imply it does something. */}
-      {isPasswordLoginAllowed(profile?.role) ? <PasswordCard /> : null}
+      {isPasswordLoginAllowed(profile?.role, profile?.workspaceSlug) ? <PasswordCard /> : null}
 
       <AvatarEditModal
         open={editing}

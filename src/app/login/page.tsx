@@ -189,7 +189,7 @@ function GuestSignIn({ callbackUrl }: { callbackUrl: string }) {
         className="mt-4 w-full text-center text-[13px] underline-offset-2 hover:underline"
         style={{ color: MUTED }}
       >
-        Invited guest? Sign in with an email and password
+        Not at Gitwork? Sign in with your email and password
       </button>
     );
   }
@@ -227,6 +227,11 @@ function GuestSignIn({ callbackUrl }: { callbackUrl: string }) {
         </p>
       )}
       <GuestSubmit />
+      <p className="text-center text-[13px]">
+        <a href="/forgot-password" className="underline-offset-2 hover:underline" style={{ color: MUTED }}>
+          Forgot your password?
+        </a>
+      </p>
     </form>
   );
 }

@@ -587,6 +587,10 @@ model WorkspaceInvite {
   token        String    @unique @default(cuid())
   label        String?
   status       String    @default("PENDING") // PENDING | ACCEPTED | REVOKED
+  /// When set, only this address may accept (multi-tenant Phase 3: a business owner's invite).
+  email        String?
+  /// The role the person joins with; null = DEFAULT_PROVISIONED_ROLE.
+  role         String?
   invitedById  String
   acceptedById String?
   createdAt    DateTime  @default(now())
@@ -6091,4 +6095,19 @@ model WorkspaceApiKey {
 
   @@index([workspaceId])
   @@index([tokenHash])
+}
+
+/// A single-use password reset link (multi-tenant Phase 3). Only a SHA-256 of the token
+/// is stored; the link is emailed to the account's own address and expires in an hour.
+/// Loose ids, no relations, no unique constraint (CLAUDE.md §2).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tokenHash])
+  @@index([userId])
 }

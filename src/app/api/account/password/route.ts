@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     // outlives a role change, so a member demoted since theirs was minted would still
     // be carrying the old one.
     const membership = await findHomeMembership(session.user.id, session.user.workspaceId ?? null);
-    if (!isPasswordLoginAllowed(membership?.role)) {
+    if (!isPasswordLoginAllowed(membership?.role, membership?.workspace.slug)) {
       return apiError(
         "This account signs in with Google, so it has no password to change.",
         400,

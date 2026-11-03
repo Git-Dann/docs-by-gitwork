@@ -42,10 +42,8 @@ declare module "next-auth" {
 /**
  * The only roles a password may authenticate.
  *
- * ⚠️ Read the note at the top of `server/auth/password-login.ts` before widening this.
- * `POST /api/auth/forgot-password` is public and sets ANY user's password on a shared
- * recovery key, so a password that authenticates an admin is an account takeover. The
- * pairing is what keeps that route harmless.
+ * The roles a password may authenticate in GITWORK's workspace. Other businesses may use
+ * a password for every role (`isPasswordLoginAllowed`).
  *
  * It lives HERE rather than beside the bcrypt code because client components need the
  * predicate to decide whether to render a "change your password" field, and importing
@@ -66,8 +64,26 @@ export function isExternalRole(role: string | null | undefined): boolean {
 
 export const PASSWORD_LOGIN_ROLES = ["GUEST"] as const;
 
-export function isPasswordLoginAllowed(role: string | null | undefined): boolean {
-  return !!role && (PASSWORD_LOGIN_ROLES as readonly string[]).includes(role);
+/** Gitwork's own workspace. Its staff sign in with Google; only its guests use a password. */
+const GITWORK_WORKSPACE_SLUG = "gitwork";
+
+/**
+ * Whether this membership may sign in with a password (multi-tenant Phase 3).
+ *
+ * - In Gitwork's workspace, or when the workspace is unknown: guests only, as before.
+ * - In any other business: every role. Their people have no Gitwork Google account.
+ *
+ * ⚠️ Safe only because password reset is an emailed, single-use link
+ * (`src/server/auth/password-reset.ts`). There is no shared recovery key any more.
+ */
+export function isPasswordLoginAllowed(
+  role: string | null | undefined,
+  workspaceSlug?: string | null,
+): boolean {
+  if (!role) return false;
+  if ((PASSWORD_LOGIN_ROLES as readonly string[]).includes(role)) return true;
+  if (!workspaceSlug || workspaceSlug === GITWORK_WORKSPACE_SLUG) return false;
+  return (ROLE_IDS as readonly string[]).includes(role);
 }
 
 export const ROLE_IDS = ["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER", "GUEST"] as const;
