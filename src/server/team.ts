@@ -14,7 +14,7 @@ import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
-import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId, DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
+import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
 import {
   ACTIVE_MEMBER,
   ARCHIVE_RETENTION_DAYS,
