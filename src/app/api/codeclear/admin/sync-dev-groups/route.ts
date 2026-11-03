@@ -1,9 +1,9 @@
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { isAtLeast } from "@/types/auth";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +36,8 @@ async function requireAdminSession() {
   return session;
 }
 
-async function runSync() {
-  const { workspace } = await ensureBaseRecords();
+async function runSync(request: Request) {
+  const workspace = { id: await workspaceIdForRequest(request) };
 
   // ── Pro bono devGroup sync ─────────────────────────────────────────
   const proBonoUpdated = await prisma.candidate.updateMany({
@@ -94,21 +94,21 @@ async function runSync() {
 // Both verbs run the same operation — it's idempotent and admin-gated,
 // so allowing GET means you can hit the URL straight from a logged-in
 // browser tab while ergonomic GET-only API clients still work too.
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await requireAdminSession();
     if (!session) return apiError("Forbidden", 403);
-    return apiOk(await runSync());
+    return apiOk(await runSync(request));
   } catch (error) {
     return fromError(error);
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await requireAdminSession();
     if (!session) return apiError("Forbidden", 403);
-    return apiOk(await runSync());
+    return apiOk(await runSync(request));
   } catch (error) {
     return fromError(error);
   }

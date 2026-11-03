@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   normalizeGitHubAnalysisRun,
   serializeCandidateDetails,
@@ -14,6 +13,7 @@ import {
   buildChecksFromAnalysis,
   getGitHubAnalysisVersion,
 } from "@/server/codeclear-analysis";
+import { requestActor, workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ type RouteContext = {
 
 export async function GET(_request: NextRequest, context: RouteContext) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(_request) };
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({
       where: {
@@ -58,7 +58,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(_request);
     const { id } = await context.params;
     const candidate = await prisma.candidate.findFirst({
       where: {

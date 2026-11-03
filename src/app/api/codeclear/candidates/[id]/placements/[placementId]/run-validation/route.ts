@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   GitHubAnalysisError,
   analyzeGitHubRepoScope,
@@ -10,6 +9,7 @@ import {
   getGitHubAnalysisVersion,
 } from "@/server/codeclear-analysis";
 import { normalizeGitHubAnalysisRun } from "@/server/codeclear";
+import { requestActor } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,7 @@ type RouteContext = {
  */
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
-    const { workspace, user } = await ensureBaseRecords();
+    const { workspace, user } = await requestActor(_request);
     const { id: candidateId, placementId } = await context.params;
 
     const placement = await prisma.placement.findFirst({

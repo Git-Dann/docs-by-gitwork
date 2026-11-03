@@ -27,3 +27,17 @@ export async function requestWorkspaceId(user: Pick<EffectiveUser, "workspaceId"
 export async function workspaceIdForRequest(req: Request): Promise<string> {
   return requestWorkspaceId(await getEffectiveUserOrNull(req));
 }
+
+/**
+ * The caller's workspace and who to credit for what they do. A signed-in caller is credited
+ * by name; the workspace API key (no user) is credited to the workspace owner, as these routes
+ * always were.
+ */
+export async function requestActor(
+  req: Request,
+): Promise<{ workspace: { id: string }; user: { name: string | null; email: string } }> {
+  const caller = await getEffectiveUserOrNull(req);
+  if (caller) return { workspace: { id: caller.workspaceId }, user: { name: caller.name, email: caller.email } };
+  const base = await ensureBaseRecords();
+  return { workspace: { id: base.workspace.id }, user: { name: base.user.name, email: base.user.email } };
+}
