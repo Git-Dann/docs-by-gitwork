@@ -55,6 +55,7 @@ const PROFILE_SELECT = {
   email: true,
   avatarUrl: true,
   githubHandle: true,
+  isDeveloper: true,
   jobTitle: true,
   department: true,
   employmentType: true,

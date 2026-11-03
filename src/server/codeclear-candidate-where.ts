@@ -4,7 +4,12 @@ import {
   type PipelineStatus as PrismaPipelineStatus,
   type Prisma,
 } from "@prisma/client";
-import { DEVELOPER_RECORD, activeDeveloperWhere, archivedDeveloperWhere } from "@/server/codeclear-archived";
+import {
+  DEVELOPER_RECORD,
+  MISSING_DEVELOPER_DETAILS,
+  activeDeveloperWhere,
+  archivedDeveloperWhere,
+} from "@/server/codeclear-archived";
 
 /**
  * ⚠️ Every filter that needs alternatives goes in `and`, never as a top-level `OR`.
@@ -46,6 +51,8 @@ export function buildCandidateWhere(
     DEVELOPER_RECORD,
     archivedOnly ? archivedDeveloperWhere(archivedEmails) : activeDeveloperWhere(archivedEmails),
   ];
+  // `missing=1` → only developers with no GitHub handle or no main stack.
+  if (searchParams.get("missing") === "1") and.push(MISSING_DEVELOPER_DETAILS);
 
   if (stack) {
     and.push({

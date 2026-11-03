@@ -545,6 +545,7 @@ async function _ensureBaseRecords() {
   await backfillUiDoneLabel(workspace.id);
   await backfillAvatarBlobs();
   await backfillNotificationGeo();
+  await backfillDeveloperFlagsSafely();
 
   return {
     user,
@@ -561,6 +562,19 @@ async function _ensureBaseRecords() {
 // a single board response reached 156MB. After this runs, no avatarUrl is a blob,
 // so those payloads carry a ~30-char URL instead. The WHERE clause makes it a
 // no-op once migrated. Runs once per container via the ensureBaseRecords cache.
+// One-time, idempotent (Nov 2026): who is a developer became a flag on the Staff record.
+// Settles it once for everyone already here. See src/server/staff-developer-flag.ts.
+async function backfillDeveloperFlagsSafely() {
+  try {
+    const { backfillDeveloperFlags } = await import("@/server/staff-developer-flag");
+    await backfillDeveloperFlags();
+  } catch (error) {
+    // Non-critical — never block boot on a backfill. Logged: until it runs, people already
+    // here without a GitHub handle are missing from Developers.
+    console.error("[bootstrap] developer flag backfill failed", error);
+  }
+}
+
 async function backfillAvatarBlobs() {
   try {
     await prisma.$executeRawUnsafe(

@@ -46,8 +46,10 @@ export interface StaffPerson {
   startDate: string | null;
   managerRecordId: string | null;
   managerName: string | null;
-  /** Has a GitHub handle, so a developer profile (scores, analysis) exists. */
+  /** Listed under Code → Developers: marked as one, or has a GitHub handle. */
   isDeveloper: boolean;
+  /** Has a GitHub handle (which lists them as a developer whatever the switch says). */
+  hasGithubHandle: boolean;
   primaryStack: string | null;
   currentClients: StaffClient[];
   /** Set only in the archived view: when they were archived (membership or record). */
@@ -68,6 +70,8 @@ export interface StaffDetailsUpdate {
   employmentType?: EmploymentType | null;
   startDate?: string | null;
   managerRecordId?: string | null;
+  /** Listed under Code → Developers. */
+  isDeveloper?: boolean;
 }
 
 /** Roster order: by name, ignoring case and accents. */
@@ -148,6 +152,7 @@ export function normaliseStaffDetails(input: StaffDetailsUpdate): { ok: true; va
     } else out.startDate = input.startDate;
   }
   if (input.managerRecordId !== undefined) out.managerRecordId = input.managerRecordId || null;
+  if (input.isDeveloper !== undefined) out.isDeveloper = input.isDeveloper === true;
   return { ok: true, value: out };
 }
 

@@ -75,6 +75,7 @@ export function DetailsDialog({
   const [employmentType, setEmploymentType] = useState<EmploymentType | "">(person.employmentType ?? "");
   const [startDate, setStartDate] = useState(person.startDate ?? "");
   const [managerRecordId, setManagerRecordId] = useState(person.managerRecordId ?? "");
+  const [isDeveloper, setIsDeveloper] = useState(person.isDeveloper);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateStaffRecord();
   const update = useUpdateStaffDetails();
@@ -93,6 +94,7 @@ export function DetailsDialog({
       employmentType: employmentType || null,
       startDate: startDate || null,
       managerRecordId: managerRecordId || null,
+      isDeveloper,
     };
     try {
       if (person.recordId) await update.mutateAsync({ recordId: person.recordId, update: details });
@@ -172,6 +174,12 @@ export function DetailsDialog({
               ))}
             </select>
           </label>
+          <DeveloperSwitch
+            checked={isDeveloper || person.hasGithubHandle}
+            locked={person.hasGithubHandle}
+            onChange={setIsDeveloper}
+            className="sm:col-span-2"
+          />
         </div>
         {error ? (
           <p role="alert" className="text-[13px] text-[var(--danger-500)]">
@@ -198,10 +206,48 @@ export function DetailsDialog({
   );
 }
 
+/**
+ * Whether someone is listed under Code → Developers. Separate from their role in Foundry,
+ * which is about access (everyone signs in as Developer). A GitHub handle lists them anyway,
+ * so with one the switch is shown on and can't be turned off here.
+ */
+function DeveloperSwitch({
+  checked,
+  locked = false,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  locked?: boolean;
+  onChange: (v: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <label className={cn("flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-[var(--border-1)] px-3 py-2.5", locked && "cursor-default", className)}>
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 accent-[var(--brand-600)]"
+        checked={checked}
+        disabled={locked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block text-[13px] font-medium text-[var(--text-1)]">Developer</span>
+        <span className="block text-[12px] text-[var(--text-3)]">
+          {locked
+            ? "Listed under Code → Developers because they have a GitHub handle."
+            : "List them under Code → Developers. This is what they do, not what they can open in Foundry."}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function AddPersonDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [isDeveloper, setIsDeveloper] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const create = useCreateStaffRecord();
   const field = "block text-[12px] font-medium text-[var(--text-2)]";
@@ -209,7 +255,7 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
   const save = async () => {
     setError(null);
     try {
-      await create.mutateAsync({ name, email: email.trim() || null, jobTitle: jobTitle || null });
+      await create.mutateAsync({ name, email: email.trim() || null, jobTitle: jobTitle || null, isDeveloper });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not add");
@@ -235,6 +281,7 @@ function AddPersonDialog({ onClose }: { onClose: () => void }) {
           Job title (optional)
           <input className="app-input mt-1 w-full" value={jobTitle} maxLength={80} onChange={(e) => setJobTitle(e.target.value)} />
         </label>
+        <DeveloperSwitch checked={isDeveloper} onChange={setIsDeveloper} />
         {error ? (
           <p role="alert" className="text-[13px] text-[var(--danger-500)]">
             {error}

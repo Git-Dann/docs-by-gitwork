@@ -13,6 +13,7 @@ import { dispatchNotification } from "@/server/notifications";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { ForbiddenError } from "@/server/auth/effective-user";
 import { recomputeMember } from "@/server/permissions";
+import { applyInviteDeveloperFlag } from "@/server/staff";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import { canManageRole, normalizeOverrides, type PermissionOverrides, type RoleId } from "@/types/auth";
 import {
@@ -366,10 +367,16 @@ export async function autoAcceptMatchingInvite(userId: string, userName: string 
 
   if (!match) return null;
 
-  return prisma.workspaceInvite.update({
+  const accepted = await prisma.workspaceInvite.update({
     where: { id: match.id },
     data: { status: "ACCEPTED", acceptedById: userId },
   });
+  const member = await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId: accepted.workspaceId, userId } },
+    select: { id: true },
+  });
+  await applyInviteDeveloperFlag(accepted, member?.id);
+  return accepted;
 }
 
 export async function listInvites(workspaceId: string) {
@@ -401,7 +408,7 @@ export async function listInvites(workspaceId: string) {
 export async function createInvite(
   workspaceId: string,
   invitedById: string,
-  opts: { label?: string | null; email?: string | null; role?: RoleId | null; inviterRole?: string } = {},
+  opts: { label?: string | null; email?: string | null; role?: RoleId | null; isDeveloper?: boolean; inviterRole?: string } = {},
 ) {
   if (opts.role && !canManageRole(opts.inviterRole ?? "", opts.role)) {
     throw new ForbiddenError("You can't invite someone with that role.");
@@ -417,6 +424,7 @@ export async function createInvite(
       label: opts.label?.trim() || null,
       email,
       role: opts.role ?? null,
+      isDeveloper: opts.isDeveloper ?? false,
       status: "PENDING",
     },
   });
@@ -495,6 +503,7 @@ export async function acceptInvite(token: string, userId: string): Promise<Accep
     where: { id: invite.id },
     data: { status: "ACCEPTED", acceptedById: userId },
   });
+  await applyInviteDeveloperFlag(invite, member.id);
   return { ok: true, workspaceId: invite.workspaceId };
 }
 
@@ -550,6 +559,7 @@ export async function acceptInviteWithPassword(input: {
     where: { id: invite.id },
     data: { status: "ACCEPTED", acceptedById: user.id },
   });
+  await applyInviteDeveloperFlag(invite, user.memberships[0]?.id);
   await announceJoin(invite.workspaceId, user.id);
   return { ok: true, email: user.email };
 }

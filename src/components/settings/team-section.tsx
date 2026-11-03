@@ -44,6 +44,7 @@ interface Invite {
   label: string | null;
   email?: string | null;
   role?: string | null;
+  isDeveloper?: boolean;
   status: string;
   createdAt: string;
   invitedBy: { name: string | null; email: string };
@@ -85,6 +86,7 @@ export function TeamSection() {
   const [label, setLabel] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("");
+  const [inviteDeveloper, setInviteDeveloper] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -160,12 +162,14 @@ export function TeamSection() {
         label: label.trim() || undefined,
         email: inviteEmail.trim() || undefined,
         role: inviteRole || undefined,
+        isDeveloper: inviteDeveloper,
       }),
     });
     if (res.ok) {
       setLabel("");
       setInviteEmail("");
       setInviteRole("");
+      setInviteDeveloper(false);
       setInviteError(null);
       await load();
     } else {
@@ -303,6 +307,15 @@ export function TeamSection() {
                 </option>
               ))}
             </select>
+            <label className="flex w-full items-center gap-2 text-[13px] text-[var(--text-2)] sm:w-auto">
+              <input
+                type="checkbox"
+                checked={inviteDeveloper}
+                onChange={(e) => setInviteDeveloper(e.target.checked)}
+                className="h-4 w-4 accent-[var(--brand-600)]"
+              />
+              They&apos;re a developer
+            </label>
             <button
               onClick={createInvite}
               disabled={creating}
@@ -314,6 +327,8 @@ export function TeamSection() {
           <p className="mt-2 text-xs text-[var(--text-4)]">
             Anyone with the link can join, unless you add an email: then only that address can.
             Gitwork links are accepted with a work Google account; other businesses set a password.
+            &ldquo;They&apos;re a developer&rdquo; lists them under Code &rarr; Developers when they join. The role
+            above is what they can open in Foundry, not what they do.
           </p>
           {inviteError ? (
             <p role="alert" className="mt-2 text-xs text-[var(--danger-500)]">
@@ -423,10 +438,11 @@ export function TeamSection() {
                       ) : null}
                     </button>
                   )}
-                  {inv.email || inv.role ? (
+                  {inv.email || inv.role || inv.isDeveloper ? (
                     <p className="mt-0.5 truncate text-xs text-[var(--text-3)]" title={inv.email ?? undefined}>
                       {inv.email ? `For ${inv.email}` : "Anyone with the link"}
                       {inv.role ? ` · joins as ${ROLES.find((r) => r.id === inv.role)?.label ?? inv.role}` : ""}
+                      {inv.isDeveloper ? " · developer" : ""}
                     </p>
                   ) : null}
                   <p className="mt-0.5 truncate text-xs text-[var(--text-4)]">

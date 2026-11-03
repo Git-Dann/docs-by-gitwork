@@ -24,6 +24,7 @@ const person = (key: string, over: Partial<StaffPerson> = {}): StaffPerson => ({
   managerRecordId: null,
   managerName: null,
   isDeveloper: false,
+  hasGithubHandle: false,
   primaryStack: null,
   currentClients: [],
   ...over,
