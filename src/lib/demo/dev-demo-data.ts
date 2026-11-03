@@ -3978,7 +3978,62 @@ function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
 
 let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
 
+/** Monitors added through the demo's Add monitor popup, by client slug. Merged into the board. */
+const demoAddedMonitors = new Map<string, { name: string; target: string }[]>();
+
 function demoMonitorBoard() {
+  const board = demoMonitorBoardBase();
+  return {
+    ...board,
+    clients: board.clients.map((c) => {
+      const added = demoAddedMonitors.get(c.slug) ?? [];
+      if (!added.length) return c;
+      const base = c.monitors[0] ?? demoMonitorBoardBase().clients[0].monitors[0];
+      return {
+        ...c,
+        monitors: [
+          ...c.monitors,
+          // Just added: not checked yet, which is how a real one reads until its first probe.
+          ...added.map((a, i) => ({
+            ...base,
+            id: `added-${c.slug}-${i}`,
+            name: a.name,
+            target: a.target,
+            status: "UNKNOWN",
+            latencyMs: null,
+            statusCode: null,
+            checkedAt: null,
+            uptime24h: null,
+            alertKind: null,
+            downSince: null,
+          })),
+        ],
+      };
+    }),
+  };
+}
+
+/**
+ * Add monitor, from the Monitors page or a wiki — POST /api/clients/[slug]/wiki/monitors. Kept in
+ * memory and shown on the board, so the popup can be driven end to end on /demo/monitors.
+ */
+function demoAddMonitor(pathname: string, body: unknown) {
+  const slug = pathname.split("/")[3] ?? "";
+  let parsed: unknown = body;
+  try {
+    if (typeof body === "string") parsed = JSON.parse(body);
+  } catch {
+    parsed = {};
+  }
+  const input = (parsed ?? {}) as { name?: string; target?: string; type?: string };
+  const name = (input.name ?? "").trim();
+  const target = input.type === "HEARTBEAT" ? `https://foundry.gitwork.co.uk/api/public/heartbeat/demo-${Date.now()}` : (input.target ?? "").trim();
+  if (!name || !target) return { error: "Name and target are required", __status: 400 };
+  demoAddedMonitors.set(slug, [...(demoAddedMonitors.get(slug) ?? []), { name, target }]);
+  return { id: `added-${slug}-${Date.now()}`, name, target, type: input.type ?? "HTTP" };
+}
+
+function demoMonitorBoardBase() {
   const now = Date.now();
   const ago = (min: number) => new Date(now - min * 60000).toISOString();
   let n = 0;
@@ -4114,6 +4169,11 @@ export function resolveDemoApi(
   // slow, one with nothing monitored, so every state of the board can be seen.
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/board$/.test(pathname)) {
     return demoMonitorBoard();
+  }
+  // The Monitors page (/demo/monitors): the same board, and every client openable.
+  if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && init?.method === "POST") {
+    return demoAddMonitor(pathname, init.body);
   }
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/suggestions$/.test(pathname)) {
     return {

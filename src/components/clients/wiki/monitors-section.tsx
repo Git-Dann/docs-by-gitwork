@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { PlusIcon, TrashIcon, PencilSquareIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
 import {
   useCreateWikiMonitor,
@@ -9,10 +9,11 @@ import {
   useRunWikiMonitor,
   useWikiMonitorSuggestions,
 } from "@/hooks/use-wiki";
-import type { WikiMonitorDTO, MonitorInput } from "@/lib/api";
+import type { WikiMonitorDTO } from "@/lib/api";
 import type { IncidentDTO } from "@/lib/monitor-incidents";
 import { IncidentList } from "./monitor-incidents";
-import { basicAuthValue } from "@/lib/monitor-request";
+import { EMPTY_MONITOR_FORM, formToMonitorInput, monitorToForm, type MonitorFormState } from "@/lib/monitor-form";
+import { MonitorFormFields } from "./monitor-form-fields";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -29,13 +30,6 @@ const DOT: Record<Status, string> = {
   DOWN: "#e11d48",
   UNKNOWN: "#9ca3af",
 };
-
-const TYPE_OPTIONS = [
-  { value: "HTTP", label: "HTTP / HTTPS", hint: "https://api.example.com/health" },
-  { value: "TCP", label: "TCP port", hint: "db.example.com:5432" },
-  { value: "HEARTBEAT", label: "Heartbeat (cron / job)", hint: "" },
-] as const;
-type MonitorType = (typeof TYPE_OPTIONS)[number]["value"];
 
 const SEVERITY: Record<Status, number> = { UP: 0, UNKNOWN: 1, DEGRADED: 2, DOWN: 3 };
 
@@ -276,42 +270,6 @@ export function MonitorStatusBoard({ monitors, incidents = [] }: { monitors: Wik
 }
 
 // ── Editor / manager (workspace) ────────────────────────────────────────────
-type FormState = {
-  name: string;
-  type: MonitorType;
-  target: string;
-  method: string;
-  expectedStatus: string;
-  keyword: string;
-  degradedMs: string;
-  intervalMinutes: string;
-  graceMinutes: string;
-  /** New headers, "Name: value" per line. Blank keeps what's saved. */
-  headersText: string;
-  /** Saved header names (values never come back from the server). */
-  savedHeaders: string[];
-  clearHeaders: boolean;
-  body: string;
-};
-const EMPTY_FORM: FormState = {
-  name: "",
-  type: "HTTP",
-  target: "",
-  method: "GET",
-  expectedStatus: "",
-  keyword: "",
-  degradedMs: "",
-  intervalMinutes: "5",
-  graceMinutes: "",
-  headersText: "",
-  savedHeaders: [],
-  clearHeaders: false,
-  body: "",
-};
-
-const inputCls =
-  "w-full rounded-[8px] border border-[var(--border-2)] bg-[var(--surface-0)] px-3 py-2 text-[14px] text-[var(--text-1)] outline-none focus:border-[var(--brand-500)]";
-
 export function MonitorsManager({
   slug,
   monitors,
@@ -332,64 +290,28 @@ export function MonitorsManager({
   const run = useRunWikiMonitor(slug);
 
   const [editing, setEditing] = useState<string | "new" | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState<MonitorFormState>(EMPTY_MONITOR_FORM);
   const [error, setError] = useState<string | null>(null);
   const busy = create.isPending || update.isPending;
 
-  const typeHint = useMemo(
-    () => TYPE_OPTIONS.find((t) => t.value === form.type)?.hint ?? "",
-    [form.type],
-  );
-
   function openNew() {
-    setForm(EMPTY_FORM);
+    setForm(EMPTY_MONITOR_FORM);
     setEditing("new");
     setError(null);
   }
   function openEdit(m: WikiMonitorDTO) {
-    setForm({
-      name: m.name,
-      type: m.type,
-      target: m.target,
-      method: m.method,
-      expectedStatus: m.expectedStatus?.toString() ?? "",
-      keyword: m.keyword ?? "",
-      degradedMs: m.degradedMs?.toString() ?? "",
-      intervalMinutes: m.intervalMinutes.toString(),
-      graceMinutes: m.heartbeat?.graceMinutes?.toString() ?? "",
-      headersText: "",
-      savedHeaders: m.headerNames,
-      clearHeaders: false,
-      body: "",
-    });
+    setForm(monitorToForm(m));
     setEditing(m.id);
     setError(null);
   }
 
   async function submit() {
-    const heartbeat = form.type === "HEARTBEAT";
-    if (!form.name.trim() || (!heartbeat && !form.target.trim())) {
-      setError(heartbeat ? "A name is required." : "Name and target are required.");
+    const built = formToMonitorInput(form);
+    if (!built.ok) {
+      setError(built.error);
       return;
     }
-    const payload: MonitorInput = {
-      name: form.name.trim(),
-      type: form.type,
-      target: heartbeat ? "" : form.target.trim(),
-      graceMinutes: heartbeat && form.graceMinutes.trim() ? Number(form.graceMinutes) : null,
-      // Headers: new text replaces; "remove" clears; otherwise leave what's saved alone.
-      ...(form.type === "HTTP" && form.headersText.trim()
-        ? { requestHeaders: form.headersText }
-        : form.clearHeaders
-          ? { requestHeaders: null }
-          : {}),
-      ...(form.type === "HTTP" && form.method === "POST" && form.body.trim() ? { requestBody: form.body } : {}),
-      method: form.type === "HTTP" ? form.method || "GET" : "GET",
-      expectedStatus: form.expectedStatus.trim() ? Number(form.expectedStatus) : null,
-      keyword: form.type === "HTTP" && form.keyword.trim() ? form.keyword.trim() : null,
-      degradedMs: form.degradedMs.trim() ? Number(form.degradedMs) : null,
-      intervalMinutes: form.intervalMinutes.trim() ? Number(form.intervalMinutes) : 5,
-    };
+    const payload = built.input;
     try {
       if (editing === "new") await create.mutateAsync(payload);
       else if (editing) await update.mutateAsync({ id: editing, input: payload });
@@ -423,127 +345,11 @@ export function MonitorsManager({
 
         {editing && (
           <div className="space-y-3 rounded-[12px] border border-[var(--brand-200,rgba(37,99,235,0.25))] bg-[var(--surface-1)] p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="text-[12px] font-medium text-[var(--text-2)]">
-                Name
-                <input
-                  className={`mt-1 ${inputCls}`}
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Website, API, Database…"
-                />
-              </label>
-              <label className="text-[12px] font-medium text-[var(--text-2)]">
-                Type
-                <select
-                  className="app-select-compact mt-1 w-full"
-                  value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value as MonitorType })}
-                  disabled={editing !== "new" && (form.type === "HEARTBEAT")}
-                >
-                  {TYPE_OPTIONS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {form.type === "HEARTBEAT" ? (
-              <p className="text-[12px] text-[var(--text-3)]">
-                Foundry gives this monitor a ping URL. Add a request to it at the end of the job
-                (for example <code style={{ fontFamily: MONO }}>curl -fsS &lt;url&gt;</code>), or
-                call <code style={{ fontFamily: MONO }}>&lt;url&gt;/fail</code> when the run fails.
-                If no ping arrives within the interval plus grace, it goes down.
-              </p>
-            ) : (
-              <label className="block text-[12px] font-medium text-[var(--text-2)]">
-                Target
-                <input
-                  className={`mt-1 ${inputCls}`}
-                  value={form.target}
-                  onChange={(e) => setForm({ ...form, target: e.target.value })}
-                  placeholder={typeHint}
-                  style={{ fontFamily: MONO }}
-                />
-              </label>
-            )}
-
-            {form.type === "HTTP" && (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <label className="text-[12px] font-medium text-[var(--text-2)]">
-                  Method
-                  <select
-                    className="app-select-compact mt-1 w-full"
-                    value={form.method}
-                    onChange={(e) => setForm({ ...form, method: e.target.value })}
-                  >
-                    {["GET", "HEAD", "POST"].map((m) => (
-                      <option key={m}>{m}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-[12px] font-medium text-[var(--text-2)]">
-                  Expected status
-                  <input
-                    className={`mt-1 ${inputCls}`}
-                    value={form.expectedStatus}
-                    onChange={(e) => setForm({ ...form, expectedStatus: e.target.value })}
-                    placeholder="any 2xx/3xx"
-                    inputMode="numeric"
-                  />
-                </label>
-                <label className="text-[12px] font-medium text-[var(--text-2)]">
-                  Keyword (optional)
-                  <input
-                    className={`mt-1 ${inputCls}`}
-                    value={form.keyword}
-                    onChange={(e) => setForm({ ...form, keyword: e.target.value })}
-                    placeholder="must contain…"
-                  />
-                </label>
-              </div>
-            )}
-
-            {form.type === "HTTP" && (
-              <RequestOptions form={form} setForm={setForm} />
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-[12px] font-medium text-[var(--text-2)]">
-                {form.type === "HEARTBEAT" ? "Expected every (min)" : "Interval (min)"}
-                <input
-                  className={`mt-1 ${inputCls}`}
-                  value={form.intervalMinutes}
-                  onChange={(e) => setForm({ ...form, intervalMinutes: e.target.value })}
-                  inputMode="numeric"
-                />
-              </label>
-              {form.type === "HEARTBEAT" ? (
-                <label className="text-[12px] font-medium text-[var(--text-2)]">
-                  Grace (min, optional)
-                  <input
-                    className={`mt-1 ${inputCls}`}
-                    value={form.graceMinutes}
-                    onChange={(e) => setForm({ ...form, graceMinutes: e.target.value })}
-                    placeholder="default: a fifth of the interval"
-                    inputMode="numeric"
-                  />
-                </label>
-              ) : (
-                <label className="text-[12px] font-medium text-[var(--text-2)]">
-                  Slow after (ms, optional)
-                  <input
-                    className={`mt-1 ${inputCls}`}
-                    value={form.degradedMs}
-                    onChange={(e) => setForm({ ...form, degradedMs: e.target.value })}
-                    placeholder="e.g. 2000 → Degraded"
-                    inputMode="numeric"
-                  />
-                </label>
-              )}
-            </div>
+            <MonitorFormFields
+              form={form}
+              setForm={setForm}
+              lockType={editing !== "new" && form.type === "HEARTBEAT"}
+            />
 
             {error && <p className="text-[12px] text-rose-600">{error}</p>}
 
@@ -824,98 +630,5 @@ function MaintenanceControl({
         </option>
       ))}
     </select>
-  );
-}
-
-/**
- * Headers (an API key, a bearer token, a sign-in) and a POST body for HTTP checks. Values are
- * stored encrypted and never sent back to the browser, so editing shows the saved names only.
- */
-function RequestOptions({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
-  const [showSignIn, setShowSignIn] = useState(false);
-
-  function addLine(line: string) {
-    const rest = form.headersText
-      .split(/\r?\n/)
-      .filter((l) => l.trim() && !l.toLowerCase().startsWith("authorization:"));
-    setForm({ ...form, headersText: [...rest, line].join("\n"), clearHeaders: false });
-  }
-
-  return (
-    <div className="space-y-2">
-      <label className="block text-[12px] font-medium text-[var(--text-2)]">
-        Request headers (optional)
-        <textarea
-          className={`mt-1 min-h-[64px] ${inputCls}`}
-          style={{ fontFamily: MONO }}
-          value={form.headersText}
-          onChange={(e) => setForm({ ...form, headersText: e.target.value, clearHeaders: false })}
-          placeholder={
-            form.savedHeaders.length
-              ? "Leave blank to keep the saved headers"
-              : "One per line, e.g.\nAuthorization: Bearer <token>\nX-Api-Key: <key>"
-          }
-          spellCheck={false}
-          autoComplete="off"
-        />
-      </label>
-      <div className="flex flex-wrap items-center gap-2 text-[12px]">
-        {form.savedHeaders.length > 0 && !form.clearHeaders ? (
-          <>
-            <span className="text-[var(--text-3)]">Saved: {form.savedHeaders.join(", ")}</span>
-            <button
-              type="button"
-              onClick={() => setForm({ ...form, clearHeaders: true, headersText: "" })}
-              className="text-[var(--danger-500)] hover:underline"
-            >
-              Remove saved headers
-            </button>
-          </>
-        ) : form.clearHeaders ? (
-          <span className="text-[var(--warning-500)]">Saved headers will be removed when you save.</span>
-        ) : null}
-        <button type="button" onClick={() => setShowSignIn((v) => !v)} className="text-[var(--brand-700)] hover:underline">
-          {showSignIn ? "Hide sign-in" : "Add a username and password"}
-        </button>
-      </div>
-      {showSignIn ? (
-        <div className="flex flex-wrap items-end gap-2">
-          <input className={`${inputCls} max-w-[180px]`} placeholder="Username" value={user} onChange={(e) => setUser(e.target.value)} autoComplete="off" />
-          <input className={`${inputCls} max-w-[180px]`} placeholder="Password" type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="new-password" />
-          <button
-            type="button"
-            disabled={!user}
-            onClick={() => {
-              addLine(`Authorization: ${basicAuthValue(user, pass)}`);
-              setUser("");
-              setPass("");
-              setShowSignIn(false);
-            }}
-            className="rounded-[7px] border border-[var(--border-2)] px-3 py-2 text-[13px] text-[var(--text-2)] hover:bg-[var(--surface-1)] disabled:opacity-50"
-          >
-            Add
-          </button>
-        </div>
-      ) : null}
-      {form.method === "POST" ? (
-        <label className="block text-[12px] font-medium text-[var(--text-2)]">
-          Request body (optional)
-          <textarea
-            className={`mt-1 min-h-[64px] ${inputCls}`}
-            style={{ fontFamily: MONO }}
-            value={form.body}
-            onChange={(e) => setForm({ ...form, body: e.target.value })}
-            placeholder='e.g. {"ping": true}. Leave blank to keep what&apos;s saved.'
-            spellCheck={false}
-          />
-        </label>
-      ) : null}
-      <p className="text-[11px] text-[var(--text-4)]">
-        Stored encrypted and only sent to this monitor&apos;s own address. Redirects to another
-        site are refused while headers are set.
-      </p>
-    </div>
   );
 }

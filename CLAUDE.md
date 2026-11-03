@@ -9392,7 +9392,7 @@ this page only reads them.
   open incidents, a searchable grid of client cards (All / Needs attention), and clients with no
   monitors. Reuses the wiki board's state rules and pieces (`monitor-board.tsx` exports them).
   Refreshes every minute.
-- Not visually verified (auth-gated, no demo route). Tests: `src/app/api/monitors/__tests__`.
+- Tests: `src/app/api/monitors/__tests__`. Demo: `/demo/monitors` (§108.3).
 
 ### 108.1 Portal's Drive tab: no screenshots, and a steady height
 
@@ -9415,6 +9415,26 @@ this page only reads them.
   tokens are ~3:1 on their own `-50` tint.
 - Every card header is a fixed `h-12`, so headers line up across the grid. Gitwork's "Our
   services" tag sits on the name's line (hidden below `sm`) rather than adding a second line.
+
+### 108.3 Add monitor from the Monitors page, synced with the wiki
+
+- **Add monitor** in the CLIENTS card header (and on each "Not monitored" client, opening on that
+  client) opens the house fixed-height popup (`src/components/monitors/add-monitor-dialog.tsx`):
+  a client dropdown (clients this person can open, Gitwork first), then the wiki's own fields.
+- **One copy, so nothing to sync.** It saves through the client's wiki route
+  (`POST /api/clients/[slug]/wiki/monitors`), so it IS that client's wiki monitor. Every monitor
+  write (wiki or page) calls `invalidateMonitorViews` (`use-wiki.ts`), which refreshes the
+  client's wiki, the Gitwork all-clients board and `["monitors-page"]` together.
+- **The fields are shared:** state and request rules in `src/lib/monitor-form.ts`
+  (`formToMonitorInput` checks the server's limits and says what to fix), drawn by
+  `monitor-form-fields.tsx`. The wiki's add/edit uses the same two, so they can't drift. Inputs
+  are 16px on a phone.
+- The add route now checks the caller: guests are refused and a restricted developer can only add
+  to clients they're assigned. Edit/delete/run routes are unchanged.
+- ⚠️ **A `<Modal>` inside `<FadeIn>` is trapped.** FadeIn animates a transform, which makes it the
+  containing block for `position: fixed`, so the dialog centred on the content column and ran off
+  the bottom of the screen. Render dialogs outside it. Found by screenshot, not by any test.
+- Demo: `/demo/monitors` (add works end to end in memory). Verified there at 1440 and 390.
 
 ## 109. Recent Changes (November 2026) — Seasonal themes are a workspace setting
 

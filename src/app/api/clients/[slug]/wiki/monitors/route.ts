@@ -4,6 +4,9 @@ import { loadWikiMonitors, createMonitor, setWikiMonitorsEnabled } from "@/serve
 import { z } from "zod";
 import { MAX_BODY, headersField } from "@/lib/monitor-request";
 import { clientIdForSlug } from "@/server/clients-scope";
+import { assertClientAccessBySlug } from "@/server/client-assignments";
+import { ForbiddenError, getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { isExternalRole } from "@/types/auth";
 
 export const maxDuration = 60;
 
@@ -43,6 +46,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    // Adding a monitor is reachable from the Monitors page for any client, so it checks the
+    // caller may work on this one: a guest never, a restricted developer only on their clients.
+    // `null` is a trusted API-key caller.
+    const user = await getEffectiveUserOrNull(req);
+    if (user && isExternalRole(user.role)) throw new ForbiddenError("You can't add monitors.");
+    await assertClientAccessBySlug(user, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = monitorInputSchema.parse(await req.json());
