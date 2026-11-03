@@ -8796,10 +8796,12 @@ and the Staff schedule work inside the caller's workspace.
   could reset any user's password in any workspace; both are fixed.
   `src/app/api/team/__tests__/team-routes-scoped.test.ts` fails on a team route that uses the
   Gitwork slug, `ensureBaseRecords` or the session role.
-- ⚠️ **Not changed, for Dan:**
-  - `DELETE /api/team/[userId]` still hard-deletes the User row, now only inside the caller's
-    workspace. Nothing in the app calls it.
-  - `reset-password` has no rank check, so an Admin can reset a Super Admin's password.
+- **Two older team routes brought into line (Dan's calls):**
+  - `DELETE /api/team/[userId]` now **archives** the member through `archiveMember` (audited,
+    restorable for 30 days) instead of deleting the User row. Same rules as Settings → Team.
+  - `reset-password` never goes up the role ladder: it needs `canManageRole(actor, target)`,
+    so an Admin can't reset an Admin's or a Super Admin's password. Your own is always allowed.
+  - Tests: `src/app/api/team/__tests__/team-userid-routes.test.ts`.
 
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 

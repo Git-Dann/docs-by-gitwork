@@ -4,6 +4,8 @@ import { requireTeamAdmin } from "@/server/auth/team-admin";
 import { prisma } from "@/lib/prisma";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { ROLE_IDS } from "@/types/auth";
+import { archiveMember } from "@/server/team";
+import { recordAuditEntry } from "@/server/audit-log";
 
 const UpdateMemberSchema = z.object({
   name: z.string().min(1).optional(),
@@ -60,6 +62,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
+  // Archives, never deletes: the User row keeps who did what on tasks, leave and documents
+  // (§57). Same rules as Settings → Team: not yourself, not someone at or above your role,
+  // never the last active Super Admin. Restorable for 30 days.
   try {
     const actor = await requireTeamAdmin(req);
     const { userId } = await params;
@@ -68,21 +73,28 @@ export async function DELETE(
       return apiError("You cannot remove your own account", 400);
     }
 
-    const workspace = { id: actor.workspaceId };
     const target = await prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId: workspace.id, userId } },
+      where: { workspaceId_userId: { workspaceId: actor.workspaceId, userId } },
       select: { id: true },
     });
     if (!target) return apiError("Member not found", 404);
 
-    await prisma.workspaceMember.delete({
-      where: { workspaceId_userId: { workspaceId: workspace.id, userId } },
+    const archived = await archiveMember(target.id, actor);
+    if (!archived) return apiError("Member not found", 404);
+
+    await recordAuditEntry({
+      workspaceId: actor.workspaceId,
+      actorId: actor.id,
+      action: "team.member.archived",
+      target: `member:${target.id}`,
+      metadata: { memberId: target.id, userId, via: "DELETE /api/team/[userId]" },
     });
 
-    await prisma.user.delete({ where: { id: userId } });
-
-    return apiOk({ ok: true });
+    return apiOk({ ok: true, archived: true });
   } catch (err) {
+    if (err instanceof Error && err.message.includes("last active Super Admin")) {
+      return apiError(err.message, 400);
+    }
     return fromError(err);
   }
 }
