@@ -1,0 +1,76 @@
+name: Foundry watchdog
+
+# Foundry's own uptime monitors run ON the Foundry VPS, so if that box goes down nothing in
+# Foundry can say so. This checks it from outside — GitHub's runners — every five minutes.
+#
+# - Down: the run FAILS, and GitHub emails whoever last edited this schedule. If the
+#   `SLACK_OPS_WEBHOOK_URL` secret is set (a Slack incoming webhook for #ops), it also posts
+#   there — once per outage: only when the previous run passed.
+# - Back up: posts once to Slack (if configured) when the previous run had failed.
+#
+# GitHub's scheduler can run a few minutes late under load; this is the backstop for "the
+# whole box is gone", not the main alerting (that is Foundry's own monitors, every minute).
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: foundry-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check Foundry
+        id: probe
+        run: |
+          # Two tries 30s apart, so one dropped connection is not an outage.
+          for attempt in 1 2; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 https://foundry.gitwork.co.uk/api/health || echo 000)
+            echo "attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then echo "up=true" >> "$GITHUB_OUTPUT"; echo "code=$code" >> "$GITHUB_OUTPUT"; exit 0; fi
+            [ "$attempt" = "1" ] && sleep 30
+          done
+          echo "up=false" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Previous result
+        id: prev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow foundry-watchdog.yml --status completed --limit 1 --json conclusion -q '.[0].conclusion' || echo "")
+          echo "previous run: ${prev:-none}"
+          echo "conclusion=$prev" >> "$GITHUB_OUTPUT"
+
+      - name: Tell Slack (down, once)
+        if: steps.probe.outputs.up == 'false' && steps.prev.outputs.conclusion != 'failure'
+        env:
+          WEBHOOK: ${{ secrets.SLACK_OPS_WEBHOOK_URL }}
+          CODE: ${{ steps.probe.outputs.code }}
+        run: |
+          [ -z "$WEBHOOK" ] && { echo "No SLACK_OPS_WEBHOOK_URL set — GitHub's failure email is the alert."; exit 0; }
+          why=$([ "$CODE" = "000" ] && echo "no response" || echo "HTTP $CODE")
+          curl -s -X POST -H 'Content-type: application/json' --data "{\"text\":\"🔴 *Incident: Down*\n*Foundry is not responding* ($why)\nChecked from outside the server, so Foundry's own alerts can't fire. https://foundry.gitwork.co.uk/api/health\"}" "$WEBHOOK"
+
+      - name: Tell Slack (back up)
+        if: steps.probe.outputs.up == 'true' && steps.prev.outputs.conclusion == 'failure'
+        env:
+          WEBHOOK: ${{ secrets.SLACK_OPS_WEBHOOK_URL }}
+        run: |
+          [ -z "$WEBHOOK" ] && exit 0
+          curl -s -X POST -H 'Content-type: application/json' --data '{"text":"✅ *Incident: Resolved*\n*Foundry is back up.*"}' "$WEBHOOK"
+
+      - name: Fail when down
+        if: steps.probe.outputs.up == 'false'
+        run: |
+          echo "::error::Foundry did not answer /api/health with 200 (got ${{ steps.probe.outputs.code }})"
+          exit 1

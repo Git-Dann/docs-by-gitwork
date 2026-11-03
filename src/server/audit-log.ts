@@ -20,12 +20,22 @@ export type AuditAction =
   | "settings.defaults.updated"
   | "settings.pulse_pricing.updated"
   | "settings.pulse_embed.updated"
+  // Platform console (src/server/platform) — Gitwork acting on a business
+  | "platform.workspace.settings_changed"
   // Team
   | "team.member.invited"
   | "team.member.role_changed"
   | "team.member.removed"
+  | "team.member.archived"
+  | "team.member.restored"
+  | "team.member.reinstated"
+  | "team.member.purged"
   | "team.password.reset"
   | "roles.matrix.updated"
+  // Staff (people without a login; members go through team.member.*)
+  | "staff.record.archived"
+  | "staff.record.restored"
+  | "staff.record.deleted"
   // Integrations
   | "integration.google.connected"
   | "integration.google.disconnected"
@@ -44,6 +54,8 @@ export type AuditAction =
   | "foundry.proposal_draft.prepared"
   | "foundry.onboarding_link.prepared"
   | "foundry.client.activated"
+  | "foundry.client.restored"
+  | "foundry.client.purged"
   | "foundry.client.team_auto_unassigned"
   | "foundry.delivery_plan.seeded"
   | "foundry.nudge.updated"

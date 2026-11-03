@@ -45,6 +45,12 @@ function context(overrides: Partial<ExtendedCheckContext> = {}): ExtendedCheckCo
   };
 }
 
+/** The page Heroku serves for a CNAME whose app no longer exists: what makes a CNAME dangling. */
+function herokuGoneContext(): ExtendedCheckContext {
+  const html = "<html><body><h1>No such app</h1></body></html>";
+  return context({ pageResult: { ok: false, status: 404, headers: {}, html, responseTimeMs: 10, finalUrl: "https://example.test" }, htmlLower: html.toLowerCase() });
+}
+
 const statusOf = (checks: { checkKey: string; status: string }[], key: string) =>
   checks.find((check) => check.checkKey === key)?.status;
 const detailOf = (checks: { checkKey: string; detail?: string }[], key: string) =>
@@ -213,8 +219,14 @@ describe("subdomain takeover — a failed CNAME lookup is not a clean result", (
 
   it("still FAILs on a real dangling CNAME", async () => {
     vi.stubGlobal("fetch", dnsResponder({ "example.test:CNAME": ["abandoned.herokuapp.com."] }));
-    const checks = await runSecurityExtended(context());
+    const checks = await runSecurityExtended(herokuGoneContext());
     expect(statusOf(checks, "subdomain_takeover_risk")).toBe("FAIL");
+  });
+
+  it("a CNAME into Heroku that still serves an app is how Heroku is hosted, not a takeover", async () => {
+    vi.stubGlobal("fetch", dnsResponder({ "example.test:CNAME": ["live-app.herokuapp.com."] }));
+    const checks = await runSecurityExtended(context());
+    expect(statusOf(checks, "subdomain_takeover_risk")).toBe("PASS");
   });
 });
 
@@ -323,7 +335,7 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
   // previously reported every one of them as a finding: no SPF, no DKIM, no MX.
   const EMAIL_DNS_KEYS = [
     "dkim_record_present", "bimi_record_present", "mta_sts_policy", "tls_rpt_record",
-    "spf_hardfail", "dmarc_quarantine_reject", "email_mx_present", "spf_single_record",
+    "spf_hardfail", "dmarc_quarantine_reject", "spf_single_record",
     "dmarc_aggregate_reporting", "dmarc_full_coverage", "tls_rpt_destination",
     "transactional_subdomain",
   ];
@@ -340,8 +352,29 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
     vi.stubGlobal("fetch", dnsResponder({}));
     const checks = await runEmailDeliverabilityChecks(context());
     for (const key of EMAIL_DNS_KEYS) {
+      // No TLS-RPT record means there is no destination to judge: `tls_rpt_record` reports the
+      // absence, and a second WARN here used to contradict it ("has no valid destination").
+      if (key === "tls_rpt_destination") continue;
+      // BIMI is an optional brand logo, not a defect when absent.
+      if (key === "bimi_record_present") continue;
+      // With no mail records at all there is nothing to say about a sending subdomain.
+      if (key === "transactional_subdomain") continue;
+      // A DKIM selector can be named anything, so nothing at the four common ones is not
+      // absence (dkim-record.ts).
+      if (key === "dkim_record_present") continue;
       expect(statusOf(checks, key), key).toBe("WARN");
     }
+    expect(statusOf(checks, "dkim_record_present")).toBe("INCONCLUSIVE");
+    expect(statusOf(checks, "tls_rpt_destination")).toBe("NOT_APPLICABLE");
+    expect(statusOf(checks, "bimi_record_present")).toBe("NOT_APPLICABLE");
+    expect(statusOf(checks, "transactional_subdomain")).toBe("INCONCLUSIVE");
+  });
+
+  it("accepts an https: TLS-RPT destination (RFC 8460 §3) and still WARNs on a record with none", async () => {
+    vi.stubGlobal("fetch", dnsResponder({ "_smtp._tls.example.test:TXT": ['"v=TLSRPTv1; rua=https://reports.example.test/tlsrpt"'] }));
+    expect(statusOf(await runEmailDeliverabilityChecks(context()), "tls_rpt_destination")).toBe("PASS");
+    vi.stubGlobal("fetch", dnsResponder({ "_smtp._tls.example.test:TXT": ['"v=TLSRPTv1;"'] }));
+    expect(statusOf(await runEmailDeliverabilityChecks(context()), "tls_rpt_destination")).toBe("WARN");
   });
 
   it("still PASSes on real records", async () => {
@@ -352,7 +385,6 @@ describe("email deliverability — a resolver blip is not a broken mail setup", 
     }));
     const checks = await runEmailDeliverabilityChecks(context());
     expect(statusOf(checks, "spf_hardfail")).toBe("PASS");
-    expect(statusOf(checks, "email_mx_present")).toBe("PASS");
     expect(statusOf(checks, "dmarc_quarantine_reject")).toBe("PASS");
   });
 });
@@ -369,7 +401,8 @@ describe("CAA and DNSSEC — the same rule as their siblings", () => {
     vi.stubGlobal("fetch", dnsResponder({}));
     const checks = await runSecurityExtended(context());
     expect(statusOf(checks, "caa_dns_record")).toBe("WARN");
-    expect(statusOf(checks, "dnssec_enabled")).toBe("WARN");
+    // Unsigned is how most of the web runs: good practice, not a defect.
+    expect(statusOf(checks, "dnssec_enabled")).toBe("NOT_APPLICABLE");
   });
 });
 
@@ -392,7 +425,7 @@ describe("a resolver rcode failure reaches the checks, and NXDOMAIN still doesn'
   it("does not claim a broken mail setup on REFUSED", async () => {
     vi.stubGlobal("fetch", dnsResponder({}, "refused"));
     const checks = await runEmailDeliverabilityChecks(context());
-    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "email_mx_present", "dkim_record_present"]) {
+    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "dkim_record_present"]) {
       expect(statusOf(checks, key), key).toBe("INCONCLUSIVE");
     }
   });
@@ -421,14 +454,14 @@ describe("a resolver rcode failure reaches the checks, and NXDOMAIN still doesn'
   it("still reports genuinely absent mail records when the resolver answered NXDOMAIN", async () => {
     vi.stubGlobal("fetch", dnsResponder({}, "nxdomain"));
     const checks = await runEmailDeliverabilityChecks(context());
-    for (const key of ["spf_hardfail", "dmarc_quarantine_reject", "email_mx_present"]) {
+    for (const key of ["spf_hardfail", "dmarc_quarantine_reject"]) {
       expect(statusOf(checks, key), key).toBe("WARN");
     }
   });
 
   it("still FAILs on a dangling CNAME returned with an explicit NOERROR", async () => {
     vi.stubGlobal("fetch", dohResponder(0, ["abandoned.herokuapp.com."]));
-    const checks = await runSecurityExtended(context());
+    const checks = await runSecurityExtended(herokuGoneContext());
     expect(statusOf(checks, "subdomain_takeover_risk")).toBe("FAIL");
   });
 });

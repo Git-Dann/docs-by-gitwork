@@ -90,7 +90,7 @@ const SHAPE_LABEL: Record<CoverageShape, string> = {
   tauri: "a Tauri desktop app",
   cli: "a CLI / published npm package",
   "chrome-extension": "a browser extension",
-  none: "a general web or service project",
+  none: "a project that matches none of Pulse's platform families",
 };
 
 /**
@@ -105,18 +105,56 @@ export function buildPlatformCoverageCheck(input: {
   selectedPlatform: string;
   inputType: CoverageInputType;
   detectedShape: CoverageShape | null;
+  /** Set when the URL is a store listing. */
+  storeTarget?: "app_store" | "play_store" | "chrome_web_store";
 }): PulseScanCheckInput | null {
   const selected = (input.selectedPlatform ?? "").toUpperCase();
   const spec = PLATFORM_FAMILIES[selected];
-
-  // A web-shaped selection is fully served by the URL suite — nothing to report.
-  if (!spec) return null;
 
   const base = {
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "platform_family_coverage",
     label: "Platform-specific checks ran for this project",
   } as const;
+
+  // ── A web-type selection on a repo that is something else ──────────────────
+  // Detection wins (the iOS checks run on an iOS repo whatever was picked), but a
+  // silent override reads as a bug, so the mismatch is said once.
+  if (!spec) {
+    const detected = input.detectedShape ?? "none";
+    const detectedSpec = Object.values(PLATFORM_FAMILIES).find((family) => family.shapes.includes(detected));
+    if (input.inputType !== "GITHUB_REPO" || !detectedSpec) return null;
+    return {
+      ...base,
+      status: "WARN",
+      confidence: "HIGH",
+      detail:
+        `You selected "${selected.replace(/_/g, " ").toLowerCase()}", but this repository is ${SHAPE_LABEL[detected]}. ` +
+        `The ${detectedSpec.count} ${detectedSpec.label} checks ran instead, and web-only checks were left out — detection ` +
+        `wins over the dropdown, so the findings are about what this repo actually is. Change the selection so the report is labelled correctly.`,
+      evidence: `selected ${selected || "none"}, detected ${detected}`,
+    };
+  }
+
+  // ── A store listing: the app, seen from its listing ────────────────────────
+  // Said about the APP, because that is what was scanned. The earlier wording ("you
+  // scanned this as …, but … none of that is visible from a URL") read as though the
+  // user had picked the wrong input, when a store link is exactly the right way to
+  // assess a store listing.
+  if (input.inputType !== "GITHUB_REPO" && input.storeTarget) {
+    const store = { app_store: "App Store", play_store: "Google Play", chrome_web_store: "Chrome Web Store" }[input.storeTarget];
+    const product = { app_store: "an iOS app", play_store: "an Android app", chrome_web_store: "a Chrome extension" }[input.storeTarget];
+    return {
+      ...base,
+      status: "SKIPPED",
+      confidence: "HIGH",
+      detail:
+        `This is ${product}, assessed from its ${store} listing — what the store publishes about it. ` +
+        `The ${spec.count} ${spec.label} checks that read the app's source (token storage, build configuration, ` +
+        `release logging, permissions) need its code, which a listing does not show. To add them, scan the app's ` +
+        `GitHub repository. Nothing here is a pass or a failure for those checks: they did not run.`,
+    };
+  }
 
   // ── Scanned a URL, but the family needs source ─────────────────────────────
   if (input.inputType !== "GITHUB_REPO") {
@@ -157,7 +195,7 @@ export function buildPlatformCoverageCheck(input: {
       `${SHAPE_LABEL[detected]}. ${detectedSpec
         ? `The ${detectedSpec.label} family ran instead — detection wins over the dropdown, so the findings above are ` +
           `about what this repo actually is, not what was selected.`
-        : `No platform-specific family applies to it, so only the generic repo checks ran.`} ` +
+        : `No platform-specific family matched it, so only the generic repo checks ran.${selected === "CLI_TOOL" ? ` (The ${spec.label} family detects npm-style packages only; a CLI written in another language, such as Rust or Go, is not covered by it.)` : ""}`} ` +
       `The ${spec.count} ${spec.label} checks did NOT run. If the ${spec.label} code lives in a different ` +
       `repository — a common split for cross-platform products — scan that one separately; if this is the right ` +
       `repo, change the selection so the report is labelled correctly.`,

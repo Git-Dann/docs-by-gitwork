@@ -24,6 +24,7 @@ const IntegrationsTab = dynamic(() => import("@/components/settings-panel").then
 const AgentsPanel = dynamic(() => import("@/components/settings/agents-panel").then((m) => ({ default: m.AgentsPanel })));
 const ChecksPanel = dynamic(() => import("@/components/settings/checks-panel").then((m) => ({ default: m.ChecksPanel })));
 const CuratorPanel = dynamic(() => import("@/components/settings/curator/curator-panel").then((m) => ({ default: m.CuratorPanel })));
+const AppearancePanel = dynamic(() => import("@/components/settings/appearance-panel").then((m) => ({ default: m.AppearancePanel })));
 const ForemanPanel = dynamic(() => import("@/components/settings/foreman/foreman-panel").then((m) => ({ default: m.ForemanPanel })));
 const DeveloperTab = dynamic<{ apiKeyConfigured: boolean }>(() =>
   import("@/components/settings-panel").then((m) => ({ default: m.DeveloperTab })),
@@ -59,6 +60,7 @@ const VALID_SECTIONS: SettingsSectionId[] = [
   "checks",
   "curator",
   "foreman",
+  "appearance",
   "mcp",
   "agents-checks", // legacy — redirects to "agents"
   "labs", // internal/experimental entry points (Super Admin) — see labs-panel.tsx
@@ -86,6 +88,7 @@ const ADMIN_ONLY_SECTIONS = new Set<SettingsSectionId>([
   "onboarding",
   "launchpad",
   "foreman",
+  "appearance",
 ]);
 
 // Old standalone routes now live in different sections — redirect for back-compat.
@@ -111,8 +114,6 @@ const PEOPLE_REDIRECTS: Partial<Record<SettingsSectionId, string>> = {
 // grant/remove each per role; ADMIN holds them all by default (see DEFAULT_ROLE_PERMISSIONS).
 const SETTINGS_SECTION_PERMISSION: Partial<Record<SettingsSectionId, string>> = {
   general: "settings.general",
-  branding: "settings.branding",
-  content: "settings.content",
   templates: "settings.templates",
   integrations: "settings.integrations",
   agents: "settings.agents",
@@ -205,6 +206,10 @@ const SECTION_META: Record<SettingsSectionId, { title: string; subtitle: string 
   foreman: {
     title: "Foreman",
     subtitle: "The daily delivery-risk watchdog — overdue and at-risk projects and developers, pushed to your Desk at 09:00.",
+  },
+  appearance: {
+    title: "Appearance",
+    subtitle: "Seasonal themes for the whole workspace.",
   },
   // Legacy URL — present in the meta so the type stays exhaustive; the page-level
   // redirect (PEOPLE_REDIRECTS) catches this slug before this meta is ever read.
@@ -350,6 +355,7 @@ export default async function SettingsSectionPage({
         {sectionId === "checks" ? <ChecksPanel /> : null}
         {sectionId === "curator" ? <CuratorPanel /> : null}
         {sectionId === "foreman" ? <ForemanPanel /> : null}
+        {sectionId === "appearance" ? <AppearancePanel /> : null}
         {sectionId === "labs" ? <LabsPanel /> : null}
         {sectionId === "audit" ? <AuditLogSection /> : null}
         {sectionId === "developer" ? <DeveloperTab apiKeyConfigured={apiKeyConfigured} /> : null}

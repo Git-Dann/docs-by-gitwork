@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatDate, taskRef } from "@/lib/format";
 import { useTaskAttention } from "@/hooks/use-tasks";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 export function OverdueTasksCard() {
   const { data, isLoading } = useTaskAttention();
@@ -24,7 +25,7 @@ export function OverdueTasksCard() {
 
       <div className="widget-body space-y-1.5">
         {isLoading ? (
-          <div className="h-24 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-24 rounded-[8px]" />
         ) : overdue.length === 0 ? (
           <p className="py-6 text-center text-xs text-[var(--text-4)]">Nothing overdue — nice.</p>
         ) : (

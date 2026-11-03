@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import {
@@ -97,8 +98,8 @@ export function MilestoneFormModal({
             <input autoFocus className="app-input w-full" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Beta launch" />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Date</label>
-            <input type="date" className="app-input w-full" value={date} onChange={(e) => setDate(e.target.value)} />
+            <label htmlFor="milestone-form-date" className="mb-1 block text-xs font-medium text-[var(--text-2)]">Date</label>
+            <DatePicker id="milestone-form-date" className="w-full" value={date} onChange={setDate} />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">

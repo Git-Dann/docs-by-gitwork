@@ -70,3 +70,6 @@ __pycache__/
 
 # Scratch copy of supplied references (client PDFs live here; not for git history)
 .gitwork-reference/
+
+# Written by npm run test:isolation on every run; the committed record is known-leaks.json.
+tests/isolation/.report.md

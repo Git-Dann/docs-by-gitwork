@@ -1,6 +1,10 @@
+import type { CodeHealthReport } from "@/types/code-health";
+import { enrichCodeHealth } from "@/server/code-health/enrich";
+import { NotFoundError, canSeeAllClients, type EffectiveUser, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { Prisma } from "@prisma/client";
 import { resolveDocumentOwnerName, type DocumentOwnerIdentity } from "@/lib/document-owner";
 import { prisma } from "@/lib/prisma";
+import { assignedClientIds } from "@/server/tasks";
 import { dispatchNotification } from "@/server/notifications";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
@@ -17,8 +21,10 @@ import { resolveTargetMarkets, isJurisdictionCode, type JurisdictionCode } from 
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage, type CollectorExecution } from "@/server/pulse-checks/collector-health";
-import { evaluateReleaseGate, DEFAULT_GATE_POLICY } from "@/server/pulse-checks/release-decision";
-import { diffChecks } from "@/server/pulse-checks/scan-diff";
+import { evaluateReleaseGate, resolveGatePolicy } from "@/server/pulse-checks/release-decision";
+import { detectStoreTarget, isPlaceholderStoreName, provisionalStoreProjectName, resolveScanPlatform } from "@/lib/pulse-store-url";
+import { describeDiff, diffChecks } from "@/server/pulse-checks/scan-diff";
+import { applyFindingCounts, buildProjects, sortProjects, targetKey, type PulseProject } from "@/lib/pulse-projects";
 import { computePricingBandsForWorkspace } from "@/server/pulse-pricing";
 import { analyseWithClaude, generateDiscoveryKit, generateCompetitorComparison } from "@/server/pulse-ai";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
@@ -26,6 +32,7 @@ import { runAuthAgent } from "@/server/pulse-agents/auth-agent";
 import type { AuthPageContent } from "@/server/pulse-agents/auth-agent";
 import { runUrlChecks } from "@/server/pulse-scan";
 import { reconcilePulseTasksAfterScan } from "@/server/tasks";
+import { countOpenFindingsForScans } from "@/server/pulse-findings";
 import {
   sendPulseScanCompletedPush,
   sendPulseScanFailedPush,
@@ -52,8 +59,10 @@ import type {
 } from "@/types/pulse";
 import { runVisualAgent } from "@/server/pulse-agents/visual-agent";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor } from "@/server/ai-keys";
 import { loadCheckPolicy } from "@/server/check-config";
 import { assertScannableUrl } from "@/server/pulse-lite/url-guard";
+import { readSecret } from "@/server/stored-secret";
 
 export const pulseInclude = {
   client: {
@@ -96,6 +105,7 @@ export function serializePulseScan(record: PulseScanDbRecord): PulseScanRecord {
     llmAnalysis: asJson<PulseAnalysisOutput | null>(record.llmAnalysis, null),
     discoveryKit: (record.discoveryData as DiscoveryKit | null) ?? null,
     codeInsights: ((record.agentData as { codeInsights?: CodeAgentInsights | null } | null)?.codeInsights) ?? null,
+    codeHealth: ((record.agentData as { codeHealth?: CodeHealthReport | null } | null)?.codeHealth) ?? null,
     deployInsights: ((record.agentData as { deployInsights?: DeployAgentInsights | null } | null)?.deployInsights) ?? null,
     browserInsights: ((record.agentData as { browserInsights?: BrowserAgentInsights | null } | null)?.browserInsights) ?? null,
     visualInsights: ((record.agentData as { visualInsights?: VisualAgentInsights | null } | null)?.visualInsights) ?? null,
@@ -174,6 +184,8 @@ export function serializePulseScanListItem(
 export async function listPulseScans(params?: {
   clientId?: string;
   clientIds?: string[] | null;
+  /** Also include scans this user started, whatever client they belong to. */
+  triggeredByUserId?: string | null;
 }): Promise<PulseScanListItem[]> {
   const workspace = await prisma.workspace.findFirst({
     where: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -181,11 +193,28 @@ export async function listPulseScans(params?: {
   });
   if (!workspace) return [];
 
+  // Scoping is "scans for a client I'm assigned to, OR a scan I ran myself".
+  //
+  // ⚠️ The second half is load-bearing and was missing. A standalone URL scan has NO
+  // clientId, so a viewer scoped by `clientIds` could never see one — and a guest, who
+  // has no client assignments at all, matched `clientId IN ("__none__")` and saw an
+  // empty list however many scans they had just run. Prospecting from a URL is the
+  // whole point of a Pulse guest, so "I ran it" has to be a way in.
+  const mine = params?.triggeredByUserId;
+  const scopedByClient =
+    params?.clientIds != null
+      ? { clientId: { in: params.clientIds.length ? params.clientIds : ["__none__"] } }
+      : null;
+
   const scans = await prisma.pulseScan.findMany({
     where: {
       workspaceId: workspace.id,
       ...(params?.clientId ? { clientId: params.clientId } : {}),
-      ...(params?.clientIds ? { clientId: { in: params.clientIds.length ? params.clientIds : ["__none__"] } } : {}),
+      ...(scopedByClient
+        ? mine
+          ? { OR: [scopedByClient, { triggeredByUserId: mine }] }
+          : scopedByClient
+        : {}),
     },
     include: {
       client: { select: { name: true } },
@@ -196,9 +225,108 @@ export async function listPulseScans(params?: {
   return scans.map(serializePulseScanListItem);
 }
 
-/** Lower-cased target key for a scan — the unit a trend / monitor is keyed on. */
-function scanTargetKey(scan: { inputUrl: string | null; inputGithubRepo: string | null; projectName: string }): string {
-  return (scan.inputUrl ?? scan.inputGithubRepo ?? scan.projectName).toLowerCase().trim();
+/**
+ * May this user read this scan?
+ *
+ * Mirrors `listPulseScans`' scoping exactly — assigned client, or you ran it — because
+ * a list that hides a row and a detail route that serves it are the same bug wearing
+ * two hats. Reads the two authorisation fields straight from the row rather than the
+ * serialized record, so `triggeredByUserId` never has to be added to a DTO that ships
+ * to the browser.
+ *
+ * A null user is the trusted API_KEY / server caller and passes, matching every other
+ * gate in this codebase.
+ */
+/**
+ * Throw unless this caller may act on this scan.
+ *
+ * ⚠️ Every `/api/pulse/scans/[scanId]/*` sub-route took the id from the URL and acted on
+ * it with no check at all — retry, cancel, re-analyse, diff, history, benchmarks,
+ * generate-proposal. Gating the parent GET alone was pointless: the siblings are the
+ * ones that SPEND tokens and WRITE. One shared guard, so a new sub-route inherits the
+ * rule instead of having to remember it.
+ *
+ * 404, not 403 — the id is the only thing being probed, so confirming a scan exists is
+ * itself the disclosure.
+ */
+/**
+ * The one line a scan sub-route needs: resolve the caller, check they may touch this
+ * scan, throw 404 if not.
+ *
+ * Wraps `assertPulseScanAccess` so a route does not repeat the user resolution and the
+ * assigned-clients closure. The first cut of this pasted eight lines into thirteen
+ * routes, and `code-cleanliness` correctly flagged it as duplicated logic.
+ */
+export async function requireScanAccess(request: Request, scanId: string): Promise<void> {
+  const user = await getEffectiveUserOrNull(request);
+  await assertPulseScanAccess(user, scanId, async () => (user ? assignedClientIds(user) : []));
+}
+
+export async function assertPulseScanAccess(
+  user: EffectiveUser | null,
+  scanId: string,
+  assignedIds: () => Promise<string[]>,
+): Promise<void> {
+  if (!user) return;
+  if (canSeeAllClients(user)) return;
+  if (await canViewPulseScan(user, scanId, assignedIds)) return;
+  throw new NotFoundError("Scan not found.");
+}
+
+export async function canViewPulseScan(
+  user: EffectiveUser | null,
+  scanId: string,
+  assignedIds: () => Promise<string[]>,
+): Promise<boolean> {
+  if (!user) return true;
+  const row = await prisma.pulseScan.findUnique({
+    where: { id: scanId },
+    select: { clientId: true, triggeredByUserId: true },
+  });
+  if (!row) return false;
+  if (row.triggeredByUserId === user.id) return true;
+  if (!row.clientId) return false; // a standalone scan someone else ran
+  return (await assignedIds()).includes(row.clientId);
+}
+
+/** The target a trend / monitor is keyed on: one rule everywhere (src/lib/pulse-projects.ts). */
+const scanTargetKey = targetKey;
+
+/**
+ * Completed scans of the same target as `scan`, oldest first, matched with the shared
+ * `targetKey` rule. History and diff used to match the raw URL exactly, so a scan of
+ * `example.com/` had no history with `Example.com`.
+ */
+async function sameTargetScans(scan: { workspaceId: string; inputType: string; inputUrl: string | null; inputGithubRepo: string | null; projectName: string }) {
+  const key = targetKey(scan);
+  const rows = await prisma.pulseScan.findMany({
+    where: { workspaceId: scan.workspaceId, status: "COMPLETED", inputType: scan.inputType as Prisma.PulseScanWhereInput["inputType"] },
+    orderBy: { completedAt: "asc" },
+    select: { id: true, completedAt: true, healthScore: true, inputUrl: true, inputGithubRepo: true, projectName: true },
+  });
+  return rows.filter((r) => targetKey(r) === key);
+}
+
+/** Every project (one per scanned target), most urgent first, scoped like the scan list. */
+export async function getPulseProjects(params?: { clientIds?: string[] | null; triggeredByUserId?: string | null }): Promise<PulseProject[]> {
+  return withOpenFindings(buildProjects(await listPulseScans(params)));
+}
+
+/** Each project's open-findings figure, for its newest completed scan, in one batched read. */
+async function withOpenFindings(projects: PulseProject[]): Promise<PulseProject[]> {
+  const ids = projects.map((p) => p.latestCompletedScanId).filter((x): x is string => Boolean(x));
+  const counts = await countOpenFindingsForScans(ids);
+  return sortProjects(projects.map((p) => applyFindingCounts(p, p.latestCompletedScanId ? counts.get(p.latestCompletedScanId) ?? null : null)));
+}
+
+/** Every scan of one project, newest first, scoped like the scan list. Null when the project is not visible. */
+export async function getProjectScans(
+  key: string,
+  params?: { clientIds?: string[] | null; triggeredByUserId?: string | null },
+): Promise<{ project: PulseProject; scans: PulseScanListItem[] } | null> {
+  const scans = (await listPulseScans(params)).filter((s) => targetKey(s) === key);
+  if (scans.length === 0) return null;
+  return { project: (await withOpenFindings(buildProjects(scans)))[0], scans };
 }
 
 /**
@@ -338,21 +466,10 @@ export async function renamePulseScan(id: string, projectName: string): Promise<
 export async function getScanHistory(scanId: string): Promise<{ id: string; completedAt: string | null; healthScore: number | null }[]> {
   const scan = await prisma.pulseScan.findUnique({
     where: { id: scanId },
-    select: { workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true },
+    select: { workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, projectName: true },
   });
-  if (!scan) return [];
-  const target =
-    scan.inputType === "URL" && scan.inputUrl ? { inputUrl: scan.inputUrl } :
-    scan.inputType === "GITHUB_REPO" && scan.inputGithubRepo ? { inputGithubRepo: scan.inputGithubRepo } :
-    null;
-  if (!target) return [];
-
-  const rows = await prisma.pulseScan.findMany({
-    where: { workspaceId: scan.workspaceId, status: "COMPLETED", healthScore: { not: null }, ...target },
-    orderBy: { completedAt: "asc" },
-    take: 20,
-    select: { id: true, completedAt: true, healthScore: true },
-  });
+  if (!scan || scan.inputType === "FREE_TEXT") return [];
+  const rows = (await sameTargetScans(scan)).filter((r) => r.healthScore !== null);
   return rows.slice(-12).map((r) => ({ id: r.id, completedAt: r.completedAt?.toISOString() ?? null, healthScore: r.healthScore }));
 }
 
@@ -422,28 +539,29 @@ export async function recordStarterOutcomeIfApplicable(scanId: string): Promise<
  * probe that could not complete would be able to close a finding. `DiffCheck`
  * requires it so narrowing this select is a compile error.
  */
-export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null> {
+export async function getScanDiff(scanId: string, againstScanId?: string | null): Promise<PulseScanDiff | null> {
+  const checkSelect = { select: { checkKey: true, label: true, category: true, status: true, confidence: true } } as const;
   const current = await prisma.pulseScan.findUnique({
     where: { id: scanId },
     select: {
-      workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, completedAt: true, healthScore: true,
-      checks: { select: { checkKey: true, label: true, category: true, status: true, confidence: true } },
+      workspaceId: true, inputType: true, inputUrl: true, inputGithubRepo: true, projectName: true, completedAt: true, healthScore: true,
+      checks: checkSelect,
     },
   });
-  if (!current || !current.completedAt) return null;
-  const target =
-    current.inputType === "URL" && current.inputUrl ? { inputUrl: current.inputUrl } :
-    current.inputType === "GITHUB_REPO" && current.inputGithubRepo ? { inputGithubRepo: current.inputGithubRepo } :
-    null;
-  if (!target) return null;
+  if (!current || !current.completedAt || current.inputType === "FREE_TEXT") return null;
 
+  // Against a chosen scan (any two can be compared), or else the one just before this one.
+  let prevId: string | null = null;
+  if (againstScanId) {
+    prevId = againstScanId;
+  } else {
+    const earlier = (await sameTargetScans(current)).filter((r) => r.completedAt && r.completedAt < current.completedAt!);
+    prevId = earlier[earlier.length - 1]?.id ?? null;
+  }
+  if (!prevId) return null;
   const prev = await prisma.pulseScan.findFirst({
-    where: { workspaceId: current.workspaceId, status: "COMPLETED", completedAt: { lt: current.completedAt }, ...target },
-    orderBy: { completedAt: "desc" },
-    select: {
-      id: true, completedAt: true, healthScore: true,
-      checks: { select: { checkKey: true, label: true, category: true, status: true, confidence: true } },
-    },
+    where: { id: prevId, workspaceId: current.workspaceId, status: "COMPLETED" },
+    select: { id: true, completedAt: true, healthScore: true, checks: checkSelect },
   });
   if (!prev) return null;
 
@@ -452,6 +570,10 @@ export async function getScanDiff(scanId: string): Promise<PulseScanDiff | null>
   return {
     previousScanId: prev.id,
     previousCompletedAt: prev.completedAt?.toISOString() ?? null,
+    previousScore: prev.healthScore,
+    currentScore: current.healthScore,
+    currentCompletedAt: current.completedAt.toISOString(),
+    summary: describeDiff(diff),
     scoreChange: (current.healthScore ?? 0) - (prev.healthScore ?? 0),
     fixed: diff.fixed,
     regressed: diff.regressed,
@@ -497,6 +619,10 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
     healthScore: number | null;
     generatedProposalId: string | null;
     llmAnalysis: Prisma.JsonValue;
+    inputUrl: string | null;
+    inputGithubRepo: string | null;
+    projectName: string;
+    createdAt: Date;
   };
 
   const [allScans, recentScansRaw] = await Promise.all([
@@ -508,6 +634,10 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
         healthScore: true,
         generatedProposalId: true,
         llmAnalysis: true,
+        inputUrl: true,
+        inputGithubRepo: true,
+        projectName: true,
+        createdAt: true,
       },
     }) as Promise<ScanSummary[]>,
     prisma.pulseScan.findMany({
@@ -518,7 +648,16 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
     }),
   ]);
 
-  const completed = (allScans as ScanSummary[]).filter((s: ScanSummary) => s.status === "COMPLETED");
+  const completedAll = (allScans as ScanSummary[]).filter((s: ScanSummary) => s.status === "COMPLETED");
+  // Each project counts once, at its latest score. Averaging every scan let a site scanned
+  // ten times count ten times, so the portfolio average tracked how often people re-scanned.
+  const latestPerTarget = new Map<string, ScanSummary>();
+  for (const sc of completedAll) {
+    const k = targetKey(sc);
+    const cur = latestPerTarget.get(k);
+    if (!cur || sc.createdAt > cur.createdAt) latestPerTarget.set(k, sc);
+  }
+  const completed = [...latestPerTarget.values()];
   const withScore = completed.filter((s: ScanSummary) => s.healthScore !== null);
 
   const avgHealthScore = withScore.length
@@ -541,7 +680,7 @@ export async function getPulseStats(): Promise<PulseStatsResponse> {
 
   return {
     totalScans: allScans.length,
-    completedScans: completed.length,
+    completedScans: completedAll.length,
     avgHealthScore,
     awaitingFollowUp: completed.filter((s: ScanSummary) => !s.generatedProposalId).length,
     totalCriticalGaps,
@@ -666,17 +805,23 @@ export async function createPulseScanRecord(input: {
    *  push to route the completion notification to a single user vs. the whole
    *  workspace. */
   triggeredByUserId?: string | null;
+  /** The workspace the scan belongs to, and whose AI settings it runs on. Omitted = the
+   *  Gitwork workspace, as every request-driven caller still is until Phase 2.2b. A scheduled
+   *  caller (monitors) passes the owner's, or a second business's scan would land in Gitwork. */
+  workspaceId?: string;
 }): Promise<{ scan: PulseScanRecord; aiConfig: { provider: "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null } }> {
-  const { workspace } = await ensureBaseRecords();
+  const workspace = input.workspaceId
+    ? await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } })
+    : (await ensureBaseRecords()).workspace;
   // Use only what the workspace has explicitly configured — no silent fallbacks.
   const p = (input.aiProvider ?? workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,
     apiKey: (() => {
-      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
-      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
+      if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
+      return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
            p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI) :
@@ -687,6 +832,12 @@ export async function createPulseScanRecord(input: {
              null,
   };
 
+  // A store link decides the platform: an App Store link is an iOS app and a Google
+  // Play link an Android app, whatever the picker was left on (it defaults to "Web
+  // app"). Stored that way, so the benchmark, the AI write-up and the report all see
+  // the app the user linked rather than a website called `apps.apple.com`.
+  const platform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+
   const previousScan = input.inputType !== "FREE_TEXT"
     ? await prisma.pulseScan.findFirst({
         where: {
@@ -694,23 +845,33 @@ export async function createPulseScanRecord(input: {
           status: "COMPLETED",
           ...(input.inputType === "URL" && input.inputUrl ? { inputUrl: input.inputUrl } : {}),
           ...(input.inputType === "GITHUB_REPO" && input.inputGithubRepo ? { inputGithubRepo: input.inputGithubRepo } : {}),
+          // Like for like: a scan graded as an iOS app's website is not comparable with a
+          // web-app scan of the same URL — different checks, different score.
+          ...(platform ? { platform } : {}),
         },
         orderBy: { createdAt: "desc" },
         select: { healthScore: true },
       })
     : null;
 
+  // A name Pulse made up for a store link (the store's host) becomes the readable
+  // name from the link now, and the store's own name once the listing is read. A
+  // name the user typed is left alone.
+  const projectName = input.inputType === "URL" && input.inputUrl && isPlaceholderStoreName(input.projectName, input.inputUrl)
+    ? provisionalStoreProjectName(input.inputUrl) ?? input.projectName
+    : input.projectName;
+
   const scan = await prisma.pulseScan.create({
     data: {
       workspaceId: workspace.id,
       clientId: input.clientId ?? null,
       triggeredByUserId: input.triggeredByUserId ?? null,
-      projectName: input.projectName,
+      projectName,
       inputType: input.inputType,
       inputUrl: input.inputUrl ?? null,
       inputGithubRepo: input.inputGithubRepo ?? null,
       inputDescription: input.inputDescription ?? null,
-      platform: input.platform ?? null,
+      platform: platform ?? null,
       status: "RUNNING",
       scanVersion: SCAN_VERSION,
       previousHealthScore: previousScan?.healthScore ?? null,
@@ -753,10 +914,10 @@ export async function retryPulseScan(scanId: string): Promise<{
   const aiConfig = {
     provider: p,
     apiKey: (() => {
-      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
-      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
+      if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
+      return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
            p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI) :
@@ -815,10 +976,10 @@ export async function reanalysePulseScan(
   const aiConfig = {
     provider: p,
     apiKey: (() => {
-      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
-      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
+      if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
+      return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI)
          : p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI)
@@ -859,7 +1020,9 @@ export async function reanalysePulseScan(
           inputUrl: existing.inputUrl,
           inputGithubRepo: existing.inputGithubRepo,
           inputDescription,
-          platform: existing.platform,
+          // Resolved, not read raw: a store scan stored before the link decided the
+          // platform carries WEB_APP, and re-analysing it as a website repeats the bug.
+          platform: (existing.inputType === "URL" ? resolveScanPlatform(existing.inputUrl, existing.platform) : existing.platform) ?? null,
           healthScore,
           techStack,
           checks,
@@ -959,10 +1122,13 @@ export async function runAnalysis(
     // bail out early rather than corrupting results with double-writes.
     const staleScan = await prisma.pulseScan.findUnique({
       where: { id: scanId },
-      select: { status: true, startedAt: true, targetMarkets: true, workspaceId: true },
+      select: { status: true, startedAt: true, targetMarkets: true, workspaceId: true, projectName: true },
     });
     if (staleScan && staleScan.status !== "RUNNING") return;
     const workspaceId = staleScan?.workspaceId;
+    // The platform the scan RUNS and is REPORTED as. See createPulseScanRecord.
+    const platform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+    let projectName = staleScan?.projectName ?? input.projectName;
     // User-declared markets the product serves (drives compliance filtering + scorecard).
     const declaredMarkets = (Array.isArray(staleScan?.targetMarkets) ? staleScan!.targetMarkets : [])
       .filter((m): m is string => typeof m === "string")
@@ -1018,10 +1184,18 @@ export async function runAnalysis(
     let techStack: string[] = [];
     let detectedMarkets: JurisdictionCode[] = [];
     let codeInsights: CodeAgentInsights | null = null;
+    let codeHealth: CodeHealthReport | null = null;
     let deployInsights: DeployAgentInsights | null = null;
     let browserInsights: BrowserAgentInsights | null = null;
     let visualInsights: VisualAgentInsights | null = null;
     let collectorExecutions: CollectorExecution[] = [];
+    let relevance: ScoreBreakdown["relevance"] | undefined;
+    // The platform the scan RAN as — detection's answer for a repo or store link.
+    let executedPlatform: string | undefined;
+    // A description has no artefact behind it: no checks, so no score and no verdict.
+    // It used to be stored as 0/100 and "INCONCLUSIVE · coverage 0%", which reads as a
+    // failed product rather than as "nothing was measured".
+    const isDescription = input.inputType === "FREE_TEXT";
 
     const checkPolicy = workspaceId ? await loadCheckPolicy(workspaceId) : undefined;
 
@@ -1035,7 +1209,7 @@ export async function runAnalysis(
         inputType: input.inputType,
         url: input.inputUrl,
         githubRepo: input.inputGithubRepo,
-        platform: input.platform,
+        platform,
         includePageSpeed: true,
         checkPolicy,
         targetMarkets: declaredMarkets.length > 0 ? declaredMarkets : undefined,
@@ -1044,10 +1218,27 @@ export async function runAnalysis(
       allChecks = lite.checks;
       techStack = lite.techStack;
       codeInsights = lite.codeInsights;
+      codeHealth = lite.codeHealth;
+      if (codeHealth && staleScan?.workspaceId && input.inputGithubRepo) {
+        codeHealth = await enrichCodeHealth(codeHealth, { scanId, workspaceId: staleScan.workspaceId, repo: input.inputGithubRepo });
+      }
       deployInsights = lite.deployInsights;
       browserInsights = lite.browserInsights;
       detectedMarkets = lite.detectedMarkets;
       collectorExecutions = lite.collectorExecutions;
+      relevance = lite.relevance;
+      executedPlatform = lite.executionPlatform;
+      // Store what the scan actually assessed. An iOS repo picked as "Web app" ran as iOS;
+      // filing it as WEB_APP made the report, the AI write-up and the benchmark describe a
+      // website. The selection is still visible in the coverage note.
+      if (executedPlatform && executedPlatform !== platform) {
+        await prisma.pulseScan.update({ where: { id: scanId }, data: { platform: executedPlatform } });
+      }
+      // A store link: file the scan under the app's own name once the listing says it.
+      if (lite.appName && input.inputUrl && isPlaceholderStoreName(projectName, input.inputUrl)) {
+        projectName = lite.appName;
+        await prisma.pulseScan.update({ where: { id: scanId }, data: { projectName } });
+      }
     }
 
     const healthScore = calculateHealthScore(allChecks);
@@ -1060,13 +1251,21 @@ export async function runAnalysis(
     const scoreBreakdown = {
       ...computeScoreBreakdown(allChecks),
       ...(collectorExecutions.length > 0 ? { collectors: collectorCoverage(collectorExecutions) } : {}),
+      ...(relevance ? { relevance } : {}),
     };
     // The release decision. Deterministic and computed from the checks and the
     // coverage above — no model output reaches it. Stored WITH its policy version,
     // so a scan read months later says which rules produced its answer rather than
     // being silently re-judged by whatever the policy has since become.
-    const gate = evaluateReleaseGate(allChecks, scoreBreakdown, DEFAULT_GATE_POLICY);
-    scoreBreakdown.gate = gate;
+    // Judged as what was scanned: a store link as the app it lists (release-decision.ts).
+    if (!isDescription) {
+      scoreBreakdown.gate = evaluateReleaseGate(allChecks, scoreBreakdown, resolveGatePolicy({
+        targetUrl: input.inputUrl,
+        inputType: input.inputType,
+        platform: executedPlatform ?? platform,
+        apiTarget: relevance?.target === "api",
+      }));
+    }
 
     // Compute AI Maturity Score (0–4) from AI Readiness check pass rate.
     // Only set when AI Readiness checks actually ran (not all SKIPPED).
@@ -1093,21 +1292,23 @@ export async function runAnalysis(
     await prisma.pulseScan.update({
       where: { id: scanId },
       data: {
-        healthScore,
+        healthScore: isDescription ? null : healthScore,
         checksCompletedAt: new Date(),
         techStack: techStack as unknown as Prisma.InputJsonValue,
-        agentData: { codeInsights, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, codeHealth, deployInsights, browserInsights } as unknown as Prisma.InputJsonValue,
         detectedMarkets: detectedMarkets.length > 0 ? (detectedMarkets as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         complianceScorecard: complianceScorecard.length > 0 ? (complianceScorecard as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
-        scoreBreakdown: scoreBreakdown as unknown as Prisma.InputJsonValue,
+        scoreBreakdown: isDescription ? Prisma.JsonNull : (scoreBreakdown as unknown as Prisma.InputJsonValue),
       },
     });
 
     // Wave D1 — Visual Quality scan (best-effort). Kick off now so its screenshot +
     // vision call run concurrently with the AI synthesis below; awaited before the
     // final persist. URL scans only; gated to the Anthropic provider inside the agent.
+    // A web PAGE only: a screenshot critique of Apple's listing page or of a JSON response
+    // says nothing about the product.
     const visualPromise: Promise<VisualAgentInsights | null> =
-      input.inputType === "URL" && input.inputUrl
+      input.inputType === "URL" && input.inputUrl && !detectStoreTarget(input.inputUrl) && relevance?.target !== "api"
         ? runVisualAgent(input.inputUrl, aiConfig, workspaceId).catch(() => null)
         : Promise.resolve(null);
 
@@ -1159,12 +1360,12 @@ export async function runAnalysis(
         const analysis = await withTimeout(
           analyseWithClaude(
             {
-              projectName: input.projectName,
+              projectName,
               inputType: input.inputType,
               inputUrl: input.inputUrl ?? null,
               inputGithubRepo: input.inputGithubRepo ?? null,
               inputDescription: input.inputDescription ?? null,
-              platform: input.platform ?? null,
+              platform: executedPlatform ?? platform ?? null,
               healthScore,
               techStack,
               checks: allChecks,
@@ -1212,7 +1413,7 @@ export async function runAnalysis(
         ? withTimeout(
             generateDiscoveryKit(
               {
-                projectName: input.projectName,
+                projectName,
                 projectType: llmAnalysis!.projectClassification.type,
                 healthScore,
                 proposalHook: llmAnalysis!.proposalHook,
@@ -1231,7 +1432,7 @@ export async function runAnalysis(
       competitorScans.length > 0 && llmAnalysis !== null
         ? withTimeout(
             generateCompetitorComparison(
-              { projectName: input.projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
+              { projectName, mainScore: healthScore, mainTechStack: techStack, competitors: competitorScans },
               aiConfig,
               workspaceId,
             ),
@@ -1280,7 +1481,7 @@ export async function runAnalysis(
         pricingBands: pricingBands.length > 0 ? (pricingBands as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         // Authenticated page signals are intentionally ephemeral. They are
         // locally redacted, used for this synthesis call, and never persisted.
-        agentData: { codeInsights, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
+        agentData: { codeInsights, codeHealth, deployInsights, browserInsights, visualInsights, aiError: aiError ?? undefined } as unknown as Prisma.InputJsonValue,
       },
     });
 

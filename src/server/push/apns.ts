@@ -22,6 +22,20 @@ const PRODUCTION_HOST = "https://api.push.apple.com";
 const SANDBOX_HOST = "https://api.sandbox.push.apple.com";
 const JWT_TTL_SECONDS = 50 * 60; // APNs allows up to 60min; renew slightly early
 
+/**
+ * APNs rejects an oversized payload outright — it does NOT truncate it.
+ *
+ * ⚠️ Worth being explicit about, because the intuition is usually the other way round:
+ * iOS truncates the *display* of a long alert, so it is natural to assume a long body
+ * is simply shortened. It is not. A payload over the limit is refused with 413
+ * `PayloadTooLarge` and the notification is never delivered — so a message long enough
+ * to be worth sending would be exactly the one that silently fails to arrive.
+ *
+ * 4096 bytes is Apple's documented maximum for an alert notification. Measured in
+ * BYTES, not characters: one emoji is four.
+ */
+export const APNS_MAX_PAYLOAD_BYTES = 4096;
+
 export type ApnsPushType = "alert" | "background" | "voip";
 
 export type ApnsAlert = {
@@ -87,9 +101,40 @@ function readConfig(): ApnsConfig | null {
   const isProduction = process.env.APNS_PRODUCTION === "true";
 
   if (!keyId || !teamId || !bundleId || !authKeyPem) {
+    warnUnconfiguredOnce([
+      !keyId && "APNS_KEY_ID",
+      !teamId && "APNS_TEAM_ID",
+      !bundleId && "APNS_BUNDLE_ID",
+      !authKeyPem && "APNS_AUTH_KEY",
+    ].filter((v): v is string => Boolean(v)));
     return null;
   }
   return { keyId, teamId, bundleId, authKeyPem, isProduction };
+}
+
+let warnedUnconfigured = false;
+
+/**
+ * Says so, once, when push is asked for and cannot happen.
+ *
+ * ⚠️ Every sender here already treats an unconfigured gateway as a quiet skip,
+ * which is right — a notification must never fail the work that triggered it.
+ * But quiet at BOTH ends means a server with no APNs config looks exactly like a
+ * server with nothing to send: no push ever arrives and nothing anywhere says
+ * why. That is the shape of defect this codebase keeps paying for — a missing
+ * secret that only reveals itself as a feature that silently does nothing
+ * (§35's GITHUB_TOKEN, §60's course feed).
+ *
+ * Once per process, so a busy standup morning does not fill the log.
+ */
+function warnUnconfiguredOnce(missing: string[]): void {
+  if (warnedUnconfigured) return;
+  warnedUnconfigured = true;
+  console.warn(
+    `[push] APNs is not configured — every push will be skipped. Missing: ${missing.join(", ")}. ` +
+      `The single-line vars sync from GitHub Actions secrets; APNS_AUTH_KEY is a multi-line PEM and ` +
+      `is set by hand in /opt/apps/foundry/.env.`,
+  );
 }
 
 // ─── Provider token (JWT) cache ─────────────────────────────────────────────

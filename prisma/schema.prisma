@@ -176,6 +176,10 @@ enum GitHubAnalysisScope {
 model User {
   id                        String                  @id @default(cuid())
   email                     String                  @unique
+  /// Gitwork's platform operators (the Platform console, /app/platform). Separate from
+  /// any workspace role: a customer's own Super Admin is never a platform admin. See
+  /// src/server/platform/admin.ts, which also honours a seed list of emails.
+  isPlatformAdmin           Boolean                 @default(false)
   name                      String?
   // ALWAYS a small value safe to embed in API payloads: an external https URL
   // (Google photo) or our served path `/api/avatars/{id}`. NEVER a base64 data
@@ -211,6 +215,10 @@ model User {
   absences                  Absence[]               @relation("AbsenceUser")
   absencesCreated           Absence[]               @relation("AbsenceCreator")
   absencesCovering          Absence[]               @relation("AbsenceCover")
+  handovers                 Handover[]              @relation("HandoverUser")
+  handoversCreated          Handover[]              @relation("HandoverCreator")
+  handoverItemsOwned        HandoverItem[]          @relation("HandoverItemOwner")
+  handoverItemsResolved     HandoverItem[]          @relation("HandoverItemResolver")
   expensesSubmitted         Expense[]               @relation("ExpenseClaimant")
   expensesReviewed          Expense[]               @relation("ExpenseReviewer")
   clientAssignments         ClientAssignment[]
@@ -237,6 +245,8 @@ model User {
   // shared org-wide sync (cron / Care Gmail ingest) — an admin sets that explicitly.
   googleOAuthRefreshToken   String?
   googleOAuthEmail          String?
+  teamMessagesAuthored  TeamMessage[]          @relation("TeamMessageAuthor")
+  teamMessagesReceived  TeamMessageRecipient[] @relation("TeamMessageRecipient")
 }
 
 // APNs device registrations. One row per (user, device).
@@ -281,6 +291,15 @@ model Workspace {
   id                          String                     @id @default(cuid())
   name                        String
   slug                        String                     @unique
+  /// Which modules this business has (src/lib/workspace-modules.ts). false = every
+  /// module (Gitwork, and every workspace created before the switch existed); true =
+  /// only `enabledModules`, refused even to the workspace's own Super Admins.
+  modulesRestricted           Boolean                    @default(false)
+  enabledModules              String[]                   @default([])
+  /// May this workspace fall back on the SERVER's AI keys (ANTHROPIC_API_KEY …)?
+  /// true for every workspace that existed before the switch (Gitwork). A new business
+  /// is created with false, so it only ever spends its own keys. src/server/ai-keys.ts.
+  platformAiKeysAllowed       Boolean                    @default(true)
   anthropicApiKey             String?
   anthropicModel              String?
   aiProvider                  String                     @default("ANTHROPIC")
@@ -351,6 +370,11 @@ model Workspace {
   curatorConfig               Json? // Curator settings: { enabled, staleAfterDays, archiveAfterDays, consolidate, intervalDays }
   foremanConfig               Json? // Foreman settings: { enabled, dueSoonDays, criticalOverdue, staleDoingDays, consolidate }
   dispatchConfig              Json? // Dispatch settings: { enabled, recentDays, maxEvidenceItems, perChannelPerHour, allowExternalChannels }
+  /// AI search (Pulse → AI search): { searchConsoleSite, ga4PropertyId }. Read through
+  /// parseAiSearchConfig (src/lib/ai-search.ts); read with the workspace Google service account.
+  aiSearchConfig              Json?
+  /// Pulse → AI search buyer questions (src/lib/ai-answers.ts). Null = the built-in examples, not yet saved.
+  aiAnswersConfig             Json?
   pulsePricingConfig          Json? // PulsePricingConfig — { fxFromUsd, dayRateOverrideGbp?, seniority? } for Pulse engagement pricing
   costingConfig               Json? // SavedCostingConfig — Studio Costing tool: advanced levers + editable per-dev cost rates (seeded from the Rate Card)
   /// Master switch for the public Pulse embed (/embed/pulse + its API routes). Off = all
@@ -386,6 +410,9 @@ model Workspace {
   /// any user can connect Claude (or any other MCP client). When off, the
   /// authorize/token endpoints return 503 and no new tokens issue.
   mcpEnabled                  Boolean                    @default(false)
+  /// Text edits to the brand guidelines at /guidelines, keyed `<pageId>:<field>`
+  /// (src/lib/guidelines/content.ts). Null = every page shows its default copy.
+  guidelinesOverrides         Json?
   // ── Docs → Google Drive backup ──────────────────────────────────────
   /// Master switch for the Docs Google Drive backup. Off by default; when on, the daily cron
   /// (and the best-effort on-share hook) mirror documents into Drive as native Google Docs.
@@ -419,6 +446,7 @@ model Workspace {
   rateCardPeople              RateCardPerson[]
   proofDocuments              ProofDocument[]
   candidates                  Candidate[]
+  suppliers                   Supplier[]
   pulseScans                  PulseScan[]
   pulseMonitors               PulseMonitor[]
   supportClients              SupportClient[]
@@ -433,6 +461,8 @@ model Workspace {
   aiResponseCache             AiResponseCache[]
   leaveRequests               LeaveRequest[]
   absences                    Absence[]
+  handovers                   Handover[]
+  handoverItems               HandoverItem[]
   expenses                    Expense[]
   clientAssignments           ClientAssignment[]
   tasks                       Task[]
@@ -469,6 +499,18 @@ model Workspace {
   /// Master switch for per-call AI usage logging (feeds the Super-Admin Analytics → AI usage
   /// scope). Default ON; a Super Admin can disable per-workspace. Never blocks the AI call.
   aiUsageLoggingEnabled       Boolean                    @default(true)
+  teamMessages TeamMessage[]
+  /// HR documents (docs/hr-platform.md): { selfUploadTypes: string[], driveEnabled: boolean }.
+  /// Read through parseHrDocumentSettings, never directly.
+  hrDocumentSettings          Json?
+  /// The "Foundry HR" root folder in the workspace's Drive, cached once made.
+  hrDriveFolderId             String?
+  /// ISO week ("2026-W45") the weekly HR digest last went out for (src/server/hr/digest.ts). Claimed before sending, so two runs can't both send.
+  hrDigestWeek                String?
+  /// Seasonal theme for the whole workspace (src/lib/seasonal-themes.ts), set by an Admin in
+  /// Settings → Appearance. Off by default; `seasonalTheme` keeps the choice while it's off.
+  seasonalThemeEnabled        Boolean                    @default(false)
+  seasonalTheme               String                     @default("halloween")
 }
 
 /**
@@ -513,11 +555,30 @@ model WorkspaceMember {
   // ── Backstage (internal ops) ───────────────────────────────────────
   countryCode         String    @default("GB") // ISO-3166-1 alpha-2; drives date-holidays lookup
   annualLeaveDays     Int? // Per-user override; null falls back to Workspace.defaultAnnualLeaveDays
+  /// Set when the member is archived (someone leaving). Archived members lose all
+  /// access immediately — sign-in is refused, live sessions are cleared on their
+  /// next read, and every route that resolves a user refuses them — and are hidden
+  /// from every roster in Foundry. Nothing else is touched, so restoring within the
+  /// retention window brings back their role, permissions and overrides exactly.
+  /// After ARCHIVE_RETENTION_DAYS the membership row is deleted (the User row and
+  /// everything attributed to it are kept). See src/server/auth/member-status.ts.
+  archivedAt          DateTime?
+  /// Who archived them — for the audit trail and the "archived by" column.
+  archivedById        String?
+  /// Opt-in: the CRM sync may read this person's Gmail, and ONLY messages to/from a lead's own
+  /// email domains. Off by default — nobody's mailbox is read until they turn it on themselves.
+  /// Per-membership, so archiving someone stops it (the sync filters on ACTIVE_MEMBER).
+  crmMailboxEnabled   Boolean   @default(false)
   createdAt           DateTime  @default(now())
   workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// This person's Staff record (Candidate.memberId), if they have one. A list because
+  /// memberId is not unique in the database; src/server/staff.ts keeps it to one and
+  /// reads the earliest.
+  staffRecords        Candidate[]
 
   @@unique([workspaceId, userId])
+  @@index([workspaceId, archivedAt])
 }
 
 model WorkspaceInvite {
@@ -1042,13 +1103,20 @@ enum ClientEngagementType {
 }
 
 /// Sales pipeline stage for a lead (status = LEAD). Surfaced on the lead card + detail.
+/// Which stages move on facts and which are suggestions lives in src/lib/crm/lead-stage-engine.ts.
+/// ⚠️ Add values only — removing or renaming one is a data-losing change the guarded deploy skips.
 enum LeadStage {
   NEW
   CONTACTED
+  DISCOVERY
   QUALIFIED
+  SCOPING
   PROPOSAL_SENT
+  IN_DISCUSSION
+  CONTRACT_SENT
   WON
   LOST
+  ON_HOLD
 }
 
 model WorkspaceClient {
@@ -1060,6 +1128,9 @@ model WorkspaceClient {
   /// Gitwork product/account leads shown on the client wiki header (User ids,
   /// display order preserved). Distinct from the delivery team (devs via placements).
   productTeamUserIds       String[]                  @default([])
+  /// Extra task-board columns for this client: [{ id, name, stage }]. Each is a lane inside
+  /// one of the five statuses (src/lib/tasks/board-columns.ts), so no status is ever added.
+  taskBoardColumns         Json?
   website                  String?
   addressLine1             String?
   addressLine2             String?
@@ -1120,6 +1191,21 @@ model WorkspaceClient {
   /// findFirst, so a plain index is enough.
   timelineShareToken       String?
   timelineShareEnabled     Boolean                   @default(false)
+  /// Client summary board (Portal → Summary) — hand-written judgement beside the
+  /// derived figures. Two fields on purpose: `summaryNote` is the short line the card
+  /// shows (clamped to two lines), `summaryDetail` is the fuller account you only see
+  /// once you open the record. Splitting them means the board stays scannable without
+  /// the longer write-up having nowhere to live.
+  ///
+  /// ⚠️ ONE stamp covers both. It means "when did anyone last write about this
+  /// client", which is the question the staleness marker answers; a per-field stamp
+  /// would let a card show a fresh date for a line nobody had touched.
+  summaryNote    String?   @db.Text
+  summaryDetail  String?   @db.Text
+  summaryNoteAt  DateTime?
+  /// Hidden from the summary board. The board still reports how many are hidden, so it
+  /// is never silently partial.
+  summaryHidden  Boolean   @default(false)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   workspace                Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1145,6 +1231,7 @@ model WorkspaceClient {
   featureBlocks            FeatureBlock[]
   milestones               Milestone[]
   absenceCovers            Absence[]                @relation("AbsenceCoverClient")
+  wikiLinkedInto           ClientWikiLink[]         @relation("WikiLinkedClient")
   /// Engagement shape — how this client's work is scoped/billed. Drives whether an end date
   /// applies (FIXED_SCOPE / PHASED have one; ROLLING / RETAINER are ongoing). Nullable = unset.
   engagementType           ClientEngagementType?
@@ -1172,6 +1259,27 @@ model WorkspaceClient {
   leadFollowUpAt           DateTime?
   leadValue                Int?
   leadValueCurrency        String?                   @default("GBP")
+  // ── CRM automation (leads) — all additive. See src/server/crm/sync.ts ──
+  /// When on, the CRM sync logs email/Slack/meeting/proposal activity and moves leadStage
+  /// on hard facts; anything read from wording becomes a suggestion. Off by default.
+  crmAutoEnabled           Boolean                   @default(false)
+  /// Set when someone changes leadStage by hand. Automation never moves a pinned stage.
+  leadStagePinned          Boolean                   @default(false)
+  /// When leadStage last changed (by hand, by automation or by an accepted suggestion).
+  /// Lets the engine refuse to override a decision with evidence that predates it.
+  leadStageChangedAt       DateTime?
+  /// Extra email domains that identify this lead, beyond website + primary contact.
+  crmEmailDomains          String[]                  @default([])
+  /// Last fully-successful sync. Only advanced when every configured source was read,
+  /// so a failed source is re-covered next run rather than silently skipped.
+  crmLastSyncedAt          DateTime?
+  /// Claim marker — stops two overlapping syncs writing the same activity twice.
+  crmSyncStartedAt         DateTime?
+  /// The last sync's problems in words (Gmail unreachable, bot not in channel…); null = clean.
+  crmLastSyncError         String?
+  /// Who owns this lead on our side — the default owner for its actions. Loose User id.
+  leadOwnerId              String?
+  leadActions              LeadAction[]
   // ── Paused / inactive (status = INACTIVE) ──
   resumeAt                 DateTime?
   pauseNote                String?
@@ -1191,15 +1299,65 @@ model ClientTouchpoint {
   clientId    String
   client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
   workspaceId String
-  /// CALL | EMAIL | MEETING | NOTE
+  /// CALL | EMAIL | MEETING | NOTE (logged by hand) · SLACK | PROPOSAL | STAGE | SUGGESTION (CRM sync)
   type        String
   note        String?
   occurredAt  DateTime        @default(now())
   /// workspace User id of the author; null = system/unknown.
   authorId    String?
   createdAt   DateTime        @default(now())
+  /// Where it came from: null = logged by hand; "gmail" | "slack" | "meeting" | "document" |
+  /// "system" = written by the CRM sync.
+  source          String?
+  /// The source's own id (RFC Message-ID, Slack channel:ts, meeting id, docId:event) — the
+  /// dedupe key. Deliberately NOT a unique constraint: adding one makes `prisma db push` treat
+  /// the change as potentially data-losing, which skips the WHOLE sync (CLAUDE.md §2).
+  externalId      String?
+  /// "inbound" (from the lead) | "outbound" (from us) | "internal" (Gitwork-only)
+  direction       String?
+  /// A stage the sync SUGGESTS from wording. Never applied without a person accepting it.
+  suggestedStage  LeadStage?
+  /// "pending" | "accepted" | "dismissed" — only meaningful when suggestedStage is set.
+  suggestionState String?
+  /// The person on THEIR side of an email (sender if inbound, first recipient at their domain
+  /// if outbound). Feeds "main contact" when the lead converts to a client.
+  counterpartEmail String?
+  counterpartName  String?
 
   @@index([clientId, occurredAt])
+  @@index([clientId, source, externalId])
+}
+
+/// A sales action on a lead ("Send the revised quote", due Friday, owned by Dan). The lead's
+/// NEXT STEP is its earliest open action. Actions the AI reads out of emails/Slack arrive as
+/// state "suggested" and only become "open" when a person accepts one — same rule as stages.
+model LeadAction {
+  id          String          @id @default(cuid())
+  workspaceId String
+  clientId    String
+  client      WorkspaceClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  dueAt       DateTime?
+  /// Loose User id. Open actions surface on the owner's On Your Desk.
+  ownerId     String?
+  /// "suggested" | "open" | "done" | "dismissed"
+  state       String          @default("open")
+  /// "manual" | "ai"
+  source      String          @default("manual")
+  /// The touchpoint an AI action was read from — shown as its evidence.
+  evidenceTouchpointId String?
+  /// Dedupe key for AI actions (message id + normalised title), so a re-read never doubles one.
+  externalId  String?
+  /// One-line "why" for an AI action.
+  reason      String?
+  doneAt      DateTime?
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([clientId, state])
+  @@index([ownerId, state, dueAt])
+  @@index([clientId, externalId])
 }
 
 model ClientPlatform {
@@ -1224,6 +1382,11 @@ model ClientPlatform {
   /// than a table because they are display-only, always read with the platform,
   /// and never queried across clients. Additive → applies via the guarded db push.
   links           Json?
+  /// The next date something on this platform renews or expires (domain, SSL certificate,
+  /// Apple/Google developer account) and what it is. Shown on the client wiki overview
+  /// when the Platforms section is on, so a lapse is seen coming.
+  renewsOn        DateTime?
+  renewalNote     String?
   /// Placements engaged on this platform — drives the scoped GitHub scan.
   placements      Placement[]
   /// Multiple credential sets ("logins") — supersedes the single username/password ciphers
@@ -1355,6 +1518,7 @@ model ClientWiki {
   hiddenSections      Json?
   /// Flat list of the per-page tokens above, for fast public lookup by token.
   pageShareTokens     String[]               @default([])
+  linkedClients       ClientWikiLink[]
   /// DEPRECATED (v1 single-credential gate, superseded by ClientWikiUser).
   /// Kept to avoid Prisma's data-loss guard on a column drop; no longer read.
   accessProtected     Boolean                @default(false)
@@ -1385,9 +1549,79 @@ model ClientWiki {
   /// starts minimal, and the client-facing write routes reject until it's on.
   launchpadEnabled    Boolean                @default(false)
   launchpad           ClientLaunchpad?
+  /// Whether the Insights section is enabled — hand-authored charts and diagrams shown
+  /// to the client. Flag-driven exactly like `codeHandoverEnabled`: default false so a
+  /// fresh wiki starts minimal.
+  insightsEnabled     Boolean                @default(false)
+  insightBoards       WikiInsightBoard[]
+  /// Whether the Delivery section is enabled — progress, phases, milestones and what we
+  /// are waiting on the client for. Pure presentation over the timeline and blockers the
+  /// wiki already carries, so this flag is the only storage it needs.
+  deliveryEnabled     Boolean                @default(false)
+  /// RoundUp — the weekly summary. Derived entirely from the timeline the wiki already
+  /// carries, so this flag is the only stored state the section has.
+  roundupEnabled      Boolean                @default(false)
+  /// Whether the Support section is enabled — the client's own Care figures, the same
+  /// ones the monthly report already emails them. Off unless a linked SupportClient
+  /// exists AND someone turns it on.
+  supportEnabled      Boolean                @default(false)
+  /// Whether the Running costs section is enabled — what the app costs to operate, and
+  /// the cost per end user. Client-facing, so off until someone turns it on.
+  costsEnabled        Boolean                @default(false)
+  /// ⚠️ ONE currency for the whole model, entered by hand. Most infrastructure bills in
+  /// USD, but a client-facing cost-per-user that moves with a live FX rate every time
+  /// they reload implies a precision the model does not have. The rate assumed is a
+  /// decision to record, not a feed.
+  costsCurrency       String                 @default("GBP")
+  /// The user count the headline banner is calculated at.
+  costsHeadlineUsers  Int                    @default(1000)
+  /// What the model deliberately excludes (staff time, payment fees, ...). Shown to the
+  /// client under the figure, because a cost model without its exclusions reads as a
+  /// total when it is a subtotal.
+  costsNotes          String?                @db.Text
+  costItems           WikiCostItem[]
+  /// The scheduled Big Wedge course-request pull (src/server/wedge-course-feed.ts):
+  /// `{ lastRunAt, lastSuccessAt, failingSince, lastError, lastCreated, lastStatusSyncAt }`.
+  /// Recorded so a broken feed is visible on the Course Requests page instead of reading
+  /// as "no golfer asked for a course" — which is how it went unnoticed for two months.
+  courseFeedStatus    Json?
+  /// Whether the Estimates section is enabled — how long a piece of work takes with 1, 2,
+  /// 3… developers, on a calendar. Client-facing, so off until someone turns it on.
+  estimatesEnabled    Boolean                @default(false)
+  estimates           WikiEstimate[]
+  /// Whether the Metrics section is enabled — the client's own product numbers. Read from
+  /// the Care analytics connector when one exists, else from one GET endpoint picked off
+  /// the client's API Docs page (src/server/wiki-metrics.ts). Off until someone turns it on.
+  metricsEnabled      Boolean                @default(false)
+  /// `{ hiddenKeys, featuredKeys, apiEndpoint: { serverUrl, path }, apiTokenCipher }`.
+  /// The token is AES-256-GCM (src/lib/encryption.ts) and never leaves the server.
+  metricsConfig       Json?
+  metricSnapshots     WikiMetricSnapshot[]
+  /// Whether the Meetings section is enabled. Only meetings with `Meeting.sharedWithClientAt`
+  /// set ever appear in it, so enabling the section shares nothing by itself.
+  meetingsEnabled     Boolean                @default(false)
+  /// Whether the Platforms section is enabled — the client's platforms from Portal, as
+  /// links. Logins and internal notes never leave Portal.
+  platformsEnabled    Boolean                @default(false)
+  /// Whether the Drive section is enabled — the files in the client's linked Google Drive
+  /// folder (`WorkspaceClient.googleDriveFolderUrl`), on their wiki. Off until someone turns
+  /// it on. A client has no Gitwork Google account, so their copy is read with the Google
+  /// sign-in of `driveReaderUserId`: the team member who turned it on. The team always reads
+  /// with their own.
+  driveEnabled        Boolean                @default(false)
+  driveReaderUserId   String?
+  /// Whether the Comparisons section is enabled — feature/plan comparison tables (Free vs
+  /// Pro, the client vs competitors). Client-facing, so off until someone turns it on.
+  comparisonsEnabled  Boolean                @default(false)
+  comparisons         WikiComparison[]
+  /// Whether the Sheets section is enabled — client-editable spreadsheets whose rows can be
+  /// sent to the task board. Off until someone turns it on.
+  sheetsEnabled       Boolean                @default(false)
+  sheets              WikiSheet[]
   pages               ClientWikiPage[]
   changelog           ClientChangelogEntry[]
   courseRequests      ClientCourseRequest[]
+  courseFeedbackSeen  WikiCourseFeedbackSeen[]
   intakeItems         ClientWikiIntakeItem[]
   wikiUsers           ClientWikiUser[]
   monitors            WikiMonitor[]
@@ -1516,16 +1750,103 @@ model WikiMonitor {
   lastLatencyMs   Int?
   lastStatusCode  Int?
   lastError       String?
+  /// Consecutive DOWN checks. An alert fires at 2 — one failed check is a blip (src/lib/monitor-alerts.ts).
+  failStreak      Int                @default(0)
+  /// First failing check of the current outage — the "down since" in alerts.
+  downSince       DateTime?
+  /// When this outage's DOWN alert went out — the once-per-outage latch; cleared on recovery.
+  alertedDownAt   DateTime?
+  /// When the watchdog reported this monitor as no longer being checked; cleared by the next check.
+  staleAlertedAt  DateTime?
+  /// What the open alert is about — "down" (2 in a row) or "flaky" (3 of the last 6). Null = none open.
+  alertKind       String?
+  /// When the last alert cleared. Failures before it never count toward a new one.
+  alertClearedAt  DateTime?
+  /// HEARTBEAT: the secret in the ping URL (/api/public/heartbeat/<token>). 144 random bits, so
+  /// unique in practice. ⚠️ Deliberately NOT @unique: the guarded `prisma db push` refuses any new
+  /// unique constraint and blocks the whole deploy (CLAUDE.md §2) — it did, on 30 Oct 2026.
+  heartbeatToken  String?
+  /// HEARTBEAT: last ping, and whether the job said it succeeded (false = /fail).
+  lastPingAt      DateTime?
+  lastPingOk      Boolean?
+  /// HEARTBEAT: minutes after the expected ping before it counts as missed.
+  graceMinutes    Int?
+  /// Alerts are paused until this time (planned work). Checks still run.
+  maintenanceUntil DateTime?
+  maintenanceNote String?
+  /// HTTPS certificate, read daily (src/server/wiki-monitor-expiry.ts).
+  sslExpiresAt    DateTime?
+  sslIssuer       String?
+  sslCheckedAt    DateTime?
+  sslError        String?
+  /// Last SSL warning tier sent ("30d" | "14d" | "3d" | "expired") — once per tier.
+  sslAlertedTier  String?
+  /// Domain registration expiry, from RDAP.
+  domain          String?
+  domainExpiresAt DateTime?
+  domainCheckedAt DateTime?
+  domainError     String?
+  domainAlertedTier String?
+  /// HTTP: extra request headers (auth etc.) as encrypted JSON {name: value}. Never sent to the browser.
+  requestHeaders  String?
+  /// HTTP: request body for POST checks, encrypted.
+  requestBody     String?
+  /// Where the latest check was confirmed from when it failed locally (second location), if anywhere.
+  lastRemoteNote  String?
+  incidents       WikiMonitorIncident[]
   checks          WikiMonitorCheck[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
   @@index([wikiId])
+  @@index([heartbeatToken])
   @@map("WikiMonitor")
 }
 
 /// One probe result for a WikiMonitor — the history behind uptime % and the
 /// recent-status bar strip. Pruned by the cron beyond the retention window.
+/// An outage on a monitor: opened when its down/unstable alert fires, resolved on recovery.
+/// Acknowledged by a person; carries updates, some shown to the client (src/lib/monitor-incidents.ts).
+model WikiMonitorIncident {
+  id                 String                      @id @default(cuid())
+  wikiId             String
+  monitorId          String
+  monitor            WikiMonitor                 @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  /// "down" | "flaky"
+  kind               String
+  title              String
+  startedAt          DateTime
+  resolvedAt         DateTime?
+  acknowledgedAt     DateTime?
+  acknowledgedById   String?
+  acknowledgedByName String?
+  updates            WikiMonitorIncidentUpdate[]
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@index([wikiId, startedAt])
+  @@index([monitorId, resolvedAt])
+  @@map("WikiMonitorIncident")
+}
+
+model WikiMonitorIncidentUpdate {
+  id         String              @id @default(cuid())
+  incidentId String
+  incident   WikiMonitorIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  /// investigating | identified | monitoring | resolved
+  status     String
+  message    String
+  /// Shown on the client's board. Internal notes are false.
+  isPublic   Boolean             @default(true)
+  /// Written by Foundry (detected / resolved) rather than a person.
+  automatic  Boolean             @default(false)
+  authorName String?
+  createdAt  DateTime            @default(now())
+
+  @@index([incidentId, createdAt])
+  @@map("WikiMonitorIncidentUpdate")
+}
+
 model WikiMonitorCheck {
   id         String            @id @default(cuid())
   monitorId  String
@@ -1543,6 +1864,8 @@ model WikiMonitorCheck {
 enum WikiMonitorType {
   HTTP
   TCP
+  /// The job pings Foundry; DOWN when a ping is overdue (src/server/wiki-monitors/heartbeat.ts).
+  HEARTBEAT
 }
 
 enum WikiMonitorStatus {
@@ -1556,6 +1879,39 @@ enum WikiMonitorStatus {
 /// manages them in the wiki's Settings. Clients sign in with email + password
 /// (bcrypt-hashed); Gitwork staff bypass via their Foundry session. Replaces the
 /// deprecated single-credential fields on ClientWiki.
+/// A second client whose delivery work shows in THIS client's wiki.
+///
+/// A big workstream often gets its own client record — YourGroop's intelligence
+/// engine is the case this was built for — but the people reading YourGroop's
+/// wiki still need to see it. Linking is how, and it is deliberately a join
+/// table rather than an array column so the link can carry a label and be
+/// revoked by row.
+///
+/// ⚠️ ONE-WAY on purpose. Linking Intelligence into YourGroop does NOT put
+/// YourGroop's work into Intelligence's wiki: the main client is the place the
+/// whole picture belongs, and a symmetric link would put a client's entire board
+/// in front of whoever holds the other one's share token.
+model ClientWikiLink {
+  id       String @id @default(cuid())
+  /// The wiki doing the showing.
+  wikiId   String
+  /// The client whose work is shown. A loose FK to WorkspaceClient, restricted so
+  /// deleting a linked client cannot silently empty a wiki without anybody noticing.
+  linkedClientId String
+  /// Optional override for the chip shown against borrowed rows. Null = the
+  /// client's own name, which is right almost always.
+  label     String?
+  orderKey  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  wiki         ClientWiki      @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  linkedClient WorkspaceClient @relation("WikiLinkedClient", fields: [linkedClientId], references: [id], onDelete: Restrict)
+
+  /// One link per pair — linking the same client twice would double every task.
+  @@unique([wikiId, linkedClientId])
+  @@index([linkedClientId])
+}
+
 model ClientWikiUser {
   id           String     @id @default(cuid())
   wikiId       String
@@ -1566,15 +1922,94 @@ model ClientWikiUser {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  devices ClientDeviceToken[]
+
   @@unique([wikiId, email])
   @@index([wikiId])
   @@map("ClientWikiUser")
+}
+
+/// A client's phone, registered from the Foundry app after they sign in to their
+/// portal. The twin of `DeviceToken`, which belongs to a `User` — a member of the
+/// Gitwork workspace.
+///
+/// ⚠️ A SEPARATE TABLE ON PURPOSE. The obvious alternative is to make
+/// `DeviceToken.userId` nullable and add a second owner column, and that is the
+/// wrong trade: the staff push path is live, and loosening a required FK (with
+/// `onDelete: Cascade`, which is what stops a leaver's phone being pushed to) so it
+/// can also hold a different kind of principal would put every existing query one
+/// forgotten null-check away from pushing a client's update to the wrong device.
+/// The transport is shared instead — see `push/transport.ts`.
+model ClientDeviceToken {
+  id               String         @id @default(cuid())
+  clientWikiUserId String
+  clientWikiUser   ClientWikiUser @relation(fields: [clientWikiUserId], references: [id], onDelete: Cascade)
+  /// Denormalised from the owner so a per-wiki fan-out is one indexed read rather
+  /// than a join through every client user on every send.
+  wikiId           String
+  token            String         @unique // APNs device token (hex)
+  platform         String // "ios"
+  environment      String // "sandbox" | "production"
+  appBuild         String?
+  appVersion       String?
+  createdAt        DateTime       @default(now())
+  lastUsedAt       DateTime       @default(now())
+  /// Set when APNs says the token is dead. Soft-deleted, like the staff table, so a
+  /// reinstall can resurrect it and so "this device used to be here" stays visible.
+  failedAt         DateTime?
+
+  @@index([wikiId, failedAt])
+  @@index([clientWikiUserId])
+  @@index([token])
+}
+
+/// One record per push already sent to a client, so the same thing is never sent
+/// twice.
+///
+/// ⚠️ This is the whole reason a client is not buried. Every developer pushes their
+/// own standup, so a client with five active developers would otherwise get ten
+/// alerts a day and turn notifications off in the first week. The FIRST developer to
+/// push a phase sends the client one digest; the rest write nothing, because the
+/// unique key below is taken.
+///
+/// Written BEFORE the push is sent, so the insert itself is the guard and two
+/// simultaneous standups cannot both win — the same trick as `DispatchExchange`.
+model ClientPushReceipt {
+  id          String   @id @default(cuid())
+  /// Loose id, deliberately no FK: this is a log, and it must survive the wiki row
+  /// it describes rather than being cascaded away with it.
+  wikiId      String
+  /// What was sent, e.g. `standup:AM:2026-10-21`. Opaque to the schema on purpose —
+  /// a new kind of client push needs no migration, only a new key prefix.
+  key         String
+  sentAt      DateTime @default(now())
+  /// How many devices it actually reached. 0 is a real and common answer — nobody on
+  /// that client has the app yet — and is NOT a failure.
+  deviceCount Int      @default(0)
+
+  @@unique([wikiId, key])
+  @@index([wikiId, sentAt])
 }
 
 /// A single page/section within a ClientWiki. One row per type per wiki
 /// (enforced by the unique constraint). Content is a JSON blob whose shape
 /// varies by type: markdown string for guide/docs pages, structured
 /// key-value record for APP_STORE_* pages.
+/// One capture of the API-endpoint metrics source, keyed by the month it was taken in. The
+/// endpoint reports values as they are NOW, so the latest capture in a month stands for
+/// that month and earlier months are what trends compare against. (A Care connector has
+/// its own table, `SupportAnalyticsSnapshot`, and is read from there.)
+model WikiMetricSnapshot {
+  id         String     @id @default(cuid())
+  wikiId     String
+  wiki       ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  period     String // "YYYY-MM"
+  metrics    Json // AnalyticsMetric[]
+  capturedAt DateTime   @default(now())
+
+  @@unique([wikiId, period])
+}
+
 model ClientWikiPage {
   id        String       @id @default(cuid())
   wikiId    String
@@ -1636,6 +2071,10 @@ model ClientWikiIntakeItem {
   thumb       Bytes?
   mime        String?
   filename    String?
+  /// Set when the screenshot lives in object storage (src/server/blob-storage.ts):
+  /// the full image is at this key and its thumb at `<key>.thumb`, and image/thumb
+  /// above are null. Null → the bytes are in image/thumb, as they always were.
+  storageKey  String?
   /// Free-text device/OS context supplied with the report (e.g. "iPhone 14 Pro" /
   /// "iOS 17.4") — both optional, filled in on the Add Request form.
   device      String?
@@ -1646,6 +2085,10 @@ model ClientWikiIntakeItem {
 
   @@index([wikiId])
   @@index([wikiId, externalRef])
+  /// The wiki loader batch-reads the linked tasks to derive each request's live stage
+  /// (src/lib/wiki-request-stage.ts). `taskId` is a loose id with no FK — the
+  /// cross-module convention here — so this index is what keeps that lookup cheap.
+  @@index([taskId])
   @@map("ClientWikiIntakeItem")
 }
 
@@ -1664,6 +2107,28 @@ model ClientWikiIntakeComment {
   authorUserId String?
   authorUser   User?                       @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
   body         String                      @db.Text
+  /// People @mentioned in this reply: [{ id, name, kind }] (src/lib/wiki-mentions.ts).
+  /// Drives highlighting and the Slack Connect notification. Null on older replies.
+  mentions     Json?
+  /// The signed-in client wiki user (ClientWikiUser.id) who wrote a CLIENT reply.
+  /// A loose id, not a relation: it is what lets that person edit or delete their own
+  /// reply from the shared wiki. Null on older replies and on staff replies, so those
+  /// can never be edited from the client's side.
+  authorWikiUserId String?
+  /// Set when the author edits the reply — rendered as "edited".
+  editedAt     DateTime?
+  /// Soft delete: the row stays so the thread keeps its shape ("Reply deleted"), but
+  /// the body, mentions and image are never sent to a browser once this is set.
+  deletedAt    DateTime?
+  /// Optional screenshot on the reply — same storage and lifecycle as the request's own
+  /// image (ClientWikiIntakeItem.image/thumb/mime/filename).
+  image        Bytes?
+  thumb        Bytes?
+  mime         String?
+  filename     String?
+  /// Object-storage key when the screenshot lives in a bucket — same rule as
+  /// ClientWikiIntakeItem.storageKey.
+  storageKey   String?
   createdAt    DateTime                    @default(now())
 
   @@index([intakeItemId, createdAt])
@@ -1734,6 +2199,10 @@ model ClientChangelogEntry {
   releasedAt DateTime?
   /// Review state — PENDING until the release notes are approved for publishing.
   status     WikiEntryStatus @default(PENDING)
+  /// When, and by whom (a client user's or a teammate's display name), it was approved.
+  /// Set on the move to APPROVED, cleared on the move back to PENDING.
+  approvedAt     DateTime?
+  approvedByName String?
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
 
@@ -1765,6 +2234,29 @@ model ClientCourseRequest {
   @@index([wikiId])
   @@index([wikiId, externalRef])
   @@map("ClientCourseRequest")
+}
+
+/// A Care "New Feedback" conversation the course-request classifier has already
+/// judged and DECLINED to import (not a course request, no course named, a name the
+/// golfer never wrote, or a duplicate). Without it a declined item is re-fetched and
+/// re-classified on every sync forever, because `sourceConversationId` only exists on
+/// rows that were created. Written ONLY when the classifier returned a real verdict —
+/// never when it failed or did not run (CLAUDE.md §53.3). A new customer message after
+/// `seenAt` makes the conversation eligible again.
+model WikiCourseFeedbackSeen {
+  id             String     @id @default(cuid())
+  wikiId         String
+  wiki           ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  /// SupportConversation id (loose, no FK — same convention as sourceConversationId).
+  conversationId String
+  /// "not_course" | "no_named_course" | "rejected_name" | "duplicate_name"
+  verdict        String
+  reason         String?
+  seenAt         DateTime   @default(now())
+
+  @@unique([wikiId, conversationId])
+  @@index([wikiId])
+  @@map("WikiCourseFeedbackSeen")
 }
 
 enum CourseRequestStatus {
@@ -2002,6 +2494,7 @@ model ClientLaunchpad {
   answers           Json?
   items             LaunchpadItem[]
   docs              LaunchpadDoc[]
+  files             LaunchpadItemFile[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -2031,6 +2524,35 @@ model LaunchpadItem {
 
   @@unique([kitId, itemId])
   @@index([kitId, status])
+}
+
+/// A file attached to one requirement (an app icon, a signed contract, a logo
+/// pack). Bytes live in Postgres `bytea`, the same posture as the Requests
+/// screenshot (`ClientWikiIntakeItem.image`), until blob storage lands. Keyed on
+/// the kit + the snapshot `itemId` (not the LaunchpadItem row) for the same reason
+/// LaunchpadItem is: a requirement removed from the snapshot stops being read, and
+/// its files are kept rather than deleted.
+model LaunchpadItemFile {
+  id             String          @id @default(cuid())
+  kitId          String
+  kit            ClientLaunchpad @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  /// The snapshot field id this file belongs to.
+  itemId         String
+  /// Sanitised display name, used in Content-Disposition on download.
+  filename       String
+  /// Canonical type derived from the sniffed bytes, never the uploader's claim.
+  mime           String
+  size           Int
+  /// The file's bytes — null when it lives in object storage (`storageKey` set).
+  bytes          Bytes?
+  /// Object-storage key (src/server/blob-storage.ts). Null → the bytes are above.
+  storageKey     String?
+  /// "team" | "client" — who uploaded it.
+  uploadedByKind String
+  uploadedByName String?
+  createdAt      DateTime        @default(now())
+
+  @@index([kitId, itemId])
 }
 
 /// A fillable boilerplate legal doc. Deliberately NOT a `Document` record: these
@@ -2091,8 +2613,47 @@ model Candidate {
   workspaceId          String
   rateCardPersonId     String?
   name                 String
-  githubHandle         String
+  /// Optional since Staff (Oct 2026): a Staff record can be anyone, not only a
+  /// developer. Postgres allows many NULLs under the unique index below. The API
+  /// still sends a string ("" = none) so older clients that require it keep working.
+  githubHandle         String?
   email                String?
+  /// The account this Staff record belongs to. Replaces the email match the module
+  /// relied on (Candidate.email ↔ User.email), which broke whenever the two differed.
+  /// Filled for existing records by linkStaffRecords (src/server/staff.ts).
+  /// Deliberately NOT @unique: Prisma treats adding a unique constraint as possible
+  /// data loss, so the guarded deploy push refused it (CLAUDE.md §2). One record per
+  /// member is enforced in src/server/staff.ts instead.
+  memberId             String?
+  member               WorkspaceMember?       @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  /// Staff details (src/server/staff.ts). All optional; none is required of a developer.
+  jobTitle             String?
+  department           String?
+  /// EMPLOYEE | DIRECTOR | CONTRACTOR | FREELANCER (validated in src/lib/staff.ts).
+  employmentType       String?
+  startDate            DateTime?
+  /// Another Staff record in the same workspace. A loose id, like the other cross-record
+  /// links here, so deleting a manager's record can never cascade.
+  managerId            String?
+  /// HR employment details (docs/hr-platform.md). Edited by `hr.manage` only.
+  /// The partner company that supplies this person (Supplier.id, loose like managerId).
+  supplierId           String?
+  /// Preferred name and pronouns: directory fields, shown to everyone.
+  preferredName        String?
+  pronouns             String?
+  /// Contract end (fixed term) or leaving date. Day precision.
+  endDate              DateTime?
+  probationEndsOn      DateTime?
+  noticePeriodWeeks    Int?
+  /// Days worked per week (0.5 to 7): drives pro-rata leave in a later phase.
+  daysPerWeek          Float?
+  /// Archived from Staff (docs/hr-platform.md). Only for someone with NO login: a person
+  /// who signs in is archived on their membership (WorkspaceMember.archivedAt), so the
+  /// two can never disagree about whether someone has left.
+  archivedAt           DateTime?
+  archivedById         String?
+  /// This person's folder in the HR Drive copy (docs/hr-platform.md), cached once made.
+  hrDriveFolderId      String?
   primaryStack         String
   techStacks           String[]               @default([])
   signalSources        String[]               @default([])
@@ -2151,6 +2712,7 @@ model Candidate {
   @@index([workspaceId, updatedAt])
   @@index([workspaceId, recheckDueAt])
   @@index([workspaceId, origin, published])
+  @@index([memberId])
 }
 
 /// One row per validation finding. Mirrors PulseScanCheck. The most recent run
@@ -2531,6 +3093,40 @@ enum PulseCheckStatus {
   EVIDENCE_REQUIRED
 }
 
+/// What the team decided about one Pulse finding (a failing or warning check) of one
+/// project: the scanned site or repo, `targetKey` in src/lib/pulse-projects.ts. Carries
+/// from scan to scan. Whether a finding is FIXED is never stored: a check that passes on
+/// the next scan is fixed. Loose ids (no FKs), matching the other cross-module links.
+model PulseFindingState {
+  id          String                @id @default(cuid())
+  workspaceId String
+  targetKey   String
+  checkKey    String
+  decision    PulseFindingDecision?
+  note        String?
+  /// Task on the client's board this finding was sent to.
+  taskId      String?
+  decidedById String?
+  decidedAt   DateTime?
+  /// The scan the last change was made on.
+  scanId      String?
+  /// A short hash of the check's detail and evidence when the decision was made, so a
+  /// dismissal can reopen when the finding changes (src/lib/pulse-findings.ts).
+  decisionFingerprint String?
+  /// The check's status (FAIL / WARN) when the decision was made.
+  decisionStatus      String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([workspaceId, targetKey, checkKey])
+  @@index([workspaceId, targetKey])
+}
+
+enum PulseFindingDecision {
+  ACCEPTED_RISK
+  FALSE_POSITIVE
+}
+
 model PulseScan {
   id                  String             @id @default(cuid())
   workspaceId         String
@@ -2612,6 +3208,11 @@ model PulseMonitor {
   frequency        String             @default("DAILY") // "DAILY" | "WEEKLY" | "OFF"
   lastRunAt        DateTime? // last scheduled run (cron stamps this)
   lastCriticalKeys Json? // string[] — CONFIRMED-critical checkKeys at last run, to diff for "new issue appeared"
+  // Weekly digest (additive): who gets the weekly summary email, and the scan it last
+  // compared against, so "this week" means since the last email rather than the last run.
+  digestEmails     Json? // string[]
+  lastDigestAt     DateTime?
+  lastDigestScanId String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
@@ -2700,6 +3301,15 @@ model PulseLead {
   convertedClientId String? // → WorkspaceClient if the lead is imported into Foundry
   notifiedAt        DateTime?
   createdAt         DateTime  @default(now())
+  // Captured by the unlock form on the public scanner (name, business, terms). Null on
+  // leads from before it existed. `termsAcceptedAt` is the moment they ticked the box.
+  name              String?
+  business          String?
+  termsAcceptedAt   DateTime?
+  // The visitor's report email: when it went, or why it didn't. Shown on the leads list
+  // so "did they get it?" has an answer without reading server logs.
+  reportSentAt      DateTime?
+  reportError       String?
 
   @@index([email])
   @@index([createdAt])
@@ -3673,6 +4283,7 @@ enum AiModule {
   MEETING
   WIKI
   EMBEDDING
+  CRM
   OTHER
 }
 
@@ -3774,6 +4385,9 @@ model Meeting {
   ownerUserId          String?
   owner                User?               @relation("MeetingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   actionItems          MeetingActionItem[]
+  /// When someone chose to show this meeting in the client's wiki (Meetings section).
+  /// Null = internal only, which is the default — Scribe notes are written for us.
+  sharedWithClientAt   DateTime?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
@@ -3869,6 +4483,112 @@ model Absence {
   @@unique([workspaceId, userId, date])
   @@index([workspaceId, date])
   @@index([coverActive])
+}
+
+/// A handover — what someone hands over when they go away, and what nobody else can decide.
+///
+/// ── Why this is not a Document ───────────────────────────────────────────────
+/// The first one of these (HAND-2026-002, July 2026) was written on the `HANDOVER`
+/// Docs template, whose sections are Cover / What was delivered / A note on
+/// credentials / Your point of contact — an END-OF-PROJECT CLIENT handover. It was
+/// the nearest shape available and it is the wrong one: it never asks who is allowed
+/// to decide what, and a Document is frozen the moment it is written, so by day three
+/// of a week away it describes a world that has moved.
+///
+/// ── Authored, deliberately ───────────────────────────────────────────────────
+/// Every row here is a human sentence. Nothing in Foundry knows that a retainer is
+/// unsigned, that a key has not been rotated, or that someone watches Discord every
+/// morning — those are the facts that matter and none of them are derivable. The page
+/// renders LIVE client state alongside this, and keeps the two visibly apart so a
+/// week-old judgement is never read as today's fact.
+model Handover {
+  id          String @id @default(cuid())
+  workspaceId String
+  userId      String // whose handover this is — the person going away
+
+  title    String
+  startsOn DateTime // day-precision UTC midnight
+  endsOn   DateTime // inclusive
+
+  /// The one rule that governs everything, stated once and always on screen.
+  /// Gitwork's, Sept 2026: "Syed decides scope and timeline. Nobody decides commercials."
+  standingRule String?
+  /// Card 01 — the handover summary, in the author's own words.
+  notes        String?
+  /// Card 02 — anything that is not about one client (routing, context, what to
+  /// watch). Free prose, deliberately unstructured.
+  details      String?
+
+  status String @default("DRAFT") // DRAFT | ACTIVE | ENDED
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User           @relation("HandoverUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("HandoverCreator", fields: [createdById], references: [id])
+  items     HandoverItem[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, userId])
+}
+
+/// One line of a handover. Four kinds, ONE table — unlike the Launchpad boards
+/// (§43), which needed three, because these four genuinely share a shape: a
+/// sentence, an optional client, someone it goes to, and whether it is closed.
+/// `cadence` and `channel` are DUTY-only and null everywhere else; two nullable
+/// columns is a smaller price than a second table.
+model HandoverItem {
+  id          String @id @default(cuid())
+  workspaceId String
+  handoverId  String
+
+  /// DECISION — blocked because the standing rule says this person cannot decide it
+  /// RISK     — open and unclosed: an incident, an unrotated credential
+  /// DUTY     — recurring work with no ticket, which simply stops if nobody picks it up
+  /// CLIENT   — the one-line state of a client, in the author's own words
+  kind String
+
+  /// Loose id, not an FK — same convention as PulseScan.linkedStudyId and
+  /// Countermark.scanId. A handover must survive a client being archived.
+  clientId   String?
+  clientName String? // denormalised so a frozen handover still reads correctly
+
+  title  String
+  detail String?
+
+  /// Who it goes to. Null on a DECISION means nobody has been named yet, which is
+  /// itself the finding — that is the item most likely to stall.
+  ownerUserId String?
+
+  cadence String? // DUTY only — "every morning", "as it comes in"
+  channel String? // DUTY only — "Discord, email, Reddit"
+
+  /// CLIENT only. A client entry is the unit Harry and Syed actually open, and it
+  /// holds three paragraphs, not a list of lines: `detail` is where the client is,
+  /// `duties` is what somebody has to keep doing, `other` is everything else.
+  /// Nothing derived ever goes in them — no task counts, no Care queues, no
+  /// Foundry status. This page is one person's account of the work.
+  duties  String?
+  other   String?
+
+  status String @default("OPEN") // OPEN | DONE | BLOCKED
+  orderKey Int   @default(0)
+
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  handover   Handover  @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  owner      User?     @relation("HandoverItemOwner", fields: [ownerUserId], references: [id])
+  resolvedBy User?     @relation("HandoverItemResolver", fields: [resolvedById], references: [id])
+
+  @@index([handoverId, kind, orderKey])
+  @@index([workspaceId, status])
 }
 
 model Expense {
@@ -3974,6 +4694,9 @@ model Task {
   /// Fractional sort key for drag-ordering within a status column. New cards
   /// get (max+1); a card dropped between two others gets the midpoint.
   orderKey           Float        @default(0)
+  /// The client's own board column this task sits in, if any. Only honoured while that column
+  /// still exists and belongs to the task's status — otherwise it shows in its status column.
+  boardColumnId      String?
   dueDate            DateTime?
   /// Stamped the first time the task enters DOING; drives "started" displays.
   startedAt          DateTime?
@@ -4131,6 +4854,17 @@ model DailyUpdate {
   /// Monday "This week" section — prefilled from tasks due this ISO week, edited by the dev.
   weekPlan    String?   @db.Text
   note        String?   @db.Text
+  /// Client ids this dev's standup covered on this day (union across AM/PM, honouring the
+  /// composer's client picker). Drives per-client retainer-day accrual — one day per dev per
+  /// day whose update touched the client. Empty until a phase is actually pushed.
+  involvedClientIds String[] @default([])
+  /// What each phase actually REPORTED, per client, saved at push time —
+  /// `{ v: 1, at, clients: { [clientId]: { inProgress, inReview, doneToday } } }`.
+  /// The client wiki's history reads this. Without it, a past day could only be
+  /// rebuilt from today's board, which describes today, not then. Cleared with
+  /// the stamp when a phase is retracted, so a withdrawn update never lingers.
+  amSnapshot  Json?
+  pmSnapshot  Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -4235,6 +4969,50 @@ model Broadcast {
   createdBy User      @relation("BroadcastCreator", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, active, expiresAt])
+}
+
+/// An internal message one person writes and sends to named people — the weekly
+/// summary, a heads-up, an announcement that matters enough to reach a phone.
+///
+/// ⚠️ Deliberately NOT an extension of `Broadcast`, which looks similar and is not.
+/// A Broadcast is a workspace-wide notice board: one active at a time (posting a new
+/// one deactivates the previous), capped at 500 characters, expiring, shown passively
+/// on the Desk, and it notifies nobody. Sending someone a weekly summary through it
+/// would take down the workspace notice and reach no one.
+model TeamMessage {
+  id          String   @id @default(cuid())
+  workspaceId String
+  authorId    String
+  subject     String
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+
+  workspace  Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author     User                   @relation("TeamMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  recipients TeamMessageRecipient[]
+
+  @@index([workspaceId, createdAt])
+}
+
+/// One row per addressee. `readAt` is per person, which is the point: a message sent
+/// to four people is read by each of them separately, and "did Harry read it" is the
+/// question worth being able to answer.
+model TeamMessageRecipient {
+  id        String    @id @default(cuid())
+  messageId String
+  userId    String
+  readAt    DateTime?
+  /// Hidden from THIS person's list, without touching anyone else's copy or the
+  /// author's read receipts. A recipient clearing their own list must not be able to
+  /// destroy a message addressed to four other people — that is the author's call, and
+  /// it is a different verb (see `deleteTeamMessage`).
+  dismissedAt DateTime?
+
+  message TeamMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User        @relation("TeamMessageRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, readAt])
 }
 
 // ── Data lifecycle: durable job queue + retention/cold-storage ───────────────
@@ -4820,4 +5598,478 @@ enum CountermarkGrade {
   // Same reasoning as the model's @@map above: renaming a Postgres enum type is a
   // drop-and-recreate, which would trip the same guard and skip the whole sync.
   @@map("HallmarkGrade")
+}
+
+/// The four board forms. Adding a fifth is additive — a new enum value and, if it needs
+/// one, a new content table. It never rewrites an existing row.
+enum WikiInsightBoardType {
+  BAR
+  PIE
+  VENN
+  NODE
+}
+
+/// Which lens of a 2- or 3-set Venn an item sits in. A fixed set, because the geometry is
+/// fixed: two sets use A/B/AB, three use all seven.
+enum WikiInsightVennRegion {
+  A
+  B
+  C
+  AB
+  AC
+  BC
+  ABC
+}
+
+/// One hand-authored chart or diagram in a client's wiki Insights section.
+///
+/// `type` is the discriminant. The type-specific CONFIG lives here as nullable columns —
+/// there are only five, and a board header is inherently a union header — but the
+/// type-specific DATA lives in its own table, so no point row ever carries a column that
+/// means nothing for its board. A single flat point table would have had four of seven
+/// columns dead for three of four types, and would have forced `value Float?`, which no
+/// validator can express and every bar renderer would then have had to handle.
+/// How a running-cost line item behaves as the user count changes.
+enum WikiCostItemKind {
+  /// Fixed monthly fee, unaffected by user count.
+  FLAT
+  /// Priced per user per month — the only kind whose cost/user is constant.
+  PER_USER
+  /// A base fee plus usage beyond an included allowance.
+  METERED
+  /// Plan bands that step at user thresholds.
+  STEPPED
+}
+
+/// One line on a client's running-cost model — a third-party service the app pays for.
+///
+/// ⚠️ Distinct from `CostLineItem`, which is a line on a Docs proposal (what Gitwork
+/// charges). This is what the CLIENT'S APP costs to run.
+model WikiCostItem {
+  id            String           @id @default(cuid())
+  wikiId        String
+  wiki          ClientWiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  name          String
+  vendor        String?
+  kind          WikiCostItemKind
+  /// FLAT: the fee. PER_USER: the fee per user. METERED: the base before usage.
+  amountMonthly Float?
+  /// Annual price where it differs from 12x monthly. For PER_USER this is still PER USER.
+  amountAnnual  Float?
+  /// METERED — what is metered, for the readout ("GB egress", "SMS").
+  unitLabel     String?
+  /// METERED — units included in the base fee.
+  includedUnits Float?
+  /// METERED — price per unit beyond the allowance.
+  unitPrice     Float?
+  /// METERED — units one user consumes per month. ⚠️ Without this the item cannot scale,
+  /// and the engine reports that rather than costing its usage at zero.
+  unitsPerUser  Float?
+  notes         String?          @db.Text
+  /// Whether this line counts toward the committed total. FALSE = priced, not
+  /// committed: an option being compared (e.g. three AI providers). Still fully
+  /// costed, but excluded from the total, the per-user figure and the growth curve.
+  /// ⚠️ Defaults true, so every line written before this field keeps counting.
+  included      Boolean          @default(true)
+  orderKey      Int              @default(0)
+
+  tiers     WikiCostTier[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiCostItem")
+}
+
+/// One plan band on a STEPPED cost item.
+model WikiCostTier {
+  id            String       @id @default(cuid())
+  itemId        String
+  item          WikiCostItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// Highest user count this band covers. Null = the unbounded top band. ⚠️ A model whose
+  /// top band is capped has NO price above it — the engine treats that as a floor, not as
+  /// the price.
+  upToUsers     Int?
+  amountMonthly Float
+  label         String?
+  orderKey      Int          @default(0)
+
+  @@index([itemId])
+  @@map("WikiCostTier")
+}
+
+/// How much each extra developer on an estimate costs in coordination.
+/// LOW 8% · TYPICAL 15% · HIGH 25% — see COORDINATION_OVERHEAD in src/lib/wiki-estimates.ts.
+enum WikiEstimateCoordination {
+  LOW
+  TYPICAL
+  HIGH
+}
+
+/// One timeline estimate on a client's wiki: the effort per phase, and the team sizes to
+/// compare. Every duration and date is DERIVED at render (src/lib/wiki-estimates.ts) —
+/// nothing here stores a finish date, so editing a phase can never leave one stale.
+model WikiEstimate {
+  id              String                   @id @default(cuid())
+  wikiId          String
+  wiki            ClientWiki               @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title           String
+  summary         String?                  @db.Text
+  /// Null = no start agreed yet. The page plans from the next Monday and says so.
+  startDate       DateTime?                @db.Date
+  /// The team sizes compared, e.g. {1,2,3,4}. Normalised on read.
+  teamSizes       Int[]
+  /// The team size the page opens on. Null = the smallest.
+  recommendedTeam Int?
+  coordination    WikiEstimateCoordination @default(TYPICAL)
+  contingencyPct  Int                      @default(20)
+  /// `[{ id, name, effortDays, maxDevs }]`, in order. Replaced wholesale on every write —
+  /// a phase's identity is its position in the sequence, so a diff buys nothing. Parsed
+  /// defensively on read (src/server/wiki-estimates.ts).
+  phases          Json
+  orderKey        Int                      @default(0)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiEstimate")
+}
+
+/// One comparison table on a client's wiki — up to 45 columns (plans, releases, competitors)
+/// against a list of features. Read-only for the client. Columns and rows are JSON, replaced
+/// wholesale on every write and parsed defensively on read (src/lib/wiki-comparisons.ts).
+model WikiComparison {
+  id          String     @id @default(cuid())
+  wikiId      String
+  wiki        ClientWiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title       String
+  description String?    @db.Text
+  orderKey    Int        @default(0)
+  /// `[{ id, title, subtitle?, highlight? }]`, in display order.
+  columns     Json
+  /// `[{ id, kind: "row" | "group", label, note?, cells: { [columnId]: { state, text? } } }]`.
+  rows        Json
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiComparison")
+}
+
+/// A client-editable spreadsheet in the wiki (CLAUDE.md §73). Columns are JSON (typed,
+/// parsed defensively by src/lib/wiki-sheets.ts); rows are their own table because the
+/// client and the team edit them concurrently, cell by cell.
+model WikiSheet {
+  id                   String         @id @default(cuid())
+  wikiId               String
+  wiki                 ClientWiki     @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  title                String
+  description          String?        @db.Text
+  orderKey             Int            @default(0)
+  /// `[{ id, title, type, options?, width?, clientEditable }]`, in display order.
+  columns              Json
+  /// Column whose value becomes a task title when a row is sent to the board.
+  titleColumnId        String?
+  clientCanEdit        Boolean        @default(true)
+  clientCanAddRows     Boolean        @default(true)
+  clientCanSendToBoard Boolean        @default(false)
+  /// Last time the team was notified of client edits on this sheet (debounce).
+  clientNotifiedAt     DateTime?
+  rows                 WikiSheetRow[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiSheet")
+}
+
+/// One row of a WikiSheet. `cells` is `{ [columnId]: value }`, merged per cell on write so
+/// two people editing different cells never clobber each other. `taskId` is a loose id
+/// (like ClientWikiIntakeItem.taskId) — the row's stage is derived from the task at read.
+model WikiSheetRow {
+  id                  String    @id @default(cuid())
+  sheetId             String
+  sheet               WikiSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  orderKey            Float     @default(0)
+  cells               Json
+  taskId              String?
+  /// "TEAM" | "CLIENT"
+  createdByKind       String    @default("TEAM")
+  createdByName       String?
+  createdByWikiUserId String?
+  createdByUserId     String?
+  /// "TEAM" | "CLIENT" — who last changed a cell.
+  updatedByKind       String?
+  updatedByName       String?
+  /// Row height in px, set by the team dragging the row's edge. Null = auto. (§73.1)
+  height              Int?
+  /// Soft delete: a client can't silently erase history, and the team can restore.
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@index([taskId])
+  @@map("WikiSheetRow")
+}
+
+/// An image uploaded into a Sheet's media cell (§73.2). Addressed by `key`, a 160-bit
+/// random capability; the cell stores `/api/wiki/files/<key>/<name>`. Loose ids, no FK:
+/// a row edit that drops the link leaves the bytes (cheap; images are capped at 10 MB).
+model WikiSheetFile {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  wikiId         String
+  sheetId        String
+  filename       String
+  mime           String
+  size           Int
+  bytes          Bytes?
+  storageKey     String?
+  uploadedByKind String
+  uploadedByName String?
+  createdAt      DateTime @default(now())
+
+  @@index([sheetId])
+}
+
+model WikiInsightBoard {
+  id        String               @id @default(cuid())
+  wikiId    String
+  wiki      ClientWiki           @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  type      WikiInsightBoardType
+  title     String
+  /// A plain-English paragraph under the figure — what the reader is looking at. The
+  /// single most important field on a hand-authored chart.
+  caption   String?              @db.Text
+  /// BAR/PIE only: a unit shown on values ("£", "%", "users"). Null = bare numbers.
+  valueUnit String?
+  /// VENN only: the 2 or 3 set names. C null means a two-circle board.
+  setALabel String?
+  setBLabel String?
+  setCLabel String?
+  /// NODE only: the label on the centre node (e.g. "Coachman caravan").
+  coreLabel String?
+  orderKey  Int                  @default(0)
+
+  seriesPoints WikiInsightSeriesPoint[]
+  vennItems    WikiInsightVennItem[]
+  nodes        WikiInsightNode[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([wikiId])
+  @@map("WikiInsightBoard")
+}
+
+/// A labelled numeric point — BAR and PIE boards only. Those two are genuinely the same
+/// shape, so they share a table; splitting them would be the opposite mistake.
+model WikiInsightSeriesPoint {
+  id       String           @id @default(cuid())
+  boardId  String
+  board    WikiInsightBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  label    String
+  value    Float
+  /// A palette KEY ("blue" | "violet" | "emerald" | "amber" | "rose" | "slate"), never a
+  /// hex — a stored hex outlives the palette it came from, with no way to find it later.
+  color    String?
+  note     String?          @db.Text
+  orderKey Int              @default(0)
+
+  @@index([boardId])
+  @@map("WikiInsightSeriesPoint")
+}
+
+/// One item placed in one lens of a Venn board.
+model WikiInsightVennItem {
+  id       String                @id @default(cuid())
+  boardId  String
+  board    WikiInsightBoard      @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  label    String
+  region   WikiInsightVennRegion
+  note     String?               @db.Text
+  orderKey Int                   @default(0)
+
+  @@index([boardId])
+  @@map("WikiInsightVennItem")
+}
+
+/// A node on a NODE board. TWO LEVELS ONLY: `parentId` null means a branch off the core,
+/// set means a leaf off that branch. Enforced in the validator and again when
+/// serialising, because the radial layout is two-level by construction.
+///
+/// No coordinates are stored — the layout is computed, so a board can never be saved in a
+/// state that renders wrong, and it reflows to any width.
+model WikiInsightNode {
+  id       String            @id @default(cuid())
+  boardId  String
+  board    WikiInsightBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  parentId String?
+  parent   WikiInsightNode?  @relation("WikiInsightNodeTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children WikiInsightNode[] @relation("WikiInsightNodeTree")
+  label    String
+  color    String?
+  note     String?           @db.Text
+  /// A pasted URL, rendered as an anchor. NEVER fetched server-side — the same posture as
+  /// ClientWikiIntakeItem.attachmentUrls and the Launchpad asset links.
+  link     String?
+  orderKey Int               @default(0)
+
+  @@index([boardId])
+  @@index([parentId])
+  @@map("WikiInsightNode")
+}
+
+/// Persistent second tier of the GitHub conditional-request cache (src/lib/github-cache.ts,
+/// src/server/github-cache-store.ts, CLAUDE.md §84.15). Lets a rescan after a deploy still be
+/// answered by 304s, which do not count against the shared token's 5,000/hour limit.
+/// `key` is a SHA-256 of (token hash, Accept, URL) — never the token. `body` is gzipped JSON.
+/// Bounded and pruned on write; safe to TRUNCATE at any time (the next GET is a full read).
+model GithubResponseCache {
+  key          String   @id
+  etag         String?
+  lastModified String?
+  body         Bytes
+  size         Int
+  storedAt     DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@index([lastUsedAt])
+}
+
+/// A company that supplies people to the workspace (docs/hr-platform.md). Gitwork's
+/// developers all come through one partner today; each developer under it keeps their
+/// own Staff record, which points here by Candidate.supplierId.
+model Supplier {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  name              String
+  companyNumber     String?
+  vatNumber         String?
+  country           String?
+  contactName       String?
+  contactEmail      String?
+  agreementRenewsOn DateTime?
+  notes             String?
+  /// Archived rather than deleted: people's records still point at it.
+  archivedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, archivedAt])
+}
+
+/// The sensitive tier of a Staff record: date of birth, home address, NI number, ID,
+/// right to work and emergency contacts. One encrypted JSON envelope (src/lib/encryption.ts),
+/// never stored or logged in plain text. Only the person and `hr.viewSensitive` read it,
+/// and every read by someone else is written to HrAccessLog. recordId is Candidate.id,
+/// loose like the other links on that model.
+model StaffSensitive {
+  id          String   @id @default(cuid())
+  workspaceId String
+  recordId    String   @unique
+  payload     String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+/// Who looked at or changed someone's HR record, and when. Written by src/server/hr/;
+/// read by `hr.manage` on the profile. Never holds the values themselves, only what kind
+/// of thing happened (see HR_ACCESS_ACTIONS in src/lib/hr.ts).
+model HrAccessLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  recordId    String
+  actorUserId String?
+  actorName   String?
+  action      String
+  detail      String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, recordId, createdAt])
+}
+
+/// A document on a person's HR record (docs/hr-platform.md, Phase 1b): a file stored like
+/// every other upload (src/server/blob-storage.ts), a link to a file already in Google
+/// Drive, or a request for one that hasn't arrived yet. Access is decided by
+/// documentAccess (src/lib/hr-documents.ts); every download by someone other than the
+/// person is written to HrAccessLog. recordId is Candidate.id, loose like the other links.
+model StaffDocument {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  recordId       String
+  /// One of STAFF_DOCUMENT_TYPES (src/lib/hr-documents.ts).
+  type           String
+  title          String
+  /// ON_FILE | TO_CHECK (a person's own upload, waiting for HR) | REQUESTED | REJECTED
+  status         String    @default("ON_FILE")
+  /// PERSON_HR (default) | HR_ONLY | MANAGER (the person, HR and their manager)
+  visibility     String    @default("PERSON_HR")
+  filename       String?
+  mime           String?
+  size           Int?
+  bytes          Bytes?
+  storageKey     String?
+  /// A Google Drive link instead of a file. Never fetched by the server.
+  link           String?
+  expiresOn      DateTime?
+  /// What HR asked for (REQUESTED) or why it was sent back (REJECTED).
+  note           String?
+  uploadedById   String?
+  uploadedBySelf Boolean   @default(false)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  driveFileId    String?
+  driveSyncedAt  DateTime?
+  driveError     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([workspaceId, recordId])
+  @@index([workspaceId, expiresOn])
+}
+
+/// Pulse → AI search: the last sync of one workspace's report for one range (7, 28 or 90
+/// days). Each source in `report` carries when it was last read and, when the latest read
+/// failed, the last good one. Overwritten on every sync; deleted when the properties change,
+/// so figures from a previous property are never shown as this one's.
+model AiSearchSync {
+  /// `${workspaceId}:${range}`
+  id          String   @id
+  workspaceId String
+  range       Int
+  /// AiSearchReport (src/lib/ai-search.ts).
+  report      Json
+  /// When this sync ran.
+  attemptedAt DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+/// Pulse → AI search: one run of buyer questions put to the AI assistants (src/lib/ai-answers.ts).
+/// The answers are kept so every "named" and "cited" can be checked by reading them.
+model AiAnswerRun {
+  id          String    @id @default(cuid())
+  workspaceId String
+  /// running | done | failed. A "running" row past 30 minutes is read as interrupted.
+  status      String
+  /// manual | weekly
+  trigger     String
+  startedById String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  /// BuyerQuestion[] and the engines this run set out to ask.
+  questions   Json
+  engines     Json
+  /// AnswerResult[]
+  results     Json
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, startedAt])
 }

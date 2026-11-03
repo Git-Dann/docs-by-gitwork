@@ -28,12 +28,28 @@ import {
   OPTIONAL_DOC_SECTIONS,
 } from "./wiki-sidebar";
 import { WikiPageEditor, type WikiPageEditorHandle } from "./wiki-page-editor";
+import { WikiDocTabs } from "./wiki-doc-tabs";
+import { WikiMobileNav } from "./wiki-mobile-nav";
+import { clientVisibleSections } from "@/lib/wiki-client-visibility";
+import { isDocPageSection } from "@/lib/wiki-section-groups";
 import { ChangelogSection } from "./changelog-section";
 import { ChangelogEntryForm } from "./changelog-entry-form";
 import { CourseRequestsSection } from "./course-requests-section";
 import { GolfDataConsoleView } from "./golf-data-console";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
+import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
+import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
+import { WikiCostsSection } from "./wiki-costs-section";
+import { WikiEstimatesSection } from "./wiki-estimates-section";
+import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
+import { WikiSheetsSectionView } from "./wiki-sheets-section";
+import { useSetWikiSheetsEnabled } from "@/hooks/use-wiki-sheets";
+import { WikiRoundupSection } from "./wiki-roundup-section";
+import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
+import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
+import { WikiMeetingsSectionView } from "@/components/clients/wiki/wiki-meetings-section";
+import { WikiPlatformsSectionView } from "@/components/clients/wiki/wiki-platforms-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { CourseRequestForm, type CourseRequestPayload } from "./course-request-form";
@@ -42,9 +58,10 @@ import { CourseApiIntakeModal } from "./course-api-intake-modal";
 import { WikiTimelineSection } from "./wiki-timeline-section";
 import { WikiDashboard } from "./wiki-dashboard";
 import { MonitorsManager } from "./monitors-section";
+import { AgencyMonitorBoard } from "./monitor-board";
+import { isAgencyClient } from "@/lib/agency-client";
 import { DocumentsManager } from "./documents-section";
 import { WikiAccessSettings } from "./wiki-access-settings";
-import { WikiIntakeCategoriesPanel } from "./wiki-intake-categories-panel";
 import {
   ApiDocsPageEditor,
   normalizeApiDocsContent,
@@ -52,6 +69,7 @@ import {
 } from "./api-docs-page-editor";
 import { DesignSystemWorkspace } from "@/components/clients/design-system/design-system-workspace";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DashboardEditButton } from "@/components/clients/wiki/dashboard-edit";
 import {
   useClientWiki,
   useUpsertWikiPage,
@@ -71,6 +89,18 @@ import {
   useSetWikiCodeEnabled,
 } from "@/hooks/use-wiki";
 import { useSetLaunchpadEnabled } from "@/hooks/use-launchpad";
+import {
+  useSetWikiDeliveryEnabled,
+  useSetWikiInsightsEnabled,
+  useSetWikiCostsEnabled,
+  useSetWikiEstimatesEnabled,
+  useSetWikiComparisonsEnabled,
+  useSetWikiRoundupEnabled,
+  useSetWikiSupportEnabled,
+  useUpdateWikiMetrics,
+  useSetWikiMeetingsEnabled,
+  useSetWikiPlatformsEnabled,
+} from "@/hooks/use-wiki";
 import { useAccount } from "@/hooks/use-account";
 import type { BigWedgeSyncResult } from "@/lib/api";
 import type { ChangelogEntryPayload, ChangelogEditInitial } from "./changelog-entry-form";
@@ -108,9 +138,20 @@ const SECTION_TITLES: Record<WikiSection, string> = {
   settings: "Settings",
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   intake: "Requests",
   launchpad: "Launchpad",
+  insights: "Charts",
+  costs: "Running costs",
+  estimates: "Estimates",
+  comparisons: "Comparisons",
+  sheets: "Sheets",
+  roundup: "RoundUp",
+  delivery: "Delivery",
+  support: "Support",
+  metrics: "Metrics",
+  meetings: "Meetings",
+  platforms: "Platforms",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -127,6 +168,17 @@ const SECTION_TITLES: Record<WikiSection, string> = {
 const SECTION_WIDGET_LABELS: Partial<Record<WikiSection, string>> = {
   timeline: "TIMELINE",
   launchpad: "LAUNCHPAD",
+  insights: "CHARTS",
+  costs: "RUNNING COSTS",
+  estimates: "ESTIMATES",
+  comparisons: "COMPARISONS",
+  sheets: "SHEETS",
+  roundup: "ROUNDUP",
+  delivery: "DELIVERY",
+  support: "SUPPORT",
+  metrics: "METRICS",
+  meetings: "MEETINGS",
+  platforms: "PLATFORMS",
   ia: "IA GUIDE",
   "dev-guide": "DEVELOPER GUIDE",
   "api-docs": "API DOCS",
@@ -822,7 +874,7 @@ const ALL_PLATFORM_OPTIONS = [
 
 /** Every valid section id — used to validate a section restored from the URL hash. */
 const ALL_WIKI_SECTIONS: WikiSection[] = [
-  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "code-handover",
+  "dashboard", "timeline", "monitors", "documents", "intake", "launchpad", "insights", "costs", "estimates", "comparisons", "sheets", "roundup", "delivery", "support", "metrics", "meetings", "platforms", "code-handover",
   "design-system", "ia", "dev-guide", "api-docs", "architecture", "runbook",
   "data-model", "changelog", "course-requests", "golf-data", "settings",
 ];
@@ -861,9 +913,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const [pageSavedLabel, setPageSavedLabel] = useState<string | null>(null);
   const editorRef = useRef<WikiPageEditorHandle>(null);
 
-  // Reset editor state when switching sections
+  // Reset editor state when switching sections. The mode itself is chosen further down,
+  // once the wiki has loaded (it depends on whether the page has been written).
   useEffect(() => {
-    setPageMode(activeSection === "api-docs" ? "preview" : "edit");
     setPageSavedLabel(null);
   }, [activeSection]);
 
@@ -883,6 +935,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   }, []);
 
   const { data: wiki, isPending } = useClientWiki(slug);
+  const wikiLoaded = Boolean(wiki);
+
+  // A doc page opens READ, formatted — reading is the common case, and opening in the editor
+  // showed the team raw Markdown (`# Runbook`, `**bold**`) every time. An unwritten page opens
+  // in the editor, because there is nothing to read yet. Decided once per section, and again
+  // when the wiki first arrives — deliberately not on every refetch, or saving would throw the
+  // editor back to the read view mid-edit.
+  useEffect(() => {
+    const type = SECTION_TO_TYPE[activeSection];
+    const saved = type ? wiki?.pages.find((p) => p.type === type) : undefined;
+    const written =
+      typeof saved?.content === "string" ? saved.content.trim().length > 0 : saved !== undefined;
+    setPageMode(activeSection === "api-docs" || written ? "preview" : "edit");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, wikiLoaded]);
 
   // If the restored section isn't available for this client (e.g. a deleted page or
   // a Wedge-only section on another client), fall back to the dashboard once loaded.
@@ -904,6 +971,17 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const setDocumentsEnabled = useSetWikiDocumentsEnabled(slug);
   const setIntakeEnabled = useSetWikiIntakeEnabled(slug);
   const setLaunchpadEnabled = useSetLaunchpadEnabled(slug);
+  const setInsightsEnabled = useSetWikiInsightsEnabled(slug);
+  const setCostsEnabled = useSetWikiCostsEnabled(slug);
+  const setEstimatesEnabled = useSetWikiEstimatesEnabled(slug);
+  const setComparisonsEnabled = useSetWikiComparisonsEnabled(slug);
+  const setSheetsEnabled = useSetWikiSheetsEnabled(slug);
+  const setRoundupEnabled = useSetWikiRoundupEnabled(slug);
+  const setDeliveryEnabled = useSetWikiDeliveryEnabled(slug);
+  const setSupportEnabled = useSetWikiSupportEnabled(slug);
+  const updateMetrics = useUpdateWikiMetrics(slug);
+  const setMeetingsEnabled = useSetWikiMeetingsEnabled(slug);
+  const setPlatformsEnabled = useSetWikiPlatformsEnabled(slug);
   // Attribution for requests logged internally — see WikiIntakeSection.
   const account = useAccount();
   const setCodeEnabled = useSetWikiCodeEnabled(slug);
@@ -947,6 +1025,17 @@ export function WikiWorkspace({ slug, clientName }: Props) {
   const intakeOn = wiki.intakeEnabled || wiki.blockers.length > 0;
   const codeOn = wiki.codeHandover.enabled;
   const launchpadOn = Boolean(wiki.launchpad?.enabled);
+  const insightsOn = wiki.insights.enabled;
+  const costsOn = wiki.costs.enabled;
+  const estimatesOn = wiki.estimates.enabled;
+  const comparisonsOn = wiki.comparisons.enabled;
+  const sheetsOn = wiki.sheets.enabled;
+  const roundupOn = wiki.roundupEnabled ?? false;
+  const deliveryOn = wiki.deliveryEnabled;
+  const supportOn = wiki.support.enabled;
+  const metricsOn = wiki.metrics.enabled;
+  const meetingsOn = wiki.meetings.enabled;
+  const platformsOn = wiki.clientPlatforms.enabled;
   // A fresh wiki shows only Dashboard + Timeline (both permanent, non-deletable).
   // Every other section appears once it has real content OR is explicitly enabled,
   // and is otherwise offered under "+ Add New".
@@ -959,6 +1048,17 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     ...(documentsOn ? (["documents"] as const) : []),
     ...(intakeOn ? (["intake"] as const) : []),
     ...(launchpadOn ? (["launchpad"] as const) : []),
+    ...(insightsOn ? (["insights"] as const) : []),
+    ...(costsOn ? (["costs"] as const) : []),
+    ...(estimatesOn ? (["estimates"] as const) : []),
+    ...(comparisonsOn ? (["comparisons"] as const) : []),
+    ...(sheetsOn ? (["sheets"] as const) : []),
+    ...(roundupOn ? (["roundup"] as const) : []),
+    ...(deliveryOn ? (["delivery"] as const) : []),
+    ...(supportOn ? (["support"] as const) : []),
+    ...(metricsOn ? (["metrics"] as const) : []),
+    ...(meetingsOn ? (["meetings"] as const) : []),
+    ...(platformsOn ? (["platforms"] as const) : []),
     ...(codeOn ? (["code-handover"] as const) : []),
     ...(designSystemOn ? (["design-system"] as const) : []),
     ...OPTIONAL_DOC_SECTIONS.filter(
@@ -975,9 +1075,20 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       (item) => hiddenSections.has(item.section) || !existingDocsPageSections.has(item.section),
     ),
     ...(monitorsOn ? [] : [{ section: "monitors" as WikiSection, label: "Monitors" }]),
-    ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Documents" }]),
+    ...(documentsOn ? [] : [{ section: "documents" as WikiSection, label: "Resources" }]),
     ...(intakeOn ? [] : [{ section: "intake" as WikiSection, label: "Requests" }]),
     ...(launchpadOn ? [] : [{ section: "launchpad" as WikiSection, label: "Launchpad" }]),
+    ...(insightsOn ? [] : [{ section: "insights" as WikiSection, label: "Charts" }]),
+    ...(costsOn ? [] : [{ section: "costs" as WikiSection, label: "Running costs" }]),
+    ...(estimatesOn ? [] : [{ section: "estimates" as WikiSection, label: "Estimates" }]),
+    ...(comparisonsOn ? [] : [{ section: "comparisons" as WikiSection, label: "Comparisons" }]),
+    ...(sheetsOn ? [] : [{ section: "sheets" as WikiSection, label: "Sheets" }]),
+    ...(roundupOn ? [] : [{ section: "roundup" as WikiSection, label: "RoundUp" }]),
+    ...(deliveryOn ? [] : [{ section: "delivery" as WikiSection, label: "Delivery" }]),
+    ...(supportOn ? [] : [{ section: "support" as WikiSection, label: "Support" }]),
+    ...(metricsOn ? [] : [{ section: "metrics" as WikiSection, label: "Metrics" }]),
+    ...(meetingsOn ? [] : [{ section: "meetings" as WikiSection, label: "Meetings" }]),
+    ...(platformsOn ? [] : [{ section: "platforms" as WikiSection, label: "Platforms" }]),
     ...(codeOn ? [] : [{ section: "code-handover" as WikiSection, label: "Code Handover" }]),
     ...(designSystemOn ? [] : [{ section: "design-system" as WikiSection, label: "Design System" }]),
     ...(changelogOn ? [] : [{ section: "changelog" as WikiSection, label: "Changelog" }]),
@@ -991,6 +1102,15 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       ? availableSections
       : (Object.keys(wiki.pageShares ?? {}) as WikiSection[])
   ).filter((section) => section !== "settings");
+
+  // Switched on, but with nothing in it — so the client's link leaves it out. The same rule
+  // the share page uses, so the EMPTY marker can never disagree with what the client sees.
+  // Settings and Golf Data are internal by design, not empty, so they are never marked.
+  const clientSees = new Set(clientVisibleSections(wiki));
+  const emptySections = availableSections.filter(
+    (s) => s !== "settings" && s !== "golf-data" && !clientSees.has(s),
+  );
+  const docTabSections = availableSections.filter(isDocPageSection);
 
   function getPage(section: WikiSection) {
     const type = SECTION_TO_TYPE[section];
@@ -1027,6 +1147,61 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       // everything" defect happened.
       await setLaunchpadEnabled.mutateAsync(true);
       setActiveSection("launchpad");
+      return;
+    }
+    if (section === "insights") {
+      await setInsightsEnabled.mutateAsync(true);
+      setActiveSection("insights");
+      return;
+    }
+    if (section === "costs") {
+      await setCostsEnabled.mutateAsync(true);
+      setActiveSection("costs");
+      return;
+    }
+    if (section === "estimates") {
+      await setEstimatesEnabled.mutateAsync(true);
+      setActiveSection("estimates");
+      return;
+    }
+    if (section === "comparisons") {
+      await setComparisonsEnabled.mutateAsync(true);
+      setActiveSection("comparisons");
+      return;
+    }
+    if (section === "sheets") {
+      await setSheetsEnabled.mutateAsync(true);
+      setActiveSection("sheets");
+      return;
+    }
+    if (section === "roundup") {
+      await setRoundupEnabled.mutateAsync(true);
+      setActiveSection("roundup");
+      return;
+    }
+    if (section === "delivery") {
+      await setDeliveryEnabled.mutateAsync(true);
+      setActiveSection("delivery");
+      return;
+    }
+    if (section === "support") {
+      await setSupportEnabled.mutateAsync(true);
+      setActiveSection("support");
+      return;
+    }
+    if (section === "metrics") {
+      await updateMetrics.mutateAsync({ enabled: true });
+      setActiveSection("metrics");
+      return;
+    }
+    if (section === "meetings") {
+      await setMeetingsEnabled.mutateAsync(true);
+      setActiveSection("meetings");
+      return;
+    }
+    if (section === "platforms") {
+      await setPlatformsEnabled.mutateAsync(true);
+      setActiveSection("platforms");
       return;
     }
     if (section === "code-handover") {
@@ -1074,6 +1249,61 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       setActiveSection(availableSections.find((s) => s !== "launchpad") ?? "dashboard");
       return;
     }
+    if (section === "insights") {
+      await setInsightsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "insights") ?? "dashboard");
+      return;
+    }
+    if (section === "costs") {
+      await setCostsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "costs") ?? "dashboard");
+      return;
+    }
+    if (section === "estimates") {
+      await setEstimatesEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "estimates") ?? "dashboard");
+      return;
+    }
+    if (section === "comparisons") {
+      await setComparisonsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "comparisons") ?? "dashboard");
+      return;
+    }
+    if (section === "sheets") {
+      await setSheetsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "sheets") ?? "dashboard");
+      return;
+    }
+    if (section === "roundup") {
+      await setRoundupEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "roundup") ?? "dashboard");
+      return;
+    }
+    if (section === "delivery") {
+      await setDeliveryEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "delivery") ?? "dashboard");
+      return;
+    }
+    if (section === "support") {
+      await setSupportEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "support") ?? "dashboard");
+      return;
+    }
+    if (section === "metrics") {
+      await updateMetrics.mutateAsync({ enabled: false });
+      setActiveSection(availableSections.find((s) => s !== "metrics") ?? "dashboard");
+      return;
+    }
+    if (section === "meetings") {
+      await setMeetingsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "meetings") ?? "dashboard");
+      return;
+    }
+    if (section === "platforms") {
+      await setPlatformsEnabled.mutateAsync(false);
+      setActiveSection(availableSections.find((s) => s !== "platforms") ?? "dashboard");
+      return;
+    }
     if (section === "code-handover") {
       await setCodeEnabled.mutateAsync(false);
       setActiveSection(availableSections.find((s) => s !== "code-handover") ?? "dashboard");
@@ -1094,6 +1324,17 @@ export function WikiWorkspace({ slug, clientName }: Props) {
       section !== "documents" &&
       section !== "intake" &&
       section !== "launchpad" &&
+      section !== "insights" &&
+      section !== "costs" &&
+      section !== "estimates" &&
+      section !== "comparisons" &&
+      section !== "sheets" &&
+      section !== "roundup" &&
+      section !== "delivery" &&
+      section !== "support" &&
+      section !== "metrics" &&
+      section !== "meetings" &&
+      section !== "platforms" &&
       section !== "code-handover"
     )
       return;
@@ -1102,7 +1343,21 @@ export function WikiWorkspace({ slug, clientName }: Props) {
         ? " Clients and the intake API can no longer add items until you re-add it."
         : section === "launchpad"
           ? " The client can no longer update it. Their answers and statuses are kept, so re-adding it restores everything."
-          : "";
+          : section === "insights"
+            ? " The boards are kept, so re-adding it brings every chart back."
+            : section === "costs"
+              ? " The cost lines are kept, so re-adding it restores the whole model."
+              : section === "estimates"
+                ? " The estimates are kept, so re-adding it brings every one back."
+                : section === "comparisons"
+                ? " The tables are kept, so re-adding it brings every one back."
+                : section === "sheets"
+                ? " The sheets and their rows are kept, and the client can't see or edit them while it's off."
+                : section === "metrics"
+                  ? " The source, hidden metrics and stored figures are kept, so re-adding it restores them."
+                  : section === "meetings"
+                    ? " Meetings stay marked as shared, so re-adding it shows the same ones."
+                    : "";
     const ok = window.confirm(
       `Delete ${SECTION_TITLES[section]} from this wiki?${extra} You can add it back later from Add New.`,
     );
@@ -1248,18 +1503,9 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     // ── Settings — set the public-link username/password gate (internal only).
     if (activeSection === "settings") {
       return (
-        <div className="space-y-4">
-          <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
-          {/* Only meaningful while the Requests section is on — the categories
-              are what a client picks from when raising one. */}
-          {wiki!.intakeEnabled ? (
-            <WikiIntakeCategoriesPanel
-              slug={slug}
-              categories={wiki!.intakeCategories}
-              isDefault={wiki!.intakeCategoriesAreDefault}
-            />
-          ) : null}
-        </div>
+        // Every Settings card, Request categories included, renders inside WikiAccessSettings so
+        // they number in one sequence.
+        <WikiAccessSettings slug={slug} wiki={wiki!} availableSections={availableSections} />
       );
     }
 
@@ -1292,12 +1538,22 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     // ── Monitors — automated uptime checks (HTTP/TCP connectors).
     if (activeSection === "monitors") {
-      return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} />;
+      // Gitwork's own wiki also carries every client's monitors — Gitwork is the one watching
+      // all of them. Its own services are managed in the card below, like any client's.
+      if (isAgencyClient(slug)) {
+        return (
+          <div className="space-y-4">
+            <AgencyMonitorBoard slug={slug} number="01" />
+            <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} incidents={wiki!.monitors.incidents ?? []} number="02" label="OUR SERVICES" />
+          </div>
+        );
+      }
+      return <MonitorsManager slug={slug} monitors={wiki!.monitors.monitors} incidents={wiki!.monitors.incidents ?? []} />;
     }
 
-    // ── Documents — clean list of links / Foundry docs / uploaded files.
+    // ── Resources — clean list of links / Foundry docs / uploaded files.
     if (activeSection === "documents") {
-      return <DocumentsManager slug={slug} documents={wiki!.documents.documents} />;
+      return <DocumentsManager slug={slug} documents={wiki!.documents.documents} drive={wiki!.drive} />;
     }
 
     // ── Client intake — bugs/feedback/requests stay in Wiki until promoted by Admin+.
@@ -1307,6 +1563,62 @@ export function WikiWorkspace({ slug, clientName }: Props) {
     if (activeSection === "launchpad") {
       if (!wiki!.launchpad) return null;
       return <LaunchpadSection launchpad={wiki!.launchpad} slug={slug} mode="internal" />;
+    }
+    if (activeSection === "delivery") {
+      return (
+        <WikiDeliverySection
+          blocks={wiki!.timeline.blocks}
+          milestones={wiki!.timeline.milestones}
+          blockers={wiki!.blockers}
+         unassigned={wiki!.timeline.unassigned} />
+      );
+    }
+    if (activeSection === "metrics") {
+      return <WikiMetricsSectionView metrics={wiki!.metrics} slug={slug} editable />;
+    }
+    if (activeSection === "meetings") {
+      return <WikiMeetingsSectionView meetings={wiki!.meetings} slug={slug} editable />;
+    }
+    if (activeSection === "platforms") {
+      return <WikiPlatformsSectionView platforms={wiki!.clientPlatforms} />;
+    }
+    if (activeSection === "support") {
+      return <WikiSupportSectionView support={wiki!.support} />;
+    }
+    if (activeSection === "roundup") {
+      return (
+        <WikiRoundupSection
+          blocks={wiki!.timeline.blocks}
+          milestones={wiki!.timeline.milestones}
+          blockers={wiki!.blockers}
+          unassigned={wiki!.timeline.unassigned}
+        />
+      );
+    }
+    if (activeSection === "costs") {
+      return <WikiCostsSection slug={slug} model={wiki!.costs} mode="internal" />;
+    }
+    if (activeSection === "estimates") {
+      return <WikiEstimatesSection slug={slug} section={wiki!.estimates} mode="internal" />;
+    }
+    if (activeSection === "sheets") {
+      return (
+        <WikiSheetsSectionView
+          slug={slug}
+          clientId={wiki!.clientId}
+          section={wiki!.sheets}
+          mode="internal"        />
+      );
+    }
+    if (activeSection === "comparisons") {
+      return (
+        <WikiComparisonsSectionView slug={slug} section={wiki!.comparisons} mode="internal" />
+      );
+    }
+    if (activeSection === "insights") {
+      return (
+        <WikiInsightsSectionView slug={slug} boards={wiki!.insights.boards} mode="internal" />
+      );
     }
     if (activeSection === "intake") {
       return (
@@ -1318,6 +1630,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               items={wiki!.intakeItems}
               mode="internal"
               categories={wiki!.intakeCategories}
+              firstNumber={wiki!.blockers.length > 0 ? 2 : 1}
             />
           ) : (
             /**
@@ -1575,6 +1888,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 onEdit={openEditCourse}
                 onDelete={handleDeleteCourses}
                 onSetStatus={handleSetCourseStatus}
+                feed={wiki!.courseFeed ?? null}
               />
             </div>
           </section>
@@ -1610,6 +1924,12 @@ export function WikiWorkspace({ slug, clientName }: Props) {
 
     return (
       <>
+        <WikiDocTabs
+          sections={docTabSections}
+          active={activeSection}
+          titles={SECTION_TITLES}
+          onSelect={setActiveSection}
+        />
         {/* Page-level action bar — folded into a 3-dot menu */}
         <div className="mb-4 flex h-9 items-center justify-between gap-2">
           <span
@@ -1618,6 +1938,16 @@ export function WikiWorkspace({ slug, clientName }: Props) {
           >
             {pageSavedLabel ?? ""}
           </span>
+          <div className="flex items-center gap-2">
+          {/* The everyday action, visible: Edit to change the page, Done to read it back. */}
+          <button
+            type="button"
+            onClick={() => setPageMode(pageMode === "edit" ? "preview" : "edit")}
+            className="app-button app-button-secondary app-button-xs inline-flex items-center gap-1.5"
+          >
+            {pageMode === "edit" ? <EyeIcon className="h-4 w-4" /> : <PencilSquareIcon className="h-4 w-4" />}
+            {pageMode === "edit" ? "Done" : "Edit"}
+          </button>
           <ActionMenu
             items={[
               {
@@ -1651,6 +1981,7 @@ export function WikiWorkspace({ slug, clientName }: Props) {
               },
             ]}
           />
+          </div>
         </div>
 
         {/* Widget card */}
@@ -1715,15 +2046,32 @@ export function WikiWorkspace({ slug, clientName }: Props) {
             {" // WIKI"}
           </span>
         </div>
-        {/* Same Light/Dark/System control as the rest of Foundry. */}
-        <ThemeToggle iconOnly />
+        {/* Edit (dashboard only — it renders nothing elsewhere) sits beside the same
+            Light/Dark/System control as the rest of Foundry. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <DashboardEditButton />
+          <ThemeToggle iconOnly />
+        </div>
       </div>
 
       {/* Body — stacks on mobile (nav on top), side-by-side from md up.
           min-h-0 lets the columns own their scroll so the sidebar stays in view. */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-        {/* Sidebar / mobile top-nav — pinned in view; its list scrolls internally */}
-        <div className="shrink-0 border-b border-[rgba(0,0,0,0.08)] px-2 md:border-b-0 md:border-r">
+        {/* Phone: one section picker (the same one the client's link uses) instead of a
+            sideways strip that hid most of a full wiki's sections. */}
+        <div className="shrink-0 border-b border-[var(--border-1)] px-3 md:hidden">
+          <WikiMobileNav
+            sections={availableSections}
+            active={activeSection}
+            titles={SECTION_TITLES}
+            onSelect={setActiveSection}
+            addable={addableSections}
+            onAdd={(section) => void handleAddSection(section)}
+            emptySections={emptySections}
+          />
+        </div>
+        {/* Sidebar — pinned in view from md up; its list scrolls internally */}
+        <div className="hidden shrink-0 px-2 md:block md:border-r md:border-[var(--border-1)]">
           <WikiSidebar
             slug={slug}
             active={activeSection}
@@ -1739,10 +2087,22 @@ export function WikiWorkspace({ slug, clientName }: Props) {
                 s === "monitors" ||
                 s === "documents" ||
                 s === "intake" ||
+                s === "insights" ||
+                s === "costs" ||
+                s === "estimates" ||
+                s === "comparisons" ||
+                s === "sheets" ||
+                s === "roundup" ||
+                s === "delivery" ||
+                s === "support" ||
+                s === "metrics" ||
+                s === "meetings" ||
+                s === "platforms" ||
                 s === "code-handover",
             )}
             onDeleteSection={confirmDeletePage}
             isDeletingSection={deletePage.isPending}
+            emptySections={emptySections}
           />
         </div>
 

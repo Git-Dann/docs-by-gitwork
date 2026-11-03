@@ -7,14 +7,18 @@
 // everyone's pushed. Slack posting is best-effort/fire-and-forget — a missing
 // token or channel never fails the request (mirrors onboarding-notify.ts).
 
-import type { Prisma } from "@prisma/client";
+import { columnNameFor, parseBoardColumns } from "@/lib/tasks/board-columns";
+import { reportOwnerIds, type ReportTask } from "@/lib/standup-report";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { groupTasksForDay, type StandupGroupsFor } from "@/lib/wiki-standups";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
   type EffectiveUser,
   assertCanPublishTaskRollup,
 } from "@/server/auth/effective-user";
-import { listTasks } from "@/server/tasks";
+import { assignedClientIds, listTasks } from "@/server/tasks";
+import { rankPlanQueue } from "@/lib/tasks/plan-match";
 import { getSlackBotToken, postMessage, deleteMessage } from "@/server/slack/client";
 import {
   buildRollupCard,
@@ -24,6 +28,7 @@ import {
   type StandupTaskCardInput,
 } from "@/server/slack/blocks";
 import { assertDailyUpdateCooldown } from "@/server/slack-cooldown";
+import { notifyClientsOfStandup } from "@/server/push/client-notifications";
 import { TEAM_ROSTER } from "@/server/team-roster";
 import type {
   TaskDTO,
@@ -32,6 +37,7 @@ import type {
   RollupRosterDTO,
   RollupDevStatus,
 } from "@/types/tasks";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // Roll-up denominator = workspace members on the canonical dev roster — a stable
 // count, independent of who currently holds assigned tasks.
@@ -148,9 +154,12 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
   const tasks = await listTasks(user, { assigneeId: "me" });
   const { doing, done, upcoming } = partition(tasks, workDate);
 
-  const row = await prisma.dailyUpdate.findUnique({
-    where: { userId_workDate: { userId: user.id, workDate } },
-  });
+  const [row, fromPlan] = await Promise.all([
+    prisma.dailyUpdate.findUnique({
+      where: { userId_workDate: { userId: user.id, workDate } },
+    }),
+    loadFromPlan(user, tasks),
+  ]);
 
   return {
     date: workDate.toISOString(),
@@ -160,31 +169,148 @@ export async function getMyDay(user: EffectiveUser, dateStr?: string): Promise<M
     doing,
     done,
     upcoming,
+    fromPlan: fromPlan.tasks,
+    fromPlanTotal: fromPlan.total,
   };
 }
 
 // ─── Push a daily update ────────────────────────────────────────────────────
 
+/**
+ * The per-client snapshot of what a phase reports — see `DailyUpdate.amSnapshot`.
+ * Best-effort: a failure here must never stop a standup from being pushed, so it
+ * returns `Prisma.DbNull` (no snapshot) rather than throwing.
+ */
+/** How many planned tasks My Day carries. The list shows a few; the rest are a click away. */
+const FROM_PLAN_LIMIT = 30;
+
+/**
+ * Planned work nobody has picked up, on the clients this developer works on.
+ *
+ * ⚠️ This is the gap the October 2026 audit found: 55 of Fellas' 55 open planned tasks and
+ * 48 of Wedge's 49 had no assignee, so they never appeared on anyone's "Up next" — and a
+ * developer's only quick way to report today's work was to create a NEW task, which is
+ * how 583 of a month's ~720 completed tasks came to be made and closed the same day,
+ * outside the plan. Showing the planned tasks where the day starts is the fix.
+ *
+ * "This developer's clients" = their explicit assignments (ClientAssignment / Code
+ * placements) plus any client they hold a task on — an admin with `seeAllClients` would
+ * otherwise be offered every client's backlog.
+ */
+async function loadFromPlan(
+  user: EffectiveUser,
+  myTasks: TaskDTO[],
+): Promise<{ tasks: TaskDTO[]; total: number }> {
+  const clientIds = new Set(await assignedClientIds(user));
+  for (const t of myTasks) clientIds.add(t.client.id);
+  if (clientIds.size === 0) return { tasks: [], total: 0 };
+  const planned = await listTasks(user, {
+    clientIds: [...clientIds],
+    unassignedOnly: true,
+    plannedOnly: true,
+    openOnly: true,
+  });
+  const ranked = rankPlanQueue(planned);
+  return { tasks: ranked.slice(0, FROM_PLAN_LIMIT), total: ranked.length };
+}
+
+async function buildStandupSnapshot(
+  user: EffectiveUser,
+  workDate: Date,
+  now: Date,
+  targetFilter: Set<string> | null,
+): Promise<Prisma.InputJsonValue | typeof Prisma.DbNull> {
+  try {
+    const tasks = await listTasks(user, { assigneeId: "me", includeSubtasks: true });
+    const parentIds = Array.from(
+      new Set(tasks.map((t) => t.parentId).filter((id): id is string => Boolean(id))),
+    );
+    const parents = parentIds.length
+      ? await prisma.task.findMany({
+          where: { id: { in: parentIds }, workspaceId: user.workspaceId },
+          select: { id: true, title: true },
+        })
+      : [];
+    const parentTitle = new Map(parents.map((p) => [p.id, p.title]));
+
+    const byClient = new Map<string, typeof tasks>();
+    for (const t of tasks) {
+      if (targetFilter && !targetFilter.has(t.client.id)) continue;
+      const list = byClient.get(t.client.id) ?? [];
+      list.push(t);
+      byClient.set(t.client.id, list);
+    }
+
+    const clients: Record<string, StandupGroupsFor> = {};
+    for (const [clientId, list] of byClient) {
+      const groups = groupTasksForDay(
+        list.map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          completedAt: t.completedAt,
+          parentTitle: t.parentId ? (parentTitle.get(t.parentId) ?? null) : null,
+        })),
+        workDate,
+      );
+      if (groups.inProgress.length + groups.inReview.length + groups.doneToday.length > 0) {
+        clients[clientId] = groups;
+      }
+    }
+    return { v: 1, at: now.toISOString(), clients } as unknown as Prisma.InputJsonValue;
+  } catch (err) {
+    console.error("[tasks] standup snapshot failed — pushing without one", err);
+    return Prisma.DbNull;
+  }
+}
+
 export async function pushDailyUpdate(
   user: EffectiveUser,
-  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string },
+  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string; clientIds?: string[] },
 ): Promise<DailyUpdateDTO> {
   await ensureBaseRecords();
   const workDate = parseWorkDate();
   const now = new Date();
   await assertDailyUpdateCooldown(user, { phase: input.phase, workDate });
 
-  // For the EOD "all-in" nudge: was this dev's PM already in before this push?
-  const prior =
-    input.phase === "PM"
-      ? await prisma.dailyUpdate.findUnique({
-          where: { userId_workDate: { userId: user.id, workDate } },
-          select: { pmPushedAt: true },
-        })
-      : null;
+  // Which clients this update covers — drives per-client retainer-day accrual. Computed
+  // independent of Slack (works with no bot token) and honours the composer's client picker,
+  // so a deselected client accrues no day. AM = in-progress + in-review, PM = done + in-review
+  // + still-in-progress, mirroring what each phase reports.
+  const myTasks = await listTasks(user, { assigneeId: "me" });
+  const { active, inReview, done } = partition(myTasks, workDate);
+  const phaseTasks =
+    input.phase === "AM" ? [...active, ...inReview] : [...done, ...inReview, ...active];
+  const targetFilter =
+    input.clientIds && input.clientIds.length > 0 ? new Set(input.clientIds) : null;
+  const involvedClientIds = Array.from(
+    new Set(
+      phaseTasks.map((t) => t.client.id).filter((id) => !targetFilter || targetFilter.has(id)),
+    ),
+  );
+
+  // Read the existing row once: the PM "all-in" nudge needs the prior pmPushedAt, and we union
+  // today's involved clients with what an earlier phase already recorded (AM+PM = one day).
+  const existing = await prisma.dailyUpdate.findUnique({
+    where: { userId_workDate: { userId: user.id, workDate } },
+    select: { pmPushedAt: true, involvedClientIds: true },
+  });
+  const prior = input.phase === "PM" ? existing : null;
+  const mergedInvolved = Array.from(
+    new Set([...(existing?.involvedClientIds ?? []), ...involvedClientIds]),
+  );
+
+  // ⚠️ Save what this phase REPORTED, per client, so the client wiki can show a
+  // past day as it was sent rather than rebuilding it from today's board. Built
+  // with subtasks included (as the Slack post is) and the composer's client
+  // filter applied, via the same grouping rule the wiki reads back with.
+  const snapshot = await buildStandupSnapshot(user, workDate, now, targetFilter);
 
   // Persist the push log + editable fields.
-  const phaseField = input.phase === "AM" ? { amPushedAt: now } : { pmPushedAt: now };
+  const phaseField =
+    input.phase === "AM"
+      ? { amPushedAt: now, amSnapshot: snapshot }
+      : { pmPushedAt: now, pmSnapshot: snapshot };
   const row = await prisma.dailyUpdate.upsert({
     where: { userId_workDate: { userId: user.id, workDate } },
     create: {
@@ -194,11 +320,13 @@ export async function pushDailyUpdate(
       ...phaseField,
       weekPlan: input.weekPlan ?? null,
       note: input.note ?? null,
+      involvedClientIds: mergedInvolved,
     },
     update: {
       ...phaseField,
       ...(input.weekPlan !== undefined ? { weekPlan: input.weekPlan } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
+      involvedClientIds: mergedInvolved,
     },
   });
 
@@ -212,6 +340,23 @@ export async function pushDailyUpdate(
       return { posted: 0, failures: [] as string[] };
     },
   );
+
+  // Tell the client's own phones, once per client per phase per day. Slack
+  // already carries this to clients who have a Connect channel linked; this is
+  // for the ones who live in the app instead.
+  //
+  // ⚠️ `involvedClientIds`, not `mergedInvolved` — the merged list unions what an
+  // earlier phase recorded, so it would push an afternoon update to a client this
+  // developer did no afternoon work for.
+  //
+  // ⚠️ Fire-and-forget, exactly like the Slack post and the all-in ping below. A
+  // developer's standup must never fail because a client's phone did.
+  void notifyClientsOfStandup({
+    workspaceId: user.workspaceId,
+    clientIds: involvedClientIds,
+    phase: input.phase,
+    workDate,
+  }).catch((err) => console.error("[tasks] client standup push failed", err));
 
   // If this PM push is the one that completes the whole dev roster, nudge the lead once.
   if (input.phase === "PM" && !prior?.pmPushedAt) {
@@ -267,7 +412,12 @@ export async function deleteStandupUpdate(
   const row = existing
     ? await prisma.dailyUpdate.update({
         where: { userId_workDate: { userId: user.id, workDate } },
-        data: phase === "AM" ? { amPushedAt: null } : { pmPushedAt: null },
+        // ⚠️ The snapshot goes with the stamp. A retracted update must not be
+        // readable from the client wiki's history afterwards.
+        data:
+          phase === "AM"
+            ? { amPushedAt: null, amSnapshot: Prisma.DbNull }
+            : { pmPushedAt: null, pmSnapshot: Prisma.DbNull },
       })
     : null;
 
@@ -280,7 +430,7 @@ export async function deleteStandupUpdate(
 async function postStandupToSlack(
   user: EffectiveUser,
   workDate: Date,
-  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string },
+  input: { phase: "AM" | "PM"; weekPlan?: string; note?: string; clientIds?: string[] },
 ): Promise<{ posted: number; failures: string[] }> {
   const ws = await prisma.workspace.findUnique({
     where: { id: user.workspaceId },
@@ -302,7 +452,7 @@ async function postStandupToSlack(
    * "in progress"/"done" depending on the phase, which reported unreviewed work
    * as finished. Sign-off is now its own line and never counts as done.
    */
-  const groups: Array<{ label: string; tasks: TaskDTO[] }> =
+  const allGroups: Array<{ label: string; tasks: TaskDTO[] }> =
     input.phase === "AM"
       ? [
           { label: "In progress", tasks: active },
@@ -313,6 +463,15 @@ async function postStandupToSlack(
           { label: "In review — waiting on sign-off", tasks: inReview },
           { label: "Still in progress", tasks: active },
         ];
+
+  // Target filter — when the dev picked specific clients in the composer, drop
+  // every other client's tasks up front so the fan-out, the "nothing to say"
+  // check and the cards all reflect the selection. Absent/empty = no filter.
+  const targetClients =
+    input.clientIds && input.clientIds.length > 0 ? new Set(input.clientIds) : null;
+  const groups = targetClients
+    ? allGroups.map((g) => ({ ...g, tasks: g.tasks.filter((t) => targetClients.has(t.client.id)) }))
+    : allGroups;
 
   // Everything referenced by any group — drives the client fan-out, the parent
   // title lookup and the "nothing to say" check, so a task can't be posted to a
@@ -348,8 +507,10 @@ async function postStandupToSlack(
       slackChannelId: true,
       slackInternalChannelId: true,
       slackExternalChannelId: true,
+      taskBoardColumns: true,
     },
   });
+  const columnsByClient = new Map(clients.map((c) => [c.id, parseBoardColumns(c.taskBoardColumns)] as const));
   const channelByClient = new Map(
     clients.map((c) => [c.id, c.slackInternalChannelId ?? c.slackChannelId] as const),
   );
@@ -372,30 +533,27 @@ async function postStandupToSlack(
 
     // Clean list card — no per-task Slack actions, so no SlackMessageRef rows
     // to pre-mint. The single "View board" button covers "open in Foundry".
-    // Parents whose own subtasks are in this update — their subtasks render grouped
-    // under the parent heading, so we drop the standalone parent line to avoid dupes.
-    const parentIdsWithSubs = new Set(
-      mine.filter((t) => t.parentId).map((t) => t.parentId as string),
-    );
     const toCardTask = (t: TaskDTO): StandupTaskCardInput => ({
       taskId: t.id,
       title: t.title,
       parentTitle: t.parentId ? parentTitleById.get(t.parentId) ?? "Task" : null,
+      parentId: t.parentId,
       clientName: t.client.name,
       clientSlug: t.client.slug,
       blockName: t.featureBlock?.name ?? null,
+      columnName: columnNameFor(t, columnsByClient.get(t.client.id) ?? []),
       dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
       status: t.status,
       description: t.description,
     });
-    // Drop a parent line when its own subtasks are in the same update — they
-    // render grouped under the parent heading, so the standalone line is a dupe.
-    const keep = (t: TaskDTO) => !(t.parentId === null && parentIdsWithSubs.has(t.id));
-
+    // Each group lays its own subtasks out under their parent (taskListText → toRows), so
+    // a parent is never dropped from one group because its subtask finished in another.
+    // It used to be: a subtask done today removed its still-running parent from
+    // "Still in progress" altogether.
     const cardSections = groups
       .map((g) => ({
         label: g.label,
-        tasks: g.tasks.filter((t) => t.client.id === clientId && keep(t)).map(toCardTask),
+        tasks: g.tasks.filter((t) => t.client.id === clientId).map(toCardTask),
       }))
       .filter((g) => g.tasks.length > 0);
 
@@ -523,8 +681,9 @@ export async function maybePingAllIn(workspaceId: string, workDate: Date): Promi
 /** Roll-up denominator: workspace members on the dev roster (assignment-independent).
  *  Exported so the analytics aggregator can reuse the exact same roster definition. */
 export async function getDeveloperUserIds(workspaceId: string): Promise<string[]> {
+  // ACTIVE only — a leaver must not count as "hasn't pushed a standup".
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...ACTIVE_MEMBER },
     select: { userId: true, user: { select: { email: true } } },
   });
   return members.filter((m) => DEV_EMAILS.has(m.user.email.toLowerCase())).map((m) => m.userId);
@@ -750,15 +909,28 @@ async function compileDailyUpdates(
     return { projects: [], otherDevs: [], devCount: 0, taskCount: 0, channel, botToken, workDate };
   }
 
-  const assigneeFilter = [
-    { assignees: { some: { id: { in: devIds } } } },
-    { assigneeId: { in: devIds } },
+  const ownedBy = (ids: string[]): Prisma.TaskWhereInput[] => [
+    { assignees: { some: { id: { in: ids } } } },
+    { assigneeId: { in: ids } },
   ];
-  // PM = done today; AM = whatever's currently in progress.
+  // A subtask nobody is assigned to belongs to whoever owns its parent (reportOwnerIds).
+  // Most live subtasks predate inheriting the parent's assignees, so without this a
+  // finished subtask is reported for nobody.
+  const assigneeFilter: Prisma.TaskWhereInput[] = [
+    ...ownedBy(devIds),
+    { assigneeId: null, assignees: { none: {} }, parent: { OR: ownedBy(devIds) } },
+  ];
+  const inFlight: Prisma.TaskWhereInput = {
+    status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] },
+    archivedAt: null,
+  };
+  // PM = what shipped today AND what is still moving — a multi-day task must still show
+  // up at the end of the day, or a dev three days into one has nothing to report.
+  // AM = what's in progress.
   const taskWhere: Prisma.TaskWhereInput =
     phase === "PM"
-      ? { status: "DONE", completedAt: { gte: workDate, lt: nextUtcDay(workDate) } }
-      : { status: { in: ["DOING", "IN_REVIEW", "UI_DONE"] } };
+      ? { OR: [{ status: "DONE", completedAt: { gte: workDate, lt: nextUtcDay(workDate) } }, inFlight] }
+      : inFlight;
 
   const [users, updates, tasks] = await Promise.all([
     prisma.user.findMany({
@@ -776,15 +948,18 @@ async function compileDailyUpdates(
       select: { userId: true, note: true },
     }),
     prisma.task.findMany({
-      where: { workspaceId: user.workspaceId, ...taskWhere, OR: assigneeFilter },
+      where: { workspaceId: user.workspaceId, AND: [taskWhere, { OR: assigneeFilter }] },
       select: {
         id: true,
         title: true,
+        status: true,
+        parentId: true,
         assigneeId: true,
         assignees: { select: { id: true } },
+        parent: { select: { title: true, assigneeId: true, assignees: { select: { id: true } } } },
         client: { select: { id: true, name: true, slug: true } },
       },
-      orderBy: phase === "PM" ? { completedAt: "asc" } : { createdAt: "asc" },
+      orderBy: [{ completedAt: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
@@ -798,15 +973,13 @@ async function compileDailyUpdates(
   type ProjectAcc = {
     clientName: string;
     clientSlug: string;
-    devs: Map<string, { name: string; tasks: Array<{ title: string; taskId: string }> }>;
+    devs: Map<string, { name: string; tasks: ReportTask[] }>;
   };
   const projectMap = new Map<string, ProjectAcc>();
   const devsWithTasks = new Set<string>();
 
   for (const t of tasks) {
-    const ids = new Set<string>(t.assignees.map((a) => a.id));
-    if (t.assigneeId) ids.add(t.assigneeId);
-    for (const id of ids) {
+    for (const id of reportOwnerIds(t)) {
       if (!pushedSet.has(id)) continue; // dev hasn't posted this phase → skip
       const row = userById.get(id);
       if (!row) continue;
@@ -821,7 +994,13 @@ async function compileDailyUpdates(
         dev = { name: row.name?.trim() || row.email, tasks: [] };
         proj.devs.set(id, dev);
       }
-      dev.tasks.push({ title: t.title, taskId: t.id });
+      dev.tasks.push({
+        title: t.title,
+        taskId: t.id,
+        status: t.status,
+        parentId: t.parentId,
+        parentTitle: t.parent?.title ?? null,
+      });
     }
   }
 

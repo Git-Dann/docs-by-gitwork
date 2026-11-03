@@ -70,50 +70,72 @@ const analysisTone: Record<
 
 type CodeTab = { href: string; label: string; devsignal?: boolean };
 
-const tabItems: readonly CodeTab[] = [
-  // Overview lives at the canonical /app/code (where the sidebar "Code" lands); the
-  // legacy /app/codeclear also renders it, so both count as the Overview tab.
-  { href: "/app/code", label: "Overview" },
+/**
+ * Staff (formerly Code, CLAUDE.md §87): the people, then Hiring — the developer
+ * vetting that used to be the whole module. Hiring is a workspace module of its own
+ * (`devsignal`, src/lib/workspace-modules.ts), so a business without it sees Staff only.
+ */
+const staffTabs: readonly CodeTab[] = [
+  { href: "/app/staff", label: "People" },
   { href: "/app/codeclear/candidates", label: "Developers" },
+  // Leavers (developers included) are under People → Archived, not a tab of their own.
+];
+
+const hiringTabs: readonly CodeTab[] = [
+  // The developer overview (tiers, GitHub signal). Was the module's landing page.
+  { href: "/app/codeclear", label: "Overview" },
   { href: "/app/codeclear/pipeline", label: "Pipeline" },
   { href: "/app/codeclear/devsignal", label: "DevSignal", devsignal: true },
-] as const;
+];
 
-/** Is `tab` the active one for the current path? Overview matches both /app/code
- *  and legacy /app/codeclear; every tab also matches its own sub-routes (detail
- *  pages) so the tab stays lit when you drill in. */
-function isTabActive(href: string, pathname: string): boolean {
-  if (href === "/app/code") return pathname === "/app/code" || pathname === "/app/codeclear";
+/** Is `tab` the active one for the current path? Overview is the bare /app/codeclear
+ *  page only; every other tab also matches its own sub-routes (detail pages) so the
+ *  tab stays lit when you drill in. */
+export function isTabActive(href: string, pathname: string): boolean {
+  if (href === "/app/codeclear") return pathname === "/app/codeclear";
+  // People owns profiles (/app/staff/[id]) but not its sibling tab, Suppliers.
+  if (href === "/app/staff") return pathname === href || (pathname.startsWith("/app/staff/") && !pathname.startsWith("/app/staff/suppliers"));
   return pathname === href || pathname.startsWith(href + "/");
 }
 
 export function CodeClearTabs() {
   const pathname = usePathname();
-  const { canManageDevSignal } = usePermissions();
+  const { canManageDevSignal, canManageHr, hasModule } = usePermissions();
   // DevSignal (dev vetting) is permission-gated — only show its tab to those who can reach it.
-  const items = tabItems.filter((t) => !t.devsignal || canManageDevSignal);
+  const hiring = hasModule("devsignal") ? hiringTabs.filter((t) => !t.devsignal || canManageDevSignal) : [];
+
+  const tab = (item: CodeTab) => {
+    const active = isTabActive(item.href, pathname);
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "inline-flex items-center rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition",
+          active
+            ? "border-[var(--brand-600)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
+            : "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-3)] hover:border-[var(--border-1)] hover:text-[var(--text-1)]",
+        )}
+      >
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {items.map((item) => {
-        const active = isTabActive(item.href, pathname);
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "inline-flex items-center rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition",
-              active
-                ? "border-[var(--brand-600)] bg-[var(--surface-brand)] text-[var(--brand-700)]"
-                : "border-[var(--border-2)] bg-white text-[var(--text-3)] hover:border-[var(--border-1)] hover:text-[var(--text-1)]",
-            )}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
-    </div>
+    <nav aria-label="Staff" className="flex flex-wrap items-center gap-2">
+      {staffTabs.map(tab)}
+      {/* HR only: the companies people are supplied through (docs/hr-platform.md). */}
+      {canManageHr ? tab({ href: "/app/staff/suppliers", label: "Suppliers" }) : null}
+      {hiring.length ? (
+        <>
+          <span aria-hidden className="mx-1 h-5 w-px bg-[var(--border-2)]" />
+          <span className="font-mono text-[10px] uppercase tracking-[1.2px] text-[var(--text-4)]">Hiring</span>
+          {hiring.map(tab)}
+        </>
+      ) : null}
+    </nav>
   );
 }
 
@@ -125,10 +147,13 @@ export function WidgetCard({
   children,
   className,
   bodyClassName,
+  action,
 }: {
   number: string;
   name: string;
   status?: string;
+  /** A small control in the header, beside the status (e.g. Edit), so it costs no row of its own. */
+  action?: React.ReactNode;
   statusTone?: "info" | "success" | "warning" | "danger" | "muted";
   children: React.ReactNode;
   className?: string;
@@ -153,10 +178,15 @@ export function WidgetCard({
           <span className="mx-1.5 text-[var(--text-4)]">{"//"}</span>
           {name}
         </span>
-        {status ? (
-          <span className="widget-header__status">
-            <span className={cn("widget-status-dot", dotTone)} aria-hidden />
-            {status}
+        {status || action ? (
+          <span className="flex min-w-0 items-center gap-3">
+            {status ? (
+              <span className="widget-header__status">
+                <span className={cn("widget-status-dot", dotTone)} aria-hidden />
+                {status}
+              </span>
+            ) : null}
+            {action}
           </span>
         ) : null}
       </div>

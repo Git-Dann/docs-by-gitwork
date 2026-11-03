@@ -8,7 +8,7 @@ import { DEFAULT_INTAKE_CATEGORIES, type IntakeCategory } from "@/lib/wiki-intak
 import { WikiIntakeSection } from "@/components/clients/wiki/wiki-intake-section";
 
 /**
- * Category tabs + 10-per-page pagination on the Requests intake list.
+ * Category tabs + pagination on the Requests tracker grid.
  *
  * A client wanted to log design edits/changes without them mixing into a dev's
  * Bug/Request view — this drives the real component with a mixed set of items
@@ -46,6 +46,8 @@ function makeItem(id: string, type: WikiIntakeItemRecord["type"]): WikiIntakeIte
     attachmentUrls: [],
     source: "wiki",
     taskId: null,
+    taskStatus: null,
+    stage: "NEW",
     hasImage: false,
     imageFilename: null,
     device: null,
@@ -56,13 +58,16 @@ function makeItem(id: string, type: WikiIntakeItemRecord["type"]): WikiIntakeIte
   };
 }
 
-// 12 BUG + 5 FEEDBACK + 3 TASK + 3 DESIGN = 23 — enough to push both "ALL" and
-// the "Bug" tab past one page of 10, while "Design" stays a single page.
+// 30 BUG + 12 FEEDBACK + 6 TASK + 6 DESIGN = 54 — enough to push both "ALL" and
+// the "Bug" tab past one page of PAGE_SIZE, while "Design" stays a single page.
+// (Scaled up from 23 when the page size went 10 → 25 with the tracker rework: at
+// the old fixture size every tab fitted on one page and the pagination assertions
+// would have passed while testing nothing.)
 const ITEMS: WikiIntakeItemRecord[] = [
-  ...Array.from({ length: 12 }, (_, i) => makeItem(`bug-${i}`, "BUG")),
-  ...Array.from({ length: 5 }, (_, i) => makeItem(`fb-${i}`, "FEEDBACK")),
-  ...Array.from({ length: 3 }, (_, i) => makeItem(`task-${i}`, "TASK")),
-  ...Array.from({ length: 3 }, (_, i) => makeItem(`design-${i}`, "DESIGN")),
+  ...Array.from({ length: 30 }, (_, i) => makeItem(`bug-${i}`, "BUG")),
+  ...Array.from({ length: 12 }, (_, i) => makeItem(`fb-${i}`, "FEEDBACK")),
+  ...Array.from({ length: 6 }, (_, i) => makeItem(`task-${i}`, "TASK")),
+  ...Array.from({ length: 6 }, (_, i) => makeItem(`design-${i}`, "DESIGN")),
 ];
 
 function render(opts: { items?: WikiIntakeItemRecord[]; categories?: IntakeCategory[] } = {}) {
@@ -81,15 +86,16 @@ function render(opts: { items?: WikiIntakeItemRecord[]; categories?: IntakeCateg
   );
 }
 
-// Filter tabs are the `rounded-full` buttons carrying a trailing count. (The
-// form's own category picker is a <select>, not buttons, so it can't be hit
-// by accident here — but keep the class check so that stays true if it ever
-// goes back to pills.)
+// Filter tabs carry their own label as a `title`, which is what distinguishes
+// them from the other buttons in that row (Copy, the dealt-with toggle). Matching
+// on the title rather than on a class is deliberate: the class WAS `rounded-full`
+// and changed to `rounded-[6px]` with the tracker rework, at which point every one
+// of these lookups silently found nothing.
 function tabButton(label: string): HTMLButtonElement {
   const button = Array.from(host.querySelectorAll("button")).find(
-    (b) => b.className.includes("rounded-full") && b.textContent?.trim().startsWith(label),
+    (b) => b.getAttribute("title") === label,
   );
-  if (!button) throw new Error(`No filter tab starting with "${label}"`);
+  if (!button) throw new Error(`No filter tab titled "${label}"`);
   return button;
 }
 
@@ -103,34 +109,37 @@ function click(button: HTMLButtonElement) {
   act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
+/** Rows in the tracker grid. `data-request-row` is a named test seam on the row
+ *  wrapper — the rows used to be <article> elements, and a test counting those
+ *  would report 0 rather than fail loudly once they became grid rows. */
 function articleCount(): number {
-  return host.querySelectorAll("article").length;
+  return host.querySelectorAll("[data-request-row]").length;
 }
 
 describe("WikiIntakeSection — category tabs + pagination", () => {
   it("renders one tab per label, starting with ALL, each carrying its own count", () => {
     render();
-    expect(tabButton("All").textContent).toContain("23");
-    expect(tabButton("Bug").textContent).toContain("12");
-    expect(tabButton("Feedback").textContent).toContain("5");
-    expect(tabButton("Request").textContent).toContain("3");
-    expect(tabButton("Design").textContent).toContain("3");
+    expect(tabButton("All").textContent).toContain("54");
+    expect(tabButton("Bug").textContent).toContain("30");
+    expect(tabButton("Feedback").textContent).toContain("12");
+    expect(tabButton("Request").textContent).toContain("6");
+    expect(tabButton("Design").textContent).toContain("6");
   });
 
-  it("caps the ALL tab at 10 rows per page and reports the page count", () => {
+  it("caps the ALL tab at one page of rows and reports the page count", () => {
     render();
-    expect(articleCount()).toBe(10);
+    expect(articleCount()).toBe(25);
     expect(host.textContent).toContain("PAGE 1 OF 3");
   });
 
   it("Next/Previous page through the remaining rows without changing the filter", () => {
     render();
     click(pagerButton("Next"));
-    expect(articleCount()).toBe(10);
+    expect(articleCount()).toBe(25);
     expect(host.textContent).toContain("PAGE 2 OF 3");
 
     click(pagerButton("Next"));
-    expect(articleCount()).toBe(3);
+    expect(articleCount()).toBe(4);
     expect(host.textContent).toContain("PAGE 3 OF 3");
     expect(pagerButton("Next").hasAttribute("disabled")).toBe(true);
 
@@ -141,20 +150,20 @@ describe("WikiIntakeSection — category tabs + pagination", () => {
   it("filtering to Bug hides Design/Feedback/Request items and still paginates", () => {
     render();
     click(tabButton("Bug"));
-    expect(articleCount()).toBe(10);
+    expect(articleCount()).toBe(25);
     expect(host.textContent).toContain("PAGE 1 OF 2");
     expect(host.textContent).not.toContain("DESIGN item");
     expect(host.textContent).not.toContain("FEEDBACK item");
 
     click(pagerButton("Next"));
-    expect(articleCount()).toBe(2);
+    expect(articleCount()).toBe(5);
     expect(host.textContent).toContain("PAGE 2 OF 2");
   });
 
-  it("filtering to Design shows only the 3 design items with no pagination bar", () => {
+  it("filtering to Design shows only the design items with no pagination bar", () => {
     render();
     click(tabButton("Design"));
-    expect(articleCount()).toBe(3);
+    expect(articleCount()).toBe(6);
     expect(host.textContent).not.toContain("PAGE 1 OF");
     expect(host.textContent).not.toContain("BUG item");
   });

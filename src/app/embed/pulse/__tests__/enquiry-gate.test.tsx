@@ -95,6 +95,26 @@ function startScan() {
   act(() => (host.querySelector("button") as HTMLButtonElement).dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
+function fillCapture(fields: { name?: string; business?: string; email?: string; terms?: boolean }) {
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  const type = (sel: string, v: string | undefined) => {
+    if (v === undefined) return;
+    const el = host.querySelector(sel) as HTMLInputElement;
+    act(() => { setValue.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); });
+  };
+  type('input[aria-label="Your name"]', fields.name);
+  type('input[aria-label="Business name"]', fields.business);
+  type('input[type="email"]', fields.email);
+  if (fields.terms) {
+    const box = host.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    act(() => { box.click(); });
+  }
+}
+
+function unlockButton() {
+  return [...host.querySelectorAll("button")].find((b) => /full report/i.test(b.textContent ?? ""))!;
+}
+
 describe("the free report needs no email", () => {
   it("has no email input on the scan form", async () => {
     stubFetch();
@@ -128,8 +148,22 @@ describe("the free report needs no email", () => {
     expect(host.textContent).toContain("Content-Security-Policy");
     // Assert the findings-block advisory line specifically. A bare /588/ also matched
     // the CTA copy below, so it did not prove this line rendered at all.
-    expect(host.textContent).toMatch(/588\s*lower-priority\s*advisory checks/i);
-    expect(host.textContent).toMatch(/What to fix \(2\)/);
+    expect(host.textContent).toMatch(/588\s*lower-priority\s*checks that didn't pass/i);
+    expect(host.textContent).toMatch(/in your full report/);
+    expect(host.textContent).toMatch(/What to fix\s*2 findings/);
+  });
+
+  it("puts the long sections in collapsed accordions, closed by default", async () => {
+    stubFetch();
+    render();
+    await settle();
+    startScan();
+    await settle(6);
+    const sections = [...host.querySelectorAll("details.pulse-acc")];
+    expect(sections.map((d) => d.querySelector("summary")?.textContent)).toEqual(
+      expect.arrayContaining([expect.stringContaining("What to fix")]),
+    );
+    for (const d of sections) expect((d as HTMLDetailsElement).open).toBe(false);
   });
 });
 
@@ -139,36 +173,64 @@ describe("the in-depth review is the gate", () => {
     render();
     await settle();
     // Before any scan there is no enquiry affordance.
-    expect(host.textContent).not.toMatch(/in-depth review/i);
+    expect(host.querySelector('input[type="email"]')).toBeNull();
     startScan();
     await settle(6);
-    expect(host.textContent).toMatch(/in-depth review/i);
+    expect(host.textContent).toMatch(/full report by email/i);
     expect(host.querySelector('input[type="email"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Your name"]')).not.toBeNull();
+    expect(host.querySelector('input[aria-label="Business name"]')).not.toBeNull();
+    expect(host.querySelector('input[type="checkbox"]')).not.toBeNull();
   });
 
-  it("posts the email to the enquiry endpoint and confirms, without starting a scan", async () => {
+  it("will not submit until name, business, email and the terms are all given, and says what is missing", async () => {
+    const { calls } = stubFetch();
+    render();
+    await settle();
+    startScan();
+    await settle(6);
+    fillCapture({ name: "Sam Buyer", business: "Acme", email: "buyer@acme.test" });
+    // The button stays clickable, so a visitor can find out why; pressing it sends nothing.
+    await act(async () => { unlockButton().dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await settle(2);
+    expect(calls.find((c) => c.url.includes("/enquiry"))).toBeUndefined();
+    expect(host.textContent).toMatch(/Please agree to the terms/);
+  });
+
+  it("refuses a link in the name and a malformed email before anything is sent", async () => {
+    const { calls } = stubFetch();
+    render();
+    await settle();
+    startScan();
+    await settle(6);
+    fillCapture({ name: "Win at https://phish.example", business: "Acme", email: "buyer@acme..test", terms: true });
+    await act(async () => { unlockButton().dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await settle(2);
+    expect(calls.find((c) => c.url.includes("/enquiry"))).toBeUndefined();
+    expect(host.textContent).toMatch(/without a web address/);
+    expect(host.textContent).toMatch(/Enter a valid email address/);
+  });
+
+  it("posts name, business, email and terms to the enquiry endpoint, without starting a scan", async () => {
     const { calls } = stubFetch();
     render();
     await settle();
     startScan();
     await settle(6);
 
-    const emailInput = host.querySelector('input[type="email"]') as HTMLInputElement;
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => {
-      setValue.call(emailInput, "buyer@acme.test");
-      emailInput.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const submit = [...host.querySelectorAll("button")].find((b) => /in-depth review/i.test(b.textContent ?? ""))!;
-    await act(async () => { submit.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    fillCapture({ name: "Sam Buyer", business: "Acme", email: "buyer@acme.test", terms: true });
+    await act(async () => { unlockButton().dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await settle(4);
 
     const enquiry = calls.find((c) => c.url.includes("/enquiry"));
     expect(enquiry).toBeDefined();
-    expect((enquiry!.body as { email: string }).email).toBe("buyer@acme.test");
+    expect(enquiry!.body).toMatchObject({ name: "Sam Buyer", business: "Acme", email: "buyer@acme.test", termsAccepted: true });
     // Exactly one scan was ever started — the enquiry must not trigger another.
     expect(calls.filter((c) => c.url.endsWith("/api/public/pulse/scan"))).toHaveLength(1);
-    expect(host.textContent).toMatch(/that.s with us/i);
+    expect(host.textContent).toMatch(/full report is on its way/i);
+    expect(host.textContent).toMatch(/up to an hour/);
+    expect(host.textContent).toMatch(/check your spam or promotions folder/);
+    expect(host.textContent).not.toMatch(/We've emailed/);
   });
 
   it("surfaces a friendly message when the address has already been used", async () => {
@@ -178,17 +240,47 @@ describe("the in-depth review is the gate", () => {
     startScan();
     await settle(6);
 
-    const emailInput = host.querySelector('input[type="email"]') as HTMLInputElement;
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => {
-      setValue.call(emailInput, "dup@acme.test");
-      emailInput.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const submit = [...host.querySelectorAll("button")].find((b) => /in-depth review/i.test(b.textContent ?? ""))!;
-    await act(async () => { submit.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    fillCapture({ name: "Dup", business: "Acme", email: "dup@acme.test", terms: true });
+    await act(async () => { unlockButton().dispatchEvent(new MouseEvent("click", { bubbles: true })); });
     await settle(4);
 
-    expect(host.textContent).toMatch(/we already have a request against this email/i);
+    expect(host.textContent).toMatch(/already unlocked a report/i);
+  });
+});
+
+describe("held-back findings are blurred, and only their shape is in the page", () => {
+  it("draws a blurred row per locked finding with filler text, and asks to unlock", async () => {
+    const locked = {
+      ...COMPLETED,
+      triage: {
+        ...COMPLETED.triage,
+        limited: true,
+        lockedCount: 3,
+        lockedByCategory: [{ category: "Security", count: 3 }],
+        lockedPreview: [
+          { category: "Security", tier: "P1", status: "FAIL" },
+          { category: "Security", tier: "P2", status: "WARN" },
+        ],
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/config")) return { ok: true, json: async () => CONFIG } as Response;
+      if (url.includes("/scan/scan_1")) return { ok: true, json: async () => locked } as Response;
+      return { ok: true, status: 201, json: async () => ({ id: "scan_1" }) } as Response;
+    }));
+    render();
+    await settle();
+    startScan();
+    await settle(6);
+    expect(host.textContent).toMatch(/3\s*more findings in Security \(3\)/);
+    expect(host.textContent).toMatch(/Unlock your full report/);
+    expect(host.textContent).toMatch(/3 more findings to fix, and the results of all \d+ checks we ran/);
+    const blurred = [...host.querySelectorAll<HTMLElement>("div")].filter((d) => d.style.filter === "blur(5px)" && !d.dataset.locked);
+    expect(blurred).toHaveLength(2);
+    // The category breakdown is blurred too while findings are held back.
+    expect(host.querySelector('[data-locked="true"]')).not.toBeNull();
+    expect(host.textContent).toMatch(/breakdown across 1 areas unlocks/i);
   });
 });
 
@@ -223,8 +315,8 @@ describe("Turnstile tokens are single-use", () => {
 
   it("both enquiry buttons refuse to submit before a token exists", () => {
     // Submitting without one always fails server-side, which reads as a broken form.
-    expect(source).toMatch(/enquirySending \|\| !email\.trim\(\) \|\| awaitingVerification/);
-    expect(enquirySource).toMatch(/sending \|\| !email\.trim\(\) \|\| awaitingVerification/);
+    expect(source).toMatch(/const blocked = enquirySending \|\| awaitingVerification/);
+    expect(enquirySource).toMatch(/disabled=\{sending \|\| awaitingVerification\}/);
     expect(enquirySource).toMatch(/const awaitingVerification = Boolean\(turnstileSiteKey\) && !token/);
   });
 

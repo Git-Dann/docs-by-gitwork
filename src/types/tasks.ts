@@ -91,6 +91,8 @@ export type TaskDTO = {
   description: string | null;
   acceptanceCriteria: string | null;
   status: TaskStatus;
+  /** The client's own board column, if any — see src/lib/tasks/board-columns.ts. */
+  boardColumnId: string | null;
   priority: TaskPriority;
   /** Optional ticket-type tag (Backend/Frontend/UI-UX/Research/Design). */
   label: TaskLabel | null;
@@ -172,6 +174,13 @@ export type MyDayDTO = {
   done: TaskDTO[];
   /** Assignee's not-yet-started work (TODO + BACKLOG) — for picking today's focus. */
   upcoming: TaskDTO[];
+  /**
+   * Planned (in a category), open tasks NOBODY is assigned to, on this developer's
+   * clients — ranked, capped at 30. What they should pick up before creating new work.
+   */
+  fromPlan: TaskDTO[];
+  /** How many such tasks exist in total (the list is capped). */
+  fromPlanTotal: number;
 };
 
 /** One dev's row in the DevOps roll-up roster. */
@@ -390,6 +399,8 @@ export type PublicTimelineBlock = {
   description: string | null;
   startDate: string;
   endDate: string;
+  /** True when the dates are estimated from task due dates (src/lib/gantt-span.ts). */
+  estimated: boolean;
   color: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];

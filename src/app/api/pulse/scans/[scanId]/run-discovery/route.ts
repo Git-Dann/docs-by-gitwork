@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
-import { getPulseScan } from "@/server/pulse";
+import { getPulseScan, requireScanAccess } from "@/server/pulse";
 import { generateDiscoveryKit } from "@/server/pulse-ai";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,6 +20,7 @@ export async function POST(
 ) {
   try {
     const { scanId } = await params;
+    await requireScanAccess(request, scanId);
     const scan = await getPulseScan(scanId);
     if (!scan) return apiError("Scan not found.", 404);
     if (scan.status !== "COMPLETED") return apiError("Scan must be completed first.", 400);
@@ -31,10 +34,10 @@ export async function POST(
     const aiConfig = {
       provider: p,
       apiKey: (() => {
-        if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-        if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
-        if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
-        return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+        if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
+        if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
+        if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
+        return aiKeyFor("ANTHROPIC", workspace, "env");
       })(),
       model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI)
            : p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI)

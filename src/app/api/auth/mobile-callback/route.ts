@@ -11,6 +11,7 @@
 // authenticated calls. Domain gate (@gitwork.co.uk) is enforced inside the
 // Google ID token verifier.
 
+import { tidyPersonName } from "@/lib/person-name";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
@@ -20,8 +21,10 @@ import {
   verifyGoogleIdToken,
 } from "@/server/auth/google-id-token";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
+import { isActiveMember } from "@/server/auth/member-status";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
+import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 const WORKSPACE_DOMAIN = "gitwork.co.uk";
 // Placeholder user created by bootstrap — never a real human team member.
@@ -67,9 +70,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // ⚠️ Refuse a removed or archived member BEFORE anything is created or promoted.
+    // This used to fall through to `role = membership?.role ?? "STAFF"` and sign a
+    // mobile token: a removed person (User row kept, membership gone) got a fresh
+    // STAFF token, and an archived one kept their old role, for the token's whole
+    // lifetime. Mirrors `refusedMembership` in src/auth.ts — keep the two in step.
+    if (dbUser) {
+      const existing = dbUser.memberships[0];
+      if (!existing || !isActiveMember(existing)) {
+        return apiError("Your access to this workspace has been removed.", 403);
+      }
+    }
+
     // A known owner email is always Super Admin; the first real member bootstraps as
     // Super Admin. Mirrors src/auth.ts.
     const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(profile.email);
+    // includes-archived: the first-admin bootstrap — see src/auth.ts. Counting archived
+    // admins is the fail-safe direction.
     const adminOrAboveCount = await prisma.workspaceMember.count({
       where: {
         workspace: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -83,10 +100,10 @@ export async function POST(request: NextRequest) {
       dbUser = await prisma.user.create({
         data: {
           email: profile.email,
-          name: profile.name ?? profile.email.split("@")[0],
+          name: tidyPersonName(profile.name) ?? profile.email.split("@")[0],
           memberships: {
             create: {
-              role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
+              role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
               permissions: [],
               workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
             },
@@ -112,7 +129,7 @@ export async function POST(request: NextRequest) {
     }
 
     const membership = dbUser.memberships[0];
-    const role = membership?.role ?? "STAFF";
+    const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
     // Resolve + persist effective permissions from the role matrix.
     const permissions = membership ? await recomputeMember(membership.id) : [];
 
@@ -121,6 +138,7 @@ export async function POST(request: NextRequest) {
       email: dbUser.email,
       role,
       permissions,
+      workspaceId: membership?.workspaceId ?? null,
     });
 
     return apiOk({

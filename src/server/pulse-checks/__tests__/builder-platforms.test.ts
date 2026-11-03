@@ -311,19 +311,61 @@ describe("Bubble Data API probe", () => {
 });
 
 describe("Bubble version-test probe", () => {
+  const origin = "https://app.bubbleapps.io";
+  const DEV_PAGE =
+    '<html><head><script src="https://app.bubbleapps.io/version-test/package/run_js/abc/xtrue/x.js"></script>' +
+    '<script>window.app_version = "test";</script></head><body></body></html>';
+  const LIVE_PAGE = '<html><head><script src="https://cdn.bubble.io/package/run_js/abc/x.js"></script></head></html>';
+  const NOT_BUBBLE = "<html><head><title>Vercel: Build and deploy</title></head><body>Menu</body></html>";
+
   it("warns when the development copy is publicly reachable", async () => {
-    const out = await probeBubbleVersionTest(
-      { builder: "Bubble", origin: "https://app.bubbleapps.io" },
-      { fetchStatus: async () => 200 },
-    );
+    const out = await probeBubbleVersionTest({ builder: "Bubble", origin }, { fetchPage: async () => ({ status: 200, body: DEV_PAGE }) });
     expect(find(out, "bubble_version_test_exposed")?.status).toBe("WARN");
   });
 
   it("passes when it is not reachable", async () => {
-    const out = await probeBubbleVersionTest(
-      { builder: "Bubble", origin: "https://app.bubbleapps.io" },
-      { fetchStatus: async () => 404 },
-    );
+    const out = await probeBubbleVersionTest({ builder: "Bubble", origin }, { fetchPage: async () => ({ status: 404, body: "" }) });
     expect(find(out, "bubble_version_test_exposed")?.status).toBe("PASS");
+  });
+
+  it("does not warn on a 200 that is not a Bubble page (soft-routed homepage)", async () => {
+    const out = await probeBubbleVersionTest({ builder: "Bubble", origin }, { fetchPage: async () => ({ status: 200, body: NOT_BUBBLE }) });
+    expect(find(out, "bubble_version_test_exposed")?.status).toBe("PASS");
+  });
+
+  it("is inconclusive on a Bubble page that does not identify itself as the dev version", async () => {
+    const out = await probeBubbleVersionTest({ builder: "Bubble", origin }, { fetchPage: async () => ({ status: 200, body: LIVE_PAGE }) });
+    expect(find(out, "bubble_version_test_exposed")?.status).toBe("INCONCLUSIVE");
+  });
+
+  it("does not warn when /version-test redirected back to the live app", async () => {
+    const out = await probeBubbleVersionTest({ builder: "Bubble", origin }, {
+      fetchPage: async () => ({ status: 200, body: DEV_PAGE, finalUrl: `${origin}/` }),
+    });
+    expect(find(out, "bubble_version_test_exposed")?.status).toBe("PASS");
+  });
+
+  it("is inconclusive, not a pass, when the request fails", async () => {
+    const out = await probeBubbleVersionTest({ builder: "Bubble", origin }, { fetchPage: async () => { throw new Error("network"); } });
+    expect(find(out, "bubble_version_test_exposed")?.status).toBe("INCONCLUSIVE");
+  });
+});
+
+describe("Bubble Data API probe on a soft-routed path", () => {
+  it("does not claim privacy rules are in place when the path answered with a page, not the API", async () => {
+    const out = await probeBubbleDataApi({ builder: "Bubble", origin: "https://app.bubbleapps.io" }, {
+      // res.json() on an HTML page fails → null body, as vibe-code-hygiene's fetchJson does.
+      fetchJson: async () => ({ status: 200, body: null }),
+    });
+    const c = find(out, "bubble_data_api_open");
+    expect(c?.status).toBe("INCONCLUSIVE");
+    expect(c?.detail).toMatch(/not as the Data API/);
+  });
+
+  it("still passes a real Data API answer with no rows", async () => {
+    const out = await probeBubbleDataApi({ builder: "Bubble", origin: "https://app.bubbleapps.io" }, {
+      fetchJson: async () => ({ status: 200, body: { response: { cursor: 0, results: [], remaining: 0, count: 0 } } }),
+    });
+    expect(find(out, "bubble_data_api_open")?.status).toBe("PASS");
   });
 });

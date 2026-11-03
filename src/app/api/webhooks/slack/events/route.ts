@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { after } from "next/server";
 import { apiError, apiOk } from "@/lib/api-response";
 import { decryptNullable } from "@/lib/encryption";
@@ -27,13 +28,18 @@ import { verifySlackSignature } from "@/server/slack/signature";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const WS_SELECT = {
   id: true,
   slackSigningSecretEncrypted: true,
   slackBotToken: true,
   slackBotTokenEncrypted: true,
   slackBotUserId: true,
-} as const;
+} as const satisfies Prisma.WorkspaceSelect;
 
 /**
  * Resolve the workspace this event belongs to. `Workspace.slackTeamId` is not reliably

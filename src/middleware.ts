@@ -6,6 +6,7 @@ import { isAtLeast } from "@/types/auth";
 // The /app module gate lives in its own module so it can be unit-tested — importing
 // this middleware would pull NextAuth + the edge runtime into a Node test.
 import { hasModuleAccess } from "@/server/auth/module-gate";
+import { workspaceAllowsPath } from "@/lib/workspace-modules";
 
 const { auth } = NextAuth(authConfig);
 
@@ -101,6 +102,10 @@ const PUBLIC_API_PATHS = [
   "/api/public/course-requests",
   // Inbound wiki bug / feedback / task API — per-wiki token in the URL path is the auth.
   "/api/public/wiki-items",
+  // Heartbeat pings from client cron jobs — the token in the path is the credential.
+  "/api/public/heartbeat",
+  // Second check location for monitors: its own shared-secret check (wiki-monitors/remote.ts).
+  "/api/monitor-probe",
   // Public webhook ingest — per-connection token in the URL path is the auth.
   "/api/support/webhook",
   // Inbound GitHub webhook for Pulse monitors — per-monitor HMAC signature is the auth.
@@ -135,6 +140,7 @@ const FOUNDRY_USER_HEADERS = [
   "x-foundry-user-id",
   "x-foundry-user-email",
   "x-foundry-user-role",
+  "x-foundry-user-workspace",
 ] as const;
 
 const CORS_HEADERS = {
@@ -184,6 +190,16 @@ function isDeckPath(pathname: string): boolean {
   return pathname === "/deck" || pathname.startsWith("/deck/");
 }
 
+/** The Canvas shell (public/canvas/index.html, reached at /canvas). Gated exactly like Deck. */
+function isCanvasPath(pathname: string): boolean {
+  return pathname === "/canvas" || pathname.startsWith("/canvas/");
+}
+
+/** The brand guidelines (src/app/guidelines). An internal page outside /app, gated like Deck. */
+function isGuidelinesPath(pathname: string): boolean {
+  return pathname === "/guidelines" || pathname.startsWith("/guidelines/");
+}
+
 export default auth(async (req) => {
   const { pathname } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
@@ -229,9 +245,10 @@ export default auth(async (req) => {
   // `/deck` rides along: it's the static Deck shell served from public/deck (see
   // next.config.ts rewrites), an internal tool, so it needs a session exactly
   // like an app page. It has no module gate — Deck holds no Foundry data, it's a
-  // local editor, so any signed-in member can open one.
+  // local editor, so any signed-in member can open one. `/canvas` is the same
+  // kind of shell (the artwork tools) and is gated the same way.
   const isAppPage = pathname === "/app" || pathname.startsWith("/app/");
-  if (isAppPage || isDeckPath(pathname)) {
+  if (isAppPage || isDeckPath(pathname) || isCanvasPath(pathname) || isGuidelinesPath(pathname)) {
     const userAgent = req.headers.get("user-agent");
     // The unfurl/OG bypass exists so an /app entity page can render its card —
     // Deck has no metadata worth unfurling, so it never skips the session check.
@@ -260,6 +277,15 @@ export default auth(async (req) => {
       return NextResponse.redirect(loginUrl);
     }
 
+    // Workspace module switch — does this BUSINESS have the module at all? Runs before
+    // every role check below, because a Super Admin of a business without Pulse must not
+    // reach Pulse: the role bypasses are about people inside a workspace, not about what
+    // the workspace was given. Unrestricted workspaces (Gitwork) pass everything. See
+    // src/lib/workspace-modules.ts.
+    if (!workspaceAllowsPath(pathname, req.auth.user.workspaceModules)) {
+      return NextResponse.redirect(new URL("/app", req.url));
+    }
+
     // Starters tools are Super-Admin-ONLY (Foundry-internal; the GitHub repo just stores the
     // sources). This runs before the Admin-bypass module gate so Admins are excluded too.
     if (pathname.startsWith("/app/starters") && !isAtLeast(req.auth.user.role, "SUPER_ADMIN")) {
@@ -278,7 +304,7 @@ export default auth(async (req) => {
     // module apply on their next sign-in; field/data gates are enforced live server-side.
     if (!isAtLeast(req.auth.user.role, "ADMIN")) {
       const permissions = req.auth.user.permissions ?? [];
-      if (!hasModuleAccess(pathname, permissions)) {
+      if (!hasModuleAccess(pathname, permissions, req.auth.user.role)) {
         return NextResponse.redirect(new URL("/app", req.url));
       }
     }
@@ -358,6 +384,16 @@ export default auth(async (req) => {
       }
     }
 
+    // Same workspace module switch as the pages above, for a signed-in browser calling an
+    // API that belongs to a module its business does not have. 403, not a redirect: a
+    // fetch needs a status, and "you may not" is the honest answer.
+    if (!isPublic && req.auth?.user && !workspaceAllowsPath(pathname, req.auth.user.workspaceModules)) {
+      return new NextResponse(JSON.stringify({ error: "This workspace does not have that module" }), {
+        status: 403,
+        headers: { ...corsHeadersFor(pathname), "Content-Type": "application/json" },
+      });
+    }
+
     // Mobile JWT callers: forward the authenticated user identity downstream
     // via stripped+set request headers (Next.js middleware → route handler
     // pattern). Route handlers read these via getRequestUser().
@@ -365,6 +401,7 @@ export default auth(async (req) => {
       forwardHeaders.set("x-foundry-user-id", mobileClaims.sub);
       forwardHeaders.set("x-foundry-user-email", mobileClaims.email);
       forwardHeaders.set("x-foundry-user-role", mobileClaims.role);
+      if (mobileClaims.workspaceId) forwardHeaders.set("x-foundry-user-workspace", mobileClaims.workspaceId);
     }
 
     const response = NextResponse.next({

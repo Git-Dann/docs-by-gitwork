@@ -52,7 +52,23 @@ function stripHtml(html: string): string {
  * tags into line breaks, and decodes the common entities — so a multi-part email's
  * HTML alternative reads like the original message.
  */
-function emailHtmlToText(html: string): string {
+const PLAINTEXT_STUB = /please view this email in html|view (this|the) email in html|this is an html (email|message)/i;
+
+/**
+ * The plaintext alternative some senders write is a stub pointing at the HTML part.
+ * When we see one, the real content is in the HTML.
+ *
+ * ⚠️ Exported so IMAP and Gmail share ONE rule. They did not: Gmail was fixed and
+ * IMAP was left doing `parsed.text ?? parsed.html`, so every Big Wedge feedback email
+ * ingested over IMAP stored the seven-word stub and nothing else — the course-request
+ * classifier had no message to read, and eight weeks of requests produced none.
+ */
+export function isPlaintextStub(text: string): boolean {
+  return PLAINTEXT_STUB.test(text);
+}
+
+/** HTML email → readable text. Exported for the same reason as `isPlaintextStub`. */
+export function emailHtmlToText(html: string): string {
   return html
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -99,7 +115,6 @@ export function parseRedditAtom(xml: string): RedditRssPost[] {
 // Some senders' plaintext alternative is just a stub pointing at the HTML part
 // (e.g. "Please view this email in HTML format."). When we see that, fall through
 // to the HTML body — that's where the real content lives.
-const PLAINTEXT_STUB = /please view this email in html|view (this|the) email in html|this is an html (email|message)/i;
 
 export function extractGmailBodyText(msg: { payload?: { parts?: unknown[]; body?: { data?: string | null }; mimeType?: string | null } | null }): string {
   const payload = msg.payload;

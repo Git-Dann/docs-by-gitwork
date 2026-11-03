@@ -15,10 +15,16 @@
 import { prisma } from "@/lib/prisma";
 import { addCourseRequest, type CourseRequestRecord } from "@/server/wiki";
 import { resolveAiConfig, completeText, parseJsonObject } from "@/server/ai-provider";
+import { checkCourseName } from "@/lib/wiki-course-name";
 
 const FEEDBACK_SUBJECT = "New Feedback";
 const PREVIEW_LEN = 240;
 const SCAN_LIMIT = 150;
+// The scan pages newest-first until it has SCAN_LIMIT *candidates* (not yet imported,
+// not already declined). Without paging, 150 newer settled rows hid every older
+// unseen one forever. Hard cap so a huge settled inbox can't make one sync unbounded.
+const SCAN_PAGE = 150;
+const SCAN_MAX_PAGES = 10;
 // AI extraction batching — one completion per chunk, chunks run in parallel.
 const AI_CHUNK = 25;
 const AI_TEXT_CAP = 700;
@@ -66,33 +72,124 @@ async function resolveSupportClient(workspaceClientId: string) {
  * Bounded scan of "New Feedback" conversations + their first message body.
  * The `preview` column here is just the subject, so the request text only lives
  * in the message body — fetched via the indexed [conversationId, createdAt]
- * lookup, capped at SCAN_LIMIT rows (cheap for a single call).
+ * lookup.
+ *
+ * ⚠️ The SCAN_LIMIT cap applies to CANDIDATES, not raw rows. `exclude` drops rows
+ * already imported or already declined (with nothing new since), and the scan keeps
+ * paging newest-first until it has SCAN_LIMIT candidates, runs out of rows, or hits
+ * SCAN_MAX_PAGES. Capping raw rows meant that once the 150 newest were all settled,
+ * older unseen conversations were never reached. With no `exclude` (the operator
+ * picker, which shows imported rows flagged) this is simply the SCAN_LIMIT newest.
  */
-async function scanFeedback(supportClientId: string) {
-  const convos = await prisma.supportConversation.findMany({
-    where: {
-      clientId: supportClientId,
-      subject: { contains: FEEDBACK_SUBJECT, mode: "insensitive" },
-    },
+async function scanFeedback(
+  supportClientId: string,
+  exclude: (c: { id: string; lastInboundAt: Date | null }) => boolean = () => false,
+) {
+  const out: Array<{
+    id: string;
+    customerLabel: string;
+    subject: string;
+    receivedAt: Date;
+    lastInboundAt: Date | null;
+    text: string;
+  }> = [];
+  const visited = new Set<string>();
+  for (let page = 0; page < SCAN_MAX_PAGES && out.length < SCAN_LIMIT; page++) {
+    const convos = await prisma.supportConversation.findMany({
+      where: {
+        clientId: supportClientId,
+        subject: { contains: FEEDBACK_SUBJECT, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        customerLabel: true,
+        subject: true,
+        preview: true,
+        receivedAt: true,
+        lastInboundAt: true,
+        messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
+      },
+      // `id` tiebreaker keeps skip-based paging stable when receivedAt ties.
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      skip: page * SCAN_PAGE,
+      take: SCAN_PAGE,
+    });
+    for (const c of convos) {
+      // A row inserted mid-scan shifts the window; never take one twice.
+      if (visited.has(c.id)) continue;
+      visited.add(c.id);
+      const lastInboundAt = c.lastInboundAt ?? null;
+      if (exclude({ id: c.id, lastInboundAt })) continue;
+      out.push({
+        id: c.id,
+        customerLabel: c.customerLabel,
+        subject: c.subject,
+        receivedAt: c.receivedAt,
+        lastInboundAt,
+        // Real request text is the first message body; subject/preview is just the title.
+        text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
+      });
+      if (out.length >= SCAN_LIMIT) break;
+    }
+    if (convos.length < SCAN_PAGE) break;
+  }
+  return out;
+}
+
+/** Why the classifier declined a conversation — the `verdict` stored on a seen row. */
+export type CourseFeedbackSeenVerdict =
+  | "not_course"
+  | "no_named_course"
+  | "rejected_name"
+  | "duplicate_name";
+
+interface ImportState {
+  /** The wiki's id — null when the client has no wiki yet (nothing can be recorded). */
+  wikiId: string | null;
+  /** Conversations already turned into a course request. */
+  imported: Set<string>;
+  /** Conversations the classifier already declined → when it did. */
+  seen: Map<string, Date>;
+}
+
+/**
+ * One read of the wiki's import bookkeeping: what was imported (by source conversation)
+ * and what the classifier already looked at and declined.
+ */
+async function loadImportState(workspaceClientId: string): Promise<ImportState> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId: workspaceClientId },
     select: {
       id: true,
-      customerLabel: true,
-      subject: true,
-      preview: true,
-      receivedAt: true,
-      messages: { orderBy: { createdAt: "asc" }, take: 1, select: { body: true } },
+      courseRequests: { select: { sourceConversationId: true } },
+      courseFeedbackSeen: { select: { conversationId: true, seenAt: true } },
     },
-    orderBy: { receivedAt: "desc" },
-    take: SCAN_LIMIT,
   });
-  return convos.map((c) => ({
-    id: c.id,
-    customerLabel: c.customerLabel,
-    subject: c.subject,
-    receivedAt: c.receivedAt,
-    // Real request text is the first message body; subject/preview is just the title.
-    text: (c.messages[0]?.body ?? c.preview ?? "").trim(),
-  }));
+  return {
+    wikiId: wiki?.id ?? null,
+    imported: new Set(
+      (wiki?.courseRequests ?? [])
+        .map((r) => r.sourceConversationId)
+        .filter((id): id is string => !!id),
+    ),
+    seen: new Map((wiki?.courseFeedbackSeen ?? []).map((r) => [r.conversationId, r.seenAt])),
+  };
+}
+
+/**
+ * Has the classifier already declined this conversation, with nothing new since?
+ *
+ * A customer message newer than the verdict re-opens it: the golfer may have replied
+ * with the course name the first message lacked. `lastInboundAt` null with a seen row
+ * means no newer evidence — stay declined.
+ */
+export function isSettledAsSeen(
+  seenAt: Date | undefined,
+  lastInboundAt: Date | null | undefined,
+): boolean {
+  if (!seenAt) return false;
+  if (!lastInboundAt) return true;
+  return lastInboundAt.getTime() <= seenAt.getTime();
 }
 
 async function alreadyImportedIds(workspaceClientId: string): Promise<Set<string>> {
@@ -152,6 +249,7 @@ interface FeedbackItem {
   customerLabel: string;
   subject: string;
   receivedAt: Date;
+  lastInboundAt?: Date | null;
   text: string;
 }
 
@@ -208,6 +306,7 @@ async function aiExtractCourses(
         select: {
           aiProvider: true,
           anthropicApiKey: true,
+          platformAiKeysAllowed: true,
           anthropicModel: true,
           openaiApiKey: true,
           openaiModel: true,
@@ -228,7 +327,18 @@ async function aiExtractCourses(
     "COURSE REQUEST only if it asks to add a specific named golf course, or reports that a " +
     "specific named course's data (holes, tees, pars, yardages, layout) is wrong. App bugs " +
     "(sign-in/search/sync errors), feature ideas, praise, and general comments are NOT course " +
-    "requests. Extract the golf course's name and the country it is in.";
+    "requests. Extract the golf course's name and the country it is in.\n" +
+    // Everything below exists because of three real rows where the golfer never named a
+    // course and the model supplied one anyway — "home course", "HS2 Renovated Course
+    // (Home Course)", and "Ardlodge" taken from the sender's email domain.
+    "CRITICAL — the course must be NAMED BY THE USER:\n" +
+    "- If the message complains about a course but never states its name, set " +
+    "isCourseRequest false. A complaint you cannot act on is not a request.\n" +
+    "- \"my home course\", \"my local club\", \"the course near me\" are NOT names.\n" +
+    "- NEVER take a name from the sender's email address, domain or signature.\n" +
+    "- NEVER build a name out of surrounding words (e.g. from \"my home course was " +
+    "renovated due to hs2\", do not produce \"HS2 Renovated Course\").\n" +
+    "- If you are not copying a name the user wrote, return an empty courseName.";
 
   const chunks: FeedbackItem[][] = [];
   for (let i = 0; i < items.length; i += AI_CHUNK) chunks.push(items.slice(i, i + AI_CHUNK));
@@ -266,8 +376,19 @@ async function aiExtractCourses(
             country: (r.country ?? "").trim(),
           });
         }
-      } catch {
-        // chunk failed — leave its items unfilled
+      } catch (err) {
+        // ⚠️ This used to be a bare `catch {}` with the comment "chunk failed — leave
+        // its items unfilled". That is how a RETIRED MODEL ID looked identical to "the
+        // feedback simply contained no courses": every call 404'd, every chunk was
+        // swallowed, and the only visible symptom was 389 rows named "Untitled Course"
+        // on a client's wiki three days later (§53). Name the model, because the
+        // likeliest cause of a total classifier failure is that the pin went stale.
+        console.error(
+          `[course-feedback] AI chunk failed (${chunk.length} item(s), provider ` +
+            `${config.provider}, model ${config.model}, light tier) — items left ` +
+            `unclassified and will NOT be imported:`,
+          err,
+        );
       }
     }),
   );
@@ -292,6 +413,9 @@ export interface CourseImportResult {
   skipped: number;
   scanned: number;
   aiUsed: boolean;
+  /** Auto mode found work but the classifier did not run, so NOTHING was imported.
+   *  Distinct from `scanned: 0` — "we could not look" is not "there was nothing there". */
+  classifierUnavailable?: boolean;
 }
 
 /**
@@ -307,17 +431,25 @@ export async function runCourseFeedbackImport(
   const support = await resolveSupportClient(workspaceClientId);
   if (!support) return { created: [], skipped: 0, scanned: 0, aiUsed: false };
 
-  const already = await alreadyImportedIds(workspaceClientId);
+  const state = await loadImportState(workspaceClientId);
+  const already = state.imported;
 
   let items: FeedbackItem[];
   if (opts.conversationIds?.length) {
+    // ⚠️ Explicit selection ignores the seen list: an operator who ticked a row the
+    // classifier declined is overruling it, and is about to name the course themselves.
     const ids = opts.conversationIds.filter((id) => !already.has(id));
     items = await fetchConvoBodies(support.id, ids);
   } else {
-    const all = await scanFeedback(support.id);
+    // Excluded inside the scan, so the cap counts only real candidates: already
+    // imported, or already judged and declined with no new customer message since
+    // (don't pay to re-classify it on every sync forever).
+    const all = await scanFeedback(
+      support.id,
+      (c) => already.has(c.id) || isSettledAsSeen(state.seen.get(c.id), c.lastInboundAt),
+    );
     const needles = (opts.keywords ?? []).map((k) => k.toLowerCase()).filter(Boolean);
     items = all.filter((c) => {
-      if (already.has(c.id)) return false;
       if (needles.length === 0) return true;
       const hay = `${c.subject} ${c.text}`.toLowerCase();
       return needles.some((n) => hay.includes(n));
@@ -331,9 +463,49 @@ export async function runCourseFeedbackImport(
     ? await aiExtractCourses(workspaceClientId, items)
     : { verdicts: new Map<string, AiCourseVerdict>(), aiUsed: false };
 
-  // Filter to course requests only when asked AND the AI actually ran (so an AI
-  // outage can't silently drop everything — it falls back to importing unfilled).
-  const onlyCourse = (opts.onlyCourseRequests ?? !opts.conversationIds?.length) && aiUsed;
+  const wantOnlyCourse = opts.onlyCourseRequests ?? !opts.conversationIds?.length;
+
+  /**
+   * ⚠️ Auto mode FAILS CLOSED when the classifier did not run. It used to fail OPEN —
+   * `onlyCourse = wantOnlyCourse && aiUsed` — on the reasoning that "an AI outage can't
+   * silently drop everything, so fall back to importing unfilled".
+   *
+   * That reasoning is wrong twice over, and it produced 389 junk rows on a live client
+   * wiki (Wedge, 16 Sept 2026) that the client then reported:
+   *
+   *   1. `aiUsed` false disables EVERY guard at once — the is-this-even-a-course-request
+   *      filter, the require-a-real-name check, and the dedupe. So one failed AI call
+   *      turns every "New Feedback" email into a course request named "" — rendered to
+   *      the client as "Untitled Course". Handicap questions and Apple Watch requests
+   *      filed as courses to go and license.
+   *   2. Nothing is actually "dropped" by importing none of them. The scan re-runs on
+   *      every sync and dedupes on `sourceConversationId`, so a skipped batch is picked
+   *      up whole by the next run that has a working classifier. The cost of waiting is
+   *      one sync; the cost of importing unfilled is junk in front of the client and a
+   *      person deleting rows by hand.
+   *
+   * This is §35's rule one layer out: a failed check must not become a confident
+   * assertion. "We could not classify these" is not "these are all course requests".
+   *
+   * Explicit manual selection is unaffected — an operator who ticked specific rows chose
+   * them, and is about to fill the name in themselves.
+   */
+  if (wantOnlyCourse && !aiUsed) {
+    console.error(
+      `[course-feedback] classifier unavailable — skipped ${items.length} item(s) for ` +
+        `client ${workspaceClientId} rather than importing them unclassified. ` +
+        `They will be re-scanned on the next sync.`,
+    );
+    return {
+      created: [],
+      skipped: items.length,
+      scanned: items.length,
+      aiUsed: false,
+      classifierUnavailable: true,
+    };
+  }
+
+  const onlyCourse = wantOnlyCourse;
 
   // In auto / only-course mode, dedupe by course name against what's already tracked
   // AND within this batch, and require a real name — so we never create duplicates or
@@ -343,17 +515,46 @@ export async function runCourseFeedbackImport(
   const batchNames = new Set<string>();
 
   const created: CourseRequestRecord[] = [];
+  /**
+   * Declined items to remember. ⚠️ Only items with a REAL verdict `v` go in here. An item
+   * whose chunk failed (no verdict) is skipped by the name check below too, but must be
+   * re-classified next sync, so it is never recorded — "we could not classify it" is not
+   * "it is not a course request" (§53.3).
+   */
+  const declined: DeclinedItem[] = [];
   let skipped = 0;
   for (const c of items) {
     const v = verdicts.get(c.id);
     if (onlyCourse && v && !v.isCourseRequest) {
+      declined.push({ id: c.id, verdict: "not_course", reason: null });
       skipped++;
       continue;
     }
     const name = (v?.courseName || "").trim();
     if (onlyCourse) {
+      // ⚠️ The name must be one the GOLFER wrote, not one the model assembled. A prompt
+      // instruction is a request, not a guarantee — see `checkCourseName`, which rejects
+      // placeholders ("home course") and names that appear nowhere in the golfer's own
+      // message ("Ardlodge", lifted from the sender's email domain).
+      const verdict = checkCourseName(name, c.text);
+      if (!verdict.usable) {
+        console.warn(
+          `[course-feedback] rejected extracted name ${JSON.stringify(name)} ` +
+            `(${verdict.reason}) for conversation ${c.id} — not imported.`,
+        );
+        if (v) {
+          declined.push({
+            id: c.id,
+            verdict: verdict.reason === "empty" ? "no_named_course" : "rejected_name",
+            reason: verdict.reason === "empty" ? null : `${verdict.reason}: ${name.slice(0, 200)}`,
+          });
+        }
+        skipped++;
+        continue;
+      }
       const norm = name.toLowerCase();
-      if (!norm || existingNames.has(norm) || batchNames.has(norm)) {
+      if (existingNames.has(norm) || batchNames.has(norm)) {
+        declined.push({ id: c.id, verdict: "duplicate_name", reason: name.slice(0, 200) });
         skipped++;
         continue;
       }
@@ -371,7 +572,41 @@ export async function runCourseFeedbackImport(
       }),
     );
   }
+  await recordSeen(state.wikiId, declined);
   return { created, skipped, scanned: items.length, aiUsed };
+}
+
+interface DeclinedItem {
+  id: string;
+  verdict: CourseFeedbackSeenVerdict;
+  reason: string | null;
+}
+
+/**
+ * Remember declined conversations so the next sync skips them. Upsert, because a
+ * conversation re-opened by a new customer message and declined again must move its
+ * `seenAt` forward. Best-effort: a failure here costs one re-classification, never the
+ * import that already happened.
+ */
+async function recordSeen(wikiId: string | null, declined: DeclinedItem[]): Promise<void> {
+  if (!wikiId || declined.length === 0) return;
+  const now = new Date();
+  const results = await Promise.allSettled(
+    declined.map((d) =>
+      prisma.wikiCourseFeedbackSeen.upsert({
+        where: { wikiId_conversationId: { wikiId, conversationId: d.id } },
+        create: { wikiId, conversationId: d.id, verdict: d.verdict, reason: d.reason, seenAt: now },
+        update: { verdict: d.verdict, reason: d.reason, seenAt: now },
+      }),
+    ),
+  );
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    console.error(
+      `[course-feedback] could not record ${failed} of ${declined.length} declined ` +
+        `conversation(s) as seen — they will be re-classified next sync.`,
+    );
+  }
 }
 
 /**

@@ -30,11 +30,14 @@ export function WikiIntakeCategoriesPanel({
   slug,
   categories,
   isDefault,
+  n = "01",
 }: {
   slug: string;
   categories: IntakeCategory[];
   /** True when the client is on the built-in list rather than a configured one. */
   isDefault: boolean;
+  /** Card number — Settings numbers its cards in render order. */
+  n?: string;
 }) {
   const save = useSetWikiIntakeCategories(slug);
   const [rows, setRows] = useState<Draft[]>(() => categories.map((c) => ({ ...c })));
@@ -92,7 +95,7 @@ export function WikiIntakeCategoriesPanel({
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
-          <span className="widget-header__label--number">05</span>
+          <span className="widget-header__label--number">{n}</span>
           {" // REQUEST CATEGORIES"}
         </span>
         {isDefault ? (

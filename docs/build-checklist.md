@@ -24,6 +24,16 @@ That runs, in order: `prisma generate` → `tsc --noEmit` → `eslint` → `vite
 It needs no database, no secrets and no running server, so it works on a fresh clone
 (`npm install` first).
 
+**`audit:dependencies` gates the two trees at different levels (October 2026):** production
+dependencies fail at **high**, dev-only dependencies at **critical**. A single `--audit-level=high`
+over everything had become unpassable: `braces` (via `eslint-config-next` → `fast-glob` →
+`micromatch`) carries a high stack-exhaustion advisory affecting **every** published version, so
+there is no upgrade, and npm's only "fix" is downgrading `eslint-config-next` to 14. It is lint
+tooling, never in the runtime image, and only reachable through attacker-supplied glob patterns. A
+gate that cannot pass stops being run. When you see a high advisory, fix it with
+`npm audit fix --package-lock-only` first (patch bumps within the existing ranges); only reach for
+the split if the advisory is dev-only **and** has no fixed version.
+
 A **`pre-push` hook** (`.husky/pre-push`) runs it automatically when you push to `main`, and refuses
 the push if it fails. It deliberately does **not** fire on a feature-branch push: there, CI reports
 on the PR *before* you merge, so a local gate would only slow you down. On `main` the deploy runs
@@ -167,6 +177,100 @@ What that does and does not buy you:
   evidence; paste it. If a change only got a typecheck and a reasoned read, say exactly that, and
   hand over a precise capture list — the page, the 2–3 viewports, the specific elements — never
   "please check everything".
+
+### 4a. The baseline: proving nothing broke (`npm run test:baseline`)
+
+Added for the multi-tenant work (`docs/multi-tenant-roadmap.md`), where the rule is that Gitwork
+sees **no change** unless the change is deliberate. `scripts/baseline.mjs` visits every `/demo`
+page (following their links, so new demo pages join automatically) plus the public pages, at 390,
+768 and 1440px. It compares them against `tests/baseline/snapshot.json`:
+
+- **STATUS, CRASH, BLANK, PAGE-X:** the page answers, throws nothing, renders real content and
+  doesn't scroll sideways. Console noise from having no local database or secrets is ignored;
+  anything else in the console fails.
+- **CONTENT:** every title, `h1`/`h2` and widget header recorded at baseline must still be there.
+  Numbers are folded, so dates and counts don't make it flaky. New content is fine; missing
+  content fails.
+- **CLIPPING:** the clipping audit (§3a of the mobile playbook) may not find *more* than it did at
+  baseline.
+- **GATE:** `/app` and `/deck` still redirect to sign-in, `/api` still refuses an unauthenticated
+  call, and `/api/health` still answers.
+
+Run it against a dev server started with any `API_KEY` and `AUTH_SECRET`. Without them the gates
+see local-mode behaviour, not production's.
+
+```bash
+API_KEY=x AUTH_SECRET=y npx next dev -p 3100
+```
+
+```bash
+npm run test:baseline
+```
+
+**A deliberate change is recorded with `npm run test:baseline -- --update` in the same PR**, so the
+diff of `snapshot.json` shows the reviewer exactly what moved. `--update` refuses to record a run
+with a status, crash or gate failure, because a baseline that starts broken proves nothing.
+
+Not in CI (no browser there), so run it locally before every PR in the multi-tenant programme.
+
+### 4b. Two businesses can't see each other's data (`npm run test:isolation`)
+
+The gate before any other business can sign in (`docs/multi-tenant-roadmap.md`, Phase 2).
+`tests/isolation/` seeds two businesses into a throwaway Postgres:
+- **A** uses the Gitwork slug.
+- **B** is a second business.
+
+Every text field carries a marker (`ISO-A-…`, `ISO-B-…`).
+
+It then calls **every API route handler** as a Super Admin of one business, with the other
+business's ids in the path, in both directions:
+- **Reads:** every route.
+- **Writes:** PATCH/PUT/POST/DELETE, on every route whose path names the other business's row.
+
+Each call gets a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| `LEAK` | The response contains the other business's marker. |
+| `WROTE` | The other business's rows changed. The rows are read back after every write. |
+| `refused` | 401, 403 or 404. |
+| `rejected` | Another 4xx, usually the empty `{}` body the suite sends. **This proves nothing.** |
+| `isolated` | 2xx with nothing of the other business in it. |
+| `error` | 5xx or a throw. **This proves nothing either.** An `error` on a write often means the route got past its checks and failed on the empty body. |
+| `uncovered` | The suite couldn't fill a path segment. Map it in `harness.ts` (`fill` / `ID_BY_PARENT`). The count can only go down (`UNCOVERED_CEILING`). |
+
+What is real and what is stubbed:
+- **The real code runs:** identity, the access checks and every Prisma query. Identity arrives
+  through the mobile headers the middleware forwards.
+- **Stubbed:** `auth()`, `next/headers`, `next/cache`, `after()` (dropped) and outbound `fetch`
+  (blocked). First-time setup keeps only its lookup ("the Gitwork workspace" = A).
+
+`tests/isolation/known-leaks.json` records the crossings that exist today, because today's code
+still serves the Gitwork workspace to everyone. The suite fails when:
+- a route crosses that is **not** on the list. Fix the route; never add it to the list.
+- a listed crossing **no longer happens**. Rerun with `ISOLATION_UPDATE=1` and commit the smaller
+  file.
+
+**The list is the Phase 2.2b worklist, and an empty list is the gate.** The full result of the
+last run is in `tests/isolation/.report.md` (gitignored).
+
+```bash
+./scripts/isolation-db.sh
+```
+
+```bash
+npm run test:isolation
+```
+
+The script starts the local PostgreSQL 16 cluster, recreates `foundry_isolation` and applies the
+schema. It refuses any database with another name. CI runs the same suite in its own `isolation`
+job against a Postgres service. One run takes about 100 seconds.
+
+Scheduled jobs have their own file, `tests/isolation/crons.test.ts`. It checks that the docs backup
+never borrows another business's Google account.
+
+**Not covered:** the middleware's module gate (the suite calls handlers directly), webhooks, and
+anything an `after()` would have done.
 
 ---
 

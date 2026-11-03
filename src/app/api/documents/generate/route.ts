@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
         id: true,
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         anthropicModel: true,
         openaiApiKey: true,
         openaiModel: true,

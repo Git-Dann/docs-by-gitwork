@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { google } from "googleapis";
 import { sendDiscordMessage } from "./discord-sync";
 import { decryptScraperConfig } from "./support";
+import { readSecret } from "@/server/stored-secret";
 
 export type ReplyResult =
   // Delivered on an automated channel.
@@ -218,7 +219,7 @@ async function gmailReply(
   const toEmail = customerLabel;
 
   try {
-    const credentials = JSON.parse(ws.googleServiceAccountJson) as Record<string, unknown>;
+    const credentials = JSON.parse(readSecret(ws.googleServiceAccountJson) ?? "") as Record<string, unknown>;
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: [

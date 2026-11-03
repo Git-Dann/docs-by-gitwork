@@ -1,5 +1,6 @@
 "use client";
 
+import { blockSpan } from "@/lib/gantt-span";
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -15,6 +16,7 @@ import {
   ListBulletIcon,
   CalendarDaysIcon,
   TagIcon,
+  ViewColumnsIcon,
   ArchiveBoxIcon,
   ShareIcon,
   CheckIcon,
@@ -32,6 +34,7 @@ import {
   useTasks,
   useUpdateTask,
   useFeatureBlocks,
+  useBoardColumns,
   useDeleteFeatureBlock,
   useMilestones,
   useTimelineShare,
@@ -51,6 +54,12 @@ import { TaskBatchBar } from "@/components/tasks/task-batch-bar";
 import { TaskImportModal } from "@/components/tasks/task-import-modal";
 import { ProjectUpdateComposer } from "@/components/tasks/project-update-composer";
 import { TaskFilterBar, EMPTY_FILTERS, type TaskFilters } from "@/components/tasks/task-filter-bar";
+import { PlanHealthStrip, type PlanFilter } from "@/components/tasks/plan-health-strip";
+import { BoardColumnsModal } from "@/components/tasks/board-columns-modal";
+import type { BoardColumnDef } from "@/lib/tasks/board-columns";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
+
+const NO_COLUMNS: BoardColumnDef[] = [];
 
 // The Gantt (day-scale axis, zoom, dependency rendering) is the heaviest of the
 // three views and only shown behind the "gantt" tab — load it on demand so the
@@ -77,10 +86,16 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
 
   const [view, setView] = useState<View>("board");
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  // The plan strip's "Show them": a fixed set of task ids (stale planned / unplanned).
+  const [planFilter, setPlanFilter] = useState<{ kind: PlanFilter; ids: Set<string> }>({
+    kind: null,
+    ids: new Set(),
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creatingTask, setCreatingTask] = useState(false);
   const [importing, setImporting] = useState(false);
   const [managingCategories, setManagingCategories] = useState(false);
+  const [managingColumns, setManagingColumns] = useState(false);
   const [pushingToSlack, setPushingToSlack] = useState(false);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [scribeSourceTask, setScribeSourceTask] = useState<TaskDTO | null>(null);
@@ -129,6 +144,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   });
   const updateTask = useUpdateTask();
   const { data: blocks = [] } = useFeatureBlocks(clientId);
+  const { data: boardColumns = NO_COLUMNS } = useBoardColumns(clientId);
   const { data: milestones = [] } = useMilestones(clientId);
   const { data: meetingsData } = useClientMeetings(slug, Boolean(clientId));
   // Archived tab: only-archived tasks, fetched lazily when the tab is open.
@@ -154,6 +170,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
     const lbl = new Set(filters.labels);
     const src = new Set(filters.sourceMeetingIds);
     return tasks.filter((t) => {
+      if (planFilter.kind && !planFilter.ids.has(t.id)) return false;
       if (q && !(t.title.toLowerCase().includes(q) || taskRef(t.id).toLowerCase().includes(q))) return false;
       if (cat.size && !cat.has(t.featureBlock?.id ?? "none")) return false;
       if (asg.size && !t.assignees.some((a) => asg.has(a.id))) return false;
@@ -162,7 +179,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       if (src.size && (!t.scribeSource || !src.has(t.scribeSource.meetingId))) return false;
       return true;
     });
-  }, [tasks, filters]);
+  }, [tasks, filters, planFilter]);
 
   // Only dated blocks become Gantt bars; undated ones are board-only groupings.
   // A section shows on the Gantt once it has a span: explicit start/end, or — when
@@ -172,13 +189,8 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
       blocks
         .map((b): GanttBlock | null => {
           const blockTasks = tasks.filter((t) => t.featureBlock?.id === b.id);
-          const dues = blockTasks
-            .map((t) => t.dueDate)
-            .filter((d): d is string => Boolean(d))
-            .sort();
-          const startDate = b.startDate ?? (dues.length ? dues[0] : null);
-          const endDate = b.endDate ?? (dues.length ? dues[dues.length - 1] : null);
-          if (!startDate || !endDate) return null;
+          const span = blockSpan(b, blockTasks.map((t) => t.dueDate));
+          if (!span) return null;
           // Shared helper, not a local loop: it also coalesces the retired UI_DONE
           // status into In Review. This was the one of the three Gantt feeders that
           // hand-rolled the count, so a legacy UI_DONE row would have incremented a
@@ -192,8 +204,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           return {
             id: b.id,
             name: b.name,
-            startDate,
-            endDate,
+            startDate: span.startDate,
+            endDate: span.endDate,
+            estimated: span.estimated,
             color: b.color,
             progress: b.progress,
             tasks: blockTasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
@@ -223,7 +236,7 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
   }
 
   if (clientLoading || !client) {
-    return <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <SkeletonBlock />;
   }
 
   return (
@@ -321,13 +334,37 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           >
             Categories
           </Button>
+          {view === "board" && clientId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              leadingIcon={<ViewColumnsIcon className="h-4 w-4" />}
+              onClick={() => setManagingColumns(true)}
+            >
+              Columns
+            </Button>
+          ) : null}
+          {/* How much recent work landed on the plan — one line, silent when the board is healthy. */}
+          <div className="ml-auto">
+            <PlanHealthStrip
+              tasks={tasks}
+              blocks={blocks}
+              clientName={client.name}
+              filter={planFilter.kind}
+              onFilter={(kind, ids) => {
+                setPlanFilter({ kind, ids: new Set(ids) });
+                // The list is where these get dealt with: select, then move or close in bulk.
+                if (kind) switchView("list");
+              }}
+            />
+          </div>
         </div>
       ) : null}
 
       {/* Content */}
       {view === "archived" ? (
         archivedLoading ? (
-          <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+          <SkeletonBlock />
         ) : archivedTasks.length === 0 ? (
           <div className="rounded-[10px] border border-dashed border-[var(--border-2)] py-16 text-center text-sm text-[var(--text-4)]">
             No archived tasks yet. Done tasks auto-archive after 30 days, or archive them manually.
@@ -344,10 +381,11 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           />
         )
       ) : tasksLoading && view !== "gantt" ? (
-        <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+        <SkeletonBlock />
       ) : view === "board" ? (
         <TaskBoard
           tasks={filtered}
+          columns={boardColumns}
           showClient={false}
           onCardClick={setOpenTaskId}
           onScribeSourceClick={setScribeSourceTask}
@@ -429,6 +467,9 @@ export function ClientTasksWorkspace({ slug }: { slug: string }) {
           tasks={tasks}
           onClose={() => setPushingToSlack(false)}
         />
+      ) : null}
+      {managingColumns && clientId ? (
+        <BoardColumnsModal clientId={clientId} columns={boardColumns} onClose={() => setManagingColumns(false)} />
       ) : null}
       {managingCategories && clientId ? (
         <CategoryManagerModal

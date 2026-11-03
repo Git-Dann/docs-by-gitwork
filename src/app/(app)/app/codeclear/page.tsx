@@ -5,7 +5,7 @@ import { DevSignalEntryBanner } from "@/components/codeclear/devsignal/devsignal
 export default function CodeClearOverviewPage() {
   return (
     <AppShell
-      title="Code"
+      title="Hiring"
       subtitle="Verification workflows, developer scoring, GitHub analysis, and pipeline health in one Gitwork workspace."
     >
       <DevSignalEntryBanner />

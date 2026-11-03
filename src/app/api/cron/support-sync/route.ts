@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
         googleOAuthRefreshToken: true,
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         anthropicModel: true,
         openaiApiKey: true,
         openaiModel: true,

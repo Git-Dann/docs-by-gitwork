@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import {
   useBulkDeleteClients,
@@ -26,6 +27,7 @@ import {
   useCreateClient,
   useCreateOnboardingLink,
   useDeleteClient,
+  useDeletedClients,
   useDeleteOnboardingLink,
   useOnboardingLinks,
 } from "@/hooks/use-proposals";
@@ -33,9 +35,11 @@ import { useOnboardingForms } from "@/hooks/use-onboarding-forms";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate } from "@/lib/format";
 import type { ClientEngagementType, ClientListItem, LeadStage } from "@/types/client";
+import { STAGE_LABEL } from "@/lib/crm/lead-stage-engine";
 import type { OnboardingLinkRecord } from "@/lib/api";
+import { DeletedClientsList } from "@/components/clients/deleted-clients";
 
-type Tab = "active" | "suggested" | "leads" | "inactive" | "pending" | "onboarding";
+type Tab = "active" | "suggested" | "leads" | "inactive" | "pending" | "onboarding" | "deleted";
 
 /**
  * Split the ACTIVE fetch into the two tabs it feeds.
@@ -312,21 +316,20 @@ function GitHubRepoButton({ repoUrls }: { repoUrls: string[] }) {
   );
 }
 
-const LEAD_STAGE_LABEL: Record<LeadStage, string> = {
-  NEW: "New",
-  CONTACTED: "Contacted",
-  QUALIFIED: "Qualified",
-  PROPOSAL_SENT: "Proposal sent",
-  WON: "Won",
-  LOST: "Lost",
-};
+const LEAD_STAGE_LABEL = STAGE_LABEL;
+/** Early stages cool, late stages warm toward Won; Lost and On hold muted. */
 const LEAD_STAGE_TONE: Record<LeadStage, string> = {
   NEW: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
   CONTACTED: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+  DISCOVERY: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300",
   QUALIFIED: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  SCOPING: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
   PROPOSAL_SENT: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  IN_DISCUSSION: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  CONTRACT_SENT: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
   WON: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
   LOST: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+  ON_HOLD: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 /** Short "5 Jul" style date for the cards. */
@@ -1036,7 +1039,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
+        <div className="app-dialog-panel app-dialog-fixed flex w-full max-w-3xl flex-col overflow-hidden">
           <div className="widget-header shrink-0">
             <span className="widget-header__label">NEW LEAD</span>
           </div>
@@ -1064,7 +1067,7 @@ function AddLeadModal({ onClose }: { onClose: () => void }) {
                 </label>
                 <label className="block">
                   <span className="app-field-label">Next follow-up</span>
-                  <input value={followUp} onChange={(e) => setFollowUp(e.target.value)} className="app-input" type="date" />
+                  <DatePicker value={followUp} onChange={setFollowUp} />
                 </label>
               </div>
 
@@ -1135,6 +1138,9 @@ export function ClientManagement() {
   const inactiveQuery = useClientList({ search, status: "INACTIVE" });
   const pendingQuery = useClientList({ search, status: "PENDING_REVIEW" });
   const onboardingQuery = useOnboardingLinks();
+  // Deleted clients — only fetched for people who can manage clients (the route asserts it).
+  const deletedQuery = useDeletedClients(canManageClients);
+  const deletedCount = deletedQuery.data?.length ?? 0;
   const createClientMutation = useCreateClient();
 
   useEffect(() => {
@@ -1145,7 +1151,8 @@ export function ClientManagement() {
       requestedTab === "pending" ||
       requestedTab === "leads" ||
       requestedTab === "suggested" ||
-      requestedTab === "inactive"
+      requestedTab === "inactive" ||
+      requestedTab === "deleted"
     ) {
       setTab(requestedTab);
     }
@@ -1165,8 +1172,9 @@ export function ClientManagement() {
         : tab === "inactive"
           ? inactiveQuery
           : pendingQuery;
-  const isPending = tab === "onboarding" ? onboardingQuery.isPending : listQuery.isPending;
-  const error = tab === "onboarding" ? onboardingQuery.error : listQuery.error;
+  const isPending =
+    tab === "onboarding" ? onboardingQuery.isPending : tab === "deleted" ? false : listQuery.isPending;
+  const error = tab === "onboarding" ? onboardingQuery.error : tab === "deleted" ? null : listQuery.error;
   const data = listQuery.data;
 
   /**
@@ -1282,6 +1290,15 @@ export function ClientManagement() {
                     Add lead
                   </Button>
                 ) : null}
+                {/* The portfolio board — every client on one page. Lives under Portal
+                    rather than as its own sidebar item, per §4a: it is a view of the
+                    client list, not a separate product. */}
+                <Link
+                  href="/app/portal/summary"
+                  className="app-button app-button-secondary app-button-xs"
+                >
+                  Summary board
+                </Link>
                 <Button
                   type="button"
                   variant="primary"
@@ -1371,6 +1388,16 @@ export function ClientManagement() {
                   action — hidden from restricted developers. */}
               {canManageClients ? (
                 <>
+                  {/* Deleted — shown only when there is something in it (or you're on it),
+                      so an empty bin doesn't take a slot in the strip. */}
+                  {deletedCount > 0 || tab === "deleted" ? (
+                    <TabButton
+                      active={tab === "deleted"}
+                      onClick={() => setTab("deleted")}
+                      label="Deleted"
+                      count={deletedCount}
+                    />
+                  ) : null}
                   <TabButton
                     active={tab === "onboarding"}
                     onClick={() => setTab("onboarding")}
@@ -1408,6 +1435,8 @@ export function ClientManagement() {
           </div>
         ) : tab === "onboarding" ? (
           <OnboardingLinksList links={onboardingLinks} />
+        ) : tab === "deleted" ? (
+          <DeletedClientsList search={search} canPurge={isSuperAdmin} />
         ) : clients.length ? (
           <section className="space-y-3">
             <div className="flex items-center gap-2">

@@ -136,7 +136,12 @@ function serializeAssessment(
   };
 }
 
-const candidateSelect = { candidate: { select: { name: true, githubHandle: true } } } as const;
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
+const candidateSelect = { candidate: { select: { name: true, githubHandle: true } } } as const satisfies Prisma.DevSignalAssessmentInclude;
 
 // ─── candidate resolution ────────────────────────────────────────────────────
 

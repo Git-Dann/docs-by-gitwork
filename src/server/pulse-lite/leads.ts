@@ -8,18 +8,18 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
-import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
+import { sendWorkspaceEmail } from "@/server/email";
+import { renderLeadEmail } from "./report-email";
 import { isAtLeast } from "@/types/auth";
-import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
-import { triage } from "./public-scan";
-import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
-import type { PulseScanCheckInput } from "@/types/pulse";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 function notFound(message: string): Error {
   return Object.assign(new Error(message), { status: 404 });
 }
+
+/** Full reports sent automatically per 24 hours. PULSE_FULL_REPORTS_PER_DAY overrides. */
+export const FULL_REPORTS_PER_DAY = Number(process.env.PULSE_FULL_REPORTS_PER_DAY) || 100;
 
 /** Thrown when an email has already claimed its one lifetime free unlock. */
 export class EmailAlreadyUsedError extends Error {
@@ -38,15 +38,28 @@ export class EmailAlreadyUsedError extends Error {
  * ONE lifetime capture across ALL scans — a second attempt (even a different URL)
  * is rejected with EmailAlreadyUsedError.
  */
-export async function capturePulseLead(params: { liteScanId: string; email: string; source?: string }): Promise<{ leadId: string }> {
+export async function capturePulseLead(params: {
+  liteScanId: string;
+  email: string;
+  source?: string;
+  name?: string;
+  business?: string;
+  termsAcceptedAt?: Date;
+}): Promise<{ leadId: string; created: boolean }> {
   const lite = await prisma.pulseLiteScan.findUnique({
     where: { id: params.liteScanId },
     select: { id: true, targetUrl: true, healthScore: true, emailCaptured: true, leadId: true },
   });
   if (!lite) throw notFound("Scan not found.");
-  if (lite.emailCaptured && lite.leadId) return { leadId: lite.leadId };
+  if (lite.emailCaptured && lite.leadId) return { leadId: lite.leadId, created: false };
 
-  const existingForEmail = await prisma.pulseLead.findFirst({ where: { email: params.email }, select: { id: true } });
+  // One report per email address. Only leads that went through the unlock form count:
+  // leads from before it existed never agreed to the terms or got a report, and counting
+  // them refused those same people when they came back to get one.
+  const existingForEmail = await prisma.pulseLead.findFirst({
+    where: { email: params.email, termsAcceptedAt: { not: null } },
+    select: { id: true },
+  });
   if (existingForEmail) throw new EmailAlreadyUsedError();
 
   const lead = await prisma.pulseLead.create({
@@ -56,15 +69,26 @@ export async function capturePulseLead(params: { liteScanId: string; email: stri
       targetUrl: lite.targetUrl,
       healthScore: lite.healthScore,
       source: params.source ?? "embed",
+      name: params.name ?? null,
+      business: params.business ?? null,
+      termsAcceptedAt: params.termsAcceptedAt ?? null,
     },
     select: { id: true },
   });
-  await prisma.pulseLiteScan.update({
-    where: { id: lite.id },
+  // Claim the scan only if nobody else has in the meantime. Two submissions racing for
+  // one scan would otherwise both create a lead, and each would start a paid full scan.
+  const claimed = await prisma.pulseLiteScan.updateMany({
+    where: { id: lite.id, emailCaptured: false },
     data: { emailCaptured: true, leadId: lead.id },
   });
+  if (claimed.count === 0) {
+    await prisma.pulseLead.delete({ where: { id: lead.id } }).catch(() => {});
+    const winner = await prisma.pulseLiteScan.findUnique({ where: { id: lite.id }, select: { leadId: true } });
+    if (winner?.leadId) return { leadId: winner.leadId, created: false };
+    throw notFound("Scan not found.");
+  }
 
-  return { leadId: lead.id };
+  return { leadId: lead.id, created: true };
 }
 
 /**
@@ -89,25 +113,24 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
   if (!workspace) return;
 
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: workspace.id },
+    where: { workspaceId: workspace.id, ...ACTIVE_MEMBER },
     include: { user: { select: { email: true } } },
   });
   const admins = members.filter((m) => isAtLeast(m.role, "ADMIN")).map((m) => m.user.email).filter(Boolean);
   if (admins.length === 0) return;
 
-  const score = lead.healthScore ?? "—";
-  const res = await sendWorkspaceEmail({
-    workspaceId: workspace.id,
-    to: admins,
-    subject: `New Pulse lead — ${lead.email}`,
-    html: `<p>A new lead just ran the public Pulse scanner.</p>
-      <ul>
-        <li><strong>Email:</strong> ${escapeHtml(lead.email)}</li>
-        <li><strong>Scanned:</strong> ${escapeHtml(lead.targetUrl)}</li>
-        <li><strong>Health score:</strong> ${score}/100</li>
-      </ul>
-      <p>Open Foundry → Pulse to import this lead into a full AI scan + proposal.</p>`,
+  const base = (process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "");
+  const { subject, html } = renderLeadEmail({
+    name: lead.name,
+    business: lead.business,
+    email: lead.email,
+    targetUrl: lead.targetUrl,
+    score: lead.healthScore,
+    source: lead.source,
+    foundryUrl: `${base}/app/pulse`,
+    logoUrl: `${base}/email/gitwork-wordmark-ink.png`,
   });
+  const res = await sendWorkspaceEmail({ workspaceId: workspace.id, to: admins, subject, html });
   if (res.ok) {
     await prisma.pulseLead.update({ where: { id: leadId }, data: { notifiedAt: new Date() } }).catch(() => {});
   }
@@ -120,46 +143,38 @@ async function notifyTeamOfLead(leadId: string): Promise<void> {
  */
 async function notifyVisitorOfResults(leadId: string): Promise<void> {
   const lead = await prisma.pulseLead.findUnique({ where: { id: leadId } });
-  if (!lead || !lead.liteScanId) return;
-  const workspace = await prisma.workspace.findFirst({ where: { slug: DEFAULT_WORKSPACE_SLUG }, select: { id: true } });
-  if (!workspace) return;
-  const config = await getPulseEmbedWorkspaceConfig();
+  if (!lead) return;
 
-  const lite = await prisma.pulseLiteScan.findUnique({ where: { id: lead.liteScanId }, select: { checks: true } });
-  const allChecks = (lite?.checks as PulseScanCheckInput[] | null) ?? [];
-  // ⚠️ ONE score per scan. This used to rescore a curated ~10-check subset with
-  // `calculateHealthScore`, so the same visitor was emailed a DIFFERENT number from
-  // the one on their screen and on /scan/[id] — same person, same scan, two scores.
-  // `computeScoreBreakdown` over the full set is what every other surface uses.
-  const score = computeScoreBreakdown(allChecks).finalScore;
-  // And the same triage as the page, so the email echoes the report rather than
-  // inventing its own selection.
-  const { actionable, advisoryCount } = triage(allChecks);
-  // The shareable result page (Phase 3). Absolute, because this is an email.
-  const reportUrl = `${(process.env.NEXTAUTH_URL ?? "https://foundry.gitwork.co.uk").replace(/\/$/, "")}/scan/${lead.liteScanId}`;
-  const findings = actionable;
-  const criticalCount = actionable.filter((f) => f.status === "FAIL").length;
+  // Each report is a full scan with an AI pass, paid for, started by an anonymous visitor.
+  // Unlocks are already bounded (Turnstile, per-IP scan limits, one per scan, one per email),
+  // but a ceiling per day means a bad day costs a known amount. Past it the lead is still
+  // captured and the team still told; the report can be run by hand from the leads list.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const today = await prisma.pulseLead.count({ where: { termsAcceptedAt: { gte: since }, id: { not: leadId } } });
+  if (today >= FULL_REPORTS_PER_DAY) {
+    console.error(`[pulse] daily report limit (${FULL_REPORTS_PER_DAY}) reached; lead ${leadId} not sent`);
+    await prisma.pulseLead
+      .update({ where: { id: leadId }, data: { reportError: `Daily limit of ${FULL_REPORTS_PER_DAY} reports reached. Run the full scan from the leads list.` } })
+      .catch(() => {});
+    return;
+  }
 
-  const findingsHtml = findings.length
-    ? `<ul>${findings
-        .map(
-          (f) =>
-            `<li><strong>${f.status === "FAIL" ? "✕" : "!"} ${escapeHtml(f.label)}</strong>${f.detail ? `<br/>${escapeHtml(f.detail)}` : ""}</li>`,
-        )
-        .join("")}</ul>`
-    : "<p>No issues found in the checks we ran — nice work.</p>";
-
-  await sendWorkspaceEmail({
-    workspaceId: workspace.id,
-    to: [lead.email],
-    subject: `Your Pulse results for ${lead.targetUrl}`,
-    html: `<p>Thanks for scanning your site with Gitwork Pulse. Here's what we found:</p>
-      <p><strong>Health score:</strong> ${score}/100</p>
-      <p><strong>Critical issues:</strong> ${criticalCount}</p>
-      ${findingsHtml}
-      ${advisoryCount > 0 ? `<p>Plus ${advisoryCount} lower-priority advisory checks, which come with the in-depth review.</p>` : ""}
-      <p><a href="${reportUrl}">View the full report</a> — a link you can share.</p>
-      <p>Want help fixing these, or a full deep-dive across ${ADVERTISED_CHECK_COUNT_LABEL} checks?
-        <a href="${config.bookingUrl}">Book a call</a> with Gitwork.</p>`,
+  // Loaded here, not at the top: delivery runs the full scan, which pulls in the AI
+  // pipeline, and this file is imported by the public routes, which must stay light.
+  const { deliverFullReport } = await import("./report-delivery");
+  const res = await deliverFullReport({
+    to: lead.email,
+    name: lead.name,
+    targetUrl: lead.targetUrl,
+    liteScanId: lead.liteScanId,
   });
+  // Say why when it does not go. A send that fails quietly is how "the emails aren't
+  // triggering" went unnoticed. Recorded on the lead too, for the leads list.
+  if (!res.ok) console.error(`[pulse] report for lead ${leadId} not sent: ${res.error}`);
+  await prisma.pulseLead
+    .update({
+      where: { id: leadId },
+      data: res.ok ? { reportSentAt: new Date(), reportError: null } : { reportError: res.error.slice(0, 500) },
+    })
+    .catch(() => {});
 }

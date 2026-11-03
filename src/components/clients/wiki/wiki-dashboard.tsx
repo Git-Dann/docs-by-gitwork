@@ -1,34 +1,60 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
+  ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
+  BanknotesIcon,
+  BoltIcon,
   BookOpenIcon,
+  CalculatorIcon,
+  TableCellsIcon,
+  ViewColumnsIcon,
   CalendarDaysIcon,
   ChartBarIcon,
+  ChartBarSquareIcon,
+  ChartPieIcon,
   CircleStackIcon,
   ClockIcon,
   CodeBracketIcon,
   CpuChipIcon,
   CubeTransparentIcon,
+  DocumentDuplicateIcon,
   DocumentTextIcon,
+  EnvelopeIcon,
   FlagIcon,
+  GlobeAltIcon,
+  LifebuoyIcon,
+  NewspaperIcon,
+  PhoneIcon,
+  PresentationChartLineIcon,
   RocketLaunchIcon,
   ServerStackIcon,
-  BoltIcon,
-  DocumentDuplicateIcon,
-  WrenchScrewdriverIcon,
-  ArrowRightIcon,
-  ArrowTopRightOnSquareIcon,
   Squares2X2Icon,
-  GlobeAltIcon,
   UserIcon,
-  EnvelopeIcon,
-  PhoneIcon,
+  VideoCameraIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
+import { summariseDelivery } from "@/lib/wiki-delivery";
+import { formatCostMoney, projectAt } from "@/lib/wiki-costs";
+import { buildEstimateReadout, planDurationParts, formatShortDate, isPlannable } from "@/lib/wiki-estimates";
+import { summariseRoundup } from "@/lib/wiki-roundup";
+import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
+import { formatMetric, metricTrend } from "@/lib/wiki-metrics";
+import { upcomingRenewals } from "@/lib/wiki-platforms";
+import { metricsHeadline } from "./wiki-metrics-section";
+import { meetingDate, openActionCount } from "./wiki-meetings-section";
+import { RenewalLine } from "./wiki-platforms-section";
+import { TrendBadge } from "@/components/analytics/analytics-widgets";
+import { footerFacts, latestWikiActivity, type FooterFact } from "@/lib/wiki-footer";
+import { GITWORK, companyDisclosureLine } from "@/lib/gitwork";
 import type { WikiDTO } from "@/lib/api";
 import type { WikiSection } from "./wiki-sidebar";
+import { WikiStandupsCard } from "./wiki-standups-card";
+import { WikiDashboardGrid } from "./wiki-dashboard-grid";
+import { STANDUPS_CARD } from "@/lib/wiki-dashboard-layout";
 
 // JetBrains Mono stack — consistent with wiki-workspace / wiki-public-view.
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -48,9 +74,20 @@ const SECTION_META: Record<
 > = {
   timeline: { label: "Timeline", icon: CalendarDaysIcon },
   monitors: { label: "Monitors", icon: BoltIcon },
-  documents: { label: "Documents", icon: DocumentDuplicateIcon },
+  documents: { label: "Resources", icon: DocumentDuplicateIcon },
   intake: { label: "Requests", icon: FlagIcon },
   launchpad: { label: "Launchpad", icon: RocketLaunchIcon },
+  insights: { label: "Charts", icon: ChartPieIcon },
+  costs: { label: "Running costs", icon: BanknotesIcon },
+  estimates: { label: "Estimates", icon: CalculatorIcon },
+  comparisons: { label: "Comparisons", icon: TableCellsIcon },
+  sheets: { label: "Sheets", icon: ViewColumnsIcon },
+  roundup: { label: "RoundUp", icon: NewspaperIcon },
+  delivery: { label: "Delivery", icon: ChartBarSquareIcon },
+  support: { label: "Support", icon: LifebuoyIcon },
+  metrics: { label: "Metrics", icon: PresentationChartLineIcon },
+  meetings: { label: "Meetings", icon: VideoCameraIcon },
+  platforms: { label: "Platforms", icon: GlobeAltIcon },
   "code-handover": { label: "Code Handover", icon: CpuChipIcon },
   "design-system": { label: "Brand", icon: CubeTransparentIcon },
   ia: { label: "Information Architecture", icon: BookOpenIcon },
@@ -83,6 +120,12 @@ function overallProgress(wiki: WikiDTO): number | null {
     total += b.tasks.length;
     done += b.tasks.filter((t) => t.done).length;
   }
+  // ⚠️ Live work that is on no phase counts too. Without this GAIA Bloom's card read
+  // 98% (46 of 47 phase tasks) while six items, two of them in progress, were counted
+  // nowhere on the client's portal. The honest figure for her is 87%.
+  const loose = wiki.timeline.unassigned;
+  total += loose.length;
+  done += loose.filter((t) => t.done).length;
   if (total === 0) {
     return Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
   }
@@ -135,6 +178,15 @@ function nextMilestone(wiki: WikiDTO) {
   const now = Date.now();
   const sorted = [...ms].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   return sorted.find((m) => new Date(m.date).getTime() >= now) ?? sorted[sorted.length - 1];
+}
+
+/** A milestone whose day is over — compared by calendar day, so one due today is still ahead. */
+function milestonePassed(iso: string): boolean {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return false;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return t < startOfToday.getTime();
 }
 
 function activePhase(wiki: WikiDTO) {
@@ -190,13 +242,11 @@ function Widget({
   section,
   onSelect,
   children,
-  wide,
   numeral,
 }: {
   section: WikiSection;
   onSelect: (s: WikiSection) => void;
   children: ReactNode;
-  wide?: boolean;
   numeral?: string;
 }) {
   const meta = SECTION_META[section as Exclude<WikiSection, "dashboard" | "settings">];
@@ -205,10 +255,9 @@ function Widget({
     <button
       type="button"
       onClick={() => onSelect(section)}
-      className={[
-        "group relative flex flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]",
-        wide ? "sm:col-span-2" : "",
-      ].join(" ")}
+      // `min-h-[220px]`: rows now size to their own tallest card (a row can hold the
+      // Daily updates card), so a floor keeps short cards from collapsing to a sliver.
+      className="group relative flex h-full min-h-[220px] flex-col overflow-hidden rounded-[14px] border border-[var(--border-1)] bg-[var(--surface-0)] p-5 text-left transition hover:border-[var(--brand-500)] hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.14)]"
     >
       <div className="relative mb-3 flex items-center gap-2">
         {/* Editorial step numeral (Playfair italic) — a real section marker,
@@ -283,6 +332,30 @@ export function WikiDashboard({
     .filter((s) => s !== "monitors" || activeMonitors.length > 0)
     .filter((s) => s !== "documents" || wiki.documents.documents.length > 0);
 
+  /**
+   * The Slack panel, when this audience gets one. Declared here rather than
+   * inline so the tile numerals below can continue the sequence past it —
+   * the `NN //` index is one run per screen, and two cards numbered `i.` is
+   * what the grammar exists to prevent.
+   */
+  /**
+   * The daily-updates panel. One card for both audiences — these are the same
+   * AM/PM standups the devs already push to the client's channel, so there is
+   * nothing here one audience may see and the other may not.
+   *
+   * Declared above the return so the tile numerals can continue past it: the
+   * `NN //` index is one run per screen.
+   */
+  // The week strip reads the SAME summariseRoundup call the RoundUp tile makes,
+  // with the same guard: no plan means no strip, never a row of zeroes.
+  const hasPlan = wiki.timeline.blocks.length > 0 || wiki.timeline.unassigned.length > 0;
+  const weekRoundup = hasPlan
+    ? summariseRoundup(wiki.timeline.blocks, new Date(), { unassigned: wiki.timeline.unassigned })
+    : null;
+  const standupsCard = (numeral: string) => (
+    <WikiStandupsCard standups={wiki.standups} roundup={weekRoundup} numeral={numeral} />
+  );
+
   const pct = overallProgress(wiki);
   const phase = activePhase(wiki);
   const milestone = nextMilestone(wiki);
@@ -335,8 +408,13 @@ export function WikiDashboard({
             )}
             {milestone && (
               <p className="text-[13px] text-[var(--text-2)]">
-                <span className="text-[var(--text-4)]">Next:</span> {milestone.name} ·{" "}
-                {formatDate(milestone.date)}
+                {/* ⚠️ `nextMilestone` falls back to the LAST milestone once every one
+                    has passed. Labelling that "Next" tells a client a date that has
+                    gone is still ahead of them. */}
+                <span className="text-[var(--text-4)]">
+                  {milestonePassed(milestone.date) ? "Last:" : "Next:"}
+                </span>{" "}
+                {milestone.name} · {formatDate(milestone.date)}
               </p>
             )}
             {pct === null && !phase && (
@@ -361,7 +439,9 @@ export function WikiDashboard({
                 ))}
               </div>
             )}
-            <p className="text-[13px] text-[var(--text-3)]">
+            {/* Clamped: the brand voice is free text, and on an equal-height grid one
+                long paragraph would stretch every card on the dashboard. */}
+            <p className="line-clamp-3 text-[13px] text-[var(--text-3)]" title={ds?.brandVoice ?? undefined}>
               {ds?.brandVoice
                 ? ds.brandVoice
                 : ds?.typography?.displayFont
@@ -427,9 +507,11 @@ export function WikiDashboard({
         const docs = wiki.documents.documents;
         return (
           <div className="space-y-1.5">
-            <Metric value={String(docs.length)} label={docs.length === 1 ? "Document" : "Documents"} />
+            <Metric value={String(docs.length)} label={docs.length === 1 ? "Resource" : "Resources"} />
             {docs[0] && (
-              <p className="truncate text-[12px] text-[var(--text-4)]">Latest: {docs[0].title}</p>
+              <p className="truncate text-[12px] text-[var(--text-4)]" title={docs[0].title}>
+                Latest: {docs[0].title}
+              </p>
             )}
           </div>
         );
@@ -438,7 +520,7 @@ export function WikiDashboard({
         const items = wiki.intakeItems;
         const open = items.filter((r) => r.status === "NEW" || r.status === "TRIAGED").length;
         return items.length > 0 ? (
-          <div className="flex items-end gap-6">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(open)} label="Open" />
             <Metric value={String(items.length)} label="Total" />
           </div>
@@ -446,11 +528,331 @@ export function WikiDashboard({
           <p className="text-[13px] text-[var(--text-4)]">No requests submitted yet.</p>
         );
       }
+      case "roundup": {
+        // A real case, not the markdown-doc default (§40.1). The card leads with what
+        // moved this week — the one thing a weekly summary is opened to find out.
+        const r = summariseRoundup(wiki.timeline.blocks, new Date(), {
+          unassigned: wiki.timeline.unassigned,
+        });
+        if (wiki.timeline.blocks.length === 0 && wiki.timeline.unassigned.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No plan to summarise yet.</p>;
+        }
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(r.delivered.length)} label={`Done / ${r.window.days}d`} />
+              <Metric value={String(r.totals.inFlight)} label="In flight" />
+            </div>
+            {/* ⚠️ Never "0 delivered" when the truth is "we cannot tell which week". */}
+            {r.deliveredUndated > 0 && r.delivered.length === 0 && (
+              <p className="text-[12px] text-[var(--text-4)]">completion dates not recorded</p>
+            )}
+          </div>
+        );
+      }
+      case "costs": {
+        // A real case, not the markdown-doc default (§40.1). The card leads with the
+        // number the page exists for — cost per user — not a line count.
+        const cost = wiki.costs;
+        if (cost.items.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No costs recorded yet.</p>;
+        }
+        const projection = projectAt(cost.items, cost.headlineUsers);
+        // ⚠️ The SAME formatter the section uses — null at zero users, 4dp for a
+        // fraction of a penny. Re-implementing it here printed "GBP 0.44" on the card
+        // beside a page reading "£0.44".
+        const per = formatCostMoney(projection.perUserMonthly, cost.currency, true);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={per} label="Per user / mo" />
+              <Metric value={String(cost.items.length)} label="Lines" />
+            </div>
+            <p className="text-[12px] text-[var(--text-4)]">
+              at {cost.headlineUsers.toLocaleString("en-GB")} users
+            </p>
+          </div>
+        );
+      }
+      case "estimates": {
+        // A real case, not the markdown-doc default (§40.1). It leads with the answer the
+        // page exists for — how long, with the team we would recommend — from the SAME
+        // engine the section uses, so the card and the page cannot disagree.
+        const estimate = wiki.estimates.estimates.find(isPlannable);
+        if (!estimate) {
+          return <p className="text-[13px] text-[var(--text-4)]">No estimates yet.</p>;
+        }
+        const now = new Date();
+        const readout = buildEstimateReadout(
+          estimate,
+          new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())),
+        );
+        const plan = readout.recommended;
+        if (!plan) {
+          return <p className="text-[13px] text-[var(--text-4)]">No estimates yet.</p>;
+        }
+        const { figure, unit } = planDurationParts(plan);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={figure} label={unit || "Duration"} />
+              <Metric value={String(plan.devs)} label={plan.devs === 1 ? "Developer" : "Developers"} />
+            </div>
+            <p className="truncate text-[12px] text-[var(--text-4)]" title={estimate.title}>
+              {estimate.title} · done by {formatShortDate(plan.end)}
+            </p>
+          </div>
+        );
+      }
+      case "sheets": {
+        // A real case, not the markdown-doc default (§52.1). It leads with what is on the
+        // board and how far it has got, because that is the reason the sheet lives here
+        // rather than in a Google Sheet.
+        const sheets = wiki.sheets.sheets;
+        const rows = sheets.flatMap((s) => s.rows.filter((r) => !r.deletedAt));
+        if (sheets.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No sheets yet.</p>;
+        }
+        const onBoard = rows.filter((r) => r.stage).length;
+        const done = rows.filter((r) => r.stage === "DONE").length;
+        const names = sheets.map((s) => s.title);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(rows.length)} label={rows.length === 1 ? "Row" : "Rows"} />
+              <Metric value={String(onBoard)} label="On the board" />
+              <Metric value={String(done)} label="Done" />
+            </div>
+            <p className="truncate text-[12px] text-[var(--text-4)]" title={names.join(" · ")}>
+              {names.slice(0, 3).join(" · ")}
+              {names.length > 3 ? ` +${names.length - 3}` : ""}
+            </p>
+          </div>
+        );
+      }
+      case "comparisons": {
+        // A real case, not the markdown-doc default (§52.1). It names what is being
+        // compared — the first table and its columns — rather than counting rows.
+        const tables = wiki.comparisons.comparisons.filter(isPublishableComparison);
+        const first = tables[0];
+        if (!first) {
+          return <p className="text-[13px] text-[var(--text-4)]">No comparisons yet.</p>;
+        }
+        const titles = first.columns.map((c) => c.title);
+        const shown = titles.slice(0, 4).join(" · ");
+        const more = titles.length > 4 ? ` +${titles.length - 4}` : "";
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <Metric value={String(tables.length)} label={tables.length === 1 ? "Table" : "Tables"} />
+              <Metric value={String(first.columns.length)} label={first.columns.length === 1 ? "Column" : "Columns"} />
+            </div>
+            <p className="truncate text-[13px] text-[var(--text-2)]" title={first.title}>
+              {first.title}
+            </p>
+            <p className="truncate text-[12px] text-[var(--text-4)]" title={titles.join(" · ")}>
+              {shown}
+              {more}
+            </p>
+          </div>
+        );
+      }
+      case "insights": {
+        // A real case, not the markdown-doc default. A section with no case here falls
+        // through and the dashboard card reads "Documentation." — which is exactly the
+        // defect the Requests card shipped with (§40.1).
+        const boards = wiki.insights.boards;
+        const kinds = new Set(boards.map((b) => b.kind));
+        return boards.length > 0 ? (
+          <div className="space-y-1.5">
+            <Metric value={String(boards.length)} label={boards.length === 1 ? "Board" : "Boards"} />
+            <p
+              className="truncate text-[12px] text-[var(--text-4)]"
+              title={[...kinds].join(" · ")}
+            >
+              {[...kinds].join(" · ")}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[13px] text-[var(--text-4)]">No charts yet.</p>
+        );
+      }
+      case "launchpad": {
+        // ⚠️ A section with NO case here falls through to the markdown-doc default and
+        // the card reads "Documentation." — which is what Launchpad shipped with, and
+        // the same defect the Requests card shipped with (§40.1). Launchpad is the one
+        // section that asks the CLIENT for things, so its card must say what is still
+        // outstanding rather than describe itself.
+        const lp = wiki.launchpad;
+        if (!lp || !lp.assigned) {
+          return <p className="text-[13px] text-[var(--text-4)]">Nothing requested yet.</p>;
+        }
+        const c = lp.completeness;
+        return (
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              {/* `needed` leads, not `percent`. The client's question is "what do you
+                  still want from me", and 0 outstanding is the finish line — a
+                  percentage makes them do the subtraction. */}
+              <Metric value={String(c.needed)} label={c.needed === 1 ? "To send" : "To send"} />
+              <Metric value={`${c.provided}/${c.total}`} label="Provided" />
+            </div>
+            {c.outstanding.length > 0 && (
+              <p
+                className="truncate text-[12px] text-[var(--text-4)]"
+                title={c.outstanding.join(", ")}
+              >
+                {c.outstanding.join(" · ")}
+              </p>
+            )}
+          </div>
+        );
+      }
+      case "delivery": {
+        const d = summariseDelivery({
+          blocks: wiki.timeline.blocks,
+          milestones: wiki.timeline.milestones,
+          blockers: wiki.blockers,
+        });
+        return d.noTimeline ? (
+          <p className="text-[13px] text-[var(--text-4)]">No delivery plan yet.</p>
+        ) : (
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            {/* `percent` is null when a plan is drawn but no block has tasks yet — the
+                normal state between a Gantt being laid out and work being broken down.
+                Render an em-dash, never `null%`; this card is the landing page of a
+                whole-wiki client share. The Delivery section itself already does this. */}
+            <Metric value={d.percent === null ? "—" : `${d.percent}%`} label="Complete" />
+            <Metric value={String(d.waitingOnClient)} label="Waiting on you" />
+          </div>
+        );
+      }
+      case "support": {
+        const c = wiki.support.current;
+        return c ? (
+          // `flex-wrap` + a narrower gap: the card is overflow:hidden, so a second
+          // tile that does not fit is UNREACHABLE rather than merely off-screen
+          // (CLAUDE.md §45.2). Wrapping costs one line; clipping loses the figure.
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            <Metric value={String(c.totalTickets)} label="Tickets" />
+            <Metric value={`${Math.round(c.resolutionRate)}%`} label="Resolved" />
+          </div>
+        ) : (
+          <p className="text-[13px] text-[var(--text-4)]">Support reporting isn&rsquo;t connected.</p>
+        );
+      }
+      case "metrics": {
+        // The client's copy already has hidden metrics removed; the internal copy flags
+        // them, so filter here too — the card must read the same to both audiences.
+        const lead = wiki.metrics.metrics.filter((m) => m.featured && !m.hidden);
+        const when = metricsHeadline(wiki.metrics);
+        if (!wiki.metrics.source || lead.length === 0) {
+          return (
+            <p className="text-[13px] text-[var(--text-4)]">
+              {wiki.metrics.source ? "No figures fetched yet." : "Not connected yet."}
+            </p>
+          );
+        }
+        return (
+          <div className="space-y-2">
+            {/* One row per metric, label left and figure right: three figures side by side
+                in a ~330px card wrap and cut their labels off ("ACTIVE SUBSCRIPTIO…"). */}
+            <ul className="space-y-2.5">
+              {lead.map((m) => (
+                <li key={m.key} className="flex items-baseline justify-between gap-3">
+                  <span
+                    className="min-w-0 truncate text-[10px] uppercase tracking-[0.1em] text-[var(--text-4)]"
+                    style={{ fontFamily: MONO }}
+                    title={m.label}
+                  >
+                    {m.label}
+                  </span>
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    <span
+                      className="text-[24px] leading-none text-[var(--text-1)] tabular-nums"
+                      style={{ fontFamily: SERIF, fontWeight: 600, letterSpacing: "-0.01em" }}
+                    >
+                      {formatMetric(m.value, m.unit, m.money)}
+                    </span>
+                    <TrendBadge delta={metricTrend(m.value, m.previous)} goodWhen="neutral" compact />
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {when ? (
+              <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {when}
+              </p>
+            ) : null}
+          </div>
+        );
+      }
+      case "meetings": {
+        const latest = wiki.meetings.meetings[0];
+        if (!latest) return <p className="text-[13px] text-[var(--text-4)]">No meetings shared yet.</p>;
+        const open = openActionCount(wiki.meetings.meetings);
+        return (
+          <div className="space-y-2">
+            <div className="min-w-0">
+              <p className="truncate text-[14px] font-medium text-[var(--text-1)]" title={latest.title}>
+                {latest.title}
+              </p>
+              <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+                {meetingDate(latest.startedAt)}
+              </p>
+            </div>
+            <Metric value={String(open)} label={open === 1 ? "Open action" : "Open actions"} />
+          </div>
+        );
+      }
+      case "platforms": {
+        const list = wiki.clientPlatforms.platforms;
+        if (list.length === 0) {
+          return <p className="text-[13px] text-[var(--text-4)]">No platforms recorded yet.</p>;
+        }
+        const due = upcomingRenewals(list, new Date(), 2);
+        // The platforms themselves, not just a count — a renewal due soon leads, then as
+        // many platforms as fit. Bounded (the card is one row tall), with the rest counted.
+        const shown = list.slice(0, due.length > 0 ? 3 : 4);
+        const more = list.length - shown.length;
+        return (
+          <div className="space-y-3">
+            {due.length > 0 ? (
+              <ul className="space-y-1.5 border-b border-[var(--border-1)] pb-2.5">
+                {due.map((r) => (
+                  <RenewalLine key={r.platformId} r={r} />
+                ))}
+              </ul>
+            ) : null}
+            <ul className="space-y-1.5">
+              {shown.map((p) => (
+                <li key={p.id} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate text-[13px] text-[var(--text-1)]" title={p.name}>
+                    {p.name}
+                  </span>
+                  {p.platformType ? (
+                    <span
+                      className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-[var(--text-4)]"
+                      style={{ fontFamily: MONO }}
+                    >
+                      {p.platformType}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <p className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+              {more > 0 ? `+${more} MORE · ` : ""}
+              {list.length} {list.length === 1 ? "PLATFORM" : "PLATFORMS"}
+            </p>
+          </div>
+        );
+      }
       case "course-requests": {
         const reqs = wiki.courseRequests;
         const open = reqs.filter((r) => r.status === "NEW").length;
         return (
-          <div className="flex items-end gap-6">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(open)} label="New" />
             <Metric value={String(reqs.length)} label="Total" />
           </div>
@@ -460,7 +862,7 @@ export function WikiDashboard({
         const reqs = wiki.courseRequests;
         const added = reqs.filter((r) => r.status === "ADDED").length;
         return (
-          <div className="flex items-end gap-6">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
             <Metric value={String(added)} label="Live courses" />
             <Metric value="3" label="Providers" />
           </div>
@@ -505,7 +907,14 @@ export function WikiDashboard({
   }
 
   const teamCount = wiki.productTeam.length + wiki.team.length;
-  const footerStats = buildFooterStats(wiki, activeMonitors, worstMonitor);
+  const lastActivity = latestWikiActivity(wiki);
+  const facts = footerFacts({
+    lastActivity,
+    lastActivityLabel: lastActivity ? relativeDate(lastActivity) : null,
+    resources: wiki.documents.documents.length,
+    activeMonitors: activeMonitors.length,
+    worstMonitor,
+  });
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -514,7 +923,13 @@ export function WikiDashboard({
           rather than pulled from the light/dark `--text-*`/`--surface-*` tokens. */}
       <section className="rounded-[14px] bg-[#0F172A] p-6 md:p-9">
         <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          {/* ⚠️ `lg:`, NOT `sm:`. The team stack beside this is `shrink-0`, so once the
+              row goes horizontal the title column absorbs every pixel of squeeze. At
+              768px — where the 256px sidebar mounts — that left the `<h1>` a 139px
+              column for 52px serif, and `break-words` shattered the client's own name
+              mid-word: "Nort / hwin / d / Studi / o." On their front door.
+              Below `lg` the team stack sits under the title at full width instead. */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
             <div className="flex min-w-0 items-start gap-4">
               {wiki.designSystem?.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -552,7 +967,7 @@ export function WikiDashboard({
             {/* Teams — stacked avatars with a name + italic-bio tooltip on
                 hover. Product (account leads) above Delivery (the devs). */}
             {(wiki.productTeam.length > 0 || wiki.team.length > 0) && (
-              <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+              <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
                 <span
                   className="text-[9px] font-semibold uppercase tracking-[0.14em] text-white/35"
                   style={{ fontFamily: MONO }}
@@ -641,114 +1056,123 @@ export function WikiDashboard({
         </div>
       </section>
 
-      {sections.length > 0 && (
-        <>
-          {/* Section widgets — one per page, each showing live data. Auto-fit
-              columns (not a fixed 1/2/3 breakpoint grid) so a trailing row
-              with fewer cards than columns stretches to fill the width
-              instead of leaving a dangling gap; `items-start` lets each card
-              size to its own content instead of stretching to match a taller
-              sibling (e.g. the wide Timeline card) in the same row. */}
-          <div
-            className="mt-4 grid items-start gap-4"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}
-          >
-            {sections.map((section, i) => (
-              <Widget
-                key={section}
-                section={section}
-                onSelect={onSelect}
-                wide={section === "timeline"}
-                numeral={toRomanLower(i + 1)}
-              >
+      {/* Every card — Daily updates included — goes through the arrangeable grid. Each
+          viewer can reorder, resize (1-3 columns, always one row tall) and hide cards for
+          themselves; see wiki-dashboard-grid.tsx. The numerals follow THEIR order, so the
+          i. ii. iii. run never reads out of sequence after a drag. */}
+      <WikiDashboardGrid
+        wikiId={wiki.id}
+        roman={toRomanLower}
+        cards={[
+          { id: STANDUPS_CARD, label: "Daily updates", render: standupsCard },
+          ...sections.map((section) => ({
+            id: section as string,
+            label: SECTION_META[section].label,
+            render: (numeral: string) => (
+              <Widget section={section} onSelect={onSelect} numeral={numeral}>
                 {widgetBody(section)}
               </Widget>
-            ))}
-          </div>
-
-          {/* Closing stat band — bookends the masthead, mirroring the Gitwork
-              brand guide's "our standard" close. Only real, available data. */}
-          {footerStats.length > 0 && (
-            <section className="mt-4 rounded-[14px] bg-[#0F172A] p-6 md:p-8">
-              <p
-                className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50"
-                style={{ fontFamily: MONO }}
-              >
-                Project overview
-              </p>
-              {/* No max-width — the previous `max-w-lg` cap forced a wrap to
-                  two lines despite the band having plenty of room to spare. */}
-              <h2
-                className="mt-2 text-[22px] leading-snug text-white md:text-[26px]"
-                style={{ fontFamily: SERIF, fontWeight: 600 }}
-              >
-                Everything about {wiki.clientName}, ready when you need it.
-              </h2>
-              <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-4">
-                {footerStats.map((stat) => (
-                  <div key={stat.label}>
-                    <div
-                      className="text-[26px] leading-none"
-                      style={{
-                        fontFamily: SERIF,
-                        fontWeight: 600,
-                        color: stat.color ?? "#ffffff",
-                      }}
-                    >
-                      {stat.value}
-                    </div>
-                    <div
-                      className="mt-1.5 text-[9.5px] uppercase tracking-[0.1em] text-white/45"
-                      style={{ fontFamily: MONO }}
-                    >
-                      {stat.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </>
-      )}
+            ),
+          })),
+        ]}
+      />
 
       {sections.length === 0 && (
         <p className="mt-8 text-center text-sm text-[var(--text-4)]">
           No published sections yet.
         </p>
       )}
+
+      <WikiFooter clientName={wiki.clientName} facts={facts} />
     </div>
   );
 }
 
+const FACT_TONE: Record<NonNullable<FooterFact["tone"]>, string> = {
+  up: "#4ADE80",
+  degraded: "#FBBF24",
+  down: "#F87171",
+};
+
 /**
- * Real, available data only — a stat is omitted rather than shown as
- * zero/empty. Completion % and team size render elsewhere (the timeline
- * card and the masthead's team stack, respectively) so they're not
- * duplicated here.
+ * The dashboard's cap — a slim navy band that bookends the masthead, so the page
+ * closes rather than just stopping after the last card.
+ *
+ * Fixed navy like the masthead, so its colours are hardcoded rather than the
+ * light/dark tokens (this band never flips). Rendered for every client, a brand
+ * new one included: the readout simply has fewer facts, never zeroes.
  */
-function buildFooterStats(
-  wiki: WikiDTO,
-  activeMonitors: WikiDTO["monitors"]["monitors"],
-  worstMonitor: string | null,
-): { value: string; label: string; color?: string }[] {
-  const stats: { value: string; label: string; color?: string }[] = [];
-  if (wiki.documents.documents.length > 0) {
-    stats.push({
-      value: String(wiki.documents.documents.length),
-      label: wiki.documents.documents.length === 1 ? "Document" : "Documents",
-    });
-  }
-  if (activeMonitors.length > 0) {
-    const STATUS: Record<string, { value: string; color?: string }> = {
-      UP: { value: "Up", color: "#4ADE80" },
-      DEGRADED: { value: "Degraded", color: "#FBBF24" },
-      DOWN: { value: "Down", color: "#F87171" },
-      UNKNOWN: { value: "—" },
-    };
-    const s = STATUS[worstMonitor ?? "UNKNOWN"];
-    stats.push({ value: s.value, label: "All systems", color: s.color });
-  }
-  return stats;
+function WikiFooter({ clientName, facts }: { clientName: string; facts: FooterFact[] }) {
+  return (
+    <footer className="mt-4 rounded-[14px] bg-[#0F172A] px-6 py-5 md:px-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45"
+            style={{ fontFamily: MONO }}
+          >
+            Knowledge Wiki
+          </p>
+          <p
+            className="mt-1 truncate text-[20px] leading-tight text-white"
+            style={{ fontFamily: SERIF, fontWeight: 600 }}
+            title={clientName}
+          >
+            {clientName}
+          </p>
+        </div>
+        {facts.length > 0 && (
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            {facts.map((f) => (
+              <div key={f.label} className="flex items-baseline gap-2">
+                <dt
+                  className="text-[10px] uppercase tracking-[0.12em] text-white/45"
+                  style={{ fontFamily: MONO }}
+                >
+                  {f.label}
+                </dt>
+                <dd
+                  className="text-[12px] text-white"
+                  style={{ fontFamily: MONO, color: f.tone ? FACT_TONE[f.tone] : undefined }}
+                >
+                  {f.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 text-[12px] text-white/60 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          Built and maintained by{" "}
+          <a
+            href={GITWORK.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-white transition hover:text-white/80"
+          >
+            {GITWORK.name}
+          </a>
+        </p>
+        <p>
+          Questions?{" "}
+          <a
+            href={`mailto:${GITWORK.email}`}
+            className="text-white transition hover:text-white/80"
+          >
+            {GITWORK.email}
+          </a>
+        </p>
+      </div>
+      <p
+        className="mt-3 text-[10px] leading-relaxed tracking-[0.04em] text-white/35"
+        style={{ fontFamily: MONO }}
+      >
+        {companyDisclosureLine()}
+      </p>
+    </footer>
+  );
 }
 
 /**
@@ -860,10 +1284,19 @@ function TeamAvatar({
   avatarUrl: string | null;
 }) {
   const [failed, setFailed] = useState(false);
+  // ⚠️ On a server-rendered page the image can fail BEFORE React attaches onError — the
+  // event has already fired, so the handler never runs and the broken image (with its
+  // alt text spilling out) stays. Check once on mount whether it already failed.
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img && img.complete && img.naturalWidth === 0) setFailed(true);
+  }, [avatarUrl]);
   if (avatarUrl && !failed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
+        ref={imgRef}
         src={avatarUrl}
         alt={name}
         onError={() => setFailed(true)}

@@ -25,6 +25,10 @@ function extractApiPaths(source: string): string[] {
   while ((m = re.exec(source))) {
     const path = m[1].split("?")[0].replace(/\/$/, "");
     if (/[{}[\]:$]/.test(path)) continue; // templated segment — not directly probeable
+    if (/^\/api(\/v\d+(\.\d+)?)?$/i.test(path)) continue; // bare API base path ("/api/v3") — a prefix, not an endpoint
+    const before = source.slice(Math.max(0, m.index - 3), m.index);
+    const after = source.slice(m.index + m[0].length, m.index + m[0].length + 3);
+    if (/\+\s*$/.test(before) || /^\s*\+/.test(after)) continue; // concatenated fragment (base+"/api/x/"+id) — not a complete same-origin path
     found.add(path);
     if (found.size >= 12) break;
   }
@@ -37,7 +41,14 @@ function extractApiPaths(source: string): string[] {
 async function fetchScriptSnippets(httpsUrl: string, html: string): Promise<string[]> {
   const srcs = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
     .map((m) => m[1])
-    .filter((src) => !/^https?:\/\//i.test(src) || src.startsWith(httpsUrl))
+    .filter((src) => {
+      // Compare real origins: protocol-relative "//cdn.example.net/x.js" is NOT same-origin.
+      try {
+        return new URL(src, httpsUrl).origin === new URL(httpsUrl).origin;
+      } catch {
+        return false;
+      }
+    })
     .slice(0, 2);
 
   const snippets: string[] = [];
@@ -79,13 +90,13 @@ export async function runApiHealthChecks(ctx: ExtendedCheckContext): Promise<Pul
 
   const probes = await Promise.all(
     discovered.map(async (path) => {
-      const url = `${httpsUrl.replace(/\/$/, "")}${path}`;
+      const url = `${new URL(httpsUrl).origin}${path}`;
       try {
         const res = await fetchWithTimeout(url, { method: "GET" });
         const body = (await res.text().catch(() => "")).slice(0, 5000);
-        return { path, status: res.status, body };
+        return { path, status: res.status, body, contentType: (res.headers.get("content-type") ?? "").toLowerCase() };
       } catch {
-        return { path, status: 0, body: "" };
+        return { path, status: 0, body: "", contentType: "" };
       }
     }),
   );
@@ -117,18 +128,28 @@ export async function runApiHealthChecks(ctx: ExtendedCheckContext): Promise<Pul
         : "No stack traces or internal file paths detected in probed API error responses.",
   });
 
+  // A path resolves when it answers like an API: a non-HTML body (JSON etc.) with a
+  // non-404 status, or a server error. An HTML page answering an /api/ path is the
+  // site's own page served for any path (soft routing) — that is not "resolved",
+  // and it is not proof of a dead route either.
+  const isHtml = (p: { contentType: string; body: string }) =>
+    p.contentType.includes("html") || /^\s*(<!doctype html|<html)/i.test(p.body);
   const deadRefs = catchAll200 ? [] : probes.filter((p) => p.status === 404);
-  checks.push({
-    category: CATEGORY,
-    checkKey: "api_endpoint_unverified",
-    label: "No dead API references",
-    status: catchAll200 ? "SKIPPED" : deadRefs.length > 0 ? "WARN" : "PASS",
-    detail: catchAll200
-      ? "Host returns 200 for unknown paths (catch-all routing) — dead-reference detection can't be probed reliably."
+  const resolved = probes.filter((p) => p.status >= 500 || (p.status > 0 && p.status !== 404 && !isHtml(p)));
+  const unestablished = probes.filter((p) => !deadRefs.includes(p) && !resolved.includes(p));
+  checks.push(
+    catchAll200
+      ? { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "SKIPPED",
+          detail: "Host returns 200 for unknown paths (catch-all routing) — dead-reference detection can't be probed reliably." }
       : deadRefs.length > 0
-        ? `${deadRefs.length} API path(s) referenced in the app's source return 404 live: ${deadRefs.map((p) => p.path).join(", ")}. These may be renamed, removed, or unfinished routes — verify they're still meant to exist.`
-        : "All discovered API references resolved (no 404s).",
-  });
+        ? { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "WARN",
+            detail: `${deadRefs.length} API path(s) referenced in the app's source return 404 live: ${deadRefs.map((p) => p.path).join(", ")}. These may be renamed, removed, or unfinished routes — verify they're still meant to exist.` }
+        : unestablished.length > 0
+          ? { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "INCONCLUSIVE", confidence: "LOW",
+              detail: `${unestablished.length} of ${probes.length} referenced API path(s) did not answer as an API — ${unestablished.map((p) => `${p.path} (${p.status === 0 ? "request failed" : `${p.status}, HTML page`})`).join(", ")}. An HTML page for an API path is usually the site's own page served for any path, so whether those routes exist could not be established.` }
+          : { category: CATEGORY, checkKey: "api_endpoint_unverified", label: "No dead API references", status: "PASS",
+              detail: `All ${probes.length} discovered API reference(s) answered as an API (no 404s).` },
+  );
 
   return checks;
 }

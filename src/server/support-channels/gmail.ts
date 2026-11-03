@@ -4,6 +4,7 @@ import { recordMessageActivity } from "@/server/support";
 import type { ChannelAdapter, SyncResult, SyncContext, FilterReasons } from "./types";
 import { normalizeKeywords, lookbackSeconds, extractGmailBodyText } from "./shared";
 import { resolveCustomer, derivePreview } from "./identity";
+import { readSecret } from "@/server/stored-secret";
 
 /**
  * Gmail uses the `run()` escape hatch: it owns its domain-wide-delegation auth and
@@ -33,7 +34,7 @@ async function runGmail(ctx: SyncContext): Promise<SyncResult> {
 
   let gmail: ReturnType<typeof google.gmail>;
   try {
-    const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+    const credentials = JSON.parse(readSecret(workspace.googleServiceAccountJson) ?? "") as Record<string, unknown>;
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ["https://www.googleapis.com/auth/gmail.modify"],
@@ -293,7 +294,7 @@ export async function backfillGmailBodies(opts: {
   const impersonateEmail = config.impersonateEmail ?? workspace.googleSubjectEmail ?? "";
   if (!impersonateEmail) throw new Error("No inbox configured on this Gmail connector");
 
-  const credentials = JSON.parse(workspace.googleServiceAccountJson) as Record<string, unknown>;
+  const credentials = JSON.parse(readSecret(workspace.googleServiceAccountJson) ?? "") as Record<string, unknown>;
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ["https://www.googleapis.com/auth/gmail.readonly"],

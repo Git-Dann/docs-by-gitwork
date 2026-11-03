@@ -8,7 +8,9 @@
 // Fire-and-forget, exactly like notifyDocumentEvent in slack-notify.ts: a failure here must
 // never bubble into the originating request (createTask, approveLeaveRequest, …).
 //
-// Channels: `inApp`, `push` and `slack` are wired; `email` is still deferred.
+// Channels: `inApp`, `push` (browser), `mobile` (the Foundry app on a phone, via APNs)
+// and `slack` are wired; `email` is still deferred — it is declared in the routing table
+// but has no sender here, so listing it is a no-op.
 //
 // `slack` is deliberately NOT per-recipient. The other channels deliver to a person, so a
 // person's preference governs them. A Slack channel post is a workspace-level broadcast — it
@@ -29,7 +31,9 @@ import {
 } from "@/server/notification-events";
 import type { NotificationDTO } from "@/types/notifications";
 import { isWebPushEnabled, sendWebPushToUser } from "@/server/web-push";
+import { sendFoundryNotificationPush } from "@/server/push/notifications";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
 
@@ -66,6 +70,12 @@ export interface DispatchInput {
    *  attendees who were on the call (relevant regardless of client attribution). Unioned
    *  with the target set; the actor is still excluded. */
   alwaysUserIds?: string[];
+  /**
+   * A Block Kit layout for the Slack channel post (only used when the event routes to
+   * `slack`). `title` + `body` stay the plain-text fallback Slack shows in notifications and
+   * the in-app/push copy — so they must still read well on their own.
+   */
+  slackBlocks?: unknown[];
 }
 
 /** Same unread group within this window is incremented rather than re-created. */
@@ -95,6 +105,19 @@ export function dispatchNotification(input: DispatchInput): void {
               body: input.body ?? null,
               url: input.actionUrl ?? "/app",
               tag: input.groupKey,
+            }).catch(() => undefined);
+          }
+          // The Foundry app on a phone (APNs). Deliberately a separate channel from
+          // `push` — see NOTIFICATION_CHANNELS. No event routes here by default, so
+          // adding this bridge cannot make an existing notification start ringing
+          // someone's phone; an event reaches a phone only by being opted in.
+          if (channels.includes("mobile")) {
+            await sendFoundryNotificationPush({
+              userId,
+              title: input.title,
+              body: input.body ?? null,
+              actionUrl: input.actionUrl ?? null,
+              collapseId: input.groupKey,
             }).catch(() => undefined);
           }
         }),
@@ -138,7 +161,11 @@ async function postToSlackChannel(input: DispatchInput): Promise<void> {
     lines.push(`<${base}${input.actionUrl}|Open in Foundry>`);
   }
 
-  const res = await postMessage(token, { channel: channel.trim(), text: lines.join("\n") });
+  const res = await postMessage(token, {
+    channel: channel.trim(),
+    text: lines.join("\n"),
+    ...(input.slackBlocks?.length ? { blocks: input.slackBlocks } : {}),
+  });
   if (!res.ok) console.warn("[notifications] slack post failed", { event: input.event, error: res.error });
 }
 
@@ -151,7 +178,7 @@ async function resolveRecipients(input: DispatchInput): Promise<string[]> {
     userIds = target.userIds;
   } else {
     const members = await prisma.workspaceMember.findMany({
-      where: { workspaceId: input.workspaceId },
+      where: { workspaceId: input.workspaceId, ...ACTIVE_MEMBER },
       select: { userId: true, role: true, permissions: true },
     });
     const has = (m: (typeof members)[number], perm: string) =>
@@ -208,8 +235,10 @@ async function intersectClientScope(
   userIds: string[],
 ): Promise<string[]> {
   if (userIds.length === 0) return [];
+  // ACTIVE only. An explicit `users` target is filtered here too, so naming a leaver
+  // directly cannot route a notification to them.
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId, userId: { in: userIds } },
+    where: { workspaceId, userId: { in: userIds }, ...ACTIVE_MEMBER },
     select: { userId: true, role: true, permissions: true },
   });
   const allowed = new Set<string>();

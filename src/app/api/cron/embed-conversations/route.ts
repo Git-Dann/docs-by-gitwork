@@ -4,6 +4,7 @@ import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { embedConversation } from "@/server/care-agents/embeddings";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         aiProvider: true,
-        anthropicApiKey: true, anthropicModel: true,
+        anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true,
         openaiApiKey: true, openaiModel: true,
         geminiApiKey: true, geminiModel: true,
         localLlmUrl: true, localLlmModel: true,
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
     });
     if (!workspace) return apiError("Workspace not found", 404);
 
-    const apiKey = process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
+    const apiKey = aiKeyFor("OPENAI", workspace, "env");
     if (!apiKey) return apiOk({ skipped: true, reason: "No OpenAI API key configured" });
 
     // Raw SQL because the embedding column isn't in the Prisma schema.

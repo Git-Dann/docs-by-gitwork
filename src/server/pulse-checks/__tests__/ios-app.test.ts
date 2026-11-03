@@ -138,7 +138,7 @@ struct FeedView: View {
             Button { share() } label: { Image(systemName: "square.and.arrow.up") }
         }
     }
-    func openCamera() { let picker = UIImagePickerController() }
+    func openCamera() { let picker = UIImagePickerController(); picker.sourceType = .camera }
     func play() {
         let player = AVPlayer(url: URL(string: "https://cdn.example.com/video/play_720p.mp4")!)
     }
@@ -280,7 +280,7 @@ describe("iOS checks — fire on the defect", () => {
 
   it("catches store-readiness gaps", () => {
     expect(statusOf(checks, "ios_privacy_manifest")).toBe("FAIL");
-    // Camera is used via UIImagePickerController with no NSCameraUsageDescription.
+    // The camera is opened (UIImagePickerController with sourceType .camera) with no NSCameraUsageDescription.
     expect(statusOf(checks, "ios_usage_descriptions")).toBe("FAIL");
     expect(statusOf(checks, "ios_aps_environment")).toBe("WARN");
     expect(statusOf(checks, "ios_encryption_declaration")).toBe("WARN");
@@ -291,7 +291,8 @@ describe("iOS checks — fire on the defect", () => {
 
   it("catches the accessibility gaps", () => {
     expect(statusOf(checks, "ios_dynamic_type")).toBe("FAIL");
-    expect(statusOf(checks, "ios_accessibility_labels")).toBe("FAIL");
+    // Icon-only controls with no label: a WARN, since VoiceOver still reads an SF Symbol's name.
+    expect(statusOf(checks, "ios_accessibility_labels")).toBe("WARN");
   });
 
   it("catches the low-data / caching causes of a slow app", () => {

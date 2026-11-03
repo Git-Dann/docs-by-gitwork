@@ -1,5 +1,6 @@
 "use client";
 
+import { DatePicker } from "@/components/ui/date-picker";
 import { useWorkspaceBranding } from "@/hooks/use-workspace-branding";
 import { useClientList } from "@/hooks/use-proposals";
 import { ImagePicker } from "@/components/ui/image-picker";
@@ -254,11 +255,10 @@ export function CoverEditor({
           />
         </Field>
         <Field label="Date">
-          <input
+          <DatePicker
+            aria-label="Cover date"
             value={value.date}
-            onChange={(event) => onChange({ ...value, date: event.target.value })}
-            type="date"
-            className="app-input"
+            onChange={(date) => onChange({ ...value, date })}
           />
         </Field>
       </div>

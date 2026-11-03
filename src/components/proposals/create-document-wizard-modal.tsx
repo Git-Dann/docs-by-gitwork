@@ -11,8 +11,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpTrayIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { SparklesIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
+import { AnimatedFileUpload } from "@/components/ui/easyui/animated-file-upload";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/format";
 
@@ -44,14 +45,6 @@ export function CreateDocumentWizardModal({ open, onClose }: CreateDocumentWizar
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState("");
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setError(null);
-    }
-  }
 
   async function handleGenerate() {
     if (!selectedFile && brief.trim().length < 5) {
@@ -122,21 +115,24 @@ export function CreateDocumentWizardModal({ open, onClose }: CreateDocumentWizar
         <div className="space-y-3">
           <label className="app-field-label">1. Reference Document or Brief</label>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* File Upload Dropzone */}
-            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] p-4 text-center transition hover:border-[var(--brand-500)] hover:bg-white">
-              <input
-                type="file"
-                accept=".pdf,.docx,.txt,.md"
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={submitting}
-              />
-              <ArrowUpTrayIcon className="h-6 w-6 text-[var(--brand-600)]" />
-              <span className="mt-2 text-xs font-semibold text-[var(--text-1)]">
-                {selectedFile ? selectedFile.name : "Upload Information Doc"}
-              </span>
-              <span className="mt-0.5 text-[11px] text-[var(--text-4)]">PDF, DOCX, TXT, or MD</span>
-            </label>
+            {/* File Upload Dropzone: EasyUI's Animated File Upload. The file is only picked here;
+                it is sent with the brief when you press Generate. */}
+            <AnimatedFileUpload
+              variant="compact"
+              multiple={false}
+              accept=".pdf,.docx,.txt,.md"
+              maxSize={10 * 1024 * 1024}
+              disabled={submitting}
+              dropTitle="Upload a reference document"
+              dropSubtitle="PDF, DOCX, TXT or MD"
+              uploadHandler={async (item, onProgress) => {
+                if (!item.rawFile) throw new Error("The file could not be read");
+                setSelectedFile(item.rawFile);
+                setError(null);
+                onProgress(100);
+              }}
+              onFileRemoved={() => setSelectedFile(null)}
+            />
 
             {/* Brief Text Input */}
             <textarea

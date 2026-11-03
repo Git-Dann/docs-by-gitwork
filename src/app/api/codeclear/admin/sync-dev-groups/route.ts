@@ -3,6 +3,7 @@ import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { isAtLeast } from "@/types/auth";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ async function runSync() {
   // anything else the admin has set up.
   const members = await prisma.workspaceMember.findMany({
     where: {
+      ...ACTIVE_MEMBER,
       workspaceId: workspace.id,
       user: { email: { in: RATE_VIEWER_EMAILS } },
     },

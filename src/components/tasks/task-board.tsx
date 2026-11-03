@@ -19,37 +19,43 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/format";
 import { useMoveTask } from "@/hooks/use-tasks";
-import {
-  TASK_STATUSES,
-  TASK_STATUS_LABELS,
-  type TaskDTO,
-  type TaskStatus,
-} from "@/types/tasks";
+import { TASK_STATUS_LABELS, type TaskDTO, type TaskStatus } from "@/types/tasks";
+import { boardLanes, laneKeyFor, type BoardColumnDef, type BoardLane } from "@/lib/tasks/board-columns";
 import { TaskCard } from "@/components/tasks/task-card";
 
-type Override = { status: TaskStatus; orderKey: number };
+type Override = { status: TaskStatus; orderKey: number; boardColumnId: string | null };
 
-// Both columns AND cards are droppable. When the pointer is within a card, prefer
-// it over its column container so the drop lands at that card's position rather
-// than always at the column's end.
-const boardCollision: CollisionDetection = (args) => {
-  const hits = pointerWithin(args);
-  const card = hits.find((h) => !(TASK_STATUSES as string[]).includes(String(h.id)));
-  return card ? [card] : hits;
-};
+const NO_COLUMNS: BoardColumnDef[] = [];
 
 export function TaskBoard({
   tasks,
+  columns = NO_COLUMNS,
   showClient = true,
   onCardClick,
   onScribeSourceClick,
 }: {
   tasks: TaskDTO[];
+  /** The client's own columns, each a lane inside one status. */
+  columns?: BoardColumnDef[];
   showClient?: boolean;
   onCardClick: (taskId: string) => void;
   onScribeSourceClick?: (task: TaskDTO) => void;
 }) {
   const move = useMoveTask();
+  const lanes = useMemo(() => boardLanes(columns), [columns]);
+  const laneByKey = useMemo(() => new Map(lanes.map((l) => [l.key, l])), [lanes]);
+
+  // Both columns AND cards are droppable. When the pointer is within a card, prefer
+  // it over its column container so the drop lands at that card's position rather
+  // than always at the column's end.
+  const collision = useCallback<CollisionDetection>(
+    (args) => {
+      const hits = pointerWithin(args);
+      const card = hits.find((h) => !laneByKey.has(String(h.id)));
+      return card ? [card] : hits;
+    },
+    [laneByKey],
+  );
 
   // Edge fade: mask out partial columns at whichever side still has scroll room,
   // so they fade rather than getting bluntly clipped by the container edge.
@@ -98,7 +104,7 @@ export function TaskBoard({
       const next = { ...prev };
       for (const t of tasks) {
         const o = next[t.id];
-        if (o && o.status === t.status && o.orderKey === t.orderKey) {
+        if (o && o.status === t.status && o.orderKey === t.orderKey && o.boardColumnId === (t.boardColumnId ?? null)) {
           delete next[t.id];
           changed = true;
         }
@@ -110,27 +116,25 @@ export function TaskBoard({
   // Merge optimistic overrides over the fetched tasks.
   const merged = useMemo(
     () =>
-      tasks.map((t) =>
-        overrides[t.id] ? { ...t, status: overrides[t.id].status, orderKey: overrides[t.id].orderKey } : t,
-      ),
+      tasks.map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t)),
     [tasks, overrides],
   );
 
-  const byStatus = useMemo(() => {
-    const map = new Map<TaskStatus, TaskDTO[]>();
-    for (const s of TASK_STATUSES) map.set(s, []);
-    for (const t of merged) map.get(t.status)?.push(t);
-    for (const s of TASK_STATUSES) {
-      map.get(s)!.sort((a, b) => a.orderKey - b.orderKey || a.createdAt.localeCompare(b.createdAt));
+  const byLane = useMemo(() => {
+    const map = new Map<string, TaskDTO[]>();
+    for (const l of lanes) map.set(l.key, []);
+    for (const t of merged) map.get(laneKeyFor(t, columns))?.push(t);
+    for (const list of map.values()) {
+      list.sort((a, b) => a.orderKey - b.orderKey || a.createdAt.localeCompare(b.createdAt));
     }
     return map;
-  }, [merged]);
+  }, [merged, lanes, columns]);
 
-  const statusByTaskId = useMemo(() => {
-    const m = new Map<string, TaskStatus>();
-    for (const t of merged) m.set(t.id, t.status);
+  const laneByTaskId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of merged) m.set(t.id, laneKeyFor(t, columns));
     return m;
-  }, [merged]);
+  }, [merged, columns]);
 
   // Adding/removing cards changes content width without resizing the container.
   useEffect(() => {
@@ -156,17 +160,17 @@ export function TaskBoard({
     const overRaw = String(event.over.id);
     if (overRaw === id) return; // dropped on itself — no-op
 
-    const overIsStatus = (TASK_STATUSES as string[]).includes(overRaw);
-    const targetStatus = overIsStatus ? (overRaw as TaskStatus) : statusByTaskId.get(overRaw);
-    if (!targetStatus) return;
+    const overIsLane = laneByKey.has(overRaw);
+    const target = laneByKey.get(overIsLane ? overRaw : (laneByTaskId.get(overRaw) ?? ""));
+    if (!target) return;
 
     // Target column, sorted, minus the card being dragged.
-    const col = (byStatus.get(targetStatus) ?? []).filter((t) => t.id !== id);
+    const col = (byLane.get(target.key) ?? []).filter((t) => t.id !== id);
 
     // Land just before the card we dropped onto; if dropped on the column itself,
     // append to the end.
     let index = col.length;
-    if (!overIsStatus) {
+    if (!overIsLane) {
       const i = col.findIndex((t) => t.id === overRaw);
       if (i !== -1) index = i;
     }
@@ -180,13 +184,13 @@ export function TaskBoard({
     else if (after !== null) orderKey = after - 1;
     else orderKey = 1;
 
-    const current = statusByTaskId.get(id);
     const currentKey = merged.find((t) => t.id === id)?.orderKey;
-    if (current === targetStatus && currentKey === orderKey) return; // no change
+    if (laneByTaskId.get(id) === target.key && currentKey === orderKey) return; // no change
 
-    setOverrides((prev) => ({ ...prev, [id]: { status: targetStatus, orderKey } }));
+    const next: Override = { status: target.stage, orderKey, boardColumnId: target.columnId };
+    setOverrides((prev) => ({ ...prev, [id]: next }));
     try {
-      await move.mutateAsync({ id, status: targetStatus, orderKey });
+      await move.mutateAsync({ id, ...next });
       // The override is pruned by the effect above once the refetch reflects it.
     } catch {
       // Roll back on failure.
@@ -201,7 +205,7 @@ export function TaskBoard({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={boardCollision}
+      collisionDetection={collision}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -216,12 +220,12 @@ export function TaskBoard({
         style={{ maskImage, WebkitMaskImage: maskImage }}
         className="grid auto-cols-[82vw] grid-flow-col gap-3 overflow-x-auto overscroll-x-contain pb-3 sm:auto-cols-[300px]"
       >
-        {TASK_STATUSES.map((status, i) => (
+        {lanes.map((lane, i) => (
           <BoardColumn
-            key={status}
-            status={status}
+            key={lane.key}
+            lane={lane}
             index={i + 1}
-            tasks={byStatus.get(status) ?? []}
+            tasks={byLane.get(lane.key) ?? []}
             showClient={showClient}
             onCardClick={onCardClick}
             onScribeSourceClick={onScribeSourceClick}
@@ -245,7 +249,7 @@ export function TaskBoard({
 // array reference across unrelated re-renders (see `byStatus`'s useMemo in
 // TaskBoard), so this bails out cleanly when nothing about this column changed.
 const BoardColumn = memo(function BoardColumn({
-  status,
+  lane,
   index,
   tasks,
   showClient,
@@ -254,7 +258,7 @@ const BoardColumn = memo(function BoardColumn({
   overId,
   activeId,
 }: {
-  status: TaskStatus;
+  lane: BoardLane;
   index: number;
   tasks: TaskDTO[];
   showClient: boolean;
@@ -263,7 +267,8 @@ const BoardColumn = memo(function BoardColumn({
   overId: string | null;
   activeId: string | null;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: lane.key });
+  const status = lane.stage;
 
   // Cap how many cards a column renders at once. A long-lived board's DONE column
   // grows without bound (hundreds of cards), and every rendered card mounts two
@@ -289,12 +294,15 @@ const BoardColumn = memo(function BoardColumn({
         isOver ? "border-[var(--brand-400)] bg-[var(--surface-brand)]" : "border-[rgba(0,0,0,0.08)]",
       )}
     >
-      <div className="flex items-center justify-between border-b border-[rgba(0,0,0,0.08)] px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-[rgba(0,0,0,0.08)] px-3 py-2.5">
         <span
-          className="text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]"
+          className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[1.2px] text-[var(--text-4)]"
           style={{ fontFamily: "var(--font-mono)" }}
+          title={lane.columnId ? `${lane.label} · counts as ${TASK_STATUS_LABELS[status]}` : lane.label}
         >
-          {`${String(index).padStart(2, "0")} // ${TASK_STATUS_LABELS[status]}`}
+          {`${String(index).padStart(2, "0")} // ${lane.label}`}
+          {/* A custom column says which status it counts as, so nobody has to guess. */}
+          {lane.columnId ? <span className="text-[var(--text-4)] opacity-70">{` · ${TASK_STATUS_LABELS[status]}`}</span> : null}
         </span>
         <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-3)]">
           {tasks.length}
@@ -321,7 +329,7 @@ const BoardColumn = memo(function BoardColumn({
           </button>
         ) : null}
         {/* Drop line when hovering the column's empty space → card appends to the end. */}
-        {activeId != null && overId === status ? (
+        {activeId != null && overId === lane.key ? (
           <div className="h-0.5 rounded-full bg-[var(--brand-700)]" />
         ) : null}
         {tasks.length === 0 ? (

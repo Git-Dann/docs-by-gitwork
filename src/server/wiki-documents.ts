@@ -8,6 +8,7 @@
  */
 
 import type { WikiDocumentKind } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { enableDocumentShare } from "@/server/documents";
@@ -75,6 +76,11 @@ function toDTO(d: {
   };
 }
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const LIST_SELECT = {
   id: true,
   title: true,
@@ -83,7 +89,7 @@ const LIST_SELECT = {
   fileName: true,
   fileSize: true,
   createdAt: true,
-} as const;
+} as const satisfies Prisma.WikiDocumentSelect;
 
 export async function loadWikiDocuments(clientId: string): Promise<WikiDocumentsSection> {
   const wiki = await prisma.clientWiki.findUnique({

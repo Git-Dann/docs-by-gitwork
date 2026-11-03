@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCodeClearStats } from "@/hooks/use-codeclear";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 const PIPELINE: Array<{ status: string; label: string; short: string; color: string }> = [
   { status: "SOURCED",                  label: "Sourced",    short: "Src", color: "#6366f1" },
@@ -16,7 +17,7 @@ export default function CodeClearWidget({ size }: { size: WidgetSize }) {
   const { data, isLoading } = useCodeClearStats();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const stats = data ?? { total: 0, byStatus: [], avgThis: null, passRateThis: null, recheckDue: 0 };

@@ -1,0 +1,93 @@
+/* The brand guidelines viewer (/guidelines). Slides are styled inline at design size; this file
+   holds only what inline styles cannot: states, edit affordances and print. */
+
+.gl-root {
+  color-scheme: light;
+}
+
+.gl-slide button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+.gl-slide .gl-link {
+  width: 100%;
+  transition: background-color 150ms ease-out;
+}
+.gl-slide .gl-link:hover {
+  background: rgba(12, 12, 24, 0.03);
+}
+.gl-slide .gl-chip {
+  transition: background-color 150ms ease-out;
+}
+.gl-slide .gl-chip:hover {
+  background: rgba(12, 12, 24, 0.32) !important;
+}
+
+/* Edit mode: every editable line is outlined, and solid while it has the caret. */
+.gl-editable {
+  outline: 1.5px dashed rgba(107, 82, 255, 0.6);
+  outline-offset: 6px;
+  border-radius: 4px;
+  cursor: text;
+  white-space: pre-wrap;
+}
+.gl-editable:hover {
+  outline-color: rgba(107, 82, 255, 0.9);
+}
+.gl-editable:focus {
+  outline: 2px solid #6b52ff;
+  background: rgba(107, 82, 255, 0.06);
+}
+.gl-page.gl-editing {
+  box-shadow: 0 0 0 1px rgba(107, 82, 255, 0.35);
+}
+
+@media print {
+  @page {
+    size: 1600px 900px;
+    margin: 0;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .gl-print-hide {
+    display: none !important;
+  }
+  .gl-root {
+    position: static !important;
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .gl-root > div,
+  .gl-scroller,
+  .gl-scroller > div {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .gl-page {
+    break-after: page;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .gl-frame {
+    width: 1600px !important;
+    height: 900px !important;
+    aspect-ratio: auto !important;
+  }
+  .gl-frame-inner {
+    transform: none !important;
+    visibility: visible !important;
+  }
+  .gl-editable {
+    outline: none !important;
+    background: none !important;
+  }
+}

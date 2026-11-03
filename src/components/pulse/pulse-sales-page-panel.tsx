@@ -28,9 +28,12 @@ const SALES_PAGE_URL = "https://foundry.gitwork.co.uk/production-ready";
 export function PulseSalesPagePanel({
   collapsed = false,
   onToggle,
+  number = "03",
 }: {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Section number, so a page can place the card in its own `NN //` sequence. */
+  number?: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -43,7 +46,7 @@ export function PulseSalesPagePanel({
 
   return (
     <article className="widget-card h-full">
-      <CardHeader number="03" title="SALES PAGE" status="Live" collapsed={collapsed} onToggle={onToggle} />
+      <CardHeader number={number} title="SALES PAGE" status="Live" collapsed={collapsed} onToggle={onToggle} />
 
       {collapsed ? (
         <div className="flex flex-1 items-center justify-between gap-3 p-4">
@@ -57,10 +60,9 @@ export function PulseSalesPagePanel({
       ) : (
         <div className="flex flex-1 flex-col p-4">
           <p className="text-[12px] leading-snug text-[var(--text-4)]">
-            A public page selling the free check, for gitwork.co.uk to link to — the second
-            door to the same scanner the embed serves. Paste a URL, get the score, every
-            triaged finding with its evidence, and what could not be established. No signup,
-            no email. The in-depth review is the ask.
+            The public page gitwork.co.uk links to. It runs the same scanner as the embed: paste
+            a URL, get the score, each finding with its evidence, and what could not be checked.
+            No sign-up, no email. The in-depth review is the ask.
           </p>
 
           <div className="mt-3">
@@ -88,7 +90,7 @@ export function PulseSalesPagePanel({
 
           {/* One button, because there is only one real destination. A second
               "Leads" button pointed at /app/pulse/leads, which does not exist —
-              the leads panel is further down THIS page. */}
+              the leads panel is on the same page (Pulse → Growth). */}
           <a href={SALES_PAGE_URL} target="_blank" rel="noopener noreferrer" className="mt-auto block pt-3">
             <Button variant="secondary" size="sm" className="w-full">Open page ↗</Button>
           </a>

@@ -15,6 +15,7 @@ import { Prisma, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { findRosterByName } from "@/server/team-roster";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ── Op model ─────────────────────────────────────────────────────────────────
 
@@ -120,8 +121,9 @@ export async function runTaskCleanse(opts: CleanseOptions): Promise<CleanseRepor
   if (!client) throw new Error(`Client not found for slug "${opts.clientSlug}"`);
 
   // ── Resolve assignee names → user ids (roster email first, then name fallback)
+  // ACTIVE only — an import must never assign work to someone who has left.
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: wsId },
+    where: { workspaceId: wsId, ...ACTIVE_MEMBER },
     select: { user: { select: { id: true, name: true, email: true } } },
   });
   const byEmail = new Map<string, { id: string; name: string }>();

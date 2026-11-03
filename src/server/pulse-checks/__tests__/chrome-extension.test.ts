@@ -69,21 +69,22 @@ describe("Manifest V3", () => {
 });
 
 describe("host permissions", () => {
-  it("fails <all_urls>", () => {
+  // Audit 2026-10: WARN, not FAIL — dark mode, ad blockers and password managers need every site.
+  it("warns on <all_urls>", () => {
     const out = evaluateChromeExtensionChecks(snapshot({
       "manifest.json": manifest({ host_permissions: ["<all_urls>"] }),
     }));
     const c = find(out, "ext_host_permissions_scoped");
-    expect(c?.status).toBe("FAIL");
+    expect(c?.status).toBe("WARN");
     expect(c?.detail).toMatch(/all your data on all websites/);
   });
 
-  it("fails a wildcard content-script match too", () => {
+  it("warns on a wildcard content-script match too", () => {
     // The permission can hide in content_scripts rather than host_permissions.
     const out = evaluateChromeExtensionChecks(snapshot({
       "manifest.json": manifest({ content_scripts: [{ matches: ["*://*/*"], js: ["c.js"] }] }),
     }));
-    expect(find(out, "ext_host_permissions_scoped")?.status).toBe("FAIL");
+    expect(find(out, "ext_host_permissions_scoped")?.status).toBe("WARN");
   });
 
   it("passes specific origins", () => {

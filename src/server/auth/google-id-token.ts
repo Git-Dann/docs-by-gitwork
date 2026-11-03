@@ -44,14 +44,39 @@ export class GoogleIdTokenError extends Error {
  * @throws GoogleIdTokenError if the token is malformed, expired, signed for the
  *         wrong audience, or comes from outside the configured workspace domain.
  */
+/**
+ * `GOOGLE_IOS_SERVER_CLIENT_ID` may hold **several** comma-separated client IDs.
+ *
+ * A Google project issues one client ID per platform, and which one lands in an
+ * ID token's `aud` depends on how the *client* is configured, not on what the
+ * backend would prefer: GoogleSignIn-iOS with `serverClientID` unset mints a
+ * token for the iOS client ID, and setting it mints one for the web client ID.
+ * Pinning the backend to a single value therefore couples it to a client build
+ * it cannot see — and when the two drifted apart, every iOS sign-in failed with
+ * "audience does not match" while the app silently fell back to a workspace key.
+ *
+ * ⚠️ This is an allow-list of **our own** client IDs, which is what Google's own
+ * verifier libraries accept (they take an array). It must never be widened to a
+ * client ID belonging to anyone else: the `aud` check is what stops a token
+ * minted for a different application being replayed against this one. The real
+ * authorisation gate remains the `hd` workspace-domain check below.
+ */
+function parseAudiences(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 export async function verifyGoogleIdToken(
   idToken: string,
   options?: { expectedAudience?: string; requiredHostedDomain?: string },
 ): Promise<VerifiedGoogleProfile> {
-  const expectedAudience =
-    options?.expectedAudience ?? process.env.GOOGLE_IOS_SERVER_CLIENT_ID;
+  const expectedAudiences = parseAudiences(
+    options?.expectedAudience ?? process.env.GOOGLE_IOS_SERVER_CLIENT_ID,
+  );
 
-  if (!expectedAudience) {
+  if (expectedAudiences.length === 0) {
     throw new GoogleIdTokenError(
       "GOOGLE_IOS_SERVER_CLIENT_ID env var is not configured.",
     );
@@ -70,7 +95,7 @@ export async function verifyGoogleIdToken(
     throw new GoogleIdTokenError(`Unexpected issuer: ${info.iss}`);
   }
 
-  if (info.aud !== expectedAudience) {
+  if (!expectedAudiences.includes(info.aud)) {
     throw new GoogleIdTokenError("ID token audience does not match.");
   }
 

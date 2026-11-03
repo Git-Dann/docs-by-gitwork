@@ -15,7 +15,7 @@ export default async function OgImage() {
     (
       <BrandedCard
         module="CODE"
-        title="Code"
+        title="Staff"
         subtitle="Developer directory"
         bottomRight="Developers"
         logoDataUri={logo}

@@ -4,14 +4,16 @@ import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  BuildingOffice2Icon,
   ChevronDoubleLeftIcon,
   ChevronDoubleRightIcon,
-  CodeBracketIcon,
+  IdentificationIcon,
   ChevronUpDownIcon,
   Cog8ToothIcon,
   DocumentTextIcon,
   HomeModernIcon,
   LifebuoyIcon,
+  ServerStackIcon,
   SignalIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
@@ -26,7 +28,8 @@ import { cn } from "@/lib/format";
 import { buildPageTitle } from "@/lib/page-title";
 import { avatarPosition, resolveAvatar } from "@/lib/avatar";
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, isExternalRole } from "@/types/auth";
+import { workspaceHasModule } from "@/lib/workspace-modules";
 import { useViewAs, type ViewAsRole, type ViewAsUser } from "@/lib/view-as";
 import { listSupportClients, listTeamMembers } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
@@ -34,6 +37,9 @@ import { AiSpendCard } from "@/components/ai-spend-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Modal } from "@/components/ui/modal";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene, HalloweenSpiderSlot } from "@/components/seasonal/halloween";
+import { ChristmasLogoBadge, ChristmasSnow } from "@/components/seasonal/christmas";
 import { PushPromptBanner } from "@/components/notifications/push-prompt-banner";
 
 // The Desk is a client-only interactive drawer that pulls in a heavy subtree
@@ -84,6 +90,7 @@ const ALL_NAV_MODULES = [
   "proposals",
   "clients",
   "support",
+  "monitors",
   "backstage",
   "studio",
 ];
@@ -156,6 +163,7 @@ export function AppShell({
   const isAdmin = isAtLeast(account.data?.role ?? "", "ADMIN");
   const { viewAs, viewAsUser, setViewAs, setViewAsUser, effectivePermissions, previewLabel } = useViewAs(isAdmin);
   const realPermissions = useMemo(() => account.data?.permissions ?? [], [account.data?.permissions]);
+  const workspaceModules = account.data?.workspaceModules ?? null;
   const isFullAccessAdmin = isAdmin && realPermissions.length === 0;
   const shouldScopeCareNav =
     Boolean(account.data) &&
@@ -237,10 +245,10 @@ export function AppShell({
         module: "pulse",
       },
       {
-        href: "/app/code",
-        label: "Code",
-        description: "Developer vetting",
-        icon: CodeBracketIcon,
+        href: "/app/staff",
+        label: "Staff",
+        description: "People and availability",
+        icon: IdentificationIcon,
         module: "codeclear",
       },
       {
@@ -265,6 +273,13 @@ export function AppShell({
         module: "support",
       },
       {
+        href: "/app/monitors",
+        label: "Monitors",
+        description: "Client uptime",
+        icon: ServerStackIcon,
+        module: "monitors",
+      },
+      {
         href: "/app/backstage",
         label: "Backstage",
         description: "Leave and availability",
@@ -276,15 +291,20 @@ export function AppShell({
       // everything that isn't a product you'd open daily lives behind an entry
       // point instead — see §4a in CLAUDE.md.
     ];
+    // The business's own module list (src/lib/workspace-modules.ts) applies on top of
+    // everything below, admins included: a Super Admin of a business without Care must
+    // not see Care. Unrestricted workspaces (Gitwork) return null and keep every item.
+    const forWorkspace = (items: NavItem[]) =>
+      items.filter((item) => !item.module || workspaceHasModule(item.module, workspaceModules));
     if (account.isPending) {
       // Pre-/api/account first paint: render from the cached module list if we
       // have one (returning users get their correct nav instantly), else show
       // only the always-on items. Never render the full list then collapse it —
       // that collapse is the flash. Progressive reveal reads clean.
       if (cachedModules) {
-        return all.filter((item) => !item.module || cachedModules.includes(item.module));
+        return forWorkspace(all).filter((item) => !item.module || cachedModules.includes(item.module));
       }
-      return all.filter((item) => !item.module);
+      return forWorkspace(all).filter((item) => !item.module);
     }
 
     // When previewing as another role/user, use the effective permissions from the hook.
@@ -293,14 +313,14 @@ export function AppShell({
     // Staff/Developer → filtered by their permissions.
     if (effectivePermissions !== null) {
       // In preview mode — apply whatever permissions the preview role/user has
-      return all.filter((item) => !item.module || effectivePermissions.includes(item.module));
+      return forWorkspace(all).filter((item) => !item.module || effectivePermissions.includes(item.module));
     }
-    if (isAdmin && realPermissions.length === 0) return all; // Super Admin / full-access admin
-    return all.filter((item) => {
+    if (isAdmin && realPermissions.length === 0) return forWorkspace(all); // Super Admin / full-access admin
+    return forWorkspace(all).filter((item) => {
       if (item.module === "support" && hideCareForScopedUser) return false;
       return !item.module || realPermissions.includes(item.module);
     });
-  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules]);
+  }, [isAdmin, effectivePermissions, account.isPending, realPermissions, hideCareForScopedUser, cachedModules, workspaceModules]);
 
   // Analytics + Starters are Super-Admin-only tools, not products, so they no
   // longer take sidebar rows — they're links in the HQ context strip beside DECKS
@@ -314,12 +334,19 @@ export function AppShell({
     // (e.g. the paged-document's off-screen measurer at left:-99999) attaches to this root and
     // grows the whole PAGE — the page then scrolls past the viewport even though <main> is bounded.
     // demo-shell.tsx already clips here; keep the two in sync.
-    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]">
+    // `isolate` lets the Halloween scene sit at -z-10: above this background, under everything else.
+    <div className="relative isolate flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]">
+      <HalloweenScene />
       {/* ── Mobile top bar (hidden on lg+) ── */}
       <div className="flex shrink-0 items-center justify-between border-b border-[var(--border-2)] bg-[var(--surface-0)] px-4 py-3 lg:hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+        <span className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+          <HalloweenLogoBadge />
+          <ChristmasLogoBadge />
+        </span>
         <div className="flex items-center gap-1">
+          <CommandMenuButton className="border-0 bg-transparent p-2" />
           <NotificationBell />
           <button
             type="button"
@@ -363,7 +390,7 @@ export function AppShell({
                 active={Boolean(item.href && isActivePath(pathname, item.href))}
               />
             ))}
-            {isAdmin ? (
+            {isAdmin && workspaceHasModule("handbook", workspaceModules) ? (
               <SidebarNavItem
                 item={{
                   href: "/app/handbook",
@@ -372,6 +399,17 @@ export function AppShell({
                   icon: BookOpenIcon,
                 }}
                 active={Boolean(isActivePath(pathname, "/app/handbook"))}
+              />
+            ) : null}
+            {account.data?.isPlatformAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/platform",
+                  label: "Platform",
+                  description: "All businesses",
+                  icon: BuildingOffice2Icon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/platform"))}
               />
             ) : null}
           </div>
@@ -431,7 +469,7 @@ export function AppShell({
             content (and any bottom pagination bars) never sits underneath it. */}
         {/* flex-1 is what gives this column a bounded height below lg (as a flex child of the
             wrapper above); at lg+ the grid row bounds it and flex-1 is inert on a grid item. */}
-        <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)] pb-12">
+        <div className="flex min-h-0 flex-1 flex-col halloween-clear bg-[var(--surface-canvas)] pb-12">
           {/* View-as preview banner */}
           {isAdmin && viewAs && previewLabel && (
             <div className="flex items-center justify-between gap-4 border-b border-amber-200 bg-amber-50 px-6 py-2">
@@ -461,7 +499,7 @@ export function AppShell({
                 is information the user can no longer reach. */}
           {!hideContentHeader && (
             <header className={cn(
-              "hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 py-3 sm:px-8 lg:flex lg:items-center",
+              "halloween-clear hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 py-3 sm:px-8 lg:flex lg:items-center",
               HEADER_BAND_MIN,
             )}>
               <div className="flex w-full items-center justify-between gap-4">
@@ -479,7 +517,8 @@ export function AppShell({
                     <p title={subtitle} className="mt-0.5 truncate text-[13px] leading-5 text-[var(--text-3)]">{subtitle}</p>
                   ) : null}
                 </div>
-                <div className="shrink-0">
+                <div className="flex shrink-0 items-center gap-1">
+                  <CommandMenuButton className="mr-1" />
                   <NotificationBell />
                 </div>
               </div>
@@ -501,7 +540,20 @@ export function AppShell({
       </div>
 
       {/* The Desk — persistent internal aggregator drawer (fixed to the viewport). */}
-      <DeskDrawer sidebarCollapsed={collapsed} />
+      {/* On Your Desk is internal staff tooling — a standup prompt, my-clients cash
+          flow, the Gmail/Slack inbox. All of it is either meaningless to a guest or
+          about people they do not work with, and the dock is on every /app screen. */}
+      {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
+      <HalloweenFogFront />
+      <ChristmasSnow />
+      {/* Hangs in the header band's right gutter, so only where there is a band. */}
+      {hideContentHeader ? null : <HalloweenSpiderSlot />}
+      {/* ⌘K. The pages are this viewer's own nav, so it never offers a product the sidebar hides. */}
+      <CommandMenu
+        pages={primaryNav}
+        canSeeClients={primaryNav.some((item) => item.href === "/app/portal")}
+        canSeeDocs={primaryNav.some((item) => item.href === "/app/docs")}
+      />
     </div>
   );
 }
@@ -529,6 +581,10 @@ function ExpandedRail({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
+  // Same query the shell reads (cached), so the rail needs no extra props for these.
+  const accountData = useAccount().data;
+  const workspaceModules = accountData?.workspaceModules ?? null;
+  const isPlatformAdmin = accountData?.isPlatformAdmin ?? false;
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
@@ -540,8 +596,12 @@ function ExpandedRail({
         )}
       >
         {!collapsed ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+          <span className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/foundry-logo.svg" alt="Foundry" width={245} height={64} className="h-8 w-auto dark:brightness-0 dark:invert" />
+            <HalloweenLogoBadge />
+            <ChristmasLogoBadge />
+          </span>
         ) : null}
         <button
           type="button"
@@ -585,7 +645,7 @@ function ExpandedRail({
         <div className="mt-4">
           {!collapsed ? <AiSpendCard /> : null}
           <div className="space-y-2">
-            {isAdmin ? (
+            {isAdmin && workspaceHasModule("handbook", workspaceModules) ? (
               <SidebarNavItem
                 item={{
                   href: "/app/handbook",
@@ -594,6 +654,18 @@ function ExpandedRail({
                   icon: BookOpenIcon,
                 }}
                 active={Boolean(isActivePath(pathname, "/app/handbook"))}
+                collapsed={collapsed}
+              />
+            ) : null}
+            {isPlatformAdmin ? (
+              <SidebarNavItem
+                item={{
+                  href: "/app/platform",
+                  label: "Platform",
+                  description: "All businesses",
+                  icon: BuildingOffice2Icon,
+                }}
+                active={Boolean(isActivePath(pathname, "/app/platform"))}
                 collapsed={collapsed}
               />
             ) : null}
@@ -806,11 +878,18 @@ function ProfileMenu({
     (m) => m.role === "STAFF" || m.role === "DEVELOPER",
   );
 
-  // Identity reads from the live Google session by default. The account hook supplies the
-  // user's custom avatar (if they've uploaded one in Account settings); React Query caches
-  // it aggressively so it's a once-per-session fetch in practice.
-  const displayName = session?.user?.name || "";
-  const displayEmail = session?.user?.email || "";
+  // Identity reads from the live Google session first, then falls back to the account
+  // record. The account hook also supplies a custom avatar if one was uploaded; React
+  // Query caches it aggressively so it's a once-per-session fetch in practice.
+  //
+  // ⚠️ The fallback is load-bearing for a password sign-in. Google fills token.name in
+  // itself; credentials do not, so a guest rendered an empty name and a "?" avatar here
+  // while the rest of the app knew perfectly well who they were. `auth.ts` now writes
+  // both onto the token — but a session minted BEFORE that deploy still lacks them, and
+  // a JWT is long-lived, so reading the account record is what fixes the existing
+  // sessions rather than making everyone sign in again.
+  const displayName = session?.user?.name || account?.name || "";
+  const displayEmail = session?.user?.email || account?.email || "";
   const resolvedAvatar = resolveAvatar(account?.avatarUrl, session?.user?.image);
   const displayAvatar = resolvedAvatar.src;
   const displayAvatarPosition = avatarPosition(account?.avatarPosition);
@@ -1116,6 +1195,10 @@ function ProfileMenu({
 function isActivePath(pathname: string | null, href: string) {
   if (href === "/app") {
     return pathname === "/app" || Boolean(pathname?.startsWith("/app/projects/"));
+  }
+  // Staff's developer and hiring pages still live under the legacy /app/codeclear prefix.
+  if (href === "/app/staff") {
+    return Boolean(pathname && /^\/app\/(staff|code|codeclear)(\/|$)/.test(pathname));
   }
 
   return pathname === href || (href !== "/app" && Boolean(pathname?.startsWith(href)));

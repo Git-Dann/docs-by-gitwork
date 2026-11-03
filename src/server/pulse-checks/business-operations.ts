@@ -1,7 +1,106 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput, platformIs, skip } from "./_types";
+import { documentLanguage, stripNonMarketContext } from "./jurisdictions";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
 
 const CATEGORY = CATEGORIES.BUSINESS_OPS;
+
+// An actual time range or round-the-clock statement in readable text. `9.*5` matched
+// any 9 followed later by a 5, which is effectively every page.
+const day = String.raw`(?:Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:r(?:s(?:day)?)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)`;
+const ampm = String.raw`\d{1,2}(?:[:.][0-5]\d)?\s*(?:am|pm|a\.m\.|p\.m\.)`;
+const h24 = String.raw`(?:[01]?\d|2[0-3])[:.][0-5]\d`;
+const range = String.raw`\s*(?:-|–|—|to|until|till)\s*`;
+// A bare time range is not opening hours (cal.com shows "12 PM - 1 PM" as a booking slot),
+// so it counts only in a run that also names a day or says what the hours are for.
+const hoursContext = String.raw`(?=.*\b(?:${day}|weekdays?|weekends?|daily|every\s+day|open(?:ing)?|hours|office|support|available|lines|call\s+us|closed)\b)`;
+/** Opening or support hours, tested one run of readable text at a time. */
+export const BUSINESS_HOURS_CLAIM = new RegExp(
+  String.raw`^${hoursContext}.*?(?:${ampm}${range}${ampm}|${h24}${range}${h24})|\b${day}${range}${day}\b[^.!?]{0,40}\d|\b(?:open|available|support(?:ed)?|staffed|here)\s+24\s*(?:\/|x)\s*7\b|\b24\s*(?:\/|x)\s*7\s+(?:support|help|service|customer)|\b24\s+hours\s+a\s+day\b`,
+  "i",
+);
+
+// A company number is 8 characters: 8 digits, or a 2-letter prefix (SC, NI, OC…) + 6
+// digits; older numbers are often written without the leading zero (7 digits).
+const companyNumber = String.raw`(?:[A-Z]{2}\d{6}|\d{7,8})\b`;
+/** A UK company registration number, stated as one. */
+export const UK_COMPANY_NUMBER_CLAIM = new RegExp(String.raw`\bcompany (?:registration )?(?:number|no\.?|reg(?:istration)?\.? no\.?)\s*:?\s*${companyNumber}|\b(?:registered|registration) (?:number|no\.?)\s*:?\s*${companyNumber}|\bregistered in (?:england|wales|scotland|northern ireland)(?: (?:and|&) wales)?(?:[^.]|\bno\.){0,60}?\b${companyNumber}|\bco\.? (?:reg\.? )?no\.?\s*:?\s*${companyNumber}|\bcrn\s*:?\s*${companyNumber}|\bcompanies house[^.]{0,40}?\b${companyNumber}`, "i");
+
+// Word-bounded role names: "dpo" is inside "endpoint", and "art director" is a job
+// title in a portfolio, not the company's responsible person.
+export const DIRECTOR_ROLE_CLAIM = /\b(?:managing director|company director|chief executive(?: officer)?|ceo|geschäftsführer(?:in)?|gérant|amministratore delegato|data protection officer|responsible person|vertretungsberechtigt)\b/i;
+
+// Bounded to a short window of visible text: the old /response.*time/ joined a
+// "response" in one script to a "time" thousands of characters later. An uptime SLA is a
+// promise about availability, not about how fast support answers, so it does not count
+// (linear.app's pricing page lists "Uptime SLA" and states no response time), and an SLA
+// and "support" in one sentence must not be separated by a comma: atlassian.com/government
+// reads "99.95% uptime SLA, our highest priority support". "Response times" counts only
+// with a duration: basecamp.com/support says "response times may be a bit longer than
+// usual right now", which promises nothing.
+export const SUPPORT_SLA_CLAIM = /\b(?:first[- ]response|resolution)\s+(?:times?|SLAs?)\b|\b(?:support|response)\s+SLAs?\b|\bsupport\s+response\s+times?\b|\bresponse\s+times?\b[^.]{0,40}?\b(?:\d+|one|two|24|48|72)\s*(?:business |working )?(?:minutes?|mins?|hours?|hrs?|days?)\b|\b(?:reply|respond|response|get back to you)\b[^.]{0,30}?\bwithin\s+(?:\d+|one|two|three|four|24|48|72)\s*(?:business |working )?(?:hours?|hrs?|days?|minutes?|mins?)\b|\bSLA\b[^.,;]{0,40}?\b(?:support|response)\b|\bsupport\b[^.,;]{0,40}?\bSLA\b|\b\d+\s*(?:hour|hr|business[- ]day|working[- ]day)s?\s+response\b/i;
+
+export const INVOICE_CLAIM = /\b(?:download|generate|get|receive|view)\w*\s+(?:your\s+)?(?:VAT\s+|tax\s+|PDF\s+)?invoices?\b|\b(?:VAT|tax) invoices?\b|\binvoices? (?:are |is )?(?:sent|emailed|generated|available)\b|\binvoice (?:history|PDFs?)\b|\bpay by invoice\b/i;
+
+// Bounded phrases only: the old unbounded `.*` joined e.g. a `data-testid` attribute to a word
+// "retention" 770KB later in minified HTML. A verb/object statement must name a duration
+// ("for 7 years", "for as long as…"), so product copy such as "Store files for free" is not read
+// as a retention schedule.
+// A count must be a count of time units: "for 3rd parties" or "for one low price" is not a period.
+const retentionUnit = String.raw`(?:hours?|days?|weeks?|months?|years?)\b`;
+const retentionDuration = String.raw`\b(?:for|until)\s+(?:up to\s+|at least\s+|a maximum of\s+|no longer than\s+)?(?:\d+(?:\s*(?:-|–|to)\s*\d+)?\s*${retentionUnit}|(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve)\s+(?:\(\d+\)\s+)?${retentionUnit}|as long as|(?:a |the )?(?:period|duration|length|life)\b)`;
+const retentionObject = String.raw`(?:(?:your|the|any|all|such|our)\s+)?(?:(?:personal|customer|user|account|usage)\s+)*(?:data|information|records|logs)\b`;
+/** Each way a data retention statement is written. Any one of them is a statement. */
+export const DATA_RETENTION_CLAIMS: readonly RegExp[] = [
+  /\bdata retention\b|\bretention (?:policy|policies|period|periods|schedule)\b|\b(?:security|storage) and retention\b|\bretention of (?:your )?(?:personal )?(?:data|information)\b|\bhow long (?:do |will |)we (?:keep|retain|store|hold)\b|\bdeleted?\b[^.<]{0,80}?\bafter\s+\d+\s*(?:day|week|month|year)s?\b|\bkept for (?:up to )?\d+\s*(?:day|week|month|year)s?\b/i,
+  new RegExp(String.raw`\b(?:retain|keep|store|hold)(?:s|ed|ing)?\s+${retentionObject}[^.<]{0,60}?${retentionDuration}`, "i"),
+  new RegExp(String.raw`\b(?:data|information|records|logs)\s+(?:is|are|will be|may be|is only|are only)\s+(?:retained|kept|stored|held)\b[^.<]{0,40}?${retentionDuration}`, "i"),
+];
+
+export const MODERN_SLAVERY_CLAIM = /\bmodern slavery(?: act)?(?: (?:and human trafficking )?statement)?\b/i;
+
+/**
+ * Company policies a buyer's due diligence asks for. Withdrawn in October 2026 as keyword
+ * guesses, rebuilt as what they can honestly be: the site names or links the policy (PASS,
+ * quoted), or it does not, which says nothing about whether one exists (INCONCLUSIVE).
+ */
+export const COMPANY_POLICY_CLAIMS = {
+  bribery_act_policy: {
+    label: "Anti-bribery policy published",
+    re: /\banti[- ]?(?:bribery|corruption)\b|\bbribery act\b/i,
+    found: "The site names or links an anti-bribery policy.",
+    unseen: "The scanned page does not name or link an anti-bribery policy. The UK Bribery Act requires adequate internal procedures, which need not be published, so this does not show one is missing; large buyers often ask to see it.",
+  },
+  whistleblower_policy: {
+    label: "Whistleblowing channel published",
+    re: /\bwhistle[- ]?blow(?:ing|er)\b|\bspeak[- ]up (?:policy|line|channel)\b/i,
+    found: "The site names or links a whistleblowing or speak-up channel.",
+    unseen: "The scanned page does not name a whistleblowing channel. The EU Whistleblowing Directive requires an internal channel at 50 or more employees, which need not be on the website, so this does not show one is missing.",
+  },
+  supplier_due_diligence: {
+    label: "Sub-processor list published",
+    re: /\bsub[- ]?processors?\b/i,
+    found: "The site names or links its list of sub-processors.",
+    unseen: "The scanned page does not link a sub-processor list. Business customers' data-protection teams ask for one (GDPR Art. 28); it is often on a trust or legal page this check did not read.",
+  },
+  insurance_mention: {
+    label: "Business insurance stated",
+    re: /\b(?:professional indemnity|public liability|cyber(?:security)? (?:liability )?insurance|errors (?:and|&) omissions|liability insurance)\b/i,
+    found: "The site states the business's insurance cover.",
+    unseen: "The scanned page does not state any insurance cover. Procurement teams often ask for proof of professional indemnity or cyber insurance; it is rarely published, so this does not show there is none.",
+  },
+} as const;
+
+/** The first link (text, or href when it has none) whose text or address matches. */
+export function linkClaim(html: string, re: RegExp): string | null {
+  const a = /<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = a.exec(html)) !== null) {
+    const text = m[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (re.test(text) || re.test(m[1])) return text || m[1];
+  }
+  return null;
+}
 
 const ALL_CHECKS: Array<[string, string]> = [
   ["physical_address_footer", "Physical address in footer"],
@@ -10,15 +109,13 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["uk_companies_house_number", "UK Companies House registration number"],
   ["eu_director_info", "Director / responsible person named"],
   ["support_sla_documented", "Support SLA / response times documented"],
-  ["esignature_support", "eSignature / contract workflow"],
   ["invoice_generation_b2b", "Invoice / tax invoice generation"],
-  ["insurance_mention", "Professional indemnity insurance"],
-  ["gdpr_ropa_maintained", "ROPA (Records of Processing Activities)"],
   ["data_retention_schedule", "Data retention schedule published"],
-  ["supplier_due_diligence", "Vendor / sub-processor due diligence"],
   ["modern_slavery_statement", "Modern Slavery Act statement"],
-  ["bribery_act_policy", "Anti-bribery policy"],
-  ["whistleblower_policy", "Whistleblower / speak-up policy"],
+  ["insurance_mention", "Business insurance stated"],
+  ["supplier_due_diligence", "Sub-processor list published"],
+  ["whistleblower_policy", "Whistleblowing channel published"],
+  ["bribery_act_policy", "Anti-bribery policy published"],
 ];
 
 export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
@@ -34,53 +131,156 @@ export async function runBusinessOperationsChecks(ctx: ExtendedCheckContext): Pr
 
   const checks: PulseScanCheckInput[] = [];
 
-  const hasPhysicalAddress = /\d{1,5}\s+[a-z0-9 ]+\s*(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i.test(html) || /p\.?o\.?\s*box\s+\d+/i.test(html) || /<footer[^>]*>[\s\S]*?\d+\s+[a-z]+ (street|road|avenue|way)/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "physical_address_footer", label: "Physical address in footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical address detected." : "No physical address detected — CAN-SPAM, UK Companies Act, and EU distance selling rules all require a physical postal address in your footer." });
+  // Street line = house number + 1-4 street words + a street suffix. Deliberately case-sensitive:
+  // the old /i form matched prose such as "3 Finding your Best" or "12 times your maximum contact".
+  // Words may start with a digit ("350 5th Ave") and the suffix may be capitalised or upper case
+  // ("548 MARKET STREET"); &nbsp; / &#160; count as spaces. Also accept an explicit
+  // registered-office / postal-address statement (covers EU "Rue du Trône 100") and a UK postcode.
+  const sp = String.raw`(?:\s|&nbsp;|&#160;)`;
+  const suffixes = "Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr|Boulevard|Blvd|Way|Court|Ct|Place|Pl|Square|Sq|Parkway|Pkwy|Terrace|Highway|Hwy";
+  const suffixAlt = `${suffixes}|${suffixes.toUpperCase()}`;
+  const streetLine = new RegExp(String.raw`\b\d{1,5}[A-Za-z]?,?${sp}+(?:[A-Z0-9][A-Za-z0-9.'-]*${sp}+){1,4}(?:${suffixAlt})\b`);
+  const hasPhysicalAddress =
+    streetLine.test(html) ||
+    /\bP\.?\s?O\.?\s*Box\s+\d+/i.test(html) ||
+    /\b(?:registered (?:office|address)|head office|our address is|mailing address|postal address)\b[^<"]{0,80}?\d/i.test(html) ||
+    /\b(?:[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?)\s\d[ABD-HJLNP-UW-Z]{2}\b/.test(html);
+  checks.push({ category: CATEGORY, checkKey: "physical_address_footer", label: "Physical address in footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical address detected." : "No postal address found on the scanned page — UK companies must show their registered office address on their website and the EU e-Commerce Directive requires a geographic address to be easily accessible (a contact or legal page also satisfies this); CAN-SPAM separately requires one in commercial emails." });
 
-  const hasBusinessHours = /business hours|office hours|monday.*friday|mon.*fri|9.*5|support.*hours|available.*\d+.*\d+/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "business_hours_displayed", label: "Business hours displayed", status: hasBusinessHours ? "PASS" : "WARN", detail: hasBusinessHours ? "Business hours signals detected." : "No business hours detected — displaying support availability hours reduces frustration and manages customer expectations." });
+  const hoursBase = { category: CATEGORY, checkKey: "business_hours_displayed", label: "Business hours displayed" };
+  const hoursQuote = findClaim(proseRuns(ctx.contentHtml ?? html), BUSINESS_HOURS_CLAIM);
+  checks.push(hoursQuote
+    ? claimSeen(hoursBase, "The page shows when the business or support team is available.", hoursQuote)
+    : claimUnseen(hoursBase, "The scanned page does not show opening or support hours. They are often on a contact page, which this check does not read, so this does not show they are missing. Showing when people can expect a reply reduces frustration."));
 
-  const hasVatNumber = /vat.*number|vat reg|gb\d{9}|eu\d{9}|\bvat\b.*\d{7,12}/i.test(html);
-  const isEuProduct = /\.eu\b/.test(ctx.hostname) || html.toLowerCase().includes("€") || html.toLowerCase().includes("vat");
-  checks.push({ category: CATEGORY, checkKey: "vat_number_displayed", label: "VAT number in footer (EU B2B)", status: isEuProduct ? (hasVatNumber ? "PASS" : "WARN") : "PASS", detail: isEuProduct ? (hasVatNumber ? "VAT registration number signals detected." : "EU signals detected but no VAT number — EU B2B customers need your VAT number for reverse-charge invoicing and expense claims.") : "Not applicable." });
+  // Visible prose: scripts, styles, JSON payloads and locale switchers removed, tags
+  // stripped, whitespace collapsed. Checks that read phrases read THIS, so a bounded
+  // window cannot be bridged by minified markup.
+  const visibleText = stripNonMarketContext(html)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, " ")
+    .replace(/&#163;|&pound;/gi, "£")
+    .replace(/&euro;|&#8364;|&#x20ac;/gi, "€")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ");
 
-  const hasCompaniesHouse = /company.*number|companies.*house|registered.*england|registered.*wales|registered.*scotland|co\. no\.|no\.\s+\d{7,8}/i.test(html);
-  const isUkProduct = /\.uk\b/.test(ctx.hostname) || html.toLowerCase().includes("united kingdom") || html.toLowerCase().includes("ltd") || html.toLowerCase().includes("limited");
-  checks.push({ category: CATEGORY, checkKey: "uk_companies_house_number", label: "UK Companies House registration number", status: isUkProduct ? (hasCompaniesHouse ? "PASS" : "WARN") : "PASS", detail: isUkProduct ? (hasCompaniesHouse ? "UK company registration number detected." : "UK signals detected but no Companies House number — UK law requires displaying your registered company number on your website.") : "Not applicable." });
+  // A UK business is established by what only a UK business shows: a .uk domain, an
+  // en-GB page, "Registered in England/Wales/Scotland/Northern Ireland", Companies
+  // House, a UK postcode, a £ price or a +44 number. "Ltd"/"Limited" alone is not UK —
+  // it is a company form in Ireland, India, Hong Kong, Singapore ("Pte. Ltd."), Australia
+  // and South Africa ("(Pty) Ltd") too.
+  const docRegion = (documentLanguage(html) ?? "").split("-")[1] ?? "";
+  const ukReasons: string[] = [];
+  if (/\.uk$/.test(ctx.hostname)) ukReasons.push(".uk domain");
+  if (docRegion === "gb") ukReasons.push("page language en-GB");
+  if (/\bregistered in (?:england|wales|scotland|northern ireland)\b/i.test(visibleText)) ukReasons.push("\"registered in England/Wales/Scotland\"");
+  if (/\bcompanies house\b/i.test(visibleText)) ukReasons.push("Companies House mentioned");
+  if (/\b[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]? \d[ABD-HJLNP-UW-Z]{2}\b/.test(visibleText)) ukReasons.push("UK postcode");
+  if (/£\s?\d/.test(visibleText)) ukReasons.push("£ price");
+  if (/\+44[\s.-]?\(?0?\)?\s?\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/.test(visibleText)) ukReasons.push("+44 phone number");
+  const isUkProduct = ukReasons.length > 0;
 
-  const hasDirectorInfo = /director|ceo|chief executive|managing director|responsible person|dpo|data protection officer/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "eu_director_info", label: "Director / responsible person named", status: hasDirectorInfo ? "PASS" : "WARN", detail: hasDirectorInfo ? "Director / responsible person information detected." : "No director or DPO named — some EU jurisdictions require naming a responsible person on the company website." });
+  // The e-Commerce Directive (art. 5) and the UK e-Commerce Regulations 2002 (reg. 6) ask a
+  // VAT-registered business to give its VAT number. Applies to EU and UK businesses only;
+  // non-EU sites used to get a free PASS, and "vat" anywhere made a site "EU".
+  const euReasons = euMarketReasons(ctx.hostname, visibleText, docRegion);
+  const vatId = vatNumberOnPage(visibleText);
+  checks.push({
+    category: CATEGORY, checkKey: "vat_number_displayed", label: "VAT number shown (EU / UK)",
+    ...(!isUkProduct && euReasons.length === 0
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no EU or UK signals on the scanned page (domain, page language, euro or sterling price, UK postcode or phone number)." }
+      : vatId
+        ? { status: "PASS" as const, detail: `The page shows a VAT number ("${vatId}").`, evidence: vatId }
+        : { status: "INCONCLUSIVE" as const, detail: `EU or UK signals found (${[...ukReasons, ...euReasons].join(", ")}), but the scanned page shows no VAT number. Only a VAT-registered business must give one, and it is normally on a legal, contact or Impressum page, so this is not evidence either way.` }),
+  });
+  // A registered company: the page says it is one, or names its company form.
+  const isUkCompany = isUkProduct && (/\b(?:ltd|limited|plc|llp)\b/i.test(visibleText) || /\bregistered in (?:england|wales|scotland|northern ireland)\b|\bcompanies house\b/i.test(visibleText));
+  const hasCompaniesHouse = UK_COMPANY_NUMBER_CLAIM.test(visibleText);
+  const ukWhy = ukReasons.join(", ");
+  checks.push({
+    category: CATEGORY, checkKey: "uk_companies_house_number", label: "UK Companies House registration number",
+    ...(!isUkProduct
+      ? { status: "SKIPPED" as const, detail: "No UK signals on the scanned page (.uk domain, en-GB, \"registered in England\", Companies House, UK postcode, £ price or +44 number) — the UK company-number disclosure rule does not apply." }
+      : hasCompaniesHouse
+        ? { status: "PASS" as const, detail: `UK signals found (${ukWhy}) and a company registration number is shown.` }
+        : isUkCompany
+          ? { status: "WARN" as const, detail: `UK company signals found (${ukWhy}) but no company registration number on the scanned page — the Company, LLP and Business Names Regulations 2015 require a UK company's website to show its registered number (a legal or contact page also satisfies this).` }
+          : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "Only a registered company must show a number, and the page does not say whether this business is one.", detail: `UK signals found (${ukWhy}), but the page does not show that this is a registered company (no Ltd, PLC or LLP), so whether a company number is required cannot be established. Sole traders and partnerships have none.` }),
+  });
 
-  const hasSupportSla = /support.*sla|response.*time|reply.*within|sla.*support|24.*hour.*response|business.*day.*response/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "support_sla_documented", label: "Support SLA / response times documented", status: hasSupportSla ? "PASS" : "WARN", detail: hasSupportSla ? "Support SLA / response time signals detected." : "No support SLA documented — enterprise buyers require documented response times in their vendor assessment questionnaires." });
+  const directorRole = DIRECTOR_ROLE_CLAIM.exec(visibleText)?.[0];
+  checks.push({
+    category: CATEGORY, checkKey: "eu_director_info", label: "Director / responsible person named",
+    ...(directorRole
+      ? { status: "PASS" as const, detail: `The scanned page names a responsible role ("${directorRole}").` }
+      : { status: "INCONCLUSIVE" as const, confidence: "LOW" as const, confidenceReason: "Where it is required, the responsible person is named on an Impressum or legal page this check does not read.", detail: "The scanned page does not name a director or responsible person. Most sites have no duty to; where one exists (e.g. a German Impressum under DDG §5) it is met on a legal page rather than the homepage, so this is not a finding." }),
+  });
 
-  const hasEsignature = /esignature|e-signature|docusign|hellosign|sign now|adobe.*sign|pandadoc|electronic.*signature/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "esignature_support", label: "eSignature / contract workflow", status: hasEsignature ? "PASS" : "WARN", detail: hasEsignature ? "eSignature / contract workflow signals detected." : "No eSignature signals — B2B contracts require legal electronic signatures; integrations with DocuSign, HelloSign, or PandaDoc streamline procurement." });
+  const hasSupportSla = SUPPORT_SLA_CLAIM.test(visibleText);
+  checks.push({ category: CATEGORY, checkKey: "support_sla_documented", label: "Support SLA / response times documented", status: hasSupportSla ? "PASS" : "WARN", detail: hasSupportSla ? "Support response-time commitment found on the scanned page." : "No support response time found on the scanned page — enterprise buyers ask for documented response times in vendor assessments. If a support or SLA page states them, this does not apply." });
 
-  const hasInvoicing = /invoice.*generation|tax.*invoice|generate.*invoice|download.*invoice|billing.*invoice|vat.*invoice/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "invoice_generation_b2b", label: "Invoice / tax invoice generation", status: hasInvoicing ? "PASS" : "WARN", detail: hasInvoicing ? "Invoice generation signals detected." : "No invoice generation signals — B2B customers in all markets require VAT/tax invoices for expense reporting and bookkeeping." });
 
-  const hasInsurance = /professional.*indemnity|liability.*insurance|insurance.*certificate|indemnity.*insurance/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "insurance_mention", label: "Professional indemnity insurance", status: hasInsurance ? "PASS" : "WARN", detail: hasInsurance ? "Professional indemnity insurance signals detected." : "No insurance mention — enterprise and government procurement often require proof of professional indemnity insurance as a condition of contracting." });
+  // Only a site that takes payments issues invoices; sites with no payments used to be told
+  // to generate VAT invoices. Read from visible copy, one sentence at a time.
+  const invoicePhrase = INVOICE_CLAIM.exec(visibleText)?.[0];
+  checks.push({
+    category: CATEGORY, checkKey: "invoice_generation_b2b", label: "Invoice / tax invoice generation",
+    ...(!ctx.ctx.isPaymentEnabled
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no payment processing was detected, so there is nothing to invoice." }
+      : invoicePhrase
+        ? { status: "PASS" as const, detail: `The page says customers get invoices ("${invoicePhrase}"). Pulse did not see an invoice itself.`, evidence: invoicePhrase }
+        : { status: "INCONCLUSIVE" as const, detail: "The page takes payments but does not mention invoices. Invoices normally live in the billing area behind sign-in or on the pricing FAQ, so their absence here is not evidence either way." }),
+  });
 
-  const hasRopa = /records of processing|processing activities|ropa|article.*30|data.*processing.*register/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "gdpr_ropa_maintained", label: "ROPA (Records of Processing Activities)", status: hasRopa ? "PASS" : "WARN", detail: hasRopa ? "ROPA reference detected." : "No ROPA reference — GDPR Article 30 requires maintaining a record of all data processing activities. Enterprise DPOs will ask to see it." });
 
-  const hasDataRetention = /data.*retention|retention.*policy|retain.*data.*for|delete.*data.*after|data.*kept.*for/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "data_retention_schedule", label: "Data retention schedule published", status: hasDataRetention ? "PASS" : "WARN", detail: hasDataRetention ? "Data retention schedule signals detected." : "No data retention schedule — publish how long you retain different types of data; this is required for GDPR compliance and reduces deletion request handling." });
+  const hasDataRetention = DATA_RETENTION_CLAIMS.some((re) => re.test(html));
+  checks.push({ category: CATEGORY, checkKey: "data_retention_schedule", label: "Data retention schedule published", status: hasDataRetention ? "PASS" : "WARN", detail: hasDataRetention ? "Data retention schedule signals detected." : "No data retention schedule found on the scanned page — UK/EU GDPR (Art. 13(2)(a)) requires your privacy notice to state how long personal data is kept. If your privacy policy already states retention periods, this does not apply." });
 
-  const hasVendorDueDiligence = /vendor.*assessment|supplier.*due.*diligence|third.*party.*risk|sub.processor.*review|vendor.*security/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "supplier_due_diligence", label: "Vendor / sub-processor due diligence", status: hasVendorDueDiligence ? "PASS" : "WARN", detail: hasVendorDueDiligence ? "Vendor due diligence signals detected." : "No vendor due diligence signals — document your process for assessing sub-processors; enterprise DPOs require evidence of third-party risk management." });
 
-  const hasModernSlavery = /modern slavery|human trafficking|slavery.*act|forced.*labour.*statement/i.test(html);
-  const isLargeOrg = /enterprise|£|million|billion|employee.*\d{3}/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "modern_slavery_statement", label: "Modern Slavery Act statement (UK)", status: isLargeOrg && isUkProduct ? (hasModernSlavery ? "PASS" : "WARN") : "PASS", detail: isLargeOrg && isUkProduct ? (hasModernSlavery ? "Modern Slavery Act statement detected." : "UK organisation signals detected — UK companies with >£36M turnover must publish a Modern Slavery Act transparency statement.") : "Not applicable at this stage." });
+  // The duty (Modern Slavery Act 2015 s.54) falls on UK commercial organisations with
+  // turnover of £36m or more, which a web page cannot show. So: not UK is not applicable,
+  // a statement or a link to one passes, and anything else is unestablished.
+  const slaveryStatement = MODERN_SLAVERY_CLAIM.exec(visibleText)?.[0]
+    ?? (/\shref\s*=\s*["'][^"']*modern[-_]?slavery[^"']*["']/i.test(html) ? "a link to a modern slavery page" : null);
+  checks.push({
+    category: CATEGORY, checkKey: "modern_slavery_statement", label: "Modern Slavery Act statement (UK)",
+    ...(!isUkProduct
+      ? { status: "NOT_APPLICABLE" as const, detail: "Not applicable: no UK signals on the scanned page, and the Modern Slavery Act duty applies to organisations doing business in the UK." }
+      : slaveryStatement
+        ? { status: "PASS" as const, detail: `The page links to or names a modern slavery statement ("${slaveryStatement}").`, evidence: slaveryStatement }
+        : { status: "INCONCLUSIVE" as const, detail: `UK signals found (${ukWhy}), but the homepage has no modern slavery statement link. The duty applies only to organisations with turnover of £36m or more, which Pulse cannot see; those must link to the statement from a prominent place on their homepage.` }),
+  });
 
-  const hasAntiBribery = /anti.bribery|bribery.*act|anti.*corruption|gifts.*hospitality.*policy/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "bribery_act_policy", label: "Anti-bribery policy (UK Bribery Act)", status: isUkProduct ? (hasAntiBribery ? "PASS" : "WARN") : "PASS", detail: isUkProduct ? (hasAntiBribery ? "Anti-bribery policy signals detected." : "UK signals detected — the UK Bribery Act 2010 requires organisations to have 'adequate procedures' to prevent bribery; an anti-bribery policy is the key evidence.") : "Not applicable." });
+  for (const [key, spec] of Object.entries(COMPANY_POLICY_CLAIMS)) {
+    const base = { category: CATEGORY, checkKey: key, label: spec.label };
+    const seen = findClaim(proseRuns(ctx.contentHtml ?? html), spec.re) ?? linkClaim(html, spec.re);
+    checks.push(seen ? claimSeen(base, spec.found, seen) : claimUnseen(base, spec.unseen));
+  }
 
-  const hasWhistleblower = /whistleblow|speak.*up|raise.*concern|report.*misconduct|ethics.*hotline|confidential.*report/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "whistleblower_policy", label: "Whistleblower / speak-up policy", status: hasWhistleblower ? "PASS" : "WARN", detail: hasWhistleblower ? "Whistleblower / speak-up policy signals detected." : "No whistleblower policy detected — EU Whistleblower Protection Directive requires organisations with >50 employees to have a formal reporting channel." });
 
   return checks;
+}
+
+const EU_CCTLD = /\.(?:at|be|bg|cy|cz|de|dk|ee|es|eu|fi|fr|gr|hr|hu|ie|it|lt|lu|lv|mt|nl|pl|pt|ro|se|si|sk)$/;
+const EU_REGIONS = new Set(["at", "be", "bg", "cy", "cz", "de", "dk", "ee", "es", "fi", "fr", "gr", "hr", "hu", "ie", "it", "lt", "lu", "lv", "mt", "nl", "pl", "pt", "ro", "se", "si", "sk"]);
+
+/** Why the page reads as an EU business: an EU ccTLD, an EU page-language region, or a euro price. */
+export function euMarketReasons(hostname: string, visibleText: string, docRegion: string): string[] {
+  const reasons: string[] = [];
+  if (EU_CCTLD.test(hostname)) reasons.push("EU domain");
+  if (EU_REGIONS.has(docRegion)) reasons.push(`page language region ${docRegion.toUpperCase()}`);
+  if (/€\s?\d|\d\s?€|\bEUR\s?\d/.test(visibleText)) reasons.push("euro price");
+  return reasons;
+}
+
+/**
+ * A VAT identification number in the visible text: a label (VAT, USt-IdNr, TVA, P.IVA,
+ * BTW…) followed by an identifier with at least seven digits, or a country-prefixed
+ * number in a published national format.
+ */
+export function vatNumberOnPage(visibleText: string): string | null {
+  const labelled = /\b(?:VAT(?:\s+(?:reg(?:istration)?|registered|no\.?|number|ID|nr\.?))*|USt-?IdNr\.?|Umsatzsteuer-?(?:ID|Identifikationsnummer)|TVA(?: intracommunautaire)?|N° TVA|P\.?\s?IVA|Partita IVA|BTW(?:-?(?:nummer|nr\.?))?|NIF-IVA)\s*[:.#]?\s*((?:[A-Z]{2,3}\s?)?[0-9][0-9A-Z .-]{5,16}[0-9A-Z])/i.exec(visibleText);
+  if (labelled && (labelled[1].match(/\d/g) ?? []).length >= 7) return labelled[0].replace(/\s+/g, " ").trim().slice(0, 60);
+  const prefixed = /\b(?:GB\s?\d{3}\s?\d{4}\s?\d{2}(?:\s?\d{3})?|DE\s?\d{9}|ATU\s?\d{8}|FR\s?[0-9A-HJ-NP-Z]{2}\s?\d{9}|NL\s?\d{9}\s?B\s?\d{2}|IE\s?\d{7}[A-W][A-I]?|IT\s?\d{11}|ES\s?[A-Z0-9]\d{7}[A-Z0-9]|BE\s?[01]\d{9})\b/.exec(visibleText);
+  return prefixed ? prefixed[0] : null;
 }

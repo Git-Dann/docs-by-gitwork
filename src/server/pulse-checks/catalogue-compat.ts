@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** The catalogue's own version. Bump when the shape of the contract changes. */
-export const CATALOGUE_VERSION = "pulse-controls-2026.08";
+export const CATALOGUE_VERSION = "pulse-controls-2026.10";
 
 /**
  * How a retired key relates to what replaced it. Mirrors the vocabulary a reader
@@ -47,11 +47,34 @@ export interface RetiredCheck {
 }
 
 /**
- * Empty on purpose: no Pulse check key has ever been retired. That is the
- * intended steady state — this map is the pressure valve for when one must be,
- * not a queue to work through.
+ * Retired keys. Each stays a readable identifier for old scans and saved check
+ * configuration; only its implementation is gone.
  */
-export const RETIRED_CHECKS: Record<string, RetiredCheck> = {};
+export const RETIRED_CHECKS: Record<string, RetiredCheck> = {
+  // October 2026: the checks that had been withheld from every report. Each either
+  // duplicated a check that reads real evidence (SUPERSEDED_BY / ALIAS_OF / MERGED_INTO)
+  // or asked something no scan can see (WITHDRAWN). 22 first withdrawn here were rebuilt
+  // on real evidence the same day and are live again (repo-practices.ts, §84.18): do not
+  // withdraw a useful check, rebuild it.
+  structured_logging: { relationship: "SUPERSEDED_BY", replacedBy: ["svc_structured_logging"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Structured logging is read from the repository's own logger setup." },
+  distributed_tracing: { relationship: "SUPERSEDED_BY", replacedBy: ["obs_x_tracing"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Tracing is read from the repository's instrumentation and dependencies." },
+  trace_correlation: { relationship: "SUPERSEDED_BY", replacedBy: ["api_request_correlation", "svc_request_id"], retiredIn: "pulse-controls-2026.10", reason: "It searched page HTML for the words 'request id'. The real question is answered by the response headers of the scanned API and by the service's own request-id middleware." },
+  release_health: { relationship: "SUPERSEDED_BY", replacedBy: ["obs_depth_release_markers"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Release tagging of telemetry is read from the repository's monitoring setup." },
+  queue_depth_monitoring: { relationship: "SUPERSEDED_BY", replacedBy: ["obs_depth_queue_metrics"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Queue metrics are read from the repository's queue and metrics code." },
+  db_performance_monitoring: { relationship: "SUPERSEDED_BY", replacedBy: ["obs_depth_slow_query_visibility"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Query timing and slow-query visibility are read from the repository." },
+  error_budget_policy: { relationship: "SUPERSEDED_BY", replacedBy: ["obs_depth_slo_versioned"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Service-level objectives are read from version-controlled SLO files." },
+  incident_runbooks: { relationship: "SUPERSEDED_BY", replacedBy: ["business_depth_incident_runbook"], retiredIn: "pulse-controls-2026.10", reason: "It used to search the website's HTML for vendor names and keywords, which says nothing about the practice. Runbooks are read from the repository." },
+  email_unsubscribe_signal: { relationship: "SUPERSEDED_BY", replacedBy: ["mail_x_unsubscribe_header", "email_depth_one_click_unsubscribe"], retiredIn: "pulse-controls-2026.10", reason: "It looked for the word 'unsubscribe' on the website. Whether the product's emails carry List-Unsubscribe and one-click unsubscribe is read from its email-sending code." },
+  bounce_handling_signal: { relationship: "SUPERSEDED_BY", replacedBy: ["mail_x_bounce_handling"], retiredIn: "pulse-controls-2026.10", reason: "It looked for words like 'bounce' on the website. Bounce handling is read from the product's email webhook code." },
+  email_mx_present: { relationship: "ALIAS_OF", replacedBy: ["mx_record"], retiredIn: "pulse-controls-2026.10", reason: "It repeated the mx_record check: the same MX lookup, answered twice." },
+  gdpr_right_to_erasure_ui: { relationship: "SUPERSEDED_BY", replacedBy: ["data_deletion_right", "saas_depth_account_deletion_workflow", "pages_depth_account_deletion_route"], retiredIn: "pulse-controls-2026.10", reason: "A delete-account control lives behind sign-in, which a scan never reaches. Erasure is assessed from the privacy notice and from the repository's account-deletion route and workflow." },
+  workspace_tenant_isolation: { relationship: "SUPERSEDED_BY", replacedBy: ["roles_depth_tenant_query_scope", "saas_depth_tenant_isolation_tests"], retiredIn: "pulse-controls-2026.10", reason: "A page that mentions workspaces says nothing about isolation. Tenant scoping is read from the repository's data queries and tests." },
+  auth_logout_control: { relationship: "SUPERSEDED_BY", replacedBy: ["auth_x_logout_invalidates"], retiredIn: "pulse-controls-2026.10", reason: "A sign-out control only renders for a signed-in user, and Pulse never signs in. Whether sign-out ends the session is read from the repository." },
+  github_branch_protection: { relationship: "MERGED_INTO", replacedBy: ["branch_protection"], retiredIn: "pulse-controls-2026.10", reason: "It searched a website's HTML for the words 'branch protection'. branch_protection reads the repository's actual protection rules from GitHub." },
+  github_required_reviews: { relationship: "MERGED_INTO", replacedBy: ["branch_protection"], retiredIn: "pulse-controls-2026.10", reason: "It searched a website's HTML for review-related words. branch_protection reads the repository's actual required-review settings from GitHub." },
+  gdpr_ropa_maintained: { relationship: "SUPERSEDED_BY", replacedBy: ["gdpr_records_processing"], retiredIn: "pulse-controls-2026.10", reason: "It asked the same question as gdpr_records_processing (a GDPR Art. 30 record of processing), which reads the repository for one." },
+  gdpr_data_access_control: { relationship: "SUPERSEDED_BY", replacedBy: ["roles_depth_object_ownership", "roles_depth_tenant_query_scope"], retiredIn: "pulse-controls-2026.10", reason: "It searched a website's HTML for words about data access. Whether personal data is reachable only by its owner is read from the repository's data queries." },
+};
 
 /** True when a key is no longer emitted but is still a readable historical identifier. */
 export function isRetiredCheck(key: string): boolean {

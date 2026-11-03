@@ -15,6 +15,11 @@ export default defineConfig({
   // workaround, importing React into each test, would have test files compiled differently from
   // the components they render.
   esbuild: { jsx: "automatic" },
+  // ⚠️ Vitest 4 transforms with Rolldown/oxc, NOT esbuild, so the key above is dead there and
+  // this one does the work. Both are kept so the runtime is right either side of that upgrade.
+  // Remove this line and 32 files stop parsing — 3216 tests collapse to 2868, because tsconfig
+  // says `jsx: "preserve"` (Next needs that) and Rolldown refuses to parse the JSX it leaves.
+  oxc: { jsx: { runtime: "automatic" } },
   test: {
     environment: "node",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],

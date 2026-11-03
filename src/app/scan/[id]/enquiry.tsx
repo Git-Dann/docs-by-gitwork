@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { TurnstileBox } from "@/components/pulse/turnstile-box";
+import { CaptureFields, EMPTY_CAPTURE, Honeypot, UNLOCKED_HEADING, captureComplete, deliveryNote, unlockCopy, type CaptureValues } from "@/components/pulse/capture-fields";
 
 const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
 
@@ -19,22 +20,25 @@ const SERIF = "var(--font-fraunces), 'Fraunces', Georgia, serif";
 export function ScanEnquiry({
   scanId,
   alreadyEnquired,
-  failCount,
-  advisoryCount,
+  lockedCount,
+  measured,
   bookingUrl,
   targetHost,
   turnstileSiteKey,
 }: {
   scanId: string;
   alreadyEnquired: boolean;
-  failCount: number;
-  advisoryCount: number;
+  lockedCount: number;
+  /** Checks that ran on this site, for the unlock card's "all N checks". */
+  measured: number;
   bookingUrl: string;
   targetHost: string;
   turnstileSiteKey: string | null;
 }) {
-  const [email, setEmail] = useState("");
+  const [capture, setCapture] = useState<CaptureValues>(EMPTY_CAPTURE);
   const [honeypot, setHoneypot] = useState("");
+  // Set when the button is pressed with a problem in the form, so every field says what it is.
+  const [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(alreadyEnquired);
   const [error, setError] = useState<string | null>(null);
@@ -43,15 +47,22 @@ export function ScanEnquiry({
   const [token, setToken] = useState<string | null>(null);
 
   const send = useCallback(async () => {
-    const trimmed = email.trim();
-    if (!trimmed || sending) return;
+    if (sending) return;
+    if (!captureComplete(capture)) { setTried(true); return; }
     setSending(true);
     setError(null);
     try {
       const res = await fetch(`/api/public/pulse/scan/${scanId}/enquiry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed, honeypot, turnstileToken: token }),
+        body: JSON.stringify({
+          name: capture.name.trim(),
+          business: capture.business.trim(),
+          email: capture.email.trim(),
+          termsAccepted: capture.termsAccepted,
+          honeypot,
+          turnstileToken: token,
+        }),
       });
       let data: { error?: string } = {};
       try {
@@ -63,17 +74,20 @@ export function ScanEnquiry({
       if (!res.ok) {
         throw new Error(
           res.status === 409
-            ? "We already have a request against this email — we'll be in touch."
+            ? "This email has already unlocked a report — we'll be in touch."
             : data?.error ?? "Couldn't send that just now. Please try again.",
         );
       }
       setSent(true);
+      // Unlocking is decided on the server — re-render the page so the held-back
+      // findings appear in full.
+      window.location.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setSending(false);
     }
-  }, [email, scanId, sending, honeypot, token]);
+  }, [capture, scanId, sending, honeypot, token]);
 
   // Don't let a click through before Turnstile has produced a token: submitting
   // without one always fails server-side, which reads as a broken form rather than
@@ -84,11 +98,12 @@ export function ScanEnquiry({
     return (
       <div>
         <p style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: "white", margin: "0 0 6px" }}>
-          Thanks — that&apos;s with us.
+          {alreadyEnquired ? "This report is unlocked." : UNLOCKED_HEADING}
         </p>
         <p style={{ fontSize: 14, color: "#9ca3af", margin: "0 0 16px", lineHeight: 1.6 }}>
-          We&apos;ll come back to you with the in-depth review of {targetHost}. If you&apos;d rather talk it
-          through now, grab a slot.
+          {alreadyEnquired
+            ? <>Every finding for {targetHost} is shown above. Want help fixing it? Grab a slot.</>
+            : <>{deliveryNote(targetHost)} Want help fixing it? Grab a slot.</>}
         </p>
         <a
           href={bookingUrl}
@@ -105,66 +120,40 @@ export function ScanEnquiry({
   return (
     <div>
       <p style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 700, color: "white", margin: "0 0 8px" }}>
-        {failCount > 0
-          ? `${failCount} failing check${failCount === 1 ? "" : "s"}. Want to know what they mean?`
-          : "Want to know what this means?"}
+        {unlockCopy(lockedCount, measured).heading}
       </p>
       <p style={{ fontSize: 14, color: "#9ca3af", margin: "0 0 18px", lineHeight: 1.6 }}>
-        The in-depth review adds what these findings actually mean for your launch, the order to address
-        them in, and an implementation brief your developers (or your AI) can work straight from
-        {advisoryCount > 0 && <> — plus all {advisoryCount} advisory checks</>}.
+        {unlockCopy(lockedCount, measured).body}
       </p>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input
-          type="email"
-          inputMode="email"
-          placeholder="you@company.com"
-          aria-label="Your email address"
-          aria-describedby={error ? "scan-enquiry-error" : undefined}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") send(); }}
-          disabled={sending}
-          style={{
-            flex: "1 1 220px",
-            minWidth: 0,
-            padding: "12px 14px",
-            border: "1px solid rgba(255,255,255,0.25)",
-            borderRadius: 10,
-            fontSize: 15,
-            outline: "none",
-            background: "rgba(255,255,255,0.06)",
-            color: "white",
-          }}
-        />
+      <CaptureFields
+        values={capture}
+        onChange={setCapture}
+        onSubmit={send}
+        disabled={sending}
+        showAllErrors={tried}
+        idPrefix="scan-capture"
+        describedBy={error ? "scan-enquiry-error" : undefined}
+      />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         {/* Off-screen honeypot — real visitors never fill it. */}
-        <input
-          type="text"
-          name="company"
-          tabIndex={-1}
-          autoComplete="off"
-          aria-hidden="true"
-          value={honeypot}
-          onChange={(e) => setHoneypot(e.target.value)}
-          style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
-        />
+        <Honeypot value={honeypot} onChange={setHoneypot} />
         <button
           type="button"
           onClick={send}
-          disabled={sending || !email.trim() || awaitingVerification}
+          disabled={sending || awaitingVerification}
           style={{
             flex: "0 0 auto",
             padding: "12px 22px",
             borderRadius: 10,
             border: "none",
-            background: sending || !email.trim() || awaitingVerification ? "rgba(255,255,255,0.35)" : "white",
+            background: sending || !captureComplete(capture) || awaitingVerification ? "rgba(255,255,255,0.35)" : "white",
             color: "#111827",
             fontSize: 14,
             fontWeight: 700,
-            cursor: sending || !email.trim() || awaitingVerification ? "default" : "pointer",
+            cursor: sending || awaitingVerification ? "default" : "pointer",
           }}
         >
-          {sending ? "Sending…" : awaitingVerification ? "Verifying…" : "Get the in-depth review"}
+          {sending ? "Sending…" : awaitingVerification ? "Verifying…" : lockedCount > 0 ? "Unlock the full report" : "Email me the full report"}
         </button>
       </div>
       <TurnstileBox siteKey={turnstileSiteKey} onToken={setToken} theme="dark" style={{ marginTop: 10 }} />

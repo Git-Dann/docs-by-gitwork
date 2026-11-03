@@ -43,3 +43,23 @@ if (typeof Range !== "undefined" && typeof Range.prototype.getClientRects !== "f
   };
   Range.prototype.getBoundingClientRect = zeroRect;
 }
+
+/**
+ * Two collectors talk to the network directly rather than through a fetch a test can stub:
+ * `lookupAuthoritativeTtl` sends raw UDP DNS queries to a domain's name servers, and
+ * `probeEarlyHints` opens an HTTP/2 connection. Any test that runs the full URL or
+ * extended collectors (dozens of them) would otherwise make those calls for real, which
+ * made infrastructure-extended.test.ts take 30s and pushed other files past the 5s test
+ * timeout under load: a flaky gate nobody trusts. Off by default here; the dedicated
+ * tests (withheld-rebuilt.test.ts) exercise the real parsing and a real local HTTP/2
+ * server through the functions these wrap, which are left untouched.
+ */
+import { vi } from "vitest";
+vi.mock("@/server/pulse-checks/authoritative-ttl", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/server/pulse-checks/authoritative-ttl")>()),
+  lookupAuthoritativeTtl: async () => ({ kind: "unknown" as const, reason: "network lookups are off in tests" }),
+}));
+vi.mock("@/server/pulse-checks/early-hints", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/server/pulse-checks/early-hints")>()),
+  probeEarlyHints: async () => ({ outcome: "error" as const, links: [], reason: "network probes are off in tests" }),
+}));

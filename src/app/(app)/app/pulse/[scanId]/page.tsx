@@ -8,6 +8,7 @@ import { usePulseScan, usePulseScanStream, useCancelPulseScan, useRetryPulseScan
 import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 // Time-eased fill for the AI phase, which has no granular progress signal.
 function easeOut(t: number): number {
@@ -317,7 +318,7 @@ export default function PulseScanDetailPage({
         {isLoading && (
           <div className="space-y-3">
             {[1, 2].map((i) => (
-              <div key={i} className="h-20 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+              <Skeleton key={i} className="h-20 rounded-[10px]" />
             ))}
           </div>
         )}

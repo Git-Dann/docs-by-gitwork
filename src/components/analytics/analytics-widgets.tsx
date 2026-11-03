@@ -359,7 +359,20 @@ export function Donut({
   const centre = total ?? sum;
   return (
     <div className="flex items-center gap-4">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" role="img" aria-label="Distribution">
+      {/* The label was the bare word "Distribution", which tells a screen-reader user
+          nothing at all. The legend beside this carries every label and value as real
+          text, but the CENTRE figure lives only in here — so the label states that,
+          and the segments are summarised rather than left to the picture. */}
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="shrink-0"
+        role="img"
+        aria-label={`${centre}${centerLabel ? ` ${centerLabel}` : ""}${
+          segments.length ? `: ${segments.map((s) => `${s.label} ${s.value}`).join(", ")}` : ""
+        }`}
+      >
         <circle cx={r} cy={r} r={radius} fill="none" stroke="var(--border-2)" strokeWidth={stroke} opacity={0.4} />
         {sum > 0
           ? segments.map((s, i) => {
@@ -394,7 +407,9 @@ export function Donut({
           <div key={s.label} className="flex items-center justify-between gap-2 text-xs">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="inline-block h-2 w-2 shrink-0 rounded-[2px]" style={{ background: s.color }} />
-              <span className="truncate text-[var(--text-2)]">{s.label}</span>
+              <span className="truncate text-[var(--text-2)]" title={s.label}>
+                {s.label}
+              </span>
             </span>
             <span className="tabular-nums text-[var(--text-3)]" style={{ fontFamily: MONO, fontSize: 11 }}>{s.value}</span>
           </div>

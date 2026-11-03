@@ -65,6 +65,202 @@ const TOOLS: Tool[] = [
     examples: ["Add the Figma link to Speakify's designs.", "Save the Big Wedge brand kit to Designs."],
   },
   {
+    name: "list_course_requests",
+    blurb:
+      "List a client's course requests — the golf courses their users have asked for, with status and how many people asked.",
+    examples: ["What courses have Big Wedge's players asked for?", "Which course requests are still New?"],
+  },
+  {
+    name: "create_course_request",
+    blurb: "File a course request against a client. Requires 'Manage clients'.",
+    examples: ["Add Wentworth to Big Wedge's course requests."],
+  },
+  {
+    name: "get_running_costs",
+    blurb:
+      "What a client's app costs to RUN and the cost per end user — totals, the 0 → 1,000,000 growth curve, anything priced as an option, and the figures the model cannot establish. Not Docs costing: this is what the client pays monthly to keep it up.",
+    examples: [
+      "What does Speakify's app cost to run per user?",
+      "What would Big Wedge cost at 50,000 users?",
+      "What does it cost before launch, with no users?",
+    ],
+  },
+  {
+    name: "set_cost_line",
+    blurb:
+      "Add or update one line in a client's running-cost model — flat fee, per-seat, metered usage or plan bands. Set it as an OPTION to price something without counting it, which is how you compare providers. Requires 'Manage clients'.",
+    examples: [
+      "Add Supabase at £25/mo to Speakify's running costs.",
+      "Price Claude Haiku and Sonnet as options for Speakify at 40k tokens per user.",
+      "Move the Haiku option into the total.",
+    ],
+  },
+  {
+    name: "delete_cost_line",
+    blurb: "Remove a line from a client's running-cost model. Requires 'Manage clients'.",
+    examples: ["Drop the old Mailgun line from Speakify's costs."],
+  },
+  {
+    name: "set_running_costs_settings",
+    blurb:
+      "Set the currency, the head count the cost-per-user banner is worked out at (0 is valid — pre-launch), the note shown to the client, or switch the section on/off. Requires 'Manage clients'.",
+    examples: [
+      "Work Speakify's costs out at 25,000 users.",
+      "Set Big Wedge's running costs to 0 users so we can see the pre-launch burn.",
+    ],
+  },
+  {
+    name: "list_comparisons",
+    blurb:
+      "List a client's wiki comparison tables — plan tables (Free vs Premium vs Pro) or the product against competitors — with their columns and row counts.",
+    examples: ["What comparison tables does Northwind have?"],
+  },
+  {
+    name: "get_comparison",
+    blurb: "Read one comparison table in full — every feature row and what each column includes.",
+    examples: ["Show me what's in each of Speakify's plans."],
+  },
+  {
+    name: "create_comparison",
+    blurb:
+      "Create a comparison table on a client's wiki — up to 45 columns, features as rows, group headings, a featured column, and cells as yes / no / partial / a short value like '10 GB'. Requires 'Manage clients'.",
+    examples: [
+      "Make a Free vs Premium vs Pro table for Speakify's v2 release.",
+      "Compare Big Wedge against Golfshot, 18Birdies and Hole19 on these features.",
+    ],
+  },
+  {
+    name: "update_comparison",
+    blurb:
+      "Rename a comparison table, change its description, or replace its columns or rows wholesale (columns that keep their title keep their cells). Requires 'Manage clients'.",
+    examples: ["Rename Speakify's plan table to 'What's in v2.1'."],
+  },
+  {
+    name: "add_comparison_columns",
+    blurb: "Add columns to a comparison table — a new plan, release or competitor. Up to 45 in total. Requires 'Manage clients'.",
+    examples: ["Add Strava as a column to Northwind's competitor table."],
+  },
+  {
+    name: "rename_comparison_column",
+    blurb:
+      "Rename a column, set its subtitle (e.g. a price), or feature it as the recommended plan or the client's own product. Requires 'Manage clients'.",
+    examples: ["Feature the Premium column and give it the subtitle £6.99/mo."],
+  },
+  {
+    name: "remove_comparison_column",
+    blurb: "Remove a column, and every cell under it, from a comparison table. Requires 'Manage clients'.",
+    examples: ["Drop Competitor B from the table."],
+  },
+  {
+    name: "add_comparison_rows",
+    blurb:
+      "Add features or group headings to a comparison table, with what each column includes. Requires 'Manage clients'.",
+    examples: ["Add 'Offline mode' — yes on Pro, partial on Premium, no on Free."],
+  },
+  {
+    name: "set_comparison_cells",
+    blurb:
+      "Set many cells at once — yes, no, partial, blank, or a short value like '£9/mo'. All-or-nothing: one unknown row or column refuses the batch. Requires 'Manage clients'.",
+    examples: ["Mark Apple Watch support as yes for Northwind and Peloton, no for the rest."],
+  },
+  {
+    name: "delete_comparison",
+    blurb: "Delete a comparison table from a client's wiki. Requires 'Manage clients'.",
+    examples: ["Delete the old v1 plans table from Speakify's wiki."],
+  },
+  {
+    name: "list_sheets",
+    blurb:
+      "List a client's wiki Sheets — the spreadsheets the client edits in their wiki — with columns, row counts, how many rows are on the dev board or done, and what the client may do.",
+    examples: ["What sheets does Northwind have?"],
+  },
+  {
+    name: "get_sheet",
+    blurb:
+      "Read one sheet in full — every row's cells by column title, plus where each row's task has got to on the board — stage, who is on it, due date, when it last moved (all derived live).",
+    examples: ["Show me Northwind's Content to build sheet and what's done."],
+  },
+  {
+    name: "create_sheet",
+    blurb:
+      "Create a sheet on a client's wiki — typed columns (text, long text, number, date, dropdown, checkbox, link, person), optional rows, and what the client may do (edit, add rows, send to the board). Up to 40 columns and 2,000 rows. Requires 'Manage clients'.",
+    examples: ["Make a 'Content to build' sheet for Speakify with Item, Type, Priority and Link columns."],
+  },
+  {
+    name: "update_sheet",
+    blurb:
+      "Rename a sheet, change its description or title column, or change whether the client can edit, add rows or send rows to the board. Requires 'Manage clients'.",
+    examples: ["Let Northwind send rows from their content sheet to the board."],
+  },
+  {
+    name: "add_sheet_columns",
+    blurb: "Add typed columns to a sheet. Requires 'Manage clients'.",
+    examples: ["Add a 'Wanted by' date column to Speakify's sheet."],
+  },
+  {
+    name: "update_sheet_column",
+    blurb:
+      "Rename, retype, change the options of, lock for the client, resize (width in px) or move a column — existing values are converted, and any that can't be are reported. Requires 'Manage clients'.",
+    examples: ["Make Priority a dropdown of Low, Medium, High."],
+  },
+  {
+    name: "remove_sheet_column",
+    blurb: "Remove a column from a sheet. Requires 'Manage clients'.",
+    examples: ["Drop the old Notes column."],
+  },
+  {
+    name: "add_sheet_rows",
+    blurb:
+      "Add rows to a sheet, cells by column title — a person by name or email (must match exactly one person on the client's list), images/videos as links. All-or-nothing. Requires 'Manage clients'.",
+    examples: ["Add these five pages to Northwind's content sheet."],
+  },
+  {
+    name: "update_sheet_rows",
+    blurb:
+      "Change cells (or a row's height) in many rows at once — rows by id or by their title cell, only the named cells change. All-or-nothing. Requires 'Manage clients'.",
+    examples: ["Set the pricing page's priority to High and tick Copy ready."],
+  },
+  {
+    name: "get_sheet_upload_link",
+    blurb:
+      "A 30-minute upload link for one sheet (optionally one row's media cell), so images dropped into a Claude chat can be sent from Claude's sandbox. Requires 'Manage clients'.",
+    examples: ["Attach the screenshots I just dropped to the map bug row."],
+  },
+  {
+    name: "upload_sheet_image",
+    blurb:
+      "Upload one image to a sheet — from a Google Drive file (your own sign-in), a public link or base64 — and attach it to a row's media cell. Requires 'Manage clients'.",
+    examples: ["Attach this screenshot to the checkout bug row's Screenshots column."],
+  },
+  {
+    name: "reorder_sheet_rows",
+    blurb:
+      "Put a sheet's rows in a new order, or move one row before or after another — rows by id or their title cell. Requires 'Manage clients'.",
+    examples: ["Move the gift card checkout row above the pricing page."],
+  },
+  {
+    name: "delete_sheet_rows",
+    blurb: "Remove rows from a sheet (they can be restored), or restore removed ones. Requires 'Manage clients'.",
+    examples: ["Remove the old homepage test row."],
+  },
+  {
+    name: "send_sheet_rows_to_board",
+    blurb:
+      "Turn sheet rows into tasks on the client's dev board, optionally in a category; the sheet then shows each task's progress. Safe to repeat — a row already on the board isn't sent twice. Requires 'Manage clients'.",
+    examples: ["Send the three High-priority rows on Northwind's sheet to the board under Website."],
+  },
+  {
+    name: "delete_sheet",
+    blurb: "Delete a sheet and all its rows from a client's wiki. Requires 'Manage clients'.",
+    examples: ["Delete the old launch checklist sheet."],
+  },
+  {
+    name: "enable_wiki_section",
+    blurb:
+      "Switch one of a client's optional wiki sections on or off — comparisons, sheets, charts, running costs, estimates, delivery, support, RoundUp, meetings, platforms, metrics. Content is kept when off. Requires 'Manage clients'.",
+    examples: ["Turn on the Comparisons section for Speakify.", "Hide Running costs on Big Wedge's wiki."],
+  },
+  {
     name: "list_wiki",
     blurb:
       "Overview of a client's wiki — which pages exist, which of the 11 page types are still empty, and section counts (changelog, monitors, docs, requests, team).",
@@ -205,9 +401,10 @@ const TOOLS: Tool[] = [
   {
     name: "pulse_scan",
     blurb:
-      "Run a Pulse production-readiness + security scan on a URL and get a compact verdict — health score, confirmed issues, security/TLS/accessibility grades, and top fixes. Requires the 'Manage Pulse' permission.",
+      "Run a Pulse production-readiness + security scan on a URL or GitHub repo and get a compact verdict — health score, confirmed issues, security/TLS/accessibility grades, and top fixes. Add a client to also save it as a full in-app scan on that client. Requires the 'Manage Pulse' permission.",
     examples: [
       "Run a Pulse scan on https://speakify.com and summarise the risks.",
+      "Scan the Git-Dann/Fellas-AndroidMobileApp repo and save it to Fellas Loaded.",
       "Is app.bigwedge.golf ready to ship? Scan it for EU + UK.",
     ],
   },

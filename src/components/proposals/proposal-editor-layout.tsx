@@ -46,6 +46,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DatePicker } from "@/components/ui/date-picker";
 import { ActivityFeed } from "@/components/proposals/activity-feed";
 import { DocumentAnalyticsPanel } from "@/components/proposals/document-analytics-panel";
 import { ProposalPreview } from "@/components/proposals/proposal-preview";
@@ -2793,13 +2794,9 @@ function OverviewCanvas({
           </Field>
 
           <Field label="Expires" hint="Leave empty for no expiry.">
-            <input
-              type="date"
-              className="app-input"
+            <DatePicker
               value={proposal.expiresAt ? proposal.expiresAt.slice(0, 10) : ""}
-              onChange={(event) =>
-                set({ expiresAt: event.target.value ? new Date(event.target.value).toISOString() : null })
-              }
+              onChange={(next) => set({ expiresAt: next ? new Date(next).toISOString() : null })}
             />
           </Field>
 

@@ -5,7 +5,7 @@
  * baseUrl) was copy-pasted across several routes (meeting-summary, slack-activity). New code
  * (Scribe) uses this helper instead. Existing routes can be migrated to it incrementally.
  *
- * Env vars take precedence over workspace-stored keys, matching the existing convention.
+ * Which key wins (the server's or the workspace's) is decided in src/server/ai-keys.ts.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -16,6 +16,8 @@ import {
   usageFromOpenAI,
   type AiUsageContext,
 } from "@/server/ai-usage";
+import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export interface WorkspaceAiFields {
   aiProvider: string;
@@ -27,6 +29,8 @@ export interface WorkspaceAiFields {
   geminiModel: string | null;
   localLlmUrl: string | null;
   localLlmModel: string | null;
+  /** See src/server/ai-keys.ts — whether the server's keys may stand in for this workspace's. */
+  platformAiKeysAllowed: boolean;
 }
 
 export type AiProvider = "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL";
@@ -43,12 +47,31 @@ export interface ResolvedAiConfig {
  * fallback models when a workspace hasn't pinned its own.
  */
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
+  // Previous-generation but STILL SERVED, so this is stale rather than broken — left as
+  // it is deliberately: moving every workspace without a pinned model onto a new model
+  // changes behaviour and cost across the platform, which is a decision, not a bug fix.
+  // Reviewed 18 Sept 2026. See the LIGHT_MODELS warning below for why this gets a date.
   ANTHROPIC: "claude-sonnet-4-6",
   OPENAI: "gpt-4o",
   GROQ: "openai/gpt-oss-120b",
   GEMINI: "gemini-2.0-flash",
   LOCAL: "llama3.1",
 };
+
+/**
+ * The model each assistant is asked with in Pulse → AI search (buyer questions). Chosen to be
+ * close to what a person gets in that company's own app, with web search on.
+ *
+ * ⚠️ Version-pinned, like LIGHT_MODELS below: a retired id makes every answer from that
+ * assistant fail. It fails loudly (the page shows the assistant as "couldn't ask" with the
+ * provider's error), but it still needs a review. Reviewed 2 Nov 2026.
+ */
+export const AI_ANSWER_MODELS = {
+  chatgpt: "gpt-5",
+  claude: "claude-opus-5-5",
+  perplexity: "sonar",
+  gemini: "gemini-2.5-flash",
+} as const;
 
 /** Resolve the active provider, API key, model and (OpenAI-compatible) base URL. */
 export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
@@ -57,7 +80,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "GROQ") {
     return {
       provider: "GROQ",
-      apiKey: ws.openaiApiKey ?? process.env.GROQ_API_KEY ?? null,
+      apiKey: aiKeyFor("GROQ", ws, "workspace"),
       model: ws.openaiModel ?? DEFAULT_MODELS.GROQ,
       baseUrl: "https://api.groq.com/openai/v1",
     };
@@ -65,7 +88,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "OPENAI") {
     return {
       provider,
-      apiKey: process.env.OPENAI_API_KEY ?? ws.openaiApiKey ?? null,
+      apiKey: aiKeyFor("OPENAI", ws, "env"),
       model: ws.openaiModel ?? DEFAULT_MODELS.OPENAI,
       baseUrl: null,
     };
@@ -73,7 +96,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "GEMINI") {
     return {
       provider,
-      apiKey: process.env.GEMINI_API_KEY ?? ws.geminiApiKey ?? null,
+      apiKey: aiKeyFor("GEMINI", ws, "env"),
       model: ws.geminiModel ?? DEFAULT_MODELS.GEMINI,
       baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     };
@@ -81,7 +104,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   if (provider === "LOCAL") {
     return {
       provider,
-      apiKey: ws.openaiApiKey ?? "local",
+      apiKey: readSecret(ws.openaiApiKey) ?? "local",
       model: ws.localLlmModel ?? DEFAULT_MODELS.LOCAL,
       baseUrl: ws.localLlmUrl ?? "http://localhost:11434/v1",
     };
@@ -90,7 +113,7 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
   // Default: ANTHROPIC (Claude 3.5 Sonnet / Claude Sonnet) using workspace.anthropicApiKey
   return {
     provider: "ANTHROPIC",
-    apiKey: ws.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? null,
+    apiKey: aiKeyFor("ANTHROPIC", ws, "workspace"),
     model: ws.anthropicModel || DEFAULT_MODELS.ANTHROPIC,
     baseUrl: null,
   };
@@ -98,9 +121,26 @@ export function resolveAiConfig(ws: WorkspaceAiFields): ResolvedAiConfig {
 
 /**
  * Cheaper models used when tier="light".
+ *
+ * ⚠️ **THESE ARE VERSION-PINNED CONSTANTS AND THEY GO STALE SILENTLY.** A retired model
+ * id does not degrade — every call 404s, and because each caller wraps its request in a
+ * `catch`, the failure arrives as "the AI returned nothing" rather than as an error.
+ *
+ * `ANTHROPIC` was pinned to `claude-3-5-haiku-20241022`, **retired 19 Feb 2026**. Nine
+ * features route through `tier: "light"` — Dispatch, Foreman's narrative, the Curator's
+ * consolidation pass, Scribe summaries, Slack activity, two Care narratives, the Care
+ * agents, and the Wedge course-request classifier. When the classifier came back empty
+ * the importer filed 389 unclassified feedback emails onto a client's wiki as
+ * "Untitled Course" (§53).
+ *
+ * Treat this like `PLAY_TARGET_SDK_FLOOR` and the Electron/RN floors in §37.5: a dated
+ * constant with a review cadence, not a value to leave alone because nothing is red.
+ * Check against the current model list before assuming a "the AI isn't working" report
+ * is anything more subtle than this.
  */
 const LIGHT_MODELS: Partial<Record<AiProvider, string>> = {
-  ANTHROPIC: "claude-3-5-haiku-20241022",
+  // Current Haiku. Anthropic's ids are complete as-is — never append a date suffix.
+  ANTHROPIC: "claude-haiku-4-5",
   OPENAI: "gpt-4o-mini",
   GROQ: "llama-3.1-8b-instant",
 };

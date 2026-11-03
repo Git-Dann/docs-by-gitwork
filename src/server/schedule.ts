@@ -125,7 +125,7 @@ function serializeBlock(placement: PlacementWithIncludes): ScheduleBlock {
     candidate: {
       id: placement.candidate.id,
       name: placement.candidate.name,
-      githubHandle: placement.candidate.githubHandle,
+      githubHandle: placement.candidate.githubHandle ?? "",
       primaryStack: placement.candidate.primaryStack,
       avatarUrl: placement.candidate.avatarUrl ?? null,
       tier: placement.candidate.tier,

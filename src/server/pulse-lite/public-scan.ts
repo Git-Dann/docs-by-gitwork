@@ -14,6 +14,7 @@ import { notifyLeadOfScanResult } from "./leads";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { recordScanInCorpus } from "./corpus";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { splitByFreeSet } from "@/lib/pulse-free-tier";
 
 export interface LiteCategorySummary {
   category: string;
@@ -120,6 +121,22 @@ export interface PublicNotEstablished {
 export interface PublicTriage {
   /** P1/P2 — the defensible, actionable report. Free, in full, with evidence. */
   actionable: PublicFinding[];
+  /**
+   * Actionable findings held back by the workspace's free-set limit (see
+   * `lib/pulse-free-tier.ts`). Counted and named by category only — never described.
+   * 0 when no limit is set.
+   */
+  lockedCount: number;
+  lockedByCategory: { category: string; count: number }[];
+  /**
+   * The SHAPE of the first few held-back findings — area, priority and result, nothing
+   * that describes them. The widget draws these as blurred rows. The real label and
+   * evidence never leave the server until the visitor unlocks the report, so the blur
+   * is not a CSS trick over data already in the page.
+   */
+  lockedPreview: { category: string; tier: "P1" | "P2"; status: string }[];
+  /** True when a free-set limit is in force. Drives wording like "All of it, free". */
+  limited: boolean;
   /** P3 advisory count. The long tail belongs to the in-depth review. */
   advisoryCount: number;
   advisoryByCategory: { category: string; count: number }[];
@@ -168,14 +185,17 @@ export interface PublicTriage {
  * be established. That is more valuable than the wall, not less, which is exactly
  * what makes gating the interpretation fair rather than mean.
  */
-export function triage(checks: PulseScanCheckInput[]): PublicTriage {
-  const actionable: PublicFinding[] = [];
+/** How many blurred placeholder rows the widget draws. Enough to show there is more. */
+const LOCKED_PREVIEW_MAX = 5;
+
+export function triage(checks: PulseScanCheckInput[], freeKeys: ReadonlySet<string> | null = null): PublicTriage {
+  const allActionable: PublicFinding[] = [];
   let advisoryCount = 0;
   const advisoryCats = new Map<string, number>();
 
   for (const { check, priority } of rankFindings(checks)) {
     if (priority.tier === "P1" || priority.tier === "P2") {
-      actionable.push({
+      allActionable.push({
         checkKey: check.checkKey,
         category: check.category,
         label: check.label,
@@ -203,8 +223,22 @@ export function triage(checks: PulseScanCheckInput[]): PublicTriage {
       reason: (c.detail ?? "").trim(),
     }));
 
+  // The free-set limit applies HERE and nowhere else, so the page, the markdown report,
+  // the widget and the email cannot disagree about what a stranger may see.
+  const { shown, lockedCount, lockedByCategory, limited } = splitByFreeSet(allActionable, freeKeys);
+
+  const shownKeys = new Set(shown.map((f) => f.checkKey));
+  const lockedPreview = allActionable
+    .filter((f) => !shownKeys.has(f.checkKey))
+    .slice(0, LOCKED_PREVIEW_MAX)
+    .map(({ category, tier, status }) => ({ category, tier, status }));
+
   return {
-    actionable,
+    actionable: shown,
+    lockedCount,
+    lockedByCategory,
+    lockedPreview,
+    limited,
     advisoryCount,
     advisoryByCategory: [...advisoryCats.entries()]
       .map(([category, count]) => ({ category, count }))

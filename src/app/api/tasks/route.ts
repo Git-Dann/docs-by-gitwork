@@ -21,6 +21,7 @@ function taskListResponse(task: TaskDTO): TaskDTO {
     description: null,
     acceptanceCriteria: null,
     status: task.status,
+    boardColumnId: task.boardColumnId,
     priority: task.priority,
     label: task.label,
     orderKey: task.orderKey,

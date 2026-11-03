@@ -1,7 +1,19 @@
 import { z } from "zod";
+import {
+  HANDOVER_ITEM_KINDS,
+  HANDOVER_ITEM_STATUSES,
+  HANDOVER_STATUSES,
+} from "@/types/handover";
 import { MAX_PLATFORM_LINKS } from "@/lib/platform-links";
 import { LAUNCHPAD_LINK_ERROR, safeLaunchpadLink } from "@/lib/launchpad/field-types";
 import { normalizeGithubRepo } from "@/lib/github";
+import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
+import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
+import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
+import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
+import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
+import { AI_ANSWER_LIMITS, AI_ENGINE_IDS, normaliseBrandName, normaliseDomain } from "@/lib/ai-answers";
+import type { SheetColumnType } from "@/types/wiki-sheets";
 
 export const documentStatusSchema = z.enum([
   "DRAFT",
@@ -187,14 +199,7 @@ export const workspaceClientStatusSchema = z.enum([
   "INACTIVE",
 ]);
 
-export const leadStageSchema = z.enum([
-  "NEW",
-  "CONTACTED",
-  "QUALIFIED",
-  "PROPOSAL_SENT",
-  "WON",
-  "LOST",
-]);
+export const leadStageSchema = z.enum(LEAD_STAGES);
 
 export const clientEngagementTypeSchema = z.enum([
   "FIXED_SCOPE",
@@ -282,6 +287,14 @@ export const clientPlatformCreateSchema = z.object({
   notes: z.string().trim().optional(),
   previewImageUrl: z.string().optional(),
   featuredInWiki: z.boolean().optional(),
+  /** `YYYY-MM-DD`, or "" to clear. The next thing on this platform that renews or expires. */
+  renewsOn: z
+    .string()
+    .trim()
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, "Use a date like 2026-11-30.")
+    .optional(),
+  /** What renews on that date — "Domain", "Apple developer account". */
+  renewalNote: z.string().trim().max(80).optional(),
   /**
    * Extra links a client provides beyond production/staging/repo — a ClickUp
    * board, a Figma file. Scheme-checked again server-side by
@@ -919,6 +932,60 @@ export const leaveRequestInputSchema = z
 
 export const absenceKindSchema = z.enum(["AWAY", "ILL", "WFH", "APPOINTMENT"]);
 
+// ─── Handover ────────────────────────────────────────────────────────────────
+// The four kinds and three statuses are declared once in @/types/handover and
+// read here, so a new kind cannot be added to the UI and silently rejected at
+// the edge (§43.1's allow-list trap, one layer down).
+export const wikiLinkInputSchema = z.object({
+  linkedClientId: z.string().cuid(),
+  label: z.string().trim().max(80).nullish(),
+});
+
+export const handoverInputSchema = z
+  .object({
+    userId: z.string().cuid().optional(),
+    title: z.string().trim().min(1).max(200),
+    startsOn: isoDateString,
+    endsOn: isoDateString,
+    notes: z.string().max(8000).nullish(),
+    details: z.string().max(20_000).nullish(),
+    status: z.enum(HANDOVER_STATUSES).optional(),
+  })
+  .refine((v) => v.endsOn >= v.startsOn, {
+    message: "The end date is before the start date.",
+    path: ["endsOn"],
+  });
+
+export const handoverPatchSchema = z.object({
+  // Who is away. Missing from the original patch shape, which made it the one
+  // field on a handover that could never be corrected after it was created.
+  userId: z.string().cuid().optional(),
+  title: z.string().trim().min(1).max(200).optional(),
+  startsOn: isoDateString.optional(),
+  endsOn: isoDateString.optional(),
+  notes: z.string().max(8000).nullish(),
+  details: z.string().max(20_000).nullish(),
+  status: z.enum(HANDOVER_STATUSES).optional(),
+});
+
+export const handoverItemInputSchema = z.object({
+  kind: z.enum(HANDOVER_ITEM_KINDS),
+  title: z.string().trim().min(1).max(300),
+  detail: z.string().max(4000).nullish(),
+  clientId: z.string().cuid().nullish(),
+  ownerUserId: z.string().cuid().nullish(),
+  cadence: z.string().max(120).nullish(),
+  channel: z.string().max(200).nullish(),
+  // A client entry holds paragraphs, so these are generous on purpose — a 4000
+  // cap silently truncating somebody's handover note is the worst failure here.
+  duties: z.string().max(20_000).nullish(),
+  other: z.string().max(20_000).nullish(),
+  status: z.enum(HANDOVER_ITEM_STATUSES).optional(),
+  orderKey: z.number().int().min(0).max(10_000).optional(),
+});
+
+export const handoverItemPatchSchema = handoverItemInputSchema.partial();
+
 export const absenceInputSchema = z
   .object({
     userId: z.string().cuid(),
@@ -1065,6 +1132,20 @@ export const taskUpdateSchema = z.object({
 export const taskMoveSchema = z.object({
   status: taskStatusSchema,
   orderKey: z.number().finite(),
+  /** A custom board column inside `status`, or null/absent for the status column itself. */
+  boardColumnId: z.string().max(40).nullish(),
+});
+
+export const boardColumnsSchema = z.object({
+  columns: z
+    .array(
+      z.object({
+        id: z.string().regex(/^col_[a-z0-9]{6,24}$/),
+        name: z.string().trim().min(1, "Name the column").max(40),
+        stage: z.enum(["BACKLOG", "TODO", "DOING", "IN_REVIEW", "DONE"]),
+      }),
+    )
+    .max(12, "A board can have up to 12 extra columns"),
 });
 
 export const taskCommentSchema = z.object({
@@ -1150,6 +1231,10 @@ export const dailyUpdatePushSchema = z.object({
   phase: z.enum(["AM", "PM"]),
   weekPlan: z.string().max(5000).optional(),
   note: z.string().max(2000).optional(),
+  // Optional target filter — when a dev's work this phase spans multiple clients,
+  // the composer lets them pick which client channel(s) the update posts to.
+  // Absent/empty = post to every involved client (unchanged behaviour).
+  clientIds: z.array(z.string()).max(100).optional(),
 });
 
 // ── Slack push (per-client "Push to Slack" composer + DevOps broadcast) ──────
@@ -1965,6 +2050,33 @@ export const launchpadItemPatchSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
 
+/**
+ * A requirement Gitwork adds to ONE client's kit (written into that kit's snapshot,
+ * never the template). The same copy fields and limits a template `checklist_item`
+ * carries (`launchpadFieldSchema`), and nothing else: no `id` (the server mints a
+ * `custom-` id), no `type` (always a requirement), no `showIf`/`prefillKey`.
+ */
+const launchpadCustomItemFields = {
+  label: z.string().trim().min(1, "Give the requirement a name.").max(200),
+  helper: z.string().trim().max(1000).nullable().optional(),
+  hint: z.string().trim().max(500).nullable().optional(),
+  ownedByClient: z.boolean().nullable().optional(),
+};
+
+export const launchpadCustomItemCreateSchema = z.object({
+  moduleId: z.string().trim().min(1).max(64),
+  ...launchpadCustomItemFields,
+});
+
+export const launchpadCustomItemPatchSchema = z
+  .object({
+    label: launchpadCustomItemFields.label.optional(),
+    helper: launchpadCustomItemFields.helper,
+    hint: launchpadCustomItemFields.hint,
+    ownedByClient: launchpadCustomItemFields.ownedByClient,
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update." });
+
 export const launchpadAnswersSchema = z.object({
   answers: z.record(z.string().trim().min(1).max(64), z.unknown()),
 });
@@ -1980,3 +2092,462 @@ export const launchpadDocPatchSchema = z
 export const launchpadDocApproveSchema = z.object({
   approved: z.boolean(),
 });
+
+// ─── Wiki Insights (charts & diagrams) ────────────────────────────────────────
+
+/**
+ * One board and its complete content.
+ *
+ * ⚠️ Rejects rather than coerces, and the two guards that matter are the ones a flat
+ * point table could not have expressed at all:
+ *
+ *  - a PIE may not carry a negative value — there is no such thing as a negative slice,
+ *    and rendering `Math.abs()` of one would quietly show the opposite of the truth;
+ *  - a VENN item may only sit in a region the board's SET COUNT can express, so a
+ *    two-set board can never hold an `ABC` item.
+ */
+export const insightColorKeySchema = z.enum([
+  "blue",
+  "violet",
+  "emerald",
+  "amber",
+  "rose",
+  "slate",
+]);
+
+const seriesPointSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  value: z.number().finite(),
+  color: insightColorKeySchema.nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+const vennItemSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  region: z.enum(["A", "B", "C", "AB", "AC", "BC", "ABC"]),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+const nodeBranchSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  color: insightColorKeySchema.nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  link: z.string().trim().max(2048).nullable().optional(),
+  leaves: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(80),
+        note: z.string().trim().max(500).nullable().optional(),
+        link: z.string().trim().max(2048).nullable().optional(),
+      }),
+    )
+    .max(120)
+    .optional(),
+});
+
+export const boardSchema = z
+  .object({
+    type: z.enum(["BAR", "PIE", "VENN", "NODE"]),
+    title: z.string().trim().min(1).max(120),
+    caption: z.string().trim().max(1000).nullable().optional(),
+    valueUnit: z.string().trim().max(12).nullable().optional(),
+    setALabel: z.string().trim().max(60).nullable().optional(),
+    setBLabel: z.string().trim().max(60).nullable().optional(),
+    setCLabel: z.string().trim().max(60).nullable().optional(),
+    coreLabel: z.string().trim().max(80).nullable().optional(),
+    points: z.array(seriesPointSchema).max(40).optional(),
+    items: z.array(vennItemSchema).max(120).optional(),
+    // 10 matches MAX_BRANCHES_RADIAL — past that the renderer shows the list instead, and
+    // accepting an eleventh would store a board the figure deliberately will not draw.
+    branches: z.array(nodeBranchSchema).max(10).optional(),
+  })
+  .superRefine((board, ctx) => {
+    if (board.type === "PIE") {
+      (board.points ?? []).forEach((p, i) => {
+        if (p.value < 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["points", i, "value"],
+            message: "A pie slice cannot be negative.",
+          });
+        }
+      });
+    }
+    if (board.type === "VENN") {
+      const threeSets = Boolean(board.setCLabel?.trim());
+      const allowed = threeSets
+        ? new Set(["A", "B", "C", "AB", "AC", "BC", "ABC"])
+        : new Set(["A", "B", "AB"]);
+      (board.items ?? []).forEach((item, i) => {
+        if (!allowed.has(item.region)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["items", i, "region"],
+            message: threeSets
+              ? `Unknown region "${item.region}".`
+              : `Region "${item.region}" needs a third set — this board has two.`,
+          });
+        }
+      });
+    }
+  });
+
+/* ---------------------------------------------------------------- wiki: running costs */
+
+const money = z.number().finite().min(0).max(100_000_000);
+
+const costTierSchema = z.object({
+  /** `null` is the unbounded top band — "5,000 users and up". */
+  upToUsers: z.number().int().min(1).max(100_000_000).nullable(),
+  amountMonthly: money,
+  label: z.string().trim().max(60).nullable().optional(),
+});
+
+export const costItemSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    vendor: z.string().trim().max(80).nullable().optional(),
+    kind: z.enum(["FLAT", "PER_USER", "METERED", "STEPPED"]),
+    amountMonthly: money.nullable().optional(),
+    amountAnnual: money.nullable().optional(),
+    unitLabel: z.string().trim().max(40).nullable().optional(),
+    includedUnits: z.number().finite().min(0).max(1_000_000_000).nullable().optional(),
+    unitPrice: z.number().finite().min(0).max(1_000_000).nullable().optional(),
+    unitsPerUser: z.number().finite().min(0).max(1_000_000).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+    /** False = priced as an option, kept out of the total. Absent means committed. */
+    included: z.boolean().optional(),
+    tiers: z.array(costTierSchema).max(20).optional(),
+  })
+  .superRefine((item, ctx) => {
+    if (item.kind !== "STEPPED") return;
+    const tiers = item.tiers ?? [];
+    // ⚠️ A stepped plan with no bands prices at nothing, so the engine reports it as a
+    // blind spot rather than as £0 — but storing one is still a mistake worth catching
+    // at the edge, where the author can see the message.
+    if (tiers.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tiers"],
+        message: "A stepped plan needs at least one band.",
+      });
+      return;
+    }
+    // Bands must ASCEND and only the last may be unbounded. Out of order, `tierFor`
+    // would pick the first band whose cap covers the head count and quietly under-price.
+    let prev = 0;
+    tiers.forEach((tier, i) => {
+      if (tier.upToUsers === null) {
+        if (i !== tiers.length - 1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["tiers", i, "upToUsers"],
+            message: "Only the last band can be open-ended.",
+          });
+        }
+        return;
+      }
+      if (tier.upToUsers <= prev) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["tiers", i, "upToUsers"],
+          message: "Bands must go up — each one covers more users than the last.",
+        });
+      }
+      prev = tier.upToUsers;
+    });
+  });
+
+export const costSettingsSchema = z.object({
+  /** ISO 4217, entered by hand. One currency per model — see src/types/wiki-costs.ts. */
+  currency: z.string().trim().length(3).toUpperCase().optional(),
+  /** ⚠️ min 0, not 1 — a client before launch has no users and still pays the fixed
+   *  fees. That floor is a real figure the page is built to show; rejecting it would
+   *  force an operator to enter a user count the client does not have. */
+  headlineUsers: z.number().int().min(0).max(100_000_000).optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const teamMessageCreateSchema = z.object({
+  subject: z.string().trim().min(1, "Give it a subject").max(200),
+  // Generous, and deliberately so: this is where a weekly summary lives, and a limit
+  // that truncates the thing the feature exists for is worse than a long row.
+  body: z.string().trim().min(1, "Write something").max(20000),
+  recipientIds: z.array(z.string().min(1)).min(1, "Pick at least one person").max(200),
+});
+
+// ── CRM (lead automation, actions, conversion) ──────────────────────────────
+
+export const crmSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  emailDomains: z.array(z.string().trim().max(253)).max(20).optional(),
+  ownerId: z.string().min(1).nullable().optional(),
+  /** Only `false` is accepted — "resume automation". Pinning happens by setting a stage by hand. */
+  pinned: z.literal(false).optional(),
+});
+
+export const crmSuggestionResolveSchema = z.object({ action: z.enum(["accept", "dismiss"]) });
+
+export const leadActionCreateSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  dueAt: z.string().trim().nullable().optional(),
+  ownerId: z.string().min(1).nullable().optional(),
+});
+
+export const leadActionUpdateSchema = z.object({
+  title: z.string().max(200).optional(),
+  dueAt: z.string().trim().nullable().optional(),
+  ownerId: z.string().min(1).nullable().optional(),
+  transition: z.enum(["accept", "dismiss", "done", "reopen"]).optional(),
+});
+
+export const crmMailboxSchema = z.object({ enabled: z.boolean() });
+
+export const crmConvertSchema = z.object({
+  fields: z.array(z.enum(["primaryContactName", "primaryContactEmail", "website"])).max(3),
+});
+
+// ─── Wiki: Estimates ───────────────────────────────────────────────────────────
+// Limits come from ESTIMATE_LIMITS so the editor and the route cannot disagree — the
+// request-title bug (src/lib/wiki-request-title.ts) was exactly a limit the form never knew.
+
+const estimatePhaseSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  name: z.string().trim().min(1, "Every phase needs a name").max(80),
+  effortDays: z
+    .number()
+    .positive("Effort must be more than zero")
+    .max(ESTIMATE_LIMITS.maxEffortDays),
+  maxDevs: z.number().int().min(1).max(ESTIMATE_LIMITS.maxTeam).nullable(),
+});
+
+export const estimateSchema = z.object({
+  title: z.string().trim().min(1, "Give the estimate a title").max(120),
+  summary: z.string().trim().max(600).nullable().optional(),
+  startDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be YYYY-MM-DD")
+    .nullable()
+    .optional(),
+  teamSizes: z
+    .array(z.number().int().min(1).max(ESTIMATE_LIMITS.maxTeam))
+    .min(1, "Compare at least one team size")
+    .max(ESTIMATE_LIMITS.maxTeamSizes),
+  recommendedTeam: z.number().int().min(1).max(ESTIMATE_LIMITS.maxTeam).nullable().optional(),
+  coordination: z.enum(["LOW", "TYPICAL", "HIGH"]),
+  contingencyPct: z.number().int().min(0).max(ESTIMATE_LIMITS.maxContingencyPct),
+  phases: z
+    .array(estimatePhaseSchema)
+    .min(1, "Add at least one phase")
+    .max(ESTIMATE_LIMITS.maxPhases),
+});
+export type EstimateInput = z.infer<typeof estimateSchema>;
+
+// ─── Wiki: Comparisons ─────────────────────────────────────────────────────────
+// Limits come from COMPARISON_LIMITS, shared with the editor and the MCP tools. Columns and
+// rows are replaced wholesale on every write; the server re-parses them with
+// parseComparisonContent, so a cell keyed on a column that is not in `columns` is dropped.
+
+const comparisonCellSchema = z.object({
+  state: z.enum(["yes", "no", "partial", "text", "none"]),
+  text: z.string().trim().max(CMP.maxText, `A cell holds at most ${CMP.maxText} characters`).optional(),
+});
+
+const comparisonColumnSchema = z.object({
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid column id"),
+  title: z.string().trim().min(1, "Every column needs a title").max(CMP.maxColumnTitle),
+  subtitle: z.string().trim().max(CMP.maxColumnSubtitle).optional(),
+  highlight: z.boolean().optional(),
+});
+
+const comparisonRowSchema = z.object({
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid row id"),
+  kind: z.enum(["row", "group"]),
+  // Empty is allowed: a row the editor has just added and nobody has named yet.
+  label: z.string().trim().max(CMP.maxLabel),
+  note: z.string().trim().max(CMP.maxNote).optional(),
+  cells: z.record(z.string(), comparisonCellSchema),
+});
+
+export const comparisonSchema = z.object({
+  title: z.string().trim().min(1, "Give the table a title").max(CMP.maxTableTitle),
+  description: z.string().trim().max(CMP.maxDescription).nullable().optional(),
+  columns: z
+    .array(comparisonColumnSchema)
+    .max(CMP.maxColumns, `A comparison can have at most ${CMP.maxColumns} columns`),
+  rows: z.array(comparisonRowSchema).max(CMP.maxRows, `A comparison can have at most ${CMP.maxRows} rows`),
+});
+export type ComparisonInput = z.infer<typeof comparisonSchema>;
+
+export const comparisonOrderSchema = z.object({
+  order: z.array(z.string().min(1).max(64)).max(CMP.maxTables),
+});
+
+// ─── Wiki: Sheets ──────────────────────────────────────────────────────────────
+// Limits and value types come from SHEET_LIMITS / coerceCellValue in src/lib/wiki-sheets.ts,
+// shared with the grid and the MCP tools. These schemas check SHAPE; each cell value is
+// coerced (and refused with a sentence) per column type on the server.
+
+const sheetColumnTypeSchema = z.enum(
+  COLUMN_TYPES as readonly [SheetColumnType, ...SheetColumnType[]],
+);
+// A picked person (id checked against the directory on the server, §73.1) and a media
+// list (each URL re-checked by the safe-link rule) are the two non-scalar shapes.
+const sheetPersonValueSchema = z
+  .object({
+    id: z.string().max(100),
+    name: z.string().max(SHT.maxPerson),
+    kind: z.enum(["TEAM", "CLIENT"]),
+  })
+  .strict();
+const sheetMediaValueSchema = z
+  .array(
+    z.union([
+      z.string().max(SHT.maxLink),
+      z.object({ url: z.string().max(SHT.maxLink), title: z.string().max(200).optional() }).strict(),
+    ]),
+  )
+  .max(SHT.maxMedia);
+const sheetCellValueSchema = z.union([
+  z.string().max(SHT.maxLongText),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  sheetPersonValueSchema,
+  sheetMediaValueSchema,
+]);
+const sheetCellsSchema = z.record(z.string().max(80), sheetCellValueSchema);
+
+export const sheetColumnInputSchema = z.object({
+  id: z.string().trim().regex(/^[A-Za-z0-9_-]{1,64}$/, "Invalid column id").optional(),
+  title: z.string().trim().min(1, "Every column needs a title").max(SHT.maxColumnTitle),
+  type: sheetColumnTypeSchema.optional(),
+  options: z.array(z.string().trim().max(SHT.maxOption)).max(SHT.maxOptions).optional(),
+  width: z.number().int().min(SHT.minWidth).max(SHT.maxWidth).optional(),
+  clientEditable: z.boolean().optional(),
+});
+
+const sheetPermissionFields = {
+  clientCanEdit: z.boolean().optional(),
+  clientCanAddRows: z.boolean().optional(),
+  clientCanSendToBoard: z.boolean().optional(),
+};
+
+export const sheetCreateSchema = z.object({
+  title: z.string().trim().min(1, "Give the sheet a title").max(SHT.maxTitle),
+  description: z.string().trim().max(SHT.maxDescription).nullable().optional(),
+  columns: z
+    .array(sheetColumnInputSchema)
+    .max(SHT.maxColumns, `A sheet can have at most ${SHT.maxColumns} columns`),
+  titleColumnId: z.string().max(64).nullable().optional(),
+  rows: z.array(sheetCellsSchema).max(SHT.maxBatch).optional(),
+  ...sheetPermissionFields,
+});
+
+export const sheetUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(SHT.maxTitle).optional(),
+  description: z.string().trim().max(SHT.maxDescription).nullable().optional(),
+  titleColumnId: z.string().max(64).nullable().optional(),
+  ...sheetPermissionFields,
+});
+
+export const sheetColumnPatchSchema = z.object({
+  title: z.string().trim().min(1).max(SHT.maxColumnTitle).optional(),
+  type: sheetColumnTypeSchema.optional(),
+  options: z.array(z.string().trim().max(SHT.maxOption)).max(SHT.maxOptions).optional(),
+  width: z.number().int().min(SHT.minWidth).max(SHT.maxWidth).nullable().optional(),
+  clientEditable: z.boolean().optional(),
+  position: z.number().int().min(0).max(SHT.maxColumns).optional(),
+});
+
+export const sheetAddColumnsSchema = z.object({
+  columns: z.array(sheetColumnInputSchema).min(1).max(SHT.maxColumns),
+});
+
+export const sheetAddRowsSchema = z.object({
+  rows: z.array(sheetCellsSchema).min(1).max(SHT.maxBatch),
+});
+
+/**
+ * A CLIENT's cell edit. `.strict()` on purpose: a client's resizes are local to their own
+ * browser (§73.1), so a `height` (or anything else) in the body is refused with a 400, not
+ * quietly dropped.
+ */
+export const sheetCellPatchSchema = z
+  .object({
+    cells: sheetCellsSchema,
+  })
+  .strict();
+
+/** The TEAM's row edit: cells, the row's height (null = auto), or both. */
+export const sheetRowPatchSchema = z
+  .object({
+    cells: sheetCellsSchema.optional(),
+    height: z.number().int().min(SHT.minRowHeight).max(SHT.maxRowHeight).nullable().optional(),
+  })
+  .strict()
+  .refine((b) => b.cells !== undefined || b.height !== undefined, "Nothing to change.");
+
+export const sheetRowsBulkSchema = z.object({
+  action: z.enum(["delete", "restore", "send"]),
+  rowIds: z.array(z.string().min(1).max(64)).min(1).max(SHT.maxBatch),
+  featureBlockId: z.string().max(64).nullable().optional(),
+});
+
+export const sheetOrderSchema = z.object({
+  order: z.array(z.string().min(1).max(64)).max(SHT.maxRows),
+});
+
+// ─── AI search (Pulse → AI search) ───────────────────────────────────────────
+// Blank clears a field. Anything else must be a real property, or it's refused with a sentence.
+export const aiSearchConfigSchema = z
+  .object({
+    searchConsoleSite: z.string().trim().max(300),
+    ga4PropertyId: z.string().trim().max(40),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.searchConsoleSite && !normaliseSearchConsoleSite(v.searchConsoleSite)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["searchConsoleSite"],
+        message: "Use sc-domain:example.com for a domain property, or the full URL (https://example.com/) for a URL-prefix one.",
+      });
+    }
+    if (v.ga4PropertyId && !normaliseGa4PropertyId(v.ga4PropertyId)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ga4PropertyId"],
+        message: "The GA4 property id is the number under Admin → Property details, e.g. 412345678.",
+      });
+    }
+  })
+  .transform((v) => ({
+    searchConsoleSite: v.searchConsoleSite ? normaliseSearchConsoleSite(v.searchConsoleSite) : null,
+    ga4PropertyId: v.ga4PropertyId ? normaliseGa4PropertyId(v.ga4PropertyId) : null,
+  }));
+
+// ─── AI search: buyer questions ──────────────────────────────────────────────
+export const aiAnswersConfigSchema = z
+  .object({
+    questions: z
+      .array(z.string().trim().min(1).max(AI_ANSWER_LIMITS.maxQuestionLength))
+      .min(1, "Add at least one question.")
+      .max(AI_ANSWER_LIMITS.maxQuestions, `Up to ${AI_ANSWER_LIMITS.maxQuestions} questions.`),
+    brandNames: z
+      .array(z.string().trim())
+      .min(1, "Add the name the answers should mention.")
+      .max(AI_ANSWER_LIMITS.maxBrandNames),
+    domains: z.array(z.string().trim()).min(1, "Add the domain the answers should cite.").max(AI_ANSWER_LIMITS.maxDomains),
+    engines: z.array(z.enum(AI_ENGINE_IDS as [string, ...string[]])).min(1, "Pick at least one assistant to ask."),
+    autoWeekly: z.boolean(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    v.brandNames.forEach((b, i) => {
+      if (!normaliseBrandName(b)) ctx.addIssue({ code: "custom", path: ["brandNames", i], message: "A name is 2 to 60 characters." });
+    });
+    v.domains.forEach((d, i) => {
+      if (!normaliseDomain(d)) ctx.addIssue({ code: "custom", path: ["domains", i], message: `"${d}" isn't a domain. Use the form gitwork.co.uk.` });
+    });
+  });

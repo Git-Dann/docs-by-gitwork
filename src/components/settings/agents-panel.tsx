@@ -12,6 +12,7 @@ import {
 import { useAgents, useSaveAgent, useResetAgent, type AgentConfigRecord } from "@/hooks/use-agents";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { cn } from "@/lib/format";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 
 const PRODUCT_LABELS: Record<string, string> = {
   pulse: "Pulse",
@@ -30,10 +31,7 @@ export function AgentsPanel() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-3)]">
-        <ArrowPathIcon className="size-4 animate-spin" />
-        Loading agents…
-      </div>
+      <LoadingState label="Loading agents…" className="py-8" />
     );
   }
 

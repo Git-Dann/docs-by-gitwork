@@ -10,17 +10,28 @@
  * `src/lib/demo/dev-demo-data.ts` for the canned data. No auth, no database.
  */
 
+import { HalloweenFogFront, HalloweenLogoBadge, HalloweenScene } from "@/components/seasonal/halloween";
+import { ChristmasLogoBadge, ChristmasSnow } from "@/components/seasonal/christmas";
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SessionProvider } from "next-auth/react";
 import { Cog8ToothIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { DeskDrawer } from "@/components/desk/desk-drawer";
+import { CommandMenu, CommandMenuButton } from "@/components/command-menu";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import "@/lib/demo/demo-fetch";
 import { demoSession } from "@/lib/demo/dev-demo-data";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
 import { filterModules, readDemoModules, readDemoColor, brandCssVars } from "@/lib/demo/demo-config";
+
+/** The command menu speaks in /app links; on the demo they open the demo's own pages. */
+function demoHref(href: string): string {
+  if (href.startsWith("/app/portal")) return "/demo/portal";
+  if (href.startsWith("/app/docs/")) return `/demo/docs/${href.slice("/app/docs/".length)}`;
+  if (href.startsWith("/app/settings")) return "/demo";
+  return href;
+}
 
 export function DemoShell({
   active,
@@ -90,18 +101,19 @@ export function DemoShell({
   return (
     <SessionProvider session={demoSession as never}>
       <div
-        className="relative flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
+        className="relative isolate flex h-[100dvh] flex-col overflow-hidden bg-[var(--surface-canvas)] text-[var(--text-1)]"
         onClickCapture={handleDemoNav}
       >
         {brandColor ? (
           <style dangerouslySetInnerHTML={{ __html: `:root{${brandCssVars(brandColor)}}` }} />
         ) : null}
+        {mounted ? <HalloweenScene /> : null}
         <div className="flex min-h-0 w-full flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
           {/* ── Sidebar (mirrors the real app shell) ── */}
           <aside className="hidden border-r border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-brand-soft)_0%,var(--surface-0)_38%)] lg:flex lg:min-h-0">
             <div className="flex h-full min-h-0 w-full flex-col">
               <div className="flex shrink-0 items-center justify-start border-b border-[var(--border-2)] px-6 pb-5 pt-7">
-                <Link href="/demo" aria-label="All demos" className="block text-left" suppressHydrationWarning>
+                <Link href="/demo" aria-label="All demos" className="relative block w-fit text-left" suppressHydrationWarning>
                   {brand ? (
                     <span className="block">
                       <span className="block font-[family-name:var(--font-display)] text-[26px] leading-[1.1] tracking-[-0.5px] text-[var(--text-1)]">
@@ -121,6 +133,8 @@ export function DemoShell({
                       className="h-12 w-auto dark:brightness-0 dark:invert"
                     />
                   )}
+                  <HalloweenLogoBadge />
+                  <ChristmasLogoBadge />
                 </Link>
               </div>
               <div className="flex min-h-0 flex-1 flex-col px-3 py-4">
@@ -170,7 +184,7 @@ export function DemoShell({
           </aside>
 
           {/* ── Content column ── */}
-          <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)]">
+          <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-canvas)] halloween-clear">
             <div className="flex items-center justify-between gap-4 border-b border-[var(--brand-200)] bg-[var(--surface-brand)] px-6 py-2 sm:px-8">
               <p className="text-xs font-medium text-[var(--brand-800)]">
                 <span
@@ -183,12 +197,15 @@ export function DemoShell({
               </p>
             </div>
 
-            <header className="hidden border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:block">
-              <div className="max-w-4xl">
+            <header className="halloween-clear hidden items-start justify-between gap-4 border-b border-[var(--border-2)] bg-[linear-gradient(180deg,var(--surface-0)_0%,var(--surface-brand-soft)_100%)] px-6 pb-5 pt-7 sm:px-8 lg:flex">
+              <div className="min-w-0 max-w-4xl">
                 <h1 className="text-[44px] font-normal leading-[1.15] tracking-[-0.03em] text-[var(--text-1)]">
                   {withBrand(title)}
                 </h1>
                 <p className="mt-1.5 text-sm leading-6 text-[var(--text-3)]">{withBrand(subtitle)}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <CommandMenuButton className="mr-1" />
               </div>
             </header>
 
@@ -209,6 +226,16 @@ export function DemoShell({
           <DemoErrorBoundary fallback={null}>
             <DeskDrawer />
           </DemoErrorBoundary>
+        ) : null}
+        {mounted ? <HalloweenFogFront /> : null}
+        {mounted ? <ChristmasSnow /> : null}
+        {mounted ? (
+          <CommandMenu
+            pages={nav}
+            canSeeClients={nav.some((m) => m.id === "portal")}
+            canSeeDocs={nav.some((m) => m.id === "docs")}
+            mapHref={demoHref}
+          />
         ) : null}
       </div>
     </SessionProvider>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTaskCounts } from "@/hooks/use-tasks";
 import type { WidgetSize } from "@/components/app-overview";
 import { TASK_STATUSES, TASK_STATUS_LABELS, type TaskStatus } from "@/types/tasks";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 const ZERO_COUNTS = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
 
@@ -16,7 +17,7 @@ export default function TasksWidget({ size }: { size: WidgetSize }) {
   const open = data?.open ?? 0;
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   return (

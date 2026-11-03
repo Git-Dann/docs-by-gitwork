@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import imageCompression from "browser-image-compression";
-import { PhotoIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { AnimatedFileUpload } from "@/components/ui/easyui/animated-file-upload";
 import { useUploadTaskAttachment, useDeleteTaskAttachment } from "@/hooks/use-tasks";
 import type { TaskAttachmentDTO } from "@/types/tasks";
 
@@ -13,7 +14,10 @@ const COMPRESSION_OPTS: Parameters<typeof imageCompression>[1] = {
   initialQuality: 0.9,
 };
 
-/** Screenshots/images attached directly to a task — upload, thumbnail grid, lightbox. */
+/**
+ * Screenshots/images attached directly to a task: EasyUI's Animated File Upload (drop a
+ * screenshot straight onto the task), a thumbnail grid and a lightbox.
+ */
 export function TaskAttachments({
   taskId,
   attachments,
@@ -23,28 +27,16 @@ export function TaskAttachments({
 }) {
   const upload = useUploadTaskAttachment();
   const del = useDeleteTaskAttachment();
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<TaskAttachmentDTO | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setError(null);
-    setUploading(true);
-    try {
-      // HEIC/HEIF can't be compressed in-browser reliably — send as-is; the server transcodes it.
-      const toUpload = file.type.startsWith("image/heic") || file.type.startsWith("image/heif")
-        ? file
-        : await imageCompression(file, COMPRESSION_OPTS);
-      await upload.mutateAsync({ taskId, file: toUpload });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to attach image");
-    } finally {
-      setUploading(false);
-    }
+  async function send(file: File, onProgress: (p: number) => void) {
+    onProgress(20);
+    // HEIC/HEIF can't be compressed in-browser reliably — send as-is; the server transcodes it.
+    const toUpload = file.type.startsWith("image/heic") || file.type.startsWith("image/heif")
+      ? file
+      : await imageCompression(file, { ...COMPRESSION_OPTS, onProgress: (p) => onProgress(20 + Math.round(p * 0.5)) });
+    onProgress(80);
+    await upload.mutateAsync({ taskId, file: toUpload });
   }
 
   async function handleDelete(attachmentId: string) {
@@ -58,29 +50,9 @@ export function TaskAttachments({
         <p className="app-eyebrow">
           Attachments {attachments.length > 0 ? `· ${attachments.length}` : ""}
         </p>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--brand-700)] transition hover:text-[var(--brand-800)] disabled:opacity-50"
-        >
-          <PhotoIcon className="h-3.5 w-3.5" />
-          {uploading ? "Uploading…" : "Add image"}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-        />
       </div>
 
-      {error ? <p className="mb-2 text-xs text-[var(--danger-500)]">{error}</p> : null}
-
-      {attachments.length === 0 ? (
-        <p className="text-xs text-[var(--text-4)]">No images attached.</p>
-      ) : (
+      {attachments.length === 0 ? null : (
         <div className="grid grid-cols-4 gap-2">
           {attachments.map((a) => (
             <button
@@ -99,6 +71,22 @@ export function TaskAttachments({
           ))}
         </div>
       )}
+
+      <AnimatedFileUpload
+        className={attachments.length ? "mt-2" : undefined}
+        variant="compact"
+        // Listed rather than a wildcard: iPhone HEIC included (the server transcodes it).
+        accept=".png,.jpg,.jpeg,.webp,.gif,.heic,.heif"
+        maxSize={25 * 1024 * 1024}
+        maxFiles={5}
+        dropTitle="Drop screenshots here"
+        dropSubtitle="or browse for an image"
+        removeCompletedAfterMs={1200}
+        uploadHandler={async (item, onProgress) => {
+          if (!item.rawFile) throw new Error("The image could not be read");
+          await send(item.rawFile, onProgress);
+        }}
+      />
 
       {viewing ? (
         <div

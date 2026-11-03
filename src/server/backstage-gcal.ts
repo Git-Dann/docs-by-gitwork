@@ -4,6 +4,8 @@ import { googleClientForRefreshToken } from "@/server/google-auth";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import type { CalendarConnectionMember, TeamCalendarEvent } from "@/types/backstage";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
+import { dedupeAbsences } from "@/lib/backstage/dedupe-absences";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 function displayName(u: { name: string | null; email: string }): string {
   return u.name?.trim() ? u.name : u.email;
@@ -26,8 +28,10 @@ export function monthGridRange(year: number, month: number): { from: Date; to: D
 export async function listCalendarConnections(
   user: EffectiveUser,
 ): Promise<{ selfConnected: boolean; members: CalendarConnectionMember[] }> {
+  // ACTIVE only — never read a leaver's calendar with their stored token.
   const members = await prisma.workspaceMember.findMany({
     where: {
+      ...ACTIVE_MEMBER,
       workspaceId: user.workspaceId,
       user: {
         ...seedAccountUserWhere(),
@@ -64,6 +68,7 @@ export async function getTeamCalendarEvents(
 
   const members = await prisma.workspaceMember.findMany({
     where: {
+      ...ACTIVE_MEMBER,
       workspaceId: user.workspaceId,
       userId: { in: userIds },
       user: { googleOAuthRefreshToken: { not: null } },
@@ -88,6 +93,14 @@ export async function getTeamCalendarEvents(
           singleEvents: true,
           orderBy: "startTime",
           maxResults: 250,
+          // ⚠️ Ask for MEETINGS, not everything on the calendar. Without this the API
+          // also returns `birthday` and `workingLocation` events — neither is a meeting,
+          // both are all-day, and Google marks contact birthdays `visibility: private`,
+          // so they arrived here as anonymous all-day "Busy" blocks on the viewer's own
+          // row. (Reported live: two "Busy" bars that were one duplicated contact's
+          // birthday.) Both types also carry `transparency: transparent`, i.e. Google
+          // itself says they do not make you busy.
+          eventTypes: ["default", "outOfOffice", "focusTime"],
         });
         const name = displayName(m.user);
         const out: TeamCalendarEvent[] = [];
@@ -97,8 +110,13 @@ export async function getTeamCalendarEvents(
           const endRaw = ev.end?.dateTime ?? ev.end?.date;
           if (!startRaw) continue;
           const allDay = !ev.start?.dateTime;
-          const isPrivate = ev.visibility === "private";
-          // Respect privacy: don't leak titles of events marked private.
+          // ⚠️ Mask private titles from COLLEAGUES, never from the person whose calendar
+          // it is. The masking exists so one teammate cannot read another's private
+          // event titles — applied to your own row it just hides your day from you, and
+          // an unlabelled "Busy" on your own calendar reads as a bug in the product
+          // rather than as privacy working.
+          const isOwnCalendar = m.user.id === user.id;
+          const isPrivate = ev.visibility === "private" && !isOwnCalendar;
           const summary = isPrivate ? "Busy" : ev.summary ?? "Busy";
           // Reliable conference link only (hangout / Meet video entry point) —
           // never scrape description/location for other members' events. Null on
@@ -117,6 +135,7 @@ export async function getTeamCalendarEvents(
             end: endRaw ?? startRaw,
             allDay,
             meetLink,
+            outOfOffice: ev.eventType === "outOfOffice",
           });
         }
         return out;
@@ -127,5 +146,8 @@ export async function getTeamCalendarEvents(
     }),
   );
 
-  return perMember.flat();
+  // One absence booked twice (an HR sync plus a hand-made out-of-office) is one
+  // absence. Narrow by design — see dedupe-absences.ts for why this can never
+  // swallow a meeting.
+  return dedupeAbsences(perMember.flat());
 }

@@ -33,6 +33,7 @@
  * for brand colour so light/dark mode toggles cascade through.
  */
 
+import { GitworkMark } from "@/components/gitwork-mark";
 import type { CSSProperties, ReactNode } from "react";
 import { blendOver } from "@/lib/blend-over";
 import { InlineEditableText, InlineTextArea } from "@/lib/sections/inline-text";
@@ -178,41 +179,6 @@ const TONE_PALETTE: Record<NonNullable<DocumentCoverCallout["tone"]>, { border: 
   amber: { border: "#D97706", text: "#92400E" },
   neutral: { border: "#475569", text: "#475569" },
 };
-
-/**
- * The Gitwork round "G." mark — a cream circle with a navy Fraunces "G" and a purple period.
- * Pure inline (no asset). Used on the Gitwork cover + the navy running-header bar.
- */
-export function GitworkMark({ size = 44 }: { size?: number }) {
-  return (
-    <span
-      aria-label="Gitwork"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: "#F2EDE4",
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-fraunces), 'Fraunces', Georgia, serif",
-          fontSize: Math.round(size * 0.5),
-          fontWeight: 700,
-          lineHeight: 1,
-          color: "#0C0C18",
-          transform: "translateY(-1px)",
-        }}
-      >
-        G<span style={{ color: "#6B52FF" }}>.</span>
-      </span>
-    </span>
-  );
-}
 
 /** Faces + palette the bottom strip inherits from whichever cover renders it. */
 interface CoverStripSkin {

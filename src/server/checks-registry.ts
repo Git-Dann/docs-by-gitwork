@@ -2,6 +2,7 @@ import { CATEGORIES, ORDERED_CATEGORIES, type CheckCategory } from "./pulse-chec
 import { STANDARDS_VALIDATION_REGISTRY } from "./pulse-checks/standards-verification";
 import { SERVICE_DEPTH_REGISTRY } from "./pulse-checks/service-depth";
 import { OPERATIONAL_DEPTH_REGISTRY } from "./pulse-checks/operational-depth";
+import { WITHHELD } from "./pulse-checks/check-relevance-data";
 
 /**
  * Static registry of every Pulse check (key + category + label). This is the
@@ -56,7 +57,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "android_x_screenshot_flag", category: CATEGORIES.APP_STORE, label: "Sensitive screens set FLAG_SECURE" },
   { key: "android_x_root_debug_detection", category: CATEGORIES.APP_STORE, label: "Release builds do not ship debug-only escape hatches" },
   { key: "android_x_signing_config_committed", category: CATEGORIES.APP_STORE, label: "Signing credentials are not committed" },
-  { key: "android_x_app_bundle", category: CATEGORIES.APP_STORE, label: "The project builds an Android App Bundle" },
+  { key: "android_x_app_bundle", category: CATEGORIES.APP_STORE, label: "Releases are built as an Android App Bundle" },
   { key: "android_x_strict_mode", category: CATEGORIES.APP_STORE, label: "StrictMode is not enabled in release builds" },
   // -- Cross-platform mobile extended — OTA, parity, list/image performance --
   { key: "xp_ota_updates_signed", category: CATEGORIES.APP_STORE, label: "Over-the-air code updates are signature-verified" },
@@ -218,6 +219,10 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "pulse_ci_remote_shell", category: CATEGORIES.SECURITY, label: "CI does not pipe remote downloads into a shell" },
   { key: "pulse_install_lifecycle_risk", category: CATEGORIES.SECURITY, label: "Install lifecycle hooks avoid remote or inline execution" },
   { key: "pulse_url_secret", category: CATEGORIES.SECRETS_KEYS, label: "Credentials are not placed in URLs" },
+  // Licence review of declared libraries via deps.dev (code-health/licences.ts).
+  { key: "dependency_copyleft_licences", category: CATEGORIES.LEGAL, label: "Declared libraries carry no strong-copyleft licence" },
+  // Deleted credential files still readable from git history (code-health/history-secrets.ts).
+  { key: "secrets_in_git_history", category: CATEGORIES.SECRETS_KEYS, label: "No credentials left in deleted files in git history" },
   { key: "pulse_request_body_limit", category: CATEGORIES.API_QUALITY, label: "Server request bodies have explicit size limits" },
   { key: "pulse_upload_limit", category: CATEGORIES.SECURITY, label: "File uploads enforce size limits" },
   { key: "pulse_ci_untrusted_checkout", category: CATEGORIES.SECURITY, label: "Privileged CI does not check out contributor-controlled code" },
@@ -247,6 +252,16 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // -- Code cleanliness: structural debt, measured --
   { key: "clean_file_size", category: CATEGORIES.CODE_QUALITY, label: "Files stay a readable length" },
   { key: "clean_nesting_depth", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested" },
+  { key: "code_health_score", category: CATEGORIES.CODE_QUALITY, label: "Code health" },
+  { key: "code_health_complex_functions", category: CATEGORIES.CODE_QUALITY, label: "Functions are simple enough to test" },
+  { key: "code_health_long_functions", category: CATEGORIES.CODE_QUALITY, label: "Functions are a readable length" },
+  { key: "code_health_large_classes", category: CATEGORIES.CODE_QUALITY, label: "Classes have one clear job" },
+  { key: "code_health_large_files", category: CATEGORIES.CODE_QUALITY, label: "Source files stay a manageable size" },
+  { key: "code_health_parameter_lists", category: CATEGORIES.CODE_QUALITY, label: "Functions take few parameters" },
+  { key: "code_health_nesting", category: CATEGORIES.CODE_QUALITY, label: "Logic is not deeply nested (full measure)" },
+  { key: "code_health_import_cycles", category: CATEGORIES.CODE_QUALITY, label: "No import cycles between files" },
+  { key: "code_health_hub_files", category: CATEGORIES.CODE_QUALITY, label: "No complex file that everything depends on" },
+  { key: "dependency_osv_vulnerabilities", category: CATEGORIES.SECURITY, label: "Libraries have no known vulnerabilities" },
   { key: "clean_duplication_cross_file", category: CATEGORIES.CODE_QUALITY, label: "Logic is not copy-pasted between files" },
   { key: "clean_duplication_in_file", category: CATEGORIES.CODE_QUALITY, label: "Blocks are not repeated within a file" },
   { key: "clean_commented_out_code", category: CATEGORIES.CODE_QUALITY, label: "No commented-out code left behind" },
@@ -316,7 +331,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "tauri_updater_signature", category: CATEGORIES.SECURITY, label: "Updates are signature-verified" },
   { key: "tauri_fs_scope", category: CATEGORIES.SECURITY, label: "Filesystem access is scoped" },
   { key: "tauri_shell_scope", category: CATEGORIES.SECURITY, label: "Shell command execution is constrained" },
-  { key: "tauri_shell_open_validator", category: CATEGORIES.SECURITY, label: "shell:allow-open restricts the URL scheme" },
+  { key: "tauri_shell_open_validator", category: CATEGORIES.SECURITY, label: "Opening links is restricted to web URLs (shell/opener scope)" },
   { key: "tauri_version_current", category: CATEGORIES.CODE_QUALITY, label: "Built on Tauri v2" },
   { key: "desktop_embedded_secret", category: CATEGORIES.SECRETS_KEYS, label: "No API secrets embedded in the shipped app" },
   { key: "desktop_version_declared", category: CATEGORIES.CODE_QUALITY, label: "The app declares a version" },
@@ -404,6 +419,11 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "store_screenshots", category: CATEGORIES.STORE_LISTING, label: "Screenshots / preview assets" },
   { key: "store_ratings", category: CATEGORIES.STORE_LISTING, label: "Ratings & reviews" },
   { key: "store_privacy_policy", category: CATEGORIES.STORE_LISTING, label: "Privacy policy linked" },
+  { key: "store_privacy_policy_owner", category: CATEGORIES.STORE_LISTING, label: "Privacy policy belongs to the publisher" },
+  { key: "cws_privacy_practices", category: CATEGORIES.STORE_LISTING, label: "Privacy practices disclosed" },
+  { key: "cws_trader_status", category: CATEGORIES.STORE_LISTING, label: "EU trader declaration" },
+  { key: "cws_trust_badges", category: CATEGORIES.STORE_LISTING, label: "Featured / Established publisher badges" },
+  { key: "store_last_updated", category: CATEGORIES.STORE_LISTING, label: "Listing updated in the last 12 months" },
   { key: "store_age_rating", category: CATEGORIES.STORE_LISTING, label: "Age / content rating" },
   { key: "store_iap_disclosed", category: CATEGORIES.STORE_LISTING, label: "In-app purchases disclosed" },
   { key: "appstore_subtitle", category: CATEGORIES.STORE_LISTING, label: "App subtitle (keyword field)" },
@@ -522,7 +542,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "security_trust_page", category: CATEGORIES.SAAS, label: "Security / trust page" },
   { key: "in_app_notifications", category: CATEGORIES.SAAS, label: "In-app notification system" },
   { key: "uptime_monitoring", category: CATEGORIES.OBSERVABILITY, label: "External uptime monitoring" },
-  { key: "log_aggregation", category: CATEGORIES.OBSERVABILITY, label: "Centralised log aggregation" },
+  { key: "log_aggregation", category: CATEGORIES.OBSERVABILITY, label: "Logs are shipped to a log store" },
   { key: "apm_signals", category: CATEGORIES.OBSERVABILITY, label: "Application Performance Monitoring (APM)" },
   { key: "real_user_monitoring", category: CATEGORIES.OBSERVABILITY, label: "Real User Monitoring (RUM)" },
   { key: "payment_trust_badges", category: CATEGORIES.PAYMENTS, label: "Payment trust badges" },
@@ -578,6 +598,25 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "graphql_signal", category: CATEGORIES.SAAS, label: "GraphQL API" },
   { key: "search_functionality", category: CATEGORIES.SAAS, label: "Search functionality" },
   { key: "cookie_consent_granular", category: CATEGORIES.LEGAL, label: "Granular cookie consent (accept/reject all)" },
+  // Measured in a fresh browser (pulse-agents/consent-tracking-agent.ts): what the page
+  // sends before a choice, and after pressing Reject.
+  { key: "consent_no_tracking_before_choice", category: CATEGORIES.LEGAL, label: "No tracking requests are sent before a consent choice" },
+  { key: "consent_no_tracking_cookies_before_choice", category: CATEGORIES.LEGAL, label: "No tracking cookies are set before a consent choice" },
+  { key: "consent_reject_honoured", category: CATEGORIES.LEGAL, label: "Rejecting cookies stops tracking" },
+  // Read across up to 15 pages of the site (pulse-agents/site-crawl-agent.ts), internal scans only.
+  { key: "crawl_pages_read", category: CATEGORIES.SEO, label: "Pages read beyond the homepage" },
+  { key: "crawl_broken_internal_links", category: CATEGORIES.SEO, label: "No broken internal links" },
+  { key: "crawl_page_titles", category: CATEGORIES.SEO, label: "Every page has its own title" },
+  { key: "crawl_meta_descriptions", category: CATEGORIES.SEO, label: "Every page has its own meta description" },
+  { key: "crawl_mixed_content", category: CATEGORIES.SECURITY, label: "No http resources on https pages" },
+  { key: "crawl_insecure_forms", category: CATEGORIES.SECURITY, label: "No forms submit over plain http" },
+  { key: "crawl_html_lang", category: CATEGORIES.ACCESSIBILITY, label: "Every page declares its language" },
+  { key: "crawl_viewport_meta", category: CATEGORIES.MOBILE, label: "Every page sets a mobile viewport" },
+  { key: "crawl_canonical_tags", category: CATEGORIES.SEO, label: "Canonical tags point at the right page" },
+  { key: "crawl_noindex_key_pages", category: CATEGORIES.SEO, label: "Key pages are not hidden from search" },
+  { key: "crawl_security_headers_consistent", category: CATEGORIES.SECURITY, label: "Security headers are sent on every page" },
+  { key: "crawl_sitemap_urls", category: CATEGORIES.SEO, label: "Sitemap lists only live pages" },
+  { key: "crawl_image_alt_text", category: CATEGORIES.ACCESSIBILITY, label: "Images across the site have alt text" },
   { key: "newsletter_signup", category: CATEGORIES.SAAS, label: "Newsletter / email list capture" },
   { key: "repo_parse", category: CATEGORIES.CODE_QUALITY, label: "Repository URL" },
   { key: "has_readme", category: CATEGORIES.CODE_QUALITY, label: "README.md" },
@@ -643,13 +682,10 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
 
   // ─── Legal & Compliance Extended (35) ──────────────────────────────────────
   { key: "gdpr_article13_notice", category: CATEGORIES.LEGAL, label: "Data collection notice (GDPR Art. 13/14)" },
-  { key: "gdpr_right_to_access", category: CATEGORIES.LEGAL, label: "Right to access data (GDPR Art. 15)" },
-  { key: "gdpr_right_to_erasure_ui", category: CATEGORIES.LEGAL, label: "Right to erasure UI (GDPR Art. 17)" },
-  { key: "gdpr_right_to_portability", category: CATEGORIES.LEGAL, label: "Data portability (GDPR Art. 20)" },
+  { key: "gdpr_right_to_access", category: CATEGORIES.LEGAL, label: "Privacy policy explains the right of access (GDPR Art. 15)" },
+  { key: "gdpr_right_to_portability", category: CATEGORIES.LEGAL, label: "Privacy policy explains the right to data portability (GDPR Art. 20)" },
   { key: "gdpr_right_to_object", category: CATEGORIES.LEGAL, label: "Right to object to processing (GDPR Art. 21)" },
   { key: "gdpr_lawful_basis_stated", category: CATEGORIES.LEGAL, label: "Lawful basis stated in privacy policy" },
-  { key: "gdpr_breach_notification", category: CATEGORIES.LEGAL, label: "Breach notification procedure (GDPR Art. 33)" },
-  { key: "gdpr_records_processing", category: CATEGORIES.LEGAL, label: "Records of Processing Activities (GDPR Art. 30)" },
   { key: "uk_gdpr_ico_registration", category: CATEGORIES.LEGAL, label: "ICO registration number shown (UK GDPR)" },
   { key: "eu_representative_contact", category: CATEGORIES.LEGAL, label: "EU Art. 27 representative for non-EU companies" },
   { key: "eprivacy_pecr_compliance", category: CATEGORIES.LEGAL, label: "UK PECR / ePrivacy cookie compliance" },
@@ -670,8 +706,8 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "ferpa_signals", category: CATEGORIES.LEGAL, label: "FERPA compliance signals (education)" },
   { key: "cooling_off_period_eu", category: CATEGORIES.LEGAL, label: "EU 14-day cancellation right stated" },
   { key: "auto_renewal_disclosure", category: CATEGORIES.LEGAL, label: "Auto-renewal terms prominently disclosed" },
-  { key: "subscription_cancellation_easy", category: CATEGORIES.LEGAL, label: "Easy cancellation (FTC click-to-cancel)" },
-  { key: "price_vat_inclusive", category: CATEGORIES.LEGAL, label: "Prices shown inc. VAT (EU requirement)" },
+  { key: "subscription_cancellation_easy", category: CATEGORIES.LEGAL, label: "Easy cancellation stated for subscriptions" },
+  { key: "price_vat_inclusive", category: CATEGORIES.LEGAL, label: "Prices shown inc. VAT (EU / UK consumers)" },
   { key: "distance_selling_notice", category: CATEGORIES.LEGAL, label: "EU Distance Selling regulations disclosure" },
   { key: "intellectual_property_notice", category: CATEGORIES.LEGAL, label: "Copyright notice present" },
   { key: "dmca_policy", category: CATEGORIES.LEGAL, label: "DMCA takedown procedure" },
@@ -685,7 +721,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "css_appears_minified", category: CATEGORIES.PERFORMANCE, label: "CSS appears minified" },
   { key: "js_appears_minified", category: CATEGORIES.PERFORMANCE, label: "JS files appear minified" },
   { key: "http3_quic_support", category: CATEGORIES.PERFORMANCE, label: "HTTP/3 / QUIC support" },
-  { key: "early_hints_support", category: CATEGORIES.PERFORMANCE, label: "103 Early Hints support" },
+  { key: "early_hints_support", category: CATEGORIES.PERFORMANCE, label: "103 Early Hints sent" },
   { key: "stale_while_revalidate", category: CATEGORIES.PERFORMANCE, label: "Stale-while-revalidate cache directive" },
   { key: "immutable_cache_assets", category: CATEGORIES.PERFORMANCE, label: "Immutable cache on hashed assets" },
   { key: "dns_ttl_optimized", category: CATEGORIES.PERFORMANCE, label: "DNS TTL not near-zero" },
@@ -706,8 +742,16 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "video_captions", category: CATEGORIES.ACCESSIBILITY, label: "Video has captions track" },
   { key: "form_labels_present", category: CATEGORIES.ACCESSIBILITY, label: "<label> for every <input>" },
   { key: "form_error_identification", category: CATEGORIES.ACCESSIBILITY, label: "Form errors identify the field" },
-  { key: "keyboard_focus_visible", category: CATEGORIES.ACCESSIBILITY, label: ":focus-visible CSS present" },
+  { key: "keyboard_focus_visible", category: CATEGORIES.ACCESSIBILITY, label: "Visible keyboard focus indicator" },
   { key: "touch_target_size", category: CATEGORIES.ACCESSIBILITY, label: "Sufficient touch target sizing" },
+  // Measured on the page as Chromium renders it (pulse-agents/rendered-a11y-agent.ts).
+  // touch_target_size above is now measured there too, at a phone-width viewport.
+  { key: "rendered_keyboard_reachable", category: CATEGORIES.ACCESSIBILITY, label: "Every visible control can be reached with Tab" },
+  { key: "rendered_no_keyboard_trap", category: CATEGORIES.ACCESSIBILITY, label: "Keyboard focus is never trapped" },
+  { key: "rendered_focus_visible", category: CATEGORIES.ACCESSIBILITY, label: "Focused controls show a visible focus indicator" },
+  { key: "rendered_focus_not_obscured", category: CATEGORIES.ACCESSIBILITY, label: "Focused controls are not hidden behind other content" },
+  { key: "rendered_text_contrast", category: CATEGORIES.ACCESSIBILITY, label: "Text meets WCAG AA contrast on the rendered page" },
+  { key: "rendered_skip_link_works", category: CATEGORIES.ACCESSIBILITY, label: "Skip link moves focus to the main content" },
   { key: "no_autoplay_audio", category: CATEGORIES.ACCESSIBILITY, label: "No autoplay audio without controls" },
   { key: "no_autoplay_video", category: CATEGORIES.ACCESSIBILITY, label: "No autoplay video without controls" },
   { key: "session_timeout_warning", category: CATEGORIES.ACCESSIBILITY, label: "Session timeout warning" },
@@ -716,7 +760,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "aria_live_regions", category: CATEGORIES.ACCESSIBILITY, label: "aria-live for dynamic content" },
   { key: "prefers_reduced_motion", category: CATEGORIES.ACCESSIBILITY, label: "prefers-reduced-motion CSS" },
   { key: "prefers_high_contrast", category: CATEGORIES.ACCESSIBILITY, label: "prefers-contrast CSS media query" },
-  { key: "sufficient_colour_contrast", category: CATEGORIES.ACCESSIBILITY, label: "No obvious low-contrast inline styles" },
+  { key: "sufficient_colour_contrast", category: CATEGORIES.ACCESSIBILITY, label: "Inline colour pairs meet 4.5:1 contrast" },
   { key: "text_spacing_supported", category: CATEGORIES.ACCESSIBILITY, label: "Letter/word spacing not fixed" },
   { key: "link_purpose_clear", category: CATEGORIES.ACCESSIBILITY, label: "Links have descriptive text" },
   { key: "page_title_unique", category: CATEGORIES.ACCESSIBILITY, label: "Unique page title" },
@@ -739,12 +783,9 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "concurrent_session_policy", category: CATEGORIES.AUTHENTICATION, label: "Concurrent session limiting" },
   { key: "token_expiry_short", category: CATEGORIES.AUTHENTICATION, label: "Short-lived access tokens (< 1hr)" },
   { key: "otp_expiry_configured", category: CATEGORIES.AUTHENTICATION, label: "OTP code expiry" },
-  { key: "otp_resend_cooldown", category: CATEGORIES.AUTHENTICATION, label: "OTP resend cooldown" },
-  { key: "otp_attempt_limiting", category: CATEGORIES.AUTHENTICATION, label: "OTP attempt / brute-force limiting" },
   { key: "auth_login_autocomplete", category: CATEGORIES.AUTHENTICATION, label: "Login password identifies its autocomplete purpose" },
   { key: "auth_signup_autocomplete", category: CATEGORIES.AUTHENTICATION, label: "New password identifies its autocomplete purpose" },
   { key: "auth_password_reset", category: CATEGORIES.AUTHENTICATION, label: "Password reset flow is discoverable" },
-  { key: "auth_logout_control", category: CATEGORIES.AUTHENTICATION, label: "Sign-out control is discoverable" },
   { key: "auth_security_notifications", category: CATEGORIES.AUTHENTICATION, label: "Security-event notifications are disclosed" },
 
   // ─── Roles & Permissions (20) ───────────────────────────────────────────────
@@ -765,9 +806,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "guest_anonymous_mode", category: CATEGORIES.ROLES, label: "Guest / view-only mode" },
   { key: "read_only_role", category: CATEGORIES.ROLES, label: "Read-only role available" },
   { key: "data_export_permission", category: CATEGORIES.ROLES, label: "Data export restricted by role" },
-  { key: "workspace_tenant_isolation", category: CATEGORIES.ROLES, label: "Workspace / tenant isolation" },
   { key: "permission_inheritance", category: CATEGORIES.ROLES, label: "Permission inheritance (groups)" },
-  { key: "gdpr_data_access_control", category: CATEGORIES.ROLES, label: "GDPR data access controlled by role" },
   { key: "invite_expiry", category: CATEGORIES.ROLES, label: "Invitations expire automatically" },
   { key: "invite_revocation", category: CATEGORIES.ROLES, label: "Pending invitations can be revoked" },
   { key: "ownership_transfer", category: CATEGORIES.ROLES, label: "Workspace ownership can be transferred safely" },
@@ -781,42 +820,24 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "tls_rpt_record", category: CATEGORIES.EMAIL, label: "TLS-RPT reporting record" },
   { key: "spf_hardfail", category: CATEGORIES.EMAIL, label: "SPF uses -all (hardfail)" },
   { key: "dmarc_quarantine_reject", category: CATEGORIES.EMAIL, label: "DMARC policy: quarantine or reject" },
-  { key: "email_unsubscribe_signal", category: CATEGORIES.EMAIL, label: "Unsubscribe / list management link" },
   { key: "transactional_subdomain", category: CATEGORIES.EMAIL, label: "Dedicated sending subdomain" },
-  { key: "can_spam_address", category: CATEGORIES.EMAIL, label: "Physical address in email footer" },
-  { key: "casl_double_optin", category: CATEGORIES.EMAIL, label: "Double opt-in / CASL signals" },
-  { key: "plain_text_email", category: CATEGORIES.EMAIL, label: "Plain text email alternative" },
-  { key: "bounce_handling_signal", category: CATEGORIES.EMAIL, label: "Bounce handling / list hygiene" },
-  { key: "email_preview_configured", category: CATEGORIES.EMAIL, label: "Email preview text configured" },
-  { key: "email_warm_up_signals", category: CATEGORIES.EMAIL, label: "Reputable ESP detected" },
-  { key: "mailing_list_segmentation", category: CATEGORIES.EMAIL, label: "Email segmentation / tagging signals" },
-  { key: "email_mx_present", category: CATEGORIES.EMAIL, label: "Domain accepts email through MX records" },
+  { key: "email_preview_configured", category: CATEGORIES.EMAIL, label: "Email templates set preview text" },
   { key: "spf_single_record", category: CATEGORIES.EMAIL, label: "Exactly one SPF policy is published" },
   { key: "dmarc_aggregate_reporting", category: CATEGORIES.EMAIL, label: "DMARC aggregate reports have a destination" },
   { key: "dmarc_full_coverage", category: CATEGORIES.EMAIL, label: "DMARC policy applies to 100% of messages" },
   { key: "tls_rpt_destination", category: CATEGORIES.EMAIL, label: "TLS-RPT reports have a destination" },
 
   // ─── Observability Extended (15) ────────────────────────────────────────────
-  { key: "alert_pagerduty_opsgenie", category: CATEGORIES.OBSERVABILITY, label: "PagerDuty / OpsGenie / alerting configured" },
-  { key: "on_call_configured", category: CATEGORIES.OBSERVABILITY, label: "On-call rotation configured" },
-  { key: "distributed_tracing", category: CATEGORIES.OBSERVABILITY, label: "Distributed tracing configured" },
-  { key: "custom_business_metrics", category: CATEGORIES.OBSERVABILITY, label: "Custom business metrics / dashboards" },
-  { key: "synthetic_monitoring", category: CATEGORIES.OBSERVABILITY, label: "Synthetic monitoring (uptime checks)" },
-  { key: "structured_logging", category: CATEGORIES.OBSERVABILITY, label: "Structured / JSON logging" },
-  { key: "log_retention_policy", category: CATEGORIES.OBSERVABILITY, label: "Log retention policy configured" },
+  { key: "alert_pagerduty_opsgenie", category: CATEGORIES.OBSERVABILITY, label: "Alerts are configured in code" },
+  { key: "on_call_configured", category: CATEGORIES.OBSERVABILITY, label: "An on-call schedule is configured in code" },
+  { key: "synthetic_monitoring", category: CATEGORIES.OBSERVABILITY, label: "Production is checked by synthetic tests" },
+  { key: "log_retention_policy", category: CATEGORIES.OBSERVABILITY, label: "Log retention is set" },
   { key: "audit_log_api_export", category: CATEGORIES.OBSERVABILITY, label: "Audit log accessible via API" },
-  { key: "db_performance_monitoring", category: CATEGORIES.OBSERVABILITY, label: "Database performance monitoring" },
-  { key: "queue_depth_monitoring", category: CATEGORIES.OBSERVABILITY, label: "Message queue depth monitoring" },
-  { key: "cost_monitoring_signals", category: CATEGORIES.OBSERVABILITY, label: "Cloud cost alerting" },
-  { key: "error_budget_policy", category: CATEGORIES.OBSERVABILITY, label: "SLO / error budget policy" },
-  { key: "incident_runbooks", category: CATEGORIES.OBSERVABILITY, label: "Incident runbooks / playbooks" },
-  { key: "post_mortem_culture", category: CATEGORIES.OBSERVABILITY, label: "Post-mortem / incident review culture" },
-  { key: "deployment_frequency_tracking", category: CATEGORIES.OBSERVABILITY, label: "Deployment frequency / DORA metrics tracked" },
+  { key: "cost_monitoring_signals", category: CATEGORIES.OBSERVABILITY, label: "Cloud spend has a budget alert in code" },
+  { key: "post_mortem_culture", category: CATEGORIES.OBSERVABILITY, label: "Incident reviews are kept in the repository" },
   { key: "public_status_page", category: CATEGORIES.OBSERVABILITY, label: "Public service status page" },
   { key: "incident_subscriptions", category: CATEGORIES.OBSERVABILITY, label: "Customers can subscribe to incident updates" },
-  { key: "trace_correlation", category: CATEGORIES.OBSERVABILITY, label: "Requests expose trace or correlation identifiers" },
-  { key: "release_health", category: CATEGORIES.OBSERVABILITY, label: "Errors are correlated with releases" },
-  { key: "alert_escalation", category: CATEGORIES.OBSERVABILITY, label: "Alerts have an escalation path" },
+  { key: "alert_escalation", category: CATEGORIES.OBSERVABILITY, label: "Alerts have an escalation policy in code" },
 
   // ─── Infrastructure Extended (15) ───────────────────────────────────────────
   { key: "ipv6_dns_record", category: CATEGORIES.INFRASTRUCTURE, label: "IPv6 (AAAA) DNS record present" },
@@ -830,7 +851,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "feature_flags_system", category: CATEGORIES.INFRASTRUCTURE, label: "Feature flag system" },
   { key: "secrets_manager_used", category: CATEGORIES.INFRASTRUCTURE, label: "Secrets manager (Vault / AWS Secrets Manager)" },
   { key: "database_read_replicas", category: CATEGORIES.INFRASTRUCTURE, label: "Database read replicas" },
-  { key: "dns_ttl_healthy", category: CATEGORIES.INFRASTRUCTURE, label: "DNS TTL configured for stability" },
+  { key: "dns_ttl_healthy", category: CATEGORIES.INFRASTRUCTURE, label: "DNS TTL lets a change of host take effect within a day" },
   { key: "backup_domain_configured", category: CATEGORIES.INFRASTRUCTURE, label: "www subdomain / backup domain configured" },
   { key: "object_storage_signals", category: CATEGORIES.INFRASTRUCTURE, label: "Object storage (S3 / GCS) for assets" },
   { key: "cdn_custom_caching_rules", category: CATEGORIES.INFRASTRUCTURE, label: "CDN caching configured" },
@@ -856,10 +877,8 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "sepa_bank_transfer", category: CATEGORIES.PAYMENTS, label: "SEPA / bank transfer option (EU)" },
   { key: "paypal_integration", category: CATEGORIES.PAYMENTS, label: "PayPal integration" },
   { key: "three_ds_sca_compliant", category: CATEGORIES.PAYMENTS, label: "3D Secure / PSD2 SCA compliant" },
-  { key: "fraud_detection_tool", category: CATEGORIES.PAYMENTS, label: "Fraud detection (Stripe Radar / Kount)" },
   { key: "pci_saq_evidence", category: CATEGORIES.PAYMENTS, label: "PCI SAQ / scope reduction evidence" },
   { key: "regional_payment_methods", category: CATEGORIES.PAYMENTS, label: "Regional payment methods (Klarna, iDEAL, etc.)" },
-  { key: "chargeback_prevention", category: CATEGORIES.PAYMENTS, label: "Chargeback prevention tools" },
   { key: "payment_refund_policy", category: CATEGORIES.PAYMENTS, label: "Refund or cancellation policy is discoverable" },
   { key: "payment_recurring_terms", category: CATEGORIES.PAYMENTS, label: "Recurring billing terms are disclosed" },
   { key: "payment_checkout_provider", category: CATEGORIES.PAYMENTS, label: "Checkout provider integration is identifiable" },
@@ -924,15 +943,12 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
 
   // ─── Code Quality Extended (10) ─────────────────────────────────────────────
   { key: "github_code_scanning", category: CATEGORIES.CODE_QUALITY, label: "Code scanning (CodeQL / Snyk)" },
-  { key: "github_branch_protection", category: CATEGORIES.CODE_QUALITY, label: "Branch protection rules" },
-  { key: "github_required_reviews", category: CATEGORIES.CODE_QUALITY, label: "Required PR approvals" },
   { key: "github_codeowners", category: CATEGORIES.CODE_QUALITY, label: "CODEOWNERS file" },
   { key: "github_secret_scanning", category: CATEGORIES.CODE_QUALITY, label: "GitHub secret scanning" },
   { key: "github_pr_template", category: CATEGORIES.CODE_QUALITY, label: "PR description template" },
   { key: "github_issue_templates", category: CATEGORIES.CODE_QUALITY, label: "Issue templates" },
   { key: "commit_signing_enabled", category: CATEGORIES.CODE_QUALITY, label: "Signed commits (GPG / Sigstore)" },
   { key: "release_automation", category: CATEGORIES.CODE_QUALITY, label: "Release automation (semantic-release)" },
-  { key: "stale_bot_configured", category: CATEGORIES.CODE_QUALITY, label: "Stale issue / PR management" },
 
   // ─── Mobile & Accessibility Extended (10) ───────────────────────────────────
   { key: "web_push_notifications", category: CATEGORIES.MOBILE, label: "Web Push Notifications support" },
@@ -941,7 +957,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "reduced_motion_css", category: CATEGORIES.MOBILE, label: "prefers-reduced-motion CSS" },
   { key: "high_contrast_css", category: CATEGORIES.MOBILE, label: "prefers-contrast CSS media query" },
   { key: "biometric_auth_signals", category: CATEGORIES.MOBILE, label: "WebAuthn biometric auth signals" },
-  { key: "screen_reader_tested_signal", category: CATEGORIES.MOBILE, label: "Accessibility testing evidence" },
+  { key: "screen_reader_tested_signal", category: CATEGORIES.ACCESSIBILITY, label: "Accessibility is tested automatically" },
   { key: "gesture_navigation", category: CATEGORIES.MOBILE, label: "Swipe / gesture navigation" },
   { key: "apple_app_clip_support", category: CATEGORIES.MOBILE, label: "App Clips support (iOS)" },
   { key: "android_instant_app", category: CATEGORIES.MOBILE, label: "Android Instant Apps" },
@@ -949,19 +965,13 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   // ─── Business Operations (15) ───────────────────────────────────────────────
   { key: "physical_address_footer", category: CATEGORIES.BUSINESS_OPS, label: "Physical address in footer" },
   { key: "business_hours_displayed", category: CATEGORIES.BUSINESS_OPS, label: "Business hours displayed" },
-  { key: "vat_number_displayed", category: CATEGORIES.BUSINESS_OPS, label: "VAT number in footer (EU B2B)" },
+  { key: "vat_number_displayed", category: CATEGORIES.BUSINESS_OPS, label: "VAT number shown (EU / UK)" },
   { key: "uk_companies_house_number", category: CATEGORIES.BUSINESS_OPS, label: "UK Companies House registration number" },
   { key: "eu_director_info", category: CATEGORIES.BUSINESS_OPS, label: "Director / responsible person named" },
   { key: "support_sla_documented", category: CATEGORIES.BUSINESS_OPS, label: "Support SLA / response times documented" },
-  { key: "esignature_support", category: CATEGORIES.BUSINESS_OPS, label: "eSignature / contract workflow" },
   { key: "invoice_generation_b2b", category: CATEGORIES.BUSINESS_OPS, label: "Invoice / tax invoice generation" },
-  { key: "insurance_mention", category: CATEGORIES.BUSINESS_OPS, label: "Professional indemnity insurance" },
-  { key: "gdpr_ropa_maintained", category: CATEGORIES.BUSINESS_OPS, label: "ROPA (Records of Processing Activities)" },
   { key: "data_retention_schedule", category: CATEGORIES.BUSINESS_OPS, label: "Data retention schedule published" },
-  { key: "supplier_due_diligence", category: CATEGORIES.BUSINESS_OPS, label: "Vendor / sub-processor due diligence" },
   { key: "modern_slavery_statement", category: CATEGORIES.BUSINESS_OPS, label: "Modern Slavery Act statement" },
-  { key: "bribery_act_policy", category: CATEGORIES.BUSINESS_OPS, label: "Anti-bribery policy (UK Bribery Act)" },
-  { key: "whistleblower_policy", category: CATEGORIES.BUSINESS_OPS, label: "Whistleblower / speak-up policy" },
 
   // ─── API Quality (15) ───────────────────────────────────────────────────────
   { key: "api_versioning_present", category: CATEGORIES.API_QUALITY, label: "API versioning (/v1/, /v2/ pattern)" },
@@ -1003,7 +1013,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "repo_secret_keys", category: CATEGORIES.SECRETS_KEYS, label: "No exposed API keys in committed source" },
   { key: "repo_env_committed", category: CATEGORIES.SECRETS_KEYS, label: "No committed .env / secret files" },
   { key: "repo_prompt_injection_risk", category: CATEGORIES.SECRETS_KEYS, label: "No prompt-injection vectors in source" },
-  { key: "store_page_live", category: CATEGORIES.STORE_LISTING, label: "App Store / Play listing is live" },
+  { key: "store_page_live", category: CATEGORIES.STORE_LISTING, label: "Store listing is live" },
   { key: "store_preview_video", category: CATEGORIES.STORE_LISTING, label: "App preview / promo video" },
   { key: "accessibility_statement_eaa", category: CATEGORIES.ACCESSIBILITY, label: "Accessibility statement (EU Accessibility Act)" },
   { key: "images_have_alt", category: CATEGORIES.ACCESSIBILITY, label: "Informative images have alternative text" },
@@ -1014,7 +1024,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "ai_ai_act_disclosure", category: CATEGORIES.AI_READINESS, label: "EU AI Act transparency disclosure" },
   { key: "ai_content_safety_signal", category: CATEGORIES.AI_READINESS, label: "Content moderation / safety layer" },
   { key: "ai_cost_monitoring_script", category: CATEGORIES.AI_READINESS, label: "AI cost / usage monitoring tool" },
-  { key: "ai_endpoint_rate_limited", category: CATEGORIES.AI_SAFETY, label: "AI endpoint rate-limiting signals" },
+  { key: "ai_endpoint_rate_limited", category: CATEGORIES.AI_SAFETY, label: "AI endpoints are rate limited" },
   { key: "ai_error_fallback_ui", category: CATEGORIES.AI_READINESS, label: "AI error / fallback state in UI" },
   { key: "ai_feedback_ui", category: CATEGORIES.AI_READINESS, label: "User feedback loop on AI outputs" },
   { key: "ai_has_evals", category: CATEGORIES.AI_READINESS, label: "AI evaluation / testing framework" },
@@ -1075,7 +1085,7 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "vibe_placeholder_images", category: CATEGORIES.VIBE_HYGIENE, label: "No placeholder / stock filler images" },
   { key: "spa_client_rendered", category: CATEGORIES.VIBE_HYGIENE, label: "Content is server-rendered (not a JS-only shell)" },
   { key: "spa_content_rendered_for_scan", category: CATEGORIES.VIBE_HYGIENE, label: "Client-rendered content was read for this scan" },
-  { key: "wcag22_consistent_help", category: CATEGORIES.ACCESSIBILITY, label: "Consistent help mechanism (WCAG 3.3.6)" },
+  { key: "wcag22_consistent_help", category: CATEGORIES.ACCESSIBILITY, label: "Consistent help mechanism (WCAG 3.2.6)" },
   { key: "wcag22_dragging_alternative", category: CATEGORIES.ACCESSIBILITY, label: "Dragging movements have an alternative (WCAG 2.5.7)" },
 
   // ─── Agent-emitted checks (Code Intelligence / PageSpeed / secret-scanner) ───
@@ -1084,6 +1094,12 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "build_warnings", category: CATEGORIES.CODE_QUALITY, label: "Build warnings in latest deployment" },
   { key: "commit_velocity", category: CATEGORIES.CODE_QUALITY, label: "Active development velocity" },
   { key: "crux_overall", category: CATEGORIES.PERFORMANCE, label: "Real-user experience (Chrome UX Report)" },
+  // Per-metric p75 field data from the same PSI response (pulse-checks/crux-field.ts).
+  { key: "crux_lcp", category: CATEGORIES.PERFORMANCE, label: "Real-user Largest Contentful Paint (p75)" },
+  { key: "crux_inp", category: CATEGORIES.PERFORMANCE, label: "Real-user Interaction to Next Paint (p75)" },
+  { key: "crux_cls", category: CATEGORIES.PERFORMANCE, label: "Real-user Cumulative Layout Shift (p75)" },
+  { key: "crux_fcp", category: CATEGORIES.PERFORMANCE, label: "Real-user First Contentful Paint (p75)" },
+  { key: "crux_ttfb", category: CATEGORIES.PERFORMANCE, label: "Real-user Time to First Byte (p75)" },
   { key: "dependency_vulnerabilities", category: CATEGORIES.CODE_QUALITY, label: "Known dependency vulnerabilities" },
   { key: "deployment_success_rate", category: CATEGORIES.INFRASTRUCTURE, label: "Deployment success rate" },
   { key: "github_stars", category: CATEGORIES.TRUST_BRAND, label: "GitHub stars (social proof)" },
@@ -1225,10 +1241,91 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
   { key: "flutter_dev_deps_in_prod", category: CATEGORIES.CODE_QUALITY, label: "No test-only packages in production dependencies" },
   { key: "flutter_analyzer_lints", category: CATEGORIES.CODE_QUALITY, label: "Dart analyzer lint set configured" },
   { key: "flutter_commented_features", category: CATEGORIES.CODE_QUALITY, label: "No disabled features left commented out" },
+
+  // Social & Marketing — what a shared link looks like, and where the audience is.
+  // Observation only: see the header of pulse-checks/social-marketing.ts for why
+  // nothing here fails and why the category carries no score weight.
+  { key: "social_og_image_present", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image (og:image)" },
+  { key: "social_og_image_size", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image is large enough" },
+  { key: "social_og_title", category: CATEGORIES.SOCIAL_MARKETING, label: "Share headline (og:title)" },
+  { key: "social_og_description", category: CATEGORIES.SOCIAL_MARKETING, label: "Share description length" },
+  { key: "social_twitter_card", category: CATEGORIES.SOCIAL_MARKETING, label: "Large-image card on X" },
+  { key: "social_profiles_linked", category: CATEGORIES.SOCIAL_MARKETING, label: "Social profiles linked from the site" },
+  { key: "social_short_form_video", category: CATEGORIES.SOCIAL_MARKETING, label: "Short-form video presence" },
+  { key: "social_schema_sameas", category: CATEGORIES.SOCIAL_MARKETING, label: "Profiles declared in structured data" },
+  { key: "social_share_affordance", category: CATEGORIES.SOCIAL_MARKETING, label: "Something to share with" },
+  { key: "social_image_alt_coverage", category: CATEGORIES.SOCIAL_MARKETING, label: "Images carry alt text" },
+  { key: "social_og_type", category: CATEGORIES.SOCIAL_MARKETING, label: "Content type declared (og:type)" },
+  { key: "social_og_url", category: CATEGORIES.SOCIAL_MARKETING, label: "Canonical share URL (og:url)" },
+  { key: "social_og_locale", category: CATEGORIES.SOCIAL_MARKETING, label: "Language declared for the card" },
+  { key: "social_og_image_absolute", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image URL is absolute" },
+  { key: "social_og_image_format", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image is a format every scraper reads" },
+  { key: "social_og_image_ratio", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image is the shape networks crop to" },
+  { key: "social_og_image_alt", category: CATEGORIES.SOCIAL_MARKETING, label: "Share image has alt text" },
+  { key: "social_twitter_site", category: CATEGORIES.SOCIAL_MARKETING, label: "Card credits your account" },
+  { key: "social_oembed_discovery", category: CATEGORIES.SOCIAL_MARKETING, label: "Others can embed this page" },
+  { key: "social_og_canonical_agree", category: CATEGORIES.SOCIAL_MARKETING, label: "og:url and canonical agree" },
+  { key: "social_faq_schema", category: CATEGORIES.SOCIAL_MARKETING, label: "FAQ structured data" },
+  { key: "social_aggregate_rating", category: CATEGORIES.SOCIAL_MARKETING, label: "Ratings structured data" },
+  { key: "social_video_object_schema", category: CATEGORIES.SOCIAL_MARKETING, label: "Video structured data" },
+  { key: "social_org_logo_schema", category: CATEGORIES.SOCIAL_MARKETING, label: "Logo declared for the knowledge panel" },
+  { key: "social_speakable_schema", category: CATEGORIES.SOCIAL_MARKETING, label: "Content marked up for voice assistants" },
+  { key: "social_person_schema", category: CATEGORIES.SOCIAL_MARKETING, label: "A named person behind the content" },
+  { key: "social_ad_pixel", category: CATEGORIES.SOCIAL_MARKETING, label: "Ad platform pixel installed" },
+  { key: "social_tag_manager", category: CATEGORIES.SOCIAL_MARKETING, label: "Tag manager installed" },
+  { key: "social_event_tracking", category: CATEGORIES.SOCIAL_MARKETING, label: "Events tracked, not just page views" },
+  { key: "social_consent_mode", category: CATEGORIES.SOCIAL_MARKETING, label: "Consent mode for ad measurement" },
+  { key: "social_campaign_landing", category: CATEGORIES.SOCIAL_MARKETING, label: "Campaign traffic lands on one canonical page" },
+  { key: "social_headline_specific", category: CATEGORIES.SOCIAL_MARKETING, label: "Headline says something" },
+  { key: "social_headline_length", category: CATEGORIES.SOCIAL_MARKETING, label: "Headline length" },
+  { key: "social_description_distinct", category: CATEGORIES.SOCIAL_MARKETING, label: "Search and social copy are written separately" },
+  { key: "social_hero_subhead", category: CATEGORIES.SOCIAL_MARKETING, label: "A supporting line under the headline" },
+  { key: "social_title_length", category: CATEGORIES.SOCIAL_MARKETING, label: "Page title length" },
+  { key: "social_app_store_link", category: CATEGORIES.SOCIAL_MARKETING, label: "App store links" },
+  { key: "social_community_link", category: CATEGORIES.SOCIAL_MARKETING, label: "A community to join" },
+  { key: "social_review_platform", category: CATEGORIES.SOCIAL_MARKETING, label: "Third-party review profile" },
+
+  // ─── Rebuilt from the withdrawn list (Oct 2026, repo-practices.ts / business-operations.ts) ───
+  { key: "deployment_frequency_tracking", category: CATEGORIES.OBSERVABILITY, label: "Deployments are recorded" },
+  { key: "custom_business_metrics", category: CATEGORIES.OBSERVABILITY, label: "Product events are tracked from the server" },
+  { key: "casl_double_optin", category: CATEGORIES.EMAIL, label: "Mailing-list sign-ups are confirmed by email" },
+  { key: "mailing_list_segmentation", category: CATEGORIES.EMAIL, label: "Email contacts are segmented" },
+  { key: "email_warm_up_signals", category: CATEGORIES.EMAIL, label: "Email is sent through a dedicated provider" },
+  { key: "plain_text_email", category: CATEGORIES.EMAIL, label: "Emails include a plain-text version" },
+  { key: "can_spam_address", category: CATEGORIES.EMAIL, label: "Marketing emails include a postal address" },
+  { key: "gdpr_breach_notification", category: CATEGORIES.LEGAL, label: "A data-breach procedure is written down" },
+  { key: "gdpr_records_processing", category: CATEGORIES.LEGAL, label: "Records of processing are kept (GDPR Art. 30)" },
+  { key: "esignature_support", category: CATEGORIES.BUSINESS_OPS, label: "Contracts can be signed electronically" },
+  { key: "chargeback_prevention", category: CATEGORIES.PAYMENTS, label: "Card disputes are handled in the product" },
+  { key: "fraud_detection_tool", category: CATEGORIES.PAYMENTS, label: "Card payments are screened for fraud" },
+  { key: "otp_attempt_limiting", category: CATEGORIES.AUTHENTICATION, label: "One-time codes lock out after repeated wrong guesses" },
+  { key: "otp_resend_cooldown", category: CATEGORIES.AUTHENTICATION, label: "One-time codes cannot be resent without a wait" },
+  { key: "stale_bot_configured", category: CATEGORIES.CODE_QUALITY, label: "Inactive issues and pull requests are triaged automatically" },
+  { key: "bribery_act_policy", category: CATEGORIES.BUSINESS_OPS, label: "Anti-bribery policy published" },
+  { key: "whistleblower_policy", category: CATEGORIES.BUSINESS_OPS, label: "Whistleblowing channel published" },
+  { key: "supplier_due_diligence", category: CATEGORIES.BUSINESS_OPS, label: "Sub-processor list published" },
+  { key: "insurance_mention", category: CATEGORIES.BUSINESS_OPS, label: "Business insurance stated" },
 ];
 
 /** All unique categories in display order */
 /** All categories in canonical display order — derived from the SoT, never hand-listed. */
+/**
+ * The checks a scan can actually show someone. Two kinds of registry row never reach a
+ * report, so counting them overstated the product:
+ *   - `standards_*` rows: the derived standards catalogue, shown only with an
+ *     evidence-backed verdict (a reference list, not checks Pulse performs);
+ *   - WITHHELD keys: held back because Pulse cannot observe them, or they had a verified
+ *     wrong-verdict defect (check-relevance-data.ts).
+ * Un-withholding a check raises this number; that is the point.
+ */
+export const LIVE_CHECKS: readonly CheckDefinition[] = CHECKS_REGISTRY.filter(
+  (c) => !c.key.startsWith("standards_") && !Object.prototype.hasOwnProperty.call(WITHHELD, c.key),
+);
+
+function liveCheckCount(): number {
+  return LIVE_CHECKS.length;
+}
+
 /**
  * Single source of truth for the check count we ADVERTISE.
  *
@@ -1244,8 +1341,10 @@ export const CHECKS_REGISTRY: CheckDefinition[] = [
  * Flutter, desktop, React Native, CLI, browser extension — and the source-analysis
  * families need a repository. So this is the catalogue size, which is the honest
  * thing to advertise for the product; per-scan counts come from the scan itself.
+ * It counts LIVE_CHECKS only (Oct 2026): before, it counted 1,700 rows of which ~600
+ * could never appear on a report.
  */
-export const ADVERTISED_CHECK_COUNT = Math.floor(CHECKS_REGISTRY.length / 100) * 100;
+export const ADVERTISED_CHECK_COUNT = Math.floor(liveCheckCount() / 100) * 100;
 
 /** e.g. "over 1,000" — for prose. */
 export const ADVERTISED_CHECK_COUNT_LABEL = `over ${ADVERTISED_CHECK_COUNT.toLocaleString("en-GB")}`;

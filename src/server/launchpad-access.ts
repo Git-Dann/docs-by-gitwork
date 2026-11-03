@@ -122,6 +122,17 @@ export async function assertLaunchpadWriteRate(req: NextRequest): Promise<void> 
   });
 }
 
+/** A tighter limit for uploads: each one can be 10 MB of request body. Generous for
+ *  a person attaching a logo pack, a wall for a script. */
+export async function assertLaunchpadUploadRate(req: NextRequest): Promise<void> {
+  await assertWithinRateLimit({
+    bucket: `launchpad:upload:${clientIpFrom(req.headers) ?? "unknown"}`,
+    max: 40,
+    windowMs: 10 * 60_000,
+    message: "Too many uploads at once — please wait a few minutes and try again.",
+  });
+}
+
 /** HTTP status + message for a failed resolve, so every route reports it the same
  *  way. Kept distinct on purpose: reporting a switched-off section as a bad token is
  *  what turned a one-toggle fix into a support thread about a broken link (§40.1). */

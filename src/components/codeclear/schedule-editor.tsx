@@ -19,6 +19,7 @@ import {
 import { useClientDetail, useClientList } from "@/hooks/use-proposals";
 import { cn, formatDate } from "@/lib/format";
 import type { CodeClearPlacementRecord } from "@/types/codeclear";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 /**
  * Dev-scoped schedule editor. Lists every placement (active + upcoming +
@@ -78,8 +79,8 @@ export function ScheduleEditor({
 
       {candidateQuery.isLoading ? (
         <div className="space-y-2">
-          <div className="h-12 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
-          <div className="h-12 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-12 rounded-[8px]" />
+          <Skeleton className="h-12 rounded-[8px]" />
         </div>
       ) : placements.length === 0 ? (
         <div className="rounded-[10px] border border-dashed border-[var(--border-2)] bg-[var(--surface-1)] px-4 py-6 text-center text-sm text-[var(--text-4)]">

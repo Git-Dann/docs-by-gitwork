@@ -77,6 +77,32 @@ function isGenerated(path: string): boolean {
   );
 }
 
+/**
+ * Committed dependency or build output?
+ *
+ * `__pycache__`, `.venv`, `.next`, `node_modules` and `dist` are never hand-written
+ * source. `build` and `coverage` often are — a `build/` folder of packaging config
+ * (mattermost-mobile), a `coverage/` analysis module (discourse) — so under those
+ * only files that look generated count. Test FIXTURES are excluded: a fake
+ * `node_modules/` is how package loading is tested (atom/atom spec/fixtures). That
+ * exemption is deliberately narrower than isExampleOrFixturePath: a node_modules
+ * committed under examples/ or e2e/ is still a committed dependency tree. A `.d.ts`
+ * under `vendor/` is a hand-written type shim, not a vendored package.
+ */
+const GENERATED_OUTPUT_RE =
+  /\.(map|class|dex|o|so|dylib|dll|jar|apk|aab|ipa|wasm|pyc|node)$|\.min\.(js|css)$|[.-][0-9a-f]{8,}(\.chunk)?\.(js|css)$|(^|\/)(bundle\.(js|css)|lcov\.info|coverage-final\.json|clover\.xml|cobertura\.xml|coverage\.xml|asset-manifest\.json|prettify\.(js|css)|sorter\.js|block-navigation\.js)$|\/lcov-report\/|(^|\/)coverage\/.*\.html$/i;
+
+const ARTIFACT_FIXTURE_RE = /(^|\/)(fixtures?|__fixtures__|testdata)\//i;
+
+function isCommittedArtifact(path: string): boolean {
+  if (/(^|\/)(__pycache__|\.venv|\.next)\//i.test(path)) return true;
+  if (ARTIFACT_FIXTURE_RE.test(path)) return false;
+  if (/(^|\/)(node_modules|dist)\//i.test(path)) return true;
+  if (/(^|\/)vendor\//i.test(path)) return !/\.d\.ts$/i.test(path);
+  if (/(^|\/)(build|coverage)\//i.test(path)) return GENERATED_OUTPUT_RE.test(path);
+  return false;
+}
+
 interface CleanContext {
   /** path → raw text, for the files we sampled (generated output excluded). */
   files: Map<string, string>;
@@ -120,15 +146,22 @@ function quote(paths: string[]): string {
  * follows the marker looks like code: it ends in a statement terminator or an
  * opening brace, or it is an assignment, call or control-flow keyword.
  */
-export function commentedOutCodeLines(text: string): number {
+export function commentedOutCodeLines(text: string, path?: string): number {
+  // `#` opens a comment only in Python, Ruby and PHP. In Swift it is a macro or
+  // directive (`#expect(…)`, `#if DEBUG`, `#Preview {`), in JS a private field —
+  // counting those reported a Swift Testing suite as hundreds of dead lines.
+  const hashIsComment = path === undefined || /\.(py|rb|php)$/i.test(path);
   let count = 0;
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     const m = /^(\/\/|#)\s*(.+)$/.exec(line);
-    if (!m) continue;
+    if (!m || (m[1] === "#" && !hashIsComment)) continue;
     const body = m[2].trim();
     // Doc-comment markers and prose punctuation are strong "this is writing" signals.
     if (/^(TODO|FIXME|NOTE|HACK|XXX|@|eslint|prettier|type:|noqa|pylint)/i.test(body)) continue;
+    // A Markdown list item is documentation (atomdoc's "* `callback` {Function}"),
+    // even when it happens to end in a brace. `*ptr = 1;` has no space and still counts.
+    if (/^[*-]\s/.test(body)) continue;
     if (body.length < 4) continue;
     const looksLikeCode =
       /[;{}]$/.test(body) ||
@@ -213,7 +246,25 @@ function opensABlock(source: string, index: number): boolean {
   if (source[i] === ")") return true;
   if (source[i] === ">" && source[i - 1] === "=") return true; // arrow function
   const word = /([A-Za-z_$]+)$/.exec(source.slice(Math.max(0, i - 20), i + 1))?.[1];
-  return word !== undefined && /^(else|try|finally|do|abstract)$/.test(word);
+  if (word !== undefined && /^(else|try|finally|do|abstract)$/.test(word)) return true;
+  // Languages whose conditions take no parentheses — Go `if err != nil {`,
+  // `for i := 0; i < n; i++ {`, `for _, x := range xs {`, Swift `if let x {`,
+  // Kotlin `when {`. Without this every Go/Swift condition read as an object
+  // literal, so a Go file with six real levels (cli/cli extension/command.go)
+  // measured 2 and passed. Counted only when the brace ENDS a line that starts with
+  // a control or function keyword, and never after `(`, `=`, `,`, `:`, `?` or
+  // `return`, where a brace is a literal.
+  // Bounded scans only: a bundled single-line file has thousands of braces on one
+  // multi-megabyte line, and slicing that line per brace is quadratic.
+  for (let j = index + 1; j < source.length && source[j] !== "\n"; j++) {
+    if (!/\s/.test(source[j])) return false;
+  }
+  if (word === "return" || word === "struct" || word === "interface") return false; // Go `[]struct{` is a type literal
+  if (!/[\w\]}>"'!+\-]/.test(source[i])) return false;
+  const lineStart = source.lastIndexOf("\n", index - 1) + 1;
+  return /^\s*(\}\s*)?(else\s+)?(if|for|while|switch|select|guard|func|fun|when|unless|match)\b/.test(
+    source.slice(lineStart, Math.min(index, lineStart + 200)),
+  );
 }
 
 /** Normalise a line for duplicate detection: no whitespace, no comments. */
@@ -420,8 +471,10 @@ function duplicationChecks(ctx: CleanContext): PulseScanCheckInput[] {
     confidence: "MEDIUM",
     detail: dup.crossFile === 0
       ? `No blocks of ${DUP_WINDOW}+ lines appear in more than one file.`
-      : `${dup.crossFile} block(s) of ${DUP_WINDOW}+ lines appear in more than one file, across ${dup.files.length} ` +
-        `file(s). Duplicated logic is not a style problem — it is a correctness one with a delay on it: the next bug ` +
+      : `${dup.crossFile} ${DUP_WINDOW}-line window(s) appear in more than one file, across ${dup.files.length} ` +
+        `file(s). Windows overlap, so one copied block of N lines counts N-${DUP_WINDOW - 1} times — this measures ` +
+        `duplicated lines, not distinct copies. Duplicated logic is not a style problem — it is a correctness one ` +
+        `with a delay on it: the next bug ` +
         `fix lands in one copy, the others keep the bug, and nothing tells you they exist. This is the single most ` +
         `expensive thing to inherit in a codebase, because the cost only appears when you change something.`,
     evidence: quote(dup.files) || undefined,
@@ -435,7 +488,8 @@ function duplicationChecks(ctx: CleanContext): PulseScanCheckInput[] {
       status: dup.inFile > 15 ? "WARN" : "PASS",
       confidence: "MEDIUM",
       detail:
-        `${dup.inFile} repeated block(s) of ${DUP_WINDOW}+ lines within single files. In-file repetition is usually ` +
+        `${dup.inFile} repeated ${DUP_WINDOW}-line window(s) within single files (windows overlap, so one repeated ` +
+        `block of N lines counts N-${DUP_WINDOW - 1} times). In-file repetition is usually ` +
         `the cheapest duplication to remove — the two copies are visible on one screen — and leaving it is what ` +
         `teaches the next contributor that copy-paste is how this codebase is extended.`,
     });
@@ -453,7 +507,7 @@ function leftoverChecks(ctx: CleanContext): PulseScanCheckInput[] {
     let commented = 0;
     const worst: Array<{ path: string; n: number }> = [];
     for (const [path, text] of ctx.files) {
-      const n = commentedOutCodeLines(text);
+      const n = commentedOutCodeLines(text, path);
       commented += n;
       if (n > 0) worst.push({ path, n });
     }
@@ -480,6 +534,10 @@ function leftoverChecks(ctx: CleanContext): PulseScanCheckInput[] {
   // Debug statements left in shipped code.
   const debugFiles: string[] = [];
   for (const [path, text] of ctx.files) {
+    // Tests, benchmarks and root build scripts are not shipped, and printing is how
+    // they report progress — counting them made "left in shipped code" untrue
+    // (flutter/gallery test_benchmarks, cal.com __tests__, atom script/lib).
+    if (/(^|\/)(__tests__|tests?|specs?|test_[\w-]+|benchmarks?|e2e)\/|^scripts?\/|[._-](test|spec)\.[a-z]+$|(^|\/)test_[^/]+\.py$/i.test(path)) continue;
     const clean = stripCStyleComments(text);
     if (/console\.(log|debug|dir)\s*\(|\bprint\s*\(|var_dump\s*\(|fmt\.Println\s*\(|debugger;/.test(clean)) {
       debugFiles.push(path);
@@ -503,7 +561,7 @@ function leftoverChecks(ctx: CleanContext): PulseScanCheckInput[] {
 
   // Committed build output or dependencies.
   const artifacts = ctx.paths.filter((p) =>
-    /(^|\/)(node_modules|vendor|\.next|dist|build|coverage|__pycache__|\.venv)\//i.test(p),
+    isCommittedArtifact(p),
   );
   if (artifacts.length > 0) {
     const dirs = [...new Set(artifacts.map((p) => p.split("/").find((s) => /^(node_modules|vendor|\.next|dist|build|coverage|__pycache__|\.venv)$/i.test(s)) ?? p.split("/")[0]))];
@@ -530,9 +588,9 @@ function consistencyChecks(ctx: CleanContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
 
   // Filename convention. Mixed casing is the clearest sign of a codebase written
-  // by several hands (or several prompts) with no agreement between them — and on
-  // a case-insensitive filesystem it produces imports that work locally and fail
-  // in CI, which is among the most annoying classes of bug to diagnose.
+  // by several hands (or several prompts) with no agreement between them. Mixing
+  // does not itself break a build; an import whose case differs from the file's
+  // does (it resolves on macOS/Windows and fails on case-sensitive CI).
   const basenames = [...ctx.files.keys()].map((p) => p.split("/").pop() ?? "").filter(Boolean);
   const styles = {
     kebab: basenames.filter((b) => /^[a-z0-9]+(-[a-z0-9]+)+\./.test(b)).length,
@@ -550,10 +608,11 @@ function consistencyChecks(ctx: CleanContext): PulseScanCheckInput[] {
       confidence: "HIGH",
       detail:
         `${used.length} filename conventions are in use across the sample (` +
-        `${used.map(([k, n]) => `${k}: ${n}`).join(", ")}). Beyond looking unfinished, this causes a specific bug: ` +
-        `imports that resolve on a case-insensitive filesystem (macOS, Windows) and fail on the case-sensitive one ` +
-        `CI and production run — so it breaks at deploy rather than locally. Pick one convention and rename in a ` +
-        `single commit, so the churn is one diff rather than a year of them.`,
+        `${used.map(([k, n]) => `${k}: ${n}`).join(", ")}). Some mixing is idiomatic — React components are ` +
+        `conventionally PascalCase and hooks camelCase — but without an agreed rule per file type, contributors have ` +
+        `to guess a file's name before they can import it. Mixed conventions do not by themselves break builds; an ` +
+        `import whose case differs from the file's does, resolving on macOS and Windows and failing on case-sensitive ` +
+        `CI. Agree a convention per file type and rename in a single commit.`,
       evidence: used.map(([k, n]) => `${k}: ${n}`).join(", "),
     });
   }
@@ -562,7 +621,14 @@ function consistencyChecks(ctx: CleanContext): PulseScanCheckInput[] {
   // across files it is often just different languages with different conventions.
   const mixedFiles = [...ctx.files.entries()]
     .filter(([, text]) => {
-      const lines = text.split("\n").filter((l) => /^\s+\S/.test(l));
+      // Multi-line string literals and comments are blanked first. The indentation
+      // INSIDE a Go raw string or a template literal is data (help text, YAML
+      // fixtures) that gofmt and prettier deliberately leave alone; counting it
+      // flagged gofmt-clean Go tests (cli/cli login_test.go) as mixing tabs and spaces.
+      const code = stripCStyleComments(
+        text.replace(/`[^`]*`|"""[\s\S]*?"""|'''[\s\S]*?'''/g, (s) => s.replace(/[^\n]/g, "")),
+      );
+      const lines = code.split("\n").filter((l) => /^\s+\S/.test(l));
       if (lines.length < 20) return false;
       const tabs = lines.filter((l) => l.startsWith("\t")).length;
       const spaces = lines.filter((l) => l.startsWith(" ")).length;

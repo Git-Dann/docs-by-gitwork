@@ -5,6 +5,7 @@ import { ArrowPathIcon, PlayIcon, BeakerIcon, CheckIcon, XMarkIcon } from "@hero
 import { SettingsCard } from "@/components/settings/settings-card";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/format";
+import { LoadingState } from "@/components/ui/motion/loading-state";
 import {
   useCuratorStatus,
   useCuratorRuns,
@@ -50,10 +51,7 @@ export function CuratorPanel() {
 
   if (isLoading || !status) {
     return (
-      <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-3)]">
-        <ArrowPathIcon className="size-4 animate-spin" />
-        Loading curator…
-      </div>
+      <LoadingState label="Loading curator…" className="py-8" />
     );
   }
 

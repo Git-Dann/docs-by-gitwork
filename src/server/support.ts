@@ -233,6 +233,7 @@ import {
   encryptScraperConfig,
   decryptScraperConfig,
 } from "@/server/support-scraper-config";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export { SENSITIVE_SCRAPER_KEYS, encryptScraperConfig, decryptScraperConfig };
 
@@ -1015,10 +1016,15 @@ export async function updateConversation(
 // time a conversation leaves NEW (the shared-inbox analogue of "first reply");
 // `closedAt` is stamped on CLOSED/IGNORED.
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const CONVERSATION_INCLUDE = {
   tickets: { select: { id: true }, take: 1 },
   _count: { select: { notes: true } },
-} as const;
+} as const satisfies Prisma.SupportConversationInclude;
 
 /** Compute the lifecycle-timestamp side-effects of a status transition. */
 function statusTransitionData(
@@ -2284,7 +2290,7 @@ export async function listWorkspaceMembers(
 ): Promise<{ id: string; name: string; email: string; role: string }[]> {
   const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
-    where: { workspaceId, user: seedAccountUserWhere() },
+    where: { workspaceId, user: seedAccountUserWhere(), ...ACTIVE_MEMBER },
     include: { user: true },
   });
   const all = rows

@@ -10,6 +10,7 @@
 // All queries are batched across the whole client set (no N+1) and key results by
 // clientId, mirroring how listDerivedClients already builds its care/repo maps.
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeToMonthly } from "@/server/rate-card";
 import { getHolidaysForCountry } from "@/server/backstage-holidays";
@@ -19,17 +20,49 @@ import type { ClientMonthlyCost, ClientHealth, ClientHealthLevel } from "@/types
  *  (endDate null). Excludes "Off Bench" (PRO_BONO) devs, who work off-billing and are
  *  surfaced separately in Code; the card should only count the commercial roster.
  *  Always shown on cards. */
+/**
+ * Who counts as a dev on a client — the ONE definition.
+ *
+ * ⚠️ Two filters here are easy to leave off and impossible to spot afterwards: the
+ * candidate must belong to this workspace, and pro-bono devs are excluded (they are
+ * free, so they are not on the client's team for any figure we publish). A second
+ * query that forgot them returned 17 distinct people against per-client counts summing
+ * to 15 — a portfolio total LARGER than its own parts, which is unreconcilable on
+ * sight. Both callers build their `where` from this, so they cannot disagree.
+ */
+export function activeDevPlacementWhere(workspaceId: string, clientIds: string[]) {
+  return {
+    clientId: { in: clientIds },
+    endDate: null,
+    candidate: { workspaceId, devGroup: { not: "PRO_BONO" } },
+  } satisfies Prisma.PlacementWhereInput;
+}
+
+/**
+ * How many distinct PEOPLE are on these clients, counted once each.
+ *
+ * ⚠️ Not the sum of `computeClientDevCounts` — a developer routinely works across two
+ * or three clients, so summing counts placements rather than people.
+ */
+export async function computeDistinctDevCount(
+  workspaceId: string,
+  clientIds: string[],
+): Promise<number> {
+  if (clientIds.length === 0) return 0;
+  const rows = await prisma.placement.groupBy({
+    by: ["candidateId"],
+    where: activeDevPlacementWhere(workspaceId, clientIds),
+  });
+  return rows.length;
+}
+
 export async function computeClientDevCounts(
   workspaceId: string,
   clientIds: string[],
 ): Promise<Map<string, number>> {
   if (clientIds.length === 0) return new Map();
   const placements = await prisma.placement.findMany({
-    where: {
-      clientId: { in: clientIds },
-      endDate: null,
-      candidate: { workspaceId, devGroup: { not: "PRO_BONO" } },
-    },
+    where: activeDevPlacementWhere(workspaceId, clientIds),
     select: { clientId: true, candidateId: true },
   });
   const byClient = new Map<string, Set<string>>();

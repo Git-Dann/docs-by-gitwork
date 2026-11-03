@@ -28,9 +28,9 @@ const PIPELINE_STEPS = [
 export function DemoDevSignalExperience() {
   return (
     <DemoShell
-      active="Code"
-      title="Code"
-      subtitle="Developer vetting — assess candidates, then promote the right ones into Code."
+      active="Hiring"
+      title="Hiring"
+      subtitle="Developer vetting — assess candidates, then promote the right ones into Staff."
     >
       {/* Value framing: why this exists, before the ops-facing queue below. */}
       <div className="mb-6">

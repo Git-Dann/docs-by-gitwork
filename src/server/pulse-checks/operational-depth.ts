@@ -16,9 +16,15 @@
 
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { CATEGORIES, type CheckCategory } from "./categories";
-import type { RepoSnapshot } from "./native-mobile";
+import { sampleCoverage, stripCStyleComments, type RepoSnapshot } from "./native-mobile";
 
 const SOUND_ABSENCE_COVERAGE = 0.3;
+
+// Rules whose label speaks about RELEASE source. Test, spec and fixture files are
+// not shipped, so a marker found only there is not a release finding.
+const RELEASE_SOURCE_ONLY_KEYS = new Set(["vibe_depth_no_unresolved_markers"]);
+const NON_RELEASE_PATH =
+  /(?:^|\/)(?:__tests__|__mocks__|tests?|spec|e2e|fixtures?)\/|\.(?:test|spec)\.[cm]?[jt]sx?$|(?:^|\/)test_[^/]*\.py$|_test\.(?:go|py)$/i;
 
 export interface OperationalDepthRule {
   key: string;
@@ -31,6 +37,37 @@ export interface OperationalDepthRule {
   remediation: string;
   positiveFixture: string;
   adverseFixture: string;
+  /**
+   * Narrower evaluation, for rules where a keyword anywhere in the joined sample is not
+   * evidence: the subject is matched one file at a time (documentation never counts),
+   * and required evidence must appear within a single file the scope names, so an
+   * `origin` in one file can never pair with a `backoff` in another.
+   */
+  scope?: RuleScope;
+  /** PASS wording for a rule whose PASS is not "supporting implementation evidence was found". */
+  passDetail?: string;
+  /**
+   * The required evidence is one of many ways to write a safeguard, so not finding it shows
+   * nothing: report INCONCLUSIVE instead of WARN. A FORBIDDEN construct actually seen in
+   * source still yields `onMissing`. Used for the rules that were withdrawn in October 2026
+   * for warning on correct code, and restored this way (CLAUDE.md §84.18).
+   */
+  absentIsUnknown?: boolean;
+}
+
+export interface RuleScope {
+  /** Only files whose path matches can carry the subject. */
+  subjectFiles?: RegExp;
+  /** Each must ALSO match in the same file as the subject. */
+  withSubject?: RegExp[];
+  /** Establishes the subject from the tree listing alone, e.g. two locale catalogues. */
+  subjectFromPaths?: (paths: string[]) => boolean;
+  /**
+   * Where required evidence may come from: the files that carried the subject (the
+   * default), every file read, or files whose path matches. Forbidden constructs are
+   * always read from the subject files.
+   */
+  evidence?: "subject" | "all" | RegExp;
 }
 
 const rule = (
@@ -57,6 +94,63 @@ const rule = (
   adverseFixture,
 });
 
+/**
+ * How many distinct locales the tree has translation catalogues for: locales/fr.json,
+ * messages/de/*.json, config/locales/es.yml, fr.lproj/, values-de/strings.xml,
+ * app_es.arb, locale/fr/LC_MESSAGES/. The default Android values/ counts as one.
+ */
+export function localeCatalogues(paths: string[]): number {
+  const codes = new Set<string>();
+  const patterns = [
+    /(?:^|\/)(?:locales?|i18n|langs?|translations?|messages|l10n)\/([a-z]{2}(?:[-_][A-Za-z]{2,4})?)(?:\/|\.(?:json|ya?ml|po|js|ts|php|properties|xlf|xliff)$)/,
+    /(?:^|\/)config\/locales\/(?:[^/]+\/)*(?:[\w-]+\.)?([a-z]{2}(?:-[A-Z]{2})?)\.yml$/,
+    /(?:^|\/)([a-z]{2}(?:[-_][A-Za-z]{2,4})?)\.lproj\//,
+    /(?:^|\/)values-([a-z]{2}(?:-r[A-Z]{2})?)\/strings\.xml$/,
+    /(?:^|\/)(?:app|intl)_([a-z]{2}(?:_[A-Z]{2})?)\.arb$/,
+    /(?:^|\/)locale\/([a-z]{2}(?:_[A-Z]{2})?)\/LC_MESSAGES\//,
+  ];
+  for (const p of paths) {
+    if (/(?:^|\/)(?:node_modules|vendor|third_party)\//.test(p)) continue;
+    if (/(?:^|\/)values\/strings\.xml$/.test(p)) codes.add("default");
+    for (const re of patterns) {
+      const m = re.exec(p);
+      if (m) codes.add(m[1].toLowerCase().replace("_", "-"));
+    }
+  }
+  return codes.size;
+}
+
+/**
+ * A money column name: amount, unitPrice, total_cents, priceInCents … A word before it is
+ * allowed and only unit words after it, so `stripePriceId` and `taxRate` are not money.
+ */
+const MONEY_NAME =
+  "(?:[a-z]+_?)?(?:amount|price|total|subtotal|balance|cost|fee|tax|revenue|refund|payout)(?:_?(?:cents|pence|minor|value|amount|due|paid|total|usd|gbp|eur|price|cost|fee|in_?cents|in_?pence))*";
+/** A money column declared as a binary float. */
+const MONEY_FLOAT = new RegExp(
+  [
+    `^\\s*${MONEY_NAME}\\s+Float\\b`, // Prisma
+    `\\b${MONEY_NAME}["\`]?\\s+(?:float|double(?:\\s+precision)?|real)\\b`, // SQL
+    `\\b${MONEY_NAME}\\s*=\\s*models\\.FloatField\\b`, // Django
+    `\\bt\\.float\\s+[:"']${MONEY_NAME}\\b`, // Rails
+    `\\b${MONEY_NAME}\\s*:\\s*(?:real|doublePrecision|float)\\(`, // Drizzle
+    `\\b${MONEY_NAME}\\s*:\\s*\\{?\\s*type\\s*:\\s*DataTypes\\.(?:FLOAT|DOUBLE|REAL)\\b`, // Sequelize
+  ].join("|"),
+  "im",
+);
+/** A money column declared as integer minor units or a fixed-point decimal. */
+const MONEY_EXACT = new RegExp(
+  [
+    `^\\s*${MONEY_NAME}\\s+(?:Int|BigInt|Decimal)\\b`,
+    `\\b${MONEY_NAME}["\`]?\\s+(?:numeric|decimal|integer|int|bigint|money)\\b`,
+    `\\b${MONEY_NAME}\\s*=\\s*models\\.(?:Decimal|Integer|BigInteger|PositiveInteger|PositiveBigInteger)Field\\b`,
+    `\\bt\\.(?:decimal|integer|bigint|monetize)\\s+[:"']${MONEY_NAME}\\b`,
+    `\\b${MONEY_NAME}\\s*:\\s*(?:numeric|decimal|integer|bigint)\\(`,
+    `\\b${MONEY_NAME}\\s*:\\s*\\{?\\s*type\\s*:\\s*DataTypes\\.(?:DECIMAL|INTEGER|BIGINT)\\b`,
+  ].join("|"),
+  "im",
+);
+
 const AUTH = CATEGORIES.AUTHENTICATION;
 const ROLES = CATEGORIES.ROLES;
 const OBS = CATEGORIES.OBSERVABILITY;
@@ -77,7 +171,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   // ── Authentication ───────────────────────────────────────────────────────
   rule(
     AUTH, "auth_depth_session_cookie_flags", "Session cookies enforce Secure, HttpOnly and SameSite",
-    /express-session|cookie-session|session\s*\(|set-cookie/i,
+    /express-session|cookie-session|koa-session|@fastify\/session|\bsession\s*\(\s*\{\s*(?:cookie|secret|name|resave|store|saveUninitialized)\b|set-cookie/i,
     [/secure\s*:\s*true|Secure\b/i, /httpOnly\s*:\s*true|HttpOnly\b/i, /sameSite\s*:\s*["']?(?:lax|strict|none)|SameSite=/i],
     [/secure\s*:\s*false|httpOnly\s*:\s*false/i], "FAIL",
     "Set Secure and HttpOnly, choose an explicit SameSite policy, and test the production Set-Cookie header.",
@@ -86,7 +180,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     AUTH, "auth_depth_csrf_state_change", "Cookie-authenticated state changes carry CSRF protection",
-    /app\.(?:post|put|patch|delete)|router\.(?:post|put|patch|delete)|cookie-session|express-session/i,
+    /cookie-session|express-session|cookie-parser|koa-session|@fastify\/(?:session|secure-session|cookie)|\bres\.cookie\(|\.set_cookie\(|\bsetCookie\(|ctx\.cookies\.set\(|cookies\(\)\)?\.set\(|app\.use\(\s*session\(|SessionMiddleware|flask_login|login_user\(/i,
     [/\bcsrf\b|xsrf|sameSite\s*:\s*["']strict|double.?submit/i], undefined, "WARN",
     "Add framework CSRF middleware or a verified double-submit token to every cookie-authenticated mutation.",
     `app.use(session({ cookie: { sameSite: "strict" } })); app.post("/profile", csrfProtection, update);`,
@@ -95,20 +189,30 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     AUTH, "auth_depth_sensitive_reauthentication", "Sensitive account changes require recent authentication",
     /change.{0,20}(?:password|email)|delete.{0,20}account|payout|transfer.{0,20}ownership/i,
-    [/reauth|currentPassword|recentAuth|auth_time|step.?up/i], undefined, "WARN",
+    [/reauth|(?:current|old)_?password|recentAuth|auth_time|step.?up/i], undefined, "WARN",
     "Require the current credential or a recent step-up challenge before changing identity, ownership, payout, or recovery data.",
     `router.post("/change-email", requireRecentAuth, changeEmail);`,
     `router.post("/change-email", changeEmail);`,
   ),
-  rule(
-    AUTH, "auth_depth_generic_login_errors", "Login responses do not reveal whether an account exists",
-    /login|signIn|authenticate/i,
-    [/invalid (?:credentials|email or password)|authentication failed/i],
-    [/(?:user|account|email) (?:not found|does not exist)|wrong password/i], "WARN",
-    "Return the same status, message, and timing for an unknown account and a wrong password.",
-    `return response.status(401).json({ error: "Invalid credentials" }); // login`,
-    `return response.status(404).json({ error: "User not found" }); // login`,
-  ),
+  {
+    ...rule(
+      AUTH, "auth_depth_generic_login_errors", "Login responses do not reveal whether an account exists",
+      // The code that CHECKS a password, not the word "login" (in every repo; on
+      // chatbot-ui it matched a profile helper's "User not found").
+      /\bbcrypt(?:js)?\.compare(?:Sync)?\(|\bargon2\.verify\(|\bverifyPassword\(|\bcomparePassword\(|\bcheck_password\(|\bpassword_verify\(|\bauthenticate\(\s*(?:request|req)\b|\bLocalStrategy\b|\bvalid_password\?|passwordEncoder\.matches\(|\bsignInWithPassword\(/,
+      undefined,
+      // Only a server RESPONSE that names the account's existence, in the same file as
+      // the password check. "Wrong password" on its own leaks nothing (it is what the
+      // generic message often says), and UI copy is not the server's answer.
+      [/(?:\.(?:json|send)\(\s*\{?\s*(?:error|message|detail)?\s*:?\s*|\b(?:error|message|detail)\s*:\s*|throw new \w*\(\s*|raise \w+\(\s*)["'`][^"'`\n]{0,40}\b(?:user|account|email) (?:not found|does not exist)/i], "WARN",
+      "Return the same status, message, and timing for an unknown account and a wrong password.",
+      `const ok = await bcrypt.compare(password, user.passwordHash); if (!ok) return res.status(401).json({ error: "Invalid credentials" });`,
+      `if (!user) return res.status(404).json({ error: "User not found" }); await bcrypt.compare(password, user.passwordHash);`,
+    ),
+    scope: {},
+    passDetail:
+      "The code that checks passwords was read, and none of its responses says whether an account exists.",
+  },
   rule(
     AUTH, "auth_depth_recovery_single_use", "Account-recovery tokens are invalidated after use",
     /password.?reset|resetPassword|recovery.?token|resetToken/i,
@@ -136,7 +240,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     AUTH, "auth_depth_oauth_redirect_allowlist", "OAuth return URLs are constrained to an allow-list",
     /redirect_uri|callbackUrl|returnTo|oauth.{0,20}callback/i,
-    [/allowedRedirect|safeRedirect|redirectAllowlist|new URL\([^)]*,\s*(?:APP_URL|baseUrl)/i],
+    [/allowedRedirect|safeRedirect|redirectAllowlist|new URL\([^)]*,\s*(?:APP_URL|baseUrl)|["']redirect_uri_mismatch["']|\.redirect_?uri\s*!==?\s*redirect_?uri\b|redirect_?uris\.includes\(|redirect_?uri\s+not\s+in\s+[\w.]*redirect_?uris/i],
     [/res\.redirect\(\s*(?:req|request)\.(?:query|body)|redirect\(\s*callbackUrl\s*\)/i], "FAIL",
     "Resolve return paths against the product origin and reject absolute or unlisted callback destinations.",
     `const target = safeRedirect(callbackUrl, redirectAllowlist); res.redirect(target);`,
@@ -144,28 +248,43 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
 
   // ── Roles & permissions ──────────────────────────────────────────────────
-  rule(
+  {
+    ...rule(
     ROLES, "roles_depth_server_authorization", "Privileged routes enforce authorization on the server",
-    /admin|permission|role|privileged/i,
-    [/authorize\(|requireRole|requirePermission|can\(|policy\./i], undefined, "FAIL",
+    // Code that decides on a role, not the word "admin" (which is in every CMS, every
+    // settings page and every "administrator" sentence).
+    /\bisAdmin\b|requireAdmin|adminProcedure|\badmin(?:Router|Routes|Controller|Middleware)\b|(?:^|\/)(?:routes|controllers|api)\/admin\b|\brole\s*(?:===?|!==?)\s*["'`]admin|\broles?\.includes\(\s*["'`]admin|\b(?:userRole|currentUserRole)\b|\bhasRole\b|\brequireRole\b|["'`]\/admin(?:\/|["'`])/i,
+    // Many real guard idioms exist; a missing name from this list is not a missing guard,
+    // which is why an absence here is INCONCLUSIVE, never a WARN or a FAIL.
+    [/authorize\(|requireRole|requirePermission|\bcan\(|policy\.|requireAdmin|isAdminMiddleware|AdminProcedure|protectedProcedure|checkPermission|PermissionCheckService|requireAuth|withAuth|ensureAdmin|assertAdmin|adminOnly|isAdmin\s*\(|@UseGuards|RolesGuard|@PreAuthorize|@Secured|@login_required|@permission_required|user_passes_test|permission_classes|before_action\s+:(?:authenticate|authorize|require)|Gate::|->middleware\(|getServerSession\(|currentUser\(\)|auth\(\)\.protect|clerkMiddleware|role\s*!==?\s*["'`]admin["'`][\s\S]{0,80}(?:403|401|forbidden|unauthori[sz]ed|redirect|throw)/i], undefined, "WARN",
     "Enforce authorization inside the server handler or policy layer; hidden UI controls are not access control.",
     `router.delete("/admin/users/:id", requirePermission("users:delete"), handler);`,
     `router.delete("/admin/users/:id", handler); // button is hidden for non-admins`,
   ),
-  rule(
+    // Guards have many names; only a missing one in a route Pulse can tie to a handler would prove anything.
+    absentIsUnknown: true,
+  },
+  {
+    ...rule(
     ROLES, "roles_depth_default_deny", "Authorization policies default to deny",
-    /authorization|permission|policy|access control/i,
-    [/default.{0,12}deny|deny.{0,12}default|return false|effect\s*:\s*["']Deny/i],
-    [/default.{0,12}allow|return true\s*;?\s*\/\/ fallback/i], "FAIL",
+    /\b(?:hasPermission|checkPermission|requirePermission|requireRole|hasRole|isAllowed|isAuthorized|has_perms?)\s*\(|\bcan\(|\bpermissions?\s*[:=]\s*[\[{]|\bpolicies\s*[:=]|\bpolicy\.\w+\(|access.?control.?list|@casl\/ability|\bcasbin\b|permission_classes\s*=|DEFAULT_PERMISSION_CLASSES|Gate::(?:define|allows|denies|before)|@PreAuthorize|@Roles\(|\bRolesGuard\b/i,
+    // `return false` is in every codebase, so it proved nothing; a stated deny default
+    // is the only thing a sample can show. And only a policy that DECLARES an allow
+    // default is adverse — `defaultAllowed` or "default: allow" in prose is not.
+    [/default.{0,12}deny|deny.{0,12}default|denyAll|if\s*\(\s*!\s*[\w.]*(?:grant|permission|role|polic|rule|acl|abilit)\w*[\w.\[\]]*\s*\)\s*return false|effect\s*:\s*["']Deny|\bdefault(?:Policy|Effect|Decision|Access)\s*[:=]\s*["'`]?deny|\bdefault_(?:policy|effect|decision|access)\s*[:=]\s*["']?deny|DEFAULT_PERMISSION_CLASSES[^\n]*IsAuthenticated/i],
+    [/\bdefault(?:Policy|Effect|Decision|Access)\s*[:=]\s*["'`]?(?:allow|permit|grant)\b|\bdefault_(?:policy|effect|decision|access)\s*[:=]\s*["']?(?:allow|permit|grant)\b|return true\s*;?\s*\/\/\s*(?:fallback|default)/i], "FAIL",
     "Make unknown roles, resources, and actions deny by default and add explicit grants.",
-    `function can(action) { if (!known(action)) return false; } // authorization default deny`,
-    `function can(action) { return true; } // authorization default allow fallback`,
+    `const policy = { defaultEffect: "deny" }; function can(action) { return policy.allows(action); }`,
+    `const policy = { defaultEffect: "allow" }; function can(action) { return policy.allows(action); }`,
   ),
+    // A stated deny default proves it; its absence in a sample does not prove the opposite.
+    absentIsUnknown: true,
+  },
   rule(
     ROLES, "roles_depth_tenant_query_scope", "Multi-tenant data queries carry tenant scope",
     /workspaceId|tenantId|organizationId|accountId/i,
     [/where\s*:\s*\{[^}]{0,160}(?:workspaceId|tenantId|organizationId|accountId)|scopeToTenant|tenantFilter/i],
-    undefined, "FAIL",
+    undefined, "WARN",
     "Inject the authenticated tenant identifier into every query rather than accepting it from the request body.",
     `db.document.findMany({ where: { workspaceId: session.workspaceId } });`,
     `const workspaceId = req.body.workspaceId; db.document.findMany();`,
@@ -173,7 +292,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     ROLES, "roles_depth_object_ownership", "Object-level access verifies ownership or membership",
     /findUnique|findById|\/:[a-z]*id|params\.id/i,
-    [/ownerId|userId.{0,30}(?:===|where)|membership|authorizeObject|scopeToUser/i], undefined, "FAIL",
+    [/ownerId|userId.{0,30}(?:===|where)|membership|authorizeObject|scopeToUser|where\s*:\s*\{[^}]{0,120}(?:owner|author|user)Id\s*:\s*(?:session|currentUser|user|req\.user|ctx\.user)\??\.|\.(?:owner|author)\.id\s*!==?/i], undefined, "WARN",
     "Check the requested object's owner or tenant membership before returning or mutating it.",
     `const item = await db.item.findFirst({ where: { id: params.id, ownerId: session.user.id } });`,
     `const item = await db.item.findUnique({ where: { id: params.id } });`,
@@ -189,7 +308,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     ROLES, "roles_depth_impersonation_control", "Support impersonation is explicit, bounded and audited",
     /impersonat|loginAs|actAsUser/i,
-    [/audit|reason|requiredTicket|expiresAt|stopImpersonat/i], undefined, "FAIL",
+    [/audit|reason|requiredTicket|expiresAt|stopImpersonat/i], undefined, "WARN",
     "Require a support reason, short expiry, visible session state, and immutable audit event for impersonation.",
     `impersonate({ target, reason, expiresAt }); audit.record("impersonation.started");`,
     `loginAsUser(targetUserId);`,
@@ -216,7 +335,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     OBS, "obs_depth_structured_redaction", "Structured logs redact secrets and personal data",
     /pino|winston|structlog|logger\./i,
-    [/redact\s*[:=]|sanitizeLog|maskSensitive|filterSensitive/i],
+    [/redact\s*[:=]|sanitizeLog|maskSensitive|filterSensitive|filter_parameters|sensitive_post_parameters|sensitive_variables/i],
     [/logger\.\w+\([^)]*(?:password|authorization|accessToken|refreshToken)/i], "FAIL",
     "Configure central field redaction for credentials, cookies, tokens, and high-risk personal data before log export.",
     `const logger = pino({ redact: ["req.headers.authorization", "password"] });`,
@@ -232,7 +351,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     OBS, "obs_depth_latency_histogram", "Request latency is measured as a distribution",
-    /prom-client|prometheus|metrics|micrometer|Histogram/i,
+    /prom-client|prometheus|micrometer|Histogram|statsd|\bmetrics\.\w+\(|sdk-metrics|MeterProvider|getMeter\(|createCounter\(|putMetricData/i,
     [/Histogram|Timer\.builder|request_duration|latency_bucket/i], undefined, "WARN",
     "Record request duration in histogram buckets so p50/p95/p99 latency and SLO burn are measurable.",
     `const requestDuration = new Histogram({ name: "http_request_duration_seconds" });`,
@@ -256,15 +375,15 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     OBS, "obs_depth_queue_metrics", "Queue depth, age and consumer lag are monitored",
-    /bullmq|rabbitmq|kafka|sqs|celery|sidekiq/i,
-    [/queue.{0,16}(?:depth|age)|consumer.?lag|oldest.?message|jobs_waiting/i], undefined, "WARN",
+    /bullmq|rabbitmq|kafka|(?<![a-z])sqs|AmazonSQS|celery|sidekiq/i,
+    [/queue[\s_.-]?(?:depth|latency|age(?!nt))|(?<!max_)queue_size|consumer.?lag|oldest.?message|jobs_waiting/i], undefined, "WARN",
     "Alert on queue depth, oldest-message age, failed jobs, and consumer lag before work silently backs up.",
     `metrics.gauge("queue_depth", queue.waiting); metrics.gauge("oldest_message_age", age); // bullmq`,
     `const queue = new Queue("email"); // bullmq`,
   ),
   rule(
     OBS, "obs_depth_slow_query_visibility", "Database query latency and slow queries are visible",
-    /prisma|sequelize|typeorm|sqlalchemy|hibernate|database/i,
+    /prisma|sequelize|typeorm|sqlalchemy|hibernate|(?<!meta)database/i,
     [/slow.?quer|query.{0,12}duration|log_min_duration_statement|statement_timeout|db\.client\.operation\.duration/i],
     undefined, "WARN",
     "Capture query duration, identify the operation safely, and alert on slow-query rate without logging bound values.",
@@ -273,8 +392,8 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     OBS, "obs_depth_utc_timestamps", "Operational events use unambiguous UTC timestamps",
-    /logger\.|audit|telemetry|event/i,
-    [/toISOString\(|DateTime\.utc|timezone\s*[:=]\s*["']UTC|timestamp.{0,12}UTC/i], undefined, "WARN",
+    /logger\.|audit[_ -]?(?:log|event|trail)|\btelemetry\b|\b(?:emit|log|track|record|publish)_?Event\b/i,
+    [/toISOString\(|DateTime\.utc|timezone\s*[:=]\s*["']UTC|timestamp.{0,12}UTC|\.utc\b|\biso8601\b|USE_TZ\s*=\s*True/i], undefined, "WARN",
     "Emit ISO-8601 UTC timestamps and preserve a separate user timezone only for presentation.",
     `logger.info({ timestamp: new Date().toISOString(), event: "started" });`,
     `logger.info({ timestamp: new Date().toLocaleString(), event: "started" });`,
@@ -284,14 +403,14 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     API, "api_depth_response_schema", "API responses are validated against a schema",
     /app\.(?:get|post|put|patch|delete)|router\.|NextResponse|FastAPI|Controller/i,
-    [/responseSchema|safeParse\(response|serialize\(|response_model|OpenAPI.{0,20}responses/i], undefined, "WARN",
+    [/responseSchema|safeParse\(response|serialize\(|response_model|OpenAPI.{0,20}responses|ActiveModel::Serializer|JSONAPI::Serializer|serializers\.\w*Serializer|to_representation|\b(?!object|row|json|xml)\w+Mapper\s*\(/i], undefined, "WARN",
     "Validate or serialize responses at the boundary so undocumented fields and invalid shapes cannot leak to clients.",
     `router.get("/users", { schema: { response: responseSchema } }, handler);`,
     `router.get("/users", async () => db.user.findMany());`,
   ),
   rule(
     API, "api_depth_page_size_cap", "Pagination enforces a maximum page size",
-    /pageSize|per_page|limit|take\s*:/i,
+    /pageSize|page_size|per_page|perPage|(?:query|params|searchParams|args)\W{0,4}(?:get\(\s*["'])?limit\b|\.get\(\s*["']limit["']|\blimit\??\s*:\s*(?:int\b|number\b|z\.)|\blimit\s*=\s*Query\(|\{[^}]{0,80}\blimit\b[^}]{0,80}\}\s*=\s*(?:await\s+)?(?:req|request|ctx|input|args|params|query|searchParams|body)\b|take\s*:/i,
     [/Math\.min\(|MAX_PAGE|maximum.{0,12}page|\.max\(\s*\d+\s*\)|le\s*=\s*\d+/i], undefined, "WARN",
     "Clamp client-requested page sizes to a documented upper bound before building the database query.",
     `const take = Math.min(Number(req.query.pageSize ?? 20), MAX_PAGE_SIZE);`,
@@ -299,7 +418,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     API, "api_depth_cursor_validation", "Pagination cursors are opaque and validated",
-    /cursor/i,
+    /nextCursor|endCursor|prevCursor|startCursor|(?:query|params|body|input|args)\??\.cursor\b|\.get\(\s*["']cursor["']|\bcursor\??\s*:\s*(?:z\.|str\b|string\b)|\bcursor\s*=\s*Query\(|\{[^}]{0,80}\bcursor\b[^}]{0,80}\}\s*=\s*(?:await\s+)?(?:req|request|ctx|input|args|params|query|searchParams|body)\b|params\[\s*:cursor\s*\]/i,
     [/verifyCursor|decodeCursor|cursorSchema|safeParse\(cursor|HMAC.{0,20}cursor/i], undefined, "WARN",
     "Decode and validate an opaque cursor; sign it when it contains authorization-sensitive state.",
     `const value = cursorSchema.parse(decodeCursor(req.query.cursor));`,
@@ -316,7 +435,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     API, "api_depth_request_deadline", "Inbound requests have a bounded execution deadline",
     /app\.use|server\.use|middleware|request/i,
-    [/requestTimeout|AbortSignal\.timeout|deadline|timeoutMiddleware|server\.timeout/i], undefined, "WARN",
+    [/requestTimeout|AbortSignal\.timeout|deadline|timeoutMiddleware|server\.timeout|(?:^|\n)[ \t]*timeout\(?[ \t]*\d+\)?[ \t]*(?:\n|$)|gunicorn[^\n]*--timeout[= ]\d+|proxy_read_timeout|Rack::Timeout|maxDuration/i], undefined, "WARN",
     "Apply a server-side request deadline and propagate cancellation to database and downstream calls.",
     `app.use(timeoutMiddleware(10_000)); const signal = AbortSignal.timeout(9000);`,
     `app.use(requestLogger);`,
@@ -324,7 +443,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     API, "api_depth_webhook_replay_window", "Webhook verification rejects stale deliveries",
     /webhook/i,
-    [/tolerance|timestamp.{0,24}(?:window|age|fresh)|replay|nonce/i], undefined, "FAIL",
+    [/tolerance|timestamp.{0,24}(?:window|age|fresh)|replay|nonce|webhooks?\s*\.\s*construct(?:_event|Event(?:Async)?)\s*\(/i], undefined, "WARN",
     "Verify the signed timestamp within a short tolerance and persist event identifiers to reject replays.",
     `verifyWebhook(signature, body, { tolerance: 300 }); rejectReplay(event.id);`,
     `verifyWebhook(signature, body); processWebhook(body);`,
@@ -339,8 +458,8 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     API, "api_depth_contract_validation_ci", "The machine-readable API contract is validated in CI",
-    /openapi|swagger|asyncapi|graphql.{0,12}schema/i,
-    [/spectral|openapi.{0,12}validate|schema.{0,12}check|contract.?test|graphql-inspector/i], undefined, "WARN",
+    /(?:openapi|swagger|asyncapi)["']?\s*:\s*["']?\d|(?:openapi|swagger|asyncapi)\.(?:ya?ml|json)|@nestjs\/swagger|swagger-jsdoc|springdoc-openapi|drf[-_]spectacular|drf[-_]yasg|schema\.graphqls?\b|\.graphqls\b|graphql-schema|new GraphQLSchema|makeExecutableSchema/i,
+    [/spectral|openapi.{0,12}validate|schema.{0,12}check|contract.?test|graphql-inspector|rswag[-\/]specs|jest-openapi|openapi-response-validator|schemathesis|oasdiff|\bdredd\b/i], undefined, "WARN",
     "Lint the API contract and compare breaking changes against the released schema in CI.",
     `openapi: 3.1.0\nrun: spectral lint openapi.yaml && openapi validate && contract-test`,
     `openapi: 3.1.0\ninfo: { title: API }`,
@@ -350,7 +469,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PAY, "payments_depth_event_deduplication", "Payment provider events are deduplicated",
     /stripe|paddle|braintree|adyen|paypal|payment.{0,12}webhook/i,
-    [/event\.id.{0,40}(?:unique|upsert|findUnique|SETNX)|processedEvent|dedup/i], undefined, "FAIL",
+    [/event\.id.{0,40}(?:unique|upsert|findUnique|SETNX)|processedEvent|dedup/i], undefined, "WARN",
     "Persist each provider event id under a unique constraint before applying entitlements or ledger changes.",
     `const seen = await processedEvent.upsert({ where: { id: event.id }, create: { id: event.id } }); // stripe`,
     `stripe.webhooks.constructEvent(body, sig, secret); await grantAccess(event);`,
@@ -358,7 +477,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PAY, "payments_depth_refund_authorization", "Refunds require an explicit privileged permission",
     /refund/i,
-    [/requirePermission\(["']refund|authorizeRefund|role.{0,20}(?:finance|admin)|refundPolicy\.can/i], undefined, "FAIL",
+    [/requirePermission\(["']refund|authorizeRefund|role.{0,20}(?:finance|admin)|refundPolicy\.can/i], undefined, "WARN",
     "Gate refund creation behind a dedicated permission rather than general account access.",
     `router.post("/refunds", requirePermission("refund:create"), createRefund);`,
     `router.post("/refunds", requireUser, createRefund);`,
@@ -398,8 +517,8 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PAY, "payments_depth_price_allowlist", "Checkout accepts server-owned price identifiers only",
     /priceId|price_id|checkout.{0,16}session/i,
-    [/allowedPrices|priceCatalog|lookupPrice|productConfig/i],
-    [/price(?:Id|_id)\s*[:=]\s*(?:req|request)\.(?:body|query)/i], "FAIL",
+    [/allowedPrices|priceCatalog|lookupPrice|productConfig|line_items\s*:\s*\[\s*\{[^}]{0,120}?\bprice\s*:\s*(?!(?:req|request|body|input|query|params|args|ctx)\.)(?:process\.env\.[A-Z0-9_]+|[\w.]*(?:plan|config|catalog|tier)\w*\.\w*price_?id\b)/i],
+    [/price(?:Id|_id)\s*[:=]\s*(?:req|request)\.(?:body|query)|\{[^}]{0,80}\bprice(?:Id|_id)\b[^}]{0,80}\}\s*=\s*(?:await\s+)?(?:req|request)\.(?:body|query|json\(\))/i], "FAIL",
     "Map a client plan key to a server-owned price catalogue and reject unknown or inactive prices.",
     `const priceId = priceCatalog[planKey]; checkout.sessions.create({ line_items: [{ price: priceId }] });`,
     `const priceId = req.body.priceId; checkout.sessions.create({ line_items: [{ price: priceId }] });`,
@@ -407,21 +526,27 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PAY, "payments_depth_entitlement_transaction", "Payment state and entitlements update atomically",
     /entitlement|grantAccess|subscriptionStatus|planAccess/i,
-    [/transaction\(|unitOfWork|atomic\(|compareAndSet|version.{0,20}entitlement/i], undefined, "FAIL",
+    [/transaction\(|unitOfWork|atomic\(|compareAndSet|version.{0,20}entitlement/i], undefined, "WARN",
     "Update the payment event, subscription state, and entitlement in one transaction with idempotency.",
     `await db.transaction(async tx => { await tx.event.create(); await tx.entitlement.upsert(); });`,
     `await grantAccess(userId); await markPaymentProcessed(event.id);`,
   ),
 
   // ── Email deliverability ─────────────────────────────────────────────────
-  rule(
+  {
+    ...rule(
     MAIL, "email_depth_retry_backoff", "Transient email failures retry with backoff and jitter",
-    /resend|sendgrid|postmark|mailgun|nodemailer|sendEmail|mailer/i,
-    [/backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt/i], undefined, "WARN",
+    // Files that SEND mail or queue a mail job. The backoff must be in one of those
+    // files, near the mail call: backoff in an unrelated HTTP client no longer counts.
+    /\bsend\w*E-?mail\w*\s*\(|\bsendMail\s*\(|\bsend_mail\s*\(|\b(?:emails|mailer|transporter|sgMail|mailgun|postmark\w*)\.send\w*\s*\(|e-?mail[\w-]*(?:queue|jobs?|workers?)/i,
+    [/(?:resend|sendgrid|postmark|mailgun|nodemailer|send\w*E-?mail|sendMail|send_mail|mailer|transporter|e-?mail[\w-]*(?:queue|jobs?|workers?))[\s\S]{0,600}?(?:backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt|autoretry_for)|(?:backoff|exponential|jitter|retryDelay|attempt\s*\*\s*attempt|autoretry_for)[\s\S]{0,600}?(?:resend|sendgrid|postmark|mailgun|nodemailer|send\w*E-?mail|sendMail|send_mail|mailer|transporter|e-?mail[\w-]*(?:queue|jobs?|workers?))/i], undefined, "WARN",
     "Retry only transient responses with capped exponential backoff and jitter; dead-letter permanent failures.",
     `await sendEmail(message, { retries: 3, backoff: "exponential", jitter: true });`,
     `for (let retry = 0; retry < 3; retry++) await sendEmail(message);`,
-  ),
+    ),
+    scope: {},
+    passDetail: "The code that sends or queues email retries with backoff, read in the same file as the send.",
+  },
   rule(
     MAIL, "email_depth_send_idempotency", "Transactional email sends are idempotent",
     /sendEmail|sendOnce|emails\.send|mailer\.send|deliver_later/i,
@@ -446,14 +571,26 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"; // newsletter`,
     `newsletter.headers["List-Unsubscribe"] = "<https://example.test/unsubscribe>";`,
   ),
-  rule(
-    MAIL, "email_depth_stream_separation", "Transactional and marketing mail use separate streams",
-    /transactional|marketing|newsletter|campaign/i,
-    [/messageStream|serverToken.{0,20}(?:transactional|marketing)|subdomain|sendingDomain/i], undefined, "WARN",
-    "Separate transactional and bulk mail by provider stream or subdomain so campaign reputation cannot block account mail.",
-    `send({ messageStream: isMarketing ? "marketing" : "transactional" });`,
-    `send({ from: "hello@example.test" }); // transactional and marketing`,
-  ),
+  {
+    ...rule(
+      MAIL, "email_depth_stream_separation", "Transactional and marketing mail use separate streams",
+      // Bulk mail this code SENDS itself: a newsletter or campaign word in the same file
+      // as a send call. A newsletter sign-up form that hands addresses to Mailchimp sends
+      // nothing, and "marketing" in a page component is not mail.
+      /newsletter|bulk.?mail|(?:marketing|campaign|promotional|broadcast)[\s_-]?(?:e-?mails?|mail(?:ings?)?|messages?|streams?|sends?)\b|(?:e-?mail|mail)[\s_-]?(?:marketing|campaigns?)/i,
+      // Separation: a provider message stream, a dedicated sending domain or subdomain in a
+      // from address, or a separate marketing provider for the bulk mail.
+      [/messageStream|MessageStream|serverToken.{0,20}(?:transactional|marketing)|sendingDomain|(?:from|sender)\s*[:=]\s*["'`][^"'`@\n]*@(?:news|mail|marketing|updates|bulk|e|em|m|go)\.[\w-]+\.[\w.-]+|\b(?:mailchimp|convertkit|beehiiv|klaviyo|customerio|customer\.io|brevo|sendinblue)\b|@loops\b|loops\.so/i], undefined, "WARN",
+      "Separate transactional and bulk mail by provider stream or subdomain so campaign reputation cannot block account mail.",
+      `sendNewsletter({ messageStream: "broadcast" }); sendReceipt({ messageStream: "outbound" });`,
+      `sendNewsletter({ from: "hello@example.test" }); sendReceipt({ from: "hello@example.test" });`,
+    ),
+    scope: {
+      withSubject: [/\bsend\w*\s*\(|\.send\w*\s*\(|\bsend_mail\s*\(/],
+      evidence: "all",
+    },
+    passDetail: "Bulk mail sent by this code goes through a separate message stream, sending domain or marketing provider.",
+  },
   rule(
     MAIL, "email_depth_template_versioning", "Email templates carry a version or immutable identifier",
     /email.{0,12}template|templateId|renderEmail/i,
@@ -462,18 +599,30 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `renderEmail({ templateId: "receipt", templateVersion: 4, data });`,
     `renderEmail({ templateId: "receipt", data });`,
   ),
-  rule(
-    MAIL, "email_depth_address_validation", "Recipient addresses are parsed and normalised before send",
-    /sendEmail|emails\.send|mailer\.send/i,
-    [/emailSchema|isEmail|normalizeEmail|parseAddress|Address\(/i], undefined, "WARN",
-    "Validate syntax, normalise conservatively, and reject header characters before handing an address to the provider.",
-    `const to = emailSchema.parse(normalizeEmail(input)); await sendEmail({ to });`,
-    `await sendEmail({ to: req.body.email });`,
-  ),
+  {
+    ...rule(
+      MAIL, "email_depth_address_validation", "Recipient addresses are parsed and normalised before send",
+      // A send call whose recipient comes straight from the request, in one file. Mail to
+      // an address already on a user record was validated when it was stored.
+      /\bsend\w*E-?mail\w*\s*\(|\bsendMail\s*\(|\bsend_mail\s*\(|\b(?:emails|mailer|transporter|sgMail)\.send\w*\s*\(/i,
+      // zod `.email()`, yup `.string().email()`, a schema parse of the body, validator.js,
+      // class-validator, express-validator and Django's EmailField all count.
+      [/emailSchema|isEmail|isValidEmail|validateEmail|normalizeEmail|normalizeIdentifier|parseAddress|Address\(|\.string\([^)]*\)(?:\.\w+\([^)]*\))*\.email\(|\bz\.email\(|\b\w*[sS]chema\.(?:safe)?[pP]arse(?:Async)?\(|\bvalidate_email\(|\bEmailValidator\b|\bEmailField\b|@IsEmail\(|\bbody\(\s*["']email["']\s*\)\.isEmail|\.is_valid\(\)/i], undefined, "WARN",
+      "Validate syntax, normalise conservatively, and reject header characters before handing an address to the provider.",
+      `const { email } = req.body; const to = emailSchema.parse(normalizeEmail(email)); await sendEmail({ to });`,
+      `const { email } = req.body; await sendEmail({ to: email });`,
+    ),
+    scope: {
+      withSubject: [
+        /\bto\s*[:=]\s*(?:req|request|ctx\.request)\.(?:body|query|params)\b|\{[^}\n]*\bemail\b[^}\n]*\}\s*=\s*(?:await\s+)?(?:req|request|ctx\.request)\.(?:body|query|json\(\))|\bformData\.get\(\s*["']email["']\s*\)|\brequest\.(?:POST|data|form|json)(?:\.get\(|\[)\s*["']email["']/,
+      ],
+    },
+    passDetail: "Where a recipient address comes straight from a request, it is validated in the same handler before the send.",
+  },
   rule(
     MAIL, "email_depth_webhook_signature", "Email delivery webhooks authenticate the provider",
     /email.{0,20}webhook|delivery.{0,12}event|bounce.{0,12}webhook/i,
-    [/verifyWebhook|verifySignature|svix|webhook-signature|timingSafeEqual/i], undefined, "FAIL",
+    [/verifyWebhook|verifySignature|svix|webhook-signature|timingSafeEqual/i], undefined, "WARN",
     "Verify the provider signature over the raw body before changing suppression or delivery state.",
     `app.post("/email-webhook", rawBody, (req) => verifyWebhook(req.headers, req.body));`,
     `app.post("/email-webhook", (req) => processDeliveryEvent(req.body));`,
@@ -482,7 +631,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   // ── Infrastructure ───────────────────────────────────────────────────────
   rule(
     INFRA, "infra_depth_restore_drill", "Backups are proven with an automated restore test",
-    /backup|snapshot|pg_dump|mysqldump/i,
+    /backup|pg_dump|mysqldump|mongodump|(?:db|database|volume|disk|rds|ebs|final)[\s_-]?snapshot/i,
     [/restore.{0,24}(?:test|verify|drill)|pg_restore|recovery.?test|checksum.{0,20}backup/i], undefined, "WARN",
     "Restore the latest backup into an isolated environment on a schedule and verify data-level invariants.",
     `schedule: weekly\nrun: pg_restore backup.dump && verify_restore_test && checksum_backup`,
@@ -499,7 +648,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     INFRA, "infra_depth_resource_limits", "Workloads declare CPU and memory limits",
-    /docker-compose|kind:\s*(?:Deployment|StatefulSet)|services:/i,
+    /(?:^|[\n/])(?:docker-)?compose(?:\.[\w-]+)?\.ya?ml\n|kind:\s*(?:Deployment|StatefulSet)/i,
     [/resources:\s*[\s\S]{0,160}limits:|mem_limit|cpus\s*:/i], undefined, "WARN",
     "Set realistic requests and limits from measured usage so one process cannot starve every colocated service.",
     `kind: Deployment\nresources:\n  limits:\n    memory: 512Mi\n    cpu: 500m`,
@@ -513,31 +662,56 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `kind: Deployment\nreadinessProbe: { httpGet: { path: /ready } }\nlivenessProbe: { httpGet: { path: /live } }`,
     `kind: Deployment\nlivenessProbe: { httpGet: { path: /health } }`,
   ),
-  rule(
-    INFRA, "infra_depth_iac_plan_gate", "Infrastructure changes produce a reviewed plan in CI",
-    /terraform|tofu|pulumi|cloudformation/i,
-    [/(?:terraform|tofu) plan|pulumi preview|change.?set|plan.?artifact/i], undefined, "WARN",
-    "Generate a non-destructive plan for pull requests and require review before apply.",
-    `pull_request:\n  run: terraform plan -out plan.artifact`,
-    `push:\n  run: terraform apply -auto-approve`,
-  ),
+  {
+    ...rule(
+      INFRA, "infra_depth_iac_plan_gate", "Infrastructure changes produce a reviewed plan in CI",
+      // Infrastructure code itself (Terraform/OpenTofu blocks, a CloudFormation template),
+      // or IaC project files in the tree. A README that says "deploy with Terraform" is not.
+      /^\s*(?:terraform|resource|module|provider)\s+(?:"[^"\n]+"\s*)*\{|AWSTemplateFormatVersion/m,
+      // A plan, preview or diff step in a CI definition, or a Terraform Cloud / Atlantis
+      // setup that plans every pull request.
+      [/\b(?:terraform|tofu|terragrunt)\s+(?:run-all\s+)?plan\b|\bpulumi\s+preview\b|pulumi\/actions[\s\S]{0,200}?command:\s*preview|\bcdk\s+diff\b|create-change-set|no-execute-changeset|hashicorp\/tfc-workflows|dflook\/(?:terraform|tofu)-plan|^\s*cloud\s*\{|backend\s+"remote"|\batlantis\b/im], undefined, "WARN",
+      "Generate a non-destructive plan for pull requests and require review before apply.",
+      `terraform { required_version = ">= 1.5" }\npull_request:\n  run: terraform plan -out plan.artifact`,
+      `terraform { required_version = ">= 1.5" }\npush:\n  run: terraform apply -auto-approve`,
+    ),
+    scope: {
+      subjectFromPaths: (paths) => paths.some((p) => /(?:^|\/)(?:Pulumi\.ya?ml|cdk\.json)$/.test(p)),
+      evidence: /(?:^|\/)\.github\/workflows\/[^/]+\.ya?ml$|(?:^|\/)\.gitlab-ci\.ya?ml$|(?:^|\/)\.circleci\/config\.ya?ml$|(?:^|\/)(?:azure|bitbucket)-pipelines\.ya?ml$|(?:^|\/)Jenkinsfile$|(?:^|\/)atlantis\.ya?ml$|\.tf$/i,
+    },
+    passDetail: "A CI step plans infrastructure changes for review (terraform plan, pulumi preview, cdk diff or a change set), or Terraform Cloud or Atlantis plans each pull request.",
+  },
   rule(
     INFRA, "infra_depth_remote_state_protection", "Infrastructure state is remote, encrypted and locked",
-    /terraform|tofu/i,
+    /\bterraform\b|\bopentofu\b|\btofu\s+(?:init|plan|apply)\b|\.tf\n/i,
     [/backend\s+["'](?:s3|gcs|azurerm|remote|http)["']|remote.?state/i, /encrypt\s*=\s*true|kms_key_id|lock_table|use_lockfile/i],
     [/backend\s+["']local["']/i], "FAIL",
     "Store state remotely with encryption, versioning, access control, and locking; never commit local state.",
     `terraform { backend "s3" { encrypt = true; use_lockfile = true; kms_key_id = "alias/state" } }`,
     `terraform { backend "local" { path = "terraform.tfstate" } }`,
   ),
-  rule(
-    INFRA, "infra_depth_dead_letter_queue", "Asynchronous work has a dead-letter path",
-    /sqs|rabbitmq|kafka|bullmq|celery|queue/i,
-    [/dead.?letter|redrivePolicy|maxReceiveCount|failedQueue|DLQ/i], undefined, "WARN",
-    "After bounded retries, move poison messages to a monitored dead-letter queue with replay tooling.",
-    `queue.configure({ redrivePolicy: { deadLetterTargetArn: dlq, maxReceiveCount: 5 } });`,
-    `queue.process(async job => handle(job));`,
-  ),
+  {
+    ...rule(
+      INFRA, "infra_depth_dead_letter_queue", "Asynchronous work has a dead-letter path",
+      /(?<![a-z])sqs|AmazonSQS|rabbitmq|amqp|kafka|bullmq|celery|sidekiq|resque|dramatiq|pg-boss|graphile-worker|@google-cloud\/pubsub|(?:job|message|task)[\s_-]?queue|new Queue\(|\bqueue\.(?:add|process|configure|enqueue|push|send)\(/i,
+      // An explicit dead-letter queue, or a queue library that KEEPS failed jobs for
+      // inspection and retry by default: BullMQ's failed set, Sidekiq's dead set, Resque's
+      // failed queue, pg-boss and graphile-worker's failed rows, Solid Queue's failed
+      // executions, Oban's discarded jobs, Hangfire's failed state. Celery, SQS, RabbitMQ
+      // and Kafka drop or redeliver forever unless one is configured.
+      [/dead.?letter|redrivePolicy|maxReceiveCount|failedQueue|\bDLQ\b|\bsidekiq\b|\bbullmq\b|["']bull["']|\bpg-boss\b|\bgraphile-worker\b|\bresque\b|\bsolid_queue\b|\boban\b|\bhangfire\b/i],
+      [/sidekiq_options[^\n]{0,80}dead\s*:\s*false|\bremoveOnFail\s*:\s*true\b/i], "WARN",
+      "After bounded retries, move poison messages to a monitored dead-letter queue with replay tooling.",
+      `queue.configure({ redrivePolicy: { deadLetterTargetArn: dlq, maxReceiveCount: 5 } });`,
+      `queue.process(async job => handle(job));`,
+    ),
+    // Read from code and configuration, never documentation (a README naming Kafka is
+    // not a consumer). Evidence may sit in any file: the DLQ is often declared in
+    // infrastructure code apart from the worker.
+    scope: { evidence: "all" },
+    passDetail:
+      "Failed jobs are kept for inspection and replay: an explicit dead-letter queue, or a queue library that keeps failed jobs by default (BullMQ, Sidekiq, Resque, pg-boss, graphile-worker, Solid Queue, Oban or Hangfire).",
+  },
   rule(
     INFRA, "infra_depth_secret_versions", "Deployed secrets are versioned for safe rotation",
     /secretsmanager|secret manager|vault|KeyVault|secretRef/i,
@@ -551,7 +725,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     PERF, "perf_depth_web_vitals_telemetry", "Core Web Vitals are measured in real user sessions",
     /next|react|vue|svelte|<html|reportWebVitals|web-vitals/i,
-    [/web-vitals|reportWebVitals|onCLS|onINP|onLCP|PerformanceObserver.{0,30}largest-contentful-paint/i], undefined, "WARN",
+    [/(?<!core-)web-vitals|reportWebVitals|\bon(?:CLS|INP|LCP)\b|PerformanceObserver.{0,30}largest-contentful-paint/i], undefined, "WARN",
     "Collect LCP, INP and CLS with release and route context, then track p75 by device class.",
     `import { onCLS, onINP, onLCP } from "web-vitals"; onCLS(send); onINP(send); onLCP(send);`,
     `export function ReactApp() { return <main>Web app</main>; }`,
@@ -567,15 +741,15 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   ),
   rule(
     PERF, "perf_depth_route_code_splitting", "Heavy routes and features are loaded on demand",
-    /react|vue|svelte|next|router|frontend/i,
+    /["'](?:next|nuxt|react|react-dom|vue|svelte|@sveltejs\/kit|@remix-run\/react|react-router(?:-dom)?|vue-router|@angular\/core|solid-js|preact)["']\s*:\s*["'](?:[\^~>=<]*\s*\d|latest|canary|beta|rc|next|workspace:|catalog:|npm:)|(?:\bfrom\s+|\brequire\(\s*|\bimport\(\s*)["'](?:next|nuxt|react|react-dom|react-router(?:-dom)?|vue|vue-router|svelte|@sveltejs\/kit|@remix-run\/react|@angular\/core|solid-js|preact)(?:\/[\w\/.-]+)?["']/i,
     [/dynamic\(\s*\(\)\s*=>|React\.lazy|defineAsyncComponent|import\(\s*["'][^"']+["']\s*\)/i], undefined, "WARN",
     "Split route-level and rarely-used features so first load does not pay for the whole application.",
-    `const Reports = React.lazy(() => import("./Reports"));`,
-    `import Reports from "./Reports"; // frontend router loads every route`,
+    `import React from "react"; const Reports = React.lazy(() => import("./Reports"));`,
+    `import React from "react"; import Reports from "./Reports"; // frontend router loads every route`,
   ),
   rule(
     PERF, "perf_depth_responsive_images", "Responsive images declare candidate widths and sizes",
-    /<img|Image\s*\(|next\/image|picture>/i,
+    /<img\b(?![^>]*\bsrc=["'][^"']*\.svg(?:[?#][^"']*)?["'])|Image\s*\(|next\/image|picture>/i,
     [/\bsrcset=|\bsrcSet=|\bsizes=|<picture|next\/image/i], undefined, "WARN",
     "Provide srcset and sizes (or a framework image component) so mobile devices do not download desktop assets.",
     `<img src="hero-800.jpg" srcset="hero-400.jpg 400w, hero-800.jpg 800w" sizes="100vw">`,
@@ -662,7 +836,9 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     AI, "ai_safety_sensitive_telemetry", "AI telemetry excludes prompts and sensitive payloads by default",
     /prompt|completion|modelResponse|toolCall|tokenCount|captureContent/i,
     [/redact|hashPrompt|metadataOnly|captureContent\s*:\s*false|sanitizeTelemetry/i],
-    [/logger\.\w+\([^)]*(?:prompt|completion|modelResponse)|captureContent\s*:\s*true/i], "FAIL",
+    // The prompt as a logged VALUE, not the word inside a log message
+    // ("Using local guardrails prompt…" in chat-langchain is not a leak).
+    [/logger\.\w+\((?:\s*["'`][^"'`]*["'`]\s*,)?\s*\{?[^)"'`]*\b(?:prompt|completion|modelResponse)\b|logger\.\w+\(\s*f?["'`][^"'`]*\{\s*(?:prompt|completion|modelResponse)\b|captureContent\s*:\s*true/i], "FAIL",
     "Log model, latency, token counts and outcome by default; store content only through an explicit redacted, access-controlled path.",
     `logger.info(sanitizeTelemetry({ model, tokenCount, latency, captureContent: false }));`,
     `logger.info({ prompt, completion: modelResponse });`,
@@ -699,7 +875,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     VIBE, "vibe_depth_lint_not_bypassed", "Lint rules are not bypassed at file or project scope",
     /eslint|biome|ruff|swiftlint|lint/i,
     undefined,
-    [/eslint-disable(?!-next-line)|biome-ignore-all|ruff:\s*noqa|swiftlint:disable\s+all/i], "WARN",
+    [/eslint-disable(?!-next-line|-line)|biome-ignore-all|ruff:\s*noqa|swiftlint:disable\s+all/i], "WARN",
     "Remove blanket suppressions; use the narrowest line-level exception with a reason and an expiry.",
     `eslint.config.js export default [{ rules: { "no-eval": "error" } }];`,
     `/* eslint-disable */ export function generatedApp() { return true; }`,
@@ -716,7 +892,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     VIBE, "vibe_depth_environment_schema", "Environment variables are validated at startup",
     /process\.env|import\.meta\.env|os\.environ|getenv\(/i,
-    [/zod|envalid|envSchema|BaseSettings|validateEnv|requiredEnv/i], undefined, "WARN",
+    [/\bzod\b|\benvalid\b|envSchema|BaseSettings|validateEnv|requiredEnv/i], undefined, "WARN",
     "Parse environment variables once at startup, validate types and required values, and refuse to boot on invalid configuration.",
     `const env = envSchema.parse(process.env); // zod startup validation`,
     `const apiKey = process.env.API_KEY;`,
@@ -724,18 +900,18 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     VIBE, "vibe_depth_boundary_validation", "Untrusted request data is parsed before use",
     /req\.(?:body|query|params)|request\.(?:json|body)|FormData\(/i,
-    [/\.parse\(|safeParse\(|validate\(|schema|pydantic|class-validator/i], undefined, "FAIL",
+    [/\.parse\(|safeParse\(|validate\(|schema|pydantic|class-validator/i], undefined, "WARN",
     "Validate request bodies, query parameters, route parameters, and uploaded metadata against bounded schemas.",
     `const input = requestSchema.parse(req.body);`,
     `const input = req.body; await db.user.create({ data: input });`,
   ),
   rule(
     VIBE, "vibe_depth_ui_error_boundary", "The UI has a recoverable error boundary",
-    /react|next|vue|svelte|frontend|createBrowserRouter|ErrorBoundary/i,
+    /"(?:react|next|vue|svelte)"\s*:\s*"[\^~]?\d|from\s+["'](?:react|next\/|vue|svelte)|\.(?:jsx|tsx|vue|svelte)\b|createBrowserRouter|ErrorBoundary/i,
     [/ErrorBoundary|errorElement|error\.tsx|onErrorCaptured|\+error\.svelte/i], undefined, "WARN",
     "Add a top-level and route-level error boundary with retry, support context, and safe diagnostic capture.",
     `const router = createBrowserRouter([{ element: <App />, errorElement: <ErrorBoundary /> }]);`,
-    `export function ReactApp() { return <Routes />; }`,
+    `import { Routes } from "react-router-dom"; export function ReactApp() { return <Routes />; }`,
   ),
   rule(
     VIBE, "vibe_depth_async_ui_states", "Data-driven screens define loading, error and empty states",
@@ -826,7 +1002,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     SAAS, "saas_depth_tenant_isolation_tests", "Tenant isolation has explicit cross-tenant tests",
     /workspaceId|tenantId|organizationId/i,
-    [/cross.?tenant|other tenant|tenant isolation|expect\([^)]*403/i], undefined, "FAIL",
+    [/cross.?tenant|other tenant|tenant isolation|expect\([^)]*403/i], undefined, "WARN",
     "Test that a valid identifier from another tenant cannot be read, changed, exported, or inferred.",
     `describe("tenant isolation", () => it("rejects other tenant id", () => expect(status).toBe(403))); workspaceId`,
     `const workspaceId = session.workspaceId;`,
@@ -850,7 +1026,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     SAAS, "saas_depth_usage_meter_idempotency", "Usage metering is idempotent and traceable",
     /usage|meter|quota|credits|consumption/i,
-    [/idempotency|eventId|dedup|unique.{0,20}usage|ledger/i], undefined, "FAIL",
+    [/idempotency|eventId|dedup|unique.{0,20}usage|ledger/i], undefined, "WARN",
     "Write immutable usage events with a provider/source id under a unique constraint; derive totals from the ledger.",
     `usageLedger.insert({ eventId, quantity, source }); // unique eventId idempotency`,
     `account.credits -= request.units;`,
@@ -908,7 +1084,7 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     LEGAL, "legal_depth_dsar_identity", "Privacy-rights requests verify the requester",
     /DSAR|data subject request|DataSubjectRequest|privacy request|access request/i,
-    [/verifyIdentity|identity check|authenticated user|verificationStatus/i], undefined, "FAIL",
+    [/verifyIdentity|identity check|authenticated user|verificationStatus/i], undefined, "WARN",
     "Verify identity proportionately before disclosing, correcting, exporting, or deleting personal data.",
     `privacyRequest.create({ verificationStatus: await verifyIdentity(requester), type: "DSAR" });`,
     `app.post("/privacy-request", submitDataSubjectRequest);`,
@@ -932,14 +1108,14 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
   rule(
     LEGAL, "legal_depth_export_authorization", "Personal-data exports are access-controlled and short-lived",
     /exportUserData|data portability|personal data export/i,
-    [/requireRecentAuth|authorize|signedUrl|expiresAt|oneTime/i], undefined, "FAIL",
+    [/requireRecentAuth|authorize|signedUrl|expiresAt|oneTime/i], undefined, "WARN",
     "Require recent authentication, scope the dataset server-side, encrypt at rest, and expire the one-time download.",
     `requireRecentAuth(); authorize(userId); return signedUrl(exportUserData(userId), { expiresAt, oneTime: true });`,
     `return exportUserData(req.query.userId);`,
   ),
   rule(
     LEGAL, "legal_depth_child_consent", "Age-sensitive processing has a verifiable guardian path",
-    /dateOfBirth|age gate|minor|child|parental consent/i,
+    /dateOfBirth|date_of_birth|birth_?date|\bdob\b|\bis_?minor\b|\bage.?gate|\bage.?verification|age.?assurance|parental.?consent|\bCOPPA\b/i,
     [/guardian|parentalConsent|ageAssurance|consentToken/i], undefined, "WARN",
     "When the service may process children's data, implement age assurance and verifiable guardian consent appropriate to market.",
     `if (minor) await parentalConsent.verify({ guardian, consentToken }); // age assurance`,
@@ -963,14 +1139,20 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `i18n.init({ locales: ["en", "fr"], fallbackLng: "en" });`,
     `i18n.init({ locales: ["en", "fr"] });`,
   ),
-  rule(
-    GLOBAL, "global_depth_translation_parity", "Translation catalogues are checked for missing keys",
-    /i18n|translations|locales/i,
-    [/missing.?key|translation.{0,12}(?:test|check|lint)|i18n-check|locale parity/i], undefined, "WARN",
-    "Compare every locale to the source catalogue in CI and fail on missing or orphaned keys.",
-    `run: i18n-check --missing-key --locale-parity translations/`,
-    `translations/en.json\ntranslations/fr.json`,
-  ),
+  {
+    ...rule(
+      GLOBAL, "global_depth_translation_parity", "Translation catalogues are checked for missing keys",
+      // The subject is the tree having catalogues for two or more locales (below); a
+      // project with one language, or "i18n" in a config comment, has nothing to compare.
+      /(?!)/,
+      [/missing.?keys?|translation.{0,12}(?:test|check|lint)|i18n-check|locale parity|lingodotdev\/lingo\.dev|lingo\.dev(?:@\S+)?\s+(?:i18n|run|ci)\b|\bi18n-tasks\s+(?:missing|health|check-consistent-interpolations)\b|\bfailOnUpdate\b|--fail-on-update\b|eslint-plugin-i18n-json|i18n-json\/identical-keys|\blingui\s+(?:extract|compile)\b[^\n]*--strict|\bformatjs\s+verify\b|\bmsgfmt\s+(?:-c|--check)\b|\bvue-i18n-extract\b|\bi18n-unused\b|untranslated-messages-file/i], undefined, "WARN",
+      "Compare every locale to the source catalogue in CI and fail on missing or orphaned keys.",
+      `translations/en.json\ntranslations/fr.json\nrun: i18n-check --missing-key --locale-parity translations/`,
+      `translations/en.json\ntranslations/fr.json`,
+    ),
+    scope: { subjectFromPaths: (paths) => localeCatalogues(paths) >= 2, evidence: "all" },
+    passDetail: "The project has catalogues for several locales, and a parity or missing-key check runs over them.",
+  },
   rule(
     GLOBAL, "global_depth_locale_formatters", "Dates, numbers and lists use locale-aware formatters",
     /date|currency|amount|number|list/i,
@@ -989,15 +1171,24 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `const createdAt = new Date().toISOString(); // UTC timestamptz`,
     `const createdAt = new Date().toLocaleString(); await db.insert({ createdAt });`,
   ),
-  rule(
-    GLOBAL, "global_depth_currency_precision", "Currency values preserve ISO currency and minor-unit precision",
-    /currency|amount|price|money/i,
-    [/currencyCode|minorUnits|Decimal|BigInt|Money\(/i],
-    [/(?:amount|price)\s*[:=]\s*\d+\.\d+\b/i], "WARN",
-    "Carry amount and ISO currency together, using integer minor units or a decimal money type.",
-    `const total = Money({ minorUnits: 1099n, currencyCode: "GBP" });`,
-    `const price = 10.99; const currency = "GBP";`,
-  ),
+  {
+    ...rule(
+      GLOBAL, "global_depth_currency_precision", "Stored money amounts avoid floating-point columns",
+      // A money column read from the schema, with its type: Prisma, SQL migrations, Django
+      // models, Rails migrations, Drizzle and Sequelize. A price in a pricing page, a
+      // Stripe price id or `list-decimal` in CSS is not a stored amount.
+      new RegExp(`${MONEY_FLOAT.source}|${MONEY_EXACT.source}`, "im"),
+      [MONEY_EXACT],
+      [MONEY_FLOAT], "WARN",
+      "Store money as integer minor units (pence, cents) or a fixed-point decimal type, never a binary float.",
+      `model Order {\n  amountCents Int\n  currency String\n}`,
+      `model Order {\n  amount Float\n  currency String\n}`,
+    ),
+    scope: {
+      subjectFiles: /schema\.prisma$|(?:^|\/)(?:db\/)?migrat\w*\/|\.sql$|(?:^|\/)models?(?:\.py|\/)|(?:^|\/)db\/schema\.rb$|(?:^|\/)(?:schema|entities|entity)\b|\.entity\.[jt]s$|(?:^|\/)drizzle\//i,
+    },
+    passDetail: "The money columns read from the schema use integer minor units or a fixed-point decimal type, so amounts do not pick up floating-point rounding errors.",
+  },
   rule(
     GLOBAL, "global_depth_rtl_logical_layout", "Layouts use logical properties for RTL compatibility",
     /dir=|rtl|direction\s*:/i,
@@ -1007,22 +1198,36 @@ export const OPERATIONAL_DEPTH_RULES: OperationalDepthRule[] = [
     `<html dir="rtl"><style>.card { margin-inline-start: 1rem; text-align: start; }</style>`,
     `<html dir="rtl"><style>.card { margin-left: 1rem; text-align: left; }</style>`,
   ),
-  rule(
-    GLOBAL, "global_depth_unicode_normalization", "User identifiers are Unicode-normalised consistently",
-    /username|email|slug|identifier|search query/i,
-    [/normalize\(["']NFKC|Normalizer\.normalize|casefold|unicode.?normal/i], undefined, "WARN",
-    "Normalise once using a documented form before uniqueness, comparison, and security-sensitive matching.",
-    `const username = input.normalize("NFKC").toLocaleLowerCase("und");`,
-    `const username = input.toLowerCase();`,
-  ),
-  rule(
+  {
+    ...rule(
+      GLOBAL, "global_depth_unicode_normalization", "User identifiers are Unicode-normalised consistently",
+      // A UNIQUE username or handle, the identifier a person types and others see, where
+      // two different code-point sequences that look identical would be two accounts. A
+      // bare @unique (ids, slugs, Stripe ids) or a DB_USERNAME env var is not one.
+      /\b(?:user_?name|handle|screen_?name|nick_?name)\b[^\n]{0,60}(?:@unique|unique\s*[:=]\s*(?:true|True)|unique=True|\.unique\(\))|validates?\s*\(?\s*:(?:user_?name|handle)\b[^\n]{0,80}uniqueness|add_index[^\n]{0,60}:(?:user_?name|handle)\b[^\n]{0,40}unique:\s*true|\bUNIQUE\s*\(\s*["`]?(?:user_?name|handle)["`]?\s*\)|\b(?:user_?name|handle)["`]?\s+(?:varchar|text|citext)\b[^\n,]{0,40}\bUNIQUE\b/i,
+      // NFC/NFKC normalisation in any form. Django's AbstractBaseUser normalises usernames
+      // with NFKC itself, so a custom user model built on it counts.
+      [/normalize\(\s*["'`]NFK?[CD]["'`]|\.normalize\(\s*\)|Normalizer\.normalize|unicodedata\.normalize|unicode_normalize|casefold\(|normalize_username|AbstractBaseUser|AbstractUser|UnicodeUsernameValidator/i], undefined, "WARN",
+      "Normalise once using a documented form before uniqueness, comparison, and security-sensitive matching.",
+      `model User { username String @unique }\nconst username = input.normalize("NFKC").toLocaleLowerCase("und");`,
+      `model User { username String @unique }\nconst username = input.toLowerCase();`,
+    ),
+    scope: { evidence: "all" },
+    passDetail: "Usernames or handles are unique, and Unicode normalisation (NFC or NFKC) is applied, so two look-alike names cannot become two accounts.",
+  },
+
+  {
+    ...rule(
     GLOBAL, "global_depth_residency_routing", "Regional data residency is enforced in infrastructure routing",
-    /region|data residency|tenantRegion|deploymentRegion/i,
+    /data.?residency|tenantRegion|residencyPolicy|residencyRegion|regional data|dataRegion|data.?location/i,
     [/regionAllowlist|residencyPolicy|routeToRegion|regionalDatabase|dataLocation/i], undefined, "WARN",
     "Bind tenant residency to approved storage, processing, backup, and support-access regions and test fail-closed routing.",
     `const region = residencyPolicy.routeToRegion(tenantRegion, regionAllowlist); use regionalDatabase(region);`,
-    `const region = req.query.region ?? deploymentRegion;`,
+    `const tenantRegion = req.query.region ?? deploymentRegion; // data residency`,
   ),
+    // Residency is often enforced in deployment config outside the repository.
+    absentIsUnknown: true,
+  },
 
   // ── Missing product pages (repo route evidence) ──────────────────────────
   rule(
@@ -1109,29 +1314,99 @@ function test(re: RegExp, text: string): boolean {
   return re.test(text);
 }
 
-function evaluateText(ruleDef: OperationalDepthRule, text: string): Evaluation {
-  if (!test(ruleDef.subject, text)) {
-    return {
-      status: "SKIPPED",
-      detail: "Not applicable — the repository sample contains no evidence of this feature.",
-      missingRequired: false,
-      forbiddenMatched: false,
-    };
-  }
-
-  const missingRequired = (ruleDef.required ?? []).some((pattern) => !test(pattern, text));
-  const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => test(pattern, text));
+function verdict(ruleDef: OperationalDepthRule, missingRequired: boolean, forbiddenMatched: boolean): Evaluation {
   const ok = !missingRequired && !forbiddenMatched;
+  // A missing keyword is never a FAIL: these are regexes over a joined sample, and a
+  // safeguard written with a name the rule does not list reads exactly like no
+  // safeguard. Only a FORBIDDEN construct actually seen in source can fail a rule.
   return {
-    status: ok ? "PASS" : ruleDef.onMissing,
+    status: ok ? "PASS" : forbiddenMatched ? ruleDef.onMissing : ruleDef.absentIsUnknown ? "INCONCLUSIVE" : "WARN",
     detail: ok
-      ? `${ruleDef.label}: supporting implementation evidence was found.`
-      : `${ruleDef.label}: the required safeguard was not established. Remediation: ${ruleDef.remediation}`,
+      ? ruleDef.passDetail ?? `${ruleDef.label}: supporting implementation evidence was found.`
+      : !forbiddenMatched && ruleDef.absentIsUnknown
+        ? `${ruleDef.label}: Pulse did not find the safeguard in the files it read, but it can be written in many ways it does not recognise, so this is not reported as missing. Remediation: ${ruleDef.remediation}`
+        : `${ruleDef.label}: the required safeguard was not established. Remediation: ${ruleDef.remediation}`,
     missingRequired,
     forbiddenMatched,
   };
 }
 
+const NOT_APPLICABLE: Evaluation = {
+  status: "SKIPPED",
+  detail: "Not applicable — the repository sample contains no evidence of this feature.",
+  missingRequired: false,
+  forbiddenMatched: false,
+};
+
+function evaluateText(ruleDef: OperationalDepthRule, text: string): Evaluation {
+  if (ruleDef.scope) {
+    // A fixture is one file; its lines double as the tree listing for path-based subjects.
+    return evaluateScoped(ruleDef, [["fixture", text]], text.split("\n"), false).evaluation;
+  }
+  if (!test(ruleDef.subject, text)) return NOT_APPLICABLE;
+  const missingRequired = (ruleDef.required ?? []).some((pattern) => !test(pattern, text));
+  const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => test(pattern, text));
+  return verdict(ruleDef, missingRequired, forbiddenMatched);
+}
+
+function stripComments(path: string, content: string): string {
+  if (/\.(?:[cm]?[jt]sx?|go|java|kt|swift|dart|cs|rs|php|scala|c|cc|cpp|h)$|\.prisma$/i.test(path)) {
+    return stripCStyleComments(content);
+  }
+  if (/\.(?:py|rb|sh|bash|ya?ml|toml|tf|hcl|cfg|ini|properties)$|(?:^|\/)(?:Gemfile|Dockerfile|Procfile|\.env[\w.-]*)$/i.test(path)) {
+    return content.replace(/^[ \t]*#.*$/gm, "");
+  }
+  return content;
+}
+
+/** Documentation describes a feature; it never implements one. */
+const DOC_FILE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+
+/**
+ * Evaluate a scoped rule over individual files. `filterPaths` is false for a fixture,
+ * which has no real path. Returns the files that carried the subject (for evidence
+ * naming) and how many evidence files the tree has that were not read.
+ */
+function evaluateScoped(
+  ruleDef: OperationalDepthRule,
+  rawFiles: [string, string][],
+  paths: string[],
+  filterPaths = true,
+): { evaluation: Evaluation; subjectFiles: string[]; unreadEvidence: number } {
+  const scope = ruleDef.scope!;
+  // Comments are not code: bakerydemo's "Do not use the same Redis for … Celery!" is
+  // not a Celery worker. C-style comments go in JS/TS/Go/Java…; `#` lines in Python,
+  // Ruby, shell, YAML, TOML and Terraform. A fixture is code as written.
+  const code: [string, string][] = filterPaths ? rawFiles.map(([path, content]) => [path, stripComments(path, content)]) : rawFiles;
+  const candidates = code.filter(
+    ([path]) => !filterPaths || (!DOC_FILE.test(path) && (!scope.subjectFiles || scope.subjectFiles.test(path))),
+  );
+  const inScope = candidates.filter(
+    ([, content]) => test(ruleDef.subject, content) && (scope.withSubject ?? []).every((re) => test(re, content)),
+  );
+  const fromPaths = scope.subjectFromPaths?.(paths) ?? false;
+  if (inScope.length === 0 && !fromPaths) return { evaluation: NOT_APPLICABLE, subjectFiles: [], unreadEvidence: 0 };
+
+  const where = scope.evidence ?? "subject";
+  const evidenceFiles =
+    where === "subject"
+      ? inScope
+      : where === "all" || !filterPaths
+        ? code.filter(([path]) => !filterPaths || !DOC_FILE.test(path))
+        : code.filter(([path]) => where.test(path));
+  const missingRequired = (ruleDef.required ?? []).some(
+    (pattern) => !evidenceFiles.some(([, content]) => test(pattern, content)),
+  );
+  const forbiddenMatched = (ruleDef.forbidden ?? []).some((pattern) => inScope.some(([, content]) => test(pattern, content)));
+  const read = new Set(code.map(([path]) => path));
+  const unreadEvidence =
+    filterPaths && where instanceof RegExp ? paths.filter((p) => where.test(p) && !read.has(p)).length : 0;
+  return {
+    evaluation: verdict(ruleDef, missingRequired, forbiddenMatched),
+    subjectFiles: inScope.map(([path]) => path),
+    unreadEvidence,
+  };
+}
 export function evaluateOperationalRuleText(
   ruleDef: OperationalDepthRule,
   text: string,
@@ -1139,29 +1414,123 @@ export function evaluateOperationalRuleText(
   return evaluateText(ruleDef, text);
 }
 
-function sourceCoverage(snapshot: RepoSnapshot): { sampled: number; total: number; ratio: number } {
+function sourceCoverage(snapshot: RepoSnapshot): {
+  sampled: number;
+  total: number;
+  ratio: number;
+  unit: string;
+} {
   const sourcePattern = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|rb|php|go|java|kt|swift|dart|cs|rs)$/i;
   const sampled = [...snapshot.files.keys()].filter((path) => sourcePattern.test(path)).length;
   const total = snapshot.paths.filter((path) => sourcePattern.test(path)).length;
-  return { sampled, total, ratio: total === 0 ? 0 : sampled / total };
+  // A truncated tree has an unknown denominator, so sampleCoverage reports 0 for it: every
+  // absence on it is unobserved, never a finding.
+  if (total > 0) {
+    return { sampled, total, ratio: sampleCoverage(sampled, total, snapshot.truncated), unit: "source files" };
+  }
+  // No application source at all (Terraform/YAML-only repo): judge coverage over every file instead.
+  const read = snapshot.files.size;
+  const all = snapshot.paths.length;
+  return { sampled: read, total: all, ratio: sampleCoverage(read, all, snapshot.truncated), unit: "files" };
 }
+
+// Dependency lockfiles name every transitive package ("@opentelemetry/sdk-metrics",
+// "jest-snapshot", "pino"...). That is not evidence the project itself uses a feature.
+const LOCKFILE =
+  /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.ya?ml|yarn\.lock|bun\.lockb?|Gemfile\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|composer\.lock|go\.sum|Podfile\.lock|pubspec\.lock|packages\.lock\.json|gradle\.lockfile)$/i;
+
+// Paths that are themselves routes: pages/ and routes/ trees (Next pages, Nuxt, Remix,
+// SvelteKit, Express routers), Next app-router page/route files, and non-partial Rails views.
+const ROUTE_TREE_PATH =
+  /(?:^|\/)(?:pages|routes)\/|(?:^|\/)app\/(?:[^/]+\/)*(?:page|route)\.(?:[cm]?[jt]sx?|mdx?)$|(?:^|\/)app\/views\/(?:[^/]+\/)*[^_/][^/]*$/i;
+const E2E_TEST_PATH = /(?:^|\/)(?:e2e|playwright|cypress)\//i;
+// Missing-page rules about a user flow, where an end-to-end test of the flow is evidence.
+const FLOW_PAGE_KEYS = new Set(["pages_depth_account_deletion_route", "pages_depth_data_export_route"]);
 
 function evidencePath(snapshot: RepoSnapshot, ruleDef: OperationalDepthRule): string | undefined {
   const patterns = [...(ruleDef.forbidden ?? []), ruleDef.subject];
   for (const pattern of patterns) {
     for (const [path, content] of snapshot.files) {
+      if (LOCKFILE.test(path)) continue;
+      if (RELEASE_SOURCE_ONLY_KEYS.has(ruleDef.key) && NON_RELEASE_PATH.test(path)) continue;
       if (test(pattern, `${path}\n${content}`)) return path;
     }
   }
   return undefined;
 }
 
-export function evaluateOperationalDepthChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
-  const text = [...snapshot.files].map(([path, content]) => `${path}\n${content}`).join("\n");
-  const coverage = sourceCoverage(snapshot);
+/** A scoped rule as a check: same confidence rules as the rest, evidence named by file. */
+function scopedCheck(
+  ruleDef: OperationalDepthRule,
+  files: [string, string][],
+  paths: string[],
+  coverageRatio: number,
+  sampleWords: string,
+): PulseScanCheckInput {
+  const { evaluation: result, subjectFiles, unreadEvidence } = evaluateScoped(ruleDef, files, paths);
+  const absenceOnly = result.status !== "PASS" && result.status !== "SKIPPED" && result.missingRequired && !result.forbiddenMatched;
+  const weakAbsence = absenceOnly && (coverageRatio < SOUND_ABSENCE_COVERAGE || unreadEvidence > 0);
+  return {
+    category: ruleDef.category,
+    checkKey: ruleDef.key,
+    label: ruleDef.label,
+    status: weakAbsence ? "INCONCLUSIVE" : result.status,
+    detail: weakAbsence
+      ? unreadEvidence > 0
+        ? `${ruleDef.label}: inconclusive. No supporting evidence was found in the files read, but ${unreadEvidence} more of the files where it would live were not read. If it is genuinely absent: ${ruleDef.remediation}`
+        : `${ruleDef.label}: inconclusive. Pulse read ${sampleWords} and found no supporting evidence, so its absence is not established. If it is genuinely absent: ${ruleDef.remediation}`
+      : result.detail,
+    // Pattern evidence: MEDIUM at most, never HIGH.
+    confidence: weakAbsence ? "LOW" : "MEDIUM",
+    ...(weakAbsence ? { confidenceReason: "Absent implementation evidence is not established from the files read." } : {}),
+    evidence: result.status === "SKIPPED" || subjectFiles.length === 0 ? undefined : `Repository evidence: ${subjectFiles.slice(0, 3).join(", ")}`,
+  };
+}
 
+export function evaluateOperationalDepthChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
+  const text = [...snapshot.files]
+    .filter(([path]) => !LOCKFILE.test(path))
+    .map(([path, content]) => `${path}\n${content}`)
+    .join("\n");
+  const coverage = sourceCoverage(snapshot);
+  // Route-tree paths (app/, pages/, routes/) and end-to-end test names, read once: the
+  // missing-page rules below treat them as evidence a route exists even when unsampled.
+  // `app/` alone is not a route tree: Angular keeps every file under src/app/ and Rails
+  // keeps models, components and assets under app/, so only Next/route page files and
+  // non-partial Rails views count there.
+  const routePaths = snapshot.paths.filter((p) => ROUTE_TREE_PATH.test(p)).join("\n");
+  // An end-to-end test name evidences a user FLOW (deleting an account, exporting data),
+  // not a document page: e2e/accessibility.spec.ts is almost always an axe audit, not
+  // an accessibility statement.
+  const flowTestPaths = snapshot.paths.filter((p) => E2E_TEST_PATH.test(p)).join("\n");
+  const sampleWords = snapshot.truncated
+    ? `${coverage.sampled} ${coverage.unit} from a repository tree too large to list in full`
+    : `${coverage.sampled} of ${coverage.total} ${coverage.unit}`;
+
+  const readFiles = [...snapshot.files].filter(([path]) => !LOCKFILE.test(path));
   return OPERATIONAL_DEPTH_RULES.map((ruleDef): PulseScanCheckInput => {
-    const result = evaluateText(ruleDef, text);
+    if (ruleDef.scope) return scopedCheck(ruleDef, readFiles, snapshot.paths, coverage.ratio, sampleWords);
+    const sampledResult = evaluateText(
+      ruleDef,
+      RELEASE_SOURCE_ONLY_KEYS.has(ruleDef.key)
+        ? [...snapshot.files]
+            .filter(([path]) => !LOCKFILE.test(path) && !NON_RELEASE_PATH.test(path))
+            .map(([path, content]) => `${path}\n${content}`)
+            .join("\n")
+        : text,
+    );
+    // Missing-page rules ask whether a route EXISTS. Route-tree paths (app/, pages/, routes/)
+    // and end-to-end test names are direct evidence of that, even when the file was not
+    // sampled. Other paths are not: a components/accessibility/ folder is not a statement page.
+    const result =
+      ruleDef.category === PAGES && sampledResult.status !== "SKIPPED"
+        ? evaluateText(
+            ruleDef,
+            FLOW_PAGE_KEYS.has(ruleDef.key)
+              ? `${text}\n${routePaths}\n${flowTestPaths}`
+              : `${text}\n${routePaths}`,
+          )
+        : sampledResult;
     const weakAbsence =
       result.status !== "PASS" &&
       result.status !== "SKIPPED" &&
@@ -1174,14 +1543,16 @@ export function evaluateOperationalDepthChecks(snapshot: RepoSnapshot): PulseSca
       category: ruleDef.category,
       checkKey: ruleDef.key,
       label: ruleDef.label,
-      status: result.status,
-      detail: result.detail,
-      confidence: weakAbsence ? "LOW" : "HIGH",
+      status: weakAbsence ? "INCONCLUSIVE" : result.status,
+      detail: weakAbsence
+        ? `${ruleDef.label}: inconclusive — Pulse read ${sampleWords} and found no supporting evidence, so its absence is not established. If it is genuinely absent: ${ruleDef.remediation}`
+        : result.detail,
+      // Keyword evidence over a concatenated sample: MEDIUM at most, never HIGH.
+      confidence: weakAbsence ? "LOW" : "MEDIUM",
       ...(weakAbsence
         ? {
             confidenceReason:
-              `Only ${coverage.sampled} of ${coverage.total} source files were read, so absent implementation ` +
-              "evidence is not established.",
+              `Only ${sampleWords} were read, so absent implementation evidence is not established.`,
           }
         : {}),
       evidence: evidence ? `Repository evidence: ${evidence}` : undefined,

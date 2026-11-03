@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/components/ui/toast";
 import {
   createSupportClient,
   createSupportConnection,
@@ -333,6 +335,44 @@ export function useCloseConversation(clientId: string | null) {
       invalidateConversationQueries(qc, clientId);
     },
   });
+}
+
+/** The statuses a close can be undone FROM. See `useCloseConversationWithUndo`. */
+export const UNDOABLE_CLOSE_FROM: readonly Conversation["status"][] = ["new", "open"];
+
+/**
+ * Close a conversation and offer Undo, which puts back the status it had.
+ *
+ * Undo is offered only when the conversation was `new` or `open`, because only then is
+ * setting the old status back an exact inverse: the server clears `closedAt` (and
+ * `snoozeUntil`) on the way back to NEW/OPEN. A SNOOZED conversation is closed without
+ * Undo — setting SNOOZED back would leave `closedAt` stamped on a live conversation.
+ * One thing is not reverted: a close from `new` stamps `firstTriagedAt`, and it stays —
+ * someone did act on the conversation, so that is a fair record rather than a defect.
+ */
+export function useCloseConversationWithUndo(clientId: string | null) {
+  const close = useCloseConversation(clientId);
+  const triage = useTriageConversation(clientId);
+  const { undo, error } = useToast();
+  const { mutateAsync: closeAsync } = close;
+  const { mutateAsync: triageAsync } = triage;
+  return useCallback(
+    (conv: Pick<Conversation, "id" | "status" | "subject" | "customerLabel">) => {
+      const before = conv.status;
+      if (before === "closed" || before === "ignored") return;
+      closeAsync({ convId: conv.id }).then(
+        () => {
+          if (!UNDOABLE_CLOSE_FROM.includes(before)) return;
+          undo("Conversation closed", () => triageAsync({ convId: conv.id, data: { status: before } }), {
+            description: conv.subject || conv.customerLabel,
+            variant: "success",
+          });
+        },
+        (err: unknown) => error("Couldn't close the conversation", err instanceof Error ? err.message : undefined),
+      );
+    },
+    [closeAsync, triageAsync, undo, error],
+  );
 }
 
 export function useBatchTriageConversations(clientId: string | null) {

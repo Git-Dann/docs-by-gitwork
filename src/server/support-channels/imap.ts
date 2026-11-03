@@ -19,6 +19,7 @@
  * better still.
  */
 
+import { emailHtmlToText, isPlaintextStub } from "@/server/support-channels/shared";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
@@ -254,7 +255,20 @@ export async function fetchImapItems(ctx: SyncContext): Promise<ChannelFetchResu
         fetched++;
         try {
           const parsed = await simpleParser(msg.source as Buffer);
-          const body = (parsed.text ?? parsed.html ?? "").toString().trim();
+          /**
+           * ⚠️ NOT `parsed.text ?? parsed.html`. Some senders' plaintext alternative is
+           * a stub ("Please view this email in HTML format.") with the real content in
+           * the HTML part — and Big Wedge's feedback notifications are exactly that
+           * shape. Taking the plain part whenever it exists stored the stub and threw
+           * the message away, so the course-request classifier had nothing to read and
+           * eight weeks of course requests produced none.
+           *
+           * Gmail already had this fixed; IMAP was doing it the old way. One rule now,
+           * shared, so the two cannot disagree again.
+           */
+          const plain = (parsed.text ?? "").toString().trim();
+          const htmlText = parsed.html ? emailHtmlToText(parsed.html.toString()) : "";
+          const body = plain && !isPlaintextStub(plain) ? plain : htmlText || plain;
           const subject = parsed.subject?.trim() || "(no subject)";
           if (!body && subject === "(no subject)") {
             reasons.empty = (reasons.empty ?? 0) + 1;

@@ -34,13 +34,16 @@ import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/motion/spinner";
 import { buttonStyles } from "@/components/ui/button-styles";
 import { LogoImagePicker } from "@/components/ui/logo-image-picker";
 import { CountrySelect, PhoneInput, WebsiteInput } from "@/components/ui/contact-fields";
 import { ClientDesignFormModal } from "@/components/clients/client-design-form";
 import { ClientDocumentLinks } from "@/components/clients/client-document-links";
 import { ClientDocActionsModal } from "@/components/clients/client-doc-actions-modal";
+import { ConvertLeadModal, LeadCrm } from "@/components/clients/lead-crm";
 import { ClientDriveArchiveButton } from "@/components/clients/client-drive-archive-button";
 import { ClientPlatformFormModal } from "@/components/clients/client-platform-form";
 import { StatusBadge } from "@/components/status-badge";
@@ -57,7 +60,6 @@ import {
   useDeleteClientPlatform,
   useRevealClientBank,
   useSetClientStatus,
-  useAddClientTouchpoint,
   useUpdateClient,
   useUpdateClientDesign,
   useUpdateClientPlatform,
@@ -69,6 +71,8 @@ import { useClientActiveCovers } from "@/hooks/use-backstage";
 import { usePermissions } from "@/hooks/use-permissions";
 import { cn, formatDate, taskRef } from "@/lib/format";
 import { detectPlatformIcon } from "@/lib/platform-icons";
+import { ClientDriveFiles } from "@/components/clients/client-drive-files";
+import { driveFolderIdFromUrl } from "@/lib/client-drive";
 import { fetchSlackChannels, type SlackAvailableChannel, type ScribeMeeting, type ScribeCandidate, type ScribeActionItem } from "@/lib/api";
 import { TASK_STATUS_LABELS, type TaskDTO } from "@/types/tasks";
 import type {
@@ -77,10 +81,7 @@ import type {
   ClientDetailRecord,
   ClientDesignRecord,
   ClientPlatformRecord,
-  ClientTouchpoint,
   ClientEngagementType,
-  LeadStage,
-  TouchpointType,
 } from "@/types/client";
 
 type EditFormState = {
@@ -156,149 +157,18 @@ function SlackGlyph({ className }: { className?: string }) {
   );
 }
 
-const LEAD_STAGE_OPTIONS: { value: LeadStage; label: string }[] = [
-  { value: "NEW", label: "New" },
-  { value: "CONTACTED", label: "Contacted" },
-  { value: "QUALIFIED", label: "Qualified" },
-  { value: "PROPOSAL_SENT", label: "Proposal sent" },
-  { value: "WON", label: "Won" },
-  { value: "LOST", label: "Lost" },
-];
-const TOUCHPOINT_LABEL: Record<TouchpointType, string> = {
-  CALL: "Call",
-  EMAIL: "Email",
-  MEETING: "Meeting",
-  NOTE: "Note",
-};
-
 const actionMenuPanel =
   "z-50 mt-1.5 w-56 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
 const actionMenuItem =
   "flex w-full items-center gap-2 rounded-[6px] px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] data-[focus]:text-[var(--text-1)] disabled:opacity-50";
 
-/** Lead CRM workspace — editable stage/follow-up/source/value + a touchpoint activity log.
- *  Shown on the client detail only while the client's status is LEAD. */
-function LeadWorkspace({
-  slug,
-  client,
-  touchpoints,
-}: {
-  slug: string;
-  client: ClientDetailRecord["client"];
-  touchpoints: ClientTouchpoint[];
-}) {
-  const update = useUpdateClient(slug);
-  const addTp = useAddClientTouchpoint(slug);
-  const [source, setSource] = useState(client.leadSource ?? "");
-  const [value, setValue] = useState(client.leadValue != null ? String(client.leadValue) : "");
-  const [tpType, setTpType] = useState<TouchpointType>("NOTE");
-  const [tpNote, setTpNote] = useState("");
-
-  const saveSource = () => {
-    const next = source.trim();
-    if ((client.leadSource ?? "") !== next) update.mutate({ leadSource: next || null });
-  };
-  const saveValue = () => {
-    const next = value.trim() ? Number(value) : null;
-    if ((client.leadValue ?? null) !== next) update.mutate({ leadValue: next });
-  };
-  async function log() {
-    if (tpType === "NOTE" && !tpNote.trim()) return;
-    try {
-      await addTp.mutateAsync({ type: tpType, note: tpNote.trim() || undefined });
-      setTpNote("");
-    } catch {
-      /* surfaced via mutation state */
-    }
-  }
-
-  return (
-    <section className="widget-card">
-      <div className="widget-header">
-        <span className="widget-header__label">LEAD</span>
-      </div>
-      <div className="grid gap-6 p-6 lg:grid-cols-2">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Stage</span>
-              <select
-                value={client.leadStage ?? "NEW"}
-                onChange={(e) => update.mutate({ leadStage: e.target.value as LeadStage })}
-                className="app-input"
-              >
-                {LEAD_STAGE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Next follow-up</span>
-              <input
-                type="date"
-                value={client.leadFollowUpAt ? client.leadFollowUpAt.slice(0, 10) : ""}
-                onChange={(e) => update.mutate({ leadFollowUpAt: e.target.value || null })}
-                className="app-input"
-              />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Source</span>
-              <input value={source} onChange={(e) => setSource(e.target.value)} onBlur={saveSource} className="app-input" />
-            </label>
-            <label className="block">
-              <span className="widget-data-label mb-1.5 block">Est. value (£)</span>
-              <input value={value} onChange={(e) => setValue(e.target.value)} onBlur={saveValue} type="number" min="0" className="app-input" />
-            </label>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <span className="widget-data-label">Activity</span>
-          <div className="flex items-center gap-2">
-            <select value={tpType} onChange={(e) => setTpType(e.target.value as TouchpointType)} className="app-input w-28">
-              {(Object.keys(TOUCHPOINT_LABEL) as TouchpointType[]).map((t) => (
-                <option key={t} value={t}>{TOUCHPOINT_LABEL[t]}</option>
-              ))}
-            </select>
-            <input
-              value={tpNote}
-              onChange={(e) => setTpNote(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void log(); }}
-              placeholder="Log a call, email, note…"
-              className="app-input flex-1"
-            />
-            <Button type="button" variant="primary" size="sm" onClick={() => void log()} disabled={addTp.isPending}>
-              Log
-            </Button>
-          </div>
-          <ul className="space-y-2">
-            {touchpoints.length === 0 ? (
-              <li className="text-sm text-[var(--text-4)]">No activity logged yet.</li>
-            ) : (
-              touchpoints.map((t) => (
-                <li key={t.id} className="rounded-[6px] border border-[var(--border-2)] px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-[var(--text-2)]">{TOUCHPOINT_LABEL[t.type]}</span>
-                    <span className="widget-timestamp">{formatDate(t.occurredAt)}</span>
-                  </div>
-                  {t.note ? <p className="mt-0.5 text-[var(--text-3)]">{t.note}</p> : null}
-                  {t.authorName ? <p className="mt-0.5 text-[11px] text-[var(--text-4)]">{t.authorName}</p> : null}
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function ClientDetail({ slug }: { slug: string }) {
   const router = useRouter();
   const { data, isPending, error } = useClientDetail(slug);
   const [editing, setEditing] = useState(false);
+  // 14 // DOCUMENTS shows Foundry docs + links, or the client's Google Drive folder. Null
+  // until someone picks a tab: the card then opens on whichever has something in it.
+  const [docsTab, setDocsTab] = useState<"docs" | "drive" | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
@@ -331,6 +201,8 @@ export function ClientDetail({ slug }: { slug: string }) {
   const [resumeAtInput, setResumeAtInput] = useState("");
   const [pauseNoteInput, setPauseNoteInput] = useState("");
   const [statusError, setStatusError] = useState<string | null>(null);
+  // Lead → client conversion dialog.
+  const [converting, setConverting] = useState(false);
 
   if (isPending) {
     return (
@@ -355,6 +227,10 @@ export function ClientDetail({ slug }: { slug: string }) {
   }
 
   const { client, lifecycle, proposals, proofDocuments, platforms, designs, documentLinks, pulseScans, supportClient, placements, studies, touchpoints } = data;
+  // Nothing linked but a Drive folder is: open on Drive, or the card reads as empty when it isn't.
+  const docsView =
+    docsTab ??
+    (proposals.length + documentLinks.length === 0 && driveFolderIdFromUrl(client.googleDriveFolderUrl) ? "drive" : "docs");
   const isSuggested = client.source === "SUGGESTED";
   // Leads show only the lead workspace + contact/notes — project/delivery info is hidden
   // until they become a client (status flips to ACTIVE via "Convert to client").
@@ -540,7 +416,7 @@ export function ClientDetail({ slug }: { slug: string }) {
               </Link>
             )}
             {canManageClients && !isSuggested && client.status === "LEAD" && (
-              <Button type="button" variant="primary" size="xs" onClick={() => changeStatus("ACTIVE")} disabled={setStatus.isPending}>
+              <Button type="button" variant="primary" size="xs" onClick={() => setConverting(true)}>
                 <ArrowRightCircleIcon className="h-3 w-3" />
                 Convert to client
               </Button>
@@ -695,9 +571,9 @@ export function ClientDetail({ slug }: { slug: string }) {
         </div>
       </section>
 
-      {/* Lead workspace (LEAD only) — CRM fields + touchpoint activity log. */}
-      {client.status === "LEAD" && (
-        <LeadWorkspace slug={slug} client={client} touchpoints={touchpoints} />
+      {/* Lead CRM (LEAD only) — 02 pipeline · 03 next steps · 04 automation · 05 activity. */}
+      {isLead && (
+        <LeadCrm slug={slug} client={client} touchpoints={touchpoints} canManage={canManageClients} />
       )}
 
       {!isLead && (
@@ -763,12 +639,12 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
-      {/* ── 02 // CONTACT — lead standalone (clients show Contact beside Slack above) ── */}
+      {/* ── 06 // CONTACT — lead standalone (clients show Contact beside Slack above) ── */}
       {isLead && (
         <section className="widget-card">
           <div className="widget-header">
             <span className="widget-header__label">
-              <span className="widget-header__label--number">{isLead ? "02" : "08"}</span>
+              <span className="widget-header__label--number">{isLead ? "06" : "08"}</span>
               {" // CONTACT"}
             </span>
             {canManageClients && (
@@ -842,16 +718,16 @@ export function ClientDetail({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* Lead-only 03 // MEETING NOTES + 04 // NOTES, side by side, equal height. */}
+      {/* Lead-only 07 // MEETING NOTES + 08 // NOTES, side by side, equal height. */}
       {isLead && (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="widget-card">
-            <MeetingNotesSection slug={slug} number="03" />
+            <MeetingNotesSection slug={slug} number="07" />
           </section>
           <section className="widget-card">
             <div className="widget-header">
               <span className="widget-header__label">
-                <span className="widget-header__label--number">04</span>
+                <span className="widget-header__label--number">08</span>
                 {" // NOTES"}
               </span>
               {canManageClients && (
@@ -1098,10 +974,17 @@ export function ClientDetail({ slug }: { slug: string }) {
               <span className="widget-header__label--number">14</span>
               {" // DOCUMENTS"}
             </span>
-            <span className="widget-header__status">
-              {proposals.length + documentLinks.length} linked
-            </span>
+            <DocsTabs value={docsView} onChange={setDocsTab} linkedCount={proposals.length + documentLinks.length} />
           </div>
+          {docsView === "drive" ? (
+            // The client's Google Drive folder, read with YOUR Google sign-in.
+            <ClientDriveFiles
+              target={{ mode: "internal", slug }}
+              pageSize={8}
+              onLinkFolder={canManageClients ? openEdit : undefined}
+            />
+          ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="app-table min-w-full">
               <thead>
@@ -1162,6 +1045,8 @@ export function ClientDetail({ slug }: { slug: string }) {
             </table>
           </div>
           <ClientDocumentLinks slug={slug} links={documentLinks} canManage={canManageClients} />
+          </>
+          )}
         </section>
 
         <ClientDocActionsModal
@@ -1474,6 +1359,20 @@ export function ClientDetail({ slug }: { slug: string }) {
         </>
       )}
 
+      {/* ── Lead → client conversion ──
+          Kept mounted while open, NOT just while the record is a lead: converting flips the status
+          to ACTIVE and the refetch would otherwise unmount the dialog mid-flow, losing step 2
+          (the delivery plan) the moment step 1 succeeds. */}
+      {(isLead || converting) && canManageClients ? (
+        <ConvertLeadModal
+          open={converting}
+          slug={slug}
+          clientId={client.id}
+          clientName={client.name}
+          onClose={() => setConverting(false)}
+        />
+      ) : null}
+
       {/* ── Edit client modal ── */}
       {pausing && (
         <div className="fixed inset-0 z-50">
@@ -1494,7 +1393,7 @@ export function ClientDetail({ slug }: { slug: string }) {
                 <div className="mt-4 space-y-4">
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Pick back up (optional)</span>
-                    <input type="date" value={resumeAtInput} onChange={(e) => setResumeAtInput(e.target.value)} className="app-input" />
+                    <DatePicker value={resumeAtInput} onChange={setResumeAtInput} />
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-sm font-medium text-[var(--text-2)]">Reason (optional)</span>
@@ -1794,7 +1693,7 @@ function MeetingNotesSection({ slug, number = "12" }: { slug: string; number?: s
                     </div>
                     <button type="button" disabled={busy || !c.meetingCode} onClick={() => void fetchNotes(c)}
                       className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50">
-                      {busy ? (<><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Fetching</>) : (<><SparklesIcon className="h-3 w-3" />Fetch notes</>)}
+                      {busy ? (<><Spinner tone="inverse" />Fetching</>) : (<><SparklesIcon className="h-3 w-3" />Fetch notes</>)}
                     </button>
                   </div>
                 );
@@ -1918,7 +1817,7 @@ function GrabNoteModal({
   return (
     <div className="app-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="app-dialog-panel flex max-h-[80vh] w-full max-w-[560px] flex-col overflow-hidden"
+        className="app-dialog-panel app-dialog-fixed flex w-full max-w-[560px] flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border-1)] px-5 py-4">
@@ -1998,7 +1897,7 @@ function GrabNoteModal({
                       className="inline-flex shrink-0 items-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                     >
                       {busy ? (
-                        <><span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />Grabbing</>
+                        <><Spinner tone="inverse" />Grabbing</>
                       ) : (
                         <><PlusIcon className="h-3 w-3" />{c.meetingCode ? "Grab" : "No link"}</>
                       )}
@@ -2094,7 +1993,7 @@ function MeetingNotesModal({
     >
       <div
         className={cn(
-          "app-dialog-panel flex max-h-[85vh] w-full flex-col overflow-hidden",
+          "app-dialog-panel app-dialog-fixed flex w-full flex-col overflow-hidden",
           hasRightRail ? "max-w-[980px]" : "max-w-[680px]",
         )}
         onClick={(e) => e.stopPropagation()}
@@ -2340,7 +2239,7 @@ function MeetingNotesTaskRail({
                       title={added ? "Click to remove from the task board" : "Add to this client's task board"}
                     >
                       {adding ? (
-                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        <Spinner />
                       ) : added ? (
                         <>
                           <CheckCircleIcon className="h-3 w-3 group-hover:hidden" />
@@ -2431,7 +2330,7 @@ function MeetingNotesTaskRail({
               className="inline-flex w-full items-center justify-center gap-1 rounded-[6px] bg-[var(--accent)] px-2.5 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {isCreatingManualTask ? (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <Spinner tone="inverse" />
               ) : (
                 <PlusIcon className="h-3 w-3" />
               )}
@@ -2504,7 +2403,7 @@ function ClientDevelopersSection({
           {active.map((p) => (
             <Link
               key={p.id}
-              href={`/app/codeclear/candidates/${p.candidateId}`}
+              href={`/app/staff/${p.candidateId}`}
               className="flex items-center gap-1.5 rounded-[6px] border border-[rgba(0,0,0,0.08)] bg-white px-2.5 py-1 text-xs font-medium text-[var(--text-1)] hover:border-[var(--brand-700)] hover:text-[var(--brand-700)] transition-colors"
             >
               <Avatar name={p.candidateName} />
@@ -2987,6 +2886,21 @@ function PlatformCard({
               {primaryUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}
             </p>
           )}
+          {platform.renewsOn && (
+            <p
+              className="mt-0.5 truncate text-[10px] uppercase tracking-[0.08em] text-[var(--text-3)]"
+              style={{ fontFamily: "var(--font-mono), 'JetBrains Mono', monospace" }}
+              title={`${platform.renewalNote ?? "Renews"} · ${platform.renewsOn}`}
+            >
+              {platform.renewalNote ?? "Renews"} ·{" "}
+              {new Date(`${platform.renewsOn}T00:00:00Z`).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                timeZone: "UTC",
+              })}
+            </p>
+          )}
           {(platform.platformType ||
             platform.stagingUrl ||
             platform.repoUrl ||
@@ -3450,7 +3364,7 @@ function ClientEditModal({
         onClick={onClose}
       />
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="app-dialog-panel flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden">
+        <div className="app-dialog-panel app-dialog-fixed flex w-full max-w-3xl flex-col overflow-hidden">
           {/* Modal widget header */}
           <div className="widget-header shrink-0">
             <span className="widget-header__label">EDIT CLIENT</span>
@@ -3618,12 +3532,7 @@ function ClientEditModal({
                     </label>
                     <label className="block">
                       <span className="app-field-label">End date</span>
-                      <input
-                        type="date"
-                        value={form.endDate}
-                        onChange={(e) => set("endDate", e.target.value)}
-                        className="app-input"
-                      />
+                      <DatePicker value={form.endDate} onChange={(next) => set("endDate", next)} />
                     </label>
                   </div>
 
@@ -4102,6 +4011,45 @@ function BankField({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The Documents card's two tabs, in the header band: Foundry documents and links, or the
+ * client's Google Drive folder. Mono caps, like the band they sit in; the linked count rides
+ * on its own tab so the band stays one 36px line.
+ */
+function DocsTabs({
+  value,
+  onChange,
+  linkedCount,
+}: {
+  value: "docs" | "drive";
+  onChange: (v: "docs" | "drive") => void;
+  linkedCount: number;
+}) {
+  const tab = (v: "docs" | "drive", label: string) => {
+    const on = value === v;
+    return (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={on}
+        onClick={() => onChange(v)}
+        className={`rounded-[4px] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+          on ? "bg-[var(--surface-brand)] text-[var(--brand-700)]" : "text-[var(--text-3)] hover:text-[var(--text-1)]"
+        }`}
+        style={{ fontFamily: "var(--font-mono)" }}
+      >
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div role="tablist" aria-label="Documents or Drive" className="flex shrink-0 items-center gap-0.5" data-docs-tabs>
+      {tab("docs", `Linked ${linkedCount}`)}
+      {tab("drive", "Drive")}
     </div>
   );
 }

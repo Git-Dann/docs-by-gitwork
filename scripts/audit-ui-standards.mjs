@@ -449,6 +449,50 @@ const RULES = [
       }
     },
   },
+  {
+    id: "BUTTON-NO-BASE",
+    title: "app-button variant with no `app-button` base class",
+    why:
+      "The sibling of UNDEFINED-CLASS, and it catches what that rule cannot: every class " +
+      "here EXISTS, so nothing flags it. `.app-button-secondary` supplies only colour — " +
+      "`inline-flex`, the border, the font weight and (via a size class) the height, " +
+      "padding and radius all come from `.app-button` plus `.app-button-{xs,sm,md,lg}`. " +
+      "A variant on its own therefore renders a 16px-tall, square, unpadded control that " +
+      "looks almost right in a screenshot and is an unusable touch target. Shipped twice: " +
+      "the Golf Data console's Retry button, and this rule's own author, whose dialog " +
+      "footer measured 18px tall with `padding: 0`. Hand-rolled `px-`/`py-` utilities count " +
+      "as a size, because several existing call sites legitimately set their own.",
+    run(file, src, consts, report) {
+      const re = /className=(?:"([^"]*)"|\{`([^`]*)`\})/g;
+      let m;
+      while ((m = re.exec(src))) {
+        const raw = m[1] ?? m[2] ?? "";
+        const tokens = raw.split(/\s+/);
+        const variant = tokens.find((t) =>
+          /^app-button-(primary|secondary|tertiary)$/.test(t),
+        );
+        if (!variant) continue;
+        if (!tokens.includes("app-button")) {
+          report(file, lineOf(src, m.index), `"${variant}" without the "app-button" base`);
+          continue;
+        }
+        const sized =
+          // ⚠️ `app-button-icon-sm` / `-icon-md` are size classes too. The first cut of
+          // this regex missed them and reported nine perfectly correct icon buttons —
+          // the rule was wrong, not the call sites.
+          tokens.some((t) => /^app-button-(xs|sm|md|lg|icon-[a-z]+)$/.test(t)) ||
+          // A hand-padded button is setting its own geometry on purpose.
+          tokens.some((t) => /^(sm:|md:|lg:|xl:)?p[xy]?-/.test(t));
+        if (!sized) {
+          report(
+            file,
+            lineOf(src, m.index),
+            `"${variant}" with no size class — no height, padding or radius`,
+          );
+        }
+      }
+    },
+  },
 ];
 
 /* ── Runner ───────────────────────────────────────────────────────────────── */
@@ -591,6 +635,16 @@ const SELF_TEST_CASES = {
            const d = <div className="flex items-center gap-2 px-3 text-sm" />;
            const e = <div className="min-w-[420px] sm:grid-cols-2" />;
            const f = <input className="app-input" />;`,
+  },
+  "BUTTON-NO-BASE": {
+    bad: `const a = <button className="app-button-secondary mt-3" />;
+          const b = <button className="app-button app-button-primary text-xs" />;`,
+    // A size class, a hand-padded button, and a non-variant helper must all stay quiet.
+    good: `const a = <button className="app-button app-button-secondary app-button-xs" />;
+           const b = <button className="app-button app-button-primary px-4 py-2 text-sm" />;
+           const c = <button className="app-button app-button-link app-button-xs" />;
+           const d2 = <button className="app-button app-button-tertiary app-button-icon-sm" />;
+           const d = <div className="flex items-center gap-2" />;`,
   },
   "MODEL-LITERAL": {
     bad: `const m = workspace.anthropicModel ?? "claude-sonnet-5";`,

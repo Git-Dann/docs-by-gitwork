@@ -4,10 +4,11 @@ import { updateMonitor, deleteMonitor } from "@/server/wiki-monitors";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
+import { MAX_BODY, headersField } from "@/lib/monitor-request";
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(["HTTP", "TCP"]).optional(),
+  type: z.enum(["HTTP", "TCP", "HEARTBEAT"]).optional(),
   target: z.string().min(1).optional(),
   method: z.string().optional(),
   expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
@@ -15,6 +16,13 @@ const updateSchema = z.object({
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+  /** "Name: value" per line. Blank or null clears; omitted keeps what's saved. */
+  requestHeaders: z.string().max(100_000).nullable().optional(),
+  requestBody: z.string().max(MAX_BODY).nullable().optional(),
+  /** Pause alerts until this time; null ends maintenance now. */
+  maintenanceUntil: z.coerce.date().nullable().optional(),
+  maintenanceNote: z.string().max(200).nullable().optional(),
 });
 
 async function resolveClientId(slug: string): Promise<string | null> {
@@ -35,7 +43,9 @@ export async function PATCH(
     const clientId = await resolveClientId(slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = updateSchema.parse(await req.json());
-    const updated = await updateMonitor(clientId, id, body);
+    const headers = headersField(body.requestHeaders);
+    if (headers.error) return apiError(headers.error, 400);
+    const updated = await updateMonitor(clientId, id, { ...body, requestHeaders: headers.value });
     if (!updated) return apiError("Monitor not found", 404);
     return apiOk(updated);
   } catch (err) {

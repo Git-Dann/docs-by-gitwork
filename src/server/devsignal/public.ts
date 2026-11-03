@@ -17,6 +17,7 @@ import { isAtLeast } from "@/types/auth";
 import { sendWorkspaceEmail, escapeHtml } from "@/server/email";
 import { type DataRequestType, DATA_REQUEST_LABELS } from "@/lib/devsignal/processing-notice";
 import { getActiveNotice } from "./notice-store";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 /** Does this GitHub username resolve to a real public account? */
 export async function githubUserExists(handle: string): Promise<boolean> {
@@ -59,6 +60,7 @@ type LoadedAssessment = Prisma.DevSignalAssessmentGetPayload<{
         id: true;
         aiProvider: true;
         anthropicApiKey: true;
+        platformAiKeysAllowed: true;
         anthropicModel: true;
         openaiApiKey: true;
         openaiModel: true;
@@ -81,6 +83,7 @@ async function loadByToken(token: string): Promise<LoadedAssessment | null> {
           id: true,
           aiProvider: true,
           anthropicApiKey: true,
+          platformAiKeysAllowed: true,
           anthropicModel: true,
           openaiApiKey: true,
           openaiModel: true,
@@ -478,7 +481,7 @@ async function notifyAdminsOfDataRequest(
   message?: string,
 ): Promise<void> {
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: a.workspace.id },
+    where: { workspaceId: a.workspace.id, ...ACTIVE_MEMBER },
     include: { user: { select: { email: true } } },
   });
   const recipients = members

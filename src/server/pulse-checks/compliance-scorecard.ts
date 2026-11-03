@@ -38,7 +38,10 @@ export function computeComplianceScorecard(
       const tags = jurisdictionsForCheck(check.checkKey);
       if (tags.length === 0) continue; // global — not jurisdiction-specific
       if (!checkAppliesToMarkets(check.checkKey, [market])) continue;
-      if (check.status === "SKIPPED") continue; // didn't run (platform-irrelevant)
+      // Only a VERDICT counts. "Not applicable", "could not establish" and "needs evidence"
+      // used to land in `missing`, so a JSON API was told it lacked a cookie banner and a
+      // check Pulse could not run read as a requirement the product failed.
+      if (check.status !== "PASS" && check.status !== "WARN" && check.status !== "FAIL") continue;
       if (check.status === "PASS") {
         passing++;
       } else {

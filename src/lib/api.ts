@@ -1,4 +1,15 @@
 import type { CostingConfigResponse, PackageCostingInput, PackageCostingResult, SavedCostingConfig } from "@/types/costing";
+import type { BoardColumnDef } from "@/lib/tasks/board-columns";
+import type { ReportTask } from "@/lib/standup-report";
+import type { WikiLinkDTO } from "@/server/wiki-links";
+import type { MonitorBoardDTO, MonitorsPageDTO } from "@/server/wiki-monitor-board";
+import type {
+  HandoverDTO,
+  HandoverInput,
+  HandoverItemDTO,
+  HandoverItemInput,
+  HandoverSummaryDTO,
+} from "@/types/handover";
 import type {
   AuditLog,
   Connection,
@@ -179,7 +190,7 @@ export async function seedProjectPlan(input: ProjectPlanRequest): Promise<{ resu
 // tell the server whose data to scope this request to. Mirrors the localStorage
 // keys in src/lib/view-as.ts (USER-mode preview stores the target's user id).
 // The server only honours it for a real Super Admin caller (see effective-user.ts).
-function viewAsHeaders(): Record<string, string> {
+export function viewAsHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
   try {
     const role = window.localStorage.getItem("foundry_view_as_role");
@@ -716,6 +727,8 @@ export async function createClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(`/api/clients/${slug}/platforms`, {
@@ -740,6 +753,8 @@ export async function updateClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<{ platform: ClientPlatformRecord }> {
   return apiFetch<{ platform: ClientPlatformRecord }>(
@@ -910,6 +925,7 @@ export async function listCodeClearCandidates(
   if (params.sortDir) query.set("sortDir", params.sortDir);
   if (typeof params.scoreMin === "number") query.set("scoreMin", String(params.scoreMin));
   if (typeof params.scoreMax === "number") query.set("scoreMax", String(params.scoreMax));
+  if (params.archived) query.set("archived", "1");
   const qs = query.toString();
   return apiFetch<CandidateListResponse>(`/api/codeclear/candidates${qs ? `?${qs}` : ""}`);
 }
@@ -1364,6 +1380,26 @@ export async function listPulseScans(params?: {
   return apiFetch<{ scans: PulseScanListItem[] }>(`/api/pulse/scans${qs ? `?${qs}` : ""}`);
 }
 
+/** Every measured repository and the ranked work across them (the code portfolio page). */
+/** Every scanned project (one per target), most urgent first. */
+export async function getPulseProjects(): Promise<{ projects: import("@/lib/pulse-projects").PulseProject[] }> {
+  return apiFetch("/api/pulse/projects");
+}
+
+/** One project and every scan of it. */
+export async function getPulseProject(slug: string): Promise<{ project: import("@/lib/pulse-projects").PulseProject; scans: PulseScanListItem[] }> {
+  return apiFetch(`/api/pulse/projects/${slug}`);
+}
+
+/** What changed between two scans (`against` is the earlier one). */
+export async function comparePulseScans(scanId: string, against: string): Promise<{ diff: import("@/types/pulse").PulseScanDiff | null }> {
+  return apiFetch(`/api/pulse/scans/${scanId}/diff?against=${encodeURIComponent(against)}`);
+}
+
+export async function getCodePortfolio(): Promise<import("@/server/code-health/portfolio").CodePortfolio> {
+  return apiFetch<import("@/server/code-health/portfolio").CodePortfolio>("/api/pulse/code-portfolio");
+}
+
 export async function getPulsePortfolio(): Promise<{ portfolio: import("@/types/pulse").PulsePortfolioEntry[] }> {
   return apiFetch<{ portfolio: import("@/types/pulse").PulsePortfolioEntry[] }>("/api/pulse/portfolio");
 }
@@ -1401,6 +1437,33 @@ export async function getPulseScanHistory(scanId: string): Promise<{ history: Pu
 
 export async function getPulseScanDiff(scanId: string): Promise<{ diff: import("@/types/pulse").PulseScanDiff | null }> {
   return apiFetch<{ diff: import("@/types/pulse").PulseScanDiff | null }>(`/api/pulse/scans/${scanId}/diff`);
+}
+
+export interface PulseFindingsResponse {
+  targetKey: string;
+  clientId: string | null;
+  states: import("@/lib/pulse-findings").FindingState[];
+  tasks: import("@/lib/pulse-findings").FindingTask[];
+}
+export async function getPulseFindings(scanId: string): Promise<PulseFindingsResponse> {
+  return apiFetch<PulseFindingsResponse>(`/api/pulse/scans/${scanId}/findings`);
+}
+export async function setPulseFindingDecision(
+  scanId: string,
+  input: { checkKey: string; decision: import("@/lib/pulse-findings").FindingDecision | null; note?: string | null },
+): Promise<PulseFindingsResponse> {
+  return apiFetch<PulseFindingsResponse>(`/api/pulse/scans/${scanId}/findings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+export async function sendPulseFindingToBoard(scanId: string, checkKey: string): Promise<PulseFindingsResponse & { taskId: string; created: boolean }> {
+  return apiFetch<PulseFindingsResponse & { taskId: string; created: boolean }>(`/api/pulse/scans/${scanId}/findings/task`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkKey }),
+  });
 }
 
 export async function emailPulseAudit(scanId: string, input: { to: string; message?: string }): Promise<{ sent: boolean; reportUrl: string }> {
@@ -1482,12 +1545,67 @@ export async function unsharePulseScan(scanId: string): Promise<{ isShared: bool
   );
 }
 
+export async function getAiSearchReport(
+  range: number,
+  refresh = false,
+): Promise<{ report: import("@/lib/ai-search").AiSearchReport }> {
+  return apiFetch(`/api/pulse/ai-search?range=${range}${refresh ? "&refresh=1" : ""}`);
+}
+
+export async function getAiAnswersReport(): Promise<{ report: import("@/lib/ai-answers").AiAnswersReport }> {
+  return apiFetch("/api/pulse/ai-search/answers");
+}
+
+export async function startAiAnswersRun(): Promise<{ runId: string; alreadyRunning: boolean }> {
+  return apiFetch("/api/pulse/ai-search/answers", { method: "POST" });
+}
+
+export async function saveAiAnswersConfig(input: {
+  questions: string[];
+  brandNames: string[];
+  domains: string[];
+  engines: string[];
+  autoWeekly: boolean;
+}): Promise<{ config: import("@/lib/ai-answers").AiAnswersConfig }> {
+  return apiFetch("/api/pulse/ai-search/answers/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function saveAiSearchConfig(input: {
+  searchConsoleSite: string;
+  ga4PropertyId: string;
+}): Promise<{ config: import("@/lib/ai-search").AiSearchConfig }> {
+  return apiFetch("/api/pulse/ai-search/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listPulseLeads(): Promise<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }> {
   return apiFetch<{ leads: import("@/server/pulse-lite/leads-admin").PulseLeadView[] }>("/api/pulse/leads");
 }
 
 export async function importPulseLead(leadId: string): Promise<{ scanId: string }> {
   return apiFetch<{ scanId: string }>(`/api/pulse/leads/${leadId}/import`, { method: "POST" });
+}
+
+export async function updatePulseLead(
+  leadId: string,
+  patch: { name?: string; business?: string; email?: string },
+): Promise<{ updated: boolean }> {
+  return apiFetch(`/api/pulse/leads/${leadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deletePulseLead(leadId: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/pulse/leads/${leadId}`, { method: "DELETE" });
 }
 
 export async function getPulseLeadPreview(
@@ -1500,7 +1618,8 @@ export async function getPulseLeadPreview(
 
 export interface PulseEmbedConfig {
   enabled: boolean;
-  checkKeys: string[];
+  /** Checks shown in full on the free tier. null = no limit. */
+  freeCheckKeys: string[] | null;
   bookingUrl: string;
   turnstileSiteKey: string | null;
   turnstileConfigured: boolean;
@@ -1510,9 +1629,18 @@ export async function getPulseEmbedConfig(): Promise<PulseEmbedConfig> {
   return apiFetch<PulseEmbedConfig>("/api/workspace/pulse-embed");
 }
 
+/** Emails the caller the report a visitor gets after unlocking a scan. The email follows in a few minutes. */
+export async function sendPulseSampleReport(url?: string): Promise<{ queued: boolean; to: string; targetUrl: string }> {
+  return apiFetch("/api/workspace/pulse-embed/sample-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(url ? { url } : {}),
+  });
+}
+
 export async function updatePulseEmbedConfig(patch: {
   enabled?: boolean;
-  checkKeys?: string[];
+  freeCheckKeys?: string[] | null;
   bookingUrl?: string;
   turnstileSiteKey?: string;
   turnstileSecretKey?: string;
@@ -1571,6 +1699,8 @@ export interface MonitorRecord {
   lastRunAt: string | null;
   createdAt: string;
   webhookUrl: string;
+  digestEmails: string[];
+  lastDigestAt: string | null;
 }
 
 export async function listMonitors(): Promise<{ monitors: MonitorRecord[] }> {
@@ -1593,7 +1723,7 @@ export async function createMonitor(input: {
   });
 }
 
-export async function updateMonitor(monitorId: string, input: { frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number }): Promise<{ monitor: MonitorRecord }> {
+export async function updateMonitor(monitorId: string, input: { frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] }): Promise<{ monitor: MonitorRecord }> {
   return apiFetch<{ monitor: MonitorRecord }>(`/api/pulse/monitors/${monitorId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -1735,6 +1865,11 @@ export async function saveIntegrations(data: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+/** Sends one email through the saved outbound settings, to the caller. */
+export async function sendTestEmail(): Promise<{ sent: boolean; to: string }> {
+  return apiFetch("/api/settings/integrations/test-email", { method: "POST" });
 }
 
 // Keep for backwards compat
@@ -2535,6 +2670,36 @@ export interface ClientMeetingsResponse {
   query?: string | null;
 }
 
+/**
+ * Who reads a client's Drive folder: the team with their own Google sign-in (by client slug),
+ * or the client through their share link (read with the teammate who switched it on).
+ */
+export type DriveTarget = { mode: "internal"; slug: string } | { mode: "public"; token: string };
+
+export function driveBase(target: DriveTarget): string {
+  return target.mode === "internal"
+    ? `/api/clients/${encodeURIComponent(target.slug)}/drive`
+    : `/api/wiki/${encodeURIComponent(target.token)}/drive`;
+}
+
+export async function getClientDrive(
+  target: DriveTarget,
+  view: import("@/lib/client-drive").ClientDriveView,
+  folder?: string | null,
+): Promise<import("@/lib/client-drive").ClientDriveResponse> {
+  const qs = new URLSearchParams({ view });
+  if (view === "folder" && folder) qs.set("folder", folder);
+  return apiFetch(`${driveBase(target)}?${qs.toString()}`);
+}
+
+export async function setWikiDriveEnabled(slug: string, enabled: boolean): Promise<{ enabled: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/drive`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 export async function getClientMeetings(slug: string, q?: string, all?: boolean): Promise<ClientMeetingsResponse> {
   // `all` = the manual "grab a note" picker: every recent Meet call, unfiltered by name/domain.
   const qs = all ? "?all=1" : q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
@@ -3001,7 +3166,7 @@ export function deleteTaskAttachment(taskId: string, attachmentId: string): Prom
 
 export function moveTask(
   id: string,
-  input: { status: TaskStatus; orderKey: number },
+  input: { status: TaskStatus; orderKey: number; boardColumnId?: string | null },
 ): Promise<TaskDTO> {
   return apiFetch(`/api/tasks/${id}/move`, {
     method: "POST",
@@ -3120,6 +3285,9 @@ export function pushDailyUpdate(input: {
   phase: "AM" | "PM";
   weekPlan?: string;
   note?: string;
+  /** Restrict the post to these client ids (used by the multi-client picker).
+   *  Omit to post to every involved client. */
+  clientIds?: string[];
 }): Promise<DailyUpdateDTO> {
   return apiFetch("/api/tasks/standup", {
     method: "POST",
@@ -3164,7 +3332,7 @@ export function pushPmUpdates(phase: DailyUpdatePhase = "PM"): Promise<{
 export interface PmUpdatePreviewDev {
   /** Developer display name (rendered as `@name`). */
   name: string;
-  tasks: Array<{ title: string; taskId: string }>;
+  tasks: ReportTask[];
   note?: string | null;
 }
 
@@ -3255,6 +3423,18 @@ export function updateRolePermissions(matrix: RoleMatrix): Promise<{ matrix: Rol
 }
 
 // ─── Feature blocks ("lists") + timeline share ─────────────────────────────
+
+export function getBoardColumns(clientId: string): Promise<BoardColumnDef[]> {
+  return apiFetch(`/api/board-columns?clientId=${encodeURIComponent(clientId)}`);
+}
+
+export function saveBoardColumns(clientId: string, columns: BoardColumnDef[]): Promise<BoardColumnDef[]> {
+  return apiFetch(`/api/board-columns?clientId=${encodeURIComponent(clientId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ columns }),
+  });
+}
 
 export function listFeatureBlocks(clientId: string): Promise<FeatureBlockDTO[]> {
   return apiFetch(`/api/feature-blocks?clientId=${encodeURIComponent(clientId)}`);
@@ -3423,6 +3603,13 @@ import type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord
 export type { WikiDTO, WikiPageRecord, ChangelogEntryRecord, CourseRequestRecord, WikiIntakeItemRecord, WikiIntakeCommentRecord, WikiBlockerRecord, WikiUserSummary };
 import type { IntakeCategory } from "@/lib/wiki-intake-categories";
 export type { IntakeCategory };
+import type { MentionPerson } from "@/lib/wiki-mentions";
+export type { MentionPerson };
+export interface WikiMentionables {
+  people: MentionPerson[];
+  /** Whether a mention will reach the client's shared Slack channel. */
+  slack: { connected: boolean; channelName: string | null };
+}
 import type {
   WikiCodeHandoverSection,
   WikiCodeModuleRecord,
@@ -3529,6 +3716,579 @@ export async function setWikiIntakeCategoriesApi(
   );
 }
 
+/** One row of a pasted/uploaded sheet, already mapped and coerced in the browser. */
+export interface WikiIntakeImportRow {
+  title: string;
+  description?: string | null;
+  priority?: "LOW" | "MEDIUM" | "HIGH";
+  type?: "BUG" | "FEEDBACK" | "TASK" | "DESIGN";
+  categoryId?: string | null;
+  requestedBy?: string | null;
+  externalRef?: string | null;
+  externalUrl?: string | null;
+  device?: string | null;
+  osVersion?: string | null;
+}
+
+export interface WikiIntakeImportResult {
+  created: number;
+  /** Deduped against an existing externalRef or an open request with the same title. */
+  skipped: number;
+  count: number;
+}
+
+export async function importWikiIntakeItemsApi(
+  slug: string,
+  items: WikiIntakeImportRow[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiIntakeImportResult> {
+  return apiFetch<WikiIntakeImportResult>(`/api/clients/${slug}/wiki/intake-items/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, dryRun: opts.dryRun }),
+  });
+}
+
+export type { WikiInsightBoardRecord, WikiInsightsSection } from "@/server/wiki-insights";
+import type { WikiInsightBoardRecord as WikiInsightBoardRecordT } from "@/server/wiki-insights";
+
+/** One board plus its whole content — writes replace, they do not patch. */
+export interface WikiInsightBoardInput {
+  type: "BAR" | "PIE" | "VENN" | "NODE";
+  title: string;
+  caption?: string | null;
+  valueUnit?: string | null;
+  setALabel?: string | null;
+  setBLabel?: string | null;
+  setCLabel?: string | null;
+  coreLabel?: string | null;
+  points?: { label: string; value: number; color?: string | null; note?: string | null }[];
+  items?: { label: string; region: string; note?: string | null }[];
+  branches?: {
+    label: string;
+    color?: string | null;
+    note?: string | null;
+    link?: string | null;
+    leaves?: { label: string; note?: string | null; link?: string | null }[];
+  }[];
+}
+
+export type { SummaryCard } from "@/lib/client-summary";
+import type { ClientSummaryBoard } from "@/server/client-summary";
+export type { ClientSummaryBoard };
+
+export async function getClientSummaryBoard(): Promise<ClientSummaryBoard> {
+  return apiFetch<ClientSummaryBoard>("/api/clients/summary");
+}
+
+export async function updateClientSummary(
+  clientId: string,
+  patch: { note?: string | null; detail?: string | null; hidden?: boolean },
+): Promise<void> {
+  await apiFetch(`/api/clients/summary/${clientId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function setWikiRoundupEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/roundup`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setWikiDeliveryEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/delivery`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setWikiSupportEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/support`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/* ------------------------------------------------------------- wiki: metrics, meetings, platforms */
+
+export interface WikiMetricsPatch {
+  enabled?: boolean;
+  hiddenKeys?: string[];
+  featuredKeys?: string[];
+  apiEndpoint?: { serverUrl: string; path: string } | null;
+  /** A string sets the token, "" clears it. */
+  apiToken?: string;
+}
+
+export interface MetricEndpointOptionDTO {
+  serverUrl: string;
+  serverLabel: string;
+  path: string;
+  summary: string;
+  auth: boolean;
+}
+
+export interface MetricsRefreshResultDTO {
+  source: "care" | "api" | null;
+  fetched: string[];
+  failed: { period: string; error: string }[];
+}
+
+export async function updateWikiMetricsApi(slug: string, patch: WikiMetricsPatch): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/metrics`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function getWikiMetricEndpointsApi(
+  slug: string,
+): Promise<{ endpoints: MetricEndpointOptionDTO[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/metrics`);
+}
+
+export async function refreshWikiMetricsApi(slug: string): Promise<MetricsRefreshResultDTO> {
+  return apiFetch(`/api/clients/${slug}/wiki/metrics`, { method: "POST" });
+}
+
+export interface ShareableMeetingDTO {
+  id: string;
+  title: string;
+  startedAt: string | null;
+  shared: boolean;
+}
+
+export async function getWikiShareableMeetingsApi(
+  slug: string,
+): Promise<{ meetings: ShareableMeetingDTO[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/meetings`);
+}
+
+export async function setWikiMeetingsEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/meetings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function setWikiMeetingSharedApi(
+  slug: string,
+  meetingId: string,
+  shared: boolean,
+): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/meetings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ meetingId, shared }),
+  });
+}
+
+export async function setWikiPlatformsEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/platforms`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+/* ------------------------------------------------------------- wiki: running costs */
+
+export type { CostItem, CostModel, CostItemKind } from "@/types/wiki-costs";
+import type { CostModel as CostModelT } from "@/types/wiki-costs";
+
+/** One cost line plus its whole tier ladder — writes REPLACE, they do not patch. */
+export interface WikiCostItemInput {
+  name: string;
+  vendor?: string | null;
+  kind: "FLAT" | "PER_USER" | "METERED" | "STEPPED";
+  amountMonthly?: number | null;
+  amountAnnual?: number | null;
+  unitLabel?: string | null;
+  includedUnits?: number | null;
+  unitPrice?: number | null;
+  unitsPerUser?: number | null;
+  notes?: string | null;
+  /** False = priced as an option, kept out of the total. Absent means committed. */
+  included?: boolean;
+  tiers?: { upToUsers: number | null; amountMonthly: number; label?: string | null }[];
+}
+
+export interface WikiCostSettingsInput {
+  currency?: string;
+  headlineUsers?: number;
+  notes?: string | null;
+}
+
+export async function setWikiCostsEnabledApi(slug: string, enabled: boolean): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function updateWikiCostSettingsApi(
+  slug: string,
+  input: WikiCostSettingsInput,
+): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createWikiCostItemApi(
+  slug: string,
+  input: WikiCostItemInput,
+): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiCostItemApi(
+  slug: string,
+  itemId: string,
+  input: WikiCostItemInput,
+): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiCostItemApi(slug: string, itemId: string): Promise<CostModelT> {
+  return apiFetch(`/api/clients/${slug}/wiki/costs/${itemId}`, { method: "DELETE" });
+}
+
+/* ------------------------------------------------------------- wiki: estimates */
+
+export type { Estimate, EstimatePhase, WikiEstimatesSection } from "@/types/wiki-estimates";
+import type { WikiEstimatesSection as WikiEstimatesSectionT } from "@/types/wiki-estimates";
+import type { EstimateInput } from "@/server/validators";
+export type { EstimateInput };
+
+export async function setWikiEstimatesEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiEstimateApi(
+  slug: string,
+  input: EstimateInput,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiEstimateApi(
+  slug: string,
+  estimateId: string,
+  input: EstimateInput,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates/${estimateId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiEstimateApi(
+  slug: string,
+  estimateId: string,
+): Promise<WikiEstimatesSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/estimates/${estimateId}`, { method: "DELETE" });
+}
+
+/* ---------------------------------------------------------------- wiki: sheets */
+
+import type {
+  SheetCellValue as SheetCellValueT,
+  SheetMediaItem as SheetMediaItemT,
+  SheetColumnType as SheetColumnTypeT,
+  WikiSheet as WikiSheetT,
+  WikiSheetsSection as WikiSheetsSectionT,
+} from "@/types/wiki-sheets";
+
+/**
+ * Who is writing: the team (internal routes, by client slug) or the client (public routes,
+ * by share token). Structure calls exist only for the team — there is no public route for
+ * them, so a client call to one can only 404.
+ */
+export type SheetsTarget = { mode: "internal"; slug: string } | { mode: "public"; token: string };
+
+function sheetsBase(target: SheetsTarget, sheetId?: string): string {
+  const root =
+    target.mode === "internal" ? `/api/clients/${target.slug}/wiki/sheets` : `/api/wiki/${target.token}/sheets`;
+  return sheetId ? `${root}/${sheetId}` : root;
+}
+
+// `jsonInit` is declared once further down (the CRM block) and reused here.
+
+export interface SheetColumnInputT {
+  id?: string;
+  title: string;
+  type?: SheetColumnTypeT;
+  options?: string[];
+  width?: number;
+  clientEditable?: boolean;
+}
+
+export async function setWikiSheetsEnabledApi(slug: string, enabled: boolean): Promise<WikiSheetsSectionT> {
+  return apiFetch(sheetsBase({ mode: "internal", slug }), jsonInit("PATCH", { enabled }));
+}
+
+export async function createWikiSheetApi(
+  slug: string,
+  input: {
+    title: string;
+    description?: string | null;
+    columns: SheetColumnInputT[];
+    titleColumnId?: string | null;
+    rows?: Record<string, SheetCellValueT | null>[];
+    clientCanEdit?: boolean;
+    clientCanAddRows?: boolean;
+    clientCanSendToBoard?: boolean;
+  },
+): Promise<{ sheet: WikiSheetT; section: WikiSheetsSectionT }> {
+  return apiFetch(sheetsBase({ mode: "internal", slug }), jsonInit("POST", input));
+}
+
+export async function updateWikiSheetApi(
+  slug: string,
+  sheetId: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    titleColumnId?: string | null;
+    clientCanEdit?: boolean;
+    clientCanAddRows?: boolean;
+    clientCanSendToBoard?: boolean;
+  },
+): Promise<WikiSheetT> {
+  return apiFetch(sheetsBase({ mode: "internal", slug }, sheetId), jsonInit("PATCH", patch));
+}
+
+export async function deleteWikiSheetApi(slug: string, sheetId: string): Promise<void> {
+  await apiFetch(sheetsBase({ mode: "internal", slug }, sheetId), { method: "DELETE" });
+}
+
+export async function addWikiSheetColumnsApi(
+  slug: string,
+  sheetId: string,
+  columns: SheetColumnInputT[],
+): Promise<WikiSheetT> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/columns`, jsonInit("POST", { columns }));
+}
+
+export async function updateWikiSheetColumnApi(
+  slug: string,
+  sheetId: string,
+  columnId: string,
+  patch: {
+    title?: string;
+    type?: SheetColumnTypeT;
+    options?: string[];
+    width?: number | null;
+    clientEditable?: boolean;
+    position?: number;
+  },
+): Promise<{ sheet: WikiSheetT; cleared: number }> {
+  return apiFetch(
+    `${sheetsBase({ mode: "internal", slug }, sheetId)}/columns/${columnId}`,
+    jsonInit("PATCH", patch),
+  );
+}
+
+export async function removeWikiSheetColumnApi(slug: string, sheetId: string, columnId: string): Promise<WikiSheetT> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/columns/${columnId}`, { method: "DELETE" });
+}
+
+/** Team or client: add rows. Cells keyed by column id. */
+export async function addWikiSheetRowsApi(
+  target: SheetsTarget,
+  sheetId: string,
+  rows: Record<string, SheetCellValueT | null>[],
+): Promise<{ rowIds?: string[] }> {
+  return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("POST", { rows }));
+}
+
+/** Team or client: change some cells of one row (merged per cell). */
+export async function updateWikiSheetCellsApi(
+  target: SheetsTarget,
+  sheetId: string,
+  rowId: string,
+  cells: Record<string, SheetCellValueT | null>,
+): Promise<void> {
+  await apiFetch(`${sheetsBase(target, sheetId)}/rows/${rowId}`, jsonInit("PATCH", { cells }));
+}
+
+/** Team: delete / restore / send. Client: delete (own rows) / send (if allowed). */
+export async function bulkWikiSheetRowsApi(
+  target: SheetsTarget,
+  sheetId: string,
+  input: { action: "delete" | "restore" | "send"; rowIds: string[]; featureBlockId?: string | null },
+): Promise<{ count?: number; results?: { rowId: string; taskId: string; created: boolean }[] }> {
+  return apiFetch(`${sheetsBase(target, sheetId)}/rows`, jsonInit("PATCH", input));
+}
+
+/** Team only: reorder rows. `order` may be partial; unmentioned rows keep their order after it. */
+export async function reorderWikiSheetRowsApi(slug: string, sheetId: string, order: string[]): Promise<WikiSheetT> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/rows`, jsonInit("PUT", { order }));
+}
+
+/** Team only: one row's height in px (null = auto). A client's resizes stay in their browser. */
+export async function setWikiSheetRowHeightApi(
+  slug: string,
+  sheetId: string,
+  rowId: string,
+  height: number | null,
+): Promise<{ saved: boolean; height?: number | null }> {
+  return apiFetch(`${sheetsBase({ mode: "internal", slug }, sheetId)}/rows/${rowId}`, jsonInit("PATCH", { height }));
+}
+
+/** Who can be picked into a person column, for this side (§73.1). Never carries an email. */
+export async function getWikiSheetPeopleApi(
+  target: SheetsTarget,
+): Promise<{ people: { id: string; name: string; kind: "TEAM" | "CLIENT" }[] }> {
+  return apiFetch(`${sheetsBase(target)}/people`);
+}
+
+/** Upload an image into a sheet's media cell (§73.2). Returns the item the cell stores. */
+export async function uploadSheetImageApi(target: SheetsTarget, sheetId: string, file: File): Promise<SheetMediaItemT> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${sheetsBase(target, sheetId)}/files`, { method: "POST", body: form });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : `Upload failed (${res.status}).`);
+  }
+  const item = data as { url: string; title?: string };
+  return item.title ? { url: item.url, title: item.title } : { url: item.url };
+}
+
+/* ----------------------------------------------------------- wiki: comparisons */
+
+export type {
+  ComparisonCell,
+  ComparisonColumn,
+  ComparisonRow,
+  WikiComparison,
+  WikiComparisonsSection,
+} from "@/types/wiki-comparisons";
+import type {
+  WikiComparison as WikiComparisonT,
+  WikiComparisonsSection as WikiComparisonsSectionT,
+} from "@/types/wiki-comparisons";
+import type { ComparisonInput } from "@/server/validators";
+export type { ComparisonInput };
+
+export async function setWikiComparisonsEnabledApi(
+  slug: string,
+  enabled: boolean,
+): Promise<WikiComparisonsSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiComparisonApi(
+  slug: string,
+  input: ComparisonInput,
+): Promise<{ comparison: WikiComparisonT; section: WikiComparisonsSectionT }> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiComparisonApi(
+  slug: string,
+  comparisonId: string,
+  input: ComparisonInput,
+): Promise<WikiComparisonT> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons/${comparisonId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiComparisonApi(slug: string, comparisonId: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/comparisons/${comparisonId}`, { method: "DELETE" });
+}
+
+export async function reorderWikiComparisonsApi(
+  slug: string,
+  order: string[],
+): Promise<WikiComparisonsSectionT> {
+  return apiFetch(`/api/clients/${slug}/wiki/comparisons`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order }),
+  });
+}
+
+export async function setWikiInsightsEnabledApi(slug: string, enabled: boolean): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/insights`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function createWikiInsightBoardApi(
+  slug: string,
+  input: WikiInsightBoardInput,
+): Promise<WikiInsightBoardRecordT> {
+  return apiFetch(`/api/clients/${slug}/wiki/insights`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateWikiInsightBoardApi(
+  slug: string,
+  boardId: string,
+  input: WikiInsightBoardInput,
+): Promise<WikiInsightBoardRecordT> {
+  return apiFetch(`/api/clients/${slug}/wiki/insights/${boardId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWikiInsightBoardApi(slug: string, boardId: string): Promise<void> {
+  await apiFetch(`/api/clients/${slug}/wiki/insights/${boardId}`, { method: "DELETE" });
+}
+
 export async function createWikiIntakeItem(
   slug: string,
   input: WikiIntakeItemPayload,
@@ -3609,11 +4369,20 @@ export async function addWikiIntakeComment(
   slug: string,
   itemId: string,
   body: string,
+  mentionIds: string[] = [],
+  image: File | null = null,
 ): Promise<WikiIntakeCommentRecord> {
-  return apiFetch<WikiIntakeCommentRecord>(
-    `/api/clients/${slug}/wiki/intake-items/${itemId}/comments`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
-  );
+  return postWikiReply(`/api/clients/${slug}/wiki/intake-items/${itemId}/comments`, body, mentionIds, image);
+}
+
+/** Who can be @mentioned on a client's requests (internal: the whole team). */
+export async function getWikiMentionables(slug: string): Promise<WikiMentionables> {
+  return apiFetch<WikiMentionables>(`/api/clients/${slug}/wiki/mentionables`);
+}
+
+/** Who can be @mentioned from the client's view: their people + the Gitwork people involved. */
+export async function getPublicWikiMentionables(token: string): Promise<WikiMentionables> {
+  return apiFetch<WikiMentionables>(`/api/wiki/${token}/mentionables`);
 }
 
 /** A reply on a request from the public wiki page — the signed-in wiki user
@@ -3622,11 +4391,89 @@ export async function addPublicWikiIntakeComment(
   token: string,
   itemId: string,
   body: string,
+  mentionIds: string[] = [],
+  image: File | null = null,
 ): Promise<WikiIntakeCommentRecord> {
-  return apiFetch<WikiIntakeCommentRecord>(
-    `/api/wiki/${token}/intake-items/${itemId}/comments`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) },
-  );
+  return postWikiReply(`/api/wiki/${token}/intake-items/${itemId}/comments`, body, mentionIds, image);
+}
+
+/**
+ * Post a reply. With a screenshot the reply and image go up in ONE multipart request,
+ * so the text may be empty (a screenshot-only reply) and a failed upload never leaves
+ * an empty reply behind. Without one it is the plain JSON post.
+ */
+async function postWikiReply(
+  url: string,
+  body: string,
+  mentionIds: string[],
+  image: File | null,
+): Promise<WikiIntakeCommentRecord> {
+  if (!image) {
+    return apiFetch<WikiIntakeCommentRecord>(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body, mentionIds }),
+    });
+  }
+  const form = new FormData();
+  form.append("body", body);
+  form.append("mentionIds", JSON.stringify(mentionIds));
+  form.append("file", image);
+  // No Content-Type: the browser sets the multipart boundary itself.
+  return apiFetch<WikiIntakeCommentRecord>(url, { method: "POST", body: form });
+}
+
+/** Where a reply lives: the internal wiki (by client slug) or the shared one (by token). */
+export type WikiCommentScope = { slug: string } | { token: string };
+
+function wikiCommentUrl(scope: WikiCommentScope, itemId: string, commentId: string): string {
+  const base =
+    "slug" in scope ? `/api/clients/${scope.slug}/wiki` : `/api/wiki/${encodeURIComponent(scope.token)}`;
+  return `${base}/intake-items/${encodeURIComponent(itemId)}/comments/${encodeURIComponent(commentId)}`;
+}
+
+/** Edit your own reply. */
+export async function editWikiIntakeComment(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  body: string,
+  mentionIds: string[] = [],
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(wikiCommentUrl(scope, itemId, commentId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body, mentionIds }),
+  });
+}
+
+/** Delete a reply (soft — the thread shows "Reply deleted"). Returns the blanked record. */
+export async function deleteWikiIntakeComment(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+): Promise<WikiIntakeCommentRecord> {
+  return apiFetch<WikiIntakeCommentRecord>(wikiCommentUrl(scope, itemId, commentId), { method: "DELETE" });
+}
+
+/** Attach a screenshot to your own reply. */
+export function uploadWikiIntakeCommentImage(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  file: File,
+): Promise<WikiIntakeCommentRecord> {
+  return postImageFile(`${wikiCommentUrl(scope, itemId, commentId)}/image`, file);
+}
+
+/** The URL a reply's screenshot is served from (`thumb` → the small preview). */
+export function wikiIntakeCommentImageSrc(
+  scope: WikiCommentScope,
+  itemId: string,
+  commentId: string,
+  opts: { thumb?: boolean } = {},
+): string {
+  return `${wikiCommentUrl(scope, itemId, commentId)}/image${opts.thumb ? "?thumb=1" : ""}`;
 }
 
 export async function deleteWikiIntakeItemApi(slug: string, id: string): Promise<void> {
@@ -3779,8 +4626,8 @@ export async function updateWikiPlatformsApi(slug: string, platforms: string[]):
 }
 
 // ─── Wiki monitors (uptime) ─────────────────────────────────────────────────
-import type { WikiMonitorDTO, MonitorInput } from "@/server/wiki-monitors";
-export type { WikiMonitorDTO, WikiMonitorsSection, MonitorInput } from "@/server/wiki-monitors";
+import type { WikiMonitorDTO, MonitorWireInput as MonitorInput } from "@/server/wiki-monitors";
+export type { WikiMonitorDTO, WikiMonitorsSection, MonitorWireInput as MonitorInput } from "@/server/wiki-monitors";
 
 export async function createWikiMonitorApi(slug: string, input: MonitorInput): Promise<WikiMonitorDTO> {
   return apiFetch<WikiMonitorDTO>(`/api/clients/${slug}/wiki/monitors`, {
@@ -3804,6 +4651,24 @@ export async function updateWikiMonitorApi(
 
 export async function deleteWikiMonitorApi(slug: string, id: string): Promise<void> {
   await apiFetch(`/api/clients/${slug}/wiki/monitors/${id}`, { method: "DELETE" });
+}
+
+export async function getWikiMonitorSuggestionsApi(
+  slug: string,
+): Promise<{ suggestions: { name: string; target: string }[] }> {
+  return apiFetch(`/api/clients/${slug}/wiki/monitors/suggestions`);
+}
+
+/** Every client's monitors — only the agency's own wiki (slug `gitwork`) answers. */
+export async function getWikiMonitorBoardApi(
+  slug: string,
+): Promise<MonitorBoardDTO> {
+  return apiFetch(`/api/clients/${slug}/wiki/monitors/board`);
+}
+
+/** The Monitors page: every client's monitors (needs the `monitors` permission). */
+export async function getMonitorsPageApi(): Promise<MonitorsPageDTO> {
+  return apiFetch("/api/monitors");
 }
 
 export async function runWikiMonitorApi(slug: string, id: string): Promise<WikiMonitorDTO> {
@@ -4530,6 +5395,85 @@ export async function approvePublicLaunchpadDocApi(
   });
 }
 
+// ── Per-client requirements (internal only — no token counterpart) ───────────
+
+export interface LaunchpadCustomItemInput {
+  label: string;
+  helper?: string | null;
+  hint?: string | null;
+  ownedByClient?: boolean | null;
+}
+
+export async function addLaunchpadCustomItemApi(
+  slug: string,
+  moduleId: string,
+  input: LaunchpadCustomItemInput,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(`/api/clients/${slug}/wiki/launchpad/custom-items`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ moduleId, ...input }),
+  });
+}
+
+export async function updateLaunchpadCustomItemApi(
+  slug: string,
+  itemId: string,
+  patch: Partial<LaunchpadCustomItemInput>,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(
+    `/api/clients/${slug}/wiki/launchpad/custom-items/${encodeURIComponent(itemId)}`,
+    { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(patch) },
+  );
+}
+
+export async function removeLaunchpadCustomItemApi(
+  slug: string,
+  itemId: string,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(
+    `/api/clients/${slug}/wiki/launchpad/custom-items/${encodeURIComponent(itemId)}`,
+    { method: "DELETE" },
+  );
+}
+
+// ── Requirement files (both audiences) ───────────────────────────────────────
+// No Content-Type header on the upload: the browser sets the multipart boundary.
+
+function launchpadFilesBase(scope: { slug: string } | { token: string }, itemId: string): string {
+  const item = encodeURIComponent(itemId);
+  return "slug" in scope
+    ? `/api/clients/${scope.slug}/wiki/launchpad/items/${item}/files`
+    : `/api/wiki/${scope.token}/launchpad/items/${item}/files`;
+}
+
+/** Where a file downloads from — used as a plain `<a href>`, served as an attachment. */
+export function launchpadFileUrl(
+  scope: { slug: string } | { token: string },
+  itemId: string,
+  fileId: string,
+): string {
+  return `${launchpadFilesBase(scope, itemId)}/${encodeURIComponent(fileId)}`;
+}
+
+export async function uploadLaunchpadFileApi(
+  scope: { slug: string } | { token: string },
+  itemId: string,
+  file: File,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(launchpadFilesBase(scope, itemId), { method: "POST", body: form });
+}
+
+export async function deleteLaunchpadFileApi(
+  scope: { slug: string } | { token: string },
+  itemId: string,
+  fileId: string,
+): Promise<{ launchpad: LaunchpadDTO }> {
+  return apiFetch(launchpadFileUrl(scope, itemId, fileId), { method: "DELETE" });
+}
+
 // ── Templates (Settings → Launchpad) ─────────────────────────────────────────
 
 export async function listLaunchpadTemplatesApi(
@@ -4578,4 +5522,243 @@ export async function deleteLaunchpadTemplateApi(
   id: string,
 ): Promise<{ deleted: boolean; archived?: boolean }> {
   return apiFetch(`/api/launchpad-templates/${id}`, { method: "DELETE" });
+}
+
+// ── Team messages ───────────────────────────────────────────────────────────
+
+export interface TeamMessageRecipient {
+  userId: string;
+  name: string | null;
+  email: string;
+  readAt: string | null;
+}
+
+export interface TeamMessage {
+  id: string;
+  subject: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string | null; email: string };
+  recipients: TeamMessageRecipient[];
+  readAt: string | null;
+}
+
+export async function listTeamMessages(
+  opts: { sent?: boolean; cursor?: string; limit?: number } = {},
+): Promise<{ messages: TeamMessage[]; nextCursor: string | null }> {
+  const params = new URLSearchParams();
+  if (opts.sent) params.set("sent", "1");
+  if (opts.cursor) params.set("cursor", opts.cursor);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+  return apiFetch(`/api/messages${query ? `?${query}` : ""}`);
+}
+
+export async function getTeamMessage(id: string): Promise<{ message: TeamMessage }> {
+  return apiFetch(`/api/messages/${id}`);
+}
+
+export async function sendTeamMessage(data: {
+  subject: string;
+  body: string;
+  recipientIds: string[];
+}): Promise<{ message: TeamMessage }> {
+  return apiFetch("/api/messages", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function markTeamMessageRead(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/messages/${id}/read`, { method: "POST" });
+}
+
+export async function markTeamMessageUnread(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/messages/${id}/read`, { method: "DELETE" });
+}
+
+export async function dismissTeamMessage(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/messages/${id}/dismiss`, { method: "POST" });
+}
+
+/** Author-only. Removes it for everyone — see the note on `deleteTeamMessage`. */
+export async function deleteTeamMessage(id: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/messages/${id}`, { method: "DELETE" });
+}
+
+export async function markAllTeamMessagesRead(): Promise<{ marked: number }> {
+  return apiFetch("/api/messages/read-all", { method: "POST" });
+}
+
+// ─── Handover ──────────────────────────────────────────────────────────────
+
+export function listHandovers(): Promise<HandoverSummaryDTO[]> {
+  return apiFetch("/api/backstage/handover");
+}
+
+export function getHandover(id: string): Promise<HandoverDTO> {
+  return apiFetch(`/api/backstage/handover/${id}`);
+}
+
+export function createHandover(input: HandoverInput): Promise<HandoverSummaryDTO> {
+  return apiFetch("/api/backstage/handover", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateHandover(
+  id: string,
+  input: Partial<HandoverInput>,
+): Promise<HandoverSummaryDTO> {
+  return apiFetch(`/api/backstage/handover/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteHandover(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/backstage/handover/${id}`, { method: "DELETE" });
+}
+
+export function addHandoverItem(
+  handoverId: string,
+  input: HandoverItemInput,
+): Promise<HandoverItemDTO> {
+  return apiFetch(`/api/backstage/handover/${handoverId}/items`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateHandoverItem(
+  itemId: string,
+  input: Partial<HandoverItemInput>,
+): Promise<HandoverItemDTO> {
+  return apiFetch(`/api/backstage/handover/items/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteHandoverItem(itemId: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/backstage/handover/items/${itemId}`, { method: "DELETE" });
+}
+
+// ─── Wiki: linked clients ──────────────────────────────────────────────────
+
+export function listWikiLinks(slug: string): Promise<WikiLinkDTO[]> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links`);
+}
+
+export function addWikiLink(
+  slug: string,
+  input: { linkedClientId: string; label?: string | null },
+): Promise<WikiLinkDTO> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function removeWikiLink(slug: string, id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/wiki/links/${id}`, { method: "DELETE" });
+}
+
+// ── CRM (lead automation, actions, conversion) ──────────────────────────────
+
+const crmBase = (slug: string) => `/api/clients/${encodeURIComponent(slug)}/crm`;
+const jsonInit = (method: string, body: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export function getLeadCrm(slug: string): Promise<{ crm: import("@/types/crm").LeadCrmStatus }> {
+  return apiFetch(crmBase(slug));
+}
+
+export function updateLeadCrm(
+  slug: string,
+  input: { enabled?: boolean; emailDomains?: string[]; ownerId?: string | null; pinned?: false },
+): Promise<{ crm: import("@/types/crm").LeadCrmStatus }> {
+  return apiFetch(crmBase(slug), jsonInit("PATCH", input));
+}
+
+export function syncLeadCrmApi(slug: string): Promise<{
+  result: import("@/types/crm").CrmSyncResult;
+  crm: import("@/types/crm").LeadCrmStatus;
+}> {
+  return apiFetch(`${crmBase(slug)}/sync`, { method: "POST" });
+}
+
+export function resolveCrmSuggestion(
+  slug: string,
+  id: string,
+  action: "accept" | "dismiss",
+): Promise<{ crm: import("@/types/crm").LeadCrmStatus }> {
+  return apiFetch(`${crmBase(slug)}/suggestions/${encodeURIComponent(id)}`, jsonInit("POST", { action }));
+}
+
+export function createLeadActionApi(
+  slug: string,
+  input: { title: string; dueAt?: string | null; ownerId?: string | null },
+): Promise<{ action: import("@/types/crm").LeadActionDTO }> {
+  return apiFetch(`${crmBase(slug)}/actions`, jsonInit("POST", input));
+}
+
+export function updateLeadActionApi(
+  slug: string,
+  id: string,
+  input: {
+    title?: string;
+    dueAt?: string | null;
+    ownerId?: string | null;
+    transition?: "accept" | "dismiss" | "done" | "reopen";
+  },
+): Promise<{ action: import("@/types/crm").LeadActionDTO }> {
+  return apiFetch(`${crmBase(slug)}/actions/${encodeURIComponent(id)}`, jsonInit("PATCH", input));
+}
+
+export function deleteLeadActionApi(slug: string, id: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`${crmBase(slug)}/actions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function getConvertPreview(slug: string): Promise<{ preview: import("@/types/crm").ConvertPreview }> {
+  return apiFetch(`${crmBase(slug)}/convert`);
+}
+
+export function convertLeadApi(
+  slug: string,
+  fields: Array<"primaryContactName" | "primaryContactEmail" | "website">,
+): Promise<{ result: import("@/types/crm").ConvertResult }> {
+  return apiFetch(`${crmBase(slug)}/convert`, jsonInit("POST", { fields }));
+}
+
+export function setMyCrmMailboxApi(enabled: boolean): Promise<{ enabled: boolean; googleConnected: boolean }> {
+  return apiFetch("/api/account/crm-mailbox", jsonInit("PATCH", { enabled }));
+}
+
+export function getMyLeadActions(): Promise<{ actions: import("@/types/crm").MyLeadAction[] }> {
+  return apiFetch("/api/desk/lead-actions");
+}
+
+// ── Deleted clients (restore / permanent delete) ────────────────────────────
+
+export interface DeletedClient {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  deletedAt: string;
+}
+
+export function listDeletedClientsApi(): Promise<{ clients: DeletedClient[] }> {
+  return apiFetch("/api/clients/deleted");
+}
+
+export function restoreClientApi(slug: string): Promise<{ restored: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/restore`, { method: "POST" });
+}
+
+export function purgeClientApi(slug: string, confirmName: string): Promise<{ purged: boolean }> {
+  return apiFetch(`/api/clients/${encodeURIComponent(slug)}/permanent`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmName }),
+  });
 }

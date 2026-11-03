@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { WikiDTO } from "@/lib/api";
-import { WikiSidebar, COURSE_REQUESTS_SLUGS, type WikiSection } from "./wiki-sidebar";
+import { WikiSidebar, type WikiSection } from "./wiki-sidebar";
 import { WikiMobileNav } from "./wiki-mobile-nav";
 import { WikiPageEditor } from "./wiki-page-editor";
 import { ApiDocsReference, normalizeApiDocsContent } from "./api-docs-page-editor";
@@ -10,6 +10,19 @@ import { ChangelogSection } from "./changelog-section";
 import { CourseRequestsSection } from "./course-requests-section";
 import { WikiIntakeSection } from "./wiki-intake-section";
 import { LaunchpadSection } from "@/components/clients/launchpad/launchpad-section";
+import { WikiInsightsSectionView } from "@/components/clients/insights/insights-section";
+import { WikiDeliverySection } from "@/components/clients/wiki/wiki-delivery-section";
+import { WikiCostsSection } from "./wiki-costs-section";
+import { WikiEstimatesSection } from "./wiki-estimates-section";
+import { isPlannable } from "@/lib/wiki-estimates";
+import { WikiComparisonsSectionView } from "./wiki-comparisons-section";
+import { WikiSheetsSectionView } from "./wiki-sheets-section";
+import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
+import { WikiRoundupSection } from "./wiki-roundup-section";
+import { WikiSupportSectionView } from "@/components/clients/wiki/wiki-support-section";
+import { WikiMetricsSectionView } from "@/components/clients/wiki/wiki-metrics-section";
+import { WikiMeetingsSectionView } from "@/components/clients/wiki/wiki-meetings-section";
+import { WikiPlatformsSectionView } from "@/components/clients/wiki/wiki-platforms-section";
 import { WikiBlockersSection } from "./wiki-blockers-section";
 import { WikiCodeSection } from "./wiki-code-section";
 import { WikiTimelineSection } from "./wiki-timeline-section";
@@ -18,6 +31,9 @@ import { DesignSystemViewer } from "@/components/clients/design-system/design-sy
 import { MonitorStatusBoard } from "./monitors-section";
 import { DocumentsList } from "./documents-section";
 import { apiFetch } from "@/lib/api";
+import { clientVisibleSections } from "@/lib/wiki-client-visibility";
+import { isDocPageSection } from "@/lib/wiki-section-groups";
+import { WikiDocTabs } from "./wiki-doc-tabs";
 
 type WikiPageType =
   | "IA_GUIDE"
@@ -37,23 +53,26 @@ const SECTION_TO_TYPE: Partial<Record<WikiSection, WikiPageType>> = {
   "data-model": "DATA_MODEL",
 };
 
-const TYPE_TO_SECTION: Partial<Record<WikiPageType, WikiSection>> = {
-  IA_GUIDE: "ia",
-  DEV_API_GUIDE: "dev-guide",
-  API_DOCS: "api-docs",
-  ARCHITECTURE: "architecture",
-  RUNBOOK: "runbook",
-  DATA_MODEL: "data-model",
-};
 
 const SECTION_TITLES: Record<WikiSection, string> = {
   dashboard: "Dashboard",
   settings: "Settings",
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   intake: "Requests",
   launchpad: "Launchpad",
+  insights: "Charts",
+  costs: "Running costs",
+  estimates: "Estimates",
+  comparisons: "Comparisons",
+  sheets: "Sheets",
+  roundup: "RoundUp",
+  delivery: "Delivery",
+  support: "Support",
+  metrics: "Metrics",
+  meetings: "Meetings",
+  platforms: "Platforms",
   "code-handover": "Code Handover",
   "design-system": "Design System",
   ia: "Information Architecture",
@@ -84,45 +103,9 @@ export function WikiPublicView({
   /** The share token from the URL — used to authenticate mutations on the public view. */
   token: string;
 }) {
-  // The public portal only surfaces sections that have real content. Empty doc
-  // pages and the privately-managed Design System are hidden so the client never
-  // lands on a blank or dead-end page (per Dan, June 2026).
-  const hiddenSections = new Set(wiki.hiddenSections ?? []);
-  const existingDocSections = wiki.pages
-    .map((page) => TYPE_TO_SECTION[page.type as WikiPageType])
-    .filter((section): section is WikiSection => {
-      if (!section) return false;
-      return !hiddenSections.has(section);
-    });
-  const hasTimeline =
-    wiki.timeline.blocks.length > 0 || wiki.timeline.milestones.length > 0;
-  const availableSections: WikiSection[] = [
-    // Dashboard is always the public landing — a visual overview that links into
-    // whatever sections exist below.
-    "dashboard",
-    ...(hasTimeline ? (["timeline"] as const) : []),
-    ...(wiki.monitors.enabled && wiki.monitors.monitors.some((m) => m.enabled)
-      ? (["monitors"] as const)
-      : []),
-    ...(wiki.documents.enabled && wiki.documents.documents.length > 0
-      ? (["documents"] as const)
-      : []),
-    // Requests shows when intake is on OR there are dev-raised blockers to action.
-    ...(wiki.intakeEnabled || wiki.blockers.length > 0 ? (["intake"] as const) : []),
-    // Launchpad shows once it is switched on AND a template is assigned — an
-    // enabled-but-unassigned kit would land the client on an empty page, which
-    // reads as a broken link rather than as work we have not set up yet.
-    ...(wiki.launchpad?.enabled && wiki.launchpad.assigned ? (["launchpad"] as const) : []),
-    ...(wiki.codeHandover.enabled && wiki.codeHandover.modules.length > 0
-      ? (["code-handover"] as const)
-      : []),
-    ...(wiki.designSystem ? (["design-system"] as const) : []),
-    ...existingDocSections,
-    ...(wiki.changelog.length > 0 ? (["changelog"] as const) : []),
-    ...(COURSE_REQUESTS_SLUGS.includes(wiki.clientSlug)
-      ? (["course-requests"] as const)
-      : []),
-  ];
+  // Which sections the client sees — one rule, shared with the internal wiki's
+  // "not shown to client" marker (`src/lib/wiki-client-visibility.ts`).
+  const availableSections: WikiSection[] = clientVisibleSections(wiki);
   // Whole-wiki share opens on the Dashboard (the headline overview); per-page
   // shares open on their one section; a ?section= deep-link opens on that section
   // when it exists (else falls back to the Dashboard).
@@ -134,6 +117,29 @@ export function WikiPublicView({
     (onlySection as WikiSection) ?? deepLink ?? "dashboard",
   );
   const [courseRequests, setCourseRequests] = useState(wiki.courseRequests);
+  const [changelog, setChangelog] = useState(wiki.changelog);
+
+  // The client approves a release from here. Only approving: a client never un-approves,
+  // and the server ignores anything not pending (src/server/wiki-changelog-access.ts).
+  const handleApproveRelease = useCallback(
+    async (ids: string[], status: string) => {
+      if (status !== "APPROVED") return;
+      const res = await apiFetch<{ approved: number; approvedByName: string }>(`/api/wiki/${token}/changelog/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const at = new Date().toISOString();
+      setChangelog((prev) =>
+        prev.map((e) =>
+          ids.includes(e.id) && e.status !== "APPROVED"
+            ? { ...e, status: "APPROVED", approvedAt: at, approvedByName: res.approvedByName }
+            : e,
+        ),
+      );
+    },
+    [token],
+  );
 
   const handleSetStatus = useCallback(
     async (ids: string[], status: string) => {
@@ -187,11 +193,18 @@ export function WikiPublicView({
     }
 
     if (activeSection === "monitors") {
-      return <MonitorStatusBoard monitors={wiki.monitors.monitors} />;
+      return <MonitorStatusBoard monitors={wiki.monitors.monitors} incidents={wiki.monitors.incidents ?? []} />;
     }
 
     if (activeSection === "documents") {
-      return <DocumentsList documents={wiki.documents.documents} fileBase={`/api/wiki/${token}`} />;
+      return (
+        <DocumentsList
+          documents={wiki.documents.documents}
+          fileBase={`/api/wiki/${token}`}
+          drive={wiki.drive}
+          driveTarget={{ mode: "public", token }}
+        />
+      );
     }
 
     if (activeSection === "intake") {
@@ -205,12 +218,84 @@ export function WikiPublicView({
               items={wiki.intakeItems}
               mode="public"
               categories={wiki.intakeCategories}
+              firstNumber={wiki.blockers.length > 0 ? 2 : 1}
             />
           ) : null}
         </>
       );
     }
 
+    if (activeSection === "delivery") {
+      return (
+        <WikiDeliverySection
+          blocks={wiki.timeline.blocks}
+          milestones={wiki.timeline.milestones}
+          blockers={wiki.blockers}
+         unassigned={wiki.timeline.unassigned} />
+      );
+    }
+    if (activeSection === "metrics") {
+      return <WikiMetricsSectionView metrics={wiki.metrics} />;
+    }
+    if (activeSection === "meetings") {
+      return <WikiMeetingsSectionView meetings={wiki.meetings} />;
+    }
+    if (activeSection === "platforms") {
+      return <WikiPlatformsSectionView platforms={wiki.clientPlatforms} />;
+    }
+    if (activeSection === "support") {
+      return <WikiSupportSectionView support={wiki.support} />;
+    }
+    if (activeSection === "roundup") {
+      return (
+        <WikiRoundupSection
+          blocks={wiki.timeline.blocks}
+          milestones={wiki.timeline.milestones}
+          blockers={wiki.blockers}
+          unassigned={wiki.timeline.unassigned}
+        />
+      );
+    }
+    if (activeSection === "costs") {
+      return <WikiCostsSection slug={wiki.clientSlug} model={wiki.costs} mode="public" />;
+    }
+    if (activeSection === "sheets") {
+      return (
+        <WikiSheetsSectionView
+          slug={wiki.clientSlug}
+          token={token}
+          section={{ ...wiki.sheets, sheets: wiki.sheets.sheets.filter((s) => s.columns.length > 0) }}
+          mode="public"        />
+      );
+    }
+    if (activeSection === "comparisons") {
+      return (
+        <WikiComparisonsSectionView
+          slug={wiki.clientSlug}
+          section={{
+            ...wiki.comparisons,
+            comparisons: wiki.comparisons.comparisons.filter(isPublishableComparison),
+          }}
+          mode="public"
+        />
+      );
+    }
+    if (activeSection === "estimates") {
+      return (
+        <WikiEstimatesSection
+          slug={wiki.clientSlug}
+          // Only the estimates that have a timeline: a client must never land on one
+          // that reads "still being put together".
+          section={{ ...wiki.estimates, estimates: wiki.estimates.estimates.filter(isPlannable) }}
+          mode="public"
+        />
+      );
+    }
+    if (activeSection === "insights") {
+      return (
+        <WikiInsightsSectionView slug={wiki.clientSlug} boards={wiki.insights.boards} mode="public" />
+      );
+    }
     if (activeSection === "launchpad") {
       if (!wiki.launchpad) return null;
       return (
@@ -241,11 +326,13 @@ export function WikiPublicView({
     if (activeSection === "changelog") {
       return (
         <ChangelogSection
-          entries={wiki.changelog}
+          entries={changelog}
           onAdd={() => {}}
           onDelete={async () => {}}
-          onToggleStatus={async () => {}}
+          onToggleStatus={handleApproveRelease}
           readOnly
+          canApprove
+          audience="client"
         />
       );
     }
@@ -271,24 +358,40 @@ export function WikiPublicView({
     }
 
     const page = getPage(activeSection);
+    // Tabs between the doc pages the client can see. Not on a single-page share: the other
+    // pages were not shared, so offering them would be offering links that go nowhere.
+    const docTabs = (
+      <WikiDocTabs
+        sections={onlySection ? [] : availableSections.filter(isDocPageSection)}
+        active={activeSection}
+        titles={SECTION_TITLES}
+        onSelect={setActiveSection}
+      />
+    );
     if (activeSection === "api-docs") {
       return (
-        <ApiDocsReference
-          content={normalizeApiDocsContent(page?.content, page?.title ?? SECTION_TITLES[activeSection])}
-        />
+        <>
+          {docTabs}
+          <ApiDocsReference
+            content={normalizeApiDocsContent(page?.content, page?.title ?? SECTION_TITLES[activeSection])}
+          />
+        </>
       );
     }
     const existingContent = typeof page?.content === "string" ? page.content : "";
     return (
-      <WikiPageEditor
-        section={activeSection}
-        title={page?.title ?? SECTION_TITLES[activeSection]}
-        content={existingContent}
-        isNew={page === null}
-        onSave={async () => {}}
-        mode={"preview" as const}
-        readOnly
-      />
+      <>
+        {docTabs}
+        <WikiPageEditor
+          section={activeSection}
+          title={page?.title ?? SECTION_TITLES[activeSection]}
+          content={existingContent}
+          isNew={page === null}
+          onSave={async () => {}}
+          mode={"preview" as const}
+          readOnly
+        />
+      </>
     );
   }
 

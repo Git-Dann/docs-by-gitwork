@@ -10,6 +10,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 export interface WikiCodeFileRecord {
   id: string;
@@ -39,9 +40,14 @@ export interface WikiCodeHandoverSection {
   modules: WikiCodeModuleRecord[];
 }
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const MODULE_INCLUDE = {
   versions: { include: { files: { orderBy: { orderKey: "asc" } as const } } },
-} as const;
+} as const satisfies Prisma.WikiCodeModuleInclude;
 
 type ModuleRow = {
   id: string;

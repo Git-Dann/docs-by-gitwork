@@ -1,43 +1,25 @@
 import type { DocumentStatus } from "@/types/proposal";
 import { cn, statusLabel } from "@/lib/format";
 
+// Every badge sits on the surface tokens, so it reads in both themes; the dot
+// carries the status. (The old badges were violet/sky/amber text on bg-white.
+// globals.css does not remap violet for dark mode, so Draft — the commonest
+// status — rendered dark purple on near-black.)
+const NEUTRAL = "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-2)]";
+
 const statusBadgeTones: Record<DocumentStatus, { wrapper: string; dot: string }> = {
-  DRAFT: {
-    wrapper: "border-violet-200 bg-white text-violet-700",
-    dot: "bg-violet-500",
-  },
-  PRODUCT_SIGN_OFF: {
-    wrapper: "border-sky-200 bg-white text-sky-800",
-    dot: "bg-sky-500",
-  },
-  TECH_SIGN_OFF: {
-    wrapper: "border-emerald-200 bg-white text-emerald-800",
-    dot: "bg-emerald-500",
-  },
-  IN_REVIEW: {
-    wrapper: "border-amber-200 bg-white text-amber-800",
-    dot: "bg-amber-500",
-  },
-  APPROVED: {
-    wrapper: "border-emerald-200 bg-white text-emerald-800",
-    dot: "bg-emerald-500",
-  },
-  SENT: {
-    wrapper: "border-sky-200 bg-white text-sky-800",
-    dot: "bg-sky-500",
-  },
+  DRAFT: { wrapper: NEUTRAL, dot: "bg-[var(--text-4)]" },
+  PRODUCT_SIGN_OFF: { wrapper: NEUTRAL, dot: "bg-[var(--brand-600)]" },
+  TECH_SIGN_OFF: { wrapper: NEUTRAL, dot: "bg-[var(--brand-600)]" },
+  IN_REVIEW: { wrapper: NEUTRAL, dot: "bg-[var(--warning-500)]" },
+  APPROVED: { wrapper: NEUTRAL, dot: "bg-[var(--success-500)]" },
+  SENT: { wrapper: NEUTRAL, dot: "bg-[var(--brand-600)]" },
   ACCEPTED: {
-    wrapper: "border-emerald-300 bg-emerald-50 text-emerald-800",
-    dot: "bg-emerald-500",
+    wrapper: "border-[var(--border-2)] bg-[var(--success-50)] text-[var(--text-1)]",
+    dot: "bg-[var(--success-500)]",
   },
-  DECLINED: {
-    wrapper: "border-rose-200 bg-white text-rose-700",
-    dot: "bg-rose-500",
-  },
-  ARCHIVED: {
-    wrapper: "border-[var(--border-2)] bg-white text-[var(--text-2)]",
-    dot: "bg-[var(--text-4)]",
-  },
+  DECLINED: { wrapper: NEUTRAL, dot: "bg-[var(--danger-500)]" },
+  ARCHIVED: { wrapper: "border-[var(--border-2)] bg-[var(--surface-0)] text-[var(--text-4)]", dot: "bg-[var(--text-4)]" },
 };
 
 export function StatusBadge({ status, className }: { status: DocumentStatus; className?: string }) {

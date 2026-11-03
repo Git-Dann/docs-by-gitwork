@@ -1,0 +1,449 @@
+/**
+ * The Pulse report a visitor receives by email after unlocking it on the public scanner.
+ *
+ * Styled to the Gitwork design system (paper ground, white cards with a hairline,
+ * Fraunces headings, Inter body, JetBrains Mono labels, one purple thing per section)
+ * and its copy rules: UK spelling, no em dashes, "at no charge" rather than "free", the
+ * delivery line word for word, and no invented numbers. Every figure here comes from
+ * the scan.
+ *
+ * Email clients ignore most CSS, so this is table layout with inline styles and web-safe
+ * font fallbacks (Georgia, Helvetica, Menlo). Pure: no database, no I/O, so it can be
+ * tested and previewed without sending anything.
+ */
+
+export interface ReportEmailFinding {
+  label: string;
+  category: string;
+  status: string;
+  detail: string;
+  tier: "P1" | "P2";
+}
+
+export interface ReportEmailInput {
+  /** The visitor's name as they typed it. Null on leads from before the form asked. */
+  name: string | null;
+  targetUrl: string;
+  score: number | null;
+  pass: number;
+  warn: number;
+  fail: number;
+  findings: ReportEmailFinding[];
+  advisoryCount: number;
+  notEstablishedCount: number;
+  /** The full report as a PDF (public, token-gated). The one link in the email. */
+  reportPdfUrl: string;
+  bookingUrl: string;
+  /** Absolute URL of the ink wordmark (public/email/gitwork-wordmark-ink.png). */
+  logoUrl: string;
+}
+
+// Gitwork tokens (design system: Gitwork, tokens.json).
+const INK = "#0C0C18";
+const PAPER = "#F2EDE4";
+const SIGNAL = "#6B52FF";
+const TEXT = "#1A1A1E";
+const MUTED = "#6B6B6B";
+const WHITE = "#FFFFFF";
+const RULE = "#DCD8D1"; // paper-rule (12% ink) flattened onto paper: email clients drop rgba borders
+const SIGNAL_TINT = "#E8E3FF"; // signal-tint (12% signal) flattened onto white
+
+const DISPLAY = "Fraunces, Georgia, 'Times New Roman', serif";
+const BODY = "Inter, -apple-system, Helvetica, Arial, sans-serif";
+const MONO = "'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
+
+// The delivery line, word for word, as the brand book requires in anything public.
+const DELIVERY_LINE =
+  "Global build capacity, UK quality control. Every release is reviewed and deployed by a UK based senior engineer.";
+
+/** Check evidence is written by many hands; Gitwork's copy never carries an em dash. */
+function houseStyle(s: string): string {
+  return s.replace(/\s*[—–]\s*/g, ", ");
+}
+
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function host(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function label(text: string, color = MUTED): string {
+  return `<span style="font-family:${MONO};font-size:10px;line-height:1.2;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${text}</span>`;
+}
+
+function pill(text: string, strong: boolean): string {
+  const bg = strong ? INK : SIGNAL_TINT;
+  const fg = strong ? WHITE : SIGNAL;
+  return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;background-color:${bg};color:${fg};font-family:${MONO};font-size:10px;font-weight:600;letter-spacing:0.1em;">${text}</span>`;
+}
+
+function findingCard(f: ReportEmailFinding, index: number): string {
+  const result = f.status === "FAIL" ? "FAILING" : "WARNING";
+  return `
+  <tr><td style="padding:0 0 12px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+      <tr><td style="padding:20px 22px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td style="vertical-align:top;width:34px;font-family:${DISPLAY};font-style:italic;font-size:22px;line-height:1.2;color:${SIGNAL};">${index + 1}.</td>
+          <td style="vertical-align:top;">
+            <div style="font-family:${BODY};font-size:15px;line-height:1.35;font-weight:600;color:${TEXT};">${esc(f.label)}</div>
+            <div style="padding-top:6px;">${pill(f.tier, f.tier === "P1")}&nbsp;${label(`${result} &middot; ${esc(f.category)}`)}</div>
+            ${f.detail ? `<div style="padding-top:10px;font-family:${BODY};font-size:13px;line-height:1.55;color:${MUTED};">${esc(houseStyle(f.detail))}</div>` : ""}
+          </td>
+        </tr></table>
+      </td></tr>
+    </table>
+  </td></tr>`;
+}
+
+function stat(figure: string, caption: string, color: string): string {
+  return `<td style="vertical-align:top;padding:0 8px 0 0;">
+    <div style="font-family:${DISPLAY};font-size:30px;line-height:1;font-weight:700;letter-spacing:-0.02em;color:${color};">${figure}</div>
+    <div style="padding-top:6px;">${label(caption)}</div>
+  </td>`;
+}
+
+export function renderReportEmail(input: ReportEmailInput): { subject: string; html: string } {
+  const site = host(input.targetUrl);
+  const first = input.name?.trim().split(/\s+/)[0] ?? null;
+  const greeting = first ? `Hi ${esc(first)},` : "Hello,";
+  const count = input.findings.length;
+
+  const findingsBlock = count > 0
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${input.findings.map(findingCard).join("")}</table>`
+    : `<p style="margin:0;font-family:${BODY};font-size:15.5px;line-height:1.62;color:${TEXT};">Nothing reached the actionable threshold on this scan.</p>`;
+
+  const extras: string[] = [];
+  if (input.advisoryCount > 0) {
+    extras.push(`${input.advisoryCount} lower-priority check${input.advisoryCount === 1 ? "" : "s"} also did not pass. Every one is in your full report.`);
+  }
+  if (input.notEstablishedCount > 0) {
+    extras.push(`${input.notEstablishedCount} check${input.notEstablishedCount === 1 ? "" : "s"} could not be established from outside your site. They are listed in your full report and are not counted in the score either way.`);
+  }
+
+  const html = `<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only"><title>Your Pulse report for ${esc(site)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;1,700&family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body bgcolor="${PAPER}" style="margin:0;padding:0;background-color:${PAPER};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAPER}" style="background-color:${PAPER};">
+<tr><td align="center" style="padding:32px 16px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+
+    <tr><td style="padding:0 0 22px 0;border-bottom:1px solid ${RULE};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="vertical-align:middle;"><img src="${esc(input.logoUrl)}" width="120" height="25" alt="Gitwork" style="display:block;border:0;width:120px;height:auto;"></td>
+        <td align="right" style="vertical-align:middle;">${label("Pulse report")}</td>
+      </tr></table>
+    </td></tr>
+
+    <tr><td style="padding:34px 0 0 0;">
+      <div>${label("Site health check", SIGNAL)}</div>
+      <h1 style="margin:12px 0 0 0;font-family:${DISPLAY};font-size:34px;line-height:1.08;font-weight:700;letter-spacing:-0.018em;color:${TEXT};">Your report for <span style="font-style:italic;color:${SIGNAL};">${esc(site)}</span>.</h1>
+      <p style="margin:16px 0 0 0;font-family:${BODY};font-size:17px;line-height:1.5;font-weight:300;color:${MUTED};">${greeting} here is everything the scan found, worst first, with the evidence for each finding.</p>
+    </td></tr>
+
+    <tr><td style="padding:28px 0 0 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+        <tr><td style="padding:24px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:top;padding:0 16px 0 0;">
+              <div style="font-family:${DISPLAY};font-size:54px;line-height:1;font-weight:700;letter-spacing:-0.03em;color:${SIGNAL};">${input.score ?? "&ndash;"}</div>
+              <div style="padding-top:8px;">${label("Health score / 100")}</div>
+            </td>
+            ${stat(String(input.fail), "Failing", TEXT)}
+            ${stat(String(input.warn), "Warnings", TEXT)}
+            ${stat(String(input.pass), "Passed", TEXT)}
+          </tr></table>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td style="padding:34px 0 14px 0;">
+      <h2 style="margin:0;font-family:${DISPLAY};font-size:25px;line-height:1.2;font-weight:700;letter-spacing:-0.012em;color:${TEXT};">What to fix (${count})</h2>
+      <p style="margin:6px 0 0 0;font-family:${BODY};font-size:13px;line-height:1.55;color:${MUTED};">Ranked by severity and certainty. P1 first.</p>
+    </td></tr>
+    <tr><td>${findingsBlock}</td></tr>
+
+    ${extras.length > 0 ? `<tr><td style="padding:10px 0 0 0;">${extras.map((e) => `<p style="margin:0 0 8px 0;font-family:${BODY};font-size:13px;line-height:1.55;color:${MUTED};">${esc(e)}</p>`).join("")}</td></tr>` : ""}
+
+    <tr><td style="padding:22px 0 0 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+        <tr><td style="padding:18px 22px;">
+          <div>${label("Your full report", SIGNAL)}</div>
+          <p style="margin:8px 0 16px 0;font-family:${BODY};font-size:14px;line-height:1.55;color:${TEXT};">Every check we ran on your site, with what we observed and what to do about it, as a PDF.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${INK}" style="background-color:${INK};border-radius:999px;"><a href="${esc(input.reportPdfUrl)}" style="display:inline-block;padding:12px 22px;border-radius:999px;color:${PAPER};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">Open your report (PDF) &rarr;</a></td></tr></table>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td style="padding:26px 0 0 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${INK}" style="background-color:${INK};border-radius:14px;">
+        <tr><td style="padding:28px 26px;">
+          <div>${label("Next step", PAPER)}</div>
+          <div style="margin-top:10px;font-family:${DISPLAY};font-size:25px;line-height:1.2;font-weight:700;letter-spacing:-0.012em;color:${PAPER};">AI got you to a prototype. We get you to production.</div>
+          <p style="margin:12px 0 22px 0;font-family:${BODY};font-size:14px;line-height:1.6;color:#B9B5AF;">Book a 30 minute audit, at no charge. We will walk through these findings with you and tell you what it takes to fix them.</p>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${SIGNAL}" style="background-color:${SIGNAL};border-radius:999px;"><a href="${esc(input.bookingUrl)}" style="display:inline-block;padding:13px 24px;border-radius:999px;color:${WHITE};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">Book your audit &rarr;</a></td></tr></table>
+        </td></tr>
+      </table>
+    </td></tr>
+
+
+
+    <tr><td style="padding:34px 0 0 0;border-top:1px solid ${RULE};">
+      <p style="margin:18px 0 0 0;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">${esc(DELIVERY_LINE)}</p>
+      <p style="margin:10px 0 0 0;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">This is an automated check of one public URL at one point in time. It reads responses, headers, HTML and DNS. It does not sign in, test payments or run your app, so it is not a full security audit.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
+        <td><a href="https://gitwork.co.uk" style="color:${MUTED};text-decoration:none;">${label("gitwork.co.uk")}</a></td>
+        <td align="right">${label("Gitwork Pulse")}</td>
+      </tr></table>
+    </td></tr>
+
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+
+  return { subject: `Your Pulse report for ${site}`, html };
+}
+
+// Where a scan was started, in words. Unknown values (old leads said "embed") print as-is.
+const SOURCE_LABELS: Record<string, string> = {
+  "gitwork.co.uk": "The scanner on gitwork.co.uk",
+  "production-ready": "The /production-ready sales page",
+  "foundry-demo": "A Foundry demo",
+  embed: "The embedded scanner",
+};
+
+export interface LeadEmailInput {
+  name: string | null;
+  business: string | null;
+  email: string;
+  targetUrl: string;
+  /** The free scan's score. The full report they are sent rescans, so it can differ. */
+  score: number | null;
+  /** Where the scan came from: the embed on gitwork.co.uk, the sales page, … */
+  source: string | null;
+  /** Foundry's Pulse page, where leads are listed and can be imported. */
+  foundryUrl: string;
+  logoUrl: string;
+}
+
+/**
+ * The team's "new lead" email, in the same design as the report the lead is sent, so the
+ * two read as one system. Leads with who they are, then what they scanned, then the two
+ * things someone will actually do: reply to them, or open them in Foundry.
+ */
+export function renderLeadEmail(input: LeadEmailInput): { subject: string; html: string } {
+  const site = host(input.targetUrl);
+  const who = input.name?.trim() || input.email;
+  const first = input.name?.trim().split(/\s+/)[0] ?? null;
+  const subject = `New Pulse lead: ${who}${input.business ? `, ${input.business}` : ""} (${site})`;
+
+  const row = (k: string, v: string) => `
+    <tr>
+      <td style="padding:10px 0;border-top:1px solid ${RULE};width:110px;vertical-align:top;">${label(k)}</td>
+      <td style="padding:10px 0;border-top:1px solid ${RULE};font-family:${BODY};font-size:14px;line-height:1.5;color:${TEXT};">${v}</td>
+    </tr>`;
+  const link = (href: string, text: string) =>
+    `<a href="${esc(href)}" style="color:${SIGNAL};text-decoration:none;">${esc(text)}</a>`;
+  const button = (href: string, text: string, bg: string, fg: string) =>
+    `<td bgcolor="${bg}" style="background-color:${bg};border-radius:999px;"><a href="${esc(href)}" style="display:inline-block;padding:12px 22px;border-radius:999px;color:${fg};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">${esc(text)}</a></td>`;
+  const mailto = `mailto:${input.email}?subject=${encodeURIComponent(`Your Pulse report for ${site}`)}`;
+
+  const html = `<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"><title>${esc(subject)}</title></head>
+<body bgcolor="${PAPER}" style="margin:0;padding:0;background-color:${PAPER};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAPER}" style="background-color:${PAPER};">
+<tr><td align="center" style="padding:32px 16px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+    <tr><td style="padding:0 0 22px 0;border-bottom:1px solid ${RULE};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="vertical-align:middle;"><img src="${esc(input.logoUrl)}" width="120" height="25" alt="Gitwork" style="display:block;border:0;width:120px;height:auto;"></td>
+        <td align="right" style="vertical-align:middle;">${label("Pulse lead")}</td>
+      </tr></table>
+    </td></tr>
+
+    <tr><td style="padding:34px 0 0 0;">
+      <div>${label("New lead", SIGNAL)}</div>
+      <h1 style="margin:12px 0 0 0;font-family:${DISPLAY};font-size:32px;line-height:1.1;font-weight:700;letter-spacing:-0.018em;color:${TEXT};">${esc(who)}${input.business ? ` <span style="font-style:italic;color:${SIGNAL};">from ${esc(input.business)}</span>` : ""}.</h1>
+      <p style="margin:14px 0 0 0;font-family:${BODY};font-size:16px;line-height:1.5;font-weight:300;color:${MUTED};">Unlocked their Pulse report for <strong style="font-weight:600;color:${TEXT};">${esc(site)}</strong>. The full report is on its way to them now.</p>
+    </td></tr>
+
+    <tr><td style="padding:26px 0 0 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+        <tr><td style="padding:22px 24px 12px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:top;">
+              <div style="font-family:${DISPLAY};font-size:48px;line-height:1;font-weight:700;letter-spacing:-0.03em;color:${SIGNAL};">${input.score ?? "&ndash;"}</div>
+              <div style="padding-top:8px;">${label("Free scan score / 100")}</div>
+            </td>
+          </tr></table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;">
+            ${input.name ? row("Name", esc(input.name)) : ""}
+            ${input.business ? row("Business", esc(input.business)) : ""}
+            ${row("Email", link(`mailto:${input.email}`, input.email))}
+            ${row("Site", link(input.targetUrl, input.targetUrl))}
+            ${input.source ? row("Came from", esc(SOURCE_LABELS[input.source] ?? input.source)) : ""}
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td style="padding:22px 0 0 0;">
+      <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+        ${button(mailto, first ? `Email ${first}` : "Email them", INK, PAPER)}
+        <td style="width:10px;"></td>
+        ${button(input.foundryUrl, "Open in Foundry", SIGNAL, WHITE)}
+      </tr></table>
+      <p style="margin:14px 0 30px 0;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">The report they are sent comes from a full scan, so its score can differ from the free scan's.</p>
+    </td></tr>
+
+    <tr><td style="padding:0;border-top:1px solid ${RULE};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
+        <td>${label("Foundry")}</td>
+        <td align="right">${label("Gitwork Pulse")}</td>
+      </tr></table>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+  return { subject, html };
+}
+
+export interface DigestEmailInput {
+  projectName: string;
+  /** The URL or owner/repo being monitored. */
+  subject: string;
+  score: number | null;
+  /** Change since the last digest. Null on the first one. */
+  scoreDelta: number | null;
+  /** When the period this digest covers began (the last digest, or the first scan). */
+  since: string | null;
+  /** Confirmed failing checks now, worst first. */
+  openIssues: string[];
+  newIssues: string[];
+  fixedIssues: string[];
+  /** Repo scans only. */
+  codeHealth: {
+    score: number;
+    scoreDelta: number | null;
+    effortDays: number | null;
+    resolvedDebt: number;
+    newDebt: number;
+    hotspots: string[];
+    /** Critical/high vulnerable libraries now, "(new)" marked; absent when the audit did not run. */
+    libraries?: string[] | null;
+    /** Import cycles now and on the previous measure (null when either was not mapped). */
+    cycles?: { now: number; before: number | null } | null;
+  } | null;
+  reportPdfUrl: string;
+  logoUrl: string;
+}
+
+function delta(n: number | null): string {
+  if (n === null) return "";
+  if (n === 0) return `<span style="color:${MUTED};">no change</span>`;
+  return n > 0 ? `<span style="color:#1E8E5A;">&#9650; ${n}</span>` : `<span style="color:#C2410C;">&#9660; ${-n}</span>`;
+}
+
+function list(items: string[], empty: string): string {
+  if (items.length === 0) return `<p style="margin:0;font-family:${BODY};font-size:14px;line-height:1.55;color:${MUTED};">${esc(empty)}</p>`;
+  return items
+    .map((i) => `<p style="margin:0 0 6px 0;font-family:${BODY};font-size:14px;line-height:1.5;color:${TEXT};">&bull;&nbsp;${esc(houseStyle(i))}</p>`)
+    .join("");
+}
+
+function card(inner: string): string {
+  return `<tr><td style="padding:16px 0 0 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${WHITE}" style="background-color:${WHITE};border:1px solid ${RULE};border-radius:14px;">
+      <tr><td style="padding:20px 22px;">${inner}</td></tr>
+    </table>
+  </td></tr>`;
+}
+
+/**
+ * The weekly summary for a monitored project: where it stands, what moved this week,
+ * and one link to the full report. Same system and copy rules as the report email.
+ */
+export function renderWeeklyDigestEmail(input: DigestEmailInput): { subject: string; html: string } {
+  const since = input.since ? new Date(input.since).toLocaleDateString("en-GB", { day: "numeric", month: "long" }) : null;
+  const ch = input.codeHealth;
+  const scoreText = input.score === null ? "" : ` ${input.score}/100${input.scoreDelta ? (input.scoreDelta > 0 ? ` (up ${input.scoreDelta})` : ` (down ${-input.scoreDelta})`) : ""}`;
+
+  const html = `<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light only"><title>Weekly Pulse: ${esc(input.projectName)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;1,700&family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body bgcolor="${PAPER}" style="margin:0;padding:0;background-color:${PAPER};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${PAPER}" style="background-color:${PAPER};">
+<tr><td align="center" style="padding:32px 16px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+
+    <tr><td style="padding:0 0 22px 0;border-bottom:1px solid ${RULE};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="vertical-align:middle;"><img src="${esc(input.logoUrl)}" width="120" height="25" alt="Gitwork" style="display:block;border:0;width:120px;height:auto;"></td>
+        <td align="right" style="vertical-align:middle;">${label("Weekly Pulse")}</td>
+      </tr></table>
+    </td></tr>
+
+    <tr><td style="padding:34px 0 0 0;">
+      <div>${label(since ? `Since ${esc(since)}` : "This week", SIGNAL)}</div>
+      <h1 style="margin:12px 0 0 0;font-family:${DISPLAY};font-size:32px;line-height:1.1;font-weight:700;letter-spacing:-0.018em;color:${TEXT};">${esc(input.projectName)}</h1>
+      <p style="margin:8px 0 0 0;font-family:${MONO};font-size:12px;line-height:1.5;color:${MUTED};">${esc(input.subject)}</p>
+    </td></tr>
+
+    ${card(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td style="vertical-align:top;padding:0 16px 0 0;">
+        <div style="font-family:${DISPLAY};font-size:48px;line-height:1;font-weight:700;letter-spacing:-0.03em;color:${SIGNAL};">${input.score ?? "&ndash;"}</div>
+        <div style="padding-top:8px;">${label("Health score / 100")}</div>
+        <div style="padding-top:6px;font-family:${MONO};font-size:12px;">${delta(input.scoreDelta)}</div>
+      </td>
+      ${stat(String(input.openIssues.length), "Open issues", TEXT)}
+      ${stat(String(input.newIssues.length), "New", TEXT)}
+      ${stat(String(input.fixedIssues.length), "Fixed", TEXT)}
+    </tr></table>`)}
+
+    ${input.newIssues.length > 0 ? card(`<div>${label("New this week", "#C2410C")}</div><div style="padding-top:10px;">${list(input.newIssues, "")}</div>`) : ""}
+    ${input.fixedIssues.length > 0 ? card(`<div>${label("Fixed this week", "#1E8E5A")}</div><div style="padding-top:10px;">${list(input.fixedIssues, "")}</div>`) : ""}
+    ${card(`<div>${label("Still open")}</div><div style="padding-top:10px;">${list(input.openIssues.slice(0, 6), "No confirmed issues are open.")}</div>${input.openIssues.length > 6 ? `<p style="margin:6px 0 0 0;font-family:${BODY};font-size:13px;color:${MUTED};">And ${input.openIssues.length - 6} more in the full report.</p>` : ""}`)}
+
+    ${ch ? card(`<div>${label("Code health", SIGNAL)}</div>
+      <p style="margin:10px 0 0 0;font-family:${BODY};font-size:15px;line-height:1.55;color:${TEXT};"><strong>${ch.score}/100</strong> ${delta(ch.scoreDelta)}${ch.effortDays !== null ? ` &middot; about ${ch.effortDays} days of debt to clear` : ""}.${ch.resolvedDebt || ch.newDebt ? ` ${ch.resolvedDebt} item${ch.resolvedDebt === 1 ? "" : "s"} resolved, ${ch.newDebt} new.` : ""}</p>
+      ${ch.hotspots.length ? `<div style="padding-top:12px;">${label("Hotspots: complex and changing often")}</div><div style="padding-top:8px;">${list(ch.hotspots, "")}</div>` : ""}
+      ${ch.libraries && ch.libraries.length ? `<div style="padding-top:12px;">${label("Libraries with critical or high vulnerabilities", "#C2410C")}</div><div style="padding-top:8px;">${list(ch.libraries.slice(0, 6), "")}</div>` : ""}
+      ${ch.cycles ? `<p style="margin:12px 0 0 0;font-family:${BODY};font-size:13px;line-height:1.5;color:${MUTED};">${ch.cycles.now} import cycle${ch.cycles.now === 1 ? "" : "s"} between files${ch.cycles.before !== null && ch.cycles.before !== ch.cycles.now ? ` (was ${ch.cycles.before})` : ""}.</p>` : ""}`) : ""}
+
+    ${card(`<div>${label("The full report", SIGNAL)}</div>
+      <p style="margin:8px 0 16px 0;font-family:${BODY};font-size:14px;line-height:1.55;color:${TEXT};">Every check from this week's scan, with what was observed and what to do about it.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${INK}" style="background-color:${INK};border-radius:999px;"><a href="${esc(input.reportPdfUrl)}" style="display:inline-block;padding:12px 22px;border-radius:999px;color:${PAPER};font-family:${BODY};font-size:14px;font-weight:600;text-decoration:none;">Open the report (PDF) &rarr;</a></td></tr></table>`)}
+
+    <tr><td style="padding:30px 0 0 0;">
+      <p style="margin:0;border-top:1px solid ${RULE};padding-top:18px;font-family:${BODY};font-size:12px;line-height:1.55;color:${MUTED};">You get this because Gitwork monitors ${esc(input.projectName)} for you. Reply to this email to change who receives it.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
+        <td><a href="https://gitwork.co.uk" style="color:${MUTED};text-decoration:none;">${label("gitwork.co.uk")}</a></td>
+        <td align="right">${label("Gitwork Pulse")}</td>
+      </tr></table>
+    </td></tr>
+
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+
+  return { subject: `Weekly Pulse: ${input.projectName}${scoreText}`, html };
+}

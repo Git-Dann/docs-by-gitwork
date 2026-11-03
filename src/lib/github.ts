@@ -1,3 +1,11 @@
+import {
+  GithubConditionalCache,
+  cacheKey,
+  tokenIdentity,
+  type GithubCacheStats,
+  type GithubCacheStore,
+} from "./github-cache";
+
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
@@ -41,13 +49,121 @@ export function githubHeaders() {
   };
 }
 
+// ── Rate-limit awareness ──────────────────────────────────────────────────────
+// Every Pulse repo scan shares ONE token (5,000 REST calls an hour), and a single repo
+// scan can spend a couple of hundred reading files. When it runs out, GitHub answers 403
+// for everything — and `safeGithubRequest` swallows that, so a public repo used to be
+// reported as "does not exist, or the token cannot see it". Record it here, centrally,
+// so the scan can name the real cause and the time it clears.
+let rateLimitedUntil: number | null = null;
+
+/** When GitHub's REST limit for this server resets, if it is exhausted right now. */
+export function githubRateLimitedUntil(now = Date.now()): Date | null {
+  return rateLimitedUntil !== null && rateLimitedUntil > now ? new Date(rateLimitedUntil) : null;
+}
+
+/** Test seam. */
+export function __resetGithubRateLimit(): void {
+  rateLimitedUntil = null;
+}
+
+function noteRateLimit(response: Response, body: string): boolean {
+  const remaining = response.headers.get("x-ratelimit-remaining");
+  const limited = response.status === 429 || remaining === "0" || /rate limit/i.test(body);
+  if (!limited) return false;
+  const reset = Number(response.headers.get("x-ratelimit-reset"));
+  const retryAfter = Number(response.headers.get("retry-after"));
+  rateLimitedUntil = Number.isFinite(reset) && reset > 0
+    ? reset * 1000
+    : Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 60_000);
+  return true;
+}
+
+// ── Conditional requests ──────────────────────────────────────────────────────
+// A GET answered `304 Not Modified` does not count against GitHub's primary rate limit, so
+// every GET remembers its ETag / Last-Modified and body (src/lib/github-cache.ts) and sends
+// them back next time. On a 304 the stored body is returned exactly as a 200 would have been.
+//
+// The persistent tier is registered on globalThis by src/instrumentation.ts (server only), not
+// imported here: this file is also bundled for the browser, and a Node built-in or a Prisma
+// import would break that bundle. globalThis also survives Next loading this module twice.
+const STORE_SLOT = Symbol.for("foundry.githubCacheStore");
+type StoreSlot = { [STORE_SLOT]?: GithubCacheStore | null };
+
+/** Attach (or with null, detach) the persistent second tier. Server code only. */
+export function setGithubCacheStore(store: GithubCacheStore | null): void {
+  (globalThis as StoreSlot)[STORE_SLOT] = store;
+}
+
+const conditionalCache = new GithubConditionalCache(
+  {},
+  () => (globalThis as StoreSlot)[STORE_SLOT] ?? null,
+);
+const CACHE_LOG_EVERY = 500;
+let cacheLookupsSinceLog = 0;
+
+/** Hits, 304s and misses for the conditional-request cache, for logging. */
+export function githubCacheStats(): GithubCacheStats {
+  return conditionalCache.stats();
+}
+
+/** Test seam: empties the in-memory tier, as a restart would. The store is untouched. */
+export function __resetGithubCache(): void {
+  conditionalCache.clear();
+  cacheLookupsSinceLog = 0;
+}
+
+/** Test seam: wait for background writes to the persistent store. */
+export function __flushGithubCacheWrites(): Promise<void> {
+  return conditionalCache.flush();
+}
+
+function noteCacheLookup(): void {
+  cacheLookupsSinceLog++;
+  if (cacheLookupsSinceLog < CACHE_LOG_EVERY) return;
+  cacheLookupsSinceLog = 0;
+  const s = conditionalCache.stats();
+  console.info(
+    `[github] conditional cache: ${s.notModified} served by 304 (not counted against the rate limit), ` +
+      `${s.misses} full reads, ${s.restored} restored from the database, ${s.storeErrors} store errors, ` +
+      `${s.entries} entries, ${Math.round(s.bytes / 1024)} KB.`,
+  );
+}
+
 export async function githubRequest<T>(path: string): Promise<T> {
-  const response = await fetch(`${GITHUB_API_BASE}${path}`, {
-    headers: githubHeaders(),
+  const url = `${GITHUB_API_BASE}${path}`;
+  const baseHeaders: Record<string, string> = githubHeaders();
+  const key = cacheKey(url, baseHeaders.Accept, tokenIdentity(process.env.GITHUB_TOKEN));
+  // Memory, then the persistent store (bounded by a short timeout, never throws).
+  const stored = await conditionalCache.lookup(key);
+  const conditional: Record<string, string> = {};
+  if (stored?.etag) conditional["If-None-Match"] = stored.etag;
+  else if (stored?.lastModified) conditional["If-Modified-Since"] = stored.lastModified;
+
+  const response = await fetch(url, {
+    headers: { ...baseHeaders, ...conditional },
     cache: "no-store",
   });
 
+  noteCacheLookup();
+
+  // 304: GitHub confirmed the body we sent validators for is current. Only reachable when we
+  // sent a validator; with nothing stored, fall through to the error path rather than
+  // inventing a body.
+  if (response.status === 304) {
+    if (stored) {
+      conditionalCache.get(key); // mark most recently used
+      conditionalCache.recordNotModified();
+      return JSON.parse(stored.body) as T;
+    }
+  } else {
+    conditionalCache.recordMiss();
+  }
+
   if (!response.ok) {
+    // A failed read must never be answered from the cache later, and a stale entry must not
+    // outlive a resource that is now gone or forbidden.
+    conditionalCache.delete(key);
     const body = await response.text();
     const message = body || `GitHub request failed with status ${response.status}.`;
 
@@ -55,17 +171,27 @@ export async function githubRequest<T>(path: string): Promise<T> {
       throw new GitHubRequestError("GITHUB_NOT_FOUND", "GitHub resource not found.");
     }
 
-    if (response.status === 403) {
-      throw new GitHubRequestError(
-        "GITHUB_RATE_LIMITED",
-        "GitHub API is temporarily rate limited. Try again shortly or configure GITHUB_TOKEN.",
-      );
+    // A 403 is only a rate limit when GitHub says so. It used to be labelled one for EVERY
+    // 403 — including a token that simply lacks access — which sent people the wrong fix.
+    if (response.status === 403 || response.status === 429) {
+      if (noteRateLimit(response, body)) {
+        throw new GitHubRequestError(
+          "GITHUB_RATE_LIMITED",
+          "GitHub API is temporarily rate limited. Try again shortly or configure GITHUB_TOKEN.",
+        );
+      }
+      throw new GitHubRequestError("GITHUB_FORBIDDEN", "GitHub refused access to this resource.");
     }
 
     throw new GitHubRequestError("GITHUB_REQUEST_FAILED", message);
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  const parsed = JSON.parse(text) as T;
+  if (response.status === 200) {
+    conditionalCache.set(key, text, response.headers.get("etag"), response.headers.get("last-modified"));
+  }
+  return parsed;
 }
 
 export async function safeGithubRequest<T>(path: string, fallback: T): Promise<T> {

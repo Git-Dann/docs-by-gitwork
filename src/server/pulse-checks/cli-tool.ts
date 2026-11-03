@@ -78,6 +78,8 @@ interface CliContext {
   readme: string;
   /** CI workflow contents joined. */
   ci: string;
+  /** Root .npmrc, when it was read. */
+  npmrc: string;
   /** Sampled fraction of the repo's JS/TS files (0–1). */
   coverage: number;
   paths: string[];
@@ -94,12 +96,27 @@ export function binEntries(pkg: PackageManifest): Array<{ name: string; path: st
   return Object.entries(bin).map(([name, path]) => ({ name, path: String(path) }));
 }
 
+/**
+ * Code that is not what the package ships: tests, fixtures, examples, scripts. Its
+ * contents say nothing about the CLI's behaviour (a fixture calling `process.exit(1)` is
+ * not the CLI handling errors), so behavioural checks never read it as evidence.
+ */
+export const NOT_SHIPPED = /(^|\/)(tests?|__tests__|spec|specs|e2e|fixtures?|__fixtures__|examples?|samples?|scripts|benchmarks?|coverage|docs?)\/|\.(test|spec)\.[cm]?[jt]sx?$|\.test-d\.ts$/i;
+/** Build output: shipped, but a copy of the source when the source is also committed. */
+const BUILD_OUTPUT = /(^|\/)(build|dist|lib-cjs|out)\//i;
+
 function buildContext(snapshot: RepoSnapshot, pkg: PackageManifest): CliContext {
-  const jsPaths = snapshot.paths.filter((p) => /\.(js|mjs|cjs|ts)$/i.test(p) && !isVendoredPath(p));
+  const isSource = (p: string) => /\.(js|mjs|cjs|ts|tsx)$/i.test(p) && !isVendoredPath(p) && !NOT_SHIPPED.test(p) && !/\.d\.ts$/i.test(p);
+  // Prefer hand-written source; fall back to build output only when that is all there is,
+  // so a bundled copy of third-party code in build/ is never read as the author's code.
+  const hasOwnSource = snapshot.paths.some((p) => isSource(p) && !BUILD_OUTPUT.test(p));
+  const counts = (p: string) => isSource(p) && (!hasOwnSource || !BUILD_OUTPUT.test(p));
+  const jsPaths = snapshot.paths.filter(counts);
   const read: string[] = [];
   const binSources = new Map<string, string>();
   let readme = "";
   let ci = "";
+  const npmrc = snapshot.files.get(".npmrc") ?? "";
 
   const binPaths = new Set(binEntries(pkg).map((b) => b.path.replace(/^\.\//, "").toLowerCase()));
 
@@ -107,7 +124,7 @@ function buildContext(snapshot: RepoSnapshot, pkg: PackageManifest): CliContext 
     const lower = path.toLowerCase();
     if (/^readme(\.md|\.markdown|\.rst|\.txt)?$/i.test(path)) readme += "\n" + text;
     else if (/^\.github\/workflows\/.*\.ya?ml$/i.test(path)) ci += "\n" + text;
-    else if (/\.(js|mjs|cjs|ts|tsx)$/i.test(path) && !isVendoredPath(path)) {
+    else if (counts(path)) {
       read.push(text);
       if (binPaths.has(lower)) binSources.set(path, text);
     }
@@ -122,6 +139,7 @@ function buildContext(snapshot: RepoSnapshot, pkg: PackageManifest): CliContext 
     binSources,
     readme,
     ci,
+    npmrc,
     coverage: sampleCoverage(read.length, jsPaths.length, snapshot.truncated),
     paths: snapshot.paths,
   };
@@ -137,6 +155,47 @@ function absence(ctx: CliContext, check: Omit<PulseScanCheckInput, "confidence">
       : `${check.detail} (Based on ${Math.round(ctx.coverage * 100)}% of this project's source files — below the ` +
         `threshold for a confident "not present anywhere", so this is inconclusive rather than a failure.)`,
   };
+}
+
+/**
+ * Calls that run a command through a shell: child_process exec/execSync, and
+ * spawn/spawnSync/execFile/execFileSync with `shell: true`. `dynamic` when the command
+ * (or, for spawn, an argument) is built at runtime rather than written as a literal.
+ */
+export function shellCallSites(source: string): { call: string; dynamic: boolean; fromArgv: boolean }[] {
+  const out: { call: string; dynamic: boolean; fromArgv: boolean }[] = [];
+  const ARGV = /\b(?:process\.argv|argv|args|flags|options|opts|cli\.(?:input|flags))\b/;
+  const re = /(?:\b(?:child_process|cp|childProcess)\s*\.\s*|(?<![.\w$]))(exec|execSync|spawn|spawnSync|execFile|execFileSync)\s*\(/g;
+  for (const m of source.matchAll(re)) {
+    const open = (m.index ?? 0) + m[0].length;
+    // The argument list, to the matching parenthesis (strings masked so a ")" inside one does not end it).
+    let depth = 1;
+    let i = open;
+    let quote = "";
+    while (i < source.length && i < open + 800 && depth > 0) {
+      const c = source[i];
+      if (quote) {
+        if (c === "\\") i++;
+        else if (c === quote) quote = "";
+      } else if (c === '"' || c === "'" || c === "`") quote = c;
+      else if (c === "(") depth++;
+      else if (c === ")") depth--;
+      i++;
+    }
+    const args = source.slice(open, i - 1).trim();
+    const fn = m[1];
+    const first = /^(`(?:\\.|[^`\\])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')\s*([\s\S]*)$/.exec(args);
+    const literalFirst = first !== null && !(first[1].startsWith("`") && first[1].includes("${")) && !/^\+/.test(first[2].trim());
+    if (fn === "exec" || fn === "execSync") {
+      if (args === "") continue;
+      out.push({ call: `${fn}(${args.slice(0, 40)})`, dynamic: !literalFirst, fromArgv: !literalFirst && ARGV.test(args) });
+    } else if (/\bshell\s*:\s*(?:true|['"`])/.test(args)) {
+      // With a shell, the command AND every argument are parsed by it.
+      const dynamicArgs = !literalFirst || /\[[^\]]*(?:\$\{|[A-Za-z_$][\w$.]*(?!\s*:))[^\]]*\]/.test(args.replace(/(["'])(?:\\.|(?!\1)[^\\])*\1/g, '""'));
+      out.push({ call: `${fn}(${args.slice(0, 40)})`, dynamic: dynamicArgs, fromArgv: dynamicArgs && ARGV.test(args) });
+    }
+  }
+  return out;
 }
 
 export function evaluateCliChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
@@ -162,6 +221,11 @@ function supplyChainChecks(ctx: CliContext): PulseScanCheckInput[] {
   const installScripts = Object.keys(INSTALL_LIFECYCLE).filter(
     (s) => typeof scripts[s] === "string" && scripts[s].trim() !== "",
   );
+  // npm runs `node-gyp rebuild` at install by itself when binding.gyp sits at the package
+  // root and no install/preinstall script is declared: an install script nobody wrote down.
+  if (ctx.paths.includes("binding.gyp") && !installScripts.includes("install") && !installScripts.includes("preinstall")) {
+    installScripts.push("install (implicit node-gyp rebuild, from binding.gyp)");
+  }
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "cli_install_scripts",
@@ -201,19 +265,31 @@ function supplyChainChecks(ctx: CliContext): PulseScanCheckInput[] {
   });
 
   // Publish provenance — cryptographic proof the artefact came from this repo.
+  // What the repository configures, which is not the same as what the registry shows:
+  // provenance can also come from npm trusted publishing (OIDC), org-level Actions
+  // variables or a publish workflow in another repo. So "not found" is MEDIUM, worded as
+  // not configured HERE. `id-token: write` alone proves nothing (it is also how a workflow
+  // authenticates to a cloud), so it counts only beside a publish command.
+  const publishCommand = /\b(?:npm|pnpm|yarn(?: npm)?)\s+publish\b|changeset\s+publish|changesets\/action/i;
   const provenanceInPkg = ctx.pkg.publishConfig?.provenance === true;
-  const provenanceInCi = /--provenance|id-token:\s*write/i.test(ctx.ci);
-  const trustedPublish = /npm publish/i.test(ctx.ci);
+  const provenanceInCi =
+    /--provenance\b|NPM_CONFIG_PROVENANCE\s*:\s*['"]?true/i.test(ctx.ci) ||
+    (/id-token:\s*write/i.test(ctx.ci) && publishCommand.test(ctx.ci) && /provenance|trusted/i.test(ctx.ci));
+  const provenanceInNpmrc = /^\s*provenance\s*=\s*true/m.test(ctx.npmrc);
+  const trustedPublish = publishCommand.test(ctx.ci) || /changeset\s+publish/.test(JSON.stringify(ctx.pkg.scripts ?? {}));
+  const provenance = provenanceInPkg || provenanceInCi || provenanceInNpmrc;
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "cli_publish_provenance",
     label: "Releases are published with provenance",
-    status: provenanceInPkg || provenanceInCi ? "PASS" : "WARN",
-    confidence: "HIGH",
-    detail: provenanceInPkg || provenanceInCi
+    status: provenance ? "PASS" : "WARN",
+    confidence: provenance ? "HIGH" : "MEDIUM",
+    detail: provenance
       ? `Publish provenance is configured, so each release carries a signed attestation linking it to this repository ` +
         `and the workflow that built it.`
-      : `No publish provenance found (\`publishConfig.provenance\` or \`--provenance\` with \`id-token: write\` in CI). ` +
+      : `Publish provenance is not configured in this repository (\`publishConfig.provenance\`, \`--provenance\`, ` +
+        `\`NPM_CONFIG_PROVENANCE\` or \`provenance=true\` in .npmrc). It can also be switched on outside the repo, by npm ` +
+        `trusted publishing or an org-level setting, which a repository scan cannot see. ` +
         `Provenance is what lets an installer verify that the tarball on the registry was built from this source by ` +
         `your CI, rather than published from a laptop with a stolen token — the exact attack that has hit multiple ` +
         `widely-used packages. It is a few lines in a GitHub Actions workflow${trustedPublish
@@ -222,7 +298,7 @@ function supplyChainChecks(ctx: CliContext): PulseScanCheckInput[] {
   });
 
   // A committed lockfile is what makes a build reproducible and auditable.
-  const hasLockfile = ctx.paths.some((p) => /^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/i.test(p));
+  const hasLockfile = ctx.paths.some((p) => /^(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/i.test(p));
   checks.push({
     category: CATEGORIES.SECURITY,
     checkKey: "cli_lockfile_committed",
@@ -231,9 +307,11 @@ function supplyChainChecks(ctx: CliContext): PulseScanCheckInput[] {
     confidence: "HIGH",
     detail: hasLockfile
       ? `A lockfile is committed, so CI and contributors resolve the same dependency tree.`
-      : `No lockfile committed. Every install then resolves ranges afresh, so the code your CI tests is not ` +
-        `necessarily the code you publish, and a compromised patch release of a transitive dependency is pulled in ` +
-        `silently with no diff to review. Commit the lockfile and use \`npm ci\` in CI.`,
+      : `No lockfile committed. Every CI run and contributor install then resolves dependency ranges afresh, so a ` +
+        `test run is not reproducible and a compromised patch release of a transitive dependency enters your build ` +
+        `and release environment silently, with no diff to review. (npm does not publish the lockfile, so it does ` +
+        `not pin what your users install — it protects your own CI and release machine.) Commit the lockfile and ` +
+        `use \`npm ci\` in CI.`,
   });
 
   // Secrets in source ship in the tarball.
@@ -379,11 +457,14 @@ function packagingChecks(ctx: CliContext): PulseScanCheckInput[] {
     });
   }
 
-  // Type declarations, for a package written in TypeScript.
-  const isTypeScript = ctx.paths.some((p) => /\.ts$/i.test(p) && !isVendoredPath(p) && !/\.d\.ts$/i.test(p));
-  if (isTypeScript) {
-    const shipsTypes = Boolean(pkg.types) || Boolean(pkg.exports) ||
-      ctx.paths.some((p) => /\.d\.ts$/i.test(p));
+  // Type declarations, for a TypeScript package that can be imported. A bin-only package
+  // (no main/module/exports/types) has no import surface, so nobody "imports it and gets
+  // any". Test fixtures and type tests (*.test-d.ts) do not make a package TypeScript.
+  const exposesLibrary = Boolean(pkg.main || pkg.module || pkg.exports || pkg.types || (pkg as { typings?: unknown }).typings);
+  const isTypeScript = ctx.paths.some((p) => /\.tsx?$/i.test(p) && !isVendoredPath(p) && !/\.d\.ts$/i.test(p) && !NOT_SHIPPED.test(p));
+  if (isTypeScript && exposesLibrary) {
+    const typesInExports = JSON.stringify(pkg.exports ?? null).includes('"types"');
+    const shipsTypes = Boolean(pkg.types) || Boolean((pkg as { typings?: unknown }).typings) || typesInExports;
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "cli_types_published",
@@ -391,7 +472,7 @@ function packagingChecks(ctx: CliContext): PulseScanCheckInput[] {
       status: shipsTypes ? "PASS" : "WARN",
       confidence: "MEDIUM",
       detail: shipsTypes
-        ? `Type declarations are declared via \`types\`/\`exports\`.`
+        ? `Type declarations are declared (\`types\`, or a \`types\` condition in \`exports\`).`
         : `The package is written in TypeScript but declares no \`types\` entry and ships no \`.d.ts\`. Anyone ` +
           `importing it programmatically gets \`any\`, losing exactly the safety the source was written with — and ` +
           `the compiler will error under \`noImplicitAny\`. Set \`types\` (or a \`types\` condition in \`exports\`) ` +
@@ -403,6 +484,24 @@ function packagingChecks(ctx: CliContext): PulseScanCheckInput[] {
 }
 
 // ── Command-line interface contract ─────────────────────────────────────────
+/**
+ * A module-scope `try {` (column 0) whose body awaits, closed by the FIRST column-0 `}`
+ * which is followed by `catch`. Written as a scan rather than one regex: a tempered
+ * lazy pattern over a large sampled file is quadratic in the size of a long try body.
+ */
+function topLevelAwaitTryCatch(source: string): boolean {
+  const open = /^try\s*\{/gm;
+  for (const m of source.matchAll(open)) {
+    const bodyStart = (m.index ?? 0) + m[0].length;
+    const close = /^\}/m.exec(source.slice(bodyStart));
+    if (!close) return false;
+    const body = source.slice(bodyStart, bodyStart + close.index);
+    const after = source.slice(bodyStart + close.index + 1, bodyStart + close.index + 64);
+    if (/\bawait\b/.test(body) && /^\s*catch\b/.test(after)) return true;
+  }
+  return false;
+}
+
 function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const allSource = ctx.source + [...ctx.binSources.values()].join("\n");
@@ -455,7 +554,14 @@ function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
   }));
 
   // Non-zero exit on failure. This is the contract that CI and shell scripts read.
-  const exitsNonZero = /process\.exit\s*\(\s*[1-9]|process\.exitCode\s*=\s*[1-9]/.test(allSource);
+  // Any `<receiver>.exit(n)` (process.exit, this.exit in oclif, Deno.exit) or
+  // exit-hook's `gracefulExit(n)` sets a non-zero exit code.
+  // Also a bare `exit(1)` when `exit` was taken from `process` (`import { exit } from
+  // "node:process"`, `const { exit } = process`): vercel/serve does exactly that.
+  const destructuredExit =
+    /import\s*\{[^}]*\bexit\b[^}]*\}\s*from\s*['"](?:node:)?process['"]|\{[^}]*\bexit\b[^}]*\}\s*=\s*(?:process|require\(\s*['"](?:node:)?process['"]\s*\))/.test(allSource) &&
+    /(?<![.\w])exit\s*\(\s*[1-9]/.test(allSource);
+  const exitsNonZero = destructuredExit || /(?:\.exit|\bgracefulExit)\s*\(\s*[1-9]|process\.exitCode\s*=\s*[1-9]/.test(allSource);
   checks.push(absence(ctx, {
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "cli_exit_codes",
@@ -523,7 +629,14 @@ function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
 
   // Unhandled promise rejections in a CLI produce a bare stack trace and, on
   // modern Node, a hard crash — with no indication of what the user did wrong.
-  const handlesRejections = /unhandledRejection|uncaughtException|\.catch\s*\(/.test(allSource);
+  // A module-scope `try {` (column 0) whose body awaits, closed by a column-0
+  // `} catch`, is the idiomatic ESM entry-point handler around top-level await
+  // (e.g. sindresorhus/np's cli-implementation.js). Indented try blocks inside
+  // functions, and module-scope `try { require("optional") } catch {}` probes, do
+  // NOT count: neither handles the CLI's own failures. Both halves stop at the FIRST column-0
+  // `}`, so a module-scope `try { await … } finally {}` cannot borrow a later, unrelated `} catch`.
+  const handlesRejections =
+    /unhandledRejection|uncaughtException|\.catch\s*\(/.test(allSource) || topLevelAwaitTryCatch(allSource);
   checks.push(absence(ctx, {
     category: CATEGORIES.OBSERVABILITY,
     checkKey: "cli_error_handling",
@@ -538,19 +651,32 @@ function interfaceChecks(ctx: CliContext): PulseScanCheckInput[] {
     }));
 
   // Node built-ins that the package would need declared to work cross-platform.
-  if (/require\(['"]child_process['"]\)|from\s+['"]child_process['"]/.test(ctx.source)) {
-    const usesExecSync = /\bexec(Sync)?\s*\(\s*[`'"]/.test(ctx.source);
+  if (/require\(\s*['"](?:node:)?child_process['"]\s*\)|from\s+['"](?:node:)?child_process['"]/.test(ctx.source)) {
+    // Judged per call site (shellCallSites): exec/execSync with a value built at runtime
+    // (a template with ${…}, a concatenation, or a VARIABLE, which the old rule missed),
+    // and spawn/execFile with `shell: true`. A fixed command string has nothing to inject,
+    // and RegExp.prototype.exec is not a child process.
+    const sites = shellCallSites(ctx.source);
+    const dynamic = sites.filter((c) => c.dynamic);
+    const fromArgv = dynamic.some((c) => c.fromArgv);
     checks.push({
       category: CATEGORIES.SECURITY,
       checkKey: "cli_shell_injection",
       label: "Child processes are spawned without a shell",
-      status: usesExecSync ? "WARN" : "PASS",
-      confidence: "MEDIUM",
-      detail: usesExecSync
-        ? `\`exec\`/\`execSync\` runs its argument through a shell, so any user-supplied value interpolated into that ` +
-          `string is a command-injection point — a filename containing \`; rm -rf\` is enough. Use \`execFile\` or ` +
-          `\`spawn\` with an argument ARRAY, which passes arguments to the program directly and never involves a shell.`
-        : `Child processes are spawned without going through a shell.`,
+      status: dynamic.length > 0 ? "WARN" : "PASS",
+      confidence: dynamic.length > 0 && !fromArgv ? "LOW" : "MEDIUM",
+      detail: dynamic.length > 0
+        ? `${dynamic.length} call${dynamic.length === 1 ? " runs" : "s run"} a command through a shell with a value ` +
+          `built at runtime (${dynamic.slice(0, 2).map((c) => `\`${c.call}\``).join(", ")}), so any user-supplied ` +
+          `value in that string is a command-injection point: a filename containing \`; rm -rf\` is enough. Use ` +
+          `\`execFile\` or \`spawn\` with an argument ARRAY and no \`shell: true\`, which passes arguments to the ` +
+          `program directly.` +
+          (fromArgv ? "" : ` The value does not visibly come from the command line, and a scan cannot tell whether it ` +
+            `is validated first, so this is a lead to review rather than a confirmed injection.`)
+        : sites.length > 0
+          ? `${sites.length} shell call${sites.length === 1 ? "" : "s"} found, each running a fixed command string; ` +
+            `no shell call receives a value built at runtime.`
+          : `No call in the sampled source runs a command through a shell.`,
     });
   }
 

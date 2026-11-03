@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import {
@@ -117,12 +118,23 @@ export function FeatureBlockFormModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">Start</label>
-              <input type="date" className="app-input w-full" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <label htmlFor="feature-block-start" className="mb-1 block text-xs font-medium text-[var(--text-2)]">Start</label>
+              <DatePicker
+                id="feature-block-start"
+                className="w-full"
+                value={startDate}
+                onChange={setStartDate}
+              />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-[var(--text-2)]">End</label>
-              <input type="date" className="app-input w-full" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <label htmlFor="feature-block-end" className="mb-1 block text-xs font-medium text-[var(--text-2)]">End</label>
+              <DatePicker
+                id="feature-block-end"
+                className="w-full"
+                value={endDate}
+                onChange={setEndDate}
+                min={startDate || undefined}
+              />
             </div>
           </div>
           <p className="-mt-2 text-[11px] text-[var(--text-4)]">

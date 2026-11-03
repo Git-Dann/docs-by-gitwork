@@ -8,8 +8,24 @@ import { GANTT_SCALE_LABELS, TASK_STATUS_LABELS, type GanttScale, type TaskStatu
 export type GanttBlock = {
   id: string;
   name: string;
-  startDate: string;
-  endDate: string;
+  /**
+   * ⚠️ Nullable. A feature block genuinely can have no dates — `FeatureBlock.startDate`
+   * is optional in the schema — and a workstream that is tracked but not scheduled is
+   * the normal case, not an edge one. Callers used to filter those blocks out before
+   * they ever arrived here, which meant they vanished from the plan entirely rather
+   * than appearing as work with no date yet.
+   *
+   * An undated block gets its RAIL ROW — name, progress, task count, its tasks — and
+   * no bar. That is the honest rendering: the work exists, its position in time does
+   * not, and drawing a bar anywhere would be inventing a schedule.
+   */
+  startDate: string | null;
+  endDate: string | null;
+  /**
+   * The dates were estimated from the block's task due dates, not set on the block
+   * (src/lib/gantt-span.ts). Drawn dashed and labelled, because nobody scheduled them.
+   */
+  estimated?: boolean;
   color?: string | null;
   progress: number;
   tasks: { title: string; done: boolean }[];
@@ -200,7 +216,10 @@ export function GanttChart({
   const domain = useMemo(() => {
     const stamps: number[] = [today.getTime()];
     for (const b of blocks) {
-      stamps.push(new Date(b.startDate).getTime(), new Date(b.endDate).getTime());
+      // Undated blocks contribute no stamp. `today` is always in the list, so an
+      // all-undated chart still has a valid domain rather than NaN.
+      if (b.startDate) stamps.push(new Date(b.startDate).getTime());
+      if (b.endDate) stamps.push(new Date(b.endDate).getTime());
     }
     for (const m of milestones) stamps.push(new Date(m.date).getTime());
     const min = new Date(Math.min(...stamps));
@@ -278,7 +297,10 @@ export function GanttChart({
   // week of the year; simply how many weeks into the project timeline we are.
   const projectWeek = useMemo(() => {
     const stamps = [
-      ...blocks.map((b) => new Date(b.startDate).getTime()),
+      // `.filter(Number.isFinite)` below already drops NaN, but an undated block
+      // must not contribute one in the first place — `new Date(null)` is the EPOCH,
+      // which is finite and would drag "project week 1" back to 1970.
+      ...blocks.flatMap((b) => (b.startDate ? [new Date(b.startDate).getTime()] : [])),
       ...milestones.map((m) => new Date(m.date).getTime()),
     ].filter((n) => Number.isFinite(n));
     if (stamps.length === 0) return null;
@@ -289,11 +311,16 @@ export function GanttChart({
   // Rail order: chronological — earliest section first (by start, then end).
   const ordered = useMemo(
     () =>
-      [...blocks].sort(
-        (a, z) =>
-          new Date(a.startDate).getTime() - new Date(z.startDate).getTime() ||
-          new Date(a.endDate).getTime() - new Date(z.endDate).getTime(),
-      ),
+      // Undated blocks sort LAST. `new Date(null)` is the epoch, which would put
+      // them at the top of every chart as if they were the oldest work there is.
+      [...blocks].sort((a, z) => {
+        const at = a.startDate ? new Date(a.startDate).getTime() : Infinity;
+        const zt = z.startDate ? new Date(z.startDate).getTime() : Infinity;
+        if (at !== zt) return at - zt;
+        const ae = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+        const ze = z.endDate ? new Date(z.endDate).getTime() : Infinity;
+        return ae - ze;
+      }),
     [blocks],
   );
 
@@ -379,6 +406,12 @@ export function GanttChart({
             <span className="h-2 w-2 rounded-[2px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
             To do / Backlog
           </span>
+          {blocks.some((b) => b.estimated) ? (
+            <span className="inline-flex items-center gap-1.5" data-legend="estimated">
+              <span className="h-2 w-3.5 rounded-[2px] border border-dashed border-[var(--text-3)]" />
+              Dashed = dates estimated from task due dates
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -423,8 +456,12 @@ export function GanttChart({
                         height: HEADER_ROW_1,
                         fontFamily: "var(--font-mono)",
                       }}
+                      // A part-quarter at the edge of the chart can be ~40px wide, which cut
+                      // "Q1 2027" to "Q1 2…" with nothing to recover it. Short form when narrow,
+                      // and the full label always on hover.
+                      title={q.label}
                     >
-                      {q.label}
+                      {q.w < 64 ? q.label.replace(/ (\d{2})(\d{2})$/, " '$2") : q.label}
                     </div>
                   ))}
                 </div>
@@ -465,21 +502,31 @@ export function GanttChart({
             {/* ── Block rows + today line ─────────────────────────────────────── */}
             <div className="relative">
               {ordered.map((b) => {
-                const start = new Date(b.startDate);
-                const end = new Date(b.endDate);
-                const left = Math.max(daysBetween(model.domainStart, start) * pxPerDay, 0);
-                const width = Math.max((daysBetween(start, end) + 1) * pxPerDay, 6);
+                const dated = Boolean(b.startDate && b.endDate);
+                const start = b.startDate ? new Date(b.startDate) : null;
+                const end = b.endDate ? new Date(b.endDate) : null;
+                const left =
+                  start ? Math.max(daysBetween(model.domainStart, start) * pxPerDay, 0) : 0;
+                const width =
+                  start && end ? Math.max((daysBetween(start, end) + 1) * pxPerDay, 6) : 0;
                 const t = tone(b.color);
                 const isExpanded = expanded.has(b.id);
                 const shown = isExpanded ? b.tasks : b.tasks.slice(0, 6);
-                const dueFmt = fmtShort(b.endDate);
+                // "—" rather than a date, because there is not one. "~" when the date
+                // is estimated from the tasks rather than set on the block.
+                const dueFmt = b.endDate ? `${b.estimated ? "~" : ""}${fmtShort(b.endDate)}` : "—";
                 const isOpen = open.has(b.id);
                 // Slip = the gap between a block's planned end (bar right edge) and
                 // today, when the block isn't finished. No baseline needed — it's
                 // computed purely from the current end date vs now.
                 const barRight = left + width;
                 const slipW = Math.max(0, Math.min(todayX, model.timelineWidth) - barRight);
-                const isSlipping = slippage && showSlip && b.progress < 100 && slipW > 2;
+                // ⚠️ `dated` is load-bearing here, not just on the bar. Slippage is
+                // measured from the bar's right edge to today — and an undated block
+                // has its edge at x=0, so every row came out with a full-width red
+                // hatched band claiming work with NO deadline was months overdue.
+                // Nothing can be late against a date that does not exist.
+                const isSlipping = dated && slippage && showSlip && b.progress < 100 && slipW > 2;
                 const slipDays = Math.round(slipW / pxPerDay);
                 const slipColor = slipDays >= 7 ? "#DC2626" : "#D97706"; // red past a week, else amber
                 const slipTint = slipDays >= 7 ? "rgba(220,38,38,0.26)" : "rgba(217,119,16,0.26)";
@@ -630,8 +677,31 @@ export function GanttChart({
                           </div>
                         </div>
                       ) : null}
-                      <div className="group absolute top-2 h-7" style={{ left, width }}>
-                        <div className={cn("h-full w-full overflow-hidden rounded-[6px]", t.bar)}>
+                      {/* `title` as well as the styled hover card below: the in-bar
+                          label truncates (a bar is only as wide as its date range),
+                          and a CSS `group-hover` tooltip is invisible to assistive
+                          tech and to `audit:clipping`, which correctly reports the
+                          label as unrecoverable without this. */}
+                      {/* ⚠️ No dates, no bar. A zero-width bar still paints its
+                          rounded background and its hover target, which would put a
+                          smudge at the left edge of the chart and claim the work
+                          starts there. The rail row is still rendered above — the
+                          work exists, its position in time does not. */}
+                      <div
+                        className="group absolute top-2 h-7"
+                        title={b.name}
+                        style={{ left, width, display: dated ? undefined : "none" }}
+                      >
+                        <div
+                          data-estimated={b.estimated ? "true" : undefined}
+                          className={cn(
+                            "h-full w-full overflow-hidden rounded-[6px]",
+                            t.bar,
+                            // Estimated from task due dates — nobody set these dates, so the
+                            // bar must not look like a schedule someone committed to.
+                            b.estimated && "border border-dashed border-[var(--text-3)] opacity-80",
+                          )}
+                        >
                           {b.statusCounts ? (
                             <StatusFill counts={b.statusCounts} />
                           ) : (
@@ -650,8 +720,15 @@ export function GanttChart({
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--text-1)] px-2.5 py-1.5 text-left text-[11px] text-[var(--surface-0)] shadow-lg group-hover:block">
                           <span className="font-medium">{b.name}</span>
                           <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
-                            {fmtShort(b.startDate)} – {fmtShort(b.endDate)} · {b.progress}%
+                            {b.startDate && b.endDate
+                              ? `${fmtShort(b.startDate)} – ${fmtShort(b.endDate)} · ${b.progress}%`
+                              : `No dates set · ${b.progress}%`}
                           </span>
+                          {b.estimated ? (
+                            <span className="mt-0.5 block text-[var(--surface-0)]/75">
+                              Estimated from task due dates
+                            </span>
+                          ) : null}
                           {b.statusCounts && statusBreakdown(b.statusCounts) ? (
                             <span className="mt-0.5 block text-[var(--surface-0)]/75" style={{ fontFamily: "var(--font-mono)" }}>
                               {statusBreakdown(b.statusCounts)}

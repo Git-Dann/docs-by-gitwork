@@ -8,7 +8,8 @@
 // blanked in the API response regardless of what the client renders.
 
 import { useAccount } from "@/hooks/use-account";
-import { isAtLeast, isSuperAdmin } from "@/types/auth";
+import { isAtLeast, isSuperAdmin, isExternalRole } from "@/types/auth";
+import { workspaceHasModule } from "@/lib/workspace-modules";
 
 export function usePermissions() {
   const { data, isPending } = useAccount();
@@ -16,14 +17,24 @@ export function usePermissions() {
   const permissions = data?.permissions ?? [];
   const showDevRates = data?.showDevRates ?? false;
   const can = (id: string) => isSuperAdmin(role) || permissions.includes(id);
+  const workspaceModules = data?.workspaceModules ?? null;
 
   return {
     role,
     isPending,
     can,
+    /**
+     * Does this user's BUSINESS have the module (src/lib/workspace-modules.ts)? Separate
+     * from `can`, which is about the person: a Super Admin of a business without Pulse
+     * passes `can("pulse")` and fails this. Hide entry points on this; the middleware is
+     * what actually refuses.
+     */
+    hasModule: (id: string) => workspaceHasModule(id, workspaceModules),
     // Role tier checks — used by gates that don't fit a single permission
     // (e.g. moving devs between Bench / Off Bench, which is admin+ only).
     isAdminOrAbove: isAtLeast(role, "ADMIN"),
+    /** Outside Gitwork — see isExternalRole. Hides surfaces that act AS the agency. */
+    isExternal: isExternalRole(role),
     isSuperAdmin: isSuperAdmin(role),
     // Field gates — rate/financial fields also respect the workspace showDevRates toggle
     // (Settings → General → Developer rates) so admins can hide them for demos.
@@ -35,7 +46,12 @@ export function usePermissions() {
     canViewAdminDocTypes: can("docs.viewAdminTypes"),
     // Action gates (view vs manage + high-risk)
     canRunFixAgent: can("pulse.fixAgent"),
+    /** Triage Pulse findings (send to board, accept risk, dismiss). Mirrors server canManagePulse. */
+    canManagePulse: can("pulse.manage"),
     canManageCode: can("code.manage"),
+    // HR (docs/hr-platform.md): per-person grants, never role defaults.
+    canManageHr: can("hr.manage"),
+    canViewHrSensitive: can("hr.viewSensitive"),
     // DevSignal vetting pipeline — admin-only feature perm (default-off).
     canManageDevSignal: can("devsignal"),
     // Editing scoring weights + calibration is Super Admin only.
@@ -51,6 +67,7 @@ export function usePermissions() {
     canViewProvenance: can("provenance"),
     canIssueCountermark: can("provenance.issue"),
     canViewSupport: can("support"),
+    canViewMonitors: can("monitors"),
     canManageSupport: can("support.manage"),
     // Study is an optional tool under Pulse, gated by the admin-only `study` feature perm
     // (default-off). View and manage collapse to one gate — Admins/Super Admins only.

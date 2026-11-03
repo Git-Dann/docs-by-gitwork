@@ -43,7 +43,37 @@ export function safeUrl(raw: string): string | null {
   return null;
 }
 
-export function renderInline(text: string, keyPrefix: string): ReactNode[] {
+/**
+ * Per-surface styling for `renderInline`. The PARSING is shared and never varies — only the
+ * classes on what it draws, and whether `_x_` means italic. The client wiki
+ * (`src/lib/wiki-markdown.tsx`) needs both: its own link/code look, and `_` left alone because its
+ * pages are full of identifiers like `MY_VAR_NAME` that were never meant to italicise. Every
+ * option defaults to the behaviour all existing callers already get.
+ */
+export interface InlineRenderOptions {
+  linkClassName?: string;
+  codeClassName?: string;
+  strongClassName?: string;
+  /** `false` leaves `_x_` as literal text. Default true. */
+  underscoreItalic?: boolean;
+}
+
+const DEFAULT_LINK_CLASS = "font-medium text-[var(--brand-700)] underline underline-offset-2";
+const DEFAULT_CODE_CLASS =
+  "rounded bg-[var(--surface-1)] px-1 py-0.5 font-mono text-[0.9em] text-[var(--text-1)]";
+const DEFAULT_STRONG_CLASS = "font-semibold text-[var(--text-1)]";
+
+export function renderInline(
+  text: string,
+  keyPrefix: string,
+  options: InlineRenderOptions = {},
+): ReactNode[] {
+  const {
+    linkClassName = DEFAULT_LINK_CLASS,
+    codeClassName = DEFAULT_CODE_CLASS,
+    strongClassName = DEFAULT_STRONG_CLASS,
+    underscoreItalic = true,
+  } = options;
   const out: ReactNode[] = [];
   let rest = text;
   let i = 0;
@@ -56,6 +86,13 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
     if (m.index > 0) out.push(rest.slice(0, m.index));
     const token = m[0];
     const key = `${keyPrefix}-${i++}`;
+    if (!underscoreItalic && token.startsWith("_")) {
+      // Not a mark on this surface: emit the underscore as text and re-scan from the next
+      // character, so a later real token (`**x**`, a link) on the same line still renders.
+      out.push("_");
+      rest = rest.slice(m.index + 1);
+      continue;
+    }
     if (token.startsWith("[")) {
       const lm = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);
       const href = lm ? safeUrl(lm[2]) : null;
@@ -66,7 +103,7 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
             href={href}
             target="_blank"
             rel="noopener noreferrer nofollow"
-            className="font-medium text-[var(--brand-700)] underline underline-offset-2"
+            className={linkClassName}
           >
             {lm[1]}
           </a>
@@ -82,7 +119,7 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
       const sizeClass = tag === "sm" ? "text-[0.85em]" : "text-[1.2em]";
       out.push(
         <span key={key} className={sizeClass}>
-          {renderInline(inner, `${key}-in`)}
+          {renderInline(inner, `${key}-in`, options)}
         </span>,
       );
     } else if (token.startsWith("***")) {
@@ -90,13 +127,13 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
       // and the document would render literal asterisks around it — stray punctuation in a
       // client's proposal.
       out.push(
-        <strong key={key} className="font-semibold text-[var(--text-1)]">
+        <strong key={key} className={strongClassName}>
           <em>{token.slice(3, -3)}</em>
         </strong>,
       );
     } else if (token.startsWith("**")) {
       out.push(
-        <strong key={key} className="font-semibold text-[var(--text-1)]">
+        <strong key={key} className={strongClassName}>
           {token.slice(2, -2)}
         </strong>,
       );
@@ -106,10 +143,7 @@ export function renderInline(text: string, keyPrefix: string): ReactNode[] {
       out.push(<em key={key}>{token.slice(1, -1)}</em>);
     } else if (token.startsWith("`")) {
       out.push(
-        <code
-          key={key}
-          className="rounded bg-[var(--surface-1)] px-1 py-0.5 font-mono text-[0.9em] text-[var(--text-1)]"
-        >
+        <code key={key} className={codeClassName}>
           {token.slice(1, -1)}
         </code>,
       );

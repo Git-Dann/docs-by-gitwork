@@ -31,6 +31,9 @@ import { Button } from "@/components/ui/button";
 import type { StudyRecord, StudyPlanQuestionRecord } from "@/server/study";
 import type { SessionTranscript } from "@/server/study-agents/types";
 import { StudyReport } from "./study-report";
+import { Spinner } from "@/components/ui/motion/spinner";
+import { Skeleton } from "@/components/ui/motion/skeleton";
+import { StatusDot } from "@/components/ui/motion/status-dot";
 
 // ── Status (rounded-[4px], not full pill — per DESIGN.md) ─────────────────────
 
@@ -61,7 +64,7 @@ function StatusChip({ status }: { status: string }) {
       )}
     >
       {status === "RUNNING" || status === "PLAN_GENERATING" ? (
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+        <StatusDot tone="warning" motion="pulse" size="xs" />
       ) : null}
       {STATUS_LABEL[status] ?? status}
     </span>
@@ -355,7 +358,7 @@ export function StudyDetail({ studyId }: { studyId: string }) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-16 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+          <Skeleton key={i} className="h-16 rounded-[10px] border border-[var(--border-2)]" />
         ))}
       </div>
     );
@@ -564,7 +567,7 @@ export function StudyDetail({ studyId }: { studyId: string }) {
           <div className="px-6 py-5">
             {!study.plan && study.status === "PLAN_GENERATING" && (
               <div className="flex items-center gap-3 py-8 text-center">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--brand-700)] border-t-transparent" />
+                <Spinner size="md" tone="brand" />
                 <p className="text-sm text-[var(--text-3)]">Generating your research plan with AI…</p>
               </div>
             )}

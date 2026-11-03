@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MODULE_PATHS, hasModuleAccess, matchesPrefix, moduleForPath } from "../module-gate";
+import { MODULE_PATHS, hasModuleAccess, matchesPrefix, moduleForPath,
+  INTERNAL_ONLY_PREFIXES,
+  isExternalRole,
+  UNGATED_APP_PREFIXES,
+} from "../module-gate";
 
 // Every /app route segment that exists in the app router. Kept literal on purpose: if
 // someone adds a page and doesn't decide how it's gated, the "every route resolves"
@@ -15,6 +19,7 @@ const APP_ROUTE_SEGMENTS = [
   "codeclear",
   "docs",
   "handbook",
+  "monitors",
   "portal",
   "projects",
   "proof",
@@ -127,5 +132,73 @@ describe("route coverage", () => {
         expect(shadowedBy.module).toBe(MODULE_PATHS[i].module);
       }
     });
+  });
+});
+
+describe("a guest is not a colleague", () => {
+  // The allow-list was written when every account was an @gitwork.co.uk Google sign-in,
+  // so "any signed-in member" and "any colleague" were the same sentence. GUEST breaks
+  // that, and the pages below were open because nobody had to decide to open them.
+  const GUEST = "GUEST";
+
+  it.each(INTERNAL_ONLY_PREFIXES)("denies a guest %s", (prefix) => {
+    expect(
+      hasModuleAccess(prefix, [], GUEST),
+      `${prefix} is internal — a guest holding an email and password must not reach it`,
+    ).toBe(false);
+    expect(hasModuleAccess(`${prefix}/anything`, [], GUEST)).toBe(false);
+  });
+
+  it.each(INTERNAL_ONLY_PREFIXES)("still allows a developer %s", (prefix) => {
+    // The split is by audience, not sensitivity — internal staff keep what they had.
+    //
+    // ⚠️ An internal-only path may ALSO carry a module gate: `/app/pulse/embed` sits
+    // under /app/pulse, so it needs the `pulse` permission on top of being internal.
+    // The two rules compose, so the developer here is given whatever module the path
+    // requires — otherwise this asserts the module gate, not the audience rule.
+    const required = moduleForPath(prefix);
+    expect(hasModuleAccess(prefix, required ? [required] : [], "DEVELOPER")).toBe(true);
+  });
+
+  it.each(INTERNAL_ONLY_PREFIXES)("denies a guest %s even WITH the module", (prefix) => {
+    // The whole point of evaluating the deny first: holding the module must not be a
+    // way round the audience rule.
+    const required = moduleForPath(prefix);
+    expect(hasModuleAccess(prefix, required ? [required] : [], "GUEST")).toBe(false);
+  });
+
+  it("keeps a guest's own settings, account and messages open", () => {
+    // These are about the signed-in person, whoever they are. Locking a guest out of
+    // their own account settings would leave them unable to change their password.
+    for (const p of UNGATED_APP_PREFIXES) {
+      expect(hasModuleAccess(p, [], GUEST), p).toBe(true);
+    }
+  });
+
+  it("grants a guest exactly the module they were given, and nothing adjacent", () => {
+    expect(hasModuleAccess("/app/pulse", ["pulse"], GUEST)).toBe(true);
+    expect(hasModuleAccess("/app/care", ["pulse"], GUEST)).toBe(false);
+    expect(hasModuleAccess("/app/portal", ["pulse"], GUEST)).toBe(false);
+  });
+
+  it("treats an ABSENT role as internal", () => {
+    // Every caller that predates GUEST passes a staff account, so omitting the argument
+    // must not silently lock existing users out. External is denied explicitly.
+    expect(hasModuleAccess("/app/handbook", [])).toBe(true);
+    expect(hasModuleAccess("/app/handbook", [], null)).toBe(true);
+  });
+
+  it("names GUEST as external and no staff role as external", () => {
+    expect(isExternalRole("GUEST")).toBe(true);
+    for (const role of ["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER", null, undefined, ""]) {
+      expect(isExternalRole(role), String(role)).toBe(false);
+    }
+  });
+
+  it("puts every prefix in exactly one of the two lists", () => {
+    // Both lists are consulted, so an entry in both would make the internal-only rule
+    // unreachable — the guest check would never run for it.
+    const overlap = UNGATED_APP_PREFIXES.filter((p) => INTERNAL_ONLY_PREFIXES.includes(p));
+    expect(overlap).toEqual([]);
   });
 });

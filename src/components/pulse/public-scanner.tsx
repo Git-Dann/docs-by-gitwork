@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
+import { CaptureFields, EMPTY_CAPTURE, Honeypot, UNLOCKED_HEADING, captureComplete, deliveryNote, listAreas, unlockCopy, type CaptureValues } from "./capture-fields";
 import { DEFAULT_BOOKING_URL, isPulseScanSource, type PulseScanSource } from "@/server/pulse-embed-config";
 
 /**
@@ -87,6 +88,12 @@ type View = {
    */
   triage?: {
     actionable: { checkKey: string; category: string; label: string; status: string; detail: string; tier: "P1" | "P2" }[];
+    /** Held back by the workspace's free-set limit; absent on older stored scans. */
+    lockedCount?: number;
+    lockedByCategory?: { category: string; count: number }[];
+    /** Shape only (area, priority, result) of the first few held-back findings — drawn blurred. */
+    lockedPreview?: { category: string; tier: "P1" | "P2"; status: string }[];
+    limited?: boolean;
     advisoryCount: number;
     advisoryByCategory: { category: string; count: number }[];
     notEstablished: { checkKey: string; category: string; label: string; reason: string }[];
@@ -210,6 +217,86 @@ function ScoreRing({ score }: { score: number | null }) {
   );
 }
 
+/**
+ * A results section, closed by default. The full result is long (a breakdown across ~20
+ * areas, the findings, what could not be assessed) and nobody scrolls it; collapsed, the
+ * whole result fits on a screen with the unlock card in view, and each section says what
+ * is inside before it is opened. Native <details>, so it needs no script, works from the
+ * keyboard and announces itself to a screen reader.
+ */
+export function ResultSection({
+  title,
+  meta,
+  tone,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  tone?: "warn" | "fail";
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const dot = tone === "fail" ? "#dc2626" : tone === "warn" ? "#d97706" : null;
+  return (
+    <details className="pulse-acc" open={defaultOpen || undefined} style={{ border: "1px solid #eceef2", borderRadius: 12, background: "#ffffff" }}>
+      <style>{`.pulse-acc>summary::-webkit-details-marker{display:none}.pulse-acc>summary{list-style:none}.pulse-acc[open] .pulse-acc-chev{transform:rotate(180deg)}.pulse-acc>summary:focus-visible{outline:2px solid ${ACCENT};outline-offset:2px;border-radius:12px}`}</style>
+      <summary style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer", userSelect: "none" }}>
+        {dot && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: dot, flexShrink: 0 }} />}
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#111827", flex: 1, minWidth: 0 }}>{title}</span>
+        {meta && <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{meta}</span>}
+        <svg className="pulse-acc-chev" aria-hidden="true" width="14" height="14" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, transition: "transform 160ms ease" }}>
+          <path d="M5 7.5l5 5 5-5" stroke="#6b7280" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div style={{ padding: "0 14px 14px" }}>{children}</div>
+    </details>
+  );
+}
+
+/**
+ * What the scan is doing while it runs. A scan that produces no checks for a while used to
+ * show a ring of dashes and "0 done", which reads as stuck; this says what is being looked
+ * at, how long it has taken, and, past ~20 seconds, that some sites are slow to answer.
+ * The steps are the scan's real order, approximated by time: the server streams checks in
+ * waves, not per step, so the bar is honest about being indeterminate.
+ */
+const SCAN_STEPS = [
+  "Fetching your homepage",
+  "Checking HTTPS and security headers",
+  "Reading DNS and email records",
+  "Checking legal pages, SEO and performance",
+  "Putting your score together",
+];
+function ScanProgress({ checks }: { checks: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const step = SCAN_STEPS[Math.min(SCAN_STEPS.length - 1, checks > 0 ? 3 + (elapsed > 30 ? 1 : 0) : Math.floor(elapsed / 4))];
+  return (
+    <div style={{ width: "100%", maxWidth: 360, marginTop: 12 }}>
+      <style>{`@keyframes pulse-scan-bar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}@media (prefers-reduced-motion:reduce){.pulse-scan-bar{animation:none!important;transform:none!important;width:100%!important;opacity:.4}}`}</style>
+      <div style={{ height: 4, borderRadius: 999, background: "#eef0f4", overflow: "hidden" }}>
+        <div className="pulse-scan-bar" style={{ width: "40%", height: "100%", borderRadius: 999, background: ACCENT, animation: "pulse-scan-bar 1.4s ease-in-out infinite" }} />
+      </div>
+      <p style={{ fontSize: 12.5, color: "#374151", margin: "10px 0 0", fontWeight: 600 }}>
+        {step}…
+        <span style={{ color: "#9ca3af", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}> {elapsed}s</span>
+      </p>
+      <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+        {checks > 0
+          ? `${checks} checks done so far.`
+          : elapsed >= 20
+            ? "This site is slow to answer some requests. Still working; it can take up to a minute."
+            : "Most sites take 10 to 20 seconds."}
+      </p>
+    </div>
+  );
+}
+
 function CategoryTile({ cat }: { cat: CategorySummary }) {
   const total = cat.pass + cat.warn + cat.fail;
   // ⚠️ A category where nothing resolved used to render 100% and a full green bar — a perfect
@@ -242,27 +329,78 @@ function CategoryTile({ cat }: { cat: CategorySummary }) {
   );
 }
 
-/** Off-screen honeypot input — real visitors never see or fill it; naive bots that
- * fill every field will, and the server rejects the request when it's non-empty. */
-function Honeypot({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/**
+ * Held-back findings as blurred rows. Only their shape reaches the browser — the text
+ * in each row is filler, so there is nothing real under the blur to un-blur.
+ */
+const LOCKED_FILLER = [
+  "Response header missing on the main document",
+  "Policy page could not be found from the footer",
+  "Configuration allows a weaker setting than recommended",
+  "Third-party resource loaded without an integrity check",
+  "Server discloses more than it needs to",
+];
+
+export function LockedFindings({
+  count,
+  byCategory,
+  preview,
+}: {
+  count: number;
+  byCategory: { category: string; count: number }[];
+  preview: { category: string; tier: "P1" | "P2"; status: string }[];
+}) {
   return (
-    <input
-      type="text"
-      name="company"
-      tabIndex={-1}
-      autoComplete="off"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ position: "absolute", left: -9999, width: 1, height: 1, opacity: 0 }}
-      aria-hidden="true"
-    />
+    <div style={{ marginTop: 10 }}>
+      <p style={{ fontSize: 12.5, color: "#374151", margin: "0 0 8px" }}>
+        🔒 <strong>{count}</strong> more finding{count === 1 ? "" : "s"}
+        {byCategory.length > 0 && <> in {byCategory.slice(0, 3).map((a) => `${a.category} (${a.count})`).join(", ")}</>}
+        {" "}Unlock them below.
+      </p>
+      <div aria-hidden="true" style={{ display: "flex", flexDirection: "column", gap: 8, userSelect: "none", pointerEvents: "none" }}>
+        {preview.map((p, i) => {
+          const isFail = p.status === "FAIL";
+          return (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                gap: 10,
+                padding: "10px 12px",
+                border: `1px solid ${isFail ? "#fecaca" : "#fde68a"}`,
+                borderRadius: 10,
+                background: isFail ? "#fef2f2" : "#fffbeb",
+              }}
+            >
+              <span style={{ color: isFail ? "#dc2626" : "#d97706", fontWeight: 800, fontSize: 16, lineHeight: 1, flexShrink: 0 }}>
+                {isFail ? "\u2715" : "!"}
+              </span>
+              <div style={{ minWidth: 0, filter: "blur(5px)" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  {LOCKED_FILLER[i % LOCKED_FILLER.length]}
+                  <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#6b7280" }}>{p.tier}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                  {p.category}. The evidence for this finding is in your full report.
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
+
+/** Off-screen honeypot input — real visitors never see or fill it; naive bots that
+ * fill every field will, and the server rejects the request when it's non-empty. */
 
 export function PublicScanner({ variant = "embed", defaultSource, checkCountLabel }: PublicScannerProps) {
   const isEmbed = variant === "embed";
   const [url, setUrl] = useState("");
-  const [email, setEmail] = useState("");
+  const [capture, setCapture] = useState<CaptureValues>(EMPTY_CAPTURE);
+  // Set when "Unlock" is pressed with a problem in the form, so every field says what it is.
+  const [captureTried, setCaptureTried] = useState(false);
   const [scanId, setScanId] = useState<string | null>(null);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -329,7 +467,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
     if (new URLSearchParams(window.location.search).get("example") !== "1") return;
     setIsExample(true);
     setUrl(EXAMPLE_VIEW.targetUrl);
-    setEmail("you@company.com");
+    setCapture({ name: "Alex Example", business: "Acme", email: "you@company.com", termsAccepted: true });
     setScanId(EXAMPLE_SCAN_ID);
     setView(EXAMPLE_VIEW);
   }, []);
@@ -542,15 +680,23 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
    * anonymous caller must never be able to spend AI tokens.
    */
   const sendEnquiry = useCallback(async () => {
-    const trimmed = email.trim();
-    if (!scanId || !trimmed || enquirySending) return;
+    if (!scanId || enquirySending) return;
+    if (!captureComplete(capture)) { setCaptureTried(true); return; }
     setEnquirySending(true);
     setEnquiryError(null);
     try {
       const res = await fetch(`/api/public/pulse/scan/${scanId}/enquiry`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed, honeypot, turnstileToken: scanToken, source }),
+        body: JSON.stringify({
+          name: capture.name.trim(),
+          business: capture.business.trim(),
+          email: capture.email.trim(),
+          termsAccepted: capture.termsAccepted,
+          honeypot,
+          turnstileToken: scanToken,
+          source,
+        }),
       });
       let data: { error?: string } = {};
       try {
@@ -562,17 +708,23 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
       if (!res.ok) {
         throw new Error(
           res.status === 409
-            ? "We already have a request against this email — we'll be in touch."
+            ? "This email has already unlocked a report — we'll be in touch."
             : data?.error ?? "Couldn't send that just now. Please try again.",
         );
       }
       setEnquirySent(true);
+      // Unlocking is decided on the server, so fetch the report again: the held-back
+      // findings come back in full now, replacing the blurred rows.
+      try {
+        const fresh = await fetch(`/api/public/pulse/scan/${scanId}`, { cache: "no-store" });
+        if (fresh.ok) setView((await fresh.json()) as View);
+      } catch { /* the email still carries the full report */ }
     } catch (e) {
       setEnquiryError(e instanceof Error ? e.message : "Something went wrong.");
     } finally {
       setEnquirySending(false);
     }
-  }, [email, scanId, enquirySending, honeypot, scanToken, source]);
+  }, [capture, scanId, enquirySending, honeypot, scanToken, source]);
 
   // Fallback finding list for scans stored before `triage` existed.
   const findings = (view?.checks ?? [])
@@ -586,6 +738,10 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
   const clientRendered = (view?.checks ?? []).some(
     (c) => c.checkKey === "spa_client_rendered" && c.status !== "PASS",
   );
+
+  // Findings are being held back from this visitor (the workspace limit is on and they
+  // have not unlocked). Drives the blur on the breakdown and the held-back rows.
+  const locked = Boolean(view && !view.emailCaptured && (view.triage?.lockedCount ?? 0) > 0);
 
   const formDisabled = running || starting || isExample;
   const submitDisabled = formDisabled || !url.trim() || awaitingVerification;
@@ -696,7 +852,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
       <p style={{ marginTop: 8, fontSize: 11.5, color: "#9ca3af" }}>
         {isExample
           ? "Example results, shown for illustration."
-          : `Free, no sign-up. ${checkCountLabel} automated checks — no email needed to see your results.`}
+          : `At no charge. ${checkCountLabel.charAt(0).toUpperCase()}${checkCountLabel.slice(1)} automated checks. Your score and top findings straight away, the full report by email.`}
       </p>
 
       {/* Visually-hidden live region — announces the meaningful state
@@ -767,11 +923,7 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   <span style={{ color: "#dc2626" }}>✕ {view.fail}</span>
                   <span style={{ color: "#9ca3af", fontWeight: 500 }}>{view.totalChecks} checks</span>
                 </div>
-                {running && (
-                  <p style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>
-                    Running checks live… {view.totalChecks} done
-                  </p>
-                )}
+                {running && <ScanProgress checks={view.totalChecks} />}
               </div>
 
               {/* Category tiles (fill in live).
@@ -780,14 +932,29 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   embedded iframe is a wall rather than a summary. `summarise` already
                   sorts worst-first, so the cap shows the categories that actually need
                   attention and names the remainder honestly. */}
+              <div style={{ marginTop: 22, display: "flex", flexDirection: "column", gap: 8 }}>
               {view.categories.length > 0 && (
-                <>
+                <ResultSection
+                  title="Breakdown by area"
+                  meta={locked ? `${view.categories.length} areas · locked` : `${view.categories.length} areas`}
+                >
+                  {/* While findings are held back, the category breakdown is part of what
+                      unlocking buys: shown blurred, so the visitor sees there is a full
+                      breakdown without reading it. */}
+                  {locked && (
+                    <p style={{ marginTop: 0, marginBottom: 0, fontSize: 12.5, color: "#374151" }}>
+                      🔒 Your breakdown across {view.categories.length} areas unlocks with the full report.
+                    </p>
+                  )}
                   <div
+                    aria-hidden={locked || undefined}
+                    data-locked={locked ? "true" : undefined}
                     style={{
-                      marginTop: 18,
+                      marginTop: locked ? 10 : 0,
                       display: "grid",
                       gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
                       gap: 10,
+                      ...(locked ? { filter: "blur(5px)", userSelect: "none", pointerEvents: "none" } : null),
                     }}
                   >
                     {view.categories.slice(0, 8).map((cat) => (
@@ -795,23 +962,28 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                     ))}
                   </div>
                   {view.categories.length > 8 && (
-                    <p style={{ marginTop: 10, fontSize: 12, color: "#6b7280", textAlign: "center" }}>
-                      +{view.categories.length - 8} more categories checked — see the full report.
+                    <p style={{ marginTop: 10, marginBottom: 0, fontSize: 12, color: "#6b7280" }}>
+                      +{view.categories.length - 8} more areas checked, all in your full report.
                     </p>
                   )}
-                </>
+                </ResultSection>
               )}
 
               {/* The FREE report: every P1/P2 finding, in full, with its evidence.
                   Falls back to the old FAIL/WARN list for a scan stored before
                   `triage` existed, so replaying an old row still renders. */}
-              {(view.triage?.actionable.length ?? findings.length) > 0 && (
-                <div style={{ marginTop: 22 }}>
-                  <p style={{ fontSize: 14, fontWeight: 700, margin: "0 0 4px" }}>
-                    {`What to fix (${view.triage?.actionable.length ?? findings.length})`}
-                  </p>
+              {((view.triage?.actionable.length ?? findings.length) > 0 || (view.triage?.lockedCount ?? 0) > 0) && (
+                <ResultSection
+                  title="What to fix"
+                  tone={(view.triage?.actionable ?? findings).some((f) => f.status === "FAIL") ? "fail" : "warn"}
+                  meta={(() => {
+                    const shown = view.triage?.actionable.length ?? findings.length;
+                    const held = view.emailCaptured ? 0 : (view.triage?.lockedCount ?? 0);
+                    return held > 0 ? `${shown} shown · ${held} locked` : `${shown} finding${shown === 1 ? "" : "s"}`;
+                  })()}
+                >
                   <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px" }}>
-                    Ranked worst-first by severity and certainty. All of it, free.
+                    {view.triage?.limited ? "Ranked worst-first. The headline findings, free." : "Ranked worst-first by severity and certainty. All of it, free."}
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {(view.triage
@@ -847,19 +1019,31 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                     ))}
                   </div>
 
+                  {/* Held-back findings, drawn blurred. The server sends only their SHAPE
+                      (area, priority, result) — the label and evidence are not in this
+                      response until the visitor unlocks, so the blur hides nothing that a
+                      look at the page source would reveal. */}
+                  {(view.triage?.lockedCount ?? 0) > 0 && !view.emailCaptured && (
+                    <LockedFindings
+                      count={view.triage!.lockedCount!}
+                      byCategory={view.triage!.lockedByCategory ?? []}
+                      preview={view.triage!.lockedPreview ?? []}
+                    />
+                  )}
+
                   {/* The advisory tail — counted honestly, not hidden. This is the
                       gated half, and naming its size is what makes the gate fair. */}
                   {(view.triage?.advisoryCount ?? 0) > 0 && (
                     <p style={{ fontSize: 12, color: "#6b7280", marginTop: 10, marginBottom: 0 }}>
                       Plus <strong style={{ color: "#374151" }}>{view.triage!.advisoryCount}</strong> lower-priority
-                      advisory checks
+                      checks that didn&apos;t pass
                       {view.triage!.advisoryByCategory.length > 0 && (
-                        <> — mostly {view.triage!.advisoryByCategory.slice(0, 3).map((a) => a.category).join(", ")}</>
+                        <>, mostly in {listAreas(view.triage!.advisoryByCategory.slice(0, 3).map((a) => a.category))}</>
                       )}
-                      . Those come with the in-depth review.
+                      . They&apos;re all in your full report.
                     </p>
                   )}
-                </div>
+                </ResultSection>
               )}
 
               {/* What the scan could NOT establish. Sits with the findings deliberately: a
@@ -867,33 +1051,37 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   and passed. Client-rendered pages are the common case here — their content is
                   not in the static HTML, so a scanner cannot read it without running the app. */}
               {done && unresolved > 0 && (
-                <div style={{ marginTop: 14, padding: "10px 12px", border: "1px solid #e5e7eb", borderRadius: 10, background: "#f9fafb" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-                    {`${unresolved} check${unresolved === 1 ? "" : "s"} couldn't be assessed`}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                <ResultSection title="Couldn't be assessed" meta={`${unresolved} check${unresolved === 1 ? "" : "s"}`}>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: 0, lineHeight: 1.55 }}>
                     {clientRendered
-                      ? "This site renders its content with JavaScript, so the content and SEO checks can't read it from the page source. They're reported as inconclusive rather than failed — and they're not counted in the score either way."
+                      ? "This site renders its content with JavaScript, so the content and SEO checks can't read it from the page source. They're reported as inconclusive rather than failed, and they're not counted in the score either way."
                       : "These ran without reaching a verdict, so they're excluded from the score rather than counted as passes."}
-                  </div>
-                </div>
+                  </p>
+                </ResultSection>
               )}
+              </div>
 
-              {/* THE GATE. Everything above is free and needs no email. This asks for
-                  contact details in exchange for the interpretation — what the findings
-                  mean, the order to fix them in, the implementation brief and the
-                  advisory tail. That is the half with real AI cost and real expertise
-                  behind it, so it is the honest place to ask. */}
-              {done && (
+              {/* THE GATE. The score, the free findings and the not-established list are
+                  free. Name, business, email and agreement to the terms unlock the held-back
+                  findings here (the server returns them once the lead exists) and email the
+                  visitor the full report. */}
+              {done && (() => {
+                const lockedCount = view.emailCaptured ? 0 : (view.triage?.lockedCount ?? 0);
+                const ready = captureComplete(capture);
+                // Only sending and verifying disable the button. An incomplete form stays
+                // clickable and, when pressed, says what is wrong under each field.
+                const blocked = enquirySending || awaitingVerification;
+                return (
                 <div style={{ marginTop: 22, background: NAVY_GRADIENT, borderRadius: 12, padding: 20 }}>
-                  {enquirySent ? (
+                  {enquirySent || view.emailCaptured ? (
                     <div style={{ textAlign: "center" }}>
                       <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 4px" }}>
-                        Thanks — that&apos;s with us.
+                        {enquirySent ? UNLOCKED_HEADING : "This report is unlocked."}
                       </p>
                       <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
-                        We&apos;ll come back to you with the in-depth review of {view.targetUrl}. If you&apos;d
-                        rather talk it through now, grab a slot.
+                        {enquirySent
+                          ? <>{deliveryNote(view.targetUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""), capture.email)} Want help fixing it? Grab a slot.</>
+                          : <>Every finding is shown above. Want help fixing them? Grab a slot.</>}
                       </p>
                       <a
                         href={bookingUrl}
@@ -907,72 +1095,42 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                   ) : (
                     <>
                       <p style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: "white", margin: "0 0 6px" }}>
-                        {view.fail > 0
-                          ? `${view.fail} failing check${view.fail === 1 ? "" : "s"}. Want to know what they mean?`
-                          : "Want to know what this means?"}
+                        {unlockCopy(lockedCount, view.pass + view.warn + view.fail + (view.inconclusive ?? 0)).heading}
                       </p>
                       <p style={{ fontSize: 13, color: "#9ca3af", margin: "0 0 14px" }}>
-                        The in-depth review adds what the numbers actually mean for your launch, the
-                        order to fix things in, an implementation brief your developers (or your AI)
-                        can work straight from
-                        {(view.triage?.advisoryCount ?? 0) > 0 && <>, and all {view.triage!.advisoryCount} advisory checks</>}.
+                        {unlockCopy(lockedCount, view.pass + view.warn + view.fail + (view.inconclusive ?? 0)).body}
                       </p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        <input
-                          type="email"
-                          inputMode="email"
-                          placeholder="you@company.com"
-                          aria-label="Your email address"
-                          aria-describedby={enquiryError ? "pulse-enquiry-error" : undefined}
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") sendEnquiry(); }}
-                          disabled={enquirySending}
-                          style={{
-                            padding: "12px 14px",
-                            border: "1px solid rgba(255,255,255,0.25)",
-                            borderRadius: 10,
-                            fontSize: 16, // see the URL field above — iOS focus zoom
-                            outline: "none",
-                            background: "rgba(255,255,255,0.06)",
-                            color: "white",
-                          }}
-                        />
-                        <Honeypot value={honeypot} onChange={setHoneypot} />
-                        <button
-                          onClick={sendEnquiry}
-                          disabled={enquirySending || !email.trim() || awaitingVerification}
-                          style={{
-                            padding: "12px 20px",
-                            borderRadius: 10,
-                            border: "none",
-                            background: enquirySending || !email.trim() || awaitingVerification ? "rgba(255,255,255,0.35)" : "white",
-                            color: "#111827",
-                            fontSize: 14,
-                            fontWeight: 700,
-                            cursor: enquirySending || !email.trim() || awaitingVerification ? "default" : "pointer",
-                          }}
-                        >
-                          {enquirySending ? "Sending…" : awaitingVerification ? "Verifying…" : "Get the in-depth review"}
-                        </button>
-                      </div>
+                      <CaptureFields
+                        values={capture}
+                        onChange={setCapture}
+                        onSubmit={sendEnquiry}
+                        disabled={enquirySending}
+                        showAllErrors={captureTried}
+                        idPrefix="pulse-capture"
+                        describedBy={enquiryError ? "pulse-enquiry-error" : undefined}
+                      />
+                      <Honeypot value={honeypot} onChange={setHoneypot} />
+                      <button
+                        onClick={sendEnquiry}
+                        disabled={blocked}
+                        style={{
+                          marginTop: 10,
+                          width: "100%",
+                          padding: "12px 20px",
+                          borderRadius: 10,
+                          border: "none",
+                          background: blocked || !ready ? "rgba(255,255,255,0.35)" : "white",
+                          color: "#111827",
+                          fontSize: 14,
+                          fontWeight: 700,
+                          cursor: blocked ? "default" : "pointer",
+                        }}
+                      >
+                        {enquirySending ? "Sending…" : awaitingVerification ? "Verifying…" : lockedCount > 0 ? "Unlock the full report" : "Email me the full report"}
+                      </button>
                       {enquiryError && (
                         <p id="pulse-enquiry-error" role="alert" style={{ marginTop: 8, marginBottom: 0, fontSize: 12, color: "#fca5a5" }}>
                           {enquiryError}
-                        </p>
-                      )}
-                      {!isExample && (
-                        <p style={{ fontSize: 11.5, color: "#9ca3af", margin: "10px 0 0" }}>
-                          Or{" "}
-                          <a
-                            href={`/scan/${view.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: "#d1d5db", textDecoration: "underline" }}
-                          >
-                            open the full report on its own page
-                          </a>{" "}
-                          — a link you can share.
                         </p>
                       )}
                       <p style={{ fontSize: 11.5, color: "#6b7280", margin: "10px 0 0" }}>
@@ -985,7 +1143,8 @@ export function PublicScanner({ variant = "embed", defaultSource, checkCountLabe
                     </>
                   )}
                 </div>
-              )}
+                );
+              })()}
             </>
           )}
         </div>

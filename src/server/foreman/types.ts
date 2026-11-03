@@ -22,7 +22,8 @@ export type ProjectFindingKind =
   | "MILESTONE_MISSED" // a milestone date has passed with work outstanding
   | "MILESTONE_IMMINENT" // a milestone lands within the due-soon horizon with work outstanding
   | "DUE_SOON_CLUSTER" // a burst of tasks all falling due within the horizon
-  | "UNASSIGNED_WORK"; // time-critical tasks with no owner
+  | "UNASSIGNED_WORK" // time-critical tasks with no owner
+  | "PLAN_DRIFT"; // planned tasks left alone while the work is done outside the plan
 
 export type DeveloperFindingKind =
   | "DEV_OVERDUE" // a developer is carrying overdue tasks

@@ -58,14 +58,18 @@ export const onlineFootprintRunner: DevSignalStageRunner = {
           label: "Technical depth",
           score: analysis.recommendedTechnicalDepth,
           maxScore: 100,
-          rationale: `${analysis.metrics.languageCount} languages, avg health ${Math.round(analysis.metrics.averageHealthScore)}`,
+          rationale: `${analysis.metrics.languageCount ?? "unknown"} languages, avg health ${Math.round(analysis.metrics.averageHealthScore)}`,
         },
         {
           key: "code_quality",
           label: "Code quality",
           score: analysis.recommendedCodeQuality,
           maxScore: 100,
-          rationale: `docs ${analysis.metrics.docsCoverage}%, tests ${analysis.metrics.testsCoverage}%, CI ${analysis.metrics.ciCoverage}%`,
+          // Null coverage = no repo could be read: say "unknown", never print a 0%.
+          rationale:
+            analysis.metrics.docsCoverage === null
+              ? "repository contents could not be read, so docs/tests/CI are unknown"
+              : `docs ${analysis.metrics.docsCoverage}%, tests ${analysis.metrics.testsCoverage}%, CI ${analysis.metrics.ciCoverage}%`,
         },
         {
           key: "delivery_readiness",

@@ -31,6 +31,8 @@ import type {
   TaskAttentionDTO,
 } from "@/types/tasks";
 import { TASK_STATUSES, TASK_STATUS_LABELS } from "@/types/tasks";
+import { BoardColumnError, parseBoardColumns } from "@/lib/tasks/board-columns";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ─── Row shapes + mappers ──────────────────────────────────────────────────
 
@@ -97,6 +99,7 @@ function taskRowToDTO(row: TaskRow): TaskDTO {
     // legacy UI_DONE row to In Review on read — it renders/behaves as In Review
     // everywhere and can be moved on normally. No new task can be set to it.
     status: (row.status === "UI_DONE" ? "IN_REVIEW" : row.status) as TaskStatus,
+    boardColumnId: row.boardColumnId,
     priority: row.priority as TaskPriority,
     label: row.label as TaskLabel | null,
     orderKey: row.orderKey,
@@ -139,6 +142,7 @@ function taskListDTO(task: TaskDTO): TaskDTO {
     description: null,
     acceptanceCriteria: null,
     status: task.status,
+    boardColumnId: task.boardColumnId,
     priority: task.priority,
     label: task.label,
     orderKey: task.orderKey,
@@ -341,8 +345,10 @@ function statusTimestamps(
   prevStatus: TaskStatus | null,
   nextStatus: TaskStatus,
   row: { startedAt: Date | null },
-): { startedAt?: Date | null; completedAt?: Date | null } {
-  const out: { startedAt?: Date | null; completedAt?: Date | null } = {};
+): { startedAt?: Date | null; completedAt?: Date | null; boardColumnId?: null } {
+  const out: { startedAt?: Date | null; completedAt?: Date | null; boardColumnId?: null } = {};
+  // A custom board column is a lane inside one status, so leaving the status leaves the lane.
+  if (prevStatus !== null && prevStatus !== nextStatus) out.boardColumnId = null;
   const startedStates: TaskStatus[] = ["DOING", "IN_REVIEW", "UI_DONE", "DONE"];
   if (startedStates.includes(nextStatus) && !row.startedAt) {
     out.startedAt = new Date();
@@ -360,7 +366,25 @@ function statusTimestamps(
 
 export async function listTasks(
   user: EffectiveUser,
-  opts: { clientId?: string; status?: TaskStatus; assigneeId?: string; sourceMeetingId?: string; archived?: boolean; includeSubtasks?: boolean; limit?: number; doneWithinDays?: number; blocked?: boolean } = {},
+  opts: {
+    clientId?: string;
+    /** Several clients at once; each must still be in the caller's scope. */
+    clientIds?: string[];
+    status?: TaskStatus;
+    assigneeId?: string;
+    sourceMeetingId?: string;
+    archived?: boolean;
+    includeSubtasks?: boolean;
+    limit?: number;
+    doneWithinDays?: number;
+    blocked?: boolean;
+    /** Only tasks nobody is assigned to (neither the m-n join nor the legacy column). */
+    unassignedOnly?: boolean;
+    /** Only tasks in a category (feature block) — "on the plan". */
+    plannedOnly?: boolean;
+    /** Exclude DONE. */
+    openOnly?: boolean;
+  } = {},
 ): Promise<TaskDTO[]> {
   await ensureBaseRecords();
   const where = await clientScopeWhere(user);
@@ -374,7 +398,20 @@ export async function listTasks(
     await assertClientInScope(user, opts.clientId);
     where.clientId = opts.clientId;
   }
+  if (opts.clientIds) {
+    // Intersect with the caller's scope, exactly as `clientId` does — a restricted user
+    // naming a client they aren't assigned to gets nothing for it, not an error.
+    const scoped = where.clientId as { in?: string[] } | undefined;
+    const allowed = scoped?.in ? opts.clientIds.filter((id) => scoped.in!.includes(id)) : opts.clientIds;
+    where.clientId = { in: allowed.length ? allowed : ["__none__"] };
+  }
   if (opts.status) where.status = opts.status;
+  else if (opts.openOnly) where.status = { not: "DONE" };
+  if (opts.plannedOnly) where.featureBlockId = { not: null };
+  if (opts.unassignedOnly) {
+    const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    where.AND = [...existingAnd, { assigneeId: null, assignees: { none: {} } }];
+  }
   // Board / list show top-level tasks only; subtasks live in the detail drawer. The standup
   // opts into subtasks so a parent's updated subtasks each appear in the Slack update.
   if (!opts.includeSubtasks) where.parentId = null;
@@ -394,7 +431,13 @@ export async function listTasks(
   }
   if (opts.assigneeId) {
     const id = opts.assigneeId === "me" ? user.id : opts.assigneeId;
-    where.OR = [{ assignees: { some: { id } } }, { assigneeId: id }];
+    const mine: Prisma.TaskWhereInput[] = [{ assignees: { some: { id } } }, { assigneeId: id }];
+    where.OR = opts.includeSubtasks
+      ? // A subtask nobody is assigned to belongs to whoever owns its parent — the same
+        // rule as reportOwnerIds (src/lib/standup-report.ts). Most live subtasks predate
+        // inheriting the parent's assignees, so without this they are reported for nobody.
+        [...mine, { assigneeId: null, assignees: { none: {} }, parent: { OR: mine } }]
+      : mine;
   }
   if (opts.sourceMeetingId) {
     const linkedItems = await prisma.meetingActionItem.findMany({
@@ -734,7 +777,7 @@ export async function importTasks(
     assigneeIds.length
       ? (
           await prisma.workspaceMember.findMany({
-            where: { workspaceId: user.workspaceId, userId: { in: assigneeIds } },
+            where: { workspaceId: user.workspaceId, userId: { in: assigneeIds }, ...ACTIVE_MEMBER },
             select: { userId: true },
           })
         ).map((m) => m.userId)
@@ -925,14 +968,22 @@ export async function updateTask(
 export async function moveTask(
   user: EffectiveUser,
   id: string,
-  input: { status: TaskStatus; orderKey: number },
+  input: { status: TaskStatus; orderKey: number; boardColumnId?: string | null },
 ): Promise<TaskDTO> {
   const existing = await prisma.task.findFirst({
     where: { id, workspaceId: user.workspaceId },
-    select: { clientId: true, status: true, startedAt: true },
+    select: { clientId: true, status: true, startedAt: true, client: { select: { taskBoardColumns: true } } },
   });
   if (!existing) throw new ForbiddenError("Task not found");
   await assertClientInScope(user, existing.clientId);
+
+  // Only a column this client has, inside the status being moved to.
+  const column = input.boardColumnId
+    ? parseBoardColumns(existing.client.taskBoardColumns).find((c) => c.id === input.boardColumnId)
+    : undefined;
+  if (input.boardColumnId && (!column || column.stage !== input.status)) {
+    throw new BoardColumnError("That column isn't on this board any more. Refresh and try again.");
+  }
 
   const row = await prisma.task.update({
     where: { id },
@@ -940,6 +991,7 @@ export async function moveTask(
       status: input.status,
       orderKey: input.orderKey,
       ...statusTimestamps(existing.status as TaskStatus, input.status, existing),
+      boardColumnId: column?.id ?? null,
     },
     include: taskInclude,
   });
@@ -1270,7 +1322,7 @@ export async function addTaskComment(
   let mentionIds: string[] = [];
   if (rawIds.length > 0) {
     const members = await prisma.workspaceMember.findMany({
-      where: { workspaceId: user.workspaceId, userId: { in: rawIds } },
+      where: { workspaceId: user.workspaceId, userId: { in: rawIds }, ...ACTIVE_MEMBER },
       select: { userId: true },
     });
     const valid = new Set(members.map((m) => m.userId));

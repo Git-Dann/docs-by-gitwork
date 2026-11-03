@@ -57,7 +57,7 @@ export function CourseRequestForm({ initial, onSave, onClose, isSaving }: Props)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-[12px] bg-white shadow-xl">
+      <div className="app-dialog-fixed flex w-full max-w-lg flex-col rounded-[12px] bg-white shadow-xl">
         <div className="widget-header shrink-0 rounded-t-[12px]">
           <span className="widget-header__label">{isEditing ? "Edit Request" : "Add Request"}</span>
           <button
@@ -70,7 +70,7 @@ export function CourseRequestForm({ initial, onSave, onClose, isSaving }: Props)
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
               <div>
                 <label className={fieldLabel} style={{ fontFamily: MONO }}>

@@ -191,6 +191,12 @@ from an earlier commit. The Prisma client generates fine and TypeScript compiles
 DB never gets the column → `upsert()` calls fail at runtime with *"the column does not exist
 in the current database."*
 
+⚠️ **A new `@unique` is refused even on a brand-new, all-null column** (Oct 2026, §87). Prisma
+counts any added unique constraint as possible data loss, so `Candidate.memberId @unique` blocked
+the whole deploy of #739 while the old image kept serving. Enforce one-per-parent in code and use
+`@@index` instead, or add the constraint by hand first. A scratch Postgres loaded with production's
+schema reproduces the refusal exactly; run `prisma db push` against it before merging.
+
 When shipping a schema change, **before merging**:
 
 1. Run `git diff origin/main -- prisma/schema.prisma` and look for anything dropped — columns,
@@ -279,11 +285,12 @@ The sidebar uses different labels from the URL routes — mapping below.
 | **Docs** | `/app/docs` | `src/server/proposals.ts` · `documents.ts` · `document-analytics.ts` | Document builder (proposals + SLA/SOW/MSA/NDA/CO/DSA) — registry-driven sections, costing, timeline, markdown rich text, split-screen live preview, tokenised public share (`/docs/[token]`), e-sign, comments, versions, AI authoring, **link tracking + analytics** (`/app/docs/analytics`). `/app/proposals/*` are redirect stubs (see §16) |
 | **Portal** | `/app/portal` (legacy `/app/clients`) | `src/server/clients.ts` · `meetings.ts` | Client management + detail pages, incl. **Scribe** AI meeting notes per-client (no sidebar item — see §14). `/app/clients(/[slug])` are redirect stubs — they were a live, degraded second copy missing the tasks/wiki/design-system children |
 | **Care** | `/app/care` (legacy `/app/support`) | `src/server/support.ts` | Client support ops. ⚠️ **Two UIs are live.** `/app/care` is the rebuilt cockpit; `/app/support` still serves the 5,535-line legacy dashboard and exclusively owns add-client, Tickets, monthly Reports, health scoring, AI search and workflow rules. `client-cockpit.tsx` imports `ConnectorsView` *out of* the legacy file, so it cannot be deleted yet. Finishing the port is a two-way merge, not a cutover |
-| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip beside Decks |
+| **Analytics** | `/app/analytics` | `src/server/analytics/` | Delivery, output & AI usage. Super Admin — gated by the page itself (`notFound()` on a live DB role read), not by `MODULE_PATHS`. **No sidebar item since Aug 2026** — a mono `· ANALYTICS` link in the HQ context strip |
 | **Starters** | `/app/starters` | `src/server/starters*.ts` | Prompt→production library. **Super Admin only**, enforced by a dedicated check in `middleware.ts` ahead of the module gate. **No sidebar item since Aug 2026** — a mono `· STARTERS` link in the HQ context strip |
 | **Handbook** | `/app/handbook` | — | Internal developer knowledgebase. Deliberately readable by every internal user (no module gate); writes are Admin+ (enforced in `/api/handbook`) |
 | **Templates** | `/app/templates` | `src/server/proposals.ts` | Document templates. Linked from the Docs workspace; gated on `proposals` since July 2026 |
 | **Study** (tool) | `/app/study` | `src/server/study*.ts` + `study-agents/` | AI user research — multi-agent persona interviews, synthesis, reports. **No sidebar item** — surfaced as an optional tool inside Pulse (see §26). Routes/API/models unchanged at `/app/study` · `/api/study` |
+| **Monitors** | `/app/monitors` | `src/server/wiki-monitor-board.ts` (`loadMonitorBoard`) | Every client's uptime monitors and open incidents on one page. The monitors themselves still live in each client's wiki. Gated by the `monitors` module perm: Staff + Admin by default, granted per developer. Internal-only (no guests). See §108 |
 | **Backstage** | `/app/backstage` | `src/server/backstage.ts` + `backstage-holidays.ts` | Internal Gitwork ops umbrella — v1 covers staff leave booking + expenses tracking + staffing alerts on HQ. Future tools slot in as `/app/backstage/<slug>` |
 | **Settings** | `/app/settings` | — | AI provider config, rate card, workspace branding |
 | **Proof** | `/app/proof` | `src/server/proof.ts` | Document sign-off workflow — currently **hidden from nav** (commented out in app-shell.tsx) |
@@ -308,7 +315,9 @@ The sidebar uses different labels from the URL routes — mapping below.
 | `/report/[token]` · `/docs/[token]` · `/sign/[token]` · `/onboarding/[token]` · `/timeline/[token]` · `/brand/[token]` · `/wiki/[slug]` · `/vet/[token]` | Client & candidate deliverables — the URL token is the credential. All noindex, all disallowed in `robots.ts` |
 | `/demo/**` | 16 white-labelled sales demos. Public by design, noindex, **fully mock** — no demo page imports Prisma or any server module |
 | `/edge` | Corsair Xeneon kiosk board. Session-gated, chrome-free, dark-forced. Entry point now lives in **Settings → Labs** (§4a) rather than a top-level route, per the rule below |
+| `/guidelines` | The Gitwork brand guidelines as a 16:9 deck (§91). Session-gated like `/deck`, forced light, reached from Settings → Labs |
 | `/deck` | Deck slide editor shell (static, `public/deck/index.html`, rewritten in `next.config.ts`). Session-gated. **Do not move it** — four vendored files test `location.pathname.startsWith('/deck')` and a Next rewrite does not change `location.pathname`; `foundry-doc.ts` uses that test to select DOCUMENT MODE, so `/app/deck?doc=` would boot an empty file-mode deck and stop saving |
+| `/canvas` | Canvas artwork tools shell (static, `public/canvas/index.html`, rewritten in `next.config.ts`). Session-gated like `/deck`. Built from `Git-Dann/canvas` — see §63. Reached from Settings → Labs |
 | `/app/pulse/[scanId]/report` | Printable Pulse report (in-app) |
 
 ### 4a. Where a surface belongs
@@ -316,8 +325,8 @@ The sidebar uses different labels from the URL routes — mapping below.
 `/app/<name>` is for a **main product** — its own sidebar item and module permission.
 Anything else gets an entry point, not a namespace:
 
-- **A feature of a product** → surfaced inside that product. Deck sits on the Docs
-  toolbar; Study sits inside Pulse; Scribe is a panel on the client detail page.
+- **A feature of a product** → surfaced inside that product. Decks are made in Docs
+  (+ New → Deck); Study sits inside Pulse; Scribe is a panel on the client detail page.
 - **An experiment or internal-only surface** → **Settings → Labs**
   (`src/components/settings/labs-panel.tsx`, Super Admin). `/edge` is the first entry.
 - **A second internal tool** → under Backstage, never a new top-level item (§10).
@@ -1797,8 +1806,8 @@ tags exist. Do not invent a fourth.
 
 | Tag | Means | Current members |
 |---|---|---|
-| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad** |
+| `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -2113,7 +2122,19 @@ Vercel before the migration and absent on the VPS after it. Consequences, all si
   `pubspec.yaml` was reported as having none of them (§34.7 covers the guard that now prevents this).
 - `codeclear-analysis.ts` has the **same shape and worse stakes**: `detectRepoSignals` turns an
   empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding `CodeClearScore`. Every
-  private candidate repo has been scored as having no tests, CI, linter or docs. **Not yet fixed.**
+  private candidate repo has been scored as having no tests, CI, linter or docs. **Fixed in #470
+  and #471** (unreadable is now "unassessed"; tests/lint detected across every language). Since
+  October 2026 Code also measures the actual source of a candidate's top three repos, as evidence
+  only (`measured_code_health`, never FAIL, scores unchanged). **Finished October 2026:** the
+  profile level still turned "nothing readable" into 0% coverage (FAIL checks, red flags at −3
+  calibre each, a lower recommended code-quality score). Unread signals are now `null`, coverage
+  is `null` when no sampled repo was read, recommended scores exclude unknown terms from both
+  sides (`weightedScore`), coverage checks go SKIPPED with "Couldn't read …: <reason>", and the
+  reason (`NO_TOKEN` / `NO_ACCESS` / `RATE_LIMITED` / `NOT_FOUND`) is stored per repo. Our lack
+  of access is never a red flag. Commits and languages that cannot be read are `null` too:
+  `commit_cadence` and `language_breadth` are then SKIPPED, and their points are excluded from the
+  health and technical-depth scores rather than scored as zero. An empty repository's 409 still
+  counts as zero commits. Tests: `codeclear-unreadable-repo.test.ts`.
 
 ### What changed
 
@@ -2192,10 +2213,8 @@ It is not — the tree read is REST, which succeeds unauthenticated on a **publi
 GraphQL path proves the token. Verified by unit test rather than by inference: 6 tests for the
 partial-error contract, 5 asserting the native family survives every GraphQL failure mode.
 
-**Still open (unchanged):** `codeclear-analysis.ts` has the same shape with worse stakes —
-`detectRepoSignals` turns an empty listing into `hasTests/hasCi/hasLint/hasReadme: false`, feeding
-`CodeClearScore`, so every private candidate repo has been scored as having no tests, CI, linter or
-docs.
+**Since fixed:** `codeclear-analysis.ts` had the same shape. It was fixed in #470/#471. This
+note said "still open" until October 2026, which sent a later session to fix something already fixed.
 
 ## 36. Recent Changes (July 2026) — Dispatch (the Slack-resident coordinator)
 
@@ -2364,7 +2383,7 @@ Not missing findings: an app on a supported version reported as end-of-life. Ful
 | Constant | File | Value | Cadence |
 |---|---|---|---|
 | `ELECTRON_OLDEST_SUPPORTED_MAJOR` | `desktop-app.ts` | 41 | new major every 8 weeks, latest 3 supported |
-| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 84 | latest 3 minors |
+| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 86 | latest 3 minors |
 | `PLAY_TARGET_SDK_FLOOR` | `android-app.ts` | 35 | each August |
 
 ### 37.6 Things learned (again) writing this
@@ -2504,9 +2523,8 @@ case (noindex, in `robots.ts`) — a working document with dated regulation, sou
 specimen certificate, the competitive-gap table, and an explicit register of what is NOT built
 and what is unresolved.
 
-**Deferred, highest-value first:** **commit pinning** — `subjectCommit` is written `null`
-because `PulseScan` never records the SHA it read, so a mark currently names a repo rather
-than a version (recorded as null rather than guessed, per the no-false-precision rule);
+**Deferred, highest-value first:** ~~commit pinning~~ (**done October 2026**: a repo mark is
+pinned to the commit the code-health measure read, sealed, and shown as "Version examined");
 **continuous re-examination** as a `COUNTERMARK_RECHECK` job on the existing Curator/Foreman cron spine
 (this is the subscription); **licensed issuers** for white label (issuer record + per-issuer
 certificate branding + a public issuer directory); a **public `SAS-1` page** at a stable URL so
@@ -3117,9 +3135,8 @@ in the place a reader looks first. **"Save as snippet"** was removed from the bl
 - **Short-label fields are still the old `InlineTextArea`.** Route B's scope was prose fields; those
   45 fields still show literal `**asterisks**`. The Numbered-list command correctly stays inert on
   them (a field only lights the commands it declares).
-- **There is a FOURTH Markdown renderer** — `src/components/clients/wiki/wiki-page-editor.tsx`,
-  using `dangerouslySetInnerHTML`. It escapes `& < >` up front so it is not obviously unsafe, but
-  the client intake API (§40.1) writes into that surface and nothing holds it to the other three.
+- ~~There is a FOURTH Markdown renderer~~ — **fixed October 2026 (§70)**: wiki pages now render
+  as React elements through `src/lib/wiki-markdown.tsx`, sharing `renderInline` + `safeUrl`.
 - **The cover editor still shows every field always.** Making fields addable/removable — across all
   blocks, not just the cover — is an open design question, not a coded decision.
 
@@ -4549,3 +4566,4886 @@ absent course is normal fuzzy behaviour; 33 unrelated rows was the bug.
 `audit:ui` 0 findings; `npx next build` clean. Proved to discriminate by reverting each
 fix in turn — subsequence bound (1 failure), field-length gate (1), mid-word floor (1),
 tolerance scale (1), prefix tie-break (1), tier order (1).
+
+## 46. Recent Changes (September 2026) — The standup review dialog resized with its content
+
+Dan reported that the **Morning** and **End of day** review popups on the daily roll-up
+card "do not follow our fixed height rule for pop ups". They did not.
+
+**Cause: nothing declared a height, so the content set one.** The panel was
+`w-full max-w-lg` — width only — and the update list inside was `max-h-[46vh]`. A
+`max-h` caps the tall case but does nothing for the short one, so the box collapsed
+around whatever was being reviewed. Measured in headless Chromium against CSS built
+from the tree, the **same dialog**:
+
+| Viewport | one-line update | long update | swing |
+|---|---|---|---|
+| 1440×900 | 281px | 597px | **316px** |
+| 1280×620 | 281px | 468px | 187px |
+| 390×844 | 298px | 571px | 273px |
+
+Opening Morning and then End of day resized the box under the cursor — which is
+exactly what the rule exists to stop.
+
+**Fixed by giving the height to the panel**, per DESIGN.md: `flex h-[80vh]
+max-h-[680px] min-h-[min(460px,80vh)] w-full max-w-lg flex-col`, with a `shrink-0`
+header, a `min-h-0 flex-1 overflow-y-auto` middle and a `shrink-0` footer. Same clamp
+as `project-update-composer.tsx`, the sibling dialog that does the same job (pushing an
+update to Slack) — consistency between the two was worth more than shaving 100px off the
+short case. Re-measured: **0px spread at all three viewports**, header a steady 36px,
+Send always reachable without scrolling, nothing off-screen.
+
+⚠️ **`min-h-[min(460px,80vh)]`, not `min-h-[460px]`** — a bare 460px floor would push the
+panel past a short viewport, and the Modal's backdrop layer does not scroll, so the
+bottom of the dialog would be unreachable rather than merely cramped.
+
+**`.widget-header` had no `flex-shrink: 0`.** It is `height: 36px` with no shrink guard,
+so the moment a dialog panel becomes a flex column the header compresses. Fixed in the
+`<Modal>` primitive (`widget-header shrink-0`) rather than in `globals.css` — scoped to
+dialogs, which is where flex-col panels are being introduced.
+
+⚠️ **The rule was written narrowly and that is why this shipped.** DESIGN.md described the
+fixed height only as part of the **two-column "list + inspector"** pattern, so a
+single-column review dialog read as out of scope. The rule now says explicitly that it
+applies to **any** dialog whose content varies, and that a `max-h-[Nvh]` on the scroll
+region is not a fixed height.
+
+⚠️ **A test that passed for free.** The first version of the regression test mounted each
+content size without clearing the DOM, so `document.querySelector('[role="dialog"]')`
+returned the **previous** mount's panel — making the long-vs-short comparison compare one
+panel with itself. It only surfaced because a later assertion failed against the stale
+panel. `openDialog()` now clears `document.body` first.
+
+**~20 other components still use `max-h-[Nvh]`** (`grep -rl "max-h-\[[0-9]*vh\]" src/components`).
+Most are dropdowns and menus, where sizing to the viewport is correct. Not swept — a dialog
+that varies its height needs the panel treatment, a menu does not, and telling them apart
+needs looking at each one.
+
+**Verified:** `npm run verify` green — tsc + lint 0 errors, **3216 tests** (5 new), `audit:ui`
+0 findings; `npx next build` clean. Geometry measured at 1440×900 · 1280×620 · 390×844 in
+both themes, before and after. Proved to discriminate by reverting each part in turn —
+restoring the original `max-h-[46vh]` (2 failures), removing the panel height (1), dropping
+`min-h-0` (1), unpinning the footer (1), letting the header compress (1), and collapsing the
+empty state (1).
+
+**Not verified live:** `/app` is auth-gated with no staging, so the dialog was mounted in
+jsdom through its real hooks (mocked at the module edge) and the resulting markup measured in
+headless Chromium. Post-deploy: open Morning and End of day back to back and confirm the box
+does not move.
+
+## 47. Recent Changes (September 2026) — Requests became a tracker, and the client's sheet follows the board
+
+Dan's brief: *"clients are forever linking spreadsheets, I want to unify this in Foundry
+… make it easier for devs to take the tasks into their pipeline, but clients to also see
+where the tasks are up to."* Reading the code, the reason clients keep their own sheets
+turned out to be a defect, not a missing feature.
+
+### 46.1 The defect: nothing ever wrote back
+
+`promoteWikiIntakeItemToTask` sets `ClientWikiIntakeItem.status = "PROMOTED"` and stamps
+`taskId`. **No code path anywhere writes that row again.** A developer could drag the card
+BACKLOG → DOING → DONE, ship the fix, and the client's Requests page would still read
+"Task created" — forever. Verified exhaustively: `src/server/tasks.ts` contains **zero**
+references to the intake table, `taskId` is a bare `String?` with no relation (so Prisma
+cannot even join it), and the `metadata.wikiIntake` breadcrumb written at promotion is
+**written once and never read anywhere in the repo**.
+
+So Foundry told a client we had started and could never tell them we had finished. That is
+what a parallel spreadsheet is for.
+
+### 46.2 The fix is derived, not synced — and that is the whole design
+
+The obvious repair is to write the task's status onto the intake row whenever a task moves.
+That is a second source of truth, correct only while **every** write path remembers it —
+batch updates, the drag handler, the detail drawer, the standup, the importer, MCP. Miss
+one and the row lies again, silently, exactly as it does today.
+
+Instead: `loadLinkedTaskStatuses()` batch-reads the linked tasks in the wiki loader, and the
+**pure** `deriveRequestStage()` (`src/lib/wiki-request-stage.ts`) turns
+`(intake status, task status)` into one client-facing word on every read. There is no write
+path to forget, and a board that has drifted repairs itself the moment anyone looks at it.
+Same call as Care's reply state (§42.2) and the Docs cover contents (§41.6): **store the
+facts a system can observe, derive the judgement at read time.**
+
+Two rules the derivation must keep, each with a test named for it:
+
+- ⚠️ **`taskStatus: null` never becomes SCHEDULED.** It means either nothing is promoted yet
+  *or* `taskId` points at a task that has been deleted — there is no FK, so that dangles.
+  Both collapse to `REVIEWING`, because "we have it" is true in both cases and "it is on the
+  board" is not. Reporting a deleted task as scheduled is the §35 mistake exactly: "we could
+  not look" rendered as a fact.
+- ⚠️ **`CLOSED` wins over a live task.** "Mark dealt with" is the team explicitly filing the
+  request, and its own tooltip says any task created from it is deliberately untouched. A
+  task still in flight must not put a filed request back on the client's open list.
+
+`stage` also ships on the intake API's `?items=1` reconciliation endpoint — that is the
+endpoint an integrator polls to answer "has Gitwork shipped this yet", which until now it
+could only answer as `PROMOTED` forever. Documented in `docs/client-intake-api.md`.
+
+### 46.3 Five DTO fields were in the model and in the type but not in the query
+
+`WIKI_INCLUDE.intakeItems.select` omitted `label`, `categoryId`, `categoryLabel`,
+`externalUrl` and `attachmentUrls`. The omission was **invisible** because
+`serializeWikiIntakeItem` defaults each to `null` rather than failing — so the Requests page
+showed every item's category as its underlying TYPE, never showed a dev label at all, and
+dropped the deep link back into the client's own tracker, which is the entire reason the
+intake API stores `externalUrl`. A defaulting serializer over a narrowed `select` turns a
+missing column into a plausible value; prefer requiring the field in the parameter type.
+
+### 46.4 The UI is a grid, and it collapses rather than scrolls on a phone
+
+Two stacked `widget-card`s, full width: `01 // LOG A REQUEST` (one line + Enter, with
+everything optional behind "More fields") and `02 // REQUESTS` (the grid). Search reuses
+`fuzzySearch` (§45.1) and spans every category and stage, a stage `<select>` filters the new
+axis, bulk select drives a fixed batch bar (create tasks / dealt with / reopen / delete), and
+**Copy** puts the visible rows on the clipboard as TSV — one paste into Sheets, because
+pretending nobody will ever want the data elsewhere is what created the problem.
+
+⚠️ **The mobile answer here is fewer columns, not a scroller.** Below `md` the grid is two
+columns — request and stage — with the other four values on a mono sub-line under the title,
+so nothing is lost and **nothing overflows**. The `min-w-[940px]` is therefore `md:`-prefixed;
+unprefixed it would manufacture a sideways scroll on a phone that need not exist. From `md`
+up the header and the rows share **one** `overflow-x-auto`, per §45.2 — this section renders
+inside `.widget-card`, which is `overflow: hidden`, so a wide child with no scroller of its
+own is *unreachable*, not merely off-screen.
+
+### 46.5 Three defects found by rendering it, none of which a code read would have caught
+
+1. **`sm:flex-row` on the add row left the title input 38px wide.** A breakpoint asks about
+   the VIEWPORT; the constraint was the CONTAINER — the wiki's own content column is 405px at
+   a 768px viewport. Now `flex-wrap` with `min-w-[220px]` on the field, which asks the right
+   question: if the title cannot have 220px, the selects drop to their own line.
+2. **The mobile sub-line truncated with no `title`** — a `TRUNCATED` defect under
+   `audit:clipping`, and measured: it really does cut off mid-name at 375px. A test now sweeps
+   every `.truncate` in a rendered row and fails naming any without a recoverable title.
+3. **The stage chip rendered empty with a literal `undefined` in its class list** when `stage`
+   was absent. Caught because a render fixture ended in `as unknown as WikiIntakeItemRecord`,
+   which is precisely why that cast is a trap — it meant a new required field was missing and
+   `tsc` said nothing. The cast is gone, and the chip now shows an em-dash, which matters for
+   one real case: a React Query cache written by the deploy *before* `stage` existed.
+
+**Verified:** tsc + lint **0 errors** (41 warnings, all pre-existing), **3239 tests**,
+`audit:ui` **0 findings** with its self-test passing; `npx next build` clean, 103 static
+pages. Driven live at `/demo/wiki` (seeded with a request at every stage — a demo showing
+only NEW and TRIAGED would verify the CSS and nothing else, §43.3): at 375 · 768 · 1440 the
+page overflow is **0**, no truncated cell is unrecoverable, and the grid scrolls rather than
+clips. Seven guards were **proved to discriminate** by breaking them on purpose — removing
+the scroller (6 failures), dropping the `md:` prefix (2), giving the header its own scroller
+(2), removing the unknown-stage guard (1), un-escaping tabs in the export (1), dropping a
+truncation title (1), and claiming SCHEDULED for an unestablished task status (1).
+
+⚠️ **`npm run verify` failed on `main` for everyone when this was written. Fixed in
+September 2026 — see §54.** The diagnosis recorded here (`audit:dependencies`) was wrong:
+that step passes on its own and always did. Every one of the ~28,000 errors came from
+ESLint walking into `.claude/worktrees`, the nested checkouts Claude Code creates per
+session, and linting the whole repo again from inside each one. `npm run verify` now
+exits 0.
+
+**Not verified:** the live page against a real database. `/app` is auth-gated with no
+staging, so the derivation has only been exercised against demo data. **Post-deploy:** open a
+client's Requests page, promote a request, move its task to Doing on the board, reload the
+wiki, and confirm the row reads **In progress** without anyone having touched the request.
+## 48. Recent Changes (September 2026) — Insights: charts and diagrams in a client's wiki
+
+A new client-wiki section where a Gitwork user authors figures for a client: **bar, pie,
+Venn and a two-level node map**. The node map is why it exists — Dan's brief was to show
+Coachman *"the caravan as a core then loads of connected entities"*, and there was no node
+or Venn renderer anywhere in the codebase.
+
+**No charting library, and none was needed.** `analytics-widgets.tsx` is already a
+dependency-free, token-correct SVG kit; its `Donut` is reused **verbatim** for the pie
+(zero prop changes). Only the node and Venn renderers are genuinely new.
+
+⚠️ **`MiniColumns` is deliberately NOT reused for the bar**, and that is the one place
+this work went against "reuse before building". Three concrete blockers: it is
+`preserveAspectRatio="none"` so it STRETCHES (correct for a micro-chart, wrong the moment
+there is text); it has no labels at all (its one consumer supplies them as a sibling row
+of `<span>`s, which works for five fixed buckets and not for twelve authored names); and
+it takes `values: number[]`, so there is no per-column colour. Extending it would push
+label fitting, a height-varying viewBox and a palette into a component whose two existing
+consumers want none of it. The five-line diverging-baseline maths is reimplemented in
+`bar-layout.ts` and its test pins the same semantics, so the two cannot disagree.
+
+### 47.1 The data model is one board table and THREE point tables
+
+A single flat point table would have had **four of seven columns dead for three of the
+four types**, and would have forced `value Float?` — which no validator can express and
+every bar renderer would then have to handle. That is the `LaunchpadFieldType` trap from
+§43, one layer down. Bar and pie DO share a table, because they are genuinely the same
+shape; splitting those would be the opposite mistake.
+
+The usual objection to three tables is 3× the CRUD. It does not apply, because **writes
+replace the whole board's content** — the same contract `updateCodeVersion` uses for a
+version's files. There is no per-point API, `orderKey` is the array index, and the three
+tables collapse to one `switch` in `replaceBoardContent`.
+
+**The DTO is a discriminated union even though the table is not.** The database keeps a
+union header (five nullable config columns, which a board header inherently is); the wire
+format does not, so a bar board carries no `sets` and no `branches` and no component ever
+receives a field that cannot apply to it. `wiki-insights-serialize.test.ts` asserts that
+shape directly, because the pressure to flatten it back is exactly what produces "why is
+this nullable" three months later.
+
+**Palette keys, never hex.** A stored hex outlives the palette it came from: change the
+scale and old boards keep a colour nothing else on the page uses, with no way to find
+them. Colours are re-resolved on every render, and the editor offers swatches rather than
+a colour input. Venn set colours are derived by POSITION and not stored at all — three
+fewer columns, and palette compliance becomes structural.
+
+### 47.2 The radial layout, and the two rules that make it hold
+
+`src/lib/insights/radial-layout.ts` — pure, DOM-free, deterministic.
+
+- **Angular slice proportional to `1 + leafCount`.** The `1 +` is load-bearing twice: a
+  branch with no leaves still earns a wedge, and an all-empty board does not divide by
+  zero. Even spacing looks broken the moment a tree is lopsided.
+- **The leaf ring GROWS until its circumference can hold every leaf** at 22 viewBox-px of
+  arc each, with a per-branch stagger for the residual case. That is what makes "loads of
+  connected entities" work rather than degrade — at 100 leaves the ring is ~407px, the
+  viewBox grows with it and the SVG scales down.
+- **No coordinates are stored.** A freeform canvas with saved x/y cannot reflow to a
+  phone and can be saved in a state that renders wrong. Computing the layout means a
+  board is correct by construction at every width.
+- **`MAX_BRANCHES_RADIAL = 10`, past which the LIST is rendered instead** — and that is
+  not a degraded mode. A twenty-spoke radial is a bad diagram and no machinery makes it a
+  good one.
+
+⚠️ **Do not make the Venn area-proportional.** Sizing circles so every region's area
+matches its count is a constrained optimisation with **no exact solution for most
+inputs** — for a great many three-set boards the correct diagram cannot be drawn with
+circles at all, so an area-proportional renderer necessarily draws something close-but-
+wrong and presents it as measurement. Fixed geometry with honest counts makes no claim it
+cannot keep. Region names are plain English ("Both — Standard + Premium"), never `∩`.
+
+### 47.3 Every figure is followed by the same facts in text
+
+An SVG scaled into a 350px column is decoration, and a screen reader gets nothing from it
+at all. So each chart renders a readable list underneath carrying the same numbers: on a
+phone that list IS the chart, on a desktop it is the caption. The Venn's item names live
+in that list rather than inside the circles, which is what actually gets read.
+
+⚠️ Venn fills are **stacked alpha over the surface token, never `mixBlendMode: multiply`**
+— multiply collapses to black on the navy ground, so every overlap would vanish in dark
+mode. Alpha self-adapts: 0.16 → 0.29 → 0.40 reads as progressively deeper in both themes.
+
+An **empty region shows a muted `0` when the board has items anywhere, and nothing at all
+when the board is empty.** "We looked and it is empty" and "there is nothing here to look
+at" are different facts (§43.2's `null`-vs-`0` rule, applied to a lens).
+
+### 47.4 The node editor is a FLAT list
+
+A two-level tree's obvious editor is a nested one with nested drag-and-drop. Instead each
+row carries a Branch/Leaf toggle and **a leaf attaches to the nearest branch above it**,
+so the tree is edited as one flat reorderable list — which is also literally how the brief
+described it ("add data points… as easy as possible"). A leaf dragged above the first
+branch is promoted on save, so there is no list order the tree cannot express.
+
+### 47.5 Wiring, and the assertion that nearly did not discriminate
+
+Twelve allow-lists, of which `tsc` catches four. `insights-section-wiring.test.ts` is a
+sibling of the Launchpad one rather than an addition to it — that test's needles are
+launchpad-shaped and its last blocks assert a `[token]`-route posture Insights
+deliberately does NOT have. The new test asserts the inverse: **`app/api/wiki/[token]/insights`
+must not exist.** The client side is read-only and boards ride down inside the wiki DTO,
+so a token write route would be dead surface with a live attack surface.
+
+⚠️ A naive `toContain('"insights",')` does **not** discriminate in `wiki-sidebar.tsx` — it
+is a substring of the `navItem("insights", "Insights", …)` line, so it passes with the
+`visibleSections` entry deleted. The test slices a single declaration block instead
+(stopping at a **line-leading** `]`, because stopping at the first `]` cuts
+`WikiSection[] = [` in half at its own type annotation).
+
+The dashboard gets a **real `case "insights"`**. A section with no case falls through to
+the markdown-doc default and the card reads "Documentation." — the defect the Requests
+card actually shipped with (§40.1). ⚠️ Launchpad still has no case and still falls
+through; worth fixing separately.
+
+### 47.6 Verified
+
+`tsc` + `lint` **0 errors** (41 warnings, all pre-existing) · **3324 tests** ·
+`audit:ui` **0 findings** · `npx next build` clean, 103 static pages, both routes
+registered. Schema diff is **purely additive** — two enums, four models, one flag.
+
+⚠️ **Do not run `npx prisma format` to apply a schema change here.** It reformats the
+whole 4,000-line file (measured: 435 insertions / 313 deletions for a five-line addition),
+which buries the diff and conflicts with every other open branch.
+
+Driven live at `/demo/wiki`, seeded with **all four board types** including a five-branch
+node map — a demo carrying only a bar chart would verify the CSS and nothing else (§43.3).
+Measured in the DOM rather than by screenshot (the browser pane was not displayed, and
+`read_page`/`javascript_tool` are the better instruments anyway): **0 elements fall outside
+their SVG box, 0 real label collisions across 18 labels**, and at **375px the page overflow
+is 0** with each wide figure carrying its own scroller (119–179px of travel) — so nothing
+is unreachable inside `.widget-card`'s `overflow: hidden` (§45.2).
+
+**88 new unit tests.** Proved to discriminate by breaking things on purpose: **19
+wiring sabotages, each failing exactly one test**, plus twelve on the pure modules
+(mistyped Venn anchor, `∩` in a region name, baseline ignoring negatives, the bar-width
+cap, value labels on negative bars, a single-colour palette fallback, `isInsightColorKey`
+accepting a hex, a drifted palette hex, reordered palette keys, a set label drifting
+inside its circle, the `maxAbs === 0` guard, bars sorted by value).
+
+⚠️ Twice during this work a sabotage was a **silent no-op** — the edit did not match and
+the suite stayed green, which reads as a weak test. Both times the fix was to prove the
+edit landed before believing the result. That is §45.1, and it keeps happening.
+
+**Not verified:** nothing ran against a real database. **Post-deploy:** open a client's
+wiki → Add New → Insights, create a node board, and confirm it renders and the client's
+share link shows the same figure.
+
+## 49. Recent Changes (September 2026) — Delivery and Support: two client-portal pages over data we already held
+
+Two more client-wiki sections, both **read-only for the client** and both built almost
+entirely out of figures Foundry was already computing and simply never showing to the
+person they were about.
+
+### 49.1 Delivery — no loader, no route beyond a toggle, no DTO object
+
+`WikiTimeline` already carries per-phase `statusCounts`, `progress` and `milestones`, and
+`wiki.blockers` was already in the DTO and already documented client-safe. So Delivery is
+**pure presentation** — `src/lib/wiki-delivery.ts`, not `src/server/`, because there is
+nothing to fetch and it can therefore be unit-tested with no database. The wiring test
+asserts there is **no `loadWikiDelivery` anywhere under `src/server`**: adding one would be
+a second copy of data the DTO already carries.
+
+**The number that justifies the page is "waiting on you"** — open `wiki.blockers` with no
+client reply. It already existed and had never been surfaced to the one person who could
+clear it.
+
+Three honesty rules, each with a test:
+
+- ⚠️ **No timeline reports `percent: null`, never `0%`.** "Nobody has built a plan" and
+  "the plan is 0% done" are different facts, and the second is the one a client acts on.
+- ⚠️ **A phase with no tasks is "not started", not "complete".** 0 of 0 is not 100%, and a
+  plan whose phases are not broken down would otherwise report as finished — the single
+  most misleading thing this page could say.
+- **Only UNANSWERED blockers count as waiting on the client.** One they have replied to is
+  ours again.
+
+### 49.2 ⚠️ The demo's timeline blocks carry no `statusCounts`, and the cast hid it
+
+Rendering the page threw on first paint: *"Cannot read properties of undefined (reading
+'DONE')"* inside `WikiDashboard`. `dev-demo-data.ts` builds the wiki timeline from
+`demoGanttBlocks` with **`as unknown as WikiDTO["timeline"]`**, so the blocks carry
+`tasks: [{title, done}]` and no `statusCounts` at all — and `tsc` said nothing, because
+the cast is the point of a cast.
+
+Fixed by counting from `statusCounts` when present and **falling back to `tasks`**. That is
+not a second source of truth: they are the same facts at two grains, the finer one wins,
+and a block carrying both can never report two different answers. Three regression tests
+pin it, including the both-present case.
+
+The lesson is the one §45.1 keeps re-teaching in a different costume: **an `as unknown as`
+in a fixture disables the only check that would have caught the mismatch.** A page rendered
+against that fixture is the only thing that finds it.
+
+### 49.3 Support — client-safe by PRECEDENT, not by judgement
+
+Every figure on the Support page is one the monthly Care report **already emails the
+client** (`support-report-doc.ts`). That is deliberately the test used, because the
+alternative is one person's taste standing between a client and their own data.
+
+Deliberately excluded, and each for a stated reason: **sentiment** and
+`getClientHealthScore` ("23% of your customers sound negative" is a conversation, not a
+number to publish at someone); `SupportConversationNote` (staff-only by its own schema
+comment); raw `SupportMessage` bodies and `CustomerIdentity` (the client's END customers'
+personal data — we hold it to do the work, not to redistribute it); anything cross-client.
+
+⚠️ **Support days are NOT the `clients.viewFinancials` fields.** That gate covers
+`monthlyCost` / `workingDays` / `retainerDays` / `retainerDaysUsed` on `WorkspaceClient`
+and must never appear here. `SupportClient.supportDaysPerMonth` is the client's own
+contractual allowance — a term of an agreement they already hold a copy of.
+
+The Care link is `SupportClient.workspaceClientId`, never a name match: the same client is
+`wedge` in Portal and "Big Wedge Golf" in Care, which is exactly the failure §42.15
+records. It is **not** declared `@unique`, so this is a `findFirst`.
+
+⚠️ **`TrendBadge` has a `goodWhen` prop and durations must use `goodWhen="down"`.** Without
+it, "we replied 29% faster" paints green-for-up and reads as a regression. Inverting the
+sign by hand would have worked and would have hidden the intent inside a minus. Verified by
+resolving the rendered colours through a canvas: tickets neutral slate, resolution-rate up
+green, and **both duration trends green while pointing down**.
+
+### 49.4 The public predicates differ per section, on purpose
+
+- `insights` — enabled AND at least one board.
+- `delivery` — enabled AND `timeline.blocks.length > 0`. A client following a link that
+  promised progress must not land on "no plan yet".
+- `support` — enabled AND **linked**. An unlinked section shows "not connected", which is
+  our problem to fix, not theirs to read.
+
+`insights-section-wiring.test.ts` became **`wiki-section-wiring.test.ts`**, parameterised
+over all three sections for the seventeen shape-identical checks and keeping separate
+assertions for the parts that genuinely differ. **60 tests**, and eight sabotages across
+`delivery` and `support` each failed exactly one test.
+
+⚠️ That sabotage pass could not use `git` to restore, because the feature work was
+uncommitted — `git checkout --` would have destroyed it. Scratchpad backups with `shasum`
+verification are the technique when the tree is dirty.
+
+### 49.5 Verified
+
+`tsc` + `lint` **0 errors** (41 warnings, all pre-existing) · **3380 tests** ·
+`audit:ui` **0 findings** · `npx next build` clean, 103 static pages, both toggle routes
+registered. Schema diff purely additive — two boolean flags.
+
+Driven live at `/demo/wiki` with a linked Support fixture carrying **two months** of
+figures, so the trend badges have something to compare against — one month would render
+every trend as an em-dash and prove nothing about the part most likely to be wrong.
+Measured: page overflow **0**, and the rendered trend colours are correct in all four
+tiles.
+
+**Not verified:** nothing ran against a real database, so the Care reads in
+`loadWikiSupport` have only been exercised against a fixture. **Post-deploy:** enable
+Support on a client that has a linked Care record and confirm the month's figures match
+that client's latest Care report.
+
+## 50. Incident (September 2026) — every client's wiki 500'd, and `tsc` could not have caught it
+
+**Symptom:** `/api/clients/[slug]/wiki` returned 500 for **all 13 clients**. Reported from a
+browser console; root cause read out of the production container logs, not inferred.
+
+```
+prisma:error Invalid `prisma.clientWiki.findUnique()` invocation:
+Unknown argument `createdAt`. Available options are marked with ?.
+```
+
+`BOARD_INCLUDE` in `wiki-insights.ts` ordered the three Insight child relations by
+`createdAt`. None of `WikiInsightSeriesPoint`, `WikiInsightVennItem` or `WikiInsightNode`
+has that column.
+
+### 50.1 ⚠️ The compiler check that a named const silently disables
+
+**TypeScript's excess-property check fires only on an object literal assigned DIRECTLY at
+the call site.** The moment a Prisma `select` / `include` / `where` / `orderBy` is lifted
+into a named const — or returned from a helper, or spread in — that check is skipped
+entirely, and a field that does not exist compiles perfectly.
+
+So the readability refactor *was* the defect. `tsc`, `eslint`, **3,394 tests**, `audit:ui`
+and `npx next build` were all green on a query that could never run.
+
+There is now a test — `src/server/__tests__/wiki-insights-include.test.ts` — that reads
+`prisma/schema.prisma` and checks every field named in an extracted include actually
+exists on its model. Reintroducing the exact bug fails 5 of its 9 tests. **Any future
+extracted Prisma args object wants the same treatment**, because nothing else can see it.
+
+### 50.2 The severity was a `Promise.all`, not the bad column
+
+A wrong column in one optional section should have broken one optional section. Instead
+`loadWikiInsights` ran inside `buildDTO`'s `Promise.all`, so its rejection rejected the
+whole DTO — **clients who had never enabled Insights lost their entire wiki.**
+
+Every loader now goes through `settle(section, load, fallback)`: it logs the failing
+section by name and falls back to that section's empty state. A broken section reads as
+"nothing here" and is findable in the logs, instead of taking the page with it. Same shape
+as §35.1, where one failed GraphQL call silently discarded a whole repo scan — the lesson
+did not transfer the first time, hence writing it down again.
+
+### 50.3 ⚠️ A green deploy job does NOT mean the release works
+
+I reported the release sound because the `deploy` job was green and `/api/health` returned
+200. That proves the image built, `prisma db push` applied, and the container is up. It
+says **nothing** about whether any real page loads — `/api/health` touches none of the
+code a feature changed.
+
+**Verify a release by hitting the surface the change actually touched.** For anything
+server-side that is one command from the box, and it takes seconds:
+
+```bash
+ssh <vps> "cd /opt/apps/foundry && K=\$(grep '^API_KEY=' .env | cut -d= -f2- | tr -d '\"') \
+  && curl -s -o /dev/null -w '%{http_code}\n' -H \"Authorization: Bearer \$K\" \
+     localhost:3000/api/clients/<slug>/wiki"
+```
+
+Post-fix that was run for **every** client, not one: 13/13 → 200.
+
+### 50.4 Two log lines that look like defects and are not
+
+Checked while sweeping, and recorded so the next person does not chase them:
+
+- **`Error: The Server Reference ID did not match the expected format. Received "x".`** —
+  8 in 24h. The received value is a single character, not a stale bundle hash. Cross-
+  referenced against nginx: external POSTs to `/` and `/portal/login` from Cloudflare,
+  GCP and other scanner IPs, all answered **404**. Next is correctly refusing junk and
+  being loud about it. Silencing it would hide real Server Action errors.
+- **`[auth][error] InvalidCheck: pkceCodeVerifier value could not be parsed`** — exactly
+  **once** in 48h, seconds after a deploy restarted the container, with a successful
+  Google callback (302) nearby. An in-flight OAuth handshake interrupted by a restart.
+  Sign in again; nothing to fix.
+
+Apart from those two, production's error log across 24 hours contained **only** this
+incident.
+
+### 50.5 The compiler check the outage disabled, re-enabled everywhere
+
+§50 explains *why* `tsc` could not see the bad `orderBy`: the excess-property check fires
+only on an object literal passed **directly** at the call site, so extracting it into a
+named const (`include: BOARD_INCLUDE`) silently switches it off. The first fix corrected
+the bad value. This one removes the mechanism.
+
+⚠️ **`as const` does NOT restore the check.** It reads like a safety measure and is not
+one. Verified both directions rather than assumed:
+
+```ts
+const A = { id: true, bogusA: true } as const;                          // 0 diagnostics
+const B = { id: true, bogusB: true } as const satisfies Prisma.XSelect; // TS2353 ✅
+```
+
+**`as const satisfies T` is the form, and both halves are load-bearing.** `satisfies`
+re-enables the excess-property check; `as const` preserves the literal `true` types that
+Prisma's payload inference needs — with `satisfies` alone, `true` widens to `boolean` and
+every result degrades to `{ [x: string]: any }`. (That is what a first pass produced, and
+it showed up as ~20 unrelated type errors downstream, which is how it was caught.)
+
+Applied to all **19** extracted args objects across 17 files. Reintroducing the exact
+outage bug is now a **compile error naming all three models**, and a bogus relation in
+`WIKI_INCLUDE` is `TS2353` — both proved by deliberate sabotage, both reverted.
+
+**`src/server/__tests__/prisma-args-satisfies.test.ts`** keeps it that way: it sweeps
+`src/` for consts used at a `select:`/`include:`/`orderBy:` position and fails naming any
+that lack a `satisfies Prisma.` tail. It carries its own "did the sweep actually find
+anything" assertion, because a broken matcher would otherwise report *"0 unguarded"* and
+pass forever. It found one the hand pass missed (`CHILD_ORDER`).
+
+**Known gaps, so a green run is not over-read:** `$queryRaw`/`$executeRaw` name columns in
+SQL strings and are invisible to all of this (~13 sites); shapes built inline in a helper's
+return, or spread into a call, are not matched; `where`/`data` are excluded deliberately
+(routinely built from variables, so requiring a tail there would be mostly noise).
+
+### 50.6 `audit:clipping` was crying wolf — four false-positive sources, all fixed
+
+A full wiki sweep (11 sections × 4 viewports) produced ~60 raw findings of which **roughly
+half were false**. A detector that noisy is worse than none: it trains you to skim.
+
+| Was reported | Why it was wrong |
+|---|---|
+| Content inside a **closed `<details>`** | `isClosedDisclosure` was only consulted on ancestors that *themselves* clip. A `<details>` is `overflow: visible`, so the walk sailed past it to the nearest card. 12 of 12 Charts findings. |
+| A **sticky** element below the fold | `sticky` was treated as `fixed`. A sticky element is in normal flow and scrolls into view like anything else. |
+| Text whose full value is on a **titled wrapper** | Only `el.title` was read. Hovering a child shows its wrapper's tooltip, so the text *is* reachable (bounded to 3 levels — unbounded `closest('[title]')` would let one titled panel excuse everything inside it). |
+| An **inline child of an ellipsed box** | The ellipsis clipping its own children is the ellipsis working. Whether that box loses text is the TRUNCATED rule's call; reporting each inner `<span>` doubled it up and pointed the fix at the wrong element. |
+
+All four are now in **`--self-test`** (seven lookalikes, up from three) and each was proved
+to discriminate by reverting the fix and watching the named case fail.
+
+⚠️ **Run it from where `playwright-core` lives** (§44.6), not from the repo — the script is
+ESM, so `NODE_PATH` is ignored, and a Claude worktree shares `node_modules` by symlink.
+
+After the fixes, and with the real defects below repaired: **44 wiki states, 0 findings,
+0 console errors.**
+
+### 50.7 What the sweep found once it was trustworthy
+
+All client-facing, none caught by `tsc`, `lint`, `audit:ui` or 3,461 unit tests:
+
+- **The wiki hero shattered the client's own name mid-word** — `Nort / hwin / d / Studi / o.`
+  at 768–1023px, on the front door of their wiki. The team stack beside it is `shrink-0`
+  and the row went horizontal at `sm:`, so from the moment the 256px sidebar mounted the
+  title column absorbed every pixel of squeeze: **139px for 52px serif, 7 line boxes,
+  295px tall**. Now `lg:`, measured **303px / 2 lines / 120px**, and ≤2 lines at all of
+  390 · 430 · 640 · 760 · 768 · 800 · 880 · 1023 · 1024 · 1280 · 1440 with 0 page overflow.
+- **`null%` on the Delivery dashboard card** — the section guarded `percent === null`, the
+  card did not. Fires whenever a Gantt is drawn before tasks are broken out, which is the
+  normal state, and the card is the landing page of a whole-wiki client share.
+- **Monitors' uptime strip** — bars are `flex-1` floored at 3px, so N checks need ~5N px and
+  cannot shrink. In the 2-up grid at 768 the last ~10 days were past the card, and
+  `.widget-card` is `overflow: hidden`, so **unreachable** (§45.2).
+- **Changelog on a phone** — the action cluster is `shrink-0` in a nowrap row, so editing a
+  release was impossible at 390px.
+- **The Design System type specimen showed `Wa…`** — a 210px meta column left the sample
+  117px at 768 and **36px at 390**, clipped rather than wrapped. A type specimen that
+  cannot show its sentence is not doing its job.
+- **Two Design System tables were `overflow-hidden`** — 198px of columns (`Border`,
+  `Surfaces`, `Use`) unreachable at 390px. Tables scroll, they do not reflow.
+
+**The lesson is the one §42.8 already paid for, one layer out:** every one of these needed
+the page *rendered at a real viewport*. Reading the component tells you nothing about a
+column that collapses only when a sibling stops shrinking.
+
+### 50.8 Requests: eight defects, and the one pattern behind four of them
+
+Found by adversarial review of the merged PRs, all confirmed by reproduction:
+
+- **Every internal mutation was fire-and-forget.** No intake hook defines `onError`, and
+  every internal call site was `void x.mutateAsync(…)`. A failed promote/close/delete was
+  an unhandled rejection with zero UI consequence. Delete was worst: `setConfirmDeleteId(null)`
+  sat *after* an `await`, so a failure left the row stuck on "Delete permanently?" forever —
+  which reads as an unresponsive button and invites a second click. ⚠️ **The public half of
+  the same file did this correctly and rendered into `rowError`; the internal half never
+  adopted it.** Now one `runRowAction` / `runBatch` pair that a call site cannot forget.
+- **A partial batch cleared the selection wholesale**, including the rows that failed. It
+  now clears only what completed, leaving the failures ticked and ready to retry.
+- **The stage filter offered a "Closed" bucket that was always empty** — `stagesPresent`
+  read `allItems`, the list read `scopedItems`, and those two are exactly complementary
+  for CLOSED while "Dealt with" is off (the default).
+- **A deleted-but-selected row left a stuck batch bar** — `selected` is a `Set<string>`
+  never pruned, so `selected.size` counted ids with nothing behind them and every button on
+  the bar was a silent no-op. All user-facing counts read `selectedRows` now.
+- **A >500-row or long-title import failed with the bare words "Validation failed"** — the
+  cap lived only in the route's zod schema, so the modal previewed "640 to import", offered
+  "Import 640", and surfaced the rejection after every column had been mapped by hand. The
+  limits now live in `src/lib/wiki-intake-import-limits.ts` and **both sides import them**;
+  over-long titles are shortened and *counted in the preview* rather than rejected.
+- **Escape stranded the import modal on its success screen** — `Modal` fires `onClose` on
+  Escape/backdrop/X and the parent only hides the component, so reopening showed
+  "5 requests imported / Done" with nothing to paste into.
+- **The "could not read this column" tooltip never rendered** — `title` was passed to a
+  Heroicon, which spreads it onto the `<svg>` as an *attribute*; SVG needs a `<title>`
+  **child**. The `DUP` marker four lines above got it right with `<span title=…>`.
+
+### 50.9 Naming: "Insights" was two different things
+
+The wiki section holding author-drawn bar/pie/Venn/node boards was called **Insights**, and
+`proposal-editor-layout.tsx` already ships `{ id: "insights", label: "Insights" }` for the
+Docs editor's analytics tab — same word, same platform, unrelated thing. Worse, it sat
+directly above **Delivery** and **Support** in the rail, both of which are *also* insights,
+so the label distinguished it from nothing.
+
+Renamed to **Charts** in all seven label sites. ⚠️ **The section id stays `insights`** —
+changing it would touch all twelve allow-lists (§43.1), the `insightsEnabled` column and
+every share link already sent, for no user-visible gain. Label ≠ id is already the norm
+here (`intake` → "Requests", `ia` → "Info Architecture").
+
+**Delivery was left alone** despite sitting next to Timeline: its own header reads
+`01 // WHERE WE ARE`, and "Delivery" is the agency's word for it.
+## 51. Recent Changes (September 2026) — Two controls nobody could reach
+
+Both found by a full-page sweep, both live (not demo-only), neither visible to `tsc`,
+`lint`, `audit:ui` or 3,459 unit tests.
+
+### 51.1 A phone could not change month in the Backstage calendar
+
+`.widget-header` is a **fixed 36px band** inside `.widget-card`, which is
+`overflow: hidden`. `CalendarTab` put five controls in that band — three `<details>`
+pickers plus Previous/Today/Next. Measured at 390px (card right edge 366px):
+
+| Control | past the card | fully outside |
+|---|---|---|
+| Calendars picker | 34px | no |
+| Previous month | 70px | **yes** |
+| Today | 137px | **yes** |
+| Next month | 169px | **yes** |
+
+So on a phone **you could not change month or return to today, ever** — and page overflow
+read **0** the whole time, because a flex row clips rather than scrolls (§45.2). Live at
+`/app/backstage`, not just the demo.
+
+⚠️ **Neither obvious fix works here**, and both are worth knowing:
+- **Wrapping the row** breaks the 36px band, which is the instrument grammar.
+- **`overflow-x-auto` on the row clips the dropdowns.** All three pickers are inline
+  `absolute right-0` panels, NOT portalled — so the scroller that fixed the buttons would
+  have cut the panels instead. §45.2 says to check that before wrapping any row holding a
+  popover; this is the case where the check changes the answer.
+
+**The month nav moved into the body, beside the month label it controls** — which is where
+calendar nav belongs anyway — and the three pickers drop their text word below `sm`,
+keeping icon + count. Measured after: every control **inside** the card at 390 · 430 · 768
+· 1440, 0 clipping findings, 0 page overflow.
+
+⚠️ **The admin case is the one that matters and it is not the default.** `isAdminOrAbove`
+gates the Timeline picker, so the demo user sees **two** pickers and an admin sees
+**three**. The first fix measured clean on the demo and was still **19px over** for an
+admin. Verified under a *temporary* local grant, reverted before commit (§42.12's
+technique). **Measure the branch with the most controls, not the one that renders by
+default.**
+
+⚠️ **A `str.replace` mislabelled a control.** Both picker summaries carry an identical
+`className`, so replacing on it hit the FIRST — leaving the **Holidays** control announcing
+itself as "Overlay Google Calendars" to a screen reader. Anchor on something unique to each
+element (here, its icon), and assert the post-condition (`count(...) == 1`).
+
+### 51.2 `/api-docs` served two documents
+
+`src/app/api-docs/page.tsx` rendered its own `<html lang="en">` / `<head>` / `<body>`
+inside the root layout, so every response carried **two of each**:
+
+```
+curl -s …/api-docs | grep -o "<html\|<body\|<head>" | sort | uniq -c
+   2 <body    2 <head>    2 <html          →  after: 1 / 1 / 1
+```
+
+Every load threw `Hydration failed…`, `In HTML, <html> cannot be a child of <body>` and
+two `You are mounting a new html/head/body component…`, then **discarded the SSR tree and
+re-rendered client-side**. It *looked* perfect — browsers hoist the stray `<style>` — which
+is exactly why it survived. The only page in `src/app` doing it.
+
+⚠️ **The styles had to be scoped in the same change, or the fix leaks.** The page's CSS
+styled `body` directly (`background: #0a0a0a`), so simply deleting the wrapper would have
+painted the real document body dark **on every route**. Everything is now `.apidocs`-scoped
+with `min-height: 100vh`; verified the wrapper is `rgb(10,10,10)` while `document.body`
+stays `rgb(250,250,249)`. The hand-written `<meta viewport>` became a `viewport` export.
+
+### 51.3 The console is now clean across every reachable page — measured, 19 pages, 0 errors
+
+`resolveDemoApi`'s catch-all `return {}` is not harmless for a hook that reads a field off
+the response: `useUnreadCount` does `.then((r) => r.unread)`, gets `undefined`, and React
+Query treats an undefined result as an error. **Every demo page that mounts the app shell**
+logged *"Query data cannot be undefined"* with the notification bell stuck in an error
+state. Two endpoints were unmapped (`notifications/unread-count`, and
+`documents/[id]/signature-requests` on `/demo/docs/doc-1`); both are mapped now.
+
+**And the white-label demo painted the WRONG BRAND first.** `/demo/<Client>` read its name
+from `window.location`, which is `null` on the server — so SSR always rendered "Foundry by
+Gitwork" and the client swapped in the client's name a moment later. That is a hydration
+mismatch on every load *and* a prospect opening a white-labelled sales link seeing **our**
+branding before theirs. The segment is a **route param**, so the server has it: it is passed
+to `<DemoHub>` as `initialBrand` and `readBrand()` now only covers `/demo?client=` and the
+localStorage carry-over. Verified on the wire — SSR went from 0 to 27 occurrences of the
+client name, and from 0 to 2 of "Powered by Foundry".
+
+⚠️ The comment above `readBrand()` claimed it read the brand "synchronously so the first
+paint is already on-brand (no flash)". That was **never true on the server**, and the
+`suppressHydrationWarning` on the wrapper only covers that element's own attributes and
+direct text children — not the subtree — so it suppressed nothing here.
+
+**Measured after: 19 reachable pages swept, `0` real console errors** (excluding two local
+env artefacts — no `DATABASE_URL`, no `AUTH_SECRET` — which are absent in production). A
+console that is never clean is a console nobody reads, which is how the two defects above
+went unnoticed.
+
+### 51.4 Verified
+
+`npm run verify` green — tsc + lint **0 errors** (41 warnings, all pre-existing),
+**3459 tests**, `audit:dependencies` clean, `audit:ui` **0 findings** with its self-test
+passing; `npx next build` clean, 103 static pages.
+
+**Proved by before/after on the same harness**, restoring `origin/main`'s file rather than
+hand-editing a sabotage — the first attempt at that produced a **syntax error**, which is a
+broken build, not a reproduction of the defect. On main's code the three buttons measure
++70 / +137 / +169px past the card with `offscreen: true`; on this branch, −145 / −78 / −46
+inside it.
+
+⚠️ **The closed-`<details>` false positives are back in this measurement**, because the
+detector fix lives in a different branch (§50.6 of that PR). The unpatched detector
+reported 12 findings at 390px where 2 were real. Re-measured with the corrected one before
+believing either number.
+
+## 52. Recent Changes (September 2026) — The recorded debt, cleared
+
+Five items that had been written down in this file as known-and-open rather than fixed.
+
+### 52.1 Launchpad's dashboard card read "Documentation."
+
+§43 shipped it without a `case` in `wiki-dashboard.tsx`, so it fell through to the
+markdown-doc default — the exact defect §40.1 records for the Requests card, repeated.
+The card now leads with **what is still outstanding** (`7 To send · 5/14 Provided` plus
+the named list), not a percentage: the client's question is "what do you still want from
+me", and a percentage makes them do the subtraction. Measured on `/demo/wiki`.
+
+### 52.2 Every HQ widget sat on a hardcoded white card
+
+`AppOverview`'s tile container was `bg-white` + a literal `rgba(0,0,0,0.08)` border.
+`globals.css` **does** remap both of those for dark mode — but this element wraps every
+widget, so a token-correct widget still rendered on a white slab. That is why §42.13's
+Care tile "looked wrong in dark mode" after its own colours were fixed. Now
+`bg-[var(--surface-0)]` + `border-[var(--border-1)]`, both of which genuinely flip
+(`#FFFFFF` → `#161617`, black → white at 18%).
+
+### 52.3 The `max-h-[Nvh]` sweep — triaged, not blanket-applied
+
+§46 fixed one dialog and deferred the rest because "telling them apart needs looking at
+each one". Doing that: **35 matches, 14 were dialogs, 21 correctly stay as they are.**
+
+**The clamp is now declared ONCE** as `.app-dialog-fixed` in `globals.css` (`height: 80vh;
+max-height: 680px; min-height: min(460px, 80vh)` + flex column), so the magic numbers
+cannot drift across 14 files.
+
+| Left alone, on purpose | Why |
+|---|---|
+| Menus / dropdowns / popovers (app-shell, mobile nav, notifications, reminders, batch bar, settings shell, two editor popovers, two scan/assessment dropdowns) | A menu is *supposed* to hug its content and cap at the viewport |
+| Image lightboxes (receipts, intake attachments, task attachments) | `max-h-[70vh]` on an `<img>` is how you fit an image to the viewport |
+| `presentation-mode` speaker notes | Same — an overlay that hugs |
+| `support-dashboard` | Already has an explicit `h-[600px]`; the `max-h` is the viewport guard |
+
+⚠️ **Pinning a panel is only half the change, and the other half is the dangerous half.**
+A pinned panel is `overflow: hidden`, so a body with no scroll region makes everything
+past 80vh **unreachable** — strictly worse than the resizing it replaced. My first pass
+did exactly that to **six** dialogs. `src/components/__tests__/dialog-fixed-height.test.ts`
+now fails naming any `app-dialog-fixed` panel without one.
+
+⚠️ **The first version of that test was wrong about grid children.** It required
+`flex-1 + min-h-0 + overflow-y-auto` on one element, but the two-column "meta | content"
+dialogs put the scroller in a **grid** track, where `flex-1` is meaningless and the track
+carries it instead. The rule that holds for both is **`min-h-0` on the scrolling
+element** — a flex *or* grid item's automatic minimum size is its content, so without it
+the region refuses to shrink and pushes the footer out of the panel.
+
+**Measured** on the reachable case (`AddVersionModal`, `/demo/wiki` → Code Handover),
+one file vs six:
+
+| Viewport | 1 file | 6 files | active scrollers |
+|---|---|---|---|
+| 1440×900 | 680px | 680px | 0 → 1 |
+| 1280×620 | 496px | 496px | 0 → 1 |
+| 390×844 | 675px | 675px | 2 → 2 |
+
+Identical height, viewport-bound, always inside the viewport, **0 clipping findings** —
+and the scroller *activating* as content grows is the proof that nothing became
+unreachable.
+
+### 52.4 `/context` and `/api-docs` told readers production runs on Vercel + Neon
+
+It hasn't since July 2026 (§23). `/context` is the page whose entire purpose is telling an
+AI reader what is true, and it also still called auth "upcoming" (it shipped) and was
+stamped "May 2026". All corrected.
+
+⚠️ The Vercel **team slug and project id** were *removed* rather than updated: that page
+needs no auth, and naming internal infrastructure on it is a small disclosure for no
+reader benefit.
+
+### 52.5 Pulse's scan list lost the client name with no way to recover it
+
+`pulse-scan-list.tsx` truncated the sub-line with no `title`, and the part that gets cut
+is the **client name** (it trails the URL) — so at 390px the row reads as a bare URL and
+you cannot tell whose scan it is. Live at `/app/pulse`. Both that line and the project
+name above it now carry a `title`.
+
+### 52.6 Verified
+
+`npm run verify` green — tsc + lint **0 errors** (41 warnings, all pre-existing),
+**3464 tests**, `audit:dependencies` clean, `audit:ui` **0 findings**; `npx next build`
+clean, 103 static pages. The new test was proved to discriminate by removing a `min-h-0`
+(fails, naming the file) and by replacing the `min(460px, 80vh)` floor with a bare
+`460px` (fails).
+
+**Not verified:** the 13 pinned dialogs that have no demo route — `/app` is auth-gated
+with no staging. What IS verified for those is structural (every one carries a shrinkable
+scroll region, enforced by the test) plus the one reachable dialog measured above. The
+honest post-deploy check is to open a Backstage leave form, a client Edit modal and the
+Team member modal and confirm each opens at a steady size with its footer reachable.
+
+### 52.7 The Insights figures stretched to the card, which is also why the venn read as meaningless
+
+Dan asked *"how does the Venn diagram work… where does the 1 come from?"* and, separately,
+that the charts were "massive". **One root cause.**
+
+Every SVG figure is `w-full` with an `aspect-ratio` and **no cap**, so its height grows
+with whatever width it is handed. Measured in a 1591px card at 1920px wide:
+
+| Figure | Was | Now |
+|---|---|---|
+| Node map | 1549 × **1270px** | 894 × 733 |
+| Venn | 1549 × **996px** | 560 × 360 |
+| Bar | 1549 × 595px | 640 × 246 |
+| Pie | 150 × 150 | unchanged — `Donut` already takes a `size` |
+
+Both the node map and the venn were **taller than the viewport**.
+
+⚠️ **The size was not just an aesthetic problem — it broke the figure's meaning.** The
+numbers inside the venn's regions are **counts**, and the item NAMES deliberately live in
+the list underneath rather than inside the circles (§48.3 — that is what gets read, and
+what works at 350px). A 996px-tall figure pushes that list below the fold, so the reader
+is left with bare numerals and no way to resolve them. "Where does the 1 come from" is the
+exact question that produces, and the figure by design cannot answer it alone.
+
+**The viewBox IS the design size, so that is the cap** (`figureScale()`). A wider card now
+gets whitespace, not a bigger drawing; a narrower one still scales down, and `min-w` still
+drives the §45.2 scroller. Identical at 1440 and 1920, 420×270 at 390px with **0 page
+overflow and 0 clipping findings**.
+
+**And the figure now says what its numbers are** — a one-line mono legend, shown only when
+the board has items: *"Numbers are how many items sit in each region · named below."* A
+reader seeing "1" had no way to know it meant one item unless something said so.
+
+⚠️ The lesson generalises past this file: **`w-full` + `aspect-ratio` with no `max-width`
+is an unbounded figure.** It looks right in the width you designed it at and grows without
+limit in every wider one.
+
+## 53. Incident (September 2026) — 389 "Untitled Course" rows on a client's wiki
+
+Big Wedge reported that their Course Requests all read **"Untitled Course"**. They were
+right, it was ours, and the rows were not course requests at all — they were ordinary app
+feedback: handicap questions, "add Apple Watch support", yards-vs-metres.
+
+**State on production when reported:** 875 rows. **486 correct** (real names, created 5 and
+25 Aug — the importer working as designed). **~389 junk**, every one `courseName: ""`, all
+created in a **single run on 16 Sept 2026 at 13:00:15**.
+
+### 53.1 One line, and it disabled three guards at once
+
+```ts
+const onlyCourse = (opts.onlyCourseRequests ?? !opts.conversationIds?.length) && aiUsed;
+//                                                                              ^^^^^^^
+```
+
+`aiUsed` is `verdicts.size > 0`. The AI is what decides **both** whether an item is a
+course request **and** what the course is called. So when it produced no verdicts — no
+key, a failed chunk, unparseable JSON — `onlyCourse` went false and switched off, in one
+move:
+
+1. the **is-this-a-course-request** filter,
+2. the **require-a-real-name** check,
+3. the **dedupe**.
+
+Every scanned feedback email was then written as a nameless course request.
+
+⚠️ **It was deliberate**, and the comment said so: *"so an AI outage can't silently drop
+everything — it falls back to importing unfilled."* That trade is wrong in both
+directions:
+
+- **Nothing is dropped by importing none.** The scan re-runs on every sync and dedupes on
+  `sourceConversationId`, so a skipped batch is picked up whole by the next run with a
+  working classifier. The cost of waiting is one sync.
+- **Importing unfilled costs the client.** Junk on a page they read, and a person deleting
+  rows by hand.
+
+**This is §35's rule one layer out: a check that could not run must not become a confident
+assertion.** "We could not classify these" is not "these are all course requests". The
+codebase has paid for this lesson in Pulse (§35, §44) and in Care (§42.7); it reached a
+client here.
+
+### 53.2 ⚠️ My own change widened the blast radius
+
+The fail-open behaviour predates **#584** (§42.15, 12 Aug), but that PR moved the
+course-request auto-import inside `runPostSyncHousekeeping` — which #584 made **all three**
+sync paths call, including the **nightly cron**. Before it, the auto-import ran only when
+someone pressed client-level **Sync now**.
+
+So the import went from operator-triggered to unattended-and-nightly, which is what turned
+a latent bad failure mode into 389 rows. Consolidating those paths was right — two of the
+three previously skipped the identity repair entirely — but **widening what runs
+unattended raises the bar on how its failures behave, and that half was not revisited.**
+
+### 53.3 The fix — fail closed, and never write a nameless row
+
+Auto mode now returns `{ created: [], skipped: n, scanned: n, classifierUnavailable: true }`
+and logs the count. ⚠️ `scanned` deliberately reports the real number rather than 0:
+*"there was no feedback waiting"* is a different and reassuring fact from *"there was
+feedback and we declined to classify it"*.
+
+Explicit manual selection is untouched — an operator who ticked specific rows chose them
+and is about to name them.
+
+`src/server/__tests__/course-feedback-fail-closed.test.ts` pins it. Proved to discriminate
+by restoring the original `&& aiUsed` line: **3 of 4 fail**, including *"never writes a
+course request with an empty name"*, while the operator-selection case correctly still
+passes.
+
+### 53.4 The 389 existing rows are a separate, destructive job
+
+Code cannot un-write them. They are identifiable exactly — `courseName` empty **and**
+`createdAt` on 2026-09-16 **and** `sourceConversationId` set — but deleting client data on
+production is Dan's call, not a cleanup to run unilaterally. Not done here.
+
+### 53.5 The classifier failed because its model had been retired seven months earlier
+
+⚠️ **`LIGHT_MODELS.ANTHROPIC` was pinned to `claude-3-5-haiku-20241022`, which Anthropic
+retired on 19 Feb 2026.**
+
+A retired id does not degrade — every request 404s. And **nine** features route through
+`tier: "light"`: Dispatch, Foreman's narrative, the Curator's consolidation pass, Scribe
+meeting summaries, Slack activity, both Care narratives, the Care agents, and the Wedge
+course-request classifier. Every one of them wraps its call in a `catch`, so a dead model
+arrives as *"the AI returned nothing"*, not as an error. Most degrade quietly by design
+(Dispatch and Foreman have no-AI floors); only the course importer converted it into
+something a client could see.
+
+Now `claude-haiku-4-5`. **Anthropic ids are complete as-is — never append a date suffix.**
+
+⚠️ `DEFAULT_MODELS.ANTHROPIC` is `claude-sonnet-4-6`: previous-generation but **still
+served**, so stale rather than broken. Deliberately left alone and dated instead —
+moving every workspace without a pinned model onto a new model changes behaviour and cost
+across the platform, which is a decision, not a bug fix.
+
+**The `catch {}` is the other half of this.** `aiExtractCourses` swallowed each failed
+chunk under the comment *"chunk failed — leave its items unfilled"*, which is precisely
+why a retired model looked identical to "this feedback contained no courses". It now logs
+the provider and model id, because the likeliest cause of a **total** classifier failure
+is that the pin went stale.
+
+**`src/server/__tests__/model-pins.test.ts`** is the floor: no id from a retired
+generation (Claude 1/2/3/3.5), and no date-suffixed id. ⚠️ It cannot ask Anthropic what is
+live — no network, no key — so a future 4.x retirement will not fail it. The durable
+defence is the review cadence now written on the constants (§37.5's discipline) plus the
+fact that a total failure names its model.
+
+⚠️ **`audit:ui`'s MODEL-LITERAL rule fired on this test's own error message** — the third
+time a guard has matched a model-shaped string in prose rather than at a call site
+(§37.6 records two). The prose was reworded; **the rule was not weakened**, because it is
+right that a model id in server code is suspicious.
+
+**Still unestablished:** which provider the Wedge workspace is actually configured with.
+If it is `ANTHROPIC`, the retirement explains the failure exactly — but a course import on
+**5 Aug** extracted a real name *and* a country it had to infer, which that model could
+not have done if it was already retired in February. So either the workspace runs a
+different provider (the light pin for `GROQ` is `llama-3.1-8b-instant`, which Groq also
+retires on its own schedule) or the pin was reached some other way. **Do not close this
+out as "stale model id, fixed" without checking the workspace's configured provider** —
+the fix is right either way, but the diagnosis is not confirmed.
+
+### 53.6 The board could not select the rows it needed to delete
+
+The bulk select + delete on Course Requests had existed all along. What did not exist was
+any way to **isolate** the unnamed rows:
+
+- they all sit in `NEW` alongside genuine requests, so "select all" would have swept real
+  work in with them;
+- the fuzzy search (§45.1) cannot match an empty string.
+
+**That is the only reason clearing 389 junk rows needed database access rather than two
+clicks.** A repair the product cannot perform on itself becomes a support ticket and a
+person with a SQL prompt.
+
+An **Unnamed (n)** chip now sits beside the status tabs. ⚠️ It is **not a status** — it is
+a repair view derived from `!courseName.trim()`, shown only when such rows exist and never
+in the client's read-only view (they cannot act on it, and it names our own mess).
+
+⚠️ **The demo seeded `courseRequests: []`**, so this section rendered empty and could not
+be verified at all. Seeded now with BOTH shapes — genuine extracted requests and unnamed
+classifier casualties — because a demo carrying only the healthy shape cannot express the
+bug and therefore cannot verify the fix (§42.15, §43.3).
+
+⚠️ `COURSE_REQUESTS_SLUGS` is `["wedge"]`, so the section is unreachable on the demo
+client. It was verified under a **temporary local edit adding the demo slug**, reverted
+before commit and the revert confirmed in the diff — the §42.12 technique. **Do not add a
+demo slug to that list**: it is a production gate, and §42.15 records why it keys on the
+Portal slug specifically.
+
+### 53.7 The classifier invented course names when the golfer never gave one
+
+Clearing the unnamed rows left four, and three were the same fabrication — **none of these
+golfers named a course**:
+
+| What the golfer wrote | What was filed |
+|---|---|
+| "My home course has very incorrect information" | `home course` |
+| "My home course was renovated due to hs2" | `HS2 Renovated Course (Home Course)` |
+| "the scorecard for my home course is incorrect" — from `craig@ardlodge.co.uk` | `Ardlodge` |
+
+All three are genuine complaints about *some* course's data and all three are
+**unactionable**: you cannot ask a provider to fix "home course". The third is the
+dangerous one — the name came from the sender's **email domain**, which makes it plausible
+enough to send on while being something the golfer never said.
+
+The prompt only ever said a course request concerns a *"specific named course"*. It never
+said what to do when the complaint is about a course the user did **not** name, so the
+model filled the gap. It now says so explicitly, and forbids taking a name from an email
+address, a signature, or the surrounding words.
+
+⚠️ **A prompt instruction is a request, not a guarantee** (§35's discipline), so
+`src/lib/wiki-course-name.ts` enforces it deterministically:
+
+1. **Placeholder** — no course is called "home course"; also rejects a name whose words
+   are *all* generic ("Golf Club", "The Course").
+2. **Not in the golfer's own message** — if no distinctive token of the name appears in
+   what they wrote, it came from somewhere else. That is a fabrication whether or not it
+   happens to be correct.
+
+⚠️ Rule 2 strips the notification wrapper **first**, and that is the whole trick: the raw
+body carries the `From:`/`Email:` headers, so `ardlodge` *is* in the text. Checking the
+whole body would have accepted the one fabrication it exists to catch.
+
+⚠️ **One distinctive token must match, not all of them** — the model routinely tidies the
+golfer's spelling, and misspelled names are the norm here (§45.3).
+
+⚠️ **My first fixture for that rule could not detect it.** "Iver Golf Vlub" → "Iver Golf
+Club" reduces to the single token `["iver"]`, so `some` and `every` are identical and
+swapping the implementation left all 13 tests green. Replaced with a two-token name the
+golfer misspelled ("Wybostn Lakes Golf" → "Wyboston Lakes Golf"), which fails under
+`every`. **A fixture that cannot distinguish the bug from the fix is not covering it**
+(§42.10) — and it is worth re-running each sabotage after changing a fixture, not just
+after changing the code.
+
+Every fixture is a verbatim slice of a real row: the three fabrications, and the five
+genuine requests (Wyboston, Brechin, Pendleton Creek, a spelling correction, and
+"Home Farm Golf Club" — a real name containing "home") that must keep working.
+
+**Deliberately biased toward rejecting.** A wrongly-rejected request costs one golfer's
+course going untracked, and the operator can still add it by hand from the Care thread. A
+wrongly-accepted one puts a fabricated name in front of a client and can be sent to a
+provider. Not symmetric.
+
+⚠️ **Known gap, pre-existing:** a rejected item records nothing, and dedupe is on
+`sourceConversationId` — which is only written when a row is *created*. So every rejected
+item is re-fetched and re-classified on **every sync, forever**. Harmless at this volume
+and it costs a light-tier call each time; fixing it properly needs a "seen, not imported"
+record, which is a schema change.
+
+## 54. Recent Changes (September 2026) — The gate could not pass, and the iOS app could not authenticate
+
+### 50.1 `npm run verify` reported ~28,000 errors, none of them in this codebase
+
+The quality gate had been failing locally for everyone — §47 recorded it as red and
+blamed `audit:dependencies`, which was wrong and passes on its own. **Every one of the
+28,136 errors was in `.claude/worktrees`.** Claude Code creates a git worktree per
+session there: a nested checkout of this repo inside itself. ESLint walked into them and
+linted 1,533 duplicate files, a second and fifth and tenth time.
+
+⚠️ **CI never saw it**, because CI clones fresh and has no worktrees. So the failure was
+invisible in the one place designed to catch it and unavoidable in the one place people
+actually run it — which is how a gate stops being run at all. `.claude/**` is now in
+`eslint.config.mjs`'s ignore list; lint goes to 0 errors and `verify` exits 0.
+
+**The lesson worth keeping:** a tool that walks the working directory will find whatever
+the *environment* leaves there, and a per-session worktree is invisible to everyone
+except the person whose machine has one. When a gate fails locally but passes in CI,
+suspect the environment before the code — and check *where* the findings are before
+reading the count.
+
+### 50.2 The iOS app could never complete its half of sign-in
+
+Reported as "the Portal asks me to sign in but the rest of the app doesn't". Three
+separate defects, and the reported symptom was the least of them.
+
+**Google sign-in has always worked and is how everyone got into the app.** What never
+worked is the second half — trading Google's ID token for a per-user Foundry JWT. That
+step was only added on 2026-09-17; before then the app ran on the workspace `API_KEY`. So
+the exchange has failed every time it has ever run, invisibly, because the workspace key
+covered for it. (Stating this precisely matters: an earlier commit message here claimed
+"sign-in has never worked", which is false and was corrected before pushing.)
+
+1. **`POST /api/auth/mobile-callback` returned 400, always.** The app's shared
+   `JSONEncoder` applied `.convertToSnakeCase`, so it sent `{"id_token":…}` where the Zod
+   schema requires `idToken`. ⚠️ **Foundry's API is camelCase end to end**, so this broke
+   every multi-word key: creating a Pulse scan (`project_name`) failed the same way, and
+   device registration failed *silently*, storing a null app version forever, because
+   those fields are optional. Only single-word payloads (`body`, `status`, `token`)
+   survived — which is why most of the app worked and nobody noticed.
+   ⚠️ Explicit `CodingKeys` would not have helped: a key-encoding strategy rewrites the
+   key `CodingKeys` produces. The strategy is the only place it can be fixed.
+
+2. **The ID token audience never matched.** `verifyGoogleIdToken` pinned `aud` to a single
+   value — `GOOGLE_IOS_SERVER_CLIENT_ID`, holding the **web** client ID — while the app,
+   configured with `serverClientID: nil`, mints a token for the **iOS** client ID. Which
+   one lands in `aud` is decided by the *client's* configuration, so pinning the backend
+   to one value couples it to a client build it cannot see. The env var is now a
+   comma-separated allow-list.
+   ⚠️ **It is an allow-list of our own client IDs and must never be widened to one we do
+   not control** — the `aud` check is what stops a token minted for another application
+   being replayed here. The `hd` workspace-domain check remains the real authorisation
+   gate.
+
+3. **The sign-in gate was on the wrong screen.** `SessionStore.isSignedIn` meant the
+   *Google* session alone, so the app showed its full tab bar while holding no Foundry
+   credential and each screen reported the failure on its own. A whole-app condition asked
+   one screen at a time. It now requires both, and a credential refused mid-session
+   broadcasts an invalidation so the gate closes without waiting for a cold start.
+
+**Also:** the security fix from the day before — deleting the compiled-in workspace key —
+had not taken effect on any device that had already run an older build, because the
+Keychain outlives the app and the key was still in the slot. A credential that is not a
+Foundry mobile JWT (wrong issuer, wrong audience, no subject, expired, or not a JWT) is
+now refused and erased at the single read path.
+
+⚠️ **Rotating a shared key is a good diagnostic**: what breaks is what was using it. The
+rotation is what exposed both the stale Keychain key and a Stream Deck bridge still
+polling `/api/agents/status` every three seconds on the old credential.
+
+## 55. Recent Changes (September 2026) — Messages: one recipient field, and the audit the feature never had
+
+Messages shipped with a **chip per teammate**. Measured at 390px, the 29 chips ran to 13
+rows and consumed ~700px of a 760px viewport, so the MESSAGE box — the entire point of
+the dialog — started below the fold and you scrolled past everyone's name to reach it.
+
+Replaced with one field that opens a checklist: a filter box, **Select all / Clear**, and
+a checkbox row per person. The field names the choice rather than counting it
+(`Sian Woolridge, Harry Brown +2`), because *"4 selected"* makes you reopen the picker to
+check you picked the right four — which is the check you want before something reaches
+29 people's phones. Picking everyone reads **`Everyone (29)`**: sending to the whole
+company is the one choice that should never look like an ordinary list.
+
+⚠️ **The panel MUST be anchored/portalled, and that is not a preference.** It sits inside
+the dialog's `overflow-y-auto` body, and `overflow-y: auto` forces `overflow-x: auto` —
+so that element clips on **both** axes. An absolutely-positioned panel (the shape
+`task-filter-bar.tsx` uses, which is correct on a page) would be cut off, and the cut is
+invisible to `audit:ui` (no class is misused) and reports **no page overflow** (the
+scroller absorbs it). Same trap as `.widget-card` in §45.2. There is a test asserting the
+panel has no clipping ancestor; removing `anchor` fails it.
+
+### 55.1 The house popover is now declared once
+
+`menuPanel` / `menuItem` were written out in **three** files; two were byte-identical.
+They live in **`src/components/ui/menu-styles.ts`** now, and the two identical copies
+import it. `wiki-workspace.tsx` keeps its variant (it adds `min-w-[12rem]` and `gap-2.5`)
+— a real difference, left alone rather than flattened.
+
+Both Messages dialogs also **adopted `.app-dialog-fixed`** (§52.3). They had invented
+their own clamps — `76vh/680/460` on compose and `70vh/620/420` on read — which is
+precisely the drift that class exists to prevent. Adopting it also pulls the file into
+`dialog-fixed-height.test.ts`'s sweep, which went 11 files → 12.
+
+### 55.2 What the audit found, and what it found nothing wrong with
+
+Driven at 390 · 768 · 1440 in **both themes**, across four states (list, compose, read,
+**picker open**), using the repo's own `AUDIT` from `scripts/audit-clipping.mjs` as a
+library plus a canvas-resolving, alpha-compositing contrast sweep (§45.3's two traps).
+
+- **Clipping / offscreen / truncated / page-X: 0.**
+- **Contrast: 234 text nodes examined, 0 below AA.** The previous session's colour work
+  is sound — the tightest are `10px "1 UNREAD"` at 4.56:1 and `11px "Mark read"` at
+  4.76:1, both passing. Reported as measured rather than dressed up as a finding.
+- **Two defects a detector cannot see**, both found by screenshotting: the row actions
+  were `-mt-2` under a bordered button, so the **hairline ran through the link text**;
+  and they were drawn on every resting row, which is the §42.8 lesson (a list whose every
+  row carries controls reads as chrome, not content). They reveal on hover now, with
+  `focus-within` so they stay keyboard-reachable — revealing is a visual default, never
+  a gate.
+
+⚠️ **The first audit run reported "clean" on a control it had never looked at.** The
+popover is portalled and only exists while open, so the harness — which only clicked
+*New message* — never rendered it. Adding the open state took the sweep from 124 text
+nodes to 234. **A harness that does not drive a surface into a state cannot report on
+that state**, and "0 findings" reads identically either way.
+
+⚠️ **jsdom computes no layout, so `--button-width` arrived as `0px`** and the panel
+measured 2px wide. A harness artefact — but it exposed a real fragility, since anything
+leaving that variable unset collapses the panel to nothing. It now carries a
+`min-w-[260px]` floor that never binds at a real field width.
+
+⚠️ **One of my own sabotages proved a branch was dead.** Guarding `Everyone` with
+`totalPeople > 0` changed no test — because an empty selection returns before that line,
+so the two can only be equal when both are real. The guard is gone and the test that
+pretended to cover it now asserts the case that can actually happen.
+
+**Verified:** tsc + lint **0 errors**, **3527 tests** (17 new), `audit:ui` **0 findings**;
+`npx next build` clean, 104 static pages. The new tests were proved to discriminate by
+breaking four things on purpose — removing `anchor` (1 failure), dropping the blank-name
+filter (1), removing accent stripping (1), and putting the filter box back under 16px,
+which is what makes iOS Safari zoom the viewport on focus (1).
+
+**Not verified:** `/app/messages` is auth-gated with no demo route, so the picker has not
+been driven in a real browser — anchoring and keyboard behaviour are Headless UI's and
+were asserted structurally, not observed. **Post-deploy:** open New message, confirm the
+panel opens over the dialog rather than being cut off, filter, Select all, and send one
+to yourself to check the phone notification still lands.
+
+⚠️ **Another session was mid-edit on `messages-workspace.tsx`** (adding pagination to the
+list) when this landed. This change is from `origin/main` and touches the compose modal
+and the row markup; that one touches the list's data flow. They will need merging.
+
+## 56. Recent Changes (October 2026) — An iOS link is reported as an iOS app
+
+Dan, after an App Store scan of Beyond Nutrition UK came back as a website: *"when I give
+you a ios link, we report it as an ios link, when android we report android, that's why we
+have the tabs."* He was right on every count, and the cause was not one bug but the same
+missing fact at six layers.
+
+### 56.1 What a store link used to become
+
+| Layer | What it did | Why it was wrong |
+|---|---|---|
+| Form | Platform left on its default, **Web app**; name `apps.apple.com` | The link says what it is; the picker was a default |
+| Scan record | `platform: WEB_APP` stored | Benchmark segment, AI prompt and report all read it |
+| Gate | Judged by the **website** `launch-ready` policy, which requires `url-checks` | A listing runs none of them, so the only possible answer was "INCONCLUSIVE — scan the product's own URL" |
+| AI prompt | `Platform (declared by client): WEB_APP` | The write-up recommended security headers and SEO for an iOS app |
+| Coverage note | "You scanned this as … none of that is visible from a URL" | Read as though the user had picked the wrong input |
+| Store checks | Keyword searches over the whole page | See 56.3 — they passed for every app |
+
+### 56.2 One rule, used everywhere — `src/lib/pulse-store-url.ts`
+
+Framework-free, so the client form and the server import the same function and cannot
+disagree. `detectStoreTarget()` decides by **host**, never substring — the old
+`url.includes("apps.apple.com")` sent `https://example.com/?next=apps.apple.com` down the
+store path and skipped every website check on a website. `resolveScanPlatform()` lets a
+store link override the picker (the link is a fact, the picker a default) and leaves
+every other URL with the user's choice.
+
+Consumers: the form (the platform select is replaced by a fixed "Scanning as **iOS app** ·
+from its App Store listing" readout), `createPulseScanRecord` + `runAnalysis` + the AI
+re-analysis path (stored and run as IOS_APP / ANDROID_APP), `analyseWithClaude` (told it is
+an app's listing and not to recommend website fixes), the scan list (the line reads
+"iOS app · App Store listing", URL in the tooltip), the results hero (a **Platform** row),
+the agent pipeline ("Store listing", not "Infrastructure"), and the MCP verdict (new
+`subject: { platform, label, name }`, and the summary leads with it).
+
+**Naming.** A name Pulse invented — the store host, or the slug-derived provisional name —
+is replaced by the store's own name once the listing is read; a name the user typed never
+is. ⚠️ The provisional comparison is **case-sensitive**: "Beyond Nutrition UK" slug-cases to
+"Beyond Nutrition Uk", and compared case-insensitively the app's true name matched its own
+placeholder and was discarded. A test caught that, not a reading.
+
+### 56.3 The store checks measured nothing — `src/server/pulse-checks/store-listing.ts`
+
+Every store check was `lower.includes(…)` over the whole listing page. Apple's page contains
+"Ratings & Reviews" (a heading), "age" (inside "language" and "image") and "screenshot" on
+**every** listing, so those checks passed for any app that exists. The subtitle check passed
+when the title contained " - ", and Apple's title always ends " - App Store". That is how a
+listing scored 98–100 whatever the app was like.
+
+Both stores ship the listing as structured data in the page: Apple's `serialized-server-data`
+view model plus a schema.org `SoftwareApplication` block; Google's `SoftwareApplication`
+block plus labelled regions (description, screenshots, Data safety, the privacy-policy
+link). The checks now read named fields and declare **HIGH** confidence for it. Two traps,
+each with a test:
+
+- **Apple's page carries other apps' data.** The "you might also like" shelf has its own
+  subtitles; only the listing's own `lockup` is read.
+- **Apple shows the category where a subtitle would be.** A subtitle equal to the genre is
+  no subtitle — Beyond Nutrition's slot reads "Health & Fitness".
+
+⚠️ **An unreadable listing is INCONCLUSIVE, never SKIPPED.** SKIPPED means "does not apply",
+which the gate and the score both exclude — so an unreadable listing reported that way
+would pass the gate on `store_page_live` alone, having read nothing.
+
+New check `store_privacy_policy_owner` (MEDIUM, WARN-at-worst): compares the policy's
+domain with the publisher's name. It is a heuristic and its wording says so. Unsourced
+claims in the old copy ("can increase install rates by 20–35%", "this will block App Review"
+on an app that is already live) were removed.
+
+**What the real listings say**, verified against the live pages, for the record:
+
+| | iOS | Android |
+|---|---|---|
+| Publisher | BEYOND NUTRITION UK LTD | **Trainerize CBA-STUDIO** |
+| Rating | 5.0 from 11 | none shown |
+| Privacy policy | trainerize.com/privacy.aspx (≠ publisher) | trainerize.com/privacy |
+| Notable | no subtitle, no preview video, copyright "© 2026 ABC Trainerize" | short description "Fitness App", Data safety: **"Data can't be deleted"** |
+
+### 56.4 A store link is judged as the app it lists — `release-decision.ts`
+
+New policies **`ios-app-listing`** and **`android-app-listing`**: block on the listing being
+gone, on no privacy policy, and on a missing App Privacy / Data safety declaration (each
+enforced by the store itself); require the new **`store-listing`** collector. The label —
+"iOS app · App Store listing" — is the scope: READY means the *listing* meets the bar. The
+app's code is not in scope, and the coverage check says so in words about the app.
+
+`resolveGatePolicy({ policyId, targetUrl })` is the only way a policy is chosen — the scan,
+the agent verdict and the report's fallback all call it, or one scan gets two answers
+depending on who asked.
+
+Two gate fixes that apply to every policy:
+- **A required collector that was never recorded no longer reads as present.** Coverage now
+  records `completedNames`; a required collector absent from it is missing. Before, a
+  collector the scan never ran appeared in no list and was indistinguishable from success.
+- **The reason says why.** `failedDetails` carries a failed collector's own words, so a
+  rate-limited store reads "Apple rate-limited this scan (HTTP 429)", not "did not run".
+
+### 56.5 Verified / not verified
+
+`store-link-platform.test.ts` (35 tests) replaces `store-listing-honesty.test.ts`, built on
+two real listings captured 2026-09-30 (`__tests__/fixtures/*-store-beyond-nutrition.html`,
+trimmed, structure intact). Expected values were read off the live pages by hand, not from
+the code under test.
+
+**Not verified pre-merge:** the in-app form and results page (auth-gated, no staging), and a
+persisted in-app scan. Post-deploy: paste the App Store link into the new-scan form and
+confirm the readout says iOS app; run it and confirm the scan is named "Beyond Nutrition UK",
+the hero reads "Platform · iOS app · App Store listing" and the gate's policy is
+"iOS app · App Store listing"; repeat with the Google Play link.
+
+⚠️ **The page formats are not a contract.** Apple and Google can change either at will. When
+they do, the parser returns null and every check goes INCONCLUSIVE with a reason, so a format
+change degrades to "could not read the listing", never to a false pass. If a scan starts
+saying that, re-capture the fixture and update the field paths.
+
+### 56.6 Also in this change: CI's dependency audit was red on `main`
+
+`npm run audit:dependencies` (a CI step) failed for every branch: a new advisory
+(GHSA-m9gg-hp2v-232j, GHSA-f596-whhp-79r4) covers `@grpc/grpc-js` 1.14.0–1.14.4 and the
+lockfile pinned 1.14.4. Fixed lockfile-only — `npm audit fix --package-lock-only` → 1.14.5,
+a three-line diff, no `package.json` change. ⚠️ `--package-lock-only` matters in a Claude
+worktree: `node_modules` is a symlink into the primary checkout, and a real install there
+changes the dependencies every other running session is using.
+
+## 57. Recent Changes (October 2026) — User management: archive, not delete, and the hole that made it urgent
+
+Dan asked for a proper user-management table because people are leaving: everyone in one
+table, an inline role dropdown, and archive in the last column — retained 30 days, no access,
+hidden throughout Foundry, restorable. Reading the auth code to build it found that **removing
+someone gave them more access than they had before**, so the security fix is the foundation
+and the table sits on top of it.
+
+### 57.1 ⚠️ The hole
+
+The old Remove (`removeMember`) **deleted the `WorkspaceMember` row and kept the `User`.**
+The person's `@gitwork.co.uk` Google account usually still worked, and then:
+
+1. **Sign-in let them back in.** The jwt callback found the User, found no membership, skipped
+   auto-provisioning (the User existed) and minted a token with `role ?? "STAFF"`.
+2. **Middleware treats any valid session as authorised for every `/api/*` route** ("a valid
+   session IS sufficient authorization").
+3. **`getEffectiveUserOrNull` was a bare `catch { return null }`.** "No membership" threw
+   `UnauthorizedError`, became `null` — and `null` is how a trusted workspace-API-key caller is
+   represented: `assertCan(null, …)` passes. **~180 routes** use that pattern; **3** use
+   `requireAuthedUserOrDefault`, which resolves `null` as **the workspace owner**.
+
+The same `role ?? "STAFF"` fallback was copied into **all three sign-in paths** — web, the iOS
+token exchange (`/api/auth/mobile-callback`) and the desktop handoff (`/api/auth/desktop/start`,
+found only by sweeping for roster queries). The desktop path is the sharpest: it signs a
+long-lived token, so an archived person could have traded a not-yet-revalidated web session for
+one that outlives every session check.
+
+### 57.2 The fix — a refused identity is not "no identity"
+
+- **`RevokedAccessError` (403)**, in `effective-user.ts`. `requireAuthedUser` throws it when it
+  resolved an identity and refused it: user gone, membership gone, or archived. It re-reads the
+  membership **every request**, so it takes effect on the next call, live sessions included.
+- **`getEffectiveUserOrNull` maps ONLY `UnauthorizedError` to `null`** and rethrows everything
+  else. That also closes a second fail-open: a database blip used to return `null` too.
+- **Sign-in refuses** an existing User with no or an archived membership, in the `signIn`
+  callback (web), the mobile exchange and the desktop handoff. ⚠️ **It refuses rather than
+  re-provisions** — re-provisioning would hand a former employee a fresh STAFF membership (every
+  module, all clients, rates). Genuinely new people have no User row and provision as before.
+- **Live sessions are revalidated** every 5 minutes in the Node `jwt` callback. Returning `null`
+  makes Auth.js clear the cookie (`@auth/core` `lib/actions/session.js`). The same read refreshes
+  `token.role` / `token.permissions`, which fixes a pre-existing defect: page access was fixed at
+  sign-in, so a role change took up to 30 days (the session lifetime) to reach the middleware.
+- **Archived guests** are refused by the password path with the same response and timing as a
+  wrong password, so the form can't be used to learn an account was archived.
+- **`assertNotLastSuperAdmin` counts ACTIVE Super Admins.** Counting archived ones would let you
+  archive one and then demote the other, leaving nobody able to edit the role matrix.
+- **The team routes resolve the caller with `requireTeamAdmin`** (DB-backed), not `auth()` +
+  `session.user.role`, which is stale for a just-archived admin.
+
+### 57.3 Archive, restore, reinstate, purge
+
+`WorkspaceMember.archivedAt` + `archivedById` (additive). Pure rules in
+`src/server/auth/member-status.ts`; operations in `src/server/team.ts`.
+
+- **Archive** stamps two columns and touches nothing else. Idempotent. You can't archive
+  yourself, someone at or above your rank, or the last active Super Admin.
+- **Restore** within `ARCHIVE_RETENTION_DAYS` (30) returns role, permissions and overrides
+  exactly, because they were never changed.
+- **Reinstate by email** is the only way back after the window — sign-in now refuses a User with
+  no membership, so without it a returning hire could never use their own address again.
+- **Purge** (`GET /api/cron/member-purge`, daily 03:30) deletes **memberships, never Users**: a
+  User is referenced by tasks, leave, expenses, meetings, documents and the audit log, and
+  deleting one would erase who did what. ⚠️ **The crontab line is not installed by this PR**
+  (`docs/vps-crons.md` already records four documented crons that never ran). It is fail-safe by
+  design: `memberStatus` reports a member past the window as `expired` — no access, not
+  restorable — whether or not the purge has run.
+- **`isActiveMember` is a raw null check**: a non-null but unparseable `archivedAt` reads as
+  archived. Parsing first would have read "can't tell when" as "never archived".
+- `DELETE /api/team/members/[id]` now **archives**, so an old client or bookmark does the safe
+  thing.
+
+### 57.4 Hidden throughout Foundry — 31 decisions, not a blanket filter
+
+Every `workspaceMember.findMany` / `.count` (31 when this landed) either spreads
+`...ACTIVE_MEMBER` or carries `// includes-archived: <reason>`. **`roster-active-member.test.ts`
+fails on any that does neither.** 24 are active-only, including three that matter more than they
+look: **`cron/meet-transcripts` and `backstage-gcal` kept using a leaver's stored Google refresh
+token to read their Drive and calendar**, and `push/devices` kept pushing to their phone. The
+deliberate exceptions: the user-management list and purge (they exist to see archived rows), the
+permission-cache recompute (refreshes a cache, grants nothing), a data migration, the leave-
+history country lookup, and the first-admin bootstrap counts — where counting archived admins is
+the **fail-safe** direction, or archiving every admin would make the next sign-in a Super Admin.
+
+Historical attribution is untouched: a task an archived person completed still shows them.
+Hiding is for pickers, rosters and fan-outs, not for history.
+
+### 57.5 The table
+
+`src/components/settings/team/user-management-table.tsx`, inside Settings → Team card 04.
+Active / Archived as a segmented control; inline role dropdown offering only roles the actor may
+assign. ⚠️ **A role change resets per-person overrides** (`updateMember`), so the dropdown
+confirms first when there are any. The archive confirmation shows the person's **open task count**
+and says plainly that **their Google account is separate** — suspend it in Google Admin too, or
+they keep Gmail and any shared client Drive folders. The Edit-access modal's old "Remove from
+workspace" danger zone — which said removal was "reversible only by sending a new invite" — is
+gone; there is one archive path. "Active" was also the old signed-in marker's label; it now flags
+only the exception, "Invited", since "Active" means active-vs-archived on this table.
+
+### 57.6 The role review — findings NOT fixed here, in priority order
+
+Each is a policy decision or a larger change, recorded rather than done silently:
+
+1. ✅ **Resolved in the same PR (Dan's call).** Every new `@gitwork.co.uk` sign-in used to be
+   auto-provisioned as STAFF, whose default is every module, `seeAllClients`, `code.viewRates`,
+   `docs.viewCosts`, `rateCard.view` and manage on five products — so a new account saw
+   commercial rates and every client on day one. New memberships are now created as
+   **`DEFAULT_PROVISIONED_ROLE` (DEVELOPER)** on all four paths: web, iOS and desktop sign-in,
+   and invite acceptance. An Admin raises the role in Settings → Team. ⚠️ Existing members were
+   NOT changed — only what a brand-new membership starts as. The known owner emails and the
+   first-admin bootstrap still become Super Admin. `provisioned-role.test.ts` fails if any
+   path hardcodes a role again, and also pins that DEVELOPER's defaults carry none of the
+   rates/all-clients grants that made the change worth making.
+2. **113 API routes resolve no user at all** and trust any valid session from middleware. After
+   this PR an archived member's session is cleared within 5 minutes — but those routes also let
+   any *active* member of any role call them (a DEVELOPER can PATCH any client's wiki documents).
+   That is a general authorisation gap, larger than archiving.
+3. **Browser sessions carry the real workspace `API_KEY`** in the HttpOnly
+   `gitwork_api_session` cookie (12h), set on every `/app` response. It is why `null` = trusted is
+   so dangerous: everyone who has had a session has had the master key in their cookie jar.
+4. **Three duplicated sign-in/provisioning paths.** `sign-in-paths.test.ts` now finds every
+   token-minting file and requires the active check before signing, but one shared
+   `provisionOrRefuse(email)` is the real fix.
+5. **Handbook access contradicts this file.** §4 says readable by every internal user; the
+   middleware redirects anyone below Admin, and the memory notes call it Super-Admin-only.
+
+### 57.7 Verified
+
+`npm run verify` and `npx next build` — figures in the PR. Behavioural tests run the real
+`requireAuthedUser` / `getEffectiveUserOrNull` / `archiveMember` / `restoreMember` /
+`reinstateMemberByEmail` / `purgeExpiredMembers` against a mocked database and session; sweep
+tests cover the 31 roster queries and every sign-in path. Each guard was proved to discriminate
+by reverting the fix it protects.
+
+**Not verified against production.** `/app` is auth-gated with no staging, and the refusals only
+happen with a real Google sign-in. **Post-deploy, in order:** archive a test member and confirm
+their open tab is signed out within 5 minutes; sign in as them and confirm "Your access to
+Foundry has been removed"; confirm they're gone from a task assignee picker and Backstage;
+restore them and confirm their role is unchanged; then **add the `member-purge` crontab line**.
+
+### 57.8 Archived members in Code (follow-up)
+
+Archiving someone in Settings → Team now also moves their developer card in Code to a new
+**Archived** tab (`/app/codeclear/archived`), reduced to name, avatar and specialism.
+
+- **Derived, never stored.** Code lists `Candidate` rows, which are not team members — the only
+  link is email. `archivedTeamEmails()` (`src/server/codeclear-archived.ts`) finds people whose
+  membership is archived **or who have a User row and no membership** (purged after 30 days, or
+  removed before archiving existed). Without the second case a developer would silently reappear
+  on the active roster the day their window ran out. Matched case-insensitively, because
+  `Candidate.email` is typed by hand.
+- **Excluded everywhere the developer list is used** — the list route defaults to the active
+  roster, so Developers, Pipeline and Overview (which all read it) drop archived developers, and
+  `getCodeClearStats` excludes them from the Overview's counts. `?archived=1` returns only them.
+- ⚠️ **Pre-existing bug fixed in the same function:** `buildCandidateWhere` set a top-level `OR`
+  for stack, search, confidence and score range, and an object literal keeps only the LAST key —
+  so combining any two filters silently dropped all but one (search + a confidence filter ignored
+  the search). Each group is now its own clause in `AND`. The builder moved to
+  `src/server/codeclear-candidate-where.ts`, since Next rejects non-route exports from `route.ts`.
+- **Known limit, stated on the page:** a developer card with no email, or one that differs from
+  the address they sign in with, cannot be linked and stays under Developers.
+- **Not changed:** an archived developer's open `Placement`s still count in Portal's dev counts
+  and monthly cost. Ending placements mutates delivery data, so it was left as a decision.
+
+## 58. Recent Changes (October 2026) — Pulse shows only the checks that apply to the product
+
+Dan, after §56: *"make sure every platform in that dropdown ONLY runs the checks appropriate to
+the platform … the checks need to be contextual and only show IF related to the specific
+platform; we don't show irrelevant data or results if not needed."*
+
+### 58.1 What it measured before — with the real engine, not a reading of the code
+
+`scripts/pulse-platform-matrix.ts` runs `runLiteScan` (the core the in-app scan and MCP share)
+for **every dropdown platform against 17 real targets**: SaaS, marketing and bare websites, a
+JSON API, App Store / Google Play / Chrome Web Store listings (incl. a removed one), and iOS,
+Android, Flutter, React Native, Electron, extension, CLI, Next.js and Express repos. Before:
+
+| | |
+|---|---|
+| example.com (one static page) as Web app | **857** findings — 368 "verify manually" catalogue items, 20 payments, 30 SaaS, 21 API-quality |
+| a website scanned as iOS / Android / desktop / extension / CLI | **1** check (ssl_valid) |
+| api.github.com as Web app | graded as a website — 861 checks |
+| an iOS repo | the same **458** checks whether the dropdown said iOS, Web app or CLI |
+| a Next.js repo picked as "iOS app" | ran as iOS — every web-source check lost |
+| a Chrome Web Store link | Google's store page graded as the user's website |
+
+`scripts/pulse-matrix-assert.ts` checks every run against plain-language expectations written
+about the targets (an API is not graded on SEO; an iOS repo has no Android checks). It does NOT
+read the gate's own data — that would be the gate agreeing with itself. **Before: 432 of 902
+expectations violated.**
+
+### 58.2 One gate — `check-relevance.ts`
+
+Every check from every collector passes through `runLiteScan`'s `ingest`, and that is the one
+place a check is held back. Shown only when all hold:
+
+1. **Surface** — it measures what was scanned (website · API · store listing · repo of a shape).
+2. **Platform** — the question matters for the product type. A *website* of a non-web product is
+   its public presence: TLS, headers, privacy/terms, exposure, SEO — not SaaS, auth or checkout.
+3. **Feature** — a feature check needs the feature (`product-features.ts`: **use, not mention** —
+   Stripe.js loaded, not the word "stripe"; the product's own store link, not an apple-touch-icon).
+
+Plus: a standards-catalogue control only with an evidence-backed verdict; a SKIPPED / NOT_APPLICABLE
+row never (except `SCAN_NOTE_KEYS`); a `WITHHELD` check never. Hidden checks are not stored or
+scored; `scoreBreakdown.relevance` records how many and why, rendered as one "Scoped to this
+product" sentence.
+
+⚠️ **The rules are data** — `check-relevance-data.ts`, generated from the audit below: one rule
+per catalogued check (1,299 + the derived standards catalogue). `check-relevance.test.ts` fails
+if any catalogued key lacks one — it reads `catalogue-baseline.json`, not the registry's literal
+rows, because 156 generated checks (service-depth / operational-depth) are not literal rows and
+the first version of the test silently missed every one.
+
+### 58.3 Routing by what the artefact IS
+
+- `repo-kind.ts` — a repo with no native shape is web / backend / none from package.json deps and
+  framework entry files (never from go.mod / Cargo.toml / main.py, which name a language, not a
+  server). Detection decides the platform; the dropdown only labels it, and a mismatch is said once.
+- A website scanned as a non-web product runs the URL engine as a marketing site (presence).
+- A URL answering JSON is an API, judged as one whatever the dropdown said.
+- Markets: none declared or detected → UK, EU, US assumed; other regions only when present.
+- Gate policies by surface (`resolveGatePolicy`): store listings (§56 + **chrome-extension-listing**),
+  **source-code** for repos (was the website policy — every repo scan was permanently INCONCLUSIVE),
+  **web-presence**, **api-production**, saas-production for SaaS. Description scans get no score
+  and no verdict.
+
+### 58.4 Chrome Web Store
+
+The store publishes no schema.org data; everything is in the `ds:0` AF_initDataCallback array.
+⚠️ Liveness comes from that data, never the HTTP status — the store answers **200** for a removed
+item (`/detail/empty-title/<id>`, RPC NOT_FOUND). New checks `cws_privacy_practices`,
+`cws_trader_status`, `cws_trust_badges`, `store_last_updated`; the published manifest runs
+`evaluateExtensionManifest`. The extension CSP is now parsed by directive — `wasm-unsafe-eval`,
+an https `frame-src`, and `__MSG_` names were failing store-approved extensions (Bitwarden, Grammarly).
+
+### 58.5 The audit, and what "withheld" means
+
+Every check's code was classified (surface · platforms · feature) and challenged by an
+independent critic (267 corrections), every input path traced per platform, and **2,149 defect
+claims** raised. 1,114 (all high + medium logic) were verified adversarially: **1,107 upheld**.
+Spot-checked by hand, they hold (`legal-extended`'s `"eur"` matches `decodeURIComponent`; CI
+checks PASS a repo with no workflows; Android's SDK floor was a year stale).
+
+`WITHHELD` holds back two kinds of check, each with its reason: ones Pulse **cannot assess from
+what it scans** (GitHub branch protection "detected" by regex over a website; PagerDuty guessed
+from a homepage) and ones with a **verified high-severity wrong-verdict defect**, until fixed —
+a confident wrong answer is worse than none. Fixing one removes it.
+
+### 58.6 Result, and what is still open
+
+**After: 0 of 935 expectations violated across 187 runs** (11 platforms × 17 targets), against
+432 of 902 before. example.com as a Web app went 857 → 251 checks; a website scanned as iOS
+reports its public presence (194 checks) instead of one; a JSON API as Web app 861 → 44; an iOS
+repo is judged as iOS whatever the dropdown said (73 checks, no web or Android family).
+`npm run verify` and `npx next build` clean; 4,159 tests.
+
+⚠️ **The matrix proves the gate is consistent with plain-language expectations, not that every
+remaining check is right.** 222 checks are `WITHHELD` (unobservable, or a verified high-severity
+logic defect awaiting a fix). The fixes were proposed by an agent workflow that hit the session
+limit before its adversarial reviews finished, so **none were applied** — a fix with no completed
+review is how §44.3's regressions happened. Apply them package by package, each with a two-sided
+test, removing the key from `WITHHELD` only when its fix lands. The defect list is in the audit
+scratch data, not committed; re-derive per module when picking one up.
+
+Not verified: the in-app results page and report (auth-gated, no staging), and a live
+Chrome Web Store scan through the deployed scanner. Post-deploy, scan a Chrome Web Store link, a
+JSON API URL and a website as "iOS app", and read the "Scoped to this product" line.
+
+## 59. Recent Changes (October 2026) — CRM: a lead pipeline that moves itself
+
+Dan's brief: *"a CRM that is almost automated — start with Valu — we base the status move on emails
+and conversations in Slack"*, widened mid-build to *"better statuses, actions and next steps, and
+convert to a full client that pulls information into a full Portal client."* Leads already had a
+stage (`LeadStage`) and an activity log (`ClientTouchpoint`); both were set by hand only, and
+"Convert to client" was a bare status flip.
+
+### 59.1 The one rule: facts move the stage, wording only suggests
+
+- **Facts** move the stage automatically. Something observably happened: an email either way, a
+  meeting, a proposal drafted / shared / accepted / declined, a contract sent / signed, or a person
+  logging a call/email/meeting by hand.
+- **Wording** — an email or Slack message that *reads* like "we're going ahead" — only ever
+  produces a **suggestion** with one click to accept. An automatic LOST from a misread reply is
+  the expensive mistake. Same for actions: anything the AI reads out of a message arrives as
+  *proposed*, never on the list until someone adds it.
+- **Internal Slack is never a fact.** Gitwork talking about a lead is not contact with the lead —
+  "we should send Valu the deck" must not move anything. It feeds suggestions and actions only.
+
+All of it is pure and unit-tested in **`src/lib/crm/lead-stage-engine.ts`** (the stage rules),
+`signals.ts` (Gmail query, direction, address parsing), `convert.ts` (main contact + conversion
+fields). The orchestrator is `src/server/crm/sync.ts`; everything the UI reads is
+`src/server/crm/service.ts`.
+
+### 59.2 The pipeline (11 stages, agreed with Dan)
+
+New · Contacted · Discovery · Qualified · Scoping · Proposal sent · In discussion · Contract out ·
+Won · Lost · On hold. Seven move on facts; **Qualified** and **On hold** are suggestion-only, as is
+a wording-based Won/Lost. The table of what moves each one is `STAGE_TRIGGER` — rendered beside the
+picker so nobody has to guess.
+
+⚠️ **`LeadStage` is a Postgres enum: add values only.** Removing or renaming one is data-losing and
+the guarded `prisma db push` skips the WHOLE sync (§2). The six original values were kept.
+
+⚠️ **`LEAD_STAGES` is the single list.** The Zod schema and MCP's tool schema read it, and
+`stage-list-single-source.test.ts` pins it to the Prisma enum. Before this there were four
+hand-typed copies (schema, Zod, MCP ×2) and a new stage would have silently 400'd.
+
+Rules a move must satisfy, each with a test: a **pinned** stage is never touched; **Won** is never
+left; ordinary progress is **forward only** (old evidence still counts, so switching automation on
+catches a lead up); leaving **Lost** needs evidence newer than the moment it was lost, and an
+unknown "since" never leaves it; leaving **On hold** needs any fresh fact; a **decline** only marks
+Lost if it is the latest proposal event and newer than the current stage. *In discussion* means
+**they** wrote after the proposal — our own chasing does not count.
+
+### 59.3 Pinning, and why accepting a suggestion is not a pin
+
+Setting the stage by hand (the picker, or MCP's `update_client`) sets `leadStagePinned` — but only
+when the value actually **changes**, so a save that resends the same stage doesn't switch
+automation off as a side effect. "Resume automation" clears it. Accepting a suggestion is a
+person's decision too, but it does **not** pin, or every accepted suggestion would freeze the lead;
+instead `leadStageChangedAt` is stamped, and that is what stops older evidence overriding it.
+
+### 59.4 Privacy — whose mailbox, and what is stored
+
+⚠️ **A mailbox is read only when its owner opts in** (`WorkspaceMember.crmMailboxEnabled`, via
+"Use my Gmail" on the lead — `PATCH /api/account/crm-mailbox` is self-only and refuses an API-key
+caller), **only for messages to/from the lead's own domains** (the Gmail query is built from
+validated domains and is never sent unscoped — `buildGmailQuery` returns null rather than an open
+search), and **only the subject and the person on their side are stored — never bodies.**
+Foundry's Gmail access is otherwise strictly per-user because a workspace-shared path once leaked
+one person's inbox to everyone (`/api/integrations/gmail`). It is per-*membership*, and the query
+spreads `ACTIVE_MEMBER`, so archiving someone stops their mailbox being read (§57).
+
+Subjects then appear on the lead's timeline for anyone who can see the lead. The opt-in copy says
+so.
+
+### 59.5 Failure model
+
+Every source (Gmail per mailbox, Slack, meetings, documents) is read independently via
+`Promise.allSettled`. A source that fails is reported in words on the lead and does **not** advance
+`crmLastSyncedAt`, so its window is re-read next time — "we couldn't look" must not become "nothing
+happened" (§35). Syncs claim the lead (`crmSyncStartedAt`, 5-minute TTL) so two can't log the same
+email twice. Dedupe is on `(source, externalId)` — the RFC **Message-ID** for email, so the same
+email in two opted-in mailboxes logs once. ⚠️ Deliberately **no unique constraint**: adding one is
+treated by `db push` as potentially data-losing (§2).
+
+The AI read is one light-tier call per sync over the last 30 days of new messages, cached on the
+message set (£0 when nothing changed), gated on `ai.generate`, attributed to the new `AiModule.CRM`,
+and validated against the messages it was actually shown — a stage we don't have, a message it
+wasn't given, a backward move or a due date past next year is dropped.
+
+### 59.6 Actions, next steps, the Desk
+
+`LeadAction` (owner, due, state `suggested | open | done | dismissed`). The **next step** is the
+earliest open action. Open actions appear on their owner's **On Your Desk → Tasks** as "Lead
+follow-ups". AI-proposed actions default to the lead's owner (`leadOwnerId`); accepting an
+unowned one gives it to whoever accepted it — an action nobody owns is an action nobody does.
+
+### 59.7 Convert to client
+
+Was a status flip. Now a two-step dialog (`ConvertLeadModal`):
+1. Fill **empty** fields from the CRM — main contact = whoever on their side emailed us most;
+   website from their domain. ⚠️ Never overwrites, and a name only travels with its own email, so
+   the record can't end up naming one person at another person's address. The server re-derives
+   the values rather than trusting the preview.
+2. **Plan delivery** from the accepted proposal via the existing Plan-review preview/seed path
+   (`previewProjectPlanFromProposal`), so nothing is created until it has been seen. A proposal
+   matched only by name is linked to the client first, because Plan review looks proposals up by
+   `clientId`.
+
+⚠️ The dialog stays mounted while open, not merely while the record is a lead — converting flips the
+status and the refetch would otherwise unmount it between step 1 and step 2.
+
+### 59.8 Verified / not verified
+
+`tsc` 0 errors; ESLint clean on every changed file; **50 new tests**, proved to discriminate by
+seven deliberate breakages (Slack as a fact, pin ignored, backward moves, Lost reopened on old
+evidence, our chasing counted as their reply, an unscoped Gmail search, conversion overwriting) —
+each caught. Schema diff is purely additive.
+
+**Not verified against live data** — `/app` is auth-gated with no staging and no local DB, and the
+sync reads real Gmail and Slack. **Post-deploy, for Valu:** open the lead → 04 Automation → switch
+it on, add Valu's email domain, press **Use my Gmail**, set the internal Slack channel in Edit
+client, then **Sync now**. Confirm the activity log fills with emails and the stage moves to where
+the history says it is. **Then add the `crm-sync` crontab line** (`docs/vps-crons.md`) — until it is
+in, leads still sync whenever someone opens them.
+
+## 58. Recent Changes (October 2026) — Estimates: how long with 1, 2, 3… developers
+
+A new client-wiki section (`estimates`, label **Estimates**) that answers *"how long will
+it take, and how much faster is it with more people?"* on a calendar. Read-only for the
+client; edited by Gitwork. Same posture as Running costs: no `/api/wiki/[token]/estimates`
+route, the data rides down in the wiki DTO, and the wiring test asserts that directory does
+not exist.
+
+**What is stored is effort, never dates.** `WikiEstimate` holds the phases (name,
+developer-days, the most people the phase can use), the team sizes to compare, a start
+date (nullable), a coordination level and a contingency %. Every duration, finish date and
+calendar bar is derived at render by **`src/lib/wiki-estimates.ts`** (pure, unit-tested),
+which the section, the editor's live preview and the dashboard card all call — so they
+cannot disagree. Schema is additive: one flag, one model, one enum. Phases are JSON,
+replaced wholesale on write and parsed defensively on read.
+
+**The model, and why it is not effort ÷ developers:**
+- **Coordination.** Team throughput is `n / (1 + k·(n − 1))` — LOW 8%, TYPICAL 15%, HIGH 25%
+  per extra developer. Two developers deliver 1.74×, twelve deliver 4.5×, never n×.
+- **Phase caps.** A phase can cap how many people it uses (discovery, a store release).
+- So the curve flattens, and the page says so in words — *"No faster than 2 developers"* —
+  rather than drawing a bar that looks shorter because the arithmetic was naive.
+- Phases run in sequence, each rounded UP to whole working days.
+
+**Dates are the real calendar, Monday to Friday** (Dan, explicitly). Every date is an
+actual date stepped over weekends. ⚠️ **Durations are measured between the real start and
+finish dates**, not working-days ÷ an average month: weeks are calendar weeks (weekends
+inside the span count, because the client reads "12 weeks" against their own diary), and
+months are whole calendar months plus the remainder as a fraction of *that* month's own
+length (`calendarMonthsBetween`). The test that tells them apart is 2 Nov → 2 Jun: 7 months
+and a day by the calendar ("7½ months"), 6.997 by a 30.44-day average ("7 months" — a week
+the calendar does not have). Bank holidays and leave are NOT removed, and the page says so.
+
+**Layout — two panels, no long lists:** `01 // ESTIMATE` (the figure for the chosen team,
+the team-size switch on the same row, finish date and contingency range) and
+`02 // CALENDAR` (one row per team size, Week · Month · 6 months · Year zoom, paged). The
+calendar never scrolls sideways — the axis IS the window, and `.widget-card` is
+`overflow: hidden` (§45.2). Up to 15 developers and 8 compared sizes (`ESTIMATE_LIMITS`,
+shared by the validator and the editor).
+
+⚠️ **Calendar windows start on the Monday of the start week, not the 1st of the month.**
+Month-aligned windows put a five-week plan starting 19 Oct outside "October", so it opened
+on a six-month axis that was mostly empty. "Month" is six weeks (a month grid), so a
+five-week plan plus its contingency tail fits.
+
+**Two defects found by looking, not by testing:** the editor's columns overlapped on a
+phone — a `min-h-0` grid item in a single-column scroller lets its row shrink below its
+content (now `md:min-h-0` only) — and `audit:clipping`'s detector reported **0** for that
+overlap, because it detects clipping, not overlap. Only the screenshot caught it.
+
+## 60. Incident (October 2026) — Wedge's course requests stopped, for the third time
+
+Big Wedge reported that new course requests were not reaching Foundry. They were right, and
+it was the third time this had been "fixed". Diagnosed against live data:
+
+- **The email route is dead, on their side.** Course requests auto-imported from "New
+  Feedback" emails into the mailbox Care reads over IMAP. That mailbox has received **no
+  mail at all since 4 Aug 2026**, in any folder. Big Wedge's app stopped sending it.
+- **The API route only ever ran by hand, on a token that had expired.** Big Wedge has a
+  proper `GET /api/v1/course-requests/`. Foundry's import from it was reachable only
+  through `/api/dev` routes, and authenticated with an admin JWT pasted onto the Care
+  "Analytics API" connector. An access JWT expires, so every previous fix lapsed. The
+  import also read that token **without decrypting it**, so once connector secrets were
+  encrypted at rest it sent `enc:{…}` as the bearer.
+- **Nothing said any of this.** A dead feed and a quiet week look identical on the board,
+  so the client noticed before we did.
+
+### 60.1 The fix — a scheduled pull that cannot expire and cannot fail quietly
+
+- **`src/server/bigwedge-api-auth.ts`** logs in for itself on every run
+  (`POST /api/v1/auth/login/`) with `BIGWEDGE_API_USERNAME` (a username or an email —
+  sent as whichever field the API expects) + `BIGWEDGE_API_PASSWORD`. A token
+  minted per run cannot expire between runs. Both are synced into the VPS `.env` by
+  `deploy.yml` from GitHub Actions secrets. A stored connector token is still honoured as a
+  fallback, but an expired one is **reported as expired, with the fix**, not sent to 401.
+  The import and the status sync share this one resolver.
+- **`src/server/wedge-course-feed.ts`**, run **hourly** by `GET /api/cron/wedge-course-feed`
+  (`docs/vps-crons.md`), pulls new requests and, about daily, marks the ones Big Wedge has
+  actioned as ADDED. Each run writes `ClientWiki.courseFeedStatus` (additive JSON).
+- **The outcome is visible.** The Course Requests page shows one line: a quiet "Pulled
+  from the Big Wedge app 12 min ago · 3 new", or a red **Feed down** block naming the
+  error. ⚠️ It also goes red when the last success is more than **6 hours** old. A missing
+  cron line errors nowhere, and that is exactly how Foreman and the Curator went months
+  without running (see the vps-crons doc).
+- **Admins are notified once per outage** (`clients.feed_failing`, in-app and push), on the
+  transition from working to failing. They are not notified every hour it stays down.
+- ⚠️ **A page that failed to fetch makes the whole run a failure.** The window was not
+  fully read, so `lastSuccessAt` does not advance and the next run re-reads it. Overlap is
+  free, because rows dedupe on `externalRef`.
+- `courseFeedStatus` is stripped from every public DTO (`forPublic` in `wiki.ts`, pinned by
+  a test). It is our plumbing, and its errors name our configuration.
+
+### 60.2 The importer was throwing away demand
+
+The importer used to skip any request whose course **name** matched a row already on the
+board. But each row is one golfer's submission (§45.3), so a second golfer asking for a
+course already on the board was silently dropped. That under-counted exactly the demand
+signal §45.3 built.
+
+Name matching now applies only to requests submitted **before the email route died**
+(`EMAIL_FEED_ENDED`), and only against rows from another source. That was the one case
+where the email had genuinely already filed the same submission. Everything else
+dedupes on Big Wedge's own request id. See `isDuplicateFeedRow`.
+
+### 60.3 Verified / not verified
+
+36 new tests across the status rules, the auth precedence, the runner and the banner.
+Nine deliberate sabotages, each failing the test named for it. Not verified: a live login.
+**Dan must set `BIGWEDGE_API_USERNAME` / `BIGWEDGE_API_PASSWORD`** (a Big Wedge staff
+account) as GitHub Actions secrets and re-run the deploy. Until then the page says
+**Feed down** with that instruction. That is the intended behaviour, not a bug.
+
+### 60.4 ⚠️ The secret sync had been failing silently since 19 September
+
+Setting the secrets changed nothing on the box. `/opt/apps/foundry/.env` had been **owned by
+root since a hand edit on 19 Sep**, and the deploy SSHes in as `deploy`, which could only read
+it. `upsert_env` never checked its writes, so every deploy since printed "added from CI" while
+writing nothing, for every managed secret, not just these. Fixed on the box (`chown
+deploy:deploy`, `chmod 600`, original backed up under `/root`), and `deploy.yml` now refuses
+to continue if `.env` is not writable and verifies each key landed. **Never edit `.env` with
+`sudo`** — edit it as `deploy`, or set the value as a GitHub secret.
+
+### 60.5 The client's Slack channel hears when it drops (`wedge-course-feed-alert.ts`)
+
+The feed posts to Big Wedge's **external** (Slack Connect) channel, because they notice
+missing requests first and the feed reads their API. Rules in `feedAlert()` (pure, tested):
+**down** after two failed hourly runs in a row (`ALERT_AFTER_FAILING_MINUTES` — one blip never
+reaches the client), after 6h without a success, or after `STOPPED_AFTER_MINUTES` with no run
+at all; **once per outage** (`courseFeedStatus.alertedDownAt` is the latch, and it only moves
+when Slack accepted the post, so a Slack outage retries rather than swallowing the alert);
+then one **recovered** message with the catch-up count. ⚠️ The wording comes from
+`clientSafeReason()`, never the raw error — those name our env vars. The "hourly run stopped"
+case cannot report itself, so a watchdog rides on the 5-minute `wedge-keepwarm` cron and only
+acts once no run has happened for `STOPPED_AFTER_MINUTES`, so it can't race a live run.
+
+**Same session:** the 3,322 Wedge requests in New submitted more than a week before 14 Oct
+2026 were moved to **Sent** at Dan's request (ids saved on the box under `/root`).
+
+**Still broken, separately:** `WEDGE_COURSE_API_USER/PASSWORD` (the Golf Data console's
+login to wedge-course-backend) is also failing, and the Analytics connector has no token.
+Neither feeds course requests.
+
+## 60. Recent Changes (October 2026) — Pulse: choose what the free scan shows in full
+
+Settings → Pulse → Public embed → **02 // FREE RESULTS**. A switch ("Limit what is shown free"), then
+a grouped, searchable picker (domain → category → check, selected/total at every level, "Selected only"
+review view, All/None per category). Edits are a **draft with Save/Discard** — nothing goes live per click.
+
+- **Limit shows less, never rescores.** Findings from ticked checks are shown in full; every other
+  actionable (P1/P2) finding is **counted and named by category only** ("4 more in Security, Legal").
+  The score is always `computeScoreBreakdown` over the full scan, so free = paid. The retired picker
+  rescored the subset (one check worth 7–14 points) — do not reintroduce that.
+- **One place applies it:** `triage(checks, freeKeys)` in `pulse-lite/public-scan.ts`. The widget,
+  `/scan/[id]`, the markdown report and the results email all call it, so they cannot disagree.
+- **Default is no limit**, and shipping changed nothing. ⚠️ `Workspace.pulseEmbedCheckKeys` still held the
+  OLD curated array, so the new value is `{ keys: [...] }` and any bare array reads as "no limit" (tested).
+  `null` = no limit; `{ keys: [] }` = limit that shows nothing.
+- Pure rule + picker model: `src/lib/pulse-free-tier.ts` (`splitByFreeSet`, `buildPickerModel`).
+- **Not verified visually** — settings is auth-gated. Post-deploy: tick a few checks, Save, scan a site in
+  the preview, confirm "N more actionable findings" appears and the score matches an unlimited scan.
+
+## 61. Recent Changes (October 2026) — Pulse audit: what it says when it cannot look
+
+A full audit before the public rollout: the 11-platform × 17-target matrix, an edge-case harness
+(dead hosts, bad TLS, redirect loops, error pages, files, missing/empty repos, SSRF inputs), and live
+production scans of an iOS listing, a Play listing, a Chrome Web Store item, gitwork.co.uk and
+api.github.com — every suspect finding then checked by hand with curl/dig. Six defects, all the same
+family: **a probe that could not answer was reported as a finding about the product** (§35 again).
+
+- **Unreachable target → 157 FAILs.** `runUrlChecks` stamped "Could not reach the site." as FAIL on
+  ~157 controls (privacy policy, VAT, API rate limits…) for an expired cert, a timeout, a redirect loop
+  or an HTTP-only site. Now ONE `target_content_accessible` FAIL naming the cause (`classifyFetchError`:
+  tls / timeout / redirects / refused), `ssl_valid` FAIL only for a real TLS failure (INCONCLUSIVE
+  otherwise), and an HTTP-only site is told it has no HTTPS. The same exit covers an **HTTP ≥ 400**
+  response (it was grading the error page) and a **file** (PDF, text, image — `isNonPageContentType`).
+- **HTTP/2 was guessed from `alt-svc`** — absent on most HTTP/2 servers, so api.github.com was warned.
+  Now measured by TLS ALPN (`negotiateAlpn`); a failed probe is INCONCLUSIVE.
+- **An unrendered SPA shell** still produced "no cookie consent / GDPR notice / DPO contact" from a
+  2.6KB empty `<div id="root">`. `reclassifySpaChecks` now treats every adverse check whose relevance
+  surface is `WEB_PAGE` as unestablished (except `privacy_policy`/`terms_of_service`, which probe
+  policy paths themselves). gitwork.co.uk went from 90 warnings to 20, all verifiable facts.
+- **`icp_license` (China) had no jurisdiction tag**, so UK sites were warned. Tagged `CN`.
+- **Chrome Web Store:** permission list deduped; a published listing gets WARN (not "will be rejected");
+  a name read from the listing is never dropped as a placeholder (`nameFromStore`).
+- **TLS-RPT:** "no record" and "record has no destination" both fired for one missing record; an
+  `https:` `rua` (RFC 8460) was rejected. Fixed.
+- ⚠️ **GitHub rate limit.** All repo scans share ONE token — 5,000 REST calls/hour, and one repo scan
+  can spend a few hundred, so roughly 20–30 repo scans an hour. When it runs out, every call 403s and a
+  public repo was reported as "does not exist, or the token cannot see it". `githubRequest` now records
+  the limit (`githubRateLimitedUntil`) and the scan says the limit is used up and when it clears; a 403
+  that is NOT a rate limit is no longer mislabelled one. **The capacity itself is not fixed** — a GitHub
+  App (higher per-installation limits) or caching repo snapshots is the real answer before repo scans
+  are opened to many users. `codeclear-analysis.ts` now uses the shared `githubRequest` (Oct 2026).
+
+Matrix after all fixes: see the PR/commit. Tests: `uninspectable-target.test.ts`,
+`audit-2026-10-live-defects.test.ts`, `github-rate-limit.test.ts`, and the TLS-RPT case in
+`probe-honesty.test.ts` — each proved to fail against the old code.
+
+
+## 62. Recent Changes (October 2026) — Pulse: every finding from 170 real scans checked against the live site
+
+A full pass before the public rollout. 85 real URLs (SaaS, news, government, e-commerce, APIs,
+store listings, broken targets) were scanned in both internal and public mode, plus 33 real repos
+across every platform family. Every non-passing finding was then checked against the live site
+with curl/dig by 42 verification agents; 205 fixes were proposed, adversarially reviewed
+(4 rejected), applied per file with two-sided tests, and reviewed again. Scratch data (corpus,
+verdicts, per-key evidence) is not committed; re-derive it with the runner pattern below.
+
+### 62.1 A 200 is not an answer — `pulse-checks/path-probe.ts`
+
+The biggest single class. vercel.com answers `/.git/config`, `/phpinfo.php` and `/backup.sql`
+with its own 2.6 MB homepage (200) while a random path 404s, so the `catchAll200` guard misses it;
+cbc.ca answers `/phpinfo.php` with a "Menu" page; github.com/telescope is a user. Pulse told
+Vercel it was leaking its git config and a database. Now every path probe reads the body:
+
+- **Exposure** (git config, phpinfo, backups, `.env.bak`, Telescope/Horizon/Clockwork, Spring
+  Actuator, Swagger UI, Prometheus, GraphQL) is reported only when the body IS the thing — the
+  file's own format or the tool's own markup (`looksLike*`).
+- **Pages** (about, careers, DPA, cookies, accessibility, security, docs …) exist only when the
+  page **names itself** in its title/h1/h2 or the URL it settled on (`classifyTopicPage`). The
+  homepage served under another path, a bot wall, or a page that doesn't say what it is →
+  `unverified` → INCONCLUSIVE, never a guess either way. 404/410 or a redirect to `/` → absent.
+- The Stripe-webhook signal no longer switches the payments family on from an HTML 200.
+
+### 62.2 What Pulse cannot see is not reported as missing — `pulse-checks/absence-policy.ts`
+
+Applied once in `runLiteScan`'s ingest, so in-app, public and MCP agree.
+- **`UNOBSERVABLE_ABSENCE` (70 keys)** — the control lives behind sign-in or on the server
+  (password reset, brute-force protection, MFA, SCIM, billing portal, DPO contact). Adverse →
+  INCONCLUSIVE; a PASS still stands.
+- **`OPTIONAL_ABSENCE` (82 keys)** — a choice, not a defect (Product Hunt badge, RTL, Server-
+  Timing, a page *naming* PECR). Adverse → NOT_APPLICABLE, so it leaves the report and the score.
+- ⚠️ A test fails if any key in either list is a release-gate blocker. A check whose adverse
+  branch also covers a real observed defect does not belong in these lists — fix the check.
+
+### 62.3 Repo shape — what the repo ships, not what it demonstrates
+
+cal.com read as React Native (a Heroku `app.json`), Supabase as Android (Flutter apps under
+`examples/`), Immich as native Android (its Flutter app is in `mobile/`), Atom as a web app
+(`electronVersion`, no electron dep), cli/cli as a web app (an `index.html` under `.github/`).
+`detectNativePlatform` now ignores example/fixture/test dirs, finds a nested Flutter app beside its
+own android/ios folder, and only counts a bare `app.json` when package.json depends on
+react-native/expo; `repo-kind.ts` ignores dot-dirs, docs and examples.
+
+### 62.4 Smaller, each verified live
+
+DMARC follows the PSL for platform namespaces (`www.squarespace.com` is covered by squarespace.com's
+p=reject); SPF `redirect=` is INCONCLUSIVE, not "no SPF"; a null-MX domain needs no MTA-STS;
+`robots.txt` 401/403/429/5xx are unread, not absent; SEPA/currency/status-page checks read visible
+text and real links, not `border-collapse:separate`, asset hashes or tweet URLs; a rate-limited or
+unreadable repo scores 0 and gates INCONCLUSIVE (`SUBJECT_UNREADABLE`); Mac App Store listings are
+labelled Mac apps.
+
+### 62.5 The repo families, verified against the repos' own source
+
+Round one could only read 6 repos before the shared GitHub quota ran out, so the repo families
+got their own pass: 33 real public repos across every family, each non-passing finding checked by
+shallow-cloning the repo and reading the files the check reasons about. **154 false positives**
+of 295 verdicts; 256 fixes proposed and reviewed (1 rejected), applied per file and reviewed again.
+
+- Presence checks look below the root (nested tsconfig/Dockerfile/test configs/migrations, an
+  e2e/ Playwright suite) while ignoring examples, fixtures and vendored trees.
+- ⚠️ **No check may add a GitHub API call beyond the shared snapshot.** Two fixes tried (an org
+  `.github` SECURITY.md probe, a dependabot.yml read); the reviewer removed both. A file the
+  snapshot did not carry is INCONCLUSIVE, never fetched and never "missing".
+- The generic `*_depth_*` families match bare words (`queue`, `region`, `Decimal`) across a
+  concatenated sample. 15 with verified wrong verdicts and no reviewed fix are in `WITHHELD`;
+  controls that live outside a repo (runbooks, SLOs, branch rules, dunning) are in the absence
+  policy. Those families are the weakest part of Pulse and want a proper rewrite.
+- Repo collectors now run as the **detected** execution platform. An Express API picked as
+  "iOS app" ran 17 checks against 101 for the same repo picked as "Other";
+  `pulse-matrix-assert.ts` now fails if one repo + one execution platform shows different checks
+  by pick.
+
+### 62.6 The two launch-blocking checks, checked site by site
+
+`privacy_policy` / `terms_of_service` are the checks the release gate blocks on, so every P1 they
+raised in the final corpus was checked by hand against the live site. Wikipedia, Hacker News,
+Figma, PostHog, Mercado Livre, CBC, Zalando, Flipkart and Rakuten were all told they had no
+policy, and all publish one. Causes, each fixed with a two-sided test:
+
+- **The read cap.** posthog.com/privacy puts its `<title>` 714 KB in (inlined CSS);
+  ycombinator.com/legal/ its "Terms of Use" 224 KB in. The probe kept 60 KB. Now 2 MB, and a body
+  cut at the cap is "could not read", never "absent".
+- **A refused candidate counted as absent.** posthog.com answered a repeat scan with 403 on every
+  candidate path. Only 404/410 mean "not there"; 401/403/429/5xx are unreadable.
+- **A legal index that links the document** passes (figma.com → /legal/ → /legal/tos/).
+- **Link shapes:** MediaWiki `Policy:Privacy_policy`, qualified paths
+  (`/terms-of-use-digital-services`), Portuguese/Spanish/French/Italian/Dutch paths and anchor text,
+  and Japanese/Chinese compound names that END in 利用規約 / 服务条款 (whole-text matching stays the
+  rule for English, so "Glossary of terms" never counts). A policy *generator* or *template* link
+  never counts.
+- **Footers drawn by JavaScript** (flipkart.com has no legal link in any byte it serves). Internal
+  scans render the page when the served HTML has no link — **twice before concluding absence**,
+  because app.hubspot.com came back footer-less once under load. The free scan does not render, so
+  on a script-heavy page (8+ `<script>`) "not found" is INCONCLUSIVE, not FAIL.
+
+Still FAIL, and true: Notion, gitwork.co.uk, HubSpot's login page and wordpress.org/news link no
+terms page. **Known limitation:** Baidu's combined legal notice is "使用百度前必读" at `/duty`, a
+name no general rule recognises; it still reads as missing.
+
+Also: a connection RESET (ECONNRESET / EAI_AGAIN) is INCONCLUSIVE — badssl.com reset Pulse under
+concurrent scans — while refused connections and unknown hosts stay FAIL. An API that answers an
+unauthenticated request with JSON 401/403/404/405 is graded as an API (api.stripe.com), and an API
+refusing plain HTTP with a 4xx passes `http_redirect`.
+
+### 62.7 GitHub capacity — still open
+
+Repo scans share ONE token (5,000 REST calls/hour). Measured: ~150–250 calls per repo scan, so
+roughly 20–30 repo scans an hour across all users. A GitHub App (per-installation limits) or
+caching repo snapshots is needed before repo scans are opened widely. URL scans are unaffected.
+
+**Partly addressed (Oct 2026):** every REST GET through `githubRequest` now sends the stored
+`ETag`/`Last-Modified` back (`src/lib/github-cache.ts`, in-process LRU, 2,000 entries / 50MB,
+keyed on URL + Accept + a hash of the token) and serves the stored body on a 304. An
+authenticated 304 is not counted against the limit (measured), so a rescan of an unchanged repo
+costs close to nothing. A first scan of a new repo still costs full price. The validators now
+survive a deploy too: a Postgres second tier (`GithubResponseCache`, §84.15).
+
+## 61. Recent Changes (October 2026) — The daily Slack updates report subtasks and ongoing work
+
+Asked for by a developer (Waqar): completed subtasks must appear, in-progress work must appear at
+the end of the day, and a multi-day task must still give a developer something to report. Three
+defects were behind it, all now fixed through ONE layout module, `src/lib/standup-report.ts`,
+which the per-developer card, the consolidated #updates card and the admin's review preview all
+render from:
+
+- **A subtask with no assignee belongs to whoever owns its parent** (`reportOwnerIds`). 172 of 265
+  live subtasks have no assignee (made before subtasks inherited their parent's), so both reports,
+  which select by assignee, reported those subtasks for nobody. The same rule is applied in the
+  queries (`compileDailyUpdates`, and `listTasks` when `includeSubtasks` + `assigneeId`).
+- **The #updates end-of-day card only fetched DONE-today tasks**, so a developer three days into
+  one task had nothing to show. It now reports **Done today · In progress · In review**, each under
+  a small label.
+- **A finished subtask removed its still-running parent** from "Still in progress" on the
+  per-developer card (a cross-group de-dupe). Each group now nests its own subtasks.
+
+Subtasks render under their parent as `    ↳ Subtask`. ⚠️ The indent is **non-breaking spaces**
+(`SUBTASK_PREFIX`) because Slack collapses ordinary leading spaces — a test pins it.
+
+## 62. Recent Changes (October 2026) — Undated phases get an estimated bar, drawn as one
+
+YG Intelligence's linked timeline (under YourGroop's wiki) showed five phases and no bars: none had
+dates, while their tasks were due across Oct–Dec. Three of the four Gantt feeders (internal task
+board, the client's own wiki timeline, the public /timeline share) already estimated an undated
+block from its tasks' due dates — and drew the estimate **solid, as if someone had scheduled it**.
+The fourth, linked-client work, didn't estimate at all.
+
+One rule now, `blockSpan()` in **`src/lib/gantt-span.ts`**: the block's own dates when it has both;
+otherwise first → last task due date, flagged `estimated`; nothing when there are no dates anywhere.
+The chart draws an estimated bar **dashed**, marks its due date `~18 Dec`, says "Estimated from task
+due dates" in the tooltip, and adds a legend entry. A block with real dates looks exactly as before.
+⚠️ This changes how already-estimated bars look on every client's timeline — that is the point:
+an estimate must not read as a commitment.
+
+## 63. Recent Changes (October 2026) — Canvas: artwork tools at `/canvas`, beside Deck
+
+**Canvas** is a suite of 30 generative artwork tools, at least five in each group (Shape, Line,
+Pattern, Type, Image, Colour), served at `/canvas` and opened from **Settings → Labs**. The list
+lives in the Canvas repo's README. It is built the same way as Deck: one static HTML file that
+carries the app and, once saved, the artwork. Nothing in it talks to Foundry's API.
+
+- **The source is NOT in this repo.** It lives in **`Git-Dann/canvas`**, which reuses Deck's
+  kernel ideas (pristine capture, the data-block splice, IndexedDB recovery) rewritten for a
+  config-driven app id. Only the built shell is committed here, at `public/canvas/index.html`.
+  ⚠️ To update it: in the Canvas repo run `npm run verify`, then
+  `FOUNDRY_PUBLIC=<this repo>/public npm run build:foundry`, and commit the rebuilt shell here.
+  Same rule as Deck (§30): a change that isn't rebuilt and committed here never reaches prod.
+- **Wiring mirrors `/deck` exactly:** `next.config.ts` rewrite + 60s `Cache-Control`,
+  `isCanvasPath()` in `src/middleware.ts` (session-gated, no module gate — it holds no
+  workspace data), `robots.ts` disallow, a `/context` row, and the Labs entry.
+- **When hosted at `/canvas` it shows `← Foundry`** (to `/app`), and a saved file never does —
+  the same `servedByFoundry()` test Deck uses. It follows Foundry's light/dark setting
+  (`gitwork.theme.v1`) live, then the OS, and has **no theme toggle of its own** (Dan's call,
+  October 2026). Don't add one back.
+- **The artboard (size, background, seed) is one setting for the file**, shared by every tool,
+  set from a dropdown in the topbar rather than from any tool's settings.
+- ⚠️ **Brand exception, by Dan's request:** Canvas wears **Emergency Orange `#FF4F00`** on the
+  Untitled UI v8 tokens, not Gitwork Blue. DESIGN.md records it. Text on the orange fill is
+  near-black (6.0:1); white would be 3.3:1 and fail AA.
+- **Adding a tool is done in the Canvas repo** (`npm run new-tool`, skills in its
+  `.claude/skills/`), then rebuilt into this one.
+
+## 64. Recent Changes (October 2026) — Settings rail halved, Labs as a grid, Deck in Labs
+
+- **The settings rail went from 19 rows to 9** (`settings-shell.tsx`): Account (Profile ·
+  Notifications), Documents (Document defaults · Templates), Client forms (Onboarding ·
+  Launchpad), People & access, Integrations (Integrations · MCP), Automation (AI agents · Pulse
+  checks · Curator · Foreman), Labs, Developer, Audit & privacy (Audit log · Privacy & data).
+  Sections sharing a row show as tabs on its page. **Presentation only:** every section keeps its
+  own URL, permission and page gate, so links, bookmarks and the role matrix are untouched. A row
+  shows when you can open at least one of its sections and links to the first one you can.
+  `settings-rail.test.ts` fails if a section that renders a panel stops being reachable.
+  Analytics left the rail: it is a full page, reached from the HQ context strip.
+- **Labs is a two-column grid** with one-sentence cards; the detail lives in the docs.
+- **Deck's scratch editor (`/deck`) is a Labs card**, and the HQ strip's `· DECKS` link is gone.
+  A deck that belongs to a client is made in Docs (+ New → Deck), which is unchanged.
+
+
+## 65. Recent Changes (October 2026) — Wiki: Metrics, Meetings and Platforms
+
+Three client-wiki sections, each with a dashboard card. All three are read-only for the client and
+off until someone turns them on. Each is offered in the client's view only when it has something on
+it (`wiki-section-wiring.test.ts` pins every predicate).
+
+- **Metrics** (`src/server/wiki-metrics.ts`, rules in `src/lib/wiki-metrics.ts`). The source is the
+  **Care analytics connector when one exists**. Otherwise it's **one GET endpoint picked off the
+  client's own API Docs page**, plus an optional token, encrypted and never sent to the browser.
+  The endpoint must be one the page documents (`setWikiMetricsConfig` refuses anything else), and
+  `getJson` still runs the SSRF guard. A page load **reads stored snapshots only**. Snapshots are
+  refreshed when someone at Gitwork opens the section and it is behind, or presses Refresh, so a
+  client's API is never called because a client looked.
+  ⚠️ Two meanings of "this month". A month-scoped adapter is shown only once the month is **over**:
+  a snapshot captured mid-month (the Care report builder can store one) is partial and never shown
+  as that month's figure. A "current" source (the generic JSON adapter or an API Docs endpoint)
+  belongs to the month it was **captured** in, whatever it was stored under. Hidden metrics are
+  **removed** from the client's copy in `forPublic`, not just flagged.
+- **Meetings** (`src/server/wiki-meetings.ts`). Only meetings with `Meeting.sharedWithClientAt` set
+  are shown, so turning the section on shares nothing by itself. It shows the summary, decisions and
+  actions. The transcript, notes text and attendees are never selected. An action turned into a task
+  is done when **the task** is done.
+- **Platforms** (`src/server/wiki-platforms.ts`). Portal's platforms as **links only**: logins,
+  credential ciphers and internal notes are never selected (Dan's call). Each platform has an
+  optional `renewsOn` + `renewalNote` (edited in Portal's platform form). The next renewals lead the
+  dashboard card: amber within 14 days, red once passed. A date more than 30 days past drops off,
+  since nobody updates the date after renewing.
+
+The DTO field is `clientPlatforms`, because `platforms` was already the changelog's platform list.
+Schema change is additive: three flags, `ClientWiki.metricsConfig`, `WikiMetricSnapshot`,
+`Meeting.sharedWithClientAt`, and `ClientPlatform.renewsOn` / `renewalNote`.
+
+## 66. Recent Changes (October 2026) — The wiki dashboard is arrangeable, per person
+
+**Edit** sits beside the theme switcher on both the internal wiki and the client's share page. It
+only appears while the dashboard is on screen (`dashboard-edit.tsx`, a small external store shared
+by the header button and the grid). In Edit mode each card gets a title line: a grab handle on the
+left, the width picker (1×1 / 2×1 / 3×1) and a hide button on the right. A Hidden tray below the
+grid brings hidden cards back, and **Reset to default** clears everything. Daily updates is an
+ordinary card in the grid now.
+
+- **Per person, in the browser (Dan's call).** `localStorage`, keyed by wiki
+  (`foundry.wiki.dashboard.v1.<wikiId>`). No server, no write route, no auth question, and every
+  read or write is wrapped so blocked storage just means the default layout. A saved layout only
+  ever ARRANGES the cards that are available: a stale id is dropped, a new section is appended,
+  so it cannot surface a section the viewer isn't meant to see (`src/lib/wiki-dashboard-layout.ts`).
+- **3 columns, every card one row tall** (2 from `md`, 1 on a phone, where widths don't apply).
+- ⚠️ **No gaps, without reordering.** Cards are packed into rows in the viewer's order. When a row
+  isn't full, its last card stretches to close it (`fillRows`, one pass for 2 columns and one for 3).
+  The width someone chose is still what's saved; a drop always lands where it was dropped.
+- ⚠️ **Rows are now as tall as their tallest card, not the tallest card on the whole dashboard.**
+  The old `gridAutoRows: 1fr` would have made every row as tall as Daily updates once it joined the
+  grid. Widgets carry a `min-h-[220px]` floor instead.
+- While editing, card bodies are `pointer-events-none`, so dragging a card can't also open its section.
+
+## 67. Recent Changes (October 2026) — Plan-first tasks: pick up the plan before adding to it
+
+Dan asked why boards and projects looked empty when developers post updates every day. Measured on
+production (last 30 days): **~720 tasks completed, and 583 of them were created and closed the
+same day** — the task was the timesheet. Almost none sat in a category (Fellas 150/150 outside,
+After Desk 106/106, Wedge 203/205), while the planned tasks sat **unassigned** (Fellas 55/55,
+Wedge 48/49) so they were on nobody's "Up next". Phase progress, the Gantt and Foreman all read
+the plan, so the projects looked stalled while the work was really happening. Not a bug — the
+product made logging a fresh task the quickest answer to "what are you working on today?".
+
+- **`src/lib/tasks/plan-match.ts`** (pure) — `matchPlannedTasks` (is this already a task?),
+  `suggestCategory` (which category does a new one belong in?), `rankPlanQueue`. IDF-weighted
+  word overlap, light stemming, one-edit typo allowance; deterministic, no AI (it runs on every
+  keystroke). **Calibrated on the live boards**, and the tests are verbatim live titles. Rules
+  that each fixed a false suggestion seen on real data: generic task verbs are stopwords; a match
+  needs an EXACT shared topical word; three-plus-word drafts must share two; a one-word match
+  needs ≥0.55; platform tags (`- IOS`, `web`, `admin`…) can't carry a match; the client's own name
+  is ignored (`ignoreWords`); category suggestions use exact words only ("Back button" ≠
+  "Backlog") and a category with a topic must match on the topic.
+- **Task form** — "Already on the board?" under the title, with **Pick up** (assigns you + Doing).
+  A new task **must choose a category or "Not part of the plan"** (no more silent "No category");
+  the category is pre-selected from the title and says why. Edit mode is unchanged.
+- **My Day** — "What are you working on?" at the top checks the board as you type before opening
+  the form (`plan-quick-add.tsx`), and **From the plan** lists planned work nobody owns on your
+  clients (`MyDayDTO.fromPlan`, via `listTasks({ clientIds, plannedOnly, unassignedOnly,
+  openOnly })` — `clientIds` is intersected with the caller's scope, tested).
+- **Board strip** (`plan-health-strip.tsx`, `src/lib/tasks/plan-health.ts`) — last 30 days: done
+  work on vs. off the plan, and planned tasks untouched 21+ days. Silent on a healthy board.
+  **Sort into categories** suggests a category per unplanned task; nothing moves until applied.
+- **Foreman `PLAN_DRIFT`** — fires only when BOTH ≥5 tasks were done outside the plan in 30 days
+  AND ≥3 planned tasks are untouched 21+ days (either alone is normal).
+- ⚠️ The task form's due date still defaults to **today** (a team request for logging same-day
+  work), so a logged task can never read as late. Left as-is; worth revisiting.
+
+## 68. Recent Changes (October 2026) — Big Wedge user analytics, and platforms the client can open
+
+**Wedge's Metrics page showed nothing, for three reasons, all in `support-analytics/bigwedge.ts`.**
+It used the Analytics API connector's pasted token, which had expired; it sent
+`date_from`/`date_to`, which `overall-report` **silently ignores** (it falls back to the current
+month, so every month read as this month); and it swallowed every error and returned an empty
+month, which `refreshWikiMetrics` then **stored** as that month's figures (§35). Now:
+
+- The adapter logs in for itself through **`bigWedgeBearer()`** (`bigwedge-api-auth.ts`, shared
+  with the course feed, §60) — env service account first, a stored token only as a checked fallback.
+- It asks for `start_date`/`end_date` (end **inclusive** by day) and throws unless the response
+  says `filters.applied_filter === "custom"`.
+- It maps a curated set of fields (users, retention, rounds, scores) rather than flattening the
+  report, and leaves out a missing field instead of zeroing it.
+- A read that fails, or a month with no figures, **throws**; `refreshWikiMetrics` never stores an
+  empty snapshot. Tests are built from the live August 2026 response.
+
+⚠️ Wedge still needs **Metrics switched on** (Add New → Metrics); opening it fetches the missing
+months.
+
+**Platforms.** The Platforms dashboard card now lists the platforms (renewals due first), and each
+platform card opens a details popup (links with copy/open, renewal date) — links only, never
+logins or internal notes, which do not reach the client DTO. The Edit platform modal's fields no
+longer slide under the Cancel/Save bar: the grid's row is bounded (`sm:grid-rows-[minmax(0,1fr)]`)
+and the right column scrolls inside it.
+
+**Follow-up (same day).** Metric tiles are now graph cards: the six-month line sits inside the
+card, with the first and last month named. Two more data rules: an **empty** stored month is
+never treated as settled (`isSettled` in `src/lib/wiki-metrics.ts`) — it is not shown, it is
+re-fetched, and opening the section refreshes when a month in the window is stored but unusable
+(never for months that were simply never stored). The `analytics-snapshot` cron no longer stores
+an empty month either. And Big Wedge's `total_users` / `returning_users` are **all-time** counts
+the date range does not change, so they are no longer collected per month.
+
+## 69. Recent Changes (October 2026) — Requests: a proper conversation, and @mentions to Slack
+
+Harry's read of a client's Requests page (PollenIQ): the expanded row was a description, a
+stray mono "Logged … by …" line, a trash can floating on its own, and a bare reply box.
+
+**The expanded request is two columns from `lg`.** Left: the full title (the row truncates
+it), the detail, attachments, and the **conversation** (`request-thread.tsx`) — a transcript
+with initials avatars, Gitwork/Client tags, relative times, and one composer frame (`@`
+button · hint · Reply, ⌘↵ sends). Right: a **details card** (stage, category, priority, raised
+by, logged, dev label, device, OS, their ref) with **labelled** actions — Create task / Open on
+the board, Mark dealt with, and Delete (or the client's Edit / Withdraw) behind a rule,
+confirming in place. Same component for both audiences.
+
+⚠️ **The app's global `:focus-visible` ring is unlayered CSS in `layout.tsx`**, so a Tailwind
+`outline-none` utility can't remove it. The composer's inner textarea uses an inline
+`style={{ outline: "none" }}` and the frame shows focus via `focus-within`. Anything that
+embeds a borderless field inside a framed control needs the same.
+
+**@mentions** (`src/lib/wiki-mentions.ts` pure, `src/server/wiki-intake-mentions.ts`):
+- Type `@` (never inside an email address) → an **in-flow** list under the text, not a
+  popover — the panel is inside `.widget-card` (`overflow: hidden`, §45.2). ↑↓ / ↵ / Tab / Esc.
+- Stored twice: readable `@Name` in the body, and `{ id, name, kind }` on the new
+  `ClientWikiIntakeComment.mentions` (additive Json). Highlighting and notifying read the
+  structured list, so typing "@Javed" by hand never pages anyone, and a person picked then
+  deleted from the text is dropped before sending.
+- **Who can be mentioned:** internal = every active team member + the client's people;
+  the client's side = their people + admins + devs assigned to them + anyone who has already
+  replied. Names only, never emails. Ids the caller sends are re-checked against that list
+  server-side, so the client can't page someone by guessing an id.
+- **A reply that mentions someone posts to the client's Slack Connect channel**
+  (`slackExternalChannelId`) — the one channel both sides are in. People found by
+  `users.lookupByEmail` get a real `<@U…>` ping; anyone not found is bolded. The link goes to
+  the client's **shared wiki URL** (`#intake`), never `/app`. The body is Slack-escaped
+  (a client typing `<!channel>` must not page both workspaces) and clipped to 600 chars.
+  No external channel or bot token → nothing posted, the reply still saves; the composer
+  says which ("@mentions post to #channel" / "no shared Slack channel is connected").
+  Sent with `after()`, never fails the reply.
+
+**Also fixed:** the internal reply route posted onto any request **by id, whatever client the
+URL named**. It now requires the item to belong to that slug's wiki (404 otherwise).
+
+⚠️ **Known limits:** Slack Connect users from the client's own workspace often can't be found
+by `users.lookupByEmail`, so a mentioned client is usually bolded, not pinged. Mentions only
+go to Slack — no in-app notification yet. Not verified against a live Slack workspace.
+
+## 70. Recent Changes (October 2026) — Wiki follow-ups: replies, a real XSS, Launchpad, course requests
+
+Eight items from the wiki backlog, built in parallel and merged as one change.
+
+**Requests (§69 follow-ups).**
+- **Team mentions notify in Foundry**: event `wiki.request_mention` (in-app + push) to each `team:`
+  person mentioned, never the author. Runs beside the Slack post, after the reply is saved.
+- **The client is emailed when Gitwork replies** (`src/server/wiki-intake-reply-notify.ts`, pure
+  rules in `src/lib/wiki-intake-reply-notify.ts`). The raiser is found by matching `requestedBy`
+  to the wiki's `ClientWikiUser`s (email, then name); ambiguous or no match → no email. Never to
+  `@gitwork.co.uk` / `@gitwork.io`, never for a client-authored reply, link only when sharing is on.
+- **Edit / delete / screenshot on replies.** `ClientWikiIntakeComment` gained `authorWikiUserId`,
+  `editedAt`, `deletedAt`, `image`, `thumb`, `mime`, `filename` (additive). Rules in
+  `src/lib/wiki-comment-permissions.ts`: staff edit/delete their own (admins may delete, not
+  rewrite); a client may change only a reply carrying **their own wiki user id** — never matched by
+  display name, so replies posted before this change stay read-only for clients. Delete is soft but
+  erases the body, mentions and image. Edits don't re-notify.
+
+**⚠️ A real XSS on the client's public wiki, fixed.** `wiki-page-editor.tsx`'s old string renderer
+escaped `& < >` but wrote link URLs straight into `href` and didn't escape quotes, so
+`[x](javascript:…)` produced a live link and `[x](https://a/"onmouseover="…)` broke out of the
+attribute — on `/wiki/[slug]/[token]`, which the client intake API writes into. It now renders React
+elements via `src/lib/wiki-markdown.tsx` (headings, tables, fenced code, callouts, nested + numbered
+lists), reusing `renderInline` + `safeUrl` from `markdown.tsx` (`renderInline` gained an optional
+class-options argument; defaults unchanged). A test sweeps `src/components/clients/wiki` for
+`dangerouslySetInnerHTML`. Fenced code no longer doubles every newline.
+
+**Launchpad.**
+- **Per-client requirements** (§43.5's "next change"): internal-only routes under
+  `/api/clients/[slug]/wiki/launchpad/custom-items` add/edit/remove `custom: true` checklist items
+  (`custom-<uuid>` ids) in **that client's snapshot only**. Template items stay structurally fixed
+  (409). Re-assigning a template **carries custom items across**. No token route can change
+  structure (tested). Cap 60. Rules in `src/lib/launchpad/custom-items.ts`.
+- **File uploads on requirements**: `LaunchpadItemFile` (bytea, metadata-only selects). pdf, images
+  (no SVG), docx/xlsx/pptx, txt/csv; **extension AND magic bytes must agree**, 10 MB, 10 per item,
+  400 on anything bad (`src/lib/launchpad/files.ts`). Downloads are attachments with `nosniff` and
+  `CSP: default-src 'none'; sandbox`; client downloads need the full unlock, not just the share link.
+  An upload counts as providing the item (`applyItemPatch`'s third argument).
+
+**Course requests.**
+- **Declined feedback is remembered**: `WikiCourseFeedbackSeen` (additive). Recorded only for a real
+  classifier verdict (`not_course` / `no_named_course` / `rejected_name` / `duplicate_name`), never
+  when it failed or didn't run (§53.3). Re-classified when the customer writes again
+  (`lastInboundAt > seenAt`). Operator selection ignores it. Closes §53.7's known gap.
+- **Phone layout**: below `sm` each request (and each Added course) is a stacked card; the table is
+  unchanged from `sm` up. Status control and actions are shared render functions so they can't drift.
+
+**Verified:** `npm run verify` and `npx next build` — figures in the PR. Every agent proved its tests
+discriminate by breaking the code. **Not verified live**: no real database, Resend, Slack or upload
+round-trip. Post-deploy: post a reply mentioning a teammate (bell + push) and confirm the raiser gets
+an email; add a one-off requirement to a client and upload a PDF against it; open a shared wiki page
+and check it still reads the same.
+
+## 71. Recent Changes (October 2026) — Wiki follow-ups, round two
+
+Six items left open by §70.
+
+- **Screenshots are scoped to the client.** The internal request-screenshot and reply-screenshot
+  routes (GET and POST) call `assertClientAccessBySlug`. A developer with no assignment, placement or
+  `seeAllClients` gets 403. API-key callers keep access. Belonging to the wiki was already enforced
+  and still is (404). ⚠️ The reply *list* and *post* routes still don't check client access. They
+  share the general gap in §57.6 (2).
+- **A reply can be just a screenshot.** Both reply routes accept one multipart request (`body`,
+  `mentionIds`, `file`) as well as JSON. Text OR image is required. With neither, the route returns
+  400. `readReplyInput` is in `src/server/wiki-reply-image-upload.ts`. Because the image now travels
+  with the reply, a failed upload fails the post and keeps the draft. The reply email reads "sent a
+  screenshot on…".
+- **Older client replies become editable, conservatively.** `backfillCommentAuthors(wikiId)`
+  (`src/server/wiki-intake-comment-backfill.ts`) stamps `authorWikiUserId` on unstamped client replies
+  older than 2026-10-20. It does so ONLY when the stored author matches exactly one wiki user **of
+  that wiki** by exact name or email. Ambiguous replies stay read-only. The permission rule
+  (`wiki-comment-permissions.ts`) is unchanged and still id-only.
+  ⚠️ This is the one place display-name matching is accepted. It is limited to historical rows,
+  because new rows carry the id. It runs lazily on the shared wiki load and on the public
+  edit/delete route, capped at 200 per call.
+- **The course-feedback scan reaches older conversations.** `scanFeedback` pages newest-first
+  until it has 150 *candidates*, with excluded rows not counting toward that. A row is excluded if
+  it was imported, or seen with no newer customer message. Capped at 10 pages, so anything past
+  1,500 settled rows is still not reached in that run.
+- **Uploads can live in object storage** (`src/server/blob-storage.ts`, `docs/blob-storage.md`).
+  This covers request screenshots, reply screenshots and Launchpad files.
+  - The default `postgres` driver changes nothing.
+  - `BLOB_STORAGE_DRIVER=s3` plus `BLOB_S3_*` sends new uploads to a bucket. The row keeps only
+    `storageKey`. SigV4 is signed by hand with no AWS SDK, and tested against AWS's published
+    vectors.
+  - Reads follow the ROW, not the driver: a keyed row needs the S3 vars even after switching back.
+  - A misconfiguration throws at first use, and the driver never falls back silently.
+  - Additive schema: `storageKey` on three models, and `LaunchpadItemFile.bytes` is now optional.
+  - ⚠️ Cascading deletes (whole wiki/client/kit) leave objects in the bucket, and there is no
+    cleanup sweep. Nothing migrates existing rows.
+  - `deploy.yml` syncs the six `BLOB_*` secrets when they are set.
+- **Data, not done from here.** The ~389 junk "Untitled Course" rows (§53) were already gone: the
+  200 newest of Wedge's 292 New requests have no unnamed row. The MCP can't filter on an empty name,
+  so older statuses were not checked. Wedge **Metrics** still needs switching on by hand (Add New →
+  Metrics), because no MCP tool toggles wiki sections.
+
+Not verified against a real database, browser or bucket. **Post-deploy:**
+- Post a screenshot-only reply from the app and from the shared page.
+- Open a screenshot as a developer not assigned to that client and expect 403.
+- Confirm Edit appears on a client's old reply that matches their name.
+
+## 72. Recent Changes (October 2026) — Comparison tables in the wiki
+
+A client-wiki section, **Comparisons** (id `comparisons`): feature tables — Free vs Premium vs
+Pro for a release, or the client's product against competitors. Built by Gitwork, read-only for
+the client. Same posture as Charts and Estimates: the tables ride down in the wiki DTO and there
+is **no** `/api/wiki/[token]/comparisons` route (the wiring test asserts it).
+
+- **Data.** `ClientWiki.comparisonsEnabled` + `WikiComparison` (additive). `columns` and `rows`
+  are JSON, replaced wholesale on every write and re-parsed on the way in and out by
+  `parseComparisonContent` (`src/lib/wiki-comparisons.ts`, pure): an unknown cell state reads as
+  blank, text is clipped, cells for a deleted column are dropped, ids are made unique. A cell is
+  `yes · partial · no · text · none`; **`none` (blank, "not stated") is not `no`**.
+- **One set of rules.** Limits (`COMPARISON_LIMITS`: 45 columns, 300 rows, 40 tables), the cell
+  vocabulary and every edit (`addColumns`, `removeColumn`, `setCell`, …) live in that file and are
+  used by the Zod schema, the editor, the server and the MCP tools — so a table Claude writes
+  obeys exactly what the editor does. Reads clip silently (a stored table must render); writes
+  past a limit are refused with a sentence.
+- **Layout.** 2–5 columns share the card width; 6+ get a fixed ~120px each and scroll inside
+  the table's **own** scroller, which holds header and body together (§45.2), with the feature
+  column and header row sticky and an edge shadow when there is more. On a phone the default is
+  a **compare-two** view (featured + leftmost column, pickable), the full table one tap away.
+  ✕ is muted grey, not red. Every glyph has its meaning in words; a legend sits under each table.
+- **Editing in place**, not in a dialog — a 45-column table does not fit one, and what is edited
+  is what the client sees. Edit per table: click a header to rename (Enter commits, Escape
+  cancels), `⋯` menus for columns/rows (feature, move, delete with confirm), click a cell to
+  cycle ✓ → ◐ → ✕ → blank, type (or the pencil) to write a value. Autosaves 800ms after the last
+  change, keeping its own draft so a refetch never overwrites typing. Menus use `anchor` (§55).
+- **Client's copy.** `forPublic` sends nothing while the section is off and only publishable
+  tables (a column and a labelled feature row) while it is on; the public predicate is the same.
+- **MCP:** `list_comparisons`, `get_comparison`, `create_comparison`, `update_comparison`,
+  `add_comparison_columns`, `rename_comparison_column`, `remove_comparison_column`,
+  `add_comparison_rows`, `set_comparison_cells` (all-or-nothing), `delete_comparison`, and a
+  general **`enable_wiki_section`** (comparisons, insights, costs, estimates, delivery, support,
+  roundup, meetings, platforms, metrics). Cells are written **by column title**. Writers need
+  'Manage clients'; the parity test pins it. Creating a table switches the section on.
+
+**Verified:** `npm run verify` green (6525 tests, `audit:ui` 0 findings), `next build` clean.
+Driven headlessly at `/demo/wiki#comparisons` (the demo applies writes to its fixture, so an
+edit survives the refetch) at 390 · 768 · 1280×620 · 1440 in view and edit mode: 0 clipping
+findings, 0 page overflow, 0 console errors; the feature column stays put while scrolling
+sideways, cell cycle → SAVED, rename survives Done, column menus open inside the viewport.
+Fourteen sabotages each failed the test named for them.
+
+**Not verified:** a real database. Post-deploy: Add New → Comparisons, create from a template,
+add a 6th column and confirm it scrolls with the feature column pinned, then open the share link
+on a phone and check the compare-two view.
+
+## 73. Recent Changes (October 2026) — Sheets: a client-editable spreadsheet linked to the task board
+
+Harry's ask: the team and clients keep lists of things to build in Google Sheets, with links
+everywhere, and none of it reaches the board. **Sheets** (section id `sheets`) is a typed grid in
+the client's wiki that **the client edits themselves**. Any row can be **sent to the dev board**,
+and the row then shows how far that task has got.
+
+- **Data.** `ClientWiki.sheetsEnabled` + `WikiSheet` (typed `columns` JSON, `titleColumnId`, and
+  three client permissions: `clientCanEdit`, `clientCanAddRows`, and `clientCanSendToBoard`, which
+  defaults OFF). `WikiSheetRow` is its own table, not JSON on the sheet, because both sides edit
+  rows at once. It holds `cells` JSON, a loose `taskId`, who created it and last edited it, and
+  `deletedAt`. Rows are soft-deleted, so a client can't silently erase history and the team can
+  restore them. All additive.
+- **One set of rules**, in `src/lib/wiki-sheets.ts` (pure). The grid, server, Zod and MCP all use:
+  - `coerceCellValue`, one rule per type for text, long text, number, date, select, checkbox, link
+    and person. It accepts what a Google Sheets paste carries (UK `DD/MM/YYYY`, `£1,200`, `TRUE`)
+    and refuses anything else with a sentence.
+  - The limits: 40 columns, 2,000 rows, 40 sheets, 500 rows per batch.
+  - Paste parsing (RFC 4180 quoting, tab or comma) and CSV/TSV export. CSV neutralises `=`/`+`/`-`/`@`
+    formula injection.
+  - The client-permission predicates.
+  - ⚠️ Links use a **protocol allow-list**. `javascript://host/%0a…` has a hostname, so the
+    hostname check alone does not stop it. A test covers exactly that case.
+- **Stage is derived, never stored (§47.2).** `deriveSheetRowStage` reuses `deriveRequestStage`.
+  The loader batch-reads the linked tasks in one query. A `taskId` whose task is gone reads
+  REVIEWING, never Scheduled, and the team may send that row again.
+- **Cells merge per cell in SQL** (`cells || patch - cleared`, in `mergeCells`), never as a
+  whole-row replace. So the client and the team editing different cells of one row both land. If
+  they edit the same cell, the last write wins. The grid keeps optimistic rows plus a `pending`
+  overlay, so a refetch can't undo a save that is still in flight.
+- **Client writes** go through `/api/wiki/[token]/sheets/[sheetId]/rows(/[rowId])`.
+  - They use Launchpad's hardened posture (`wiki-sheets-access.ts`): token → section on → a
+    per-section share link must be FOR sheets → wiki-access cookie or a Gitwork session → per-IP
+    rate limit.
+  - Everything is enforced in `src/server/wiki-sheets.ts`: only client-editable columns of
+    client-editable sheets, rows only if allowed, deleting only rows *they* added (by wiki user id),
+    and sending only if allowed.
+  - There is **no** client route for columns or sheets, and the wiring test asserts that.
+  - "Rows you added" is decided on the server for the page (`applySheetViewer`, like
+    `applyCommentViewer`). `forPublicSheets` strips client user ids, assignees and deleted rows,
+    and sends nothing while the section is off.
+- **Internal routes** are under `/api/clients/[slug]/wiki/sheets/…`. Every handler goes through
+  `resolveInternalSheets`, which requires 'Manage clients' **and** `assertClientAccessBySlug` (§71).
+  A test counts handlers against gates.
+- **Send to board.** It creates a BACKLOG task titled from the title column, with the other cells
+  as `**Column:** value` lines plus a link back. It can optionally go in a category (feature
+  block). It is **idempotent**: a row with a live task returns that task. The stamp is guarded on
+  the `taskId` that was read, so two concurrent sends can't both create a task. A client send
+  notifies the team (`tasks.client_request`). A row with an empty title cell is refused.
+- **Notifications.** A client edit triggers `wiki.sheet_client_edit` (in-app). It is limited to
+  **once per sheet per 15 minutes**, claimed with a conditional update so concurrent edits can't
+  both send one.
+- **Grid** (`sheet-grid.tsx`):
+  - It has its own scroller holding the header and the rows (§45.2). The header is sticky, and the
+    first column and Board are pinned.
+  - Keyboard: arrows, Tab/Shift-Tab and Enter work as in a spreadsheet. Typing starts editing,
+    Escape cancels and Delete clears.
+  - Dropdowns and long text open in portalled popovers (§55).
+  - Inputs are 16px on a phone. Below `sm` each row is a card, edited in a dialog.
+  - The toolbar has fuzzy search, a stage filter, Paste (preview first, `.app-dialog-fixed`), Copy
+    (TSV for Google Sheets) and CSV. When rows are selected it is replaced by a batch bar: send,
+    remove, restore.
+  - Team view only: an amber dot marks a row last edited by the client.
+- ⚠️ **Two defects the headless check found and no test did.** Both now have tests:
+  - **The pinned columns hid the data.** At 768px the wiki's content column is ~440px, and 44 +
+    200 + 172px of pinned columns left almost nothing for the data, so every other column was
+    unreachable behind them. Now the columns pin only when there's ≥240px of data window
+    (`MIN_DATA_WINDOW`, measured with a ResizeObserver). `scroll-padding` keeps a focused cell
+    clear of the pins.
+  - **One click opened the editor.** `onFocus` had already marked the cell active by the time
+    `onClick` ran. Whether the cell was already selected is now read on mousedown.
+  - ⚠️ The jsdom test for the click bug **passed with the bug in place** until mousedown, focus and
+    click were split into separate `act()` calls. A single `act` batches them, so the click sees
+    the state from before the focus.
+- **MCP** (`src/server/mcp/sheet-tools.ts`, a factory spread into `TOOLS`): `list_sheets`,
+  `get_sheet`, `create_sheet`, `update_sheet`, `add_sheet_columns`, `update_sheet_column`,
+  `remove_sheet_column`, `add_sheet_rows`, `update_sheet_rows`, `delete_sheet_rows`,
+  `send_sheet_rows_to_board` and `delete_sheet`, plus `sheets` in `enable_wiki_section`.
+  - Cells are addressed by column title. Rows are addressed by id or by the exact text of the title
+    cell, and an ambiguous match is an error.
+  - `update_sheet_rows` validates every row and value before writing anything.
+  - The parity test now reads `sheet-tools.ts` too, at 6-space indentation.
+
+**Verified:** `npm run verify` and `npx next build`, with the figures in the commit. Fourteen
+sabotages each failed the tests named for them. Driven headlessly at `/demo/wiki#sheets` (the demo
+applies writes to its fixture, `src/lib/demo/demo-sheets.ts`) at 390 · 768 · 1280×620 · 1440, in
+view, text editing, dropdown, phone row dialog and paste dialog: 0 clipping findings and 0 page
+overflow. Pinned columns never cover a cell, and a typed value survives the save.
+
+**Not verified:** a real database (the `$executeRaw` merge has only run against a mock), and the
+client's share page in a browser. Post-deploy:
+1. Add New → Sheets, create one from a template and paste in a few rows from Google Sheets.
+2. Send a row to the board, move its task to Doing, and reload to confirm it reads In progress.
+3. On the share link as a client user, edit a cell and confirm a locked column refuses the edit.
+
+### 73.1 Reorder, resize, people, media, and the Board column as a tracker
+
+Harry's Google-Sheets list, plus a developer's "image/video links like Luke's doc". All of it
+goes through the same pure rules as §73: `src/lib/wiki-sheet-layout.ts` (order, sizes),
+`wiki-sheet-media.ts` (media), `wiki-sheet-board.ts` (the tracker), and `wiki-sheets.ts`.
+
+- **Drag to reorder rows (team only).** A handle in the first column (hover to see it), or
+  Alt+↑/↓ from a cell. dnd-kit, vertical only. Optimistic, saved through the existing
+  `PUT …/rows`, rolled back with a notice on failure. **Disabled while a search or a filter
+  is on**, with a tooltip saying why: the order of a filtered subset is ambiguous.
+  `reorderSheetRows` now takes a partial order and keeps unmentioned rows after it
+  (`mergeRowOrder`), and writes only rows that moved. There is no client route: the token
+  rows route has no `PUT`, and a test asserts it.
+- **Resize by dragging grid lines.** A column header's right edge and a row's bottom edge
+  are `role="separator"` handles with aria-labels. Pointer capture (mouse and touch),
+  rAF-throttled, a live guide line, saved once per pointer-up (debounced 350ms). Columns
+  60–600px, rows 28–300px. Double-click a column edge to fit; a row edge to go back to auto.
+  A row with a height wraps its text; an auto row stays one line.
+  - **The team's sizes are for everyone:** column `width` in the column JSON, and
+    `WikiSheetRow.height Int?` (additive).
+  - **A client's sizes stay in their browser** (`localStorage`, per sheet, try/catch). The
+    client's cell route is `.strict()`, so `height` or `width` in the body is a 400, not a
+    silent drop.
+  - The ≥240px rule for pinning (§73) uses the *live* width, so it still holds after a resize.
+- **Automatic column widths** (`estimateColumnWidth`, pure, from character counts). A column
+  with no saved width sizes to its header and its first 200 values, inside per-type bounds
+  (`AUTO_WIDTH_BOUNDS`). A "01, 02, 03" ref column comes out at 64px, not 400. Long text is
+  capped at 360px. A saved width always wins. Double-click auto-fit uses the same helper over
+  every row.
+- **Fast tooltip for cut-off values.** A native `title` waits ~1s and the browser owns that
+  delay. Text cells carry `data-full-text`, and a portalled `role="tooltip"` appears after
+  150ms (measured 153–158ms in the page), at once when moving between cells. It shows only
+  when the value is actually truncated, never on touch, and hides on scroll or a key.
+  `aria-describedby` is set on the cell.
+  - ⚠️ Its state is a tiny external store (`createTipStore`), **not** grid state. Keeping it
+    in `useState` re-rendered every row and added ~100ms (measured 240–270ms before the change).
+  - `audit-clipping`'s TRUNCATED rule now accepts a non-empty `data-full-text`, with a
+    self-test lookalike for it and one for an empty value.
+- **A real people picker.** Person cells store `{ id, name, kind }`, with ids like the
+  @mention picker's (`team:` / `client:` / `contact:primary`). Old free-text values still
+  render and can be replaced by picking.
+  - **One directory**, `sheetPeopleDirectory` in `wiki-intake-mentions.ts`:
+    - The team's side is the new `clientTeam` audience: active members (`ACTIVE_MEMBER`) who can
+      see this client, i.e. Super Admin, `seeAllClients`, assigned, or placed in Code by email.
+      It also includes the client's people.
+    - The client's side is the mention picker's restricted list.
+  - Served by `GET …/sheets/people` on both sides. The token route uses the hardened writer
+    resolve. Emails never reach the browser.
+  - **Every pick is re-checked on the server** (`verifyPeople`). An id not on that side's list
+    is a 400. The stored name/kind come from the directory, never the request.
+  - Headless UI Combobox with `anchor`; it is `static` in a cell, so it is open as soon as you edit.
+  - MCP and paste take a name or an email and need exactly one match. Over MCP, an ambiguous or
+    unknown name is an error. In a paste it is kept as text and counted in the preview.
+- **Media cells** (`media` type): up to 10 `{ url, title? }` per cell.
+  - Chips show a kind icon and a tidy title (never the raw URL), plus "+N".
+  - Click a chip for the viewer (`.app-dialog-fixed`, ←/→, Esc). Images use `<img>`. YouTube,
+    Vimeo and Loom play in a sandboxed iframe; `.mp4`/`.webm`/`.mov` use `<video>`. Drive,
+    Figma and unknown links get "Open in new tab". There is always an "Open original" link.
+  - ⚠️ **An embed URL is built, never passed through.** The host is matched exactly or as a
+    subdomain, so `youtube.com.evil.com` is not YouTube. The id is format-checked, and the
+    player URL is fixed origin + id. The viewer also refuses any embed outside `EMBED_ORIGINS`.
+  - URLs go through `safeSheetLink`, now in `wiki-sheet-links.ts` and shared with the `link`
+    type. Nothing is fetched, by the server or the browser, until someone opens the viewer.
+  - Paste a URL into a selected media cell to add it.
+  - CSV writes the URLs and paste splits them. Sent rows get `- [title](url)` lines.
+  - **CSP:** no change was needed. `next.config.ts` sets only `frame-ancestors`, and no
+    `frame-src`, `img-src` or `media-src`, so these embeds load as they are.
+- **The Board column is a live tracker.** It shows the stage chip, assignee avatars + first
+  name ("Unassigned" when nobody is on it), the due date (amber when overdue by
+  `getTaskAttention`'s rule) and when it last moved. All of it is derived at read (§47.2) from
+  **one** batched task query (`TASK_SELECT`, join + legacy `assignee` fallback). Hover or tap
+  opens a popover with the details; the team also gets "Open on board".
+  - **What the client sees, deliberately:** stage, first name + last initial, due date, when it
+    moved. Not the task title, emails, ids, priority, estimates, comments, subtasks or the board
+    link. `publicRowTask` builds the client's copy field by field, so a new field can't leak by
+    default. A test asserts none of those strings reach the public DTO.
+  - Filter by assignee (team and client), plus a summary strip of counts by stage.
+    A count is a click-to-filter.
+- **MCP:**
+  - New `reorder_sheet_rows`, which takes an `order` or a `move: { row, before|after }`.
+  - `update_sheet_column` takes `width`, and `update_sheet_rows` takes `height`.
+  - Person cells resolve by name or email; media takes a URL, an array, or `{url,title}`.
+  - `get_sheet` returns names, `{url,title,kind}`, and a `task: { stage, assignees, dueDate,
+    updatedAt }` per row. `list_sheets` returns `byStage` counts.
+
+**Verified:** `npm run verify` exits 0 (tsc + lint 0 errors, 6737 tests, `audit:ui` 0
+findings), and `npx next build` is clean. Twenty-two sabotages each failed the tests named for
+them. Driven headlessly at `/demo/wiki#sheets` at 390 · 768 · 1280×620 · 1440 with real
+pointer events across 22 states: 0 clipping findings, 0 page overflow, and 0 console errors
+apart from the sandbox proxy blocking the demo's external image.
+- Drag moved a row and the move survived the refetch.
+- A column went 245→325px with a live guide. A row went 64→104px and back to auto on double-click.
+- The Ref column auto-fit to 64px.
+- The picker stored a structured person.
+- The popover, the filters and the viewer all fit at every width.
+
+**Not verified:**
+- A real database.
+- A real YouTube, Vimeo or Loom player loading (the sandbox has no outbound network).
+- The client's share page with a real wiki login.
+
+Post-deploy:
+1. Drag a row, then reload.
+2. Pick a person on the share link as a client.
+3. Open a YouTube link in the viewer.
+
+### 73.2 Image uploads in media cells (and Claude can attach them)
+
+A media cell can now hold uploaded images, not just links. **Upload** in the cell editor, or paste
+or drop an image into it. The team, the client (wherever they may edit), and Claude via
+**`upload_sheet_image`** all use the same save path (`src/server/wiki-sheet-files.ts`).
+- **Images only, decided by the bytes** (`src/lib/wiki-sheet-files.ts`): PNG, JPEG, GIF and WebP,
+  up to 10 MB. SVG and HTML are refused. The stored type comes from the sniffed bytes, never from
+  the uploader.
+- **An upload is a media item like any link.** The cell stores `/api/wiki/files/<key>/<name>`.
+  `safeMediaUrl` accepts exactly that relative shape and no other relative URL.
+- **The 160-bit random key is the credential**, like a share link. The image is served by
+  `GET /api/wiki/files/[key]/[name]` (under the public `/api/wiki`), with `nosniff` and
+  `CSP: default-src 'none'; sandbox`.
+- **Storage:** new model `WikiSheetFile` (additive, loose ids). It follows `blob-storage.ts`, so
+  the bytes go to Postgres or to the bucket.
+- **MCP:** `upload_sheet_image` takes either `imageBase64` or `imageUrl`. A URL is fetched once,
+  through the SSRF guard, with a hard 10 MB read cap. With `row` + `column`, the image is
+  appended to that media cell; the row and column are checked before anything is stored.
+- ⚠️ Removing an image from a cell leaves its bytes stored. There's no cleanup sweep.
+
+### 73.3 Bulk edit, and Sheet settings as a two-pane popup
+
+- **Bulk edit.** When rows are selected, the batch bar now floats at the bottom of the page, like
+  the task board's (`data-sheet-batch-bar`). It's portalled to `body`, because `.widget-card` is
+  `overflow: hidden`.
+  - **Set field** picks a column, then a value: a dropdown option, ticked or not, a person, or
+    typed text, number or date. **Clear** empties the column instead.
+  - The value goes into every selected live row through the grid's own `saveCell`, up to 6
+    saves at once. The same coercion and permission rules apply as for a single cell.
+  - The client is offered only the columns they're allowed to edit. Media columns aren't
+    offered.
+  - Claude already does this with `update_sheet_rows`.
+- **Sheet settings** used to be one long scroll of identical column rows. It's now the standard
+  fixed-height two-column popup:
+  - On the left: "Sheet", then every column with its type.
+  - On the right: the selected item's settings. A dropdown column's options are edited as chips
+    you can remove one at a time.
+  - Every change still saves as it's made.
+
+### 73.4 Images dropped into a Claude chat go straight into a sheet
+
+- **The limit is Claude's, not ours.** In a chat, Claude can see an image you drop in, but it
+  can't pass the image's bytes to a tool. Its only options were base64, which is hundreds of
+  thousands of characters for a screenshot, or a public link. The dropped file is in Claude's
+  code sandbox, so MCP now hands the sandbox a link to send it to.
+- **`get_sheet_upload_link`** returns a signed link (`/api/wiki/sheet-upload/[ticket]`), valid
+  for 30 minutes, with a ready `curl -F file=@…` command.
+  - The ticket is stateless: HMAC over `{client, sheet, row?, column?, issuer, expiry}`, signed
+    with the same secret as wiki-access cookies (`src/server/wiki-sheet-upload-ticket.ts`). It
+    can't be re-pointed at another sheet. It stays valid for its 30 minutes, so one link covers a
+    batch of uploads.
+  - The route takes up to 10 files per request and runs the same save path as every other upload.
+  - With a row and a media column, the images are appended to that cell. The cell is read at
+    upload time, so nothing added in the meantime is overwritten.
+  - ⚠️ **Claude's sandbox must be allowed to reach `foundry.gitwork.co.uk`** (claude.ai settings,
+    code execution network access). If it isn't, the curl is blocked and the tool tells Claude to
+    say so.
+- **`upload_sheet_image` takes `driveFile`**: a Drive link or file id, read with the caller's own
+  stored Google sign-in (`drive.readonly`). So a private Gitwork file can be attached without
+  changing its sharing.
+- **Big images are shrunk rather than refused.** Uploads are accepted up to 24 MB. Anything over
+  the 10 MB storage limit is re-encoded as JPEG at full resolution, then at lower quality, then
+  capped at 4096px (`shrinkToFit`).
+  - ⚠️ Sharp runs only after the byte sniff has confirmed PNG, JPEG, GIF or WebP, because sharp
+    would also render an SVG.
+
+### 73.5 Sort, a Done view, and ⌘Z
+
+- **Sort** (`src/lib/wiki-sheet-sort.ts`, pure). A toolbar dropdown with two choices per
+  column plus the Board. It is a **view, never a write**: the stored drag order is untouched
+  and "Sheet order" brings it back. Kept per viewer per sheet in `localStorage`.
+  - A dropdown column sorts by its **option order**, labelled with its first and last options
+    ("Priority · High → Low"), because A→Z would give High, Low, Medium.
+  - Text sorts naturally and ignores case. An unset checkbox is unticked, not empty.
+  - **Empty cells go last in both directions.** Ties keep the sheet order. Media can't be sorted.
+  - Dragging rows is off while sorted, with a tooltip saying why.
+- **Workstream | Done** (`ViewSwitch`). A row whose task is DONE (or CLOSED) leaves the
+  workstream on its own and comes back if the task is reopened, because it is read off the
+  derived stage (§47.2), never stored. Opens on Workstream. Filters, counts and the stage strip
+  work over the chosen half. A drag inside one half lands next to the row it was dropped on;
+  Alt+↑/↓ steps over the rows the half hides.
+- **Undo / redo** (`src/lib/wiki-sheet-history.ts`, pure). ⌘Z / Ctrl+Z, and ⇧⌘Z / Ctrl+Y,
+  plus two toolbar buttons. Undoable: cell edits (a bulk set is one step), the team removing or
+  restoring rows, and moving a row. Not undoable: sending to the board and adding a row.
+  - Undo writes through the ordinary routes, so the server's edit rules still apply.
+  - A text field keeps its own ⌘Z. With several sheets on a page, ⌘Z with nothing focused goes
+    to the sheet last clicked (`lastActiveSheet`). The batch bar is portalled, so it is
+    matched by `[data-sheet-batch-bar]`.
+  - History lives in the tab only and is gone on reload. A client's removals aren't recorded,
+    because only the team can restore.
+
+## 74. Recent Changes (October 2026) — Big Wedge revenue on Metrics, and "so far this month"
+
+The Big Wedge adapter now maps a
+**Revenue** group from the same report: Premium subscribers, monthly / yearly subscriptions and
+**MRR**. ⚠️ The counts are subscriptions **active during** the range, not started in it, and `mrr`
+spreads a yearly plan over 12. It reconciles exactly: 5 × 5.45 + 5 × 29.99 / 12 = 39.75 for 1–20
+Oct, including a test yearly sub from August that is still active. No currency comes back, so money
+figures carry **no symbol** rather than a guessed £. **"Revenue this month"** (cash taken, yearly
+counted in full) is mapped from `revenue.cash_revenue`, which Big Wedge's report does **not** have
+yet. It appears the day they add it. Adapters can opt in with `monthToDate: true` (only Big Wedge
+does) to show the running month as its own **"<Month> so far"** card above the whole-month figures.
+It has no trend and no sparkline, is never the headline, and is refetched when it is more than 6h
+old. Its range ends today. On the 1st the partial month is replaced by the final one, by the
+existing `isFinal` rule.
+
+**Total revenue (same day).** MRR spreads a yearly plan over 12, so it can't answer "what did we
+take". The adapter now adds **"Revenue this month (est.)"**: each monthly plan active in the month ×
+5.45, plus yearly plans **new** in the month × 29.99 in full. "New" means active in the month minus
+active on the day before it started, which takes one more report read. A yearly sub from an earlier
+month is in both counts and cancels out, which also drops the August test sub. Big Wedge's API has
+**no prices anywhere**, so `BIG_WEDGE_PLAN_PRICES` in `bigwedge.ts` is the only place they live:
+change it if they change their prices. If the day-before read fails, the total is **left out**, not
+zeroed. Big Wedge's own `cash_revenue` replaces the estimate outright when it exists. It doesn't count
+a yearly renewal 12 months on, refunds or plan changes. Money figures carry `money: true` and always
+show two decimals (47.70, never 47.7).
+
+**One card, several metrics.** A metric can name a `card: { id, title, part }`, and metrics sharing an
+id render as one tile (`tilesFor`). The **first** part is the headline figure, labelled with the card
+title. The rest sit underneath as a small breakdown, e.g. **12 Subscriptions** over "6 monthly · 6
+yearly". Each part stays its own metric for trends, hiding and history. A card left with one visible
+part renders as a plain metric. Big Wedge's Premium subscribers (`premium_users`, the total), monthly
+and yearly counts share the `subs` card.
+
+## 75. Recent Changes (October 2026) — The wiki sidebar is grouped
+
+The sidebar had grown to 28 possible sections in one flat list, one row per feature as each shipped.
+Measured on production (17 wikis): most clients show 2–6 sections, Wedge shows 13 and After Desk 9.
+Sections now sit in five groups — **Overview · Working together · Numbers · Product · Docs &
+handover** — with Dashboard alone at the top and Settings pinned at the foot.
+
+- **One map:** `SECTION_GROUP` in `src/lib/wiki-section-groups.ts` is read by the sidebar *and* the
+  "+ Add New" picker. `wiki-section-groups.test.ts` fails if a section is in no group, or if the
+  sidebar renders a `navItem` inside a different `group(...)` than the map says. **Adding a section
+  means adding it to the map and putting its `navItem` in the matching group.**
+- **Headings only above 6 items** (`GROUP_HEADINGS_ABOVE`): on a three-item wiki they would add more
+  rows than they organise, so a short sidebar stays flat.
+- **Groups fold on desktop**, remembered per browser (`foundry.wiki.sidebar.collapsed.v1`, guarded).
+  The group holding the open section is never folded. Below `md` the sidebar is a horizontal strip:
+  no headings, and a folded group's items still show (`contents md:hidden`).
+- **Add New** is grouped the same way, with a one-line description per section (`SECTION_BLURB`).
+- ⚠️ Row spacing is a flex `gap`, not `space-y`: the groups are `display: contents` wrappers, and
+  margins from `space-y` do not reach through them.
+- Same component on the client's share page, so both views get the groups.
+
+**Layout review (same day).** Every section of `/demo/wiki` was swept at 1440 · 820 · 390 with the
+clipping audit plus screenshots. Fixed:
+- **Doc pages open READ, formatted.** They always opened in the editor, so the team saw raw
+  Markdown (`# Runbook`, `**bold**`). A written page now opens formatted, with a visible
+  **Edit / Done** button; an unwritten page still opens in the editor. The mode is decided per
+  section and once when the wiki loads, never on refetch, or saving would bounce you out of the editor.
+- **Code Handover on a phone.** The version row's label, Current badge and date could shrink to
+  nothing, crushing the date into a one-word column under the Download button. The row now wraps
+  with a `min-w-[180px]` floor, so the Download group drops to its own line instead.
+- **Timeline quarter labels.** A part-quarter at the chart edge (~40px) cut "Q1 2027" to "Q1 2…".
+  Narrow bands show "Q1 '27", with the full label in a tooltip.
+- **Settings could crash** with `rows.map is not a function` when the linked-clients response wasn't
+  an array (the demo's catch-all returns `{}`). Now guarded. With it fixed, the audit found the
+  share link ellipsed with no title, so it has one now.
+
+## 76. Recent Changes (October 2026) — Wiki: one Docs row, EMPTY markers, a phone picker, numbering
+
+From the wiki layout review (Dan: "do all 4").
+
+- **The six doc pages are one "Docs" row** (`docsRow()` in `wiki-sidebar.tsx`, list in
+  `DOC_PAGE_SECTIONS`), with **tabs** on the page (`wiki-doc-tabs.tsx`, on both the internal wiki
+  and the share link). Each page keeps its own section id, so `#runbook` links and per-page shares
+  still work. A single-page share shows no tabs, because the other pages weren't shared.
+- **What the client can't see is marked EMPTY.** The share page's visibility rules moved verbatim into
+  `clientVisibleSections()` (`src/lib/wiki-client-visibility.ts`). The share page calls it, and the
+  internal wiki marks every section it leaves out as EMPTY (muted, with a tooltip) and drops the
+  "shared" globe from them. One rule, so the marker can't disagree with what the client is shown.
+  The wiring tests now read the rules from that module.
+- **Phones get a section picker on the internal wiki too** (`WikiMobileNav`, previously share-link
+  only), replacing a sideways strip that hid most of a full wiki. It uses the sidebar's groups and
+  order, Docs as one entry, EMPTY markers, and **Add New** inside it. It now uses theme colours (it
+  hard-coded white).
+- **Numbering:** Design System's Overview is 01 (it was 00). Requests' "Action needed" block is a real
+  `01 // ACTION NEEDED` card, and the Requests cards follow on via `firstNumber`. Monitors' "client
+  preview" (every monitor listed twice) is folded behind **Show what the client sees**.
+
+## 77. Recent Changes (October 2026) — Wiki Settings, simplified, with copy-paste sign-in details
+
+A full pass on the client wiki's Settings (`wiki-access-settings.tsx`).
+
+- **One column, numbered in render order.** Cards are now 01 Access, 02 Request categories (only
+  while Requests is on), 03 API intake, 04 Linked clients. Numbers come from a counter
+  (`next()`), and the categories and linked-clients panels take `n`. It used to be a masonry
+  layout reading 01, 03, 04, 02, with two cards both numbered 05.
+- **Access is one card:** the wiki link on one side, who can sign in on the other. Neither works
+  without the other. The per-page share list only shows while the whole-wiki link is off; with it
+  on, the list was ~25 identical "Included in the full-wiki link" rows. The link's unfurl preview
+  is folded.
+- **Copy sign-in details** (`src/lib/wiki-invite.ts`): a paste-ready message with the wiki link,
+  email and password. ⚠️ The password is stored hashed, so it's only known at the moment it's set.
+  Adding a user (a password is generated up front) or resetting one ends on a "copy this now"
+  screen that includes it. The per-user **Copy details** says it was "sent to you separately". No
+  link (wiki not shared) means no message, and the button explains why.
+- **API intake** shows the on/off, the main endpoint and **Copy everything for their developer**
+  up front. The integration guide, keys and webhook fold away.
+- The **Appearance** card is gone (the header has the same switch). The user dialog is the shared
+  `<Modal>` (off `one-modal.test.ts`'s hand-rolled list), and the hard-coded white is now tokens.
+- ⚠️ The Access card's grid needs `grid-cols-1`. Without it the single narrow-screen column is
+  an implicit `auto` track sized to its widest content, and the link panel ran 183px past the
+  edge of a phone, clipped by the card. The clipping audit caught it.
+
+## 78. Recent Changes (October 2026) — Uptime monitors alert, and say when they've stopped
+
+Fellas Loaded went down with Google Cloud (20 Oct 2026) and the client told us first. Three things
+were wrong, all ours: the `wiki-monitors` cron had never been put on the VPS (every monitor last
+checked **4 Aug**, still showing UP), Fellas had no monitor, and a failing check alerted nobody.
+
+- **Cron:** `*/5 * * * * run-cron.sh wiki-monitors` is on the box (`docs/vps-crons.md`).
+- **Alerts** (`src/lib/monitor-alerts.ts`, pure): **down** after `ALERT_AFTER_FAILURES` (2)
+  failed checks in a row, **once** per outage (`WikiMonitor.alertedDownAt` is the latch), and
+  **back up** with the downtime. A blip that never alerted recovers silently. DEGRADED (slow) never
+  pages; UNKNOWN changes nothing. Event `clients.monitor_alert` →
+  `["inApp","push","slack"]`, posting to `Workspace.channelRoutes["clients.monitor_alert"]` (set
+  to Gitwork's ops channel, `C07L9N75DTR`).
+- **Watchdog:** `checkMonitorsWatchdog()` runs from the every-minute **`jobs`** worker, a different
+  cron from the one it watches, so the two can't stop together. A monitor not checked for
+  max(3× interval, 30 min) is reported once (`staleAlertedAt`); the next check clears it.
+- **No stale UP:** the DTO carries `stale`. A stale monitor shows "Not checking" / "Last checked …",
+  internally and on the client's board, never its last result.
+- **Cards + suggestions:** the internal Monitors list is cards (2-up md, 3-up xl when there's more
+  than one). "From this client's Platforms" offers one-click monitors for Platform URLs nothing
+  watches (`src/lib/monitor-suggestions.ts`). Admin and login paths become the site root.
+- **Unstable** (added same day): 3 of the last 6 checks failing alerts as **Incident: Degraded**, which
+  two-in-a-row never would for a service failing every other check (Google's London outage left
+  some services "intermittently erroring"). It clears only after a full clean window, so flapping
+  gives one alert and one "stable again". Failures before `alertClearedAt` don't count. Fields
+  `alertKind` / `alertClearedAt`.
+- **Every minute while failing:** `checkEveryMs` re-checks a failing monitor (or one with an open
+  alert) every minute instead of its interval, and the cron is now `* * * * *`. That gives a
+  down alert in ~6 min and a recovery notice within a minute.
+- **Slack layout like GitHub Status** (`alertBlocks`): an "Incident: Down/Degraded/Resolved" line,
+  linked title, description, every service on the client with ✅/🔴/🟠/🟡, an Open in Foundry
+  button, and a footer. Capped under Slack's 50 blocks. `DispatchInput.slackBlocks` carries it;
+  title and body stay the plain-text fallback.
+- ⚠️ **`NEXT_PUBLIC_APP_URL` on the VPS was `https://foundry.gitwork.tech`, a domain that doesn't
+  resolve.** That broke every "Open in Foundry" Slack link, email links and the DocuSeal webhook
+  address. It's now `https://foundry.gitwork.co.uk` (21 Oct 2026; backup in `/root`).
+- **Fellas** now has three monitors: production API (`/api/feed/categories/`, which reads from the
+  DB, not just the web server), website and analytics. Its API has no health endpoint.
+- ⚠️ **Found while doing this:** Fellas' `/api/analytics/*` endpoints answer without auth,
+  including `trials/export/`, a CSV of ~5,650 customer emails. Reported to Dan to lock down in
+  the Fellas codebase.
+
+## 79. Recent Changes (October 2026) — One changelog ping per version; Metrics gets a headline row
+
+- **One Slack message per changelog VERSION.** A version is one `ClientChangelogEntry` per
+  platform and the editor saves them as parallel requests, so iOS + Android sent two
+  identical "added" messages (and two "approved"). `wiki-slack-notify.ts` now collects pings
+  for the same wiki + version for `CHANGELOG_PING_WINDOW_MS` (3s) and sends one naming the
+  platforms. In-process on purpose: one server, one save. Adding a platform to a version that
+  already had rows is an edit and sends no "added".
+- **Changelog card actions.** Approving was a click on the amber "● PENDING" pill, which
+  read as a label and got missed. Status is now a plain badge; a pending version has an amber
+  bar with a green **Approve release** button; Copy / Edit are labelled; Mark as pending and
+  Delete sit in a ⋯ menu, and Delete confirms in place. Filters are segmented controls, and the
+  status filter shows counts. The demo carries a pending two-platform release.
+- **Metrics page** (`wiki-metrics-section.tsx`): a **Period** control (the running month,
+  then each stored month, built from data already on the page with no fetch) and a
+  **Show** filter (groups). `01 // HEADLINE` shows four large cards: ★ picks first, then one
+  from each group in turn (`headlineTileIndexes`). `02 // ALL METRICS` shows the rest.
+  Choosing a group shows only that group.
+- ⚠️ **Big Wedge's new revenue fields ignore the date range** (22 Oct 2026). `cash_revenue`
+  £373.81, 8 monthly + 11 yearly, MRR £71.41 and `premium_users` 19 come back identical for
+  August, September, October and a single day. User counts still follow the range.
+  `revenueIsRangeScoped` compares the month with the day before. When the two match,
+  "Revenue this month" is dropped. A month that has ended then keeps no revenue figures, and
+  the running month keeps the counts and MRR, which are true now. Ask Big Wedge to scope
+  revenue to `start_date`/`end_date`.
+
+## 80. Recent Changes (October 2026) — Pulse measures code health from a full checkout
+
+Prompted by Code Tuner (a competitor showing per-class complexity and a tech-debt view). Pulse
+read source by sampling ~150 files through the GitHub API and pattern-matching. That can't say
+"this method has a complexity of 34, at line 120". A repo scan now also takes a **shallow clone
+and parses every supported source file with a real parser** (tree-sitter, as WebAssembly), in
+`src/server/code-health/`. Validated against Code Tuner on `pallets/flask`: class line spans
+match exactly. Weighted complexity is one lower per class, because they add 1 per class.
+
+- **Pipeline:** `clone.ts` (hardened shallow clone) → `analyse.ts` (which files, then parse) →
+  `measure.ts` (one tree walk: per-function complexity, length, params, nesting; per-class
+  methods + weighted complexity) → `rules.ts` (thresholds, register, score) → `checks.ts` (7
+  `code_health_*` checks, CODE_QUALITY). The report lives at `PulseScan.agentData.codeHealth`
+  (no schema change). It's rendered by `CodeHealthPanel` on the scan overview and on the
+  shared report/PDF (25 rows). Each register row links to the exact line on GitHub at the
+  commit measured.
+- **Languages:** TS, TSX, JS, Python, Swift, Kotlin, Java, Go, PHP, **Dart and Ruby** (phase 2).
+  Anything else (Rust, C#, …) is counted under "Not measured", never as zero. ⚠️
+  `web-tree-sitter@0.25.10` and `tree-sitter-wasms@0.1.13` are **pinned as a pair**. 0.20.8
+  could not load Dart (ABI 15) or Ruby, and 0.22.6 crashed on Dart. 0.25 deprecates
+  `setTimeoutMicros` (it throws), so parses are budgeted with a progress callback
+  (`parseWithBudget`). Bump them together and re-run `src/server/code-health/__tests__/measure.test.ts`,
+  which uses real parses. A wrong grammar node name fails silently (that construct just stops
+  counting); that test caught Swift's `default_keyword`. ⚠️ **Dart puts a function's body beside
+  its signature, not inside it** (`LanguageRules.bodyAfterSignature`).
+- **Thresholds are published ones** (SEI complexity bands 11/21/51; class weighted complexity
+  47, from Lanza & Marinescu). The register says **"large class", never "God Class"**: that rule
+  also needs cohesion measures we don't take. There's **no dead-code check**, because that needs
+  a whole-program call graph.
+- **Score** (`scoreOf`) is share-based: big repos aren't punished for size, nested functions
+  aren't charged twice, and tests are excluded. The formula is in the doc comment.
+- **Clone safety:** github.com `owner/repo` only. The token goes in an HTTP header, never the
+  URL. Hooks, symlinks and the file protocol are off, and git runs with a clean environment.
+  Nothing in a checkout is ever executed. Limits: 500 MB repo, 90s, 2 clones at once, 6,000
+  files, 60s of parsing. The directory is always deleted. A clone doesn't count against the
+  shared GitHub REST limit (§62.7).
+- **It never fails silently.** A clone or measure that can't run emits one INCONCLUSIVE
+  `code_health_score` saying why. The sampled `clean_file_size` / `clean_nesting_depth` are held
+  back while it runs, then dropped if it succeeded or shown if it didn't
+  (`SUPERSEDED_BY_CODE_HEALTH`), so a scan never gives two answers to one question.
+- **Deploy:** the runner image installs `git` (Dockerfile). `next.config.ts` externalises
+  `web-tree-sitter` and traces the runtime plus the nine grammars. Paths resolve from
+  `process.cwd()/node_modules`, never `createRequire`, which webpack warns on.
+- **Measured** (shallow clone + parse): flask 1.0s · express 0.9s · Alamofire 3.4s ·
+  okhttp 2.4s · cal.com (320k lines) 13.9s.
+- **Phase 2 (shipped):**
+  - **History** (`history.ts`): the clone is blobless + `--shallow-since` 12 months, so every
+    commit and tree for a year, but only current file contents. `git log --name-only
+    --no-renames` reads trees only, so nothing is fetched lazily. Bots and mass edits (>60
+    files) are left out. Produces **hotspots** (change frequency × complexity, Tornhill's
+    method), **bus factor** (fewest people who are main author of over half the changing
+    code), owners, and **change coupling** across folders. Change is counted in commits, not
+    lines, because line churn needs old file versions.
+  - **Trend** (`trend.ts`, `enrich.ts`): against the last measured scan of the same repo.
+    Debt is matched on kind + file + symbol, never line. Resolved items are only counted when
+    the list was under the 100 cap.
+  - **Costed register:** `EFFORT_HOURS` per kind × severity (published, coarse, "not a quote"),
+    one per function at its worst. Days shown everywhere; **£ only in the internal view**
+    (`showMoney`), priced with the workspace day rate (`blendedDayRateGbp`), never on a shared report.
+  - **MCP**: the verdict carries `codeHealth` (score, effort, bus factor, top debt, hotspots).
+  - **Language-aware repo checks** (`pulse-checks/repo-language.ts`): a repo that isn't a
+    JavaScript project (no root package.json, JS not dominant) skips `has_typescript`,
+    `has_unit_test_config`, `has_e2e_tests` and `is_monorepo`. `has_linter` now recognises ruff,
+    flake8, Pylint, RuboCop, golangci-lint, detekt, SwiftLint, PHPStan and Dart analysis
+    options. It reads `pyproject.toml` only when nothing else answered. Found by scanning Flask
+    on production, which was told "No TypeScript".
+  - **Weekly digest email** (`pulse-agents/monitor-digest.ts`): a monitor with recipients
+    (`PulseMonitor.digestEmails`, additive) gets a summary after its scheduled re-scan once a
+    week has passed. It rides on the existing `pulse-run-monitors` cron, so no new crontab
+    line. It covers score movement, new/fixed/open confirmed issues, code health and hotspots,
+    and one link to the shared PDF. One email per recipient, so client addresses aren't
+    shared. The monitors GET/PATCH/DELETE routes now require `canManagePulse`; they returned
+    webhook secrets, and now recipient addresses, to any session.
+- **Still not built:** branch choice (the default branch is measured), Provenance
+  `subjectCommit` (the commit is now known), C#/Rust.
+
+## 81. Recent Changes (October 2026) — A shareable "What Pulse checks" page
+
+`/pulse/features` is public, not indexed, and made for sending to someone. The **About Pulse** card
+(`02 // ABOUT PULSE` on /app/pulse, replacing Research studies) shows the counts and copies the link.
+Study is still reachable from a scan's results and at /app/study.
+
+- **It stays current by construction.** The check total and per-area counts come from
+  `CHECKS_REGISTRY` (`src/server/pulse-capabilities.ts`), and the product types come from the scan
+  form's `PULSE_PLATFORM_LABEL`. The plain-English lines live in `src/lib/pulse-capabilities.ts`.
+  `AREAS` is keyed by every `CheckCategory`, so a new category is a type error until it is described.
+- ⚠️ **Shipping a Pulse capability? Add it to `EXTRAS` in the same PR.** Each entry names its
+  `evidence` file. A test fails if that file is gone, so a removed feature can't stay advertised.
+  Nothing can detect a *new* feature on its own; this rule is what keeps the page complete.
+- Copy is written as if everything had always existed. A test rejects "new", "recently", "latest"
+  and years.
+
+## 82. Recent Changes (October 2026) — The platform families checked against 18 real projects
+
+§37 shipped 116 platform checks tested only on fixtures, and said that real repos are what find the
+wrong ones. This audit did that: 18 real projects, every non-PASS verdict checked against the
+source (or with curl for live APIs). About 60 of ~450 verdicts were wrong. All of them are fixed,
+each with a two-sided test.
+
+- **The tool: `scripts/pulse-family-local.ts <clone> [--all]`.** It rebuilds the production
+  snapshot from a local clone with the same selection functions, then runs whichever family the
+  repo resolves to. It makes no API calls, so there's no rate limit. Use it on any new family
+  before shipping.
+- **Projects:** electron/fiddle, marktext, clash-verge-rev (Tauri); bluesky social-app (Expo),
+  mattermost-mobile, rainbow; serve, np, zx, npm-check-updates; nowinandroid, NewPipe,
+  thunderbird-android; darkreader, refined-github, uBlock, uBOL-home; plus live APIs (GitHub,
+  Stripe, httpbin, jsonplaceholder, a public GraphQL, petstore).
+- **The worst finds, all fixed:**
+  - `stripCStyleComments` nested block comments. A common Java banner (`/*////…////*/`) never
+    closed, and the Android family stripped the JOINED sample, so **89% of NewPipe's code was
+    deleted before any check ran**. It now strips per file, and nests only for Swift, Kotlin and
+    Dart (`nestsBlockComments`). The default is unchanged for other callers. ⚠️ JS/TS callers
+    still treat block comments as nesting, which JS does not. That's a follow-up.
+  - Safari Web Extension wrappers (an `.xcodeproj` + `SafariWebExtensionHandler.swift`) made
+    **refined-github and uBOL-home scan as iOS apps**, and they were told they had no tests.
+    `isSafariExtensionWrapper` in `resolveSnapshotShape`.
+  - **API CORS reflection was a HIGH FAIL with no evidence of cookie login** (Stripe and three
+    more). It's now FAIL only when a session cookie is seen, otherwise a MEDIUM WARN. The
+    relevance gate also hid this check (and GraphQL introspection) behind feature `accounts` /
+    `public_api` on most API scans. Those gates are now `feature: null`.
+  - **GraphQL endpoints were scanned as websites**, because a bare GET returns 204.
+    `pulse-lite/api-target.ts` `answersAsApi`.
+- **Recurring causes, now fixed:**
+  - JS/TS never reached the must-read sampling tier (`SOURCE_EXT`), the Dart bug of §34.6 again.
+  - Tests, mocks, build scripts and fixtures were read as app code.
+  - Keywords were matched inside comments and strings.
+  - One global regex was satisfied by an unrelated call site. Checks are now judged per call site.
+  - Monorepo manifests were read from the root only.
+  - Expo `app.config.*` was never parsed (`parseExpoNativeConfig`, `rnAppShell`).
+  - "Not found" was reported confidently on a 4–12% sample, or as SKIPPED. Absence now goes
+    through the coverage gate and becomes INCONCLUSIVE.
+- **Android reads more now:** manifests, module build files, convention plugins, the version
+  catalog and the network-security config get their own budget (`selectAndroidBuildInputs`),
+  outside the 60-file config cap. Thunderbird went from 8 to all 27 manifests. Cost: about 70–90
+  more GitHub reads per Android scan.
+- **Desktop sampling** is app-root aware (`desktopAppRoots` / `desktopRelevance`). MarkText's
+  sample was half the bundled editor library.
+- **Constants:** `RN_OLDEST_SUPPORTED_MINOR` = 86 (RN 0.88 is current, as of 2026-10-15).
+- **Result:** the three FAILs left across all 17 repos are true: Thunderbird and Mattermost
+  allow cleartext traffic, and Bluesky persists `accessJwt` to AsyncStorage.
+- **Known follow-ups:**
+  - Flutter's `xp_deep_link_both_platforms` counts the launcher intent-filter as a deep link, and
+    its permission parity compares raw counts (React Native now maps categories).
+  - JS block-comment nesting (above).
+  - darkreader `ext_x_privacy_policy` dropped to INCONCLUSIVE, because `.tsx` files now compete
+    for the sample cap.
+  - Recommend retiring `android_x_app_bundle` (withheld).
+
+Also in this change: **Code measures candidates' actual code** (§35), and **Countermarks are
+pinned to the commit examined** (§38).
+
+**Overview page polish (same day):** `/pulse/features` uses one search bar with a section
+dropdown (not a wall of pills). Area cards are a fixed size and open a side panel (a bottom
+sheet on phones) instead of expanding in place. "What it scans" maps each way in to the product
+types it covers (`PULSE_INPUTS.products`, keys of the scan form's list, test-enforced). An
+**example scan** section (`example-scan.tsx`, data in `src/lib/pulse-examples.ts`) animates a
+score, the six pillar bars and findings per product type, with a slider that turns debt days
+into weeks. Its overall score is computed with the real PILLARS weights, never typed. ⚠️ It
+renders the finished values first, and the reset to 0 happens inside the first animation frame.
+A hidden tab never runs one, and resetting earlier left a screenshot showing a score of 0 (§39).
+
+
+## 83. Recent Changes (October 2026) — Code portfolio, import graph, OSV library audit, framework benchmarks
+
+Built after a call with Julian Bass (Salford; his product "CodeTuner"), which demoed tech-debt tracking
+across a portfolio of products, framework benchmarks, a debt register with vulnerable libraries,
+and weekly snapshots. Pulse already had the register, history, trend, effort and weekly email (§80);
+this adds what it lacked. Everything is deterministic: no AI anywhere in it.
+
+- **Code portfolio** — `/app/pulse/portfolio` (API `/api/pulse/code-portfolio`, demo `/demo/pulse/portfolio`; ⚠️ NOT `/api/pulse/portfolio`, which is the top cards’ client scores), linked from the
+  Pulse page. Every measured GitHub repo side by side (score sparkline, debt days, vulnerable
+  libraries, cycles, bus factor), plus **"where to spend the next N days"**: a pure planner
+  (`src/lib/code-portfolio.ts`, re-run in the browser as the slider moves) that ranks work items
+  from every repo. Known vulnerabilities go first regardless of value per day; the rest is by risk
+  removed per day, with debt in a hotspot weighted up to 4× (`churnMultiplier`; unknown churn = 1,
+  never 0). Items that don't fit are skipped and smaller ones still tried; security items left out
+  are counted on the page, never dropped silently. Loader `src/server/code-health/portfolio.ts`,
+  scoped exactly like the scan list. It reads each scan's score with one `$queryRaw` on
+  `agentData->'codeHealth'` so old reports are never loaded whole; a newer scan whose measure failed
+  does not hide the last good one (listed as unmeasured instead).
+- **Import graph** — `src/server/code-health/structure.ts`: imports read from the source the measure
+  already parsed, resolved to files (tsconfig `paths`/JSONC/`extends`, go.mod, PSR-4, pubspec, Python
+  packages, Java/Kotlin package dirs), iterative Tarjan for cycles, hubs (fanIn ≥ 8 and complexity ≥
+  40, or fanIn ≥ 20), longest chain. New checks `code_health_import_cycles`, `code_health_hub_files`.
+  ⚠️ **Two exclusions, both found by checking real repos, and both keep the claim honest:**
+  TypeScript `import type` / `export type … from` are left out (erased at compile time; counting
+  them reported a 79-file "cycle" in zod that was type references — the real one is 2 files), and
+  Python imports are module-level only (column 0): an indented import is inside a function or
+  `TYPE_CHECKING`, the deliberate way to break a cycle (httpie had 3 false cycles). Swift imports
+  name modules, so a Swift-only repo has no graph (null → INCONCLUSIVE, never a pass).
+- **Library audit** — `src/server/code-health/dependencies.ts`: npm (package-lock v1–3, yarn v1/berry,
+  pnpm v5–9), PyPI (poetry, Pipfile.lock, pinned requirements, uv), Packagist, RubyGems, Go, crates.io,
+  Pub, read from the checkout and checked against OSV (`api.osv.dev` querybatch + vuln details, no
+  key). Check `dependency_osv_vulnerabilities` (SECURITY). OSV unreachable or no lockfile →
+  INCONCLUSIVE, never "clean". It **supersedes `dependency_vulnerabilities`** (Dependabot via GraphQL,
+  often unreadable with our token) **only when it actually ran** — `answeredByCodeHealth()` in
+  `checks.ts`; `run-lite-scan.ts` releases any held sampled check the full measure didn't answer.
+  Lockfile fixtures are named `*.fixture` so Dependabot doesn't flag this repo for them.
+- **Benchmarks** — `src/server/code-health/benchmark.ts` + `benchmarks.json`: 20 open-source
+  frameworks (Express, Fastify, NestJS, FastAPI, Django, Flask, Laravel, Gin, Alamofire, Bloc…) measured
+  by the same measure, each pinned to a release tag + commit (a test enforces it). Drawn as dot strips in
+  the code-health panel. Regenerate with
+  `node --max-old-space-size=8192 --liftoff-only --import tsx scripts/code-health-benchmarks.ts <cloneDir>`
+  (`--liftoff-only` because Node 24 OOMs compiling the Swift grammar; `npx tsx` can't pass it).
+  `docs_src/` is now excluded from the measure (FastAPI keeps example code there).
+- Weekly email lists critical/high libraries (marked new) and the cycle count. The code-health panel
+  states the data handling: the checkout is deleted when the measure ends; only measurements, paths
+  and function names are kept — which is the honest answer to a client NDA question.
+
+Verified end to end against real repos (OWASP NodeGoat: 131 of 1,091 pinned libraries vulnerable, 28
+critical; zod; httpie; gin), with every cycle checked against the source. Not verified against
+production data — post-deploy, open `/app/pulse/portfolio` and re-scan one client repo so it gains
+the structure and library sections (older reports show "not checked").
+
+### 83.1 Reports that are clear and constructive, tested on a real client repo
+
+Asked "is this the best it can be?", the honest answer was no: the facts were right, but the
+report was ordered for developers and said what was wrong rather than what it meant.
+
+- **Plain consequences** (`src/lib/plain-words.ts`): each vulnerable library gets "It could let
+  someone get past sign-in…" from its advisory text; each debt item gets what it costs, naming the
+  product area ("This is payments code…"). Areas match **whole path words** — substring matching
+  read `state.dart` as reporting and `border` as orders, and called a content feed "data syncing".
+- **A themed plan** (`src/lib/plain-impact.ts`, `actionPlan`): security as one step, a big import
+  loop on its own, the most-changed files, then debt **grouped by product area** (payments and
+  sign-in weighted ×3, which is what their step says), central files, and a catch-all last. Each
+  step has time, benefit and cumulative risk removed. ⚠️ Item-by-item ranking on value per day was
+  tried first and surfaced three trivial 2-file loops ahead of a 181-file knot on a real app.
+- **Summary** adds how soon most risk is gone and, when one step does a lot, says so ("the first
+  step alone, about 5 days, removes about 47%"). Code-health panel reordered to match the plan:
+  summary + plan, stats, libraries, structure, register, history, benchmarks.
+- **Portfolio** ranks by urgency (`urgencyOf`: serious holes → getting worse → one-person
+  knowledge → poor → fair → unchecked → good), with a plain "Needs" column.
+- **Real-data fixes from Fellas Android (Flutter, private):** build_runner output skipped by name
+  (`.freezed/.gr/.config/.mocks/.chopper/.gen.dart`) and banner (`GENERATED CODE`, `DO NOT
+  MODIFY`); `copyWith`/`copy` never registered as debt (size tracks field count by design) — the
+  two together took its estimate from 248 to 159 days; a hub must be widely used **and** complex
+  (a simple shared error type imported by 260 files topped the plan); "most changed" is the top
+  three hotspots with ≥3 changes, because hotspot scores are relative and a quiet repo (69 commits
+  a year) never reached the old fixed 0.5 threshold. Its 181-file loop was checked in the source
+  and is real (`navigator_helper.dart` ↔ `home_page.dart`).
+
+### 83.2 The whole report in plain English, and MCP scans that save
+
+- **`src/lib/plain-report.ts` (`summariseScan`)** — an "In plain English" box at the top of every
+  scan (in-app overview and the shared report/PDF): ready or not, up to five "Fix first" findings in
+  plain words, and how many things Pulse could not check (never implied fine). Order is Pulse's own
+  `rankFindings`; meanings match the check key (first rule wins, so `release_logging` = passwords
+  in logs is ruled before generic logging), fall back to "Not yet in place: <label>", and one
+  meaning is said once however many checks found it. Code-health checks are left to their own
+  summary. Tested on Fellas Android's real findings: staging server, unencrypted traffic, no tests.
+- **MCP `pulse_scan` takes `saveToClient`** (+ optional `projectName`): also creates a full in-app
+  scan on that client, the same path as `POST /api/pulse/scans` (needs `ai.generate`, client must be
+  in scope, runs in `after()`). Before this, MCP scans returned a verdict and saved nothing, so a
+  repo scanned from Claude never reached the client's list or the code portfolio.
+
+## 84. Recent Changes (October 2026) — Pulse checks bolstered; projects, history and compare
+
+From a full Pulse audit (Dan: checks first, then tracking). Two parts.
+
+### 84.1 The check catalogue
+
+Every check family was re-read against the honesty rules (§35, §44, §58). Fixed:
+
+- **Security** (`security-extended.ts`):
+  - `subdomain_takeover_risk` FAILs only when the CNAME points at a provider AND the provider's
+    "unclaimed" page is served or the target is NXDOMAIN (`assessSubdomainTakeover`). A CNAME into
+    Heroku or S3 is how those are hosted, not a takeover.
+  - `certificate_expiry_30d` reads the real certificate (`tls-certificate.ts`) instead of guessing from HSTS.
+  - DNSSEC, bot protection and BIMI are good practice: absent reads **NOT_APPLICABLE**, never WARN.
+- **Secrets.** `secret-formats.ts` (`findSecrets`) holds the vendor formats and marks Stripe `pk_live_`
+  and Google `AIza…` as public by design. `no_api_keys_in_html` uses BOTH matchers.
+  - ⚠️ `findExposedApiKeys` is still needed because `findSecrets` requires mixed case and so drops
+    DeepSeek-style `sk-` + hex keys. Switching to `findSecrets` alone reintroduced exactly that false
+    negative; `security-extended-fp.test.ts` catches it.
+  - `secret_scanning_github` now covers only the server-side formats (Stripe `sk_live_`, Slack, PEM…).
+- **Exposure probes.** `no_exposed_env` and `no_exposed_git` are INCONCLUSIVE when the probe went
+  unanswered (status 0, 429 or 5xx). They check the body against the file's real format (`path-probe.ts`).
+- **Legal** (`legal-extended.ts`, `business-operations.ts`): a regional privacy law whose market is
+  anchored (₹, CNPJ, ICP, Pte. Ltd., en-CA…) but not mentioned on the homepage is **INCONCLUSIVE**.
+  The notice usually lives in the privacy policy. An unrelated market stays SKIPPED. `eu_ai_act`
+  needs real AI use.
+- **AI** (`web-repo-source.ts`, `ai-app-safety.ts`): the `pulse_ai_*` safety rules run only when the
+  repo DOES something with an LLM (`AI_USAGE`: an SDK import or API call), never when it names one.
+  A long system prompt is flagged only in a file that ships to the browser.
+- **Operational depth** (`operational-depth.ts`): a gap found by keyword is a **WARN, at MEDIUM
+  confidence at most**. The control may live outside the repo.
+- **Repo and web basics.** `repo-basics.ts` covers has_tests, has_linter, ci_cd_present and
+  has_dependabot below the root. `web-basics.ts` covers custom domain, third-party scripts, response
+  time over two samples, and error monitoring.
+- **Private repos** (`private-repo.ts`): checks that need public metadata are not reported as
+  missing for a private repo.
+
+**Withheld:** 237 → 216. Twenty-four checks were fixed and un-withheld. Three still-keyword checks
+were added: `roles_depth_default_deny`, `roles_depth_server_authorization` and
+`auth_depth_generic_login_errors`.
+
+**The advertised count is the live count.** `LIVE_CHECKS` (`checks-registry.ts`) is the registry
+minus `standards_*` rows and minus WITHHELD keys. `ADVERTISED_CHECK_COUNT`, `pulseCapabilityCounts`,
+the features page and `llms.txt` all read it. The count went from **1,700 rows to ~1,090 live, "over
+1,000"**. Un-withholding a check raises it. The features page drops a section with no live checks
+(Standards).
+
+### 84.2 Projects, history and compare
+
+- **A project is a target, not a name.** `targetKey()` (`src/lib/pulse-projects.ts`) gives
+  `repo:owner/name`, or `url:host+path` (lower-cased, without `www.` or a trailing slash). It is the
+  one rule used for the list, history, diff and portfolio. Before, they disagreed, so `Example.com/`
+  was one project on the home screen and two in its history.
+- **Home** (`PulseProjectsView`) is **By project** by default, with **All scans** one click away.
+  Projects needing a look sort first (`buildProjects`):
+  1. fell 5+ points since the last scan;
+  2. the last scan failed;
+  3. score below 50;
+  4. not checked in 60 days.
+
+  The portfolio average counts each project once, at its latest score. Re-scans used to inflate it.
+- **Project page** `/app/pulse/projects/[slug]`: a dated score chart, a compare picker and every scan.
+  **Compare** `/app/pulse/compare?from&to`: any two scans, via `GET /api/pulse/scans/[id]/diff?against=`.
+  Access is checked on both scans. `ScanDiffBody` (`pulse-scan-diff.tsx`) is shared with the scan
+  page's "since last scan" card.
+  - ⚠️ "Couldn't check this time" is its own block. A problem the new scan could not re-check is
+    still outstanding, not fixed.
+- **The plain summary follows the gate.** `summariseScan(checks, n, gate)` takes its headline from
+  the release decision. The box sits directly under the gate banner, above the tabs. Before this, a
+  BLOCKED scan could open with "Mostly ready".
+- Demo: `/demo/pulse`, `/demo/pulse/projects/…`, `/demo/pulse/compare` (older Northwind and Fairway scans).
+
+**Not verified against production data:** projects grouping on real history, and the TLS read on
+the VPS.
+
+**Dependency advisories cleared (same day).** New advisories for zod, undici, nodemailer and
+ip-address had turned `audit:dependencies` red on `main`, and the pre-push hook blocks on it. Fixed
+in the lockfile only (`npm audit fix --package-lock-only`), as its own commit. Every bump stays
+inside its current major version: puppeteer-core 25.1 → 25.16, zod 4.3 → 4.6, mailparser 3.9 → 3.12,
+nodemailer 10.0 → 10.2. Verified with a real `npm ci`, the full gate, `next build`, and a
+puppeteer-core PDF render.
+
+### 84.3 One clear scan page
+
+- **Four tabs: Summary · All checks · Plan · Technical.** There used to be eleven. The older tab
+  ids still exist, mapped through `PRIMARY_OF`, so `setActiveTab("gaps")` from a card and old
+  deep links still land in the right place.
+  - Plan's five parts (Readiness, Gaps, Opportunities, Roadmap, Stack) are one row of choices
+    inside the Plan tab.
+  - Compliance by market sits under All checks.
+  - Competitors, the discovery kit and the agent tools are in Technical.
+  - The overview's duplicate roadmap card is gone.
+- **Order above the tabs:** cover, then the release banner, then the plain-English box. The
+  confidence/grades row moved into Summary and the agent panel into Technical, so the decision and
+  the fix-first list come before the detail.
+- **One set of status words** (`src/lib/pulse-status-words.ts`): Fix · Worth fixing · Passing ·
+  Couldn't check · Doesn't apply. The scan page, the shared report, the status icons and the lead
+  popup all use them. All checks shows a legend explaining each word and a "Couldn't check" filter.
+- **Fix first says who does it.** `ownerFor(category)` in `plain-report.ts` names who usually fixes
+  each finding: your developer, whoever runs your domain and hosting, whoever runs your content and
+  marketing, or you or your legal adviser.
+- **The shared report shows the gate's reasons.** `ReleaseGateBanner` moved to
+  `release-gate-banner.tsx` and renders above the plain box in both places, in the same order.
+
+### 84.4 Library audit covers Java, .NET and Swift
+
+`src/server/code-health/dependencies.ts` now also reads `gradle.lockfile` (OSV `Maven`),
+`packages.lock.json` (`NuGet`, with Direct/Transitive, the repo's own `Project` entries skipped) and
+`Package.resolved` (`SwiftURL`, v1 and v2/v3 layouts, including Xcode's
+`…/xcshareddata/swiftpm/Package.resolved`).
+- ⚠️ OSV names a Swift package `github.com/owner/repo`, with no scheme and no `.git`. With either one
+  the query returns nothing, silently. Checked live against swift-nio: 4 advisories under that
+  name, 0 under the full URL.
+- A Swift pin on a branch or a bare revision has no version, so it is skipped.
+- `pom.xml` is deliberately not read: its versions come through properties, parent POMs and BOMs,
+  and a version rebuilt from those would be a guess.
+
+Tests use real lockfiles from Netflix/maestro, stripe-ios and WinMemoryCleaner.
+
+### 84.5 Standards controls derived from live evidence
+
+`standards-derived.ts` (`DERIVED_STANDARDS`) names 146 of the 391 `standards_*` controls that a live
+check can speak to, and which checks each one rests on. It replaces `EVIDENCE_BINDINGS`, which had
+two wrong bindings:
+- a valid certificate alone passed "transport encryption required end to end";
+- `web_unsafe_deserialization` was bound to the template-injection control.
+
+`EVIDENCE_BINDINGS` also ignored WARN evidence.
+
+How a derived control gets its verdict:
+- Any FAIL or WARN at MEDIUM or HIGH confidence on its evidence gives that verdict.
+- PASS needs a complete proving group. Only `deep_supply_01` (lockfile) and `deep_host_08` (Tauri
+  updater key) have one.
+- Anything else is INCONCLUSIVE and hidden.
+
+**They are NOT counted in `LIVE_CHECKS`.** A derived row restates checks that already ran, and 144 of
+the 146 can only ever fail. Counting them would raise the advertised number without Pulse observing
+anything new. The classification of all 391 controls (146 derivable, 47 observable with new
+collectors, 198 not observable from outside) is a plan for real new collectors, not a count.
+
+### 84.6 Hidden checks fixed, round one
+
+Two agent batches each fixed a withheld check, or made it honest, with a two-sided test built from
+real pages and repos. Each fix was proved to discriminate by reverting it.
+- **scanA (34):** auth, roles, SaaS, trust and legal page checks now read claims inside one visible
+  text run (`page-claims.ts`), never across 300k characters of markup. Absence behind sign-in is
+  INCONCLUSIVE, and laws that cannot apply are NOT_APPLICABLE (`legal-claims.ts`). Also new:
+  `page-signals.ts`, `dkim-record.ts` and `dns-ttl.ts`.
+- **platform (38):** the Android, iOS, desktop, React Native, extension and CLI checks.
+  `branch_protection` now reads rulesets and FAILs only for an admin viewer.
+  `no_service_role_key_exposed` uses `findSecrets`. `web_raw_html_injection` is judged per site
+  (JSON-LD passes; `prose.tsx` in vercel/commerce still fails).
+
+**Withheld:** 216 → 144. Every check still withheld either awaits a fix, or has a reason starting
+"Not assessable from what Pulse scans:" (internal ops, a product's own emails, behind sign-in,
+back office).
+
+**Round two, scanB (41):**
+- Payment, auth, roles, accessibility and sitemap checks now rest on parsed evidence:
+  - real WCAG contrast ratios for inline colour pairs;
+  - OAuth scope and `code_challenge` read from the page's own authorise link;
+  - a Stripe webhook route must answer differently from a made-up sibling path;
+  - page weight measured from HEAD Content-Length, and INCONCLUSIVE if anything can't be measured.
+- Absence of an optional feature (Stripe, currencies, web push, trust badges) is NOT_APPLICABLE.
+- Extra requests per URL scan: up to 40 HEAD requests (page weight) and 10 sitemap GETs.
+- Withheld 144 → 103. Live checks: 1,206 ("over 1,200").
+
+**Round three, repo (39):**
+- Operational-depth rules can declare a per-file `scope`. Scoped rules strip comments and ignore
+  docs, so a subject and its safeguard must sit in the same file.
+- Containers: `nonRootVerdict` decides from the base image's default user when there's no USER line
+  (official images run as root; `:nonroot`, Chainguard and Bitnami don't; any other base is
+  INCONCLUSIVE).
+- Django: DEBUG and SECRET_KEY are judged per settings module.
+- Spring YAML: nested and list forms are parsed.
+- CORS: a reflected origin is flagged only when origin and credentials sit in one config.
+- CI: `on:` is read at any indentation.
+- Validated against realworld, bakerydemo, commerce, petclinic and rreading-glasses.
+- Withheld 103 → 64. Live checks: 1,245.
+
+**Derived standards rows are never findings of their own** (`isDerivedRestatement`). The release
+gate's failure count, `rankFindings` (and so Fix first) and the MCP verdict's issue lists all skip
+them; the full check list still shows them. Found on the live linear.app scan, where one unlabelled
+button was three gate failures, and vercel/commerce, whose vulnerable libraries appeared twice.
+
+### 84.7 Rendered-page accessibility checks (`rendered-a11y`)
+
+A new collector loads the page once in the shared `launchHeadlessBrowser()` Chromium (the same one the
+render and visual agents use) and measures it. It runs only on internal website scans, in parallel
+with PageSpeed. Measuring takes 0.5–1s; with launch and navigation it is 1.7–3.3s.
+- **Where it lives:** `pulse-agents/rendered-a11y-agent.ts` (launch and guard),
+  `rendered-a11y-scripts.ts` (in-page collection only), `pulse-checks/rendered-a11y.ts` (every
+  verdict, pure and unit-tested).
+- **Checks:**
+  - `rendered_keyboard_reachable`: a Tab walk, up to 120 steps.
+  - `rendered_no_keyboard_trap`.
+  - `rendered_focus_visible`: computed style before and after focus, with transitions frozen.
+  - `rendered_focus_not_obscured`.
+  - `rendered_text_contrast`: computed colour over the composited background, rounded down; text on
+    images or gradients is not judged.
+  - `touch_target_size`: the old withheld key, now measured at 390px against WCAG 2.5.8.
+  - `rendered_skip_link_works`.
+- **No evidence, no verdict:** if the browser can't run, every key is INCONCLUSIVE and the collector
+  is recorded as ERROR. These checks never pass on nothing.
+- **Verified on real sites:** gov.uk passes. Hacker News fails contrast at 3.54:1 (#828282 on
+  #f6f6ef) and tap targets (18×10px arrows), both correct. The W3C and Deque demo sites fail as
+  expected.
+- ⚠️ **Known weak spot:** linear.app's homepage mock-up uses real 14px buttons, so it fails tap targets
+  on controls that are only a picture of the product. The evidence names each element. Nothing on the
+  page marks the mock-up as decorative, so it is reported rather than guessed away.
+- **Standards:** `inclusive_access_01–05` and `11` can now be refuted by these checks. Live checks: 1,252.
+
+### 84.8 Consent before tracking (`consent-tracking`)
+
+The static checks can tell whether a cookie banner is *mentioned*. They cannot tell whether the site
+waits for the answer. A second browser collector now does: `pulse-agents/consent-tracking-agent.ts`
+launches a **fresh** Chromium, so the visit is a first visit with no stored consent. It watches
+requests and cookies for 6 seconds with nothing clicked, then presses the banner's first-layer Reject
+control, reloads, and watches again. The verdicts are pure functions in
+`pulse-checks/consent-tracking.ts`. It runs alongside `rendered-a11y`, under the same conditions
+(an internal website scan).
+- **Checks:** `consent_no_tracking_before_choice`, `consent_no_tracking_cookies_before_choice` and
+  `consent_reject_honoured`. They are tagged EU + UK in `jurisdictions.ts` and feed the standards
+  rows `deep_privacy_01` and `deep_privacy_08`. Live checks: 1,255.
+- **Only beacons count, not scripts.** Loading `gtag/js` or `fbevents.js` is fine; only the request
+  that reports a visit counts. DoubleClick is matched on beacon paths only, because
+  `securepubads…/pagead/purl_config` is ad-serving set-up (a false FAIL on which.co.uk).
+  Cookieless analytics (Plausible, Fathom) is not a tracker.
+- ⚠️ **Advertising and analytics are judged differently, because the law differs.**
+  - Advertising before a choice always fails.
+  - Analytics before a choice fails where the EU applies (or the markets are unknown).
+  - For a UK-only scan, analytics is a WARN that states the conditions of the UK exemption.
+    Since 5 Feb 2026, PECR Sch. A1 para 5 (from the Data (Use and Access) Act 2025) allows analytics
+    used to improve the service without consent, provided visitors are told, can easily object, and
+    the data is used for nothing else.
+  - The scan's markets are passed in from `resolveTargetMarkets`.
+  - Don't flatten analytics into "needs consent" again: that is now false in the UK.
+- **Consent Mode:** a Google request with `gcs=G100` is the cookieless ping and is a WARN, not a
+  FAIL.
+- ⚠️ **A block page is never judged.** To a headless browser, Akamai and Imperva serve a 15–26-word
+  block page to John Lewis, Argos, ASOS, Boots and Currys. The first version scored that page as
+  "clean". Under `MIN_PAGE_WORDS` (50) with no banner, or matching bot-wall wording, every key is
+  INCONCLUSIVE.
+- **Reject:** the first-layer button is found by its wording (UK and EU languages) or by the big
+  consent platforms' ids. Pulse searches open shadow roots and up to 12 frames. Pulse never presses
+  Accept. A cookie that was already set before the choice is not blamed on Reject.
+- **Verified on real sites (27 Oct 2026):**
+  - gov.uk, Nationwide and Monzo pass all three.
+  - The Guardian's first layer has no reject button, so `consent_reject_honoured` is INCONCLUSIVE.
+  - gitwork.co.uk fails: GA4 with Google Signals sends to DoubleClick and sets `_ga` before any
+    choice, and there is no banner.
+  - The BBC sets Chartbeat, Piano and DotMetrics cookies before a choice, and Chartbeat keeps
+    pinging after "Reject additional cookies". For a UK-only scan these are WARNs.
+
+### 84.9 Repository settings read from the repository (`repo-collaboration.ts`)
+
+Seven keys used to be guessed from a website's HTML: "codeowners" or "semantic-release" appearing
+anywhere in the page counted as PASS. They were withheld in the October audit. They are now answered
+from the repository snapshot. That needs no extra GitHub call, because the full path list and every
+`.github/workflows` file are already in it (§62.5). They run inside the `ci-workflows` collector.
+- **File checks:** `github_codeowners` (only where GitHub reads CODEOWNERS: the root, `.github/` or
+  `docs/`), `github_pr_template` and `github_issue_templates`. A missing file is a WARN, unless GitHub
+  truncated the tree, in which case it is INCONCLUSIVE.
+- **`release_automation`:** a release tool's config file, a workflow that publishes, or a
+  package.json script that runs a release tool. Validated on real repos: express publishes with
+  `npm stage publish`, and ky releases with `"release": "np"`. Both were missed at first and are now
+  tests. If a listed workflow was not read, absence is INCONCLUSIVE.
+- **`github_code_scanning` and `github_secret_scanning`:** a workflow that runs the tool is a PASS.
+  ⚠️ No workflow is always INCONCLUSIVE, never a WARN, because CodeQL default setup and GitHub's
+  built-in secret scanning are repository settings that leave no file.
+- **`commit_signing_enabled`:** one more field on the existing branch-rules GraphQL query
+  (`requiresCommitSignatures`, plus the ruleset rule `REQUIRED_SIGNATURES`), in `assessCommitSigning`
+  (`code-agent.ts`). It follows the same visibility rule as `branch_protection`: only an admin viewer
+  can establish "not required".
+- **Still withheld, Dan's call:**
+  - `github_branch_protection` and `github_required_reviews` are exact duplicates of
+    `branch_protection`. Retire them as `MERGED_INTO`.
+  - `stale_bot_configured` is an open-source chore, not a readiness finding.
+- Live checks: 1,262. Withheld: 56.
+
+### 84.10 Real-user Core Web Vitals (`crux-field.ts`)
+
+PageSpeed's response already carried Chrome UX Report field data for each metric, and Pulse only read
+its one-word summary (`crux_overall`). New checks `crux_lcp`, `crux_inp`, `crux_cls`, `crux_fcp` and
+`crux_ttfb` judge the 75th percentile real Chrome users saw over the last 28 days, using Google's
+published thresholds.
+- **INP only exists as field data,** so these checks are what let standard `performance_core_02` be
+  refuted. LCP and CLS field data also feed `performance_core_01` and `performance_core_03`.
+- **URL data comes first,** then origin data. PSI's own `origin_fallback` flag counts as origin data.
+  The detail says which, and origin data is MEDIUM confidence.
+- **No Chrome traffic means no row at all,** as with `crux_overall`. A small site is unmeasured, not
+  slow.
+- ⚠️ **CLS arrives ×100** (`30` means 0.30). This was confirmed against a real response in Google's
+  Site Kit fixtures (`google/site-kit-wp …/pagespeed--mobile.json`). A test checks that Pulse's
+  verdict matches Google's own FAST/AVERAGE/SLOW category for every metric in that response.
+- These only run where PageSpeed runs (internal scans). Without `GOOGLE_PSI_API_KEY` the anonymous
+  quota returns 429 almost immediately.
+
+### 84.11 Credentials left in git history (`code-health/history-secrets.ts`)
+
+The commonest real leak is not a secret in today's files. It's a `.env` or key file that was
+committed, noticed and deleted. Deleting it removes it from the checkout, not from history. The
+code-health clone already holds 12 months of history (blobless), so `secrets_in_git_history`
+works like this:
+- It lists files **deleted** in that window whose names say they hold credentials. That means env
+  files, private keys, service-account or credentials JSON, and `.npmrc` / `.pypirc` / `.netrc`.
+  Tests, fixtures, examples and docs are skipped.
+- It reads the version just before each deletion (`git cat-file -p <sha>^:<path>`), at most 15.
+- It runs the existing secret formats over each one, plus the env-file rule from `secret-scanner.ts`.
+- **A read fetches one old blob from GitHub on demand.** That is why the checkout's `git` helper now
+  carries the same auth header and hardening as the clone (`gitConfig` in `clone.ts`). Without it,
+  private repos would fail every read.
+- **Never PASS on a gap.** INCONCLUSIVE when the history clone fell back to the latest commit only
+  (`Checkout.hasHistory`), and when any candidate could not be read (older than the shallow
+  boundary, or over the cap).
+- **Out of scope, stated in the PASS:** a secret edited out of a file that still exists. Finding that
+  needs every old version of every file.
+- A FAIL says to rotate. Rewriting history is tidying, because clones and forks keep the old copy.
+- **Validated on public repos (27 Oct 2026):** asvarshini/SafeRoute's deleted `backend/.env` was
+  read from history and flagged. Two other "remove .env" commits turned out to edit
+  `docker-compose.yml` and delete `.env.example`, and both correctly pass.
+
+### 84.12 Library licence review (`code-health/licences.ts`)
+
+`dependency_copyleft_licences` (LEGAL). The lockfile audit already knows every pinned
+(ecosystem, name, version), and `auditDependencies` hands that list over through `onPackages`. For
+the libraries the project **declares itself** (direct only, at most 300), the licence is looked up in
+**deps.dev**. That's Google's free API with no key, covering npm, PyPI, Go, Cargo, Maven, NuGet and
+RubyGems.
+- **What is flagged:**
+  - AGPL and SSPL (network copyleft), which reach users of a web service.
+  - GPL (strong copyleft), which applies on distribution.
+  - It is always a **WARN for a licence review, never a FAIL**: Pulse can't see how the software is
+    distributed or whether there's a commercial licence.
+- **What is not flagged:**
+  - LGPL, MPL and EPL.
+  - Dual licences with a permissive option ("MIT OR GPL").
+  - `GPL … WITH <exception>`.
+  - Same-family libraries in a project that is itself GPL or AGPL. That's read from its LICENSE
+    file or package.json `license`.
+- ⚠️ deps.dev's `non-standard` means "couldn't map to SPDX", and counts as **unknown**, not clean.
+  Under 80% known is INCONCLUSIVE. MySQL's Python connector, which is GPL with an exception, is
+  one example.
+- Validated against live deps.dev data: PyQt5 is GPL-3.0 and flagged, the MariaDB JDBC client is
+  LGPL and not flagged, and Flask passes with 22 of 25 identified. No check is emitted when the
+  library audit found no lockfile.
+
+### 84.13 The withheld list is empty (`repo-operations.ts`, `privacy-notice-rights.ts`)
+
+There were 56 checks in `WITHHELD`, all of them keyword guesses over a website's HTML. Each one
+was either rebuilt or retired, and `WITHHELD` is now `{}`. Adding a key back needs a reason, and
+the key stays only until its defect is fixed.
+
+- **Rebuilt (16), each on the evidence that answers it:**
+  - From the repository (`repo-operations.ts`, run inside `runCiWorkflowChecks`):
+    - Paging and alerting (Terraform, Alertmanager, Prometheus rules).
+    - On-call and escalation.
+    - Budgets (Terraform, Infracost).
+    - Log shipping and log retention (Terraform, Compose, manifests).
+    - Incident reviews.
+    - Synthetic checks (Checkly, Terraform, scheduled workflows).
+    - Automated accessibility tests.
+    - AI route rate limiting.
+    - Email preview text. Email layouts and templates are read from their own budget,
+      `selectEmailTemplates`.
+  - From the privacy policy (`privacy-notice-rights.ts`): the rights of access and portability.
+    Portability applies only when the notice relies on consent or a contract.
+  - From the domain's own name servers (`authoritative-ttl.ts`): DNS TTL, using a raw UDP query,
+    because Node's resolver hides a CNAME's TTL.
+  - Over HTTP/2 (`early-hints.ts`): early hints, sent as a browser. Cloudflare sends a 103 to
+    browsers only.
+  - From the release pipeline: the App Bundle check. Any current AGP can build a bundle, so the
+    only defect is APK uploads to Play.
+- **Retired (40):** RETIRED_CHECKS in `catalogue-compat.ts`, version `pulse-controls-2026.10`.
+  - 20 are SUPERSEDED_BY, MERGED_INTO or ALIAS_OF a live check that reads real evidence.
+  - 20 are WITHDRAWN because no scan can answer them: internal policies, back-office tooling, and
+    things only visible after signing in.
+- ⚠️ **A practice set up in a vendor's dashboard leaves no file.** Its absence from code is
+  INCONCLUSIVE, never a WARN. The only adverse verdicts are defects the files themselves show:
+  - a CloudWatch log group without `retention_in_days` (where `0` means forever);
+  - an AI route with no limiter in a repository that uses none, with most of the source read;
+  - email templates and layouts that were all read and none sets preview text;
+  - an English privacy notice that omits a right.
+- Validated against real data, which found 5 false positives:
+  - vercel/chatbot's own `checkIpRateLimit` wasn't recognised.
+  - A library `server.ts` was read as a route.
+  - The React Email preview app and components were read as templates (documenso, cal.com).
+  - A Storybook a11y panel was counted as a test (mastodon).
+  - gov.uk's rights list, split across items, was missed.
+
+  All five are fixed, with tests. maybe-finance's email WARN and Shopify's portability WARN were
+  checked by hand and are true.
+
+### 84.14 Multi-page crawl (`site-crawl.ts`, `pulse-agents/site-crawl-agent.ts`)
+
+Internal website scans now read up to 15 pages, not just the homepage. It runs behind the same
+switch as rendered-a11y. It never runs on the public embed, MCP, repo or store scans.
+
+- **Which pages:**
+  - Pages come from the homepage's links and the sitemap.
+  - Pricing, signup, login, contact, about, product, blog, checkout and docs are picked first.
+  - robots.txt is respected.
+- **Limits:** 4 at a time, 8s per page, a 45s budget, then up to 40 links and 10 sitemap URLs
+  checked. Every request goes through `fetchScannableUrl` (the SSRF guard).
+- **13 `crawl_*` checks:**
+  - broken internal links;
+  - titles, meta descriptions, html lang and viewport;
+  - mixed content and http form actions;
+  - canonicals and noindex on key pages;
+  - security-header consistency across pages;
+  - sitemap URLs and image alt text;
+  - a pages-read row.
+- **Not counted as pages:** soft 404s (the homepage or a catch-all answer), app shells, bot walls,
+  and 401/403/429/5xx responses.
+- A PASS needs 2 readable pages beyond the homepage.
+- It was run against 13 real sites, and 10 false positives were fixed. The validation notes are in
+  the commit.
+
+### 84.15 GitHub conditional requests (`src/lib/github-cache.ts`)
+
+`githubRequest` now remembers ETag and Last-Modified per (URL, Accept, token hash) in an in-process
+LRU: 2,000 entries, 50MB, with a 2MB cap per body.
+- A `304` with a token does **not** count against the 5,000/hour limit, which was measured.
+- Rescans of unchanged repos now cost close to nothing. A first scan still costs full price.
+- ⚠️ Unauthenticated 304s still count, so don't try to prove the saving with tokenless curl.
+- **It survives deploys.** A second tier in Postgres (`GithubResponseCache`, additive model;
+  `src/server/github-cache-store.ts`) holds the validators and the gzipped body. Lookups read memory,
+  then the table; stored 200s and deletions are written through in the background. Row id is
+  SHA-256 of the cache key, so neither the token nor its hash is stored.
+- **Bounded and pruned on write** — no cron (crons here have a habit of never being installed).
+  At most every 10 minutes a write prunes rows unused for 30 days, then least-recently-used until
+  under 20,000 rows and 500MB compressed. The table is safe to `TRUNCATE` at any time.
+- **A dead database costs one timeout, not one per GET.** A store read slower than 500ms, or one
+  that fails, is a miss, and the store is skipped for 30 seconds. Writes never block a request.
+  A stored body is still only served on GitHub's own 304, so a stale row can't be returned as current.
+- ⚠️ **Wired in `src/instrumentation-node.ts` (loaded by `src/instrumentation.ts`), not imported by
+  `github.ts`.** Keep `instrumentation.ts`'s `if (NEXT_RUNTIME === "nodejs") await import(...)` shape:
+  an early return is not dead-code-eliminated from the edge build, which then fails on `node:`. `github.ts` and
+  `github-cache.ts` are in the browser bundle (two client components import them); a Node built-in
+  or Prisma import there breaks the production build. The store is registered on `globalThis`
+  (`setGithubCacheStore`). `github-cache-persistent.test.ts` fails if either file imports one.
+
+### 84.16 Pulse has its own navigation (`src/lib/pulse-nav.ts`, `pulse-nav.tsx`)
+
+The Pulse landing page used to stack everything. Each concern now has a page, and `PulseNav`
+(segmented control, the wiki doc-tabs shape) sits at the top of each, with **New scan** on the right
+for anyone with `canGenerateAi`. It is not on a scan's own report (`/app/pulse/[scanId]`).
+
+| Item | Route | What is on it |
+|---|---|---|
+| Projects | `/app/pulse` | Projects / all scans, "What Pulse checks". Project pages and `/new` count as Projects |
+| Monitors | `/app/pulse/monitors` | `PulseMonitorsPanel` (now a numbered card with an empty state) |
+| Portfolio | `/app/pulse/portfolio` | Code portfolio 01–03, then workspace scan health (`04 // SCAN HEALTH`) |
+| Compare | `/app/pulse/compare` | Unchanged |
+| Growth | `/app/pulse/growth` | Sales page, public embed, About Pulse share card, leads. `/embed` counts as Growth |
+
+- ⚠️ **Monitors and Growth are internal-only twice**, exactly as their panels were on the old landing
+  page: their routes are in `INTERNAL_ONLY_PREFIXES` (module gate), and the content is inside
+  `InternalOnly`. The nav hides them from external roles and while the account loads. Add a nav item
+  and you must decide its `internal` flag; `pulse-nav.test.tsx` fails if the flag and the gate disagree,
+  or if any item has no app page or demo page.
+- `PulseTopCards` is gone; its four cards take a `number` prop and live on Portfolio and Growth.
+  The scan list's own New scan button moved into the nav.
+- Demo: the same nav with `base="/demo/pulse"` (`DemoPulseNav`, no New scan), plus new
+  `/demo/pulse/monitors` and `/demo/pulse/growth` (demo monitors and embed config added to
+  `dev-demo-data.ts`). Verified at 390 · 768 · 1440 and with `audit:clipping`: 0 findings.
+
+### 84.17 Findings: one list, triaged, carried between scans (`pulse-findings`)
+
+A scan used to show the same problem up to six times: AI-written blockers, gaps, quick wins, a
+priority plan, a readiness checklist and two "fix first" lists. None of them could be acted on.
+
+- **The list.** The scan page's "All checks" tab is now **Findings**. It holds one list of failing and
+  warning checks, ranked by `rankFindings`, in five views: open, on the board, fixed, dismissed and
+  couldn't check. The by-category view of every check is one click away. The AI write-up is the
+  summary only. Its duplicate lists were removed from Summary and Plan. Plan keeps opportunities,
+  roadmap, stack and the estimate. A `gaps` deep link lands on Findings.
+- **The rules** are in `src/lib/pulse-findings.ts` and are pure:
+  - A decision (`ACCEPTED_RISK` or `FALSE_POSITIVE`) outranks a board task.
+  - A task marked done while the check still fails reads "Task done, still failing", never fixed.
+  - **Fixed is never stored.** A check is fixed when it passes now after the team acted on it, or
+    after it failed on the previous scan (from the diff).
+  - A task deleted from the board makes its finding open again.
+- **Storage:** `PulseFindingState` (additive), one row per `(workspace, targetKey, checkKey)`. It is
+  keyed on the **project** (`targetKey`), not the scan, so a decision carries to every later scan of
+  the same site or repo.
+  - Tasks made with the older per-check "+ Task" button carry `metadata.pulseCheckKey`, and are
+    read as on the board.
+  - Sending to the board is idempotent.
+  - Routes:
+    - `GET`/`PUT /api/pulse/scans/[id]/findings`
+    - `POST /api/pulse/scans/[id]/findings/task`
+  - Reads need scan access; writes also need `pulse.manage`, now exposed client-side as
+    `usePermissions().canManagePulse`.
+- **The score does not change** when a finding is dismissed. It measures what Pulse found, and the
+  Dismissed view says so.
+- **The demo's Northwind scan carries a real scan's 289 checks** (`src/lib/demo/demo-pulse-recorded.ts`).
+  They come from a python.org lite scan, renamed. They are stored as a `JSON.parse`d string, because as
+  a literal the type checker ran out of memory. Regenerate the file rather than hand-editing it. The
+  demo applies findings writes in memory, but the demo user has no `pulse.manage`, so the actions show
+  only for a real user.
+- **Cadenza and Fairway carry real scans too** (`demo-pulse-recorded-cadenza.ts`, `-fairway.ts`):
+  - Cadenza is a repo scan of `bradtraversy/proshop-v2` (84, 192 checks, plus its code-health
+    report). Fairway is a rendered URL scan of a small UK golf club's site (81, 264 checks).
+  - Both are renamed throughout: repo, file and screen names, host, page slugs, crest URL and
+    nameserver. The scores, tech stacks and code health come from the recordings. Diffs and
+    finding seeds use the recorded check keys.
+  - ⚠️ Real lite scans of small sites and repos all landed at 79–92. The `/pulse/features`
+    examples need a middling (<75) and a weak (<50) result, so they keep the old hand-written
+    scans (`exampleScanCadenza` / `exampleScanFairway`). All three `/demo/pulse` projects are
+    now green.
+- ⚠️ **`tsc` on main sits at the edge of Node's default 4GB heap** and ran out of memory
+  intermittently. CI already used 6144; `npm run verify` now does too.
+
+### 84.18 Checks are rebuilt, not withdrawn (`repo-practices.ts`)
+
+⚠️ **Rule from Dan, 27 Oct 2026:** do not remove useful Pulse checks. Rebuild them on evidence Pulse
+can read. A key can be retired only when it duplicates a live check (SUPERSEDED_BY, MERGED_INTO or
+ALIAS_OF), and a WITHDRAWN retirement needs Dan's sign-off. `withheld-rebuilt.test.ts` fails if any
+key is WITHDRAWN.
+
+§84.13 had withdrawn 24 checks with nothing in their place. They were rebuilt the same day:
+
+- **15 from the repository (`repo-practices.ts`):**
+  - deployments recorded;
+  - server-side product events;
+  - double opt-in and contact segmentation;
+  - a dedicated sending provider;
+  - plain-text part (Rails views with no `.text.erb` are a WARN);
+  - postal address in marketing templates;
+  - breach procedure and record of processing in the docs;
+  - e-signature (optional);
+  - fraud screening (Stripe Radar is on by default, and a merchant of record carries the liability);
+  - dispute handling;
+  - one-time-code attempt limits and resend cooldown (home-made codes with neither are a WARN when
+    most of the source was read);
+  - stale triage (optional).
+- **4 from the website (`business-operations.ts`):** anti-bribery policy, whistleblowing channel,
+  sub-processor list and insurance. Each is a PASS with the quote when the site names it, otherwise
+  INCONCLUSIVE, because none of them has to be published.
+- **3 operational-depth rules**, restored with `absentIsUnknown`. A guard or deny default Pulse doesn't
+  recognise reads exactly like none, so a missing one is INCONCLUSIVE. A forbidden construct it sees
+  (a declared allow default) still fails.
+- **2 duplicates now point at live checks:** `gdpr_ropa_maintained` → `gdpr_records_processing`, and
+  `gdpr_data_access_control` → the repository ownership and tenant-scope rules.
+
+Result: **1,711 active checks**, and 18 retired keys, every one with a live successor.
+
+Validated against 8 real repositories, which found 5 false positives, each fixed with a test:
+- `@vercel/analytics` was read as server-side events.
+- `@react-email` was read as a sending provider.
+- A template's `text:` prop was read as a plain-text part.
+- Documenso's own packages were read as an e-signature integration.
+- A CSS colour `#D1D5DB` was read as a UK postcode.
+
+Confirmed true: maybe-finance's Rails mailers send HTML only.
+
+### 84.19 Vendor names are not evidence (`vendor-evidence.ts`)
+
+27 website checks passed when a vendor's or product's name appeared anywhere in the HTML: a blog
+post naming Pingdom, "newrelic" in a comparison table, "affirm" as an English word, "statuspage" on
+Atlassian's own homepage, `open.*source` running across a whole page. None was withdrawn and no
+key changed. Each now rests on what the page does, in `src/server/pulse-checks/vendor-evidence.ts`:
+
+| Evidence | Checks |
+|---|---|
+| A script the page loads from the vendor's host, or its init call (`NREUM`, `DD_RUM.init(`) | `apm_signals`, `real_user_monitoring` (self-hosted LUX still counts), `bnpl_options`, `crypto_payments`, `wallet_payments`, `payment_checkout_provider` |
+| A link to the vendor-hosted listing or profile (`pageAnchors`), or the platform's own widget | `third_party_reviews`, `social_review_platform`, `g2_capterra_listed` (now G2 and the Capterra network only, as the label says), `product_hunt_badge`, `social_media_links`, `social_profiles_linked`, `social_short_form_video`, `github_org_public`, `amazon_app_store`, `public_roadmap` |
+| The site's status page, linked and **opened** through the SSRF guard (192KB read: linearstatus.com puts its `<title>` 100KB in) | `status_page`, `uptime_monitoring`, `uptime_history_public` |
+| The domain's SPF record (`include:sendgrid.net`, `spf.mtasv.net`…) | `email_provider` |
+| A statement in visible prose or a badge's alt text, quoted | `compliance_certifications`, `investor_backing_listed`, `awards_recognition`, `conference_speaking`, `tax_automation`, `paypal_integration` / `regional_payment_methods` (via `nonCardPaymentMethods`) |
+
+- **Couldn't look is INCONCLUSIVE.** A status link that answers 401/403/429/5xx, an `email_provider`
+  with no recognised sender in SPF (mail may go from another subdomain), a status page on a product
+  that can be updated by hand (Statuspage, own subdomain) for `uptime_monitoring`, and the Amazon
+  Appstore named with no link.
+- Social profiles also count from JSON-LD `sameAs`: atlassian.com draws its footer with JavaScript.
+- Validated against 10 real homepages (linear, vercel, stripe, github, atlassian, posthog, gov.uk,
+  basecamp, shopify; cal.com refused the fetch). Every remaining PASS was checked by hand. Removed
+  false passes include: Atlassian's `status_page` (the word "Statuspage", its own product),
+  `github_org`, `awards`, `investor` (an investor-relations link) and `public_roadmap` (an SVG id);
+  Stripe's `bnpl`, `crypto`, `paypal`, `tax_automation` (product copy and scripts); Linear's
+  `crypto`, `tax`, `awards`, `investor`. Basecamp's "backed by 37signals" is not investment.
+- ⚠️ A prose claim is the site's statement, not proof. Shopify's homepage describes its own
+  checkout ("Shop Pay, PayPal, and Apple Pay"), which `paypal_integration` reads as an option.
+
+### 84.20 Findings follow-ups: counts, task links, one board path, reopening, and a split page
+
+- **Open findings on the Projects list.** Each project row shows the open findings on its newest
+  completed scan (`PulseProject.latestCompletedScanId` / `openFindings`), counted by
+  `countOpenFindings` over the Findings tab's own `buildFindings`/`countByView`. The server reads
+  every project in a fixed number of queries (`loadFindingStates` in `src/server/pulse-findings.ts`,
+  which the scan page's read now goes through too). The demo counts from the same in-memory
+  decisions as its scan page.
+- **Task links.** `FindingTask.clientSlug` comes back with each task, and a finding on the board
+  shows **View task** (`findingTaskHref`: `/app/portal/<slug>/tasks?task=<id>`, the deep link the
+  task notifications and the Desk already use). Visible to anyone who can see the scan.
+- **One send-to-board path.** The by-category view's **+ Task** now calls
+  `useSendPulseFindingToBoard`, so it records a `PulseFindingState` and shows the same state as the
+  Findings list (On board, Task done, Dismissed). It needs `pulse.manage`, like the route.
+  `one-send-to-board-path.test.ts` fails if a Pulse component builds a board task itself again.
+- **A dismissal reopens when the finding changes** (`staleDecision`, pure). A decision now stores
+  `decisionFingerprint` (FNV-1a of detail + evidence, numbers folded, so "3 pages" vs "4 pages" is
+  the same finding) and `decisionStatus` (additive, nullable). The read also reports whether a
+  later scan of the same project passed the check after the decision, up to the scan being viewed.
+  - Either decision reopens when the check passed after it and fails again, or when a warning has
+    become a failure.
+  - "Not a real issue" also reopens when the report itself changed. **An accepted risk does not**:
+    it is about the issue, so new wording of the same failure leaves it accepted.
+  - Decisions made before this change have no fingerprint and never reopen on wording.
+  - A reopened finding sits in Open as "Changed since dismissed" (or "Worse since dismissed",
+    "Failing again after passing") and keeps the old note.
+- **The scan page is split** into `src/components/pulse/scan/`: `use-scan-view.tsx` (all state and
+  derived values, returned as `ScanView`), `scan-toolbar.tsx`, `summary-tab.tsx`,
+  `technical-tab.tsx`, `all-checks-view.tsx`, `plan-tab.tsx`, and the helper components it used to
+  define inline. `pulse-scan-results.tsx` went from 3,076 lines to 138.
+  - ⚠️ The tab renderers are **plain functions called in place** (`renderChecksTab(v)`), not
+    components. That is deliberate: the running section numbers come from one `sectionNo()`
+    counter, and a child component renders after its parent, so it would number out of order.
+    Keep them as functions, or pass the numbers in as props.
+  - Tests that check something is rendered on the page read `readScanPageSource()`
+    (`src/components/pulse/__tests__/scan-page-source.ts`), not the one file.
+
+### 84.21 Homepage-only checks answered from the crawl (`crawl-evidence.ts`)
+
+Several checks ask what a business publishes and read only the homepage, or one fetched privacy
+policy. A site that publishes the thing on a legal or trust page came back INCONCLUSIVE. The
+internal crawl (§84.14) now feeds them.
+
+- **More pages:** after its normal pick, the crawl reads up to 6 legal and trust pages linked from
+  the pages it read (`selectTrustPages`: sub-processors, privacy, "your rights", trust, security,
+  legal, terms, imprint, ethics, SLA), then up to 4 more one hop on (a privacy policy that links
+  "Your rights"). Same-site, robots.txt respected, same SSRF guard and budget. They are kept in
+  `observation.trustPages` and are not judged by the `crawl_*` checks.
+- **18 checks** in `CRAWL_EVIDENCE_RULES`: business hours, VAT number, UK company number, company
+  registration, director or responsible person, support response time, invoices, data retention,
+  anti-bribery, whistleblowing, sub-processor list, insurance, lawful basis, EU representative (both
+  keys), transfer mechanism, and the rights of access and portability. Modern slavery is a 19th: a
+  statement found off the homepage stays INCONCLUSIVE (the Act wants a homepage link) and the
+  detail says where it is.
+- **Only an upgrade.** INCONCLUSIVE becomes PASS when a crawled page says it. A WARN is upgraded
+  only where its own text says another page satisfies it (support SLA, data retention, UK company
+  number). Nothing becomes FAIL or WARN, and a PASS is never replaced.
+- **Same matchers.** Each rule reuses the homepage check's own regex (now exported), so the two
+  cannot disagree. The PASS names the URL and quotes the text.
+- **Only real pages, of the right kind.** Pages must pass `classifyPage` (no soft 404s, catch-all
+  answers, bot walls or errors) and not be an empty shell. Blog posts and customer stories never
+  count. Retention, transfers and sub-processors need a legal or trust page; hours, SLAs and
+  invoices need a support, contact, help or pricing page; the rights checks need an English
+  privacy page.
+- **Wiring:** `runLiteScan` holds these keys back while a crawl may run (`holdForCrawl`), then
+  ingests them once, upgraded or as they were. Persistence stays append-only. The public scan
+  never crawls, so its answers are unchanged.
+- Validated on 8 real sites. False positives found and fixed:
+  - Atlassian's "24/7 support to employees and customers" on /enterprise read as its own hours.
+  - Its "uptime SLA, our highest priority support" read as a support response time.
+  - Stripe's "Invoice PDF" product feature read as invoices for Stripe's customers.
+  - gov.uk's privacy notice gave the ICO's phone hours, not its own.
+  - Linear's "Uptime SLA" and Basecamp's "response times may be a bit longer" read as a support
+    SLA. This also changed the homepage check (`SUPPORT_SLA_CLAIM`): an uptime SLA and an
+    unquantified "response times" no longer count.
+- Crawl requests cut short by the crawl's own budget no longer count towards the host breaker.
+- ⚠️ `runLiteScan` runs the crawl after the URL checks. If those trip the host breaker (2 timeouts),
+  the crawl reads nothing and every one of these keeps its homepage answer. This was seen from a
+  local machine and was not fixed here.
+
+### 84.22 The Pulse pages stopped contradicting themselves (UI review, Oct 2026)
+
+A review of every Pulse page at 1440px and 390px found several places where one number said
+the opposite of the number next to it. Fixed:
+
+- **Projects showed "On track" beside urgent findings.** The list now counts open findings
+  *and* urgent ones (the P1s the Findings tab lists first) with one rule,
+  `openFindingCounts` in `src/lib/pulse-findings.ts`. `applyFindingCounts`
+  (`src/lib/pulse-projects.ts`) adds "N urgent findings" as a reason a project needs a look,
+  and the server and the demo both call it. The page leads with four figures (projects,
+  average health, need a look, urgent findings); clicking "Need a look" filters to those
+  projects. The Scans column is gone; its count is in the Last checked tooltip.
+- **On a phone the score was off the side of a scrolling table.** Below `sm` each project is
+  a card with its score beside the name. The table stays from `sm` up.
+- **"The code is in good shape (95)" sat above "9 critical".** The code score measures how
+  hard the code is to change, not library security holes. The headline now names both when
+  any library has a critical or high hole (`summariseCodeHealth`). The column and the stat
+  are labelled **Code score** in the Technical tab and in Portfolio, so they can't be read
+  as the project's health score.
+- **"192 confirmed issues" beside 101 findings.** The confidence strip counted the derived
+  standards rows, which restate checks already counted. It now skips them, reads
+  "confirmed problems", and uses colour tokens.
+- **The Compare tab was a dead end** ("pick two scans from a project's page"). With nothing
+  chosen it lists each project's latest scan against the one before, with a link to the
+  project page for any other pair.
+- Portfolio's plan shows the first 8 pieces of work, then "Show all".
+- The Projects list's urgent count opens the scan on the Findings tab (`?tab=findings`).
+- Growth card copy: no em dashes, and no "free".
+
+Left as they are, on purpose: ~200 Tailwind palette classes (`emerald-*`, `red-*`, `amber-*`)
+across `components/pulse/`. `globals.css` remaps those families for dark mode, so they render
+correctly; converting them to tokens is a tidy-up, not a fix. The scan page's cover keeps the
+Foundry wordmark because it is the same component as the shared report.
+
+**Follow-up (same day): the Projects list pages, filters and sorts.** Dan, on the live list of
+42 projects: it needed pagination, filters and sorting, newest first. The rules are pure, in
+`src/lib/pulse-projects.ts` (`filterProjects`, `sortProjectsBy`, `projectKind`), and tested.
+- **Opens newest first** (`DEFAULT_PROJECT_SORT`), not by urgency. Urgency is now a filter
+  ("Needs a look", "Has urgent findings") and the two stat figures toggle those filters.
+- Every column but Needs sorts; one column at a time, a second click reverses it, and a
+  project with no value (no score yet) goes last in **both** directions. Phones have no headers,
+  so they get a sort dropdown.
+- Filters: status, type (website / repository / store listing, told apart by host) and client.
+  Type and client only appear when there is more than one choice.
+- 20 per page with the shared `Pager`; any filter or sort change goes back to page one.
+
+**Follow-up: All scans works the same way** (`src/components/pulse/pulse-scan-list.tsx`, rules in
+`src/lib/pulse-scan-list.ts`). It is now a card like Projects, with inline filters (status, score
+band, type, change since the previous scan, monitoring), sortable headers (project, score,
+change, scanned), newest first, 20 a page and one card per scan on phones. Bulk delete stays, and
+ticks clear on any page, filter or sort change, so "Delete selected" never reaches rows off screen.
+Changes and monitor matching now use the shared `targetKey` (the old list lower-cased the raw URL,
+so `a.com` and `a.com/` were two projects there). `SortHeader` is exported from
+`pulse-projects.tsx` and shared. ⚠️ `app-select` and `app-input` are 100% wide: in a wrapping
+filter row they need `sm:w-auto`, or each control takes a full row on desktop.
+
+## 85. Recent Changes (October 2026) — A client's Google Drive folder in Portal and the wiki
+
+Clients keep their files in a Google Drive folder (the link already on the client record,
+`googleDriveFolderUrl`). It now shows as a **Drive tab** in two places Dan chose, rather than as
+its own card or wiki section: Portal's **14 // DOCUMENTS** card (8 a page) and the wiki's
+**Resources** page (12 a page). Views: **Added** (newest added, any depth), **Edited** (newest
+changed, with who changed it) and **Browse** (the folder, with breadcrumbs). Nothing is copied into
+Foundry; every look is a live read, so a file put in Drive shows on the next look.
+
+- **Two readers, on purpose.** The TEAM reads with their own Google sign-in (`getUserGoogleAuth`,
+  the existing `drive.readonly` scope), so Drive's own sharing decides what each person sees, and
+  previews use Google's viewer in an iframe. The CLIENT has no Gitwork Google account, so their copy
+  is read with the sign-in of the teammate who pressed **Show to client** (`ClientWiki.driveEnabled`
+  + `driveReaderUserId`, additive). Their files come through Foundry: Google Docs and Slides as
+  PDF, Sheets as Excel, Drawings as PNG, the rest as themselves up to 100 MB. Only PDFs and safe
+  image types are served inline; everything else is a download with `nosniff`.
+- ⚠️ **Only the client's folder, never anything else the reader can see.** Every folder, thumbnail
+  and file id is proven to sit under the client folder first (`crumbsTo`, by walking parents). A
+  folder id from outside falls back to the client folder; a file from outside is a 404. Two
+  sabotage-checked tests pin this. Climbing out of the folder reaches folders the reader can't see,
+  which Drive answers with 404. That means "not under this folder", not an outage.
+- **Show to client** is refused unless the presser's own Drive can open the folder right now, so a
+  client never gets a tab that says "unavailable" on day one. It uses the SIGNED-IN person, never
+  the "view as" user. A reader who is archived (§57) or signs out of Google stops working at once.
+  The team's tab then says so in amber and offers **Read as me**. The client sees only
+  "These files aren't available right now"; whose account it is never reaches their copy
+  (`forPublicDrive`).
+- **Client routes** (`/api/wiki/[token]/drive`, `…/thumbnail/[fileId]`, `…/file/[fileId]`) use the
+  hardened posture: the section on, a per-section link must be the RESOURCES one, a logged-in
+  client user or a Gitwork session, and a per-IP rate limit. They don't use `resolvePublicWiki`,
+  because building the whole wiki per thumbnail would be wasteful; `resolveWikiDriveAccess` is
+  one light query.
+- **Every failure is a sentence, never an empty list (§35):** no folder linked, connect Google,
+  sign in again, your account can't see this folder, Drive didn't answer. The recent views
+  search at most 120 folders, 5 deep, and say so when they hit the limit.
+- Resources is now shown to the client when it has a resource OR Drive is shown to them.
+
+**Not verified against real Drive.** It was driven at `/demo/wiki` and `/demo/portal` against a
+fixture (`src/lib/demo/demo-drive.ts`), at 1440 and 390 with no overflow, and the client's mode
+was checked by pointing the demo at it temporarily. Post-deploy: link a client's folder, open
+Portal → Documents → Drive, press **Show to client** on the wiki's Resources, then open the share
+link as a client user and open a Google Doc. It should preview as a PDF.
+
+## 86. Recent Changes (October 2026) — Foundry for other businesses: the baseline and Phase 0
+
+The start of making Foundry usable by other businesses. **The plan is `docs/multi-tenant-roadmap.md`
+— read it before touching anything in this programme.** The rule above every phase: Gitwork sees no
+change unless the change is deliberate, so every PR in it also runs `npm run test:baseline`
+(`docs/build-checklist.md` §4a).
+
+### 85.1 The baseline (`scripts/baseline.mjs`, `tests/baseline/snapshot.json`)
+
+Visits every `/demo` page plus the public pages at 390, 768 and 1440 px, following demo links into
+individual scans, docs and assessments (they link to the real `/app` routes, so the crawler maps
+them back). It fails on a status error, a crash or console error, a blank page, sideways scroll,
+more clipping findings than recorded, any recorded title, heading or widget header going missing,
+and loosened auth gates. Deliberate changes are re-recorded with `--update` in the same PR;
+`--update` refuses to record a run with a hard failure. `--only=/demo/care` checks one area.
+Proved by breaking `/demo/care` three ways. It found a live bug on its first run: the candidate
+coding-challenge page scrolled 64px sideways on a phone (unbreakable example test lines).
+
+⚠️ It needs a dev server started with any `API_KEY` and `AUTH_SECRET`, or the gate checks see
+local-mode behaviour. A dev server killed mid-run shows as every page failing with
+`ERR_CONNECTION_REFUSED`: that is the server, not the pages. And `pkill -f "next dev"` inside a
+Bash call matches its own command line and kills the shell before the server restarts.
+
+### 85.2 Which modules a business has (`src/lib/workspace-modules.ts`)
+
+`Workspace.modulesRestricted` + `enabledModules` (additive; default unrestricted, so every existing
+workspace, Gitwork included, sees no change). One catalogue maps each module to its page and API
+prefixes, longest prefix wins (Hiring's `/app/codeclear/devsignal` inside Staff's tree). Checked:
+- in the **middleware, before every role check**, so a business's own Super Admin is refused a
+  module it doesn't have (pages redirect to `/app`, APIs answer 403);
+- on `/edge`, which is outside the middleware's `/app` branch;
+- in the sidebar, the HQ strip links and the Settings rail (`hasModule` in `usePermissions`).
+
+The list rides in the session token as `workspaceModules` (null = everything), refreshed on the
+existing five-minute member recheck. ⚠️ A token minted before the field existed has it undefined,
+read as unrestricted: correct today because every workspace is, and Phase 2 must not keep that once
+a restricted workspace exists. Mobile JWTs and API-key callers are not checked yet (Phase 2).
+`DEFAULT_BUSINESS_MODULES` is the bundle a new business gets.
+
+### 85.3 A workspace's AI calls use its own keys (`src/server/ai-keys.ts`)
+
+Server AI keys were read directly in ~14 places, mostly ahead of the workspace's own key. Every
+site now calls `aiKeyFor(provider, ws, prefer)`, keeping the order it had (`prefer`), so a workspace
+with `platformAiKeysAllowed: true` (default; every existing one) behaves exactly as before. A
+business created with it false only ever gets its own key, and with none its AI is off. The flag is
+**required** on the key type, so tsc forced 20 narrowed selects to fetch it. A sweep test fails on
+any new `process.env.*_API_KEY` read outside `ai-keys.ts`.
+
+### 85.4 Workspace secrets encrypted at rest (`src/server/stored-secret.ts`)
+
+AI keys, the Resend key, the external API key and the Google service-account JSON were plain text.
+Now written with `storeSecret` (the same AES-GCM envelope as the SMTP password) and read with
+`readSecret`, which also accepts the plain values already stored: no migration, and each becomes
+encrypted the next time it is saved. ⚠️ An encrypted value is recognised by its exact envelope, not
+by a leading `{` as `readSmtpPassword` does, because a service-account file is plain JSON that also
+starts with `{`. A sweep test fails on a new read of these columns that skips `readSecret`; it found
+Docs AI chat using the stored key raw. **No existing value has been rewritten** — a one-off
+backfill is a decision for Dan.
+
+### 85.5 Platform admin and the Platform console (`/app/platform`)
+
+`User.isPlatformAdmin` plus a seed list (Dan, Harry) in `src/server/platform/admin.ts`, checked live
+from the database, never the token, and separate from workspace roles. `requirePlatformAdmin` goes
+through `requireAuthedUser`, so an archived Gitwork membership removes it, and "view as" drops it.
+The console (sidebar "Platform", platform admins only) lists every business and sets its modules and
+whether it may use Gitwork's AI keys: a draft with Save/Discard; changing Gitwork's own workspace
+needs explicit confirmation (`planWorkspaceUpdate`, pure, in `src/lib/platform-rules.ts`, shared
+with the demo); every change goes to the business's own audit log as
+`platform.workspace.settings_changed`. `src/server/platform/` is the one place allowed to read
+across workspaces. Demo at `/demo/platform`; demo handlers can now refuse a write with
+`{ error, __status }`.
+
+**Not verified:** any of this against production data, the console in dark mode (the demo shell
+ignores the theme switch), and the iOS app (its repo isn't in this session yet).
+
+### 85.6 The console is built for many businesses (Oct 2026)
+
+- **The list is paged in the database.** `GET /api/platform/workspaces?q=&page=&pageSize=&sort=&dir=&modules=&ai=`
+  returns `{ workspaces, total, page, pageSize }`: 20 a page (max 50), newest first, search on name
+  and slug, filters for modules (every / chosen) and AI keys (Gitwork's / own). The page is clamped
+  to the last one, so a narrowing filter never shows an empty page. A bad value is a 400 naming it
+  (`parsePlatformWorkspaceQuery`), never a silent default.
+- **Pure twins.** `applyPlatformQuery` (in `platform-rules.ts`) does the same search, filter, sort and
+  paging in memory for the demo and tests; `platformWorkspaceWhere` is the server's Prisma version.
+  Change one, change both.
+- **A business opens in the house two-column popup** (`.app-dialog-fixed`: Overview, Modules, AI keys,
+  Activity), kept in `?business=<id>` so a link opens it. `GET /api/platform/workspaces/[id]` serves it.
+  Closing with unsaved changes asks first.
+- **Validation in `planWorkspaceUpdate`:** "chosen modules" with none chosen is refused (it would lock
+  everyone out of everything but Settings), and a save carrying an older `expectedUpdatedAt` is a
+  **409**, so two people editing one business can't silently undo each other. The Gitwork check runs
+  first, then the empty-module check.
+- Activity (`GET /api/platform/audit?page=&workspaceId=`) is paged and filters to one business.
+- `/demo/platform` carries 45 businesses and runs the same rules, so paging, refusals and the 409
+  can be driven there.
+
+## 87. Recent Changes (October 2026) — Code becomes Staff (Phase 1, web)
+
+The module is now **Staff** (sidebar: Staff, "People and availability"), a roster of everyone on
+the team. Developer vetting is its **Hiring** half. Phase 1 of `docs/multi-tenant-roadmap.md`.
+
+- **People** at `/app/staff` (`src/components/staff/staff-roster.tsx`, server `src/server/staff.ts`,
+  rules `src/lib/staff.ts`, API `GET/POST /api/staff`, `PATCH /api/staff/[id]`). It lists every
+  active member, plus Staff records with no active account behind them (contractors,
+  developers who never sign in). Columns: job title, department, type, clients, start date.
+  "Create profile" makes a record for a member who has none; "Add someone" makes one for
+  someone with no login. List needs the `codeclear` permission (now labelled Staff); writes need
+  `code.manage`.
+- **Tabs** (`CodeClearTabs`): Staff = People · Developers · Archived; then Hiring = Overview
+  (`/app/codeclear`, the old landing page) · Pipeline · DevSignal, shown only when the workspace
+  has the `devsignal` module. `/app/code` redirects to `/app/staff`. Page titles say Staff or
+  Hiring. ⚠️ The permission id stays `codeclear`: it is stored in every role matrix and override.
+- **Schema (additive)**: `Candidate.memberId` (unique, FK to WorkspaceMember, SetNull),
+  `jobTitle`, `department`, `employmentType` (EMPLOYEE | CONTRACTOR | FREELANCER, validated in
+  code), `startDate`, `managerId` (loose id to another record). `githubHandle` is now optional:
+  a record can be anyone.
+- **Linking existing records**: `linkStaffRecords` runs on each roster read and sets `memberId`
+  from the old email match, only when exactly one member and one unlinked record share an
+  address. Ambiguous matches are left alone, never guessed. The ~7 places that still match by
+  email (avatar sync, archived devs, client visibility, Backstage directory, mentions, team
+  roster, merge) were deliberately NOT moved to the FK yet: their results are identical while
+  every link comes from the same match, and moving them is a later, separate change.
+- ⚠️ **Developer lists stay developers-only.** `DEVELOPER_RECORD` (`githubHandle` not null, in
+  `codeclear-archived.ts`) is in `buildCandidateWhere` and the Overview counts, so Developers,
+  Pipeline, Overview and the iOS Dev Directory (it reads `/api/codeclear/candidates`) show exactly
+  the rows they did before. Every existing record has a handle.
+- ⚠️ **`githubHandle` is always a string on the wire** (`""` = none). The iOS app decodes
+  `DocsByGitworkCodeClearCandidate.githubHandle` as a required `String`, and a null would fail the
+  whole list (Dev Directory, rate profiles, placement scheduling). GitHub analysis and repo
+  validation refuse a record with no handle with a clear 400.
+- ⚠️ **`memberId` is NOT `@unique`** (see §2): the first deploy failed on exactly that. One record
+  per member is enforced in `src/server/staff.ts`, which reads the earliest (`staffRecords`, a list).
+- **Known gaps**: `/app/codeclear` (Hiring Overview) belongs to the Staff module in the workspace
+  catalogue, so a business with Staff but not Hiring could still open it by URL (it shows
+  developer stats only). A non-developer placed on a client counts in Portal's dev count and cost,
+  like any placement. Backstage's team directory and Settings → Team still have their own lists;
+  folding them into Staff is still to do. Demo at `/demo/staff`.
+- **Placeholder accounts are hidden** (`seedAccountUserWhere` / `isSeedAccount`, the filter Team and
+  Backstage use), so the bootstrap "Foundry Owner" and seeded "admin" are not listed as people.
+- **The table never clips.** It is `table-fixed`, edge to edge in the card, in its own scroller;
+  Started shows from `lg`, Department from `xl`, Type from `2xl`, so Clients always keeps room. Below
+  `md` each person is a card. Sortable Person, Job title and Started (`sortStaffBy`: blanks last both
+  ways), 20 a page. Avatars use the shared `Avatar`, which falls back to initials when an image fails.
+  `SortHeader` now lives in `src/components/ui/sort-header.tsx`.
+
+## 88. Recent Changes (October 2026) — Phase 2 begins in shadow mode
+
+Phase 2 of `docs/multi-tenant-roadmap.md` makes every request find its own workspace. Step 1
+changes **nothing anyone sees**: it carries the workspace in every token and compares it with
+today's answer, which is still the only one used.
+
+- **Tokens carry the workspace.** Web sessions get `workspaceId` at sign-in and on the
+  five-minute member recheck (`auth.ts`, copied to `session.user` in `auth.config.ts`). Mobile
+  and desktop tokens get an optional `wid` claim (`mobile-jwt.ts`), forwarded by the middleware
+  as `x-foundry-user-workspace` (stripped from incoming requests like the other `x-foundry-user-*`
+  headers) and read by `getRequestUser`. ⚠️ Tokens already on phones carry no claim and keep
+  working; a test signs one without it and verifies it.
+- **Shadow comparison** (`src/server/auth/request-workspace.ts`): `requireAuthedUser` records
+  whether the token's workspace agrees with the one it served. It never uses the claimed one, and
+  it never throws. "No claim" (an older token) is counted apart from a real disagreement, and a
+  disagreement is logged once per user/claim/served combination.
+- **Read the counts** at `GET /api/platform/workspace-shadow` (platform admins only; ids only;
+  resets on deploy). The plan is a week with `mismatches: 0` before anything depends on the claim.
+- **Ratchet** (`src/server/auth/__tests__/workspace-lookup-ratchet.test.ts`): `DEFAULT_WORKSPACE_SLUG`
+  and `ensureBaseRecords` may only appear fewer times in `src`, never more. Lower the ceiling
+  in the PR that removes some.
+- Map of every place that resolves a workspace today, for the file-by-file work in step 2:
+  `requireAuthedUser` filters by the Gitwork slug; ~184 files call `ensureBaseRecords()`; ~46 use
+  `DEFAULT_WORKSPACE_SLUG`; crons vary (some loop over workspaces, some use the default, some are
+  global). API-key callers have no identity and resolve to the bootstrap owner.
+
+**Step 2.2a: first-time setup starts at server start-up.** `ensureBaseRecords()` was two things:
+first-time setup (schema patches incl. pgvector, seeds, admin bootstrap, backfills) and "find the
+Gitwork workspace". Setup only ran on whichever request called it first, so removing call sites
+could have stopped it running at all. The memoised run is now `runFirstBootSetup()`
+(`src/server/bootstrap.ts`), started by `src/instrumentation-node.ts` (not awaited; skipped
+without `DATABASE_URL` and during `next build`). `ensureBaseRecords()` only delegates to it, so
+there is still one run per process and every caller is unchanged. Tests:
+`src/__tests__/first-boot-setup-at-startup.test.ts`.
+
+**The isolation suite (`npm run test:isolation`, CI job `isolation`).** Seeds two businesses into a
+throwaway Postgres (`scripts/isolation-db.sh`, `foundry_isolation` only). It then calls every API
+handler as a Super Admin of one, with the other's ids, in both directions; a response carrying the
+other's marker is a LEAK, and a changed row is a WROTE. Today 63 reads and 32 writes cross: mostly
+Care (`support/clients/[clientId]/*`), wiki sub-routes, team, Docs by id and Pulse scans by id.
+They are recorded in `tests/isolation/known-leaks.json`, and **that list is the Phase 2.2b
+worklist**. The suite fails on a new crossing, and on a fixed one still listed (shrink it with
+`ISOLATION_UPDATE=1`). ⚠️ Never add a new crossing to the list to get green. ⚠️ `rejected` and
+`error` verdicts prove nothing: the suite sends `{}` bodies. Details: `docs/build-checklist.md` §4b.
+
+**Scheduled jobs run per workspace.** `forEachWorkspace` (`src/server/workspaces/for-each.ts`)
+runs a job once per matching workspace, in order, catching each failure so one business can't stop
+the others. `docs-gdrive-backup` loops through it. Pulse monitors scan on the monitor's own workspace
+(`createPulseScanRecord({ workspaceId })`). Two of these used to cross between businesses:
+- `resolveBackupAuth` fell back to any user's Google token in the database;
+- monitor scans were saved to Gitwork whoever owned the monitor.
+
+⚠️ **Care's jobs are deliberately untouched** (Dan, 29 Oct 2026: Care is a broken product and is
+left out of the multi-tenant work for now). Those jobs are `support-sync`, `care-digest`,
+`embed-conversations` and `analytics-snapshot` (the Care analytics connector). They still run on
+the Gitwork workspace only. `embed-conversations` still selects unembedded conversations from
+every workspace, which only matters once another business has Care. Fix it when Care is brought
+in. Also Gitwork-only by design: `meet-transcripts`, `wedge-course-feed`, `wedge-keepwarm`.
+
+Tests: `src/server/__tests__/crons-per-workspace.test.ts`, `monitor-workspace.test.ts`,
+`tests/isolation/crons.test.ts`.
+
+## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
+
+A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds
+up to 12 named columns per client. Each one **counts as one of the five statuses**: "QA" counts as
+In review, "Blocked" as Doing.
+
+- **No new status, on purpose.** Standups, project updates, Foreman, the Gantt and the client's
+  Delivery page all read `TaskStatus`. A column is a lane inside a status, so none of them change:
+  a task in QA is still IN_REVIEW. Rules in `src/lib/tasks/board-columns.ts` (pure, tested).
+- **Data (additive):** `WorkspaceClient.taskBoardColumns Json?` (`[{ id, name, stage }]`) and
+  `Task.boardColumnId String?`. API `GET/PUT /api/board-columns?clientId=` (same scope as categories).
+- **Where a task sits is derived** (`laneKeyFor`). It is in a custom column only while that column
+  exists AND belongs to the task's current status, so a status change anywhere else (drawer, batch,
+  MCP) drops it back to the status column. `statusTimestamps` also clears `boardColumnId` on any
+  status change, and removing a column clears it from its tasks.
+- **Slack names the column.** Standups, project updates and re-rendered cards show it at the front
+  of the task line (`• Retry payment · QA · due Fri`). `columnName` on `StandupTaskCardInput`.
+- ⚠️ **`/api/tasks` builds its list from an explicit allow-list** (`taskListResponse`), as does
+  `taskListDTO`. A new `TaskDTO` field missing from either never reaches the board.
+- Names are unique per board, ignoring case and spacing, and can't repeat a status ("Done").
+
+**The plan banner is one line now.** It took ~130px above the board. It's a chip cluster at the
+end of the filter row (`PLAN · 85% ON IT` · `24 off plan` · sort · `40 untouched 21d+`), and the
+explanations moved into tooltips. Board and list only.
+
+**Verified:** at `/demo/tasks` (seeded with a QA column): added a column through the dialog,
+dragged a card from In review into QA, and checked 390px (no page overflow).
+**Not verified:** against a real database. Post-deploy, add a column on a client, drag a task into
+it, reload, then push a project update and confirm the line names the column.
+
+## 90. Recent Changes (October 2026) — A Halloween theme
+
+A pumpkin beside the header bell switches on a seasonal theme across `/app` and `/demo`:
+- dark mode, with midnight-indigo surfaces and **pumpkin orange as the brand colour**;
+- a solid pumpkin on the bottom-right of the logo;
+- fog rolling along the bottom of the screen;
+- ghosts and bats drifting across.
+
+- **Where it shows: `HALLOWEEN_PATHS` in `theme-provider.tsx`**, currently `app` and `demo`. The
+  same regex is in `layout.tsx`'s anti-flash script, and a test checks the two match. Never add
+  a client deliverable or sign-in route.
+- **On by default 20 Oct – 2 Nov** (`halloweenSeason`) for everyone. Anyone can switch it off
+  with the pumpkin, and that choice is stored per browser in `foundry.halloween.v1`
+  (`on` / `off`).
+- **Colours are tokens:** `[data-theme="dark"][data-halloween]` in `globals.css`. It also points
+  hardcoded `bg-blue-600`/`text-blue-600` at the orange, and gives white-on-brand badges dark
+  text (white on orange is ~2.4:1).
+- ⚠️ **Two layers, and neither may get in the way of Foundry (Dan's call).**
+  - **Ghosts and bats sit BEHIND the content** (`HalloweenScene`, `-z-10` inside a shell root
+    that is `isolate`). The page backgrounds behind them go transparent (`.halloween-clear` on
+    the content column and header), so the creatures show in gaps and the header band, never on
+    a card, button or line of text.
+  - The sidebar stays solid on purpose: see-through, a ghost drifted behind the nav labels.
+  - **The fog sits in FRONT** (`HalloweenFogFront`, fixed `z-45`), above the Desk drawer and
+    below dialogs, at 0.42 opacity and faded upwards so text under it stays readable.
+  - Both layers are `pointer-events: none`, `aria-hidden` and hidden in print. A hit-test of
+    every visible control found none intercepted.
+- **Nothing is hand-drawn (Dan's call).**
+  - The toggle is Tabler's `IconPumpkinScary`.
+  - The logo pumpkin and the bats are Microsoft Fluent Emoji (MIT, via Iconify).
+  - The ghosts mix Fluent, Google Noto (Apache-2.0) and Tabler, so no two faces match.
+  - The fog is Vanta's `FOG` shader (MIT) on three.js 0.134, loaded only while the theme is on.
+  - Twemoji was skipped because CC-BY needs attribution.
+  - The bats flap sideways (`scaleX`). A vertical squeeze read as pulsing.
+- **Hydration:** the setting lives in the browser, so everything that renders from it waits for
+  mount (`useHalloweenShown`). `readHalloween` is in `hydration-safe-storage.test.ts`'s
+  allow-list for the same reason `readStoredMode` is.
+- Reduced motion stills the fog and removes the ghosts and bats.
+
+## 91. Recent Changes (October 2026) — Brand guidelines at /guidelines (Labs)
+
+The Gitwork brand book as a 16:9 deck: a sidebar of chapters, a top bar with the breadcrumb,
+`p. NN / 40` and previous/next, and every page a slide stacked down the screen. Opened from
+**Settings → Labs**. Built from the Gitwork design system artifact (BG-2026-01: tokens, components,
+README), plus Foundry's own logo files, so it also covers **how Gitwork's products are shown**.
+The source artifact is linked from the top bar ("Artifact") and the ⋯ menu
+(`GUIDELINES_SOURCE_URL` in `content.ts`).
+
+- **Content is data:** `src/lib/guidelines/content.ts` holds the chapters, pages and copy (pure,
+  tested). Eight chapters, 40 pages. Each page renders through one of 31 visuals in
+  `src/components/guidelines/slides.tsx`, drawn at 1600 x 900 and scaled by `SlideFrame`.
+- **Products chapter (06):** brand architecture (Gitwork → offers / products → modules), Foundry,
+  the product lockup (name, dot in the product's colour, `by Gitwork` aligned to the dot),
+  endorsement rules, Foundry's seven modules (plain type, never their own logo), and the product
+  card a future product slots into. These rules are written down here for the first time; they
+  follow the existing Foundry lockup (`public/foundry-logo.svg`), so check them before treating
+  them as settled.
+- **Leisure Tech and AfterDesk (added later in October 2026).** Leisure Tech is a trading name of
+  Gitwork Group Ltd (its arm for caravan, motorhome and park businesses). It keeps its own identity
+  and names Gitwork as the studio that delivers the software. AfterDesk (AfterDesk Ltd) is its
+  warranty platform, built and run by Gitwork, and REMIT is in build. The architecture page has
+  three columns (offers, Foundry, Leisure Tech), each has its own page, and the product-card page
+  shows Foundry, AfterDesk and an empty slot. Their logos are copied from their own sites into
+  `public/brand/` and the colours sampled from those files. ⚠️ AfterDesk only publishes a white
+  logo, so it is always shown on its navy until a dark version exists. ⚠️ leisuretech.ai gives
+  Gitwork Group Ltd's registered office as Congleton, while `src/lib/gitwork.ts` says Salford Quays;
+  one of them is out of date.
+- **Logos are the real files.** The Gitwork wordmark is `public/email/gitwork-wordmark-ink.png`;
+  its paper and white variants are that file used as a CSS mask, with the purple dot put back on
+  the paper variant (dot measured at x 456 to 478, y 77 to 98 of 480 x 100). The roundel is the one
+  `GitworkMark`, now in `src/components/gitwork-mark.tsx` so this page does not pull in the whole
+  Docs cover. The Foundry lockup is `foundry-wordmark-paths.ts`, generated from
+  `public/foundry-logo.svg` by splitting its paths on their three fills (black name, `#9D9D9D`
+  endorsement, `#4F46E5` dot). Regenerate it the same way if that file changes.
+- **Edits are hidden and admin-only.** ⋯ → Edit text (or E) makes each title, subtitle and note
+  editable in place. Saved as `Workspace.guidelinesOverrides` (additive JSON) keyed
+  `<pageId>:<field>` via `PUT /api/guidelines` (`assertAtLeastAdmin`). Only the fields in
+  `EDITABLE_FIELDS` can change, so an edit can change what a page says but never what it shows;
+  `parseOverrides` drops stale keys. Clearing a field, or typing the default back, removes the
+  edit. ⋯ also has Present (P, full screen), Copy link (the URL hash is the page), Print or save
+  as PDF (one slide per 1600 x 900 page), and reset.
+- **Wiring:** `isGuidelinesPath` in the middleware (session-gated like `/deck`), `/guidelines` and
+  `/api/guidelines` in the Labs workspace module, `guidelines` in `FORCE_LIGHT` and the anti-flash
+  script, `robots.ts` disallow. The viewer uses no dark-remapped utility class
+  (`forced-light-routes.test.ts` checks it), because a brand book on paper has to look the same
+  for everyone.
+- **The copy keeps the brand's rules:** no em dashes, never "free", UK spelling. A test reads every
+  title, subtitle and note for those.
+- **Not verified against a database:** `/guidelines` needs a session, so the viewer was checked
+  on a temporary scratch page (all 40 slides measured for overflow at 1440, the drawer at 390,
+  edit and present mode). Post-deploy: open it from Labs, edit a subtitle as an admin, reload, and
+  confirm the edit stayed.
+
+## 92. Recent Changes (October 2026) — ⌘K command menu, and the EasyUI tracker
+
+**⌘K / Ctrl+K opens a command menu** on every `/app` page and the demo. The palette is **EasyUI's own
+Command Menu**, vendored at `src/components/ui/easyui/command-menu.tsx` (MIT, licence in
+`docs/third-party-ui.md`), with colours mapped to Foundry tokens and dialog accessibility added.
+What goes in it is `src/components/command-menu.tsx`, with the rules in `src/lib/command-menu.ts`. It jumps to a product, a client or a document, or switches theme.
+The header has a Search button too, so it can be found without knowing the shortcut.
+
+- **The pages are the shell's own `primaryNav`**, already filtered by module permission and workspace
+  modules, so the menu can never offer a product the sidebar hides. Clients and documents load only
+  after the menu is first opened, and only when the viewer has Portal or Docs (`useClientList` and
+  `useProposalList` gained an `enabled` option for this). A result is only a link; the page it opens
+  does its own gating.
+- Empty query shows pages and actions; clients and documents appear once you type, capped at 6 per
+  group (`GROUP_LIMIT`). Search is the shared `fuzzySearch`, so typos are forgiven.
+- It is the one exception in `one-modal.test.ts`'s allow-list for a vendored dialog: it implements
+  role="dialog", aria-modal, Escape, a focus trap and focus restore itself. The search field carries
+  an inline `outline: none` because the global focus ring is unlayered (§69).
+- **EasyUI components are used as EasyUI built them.** Our first rebuilds "in Foundry's style" looked
+  nothing like the originals, so the rule is now: vendor the real component, keep its design and
+  motion, and change only colours (to Foundry tokens, for light and dark), imports, accessibility and
+  reduced motion.
+- On the demo, `mapHref` sends `/app` links to the demo's own pages.
+
+**`docs/easyui-adoption.md` tracks** the EasyUI-inspired components (undo toast, date picker, activity
+heatmap, funnel chart and the rest): what each is for in Foundry, its status and its PR. Update it in
+the same PR that changes a row.
+
+## 93. Recent Changes (October 2026) — Undo toasts (EasyUI, vendored)
+
+`useToast().undo(title, onUndo, { description, variant })` shows **EasyUI's Undo Toast**,
+vendored (MIT) at `src/components/ui/easyui/undo-toast.tsx`, licence in
+`docs/third-party-ui.md`. Same look, countdown bar and spring as easyui.site; colours mapped to
+tokens (light + dark), pauses on hover **and focus**, Escape closes, no motion under
+`prefers-reduced-motion`.
+
+- **The action has already happened; Undo runs its inverse.** Nothing is deferred, so a toast
+  that times out changes nothing. Offer it **only where a real server-side inverse exists** —
+  never over a hard delete (`deleteTask`, `deleteWikiIntakeItem` are hard deletes: keep their
+  confirms). An inverse that throws shows "Couldn't undo", never "Restored".
+- **Restore what it was, not a default.** Requests' Undo puts back the request's old status
+  (PROMOTED/TRIAGED), not the NEW that Reopen sets; Care's puts back new/open and is not offered
+  from snoozed (setting SNOOZED back would leave `closedAt` stamped).
+- Adopted: sheet row Remove (team — the confirm is gone; clients still confirm, they can't
+  restore), Requests "Mark dealt with" (row, detail and batch), Care close (button and `E`).
+- **Vendoring third-party UI:** put it under `src/components/ui/<source>/`, name the upstream
+  file, licence and every change in a header comment, and add the licence text to
+  `docs/third-party-ui.md`.
+
+## 94. Recent Changes (October 2026) — People & HR, Phase 1a: profiles, personal details, suppliers
+
+The first slice of the HR platform (spec: the "Foundry People & HR — spec" doc; build notes and
+rules: **`docs/hr-platform.md`**). Staff is the record of every person; Backstage will read it.
+
+- **Two new permissions, `hr.manage` and `hr.viewSensitive`, and no role has them by default.**
+  `DEFAULT_ROLE_PERMISSIONS.ADMIN` is now every id **except** `HR_PERMISSION_IDS`. Personal and
+  health data is granted to a named person (Siân), never inherited from a role. Super Admins
+  always have both.
+- **A profile page per person** at `/app/staff/[id]`, linked from People. One rule,
+  `profileAccess` in `src/lib/hr.ts`, decides each tier for the page, the API and the demo:
+  - directory: anyone with Staff;
+  - employment (supplier, contract end, probation, notice, days per week): the person, their
+    manager and `hr.manage`;
+  - sensitive (date of birth, address, NI number, ID, right to work, emergency contacts): the
+    person and `hr.viewSensitive` only. A manager never sees it.
+- **The sensitive tier is encrypted** (one envelope per person, `StaffSensitive`). Every look by
+  anyone but the person, and every change, goes to `HrAccessLog`, which names the fields and never
+  the values. ⚠️ The page fetches personal details only when Show is pressed, and the query is
+  never refetched in the background. A refetch is a second logged look, so don't add a broad
+  `["staff"]` invalidation.
+- **Suppliers** at `/app/staff/suppliers` (HR only): the partner company developers come through.
+  Archived, never deleted. `Candidate.supplierId` is a loose id.
+- `employmentType` gains **DIRECTOR**. Staff records gain `preferredName`, `pronouns`, `endDate`,
+  `probationEndsOn`, `noticePeriodWeeks` and `daysPerWeek`. All additive.
+- **Archive, restore and delete from the profile.** Someone who signs in goes through Settings →
+  Team's archive/restore routes, so there is one way to take someone's access away. Someone without
+  a login is archived on their record (`Candidate.archivedAt`). Delete is only offered for a record
+  with no login, placements or developer reviews. ⚠️ Don't widen it: deleting someone with history
+  erases who did what. **People → Archived** replaces the old Archived tab, which now redirects.
+- `src/components/ui/segmented.tsx` is the in-card pick-one control (Active / Archived on Team and
+  on People). `segmented-tabs.ts` stays the settings tab bar.
+- Demos: `/demo/staff/r2` (profile, seen as HR) and `/demo/staff/suppliers`.
+
+## 95. Recent Changes (October 2026) — Roles and permissions, tidied
+
+Settings → People & access read as a list of every permission ever added. Now:
+
+- **Eight permission groups, in sidebar order** (Pulse, Staff, Docs, Portal, Care, Backstage,
+  Platform, Settings) instead of 14. Provenance and Study sit under Pulse, HR and Hiring under
+  Staff, the daily roll-up under Portal, AI, MCP and Studio under Platform. Every label says what
+  the person gets in a few words, and every description is one sentence.
+- ⚠️ **Ids are unchanged.** They are stored in every role matrix and override. Change a label,
+  never an id.
+- **Two permissions retired:** `settings.branding` and `settings.content` controlled nothing (both
+  pages redirect to Document defaults). Removing them from the catalog drops them from stored
+  matrices on the next read (`normalizeMatrix` filters unknown ids).
+- **No more Module / Field / Feature / Action tags.** That was our vocabulary, not the reader's.
+  Only "High risk" remains. One `PermissionLabel` (`src/components/settings/permission-label.tsx`)
+  is shared by the matrix and a member's access editor.
+- **The matrix showed five role headers over four columns**, so Guest wrapped onto its own row with
+  nothing under it. Guests get nothing by role by design, so the matrix shows Super Admin (locked),
+  Admin, Staff and Developer, and says Guests are granted per person.
+- **People & access:** Members first, then one **Add people** card (Invite link / Guest), then one
+  **Invites** card with used invites folded away, then Merge accounts. Numbered in order (two cards
+  were both "05").
+- Invite copy no longer names `@gitwork.co.uk`; the allowed domain becomes per workspace in Phase 3
+  of the multi-tenant roadmap.
+
+## 96. Recent Changes (October 2026) — Staff: grouped cards, org chart, HR reminders, a fuller profile
+
+- **People is cards, grouped under headings** (Admins, Staff, Developers, Guests, No login), not a
+  table. Sort by name or newest; Cards / Org chart switch; CSV export (no rates, no personal
+  details). The pager went: a team fits on one page, and the headings do the organising.
+- **On hover, a person's clients rise from behind their card**, using EasyUI's macOS Folder Cards
+  spring and pocket-card geometry (sheets nearly the card's full width). ⚠️ The card's motion
+  wrapper needs its own `z-10`: its transform makes a stacking context, and without it the tabs
+  paint over the card.
+- **For HR** card on People (`hr.manage`): coming up in 60 days, and records missing details.
+- **Profile:** Overview edits in place; Activity (EasyUI heatmap + placements) and Time off cards.
+  ⚠️ Leave TYPE is shown only to the person and HR; everyone else sees "Off".
+- Details: `docs/hr-platform.md`. Demo: `/demo/staff`, `/demo/staff/r3`.
+
+## 97. Recent Changes (October 2026) — HR documents, with Google Drive copies
+
+The documents vault from the HR spec (Phase 1b). Rules and details: `docs/hr-platform.md`.
+
+- **A Documents card on each profile**: a required list per engagement type, what's on file, and
+  adding more. One rule each for who sees a document (`canSeeDocument`: HR all, the person all but
+  HR-only, a manager only what's shared with managers, nobody else) and who may add which type
+  (`canUploadType`). A person's own upload waits as "to check" until HR accepts it.
+- **Model:** `StaffDocument` (file, Drive link or request), `Workspace.hrDocumentSettings`
+  (`{ selfUploadTypes, driveEnabled }`, both off by default), `Workspace.hrDriveFolderId`,
+  `Candidate.hrDriveFolderId`. All additive.
+- **Drive:** each upload is copied into a "Foundry HR" folder in the workspace owner's Drive when
+  the business turns it on. `resolveWorkspaceGoogleAccount` (in `google-drive-backup.ts`) is now the
+  one account lookup for every Drive copy; the Docs backup calls it too. ⚠️ Opening a file in Drive
+  isn't in Foundry's access log.
+- **EasyUI's Animated File Upload, vendored** (`src/components/ui/easyui/animated-file-upload.tsx`,
+  with `uploadWithProgress` for real progress and the view-as headers). Used for HR documents,
+  task screenshots and the new-document wizard. Deliberately not on Launchpad's requirement rows:
+  a drop zone per row would swamp the list.
+- **Shared profile parts** (`src/components/staff/profile-parts.tsx`): Field, dates, the header
+  action. The profile, the Documents card and Backstage → Me use the same pieces.
+
+## 98. Recent Changes (October 2026) — Backstage → Me
+
+Phase 1c of the HR spec. Details: `docs/hr-platform.md`.
+
+- **Me is the person's own Staff profile**, not a second copy: `StaffProfileView` takes
+  `mode="me"`, which only removes the link back to People and the archive/delete controls. What
+  they can see and edit is still decided by `profileAccess` on the server (relation `self`).
+- `GET /api/staff/me` returns their record id (after `linkStaffRecords`, so HR's record with
+  their email is found). `POST` makes one for an active member who has none: name and email only.
+  ⚠️ `memberId` is unique; the create catches the P2002 from a double click and returns the
+  winner's record.
+- **Card 01 on Backstage** shows what HR is waiting on from them (documents requested or sent
+  back), and only where the business has Staff.
+- ⚠️ **Six units at `xl` is 146px a card.** It's `min-[1400px]:grid-cols-6`, and the
+  two-column rule for that case is `sm:max-[1399px]:grid-cols-2`. Tailwind emits arbitrary
+  `min-[…]` variants before named breakpoints, so a plain `sm:grid-cols-2` wins and six columns
+  never appear. Measured at 1024, 1280 and 1440; `bento-grid.test.ts` pins both classes.
+- `HandoverCard` now treats a non-array reply as empty (the demo's catch-all returns `{}`).
+
+## 99. Recent Changes (October 2026) — A Staff tour for HR, and a Monday HR digest
+
+Details: `docs/hr-platform.md`.
+
+- **EasyUI's Product Tour, vendored** (`src/components/ui/easyui/product-tour.tsx`). First use: a
+  one-time tour of Staff for whoever holds `hr.manage`, replayable from the For HR card. Targets are
+  `data-tour` attributes on the roster. ⚠️ An empty `steps` must return before the step effect runs
+  too, not only from the render (it read `steps[0].target` and threw).
+- **Weekly HR digest** (`src/server/hr/digest.ts`): Monday 08:00+ UK, in-app (`hr.weekly_digest`)
+  and email, to people granted `hr.manage`. Quiet weeks send nothing. Run from the `jobs` worker, so
+  it needs no crontab line. `Workspace.hrDigestWeek` (additive) is the once-a-week claim.
+  ⚠️ A Super Admin resolves to every permission, so they're a recipient only with an explicit
+  `hr.manage` grant. A test caught this; the first cut sent Siân's digest to Dan too.
+  ⚠️ Right-to-work dates (encrypted tier) are counted, never listed, because email leaves Foundry.
+
+## 100. Recent Changes (October 2026) — One page per developer
+
+Details: `docs/hr-platform.md`.
+
+- A developer's **Staff page is their page**. Its new **Developer** card and **Notes** card carry
+  everything the Code review page did (GitHub, stack, links, availability, Bench, rate, current
+  clients, CV, edit, notes), built from one shared file, `src/components/codeclear/candidate-parts.tsx`,
+  which the review page uses too. Placements gain their project and notes.
+- `/app/codeclear/candidates/[id]` redirects anyone on the team to `/app/staff/[id]` and is now
+  Hiring's page for **external** candidates only. ⚠️ Staff deliberately excludes `origin: EXTERNAL`,
+  so do not redirect those. `candidate-profile-redirect.test.tsx` pins both directions.
+- ⚠️ Deleting a team member now follows Staff's rules (archive unless there's nothing attached),
+  not the review page's unconditional delete.
+- `candidate-profile-form.tsx` and `HandoverCard` tolerate a missing list from their API instead of
+  crashing (the demo's catch-all returns `{}`).
+
+
+## 101. Recent Changes (October 2026) — A motion library, Lottie bats and a spider that drops
+
+An audit of every animation in the app found the same thing hand-rolled over and over: 13 ring
+spinners in five sizes and two styles, ~73 identical skeleton blocks, five pulsing status dots,
+and four drawers sliding in four ways. They are now shared components in
+**`src/components/ui/motion/`**, catalogued in **`docs/motion.md`** and live in
+**Settings → Labs → Motion library** (a two-pane popup: pick a piece, see it move, copy the import).
+
+- **The pieces:** `Spinner` (`<Button loading>` draws it), `LoadingState`, `Skeleton` and its
+  presets, `StatusDot` (pulse or ping), `FadeIn` (moved from onboarding/brand.tsx, which
+  re-exports it), the `motion-backdrop-in` / `motion-sheet-right` / `motion-sheet-up` classes for
+  drawers, `useCountUp`, and `Lottie`.
+- **About 60 files migrated** onto them, all behaviour-preserving. Left alone on purpose:
+  - refresh buttons that spin while refetching;
+  - pulsing text placeholders;
+  - card-grid skeletons whose cards are fills, not outlines;
+  - check-explorer's breakpoint-switched sheet;
+  - the public scanner's tickers, because the embed is an external contract.
+- **`Lottie`** is the only Lottie player.
+  - It loads lottie-web's light build (MIT, `5.13.0`) and the JSON from `public/motion/` on first
+    mount, so neither is in any bundle.
+  - It pauses off-screen and in background tabs, and shows a still frame under reduced motion.
+  - `color` recolours a file without editing it, and a bad file renders nothing.
+  - ⚠️ The light build has no expression engine.
+- **⚠️ Reduced motion:** `layout.tsx` stops all CSS motion globally. JS motion (framer-motion,
+  rAF, Lottie) must check for itself, which every piece here does.
+- **`Skeleton` honours a radius you pass.** `cn` doesn't merge Tailwind classes, and in the
+  compiled CSS `rounded-[6px]` would otherwise beat a plain `rounded`.
+
+**Halloween:**
+- **The bats** are now Dan's "Bat - Halloween" Lottie (`public/motion/bat.json`), recoloured
+  `#2B2550` with a violet rim glow, replacing the Fluent emoji.
+- **The spider** (`halloween-spider.tsx`) peeks from the top-right corner, dips on hover, and drops
+  on its thread when clicked. It bounces, sways, then climbs back after 5s.
+  - It is a framer-motion spring, not the supplied Lottie's timeline, which only moved it 9 units
+    in a 32-unit frame. The art is that file's sprite (`public/motion/spider.webp`).
+  - It must not break: desktop only, and only where AppShell shows the header band (it hangs in
+    the band's 32px right gutter). Only the sprite takes clicks; it sits below dialogs; hammering it
+    just retargets the spring; unmount clears its timer.
+  - `halloween-spider.test.tsx` pins this. Removing the timer cleanup, the click-through frame or
+    the desktop-only class each fails it.
+  - ⚠️ **The art is Spider-Man (Marvel).** It is internal-only and deliberately not mounted on the
+    public `/demo` pages; a test asserts that. Swap the sprite before it ever goes anywhere public.
+
+**Verification technique:** the preview pane runs the primary checkout's dev server, not a
+worktree's. Start the worktree's own server via a temporary `launch.json` entry
+(`npm --prefix <worktree> run dev -- -p <port>`) and drive it headlessly with playwright-core at
+2× DPR. The pane downscales a 1440 viewport too far to judge a 30px sprite.
+
+## 102. Recent Changes (October 2026) — Staff: a real org chart, leads' clients, and a steadier toolbar
+
+Three defects Dan found on Staff → People, all live.
+
+- **The org chart was a list.** It drew only from the manager field, and nobody has one set:
+  Gitwork keeps no list of who manages whom, because the admins are the managers. So
+  `org-chart.tsx` now places people by role (`orgTiers` in `src/lib/staff.ts`):
+  - Leadership (Super Admins) → Admins → Staff / Developers / Guests / No login, joined down the
+    middle.
+  - A manager set on a profile wins. That person hangs under their manager as a branch, with
+    border-drawn lines (`.org-tree` in globals.css).
+  - More than four leaf reports stack in a column. Wider than the card, the chart scrolls in its
+    own frame and opens centred.
+  - Nobody has to fill anything in for it to make sense. An earlier cut asked HR to pick
+    everyone's manager; Dan's call was that the admins are the managers.
+- **You and Harry read "No clients".** A person's clients came only from Code placements, which
+  is how *developers* are on a project. Leads are on one through the client's **product team**
+  (`productTeamUserIds`). `src/server/staff-clients.ts` merges both, ACTIVE clients only. It is
+  used by the roster cards and the profile. `ClientAssignment` is deliberately not read: it is an
+  access grant.
+- **The toolbar's actions landed wherever the row wrapped.** It is now two fixed rows: switches
+  and actions on top, search and filters below, with every control 36px (`Segmented` gets
+  `h-9`). On a phone the actions ride beside the layout switch; Department takes its own row and
+  Type and Sort sit two-up.
+
+The demo roster gained a fuller team under Tom so `/demo/staff` exercises the stacked column.
+
+## 103. Recent Changes (October 2026) — Clients approve releases from their own Changelog
+
+Luke at Big Wedge asked for an "Approve" button in Foundry. One existed, but it sat at the
+foot of each release, under all the notes, and only on the team's page: the client's page was
+read-only.
+
+- **The pending status is the button.** A pending release's status chip is a split control:
+  **● Pending | ✓ Approve**, the green half doing the one thing it's waiting for. Once
+  approved it reads **✓ Approved**, with "Approved by <name> · <date>" under the title.
+- **A callout leads the page** whenever anything is pending: "1 release is waiting for (your)
+  approval". It names each version, links to its notes, and carries the button. It is built
+  from every release, not the filtered list, so a filter can't hide one; a test pins that.
+  The old bar at the foot of the card is gone.
+- **Clients approve on their own page:** `POST /api/wiki/[token]/changelog/approve`, in
+  `src/server/wiki-changelog-access.ts`.
+  - Anyone the page itself lets in may approve: a signed-in client user or a Gitwork session.
+  - A per-section link must be for the Changelog.
+  - A client can approve, never un-approve. Ids outside the wiki and already-approved entries
+    are ignored.
+  - The approver's name comes from their session, never from the request.
+- **Recorded:** `approvedAt` and `approvedByName` on `ClientChangelogEntry` (additive). They are
+  set on approval, cleared on going back to pending, and named in the Slack ping ("…approved for
+  iOS by Luke McFarland").
+- ⚠️ **The internal changelog routes checked nothing.** `PATCH`/`DELETE …/changelog/[id]` acted
+  on any id, unauthenticated beyond the middleware session, so any member could approve or
+  delete any client's release. Create used the default workspace. All three now require
+  Developer+ with access to that client, and scope every entry to the client in the URL (404
+  otherwise). Developer, not `canManageClients`, because developers write release notes.
+
+## 104. Recent Changes (October 2026) — Every client's monitors on the Gitwork wiki
+
+The Gitwork client (`gitwork`, `src/lib/agency-client.ts`) is us, and its wiki's Monitors section
+now opens with an **all-clients board** (`monitor-board.tsx`) above Gitwork's own monitors: a
+headline (`All systems operational` / `1 service down — Fellas Loaded` / degraded / not being
+checked), Gitwork's services first, then any client with trouble worst-first, then the rest, and a
+"Not monitored" list of active clients with no monitors. Each client links to its own Monitors section.
+
+- **Rules are pure** (`src/lib/monitor-board.ts`): a stale monitor is never shown as its last
+  result, and "operational" needs every monitor checked and answering.
+- **Fast:** `loadMonitorBoard` is two queries for any number of monitors (the monitors, and one
+  `groupBy` for 24h uptime). The page re-reads it every minute.
+- **Internal only.** `GET /api/clients/[slug]/wiki/monitors/board` answers for `gitwork` and
+  404s for every other slug. It needs a signed-in person, and a restricted user sees only
+  clients they can already open. It is not in the wiki DTO, so no share link can show it.
+- **Motion** (`docs/motion.md`): only a DOWN service pings (headline + its card); the client
+  heading's dot stays still. Skeleton while loading, a pulse on the Live label while refreshing.
+- **Slack:** alerts keep GitHub Status's layout; the button is now **View all monitors**, opening
+  this board. The linked title still goes to the client's own monitors.
+
+## 105. Recent Changes (October 2026) — Live figures stay live: Metrics and the monitor board
+
+- **The running month refreshes itself.** `refreshRunningMonths` runs from the every-minute
+  `jobs` worker. It reads stored capture times, and only calls a client's API when that client's
+  running month is over `MONTH_TO_DATE_STALE_MS` (15 min) old. A failed fetch waits
+  `RUNNING_MONTH_RETRY_MS` (15 min) before retrying. Before this, "October so far" refreshed only
+  when someone at Gitwork opened the page, so it trailed Big Wedge's own admin (131 vs 134
+  subscriptions).
+- **Refresh now always re-reads the running month** (`force`). Before, it skipped one under an
+  hour old, so the button could do nothing.
+- **Last refreshed is the newest real fetch** of anything on the page, not the headline month's.
+- **Big Wedge's total estimated revenue** stays on the running month as an as-of-now total. Their
+  `cash_revenue` doesn't follow the date range, so it isn't this month's takings.
+- **Settings' "What the client sees" is an accordion**, folded by default.
+- **The monitor board** shows "Last check" (the newest actual probe) and a Refresh now button.
+- **Retired metrics** (`AnalyticsAdapter.retiredKeys`): keys an adapter stopped reporting
+  because they were wrong for a month are left out on read, so months stored before the change
+  don't still show or star them. Big Wedge retires `users_total` and `users_returning`, which
+  are all-time counts.
+- **A finished month keeps its month-end figures** (`AnalyticsAdapter.carryAtMonthEnd`,
+  `carryMonthEndFigures`). Big Wedge's subscription counts, MRR and revenue total are as of now
+  for any range, so the read that finalises a month can't give them. They're carried from that
+  month's last capture taken during the month (every 15 minutes, so within 15 minutes of month end).
+  Nothing is carried from a capture taken outside the month.
+- **Outages are confirmed in seconds.** A first failure is re-checked after `CONFIRM_AFTER_MS`
+  (20s) in the same run instead of on the next one, so "down" lands about 20s after it's spotted.
+  "Check now" and a just-added monitor skip the wait.
+- **Foundry is watched from outside.** `.github/workflows/foundry-watchdog.yml` checks
+  `/api/health` from GitHub's runners every 5 minutes, because Foundry's own monitors run on the
+  box they'd be reporting. Down → the run fails, and GitHub emails whoever last edited the
+  schedule. If the `SLACK_OPS_WEBHOOK_URL` secret is set, it also posts once per outage, plus once
+  on recovery.
+- **Wedge shows everything its report carries that's meaningful** (checked against the live API
+  on 30 Oct 2026). Added: daily active users, daily/monthly active (stickiness), average handicap,
+  revenue per subscriber per month, revenue per subscription, premium share, churn, and feedback
+  in the last 7 and 30 days (a separate `/feedback/stats/` read). Fields marked `now` on `FIELDS`
+  are today's state for any range: shown on the running month, dropped from a finished month's
+  own read, and carried from its last capture instead (`NOW_KEYS` ⊂ `carryAtMonthEnd`). Left out
+  on purpose: `top_active_users` (usernames), `average_scores` (meaning not documented), the
+  growth percentages (trends are worked out from the months).
+- **Lists** (`MetricCard.list`): a ranked list rather than a figure — Big Wedge's most played
+  courses (keyed by rank, since the courses change month to month) and game-mode share (keyed by
+  name). A list renders as rows with no trend, is hidden as one (`listHideKey` → `list:<id>`), is
+  one row in Settings, and can never be featured or take a headline slot.
+- **The three Big Wedge reads run at once.** The report alone takes ~4s at Big Wedge; the month,
+  the day before and feedback were read one after another.
+
+## 106. Recent Changes (October 2026) — Monitors: expiry, heartbeats, maintenance
+
+From a competitor review (UptimeRobot, Better Stack, Healthchecks, Cronitor) and a search of Slack,
+where most outages were reported by the client first.
+
+- **SSL + domain expiry** (`src/server/wiki-monitor-expiry.ts`, rules in `src/lib/monitor-expiry.ts`).
+  The `jobs` worker reads a few monitors per tick: each HTTPS certificate twice a day
+  (`readCertificate`, Pulse's helper), each registrable domain once a day over **RDAP**
+  (`rdap.org`). Warnings at SSL 30/14/3 days and domain 30/7 days, plus "expired", each **once
+  per tier** (`sslAlertedTier` / `domainAlertedTier`), cleared on renewal. A failed read keeps
+  the last tier: "could not look" is not "renewed". Monitors sharing a domain share one lookup
+  and one alert. Hosts on a platform suffix (`*.vercel.app`) have no domain to renew.
+  ⚠️ **One alert per certificate, not per monitor:** monitors on the same host share one TLS read,
+  one stored tier and one post (two Foundry monitors on one host posted twice, 30 Oct 2026).
+  **Auto-renewing issuers** (Let's Encrypt, Google Trust Services, ZeroSSL, Amazon, Cloudflare)
+  skip the 30-day warning: they renew themselves around then, so it is noise. They warn from 14
+  days, when renewal has evidently failed (`sslTier`).
+- **Heartbeat monitors** (`HEARTBEAT` type, `wiki-monitors/heartbeat.ts`). Foundry gives the
+  monitor a ping URL, `/api/public/heartbeat/<token>` (`/fail` reports a failed run). Down when
+  no ping arrives within the interval plus grace (default a fifth of the interval, 5–60 min),
+  or at once on `/fail`. Checked the minute the deadline passes (`heartbeatCheckDue`). A ping
+  runs a check immediately, so a recovery is announced straight away. ⚠️ The ping URL is the
+  credential: `forPublic` strips it (and the target) from the client's copy.
+- **Maintenance windows** (`maintenanceUntil` / `maintenanceNote`). Alerts are paused, checks
+  keep running, and the board says "Maintenance". The alert state is frozen and the fail streak
+  restarts when the window ends. Set from the card's "Maintenance…" picker (1 h / 4 h / 24 h).
+- **Cards** show one mono line: SSL days, domain days, maintenance, last ping. Amber inside the
+  warning window, red near or past expiry.
+
+Not built yet (in the competitor report's top ten): request headers/auth, a second probe
+location, incident records with acknowledge, email/webhook channels, client incident updates,
+long-term SLA history, escalation.
+
+## 107. Recent Changes (October 2026) — Monitors: request headers, a second location, incidents
+
+- **Headers, sign-in and a body for HTTP checks** (`src/lib/monitor-request.ts`). "Name: value"
+  per line, or the username/password helper (writes `Authorization: Basic …`). Stored encrypted
+  (`requestHeaders` / `requestBody`, `storeSecret`); the browser only ever gets header NAMES, and
+  the client's copy gets none. Host, lengths and connection headers are refused. ⚠️ With headers
+  or a body set, redirects to another origin are refused (`sameOriginRedirectsOnly`), or a 302
+  would hand the token to another host.
+- **A second check location** (`src/server/wiki-monitors/remote.ts`, route `/api/monitor-probe`).
+  When a check fails from the VPS, the same check runs from this app's Vercel deployment (another
+  network and region). Rules in `combineLocations`: both failed → DOWN, confirmed; only the VPS
+  failed → DEGRADED with the reason (no page, counts as up), never UP; second location
+  unavailable → the VPS result stands. Configured by `MONITOR_REMOTE_PROBE_URL` +
+  `MONITOR_PROBE_SECRET` on the VPS (synced by `deploy.yml`) and `MONITOR_PROBE_SECRET` on Vercel.
+  Unset → checks behave exactly as before. The route 404s without the secret and reads no database.
+- **Incidents** (`WikiMonitorIncident` + `…Update`, additive; rules in `src/lib/monitor-incidents.ts`).
+  One per outage: opened when the down/unstable alert fires (unstable escalating to down updates the
+  same one), resolved by the recovery alert. **Acknowledge** and **Post update** (status + message,
+  "Show to the client" on by default) on the client's Monitors page and on the Gitwork all-clients
+  board (`POST /api/clients/[slug]/wiki/monitors/incidents/[incidentId]`, signed-in, client access
+  checked). Posting also acknowledges.
+- **The client sees incidents on their status board**: public updates only, no names from our side
+  ("Gitwork is on it" once acknowledged). `publicIncident` in `forPublic`.
+- **One post per client, not per service** (`shouldPostAlert`, `GROUP_ALERTS_WITHIN_MS` = 10 min).
+  A second service going down within 10 minutes of another on the same client is folded into the
+  first post, whose list already shows every service. "Back" is posted once, when nothing on the
+  client is still out. Incidents are still recorded per monitor. ⚠️ So a partial recovery (one
+  service back while another is still down) is silent until the whole client is back.
+- Not built: an Acknowledge button inside the Slack alert, emailing client users on updates.
+
+## 108. Recent Changes (November 2026) — Monitors is its own page
+
+The all-clients monitor board (§104) is now a sidebar product, **Monitors** at `/app/monitors`,
+between Care and Backstage. Monitors are still created and run in each client's wiki, as before;
+this page only reads them.
+
+- **Permission `monitors`** (module, `PERMISSION_CATALOG`). STAFF and ADMIN get it by default
+  (`reconcileNewPermissions` adds it to saved matrices on boot). DEVELOPER does not: grant it per
+  person in Settings → Team (first: Waqar). `canViewMonitors` / `usePermissions().canViewMonitors`.
+- **Shows every client's status, not just assigned clients** — watching every service is what the
+  permission is for. A "Manage" link to a client's wiki, and incident Acknowledge / Post update,
+  appear only for clients the person can already open (`openableClientIds`: null = all, from
+  `seeAllClients`; their assigned clients otherwise; none without Portal). Opening a client still
+  goes through Portal's own checks.
+- **Internal only.** `/app/monitors` is in `INTERNAL_ONLY_PREFIXES` and `GET /api/monitors`
+  refuses external roles, so a guest granted the module still can't see the client list.
+- **Page** (`src/components/monitors/monitors-workspace.tsx`): status headline + four figures,
+  open incidents, a searchable grid of client cards (All / Needs attention), and clients with no
+  monitors. Reuses the wiki board's state rules and pieces (`monitor-board.tsx` exports them).
+  Refreshes every minute.
+- Not visually verified (auth-gated, no demo route). Tests: `src/app/api/monitors/__tests__`.
+
+### 108.1 Portal's Drive tab: no screenshots, and a steady height
+
+- **Screenshots are left out of Added and Edited** (`isScreenshotName` in `src/lib/client-drive.ts`).
+  That covers any file named "Screenshot", "Screen Shot" or "Screen Recording", and every folder
+  so named along with everything inside it. Gitwork's "Screenshots Archive" was filling the whole
+  list. Browse still shows them. Applies to the wiki's Drive tab too.
+- **The card is the same height in every tab.** The line under the tabs always holds something
+  (breadcrumbs in Browse, otherwise what the list is). The list reserves `pageSize` rows (`ROW_H`),
+  and the pager is always laid out (hidden on a single page). The "some subfolders weren't
+  searched" note moved into that line.
+
+### 108.2 Monitors page: current clients only, coloured headers
+
+- The board (and so "Not monitored") lists only clients Portal lists: `hidden: false` in
+  `loadMonitorBoard`. Hidden demo/test clients (Acme Health, Northwind Labs, Testing Portal,
+  syed-project) no longer appear.
+- Every client card's header carries its state's tint, green when all is operational, with the
+  label "Operational · 3/3". Label text uses the `-700` palette shades (`LABEL_TEXT`): the `-500`
+  tokens are ~3:1 on their own `-50` tint.
+- Every card header is a fixed `h-12`, so headers line up across the grid. Gitwork's "Our
+  services" tag sits on the name's line (hidden below `sm`) rather than adding a second line.
+
+## 109. Recent Changes (November 2026) — Seasonal themes are a workspace setting
+
+The pumpkin in the header is gone. **Settings → Appearance** (Admins and Super Admins) has one
+switch, "Show a seasonal theme", and while it's on, a dropdown of themes. It applies to everyone
+in the workspace. Supersedes §90's date window and per-browser toggle.
+
+- **Catalogue:** `SEASONAL_THEMES` in `src/lib/seasonal-themes.ts` (Halloween today). Adding
+  Christmas = one entry there, plus its styles and a `data-*` attribute alongside `data-halloween`.
+- **Stored on the workspace:** `seasonalThemeEnabled` (default false) + `seasonalTheme` (keeps
+  the choice while off). Additive. `GET /api/settings/seasonal-theme` (any member),
+  `PUT` (Admin+, only a shipped theme id).
+- **Applied by the theme provider** on `/app` pages: it reads the setting, copies the active id
+  (or `off`) into localStorage `foundry.seasonal.v1`, and the anti-flash script in `layout.tsx`
+  paints from that on the next load. A failed read keeps what's stored. The demo has no session,
+  so it shows whatever the same browser last saw on `/app`.
+- No date default any more: it is off until an admin turns it on.
+
+### 109.1 The Christmas theme
+
+Pick **Christmas** in Settings → Appearance.
+- **Keeps each person's light or dark mode** (unlike Halloween, which forces dark). Only the brand
+  moves: Gitwork Blue → festive red (`[data-christmas]` in globals.css; white on `#B91C1C` is
+  ~6.5:1 in light, dark text on `#F87171` in dark). A Fluent Emoji tree sits on the logo.
+- **Snow that settles on cards** (`src/components/seasonal/christmas.tsx`, physics in
+  `src/lib/seasonal/snow.ts`, pure and tested). It uses bounding-box collision: flakes fall over
+  the page, and one that reaches the top edge of a `.widget-card` (or `[data-snow-surface]`) joins
+  that card's pile. Piles are 4px columns, capped at 9px, thinner at the corners, and melt slowly.
+  - Piles sit ABOVE a card's top edge, so snow never covers content.
+  - A card counts only if its top edge is on screen and not covered (`elementFromPoint`,
+    re-checked every 600ms). Positions are read every frame, so piles follow scrolling.
+  - One fixed canvas at z-45 (above content, below dialogs), `pointer-events: none`, hidden in
+    print. Nothing runs under reduced motion, and rAF stops in a background tab.
+- `data-christmas` is set by the anti-flash script and the provider (`christmas` in `useTheme()`),
+  the same way as `data-halloween`.
+
+
+## 110. Recent Changes (November 2026) — MCP access re-checked on every call
+
+Reviewed after a developer (Nasir) was given the MCP. Three fixes:
+
+- **Taking someone's access away now cuts off their MCP.** `resolveEffectiveUserById`
+  (`src/server/mcp/auth.ts`) only finds an ACTIVE membership, and `resolveMcpActor` also needs
+  `mcp.connect`. It runs on every `/api/mcp` call and on every token refresh
+  (`/api/oauth/token`). A refused refresh revokes the token, so the connection dies rather
+  than retrying. Before this, both were only checked when someone first connected, so an
+  archived member or a revoked permission kept working for as long as Claude kept refreshing.
+- **`list_members`** returns current members only, with email only for Admins.
+- **Documents are limited to the caller's clients** (`src/server/mcp/document-scope.ts`):
+  their assigned clients plus client-less documents they own, or everything with
+  `seeAllClients`. `list_documents` and `update_document` both use it; out-of-scope ids read
+  "Document not found". ⚠️ The web Docs list is NOT scoped this way yet: a developer still
+  sees every client's lightweight documents there.
+
+## 111. Recent Changes (November 2026) — Pulse → AI search (stage 1: Google positions + AI visits)
+
+A page at **`/app/pulse/ai-search`** (Pulse nav → AI search, internal-only like Growth) showing how
+Gitwork shows up for buyers: how many Google searches we appear in, how many sit in the top 10 and
+top 3, and visits from AI assistants (ChatGPT, Perplexity, Claude, Gemini, Copilot…), each against
+the previous period of the same length. For Gitwork's own sales, not a client feature.
+
+- **Credentials: the workspace Google service account** (Settings → Integrations), not anyone's
+  sign-in. Adding these scopes to sign-in would make every teammate sign in again. The service
+  account is added once as a read-only user on the Search Console property (Restricted) and the
+  GA4 property (Viewer); the page shows its email with Copy. Properties are set in `05 // SETUP`
+  (admins; `PUT /api/pulse/ai-search/config`), stored on `Workspace.aiSearchConfig` (additive).
+- **The last sync is stored** in `AiSearchSync` (one row per workspace × range, additive). The page
+  serves it while it is under 30 minutes old and re-reads Google otherwise; **Sync now** forces a
+  read. Concurrent syncs of one range share one run. No cron: the page syncs itself when opened.
+- **Truth rules** (`src/server/ai-search.ts`, pure parts in `src/lib/ai-search.ts`), each tested by
+  breaking it:
+  - The Google period ends on the day before Search Console's own `firstIncompleteDate`, and every
+    figure is read with `dataState: "final"`. Never "today minus a guess".
+  - GA4 has no completeness signal, so its period ends 2 days back (Google documents up to 48h).
+  - **A failed sync keeps the last good figures** (`mergeSync`), shown greyed with "couldn't be
+    synced … these are the last good figures, synced <time>". It never becomes a zero, and a
+    working source is never held back by a failing one. Figures over 24h old are flagged.
+  - Every card states "Data to <day> · synced <time>" and the page header the last sync.
+  - **What Google withholds is stated:** the share of impressions from searches Google won't list
+    (its totals vs the listed rows), GA4 thresholding (`subjectToThresholding` — Google Signals is
+    on), the `(other)` row, and row caps. AI visits note that some AI clicks arrive as direct.
+  - Changing the properties deletes the stored syncs, so old figures can't pass as the new one's.
+- **Top 10 / top 3 use Google's average position per search**, inclusive (≤10, ≤3).
+- **AI sources match by host, never substring** (`classifyAiSource`): `notchatgpt.com` and
+  `openai.com` don't count. The GA4 regex only narrows the report; the classifier decides.
+- Demo at `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-search.ts`, run through the real rules).
+
+### 111.1 Buyer questions (stage 2)
+
+Card `01 // BUYER QUESTIONS` at the top of the page. A list of buyer questions (12 UK examples
+ship in `EXAMPLE_BUYER_QUESTIONS`, editable under "Edit questions", admins) is put to **ChatGPT,
+Claude, Perplexity and Gemini** with each one's own web search on and a UK location
+(`src/server/ai-answers-engines.ts`). Each answer is judged by `judgeAnswer`
+(`src/lib/ai-answers.ts`, pure): **named** = a brand name as a whole word; **cited** = a cited
+source (or a link in the text) whose host is one of our domains, never a substring. Gemini's
+sources are Google redirect links, so a title that is *exactly* a domain counts too.
+- **Only cited sources count**, never every page a search looked at.
+- **A failed or refused answer is "Couldn't ask"** and is left out of both sides of every figure.
+- **Every tick can be read back:** the excerpt and sources of each answer open under the question.
+- **Change vs the previous run** uses only the question × assistant pairs both runs asked
+  (`comparableSummaries`), so editing the list never shows as a rise or fall.
+- **Runs:** "Ask now" (admins, `POST /api/pulse/ai-search/answers`, runs in `after()`, the page
+  polls every 5s) and weekly from the every-minute `jobs` worker (`startDueAnswerRuns`) once the
+  questions are **saved** (unsaved examples are never asked on their own). One run at a time; a
+  run still "running" after 30 minutes was cut short by a restart and is shown as such.
+  Stored in `AiAnswerRun` (additive); config in `Workspace.aiAnswersConfig`.
+- **Keys:** the workspace's AI keys via `aiKeyFor` (Anthropic, OpenAI, Gemini), plus the new
+  server-only `PERPLEXITY_API_KEY` (synced by `deploy.yml`). An assistant without a key is listed
+  with what it needs and skipped. Models are `AI_ANSWER_MODELS` in `ai-provider.ts` (dated; a
+  retired id shows as "Couldn't ask" with the provider's error). Usage is logged as `PULSE`,
+  operation `ai_search.answers.<engine>`. Each run is questions × assistants paid calls.
+- Demo: `/demo/pulse/ai-search` (`src/lib/demo/demo-ai-answers.ts`, judged by the real rules).

@@ -208,6 +208,13 @@ export default async function CountermarkCertificatePage({ params }: { params: P
                 />
                 <Field label="Standard" value={`${countermark.standardId} v${countermark.standardVersion}`} mono />
                 {countermark.subjectRepo && <Field label="Repository" value={countermark.subjectRepo} mono />}
+                {countermark.subjectRepo && (
+                  <Field
+                    label="Version examined"
+                    value={countermark.subjectCommit ? `commit ${countermark.subjectCommit}` : "Not pinned to a commit: this mark covers the repository as it stood when it was examined"}
+                    mono={!!countermark.subjectCommit}
+                  />
+                )}
                 {countermark.subjectUrl && <Field label="Live address" value={countermark.subjectUrl} mono />}
                 <Field label="Clause coverage" value={`${countermark.coverage.measured} of ${countermark.coverage.total} clauses assessed`} mono />
                 <Field label="Engine version" value={countermark.scanVersion} mono />

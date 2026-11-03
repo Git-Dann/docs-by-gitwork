@@ -133,6 +133,40 @@ const CATALOGUE: [string, string][] = [
 
 export const IOS_EXTENDED_KEYS: string[] = CATALOGUE.map(([k]) => k);
 
+/** A credential, card or one-time-code value, by the name it is held under. */
+const SENSITIVE_VALUE = /password|passcode|token|secret|apiKey|cvv|cvc|iban|cardNumber|\botp|oneTimeCode|\bpin\b/i;
+/** A screen that displays or collects a credential, card or one-time code. */
+const SENSITIVE_SCREEN =
+  /\bSecureField\b|isSecureTextEntry\s*=\s*true|textContentType\s*[:=]\s*\.(?:password|newPassword|oneTimeCode|creditCardNumber)|\b(?:cvv|cvc|iban|cardNumber)\b|STPPaymentCardTextField|PaymentSheet|PKPaymentAuthorization/;
+
+/** The value expression of each write to the general pasteboard. */
+export function pasteboardWrites(swift: string): string[] {
+  return [...swift.matchAll(/UIPasteboard\.general\.(?:string|url|strings)\s*=\s*([^\n]+)|UIPasteboard\.general\.setValue\s*\(([^\n]+)/g)]
+    .map((m) => (m[1] ?? m[2] ?? "").trim());
+}
+
+/**
+ * True when the app covers or redacts content as it leaves the foreground: a
+ * resign-active handler whose body adds a view, blurs, hides or redacts, or SwiftUI's
+ * privacySensitive / redacted / a scenePhase change that does the same.
+ */
+export function snapshotIsHidden(swift: string): boolean {
+  if (/\.privacySensitive\s*\(|\.redacted\s*\(\s*reason/.test(swift)) return true;
+  const ACTS = /addSubview|UIVisualEffectView|UIBlurEffect|\.isHidden\s*=\s*true|\.alpha\s*=\s*0|\.blur\s*\(|overlay|privacy|snapshot|\bcover|present\s*\(/i;
+  for (const m of swift.matchAll(/(?:applicationWillResignActive|sceneWillResignActive|willResignActiveNotification|scenePhase|\bfunc\s+\w*(?:[Rr]esign|[Bb]ackground)\w*)[^{\n]*\{/g)) {
+    const start = (m.index ?? 0) + m[0].length;
+    let depth = 1;
+    let i = start;
+    while (i < swift.length && i < start + 1500 && depth > 0) {
+      if (swift[i] === "{") depth++;
+      else if (swift[i] === "}") depth--;
+      i++;
+    }
+    if (ACTS.test(swift.slice(start, i - 1))) return true;
+  }
+  return false;
+}
+
 export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const ctx = buildCtx(snapshot);
   const checks: PulseScanCheckInput[] = [];
@@ -182,9 +216,13 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
 
   // ── Data at rest ───────────────────────────────────────────────────────────
   const writesFiles = /\.write\(to:|FileManager\.default\.createFile|Data\(contentsOf:/.test(ctx.swift);
-  const hasProtection = /NSFileProtection|\.completeUnlessOpen|\.completeUntilFirstUserAuthentication|\.complete\b/.test(
-    ctx.swift,
-  );
+  // A bare `.complete` matches any enum case of that name (`self.state = .complete`), which passed
+  // NetNewsWire with no protection API anywhere. Require a real file-protection API, or the
+  // app-wide default set in the entitlements (com.apple.developer.default-data-protection).
+  const hasProtection =
+    /NSFileProtection|FileProtectionType|URLFileProtection|\.completeFileProtection|\.protectionKey|\.completeUnlessOpen|\.completeUntilFirstUserAuthentication/.test(
+      `${ctx.swift}\n${ctx.entitlements}`,
+    );
   add(
     "ios_x_data_protection",
     "Files are written with a data-protection class",
@@ -217,36 +255,44 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
     { absence: true },
   );
 
-  const pasteboard = /UIPasteboard\.general\.string\s*=/.test(ctx.swift);
-  const sensitiveNearby = /password|token|secret|card|cvv|iban|account/i.test(ctx.swift);
+  // Judged on the value actually copied. Searching the whole codebase for "account",
+  // "card" or "token" warned every app that copies a share link.
+  const copies = pasteboardWrites(ctx.swift);
+  const sensitiveCopy = copies.find((c) => SENSITIVE_VALUE.test(c));
   add(
     "ios_x_pasteboard_sensitive",
     "Sensitive values are not written to the general pasteboard",
-    !pasteboard ? "PASS" : sensitiveNearby ? "WARN" : "PASS",
-    !pasteboard
-      ? "The app does not write to the general pasteboard."
-      : sensitiveNearby
-        ? "The app writes to UIPasteboard.general and the sampled source also handles credentials or card data. The " +
+    copies.length === 0 ? "SKIPPED" : sensitiveCopy ? "WARN" : "PASS",
+    copies.length === 0
+      ? "The sampled source does not write to the general pasteboard."
+      : sensitiveCopy
+        ? `The app copies a credential-named value to UIPasteboard.general (\`${sensitiveCopy.slice(0, 60)}\`). The ` +
           "general pasteboard is readable by every other app on the device and, with Universal Clipboard, syncs to " +
-          "the user's other devices. If a copied value is a password or card number, set " +
-          "`UIPasteboard.general.setItems(_:options:)` with an expiry and `.localOnly`."
-        : "Pasteboard writes were found but the sampled source shows no sensitive values being copied.",
+          "the user's other devices. If it has to be copied, use `UIPasteboard.general.setItems(_:options:)` with an " +
+          "expiry and `.localOnly`."
+        : `${copies.length} pasteboard write${copies.length === 1 ? "" : "s"} found; none copies a value named as a ` +
+          "password, token, card number or one-time code.",
+    { absence: copies.length === 0 },
   );
 
-  const hidesSnapshot = /applicationWillResignActive|sceneWillResignActive|willResignActiveNotification/.test(ctx.swift);
+  // The gate is a screen that SHOWS something sensitive (a password or one-time-code
+  // field, card entry, a payment sheet), and the fix is a handler that does something:
+  // Xcode's SceneDelegate template ships an empty `sceneWillResignActive` stub.
+  const sensitiveUi = SENSITIVE_SCREEN.test(ctx.swift);
+  const hidesSnapshot = snapshotIsHidden(ctx.swift);
   add(
     "ios_x_screenshot_redaction",
     "Sensitive screens are hidden from the app switcher snapshot",
-    !sensitiveNearby ? "SKIPPED" : hidesSnapshot ? "PASS" : "WARN",
-    !sensitiveNearby
-      ? "The sampled source shows no obviously sensitive screens, so app-switcher redaction is not required."
+    !sensitiveUi ? "SKIPPED" : hidesSnapshot ? "PASS" : "WARN",
+    !sensitiveUi
+      ? "The sampled source shows no password, one-time-code or card-entry screens, so app-switcher redaction is not required."
       : hidesSnapshot
-        ? "The app responds to resign-active, which is where a snapshot overlay is installed to keep sensitive " +
-          "content out of the app-switcher thumbnail."
+        ? "The app covers or redacts its content when it moves to the background, which keeps sensitive content out " +
+          "of the app-switcher thumbnail."
         : "iOS captures a screenshot of the app whenever it moves to the background, and stores it unencrypted for " +
-          "the app-switcher. The sampled source handles credentials or financial data but never responds to " +
-          "willResignActive, so whatever is on screen at that moment — a balance, a card number, a one-time code — " +
-          "is written to disk as an image.",
+          "the app-switcher. The app has password, one-time-code or card-entry screens but never covers its content " +
+          "when it resigns active (an empty `sceneWillResignActive` stub does nothing), so whatever is on screen at " +
+          "that moment is written to disk as an image.",
     { absence: true },
   );
 
@@ -284,7 +330,14 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
   );
 
   const handlesUrls = /func application\([^)]*open url|onOpenURL|NSUserActivity/.test(ctx.swift);
-  const validatesUrls = /url\.host\s*==|guard let host|components\.host|verifyHost|allowedHosts/.test(ctx.swift);
+  // kickstarter validates hosts with `url.host.map { $0.hasPrefix(host) }` against an allow-list; only
+  // matching `url.host ==` missed it. Require the host/scheme to be compared or tested, not merely read,
+  // so ordinary networking code that logs `request.url?.host` does not count as deep-link validation. Case-
+  // insensitive on `url` so `incomingURL.host ==` counts too.
+  const validatesUrls =
+    /[uU][rR][lL]\??\.host(\([^)]{0,40}\))?\s*(==|!=)|[uU][rR][lL]\??\.host(\([^)]{0,40}\))?\??\.(map|flatMap|hasPrefix|hasSuffix)\b|\.contains\(\s*\w*[uU][rR][lL]\??\.host|[uU][rR][lL]\??\.scheme\s*(==|!=)|guard let host|components\.host|verifyHost|allowedHosts/.test(
+      ctx.swift,
+    );
   add(
     "ios_x_url_scheme_validation",
     "Incoming deep links are validated before use",
@@ -347,13 +400,25 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
   );
 
   // ── Build settings ─────────────────────────────────────────────────────────
-  const dsym = /DEBUG_INFORMATION_FORMAT\s*=\s*"?dwarf-with-dsym/.test(ctx.pbxproj);
+  // Build settings commonly live in .xcconfig files, not project.pbxproj (NetNewsWire sets
+  // dwarf-with-dsym only in xcconfig/NetNewsWire_project_release.xcconfig). Read any that were fetched,
+  // and if some exist but were not read, the absence of the setting is not established. Vendored
+  // xcconfigs (Pods/Carthage) never carry the app's own release settings, so they are ignored.
+  const xcconfigPaths = snapshot.paths.filter(
+    (p) => /\.xcconfig$/i.test(p) && !/(^|\/)(Pods|Carthage|vendor|node_modules|\.build|DerivedData)\//i.test(p),
+  );
+  const xcconfigText = xcconfigPaths.map((p) => snapshot.files.get(p) ?? "").join("\n");
+  const dsym = /DEBUG_INFORMATION_FORMAT\s*=\s*"?dwarf-with-dsym/.test(`${ctx.pbxproj}\n${xcconfigText}`);
+  const unreadXcconfig = !dsym && xcconfigPaths.some((p) => !snapshot.files.has(p));
   add(
     "ios_x_crash_symbols",
     "Debug symbols are produced for crash reports",
-    !ctx.pbxproj ? "SKIPPED" : dsym ? "PASS" : "WARN",
+    !ctx.pbxproj ? "SKIPPED" : unreadXcconfig ? "INCONCLUSIVE" : dsym ? "PASS" : "WARN",
     !ctx.pbxproj
       ? "No Xcode project file was read, so build settings could not be inspected."
+      : unreadXcconfig
+        ? "The project keeps build settings in .xcconfig files that were not read, so whether the release " +
+          "configuration sets DEBUG_INFORMATION_FORMAT to dwarf-with-dsym could not be established."
       : dsym
         ? "The project produces dSYM files, so crash reports symbolicate into function names and line numbers."
         : "DEBUG_INFORMATION_FORMAT is not set to dwarf-with-dsym for the release configuration. Without a dSYM, " +
@@ -361,12 +426,20 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
           "is no way to tell which line caused it.",
   );
 
-  const bitcode = /ENABLE_BITCODE\s*=\s*YES/.test(ctx.pbxproj);
+  // A PASS needs the build settings to have been READ: with no project.pbxproj (or with
+  // .xcconfig files that were not fetched) "no ENABLE_BITCODE = YES" is not established.
+  const bitcode = /ENABLE_BITCODE\s*=\s*YES/.test(`${ctx.pbxproj}\n${xcconfigText}`);
+  const bitcodeUnread = !bitcode && (!ctx.pbxproj || xcconfigPaths.some((p) => !snapshot.files.has(p)));
   add(
     "ios_x_bitcode_deprecated",
     "The project does not still enable the removed Bitcode setting",
-    bitcode ? "WARN" : "PASS",
-    bitcode
+    bitcode ? "WARN" : bitcodeUnread ? "INCONCLUSIVE" : "PASS",
+    bitcodeUnread
+      ? !ctx.pbxproj
+        ? "No Xcode project file was read, so whether ENABLE_BITCODE is still set could not be established."
+        : "The project keeps build settings in .xcconfig files that were not read, so whether ENABLE_BITCODE is " +
+          "still set could not be established."
+      : bitcode
       ? "ENABLE_BITCODE is still YES. Apple removed Bitcode support in Xcode 14 and App Store Connect rejects " +
         "bitcode-enabled uploads, so this either produces a build warning today or will fail an upload on the next " +
         "toolchain bump."
@@ -419,13 +492,15 @@ export function evaluateIosExtendedChecks(snapshot: RepoSnapshot): PulseScanChec
         : "Too little user-facing text in the sampled source to judge localisation.",
   );
 
-  const encryption = /ITSAppUsesNonExemptEncryption/.test(ctx.plists);
+  // Projects with GENERATE_INFOPLIST_FILE declare the key as an INFOPLIST_KEY_ build setting in
+  // project.pbxproj (IceCubesApp: INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO).
+  const encryption = /ITSAppUsesNonExemptEncryption/.test(`${ctx.plists}\n${ctx.pbxproj}`);
   add(
     "ios_x_encryption_declaration",
     "The export-compliance key is declared",
     encryption ? "PASS" : "WARN",
     encryption
-      ? "ITSAppUsesNonExemptEncryption is declared in Info.plist, so uploads skip the export-compliance prompt."
+      ? "ITSAppUsesNonExemptEncryption is declared (in Info.plist or as an INFOPLIST_KEY build setting), so uploads skip the export-compliance prompt."
       : "Info.plist does not declare ITSAppUsesNonExemptEncryption. Without it, App Store Connect asks the export " +
         "compliance question on every single upload before the build can be distributed — a manual step in the " +
         "middle of every release, and a common cause of a build sitting unnoticed in 'Missing Compliance'.",

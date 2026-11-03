@@ -1,3 +1,4 @@
+import type { CodeHealthReport } from "@/types/code-health";
 // Pulse as an agent-callable service — runs a scan and returns a COMPACT verdict
 // for AI coding tools (via the MCP server) or any authenticated HTTP agent.
 //
@@ -6,6 +7,7 @@
 // internal — callers are authenticated by middleware (API key / OAuth); this module
 // has no auth of its own.
 
+import { isDerivedRestatement } from "@/server/pulse-checks/standards-derived";
 import { runLiteScan } from "@/server/pulse-lite/run-lite-scan";
 import { computeGrades, type PulseGrade } from "@/server/pulse-checks/grades";
 import { computeComplianceScorecard } from "@/server/pulse-checks/compliance-scorecard";
@@ -14,14 +16,36 @@ import { calculateHealthScore } from "@/server/pulse-scan";
 import { rankFindings } from "@/server/pulse-checks/priority";
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { collectorCoverage } from "@/server/pulse-checks/collector-health";
-import { evaluateReleaseGate, gatePolicyById, withScanIncomplete } from "@/server/pulse-checks/release-decision";
+import { evaluateReleaseGate, resolveGatePolicy, withScanIncomplete } from "@/server/pulse-checks/release-decision";
+import { detectStoreTarget, isPlaceholderStoreName, resolveScanPlatform, storeSubjectLabel } from "@/lib/pulse-store-url";
 import type { PulseScanCheckInput, GateEvaluationRecord, ScoreBreakdown } from "@/types/pulse";
 
 export interface AgentVerdict {
   url: string;
+  /** Repo scans: the full-checkout code measure, condensed. Absent when it did not run. */
+  codeHealth?: AgentCodeHealth;
+  /**
+   * WHAT was scanned. An App Store link is an iOS app and a Google Play link an
+   * Android app — stated here so a caller never has to infer it from the URL, and
+   * never reads an app's verdict as a website's.
+   */
+  subject: {
+    /** The platform the scan ran as (e.g. IOS_APP, ANDROID_APP, WEB_APP), or null if unknown. */
+    platform: string | null;
+    /** e.g. "iOS app · App Store listing". */
+    label: string | null;
+    /** The app's name as its store lists it, when the scan read one. */
+    name: string | null;
+  };
   status: "COMPLETED" | "FAILED";
   healthScore: number;
   summary: string;
+  /**
+   * What the relevance gate left out, and why. Only checks about THIS product are in the
+   * verdict; this says how many others existed, so a caller never reads a short list as
+   * "nothing else was looked at". Null when the scan predates the gate.
+   */
+  scope: ScoreBreakdown["relevance"] | null;
   grades: PulseGrade[];
   techStack: string[];
   /**
@@ -96,6 +120,20 @@ export function buildAgentVerdict(args: {
   gatePolicyId?: string;
   /** Why the scan did not finish. Carried into both the summary and the gate. */
   failureReason?: string;
+  /** The platform the scan ran as. Resolved from the URL when omitted. */
+  platform?: string | null;
+  /** The subject's name — for a store link, the app's listed name. */
+  name?: string | null;
+  /**
+   * True when `name` was read from the store listing itself. Such a name is never a
+   * placeholder — Bitwarden's slug title-cases to exactly its real name, which the
+   * placeholder test then discarded, so the Chrome verdict reported no name at all.
+   */
+  nameFromStore?: boolean;
+  /** The relevance gate's summary for this scan. */
+  relevance?: ScoreBreakdown["relevance"];
+  /** URL / GITHUB_REPO / FREE_TEXT — selects the gate policy. Defaults to URL. */
+  inputType?: string;
 }): AgentVerdict {
   const { checks } = args;
   const bucket = (b: string) => checks.filter((c) => c.trustBucket === b);
@@ -135,11 +173,13 @@ export function buildAgentVerdict(args: {
     (rankedKeys.get(a.checkKey)?.rank ?? Number.MAX_SAFE_INTEGER) -
     (rankedKeys.get(b.checkKey)?.rank ?? Number.MAX_SAFE_INTEGER);
 
-  const confirmedIssues = confirmed.filter((c) => c.status === "FAIL").map(asIssue).sort(byPriority);
+  // A derived standards row restates a check already listed, so it is never an issue of its own.
+  const own = (c: PulseScanCheckInput) => !isDerivedRestatement(c.checkKey);
+  const confirmedIssues = confirmed.filter((c) => c.status === "FAIL" && own(c)).map(asIssue).sort(byPriority);
   // Warnings across every bucket except the unprovable ones — a WARN is still a real
   // finding, and omitting them made "all warnings" read as "nothing wrong".
   const warnings = checks
-    .filter((c) => c.status === "WARN" && c.trustBucket !== "INCONCLUSIVE")
+    .filter((c) => c.status === "WARN" && c.trustBucket !== "INCONCLUSIVE" && own(c))
     .map(asIssue)
     .sort(byPriority);
 
@@ -148,7 +188,17 @@ export function buildAgentVerdict(args: {
   // returns something rather than an empty list.
   const topFindings = [...confirmedIssues, ...warnings].slice(0, 5);
 
+  const store = detectStoreTarget(args.url);
+  const subject = {
+    platform: resolveScanPlatform(args.url, args.platform) ?? null,
+    label: store ? storeSubjectLabel(store, args.platform) : null,
+    // A name Pulse invented from the link ("apps.apple.com") is not the app's name.
+    name: args.name && (args.nameFromStore || !(store && isPlaceholderStoreName(args.name, args.url))) ? args.name : null,
+  };
+
   const summaryParts = [
+    // Lead with what it is, for an app: a bare score reads as a website's.
+    ...(subject.label ? [subject.name ? `${subject.name} (${subject.label})` : subject.label] : []),
     args.failureReason ?? `${args.healthScore}/100`,
     `${confirmedIssues.length} confirmed issue${confirmedIssues.length !== 1 ? "s" : ""}`,
   ];
@@ -157,7 +207,13 @@ export function buildAgentVerdict(args: {
 
   // The gate is derived from the SAME checks this verdict describes, so the
   // decision and the issue lists can never tell an agent two different stories.
-  const policy = gatePolicyById(args.gatePolicyId);
+  const policy = resolveGatePolicy({
+    policyId: args.gatePolicyId,
+    targetUrl: args.url,
+    inputType: args.inputType,
+    platform: subject.platform,
+    apiTarget: args.relevance?.target === "api",
+  });
   const evaluated = evaluateReleaseGate(
     checks,
     { ...computeScoreBreakdown(checks), collectors: args.collectors },
@@ -169,6 +225,8 @@ export function buildAgentVerdict(args: {
 
   return {
     url: args.url,
+    subject,
+    scope: args.relevance ?? null,
     status: args.status,
     healthScore: args.healthScore,
     summary: summaryParts.join(" · "),
@@ -200,23 +258,56 @@ export function buildAgentVerdict(args: {
   };
 }
 
+export interface AgentCodeHealth {
+  score: number;
+  band: CodeHealthReport["band"];
+  commit: string | null;
+  linesMeasured: number;
+  effortDays: number | null;
+  busFactor: number | null;
+  /** Worst first: "path:line symbol — reason". */
+  topDebt: string[];
+  /** Most-changed complex files: "path (N changes, complexity C)". */
+  hotspots: string[];
+}
+
+export function summariseCodeHealth(r: CodeHealthReport): AgentCodeHealth {
+  return {
+    score: r.score,
+    band: r.band,
+    commit: r.commit,
+    linesMeasured: r.totals.loc,
+    effortDays: r.effort?.days ?? null,
+    busFactor: r.history?.busFactor ?? null,
+    topDebt: r.debt.slice(0, 8).map((d) => `${d.path}:${d.line} ${d.symbol} — ${d.reason}`),
+    hotspots: (r.history?.hotspots ?? []).slice(0, 5).map((h) => `${h.path} (${h.changes} changes, complexity ${h.complexity})`),
+  };
+}
+
 /** Run a fresh lite scan for an agent and return the compact verdict. */
 export async function runAgentScan(input: {
-  url: string;
+  url?: string;
+  githubRepo?: string;
+  platform?: string;
   targetMarkets?: string[];
   gatePolicyId?: string;
 }): Promise<AgentVerdict> {
   const markets = (input.targetMarkets ?? []).filter(isJurisdictionCode) as JurisdictionCode[];
+  const inputType = input.githubRepo ? "GITHUB_REPO" : "URL";
+  const subjectRef = input.githubRepo ?? input.url ?? "";
   try {
     const lite = await runLiteScan({
-      inputType: "URL",
+      inputType,
       url: input.url,
+      githubRepo: input.githubRepo,
+      platform: input.platform,
       includePageSpeed: false, // fast + no PSI quota; agents want a quick verdict
       targetMarkets: markets.length > 0 ? markets : undefined,
       // skipUrlGuard left false — external agents must pass the SSRF guard.
     });
-    return buildAgentVerdict({
-      url: input.url,
+    const verdict = buildAgentVerdict({
+      url: subjectRef,
+      inputType,
       status: "COMPLETED",
       healthScore: lite.healthScore || calculateHealthScore(lite.checks),
       techStack: lite.techStack,
@@ -225,7 +316,12 @@ export async function runAgentScan(input: {
       detectedMarkets: lite.detectedMarkets,
       collectors: collectorCoverage(lite.collectorExecutions),
       gatePolicyId: input.gatePolicyId,
+      platform: lite.executionPlatform ?? null,
+      name: lite.appName,
+      nameFromStore: true,
+      relevance: lite.relevance,
     });
+    return lite.codeHealth ? { ...verdict, codeHealth: summariseCodeHealth(lite.codeHealth) } : verdict;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "Scan failed.";
     // A scan that never ran cannot clear a gate. Returning no decision at all
@@ -233,7 +329,8 @@ export async function runAgentScan(input: {
     // "nothing failed, therefore ship". Built through buildAgentVerdict so the
     // failure path cannot drift from the rules the success path obeys.
     return buildAgentVerdict({
-      url: input.url,
+      url: subjectRef,
+      inputType,
       status: "FAILED",
       healthScore: 0,
       techStack: [],

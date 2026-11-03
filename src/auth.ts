@@ -1,10 +1,61 @@
 import NextAuth from "next-auth";
+import { tidyPersonName } from "@/lib/person-name";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 import { authConfig, SESSION_VERSION } from "./auth.config";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
+import { resolveWorkspaceModules } from "@/lib/workspace-modules";
+import { verifyGuestPassword } from "@/server/auth/password-login";
+import { isActiveMember } from "@/server/auth/member-status";
+import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
+
+/**
+ * How often a live session re-checks that its member is still active.
+ *
+ * Sessions last up to 30 days, and the JWT only changes at sign-in, so without
+ * this an archived person's open session would keep its role for weeks. Returning
+ * `null` from the jwt callback makes Auth.js clear the session cookie
+ * (`@auth/core` lib/actions/session.js), so on the next session read after the
+ * window, an archived member is signed out. Five minutes bounds the exposure
+ * while costing one indexed lookup per member per five minutes.
+ *
+ * ⚠️ This is the backstop, not the gate. `requireAuthedUser` re-reads the
+ * membership on EVERY request and refuses an archived member immediately; this
+ * exists for the routes that never resolve a user at all and rely on "has a valid
+ * session" from middleware.
+ */
+const MEMBER_RECHECK_MS = 5 * 60 * 1000;
+
+/**
+ * Refuse a sign-in for anyone who has been removed or archived.
+ *
+ * ⚠️ "Has a User row but no membership" is refused, not re-provisioned. That
+ * state arises when someone is removed from the workspace (the old Remove
+ * deleted the membership; the purge job does after the retention window), and
+ * their Google account usually still works. Re-provisioning them would hand a
+ * former employee a fresh STAFF membership — every module, all clients, rates —
+ * the moment they signed in. A genuinely new person has no User row at all and is
+ * still auto-provisioned as before. Bringing someone back is an explicit admin
+ * action (Restore within the window, Reinstate after it).
+ */
+async function refusedMembership(email: string): Promise<boolean> {
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      memberships: {
+        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+        select: { archivedAt: true },
+        take: 1,
+      },
+    },
+  });
+  if (!existing) return false; // brand new — auto-provisioned in the jwt callback
+  const membership = existing.memberships[0];
+  return !membership || !isActiveMember(membership);
+}
 
 // The placeholder email created by bootstrap — never a real team member
 const BOOTSTRAP_USER_EMAIL = "owner@gitwork.io";
@@ -41,17 +92,84 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         },
       },
     }),
+    // Email + password, and ONLY ever for a GUEST — see server/auth/password-login.ts
+    // for why that restriction is structural rather than a policy. Staff and admins
+    // stay Google-only, which is also what keeps the @gitwork.co.uk check below
+    // meaningful for them.
+    Credentials({
+      id: "guest-password",
+      name: "Email and password",
+      credentials: { email: { type: "text" }, password: { type: "password" } },
+      async authorize(raw) {
+        const email = typeof raw?.email === "string" ? raw.email : "";
+        const password = typeof raw?.password === "string" ? raw.password : "";
+        const result = await verifyGuestPassword(email, password);
+        // `null` for every failure. NextAuth turns it into one generic error, which is
+        // what we want: telling "no such account" apart from "wrong password" is an
+        // enumeration oracle.
+        if (!result.ok) return null;
+        return { id: result.userId, email: result.email, name: result.name };
+      },
+    }),
   ],
   callbacks: {
     ...authConfig.callbacks,
-    async signIn({ user }) {
-      // Restrict to @gitwork.co.uk accounts only
-      if (!user.email?.endsWith("@gitwork.co.uk")) {
-        return false;
+    async signIn({ user, account }) {
+      // ⚠️ This callback runs for EVERY provider, so it is written as a positive rule
+      // per provider rather than one blanket test. Phrasing it as "not credentials →
+      // must be @gitwork.co.uk" would mean any future provider silently defaults to
+      // allowed; an unrecognised provider is refused here instead.
+      if (account?.provider === "guest-password") {
+        // Already authenticated in `authorize`, which only returns a user for a GUEST.
+        return true;
       }
-      return true;
+      if (account?.provider === "google") {
+        if (!user.email?.endsWith("@gitwork.co.uk")) return false;
+        // A URL (not `false`) so the login page can say what happened, instead of
+        // the generic "could not sign in" that reads like a broken Google account.
+        if (await refusedMembership(user.email)) return "/login?error=AccessRevoked";
+        return true;
+      }
+      return false;
     },
     async jwt({ token, user, account }) {
+      // Subsequent reads of an existing session (no `account`): revalidate that the
+      // member is still active, at most every MEMBER_RECHECK_MS. See that constant.
+      if (!account) {
+        const tokenId = typeof token.id === "string" ? token.id : null;
+        const last = typeof token.memberCheckedAt === "number" ? token.memberCheckedAt : 0;
+        if (tokenId && Date.now() - last > MEMBER_RECHECK_MS) {
+          const membership = await prisma.workspaceMember.findFirst({
+            where: { userId: tokenId, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
+            select: {
+              archivedAt: true,
+              workspaceId: true,
+              role: true,
+              permissions: true,
+              workspace: { select: { modulesRestricted: true, enabledModules: true } },
+            },
+          });
+          // null → Auth.js clears the session cookie: signed out on this request.
+          if (!membership || !isActiveMember(membership)) return null;
+          // Refresh the role and resolved permissions the middleware gates pages on.
+          // They used to be fixed at sign-in ("matrix changes apply on their next
+          // sign-in"), and sessions last 30 days — so changing someone's role in the
+          // Team table left their page access untouched for up to a month. The
+          // `permissions` column is the resolved cache that recomputeMember keeps in
+          // step on every role, matrix or override change, so this needs no writes.
+          token.role = membership.role;
+          token.permissions = Array.isArray(membership.permissions)
+            ? (membership.permissions as unknown[]).filter((p): p is string => typeof p === "string")
+            : [];
+          // Which modules the business has, refreshed on the same cadence so switching
+          // one off in the Platform console reaches open sessions within five minutes.
+          token.workspaceModules = resolveWorkspaceModules(membership.workspace);
+          token.workspaceId = membership.workspaceId;
+          token.memberCheckedAt = Date.now();
+        }
+        return token;
+      }
+
       // On first sign-in, look up or create the user in the DB
       if (account && user?.email) {
         let dbUser = await prisma.user.findUnique({
@@ -68,6 +186,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // (no Admin/Super Admin exists yet) bootstraps as Super Admin so the workspace
         // is never left without one who can edit the role matrix.
         const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(user.email);
+        // includes-archived: the first-admin bootstrap. Counting archived admins is the
+        // fail-SAFE direction — otherwise archiving every admin would make the next sign-in a
+        // Super Admin.
         const adminOrAboveCount = await prisma.workspaceMember.count({
           where: {
             workspace: { slug: DEFAULT_WORKSPACE_SLUG },
@@ -75,18 +196,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             user: { email: { not: BOOTSTRAP_USER_EMAIL } },
           },
         });
-        const shouldBeSuperAdmin = isKnownSuperAdmin || adminOrAboveCount === 0;
+        // ⚠️ NEVER on a password sign-in. Both halves of this are reachable by a guest
+        // otherwise: `adminOrAboveCount === 0` promotes whoever signs in first, and a
+        // guest whose email happened to be in KNOWN_SUPER_ADMIN_EMAILS would be handed
+        // the workspace. Google sign-in is @gitwork.co.uk-only, so the bootstrap can
+        // only ever run for someone who already holds a Gitwork account.
+        const isPasswordSignIn = account.provider === "guest-password";
+        const shouldBeSuperAdmin =
+          !isPasswordSignIn && (isKnownSuperAdmin || adminOrAboveCount === 0);
 
-        // Auto-provision new Gitwork team members. New members default to STAFF (whose
-        // access is whatever the role matrix grants); a Super Admin can refine their role.
+        // A password sign-in must never CREATE anything. `authorize` already proved the
+        // user exists and is a guest, so reaching this with no row means the account was
+        // deleted mid-session — refuse rather than quietly re-provision them,
+        // which is what the branch below would otherwise do.
+        if (!dbUser && isPasswordSignIn) return token;
+
+        // Auto-provision new Gitwork team members as DEFAULT_PROVISIONED_ROLE
+        // (DEVELOPER — the minimal internal role). An Admin raises it in Settings → Team.
         if (!dbUser) {
           dbUser = await prisma.user.create({
             data: {
               email: user.email,
-              name: user.name ?? user.email.split("@")[0],
+              name: tidyPersonName(user.name) ?? user.email.split("@")[0],
               memberships: {
                 create: {
-                  role: shouldBeSuperAdmin ? "SUPER_ADMIN" : "STAFF",
+                  role: shouldBeSuperAdmin ? "SUPER_ADMIN" : DEFAULT_PROVISIONED_ROLE,
                   permissions: [],
                   workspace: { connect: { slug: DEFAULT_WORKSPACE_SLUG } },
                 },
@@ -134,14 +268,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const membership = dbUser.memberships[0];
         token.id = dbUser.id;
-        token.role = membership?.role ?? "STAFF";
+        // Carry identity from the DB row, not from the provider profile.
+        //
+        // ⚠️ Google populates token.name/email on its own, so nothing here ever needed
+        // to. A CREDENTIALS sign-in does not: the guest arrived with an empty name and
+        // email on the session, which showed up as a "?" avatar in the sidebar and two
+        // em-dashes on the profile page. Setting both from `dbUser` fixes every surface
+        // at once rather than each one falling back on its own, and for a Google account
+        // it writes the same values it already had.
+
+        token.name = dbUser.name ?? token.name;
+        token.email = dbUser.email ?? token.email;
+        token.role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
         // Resolve + persist the member's effective permissions from the role matrix so
         // the JWT carries the live set (and the cached column stays in sync).
         token.permissions = membership ? await recomputeMember(membership.id) : [];
+        token.workspaceId = membership?.workspaceId ?? null;
+        token.workspaceModules = membership
+          ? resolveWorkspaceModules(
+              await prisma.workspace.findUnique({
+                where: { id: membership.workspaceId },
+                select: { modulesRestricted: true, enabledModules: true },
+              }),
+            )
+          : null;
         // Stamp this fresh sign-in with the current SESSION_VERSION. The `authorized`
         // callback rejects tokens with an older value, forcing teammates with stale
         // sessions to sign in again so their per-user Google refresh token gets captured.
         token.sessionVersion = SESSION_VERSION;
+        token.memberCheckedAt = Date.now();
 
         // Persist the Google OAuth refresh token on the *current user* so personal dashboard
         // widgets (Calendar, Gmail, Meeting summary) only ever see the signed-in user's data.

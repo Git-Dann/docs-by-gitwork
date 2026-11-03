@@ -17,7 +17,9 @@ import {
   workspaceIdForUser,
   OAuthError,
   ACCESS_TOKEN_TTL_SECONDS,
+  revokeTokenByValue,
 } from "@/server/oauth";
+import { resolveMcpActor } from "@/server/mcp/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -164,7 +166,19 @@ async function handleRefresh(params: TokenParams) {
   // rotateRefreshToken validates ownership + freshness + revocation, then
   // returns a fresh access+refresh pair and revokes the prior pair atomically.
   // We resolve the workspace from the userId pinned to the refresh row.
-  const workspaceId = await resolveWorkspaceForRefresh(params.refresh_token);
+  const { userId, workspaceId } = await resolveWorkspaceForRefresh(params.refresh_token);
+
+  // Re-check the person, not just the token: someone archived, removed, or no longer holding
+  // `mcp.connect` must not be handed a fresh pair. Revoke the presented token too, so the
+  // connection is dead rather than retried every hour.
+  if (!(await resolveMcpActor(userId))) {
+    await revokeTokenByValue(params.refresh_token);
+    return oauthJsonError(
+      "invalid_grant",
+      "This Foundry account no longer has access to Claude (MCP). Ask an admin.",
+    );
+  }
+
   const tokens = await rotateRefreshToken({
     refreshToken: params.refresh_token,
     clientId: client.id,
@@ -183,7 +197,9 @@ async function handleRefresh(params: TokenParams) {
  * their workspace. Used only by the refresh path — the code path has the
  * userId in scope already.
  */
-async function resolveWorkspaceForRefresh(refreshToken: string): Promise<string> {
+async function resolveWorkspaceForRefresh(
+  refreshToken: string,
+): Promise<{ userId: string; workspaceId: string }> {
   // Imported lazily to avoid pulling Prisma into the module's top level —
   // keeps the module slimmer for clients that only import the helpers.
   const { prisma } = await import("@/lib/prisma");
@@ -200,5 +216,5 @@ async function resolveWorkspaceForRefresh(refreshToken: string): Promise<string>
   if (!workspaceId) {
     throw new OAuthError("invalid_grant", "User has no workspace membership.");
   }
-  return workspaceId;
+  return { userId: row.userId, workspaceId };
 }

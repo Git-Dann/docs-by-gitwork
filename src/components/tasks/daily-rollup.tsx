@@ -1,5 +1,6 @@
 "use client";
 
+import { groupForReport } from "@/lib/standup-report";
 import { useState } from "react";
 import {
   CheckCircleIcon,
@@ -24,6 +25,7 @@ import {
 } from "@/hooks/use-tasks";
 
 import { TaskAvatar } from "@/components/tasks/task-avatar";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 const PAGE_SIZE = 5;
 
@@ -85,9 +87,13 @@ export function DailyRollup({
       const r = await pushPm.mutateAsync(phase);
       const phaseWord = phase === "AM" ? "morning" : "end-of-day";
       if (!r.configured) {
-        setPmResult("No #updates channel set — pick one in Settings → Integrations (Daily PM updates).");
+        setPmResult(
+          "No #updates channel set — pick one in Settings → Integrations (Daily PM updates).",
+        );
       } else if (r.devCount === 0) {
-        setPmResult(`No developers have posted a ${phaseWord} update yet today.`);
+        setPmResult(
+          `No developers have posted a ${phaseWord} update yet today.`,
+        );
       } else {
         setPmResult(
           `Pushed ${r.devCount} ${phaseWord} update${r.devCount === 1 ? "" : "s"} (${r.taskCount} task${r.taskCount === 1 ? "" : "s"}) to #updates.`,
@@ -109,12 +115,17 @@ export function DailyRollup({
     <section className={cn("widget-card", className)}>
       <div className="widget-header">
         <span className="widget-header__label">
-          <span className="widget-header__label--number">{String(index).padStart(2, "0")}</span>
+          <span className="widget-header__label--number">
+            {String(index).padStart(2, "0")}
+          </span>
           {" // DAILY ROLL-UP"}
         </span>
         <div className="flex items-center gap-2">
           {total > 0 ? (
-            <span className="widget-header__status" style={{ fontFamily: "var(--font-mono)" }}>
+            <span
+              className="widget-header__status"
+              style={{ fontFamily: "var(--font-mono)" }}
+            >
               AM {amCount}/{total} · PM {pmCount}/{total}
             </span>
           ) : null}
@@ -126,14 +137,16 @@ export function DailyRollup({
             aria-label="Refresh roll-up"
             className="rounded-[4px] p-1 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-1)] hover:text-[var(--text-1)] disabled:opacity-40"
           >
-            <ArrowPathIcon className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            <ArrowPathIcon
+              className={cn("h-4 w-4", isFetching && "animate-spin")}
+            />
           </button>
         </div>
       </div>
 
       <div className="widget-body space-y-3">
         {isPending ? (
-          <div className="h-32 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+          <Skeleton className="h-32 rounded-[8px]" />
         ) : total === 0 ? (
           <p className="py-6 text-center text-xs text-[var(--text-4)]">
             No developers on the roster yet — run the team seed to populate it.
@@ -149,7 +162,9 @@ export function DailyRollup({
                 >
                   <TaskAvatar user={d.user} size={26} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-[var(--text-1)]">{d.user.name}</p>
+                    <p className="truncate text-sm font-medium text-[var(--text-1)]">
+                      {d.user.name}
+                    </p>
                     <p className="text-[11px] text-[var(--text-4)]">
                       {d.doingCount} doing · {d.doneCount} done today
                     </p>
@@ -163,7 +178,8 @@ export function DailyRollup({
             {totalPages > 1 ? (
               <div className="flex items-center justify-between pt-0.5">
                 <span className="widget-timestamp">
-                  {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, total)} of {total}
+                  {safePage * PAGE_SIZE + 1}–
+                  {Math.min((safePage + 1) * PAGE_SIZE, total)} of {total}
                 </span>
                 <div className="flex items-center gap-1">
                   <button
@@ -191,36 +207,36 @@ export function DailyRollup({
             {/* Publish — primary CTA left, override secondary right. Skipped
                 when the viewer is here purely to monitor (super admin). */}
             {canPublish ? (
-            <div className="border-t border-[var(--border-2)] pt-3">
-              <div className="flex items-center justify-between gap-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  leadingIcon={<MegaphoneIcon className="h-4 w-4" />}
-                  onClick={() => doPublish(false)}
-                  disabled={!allPushed || publish.isPending}
-                  loading={publish.isPending}
-                >
-                  Publish roll-up
-                </Button>
-                {!allPushed ? (
+              <div className="border-t border-[var(--border-2)] pt-3">
+                <div className="flex items-center justify-between gap-2">
                   <Button
                     type="button"
-                    variant="secondary"
-                    onClick={() => doPublish(true)}
-                    disabled={publish.isPending}
+                    variant="primary"
+                    leadingIcon={<MegaphoneIcon className="h-4 w-4" />}
+                    onClick={() => doPublish(false)}
+                    disabled={!allPushed || publish.isPending}
+                    loading={publish.isPending}
                   >
-                    Publish anyway
+                    Publish roll-up
                   </Button>
+                  {!allPushed ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => doPublish(true)}
+                      disabled={publish.isPending}
+                    >
+                      Publish anyway
+                    </Button>
+                  ) : null}
+                </div>
+                {result ? (
+                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
+                    <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
+                    {result}
+                  </span>
                 ) : null}
               </div>
-              {result ? (
-                <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--text-2)]">
-                  <CheckCircleIcon className="h-4 w-4 text-emerald-600" />
-                  {result}
-                </span>
-              ) : null}
-            </div>
             ) : null}
 
             {/* Push to Slack — compiles each dev's update grouped by project then
@@ -232,7 +248,9 @@ export function DailyRollup({
             <div className="border-t border-[var(--border-2)] pt-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-[var(--text-2)]">Daily updates</p>
+                  <p className="text-xs font-medium text-[var(--text-2)]">
+                    Daily updates
+                  </p>
                   <p className="text-[11px] text-[var(--text-4)]">
                     Compile every dev&apos;s update to #updates, by project
                   </p>
@@ -272,54 +290,99 @@ export function DailyRollup({
       <Modal
         open={reviewing}
         onClose={() => setReviewing(false)}
-        title={phase === "AM" ? "REVIEW MORNING UPDATE" : "REVIEW END-OF-DAY UPDATE"}
-        panelClassName="w-full max-w-lg"
+        title={
+          phase === "AM" ? "REVIEW MORNING UPDATE" : "REVIEW END-OF-DAY UPDATE"
+        }
+        /* The height is the PANEL's, not the content's: this dialog renders anything
+           from two lines to forty, and DESIGN.md's fixed-height rule exists so it does
+           not resize between them. Bounded by the viewport, never by what is inside. */
+        panelClassName="flex h-[80vh] max-h-[680px] min-h-[min(460px,80vh)] w-full max-w-lg flex-col"
       >
-        <div className="widget-body space-y-3">
+        <div className="flex min-h-0 flex-1 flex-col">
           {preview.isPending ? (
-            <div className="h-40 animate-pulse rounded-[8px] bg-[var(--surface-1)]" />
+            <div className="min-h-0 flex-1 p-4">
+              <Skeleton className="h-full rounded-[8px]" />
+            </div>
           ) : preview.isError ? (
-            <p className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              Couldn&apos;t load the preview — {preview.error instanceof Error ? preview.error.message : "please try again."}
-            </p>
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <p className="rounded-[6px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                Couldn&apos;t load the preview —{" "}
+                {preview.error instanceof Error
+                  ? preview.error.message
+                  : "please try again."}
+              </p>
+            </div>
           ) : !preview.data?.configured ? (
-            <p className="rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              No <strong>#updates</strong> channel is set. Pick one in Settings → Integrations
-              (&ldquo;Daily PM updates&rdquo;) before sending.
-            </p>
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <p className="rounded-[6px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                No <strong>#updates</strong> channel is set. Pick one in
+                Settings → Integrations (&ldquo;Daily PM updates&rdquo;) before
+                sending.
+              </p>
+            </div>
           ) : preview.data.devCount === 0 ? (
-            <p className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-xs text-[var(--text-3)]">
-              No developers have posted a {phase === "AM" ? "morning" : "PM"} update yet today — nothing to send.
-            </p>
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <p className="rounded-[6px] border border-[var(--border-2)] bg-white px-3 py-2 text-center text-xs text-[var(--text-3)]">
+                No developers have posted a {phase === "AM" ? "morning" : "PM"}{" "}
+                update yet today — nothing to send.
+              </p>
+            </div>
           ) : (
             <>
-              <p className="text-[11px] text-[var(--text-4)]">
-                This posts to <strong>#updates</strong> — {preview.data.devCount} dev
-                {preview.data.devCount === 1 ? "" : "s"}, {preview.data.taskCount} task
-                {preview.data.taskCount === 1 ? "" : "s"} {phase === "AM" ? "in progress" : "done today"}.
-                Grouped by project. Review before sending.
+              <p className="shrink-0 px-4 pt-4 text-[11px] text-[var(--text-4)]">
+                This posts to <strong>#updates</strong> —{" "}
+                {preview.data.devCount} dev
+                {preview.data.devCount === 1 ? "" : "s"},{" "}
+                {preview.data.taskCount} task
+                {preview.data.taskCount === 1 ? "" : "s"}{" "}
+                {phase === "AM" ? "in progress" : "done today or still in progress"}. Grouped by
+                project. Review before sending.
               </p>
-              <div className="max-h-[46vh] space-y-3 overflow-y-auto">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
                 {preview.data.projects.map((p) => (
                   <div
                     key={p.clientSlug}
                     className="rounded-[8px] border border-[var(--border-2)] bg-white px-3 py-2"
                   >
-                    <p className="text-sm font-semibold text-[var(--text-1)]">{p.clientName}</p>
+                    <p className="text-sm font-semibold text-[var(--text-1)]">
+                      {p.clientName}
+                    </p>
                     <div className="mt-1.5 space-y-2">
                       {p.devs.map((d) => (
                         <div key={d.name}>
-                          <p className="text-[12px] font-medium text-[var(--text-2)]">@{d.name}</p>
+                          <p className="text-[12px] font-medium text-[var(--text-2)]">
+                            @{d.name}
+                          </p>
                           {d.tasks.length > 0 ? (
-                            <ul className="mt-0.5 space-y-0.5">
-                              {d.tasks.map((t) => (
-                                <li key={t.taskId} className="text-[12px] text-[var(--text-2)]">
-                                  • {t.title}
-                                </li>
+                            // Same grouping and nesting as the Slack card (standup-report.ts),
+                            // so what is reviewed here is what gets posted.
+                            <div className="mt-0.5 space-y-1">
+                              {groupForReport(d.tasks, phase).map((g) => (
+                                <div key={g.key}>
+                                  <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--text-4)]">
+                                    {g.label}
+                                  </p>
+                                  <ul className="space-y-0.5">
+                                    {g.rows.map((r) => (
+                                      <li
+                                        key={`${g.key}-${r.kind}-${r.taskId}`}
+                                        className={
+                                          r.kind === "subtask"
+                                            ? "pl-4 text-[12px] text-[var(--text-3)]"
+                                            : "text-[12px] text-[var(--text-2)]"
+                                        }
+                                      >
+                                        {r.kind === "subtask" ? "↳" : "•"} {r.title}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
                               ))}
-                            </ul>
+                            </div>
                           ) : (
-                            <p className="mt-0.5 text-[12px] italic text-[var(--text-4)]">No tasks.</p>
+                            <p className="mt-0.5 text-[12px] italic text-[var(--text-4)]">
+                              No tasks.
+                            </p>
                           )}
                           {d.note?.trim() ? (
                             <p className="mt-1 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-3)]">
@@ -333,18 +396,24 @@ export function DailyRollup({
                 ))}
                 {preview.data.otherDevs.length > 0 ? (
                   <div className="rounded-[8px] border border-dashed border-[var(--border-2)] bg-white px-3 py-2">
-                    <p className="text-sm font-semibold text-[var(--text-1)]">Other updates</p>
+                    <p className="text-sm font-semibold text-[var(--text-1)]">
+                      Other updates
+                    </p>
                     <div className="mt-1.5 space-y-1.5">
                       {preview.data.otherDevs.map((d) => (
                         <div key={d.name}>
-                          <p className="text-[12px] font-medium text-[var(--text-2)]">@{d.name}</p>
+                          <p className="text-[12px] font-medium text-[var(--text-2)]">
+                            @{d.name}
+                          </p>
                           {d.note?.trim() ? (
                             <p className="mt-0.5 border-l-2 border-[var(--border-2)] pl-2 text-[12px] text-[var(--text-3)]">
                               {d.note.trim()}
                             </p>
                           ) : (
                             <p className="mt-0.5 text-[12px] italic text-[var(--text-4)]">
-                              {phase === "AM" ? "No tasks in progress." : "No tasks done today."}
+                              {phase === "AM"
+                                ? "No tasks in progress."
+                                : "No tasks done today."}
                             </p>
                           )}
                         </div>
@@ -356,8 +425,12 @@ export function DailyRollup({
             </>
           )}
 
-          <div className="flex items-center justify-end gap-2 border-t border-[var(--border-2)] pt-3">
-            <Button type="button" variant="secondary" onClick={() => setReviewing(false)}>
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--border-2)] px-4 py-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setReviewing(false)}
+            >
               Cancel
             </Button>
             <Button
@@ -387,9 +460,15 @@ function PushDot({ label, on }: { label: string; on: boolean }) {
     <span
       title={`${label} ${on ? "pushed" : "pending"}`}
       className="inline-flex items-center gap-1 text-[10px] font-medium"
-      style={{ fontFamily: "var(--font-mono)", color: on ? "#16A34A" : "#94A3B8" }}
+      style={{
+        fontFamily: "var(--font-mono)",
+        color: on ? "#16A34A" : "#94A3B8",
+      }}
     >
-      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: on ? "#16A34A" : "#CBD5E1" }} />
+      <span
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: on ? "#16A34A" : "#CBD5E1" }}
+      />
       {label}
     </span>
   );

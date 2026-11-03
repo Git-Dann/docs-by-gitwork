@@ -42,9 +42,12 @@ export function ToggleSwitch({ checked, disabled, onChange }: { checked: boolean
 export function PulseEmbedTopCard({
   collapsed = false,
   onToggle,
+  number = "04",
 }: {
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Section number, so a page can place the card in its own `NN //` sequence. */
+  number?: string;
 }) {
   const { data, isLoading, isError, error, refetch, isFetching } = usePulseEmbedConfig();
   const { mutate: save, isPending } = useSetPulseEmbedConfig();
@@ -60,7 +63,7 @@ export function PulseEmbedTopCard({
   return (
     <article className="widget-card h-full">
       <CardHeader
-        number="04"
+        number={number}
         title="PUBLIC EMBED"
         status={data ? (data.enabled ? "Enabled" : "Disabled") : undefined}
         collapsed={collapsed}
@@ -97,10 +100,9 @@ export function PulseEmbedTopCard({
       ) : (
         <div className="flex flex-1 flex-col p-4">
           <p className="text-[12px] leading-snug text-[var(--text-4)]">
-            The same free scanner as the sales page, as a widget to drop into someone else&apos;s
-            page. Every deterministic check runs; the triaged findings show with their evidence
-            and no email is asked for. The in-depth review — what it means, the fix order, the
-            advisory tail — is the ask.
+            The sales page&apos;s scanner as a widget for someone else&apos;s page. Every
+            automated check runs and the findings show with their evidence; no email is asked
+            for. The in-depth review (what it means and the order to fix it) is the ask.
           </p>
 
           <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-[var(--border-2)] pt-3">

@@ -2,6 +2,7 @@ import { CATEGORIES } from "./categories";
 import { type DnsResolution, type ExtendedCheckContext, type PulseScanCheckInput, resolveDnsRecord, resolveAllDnsRecords, probeInconclusive, skip, platformIs } from "./_types";
 import { analyzeHost, boundedDmarcCandidates, organizationalDomainCandidates } from "@/server/pulse-lite/registrable-domain";
 import { type DmarcTags, parseDmarcTags } from "@/server/pulse-scan";
+import { dkimVerdict } from "./dkim-record";
 
 const CATEGORY = CATEGORIES.EMAIL;
 
@@ -12,16 +13,7 @@ const ALL_CHECKS: Array<[string, string]> = [
   ["tls_rpt_record", "TLS-RPT reporting record"],
   ["spf_hardfail", "SPF uses -all (hardfail)"],
   ["dmarc_quarantine_reject", "DMARC policy: quarantine or reject"],
-  ["email_unsubscribe_signal", "Unsubscribe / list management link"],
   ["transactional_subdomain", "Dedicated sending subdomain"],
-  ["can_spam_address", "Physical address in email footer"],
-  ["casl_double_optin", "Double opt-in / CASL signals"],
-  ["plain_text_email", "Plain text email alternative"],
-  ["bounce_handling_signal", "Bounce handling / list hygiene"],
-  ["email_preview_configured", "Email preview text configured"],
-  ["email_warm_up_signals", "Reputable ESP detected"],
-  ["mailing_list_segmentation", "Email segmentation / tagging signals"],
-  ["email_mx_present", "Domain accepts email through MX records"],
   ["spf_single_record", "Exactly one SPF policy is published"],
   ["dmarc_aggregate_reporting", "DMARC aggregate reports have a destination"],
   ["dmarc_full_coverage", "DMARC policy applies to 100% of messages"],
@@ -226,9 +218,57 @@ export function dmarcPolicyChecks(hostname: string, applicable: ApplicableDmarc)
   };
 }
 
+/**
+ * Parent names RFC 7489 §6.6.3 discovery retries for `hostname`, most specific first,
+ * bounded. The organizational domain is defined by the Public Suffix List, so a host
+ * under a curated platform namespace that is NOT on the PSL (www.squarespace.com)
+ * falls back to that namespace (squarespace.com, p=reject). That knowledge lives in
+ * one place — `NAMESPACES_NOT_ON_PSL` in registrable-domain.ts — and is reached
+ * through `organizationalDomainCandidates`.
+ */
+export function dmarcDiscoveryCandidates(hostname: string): string[] {
+  return boundedDmarcCandidates(organizationalDomainCandidates(hostname));
+}
+
+/** Names a sending subdomain commonly takes, queried for MX (an ESP's return-path / bounce domain carries one). */
+export const SENDING_SUBDOMAIN_LABELS = ["mail", "send", "em", "mg", "bounce", "bounces", "email", "mail2", "mailer"] as const;
+/** Names an ESP commonly asks you to CNAME to it (return-path / link branding). */
+export const SENDING_CNAME_LABELS = ["em", "bounce", "bounces", "pm-bounces", "email", "mg"] as const;
+/** CNAME targets that belong to an email service provider. */
+const ESP_CNAME_TARGET = /(?:sendgrid\.net|mailgun\.org|mtasv\.net|amazonses\.com|sparkpostmail\.com|mandrillapp\.com|mcsv\.net|rsgsv\.net|sendinblue\.com|brevo\.com|mailjet\.com|resend\.(?:com|dev)|postmarkapp\.com|customer\.io|mailchimp\.com|klaviyomail\.com|hubspotemail\.net)\.?$/i;
+
+export function transactionalSubdomainCheck(
+  hostname: string,
+  probes: Array<{ name: string; kind: "MX" | "CNAME"; lookup: DnsResolution }>,
+): PulseScanCheckInput {
+  const base = { category: CATEGORY, checkKey: "transactional_subdomain", label: "Dedicated sending subdomain" } as const;
+  const found = probes.find((probe) => probe.lookup.ok && probe.lookup.records.length > 0
+    && (probe.kind === "MX" || probe.lookup.records.some((record) => ESP_CNAME_TARGET.test(record.trim()))));
+  if (found && found.lookup.ok) {
+    return { ...base, status: "PASS", detail: `Dedicated sending subdomain detected: ${found.name} (${found.kind} ${found.lookup.records[0]}).`, evidence: `${found.name} ${found.kind} ${found.lookup.records.join(", ")}` };
+  }
+  const failed = probes.filter((probe) => !probe.lookup.ok);
+  return {
+    ...base,
+    status: "INCONCLUSIVE",
+    confidence: "LOW",
+    confidenceReason: "A sending subdomain can have any name; only common ones were queried.",
+    detail: `None of the common sending-subdomain names (${probes.map((probe) => probe.name.split(".")[0]).filter((v, i, a) => a.indexOf(v) === i).join(", ")}) under ${hostname} has an MX record or an email-provider CNAME${failed.length ? `, and ${failed.length} of those lookups did not complete` : ""}. A sending subdomain can be named anything (SendGrid's are em plus digits), so this does not show there is none. If you send transactional email from the root domain, moving it to a subdomain keeps its reputation separate.`,
+  };
+}
+
+/** The enforcing DMARC policy (with pct 100) that governs mail from the host, or null. */
+function enforcingDmarc(applicable: ApplicableDmarc): string | null {
+  const policy = governingDmarcPolicy(applicable);
+  if (policy !== "quarantine" && policy !== "reject") return null;
+  if (applicable.kind !== "own" && applicable.kind !== "inherited") return null;
+  const pct = applicable.tags.raw.match(/(?:^|;)\s*pct\s*=\s*(\d{1,3})\b/i);
+  if (pct && parseInt(pct[1], 10) < 100) return null;
+  return policy;
+}
+
 export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { hostname } = ctx;
-  const html = ctx.pageResult.html;
 
   if (platformIs(ctx.platform, "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CLI_TOOL")) {
     return skip(CATEGORY, ALL_CHECKS, "Not applicable — email deliverability checks are not relevant for this platform type.");
@@ -246,7 +286,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   // DMARC additionally needs its organizational-domain candidates (RFC 7489
   // §6.6.3) — see the section note above `resolveApplicableDmarc`. They are
   // queried in the same wave, so discovery costs no extra round trip.
-  const dmarcParentNames = boundedDmarcCandidates(organizationalDomainCandidates(hostname));
+  const dmarcParentNames = dmarcDiscoveryCandidates(hostname);
   const [[dkim, bimi, mtaSts, tlsRptLookup, spfLookup, dmarcLookup, mxLookup], dmarcParentLookups] = await Promise.all([
     Promise.all([
       resolveAllDnsRecords([
@@ -289,8 +329,8 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   if (!dkim.ok) {
     checks.push(probeInconclusive(CATEGORY, "dkim_record_present", "DKIM record configured", dnsFailed(dkim.reason)));
   } else {
-    const hasDkim = dkim.records.some((r) => r.includes("v=DKIM1"));
-    checks.push({ category: CATEGORY, checkKey: "dkim_record_present", label: "DKIM record configured", status: hasDkim ? "PASS" : "WARN", detail: hasDkim ? "DKIM TXT record detected — outbound email is cryptographically signed." : "No common DKIM selectors found — DKIM signing is required for inbox placement and DMARC enforcement. Configure DKIM with your ESP." });
+    // A revoked key (empty p=) is not a key, and four selectors are not all of them (dkim-record.ts).
+    checks.push(dkimVerdict({ category: CATEGORY, checkKey: "dkim_record_present", label: "DKIM record configured" }, dkim, spfLookup));
   }
 
   // BIMI
@@ -298,7 +338,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "bimi_record_present", "BIMI DNS record (brand in inbox)", dnsFailed(bimi.reason)));
   } else {
     const hasBimi = bimi.records.some((r) => r.includes("v=BIMI1"));
-    checks.push({ category: CATEGORY, checkKey: "bimi_record_present", label: "BIMI DNS record (brand in inbox)", status: hasBimi ? "PASS" : "WARN", detail: hasBimi ? "BIMI record detected — your brand logo will appear in supporting email clients." : "No BIMI record — Brand Indicators for Message Identification (BIMI) displays your logo in Gmail, Yahoo, and Apple Mail inboxes, increasing open rates." });
+    checks.push({ category: CATEGORY, checkKey: "bimi_record_present", label: "BIMI DNS record (brand in inbox)", status: hasBimi ? "PASS" : "NOT_APPLICABLE", detail: hasBimi ? "BIMI record detected — your brand logo will appear in supporting email clients." : "Optional — not having it is not a defect. No BIMI record at default._bimi; BIMI shows your logo beside your mail in Gmail, Yahoo and Apple Mail, and needs DMARC at quarantine or reject (and, for Gmail, a paid mark certificate) first." });
   }
 
   // MTA-STS
@@ -306,7 +346,12 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "mta_sts_policy", "MTA-STS enforced mail transfer", dnsFailed(mtaSts.reason)));
   } else {
     const hasMtaSts = mtaSts.records.some((r) => r.includes("v=STSv1"));
-    checks.push({ category: CATEGORY, checkKey: "mta_sts_policy", label: "MTA-STS enforced mail transfer", status: hasMtaSts ? "PASS" : "WARN", detail: hasMtaSts ? "MTA-STS policy detected — inbound email is enforced to use TLS." : "No MTA-STS policy — MTA-STS prevents SMTP downgrade attacks and ensures inbound email is delivered over encrypted connections." });
+    // RFC 7505: a lone `0 .` MX declares the domain accepts no email, so there is
+    // no inbound transfer for MTA-STS to protect.
+    const declaresNullMx = mxLookup.ok && mxLookup.records.length > 0 && mxLookup.records.every((r) => /^\s*0\s+\.\s*$/.test(r));
+    checks.push(!hasMtaSts && declaresNullMx
+      ? { category: CATEGORY, checkKey: "mta_sts_policy", label: "MTA-STS enforced mail transfer", status: "NOT_APPLICABLE", detail: `${hostname} publishes a null MX record (RFC 7505), declaring that it accepts no email, so there is no inbound mail transfer for MTA-STS to protect.` }
+      : { category: CATEGORY, checkKey: "mta_sts_policy", label: "MTA-STS enforced mail transfer", status: hasMtaSts ? "PASS" : "WARN", detail: hasMtaSts ? `MTA-STS TXT record (v=STSv1) detected — supporting senders fetch the policy from mta-sts.${hostname} before delivering inbound email over TLS.` : "No MTA-STS policy — MTA-STS prevents SMTP downgrade attacks and ensures inbound email is delivered over encrypted connections." });
   }
 
   // TLS-RPT
@@ -323,10 +368,27 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   if (!spfLookup.ok) {
     checks.push(probeInconclusive(CATEGORY, "spf_hardfail", "SPF uses -all (hardfail)", dnsFailed(spfLookup.reason)));
   } else {
-    const spf = spfRecords.find((r) => r.includes("v=spf1"));
-    const hasSpfHardfail = spf ? spf.includes("-all") : false;
-    const hasSpfSoftfail = spf ? spf.includes("~all") : false;
-    checks.push({ category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: hasSpfHardfail ? "PASS" : spf ? "WARN" : "WARN", detail: hasSpfHardfail ? "SPF -all (hardfail) configured — unauthorised senders are rejected." : hasSpfSoftfail ? "SPF uses ~all (softfail) — upgrade to -all (hardfail) to instruct receivers to reject rather than mark messages from unauthorised senders." : "No SPF record found — configure SPF to declare authorised sending servers." });
+    // RFC 7208 §3.3: a long record arrives as several quoted chunks concatenated
+    // WITHOUT a separator. The all-mechanism is matched as a whole term, so
+    // `include:spf-all.example` is not read as `-all`.
+    const spf = spfRecords
+      .map((r) => r.replace(/"\s*"/g, "").replace(/"/g, "").trim())
+      .find((r) => /^v=spf1(?:\s|$)/i.test(r));
+    const allTerm = spf?.match(/(?:^|\s)([-~?+]?all)(?=\s|$)/i)?.[1]?.toLowerCase() ?? null;
+    const hasSpfHardfail = allTerm === "-all";
+    const hasSpfSoftfail = allTerm === "~all";
+    // RFC 7208 §6.1: with no `all` mechanism, `redirect=` hands the final verdict
+    // to another record that this probe does not evaluate.
+    const spfRedirect = spf && !allTerm ? spf.match(/(?:^|\s)redirect=(\S+)/i)?.[1] ?? null : null;
+    // ~all under an ENFORCING DMARC policy is the recommended setup (RFC 7489 §10.1): DMARC
+    // already rejects unaligned mail, and -all can make a receiver drop a message at
+    // SMTP before DKIM alignment — the thing that rescues forwarded mail — is checked.
+    const dmarcEnforcement = enforcingDmarc(dmarcApplicable);
+    checks.push(hasSpfSoftfail && dmarcEnforcement
+      ? { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: "PASS", detail: `SPF ends in ~all (softfail) and the DMARC policy governing ${hostname} is ${dmarcEnforcement} at 100%. That is the recommended pairing: DMARC rejects mail that fails authentication, and ~all avoids receivers discarding forwarded mail before DKIM is checked. -all adds nothing here.`, evidence: spf }
+      : spfRedirect
+      ? { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: "INCONCLUSIVE", confidence: "LOW", detail: `The SPF record at ${hostname} delegates its policy with redirect=${spfRedirect}. Pulse did not evaluate that record, so whether unauthorised senders end in -all or ~all is unknown.`, evidence: spf }
+      : { category: CATEGORY, checkKey: "spf_hardfail", label: "SPF uses -all (hardfail)", status: hasSpfHardfail ? "PASS" : "WARN", detail: hasSpfHardfail ? "SPF -all (hardfail) configured — unauthorised senders are rejected." : hasSpfSoftfail ? "SPF uses ~all (softfail) — upgrade to -all (hardfail) to instruct receivers to reject rather than mark messages from unauthorised senders." : spf ? `The SPF record at ${hostname} ${allTerm ? `ends in ${allTerm}` : "has no all mechanism"} rather than -all, so receivers are not told to reject mail from unauthorised senders. End the record with -all.` : `No SPF record is published at ${hostname} — configure SPF to declare authorised sending servers. SPF is not inherited from parent domains (RFC 7208 §3.1).` });
   }
 
   // DMARC quarantine/reject — the governing policy, from the record RFC 7489
@@ -336,12 +398,6 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
   // whose own policy was `p=none`.
   checks.push(dmarcChecks.policy);
 
-  if (!mxLookup.ok) {
-    checks.push(probeInconclusive(CATEGORY, "email_mx_present", "Domain accepts email through MX records", dnsFailed(mxLookup.reason)));
-  } else {
-    const mxRecords = mxLookup.records;
-    checks.push({ category: CATEGORY, checkKey: "email_mx_present", label: "Domain accepts email through MX records", status: mxRecords.length > 0 ? "PASS" : "WARN", detail: mxRecords.length > 0 ? `${mxRecords.length} MX record${mxRecords.length === 1 ? "" : "s"} detected for the domain.` : "No MX record was found. If this domain sends customer email, configure a monitored receiving route for replies, abuse reports, and delivery failures." });
-  }
 
   // The four checks below are DERIVED from the lookups above. This is where the
   // leak was worst: SPF and DMARC already reported their own lookup failure, but
@@ -353,7 +409,7 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "spf_single_record", "Exactly one SPF policy is published", dnsFailed(spfLookup.reason)));
   } else {
     const publishedSpf = spfRecords.filter((record) => /\bv=spf1\b/i.test(record));
-    checks.push({ category: CATEGORY, checkKey: "spf_single_record", label: "Exactly one SPF policy is published", status: publishedSpf.length === 1 ? "PASS" : "WARN", detail: publishedSpf.length === 1 ? "Exactly one SPF policy is published, so receivers have an unambiguous sender-authorisation rule." : publishedSpf.length > 1 ? `${publishedSpf.length} SPF policies are published. Multiple SPF records cause a permanent evaluation error; merge them into one policy.` : "No SPF policy was found." });
+    checks.push({ category: CATEGORY, checkKey: "spf_single_record", label: "Exactly one SPF policy is published", status: publishedSpf.length === 1 ? "PASS" : "WARN", detail: publishedSpf.length === 1 ? "Exactly one SPF policy is published, so receivers have an unambiguous sender-authorisation rule." : publishedSpf.length > 1 ? `${publishedSpf.length} SPF policies are published. Multiple SPF records cause a permanent evaluation error; merge them into one policy.` : `No SPF policy is published at ${hostname}. SPF is not inherited from parent domains (RFC 7208 §3.1), so this name has none of its own.` });
   }
 
   // Both read the SAME applicable record as the policy check above. They used to
@@ -367,54 +423,30 @@ export async function runEmailDeliverabilityChecks(ctx: ExtendedCheckContext): P
     checks.push(probeInconclusive(CATEGORY, "tls_rpt_destination", "TLS-RPT reports have a destination", dnsFailed(tlsRptLookup.reason)));
   } else {
     const tlsRpt = tlsRptRecords.find((record) => /v=TLSRPTv1/i.test(record));
-    const hasTlsDestination = Boolean(tlsRpt && /(?:^|;)\s*rua=mailto:[^;\s]+/i.test(tlsRpt));
-    checks.push({ category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: hasTlsDestination ? "PASS" : "WARN", detail: hasTlsDestination ? "TLS-RPT publishes a mailto reporting destination." : "TLS-RPT has no valid mailto reporting destination. A version tag alone cannot deliver reports about failed or downgraded TLS sessions." });
+    // RFC 8460 §3: `rua` may be mailto: OR https:. And with no TLS-RPT record at all there is
+    // no destination to judge — `tls_rpt_record` already reports the absence, so a second WARN
+    // here ("has no valid destination") contradicted it and double-counted one gap.
+    const hasTlsDestination = Boolean(tlsRpt && /(?:^|;)\s*rua=(?:mailto:|https:)[^;\s]+/i.test(tlsRpt));
+    checks.push(!tlsRpt
+      ? { category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: "NOT_APPLICABLE", detail: "No TLS-RPT record is published, so there is no reporting destination to check." }
+      : { category: CATEGORY, checkKey: "tls_rpt_destination", label: "TLS-RPT reports have a destination", status: hasTlsDestination ? "PASS" : "WARN", detail: hasTlsDestination ? "TLS-RPT publishes a reporting destination." : "The TLS-RPT record has no valid rua= destination (mailto: or https:). A version tag alone cannot deliver reports about failed or downgraded TLS sessions." });
   }
 
-  // Unsubscribe signal
-  const hasUnsubscribe = /unsubscribe|list.unsubscribe|opt.out.*email|email.*preferences/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "email_unsubscribe_signal", label: "Unsubscribe / list management link", status: hasUnsubscribe ? "PASS" : "WARN", detail: hasUnsubscribe ? "Unsubscribe / email preference signals detected on page." : "No unsubscribe link signals detected — CAN-SPAM, GDPR, and CASL all require easy unsubscribe; Google/Yahoo now enforce List-Unsubscribe headers." });
-
-  // Transactional sending subdomain
-  const sendingSubdomains = await resolveAllDnsRecords([
-    [`mail.${hostname}`, "MX"],
-    [`send.${hostname}`, "MX"],
-    [`em.${hostname}`, "MX"],
+  // Transactional sending subdomain. Sending subdomains can be named anything
+  // (SendGrid's are em<digits>), so Pulse can only test common names: finding one
+  // is evidence, NOT finding one is not evidence of absence — INCONCLUSIVE, not WARN.
+  const [sendingMx, sendingCname] = await Promise.all([
+    Promise.all(SENDING_SUBDOMAIN_LABELS.map((label) => resolveDnsRecord(`${label}.${hostname}`, "MX"))),
+    Promise.all(SENDING_CNAME_LABELS.map((label) => resolveDnsRecord(`${label}.${hostname}`, "CNAME"))),
   ]);
-  if (!sendingSubdomains.ok) {
-    checks.push(probeInconclusive(CATEGORY, "transactional_subdomain", "Dedicated sending subdomain", dnsFailed(sendingSubdomains.reason)));
-  } else {
-    const hasTransactionalSubdomain = sendingSubdomains.records.length > 0;
-    checks.push({ category: CATEGORY, checkKey: "transactional_subdomain", label: "Dedicated sending subdomain", status: hasTransactionalSubdomain ? "PASS" : "WARN", detail: hasTransactionalSubdomain ? "Dedicated email sending subdomain detected (mail.*, send.*, em.*)." : "No dedicated sending subdomain detected — use a subdomain (mail.yourdomain.com) for transactional email to protect your root domain's reputation." });
-  }
+  checks.push(transactionalSubdomainCheck(hostname, [
+    ...SENDING_SUBDOMAIN_LABELS.map((label, i) => ({ name: `${label}.${hostname}`, kind: "MX" as const, lookup: sendingMx[i] })),
+    ...SENDING_CNAME_LABELS.map((label, i) => ({ name: `${label}.${hostname}`, kind: "CNAME" as const, lookup: sendingCname[i] })),
+  ]));
 
-  // CAN-SPAM address
-  const hasPhysicalAddress = /\d+\s+[a-z]+\s+(street|st|avenue|ave|road|rd|lane|ln|drive|dr|boulevard|blvd|way|court|ct)\b/i.test(html) || /p\.?o\.?\s*box\s+\d+/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "can_spam_address", label: "Physical address in email footer", status: hasPhysicalAddress ? "PASS" : "WARN", detail: hasPhysicalAddress ? "Physical mailing address detected on page." : "No physical address detected — CAN-SPAM requires a valid physical postal address in every commercial email." });
-
-  // CASL double opt-in
-  const hasDoubleOptin = /double.*opt.in|confirm.*subscription|confirm.*email|verify.*subscription|casl/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "casl_double_optin", label: "Double opt-in / CASL signals", status: hasDoubleOptin ? "PASS" : "WARN", detail: hasDoubleOptin ? "Double opt-in / CASL signals detected." : "No double opt-in signals detected — Canada's CASL requires express consent for commercial emails; double opt-in is best practice globally." });
-
-  // Plain text email
-  const hasPlainTextEmail = /plain.*text.*email|text.*only.*email|email.*client.*support/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "plain_text_email", label: "Plain text email alternative", status: hasPlainTextEmail ? "PASS" : "WARN", detail: hasPlainTextEmail ? "Plain text email support signals detected." : "No plain text email signals — always send a plain text alternative with HTML emails; some email clients and spam filters prefer it." });
-
-  // Bounce handling
-  const hasBounceHandling = /bounce.*handling|list.*hygiene|clean.*list|invalid.*email|email.*validation|hard.*bounce/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "bounce_handling_signal", label: "Bounce handling / list hygiene", status: hasBounceHandling ? "PASS" : "WARN", detail: hasBounceHandling ? "Bounce handling / list hygiene signals detected." : "No bounce handling signals — high bounce rates damage sender reputation. Use an ESP with automated bounce handling and list hygiene." });
-
-  // Email preview text
-  const hasPreviewText = /preview.*text|preheader|email.*preview|preview.*message/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "email_preview_configured", label: "Email preview text configured", status: hasPreviewText ? "PASS" : "WARN", detail: hasPreviewText ? "Email preview / preheader text configuration signals detected." : "No email preview text signals — preheader text appears in inbox alongside the subject line and significantly affects open rates." });
-
-  // ESP detection
-  const hasReputableEsp = /sendgrid|mailchimp|klaviyo|mailgun|postmark|ses\b|amazon ses|sparkpost|brevo|sendinblue|resend\.com|loops\.so/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "email_warm_up_signals", label: "Reputable ESP detected", status: hasReputableEsp ? "PASS" : "WARN", detail: hasReputableEsp ? "Reputable Email Service Provider (ESP) detected — sending through a reputable ESP helps inbox placement." : "No reputable ESP detected — use a dedicated ESP (SendGrid, Postmark, Resend) rather than direct SMTP for reliable deliverability." });
-
-  // Segmentation
-  const hasSegmentation = /segment.*email|email.*segment|subscriber.*tag|tag.*subscriber|list.*segment|audience.*segment/i.test(html);
-  checks.push({ category: CATEGORY, checkKey: "mailing_list_segmentation", label: "Email segmentation / tagging signals", status: hasSegmentation ? "PASS" : "WARN", detail: hasSegmentation ? "Email segmentation / tagging signals detected." : "No email segmentation signals — segmenting email lists by behaviour, plan tier, or persona dramatically improves open rates and reduces unsubscribes." });
+  // What a product's own emails contain (unsubscribe link, postal address, preview text,
+  // a plain-text part) is read from its email templates in the repository
+  // (email-templates.ts), not guessed from words on its website.
 
   return checks;
 }

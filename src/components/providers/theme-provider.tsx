@@ -1,5 +1,6 @@
 "use client";
 
+import { SEASONAL_CHANGED_EVENT, SEASONAL_KEY, type SeasonalThemeSetting } from "@/lib/seasonal-themes";
 import {
   createContext,
   useCallback,
@@ -34,7 +35,7 @@ const EVENT = "gitwork:theme-changed";
  */
 // Kept in sync with the inline anti-flash script in src/app/layout.tsx. The `(?:\/|$)`
 // tail matches both `/demo/…` module pages AND the bare `/demo` hub (no trailing slash).
-const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embed|demo|apply|vet|login|portal\/login)(?:\/|$)/;
+const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|guidelines|onboarding|preview|embed|demo|apply|vet|login|portal\/login)(?:\/|$)/;
 
 /**
  * Routes that must ALWAYS render dark, regardless of the visitor's OS / stored
@@ -44,6 +45,32 @@ const FORCE_LIGHT = /^\/(docs|report|sign|timeline|brand|onboarding|preview|embe
  */
 const FORCE_DARK = /^\/edge(?:\/|$)/;
 
+/**
+ * The Halloween theme (src/components/seasonal/halloween.tsx): dark, with pumpkin orange as the
+ * brand colour, fog and ghosts. Only on the app and the demo — never on a client deliverable
+ * or a sign-in page. Kept in sync with the anti-flash script in src/app/layout.tsx.
+ */
+export const HALLOWEEN_PATHS = /^\/(app|demo)(?:\/|$)/;
+
+/** The seasonal theme in force (an id, or null), copied from the workspace setting into storage. */
+function readSeasonalTheme(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = window.localStorage.getItem(SEASONAL_KEY);
+    return v && v !== "off" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function seasonalOn(path: string | null | undefined, seasonal: string | null, id: string): boolean {
+  return seasonal === id && !!path && HALLOWEEN_PATHS.test(path);
+}
+
+function halloweenOn(path: string | null | undefined, wanted: boolean): boolean {
+  return wanted && !!path && HALLOWEEN_PATHS.test(path);
+}
+
 type ThemeContextValue = {
   /** The user's chosen mode. */
   mode: ThemeMode;
@@ -52,6 +79,11 @@ type ThemeContextValue = {
   /** True when the current route is forced light (toggle should be hidden/disabled). */
   forcedLight: boolean;
   setMode: (mode: ThemeMode) => void;
+  /** The Halloween theme is showing on this route. */
+  halloween: boolean;
+  /** The Christmas theme is showing on this route (snow; keeps the user's light/dark mode). */
+  christmas: boolean;
+  /** This route can show it (so the pumpkin toggle is offered). */
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -82,16 +114,18 @@ function readStoredMode(): ThemeMode {
   return "system";
 }
 
-function resolveTheme(mode: ThemeMode, path: string | null | undefined): "light" | "dark" {
-  if (isForcedDark(path)) return "dark";
+function resolveTheme(mode: ThemeMode, path: string | null | undefined, halloween = false): "light" | "dark" {
+  if (isForcedDark(path) || halloweenOn(path, halloween)) return "dark";
   if (isForcedLight(path)) return "light";
   if (mode === "system") return systemPrefersDark() ? "dark" : "light";
   return mode;
 }
 
-function applyTheme(resolved: "light" | "dark") {
+function applyTheme(resolved: "light" | "dark", halloween = false, christmas = false) {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", resolved);
+    document.documentElement.toggleAttribute("data-halloween", halloween);
+    document.documentElement.toggleAttribute("data-christmas", christmas);
   }
 }
 
@@ -101,32 +135,41 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Lazy-init from storage on the client so the first applied value matches the
   // anti-flash script (avoids a system→stored flicker). SSR returns "system".
   const [mode, setModeState] = useState<ThemeMode>(() => readStoredMode());
+  const [seasonal, setSeasonal] = useState<string | null>(() => readSeasonalTheme());
+  const wantsHalloween = seasonal === "halloween";
   const [resolved, setResolved] = useState<"light" | "dark">(() =>
     typeof window === "undefined"
       ? "light"
-      : resolveTheme(readStoredMode(), window.location.pathname),
+      : resolveTheme(readStoredMode(), window.location.pathname, readSeasonalTheme() === "halloween"),
   );
+  const halloween = halloweenOn(pathname, wantsHalloween);
+  const christmas = seasonalOn(pathname, seasonal, "christmas");
 
   // Re-resolve + apply whenever the mode or the route changes (route matters for
   // the forced-light deliverable pages on client-side navigation).
   useEffect(() => {
-    const next = resolveTheme(mode, pathname);
+    const next = resolveTheme(mode, pathname, wantsHalloween);
     setResolved(next);
-    applyTheme(next);
-  }, [mode, pathname]);
+    applyTheme(next, halloweenOn(pathname, wantsHalloween), seasonalOn(pathname, seasonal, "christmas"));
+  }, [mode, pathname, wantsHalloween, seasonal]);
 
   // Sync across tabs / components, and follow live OS changes while in `system`.
   useEffect(() => {
-    const onModeChanged = () => setModeState(readStoredMode());
+    const onModeChanged = () => {
+      setModeState(readStoredMode());
+      setSeasonal(readSeasonalTheme());
+    };
     window.addEventListener(EVENT, onModeChanged);
     window.addEventListener("storage", onModeChanged);
 
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemChanged = () => {
       if (readStoredMode() === "system") {
-        const next = resolveTheme("system", window.location.pathname);
+        const path = window.location.pathname;
+        const st = readSeasonalTheme();
+        const next = resolveTheme("system", path, st === "halloween");
         setResolved(next);
-        applyTheme(next);
+        applyTheme(next, halloweenOn(path, st === "halloween"), seasonalOn(path, st, "christmas"));
       }
     };
     mq.addEventListener("change", onSystemChanged);
@@ -148,9 +191,50 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new Event(EVENT));
   }, []);
 
+  // The seasonal theme is a WORKSPACE setting (Settings → Appearance). Read it on the app
+  // (never on the demo, which has no session) and copy it into storage, so the anti-flash
+  // script paints it on the next load before React runs.
+  const onApp = !!pathname && /^\/app(?:\/|$)/.test(pathname);
+  useEffect(() => {
+    if (!onApp) return;
+    let cancelled = false;
+    const load = () => {
+      fetch("/api/settings/seasonal-theme", { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body: { data?: SeasonalThemeSetting } | SeasonalThemeSetting | null) => {
+          if (cancelled || !body) return;
+          const setting = ("data" in body ? body.data : body) as SeasonalThemeSetting | undefined;
+          if (!setting || typeof setting.enabled !== "boolean") return;
+          try {
+            window.localStorage.setItem(SEASONAL_KEY, setting.active ?? "off");
+          } catch {
+            /* storage blocked — still applies for this page */
+          }
+          setSeasonal(setting.active);
+        })
+        .catch(() => {
+          /* keep what's stored: a failed read must not flip the theme */
+        });
+    };
+    load();
+    window.addEventListener(SEASONAL_CHANGED_EVENT, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SEASONAL_CHANGED_EVENT, load);
+    };
+  }, [onApp]);
+
   return (
     <ThemeContext.Provider
-      value={{ mode, resolved, forcedLight: isForcedLight(pathname), setMode }}
+      value={{
+        mode,
+        resolved,
+        // Halloween overrides a forced-light route (the demo), so the theme toggle steps aside.
+        forcedLight: isForcedLight(pathname) && !halloween,
+        setMode,
+        halloween,
+        christmas,
+      }}
     >
       {children}
     </ThemeContext.Provider>

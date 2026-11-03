@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireScanAccess } from "@/server/pulse";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -15,6 +17,11 @@ export const maxDuration = 90;
 // per-connection `sent` set fresh on reconnect and the client de-dupes by
 // checkKey, so no data is lost.
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const SCALAR_SELECT = {
   status: true,
   healthScore: true,
@@ -23,8 +30,13 @@ const SCALAR_SELECT = {
   completedAt: true,
   errorCode: true,
   errorMessage: true,
-} as const;
+} as const satisfies Prisma.PulseScanSelect;
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const CHECK_SELECT = {
   id: true,
   scanId: true,
@@ -36,17 +48,26 @@ const CHECK_SELECT = {
   evidence: true,
   sortOrder: true,
   createdAt: true,
-} as const;
+} as const satisfies Prisma.PulseScanCheckSelect;
 
 function sseEvent(type: string, data: Record<string, unknown>): string {
   return `data: ${JSON.stringify({ type, ...data })}\n\n`;
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
+
+  // ⚠️ SSE, so it cannot use `fromError` — the guard is caught and turned into the same
+  // 404 the other sub-routes return. Without it a guest could stream the live progress
+  // and check results of any scan in the workspace by id.
+  try {
+    await requireScanAccess(request, scanId);
+  } catch {
+    return new Response("Scan not found", { status: 404 });
+  }
 
   const initial = await prisma.pulseScan.findUnique({ where: { id: scanId }, select: SCALAR_SELECT });
   if (!initial) return new Response("Scan not found", { status: 404 });

@@ -4,19 +4,28 @@ import { loadWikiMonitors, createMonitor, setWikiMonitorsEnabled } from "@/serve
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { z } from "zod";
+import { MAX_BODY, headersField } from "@/lib/monitor-request";
 
 export const maxDuration = 60;
 
 const monitorInputSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(["HTTP", "TCP"]),
-  target: z.string().min(1),
+  type: z.enum(["HTTP", "TCP", "HEARTBEAT"]),
+  // A heartbeat has no target — Foundry gives it a ping URL instead.
+  target: z.string().default(""),
   method: z.string().optional(),
   expectedStatus: z.number().int().min(100).max(599).nullable().optional(),
   keyword: z.string().max(200).nullable().optional(),
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+  /** "Name: value" per line. Blank or null clears; omitted keeps what's saved. */
+  requestHeaders: z.string().max(100_000).nullable().optional(),
+  requestBody: z.string().max(MAX_BODY).nullable().optional(),
+}).refine((v) => v.type === "HEARTBEAT" || v.target.trim().length > 0, {
+  message: "A target is required",
+  path: ["target"],
 });
 
 const toggleSchema = z.object({ enabled: z.boolean() });
@@ -47,7 +56,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     const clientId = await resolveClientId(slug);
     if (!clientId) return apiError("Client not found", 404);
     const body = monitorInputSchema.parse(await req.json());
-    return apiOk(await createMonitor(clientId, body));
+    const headers = headersField(body.requestHeaders);
+    if (headers.error) return apiError(headers.error, 400);
+    return apiOk(await createMonitor(clientId, { ...body, requestHeaders: headers.value }));
   } catch (err) {
     return fromError(err);
   }

@@ -196,7 +196,25 @@ export interface ItemStateValues {
  * an approval workflow, and a client who mis-marks something must be able to undo
  * it without asking us.
  */
-export function applyItemPatch(current: ItemStateValues, patch: ItemPatch): ItemStateValues {
+/**
+ * Uploaded files are evidence too, exactly like a pasted link. The file count lives
+ * in its own table, so the caller passes it in rather than it riding on the patch
+ * (the patch is also the shape the public route accepts, and a client must not be
+ * able to claim files they never uploaded).
+ *
+ *  - `fileCount`    — files on the item AFTER this operation (default 0).
+ *  - `filesChanged` — this operation added or removed a file.
+ */
+export interface ItemEvidence {
+  fileCount?: number;
+  filesChanged?: boolean;
+}
+
+export function applyItemPatch(
+  current: ItemStateValues,
+  patch: ItemPatch,
+  evidence: ItemEvidence = {},
+): ItemStateValues {
   const next: ItemStateValues = { ...current };
 
   if (patch.note !== undefined) next.note = patch.note?.trim() ? patch.note : null;
@@ -214,11 +232,14 @@ export function applyItemPatch(current: ItemStateValues, patch: ItemPatch): Item
     return next;
   }
 
-  if (linkChanged) {
-    // Rule 1 — a link arriving on an untouched requirement resolves it.
-    if (next.link && current.status === "NEEDED") next.status = "PROVIDED";
+  if (linkChanged || evidence.filesChanged) {
+    // A link OR an uploaded file is evidence; clearing one while the other remains
+    // is not "evidence withdrawn".
+    const hasEvidence = Boolean(next.link) || (evidence.fileCount ?? 0) > 0;
+    // Rule 1 — evidence arriving on an untouched requirement resolves it.
+    if (hasEvidence && current.status === "NEEDED") next.status = "PROVIDED";
     // Rule 2 — evidence withdrawn, so the claim goes with it.
-    else if (!next.link && current.status === "PROVIDED") next.status = "NEEDED";
+    else if (!hasEvidence && current.status === "PROVIDED") next.status = "NEEDED";
   }
 
   return next;

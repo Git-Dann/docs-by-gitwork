@@ -40,6 +40,8 @@ export function recommendationFor(kind: FindingKind, ctx: RecoContext): string {
       return `"${ctx.milestoneName ?? "A milestone"}" lands in ${ctx.days ?? 0} ${plural(ctx.days, "day", "days")} with work still open. Confirm the remaining tasks can land in time, or move the date now while there's warning.`;
     case "DUE_SOON_CLUSTER":
       return `${n} tasks all fall due for ${client} within ${ctx.dueSoonDays ?? 3} days. Spread the due dates or pull people in early so the week doesn't tip into overdue.`;
+    case "PLAN_DRIFT":
+      return `Work on ${client} is being logged outside the plan while ${n} planned ${plural(n, "task sits", "tasks sit")} untouched${ctx.blockName ? ` (most in "${ctx.blockName}")` : ""}. On the board, use "Sort into categories" to file the recent work, then pick up, close or remove the planned tasks — until then the timeline and the client's Delivery page understate what has been done.`;
     case "UNASSIGNED_WORK":
       return `${n} time-critical ${plural(n, "task has", "tasks have")} no owner. Assign each one — unowned deadlines are the ones that quietly slip.`;
     case "DEV_OVERDUE":

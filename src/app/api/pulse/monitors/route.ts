@@ -24,6 +24,9 @@ function appUrl(request: NextRequest): string {
 
 export async function GET(request: NextRequest) {
   try {
+    // Each monitor carries its webhook secret and the client addresses its weekly email
+    // goes to, so the list is for people who can manage Pulse, as creating one is.
+    assertCan(await getEffectiveUserOrNull(request), canManagePulse, "view Pulse monitors");
     const monitors = await listMonitors(appUrl(request));
     return apiOk({ monitors });
   } catch (error) {

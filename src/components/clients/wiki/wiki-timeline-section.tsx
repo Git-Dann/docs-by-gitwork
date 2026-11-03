@@ -1,7 +1,7 @@
 "use client";
 
 import { GanttChart, type GanttBlock, type GanttMilestone } from "@/components/tasks/gantt-chart";
-import type { WikiTimeline } from "@/server/wiki";
+import type { WikiLinkedWork, WikiTimeline } from "@/server/wiki";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -18,6 +18,7 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
     name: b.name,
     startDate: b.startDate,
     endDate: b.endDate,
+    estimated: b.estimated,
     color: b.color,
     progress: b.progress,
     tasks: b.tasks,
@@ -36,6 +37,10 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
       : Math.round(blocks.reduce((sum, b) => sum + b.progress, 0) / blocks.length);
 
   return (
+    // ⚠️ The spacing lives HERE, not in the parents. `wiki-public-view` renders this
+    // component as the whole section body, so a bare fragment left card 01 and card
+    // 02 touching with no gap at all. One owner for the gap, every caller correct.
+    <div className="space-y-5">
     <section className="widget-card">
       <div className="widget-header">
         <span className="widget-header__label" style={{ fontFamily: MONO }}>
@@ -69,6 +74,96 @@ export function WikiTimelineSection({ timeline }: { timeline: WikiTimeline }) {
           slippage={false}
           emptyHint="The timeline will appear here once project phases are scheduled."
         />
+      </div>
+    </section>
+
+      {/* ── Linked clients, UNDER the client's own plan ─────────────────────
+          Not merged into the Gantt above. A linked workstream is usually
+          tracked but not scheduled — YG intelligence has four blocks, 66 tasks
+          and not one date — and the Gantt drops anything it cannot give a span
+          to, so merging rendered it as nothing at all and read as a broken
+          link. A table needs no dates. */}
+      {(timeline.linked ?? []).map((work, i) => (
+        <LinkedWorkCard key={work.source.clientId} work={work} index={i + 2} />
+      ))}
+    </div>
+  );
+}
+
+function LinkedWorkCard({ work, index }: { work: WikiLinkedWork; index: number }) {
+  const pct = work.total === 0 ? null : Math.round((work.done / work.total) * 100);
+  const blocks: GanttBlock[] = work.blocks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    startDate: b.startDate,
+    endDate: b.endDate,
+    estimated: b.estimated,
+    color: b.color,
+    progress: b.progress,
+    tasks: b.tasks,
+    statusCounts: b.statusCounts,
+  }));
+  // ⚠️ Every block here may be undated — YG intelligence has four blocks, 66 tasks
+  // and not one date. `GanttChart` draws the rail row regardless and the bar only
+  // where there are dates, so the section reads as the same chart as the one above
+  // rather than a different widget.
+  const undated = work.blocks.every((b) => !b.startDate);
+  // Some or all bars estimated from task due dates (blockSpan) — say so in words as well
+  // as in the chart's legend, since the client reads this paragraph first.
+  const anyEstimated = work.blocks.some((b) => b.estimated);
+
+  return (
+    <section className="widget-card">
+      <div className="widget-header">
+        <span className="widget-header__label" style={{ fontFamily: MONO }}>
+          <span className="widget-header__label--number">
+            {String(index).padStart(2, "0")}
+          </span>
+          {` // ${work.source.name.toUpperCase()}`}
+        </span>
+        <span className="widget-header__status" style={{ fontFamily: MONO }}>
+          {/* ⚠️ Null, not 0%, when there is nothing to divide by — "0% complete"
+              on an empty board reads as failure rather than as no work yet. */}
+          {pct === null ? "NO TASKS YET" : `${pct}% COMPLETE`}
+        </span>
+      </div>
+      <div className="p-5 sm:p-6">
+        <p className="app-eyebrow">{work.source.name}</p>
+        <p className="mt-2 max-w-[70ch] text-[14px] leading-relaxed text-[var(--text-2)]">
+          A separate workstream tracked on its own board, shown here alongside this
+          project. {work.total} {work.total === 1 ? "task" : "tasks"} in total
+          {work.looseTasks.total > 0
+            ? `, ${work.looseTasks.total} of them outside any phase`
+            : ""}
+          .
+          {undated && work.blocks.length > 0 ? (
+            <>
+              {" "}
+              {/* Said plainly rather than left as an empty chart: a Gantt with no bars
+                  is otherwise indistinguishable from a broken one. */}
+              <span className="text-[var(--text-3)]">
+                These phases have no dates yet, so they have no bars on the timeline.
+              </span>
+            </>
+          ) : anyEstimated ? (
+            <>
+              {" "}
+              <span className="text-[var(--text-3)]">
+                Dashed bars have no dates of their own — they are estimated from the due
+                dates of their tasks.
+              </span>
+            </>
+          ) : null}
+        </p>
+        <div className="mt-4">
+          {work.blocks.length === 0 ? (
+            <p className="rounded-[8px] border border-dashed border-[var(--border-2)] px-3 py-4 text-center text-[13px] text-[var(--text-3)]">
+              Nothing on this board yet.
+            </p>
+          ) : (
+            <GanttChart blocks={blocks} milestones={[]} />
+          )}
+        </div>
       </div>
     </section>
   );

@@ -22,6 +22,7 @@ import { cn, formatDate } from "@/lib/format";
 import { buttonStyles } from "@/components/ui/button";
 import type { HandbookListItem, HandbookStatus } from "@/server/handbook";
 import { hueFor } from "@/components/handbook/cover-hue";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 type Scope = "all" | "featured" | "drafts" | "archived";
 
@@ -299,7 +300,7 @@ export function HandbookLibrary() {
           {isLoading ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-52 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+                <Skeleton key={i} className="h-52 rounded-[10px] border border-[var(--border-2)]" />
               ))}
             </div>
           ) : scoped.length === 0 ? (

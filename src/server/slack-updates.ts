@@ -14,6 +14,7 @@
 // fails the request (mirrors tasks-standup.ts). Every post is logged to
 // SlackUpdateLog for history + light "who posted today" presence.
 
+import { columnNameFor, parseBoardColumns } from "@/lib/tasks/board-columns";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import {
@@ -140,11 +141,13 @@ export async function pushProjectUpdate(
         slackChannelId: true,
         slackInternalChannelId: true,
         slackExternalChannelId: true,
+        taskBoardColumns: true,
       },
     }),
     listTasks(user, { clientId: input.clientId }),
   ]);
   if (!client) return { ok: false, channel: null, taskCount: 0 };
+  const boardColumns = parseBoardColumns(client.taskBoardColumns);
 
   const selected = allTasks.filter(isIncluded);
 
@@ -226,6 +229,7 @@ export async function pushProjectUpdate(
         clientName: client.name,
         clientSlug: client.slug,
         blockName: t.featureBlock?.name ?? null,
+        columnName: columnNameFor(t, boardColumns),
         dueDate: t.dueDate ? t.dueDate.slice(0, 10) : null,
         status: t.status,
         description: t.description,

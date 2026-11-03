@@ -5,6 +5,7 @@ import { RocketLaunchIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
 import { useClientList } from "@/hooks/use-proposals";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 /**
  * Launchpad on HQ: which client is holding a build up, and on what.
@@ -23,7 +24,7 @@ export default function LaunchpadWidget({ index }: { size: WidgetSize; index: nu
   const { data, isLoading } = useClientList();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const withKits = (data?.clients ?? []).filter((c) => c.launchpad);

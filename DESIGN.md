@@ -148,6 +148,14 @@ The system pairs **Geist** (a crisp geometric sans) with **Lora** (a transitiona
   detail/preview on the right (`minmax(0,1fr)`), divided by a `{colors.hairline}` rule, each column
   its own `overflow-y-auto`. Select-on-left → render-on-right; default-select the first item on open.
   Reach for this shape before inventing a new layout for any "pick one of a list and inspect it" popup.
+- **The fixed height applies to ANY dialog whose content varies**, not just the two-column shape.
+  A single-column review, preview or composer dialog gets its height from the **panel**
+  (`panelClassName="flex h-[80vh] max-h-[680px] min-h-[min(460px,80vh)] … flex-col"`), with a
+  `shrink-0` header, a `min-h-0 flex-1 overflow-y-auto` middle and a `shrink-0` footer. ⚠️ A
+  `max-h-[Nvh]` on the scroll region is **not** a fixed height — it caps the tall case while still
+  letting a short one collapse the box, so the same dialog opens at wildly different sizes
+  (measured: 281px vs 597px for the standup review). Bound the height to the **viewport**, never to
+  the content.
 
 ---
 
@@ -295,6 +303,21 @@ exist.** Note ~8 hand-rolled field constants still diverge from it (CLAUDE.md §
 - Background `{colors.surface-raised}`, border `1px solid {colors.hairline-strong}`, rounded `{rounded.md}`, height 40px, padding `0 14px`.
 - Focused: border `2px solid {colors.primary}`, outline `3px solid {colors.primary-soft}`.
 - Error: border `2px solid {colors.danger}`, outline `3px solid {colors.danger-soft}`.
+
+**`DatePicker` / `DateRangePicker`** (`src/components/ui/date-picker.tsx`) — the date field.
+Use it instead of `<input type="date">`, which draws a different control in every browser.
+It is **EasyUI's Date Picker and Calendar, vendored** (`src/components/ui/easyui/`, MIT —
+`docs/third-party-ui.md`), kept to their design on purpose: the gliding selected-day pill,
+the month slide, the spring pop from the trigger and the range preview are theirs.
+- Value contract is the native one: `YYYY-MM-DD`, `""` when empty. Weeks start Monday.
+- Colours are Foundry tokens (light + dark); the selection pill and range band are brand
+  blue. Trigger is 36px like `app-input`, 16px text below `sm`.
+- ⚠️ **Radius exception:** the vendored pieces keep EasyUI's 8px (`rounded-lg`) day cells and
+  trigger and 12px (`rounded-xl`) popover rather than our 6px / 10px — that is their look,
+  and Dan asked for it. Don't "fix" it, and don't copy it into Foundry's own controls.
+- Popover is anchored and portalled (Headless UI), `z-[220]`, so dialogs and `.widget-card`
+  can't clip it; Escape closes the calendar, not the dialog around it.
+- Footer: **Today** and **Clear** (no Clear when `required`) — a Foundry addition.
 
 ### Tables
 
@@ -1040,6 +1063,20 @@ field stays readable. `?brand=gitwork` still forces a brand at any width. Verifi
 · 1023 · 1024 · 1280 · 1440 · 1600 with `vendor/bento/scripts/verify-shell.mjs`, which is also the
 regression gate for everything above.
 
+## Canvas (the artwork tools at `/canvas`)
+
+**Canvas** is a standalone shell like Deck (`CLAUDE.md` §63): one static file, opened in its own
+window from Settings → Labs, with `← Foundry` as the way back. It keeps Foundry's instrument
+grammar — numbered `NN // SECTION` panel headers in mono caps, hairline borders, mono data labels.
+
+**It is the one sanctioned exception to "blue only".** At Dan's request its brand colour is
+**Emergency Orange `#FF4F00`**, on the Untitled UI v8 token set rather than Foundry's palette.
+The rule that keeps it accessible: text on an orange fill is near-black (6.0:1), never white
+(3.3:1, fails AA); orange text sits at `#C23A00` on light surfaces and `#FF7633` on dark.
+The exception covers Canvas's own shell only. Don't carry the orange back into Foundry's UI.
+
+The full token and component reference lives with its source, in `Git-Dann/canvas` `docs/BRAND.md`.
+
 ## Do's and Don'ts
 
 ### Do
@@ -1081,6 +1118,11 @@ regression gate for everything above.
 | Fast | 150ms | ease-out | Button press, input focus ring |
 | Standard | 200ms | ease-in-out | Panel slide, widget expand |
 | Gentle | 300ms | ease-in-out | Modal open, drawer slide |
+
+**Use the motion library, not a new animation.** Spinners, skeletons, status dots, entrances,
+count-ups and Lottie illustrations are shared components in `src/components/ui/motion/`, catalogued
+in `docs/motion.md` and live in Settings → Labs → Motion library. CSS motion goes still on its own
+under reduced motion (layout.tsx); JS-driven motion (framer-motion, rAF, Lottie) must check for itself.
 
 ---
 

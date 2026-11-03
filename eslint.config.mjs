@@ -14,6 +14,13 @@ const eslintConfig = [
   {
     ignores: [
       "node_modules/**",
+      // Claude Code creates a git worktree per session under .claude/worktrees —
+      // a nested checkout of this repo inside itself. ESLint walked into them
+      // and linted every file a second (and tenth) time, which is why a local
+      // `npm run verify` reported ~28,000 errors and could not pass for anyone
+      // with an active session, while CI stayed green: CI clones fresh and has
+      // no worktrees. The errors were never in this codebase.
+      ".claude/**",
       // Vendored upstream app — built by its own toolchain (vendor/bento/README.md).
       "vendor/**",
       ".next/**",

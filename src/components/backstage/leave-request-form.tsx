@@ -6,6 +6,7 @@ import {
   useCreateLeaveRequest,
   useUpdateLeaveRequest,
 } from "@/hooks/use-backstage";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useBackstageAccess } from "@/components/backstage/access";
 import { BackstageModal } from "@/components/backstage/modal";
 import { Button } from "@/components/ui/button";
@@ -131,12 +132,11 @@ export function LeaveRequestForm({
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <span className="text-sm font-medium text-[var(--text-2)]">Start</span>
-              <input
-                type="date"
+              <DatePicker
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={setStartDate}
                 required
-                className="app-input mt-1 block w-full"
+                className="mt-1 w-full"
               />
               <label className="mt-1 flex items-center gap-1.5 text-xs text-[var(--text-3)]">
                 <input
@@ -149,12 +149,12 @@ export function LeaveRequestForm({
             </label>
             <label className="block">
               <span className="text-sm font-medium text-[var(--text-2)]">End</span>
-              <input
-                type="date"
+              <DatePicker
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={setEndDate}
                 required
-                className="app-input mt-1 block w-full"
+                min={startDate || undefined}
+                className="mt-1 w-full"
               />
               <label className="mt-1 flex items-center gap-1.5 text-xs text-[var(--text-3)]">
                 <input

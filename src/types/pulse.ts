@@ -1,3 +1,4 @@
+import type { CodeHealthReport } from "@/types/code-health";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
 export type { CheckCategory };
 
@@ -290,6 +291,26 @@ export interface ScoreBreakdown {
     notApplicable: number;
     failedNames: string[];
     unavailable: { name: string; reason: string }[];
+    /** Why each failed collector failed. Optional: older scans did not record it. */
+    failedDetails?: { name: string; detail: string }[];
+    /**
+     * Which collectors completed. Optional: older scans recorded only a count, so a
+     * policy's required collector could be "not recorded" and read as present.
+     */
+    completedNames?: string[];
+  };
+  /**
+   * What the relevance gate kept and left out (check-relevance.ts). Checks that are not
+   * about this artefact, this platform or a feature the product has are never stored; this
+   * is the one record that they existed. Optional: scans before the gate have none.
+   */
+  relevance?: {
+    /** What the scan turned out to be looking at — website, api, store or repo. */
+    target?: "website" | "api" | "store" | "repo" | "none";
+    shown: number;
+    hidden: number;
+    byReason: Partial<Record<"not_this_artefact" | "not_this_platform" | "feature_absent" | "needs_evidence" | "not_applicable" | "withheld", number>>;
+    byFeature: Partial<Record<string, number>>;
   };
   /**
    * The release decision — READY / CONDITIONAL / BLOCKED / INCONCLUSIVE — under a
@@ -338,6 +359,8 @@ export interface PulseScanRecord {
   llmAnalysis: PulseAnalysisOutput | null;
   discoveryKit: DiscoveryKit | null;
   codeInsights: CodeAgentInsights | null;
+  /** Full-checkout code measure, repo scans only. Null for URL scans and older scans. */
+  codeHealth: CodeHealthReport | null;
   deployInsights: DeployAgentInsights | null;
   browserInsights: BrowserAgentInsights | null;
   visualInsights: VisualAgentInsights | null;
@@ -459,6 +482,11 @@ export interface UnverifiedDiffItem {
 export interface PulseScanDiff {
   previousScanId: string;
   previousCompletedAt: string | null;
+  previousScore: number | null;
+  currentScore: number | null;
+  currentCompletedAt: string | null;
+  /** One plain sentence: what got fixed, what is new, what got worse. */
+  summary: string;
   scoreChange: number; // current - previous health score
   fixed: ScanDiffItem[];     // was an issue, now passing WITH PROOF
   regressed: ScanDiffItem[]; // was PASS, now FAIL/WARN

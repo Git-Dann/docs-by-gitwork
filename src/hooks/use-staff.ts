@@ -1,0 +1,46 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/api";
+import type { StaffDetailsUpdate, StaffRoster } from "@/lib/staff";
+
+const STAFF_KEY = ["staff", "roster"] as const;
+
+/** The roster. `archived` lists who has left (restorable members, archived records). */
+export function useStaffRoster(view: "active" | "archived" = "active") {
+  return useQuery({
+    queryKey: [...STAFF_KEY, view],
+    queryFn: () => apiFetch<StaffRoster>(view === "archived" ? "/api/staff?view=archived" : "/api/staff"),
+  });
+}
+
+export function useCreateStaffRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { memberId?: string; name?: string; email?: string | null } & StaffDetailsUpdate) =>
+      apiFetch<{ recordId: string }>("/api/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: STAFF_KEY }),
+  });
+}
+
+export function useUpdateStaffDetails() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ recordId, update }: { recordId: string; update: StaffDetailsUpdate }) =>
+      apiFetch<{ ok: true }>(`/api/staff/${encodeURIComponent(recordId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(update),
+      }),
+    onSuccess: (_data, { recordId }) => {
+      void qc.invalidateQueries({ queryKey: STAFF_KEY });
+      // The profile page too. Not the whole ["staff"] tree: refetching personal details
+      // would be a second, logged look nobody asked for.
+      void qc.invalidateQueries({ queryKey: ["staff", "profile", recordId] });
+    },
+  });
+}

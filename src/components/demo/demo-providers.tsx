@@ -17,6 +17,7 @@ import { demoSession } from "@/lib/demo/dev-demo-data";
 import { DemoErrorBoundary } from "@/components/demo/demo-error-boundary";
 import { useDemoLinkReroute } from "@/lib/demo/use-demo-nav";
 import { readDemoColor, brandCssVars } from "@/lib/demo/demo-config";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 export function DemoProviders({ children }: { children: ReactNode }) {
   const handleDemoNav = useDemoLinkReroute();
@@ -37,7 +38,7 @@ export function DemoProviders({ children }: { children: ReactNode }) {
           <DemoErrorBoundary>{children}</DemoErrorBoundary>
         ) : (
           <div className="p-8">
-            <div className="h-[80vh] animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+            <Skeleton className="h-[80vh] rounded-[10px]" />
           </div>
         )}
       </div>

@@ -30,6 +30,8 @@
 
 import type { PulseScanCheckInput, ScoreBreakdown } from "@/types/pulse";
 import { CATEGORIES, type CheckCategory } from "./categories";
+import { isDerivedRestatement } from "./standards-derived";
+import { detectStoreTarget, storeSubjectLabel, type StoreTarget } from "@/lib/pulse-store-url";
 
 export type ReleaseDecision = "READY" | "CONDITIONAL" | "BLOCKED" | "INCONCLUSIVE";
 
@@ -42,7 +44,8 @@ export type GateReasonCode =
   | "HEALTH_BELOW_FLOOR"
   | "UNRESOLVED_FAILURES"
   | "EVIDENCE_REQUIRED"
-  | "BLOCKING_CONTROL_UNESTABLISHED";
+  | "BLOCKING_CONTROL_UNESTABLISHED"
+  | "SUBJECT_UNREADABLE";
 
 export interface GateReason {
   code: GateReasonCode;
@@ -140,10 +143,168 @@ export const GATE_POLICIES: GatePolicy[] = [
   },
 ];
 
+/**
+ * An app assessed from its store listing.
+ *
+ * ⚠️ Why a store link needs its own policy. Every policy above describes a WEBSITE —
+ * they require url-checks and block on the website's privacy policy and terms. An App
+ * Store link runs none of that, so under `launch-ready` an iOS scan could only ever
+ * answer "INCONCLUSIVE — scan the product's own URL": the policy asked an iOS app to
+ * be a website, and reported it as one that had failed to load.
+ *
+ * These policies ask what a listing CAN establish, about the app it lists: the listing
+ * is live, it links a privacy policy, and it carries the store's own privacy
+ * declaration — each of which the store itself enforces, and each read from the
+ * store's structured data. They require the store-listing collector, so a listing that
+ * could not be read (a rate limit, a changed page) is INCONCLUSIVE rather than a pass.
+ *
+ * The label names the scope, because a decision is only as honest as what it covers:
+ * READY here means the LISTING meets the bar. The app's code is not in scope — the
+ * scan says so in its own coverage check and points at a repository scan.
+ */
+const STORE_POLICIES: Record<StoreTarget, GatePolicy> = {
+  app_store: {
+    id: "ios-app-listing",
+    version: "1.0.0",
+    label: "iOS app · App Store listing",
+    description:
+      "For an iOS app assessed from its App Store listing: the listing is live, it links a privacy policy, it declares its App Privacy details, and enough of it could be read to say so. The app's code is not in scope — scan its repository for that.",
+    minCoverage: 70,
+    minHealth: 60,
+    blockingKeys: ["store_page_live", "store_privacy_policy", "appstore_privacy_label"],
+    blockingCategories: [],
+    requiredCollectors: ["store-listing"],
+  },
+  play_store: {
+    id: "android-app-listing",
+    version: "1.0.0",
+    label: "Android app · Google Play listing",
+    description:
+      "For an Android app assessed from its Google Play listing: the listing is live, it links a privacy policy, it declares its Data safety section, and enough of it could be read to say so. The app's code is not in scope — scan its repository for that.",
+    minCoverage: 70,
+    minHealth: 60,
+    blockingKeys: ["store_page_live", "store_privacy_policy", "playstore_data_safety"],
+    blockingCategories: [],
+    requiredCollectors: ["store-listing"],
+  },
+  chrome_web_store: {
+    id: "chrome-extension-listing",
+    version: "1.0.0",
+    label: "Chrome extension · Chrome Web Store listing",
+    description:
+      "For a Chrome extension assessed from its Chrome Web Store listing: the item is listed, it discloses its privacy practices, links a privacy policy if it handles user data, and ships Manifest V3 — the only version Chrome still runs. The extension's source is not in scope — scan its repository for that.",
+    minCoverage: 70,
+    minHealth: 60,
+    blockingKeys: ["store_page_live", "store_privacy_policy", "cws_privacy_practices", "ext_manifest_v3"],
+    blockingCategories: [],
+    requiredCollectors: ["store-listing"],
+  },
+};
+
+/**
+ * A source repository, judged as the code it is.
+ *
+ * Repos used to fall through to `launch-ready`, which requires the WEBSITE collector and
+ * blocks on the website's privacy and terms pages — so every repo scan of every platform
+ * was permanently INCONCLUSIVE ("url-checks did not run"), however good the code was.
+ * What stops a repository shipping is a committed secret, so that is what blocks; the
+ * collectors that read the repo are what it requires.
+ */
+const SOURCE_POLICY: GatePolicy = {
+  id: "source-code",
+  version: "1.0.0",
+  label: "Source repository",
+  description:
+    "For a codebase assessed from its repository: no committed secrets, and enough of the source read to say so. A deployed site, an API or a store listing is a separate scan.",
+  minCoverage: 70,
+  minHealth: 60,
+  blockingKeys: ["repo_secret_keys", "android_signing_credentials_committed", "supabase_rls_enforced"],
+  blockingCategories: [CATEGORIES.SECRETS_KEYS],
+  requiredCollectors: ["repo-shape", "github-checks", "code-agent"],
+};
+
+/**
+ * The public website of a product that is not a web app — an iOS app's site, a CLI's
+ * docs site. Judged on what a presence site owes its visitors (TLS, no exposed secrets,
+ * an inspectable page), not on web-app features it does not have.
+ */
+const WEB_PRESENCE_POLICY: GatePolicy = {
+  id: "web-presence",
+  version: "1.0.0",
+  label: "Public website",
+  description:
+    "For the public website of an app, extension, desktop or command-line product: served securely, nothing exposed, and readable. The product itself is a separate scan (its store listing or its repository).",
+  minCoverage: 60,
+  minHealth: 60,
+  blockingKeys: ["ssl_valid", "no_exposed_env", "no_exposed_git", "target_content_accessible"],
+  blockingCategories: [CATEGORIES.SECURITY, CATEGORIES.SECRETS_KEYS],
+  requiredCollectors: ["url-checks"],
+};
+
+/** An API endpoint (the URL answered with JSON): transport and exposure, not web pages. */
+const API_POLICY: GatePolicy = {
+  id: "api-production",
+  version: "1.0.0",
+  label: "API",
+  description:
+    "For a JSON API: served over valid TLS, no exposed secrets or data stores, and enough of it assessed to say so. Page-level legal and consent checks do not apply to an endpoint.",
+  minCoverage: 70,
+  minHealth: 60,
+  blockingKeys: ["ssl_valid", "no_exposed_env", "no_exposed_git", "supabase_rls_enforced", "no_service_role_key_exposed", "target_content_accessible"],
+  blockingCategories: [CATEGORIES.SECURITY, CATEGORIES.SECRETS_KEYS],
+  requiredCollectors: ["url-checks"],
+};
+
+GATE_POLICIES.push(STORE_POLICIES.app_store, STORE_POLICIES.play_store, STORE_POLICIES.chrome_web_store, SOURCE_POLICY, WEB_PRESENCE_POLICY, API_POLICY);
+
+const PLATFORM_DISPLAY: Record<string, string> = {
+  WEB_APP: "Web app", SAAS: "SaaS", MARKETING_SITE: "Marketing site", IOS_APP: "iOS app", ANDROID_APP: "Android app",
+  CROSS_PLATFORM_MOBILE: "Cross-platform mobile app", DESKTOP_APP: "Desktop app", CHROME_EXTENSION: "Chrome extension",
+  API_BACKEND: "API / backend", CLI_TOOL: "CLI tool", OTHER: "Project",
+};
+const NON_WEB_PLATFORMS = new Set(["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "CLI_TOOL"]);
+
 export const DEFAULT_GATE_POLICY = GATE_POLICIES[0];
 
 export function gatePolicyById(id: string | null | undefined): GatePolicy {
   return GATE_POLICIES.find((policy) => policy.id === id) ?? DEFAULT_GATE_POLICY;
+}
+
+/**
+ * The policy a scan is judged by. An explicit choice wins; otherwise a store link is
+ * judged as the app it lists, and everything else by the general launch policy.
+ *
+ * Every place a gate is evaluated must come through here — the scan, the agent verdict
+ * and the report's fallback — or the same scan would get two different answers
+ * depending on who asked.
+ */
+export function resolveGatePolicy(args: {
+  policyId?: string | null;
+  targetUrl?: string | null;
+  /** "GITHUB_REPO" selects the source policy. Omitted → treated as a URL scan. */
+  inputType?: string | null;
+  /** The platform the scan RAN as (detected for repos and store links). */
+  platform?: string | null;
+  /** True when the URL answered as an API (JSON). */
+  apiTarget?: boolean;
+}): GatePolicy {
+  if (args.policyId) return gatePolicyById(args.policyId);
+  const platform = (args.platform ?? "").toUpperCase();
+  const label = PLATFORM_DISPLAY[platform];
+  if (args.inputType === "GITHUB_REPO") {
+    return label ? { ...SOURCE_POLICY, label: `${label} · source repository` } : SOURCE_POLICY;
+  }
+  const store = args.targetUrl ? detectStoreTarget(args.targetUrl) : null;
+  if (store) {
+    const policy = STORE_POLICIES[store];
+    // Same listing policy (privacy policy + privacy declaration are Mac App Store rules too),
+    // but it must not call a Mac app an iOS app.
+    return store === "app_store" && platform === "DESKTOP_APP" ? { ...policy, label: storeSubjectLabel(store, platform) } : policy;
+  }
+  if (args.apiTarget) return API_POLICY;
+  if (NON_WEB_PLATFORMS.has(platform)) return label ? { ...WEB_PRESENCE_POLICY, label: `${label} · public website` } : WEB_PRESENCE_POLICY;
+  if (platform === "SAAS") return gatePolicyById("saas-production");
+  return DEFAULT_GATE_POLICY;
 }
 
 export interface GateEvaluation {
@@ -222,13 +383,31 @@ export function evaluateReleaseGate(
 
   const unavailableCollectors = new Set((breakdown.collectors?.unavailable ?? []).map((item) => item.name));
   const failedCollectors = new Set(breakdown.collectors?.failedNames ?? []);
+  // A required collector counts as missing when it failed, was unavailable, or — where
+  // the scan recorded which collectors completed — simply is not among them. The last
+  // case is the one that used to pass: a collector the scan never ran appears in no
+  // list at all, and an absence nobody checked for reads exactly like a success.
+  const completedCollectors = breakdown.collectors?.completedNames
+    ? new Set(breakdown.collectors.completedNames)
+    : null;
   const missingRequired = policy.requiredCollectors.filter(
-    (name) => unavailableCollectors.has(name) || failedCollectors.has(name),
+    (name) =>
+      unavailableCollectors.has(name) ||
+      failedCollectors.has(name) ||
+      (completedCollectors !== null && !completedCollectors.has(name)),
   );
   if (missingRequired.length > 0) {
+    // Say WHY, in the collector's own words. A collector that ran and was refused (a
+    // store rate-limiting the scan) did not "not run", and telling a reader it did sends
+    // them looking for a configuration problem that does not exist.
+    const cause =
+      breakdown.collectors?.failedDetails?.find((item) => missingRequired.includes(item.name))?.detail
+      ?? breakdown.collectors?.unavailable.find((item) => missingRequired.includes(item.name))?.reason
+      ?? "";
+    const anyFailed = missingRequired.some((name) => failedCollectors.has(name));
     unverified.push({
       code: "REQUIRED_COLLECTOR_UNAVAILABLE",
-      summary: `This policy requires ${missingRequired.join(", ")}, which did not run. ${breakdown.collectors?.unavailable.find((item) => missingRequired.includes(item.name))?.reason ?? ""}`.trim(),
+      summary: `This policy requires ${missingRequired.join(", ")}, which ${anyFailed ? "did not complete" : "did not run"}. ${cause}`.trim(),
       checkKeys: [],
     });
   }
@@ -263,6 +442,17 @@ export function evaluateReleaseGate(
   // likewise excluded: that is what COVERAGE_BELOW_FLOOR already measures, and
   // double-counting it here would fire on any policy whose blockers outrun the scan's
   // input type.
+  // The repository itself could not be read. Every source finding is missing, so no
+  // decision about the code can be a pass OR a block — it is unknown, and says why.
+  const unreadableRepo = checks.find((check) => check.checkKey === "repo_accessible" && check.status === "FAIL");
+  if (unreadableRepo) {
+    unverified.push({
+      code: "SUBJECT_UNREADABLE",
+      summary: `The repository could not be read, so nothing about its code was assessed. ${(unreadableRepo.detail ?? "").split(". ")[0]}.`,
+      checkKeys: ["repo_accessible"],
+    });
+  }
+
   const unestablishedBlockers = checks.filter(
     (check) =>
       policy.blockingKeys.includes(check.checkKey) &&
@@ -297,6 +487,8 @@ export function evaluateReleaseGate(
   const reservations = checks.filter(
     (check) =>
       check.status === "FAIL" &&
+      // A derived standards row restates a failure already counted here.
+      !isDerivedRestatement(check.checkKey) &&
       (check.trustBucket === "CONFIRMED" || check.trustBucket === "LIKELY") &&
       !namedBlockers.includes(check) &&
       !criticalInBlockedCategory.includes(check),

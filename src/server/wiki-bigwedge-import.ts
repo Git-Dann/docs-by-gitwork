@@ -3,19 +3,22 @@
  * API into the Wedge wiki's Course Requests tracker.
  *
  * Big Wedge users submit course requests in-app; they land on the Big Wedge API
- * (https://apiv1.bigwedgegolf.com/api/v1/course-requests/, DRF-paginated, admin
- * JWT bearer auth). Foundry already stores that admin JWT on the client's Care
- * "Analytics API" connector (scraperConfig.apiToken) — we reuse it here.
+ * (https://apiv1.bigwedgegolf.com/api/v1/course-requests/, DRF-paginated, JWT bearer).
+ * Foundry logs in for itself on each run — see bigwedge-api-auth.ts. Run hourly by
+ * src/server/wedge-course-feed.ts; this file is the fetch + write, that one the schedule.
  *
  * One API request can carry several courses (`courses[]`, 1–10) under a shared
  * `country`, so we flatten to one tracker row per course. De-duped by externalRef
- * (bigwedge:<requestId>:<i>) and by course name (against non-rejected rows), so it
- * sits alongside the Gmail-imported requests and is safe to re-run for new ones.
+ * (bigwedge:<requestId>:<i>), so it is safe to re-run over an overlapping window.
  */
 
 import { prisma } from "@/lib/prisma";
 import { addCourseRequest, type CourseRequestRecord } from "@/server/wiki";
 import { getJson } from "@/server/support-analytics/types";
+// ⚠️ The shared resolver — this file used to carry its own copy, which read the stored token
+// WITHOUT decrypting it and so sent `enc:{…}` as the bearer once secrets were encrypted.
+import { resolveBigWedgeApi } from "@/server/wiki-bigwedge-sync";
+import { isDuplicateFeedRow } from "@/lib/wedge-course-feed-status";
 
 const DEFAULT_BASE = "https://apiv1.bigwedgegolf.com";
 const PAGE_SIZE = 100;
@@ -64,50 +67,6 @@ export interface BigWedgeImportResult {
   /** How the first in-window request flattens to tracker rows (dryRun aid). */
   mappedSample?: Array<{ courseName: string; country: string | null; status: string; externalRef: string }>;
   errors: string[];
-}
-
-/** Resolve the Big Wedge API base URL + admin token from the Care analytics connector. */
-async function resolveBigWedgeApi(
-  workspaceClientId: string,
-): Promise<{ baseUrl: string; apiToken: string } | { error: string }> {
-  const support =
-    (await prisma.supportClient.findFirst({
-      where: { workspaceClientId },
-      select: { id: true },
-    })) ??
-    (await (async () => {
-      const wc = await prisma.workspaceClient.findUnique({
-        where: { id: workspaceClientId },
-        select: { workspaceId: true, name: true, slug: true },
-      });
-      if (!wc) return null;
-      return prisma.supportClient.findFirst({
-        where: {
-          workspaceId: wc.workspaceId,
-          OR: [
-            { slug: wc.slug },
-            { name: { contains: wc.name, mode: "insensitive" } },
-            { name: { contains: "wedge", mode: "insensitive" } },
-          ],
-        },
-        select: { id: true },
-      });
-    })());
-
-  if (!support) return { error: "No Care support client found for this wiki." };
-
-  const conn = await prisma.accountConnection.findFirst({
-    where: { clientId: support.id, source: "ANALYTICS" },
-    select: { scraperConfig: true },
-  });
-  if (!conn) {
-    return { error: "No Analytics API connector on this client. Add the Big Wedge admin JWT in Care → Connectors." };
-  }
-  const cfg = (conn.scraperConfig ?? {}) as { baseUrl?: string; apiToken?: string };
-  if (!cfg.apiToken) {
-    return { error: "The Analytics connector has no API token. Paste the Big Wedge admin JWT in Care → Connectors." };
-  }
-  return { baseUrl: (cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, ""), apiToken: cfg.apiToken };
 }
 
 function courseName(c: BwCourse): string {
@@ -175,6 +134,7 @@ export async function importBigWedgeCourseRequests(
     notes: string;
     status: "NEW" | "ADDED";
     externalRef: string;
+    submittedAt: string | null;
   }
   const rows: Row[] = [];
   for (const r of inWindowReqs) {
@@ -198,6 +158,7 @@ export async function importBigWedgeCourseRequests(
         // action_taken on their side → already handled → ADDED; else NEW.
         status: r.action_taken ? "ADDED" : "NEW",
         externalRef: `bigwedge:${reqId}:${c.id ?? i}`,
+        submittedAt: r.created_at ?? null,
       });
     });
   }
@@ -225,15 +186,17 @@ export async function importBigWedgeCourseRequests(
     };
   }
 
-  // Dedupe against existing rows on this wiki.
+  // Dedupe against existing rows on this wiki — see isDuplicateFeedRow for why a name
+  // match only counts against rows from another source, and only before the email feed ended.
   const wiki = await prisma.clientWiki.findUnique({
     where: { clientId: workspaceClientId },
-    select: { courseRequests: { select: { courseName: true, externalRef: true, status: true } } },
+    select: { courseRequests: { select: { courseName: true, externalRef: true, status: true, source: true } } },
   });
-  const seenRefs = new Set((wiki?.courseRequests ?? []).map((r) => r.externalRef).filter((x): x is string => !!x));
-  const seenNames = new Set(
-    (wiki?.courseRequests ?? [])
-      .filter((r) => r.status !== "REJECTED")
+  const existing = wiki?.courseRequests ?? [];
+  const refs = new Set(existing.map((r) => r.externalRef).filter((x): x is string => !!x));
+  const namesFromOtherSources = new Set(
+    existing
+      .filter((r) => r.status !== "REJECTED" && r.source !== "bigwedge-api")
       .map((r) => r.courseName.trim().toLowerCase())
       .filter(Boolean),
   );
@@ -241,8 +204,7 @@ export async function importBigWedgeCourseRequests(
   const created: CourseRequestRecord[] = [];
   let skipped = 0;
   for (const row of rows) {
-    const nameKey = row.courseName.toLowerCase();
-    if (seenRefs.has(row.externalRef) || seenNames.has(nameKey)) {
+    if (isDuplicateFeedRow(row, { refs, namesFromOtherSources })) {
       skipped++;
       continue;
     }
@@ -256,8 +218,7 @@ export async function importBigWedgeCourseRequests(
         externalRef: row.externalRef,
       }),
     );
-    seenRefs.add(row.externalRef);
-    seenNames.add(nameKey);
+    refs.add(row.externalRef);
   }
 
   return {

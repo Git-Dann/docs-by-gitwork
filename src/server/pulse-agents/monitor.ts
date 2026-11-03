@@ -7,6 +7,9 @@ import { githubHeaders } from "@/lib/github";
 import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
 import { getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
+import { MAX_DIGEST_RECIPIENTS, maybeSendWeeklyDigest, parseDigestEmails } from "@/server/pulse-agents/monitor-digest";
+import { aiKeyFor } from "@/server/ai-keys";
+import { readSecret } from "@/server/stored-secret";
 
 export type MonitorFrequency = "DAILY" | "WEEKLY" | "OFF";
 
@@ -27,6 +30,9 @@ export interface MonitorRecord {
   lastRunAt: string | null;
   createdAt: string;
   webhookUrl: string;
+  /** Who receives the weekly summary email. Empty: no digest. */
+  digestEmails: string[];
+  lastDigestAt: string | null;
 }
 
 function serializeMonitor(record: {
@@ -34,9 +40,13 @@ function serializeMonitor(record: {
   inputUrl: string | null; inputGithubRepo: string | null; clientId: string | null;
   webhookSecret: string; lastScanId: string | null; lastHealthScore: number | null;
   alertThreshold: number; isActive: boolean; frequency: string; lastRunAt: Date | null; createdAt: Date;
+  digestEmails?: unknown; lastDigestAt?: Date | null;
 }, appUrl: string): MonitorRecord {
+  const { digestEmails, lastDigestAt, ...rest } = record;
   return {
-    ...record,
+    ...rest,
+    digestEmails: parseDigestEmails(digestEmails),
+    lastDigestAt: lastDigestAt?.toISOString() ?? null,
     inputType: record.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
     frequency: (record.frequency as MonitorFrequency) ?? "DAILY",
     lastRunAt: record.lastRunAt?.toISOString() ?? null,
@@ -81,7 +91,7 @@ export async function createMonitor(input: {
 
 export async function updateMonitor(
   monitorId: string,
-  input: { frequency?: MonitorFrequency; isActive?: boolean; alertThreshold?: number },
+  input: { frequency?: MonitorFrequency; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] },
   appUrl: string,
 ): Promise<MonitorRecord | null> {
   const { workspace } = await ensureBaseRecords();
@@ -91,6 +101,7 @@ export async function updateMonitor(
       ...(input.frequency !== undefined ? { frequency: input.frequency } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...(input.alertThreshold !== undefined ? { alertThreshold: input.alertThreshold } : {}),
+      ...(input.digestEmails !== undefined ? { digestEmails: parseDigestEmails(input.digestEmails).slice(0, MAX_DIGEST_RECIPIENTS) } : {}),
     },
   });
   if (result.count === 0) return null;
@@ -145,15 +156,16 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
   const monitor = await prisma.pulseMonitor.findUnique({ where: { id: monitorId } });
   if (!monitor || !monitor.isActive) return;
 
-  const { workspace } = await ensureBaseRecords();
+  // The monitor's own workspace: its AI settings run the scan, and the scan is saved there.
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: monitor.workspaceId } });
   const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,
     apiKey: (() => {
-      if (p === "OPENAI") return process.env.OPENAI_API_KEY ?? workspace.openaiApiKey ?? null;
-      if (p === "GEMINI") return process.env.GEMINI_API_KEY ?? workspace.geminiApiKey ?? null;
-      if (p === "LOCAL") return workspace.openaiApiKey ?? "local";
-      return process.env.ANTHROPIC_API_KEY ?? workspace.anthropicApiKey ?? null;
+      if (p === "OPENAI") return aiKeyFor("OPENAI", workspace, "env");
+      if (p === "GEMINI") return aiKeyFor("GEMINI", workspace, "env");
+      if (p === "LOCAL") return readSecret(workspace.openaiApiKey) ?? "local";
+      return aiKeyFor("ANTHROPIC", workspace, "env");
     })(),
     model: p === "OPENAI" ? (workspace.openaiModel ?? DEFAULT_MODELS.OPENAI) :
            p === "GEMINI" ? (workspace.geminiModel ?? DEFAULT_MODELS.GEMINI) :
@@ -164,18 +176,36 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
              null,
   };
 
+  // A monitor has no platform of its own, so re-scan as the platform this target was last
+  // scanned as — without it every monitored re-scan ran as "Other" and was graded on a
+  // different set of checks from the scan it is compared against.
+  const lastScan = await prisma.pulseScan.findFirst({
+    where: {
+      workspaceId: monitor.workspaceId,
+      ...(monitor.inputUrl ? { inputUrl: monitor.inputUrl } : {}),
+      ...(monitor.inputGithubRepo ? { inputGithubRepo: monitor.inputGithubRepo } : {}),
+      platform: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { platform: true },
+  });
+  const platform = lastScan?.platform ?? undefined;
+
   const { scan } = await createPulseScanRecord({
     projectName: monitor.projectName,
     inputType: monitor.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
     inputUrl: monitor.inputUrl ?? undefined,
     inputGithubRepo: monitor.inputGithubRepo ?? undefined,
+    platform,
     clientId: monitor.clientId ?? undefined,
+    workspaceId: monitor.workspaceId,
   });
 
   await runAnalysis(scan.id, {
     inputType: monitor.inputType as "URL" | "GITHUB_REPO" | "FREE_TEXT",
     inputUrl: monitor.inputUrl ?? undefined,
     inputGithubRepo: monitor.inputGithubRepo ?? undefined,
+    platform,
     projectName: monitor.projectName,
     clientId: monitor.clientId ?? undefined,
   }, aiConfig);
@@ -206,6 +236,10 @@ export async function triggerMonitorScan(monitorId: string): Promise<void> {
       where: { id: monitorId },
       data: { lastScanId: scan.id, lastHealthScore: newScore, lastRunAt: new Date(), lastCriticalKeys: newCriticalKeys },
     });
+
+    // The weekly summary email, when this monitor has recipients and a week has passed.
+    // Never allowed to fail the run: the scan and its alerts already stand.
+    await maybeSendWeeklyDigest(monitorId, scan.id).catch((e) => console.warn(`[monitor-digest] ${monitorId}:`, (e as Error).message));
   } else {
     await prisma.pulseMonitor.update({
       where: { id: monitorId },

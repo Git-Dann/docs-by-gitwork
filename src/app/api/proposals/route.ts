@@ -12,8 +12,7 @@ import {
   allowedDocTypesForUser,
   assertCan,
   canManageDocs,
-  getEffectiveUserOrNull,
-} from "@/server/auth/effective-user";
+  getEffectiveUserOrNull, canViewDocs } from "@/server/auth/effective-user";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -30,6 +29,10 @@ import { proposalCreateSchema } from "@/server/validators";
 
 export async function GET(request: NextRequest) {
   try {
+    // ⚠️ Client documents — proposals, SLAs, SOWs. Reading them requires the Docs
+    // module; a session alone was enough until a signed-in account existed that does
+    // not hold it.
+    assertCan(await getEffectiveUserOrNull(request), canViewDocs, "view documents");
     await ensureBaseRecords();
 
     const searchParams = request.nextUrl.searchParams;

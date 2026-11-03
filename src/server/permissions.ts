@@ -4,6 +4,7 @@ import {
   ALL_PERMISSION_IDS,
   DEFAULT_ROLE_PERMISSIONS,
   LEGACY_PERMISSION_ALIASES,
+  ROLES,
   isSuperAdmin,
   isValidPermissionId,
   normalizeMatrix,
@@ -13,6 +14,7 @@ import {
   type PermissionOverrides,
   type RoleMatrix,
 } from "@/types/auth";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Permission resolution + the role matrix.
@@ -24,7 +26,12 @@ import {
 // the single `permissions` field.
 // ════════════════════════════════════════════════════════════════════════════
 
-const KNOWN_ROLES = new Set<string>(["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER"]);
+// Derived from ROLES, never hand-listed. `freezeExistingMembers` rewrites any member
+// whose role is not in here TO STAFF — so a role missing from this set is not a typo,
+// it is a silent privilege escalation for everyone holding it. GUEST was exactly that
+// case when it was added: rank 10, default grant of nothing, and it would have been
+// frozen into STAFF with STAFF's full module set.
+const KNOWN_ROLES = new Set<string>(ROLES.map((r) => r.id));
 
 /** Emails that are always Super Admins (the workspace owner). Idempotently enforced. */
 export const KNOWN_SUPER_ADMIN_EMAILS = ["dan@gitwork.co.uk"];
@@ -73,6 +80,9 @@ export async function recomputeMember(memberId: string, matrix?: RoleMatrix): Pr
 
 export async function recomputeAllMembers(workspaceId: string, matrix?: RoleMatrix): Promise<void> {
   const m = matrix ?? (await getRoleMatrix(workspaceId));
+  // includes-archived: this refreshes a CACHE, not a roster. Keeping archived members'
+  // cached permissions current means Restore hands back the right set; it grants nothing,
+  // because access is refused at the gate, not by this column.
   const members = await prisma.workspaceMember.findMany({
     where: { workspaceId },
     select: { id: true, role: true, permissionOverrides: true },
@@ -150,7 +160,7 @@ async function reconcileNewPermissions(workspaceId: string, stored: unknown): Pr
 
 async function promoteKnownSuperAdmins(workspaceId: string): Promise<void> {
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId, user: { email: { in: KNOWN_SUPER_ADMIN_EMAILS } } },
+    where: { workspaceId, user: { email: { in: KNOWN_SUPER_ADMIN_EMAILS } }, ...ACTIVE_MEMBER },
     select: { id: true, role: true },
   });
   for (const member of members) {
@@ -182,6 +192,7 @@ function legacyEffective(role: string, permissionsJson: unknown): string[] {
 
 async function freezeExistingMembers(workspaceId: string): Promise<void> {
   const matrix = DEFAULT_ROLE_PERMISSIONS;
+  // includes-archived: a one-time data migration over every row that exists.
   const members = await prisma.workspaceMember.findMany({
     where: { workspaceId },
     select: { id: true, role: true, permissions: true },

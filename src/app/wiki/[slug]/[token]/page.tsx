@@ -1,12 +1,16 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { resolvePublicWiki } from "@/server/wiki";
+import { applyCommentViewer, resolvePublicWiki } from "@/server/wiki";
+import { backfillCommentAuthors } from "@/server/wiki-intake-comment-backfill";
+import { publicCommentViewer } from "@/server/wiki-comment-viewer";
+import { applySheetViewer } from "@/server/wiki-sheets";
 import { verifyWikiAccessCookie, wikiAccessCookieName } from "@/server/wiki-access";
 import { auth } from "@/auth";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WikiPublicView } from "@/components/clients/wiki/wiki-public-view";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DashboardEditButton } from "@/components/clients/wiki/dashboard-edit";
 
 // Session/cookie-dependent (the access lockdown) — render per request.
 export const dynamic = "force-dynamic";
@@ -14,8 +18,19 @@ export const dynamic = "force-dynamic";
 const SECTION_LABELS: Record<string, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   launchpad: "Launchpad",
+  insights: "Charts",
+  costs: "Running costs",
+  estimates: "Estimates",
+  comparisons: "Comparisons",
+  sheets: "Sheets",
+  roundup: "RoundUp",
+  delivery: "Delivery",
+  support: "Support",
+  metrics: "Metrics",
+  meetings: "Meetings",
+  platforms: "Platforms",
   "design-system": "Design System",
   ia: "Information Architecture",
   "dev-guide": "Developer Guide",
@@ -71,7 +86,7 @@ export default async function PublicWikiPage({
     redirect(`/wiki/${resolved.wiki.clientSlug}/${token}`);
   }
 
-  const { wiki, onlySection } = resolved;
+  const { onlySection } = resolved;
 
   // Hard lockdown: the public wiki is viewable only by (a) a logged-in
   // Gitwork/Foundry staff member, or (b) an authenticated client user with a
@@ -79,14 +94,26 @@ export default async function PublicWikiPage({
   // which authenticates by email and routes back here (?next).
   const session = await auth();
   const isStaff = Boolean(session?.user?.id);
+  const cookieStore = await cookies();
+  const cookieValue = cookieStore.get(wikiAccessCookieName(resolved.wiki.id))?.value;
   if (!isStaff) {
-    const cookieStore = await cookies();
-    const cookieValue = cookieStore.get(wikiAccessCookieName(wiki.id))?.value;
-    const unlocked = await verifyWikiAccessCookie(wiki.id, cookieValue);
+    const unlocked = await verifyWikiAccessCookie(resolved.wiki.id, cookieValue);
     if (!unlocked) {
       redirect(`/portal/login?next=${encodeURIComponent(`/wiki/${slug}/${token}`)}`);
     }
   }
+  // Old client replies predate author stamping; tie the unambiguous ones to their
+  // author first so the permissions below can see them. Bounded, this wiki only.
+  await backfillCommentAuthors(resolved.wiki.id);
+  // Which replies this viewer may edit or delete (their own) — decided here, on the
+  // server, so the author ids never reach the page.
+  const viewer = await publicCommentViewer(resolved.wiki.id, cookieValue);
+  // Which sheet rows this viewer added (and so may remove) — also decided here, so client
+  // user ids never reach the page.
+  const wiki = await applySheetViewer(
+    await applyCommentViewer(resolved.wiki, viewer),
+    viewer?.kind === "client" ? viewer.wikiUserId : null,
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--surface-0)]">
@@ -98,8 +125,12 @@ export default async function PublicWikiPage({
         >
           {wiki.clientName}{" // Wiki"}
         </p>
-        {/* Same Light/Dark/System control as the rest of Foundry. */}
-        <ThemeToggle iconOnly />
+        {/* Edit (dashboard only — it renders nothing elsewhere) sits beside the same
+            Light/Dark/System control as the rest of Foundry. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <DashboardEditButton />
+          <ThemeToggle iconOnly />
+        </div>
       </header>
 
       {/* Content grows to fill the viewport so the footer stays pinned to the bottom

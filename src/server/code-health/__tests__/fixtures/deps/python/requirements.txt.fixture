@@ -1,0 +1,10 @@
+# Hand-written
+Django==2.2.0  # the web framework
+requests[security]==2.19.0 ; python_version >= "3.6"
+numpy>=1.20
+flask
+-r requirements-dev.txt
+-e git+https://github.com/x/y.git#egg=y
+pyyaml==5.3 \
+    --hash=sha256:aaaa \
+    --hash=sha256:bbbb

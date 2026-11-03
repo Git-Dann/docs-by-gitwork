@@ -4,6 +4,7 @@
 // hard-delete so we can debug if a device re-registers).
 
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 export type DeviceTokenInput = {
   userId: string;
@@ -74,8 +75,9 @@ export async function listActiveDeviceTokensForUser(userId: string): Promise<Dev
  * recipient.
  */
 export async function listActiveDeviceTokensForWorkspace(workspaceId: string): Promise<DeviceTokenRecord[]> {
+  // ACTIVE only — a leaver's phone must stop receiving client notifications.
   const memberships = await prisma.workspaceMember.findMany({
-    where: { workspaceId },
+    where: { workspaceId, ...ACTIVE_MEMBER },
     select: { userId: true },
   });
   if (memberships.length === 0) return [];
@@ -116,5 +118,23 @@ export async function markDeviceTokenUsed(token: string): Promise<void> {
 export async function unregisterDeviceToken(userId: string, token: string): Promise<void> {
   await prisma.deviceToken.deleteMany({
     where: { userId, token },
+  });
+}
+
+/**
+ * Corrects a device's recorded APNs environment after the other gateway accepted it.
+ *
+ * The environment is self-reported by the app at registration and can be wrong — see
+ * `sendToDevice`. Once a send proves which gateway the token belongs to, that is better
+ * evidence than the client's guess, so it is written back and the next send goes
+ * straight to the right place instead of paying a failed request first.
+ */
+export async function correctDeviceEnvironment(
+  token: string,
+  environment: string,
+): Promise<void> {
+  await prisma.deviceToken.updateMany({
+    where: { token },
+    data: { environment, failedAt: null },
   });
 }

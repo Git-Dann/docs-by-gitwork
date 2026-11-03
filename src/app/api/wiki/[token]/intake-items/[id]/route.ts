@@ -16,6 +16,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { REQUEST_MAX_TITLE } from "@/lib/wiki-request-title";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import {
@@ -25,7 +26,7 @@ import {
 
 const patchSchema = z
   .object({
-    title: z.string().trim().min(1).max(180).optional(),
+    title: z.string().trim().min(1).max(REQUEST_MAX_TITLE).optional(),
     description: z.string().trim().max(10_000).optional().nullable(),
     priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
     /** One of the client's own category ids — decides `type` server-side. */

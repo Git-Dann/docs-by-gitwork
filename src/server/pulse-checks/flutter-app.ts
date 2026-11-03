@@ -239,7 +239,9 @@ function credentialChecks(ctx: FlutterContext): PulseScanCheckInput[] {
       ? `Auth token keys are read from or written to SharedPreferences. On Android that is a plaintext XML file in app-private storage — readable on a rooted device and via ADB backup where allowed; on iOS it is a plist in the app container, included in unencrypted backups.${hasSecureStorage ? " `flutter_secure_storage` is ALREADY a dependency in this project, so the secure store exists and the tokens simply were not moved into it — a migration that was started and left unfinished." : " Add `flutter_secure_storage` and keep session material there."}`
       : hasSecureStorage
         ? "flutter_secure_storage is in use and no token keys were found in SharedPreferences."
-        : "No secure storage package and no token persistence located in the sampled source — confirm where the session token is kept.",
+        : ctx.pubspec === ""
+          ? "pubspec.yaml could not be read, and neither flutter_secure_storage nor token persistence was located in the sampled Dart source — confirm where the session token is kept."
+          : "No secure storage package and no token persistence located in the sampled source — confirm where the session token is kept.",
     evidence: tokenInPrefs ? "Token key accessed via SharedPreferences" : undefined,
   });
 
@@ -324,7 +326,14 @@ function releaseChecks(ctx: FlutterContext): PulseScanCheckInput[] {
   });
 
   // R8 / resource shrinking on release.
-  const shrinks = /minifyEnabled\s+true|isMinifyEnabled\s*=\s*true|shrinkResources\s+true/i.test(ctx.buildGradle);
+  const explicitShrink = /minifyEnabled\s+true|isMinifyEnabled\s*=\s*true|shrinkResources\s+true/i.test(ctx.buildGradle);
+  // The Flutter Gradle plugin itself sets isMinifyEnabled = true and isShrinkResources
+  // on the release build type (FlutterPlugin.kt, unless built with --no-shrink), so a
+  // module applying it that never sets minifyEnabled false IS shrunk.
+  const flutterPluginDefault =
+    /dev\.flutter\.flutter-gradle-plugin|flutter_tools\/gradle\/flutter\.gradle/.test(ctx.buildGradle) &&
+    !/minifyEnabled\s*(?:=\s*)?false|isMinifyEnabled\s*=\s*false/i.test(ctx.buildGradle);
+  const shrinks = explicitShrink || flutterPluginDefault;
   checks.push({
     category: C,
     checkKey: "flutter_release_shrinking",
@@ -403,7 +412,8 @@ function performanceChecks(ctx: FlutterContext): PulseScanCheckInput[] {
 
   // Metered-connection handling, including the case where the guard was commented out.
   const checksConnectivity = /Connectivity\(\)|connectivity_plus|ConnectivityResult/i.test(ctx.dart);
-  const guardsCellular = /ConnectivityResult\.mobile|isMobileData|allowMobileData|meteredConnection/i.test(ctx.dart);
+  const guardsCellular =
+    /ConnectivityResult\.mobile|isMobileData|allowMobileData|meteredConnection|useCellular\w*|hasCellular|isUnmetered|NetworkCapability\.(?:cellular|unmetered)/i.test(ctx.dart);
   // Count commented-out guards independently of live ones. Reporting only
   // "commented AND no live guard" hid the real defect on a real app: the download
   // path's guard was commented out while an unrelated screen still had one, so the
@@ -521,14 +531,20 @@ function qualityChecks(ctx: FlutterContext): PulseScanCheckInput[] {
   // Dart analyzer configuration — the Dart equivalent of a linter config.
   const hasLints = /include:\s*package:(flutter_lints|lints|very_good_analysis)/i.test(ctx.analysisOptions);
   const hasRules = /^\s*rules:/m.test(ctx.analysisOptions);
+  // Present in the tree but not read (config cap, fetch failure) is not "missing".
+  const analysisOptionsUnread =
+    ctx.analysisOptions === "" &&
+    ctx.snapshot.paths.some((p) => /(^|\/)analysis_options\.ya?ml$/i.test(p) && !isVendoredPath(p));
   checks.push({
     category: C,
     checkKey: "flutter_analyzer_lints",
     label: "Dart analyzer lint set configured",
-    status: ctx.analysisOptions === "" ? "FAIL" : hasLints || hasRules ? "PASS" : "WARN",
+    status: analysisOptionsUnread ? "INCONCLUSIVE" : ctx.analysisOptions === "" ? "FAIL" : hasLints || hasRules ? "PASS" : "WARN",
     detail:
       ctx.analysisOptions === ""
-        ? "No analysis_options.yaml. The Dart analyzer runs with defaults only, so the lint rules that would catch unawaited futures, dead null-aware operators and unused imports are off."
+        ? analysisOptionsUnread
+          ? "analysis_options.yaml exists in the repository but could not be read in this scan, so its lint configuration was not checked."
+          : "No analysis_options.yaml. The Dart analyzer runs with defaults only, so the lint rules that would catch unawaited futures, dead null-aware operators and unused imports are off."
         : hasLints || hasRules
           ? "analysis_options.yaml configures a lint set."
           : "analysis_options.yaml exists but includes no lint package and defines no rules, so it is not actually enforcing anything.",
@@ -551,7 +567,7 @@ function qualityChecks(ctx: FlutterContext): PulseScanCheckInput[] {
         interactive === 0
           ? "No interactive widgets found in the sampled source."
           : semantics === 0
-            ? `${interactive} interactive widget${interactive !== 1 ? "s" : ""} found with no Semantics or semanticLabel anywhere. TalkBack and VoiceOver will announce icon-only controls as unlabelled buttons, which makes the app effectively unusable with a screen reader.`
+            ? `${interactive} interactive widget${interactive !== 1 ? "s" : ""} found with no Semantics or semanticLabel in the sampled source. TalkBack and VoiceOver will announce icon-only controls as unlabelled buttons, which makes the app effectively unusable with a screen reader.`
             : semantics / interactive >= 0.2
               ? `${semantics} semantic label${semantics !== 1 ? "s" : ""} across ${interactive} interactive widgets.`
               : `Only ${semantics} semantic label${semantics !== 1 ? "s" : ""} across ${interactive} interactive widgets. Icon-only controls need an explicit label or a screen reader announces them as just "button".`,
@@ -561,7 +577,10 @@ function qualityChecks(ctx: FlutterContext): PulseScanCheckInput[] {
   // Feature code commented out in shipped source — a behaviour change hiding as a diff.
   const commentedFeature = countMatches(
     ctx.dartRaw,
-    /^\s*\/\/\s*TODO[^\n]{0,120}(re-?enable|reenable|restore|uncomment|temporar)/im,
+    // The TODO must sit above commented-out code (up to two continuation comment
+    // lines between). Matching the TODO text alone counted notes like
+    // '// TODO: Temporary typedef ...' above live code, contradicting the detail.
+    /^\s*\/\/\s*TODO[^\n]{0,120}(re-?enable|reenable|restore|uncomment|temporar)[^\n]*\n(?:[ \t]*\/\/[^\n]*\n){0,2}?\s*\/\/\s*(?:[\w$<>?,]+\s+){0,2}[\w.$]+\s*[(=:]/im,
   );
   checks.push({
     category: C,

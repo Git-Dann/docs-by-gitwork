@@ -1,0 +1,8 @@
+github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:abc=
+github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:def=
+github.com/gin-gonic/gin v1.4.0/go.mod h1:aaa=
+github.com/gin-gonic/gin v1.6.0 h1:bbb=
+github.com/gin-gonic/gin v1.6.0/go.mod h1:ccc=
+golang.org/x/text v0.3.0 h1:ddd=
+golang.org/x/text v0.3.0/go.mod h1:eee=
+github.com/pkg/errors v0.8.0/go.mod h1:fff=

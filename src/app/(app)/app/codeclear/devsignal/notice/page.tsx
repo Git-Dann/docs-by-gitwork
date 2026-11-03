@@ -5,7 +5,7 @@ import { NoticeEditor } from "@/components/codeclear/devsignal/notice-editor";
 
 export default function DevSignalNoticePage() {
   return (
-    <AppShell title="Code" subtitle="DevSignal consent notice — the candidate-facing GDPR copy.">
+    <AppShell title="Hiring" subtitle="DevSignal consent notice — the candidate-facing GDPR copy.">
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <CodeClearTabs />

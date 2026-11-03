@@ -5,7 +5,17 @@
  * these IDs. Keep them stable — changing an ID orphans existing user preferences.
  */
 
-export const NOTIFICATION_CHANNELS = ["email", "push", "slack", "inApp"] as const;
+/**
+ * `push` is **browser** Web Push (VAPID). `mobile` is the Foundry **app on a phone**
+ * (APNs). They are deliberately separate channels rather than one "push".
+ *
+ * ⚠️ Keeping them separate is what makes a phone quiet by default. Bridging APNs onto
+ * the existing `push` channel would have turned on a phone notification for every event
+ * already routed to it — which for an admin is ~51 a month, none of which anyone had
+ * read. A phone is the most interrupting surface Foundry has, so an event reaches it
+ * only by being listed explicitly below.
+ */
+export const NOTIFICATION_CHANNELS = ["email", "push", "slack", "inApp", "mobile"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 export const NOTIFICATION_EVENTS = [
@@ -40,8 +50,20 @@ export const NOTIFICATION_EVENTS = [
   "meetings.notes_ready",
   // Portal / clients
   "clients.onboarded",
+  // A client data feed Foundry pulls on a schedule has stopped working (src/server/wedge-course-feed.ts)
+  "clients.feed_failing",
+  // A client's uptime monitor went down / came back, or monitors stopped being checked (src/server/wiki-monitors.ts)
+  "clients.monitor_alert",
+  // You were @mentioned in a reply on a client's request (src/server/wiki-intake-reply-notify.ts)
+  "wiki.request_mention",
+  // A client edited one of their wiki Sheets (src/server/wiki-sheets.ts) — at most once per sheet per 15 min
+  "wiki.sheet_client_edit",
   // Foreman (daily delivery-risk watchdog)
   "foreman.digest",
+  // HR's Monday digest: what's coming up, to check and incomplete (src/server/hr/digest.ts)
+  "hr.weekly_digest",
+  // A message a person wrote and addressed to you (src/server/team-messages.ts)
+  "team.message",
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
 
@@ -86,8 +108,36 @@ export const DEFAULT_EVENT_ROUTING: Record<NotificationEvent, NotificationChanne
   "backstage.expense_decided": ["inApp", "push"],
   "meetings.notes_ready": ["inApp"],
   "clients.onboarded": ["inApp"],
+  // Fires ONCE per outage (when a feed goes from healthy to failing), not every hour it
+  // stays down. A client's data silently not arriving is the failure this exists to end —
+  // Big Wedge's course requests stopped for two months and the client had to tell us.
+  "clients.feed_failing": ["inApp", "push"],
+  // A client's service is down (or back), or monitoring itself has stopped. Fellas Loaded was
+  // down with Google Cloud in Oct 2026 and the client told us first. Posts to
+  // channelRoutes["clients.monitor_alert"] (Gitwork's ops channel) as well as admins' devices.
+  "clients.monitor_alert": ["inApp", "push", "slack"],
+  // Directed at one person, by name, in a conversation a client may be waiting on —
+  // the same weight as being @mentioned on a task.
+  "wiki.request_mention": ["inApp", "push"],
+  // A client changed a shared sheet. In-app only: it is a heads-up, debounced per sheet, not a page.
+  "wiki.sheet_client_edit": ["inApp"],
   // Directed at admins each morning — in-app feed + a native push so it lands on the phone,
   // plus a single post to `channelRoutes["foreman.digest"]` when one is configured, so the
   // delivery picture shows up where the team already is rather than only inside Foundry.
   "foreman.digest": ["inApp", "push", "slack"],
+  // In-app only: the same digest is also emailed directly by src/server/hr/digest.ts (the
+  // dispatcher's email channel is still deferred), so listing "email" here would one day
+  // send it twice. Never Slack: it names people and what their records lack.
+  "hr.weekly_digest": ["inApp"],
+  // ⚠️ The ONLY event routed to `mobile`, and the reason that channel exists.
+  //
+  // Everything else in this table is something the system noticed. This is the one
+  // thing a person deliberately wrote, addressed to named people, and chose to send —
+  // so it is the one case where interrupting a phone is the point rather than a side
+  // effect. It keeps `inApp` too: an alert that is swiped away must still be readable
+  // afterwards, which for a weekly summary is most of its value.
+  //
+  // Adding `mobile` to anything else is a decision, not a tweak — see
+  // src/server/__tests__/mobile-channel-quiet.test.ts.
+  "team.message": ["inApp", "push", "mobile"],
 };

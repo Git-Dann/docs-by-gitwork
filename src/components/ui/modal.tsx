@@ -50,7 +50,8 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return;
-    restoreFocusRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    restoreFocusRef.current =
+      (document.activeElement as HTMLElement | null) ?? null;
 
     const panel = panelRef.current;
     const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
@@ -63,7 +64,9 @@ export function Modal({
         return;
       }
       if (event.key === "Tab" && panel) {
-        const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+        const items = Array.from(
+          panel.querySelectorAll<HTMLElement>(FOCUSABLE),
+        );
         if (items.length === 0) return;
         const firstEl = items[0];
         const lastEl = items[items.length - 1];
@@ -111,7 +114,7 @@ export function Modal({
           className={`app-dialog-panel relative mt-10 overflow-hidden outline-none sm:mt-0 ${panelClassName ?? "w-full max-w-xl"}`}
         >
           {title ? (
-            <div className="widget-header">
+            <div className="widget-header shrink-0">
               <span id="modal-title" className="widget-header-label">
                 {title}
               </span>

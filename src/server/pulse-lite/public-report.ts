@@ -12,6 +12,8 @@ import { summarise, triage, type PublicTriage, type LiteCategorySummary } from "
 import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import { scoreGrade } from "@/lib/badge/pulse-badge";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
+import { freeKeysFor } from "@/lib/pulse-free-tier";
 
 export interface PublicReport {
   id: string;
@@ -55,6 +57,7 @@ export async function getPublicReport(id: string): Promise<PublicReport | null> 
   });
   if (!lite) return null;
 
+  const { freeCheckKeys } = await getPulseEmbedWorkspaceConfig();
   const checks = (lite.checks as PulseScanCheckInput[] | null) ?? [];
   const { categories, pass, warn, fail, inconclusive } = summarise(checks);
   // Same function as the internal report, the badge and Provenance. A second
@@ -78,7 +81,7 @@ export async function getPublicReport(id: string): Promise<PublicReport | null> 
     fail,
     inconclusive,
     categories,
-    triage: triage(checks),
+    triage: triage(checks, freeKeysFor(lite.emailCaptured, freeCheckKeys)),
     enquired: lite.emailCaptured,
     errorMessage: lite.errorMessage,
   };
@@ -116,8 +119,20 @@ export function renderReportMarkdown(r: PublicReport): string {
       if (f.detail) lines.push(`- Evidence: ${f.detail}`);
       lines.push(``);
     });
-  } else {
+  } else if (r.triage.lockedCount === 0) {
     lines.push(`## What to fix`, ``, `Nothing reached the actionable threshold on this scan.`, ``);
+  }
+
+  // A free-set limit holds some findings back. Say so, and name only the AREA — a
+  // reader (human or agent) must not take "3 to fix" for the whole list.
+  if (r.triage.lockedCount > 0) {
+    const byCat = r.triage.lockedByCategory.slice(0, 6).map((a) => `${a.category} (${a.count})`).join(", ");
+    lines.push(
+      `## Further findings in the full report`,
+      ``,
+      `${r.triage.lockedCount} more finding${r.triage.lockedCount === 1 ? "" : "s"} ranked as actionable ${r.triage.lockedCount === 1 ? "is" : "are"} in the full report: ${byCat}.`,
+      ``,
+    );
   }
 
   if (r.triage.advisoryCount > 0) {
@@ -126,7 +141,7 @@ export function renderReportMarkdown(r: PublicReport): string {
       `## Advisory`,
       ``,
       `${r.triage.advisoryCount} further lower-priority checks did not pass. `
-        + `Largest groups: ${byCat}. These are included in the in-depth review.`,
+        + `Largest groups: ${byCat}. These are in the full report.`,
       ``,
     );
   }
@@ -155,8 +170,8 @@ export function renderReportMarkdown(r: PublicReport): string {
       + `attempt authorisation, or run the site's JavaScript. Anything requiring a repository, `
       + `a session or a rendered page is reported above as not established rather than guessed.`,
     ``,
-    `Produced by Gitwork Pulse. The in-depth review — what these findings mean, the order to `
-      + `address them in, and an implementation brief — is available on request.`,
+    `Produced by Gitwork Pulse. The full report, with every check and its evidence, is emailed `
+      + `once you unlock it.`,
     ``,
   );
 

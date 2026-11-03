@@ -1,4 +1,5 @@
 import { CATEGORIES } from "./categories";
+import { dnsTtlHealthyCheck, lookupAuthoritativeTtl } from "./authoritative-ttl";
 import { type ExtendedCheckContext, type PulseScanCheckInput, resolveDnsRecord, probeInconclusive } from "./_types";
 import { analyzeHost, platformSuffixOf, type HostAnalysis } from "@/server/pulse-lite/registrable-domain";
 
@@ -182,6 +183,8 @@ const CACHE_STATUS_HEADERS: readonly string[] = [
   "x-cache",
   "x-cdn-cache",
   "x-vercel-cache",
+  // WordPress.com / Automattic edge cache (wordpress.org: `x-nc: HIT dca 1`).
+  "x-nc",
 ];
 
 /**
@@ -533,7 +536,10 @@ export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Prom
     checks.push(probeInconclusive(CATEGORIES.INFRASTRUCTURE, "ipv6_dns_record", "IPv6 (AAAA) DNS record present",
       `The AAAA lookup for ${hostname} did not complete (${aaaa.reason}).`));
   } else {
-    const hasIpv6 = aaaa.records.length > 0;
+    // A DoH AAAA answer for a CNAME'd name lists the CNAME chain too — www.cbc.ca
+    // answers with two type-5 records ending at an akamaiedge.net name that has no
+    // AAAA at all. Only an IPv6 address (always contains ':') proves IPv6.
+    const hasIpv6 = aaaa.records.some((record) => record.includes(":"));
     checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "ipv6_dns_record", label: "IPv6 (AAAA) DNS record present", status: hasIpv6 ? "PASS" : "WARN", detail: hasIpv6 ? "IPv6 AAAA record found — dual-stack deployment in place." : "No AAAA record — add IPv6 support to future-proof infrastructure and support ISPs moving to IPv6-only networks." });
   }
 
@@ -600,8 +606,9 @@ export async function runInfrastructureExtended(ctx: ExtendedCheckContext): Prom
     });
   }
 
-  // DNS TTL healthy
-  checks.push({ category: CATEGORIES.INFRASTRUCTURE, checkKey: "dns_ttl_healthy", label: "DNS TTL configured for stability", status: "PASS", detail: "Set DNS TTL to 300–3600 seconds for production records. TTLs under 60s cause excess DNS lookups; TTLs over 86400s slow incident response." });
+  // DNS TTL, asked of the zone's own name servers (authoritative-ttl.ts): a public
+  // resolver only reports what its cache has left, so it could never show a TTL was too long.
+  checks.push(dnsTtlHealthyCheck(hostname, await lookupAuthoritativeTtl(hostname)));
 
   // Apex ⟷ www pair.
   checks.push(...await runBackupDomainCheck(hostname));

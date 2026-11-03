@@ -67,7 +67,10 @@ describe("operational-depth catalogue contract", () => {
       const adverse = evaluateOperationalRuleText(rule, rule.adverseFixture);
 
       expect(positive.status, `${rule.key} positive fixture`).toBe("PASS");
-      expect(adverse.status, `${rule.key} adverse fixture`).toBe(rule.onMissing);
+      // A rule restored as presence-only reports a MISSING safeguard as INCONCLUSIVE, but a
+      // forbidden construct it actually sees (default_deny: a declared allow default) still fails.
+      if (rule.absentIsUnknown) expect(["INCONCLUSIVE", rule.onMissing], `${rule.key} adverse fixture`).toContain(adverse.status);
+      else expect(adverse.status, `${rule.key} adverse fixture`).toBe(rule.onMissing);
       expect(adverse.detail, `${rule.key} remediation`).toMatch(/Remediation:/);
     }
   });
@@ -79,14 +82,16 @@ describe("operational-depth catalogue contract", () => {
 
   it("keeps absence findings low-confidence when repository sampling is thin", () => {
     const files = {
-      "package.json": '{"dependencies":{"express":"^5","next-auth":"^5"}}',
+      // A cookie-session dependency is what puts CSRF in scope; the CSRF middleware that
+      // would satisfy it may live in any of the 40 files that were never read.
+      "package.json": '{"dependencies":{"express":"^5","express-session":"^1"}}',
       "src/auth.ts": "app.post('/login', login);",
     };
     const snapshot = snap(files);
     snapshot.paths.push(...Array.from({ length: 40 }, (_, index) => `src/unread-${index}.ts`));
 
     const check = at(evaluateOperationalDepthChecks(snapshot), "auth_depth_csrf_state_change");
-    expect(check.status).toBe("WARN");
+    expect(check.status).toBe("INCONCLUSIVE");
     expect(check.confidence).toBe("LOW");
     expect(check.confidenceReason).toMatch(/1 of 41 source files/i);
   });

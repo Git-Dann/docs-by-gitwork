@@ -28,6 +28,19 @@ authoritative list**, and the schedules below are what the host executes.
 > and the Vercel copy is pure duplication. Do NOT delete it before confirming, or you may
 > remove the only thing actually running a job. Either way it is one or the other, never
 > both.
+
+> ### Jobs and workspaces (October 2026)
+>
+> Foundry is becoming multi-tenant (`docs/multi-tenant-roadmap.md`). Jobs that already loop
+> over workspaces: `foreman`, `curator`, `retention`, `availability-digest`, the `jobs` reconcile.
+> `docs-gdrive-backup` now does too, via `forEachWorkspace` (`src/server/workspaces/for-each.ts`).
+> One workspace's failure there is reported and never stops the others.
+>
+> **Still Gitwork-only, deliberately:**
+> - Care's jobs (`support-sync`, `care-digest`, `embed-conversations`, `analytics-snapshot`).
+>   Care is left out of the multi-tenant work for now.
+> - `meet-transcripts`: its organiser list is Gitwork's.
+> - `wedge-course-feed` and `wedge-keepwarm`: they belong to the client Wedge.
 >
 > **Where the two lists disagree today** (compared line by line, July 2026). If Vercel is
 > still firing, these three run twice a day at *different* times, which is why the
@@ -106,9 +119,20 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 
 ```cron
 0 2 * * *  /opt/apps/foundry/run-cron.sh docs-gdrive-backup   >> /tmp/foundry-cron.log 2>&1
+# Big Wedge course requests — HOURLY pull from Big Wedge's own course-requests API into the
+# Wedge wiki (Oct 2026). The only live route for them: Big Wedge's app stopped emailing the
+# mailbox Care reads in Aug 2026. If this line is missing the Course Requests page goes red
+# after 6 hours ("not arriving"), which is the point — it used to fail silently for months.
+15 * * * * /opt/apps/foundry/run-cron.sh wedge-course-feed    >> /tmp/foundry-cron.log 2>&1
 0 3 * * *  /opt/apps/foundry/run-cron.sh auto-archive-tasks   >> /tmp/foundry-cron.log 2>&1
+# Member purge — removes memberships archived more than 30 days ago (Oct 2026). Deletes the
+# MEMBERSHIP only, never the User, so work people did stays attributed. FAIL-SAFE if missing:
+# archiving already removes access and Restore is refused past 30 days whether or not this
+# runs, so a missing line only means archived rows linger in the Team table's Archived tab.
+30 3 * * * /opt/apps/foundry/run-cron.sh member-purge         >> /tmp/foundry-cron.log 2>&1
 0 4 * * *  /opt/apps/foundry/run-cron.sh pulse-reconcile      >> /tmp/foundry-cron.log 2>&1
 0 5 * * *  /opt/apps/foundry/run-cron.sh pulse-run-monitors   >> /tmp/foundry-cron.log 2>&1
+* * * * * /opt/apps/foundry/run-cron.sh wiki-monitors      >> /tmp/foundry-cron.log 2>&1
 0 6 * * *  /opt/apps/foundry/run-cron.sh analytics-snapshot   >> /tmp/foundry-cron.log 2>&1
 0 7 * * *  /opt/apps/foundry/run-cron.sh embed-conversations  >> /tmp/foundry-cron.log 2>&1
 0 8 * * *  /opt/apps/foundry/run-cron.sh support-sync         >> /tmp/foundry-cron.log 2>&1
@@ -121,6 +145,11 @@ reconcile *towards*, and run the `inspect` workflow for ground truth.
 # after 09:00. (This file listed foreman TWICE until July 2026 — one instance, here.)
 0 9 * * *  /opt/apps/foundry/run-cron.sh foreman              >> /tmp/foundry-cron.log 2>&1
 0 10 * * * /opt/apps/foundry/run-cron.sh care-digest          >> /tmp/foundry-cron.log 2>&1
+# CRM sync (Oct 2026) — every lead with automation on: reads opted-in Gmail, its internal Slack
+# channel, meetings and proposals; moves the stage on facts, proposes suggestions + actions.
+# Hourly in working hours. FAIL-SAFE if missing: a lead also syncs whenever someone opens it
+# (if its last sync is >30 min old) and on "Sync now" — this line covers leads nobody opens.
+0 8-18 * * 1-5 /opt/apps/foundry/run-cron.sh crm-sync        >> /tmp/foundry-cron.log 2>&1
 
 # Backstage availability — ONE combined leave + absence Slack digest each weekday
 # morning (08:30; Mon posts a week roll-up, Tue–Fri "out today"; silent when nobody's
@@ -176,15 +205,16 @@ they're independent, but the crontab otherwise staggers one job per hour.)
 - **All 17 `/api/cron/*` routes are accounted for above**, and that is the property to
   preserve — if you add a route, add a line here in the same PR. Two were missing until
   July 2026 (`retention`, `wedge-keepwarm`) and `foreman` was listed twice.
-- **`wiki-monitors` is the one deliberate omission.** It exists in `vercel.json` at
-  `0 1 * * *` (daily 01:00 — this file used to describe it as "sub-daily", which was
-  simply wrong) and it is not wired on the box — so client uptime monitoring is **not
-  currently running** from the crontab. Note that if the Vercel crons *are* still firing,
-  it is the one job Vercel is running that the box is not. That is a decision, not
-  an oversight: adopt it by adding
-  `*/5 * * * * /opt/apps/foundry/run-cron.sh wiki-monitors >> /tmp/foundry-cron.log 2>&1`,
-  or drop the route. Leaving it half-configured is the one option to avoid, because the
-  Wiki UI implies monitoring is active.
+- **`wiki-monitors` is on the box since 21 Oct 2026**, every minute (`* * * * *`). Healthy
+  monitors still check on their own interval (each self-throttles); a FAILING one is re-checked
+  every minute, so an outage is confirmed in ~1 min and recovery seen within a minute. It had been the one
+  deliberate omission since the July migration, and the cost of leaving it half-configured
+  was exactly what this note predicted: every monitor kept showing its last result (UP, from
+  4 Aug) for 2½ months while nothing checked anything, and Fellas Loaded went down with Google
+  Cloud with the client telling us first. Now a monitor alerts Slack
+  (`channelRoutes["clients.monitor_alert"]`) after two failed checks, and a watchdog in the
+  every-minute `jobs` worker alerts if monitors stop being checked — so this job silently
+  stopping is itself reported.
 - Apart from `wedge-keepwarm` (5-minutely) and `jobs` (every minute), everything is daily
   or weekly — the box staggers roughly one job per hour so no two heavy runs collide.
 - The **DB backup** is the weekly `db-backup.sh` above; the Fasthosts panel also runs a

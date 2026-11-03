@@ -17,6 +17,7 @@ import {
   useTriageConversation,
   useSnoozeConversation,
   useCloseConversation,
+  useCloseConversationWithUndo,
   useConversationNotes,
   useAddConversationNote,
   useSendMessage,
@@ -34,6 +35,7 @@ import {
   isLongWait,
 } from "./care-constants";
 import { OpenInChannelButton } from "./open-in-channel-button";
+import { Spinner } from "@/components/ui/motion/spinner";
 
 const STATUSES: ConversationStatus[] = ["new", "open", "snoozed", "closed", "ignored"];
 const PRIORITIES: ConversationPriority[] = ["urgent", "high", "normal", "low"];
@@ -224,6 +226,7 @@ export function ConversationDetail({
   const triage = useTriageConversation(clientId);
   const snooze = useSnoozeConversation(clientId);
   const close = useCloseConversation(clientId);
+  const closeWithUndo = useCloseConversationWithUndo(clientId);
   const addNote = useAddConversationNote(clientId, conversation.id);
   const sendMessage = useSendMessage(clientId, conversation.id);
   const generateDraft = useGenerateAiDraft(clientId);
@@ -365,7 +368,7 @@ export function ConversationDetail({
             <ToolbarButton onClick={() => close.mutate({ convId: conversation.id, reopen: true })}>Reopen</ToolbarButton>
           ) : (
             <>
-              <ToolbarButton tone="affirm" onClick={() => close.mutate({ convId: conversation.id })} title="Close (E)">
+              <ToolbarButton tone="affirm" onClick={() => closeWithUndo(conversation)} title="Close (E)">
                 <CheckIcon className="h-3.5 w-3.5" />
                 Close
               </ToolbarButton>
@@ -525,7 +528,7 @@ export function ConversationDetail({
                     className="flex items-center gap-1.5 rounded-[6px] border border-[var(--border-2)] bg-[var(--surface-0)] px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:bg-[var(--surface-1)] disabled:opacity-40"
                     title="Generate an AI draft reply"
                   >
-                    <SparklesIcon className={cn("h-3.5 w-3.5 text-[var(--brand-600)]", generateDraft.isPending && "animate-spin")} />
+                    {generateDraft.isPending ? <Spinner tone="brand" /> : <SparklesIcon className="h-3.5 w-3.5 text-[var(--brand-600)]" />}
                     {generateDraft.isPending ? "Drafting…" : "AI draft"}
                   </button>
                 )}

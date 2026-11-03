@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { EdgeBoard } from "@/components/edge/edge-board";
+import { workspaceAllowsPath } from "@/lib/workspace-modules";
 
 // Corsair Xeneon Edge "Mission Control" — a dedicated, dark, chrome-free exec board.
 // Signed-in only: because the viewer is authenticated, everything renders as THEM
@@ -11,5 +12,8 @@ export const dynamic = "force-dynamic";
 export default async function EdgePage() {
   const session = await auth();
   if (!session?.user) redirect("/login?callbackUrl=%2Fedge");
+  // /edge is outside the middleware's /app branch, so the workspace module switch is
+  // checked here: it belongs to Labs (src/lib/workspace-modules.ts).
+  if (!workspaceAllowsPath("/edge", session.user.workspaceModules)) redirect("/app");
   return <EdgeBoard />;
 }

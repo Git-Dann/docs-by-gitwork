@@ -4,6 +4,7 @@ import { applyCheckPolicy, type CheckPolicy } from "@/server/check-config";
 import { policyDisposition } from "../policy-disposition";
 import { CATEGORIES } from "../categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
+import { readScanPageSource } from "@/components/pulse/__tests__/scan-page-source";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The detector's finding and the workspace's decision about it are two facts.
@@ -113,7 +114,7 @@ describe("the new columns survive the round trip", () => {
   });
 
   it("is rendered, so recording it is not a write-only column", () => {
-    const report = readFileSync("src/components/pulse/pulse-scan-results.tsx", "utf8");
+    const report = readScanPageSource();
     expect(report).toContain("policyDisposition");
     expect(report).toContain("check.detectorStatus");
   });

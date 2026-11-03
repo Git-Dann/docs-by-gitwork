@@ -1,10 +1,7 @@
-import {
-  Prisma,
-  type CodeClearTier as PrismaCodeClearTier,
-  type IdentityConfidence as PrismaIdentityConfidence,
-  type PipelineStatus as PrismaPipelineStatus,
-} from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { NextRequest } from "next/server";
+import { archivedTeamEmails } from "@/server/codeclear-archived";
+import { buildCandidateWhere } from "@/server/codeclear-candidate-where";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
@@ -26,148 +23,6 @@ export const dynamic = "force-dynamic";
 function parsePositiveInt(value: string | null, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
-function buildCandidateWhere(
-  workspaceId: string,
-  searchParams: URLSearchParams,
-): Prisma.CandidateWhereInput {
-  const q = searchParams.get("q")?.trim();
-  const status = searchParams.get("status")?.trim() || undefined;
-  const tier = searchParams.get("tier")?.trim() || undefined;
-  const identityConfidence = searchParams.get("identityConfidence")?.trim() || undefined;
-  const recheckDue = searchParams.get("recheckDue")?.trim() || undefined;
-  const stack = searchParams.get("stack")?.trim() || undefined;
-  const scoreMin = searchParams.get("scoreMin");
-  const scoreMax = searchParams.get("scoreMax");
-
-  const overallScoreRange: Prisma.IntFilter = {};
-
-  if (scoreMin !== null) {
-    const parsedMin = Number(scoreMin);
-    if (Number.isFinite(parsedMin)) {
-      overallScoreRange.gte = parsedMin;
-    }
-  }
-
-  if (scoreMax !== null) {
-    const parsedMax = Number(scoreMax);
-    if (Number.isFinite(parsedMax)) {
-      overallScoreRange.lte = parsedMax;
-    }
-  }
-
-  return {
-    workspaceId,
-    // DevSignal isolation: in-vetting EXTERNAL candidates never appear in Code.
-    NOT: { origin: "EXTERNAL", published: false },
-    ...(status ? { status: status as PrismaPipelineStatus } : {}),
-    ...(tier ? { tier: tier as PrismaCodeClearTier } : {}),
-    ...(stack
-      ? {
-          OR: [
-            {
-              primaryStack: {
-                contains: stack,
-                mode: "insensitive",
-              },
-            },
-            {
-              techStacks: {
-                has: stack,
-              },
-            },
-          ],
-        }
-      : {}),
-    ...(q
-      ? {
-          OR: [
-            {
-              name: {
-                contains: q,
-                mode: "insensitive",
-              },
-            },
-            {
-              githubHandle: {
-                contains: q,
-                mode: "insensitive",
-              },
-            },
-            {
-              primaryStack: {
-                contains: q,
-                mode: "insensitive",
-              },
-            },
-            {
-              techStacks: {
-                hasSome: [q],
-              },
-            },
-            {
-              email: {
-                contains: q,
-                mode: "insensitive",
-              },
-            },
-          ],
-        }
-      : {}),
-    ...(identityConfidence
-      ? {
-          OR: [
-            {
-              score: {
-                identityConfidence: identityConfidence as PrismaIdentityConfidence,
-              },
-            },
-            {
-              scoreDraft: {
-                identityConfidence: identityConfidence as PrismaIdentityConfidence,
-              },
-            },
-          ],
-        }
-      : {}),
-    ...(Object.keys(overallScoreRange).length
-      ? {
-          OR: [
-            {
-              score: {
-                overallScore: overallScoreRange,
-              },
-            },
-            {
-              scoreDraft: {
-                overallScore: overallScoreRange,
-              },
-            },
-          ],
-        }
-      : {}),
-    ...(recheckDue === "ANY"
-      ? {
-          recheckDueAt: {
-            not: null,
-          },
-        }
-      : recheckDue === "SOON"
-        ? {
-            recheckDueAt: {
-              gte: new Date(),
-              lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            },
-          }
-        : recheckDue === "OVERDUE"
-          ? {
-              recheckDueAt: {
-                lt: new Date(),
-              },
-            }
-          : {}),
-  };
 }
 
 function buildCandidateOrderBy(
@@ -203,7 +58,7 @@ export async function GET(request: NextRequest) {
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 20);
     const sortBy = searchParams.get("sortBy")?.trim() || "createdAt";
     const sortDir = searchParams.get("sortDir") === "asc" ? "asc" : "desc";
-    const where = buildCandidateWhere(workspace.id, searchParams);
+    const where = buildCandidateWhere(workspace.id, searchParams, await archivedTeamEmails(workspace.id));
 
     const [items, total, stackRecords] = await Promise.all([
       prisma.candidate.findMany({

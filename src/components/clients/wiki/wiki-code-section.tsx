@@ -348,16 +348,19 @@ function VersionView({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          // Wraps, and is never narrower than its label + date: below that the Download
+          // group drops to its own line instead. Unbounded, a phone crushed the date into a
+          // one-word column that ran under the Download button and hid the Current badge.
+          className="flex min-w-[180px] flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left"
         >
           <ChevronRightIcon className={`h-4 w-4 shrink-0 text-[var(--text-4)] transition-transform ${open ? "rotate-90" : ""}`} />
           <span className="text-[14px] font-semibold text-[var(--text-1)]" style={{ fontFamily: MONO }}>{version.label}</span>
           {version.isCurrent && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--brand-700)]">
+            <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[var(--surface-brand)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--brand-700)]">
               <StarSolid className="h-3 w-3" /> Current
             </span>
           )}
-          <span className="text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
+          <span className="whitespace-nowrap text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }}>
             {version.files.length} file{version.files.length === 1 ? "" : "s"} · {fmtDate(version.createdAt)}
           </span>
         </button>
@@ -466,10 +469,18 @@ function AddVersionModal({
   }
 
   return (
-    <Modal open={open} onClose={close} title={`NEW VERSION · ${moduleName.toUpperCase()}`} panelClassName="w-full max-w-4xl">
-      <div className="grid gap-0 md:grid-cols-[320px_1fr]">
+    <Modal
+      open={open}
+      onClose={close}
+      title={`NEW VERSION · ${moduleName.toUpperCase()}`}
+      panelClassName="app-dialog-fixed w-full max-w-3xl"
+    >
+      {/* Height lives on the PANEL (`app-dialog-fixed`), not on a `max-h-[46vh]` scroll
+          region — that capped the tall case and still let a one-file version collapse
+          the box, so opening two in a row moved it under the cursor (§46). */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 md:grid-cols-[300px_minmax(0,1fr)]">
         {/* Left — version meta */}
-        <div className="space-y-4 border-b border-[var(--border-1)] p-5 md:border-b-0 md:border-r">
+        <div className="min-h-0 space-y-4 overflow-y-auto border-b border-[var(--border-1)] p-5 md:border-b-0 md:border-r">
           <label className="block">
             <span className="app-field-label">Version label</span>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. v1.2.0" className="app-input" autoFocus />
@@ -491,9 +502,9 @@ function AddVersionModal({
         </div>
 
         {/* Right — files */}
-        <div className="space-y-3 p-5">
+        <div className="min-h-0 space-y-3 overflow-y-auto p-5">
           <span className="app-field-label">Files</span>
-          <div className="max-h-[46vh] space-y-3 overflow-auto pr-0.5">
+          <div className="space-y-3 pr-0.5">
             {files.map((f, i) => (
               <div key={i} className="space-y-2 rounded-[8px] border border-[var(--border-1)] bg-[var(--surface-1)] p-3">
                 <div className="flex gap-2">
@@ -515,8 +526,8 @@ function AddVersionModal({
         </div>
       </div>
 
-      {error && <p className="px-5 text-sm text-rose-600">{error}</p>}
-      <div className="flex justify-end gap-2 border-t border-[var(--border-1)] p-4">
+      {error && <p className="shrink-0 px-5 text-sm text-rose-600">{error}</p>}
+      <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--border-1)] p-4">
         <button type="button" onClick={close} className="rounded-[8px] border border-[var(--border-2)] px-3.5 py-2 text-sm font-medium text-[var(--text-2)] transition hover:bg-[var(--surface-1)]">Cancel</button>
         <button type="button" onClick={() => void save()} disabled={create.isPending} className="inline-flex items-center gap-2 rounded-[8px] bg-[var(--brand-600)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-700)] disabled:opacity-60">
           {create.isPending ? "Saving…" : "Save version"}

@@ -193,6 +193,17 @@ export interface GitHubProfileSnapshot {
   updatedAt: string;
 }
 
+/**
+ * Why a repo's file tree could not be read. Recorded so the drawer can say "Couldn't read
+ * this repository: …" with the real cause instead of reporting no tests / CI / docs.
+ */
+export type RepoUnreadableReason =
+  | "NO_TOKEN"
+  | "NO_ACCESS"
+  | "RATE_LIMITED"
+  | "NOT_FOUND"
+  | "REQUEST_FAILED";
+
 export interface GitHubRepoSnapshot {
   name: string;
   fullName: string;
@@ -202,24 +213,44 @@ export interface GitHubRepoSnapshot {
   stars: number;
   forks: number;
   size: number;
-  recentCommitCount: number;
+  /** Null when the commits could not be read (not zero commits). */
+  recentCommitCount: number | null;
   recentActivity: boolean;
   /** False when the repo's file tree could not be read (private / no token / rate
    *  limited). The has* flags below are then UNASSESSED, not negative — they are all
    *  false simply because nothing was observed. Never render them as findings when
    *  this is false. */
   treeReadable: boolean;
-  hasReadme: boolean;
-  hasDocs: boolean;
-  hasTests: boolean;
-  hasCi: boolean;
-  hasLint: boolean;
-  hasManifest: boolean;
+  /** Why the tree could not be read. Null/absent when it was read (and on older runs). */
+  treeUnreadableReason?: RepoUnreadableReason | null;
+  /** Null when the tree was not read (unknown). Older runs stored false; treeReadable governs. */
+  hasReadme: boolean | null;
+  hasDocs: boolean | null;
+  hasTests: boolean | null;
+  hasCi: boolean | null;
+  hasLint: boolean | null;
+  hasManifest: boolean | null;
   topics: string[];
   languages: GitHubLanguageUsage[];
+  /** False when the language breakdown could not be read (`languages` is then empty, not "none"). */
+  languagesReadable?: boolean;
   pushedAt: string;
   updatedAt: string;
   healthScore: number;
+  /** Measured from the repo's actual source (Pulse code health). Absent on older runs and
+   *  for repos that were not measured; `unavailable` says why when it was tried and failed. */
+  codeHealth?: RepoCodeHealth | null;
+}
+
+export interface RepoCodeHealth {
+  score: number | null;
+  band: "good" | "fair" | "poor" | null;
+  loc: number;
+  complexLocShare: number;
+  commit: string | null;
+  languages: string[];
+  topDebt: { kind: string; severity: string; path: string; line: number; symbol: string }[];
+  unavailable: string | null;
 }
 
 export interface GitHubAnalysisMetrics {
@@ -227,16 +258,26 @@ export interface GitHubAnalysisMetrics {
   selectedRepoCount: number;
   totalStars: number;
   averageStars: number;
-  languageCount: number;
+  /** Null when no sampled repo's languages could be read. */
+  languageCount: number | null;
   topLanguages: GitHubLanguageUsage[];
   recentRepoRatio: number;
-  docsCoverage: number;
-  testsCoverage: number;
-  ciCoverage: number;
-  lintCoverage: number;
-  manifestCoverage: number;
-  averageRecentCommitCount: number;
+  /** Coverage over the repos whose tree was READ. Null when none could be read — unknown,
+   *  never 0%, because "we could not look" is not "it isn't there". */
+  docsCoverage: number | null;
+  testsCoverage: number | null;
+  ciCoverage: number | null;
+  lintCoverage: number | null;
+  manifestCoverage: number | null;
+  /** Sampled repos whose tree could not be read, and why (distinct reasons). */
+  unreadableRepoCount?: number;
+  unreadableReasons?: RepoUnreadableReason[];
+  /** Null when no sampled repo's commits could be read. */
+  averageRecentCommitCount: number | null;
   averageHealthScore: number;
+  /** Repos whose source was measured, and their average code health (null when none). */
+  codeHealthMeasured?: number;
+  averageCodeHealth?: number | null;
 }
 
 export interface GitHubAnalysisRunRecord {
@@ -359,6 +400,9 @@ export interface CandidateListParams {
   stack: string;
   scoreMin?: number;
   scoreMax?: number;
+  /** Only developers whose person has left (archived in Settings → Team). Default is
+   *  the active roster, which excludes them. See src/server/codeclear-archived.ts. */
+  archived?: boolean;
 }
 
 export interface CandidateListResponse {

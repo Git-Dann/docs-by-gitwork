@@ -9,6 +9,7 @@
  * token can never lock an admin out of a module.
  */
 
+import { isExternalRole } from "@/types/auth";
 /**
  * Maps /app/* path prefixes to the module permission that gates them. Listed as pairs
  * (not a module→path map) so a module can expose both its canonical route and its legacy
@@ -36,7 +37,10 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   // appending it after the two entries below would let a broader prefix match first and
   // silently regate admin-only DevSignal onto `codeclear`, which STAFF auto-inherits.
   { prefix: "/app/codeclear", module: "codeclear" }, // legacy (still owns candidates/, pipeline/, devsignal/**)
-  { prefix: "/app/code", module: "codeclear" }, // canonical
+  { prefix: "/app/code", module: "codeclear" }, // was the canonical route; now redirects to /app/staff
+  // Staff (formerly Code, CLAUDE.md §87). Same permission id: it is stored in every role
+  // matrix and member override, so renaming it would silently revoke Staff from everyone.
+  { prefix: "/app/staff", module: "codeclear" },
   { prefix: "/app/docs", module: "proposals" }, // canonical
   { prefix: "/app/proposals", module: "proposals" }, // legacy
   { prefix: "/app/portal", module: "clients" }, // canonical
@@ -45,6 +49,7 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
   { prefix: "/app/support", module: "support" }, // legacy
   { prefix: "/app/study", module: "study" }, // optional Pulse tool — admin-only feature perm (default-off)
   { prefix: "/app/backstage", module: "backstage" },
+  { prefix: "/app/monitors", module: "monitors" }, // Staff + Admin by default; granted per developer
   { prefix: "/app/studio", module: "studio" }, // Admin/Super Admin only (default-off feature perm)
   // These three were reachable by ANY signed-in member — including a developer scoped to
   // neither module — because the gate used to end in an unconditional `return true`. They
@@ -71,11 +76,55 @@ export const MODULE_PATHS: Array<{ prefix: string; module: string }> = [
 export const UNGATED_APP_PREFIXES = [
   "/app/settings", // own settings; sensitive tabs gate themselves (Labs/Curator = Super Admin)
   "/app/account-settings",
+  // Messages addressed to you. Ungated because being sent one is what grants access:
+  // the server only ever returns a message you sent or received (a miss is a 404, not a
+  // 403), so there is nothing here a module permission could usefully gate. Sending is
+  // Admin+, enforced in /api/messages.
+  "/app/messages",
+];
+
+/**
+ * Open to any signed-in member of GITWORK, and to nobody else.
+ *
+ * ⚠️ These were in the list above, and the word that made that safe was "member". The
+ * whole allow-list was written when every account was an @gitwork.co.uk Google sign-in,
+ * so "any signed-in member" and "any colleague" were the same sentence. GUEST breaks
+ * that: an outside collaborator holding an email and password would have read the
+ * internal developer handbook and the full team roster, because nobody had to decide to
+ * show them — the premise decided it.
+ *
+ * So the split is by AUDIENCE, not by sensitivity. A page here is one we are happy for
+ * any colleague to open without a permission, which is a different question from whether
+ * we are happy for a client's contractor to open it.
+ */
+export const INTERNAL_ONLY_PREFIXES = [
+  // Configuration for OUR public scanner widget — nothing to do with a guest's own
+  // scans, and it sits under /app/pulse so the module grant would otherwise cover it.
+  "/app/pulse/embed",
+  // Pulse → Growth (our sales page, embed and captured leads) and Pulse → Monitors. Both
+  // were `InternalOnly` panels on the Pulse landing page; as their own routes they get the
+  // same audience rule at the gate. The nav items are hidden to match (src/lib/pulse-nav.ts).
+  "/app/pulse/growth",
+  "/app/pulse/monitors",
+  // Pulse → AI search: Gitwork's own Google rankings and AI-assistant visits.
+  "/app/pulse/ai-search",
+  // Every client's monitor status, by name. A guest granted the Monitors module would
+  // otherwise see the whole client list; the API refuses external roles too.
+  "/app/monitors",
   "/app/team",
   "/app/handbook", // deliberately readable by every internal user (§4); writes are Admin+
   "/app/analytics", // Super Admin, enforced by the page itself via a live DB role read (§4)
   "/app/starters", // Super Admin, enforced by the middleware's own check — never reaches here
+  // The Platform console (every business on Foundry). Platform admins only, enforced by
+  // the page and every /api/platform route via requirePlatformAdmin — a workspace role,
+  // even Super Admin, is not enough. Listed here so no external role ever reaches it.
+  "/app/platform",
 ];
+
+// Lives in types/auth.ts so client components can gate on it without pulling this
+// module (and NextAuth) into the browser. Re-exported because this is where the
+// internal-vs-external rule is reasoned about.
+export { isExternalRole };
 
 /**
  * The HQ dashboard. Deliberately NOT in UNGATED_APP_PREFIXES: a "/app" entry there would
@@ -104,12 +153,30 @@ export function moduleForPath(pathname: string): string | null {
   return null;
 }
 
-export function hasModuleAccess(pathname: string, permissions: string[]): boolean {
+export function hasModuleAccess(
+  pathname: string,
+  permissions: string[],
+  role?: string | null,
+): boolean {
+  // ⚠️ The internal-only DENY is evaluated BEFORE the module grant, because a
+  // restriction that a grant can overrule is not a restriction. `/app/pulse/embed`
+  // matches MODULE_PATHS on `pulse`, so checking grants first would hand our own
+  // public-widget configuration to any guest holding the Pulse module.
+  if (INTERNAL_ONLY_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
+    if (isExternalRole(role)) return false;
+  }
+
   // Not named `module` — Next forbids assigning that identifier (no-assign-module-variable).
   const required = moduleForPath(pathname);
   if (required) return permissions.includes(required);
   if (pathname === APP_ROOT) return true;
   if (UNGATED_APP_PREFIXES.some((p) => matchesPrefix(pathname, p))) return true;
+  if (INTERNAL_ONLY_PREFIXES.some((p) => matchesPrefix(pathname, p))) {
+    // `role` is optional so existing callers compile, and an ABSENT role is treated as
+    // internal — every caller before GUEST existed was passing a staff account. An
+    // external role is denied explicitly rather than by omission.
+    return !isExternalRole(role);
+  }
   // Default deny. An /app path that matched neither list is a page nobody chose to
   // expose — most likely one added without a MODULE_PATHS entry. Admins and Super Admins
   // never reach here (the caller short-circuits on role), so a missing entry shows up as

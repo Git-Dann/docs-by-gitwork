@@ -149,7 +149,7 @@ export function loadClientBySlug(slug: string): Promise<ClientCardData | null> {
 const WIKI_SECTION_LABEL: Record<string, string> = {
   timeline: "Timeline",
   monitors: "Monitors",
-  documents: "Documents",
+  documents: "Resources",
   "code-handover": "Code Handover",
   ia: "IA",
   "dev-guide": "Dev Guide",
@@ -160,6 +160,11 @@ const WIKI_SECTION_LABEL: Record<string, string> = {
   changelog: "Changelog",
   "course-requests": "Course Requests",
   "design-system": "Design System",
+  metrics: "Metrics",
+  meetings: "Meetings",
+  platforms: "Platforms",
+  comparisons: "Comparisons",
+  sheets: "Sheets",
 };
 
 export interface WikiCardData {

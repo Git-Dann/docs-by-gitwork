@@ -35,7 +35,7 @@ session in this repo, so you'll see them whether you want to or not.
 Every Gitwork chat/session is titled `<Name> {{Tag}}`, tag verbatim with the braces:
 
 - `{{Product}}` — Pulse · Care · Docs · Code · Studio · Portal
-- `{{Feat}}` — Deck · Starters · Wiki · DevSignal · Dispatch · RoundUp · Demo · On Your Desk ·
+- `{{Feat}}` — Deck · Canvas · Starters · Wiki · DevSignal · Dispatch · RoundUp · Demo · On Your Desk ·
   Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications
 - `{{Agent}}` — Curator · Foreman
 
@@ -87,14 +87,23 @@ Run `npm install` on a fresh clone or the hook can't run and will refuse the pus
 
 Report what `verify` actually printed. Never call something verified that you didn't run.
 
-## 4. Seven traps that have actually bitten people here
+**Working on the multi-tenant programme (`docs/multi-tenant-roadmap.md`)?** Also run
+`npm run test:baseline` against a local dev server. It fails if any page that worked before has
+broken or lost content. See `docs/build-checklist.md` §4a.
+
+**Touching an API route?** CI's `isolation` job calls every route as one business with another
+business's ids, and fails if anything new crosses. Run it locally with `./scripts/isolation-db.sh`
+then `npm run test:isolation` (§4b).
+
+## 4. Eight traps that have actually bitten people here
 
 1. **Never run `npm run build`** against a real `DATABASE_URL` — it does a `prisma db push` and
    will mutate the database. Use `npx next build`.
 2. **Don't hand-roll form fields.** Use `app-input` / `app-select` / `app-textarea` from
    `globals.css`. A bare `<select>` gets the native OS chevron with no reserved padding, so long
    values render *underneath the arrow*. This has shipped three separate times; `npm run audit:ui`
-   now catches it.
+   now catches it. For a date, use `<DatePicker>` / `<DateRangePicker>`
+   (`src/components/ui/date-picker.tsx`), not `<input type="date">` — same `YYYY-MM-DD` value.
 3. **The mobile breakpoint is `lg` (1024px), not `md`.** "Mobile" here means phones *and* portrait
    tablets. Check base (<640), the 640–1023 band, and `lg+`.
 4. **Never hardcode a model id.** Resolve via `resolveAiConfig(workspace)`; fallbacks live only in
@@ -113,7 +122,10 @@ Report what `verify` actually printed. Never call something verified that you di
    `UNGATED_APP_PREFIXES` if it's open to every member) in `src/server/auth/module-gate.ts`. Miss
    both and non-admins get redirected to `/app` — a unit test will tell you. This replaced the old
    default, which was to let *any* signed-in member reach an unlisted page; that's how three pages
-   ended up ungated.
+   ended up ungated. **If the page belongs to a module, also put its path in that module's entry
+   in `src/lib/workspace-modules.ts`** — the switch for which modules a *business* has, checked
+   before any role (a business without Pulse is refused Pulse even as its own Super Admin). A test
+   fails if a gated path has no module there.
 7. **The renderer is the limit — not the editor — and there are TWO of them.** Text fields store
    Markdown, and anything the renderer can't draw prints **verbatim on the client's document**.
    `renderLines` (`src/lib/markdown.tsx`) draws bold, italic, code, links and bulleted / numbered /
@@ -124,6 +136,14 @@ Report what `verify` actually printed. Never call something verified that you di
    extension would ship a literal `## Scope of work` to a client; Launchpad's legal drafts use
    `<Markdown>` and can head their clauses. Teach the renderer first, in the same change.
    `markdown-doc.test.ts` is the tripwire.
+8. **`null` from `getEffectiveUserOrNull` means "trusted API-key caller", and `assertCan(null)`
+   passes.** That is right for a server-to-server integration and was catastrophic everywhere
+   else: a removed member arrived *with* an identity but no membership, that became `null`, and
+   ~180 routes treated them as a full-access caller. So: **a refused identity is a
+   `RevokedAccessError`, never `null`**, and only a genuine no-identity `UnauthorizedError` maps to
+   `null`. Never write `catch { return null }` around user resolution — it also turns a database
+   blip into full access. And to take someone out, **archive, never delete**: deleting the
+   membership is what created the hole. `revoked-access.test.ts` runs the real code.
 
 ## 5. Verifying honestly
 
@@ -169,14 +189,14 @@ npm run audit:clipping -- --self-test
   |---|---|---|---|
   | Portal | `/app/portal` | `/app/clients` | `clients` |
   | Care | `/app/care` | `/app/support` | `support` |
-  | Code | `/app/code` | `/app/codeclear` | `codeclear` |
+  | Staff (was Code) | `/app/staff` | `/app/code` → redirects; developer and Hiring pages still under `/app/codeclear` | `codeclear` |
   | Docs | `/app/docs` | `/app/proposals` → redirects | `proposals` |
 
   `MODULE_PATHS` in **`src/server/auth/module-gate.ts`** is the source of truth for which is
   canonical, and for which permission gates each route.
 
-  **The sidebar is not the full list of surfaces.** It holds the seven products (Foundry HQ ·
-  Pulse · Code · Docs · Portal · Care · Backstage) plus Handbook, and everything else has an
+  **The sidebar is not the full list of surfaces.** It holds the products (Foundry HQ ·
+  Pulse · Staff · Docs · Portal · Care · Monitors · Backstage) plus Handbook, and everything else has an
   entry point instead — Studio and the labs in **Settings → Labs**, Analytics and Starters as
   mono links in the **HQ context strip**, Settings and view-as in the **profile flyout**. Adding
   a surface? CLAUDE.md §4a decides where it goes; a new sidebar item is almost never the answer.
@@ -187,6 +207,11 @@ skipped including the additive parts**, and the live DB silently never gets your
 `CLAUDE.md` §2 before touching `schema.prisma`.
 
 ## 7. When in doubt
+
+**Connecting a desktop MCP client?** Use a Streamable HTTP server URL, then authenticate.
+Desktop callbacks use HTTP loopback addresses; Foundry supports `127.0.0.1`, `[::1]`
+and `localhost` through its existing DCR + PKCE flow. See [MCP desktop auth](docs/mcp-desktop-auth.md)
+for setup and the old `invalid_client_metadata` registration error.
 
 Ask Dan (dan@gitwork.co.uk). Two things worth asking about rather than guessing: anything that
 changes the database schema, and anything that changes shared CSS in `globals.css` or a shared

@@ -1,0 +1,59 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.15
+        version: 4.17.15
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.2.0(react@18.2.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.1.0
+
+  packages/lib:
+    dependencies:
+      minimist:
+        specifier: ^1.2.0
+        version: 1.2.0
+      local-thing:
+        specifier: workspace:*
+        version: link:../local-thing
+
+packages:
+
+  '@types/node@20.1.0':
+    resolution: {integrity: sha512-x}
+
+  lodash@4.17.15:
+    resolution: {integrity: sha512-x}
+
+  loose-envify@1.4.0:
+    resolution: {integrity: sha512-x}
+    hasBin: true
+
+  minimist@1.2.0:
+    resolution: {integrity: sha512-x}
+
+  react-dom@18.2.0:
+    resolution: {integrity: sha512-x}
+    peerDependencies:
+      react: ^18.2.0
+
+snapshots:
+
+  '@types/node@20.1.0': {}
+
+  lodash@4.17.15: {}
+
+  react-dom@18.2.0(react@18.2.0):
+    dependencies:
+      loose-envify: 1.4.0

@@ -13,6 +13,7 @@ import { usePulseScan } from "@/hooks/use-pulse";
 import { PulseScanResults } from "@/components/pulse/pulse-scan-results";
 import { PulseScanStatusBadge } from "@/components/pulse/pulse-shared";
 import { DemoShell } from "@/components/demo/demo-shell";
+import { SkeletonBlock } from "@/components/ui/motion/skeleton";
 
 export function DemoPulseReport({ scanId }: { scanId: string }) {
   const { data } = usePulseScan(scanId);
@@ -22,10 +23,11 @@ export function DemoPulseReport({ scanId }: { scanId: string }) {
     <DemoShell
       active="Pulse"
       title={scan?.projectName ?? "Pulse report"}
-      subtitle="AI project validation — checks, gaps and a fix roadmap."
+      subtitle="Checks, gaps and a fix roadmap for one project."
     >
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
+        {/* PulseScanResults draws its own back link once a scan is complete, as on /app. */}
+        {scan?.status !== "COMPLETED" && <div className="flex items-center gap-3">
           <Link
             href="/demo/pulse"
             className="inline-flex items-center gap-1.5 text-sm text-[var(--text-3)] hover:text-[var(--text-1)]"
@@ -34,12 +36,12 @@ export function DemoPulseReport({ scanId }: { scanId: string }) {
             All scans
           </Link>
           {scan ? <PulseScanStatusBadge status={scan.status} /> : null}
-        </div>
+        </div>}
 
         {scan ? (
           <PulseScanResults scan={scan} />
         ) : (
-          <div className="h-64 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />
+          <SkeletonBlock />
         )}
       </div>
     </DemoShell>

@@ -8,7 +8,7 @@ type RouteContext = {
 export default async function CodeClearCandidateProfilePage({ params }: RouteContext) {
   const { id } = await params;
   return (
-    <AppShell title="Code" subtitle="Dev validation profile.">
+    <AppShell title="Staff" subtitle="Dev validation profile.">
       <CodeClearCandidateProfile candidateId={id} />
     </AppShell>
   );

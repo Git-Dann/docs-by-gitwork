@@ -39,6 +39,9 @@ import {
   updateWikiMonitorApi,
   deleteWikiMonitorApi,
   runWikiMonitorApi,
+  getWikiMonitorSuggestionsApi,
+  getWikiMonitorBoardApi,
+  getMonitorsPageApi,
   setWikiMonitorsEnabledApi,
   setWikiIntakeEnabledApi,
   setWikiCodeEnabledApi,
@@ -57,6 +60,43 @@ import {
   addDocToWikiApi,
   removeDocFromWikiApi,
   createWikiIntakeItem,
+  importWikiIntakeItemsApi,
+  type WikiIntakeImportRow,
+  createWikiInsightBoardApi,
+  deleteWikiInsightBoardApi,
+  setWikiDeliveryEnabledApi,
+  setWikiRoundupEnabledApi,
+  setWikiInsightsEnabledApi,
+  setWikiCostsEnabledApi,
+  setWikiEstimatesEnabledApi,
+  setWikiComparisonsEnabledApi,
+  createWikiComparisonApi,
+  updateWikiComparisonApi,
+  deleteWikiComparisonApi,
+  reorderWikiComparisonsApi,
+  type ComparisonInput,
+  createWikiEstimateApi,
+  updateWikiEstimateApi,
+  deleteWikiEstimateApi,
+  type EstimateInput,
+  updateWikiCostSettingsApi,
+  createWikiCostItemApi,
+  updateWikiCostItemApi,
+  deleteWikiCostItemApi,
+  type WikiCostItemInput,
+  type WikiCostSettingsInput,
+  setWikiSupportEnabledApi,
+  updateWikiMetricsApi,
+  getWikiMetricEndpointsApi,
+  refreshWikiMetricsApi,
+  type WikiMetricsPatch,
+  getWikiShareableMeetingsApi,
+  setWikiMeetingsEnabledApi,
+  setWikiMeetingSharedApi,
+  setWikiPlatformsEnabledApi,
+  setWikiDriveEnabled as setWikiDriveEnabledApi,
+  updateWikiInsightBoardApi,
+  type WikiInsightBoardInput,
   setWikiIntakeCategoriesApi,
   createPublicWikiIntakeItem,
   updatePublicWikiIntakeItem,
@@ -68,6 +108,12 @@ import {
   uploadPublicWikiIntakeItemImage,
   addWikiIntakeComment,
   addPublicWikiIntakeComment,
+  editWikiIntakeComment,
+  deleteWikiIntakeComment,
+  uploadWikiIntakeCommentImage,
+  type WikiCommentScope,
+  getWikiMentionables,
+  getPublicWikiMentionables,
 } from "@/lib/api";
 import type { CourseImportInput, BigWedgeSyncResult, MonitorInput, WikiIntakeItemPayload } from "@/lib/api";
 
@@ -366,6 +412,285 @@ export function useCreateWikiIntakeItem(slug: string) {
   });
 }
 
+/**
+ * Staff-only: import requests from a pasted or uploaded sheet.
+ *
+ * Invalidates the whole wiki rather than patching the list: an import can create
+ * dozens of rows AND skip dozens more as duplicates, so there is no local edit that
+ * would leave the page telling the truth.
+ */
+export function useImportWikiIntakeItems(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { items: WikiIntakeImportRow[]; dryRun?: boolean }) =>
+      importWikiIntakeItemsApi(slug, input.items, { dryRun: input.dryRun }),
+    onSuccess: (_result, input) => {
+      // A dry run wrote nothing — refetching would only make the preview flicker.
+      if (!input.dryRun) queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+    },
+  });
+}
+
+// ─── Insights (charts & diagrams) ─────────────────────────────────────────────
+// Every write invalidates the whole wiki rather than patching a board into the cache:
+// a board write replaces its entire content, so there is no local edit that would leave
+// the page telling the truth about ordering or derived colours.
+
+export function useSetWikiInsightsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiInsightsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiRoundupEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiRoundupEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiDeliveryEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiDeliveryEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiSupportEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiSupportEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiMetrics(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: WikiMetricsPatch) => updateWikiMetricsApi(slug, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** The API Docs page's GET endpoints — only fetched while the source picker is open. */
+export function useWikiMetricEndpoints(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "metric-endpoints"],
+    queryFn: () => getWikiMetricEndpointsApi(slug),
+    enabled,
+  });
+}
+
+export function useRefreshWikiMetrics(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => refreshWikiMetricsApi(slug),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiMeetingsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiMeetingsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useWikiShareableMeetings(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "shareable-meetings"],
+    queryFn: () => getWikiShareableMeetingsApi(slug),
+    enabled,
+  });
+}
+
+export function useSetWikiMeetingShared(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { meetingId: string; shared: boolean }) =>
+      setWikiMeetingSharedApi(slug, v.meetingId, v.shared),
+    // The wiki key is a prefix of the shareable-meetings key, so one invalidation
+    // refreshes both the picker and the section above it.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSetWikiPlatformsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiPlatformsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/**
+ * Switch the Drive section on (making YOU the Google account the client's copy reads with) or
+ * off. Switching on is refused unless your Drive can open the client's folder — the error says why.
+ */
+export function useSetWikiDriveEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiDriveEnabledApi(slug, enabled),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["client-drive"] });
+    },
+  });
+}
+
+export function useCreateInsightBoard(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiInsightBoardInput) => createWikiInsightBoardApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateInsightBoard(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { boardId: string; input: WikiInsightBoardInput }) =>
+      updateWikiInsightBoardApi(slug, args.boardId, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteInsightBoard(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (boardId: string) => deleteWikiInsightBoardApi(slug, boardId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Running costs ────────────────────────────────────────────────────────────
+// Every write returns the whole model and invalidates the wiki: a line's totals are
+// derived from every other line, so patching one row into the cache would leave the
+// banner stating a cost-per-user that no longer matches the lines under it.
+
+export function useSetWikiCostsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiCostsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiCostSettings(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiCostSettingsInput) => updateWikiCostSettingsApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useCreateWikiCostItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: WikiCostItemInput) => createWikiCostItemApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiCostItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { itemId: string; input: WikiCostItemInput }) =>
+      updateWikiCostItemApi(slug, args.itemId, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiCostItem(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => deleteWikiCostItemApi(slug, itemId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Estimates ───────────────────────────────────────────────────────────────
+// Writes invalidate the whole wiki: the dashboard card and the section both derive from
+// the same estimate, and a patched cache entry would let them disagree.
+
+export function useSetWikiEstimatesEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiEstimatesEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useSaveWikiEstimate(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { estimateId: string | null; input: EstimateInput }) =>
+      args.estimateId
+        ? updateWikiEstimateApi(slug, args.estimateId, args.input)
+        : createWikiEstimateApi(slug, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+// ─── Comparisons ─────────────────────────────────────────────────────────────
+// Writes invalidate the whole wiki: the dashboard card and the section both read the same
+// tables. The table editor keeps its own draft while editing, so a refetch landing mid-edit
+// never overwrites what someone is typing.
+
+export function useSetWikiComparisonsEnabled(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => setWikiComparisonsEnabledApi(slug, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useCreateWikiComparison(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ComparisonInput) => createWikiComparisonApi(slug, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useUpdateWikiComparison(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { comparisonId: string; input: ComparisonInput }) =>
+      updateWikiComparisonApi(slug, args.comparisonId, args.input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiComparison(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (comparisonId: string) => deleteWikiComparisonApi(slug, comparisonId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useReorderWikiComparisons(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (order: string[]) => reorderWikiComparisonsApi(slug, order),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+export function useDeleteWikiEstimate(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (estimateId: string) => deleteWikiEstimateApi(slug, estimateId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
 /** Staff-only: replace this client's Requests categories (empty → defaults). */
 export function useSetWikiIntakeCategories(slug: string) {
   const queryClient = useQueryClient();
@@ -439,15 +764,91 @@ export function useUploadPublicWikiIntakeItemImage(token: string) {
 export function useAddWikiIntakeComment(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, body }: { itemId: string; body: string }) => addWikiIntakeComment(slug, itemId, body),
+    mutationFn: ({
+      itemId,
+      body,
+      mentionIds,
+      image,
+    }: {
+      itemId: string;
+      body: string;
+      mentionIds?: string[];
+      /** Sent in the same request, so a screenshot-only reply is allowed. */
+      image?: File | null;
+    }) =>
+      addWikiIntakeComment(slug, itemId, body, mentionIds, image ?? null),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
   });
 }
 
 export function useAddPublicWikiIntakeComment(token: string) {
   return useMutation({
-    mutationFn: ({ itemId, body }: { itemId: string; body: string }) =>
-      addPublicWikiIntakeComment(token, itemId, body),
+    mutationFn: ({
+      itemId,
+      body,
+      mentionIds,
+      image,
+    }: {
+      itemId: string;
+      body: string;
+      mentionIds?: string[];
+      /** Sent in the same request, so a screenshot-only reply is allowed. */
+      image?: File | null;
+    }) =>
+      addPublicWikiIntakeComment(token, itemId, body, mentionIds, image ?? null),
+  });
+}
+
+/** Internal scope refetches the wiki; the shared page has no query and patches its own
+ *  local list from the returned record instead (see WikiIntakeSection). */
+function useInvalidateCommentScope(scope: WikiCommentScope) {
+  const queryClient = useQueryClient();
+  return () =>
+    "slug" in scope ? queryClient.invalidateQueries({ queryKey: ["client-wiki", scope.slug] }) : undefined;
+}
+
+export function useEditWikiIntakeComment(scope: WikiCommentScope) {
+  const invalidate = useInvalidateCommentScope(scope);
+  return useMutation({
+    mutationFn: (v: { itemId: string; commentId: string; body: string; mentionIds?: string[] }) =>
+      editWikiIntakeComment(scope, v.itemId, v.commentId, v.body, v.mentionIds),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteWikiIntakeComment(scope: WikiCommentScope) {
+  const invalidate = useInvalidateCommentScope(scope);
+  return useMutation({
+    mutationFn: (v: { itemId: string; commentId: string }) => deleteWikiIntakeComment(scope, v.itemId, v.commentId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUploadWikiIntakeCommentImage(scope: WikiCommentScope) {
+  const invalidate = useInvalidateCommentScope(scope);
+  return useMutation({
+    mutationFn: (v: { itemId: string; commentId: string; file: File }) =>
+      uploadWikiIntakeCommentImage(scope, v.itemId, v.commentId, v.file),
+    onSuccess: invalidate,
+  });
+}
+
+/**
+ * Who can be @mentioned on a client's requests. Fetched only once a reply box is
+ * actually opened (`enabled`), and kept for five minutes — it is a roster, not a feed.
+ */
+export function useWikiMentionables(
+  opts: { mode: "internal"; slug: string } | { mode: "public"; token: string },
+  enabled: boolean,
+) {
+  const key = opts.mode === "internal" ? opts.slug : opts.token;
+  return useQuery({
+    queryKey: ["wiki-mentionables", opts.mode, key],
+    queryFn: () =>
+      opts.mode === "internal" ? getWikiMentionables(opts.slug) : getPublicWikiMentionables(opts.token),
+    enabled: enabled && Boolean(key),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -592,6 +993,27 @@ export function useDeleteWikiMonitor(slug: string) {
   });
 }
 
+/** Platform URLs nothing monitors yet. Refetched when the wiki changes (a monitor was added). */
+export function useWikiMonitorSuggestions(slug: string) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "monitor-suggestions"],
+    queryFn: () => getWikiMonitorSuggestionsApi(slug),
+  });
+}
+
+/**
+ * The all-clients board on the Gitwork wiki. Re-read every minute — the checker runs every
+ * minute while anything is failing, so the board is never more than a minute behind it.
+ */
+export function useWikiMonitorBoard(slug: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["client-wiki", slug, "monitor-board"],
+    queryFn: () => getWikiMonitorBoardApi(slug),
+    enabled,
+    refetchInterval: 60_000,
+  });
+}
+
 export function useRunWikiMonitor(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -712,5 +1134,15 @@ export function useSetWikiDocumentsEnabled(slug: string) {
   return useMutation({
     mutationFn: (enabled: boolean) => setWikiDocumentsEnabledApi(slug, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["client-wiki", slug] }),
+  });
+}
+
+/** The Monitors page (/app/monitors): every client's monitors, re-read each minute. */
+export function useMonitorsPage(enabled = true) {
+  return useQuery({
+    queryKey: ["monitors-page"],
+    queryFn: () => getMonitorsPageApi(),
+    enabled,
+    refetchInterval: 60_000,
   });
 }

@@ -6,18 +6,24 @@ import { BackstageOverview, type BackstageArea } from "@/components/backstage/ba
 import { LeaveTab } from "@/components/backstage/leave-tab";
 import { ExpensesTab } from "@/components/backstage/expenses-tab";
 import { ApprovalsTab } from "@/components/backstage/approvals-tab";
+import { HandoverTab } from "@/components/backstage/handover-tab";
+import { MeTab } from "@/components/backstage/me-tab";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useBackstageAccess } from "@/components/backstage/access";
 
 const AREA_LABEL: Record<BackstageArea, string> = {
+  me: "Me",
   leave: "Leave",
   expenses: "Expenses",
   approvals: "Approvals",
+  handover: "Handover",
 };
 
-const AREAS = new Set<BackstageArea>(["leave", "expenses", "approvals"]);
+const AREAS = new Set<BackstageArea>(["me", "leave", "expenses", "approvals", "handover"]);
 
 export function BackstageWorkspace() {
-  const { canManageExpenses, canApprove } = useBackstageAccess();
+  const { canManageExpenses, canApprove, isAdmin } = useBackstageAccess();
+  const { hasModule, isPending: permsPending } = usePermissions();
   const [area, setArea] = useState<BackstageArea | null>(null);
 
   // `?area=approvals` lets the "requested leave" notification land straight on
@@ -46,7 +52,17 @@ export function BackstageWorkspace() {
   }
 
   // Guard: if a non-permitted area is somehow selected, fall back to overview.
-  if ((area === "expenses" && !canManageExpenses) || (area === "approvals" && !canApprove)) {
+  // ⚠️ Handover gates on `isAdmin`, NOT `canApprove`. The server is
+  // `assertAtLeastAdmin`, and `canApprove` also lets `backstage.approve` holders
+  // through — so gating on it here would offer a non-admin a screen every one of
+  // whose requests the API then refuses.
+  if (
+    (area === "expenses" && !canManageExpenses) ||
+    (area === "approvals" && !canApprove) ||
+    (area === "handover" && !isAdmin) ||
+    // Me is your Staff record, so it needs the business to have Staff.
+    (area === "me" && !permsPending && !hasModule("codeclear"))
+  ) {
     setArea(null);
     return null;
   }
@@ -63,9 +79,11 @@ export function BackstageWorkspace() {
         <span className="text-[var(--text-4)]">/ {AREA_LABEL[area]}</span>
       </button>
 
+      {area === "me" ? <MeTab /> : null}
       {area === "leave" ? <LeaveTab /> : null}
       {area === "expenses" ? <ExpensesTab /> : null}
       {area === "approvals" ? <ApprovalsTab /> : null}
+      {area === "handover" ? <HandoverTab /> : null}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { PulseAnalysisOutput, PulseScanCheckInput, PulseScanInputType, Disc
 import { resolveAgentPrompt } from "@/server/agent-config";
 import { dedupeGapsAgainstBlockers } from "@/server/pulse-checks/dedupe-findings";
 import { recordAiUsage, usageFromAnthropic, usageFromOpenAI } from "@/server/ai-usage";
+import { detectStoreTarget, resolveScanPlatform, STORE_NAME, STORE_PLATFORM_LABEL, withArticle } from "@/lib/pulse-store-url";
 
 export type AiConfig = { provider: "ANTHROPIC" | "OPENAI" | "GROQ" | "GEMINI" | "LOCAL"; apiKey: string | null; model: string; baseUrl: string | null };
 export type AiTask = "synthesis" | "discovery" | "competitor" | "fix-agent";
@@ -607,16 +608,26 @@ export async function analyseWithClaude(
     );
   }
 
-  const inputRef =
-    input.inputType === "URL"
+  // A store link is an APP. Said outright, because the model otherwise reads "URL:"
+  // plus a page title and writes about a website — the report then recommends security
+  // headers and an SEO pass for an iOS app, which is the exact failure this fixes.
+  const store = input.inputType === "URL" && input.inputUrl ? detectStoreTarget(input.inputUrl) : null;
+  const inputRef = store
+    ? `${STORE_NAME[store]} listing of ${withArticle(STORE_PLATFORM_LABEL[store])}: ${input.inputUrl}. ` +
+      `Only the public store listing was assessed — its ratings, screenshots, description, privacy declarations and links. ` +
+      `The app's code and its binary were NOT inspected: do not report findings about them as observed, and do not recommend website fixes (security headers, TLS, SEO, cookie banners) — this is not a website.`
+    : input.inputType === "URL"
       ? `URL: ${input.inputUrl}`
       : input.inputType === "GITHUB_REPO"
         ? `GitHub repo: ${input.inputGithubRepo}`
         : `Description: ${input.inputDescription}`;
 
-  const platformLabel = input.platform
-    ? `Platform (declared by client): ${input.platform}`
-    : "Platform: not specified (assume web app)";
+  const resolvedPlatform = input.inputType === "URL" ? resolveScanPlatform(input.inputUrl, input.platform) : input.platform;
+  const platformLabel = store
+    ? `Platform: ${resolvedPlatform} (${withArticle(STORE_PLATFORM_LABEL[store])} — determined by the ${STORE_NAME[store]} link, not a guess)`
+    : resolvedPlatform
+      ? `Platform (declared by client): ${resolvedPlatform}`
+      : "Platform: not specified — infer it from the scan results and the input; do not assume a web app";
 
   // Extract page identity signals from check evidence — these are the most reliable
   // classification signals and are NOT included in the check pass/fail list below.
@@ -635,6 +646,8 @@ export async function analyseWithClaude(
   const effectiveTitle = pageTitle ?? titleFromDetail;
 
   const pageIdentityLines: string[] = [];
+  const storeTitle = store ? input.checks.find((c) => c.checkKey === "store_app_title")?.detail ?? null : null;
+  if (storeTitle) pageIdentityLines.push(`Store listing: ${storeTitle.slice(0, 300)}`);
   // All three are raw tag contents lifted off the scanned page, so all three are
   // bounded. The description already was; the two titles were not, and an
   // attacker-controlled <title> is an unbounded write into the prompt.
@@ -729,7 +742,7 @@ Return ONLY these 7 fields:
   ],
   "productionReadinessChecklist": [
     {
-      "category": "string — one of: Legal, Auth, Payments, Onboarding, Support, Trust, Observability, Performance, SEO, Accessibility",
+      "category": "string — a short area name from the platform's list below (e.g. Legal, Auth, Store compliance, Permissions, Signing, Packaging, Rate limiting)",
       "item": "string — specific thing that must be in place",
       "status": "DONE | MISSING | PARTIAL",
       "notes": "string — 1 sentence on current state or what's needed. Be specific about the vibe-coded context."
@@ -818,7 +831,15 @@ criticalGaps and productionBlockers are two DIFFERENT, NON-OVERLAPPING tiers of 
 
 For productionBlockers: list 3–8 items that are genuine launch blockers for THIS platform type. Be ruthlessly specific — name the exact consequence of going live without each item. Always include a recommendedService from the Gitwork vendor list where one applies. Do NOT list nice-to-haves here — only things where launching without them will cause a broken user experience, legal liability, or security incident. Skip categories that are irrelevant to the declared platform.
 
-Populate productionReadinessChecklist with 12–20 items relevant to the declared platform. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. For web/SaaS cover: Legal (Privacy Policy, Terms, Cookie consent, Refund policy), Auth (Login/signup, Password reset, Email verification, OAuth), Payments (Pricing page, Payment processing, Billing portal), Onboarding (Welcome flow, empty states), Support (Help page, FAQ), Trust (About, Testimonials, Changelog), Observability (Error monitoring, Analytics, Uptime). For mobile apps focus on: App Store compliance, crash reporting, push notifications, in-app payments, deep linking, auth flows. For APIs focus on: rate limiting, auth, versioning, documentation, monitoring.
+Populate productionReadinessChecklist with 8–20 items that apply to THIS product and to what was scanned. Base status on the scan results — DONE if check passed, MISSING if failed, PARTIAL if warn. Never add an item for a feature the product does not have: no payments items unless it takes payments, no account/auth items unless it has sign-in, no SaaS items unless it is multi-tenant. Pick the list for the platform:
+- Web app / SaaS: Legal (privacy policy, terms, cookie consent), Auth (only with accounts: sign-up, password reset, email verification), Payments (only with payments: pricing, checkout, billing portal), Onboarding, Support, Trust, Observability.
+- Marketing site: Legal (privacy, cookies), contact and support, SEO, accessibility, analytics consent. No app features.
+- iOS / Android / cross-platform app: Store compliance (privacy label or Data safety, review guidelines), permissions, crash reporting, deep links, accessibility; in-app purchases and sign-in only when present.
+- Desktop app: code signing and notarisation, auto-update integrity, crash reporting, process isolation.
+- Chrome extension: permission scope, CSP and no remote code, Chrome Web Store policy and privacy practices, update cadence.
+- CLI tool: packaging and install scripts, exit codes and stderr, --help and docs, supply chain and publish provenance.
+- API: authentication, rate limiting, versioning, error format, documentation, monitoring.
+When only a store listing or a public website was scanned, keep items to what that surface shows, and note once that the app's own code needs a repository scan.
 
 For techStackAnalysis: the detected stack is in UNTRUSTED_SCAN_DATA.techStack. For detectedStack, fill in every field you can infer — use null only when you genuinely cannot tell. Give 4–10 recommendations covering the most important infrastructure gaps for this specific product vertical. Use Gitwork preferred vendor names from the vendor list provided. Prioritise HIGH for anything that would cause data loss, downtime, or security breach in production. List 4–8 missing production-critical components specific to this project type and platform.
 For targetArchitecture: recommend the ideal 2026 stack for THIS product type, one entry per relevant infrastructure layer (cover the layers that matter for this product — typically 6–10 of the 14). For each: name the recommended choice + 1–2 viable alternatives with concrete pros/cons and an indicative monthly £ cost; size the migration (effort S/M/L/XL, elapsed weeks, concrete steps, real blockers); assess switching risk (data loss, query incompatibility, vendor lock-in) and how to de-risk it; explain why it matters for this vertical and at what scale (MVP/GROWTH/SCALE) it becomes important. Be realistic — a near-complete product needs few changes; a prototype needs the foundational layers. For architecturePhases: sequence the work into 2–4 phases (each tackling 2–3 layers, earliest phases unlocking the most value/risk-reduction first). Use Gitwork's preferred vendors consistently across layers.`;

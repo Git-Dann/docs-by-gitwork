@@ -6,6 +6,10 @@ declare module "next-auth" {
       id: string;
       role: string;
       permissions: string[];
+      /** The modules the user's business has; null = every module. See src/lib/workspace-modules.ts. */
+      workspaceModules?: string[] | null;
+      /** The workspace this session is in. Undefined on sessions from before it was carried. */
+      workspaceId?: string | null;
       /** Bumped to force re-auth — see SESSION_VERSION in auth.config.ts. */
       sessionVersion?: number;
     } & DefaultSession["user"];
@@ -25,7 +29,66 @@ declare module "next-auth" {
 // ════════════════════════════════════════════════════════════════════════════
 
 // ── Roles ────────────────────────────────────────────────────────────────────
-export type RoleId = "SUPER_ADMIN" | "ADMIN" | "STAFF" | "DEVELOPER";
+
+/**
+ * Every role id, in one place, as a tuple the API schemas can build a `z.enum` from.
+ *
+ * It lives here rather than being written out again in each route because the three
+ * `/api/team*` schemas each carried their own copy, and adding GUEST to the platform
+ * without adding it to those three made the role real everywhere except the one place
+ * that can assign it. `RoleId` is derived from this list, so the type cannot drift
+ * from it, and `role-ids.test.ts` holds ROLES and the schemas to it as well.
+ */
+/**
+ * The only roles a password may authenticate.
+ *
+ * ⚠️ Read the note at the top of `server/auth/password-login.ts` before widening this.
+ * `POST /api/auth/forgot-password` is public and sets ANY user's password on a shared
+ * recovery key, so a password that authenticates an admin is an account takeover. The
+ * pairing is what keeps that route harmless.
+ *
+ * It lives HERE rather than beside the bcrypt code because client components need the
+ * predicate to decide whether to render a "change your password" field, and importing
+ * it from the server module would pull Prisma and bcrypt into the browser bundle.
+ */
+/**
+ * Roles that are NOT Gitwork staff. Everything here is external by definition.
+ *
+ * Used to decide both what a page may show (the gate in server/auth/module-gate.ts)
+ * and what the UI should bother rendering — a guest has no Google account, no
+ * standup and no colleagues, so several surfaces are noise rather than a leak.
+ */
+const EXTERNAL_ROLES = new Set<string>(["GUEST"]);
+
+export function isExternalRole(role: string | null | undefined): boolean {
+  return !!role && EXTERNAL_ROLES.has(role);
+}
+
+export const PASSWORD_LOGIN_ROLES = ["GUEST"] as const;
+
+export function isPasswordLoginAllowed(role: string | null | undefined): boolean {
+  return !!role && (PASSWORD_LOGIN_ROLES as readonly string[]).includes(role);
+}
+
+export const ROLE_IDS = ["SUPER_ADMIN", "ADMIN", "STAFF", "DEVELOPER", "GUEST"] as const;
+
+export type RoleId = (typeof ROLE_IDS)[number];
+
+/**
+ * The role a person gets when Foundry creates their membership for them — a first
+ * Google sign-in on web, iOS or desktop, or accepting an invite link.
+ *
+ * ⚠️ DEVELOPER, not STAFF (Dan, Oct 2026). STAFF's default is every module,
+ * `seeAllClients`, `code.viewRates`, `docs.viewCosts` and `rateCard.view`, so any new
+ * `@gitwork.co.uk` account used to see commercial rates and every client on day one,
+ * before anyone had decided it should. DEVELOPER is the minimal internal role; an
+ * Admin raises it in Settings → Team. The first-admin bootstrap and the known owner
+ * emails still become Super Admin — that is a separate, deliberate rule.
+ *
+ * Every provisioning path reads this one constant; `provisioned-role.test.ts` fails
+ * if any of them hardcodes a role again.
+ */
+export const DEFAULT_PROVISIONED_ROLE = "DEVELOPER" as const satisfies RoleId;
 
 export interface RoleDef {
   id: RoleId;
@@ -69,13 +132,28 @@ export const ROLES: readonly RoleDef[] = [
     description:
       "Minimal access — typically their own clients and project tooling, no rates or costs.",
   },
+  {
+    // The only role a password can authenticate (see server/auth/password-login.ts),
+    // and the only one whose default grant is NOTHING. Every other role's default is a
+    // list of things it can reach; a guest starts with none and a Super Admin turns on
+    // exactly what they should see. That asymmetry is the point: forgetting to restrict
+    // a guest leaves them with nothing, not with everything. (A new Google sign-in
+    // used to auto-provision as STAFF, which inherits every module id; it is now
+    // DEFAULT_PROVISIONED_ROLE.)
+    id: "GUEST",
+    label: "Guest",
+    rank: 10,
+    configurable: true,
+    description:
+      "Outside collaborator. No access at all by default — a Super Admin switches on the individual products they should see. Signs in with an email and password rather than a Gitwork Google account.",
+  },
 ] as const;
 
 const ROLE_BY_ID = new Map<string, RoleDef>(ROLES.map((r) => [r.id, r]));
 
 /** The roles a Super Admin can configure in the matrix (everyone except SUPER_ADMIN). */
 export const CONFIGURABLE_ROLES: readonly RoleDef[] = ROLES.filter((r) => r.configurable);
-export type ConfigurableRoleId = "ADMIN" | "STAFF" | "DEVELOPER";
+export type ConfigurableRoleId = "ADMIN" | "STAFF" | "DEVELOPER" | "GUEST";
 
 export function roleLabel(role: string): string {
   return ROLE_BY_ID.get(role)?.label ?? role;
@@ -132,337 +210,181 @@ export interface ProductPermissions {
  * (rates, costs) within a product.
  */
 export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
+  // Grouped as the sidebar is, one group per product. Each group leads with the
+  // product itself, then what someone can do in it. Labels say what the person gets,
+  // in a few words; the description is one sentence.
+  //
+  // Some products are deliberately `feature`s, not `module`s (Provenance, Study, Hiring,
+  // Studio): STAFF inherits every module id by default (…MODULE_IDS in
+  // DEFAULT_ROLE_PERMISSIONS), and these are meant to stay off until someone grants them.
+  //
+  // ⚠️ Ids are stored in every role matrix and per-person override. Never rename one;
+  // change its label. Removing one silently drops it from stored matrices.
   {
     product: "Pulse",
     permissions: [
-      { id: "pulse", category: "module", label: "Pulse", description: "Health and delivery tracking." },
-      {
-        id: "pulse.manage",
-        category: "action",
-        label: "Manage scans",
-        description: "Create and delete Pulse scans. Without it, Pulse is view-only.",
-      },
+      { id: "pulse", category: "module", label: "Pulse", description: "Open Pulse and read its scans." },
+      { id: "pulse.manage", category: "action", label: "Run and delete scans", description: "Without it, Pulse is read-only." },
       {
         id: "pulse.fixAgent",
         category: "action",
-        label: "Run fix-agent",
-        description: "Trigger the auto-fix agent, which opens pull requests on the client's GitHub repo.",
+        label: "Open fix pull requests",
+        description: "Let Pulse's fix agent open pull requests on a client's GitHub repo.",
         highRisk: true,
       },
-    ],
-  },
-  {
-    product: "Provenance",
-    permissions: [
+      { id: "provenance", category: "feature", label: "Provenance", description: "Read the register of countermarks." },
       {
-        // Deliberately a `feature`, not a `module`. DEFAULT_ROLE_PERMISSIONS gives STAFF
-        // `...MODULE_IDS`, so ANY module id is auto-inherited by every Staff member — which
-        // is how Provenance briefly shipped visible to all Staff. As a feature it defaults OFF for
-        // everyone except ADMIN (holds all ids) + SUPER_ADMIN, matching how Study was
-        // re-gated when it was demoted from a top-level module (§26) and how DevSignal
-        // avoids the same trap. Provenance lives in Settings → Labs (Super Admin) while it is
-        // an experiment; promote it back to `module` if it becomes a sold product.
-        id: "provenance",
-        category: "feature",
-        label: "Provenance (attestations)",
-        description:
-          "The Provenance register — issue and manage Countermark attestations for delivered software. Admin/Super Admin only by default; reachable from Settings → Labs.",
-      },
-      {
-        // Deliberately high-risk and separate from the module: issuing a countermark is
-        // Gitwork putting its name to a claim a client, insurer or acquirer will rely on.
-        // Read access to the register is a different thing from the authority to certify.
         id: "provenance.issue",
         category: "action",
-        label: "Issue and revoke countermarks",
-        description:
-          "Strike a Countermark from a completed Pulse scan, and withdraw one. Without it, Provenance is a read-only register.",
+        label: "Issue countermarks",
+        description: "Strike or withdraw a certificate that clients and insurers rely on. The issuer's name goes on it.",
         highRisk: true,
       },
+      { id: "study", category: "feature", label: "Study", description: "Run AI user-research studies from Pulse." },
     ],
   },
   {
-    product: "Code",
+    product: "Staff",
     permissions: [
-      { id: "codeclear", category: "module", label: "Code", description: "Developer review and validation." },
+      { id: "codeclear", category: "module", label: "Staff", description: "Open the team roster and developer profiles." },
       {
         id: "code.manage",
         category: "action",
-        label: "Manage candidates",
-        description: "Add, edit and delete candidates and run analysis. Without it, Code is view-only.",
+        label: "Edit staff records",
+        description: "Add, edit, archive and delete people on the roster, and run developer analysis.",
       },
+      { id: "code.viewRates", category: "field", label: "See day rates", description: "Developers' day rates on Staff." },
+      { id: "devsignal", category: "feature", label: "Hiring", description: "Vet new developers with DevSignal." },
       {
-        id: "code.viewRates",
-        category: "field",
-        label: "View candidate rates",
-        description:
-          "Candidate hourly rate and tier rate defaults inside Code. Off for developer accounts.",
-      },
-      {
-        // Deliberately a `feature`, not tied to code.manage: STAFF auto-inherits
-        // code.manage (…MODULE_IDS presets), which would leak DevSignal to Staff.
-        // As a feature it defaults OFF for everyone except ADMIN (all ids) +
-        // SUPER_ADMIN. Grantable to a specific Staff member later via the matrix.
-        id: "devsignal",
+        id: "hr.manage",
         category: "feature",
-        label: "DevSignal (developer vetting)",
-        description:
-          "The developer vetting pipeline that feeds Code — assess candidates and promote them into the roster. Admin/Super Admin only by default.",
+        label: "Manage HR records",
+        description: "Employment details, suppliers and the HR access log. Granted per person, never by role.",
+        highRisk: true,
+      },
+      {
+        id: "hr.viewSensitive",
+        category: "field",
+        label: "See personal details",
+        description: "Date of birth, address, NI number, ID and emergency contacts. Every look is logged.",
+        highRisk: true,
       },
     ],
   },
   {
     product: "Docs",
     permissions: [
-      { id: "proposals", category: "module", label: "Docs", description: "Proposals and client documents." },
+      { id: "proposals", category: "module", label: "Docs", description: "Open Docs and read documents." },
+      { id: "docs.manage", category: "action", label: "Create and edit documents", description: "Without it, Docs is read-only." },
       {
-        id: "docs.manage",
-        category: "action",
-        label: "Manage documents",
-        description: "Create, edit and delete documents. Without it, Docs is view-only.",
+        id: "docs.viewAdminTypes",
+        category: "feature",
+        label: "Proposals and contracts",
+        description: "Without it, Docs shows only handovers, briefs and reports.",
       },
+      { id: "docs.viewCosts", category: "field", label: "See costs and margins", description: "Costing on proposals." },
+      { id: "rateCard.view", category: "field", label: "See the rate card", description: "People's rates used in proposal costing." },
       {
         id: "docs.share",
         category: "action",
         label: "Share documents publicly",
-        description: "Generate public share links for documents (anyone with the link can view).",
+        description: "Send a document to a client by link.",
         highRisk: true,
-      },
-      {
-        id: "docs.viewCosts",
-        category: "field",
-        label: "View costs & margins",
-        description: "Cost line-item totals and margins on the proposal Costing breakdown.",
-      },
-      {
-        id: "docs.viewAdminTypes",
-        category: "feature",
-        label: "See proposals & contracts",
-        description:
-          "Access the admin document types (proposals, SLA/SOW/MSA/NDA/CO/DSA). Off scopes Docs to the lightweight types (handover, status report, brief, blank) — the default for developers.",
-      },
-      {
-        id: "rateCard.view",
-        category: "field",
-        label: "View rate card",
-        description: "The Rate Card (people + day rates) and the day rates pulled into proposal costing.",
       },
     ],
   },
   {
     product: "Portal",
     permissions: [
-      { id: "clients", category: "module", label: "Portal", description: "Client management." },
+      { id: "clients", category: "module", label: "Portal", description: "Open clients, their boards and wikis." },
+      { id: "clients.manage", category: "action", label: "Edit clients", description: "Without it, Portal is read-only." },
       {
-        id: "clients.manage",
-        category: "action",
-        label: "Manage clients",
-        description: "Create, edit and delete clients and their details. Without it, Portal is view-only.",
+        id: "seeAllClients",
+        category: "feature",
+        label: "Every client",
+        description: "Without it, people see only the clients they're assigned to.",
+      },
+      {
+        id: "clients.viewFinancials",
+        category: "field",
+        label: "See client costs",
+        description: "Monthly developer cost and working days on client cards.",
+      },
+      {
+        id: "tasks.publish",
+        category: "feature",
+        label: "Publish the daily roll-up",
+        description: "Post the end-of-day roll-up and team broadcasts to Slack.",
       },
       {
         id: "clients.shareTimeline",
         category: "action",
         label: "Share client timelines",
-        description: "Publish a public, no-login timeline link for a client.",
+        description: "Publish a client's timeline at a link anyone can open.",
         highRisk: true,
-      },
-      {
-        id: "seeAllClients",
-        category: "feature",
-        label: "See all clients",
-        description:
-          "Off scopes Portal/Pulse/Care and the task board to clients this user is explicitly assigned.",
-      },
-      {
-        id: "clients.viewFinancials",
-        category: "field",
-        label: "View client cost & working days",
-        description:
-          "The monthly dev cost and working-days figures on Portal client cards. Sensitive — Super Admins always have it; toggle per person.",
       },
     ],
   },
   {
     product: "Care",
     permissions: [
-      { id: "support", category: "module", label: "Care", description: "Support and aftercare." },
-      {
-        id: "support.manage",
-        category: "action",
-        label: "Manage Care setup",
-        description: "Connect/disconnect channels and edit workflow rules. Without it, Care is view-only.",
-      },
+      { id: "support", category: "module", label: "Care", description: "Open Care and answer conversations." },
+      { id: "support.manage", category: "action", label: "Set up Care", description: "Connect channels and edit workflow rules." },
     ],
   },
   {
-    product: "Study",
+    // Every client's uptime monitors on one page (/app/monitors). A MODULE, so STAFF and
+    // ADMIN inherit it by default and `reconcileNewPermissions` adds it to saved matrices
+    // on boot; DEVELOPER does not, so a developer gets it only when granted per person.
+    product: "Monitors",
     permissions: [
       {
-        // Deliberately a `feature`, not a `module`: STAFF auto-inherits every module id
-        // (…MODULE_IDS in DEFAULT_ROLE_PERMISSIONS), which would leak Study to Staff. As a
-        // feature it defaults OFF for everyone except ADMIN (all ids) + SUPER_ADMIN. Study is
-        // an optional research tool reached from within Pulse (no sidebar item); middleware
-        // still gates /app/study on the string "study". Grantable to Staff/Developers later
-        // via the matrix if wanted.
-        id: "study",
-        category: "feature",
-        label: "Study (research tool)",
-        description:
-          "AI persona-interview research, launched from within Pulse to validate a project's assumptions. Admin/Super Admin only by default.",
+        id: "monitors",
+        category: "module",
+        label: "Monitors",
+        description: "See every client's uptime monitors and open incidents in one place.",
       },
     ],
   },
   {
     product: "Backstage",
     permissions: [
-      {
-        id: "backstage",
-        category: "module",
-        label: "Backstage",
-        description: "Internal team ops — leave booking and the personal Backstage area.",
-      },
-      {
-        id: "backstage.approve",
-        category: "feature",
-        label: "Approve Backstage requests",
-        description:
-          "Approve/reject leave requests. HR-style access without making the user an Admin. (Expenses are Super Admin only.)",
-      },
+      { id: "backstage", category: "module", label: "Backstage", description: "Book leave, claim expenses, see the team calendar." },
+      { id: "backstage.approve", category: "feature", label: "Approve leave", description: "Approve and decline leave requests. Expenses stay with Super Admins." },
     ],
   },
   {
-    product: "Tasks",
-    permissions: [
-      {
-        id: "tasks.publish",
-        category: "feature",
-        label: "Publish task roll-up",
-        description:
-          "Publish the consolidated end-of-day task roll-up across all clients (the DevOps lead).",
-      },
-    ],
-  },
-  {
-    // AI generation — the token-spending gate. A single cross-cutting feature perm that
-    // governs whether a member may TRIGGER fresh AI generation anywhere in Foundry (Docs
-    // authoring, Care drafts + report narratives, meeting/Slack summaries, Pulse scans +
-    // discovery, brief analysis). Deliberately a `feature` (default-off) so STAFF/DEVELOPER
-    // don't auto-inherit it; ADMIN holds all ids and SUPER_ADMIN bypasses, so admins have it
-    // out of the box. Non-holders can still READ cached AI output — they just can't spend
-    // tokens. EXCEPTION: Scribe meeting-note fetching is intentionally NOT gated by this (it's
-    // the one AI action developers keep) — see the /meetings/ingest route.
-    product: "AI",
+    product: "Platform",
     permissions: [
       {
         id: "ai.generate",
         category: "feature",
-        label: "Generate with AI",
-        description:
-          "Trigger fresh AI generation across Foundry (document authoring, support drafts, " +
-          "report narratives, meeting/Slack summaries, Pulse scans and discovery). Costs tokens. " +
-          "Admin/Super Admin only by default — everyone else reads cached AI output instead. " +
-          "Fetching Scribe meeting notes is exempt and stays available to all. Grant per person " +
-          "here to let a specific Staff/Developer spend on AI.",
+        label: "Use AI",
+        description: "Generate new AI output, which costs money. Without it, people still read saved results.",
       },
-    ],
-  },
-  {
-    product: "Integrations",
-    permissions: [
       {
         id: "mcp.connect",
         category: "feature",
-        label: "Connect Claude (MCP)",
-        description:
-          "Authorize Claude (or any MCP-compatible client) to act on your behalf in Foundry. " +
-          "Each connection is per-user and bound by your existing permissions — Claude can't do " +
-          "more than you can. Admins and Super Admins hold this by default; grant it to Staff or " +
-          "Developers here to let them connect their own Claude. Enforced on the consent screen, " +
-          "the OAuth authorize endpoint, and the MCP settings page.",
+        label: "Connect Claude",
+        description: "Let their own Claude act in Foundry, never with more access than they have.",
       },
+      { id: "studio", category: "feature", label: "Studio", description: "Make branded social posts and store screenshots." },
     ],
   },
+  // Starters has no entry: it is Super-Admin-only by a role check, not a grantable permission.
   {
-    product: "Studio",
-    permissions: [
-      {
-        // Deliberately a `feature`, not a `module`: STAFF auto-inherits every module id
-        // (…MODULE_IDS in DEFAULT_ROLE_PERMISSIONS), which would leak Studio to Staff.
-        // As a feature it defaults OFF for everyone except ADMIN (all ids) + SUPER_ADMIN,
-        // yet the nav item / middleware still gate on the string "studio". Grantable to
-        // Staff later via the matrix if wanted.
-        id: "studio",
-        category: "feature",
-        label: "Studio",
-        description:
-          "Create branded social assets — carousels, banners, posts and avatars — and batch-export them. Admin/Super Admin only by default.",
-      },
-    ],
-  },
-  // NB: Starters has no permission entry — it's Super-Admin-ONLY and enforced by a role check
-  // (canManageStarters === isSuperAdmin), not a grantable feature perm. The GitHub repo just
-  // stores the sources; the tools are used inside Foundry by Super Admins only.
-  {
-    // Settings sub-sections — each gates one area of Settings. (Team is gated by role,
-    // and the Roles & Permissions editor is always Super-Admin-only, so neither appears
-    // here.) Default: ADMIN gets all of these, STAFF/DEVELOPER none — matching the old
-    // single "Admin" gate — but a Super Admin can now grant or remove them per role.
+    // One per Settings section. People & access and this matrix are role-gated, so they
+    // aren't here. Branding and Content were retired (Oct 2026): those pages redirect to
+    // Document defaults, so their permissions controlled nothing.
     product: "Settings",
     permissions: [
-      {
-        id: "settings.general",
-        category: "settings",
-        label: "General settings",
-        description: "Workspace proposal defaults.",
-      },
-      {
-        id: "settings.branding",
-        category: "settings",
-        label: "Branding",
-        description: "Cover assets and accents applied to every document.",
-      },
-      {
-        id: "settings.content",
-        category: "settings",
-        label: "Content",
-        description: "Confidentiality copy and reusable objective snippets.",
-      },
-      {
-        id: "settings.templates",
-        category: "settings",
-        label: "Templates",
-        description: "Document section templates.",
-      },
-      {
-        id: "settings.integrations",
-        category: "settings",
-        label: "Integrations & keys",
-        description: "AI providers, Google, Slack and email — including their API keys.",
-      },
-      {
-        id: "settings.agents",
-        category: "settings",
-        label: "Agents & checks",
-        description: "Per-agent AI prompts and Pulse check configuration.",
-      },
-      {
-        id: "settings.audit",
-        category: "settings",
-        label: "Audit log",
-        description: "Workspace settings and access history.",
-      },
-      {
-        id: "settings.developer",
-        category: "settings",
-        label: "Developer settings",
-        description: "External API key, demo cleanup, REST reference.",
-      },
-      {
-        id: "settings.privacy",
-        category: "settings",
-        label: "Privacy & data",
-        description: "Data exports, retention and workspace deletion.",
-      },
+      { id: "settings.general", category: "settings", label: "Document defaults", description: "Defaults, branding and copy for documents." },
+      { id: "settings.templates", category: "settings", label: "Templates", description: "Document templates." },
+      { id: "settings.integrations", category: "settings", label: "Integrations", description: "AI, Google, Slack and email, including their keys." },
+      { id: "settings.agents", category: "settings", label: "AI agents and checks", description: "Agent prompts and Pulse check settings." },
+      { id: "settings.audit", category: "settings", label: "Audit log", description: "Who changed what in the workspace." },
+      { id: "settings.developer", category: "settings", label: "Developer", description: "The external API key and REST reference." },
+      { id: "settings.privacy", category: "settings", label: "Privacy and data", description: "Exports, retention and deleting the workspace." },
     ],
   },
 ] as const;
@@ -474,6 +396,9 @@ export const ALL_PERMISSIONS: readonly PermissionDef[] = PERMISSION_CATALOG.flat
 
 /** Every permission id — the resolved set for SUPER_ADMIN. */
 export const ALL_PERMISSION_IDS: string[] = ALL_PERMISSIONS.map((p) => p.id);
+
+/** HR permissions: never part of a role's defaults, only granted to a named person. */
+export const HR_PERMISSION_IDS: readonly string[] = ["hr.manage", "hr.viewSensitive"];
 
 const PERMISSION_BY_ID = new Map<string, PermissionDef>(ALL_PERMISSIONS.map((p) => [p.id, p]));
 
@@ -520,7 +445,8 @@ const MODULE_IDS = MODULE_PERMISSIONS.map((m) => m.id);
  *    no Study (admin-only feature perm), no rate or cost visibility, no seeAllClients.
  */
 export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
-  ADMIN: [...ALL_PERMISSION_IDS],
+  // Everything except HR: personal and health data is granted per person, never by role.
+  ADMIN: ALL_PERMISSION_IDS.filter((id) => !HR_PERMISSION_IDS.includes(id)),
   STAFF: [
     ...MODULE_IDS,
     "seeAllClients",
@@ -540,6 +466,10 @@ export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
   // create/edit the lightweight docs (handover, status report, brief, blank) and never see or open
   // proposals/contracts. The type boundary is enforced server-side (allowedDocTypesForUser).
   DEVELOPER: ["clients", "support", "pulse", "backstage", "proposals", "docs.manage"],
+  // Deliberately empty. A guest sees nothing until a Super Admin grants it per person
+  // in Settings → Team, which is what makes "give this person Pulse and nothing else"
+  // a decision someone made rather than a default nobody checked.
+  GUEST: [],
 };
 
 /**
@@ -555,6 +485,21 @@ export const LEGACY_PERMISSION_ALIASES: Record<string, string[]> = {
 export const DEFAULT_STAFF_PERMISSIONS: string[] = [...DEFAULT_ROLE_PERMISSIONS.STAFF];
 
 // ── Presets (back-compat for the existing Team modal quick buttons) ─────────────
+/**
+ * What a guest needs to run a Pulse scan and read the result — all three, not one.
+ *
+ * ⚠️ Granting the `pulse` MODULE alone gets them the page and a "New scan" button that
+ * 403s on submit: `POST /api/pulse/scans` asserts `pulse.manage` (create a scan) and
+ * `canGenerateAi` (spend tokens). Three separate grants is not obvious from the Access
+ * matrix, which is why this preset exists rather than a note in a doc.
+ *
+ * ⚠️ `ai.generate` is a COST decision. It is admin-gated everywhere else precisely
+ * because it spends tokens, so handing it to someone outside the company means they can
+ * run scans on our account. That is the intended trade for a Pulse guest — but it is a
+ * trade, and it should be made on purpose.
+ */
+export const PULSE_GUEST_PERMISSIONS: readonly string[] = ["pulse", "pulse.manage", "ai.generate"];
+
 export const PERMISSION_PRESETS = [
   {
     id: "admin",
@@ -569,6 +514,14 @@ export const PERMISSION_PRESETS = [
     role: "STAFF" as const,
     description: "Every module, sees rates and all clients. Default for new hires.",
     permissions: DEFAULT_ROLE_PERMISSIONS.STAFF,
+  },
+  {
+    id: "pulse-guest",
+    label: "Pulse guest",
+    role: "GUEST" as const,
+    description:
+      "Outside collaborator who can run Pulse scans and read the results — and nothing else. Includes AI generation, which spends tokens on our account.",
+    permissions: PULSE_GUEST_PERMISSIONS,
   },
   {
     id: "developer",
@@ -605,7 +558,12 @@ export function normalizeMatrix(raw: unknown): RoleMatrix {
     if (!Array.isArray(v)) return [...DEFAULT_ROLE_PERMISSIONS[role]];
     return v.filter((x): x is string => typeof x === "string" && isValidPermissionId(x));
   };
-  return { ADMIN: pick("ADMIN"), STAFF: pick("STAFF"), DEVELOPER: pick("DEVELOPER") };
+  return {
+    ADMIN: pick("ADMIN"),
+    STAFF: pick("STAFF"),
+    DEVELOPER: pick("DEVELOPER"),
+    GUEST: pick("GUEST"),
+  };
 }
 
 function expandAliases(ids: string[]): string[] {

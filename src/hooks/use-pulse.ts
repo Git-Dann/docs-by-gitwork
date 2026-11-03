@@ -5,9 +5,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PulseScanRecord } from "@/types/pulse";
 import {
   listPulseScans,
+  getAiSearchReport,
+  getAiAnswersReport,
+  startAiAnswersRun,
+  saveAiAnswersConfig,
+  saveAiSearchConfig,
   createPulseScan,
   getPulseScan,
   getPulsePortfolio,
+  getCodePortfolio,
+  getPulseProjects,
+  getPulseProject,
+  comparePulseScans,
   getPulseBenchmarks,
   getPulseScanHistory,
   getPulseScanDiff,
@@ -32,8 +41,13 @@ import {
   listPulseLeads,
   importPulseLead,
   getPulseLeadPreview,
+  updatePulseLead,
+  deletePulseLead,
   getPulseEmbedConfig,
   updatePulseEmbedConfig,
+  getPulseFindings,
+  setPulseFindingDecision,
+  sendPulseFindingToBoard,
 } from "@/lib/api";
 
 export function useSharePulseScan() {
@@ -61,18 +75,22 @@ export function useUnsharePulseScan() {
   });
 }
 
-export function usePulseStats() {
+export function usePulseStats(enabled = true) {
   return useQuery({
     queryKey: ["pulse-stats"],
     queryFn: getPulseStats,
     staleTime: 1000 * 15,
+    // Workspace-wide figures, so the route refuses an external caller. Skipping the
+    // fetch keeps a guest from firing a request that can only 403.
+    enabled,
   });
 }
 
-export function usePulseScans(params?: { clientId?: string }) {
+export function usePulseScans(params?: { clientId?: string }, enabled = true) {
   return useQuery({
     queryKey: ["pulse-scans", params],
     queryFn: () => listPulseScans(params),
+    enabled,
   });
 }
 
@@ -82,6 +100,22 @@ export function usePulsePortfolio() {
     queryFn: getPulsePortfolio,
     staleTime: 1000 * 15,
   });
+}
+
+export function usePulseProjects() {
+  return useQuery({ queryKey: ["pulse-projects"], queryFn: getPulseProjects, staleTime: 1000 * 30 });
+}
+
+export function usePulseProject(slug: string) {
+  return useQuery({ queryKey: ["pulse-project", slug], queryFn: () => getPulseProject(slug), enabled: !!slug });
+}
+
+export function usePulseCompare(scanId: string, against: string) {
+  return useQuery({ queryKey: ["pulse-compare", scanId, against], queryFn: () => comparePulseScans(scanId, against), enabled: !!scanId && !!against });
+}
+
+export function useCodePortfolio() {
+  return useQuery({ queryKey: ["code-portfolio"], queryFn: getCodePortfolio, staleTime: 1000 * 60 });
 }
 
 export function usePulseBenchmarks(scanId: string, enabled = true) {
@@ -108,6 +142,36 @@ export function usePulseScanDiff(scanId: string, enabled = true) {
     queryFn: () => getPulseScanDiff(scanId),
     enabled: enabled && Boolean(scanId),
     staleTime: 1000 * 60,
+  });
+}
+
+/** The team's decisions and board tasks for a scan's project (src/lib/pulse-findings.ts). */
+export function usePulseFindings(scanId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["pulse-findings", scanId],
+    queryFn: () => getPulseFindings(scanId),
+    enabled: enabled && Boolean(scanId),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useSetPulseFindingDecision(scanId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { checkKey: string; decision: import("@/lib/pulse-findings").FindingDecision | null; note?: string | null }) =>
+      setPulseFindingDecision(scanId, input),
+    onSuccess: (data) => qc.setQueryData(["pulse-findings", scanId], data),
+  });
+}
+
+export function useSendPulseFindingToBoard(scanId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (checkKey: string) => sendPulseFindingToBoard(scanId, checkKey),
+    onSuccess: (data) => {
+      qc.setQueryData(["pulse-findings", scanId], { targetKey: data.targetKey, clientId: data.clientId, states: data.states, tasks: data.tasks });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 }
 
@@ -374,6 +438,57 @@ export function useCreateMonitor() {
   });
 }
 
+/** Pulse → AI search for a range. `refresh` re-reads Google rather than the 15-minute cache. */
+export function useAiSearchReport(range: number) {
+  return useQuery({
+    queryKey: ["ai-search", range],
+    queryFn: () => getAiSearchReport(range).then((r) => r.report),
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useRefreshAiSearch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (range: number) => getAiSearchReport(range, true).then((r) => r.report),
+    onSuccess: (report) => qc.setQueryData(["ai-search", report.range], report),
+  });
+}
+
+export function useSaveAiSearchConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveAiSearchConfig,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-search"] }),
+  });
+}
+
+/** Pulse → AI search buyer questions. Polls every 5s while a run is in progress. */
+export function useAiAnswersReport() {
+  return useQuery({
+    queryKey: ["ai-answers"],
+    queryFn: () => getAiAnswersReport().then((r) => r.report),
+    staleTime: 1000 * 60,
+    refetchInterval: (q) => (q.state.data?.running ? 5000 : false),
+  });
+}
+
+export function useStartAiAnswersRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: startAiAnswersRun,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-answers"] }),
+  });
+}
+
+export function useSaveAiAnswersConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: saveAiAnswersConfig,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-answers"] }),
+  });
+}
+
 export function usePulseLeads() {
   return useQuery({
     queryKey: ["pulse-leads"],
@@ -411,6 +526,26 @@ export function useImportPulseLead() {
   });
 }
 
+export function useUpdatePulseLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ leadId, patch }: { leadId: string; patch: { name?: string; business?: string; email?: string } }) =>
+      updatePulseLead(leadId, patch),
+    onSuccess: (_d, { leadId }) => {
+      queryClient.invalidateQueries({ queryKey: ["pulse-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["pulse-lead-preview", leadId] });
+    },
+  });
+}
+
+export function useDeletePulseLead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deletePulseLead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pulse-leads"] }),
+  });
+}
+
 export function usePulseLeadPreview(leadId: string | null) {
   return useQuery({
     queryKey: ["pulse-lead-preview", leadId],
@@ -423,7 +558,7 @@ export function usePulseLeadPreview(leadId: string | null) {
 export function useUpdateMonitor() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ monitorId, ...input }: { monitorId: string; frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number }) =>
+    mutationFn: ({ monitorId, ...input }: { monitorId: string; frequency?: "DAILY" | "WEEKLY" | "OFF"; isActive?: boolean; alertThreshold?: number; digestEmails?: string[] }) =>
       updateMonitor(monitorId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pulse-monitors"] });

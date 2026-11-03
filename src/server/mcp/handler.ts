@@ -23,11 +23,16 @@ import {
   type Prisma as PrismaTypes,
 } from "@prisma/client";
 import type { EffectiveUser } from "@/server/auth/effective-user";
+import { isAtLeast } from "@/types/auth";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
+import { seedAccountUserWhere } from "@/server/seed-accounts";
+import { canReachDocument, documentScopeWhere } from "@/server/mcp/document-scope";
 import {
   assertCan,
   allowedDocTypesForUser,
   canManageClients,
   canManageDocs,
+  canGenerateAi,
   canManagePulse,
   canManageStarters,
   canManageSupport,
@@ -36,10 +41,58 @@ import {
   ForbiddenError,
   UnauthorizedError,
 } from "@/server/auth/effective-user";
+import {
+  addWikiCostItem,
+  deleteWikiCostItem,
+  loadWikiCosts,
+  setWikiCostsEnabled,
+  updateWikiCostItem,
+  updateWikiCostSettings,
+  type CostItemInput,
+} from "@/server/wiki-costs";
+import { buildCostReadout } from "@/lib/wiki-costs";
+import {
+  createWikiComparison,
+  deleteWikiComparison,
+  loadWikiComparisons,
+  setWikiComparisonsEnabled,
+  updateWikiComparison,
+} from "@/server/wiki-comparisons";
+import {
+  COMPARISON_LIMITS,
+  addColumns as addComparisonColumns,
+  addRows as addComparisonRows,
+  cellToText as comparisonCellToText,
+  cellsByTitle as comparisonCellsByTitle,
+  comparisonLimitError,
+  findColumn as findComparisonColumn,
+  findRow as findComparisonRow,
+  isPublishable as isPublishableComparison,
+  parseCellValue as parseComparisonCellValue,
+  parseComparisonContent,
+  removeColumn as removeComparisonColumn,
+  setCell as setComparisonCell,
+  updateColumn as updateComparisonColumn,
+  type ComparisonContent,
+} from "@/lib/wiki-comparisons";
+import type { WikiComparison } from "@/types/wiki-comparisons";
+import { setWikiSheetsEnabled } from "@/server/wiki-sheets";
+import { buildSheetTools } from "@/server/mcp/sheet-tools";
+import { setWikiInsightsEnabled } from "@/server/wiki-insights";
+import { setWikiEstimatesEnabled } from "@/server/wiki-estimates";
+import {
+  setWikiDeliveryEnabled,
+  setWikiRoundupEnabled,
+  setWikiSupportEnabled,
+} from "@/server/wiki-support";
+import { setWikiMeetingsEnabled } from "@/server/wiki-meetings";
+import { setWikiPlatformsEnabled } from "@/server/wiki-platforms";
+import { setWikiMetricsConfig } from "@/server/wiki-metrics";
 import { listStarters, getStarterBySlug, recordStarterUsage } from "@/server/starters";
 import { buildSkillMarkdown } from "@/server/starters-package";
 import { runAgentScan, buildAgentVerdict } from "@/server/pulse-agent";
-import { getPulseScan, listPulseScans } from "@/server/pulse";
+import { createPulseScanRecord, getPulseScan, listPulseScans, runAnalysis } from "@/server/pulse";
+import { after } from "next/server";
 import type { CheckCategory } from "@/server/pulse-checks/categories";
 import {
   listDerivedClients,
@@ -61,7 +114,6 @@ import {
   updateTask,
   addTaskComment,
 } from "@/server/tasks";
-import { listMembers } from "@/server/team";
 import { proposalListSelect, serializeProposalListItem } from "@/server/proposals";
 import { listClientMeetings } from "@/server/meetings";
 import { allocateDocumentNumber, updateDocument } from "@/server/documents";
@@ -71,6 +123,7 @@ import { applyClientNameToSections } from "@/lib/apply-client-name";
 import { DEFAULT_PROPOSAL_METADATA } from "@/lib/default-template";
 import { resolveDocumentOwnerName, templateOwnerName } from "@/lib/document-owner";
 import { TEMPLATE_SLUG_BY_TYPE, getTemplateBlueprintsForType } from "@/lib/templates";
+import { LEAD_STAGES } from "@/lib/crm/lead-stage-engine";
 import {
   getDefaultAssetPayload,
   getDefaultCostsPayload,
@@ -290,7 +343,8 @@ const WORKSPACE_CLIENT_STATUS_VALUES = [
   "INACTIVE",
   "ARCHIVED",
 ] as const;
-const LEAD_STAGE_VALUES = ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] as const;
+// One list for every stage surface — see LEAD_STAGES in lead-stage-engine.ts.
+const LEAD_STAGE_VALUES = LEAD_STAGES;
 const ENGAGEMENT_TYPE_VALUES = ["FIXED_SCOPE", "PHASED", "ROLLING", "RETAINER"] as const;
 
 // Full editable client field set — mirrors buildContactData in src/server/clients.ts so anything
@@ -424,6 +478,48 @@ const wikiPageContentSchema = z.union([
   z.array(z.unknown()),
 ]);
 const listWikiSchema = z.object({ client: z.string().min(1) });
+
+/* ─────────────────────────────── running costs ─────────────────────────────── */
+
+const costTierArg = z.object({
+  upToUsers: z.number().int().min(1).max(100_000_000).nullable(),
+  amountMonthly: z.number().finite().min(0),
+  label: z.string().trim().max(60).nullable().optional(),
+});
+
+const getRunningCostsSchema = z.object({
+  client: z.string().min(1),
+  atUsers: z.number().int().min(0).max(100_000_000).optional(),
+});
+
+const setCostLineSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  vendor: z.string().trim().max(80).nullable().optional(),
+  kind: z.enum(["FLAT", "PER_USER", "METERED", "STEPPED"]).optional(),
+  amountMonthly: z.number().finite().min(0).nullable().optional(),
+  amountAnnual: z.number().finite().min(0).nullable().optional(),
+  unitLabel: z.string().trim().max(40).nullable().optional(),
+  includedUnits: z.number().finite().min(0).nullable().optional(),
+  unitPrice: z.number().finite().min(0).nullable().optional(),
+  unitsPerUser: z.number().finite().min(0).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  included: z.boolean().optional(),
+  tiers: z.array(costTierArg).max(20).optional(),
+});
+
+const deleteCostLineSchema = z.object({
+  client: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+});
+
+const setRunningCostsSettingsSchema = z.object({
+  client: z.string().min(1),
+  currency: z.string().trim().length(3).optional(),
+  headlineUsers: z.number().int().min(0).max(100_000_000).optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
 const getWikiPageSchema = z.object({
   client: z.string().min(1),
   type: z.enum(WIKI_PAGE_TYPE_VALUES),
@@ -558,10 +654,15 @@ const listConversationsSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
+const PULSE_PLATFORMS = ["WEB_APP", "SAAS", "MARKETING_SITE", "IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "API_BACKEND", "CLI_TOOL", "OTHER"] as const;
 const pulseScanToolSchema = z.object({
-  url: z.string().url(),
+  url: z.string().url().optional(),
+  githubRepo: z.string().trim().min(3).max(200).optional(),
+  platform: z.enum(PULSE_PLATFORMS).optional(),
   targetMarkets: z.array(z.string().trim().min(1).max(16)).max(30).optional(),
-});
+  saveToClient: z.string().trim().min(1).max(200).optional(),
+  projectName: z.string().trim().min(1).max(200).optional(),
+}).refine((value) => Boolean(value.url) !== Boolean(value.githubRepo), { message: "Pass exactly one of url or githubRepo." });
 const pulseResultToolSchema = z.object({ scanId: z.string().min(1) });
 const listPulseScansSchema = z.object({
   client: z.string().optional(),
@@ -596,13 +697,233 @@ const CLIENT_FIELD_PROPERTIES: Record<string, Record<string, unknown>> = {
   engagementType: { type: "string", enum: ["FIXED_SCOPE", "PHASED", "ROLLING", "RETAINER"], description: "Engagement shape. FIXED_SCOPE/PHASED have an end date; ROLLING/RETAINER are ongoing." },
   endDate: { type: "string", description: "Project/proposal end date (ISO, e.g. 2026-08-31). Applies to fixed-scope/phased work." },
   leadSource: { type: "string", description: "Where the lead came from (LEAD clients)." },
-  leadStage: { type: "string", enum: ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL_SENT", "WON", "LOST"] },
+  leadStage: { type: "string", enum: [...LEAD_STAGES], description: "Pipeline stage. Setting it by hand pins it — the CRM automation stops moving it until resumed." },
   leadValue: { type: "number", description: "Estimated deal value (LEAD clients)." },
   leadValueCurrency: { type: "string", description: "3-letter currency code, e.g. GBP." },
   leadFollowUpAt: { type: "string", description: "ISO date to follow up (LEAD clients)." },
   resumeAt: { type: "string", description: "ISO date to pick back up (INACTIVE clients)." },
   pauseNote: { type: "string", description: "Why the client is paused (INACTIVE)." },
 };
+
+// ── Comparisons (wiki comparison tables) ────────────────────────────────────
+// Every write goes through the same pure helpers the in-wiki editor uses
+// (src/lib/wiki-comparisons.ts), so a table Claude writes obeys the same limits and the same
+// cell vocabulary as one edited by hand.
+
+const COMPARISON_VALUE_RULES =
+  "Cell values: 'yes' (also y/true/included/✓) = included; 'no' (also n/false/not included/x/✕/-) " +
+  "= not included; 'partial' (also partly/limited/◐) = partly included; 'none' or '' = blank (not " +
+  "stated — which is different from 'no'); anything else is stored as a short text value, at most " +
+  `${COMPARISON_LIMITS.maxText} characters (e.g. '10 GB', '£9/mo').`;
+
+const COMPARISON_TOOL_RULES =
+  `A table has at most ${COMPARISON_LIMITS.maxColumns} columns and ${COMPARISON_LIMITS.maxRows} rows. ` +
+  "Columns are plans, releases or products (e.g. Free / Premium / Pro, or the client vs competitors); " +
+  "a column can be FEATURED (highlight: true) to mark the recommended plan or the client's own product. " +
+  "Rows are features; a row with group: true is a heading band and has no cells. Row cells are an " +
+  "object keyed by COLUMN TITLE. " +
+  COMPARISON_VALUE_RULES;
+
+const COMPARISON_COLUMNS_JSON = {
+  type: "array",
+  description:
+    `Column titles, or {title, subtitle?, highlight?} objects. At most ${COMPARISON_LIMITS.maxColumns}.`,
+  items: {
+    anyOf: [
+      { type: "string" },
+      {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          subtitle: { type: "string", description: "Small line under the title, e.g. a price." },
+          highlight: { type: "boolean", description: "Feature this column." },
+        },
+        required: ["title"],
+        additionalProperties: false,
+      },
+    ],
+  },
+};
+
+const COMPARISON_ROWS_JSON = {
+  type: "array",
+  description: "Rows in order: features, and group headings (group: true).",
+  items: {
+    type: "object",
+    properties: {
+      label: { type: "string", description: "Feature name, or the group heading." },
+      group: { type: "boolean", description: "true = a group heading band (no cells)." },
+      note: { type: "string", description: "Optional small note under the feature name." },
+      cells: {
+        type: "object",
+        description: "Values keyed by column TITLE, e.g. {\"Free\": \"no\", \"Pro\": \"yes\"}.",
+        additionalProperties: { type: ["string", "boolean", "null"] },
+      },
+    },
+    required: ["label"],
+    additionalProperties: false,
+  },
+};
+
+const comparisonColumnArgSchema = z.union([
+  z.string().trim().min(1).max(COMPARISON_LIMITS.maxColumnTitle),
+  z.object({
+    title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxColumnTitle),
+    subtitle: z.string().trim().max(COMPARISON_LIMITS.maxColumnSubtitle).optional(),
+    highlight: z.boolean().optional(),
+  }),
+]);
+const comparisonCellValueSchema = z.union([z.string().max(200), z.boolean(), z.null()]);
+const comparisonRowArgSchema = z.object({
+  label: z.string().trim().max(COMPARISON_LIMITS.maxLabel),
+  group: z.boolean().optional(),
+  note: z.string().trim().max(COMPARISON_LIMITS.maxNote).optional(),
+  cells: z.record(z.string(), comparisonCellValueSchema).optional(),
+});
+const clientOnlySchema = z.object({ client: z.string().min(1) });
+const comparisonRefSchema = z.object({ client: z.string().min(1), table: z.string().min(1) });
+const createComparisonToolSchema = z.object({
+  client: z.string().min(1),
+  title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxTableTitle),
+  description: z.string().trim().max(COMPARISON_LIMITS.maxDescription).optional(),
+  columns: z.array(comparisonColumnArgSchema).min(1).max(COMPARISON_LIMITS.maxColumns),
+  rows: z.array(comparisonRowArgSchema).max(COMPARISON_LIMITS.maxRows).optional(),
+});
+const updateComparisonToolSchema = comparisonRefSchema.extend({
+  title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxTableTitle).optional(),
+  description: z.string().trim().max(COMPARISON_LIMITS.maxDescription).nullable().optional(),
+  columns: z.array(comparisonColumnArgSchema).max(COMPARISON_LIMITS.maxColumns).optional(),
+  rows: z.array(comparisonRowArgSchema).max(COMPARISON_LIMITS.maxRows).optional(),
+});
+const addComparisonColumnsToolSchema = comparisonRefSchema.extend({
+  columns: z.array(comparisonColumnArgSchema).min(1).max(COMPARISON_LIMITS.maxColumns),
+});
+const renameComparisonColumnToolSchema = comparisonRefSchema.extend({
+  column: z.string().min(1),
+  title: z.string().trim().min(1).max(COMPARISON_LIMITS.maxColumnTitle).optional(),
+  subtitle: z.string().trim().max(COMPARISON_LIMITS.maxColumnSubtitle).optional(),
+  highlight: z.boolean().optional(),
+});
+const removeComparisonColumnToolSchema = comparisonRefSchema.extend({ column: z.string().min(1) });
+const addComparisonRowsToolSchema = comparisonRefSchema.extend({
+  rows: z.array(comparisonRowArgSchema).min(1).max(COMPARISON_LIMITS.maxRows),
+  after: z.string().min(1).optional(),
+});
+const setComparisonCellsToolSchema = comparisonRefSchema.extend({
+  cells: z
+    .array(z.object({ row: z.string().min(1), column: z.string().min(1), value: comparisonCellValueSchema }))
+    .min(1)
+    .max(2000),
+});
+
+function columnArg(c: z.infer<typeof comparisonColumnArgSchema>) {
+  return typeof c === "string" ? { title: c } : c;
+}
+
+/** Rows as an agent writes them (cells by column title) → the stored shape. */
+function appendComparisonRows(
+  content: ComparisonContent,
+  rows: z.infer<typeof comparisonRowArgSchema>[],
+  at?: number,
+): ComparisonContent {
+  return addComparisonRows(
+    content,
+    rows.map((r) => ({
+      kind: r.group ? ("group" as const) : ("row" as const),
+      label: r.label,
+      note: r.note,
+      cells: r.group ? {} : comparisonCellsByTitle(content, r.cells),
+    })),
+    at,
+  );
+}
+
+/** By id, else by exact title (case-insensitive). Ambiguity is an error, never a guess. */
+async function resolveComparison(clientId: string, ref: string): Promise<WikiComparison> {
+  const { comparisons } = await loadWikiComparisons(clientId);
+  const byId = comparisons.find((t) => t.id === ref);
+  if (byId) return byId;
+  const hits = comparisons.filter((t) => t.title.trim().toLowerCase() === ref.trim().toLowerCase());
+  if (hits.length === 1) return hits[0];
+  if (hits.length > 1) throw new Error(`"${ref}" matches ${hits.length} tables — pass the table id.`);
+  throw new Error(
+    `No comparison table "${ref}". Tables: ${comparisons.map((t) => t.title).join(", ") || "(none)"}.`,
+  );
+}
+
+async function saveComparisonContent(
+  clientId: string,
+  table: WikiComparison,
+  content: ComparisonContent,
+): Promise<WikiComparison> {
+  return updateWikiComparison(clientId, table.id, {
+    title: table.title,
+    description: table.description,
+    columns: content.columns,
+    rows: content.rows,
+  });
+}
+
+/** What an agent reads: cells keyed by column title, in words. */
+function projectComparison(table: WikiComparison) {
+  const dupes = new Set(
+    table.columns
+      .map((c) => c.title.toLowerCase())
+      .filter((t, i, all) => all.indexOf(t) !== i),
+  );
+  const keyOf = (c: { id: string; title: string }) =>
+    dupes.has(c.title.toLowerCase()) ? `${c.title} (${c.id})` : c.title;
+  return {
+    id: table.id,
+    title: table.title,
+    description: table.description,
+    columns: table.columns.map((c) => ({
+      id: c.id,
+      title: c.title,
+      ...(c.subtitle ? { subtitle: c.subtitle } : {}),
+      ...(c.highlight ? { featured: true } : {}),
+    })),
+    rows: table.rows.map((r) =>
+      r.kind === "group"
+        ? { id: r.id, group: true, label: r.label }
+        : {
+            id: r.id,
+            label: r.label,
+            ...(r.note ? { note: r.note } : {}),
+            cells: Object.fromEntries(
+              table.columns
+                .filter((c) => r.cells[c.id])
+                .map((c) => [keyOf(c), comparisonCellToText(r.cells[c.id])]),
+            ),
+          },
+    ),
+  };
+}
+
+/** The wiki sections that can be switched on and off, and the server function for each. */
+const WIKI_SECTION_TOGGLES = {
+  comparisons: setWikiComparisonsEnabled,
+  sheets: setWikiSheetsEnabled,
+  insights: setWikiInsightsEnabled,
+  costs: setWikiCostsEnabled,
+  estimates: setWikiEstimatesEnabled,
+  delivery: setWikiDeliveryEnabled,
+  support: setWikiSupportEnabled,
+  roundup: setWikiRoundupEnabled,
+  meetings: setWikiMeetingsEnabled,
+  platforms: setWikiPlatformsEnabled,
+  metrics: (clientId: string, enabled: boolean) => setWikiMetricsConfig(clientId, { enabled }),
+} as const satisfies Record<string, (clientId: string, enabled: boolean) => Promise<void>>;
+
+const TOGGLEABLE_WIKI_SECTIONS = Object.keys(WIKI_SECTION_TOGGLES) as [
+  keyof typeof WIKI_SECTION_TOGGLES,
+  ...(keyof typeof WIKI_SECTION_TOGGLES)[],
+];
+const enableWikiSectionToolSchema = z.object({
+  client: z.string().min(1),
+  section: z.enum(TOGGLEABLE_WIKI_SECTIONS),
+  enabled: z.boolean(),
+});
 
 const TOOLS: ToolDef[] = [
   {
@@ -949,6 +1270,656 @@ const TOOLS: ToolDef[] = [
       return textResult(
         { requests, total },
         `${resolved.name} — ${total} course request${total === 1 ? "" : "s"}${filtered} (showing ${requests.length}).`,
+      );
+    },
+  },
+  {
+    name: "get_running_costs",
+    description:
+      "What a client's app costs to RUN, and the cost per end user. This is NOT Docs costing — " +
+      "Docs prices what Gitwork charges to build something; this prices what the client pays every " +
+      "month to keep it up. Returns the stored lines plus the computed readout: totals, cost per " +
+      "user, the 0 → 1,000,000 growth curve, anything priced as an OPTION (costed but deliberately " +
+      "not counted), and the blind spots — figures the model cannot establish and therefore does " +
+      "not claim. Pass atUsers to price the whole model at a different head count without saving.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        atUsers: {
+          type: "number",
+          description:
+            "Price at this head count instead of the saved one. 0 is valid and useful — it is " +
+            "what the app costs to run before launch, when the fixed fees are paid and there is " +
+            "nobody to divide them by.",
+        },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = getRunningCostsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const model = await loadWikiCosts(resolved.id);
+      const at = parsed.atUsers ?? model.headlineUsers;
+      const readout = buildCostReadout(model.items, at);
+      return textResult(
+        {
+          client: { id: resolved.id, slug: resolved.slug, name: resolved.name },
+          enabled: model.enabled,
+          currency: model.currency,
+          pricedAtUsers: at,
+          headlineUsers: model.headlineUsers,
+          notes: model.notes,
+          total: readout.headline,
+          lines: readout.lines,
+          options: readout.options,
+          scale: readout.scale,
+          blindSpots: readout.blindSpots,
+          annualSaving: readout.annualSaving,
+        },
+        model.items.length === 0
+          ? `${resolved.name} has no running costs recorded yet — add lines with set_cost_line.`
+          : `${resolved.name} — ${model.currency} ${readout.headline.totalMonthly}/mo at ${at} users` +
+            (readout.headline.perUserMonthly === null
+              ? " (no per-user figure at zero users)"
+              : `, ${readout.headline.perUserMonthly} per user`) +
+            (readout.options.length ? `; ${readout.options.length} priced as options` : "") +
+            (readout.headline.incomplete ? ". Figures are a MINIMUM — see blindSpots." : "."),
+      );
+    },
+  },
+  {
+    name: "set_cost_line",
+    description:
+      "Add or update one line in a client's running-cost model, matched by `name` (case-insensitive) " +
+      "so calling twice updates rather than duplicates. Four ways to price: FLAT (same every month), " +
+      "PER_USER (rate x head count), METERED (base fee + usage — needs unitPrice AND unitsPerUser or " +
+      "it cannot scale and the page says so), STEPPED (plan bands; supply `tiers` ascending, last may " +
+      "have upToUsers null for 'and up'). " +
+      "Set included:false to price something as an OPTION — fully costed at the client's user numbers " +
+      "so it can be compared, but kept OUT of the total and the growth curve until they choose it. " +
+      "That is how you compare, say, three AI providers. Only fields you pass are changed; passing " +
+      "`tiers` replaces the whole ladder. Turns the Running costs section on if it is off, so the " +
+      "line is actually visible. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Service name — also the match key for updates." },
+        vendor: { type: "string", description: "Who provides it (Supabase, Anthropic, …)." },
+        kind: {
+          type: "string",
+          enum: ["FLAT", "PER_USER", "METERED", "STEPPED"],
+          description: "How it is priced. Defaults to FLAT on a new line.",
+        },
+        amountMonthly: {
+          type: "number",
+          description: "FLAT: the fee. PER_USER: the fee PER USER. METERED: the base before usage.",
+        },
+        amountAnnual: {
+          type: "number",
+          description: "Annual price where it beats 12x monthly. For PER_USER this is still per user.",
+        },
+        unitLabel: { type: "string", description: "METERED — what is metered (GB, k tokens, SMS)." },
+        includedUnits: { type: "number", description: "METERED — units included before charging." },
+        unitPrice: { type: "number", description: "METERED — price per unit beyond the allowance." },
+        unitsPerUser: {
+          type: "number",
+          description:
+            "METERED — units ONE user consumes per month. Without it the line cannot scale, and " +
+            "only its base fee is counted; the client's page says so rather than costing usage at zero.",
+        },
+        notes: {
+          type: "string",
+          description:
+            "Shown to the client. On an option this is where the assumption goes ('40k tokens per " +
+            "user') — a comparison without its assumptions is not one.",
+        },
+        included: {
+          type: "boolean",
+          description:
+            "True (default) = part of the bill. False = priced as an option, kept out of the total.",
+        },
+        tiers: {
+          type: "array",
+          description: "STEPPED only. Ascending; only the last may have upToUsers null.",
+          items: {
+            type: "object",
+            properties: {
+              upToUsers: { type: ["number", "null"], description: "Cap, or null for the top band." },
+              amountMonthly: { type: "number" },
+              label: { type: "string" },
+            },
+            required: ["upToUsers", "amountMonthly"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["client", "name"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit running costs");
+      const parsed = setCostLineSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const model = await loadWikiCosts(resolved.id);
+      const existing = model.items.find(
+        (i) => i.name.trim().toLowerCase() === parsed.name.trim().toLowerCase(),
+      );
+
+      // Only what the caller passed changes. `updateWikiCostItem` REPLACES the row, so
+      // an unmerged patch would silently wipe every field the caller left out.
+      const merged: CostItemInput = {
+        name: parsed.name,
+        vendor: parsed.vendor !== undefined ? parsed.vendor : (existing?.vendor ?? null),
+        kind: parsed.kind ?? existing?.kind ?? "FLAT",
+        amountMonthly:
+          parsed.amountMonthly !== undefined ? parsed.amountMonthly : (existing?.amountMonthly ?? null),
+        amountAnnual:
+          parsed.amountAnnual !== undefined ? parsed.amountAnnual : (existing?.amountAnnual ?? null),
+        unitLabel: parsed.unitLabel !== undefined ? parsed.unitLabel : (existing?.unitLabel ?? null),
+        includedUnits:
+          parsed.includedUnits !== undefined ? parsed.includedUnits : (existing?.includedUnits ?? null),
+        unitPrice: parsed.unitPrice !== undefined ? parsed.unitPrice : (existing?.unitPrice ?? null),
+        unitsPerUser:
+          parsed.unitsPerUser !== undefined ? parsed.unitsPerUser : (existing?.unitsPerUser ?? null),
+        notes: parsed.notes !== undefined ? parsed.notes : (existing?.notes ?? null),
+        included: parsed.included !== undefined ? parsed.included : (existing?.included ?? true),
+        // Passing tiers replaces the ladder; omitting it keeps what is there.
+        tiers:
+          parsed.tiers ??
+          (existing?.tiers ?? []).map((t) => ({
+            upToUsers: t.upToUsers,
+            amountMonthly: t.amountMonthly,
+            label: t.label,
+          })),
+      };
+
+      // ⚠️ A line on a section that is switched off is invisible to the client — the
+      // unreachable-state defect. Writing one turns the section on.
+      if (!model.enabled) await setWikiCostsEnabled(resolved.id, true);
+      const next = existing
+        ? await updateWikiCostItem(resolved.id, existing.id, merged)
+        : await addWikiCostItem(resolved.id, merged);
+
+      const readout = buildCostReadout(next.items, next.headlineUsers);
+      const saved = next.items.find(
+        (i) => i.name.trim().toLowerCase() === parsed.name.trim().toLowerCase(),
+      );
+      const asOption = saved?.included === false;
+      return textResult(
+        { item: saved, total: readout.headline, blindSpots: readout.blindSpots },
+        `${existing ? "Updated" : "Added"} "${parsed.name}" on ${resolved.name}` +
+          (asOption
+            ? " as an OPTION — priced but not counted in the total."
+            : `. Total is now ${next.currency} ${readout.headline.totalMonthly}/mo at ${next.headlineUsers} users.`),
+      );
+    },
+  },
+  {
+    name: "delete_cost_line",
+    description:
+      "Remove one line from a client's running-cost model, matched by name (case-insensitive). " +
+      "Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        name: { type: "string", description: "Service name, as stored." },
+      },
+      required: ["client", "name"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit running costs");
+      const parsed = deleteCostLineSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const model = await loadWikiCosts(resolved.id);
+      const existing = model.items.find(
+        (i) => i.name.trim().toLowerCase() === parsed.name.trim().toLowerCase(),
+      );
+      if (!existing) {
+        return textResult(
+          { deleted: false, name: parsed.name },
+          `${resolved.name} has no cost line called "${parsed.name}".`,
+        );
+      }
+      const next = await deleteWikiCostItem(resolved.id, existing.id);
+      const readout = buildCostReadout(next.items, next.headlineUsers);
+      return textResult(
+        { deleted: true, total: readout.headline },
+        `Deleted "${existing.name}" from ${resolved.name}. Total is now ${next.currency} ` +
+          `${readout.headline.totalMonthly}/mo at ${next.headlineUsers} users.`,
+      );
+    },
+  },
+  {
+    name: "set_running_costs_settings",
+    description:
+      "Set the currency, the headline user count the banner is worked out at, the note shown to the " +
+      "client, or switch the Running costs section on/off. headlineUsers accepts 0 — a client before " +
+      "launch has no users and still pays the fixed fees, and that floor is a real figure. " +
+      "Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        currency: { type: "string", description: "ISO 4217, e.g. GBP. One currency per model." },
+        headlineUsers: { type: "number", description: "Head count the banner uses. 0 is valid." },
+        notes: { type: "string", description: "Shown under the headline figures on the client's page." },
+        enabled: { type: "boolean", description: "Show or hide the section on the client's wiki." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit running costs");
+      const parsed = setRunningCostsSettingsSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      if (parsed.enabled !== undefined) await setWikiCostsEnabled(resolved.id, parsed.enabled);
+      if (parsed.currency !== undefined || parsed.headlineUsers !== undefined || parsed.notes !== undefined) {
+        await updateWikiCostSettings(resolved.id, {
+          ...(parsed.currency !== undefined ? { currency: parsed.currency.toUpperCase() } : {}),
+          ...(parsed.headlineUsers !== undefined ? { headlineUsers: parsed.headlineUsers } : {}),
+          ...(parsed.notes !== undefined ? { notes: parsed.notes } : {}),
+        });
+      }
+      const model = await loadWikiCosts(resolved.id);
+      return textResult(
+        { enabled: model.enabled, currency: model.currency, headlineUsers: model.headlineUsers, notes: model.notes },
+        `${resolved.name} running costs — ${model.enabled ? "on" : "off"}, ${model.currency}, ` +
+          `headline ${model.headlineUsers} users.`,
+      );
+    },
+  },
+  {
+    name: "list_comparisons",
+    description:
+      "List a client's wiki comparison tables (the Comparisons section — plan tables like Free vs " +
+      "Premium vs Pro, or the client's product against competitors). Returns each table's id, title, " +
+      "column titles and row counts, and whether the section is switched on for the client.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+      },
+      required: ["client"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = clientOnlySchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const section = await loadWikiComparisons(resolved.id);
+      const tables = section.comparisons.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        columns: t.columns.map((c) => c.title),
+        featured: t.columns.filter((c) => c.highlight).map((c) => c.title),
+        featureRows: t.rows.filter((r) => r.kind === "row").length,
+        groups: t.rows.filter((r) => r.kind === "group").length,
+        publishable: isPublishableComparison(t),
+      }));
+      return textResult(
+        { client: { id: resolved.id, slug: resolved.slug, name: resolved.name }, enabled: section.enabled, tables },
+        `${resolved.name} — ${tables.length} comparison table${tables.length === 1 ? "" : "s"}; ` +
+          `section is ${section.enabled ? "on" : "off"}.`,
+      );
+    },
+  },
+  {
+    name: "get_comparison",
+    description:
+      "Get one comparison table in full — columns (with ids) and every row with its cells. Cells are " +
+      "keyed by COLUMN TITLE and read as 'yes', 'no', 'partial', a short text value, or are absent " +
+      "when blank. Identify the table by id or exact title.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title (see list_comparisons)." },
+      },
+      required: ["client", "table"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      const parsed = comparisonRefSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      return textResult(
+        projectComparison(table),
+        `"${table.title}" — ${table.columns.length} columns, ${table.rows.length} rows.`,
+      );
+    },
+  },
+  {
+    name: "create_comparison",
+    description:
+      "Create a comparison table on a client's wiki. " +
+      COMPARISON_TOOL_RULES +
+      " Turns the Comparisons section on if it is off, so the table is visible on the client's " +
+      "wiki. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        title: { type: "string", description: "Table title, e.g. 'What's in each plan'." },
+        description: { type: "string", description: "Optional one-line description shown under it." },
+        columns: COMPARISON_COLUMNS_JSON,
+        rows: COMPARISON_ROWS_JSON,
+      },
+      required: ["client", "title", "columns"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = createComparisonToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      let content = addComparisonColumns({ columns: [], rows: [] }, parsed.columns.map(columnArg));
+      content = appendComparisonRows(content, parsed.rows ?? []);
+      const section = await loadWikiComparisons(resolved.id);
+      if (!section.enabled) await setWikiComparisonsEnabled(resolved.id, true);
+      const table = await createWikiComparison(resolved.id, {
+        title: parsed.title,
+        description: parsed.description ?? null,
+        columns: content.columns,
+        rows: content.rows,
+      });
+      return textResult(
+        projectComparison(table),
+        `Created "${table.title}" on ${resolved.name} with ${table.columns.length} columns and ` +
+          `${table.rows.length} rows${section.enabled ? "" : " (Comparisons section switched on)"}.`,
+      );
+    },
+  },
+  {
+    name: "update_comparison",
+    description:
+      "Rename a comparison table or change its description, and/or REPLACE its columns and/or rows " +
+      "wholesale. Passing `columns` replaces the column list — a column whose title matches an " +
+      "existing one keeps its cells; cells under dropped columns are deleted. Passing `rows` replaces " +
+      "every row. To add without replacing, use add_comparison_columns / add_comparison_rows. " +
+      COMPARISON_TOOL_RULES +
+      " Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        title: { type: "string", description: "New title." },
+        description: { type: ["string", "null"], description: "New description; null or '' clears it." },
+        columns: COMPARISON_COLUMNS_JSON,
+        rows: COMPARISON_ROWS_JSON,
+      },
+      required: ["client", "table"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = updateComparisonToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      let content: ComparisonContent = { columns: table.columns, rows: table.rows };
+      if (parsed.columns) {
+        const wanted = parsed.columns.map(columnArg);
+        const limit = comparisonLimitError({ columns: wanted, rows: [] });
+        if (limit) throw new Error(limit);
+        // Keep a column's id (and so its cells) when its title survives the replacement.
+        const used = new Set<string>();
+        const columns = wanted.map((w) => {
+          const prev = table.columns.find(
+            (c) => !used.has(c.id) && c.title.trim().toLowerCase() === w.title.trim().toLowerCase(),
+          );
+          if (prev) {
+            used.add(prev.id);
+            return {
+              id: prev.id,
+              title: w.title,
+              ...(w.subtitle ? { subtitle: w.subtitle } : {}),
+              ...(w.highlight ? { highlight: true } : {}),
+            };
+          }
+          return addComparisonColumns({ columns: [], rows: [] }, [w]).columns[0];
+        });
+        content = parseComparisonContent(columns, content.rows);
+      }
+      if (parsed.rows) content = appendComparisonRows({ columns: content.columns, rows: [] }, parsed.rows);
+      const saved = await updateWikiComparison(resolved.id, table.id, {
+        title: parsed.title ?? table.title,
+        description:
+          parsed.description === undefined ? table.description : parsed.description || null,
+        columns: content.columns,
+        rows: content.rows,
+      });
+      return textResult(projectComparison(saved), `Updated "${saved.title}" on ${resolved.name}.`);
+    },
+  },
+  {
+    name: "add_comparison_columns",
+    description:
+      "Append columns to a comparison table (existing cells are untouched). At most 45 columns per " +
+      "table — the call is refused, and nothing is changed, if it would go past that. Requires the " +
+      "'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        columns: COMPARISON_COLUMNS_JSON,
+      },
+      required: ["client", "table", "columns"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = addComparisonColumnsToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const content = addComparisonColumns(table, parsed.columns.map(columnArg));
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      return textResult(
+        projectComparison(saved),
+        `Added ${parsed.columns.length} column${parsed.columns.length === 1 ? "" : "s"} to "${saved.title}" ` +
+          `(${saved.columns.length}/${COMPARISON_LIMITS.maxColumns}).`,
+      );
+    },
+  },
+  {
+    name: "rename_comparison_column",
+    description:
+      "Rename one column of a comparison table, and optionally set its subtitle (e.g. a price) or " +
+      "whether it is FEATURED (highlighted — e.g. 'our client' or the recommended plan). The column " +
+      "is matched by id or current title. Cells are kept. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        column: { type: "string", description: "Column id or current title." },
+        title: { type: "string", description: "New title (omit to keep)." },
+        subtitle: { type: "string", description: "New subtitle; '' clears it." },
+        highlight: { type: "boolean", description: "Feature (highlight) this column, or not." },
+      },
+      required: ["client", "table", "column"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = renameComparisonColumnToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const col = findComparisonColumn(table, parsed.column);
+      const content = updateComparisonColumn(table, col.id, {
+        ...(parsed.title !== undefined ? { title: parsed.title } : {}),
+        ...(parsed.subtitle !== undefined ? { subtitle: parsed.subtitle } : {}),
+        ...(parsed.highlight !== undefined ? { highlight: parsed.highlight } : {}),
+      });
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      const now = saved.columns.find((c) => c.id === col.id);
+      return textResult(projectComparison(saved), `Column "${col.title}" is now "${now?.title ?? col.title}".`);
+    },
+  },
+  {
+    name: "remove_comparison_column",
+    description:
+      "Remove one column from a comparison table, with every cell under it. Matched by id or title. " +
+      "Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        column: { type: "string", description: "Column id or title." },
+      },
+      required: ["client", "table", "column"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = removeComparisonColumnToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const col = findComparisonColumn(table, parsed.column);
+      const saved = await saveComparisonContent(resolved.id, table, removeComparisonColumn(table, col.id));
+      return textResult(projectComparison(saved), `Removed the column "${col.title}" from "${saved.title}".`);
+    },
+  },
+  {
+    name: "add_comparison_rows",
+    description:
+      "Append feature rows and/or group headings to a comparison table, with their cells keyed by " +
+      "COLUMN TITLE. Pass `after` (a row label or id) to insert after that row instead of at the end. " +
+      COMPARISON_TOOL_RULES +
+      " Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        rows: COMPARISON_ROWS_JSON,
+        after: { type: "string", description: "Insert after this row (label or id). Default: the end." },
+      },
+      required: ["client", "table", "rows"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = addComparisonRowsToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      const at = parsed.after
+        ? table.rows.findIndex((r) => r.id === findComparisonRow(table, parsed.after!).id) + 1
+        : undefined;
+      const content = appendComparisonRows(table, parsed.rows, at);
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      return textResult(
+        projectComparison(saved),
+        `Added ${parsed.rows.length} row${parsed.rows.length === 1 ? "" : "s"} to "${saved.title}" ` +
+          `(${saved.rows.length}/${COMPARISON_LIMITS.maxRows}).`,
+      );
+    },
+  },
+  {
+    name: "set_comparison_cells",
+    description:
+      "Set many cells at once. Each entry names a row (label or id), a column (title or id) and a " +
+      "value. " +
+      COMPARISON_VALUE_RULES +
+      " All entries are checked before anything is saved: one unknown row or column, or a group " +
+      "heading as the row, refuses the whole batch. Requires the 'Manage clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+        cells: {
+          type: "array",
+          description: "Up to 2000 cells.",
+          items: {
+            type: "object",
+            properties: {
+              row: { type: "string", description: "Row label or id." },
+              column: { type: "string", description: "Column title or id." },
+              value: { type: ["string", "boolean", "null"], description: "yes / no / partial / none / short text." },
+            },
+            required: ["row", "column", "value"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["client", "table", "cells"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = setComparisonCellsToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      let content: ComparisonContent = { columns: table.columns, rows: table.rows };
+      for (const entry of parsed.cells) {
+        const row = findComparisonRow(content, entry.row);
+        const col = findComparisonColumn(content, entry.column);
+        content = setComparisonCell(content, row.id, col.id, parseComparisonCellValue(entry.value));
+      }
+      const saved = await saveComparisonContent(resolved.id, table, content);
+      return textResult(
+        projectComparison(saved),
+        `Set ${parsed.cells.length} cell${parsed.cells.length === 1 ? "" : "s"} in "${saved.title}".`,
+      );
+    },
+  },
+  {
+    name: "delete_comparison",
+    description:
+      "Delete a comparison table from a client's wiki. Cannot be undone. Requires the 'Manage " +
+      "clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        table: { type: "string", description: "Table id or exact title." },
+      },
+      required: ["client", "table"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "edit comparisons");
+      const parsed = comparisonRefSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      const table = await resolveComparison(resolved.id, parsed.table);
+      await deleteWikiComparison(resolved.id, table.id);
+      return textResult({ deleted: true, id: table.id }, `Deleted "${table.title}" from ${resolved.name}.`);
+    },
+  },
+  // Sheets — client-editable spreadsheets linked to the task board (src/server/mcp/sheet-tools.ts).
+  ...buildSheetTools({ resolveClient, textResult }),
+  {
+    name: "enable_wiki_section",
+    description:
+      "Switch one of a client's optional wiki sections on or off — whether it appears on their wiki " +
+      "(and on a shared client link). Sections: " +
+      TOGGLEABLE_WIKI_SECTIONS.join(", ") +
+      ". Turning one off keeps its content, so turning it back on restores it. Requires the 'Manage " +
+      "clients' permission.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", description: "Client slug, name, or cuid (see list_clients)." },
+        section: { type: "string", enum: [...TOGGLEABLE_WIKI_SECTIONS], description: "Which section." },
+        enabled: { type: "boolean", description: "true = show it, false = hide it." },
+      },
+      required: ["client", "section", "enabled"],
+      additionalProperties: false,
+    },
+    handler: async (user, args) => {
+      assertCan(user, canManageClients, "change wiki sections");
+      const parsed = enableWikiSectionToolSchema.parse(args);
+      const resolved = await resolveClient(user, parsed.client);
+      await WIKI_SECTION_TOGGLES[parsed.section](resolved.id, parsed.enabled);
+      return textResult(
+        { section: parsed.section, enabled: parsed.enabled },
+        `${resolved.name} — ${parsed.section} is now ${parsed.enabled ? "on" : "off"}.`,
       );
     },
   },
@@ -1323,20 +2294,27 @@ const TOOLS: ToolDef[] = [
   {
     name: "list_members",
     description:
-      "List workspace members. Returns id, name, email, role. Use to find " +
-      "assigneeIds for create_task / update_task.",
+      "List the workspace's current members: id, name and role (Admins also get email). " +
+      "Use to find assigneeIds for create_task / update_task.",
     inputSchema: {
       type: "object",
       properties: {},
       additionalProperties: false,
     },
-    handler: async () => {
-      const members = await listMembers();
+    handler: async (user) => {
+      // Active members only — an archived person can't be assigned anything — and email only
+      // for Admins: picking an assignee needs a name, not everyone's address.
+      const members = await prisma.workspaceMember.findMany({
+        where: { workspaceId: user.workspaceId, ...ACTIVE_MEMBER, user: seedAccountUserWhere() },
+        select: { id: true, role: true, user: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: "asc" },
+      });
+      const withEmail = isAtLeast(user.role, "ADMIN");
       const projected = members.map((m) => ({
         id: m.user.id,
         memberId: m.id,
         name: m.user.name ?? null,
-        email: m.user.email,
+        ...(withEmail ? { email: m.user.email } : {}),
         role: m.role,
       }));
       return textResult(projected, `${projected.length} workspace member${projected.length === 1 ? "" : "s"}.`);
@@ -1582,6 +2560,15 @@ const TOOLS: ToolDef[] = [
     handler: async (user, args) => {
       const parsed = updateDocumentSchema.parse(args);
       const { documentId, sections, ...rest } = parsed;
+      // Only documents for the caller's own clients (or their own client-less drafts). Reported
+      // as "not found", like the type gate, so ids outside their scope reveal nothing.
+      const target = await prisma.document.findUnique({
+        where: { id: documentId },
+        select: { workspaceId: true, clientId: true, ownerId: true },
+      });
+      if (!target || !(await canReachDocument(user, target))) {
+        throw new Error("Document not found.");
+      }
       const proposal = await updateDocument(user, documentId, {
         ...rest,
         sections: sections?.map((section, index) => ({
@@ -1610,23 +2597,60 @@ const TOOLS: ToolDef[] = [
   {
     name: "pulse_scan",
     description:
-      "Run a Pulse production-readiness + security scan on a URL and return a compact verdict: " +
+      "Run a Pulse production-readiness + security scan on a URL (website, API, or App Store / Google Play / " +
+      "Chrome Web Store listing) or a GitHub repo, and return a compact verdict covering only the checks that apply " +
+      "to that product: " +
       "health score, confirmed issues, live Supabase RLS check, security/TLS/accessibility grades, " +
       "compliance gaps for target markets, and top fixes. Ideal to validate an AI-built app before shipping. " +
       "Synchronous (~15–30s). Requires the 'Manage Pulse' permission.",
     inputSchema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "The https:// URL to scan." },
+        url: { type: "string", description: "The https:// URL to scan (website, API, or a store listing link). Pass this OR githubRepo." },
+        githubRepo: { type: "string", description: "owner/repo to scan its source. Pass this OR url." },
+        platform: { type: "string", enum: [...PULSE_PLATFORMS], description: "What the product is. Optional: a store link or a repo's detected shape overrides it." },
         targetMarkets: { type: "array", items: { type: "string" }, description: "Optional jurisdiction codes the product serves (e.g. EU, UK, US, US-CA)." },
+        saveToClient: {
+          type: "string",
+          description:
+            "Optional client slug, name or id. When set, the scan is ALSO saved as a full in-app scan on that client " +
+            "(it then appears in the client's Pulse list, the code portfolio and the weekly email), exactly as if started " +
+            "from the app. The full scan, including its AI write-up, finishes in the background over a few minutes; the " +
+            "verdict returned now is the quick one. Needs permission to run AI scans.",
+        },
+        projectName: { type: "string", description: "Name for the saved scan (with saveToClient). Defaults to the repo or host." },
       },
-      required: ["url"],
       additionalProperties: false,
     },
     handler: async (user, args) => {
       assertCan(user, canManagePulse, "run Pulse scans");
       const parsed = pulseScanToolSchema.parse(args);
-      const verdict = await runAgentScan({ url: parsed.url, targetMarkets: parsed.targetMarkets });
+      if (parsed.saveToClient) {
+        // The same path as POST /api/pulse/scans: a saved scan spends AI tokens after its
+        // checks, so it needs the AI gate as well, and the client must be in the caller's scope.
+        assertCan(user, canGenerateAi, "run AI-powered Pulse scans");
+        const client = await resolveClient(user, parsed.saveToClient);
+        const inputType = parsed.githubRepo ? ("GITHUB_REPO" as const) : ("URL" as const);
+        const projectName = parsed.projectName ?? parsed.githubRepo ?? new URL(parsed.url!).hostname;
+        const { scan, aiConfig } = await createPulseScanRecord({
+          projectName,
+          inputType,
+          inputUrl: parsed.url,
+          inputGithubRepo: parsed.githubRepo,
+          platform: parsed.platform,
+          clientId: client.id,
+          targetMarkets: parsed.targetMarkets,
+          triggeredByUserId: user?.id ?? null,
+        });
+        after(() =>
+          runAnalysis(scan.id, { inputType, inputUrl: parsed.url, inputGithubRepo: parsed.githubRepo, projectName, platform: parsed.platform, clientId: client.id }, aiConfig),
+        );
+        return textResult(
+          { scanId: scan.id, client: client.name, status: "RUNNING", note: "Saved on the client. Use pulse_scan_result with this scanId once it finishes (a few minutes)." },
+          `Saved scan ${scan.id} started on ${client.name}. Check it with pulse_scan_result in a few minutes.`,
+        );
+      }
+      const verdict = await runAgentScan({ url: parsed.url, githubRepo: parsed.githubRepo, platform: parsed.platform, targetMarkets: parsed.targetMarkets });
       return textResult(verdict, verdict.summary);
     },
   },
@@ -1671,6 +2695,10 @@ const TOOLS: ToolDef[] = [
         // support. The collectors come from the stored breakdown because they
         // are the one input that cannot be recovered from the checks alone.
         collectors: scan.scoreBreakdown?.collectors,
+        platform: scan.platform,
+        name: scan.projectName,
+        relevance: scan.scoreBreakdown?.relevance,
+        inputType: scan.inputType,
       });
       return textResult(verdict, verdict.summary);
     },
@@ -1778,7 +2806,7 @@ const TOOLS: ToolDef[] = [
         clientLabel = ` for ${c.name}`;
       }
       const where: PrismaTypes.DocumentWhereInput = {
-        workspaceId: user.workspaceId,
+        AND: [await documentScopeWhere(user)],
         documentType,
         ...(parsed.status ? { status: parsed.status as DocumentStatus } : {}),
         ...(clientId ? { clientId } : {}),

@@ -6,7 +6,7 @@ import { DevSignalSubNav } from "@/components/codeclear/devsignal/devsignal-subn
 export default function DevSignalPage() {
   return (
     <AppShell
-      title="Code"
+      title="Hiring"
       subtitle="Developer vetting — assess candidates, then promote the right ones into Code."
     >
       <div className="space-y-6">

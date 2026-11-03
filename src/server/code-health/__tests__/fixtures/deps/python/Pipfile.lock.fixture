@@ -1,0 +1,11 @@
+{
+    "_meta": { "hash": { "sha256": "x" }, "pipfile-spec": 6, "requires": {}, "sources": [] },
+    "default": {
+        "requests": { "hashes": ["sha256:x"], "index": "pypi", "version": "==2.19.0" },
+        "Flask_Cors": { "hashes": [], "version": "==3.0.0" }
+    },
+    "develop": {
+        "pytest": { "version": "==7.0.0" },
+        "editable-thing": { "editable": true, "path": "." }
+    }
+}

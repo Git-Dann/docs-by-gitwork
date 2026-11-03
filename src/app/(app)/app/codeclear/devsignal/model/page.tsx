@@ -5,7 +5,7 @@ import { ModelCockpit } from "@/components/codeclear/devsignal/model-cockpit";
 
 export default function DevSignalModelPage() {
   return (
-    <AppShell title="Code" subtitle="DevSignal scoring model — weights + calibration against real outcomes.">
+    <AppShell title="Hiring" subtitle="DevSignal scoring model — weights + calibration against real outcomes.">
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <CodeClearTabs />

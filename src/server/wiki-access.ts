@@ -11,6 +11,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { isGitworkStaffEmail } from "@/lib/staff-email";
 
 /** Per-wiki cookie so a visitor only unlocks the one wiki they logged into. */
 export function wikiAccessCookieName(wikiId: string): string {
@@ -179,4 +180,35 @@ export async function loginPortalUser(
     });
   }
   return out;
+}
+
+/**
+ * Whether this address belongs to a Gitwork TEAM MEMBER — not merely to the
+ * Gitwork domain.
+ *
+ * ⚠️ The distinction is the whole point. The client portal refuses a team
+ * address, because a team member with a remembered client login was being
+ * signed into that client's wiki instead of the app. But the test used to be
+ * the DOMAIN, which also refuses a `ClientWikiUser` deliberately created on
+ * that domain — and one was: `claude@gitwork.co.uk`, made to test the client
+ * portal, could not sign in anywhere, and the app reported it as a wiki that
+ * had never been shared.
+ *
+ * A client wiki account that is not a workspace member is not a team member,
+ * whatever its address says, and the concern above does not apply to it.
+ *
+ * ⚠️ ANY membership counts, archived included. Someone whose membership was
+ * archived was still issued a team address, so treating them as staff here is
+ * the conservative direction — and it costs them nothing, because signing in
+ * still requires a matching `ClientWikiUser` and its password either way.
+ */
+export async function isGitworkTeamLogin(email: string): Promise<boolean> {
+  if (!isGitworkStaffEmail(email)) return false;
+  const normalized = email.trim().toLowerCase();
+  const member = await prisma.workspaceMember.findFirst({
+    // includes-archived: an archived member was still issued a team address.
+    where: { user: { email: normalized } },
+    select: { id: true },
+  });
+  return Boolean(member);
 }

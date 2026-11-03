@@ -28,6 +28,7 @@ export default async function PublicTimelinePage({
     name: b.name,
     startDate: b.startDate,
     endDate: b.endDate,
+    estimated: b.estimated,
     color: b.color,
     progress: b.progress,
     tasks: b.tasks,

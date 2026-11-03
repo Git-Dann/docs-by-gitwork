@@ -16,14 +16,29 @@ import { assertMcpEnabled, OAuthError } from "@/server/oauth";
 
 export const dynamic = "force-dynamic";
 
+function isRegistrableRedirectUri(value: string): boolean {
+  try {
+    const uri = new URL(value);
+    // OAuth callbacks cannot contain fragments or embedded credentials.
+    if (value.includes("#") || uri.username || uri.password) return false;
+    if (uri.protocol === "https:") return true;
+    // RFC 8252 §7.3: native clients listen on an ephemeral loopback port.
+    // Compare parsed hosts, never prefixes (localhost.example.com is remote).
+    return uri.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(uri.hostname);
+  } catch {
+    return false;
+  }
+}
+
 const registerSchema = z.object({
   client_name: z.string().trim().min(1).max(120),
   redirect_uris: z
     .array(z.string().url())
     .min(1)
     .max(8)
-    .refine((uris) => uris.every((u) => u.startsWith("https://") || u.startsWith("http://localhost")), {
-      message: "redirect_uris must be https:// (or http://localhost for dev).",
+    .refine((uris) => uris.every(isRegistrableRedirectUri), {
+      message: "redirect_uris must use HTTPS or HTTP on localhost, 127.0.0.1 or [::1], without credentials or fragments.",
     }),
   // Optional metadata RFC 7591 §2 — surfaced on the consent screen.
   logo_uri: z.string().url().optional(),

@@ -8,7 +8,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getJson } from "@/server/support-analytics/types";
-import { decryptScraperConfig } from "@/server/support";
+import { resolveBigWedgeAccess } from "@/server/bigwedge-api-auth";
 
 const DEFAULT_BASE = "https://apiv1.bigwedgegolf.com";
 const PAGE_SIZE = 100;
@@ -26,47 +26,16 @@ interface BwPage {
   next?: string | null;
 }
 
+/**
+ * Base URL + a working bearer for the Big Wedge app API. Delegates to
+ * `resolveBigWedgeAccess`, which logs in with the service account each run so the token
+ * cannot expire between runs — see bigwedge-api-auth.ts for why that matters.
+ */
 export async function resolveBigWedgeApi(
   workspaceClientId: string,
 ): Promise<{ baseUrl: string; apiToken: string } | { error: string }> {
-  const support =
-    (await prisma.supportClient.findFirst({
-      where: { workspaceClientId },
-      select: { id: true },
-    })) ??
-    (await (async () => {
-      const wc = await prisma.workspaceClient.findUnique({
-        where: { id: workspaceClientId },
-        select: { workspaceId: true, name: true, slug: true },
-      });
-      if (!wc) return null;
-      return prisma.supportClient.findFirst({
-        where: {
-          workspaceId: wc.workspaceId,
-          OR: [
-            { slug: wc.slug },
-            { name: { contains: wc.name, mode: "insensitive" } },
-            { name: { contains: "wedge", mode: "insensitive" } },
-          ],
-        },
-        select: { id: true },
-      });
-    })());
-
-  if (!support) return { error: "No Care support client found for this wiki." };
-
-  const conn = await prisma.accountConnection.findFirst({
-    where: { clientId: support.id, source: "ANALYTICS" },
-    orderBy: { createdAt: "desc" },
-    select: { scraperConfig: true },
-  });
-  if (!conn)
-    return { error: "No Analytics API connector. Add the Big Wedge admin JWT in Care → Connectors." };
-  const cfg = (
-    decryptScraperConfig(conn.scraperConfig as Record<string, unknown> | null) ?? {}
-  ) as { baseUrl?: string; apiToken?: string };
-  if (!cfg.apiToken) return { error: "The Analytics connector has no API token." };
-  return { baseUrl: (cfg.baseUrl || DEFAULT_BASE).replace(/\/$/, ""), apiToken: cfg.apiToken };
+  const access = await resolveBigWedgeAccess(workspaceClientId);
+  return access.ok ? { baseUrl: access.baseUrl, apiToken: access.token } : { error: access.error };
 }
 
 export interface BigWedgeSyncResult {

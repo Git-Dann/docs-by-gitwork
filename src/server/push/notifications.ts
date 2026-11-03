@@ -12,16 +12,139 @@
 //     write) must not throw if push fails. Wrap any call site in try/catch
 //     and log the failure.
 
-import { isApnsConfigured, sendApns, type ApnsPayload, type ApnsSendResult } from "./apns";
+import {
+  isApnsConfigured,
+  sendApns,
+  type ApnsFailureReason,
+  type ApnsPayload,
+  type ApnsSendResult,
+  APNS_MAX_PAYLOAD_BYTES,
+} from "./apns";
+import {
+  fanOutToDevices,
+  type DeviceStore,
+  type FanOutResult,
+} from "./transport";
 import {
   listActiveDeviceTokensForUser,
   listActiveDeviceTokensForWorkspace,
   markDeviceTokenFailed,
   markDeviceTokenUsed,
+  correctDeviceEnvironment,
   type DeviceTokenRecord,
 } from "./devices";
 
 // ─── Public senders ─────────────────────────────────────────────────────────
+
+export type FoundryNotificationPushInput = {
+  userId: string;
+  title: string;
+  body: string | null;
+  /** In-app path the tap should open, e.g. "/app/portal/wedge". */
+  actionUrl: string | null;
+  /** Collapses repeats of the same grouped notification into one phone alert. */
+  collapseId: string;
+};
+
+/**
+ * Sends one in-app notification to a user's phones.
+ *
+ * This is the bridge that was missing: `dispatchNotification` could reach the bell and
+ * the browser, while APNs was wired only for Pulse scans. Every other event — a task
+ * assigned, a client request, the Foreman digest — stopped at the browser, so the
+ * Foundry app on a phone had never received a notification of any kind.
+ *
+ * ⚠️ Delivery is gated by the **`mobile`** channel, not `push`. See the note on
+ * `NOTIFICATION_CHANNELS`: reusing `push` would have made every already-routed event
+ * ring a phone. Being on this path at all means someone listed the event explicitly.
+ *
+ * Best-effort like every other sender here — the caller must not fail because a push did.
+ */
+export async function sendFoundryNotificationPush(
+  input: FoundryNotificationPushInput,
+): Promise<{ sent: number; failed: number; skipped: boolean; reasons: ApnsFailureReason[] }> {
+  if (!isApnsConfigured()) return { sent: 0, failed: 0, skipped: true, reasons: [] };
+
+  const devices = await listActiveDeviceTokensForUser(input.userId);
+  if (devices.length === 0) return { sent: 0, failed: 0, skipped: true, reasons: [] };
+
+  const payload: ApnsPayload = {
+    aps: {
+      alert: {
+        title: fitTitle(input.title),
+        ...(input.body ? { body: input.body } : {}),
+      },
+      sound: "default",
+      "thread-id": input.collapseId,
+    },
+    // Custom keys arrive as userInfo. `kind` tells the app how to read the rest —
+    // the Pulse pushes send `kind: "scan"` + `scanId`, so a generic destination needs
+    // its own kind rather than overloading theirs.
+    kind: "notification",
+    ...(input.actionUrl ? { path: input.actionUrl } : {}),
+  };
+
+  return await fanOut(devices, shrinkToFit(payload), input.collapseId);
+}
+
+/**
+ * Caps the alert title so a long one cannot crowd out the body.
+ *
+ * iOS shows roughly a line of title on a banner regardless, so anything beyond this is
+ * bytes spent on text nobody reads — and those bytes are the ones that push a payload
+ * over the limit.
+ */
+export function fitTitle(title: string): string {
+  return title.length > 120 ? `${title.slice(0, 119)}…` : title;
+}
+
+/**
+ * Shortens the alert body until the whole payload fits APNs' size limit.
+ *
+ * ⚠️ APNs does NOT truncate an oversized payload — it refuses it with 413 and the
+ * notification is never delivered. Today every caller already passes a short preview,
+ * so nothing reaches this; it exists because the day someone passes a full message
+ * body instead, the failure is a push that silently never arrives, which is the single
+ * hardest thing to notice in this whole system.
+ *
+ * Trims by CODE POINT and measures in BYTES: slicing a JavaScript string by index can
+ * cut a surrogate pair in half, and one emoji is four bytes, so a character count is
+ * the wrong unit twice over.
+ */
+export function shrinkToFit(payload: ApnsPayload): ApnsPayload {
+  if (payloadBytes(payload) <= APNS_MAX_PAYLOAD_BYTES) return payload;
+
+  const alert = payload.aps.alert;
+  if (typeof alert !== "object" || !alert?.body) {
+    // Nothing safely trimmable. Let it go and be rejected loudly rather than
+    // silently dropping a field a caller deliberately set.
+    console.error("[push] payload exceeds the APNs limit and has no trimmable body");
+    return payload;
+  }
+
+  const points = Array.from(alert.body);
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    const candidate = withBody(payload, `${points.slice(0, mid).join("")}…`);
+    if (payloadBytes(candidate) <= APNS_MAX_PAYLOAD_BYTES) lo = mid;
+    else hi = mid - 1;
+  }
+  console.warn(`[push] trimmed an oversized alert body to ${lo} characters to fit APNs`);
+  return withBody(payload, `${points.slice(0, lo).join("")}…`);
+}
+
+function withBody(payload: ApnsPayload, body: string): ApnsPayload {
+  const alert = payload.aps.alert;
+  if (typeof alert !== "object" || !alert) return payload;
+  return { ...payload, aps: { ...payload.aps, alert: { ...alert, body } } };
+}
+
+function payloadBytes(payload: ApnsPayload): number {
+  return Buffer.byteLength(JSON.stringify(payload), "utf8");
+}
+
 
 export type PulseScanCompletedInput = {
   scanId: string;
@@ -127,62 +250,32 @@ async function resolveAudience(
   return await listActiveDeviceTokensForWorkspace(workspaceId);
 }
 
+/**
+ * The staff audience's write-backs. The sending itself — including the
+ * dual-gateway retry and the environment correction — lives in `transport.ts`,
+ * shared with the client-device path. See that file's header for why there is
+ * exactly one copy of it.
+ */
+const staffDeviceStore: DeviceStore = {
+  markUsed: markDeviceTokenUsed,
+  markFailed: markDeviceTokenFailed,
+  correctEnvironment: correctDeviceEnvironment,
+};
+
 async function fanOut(
   devices: DeviceTokenRecord[],
   payload: ApnsPayload,
   collapseId: string,
-): Promise<{ sent: number; failed: number; skipped: boolean }> {
-  // Parallel send — APNs handles concurrent connections fine, and each open
-  // HTTP/2 session is independent. For a 2-3 person team this is <10 devices
-  // typically; we'd batch differently at higher fan-out.
-  const results = await Promise.all(
-    devices.map(async (device) => {
-      const result = await sendApns({
-        deviceToken: device.token,
-        environment: device.environment,
-        payload,
-        collapseId,
-      });
-      await handleResult(device, result);
-      return result;
-    }),
+): Promise<FanOutResult> {
+  return await fanOutToDevices(
+    devices.map((d) => ({
+      id: d.id,
+      token: d.token,
+      environment: d.environment,
+      ownerId: d.userId,
+    })),
+    staffDeviceStore,
+    payload,
+    collapseId,
   );
-
-  const sent = results.filter((r) => r.ok).length;
-  const failed = results.length - sent;
-  return { sent, failed, skipped: false };
-}
-
-async function handleResult(device: DeviceTokenRecord, result: ApnsSendResult): Promise<void> {
-  if (result.ok) {
-    await markDeviceTokenUsed(device.token);
-    return;
-  }
-
-  // Soft-delete only on definitive "this token is dead" responses.
-  // Transient errors (TooManyRequests, ServiceUnavailable, NetworkError) leave
-  // the token alone for the next attempt.
-  switch (result.reason) {
-    case "BadDeviceToken":
-    case "Unregistered":
-    case "DeviceTokenNotForTopic":
-      await markDeviceTokenFailed(device.token);
-      console.warn(
-        `[push] soft-deleted device ${device.id} for user ${device.userId}: ${result.reason} (status ${result.status})`,
-      );
-      break;
-    case "BadTopic":
-    case "TopicDisallowed":
-    case "InvalidProviderToken":
-      // Configuration issue — log loudly but don't kill the device row, the
-      // tokens themselves are fine, our env is wrong.
-      console.error(
-        `[push] APNs configuration error: ${result.reason} (status ${result.status})`,
-      );
-      break;
-    default:
-      console.warn(
-        `[push] transient APNs failure for device ${device.id}: ${result.reason} (status ${result.status})`,
-      );
-  }
 }

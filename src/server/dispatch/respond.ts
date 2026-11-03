@@ -8,6 +8,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { TEAM_ROSTER, normalizeRosterName } from "@/lib/team-roster-aliases";
 import type { WorkspaceAiFields } from "@/server/ai-provider";
 import { runAnswer } from "./answer";
@@ -15,10 +16,17 @@ import { resolveDispatchConfig } from "./config";
 import { gatherEvidence } from "./evidence";
 import { resolveSubject, type ClientCandidate, type PersonCandidate } from "./resolve";
 import type { DispatchConfig, DispatchResult } from "./types";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const AI_FIELDS = {
   aiProvider: true,
   anthropicApiKey: true,
+  platformAiKeysAllowed: true,
   anthropicModel: true,
   openaiApiKey: true,
   openaiModel: true,
@@ -26,7 +34,7 @@ const AI_FIELDS = {
   geminiModel: true,
   localLlmUrl: true,
   localLlmModel: true,
-} as const;
+} as const satisfies Prisma.WorkspaceSelect;
 
 export interface AnswerQuestionArgs {
   workspaceId: string;
@@ -138,7 +146,7 @@ async function loadCandidates(
       select: { id: true, name: true, slug: true },
     }),
     prisma.workspaceMember.findMany({
-      where: { workspaceId },
+      where: { workspaceId, ...ACTIVE_MEMBER },
       select: { user: { select: { id: true, name: true, email: true } } },
     }),
   ]);

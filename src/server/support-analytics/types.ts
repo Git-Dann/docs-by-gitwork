@@ -21,6 +21,10 @@ export interface AnalyticsMetric {
   unit?: string;
   /** Optional section grouping, e.g. "Subscriptions" / "Players". */
   group?: string;
+  /** A sum of money — shown to two decimals. */
+  money?: boolean;
+  /** Shown in one card with the metrics naming the same id (see `MetricCard`). */
+  card?: { id: string; title: string; part: string; list?: boolean };
 }
 
 /** A single month's snapshot for one connection. */
@@ -56,6 +60,8 @@ export interface AnalyticsFetchContext {
   year: number;
   /** 1–12. */
   month: number;
+  /** The moment of the fetch — lets an adapter end the running month's range today. */
+  now?: Date;
   /** Firebase adapter — service-account JSON + metric specs from the connection. */
   serviceAccountJson?: string;
   firebaseMetrics?: FirebaseMetricSpec[];
@@ -73,6 +79,22 @@ export interface AnalyticsAdapter {
   requiresToken: boolean;
   /** One-line hint shown under the connector form. */
   hint?: string;
+  /**
+   * Also fetch the month still running and show it, labelled "so far", beside the last
+   * complete month. Off by default: it is one more call to the client's API per refresh.
+   */
+  monthToDate?: boolean;
+  /**
+   * Metric keys this adapter used to report and no longer does because they were wrong for a
+   * month (e.g. an all-time count). Months stored before the change still carry them, so they
+   * are left out on read rather than shown — or starred — from an old capture.
+   */
+  retiredKeys?: string[];
+  /**
+   * Metrics the source can only report as of now. A finished month keeps them from its last
+   * capture taken during the month (`carryMonthEndFigures`), instead of losing them.
+   */
+  carryAtMonthEnd?: string[];
   fetchMonth(ctx: AnalyticsFetchContext): Promise<AnalyticsSnapshot>;
 }
 

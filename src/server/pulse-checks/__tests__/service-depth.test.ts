@@ -49,7 +49,12 @@ describe("authentication", () => {
   const authed = (extra: string) => ({ "package.json": '{"dependencies":{"next-auth":"^5"}}', "auth.ts": extra });
 
   it("fails when no password hashing is present", () => {
-    expect(at(authed("export const login = () => {};"), "auth_x_password_hashing_modern").status).toBe("FAIL");
+    expect(
+      at(
+        authed("export const signup = (email: string, password: string) => db.user.create({ data: { email, password } });"),
+        "auth_x_password_hashing_modern",
+      ).status,
+    ).toBe("FAIL");
   });
 
   it("passes with bcrypt", () => {
@@ -61,7 +66,7 @@ describe("authentication", () => {
   });
 
   it("fails an unpinned JWT algorithm", () => {
-    const f = { "package.json": '{"dependencies":{"jsonwebtoken":"^9"}}', "t.ts": "jwt.verify(token, secret);" };
+    const f = { "package.json": '{"dependencies":{"jsonwebtoken":"^8.5.1"}}', "t.ts": "jwt.verify(token, secret);" };
     expect(at(f, "auth_x_jwt_algorithm_pinned").status).toBe("FAIL");
   });
 

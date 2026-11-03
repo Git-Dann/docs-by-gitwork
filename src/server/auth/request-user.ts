@@ -20,6 +20,8 @@ export type RequestUser = {
   id: string;
   email: string;
   role: string;
+  /** The workspace the token was issued for; null on tokens issued before it was carried. */
+  workspaceId: string | null;
 };
 
 export function getRequestUser(req: NextRequest | Request): RequestUser | null {
@@ -28,5 +30,5 @@ export function getRequestUser(req: NextRequest | Request): RequestUser | null {
   const role = req.headers.get("x-foundry-user-role");
 
   if (!id || !email || !role) return null;
-  return { id, email, role };
+  return { id, email, role, workspaceId: req.headers.get("x-foundry-user-workspace") || null };
 }

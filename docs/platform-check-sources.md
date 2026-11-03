@@ -14,7 +14,7 @@ families that go stale on a schedule. Each is a single named constant with a
 | Constant | File | Current value | Moves when |
 |---|---|---|---|
 | `ELECTRON_OLDEST_SUPPORTED_MAJOR` | `desktop-app.ts` | 41 | Electron ships a major every 8 weeks and supports the latest three. Electron 40 went EOL 30 June 2026. |
-| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 84 | React Native maintains the latest three minor series. As of July 2026: 0.86 current, 0.85 supported, 0.84 security-only. |
+| `RN_OLDEST_SUPPORTED_MINOR` | `react-native-app.ts` | 86 | React Native maintains the latest three minor series. As of October 2026: 0.88 current (released 2026-10-15), 0.87 and 0.86 supported. |
 | `PLAY_TARGET_SDK_FLOOR` | `android-app.ts` | 35 | Google Play raises the minimum target API level each August. |
 
 An out-of-date constant here produces a WRONG finding, not a missing one — an app

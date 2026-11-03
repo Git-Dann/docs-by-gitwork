@@ -52,6 +52,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     });
     if (!placement) return apiError("Placement not found.", 404);
 
+    const githubHandle = placement.candidate.githubHandle;
+    if (!githubHandle) return apiError("This person has no GitHub handle. Add one to their profile before running a GitHub analysis.", 400);
+
     const repoUrl = placement.clientPlatform?.repoUrl ?? null;
     if (!repoUrl) {
       return apiError(
@@ -94,7 +97,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
     try {
       const analysis = await analyzeGitHubRepoScope({
-        handle: placement.candidate.githubHandle,
+        handle: githubHandle,
         repoUrl,
         paths: placement.repoPaths,
         branch: placement.repoBranch,

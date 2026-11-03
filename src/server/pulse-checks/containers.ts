@@ -23,7 +23,7 @@
 
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
-import type { RepoSnapshot } from "./native-mobile";
+import { isVendoredPath, type RepoSnapshot } from "./native-mobile";
 
 const MAX_QUOTED = 4;
 
@@ -57,7 +57,8 @@ export function dockerfiles(snapshot: RepoSnapshot): Dockerfile[] {
   const out: Dockerfile[] = [];
   for (const [path, text] of snapshot.files) {
     const base = path.split("/").pop() ?? "";
-    if (/^Dockerfile(\.[\w.-]+)?$/i.test(base) || /\.dockerfile$/i.test(base)) {
+    // `Dockerfile.dockerignore` is a per-Dockerfile ignore file, not a build definition.
+    if ((/^Dockerfile(\.[\w.-]+)?$/i.test(base) && !/\.dockerignore$/i.test(base)) || /\.dockerfile$/i.test(base)) {
       out.push({ path, text, lines: dockerInstructions(text) });
     }
   }
@@ -93,13 +94,115 @@ export function finalStage(df: Dockerfile): string[] {
   return df.lines.slice(fromIndexes[fromIndexes.length - 1]);
 }
 
-/** Does the final stage set a non-root USER? */
+/**
+ * Lines that end up in the SHIPPED image: the final stage plus every earlier stage it
+ * inherits from via `FROM <stage-alias>`. Discarded builder stages are excluded: their
+ * ENV/ARG values are not in the final image's metadata. Global ARGs before the first
+ * FROM are KEPT (conservatively): any stage can redeclare one with a bare `ARG NAME`,
+ * which inherits the literal default into that stage's build history.
+ */
+export function shippedLines(df: Dockerfile): string[] {
+  const preamble: string[] = [];
+  const stages: { name?: string; base: string; lines: string[] }[] = [];
+  for (const l of df.lines) {
+    const m = /^FROM\s+(.*)$/i.exec(l);
+    if (m) {
+      const parts = m[1].split(/\s+/).filter((p) => !p.startsWith("--"));
+      const name = /^as$/i.test(parts[1] ?? "") ? parts[2]?.toLowerCase() : undefined;
+      stages.push({ name, base: (parts[0] ?? "").toLowerCase(), lines: [l] });
+    } else if (stages.length > 0) {
+      stages[stages.length - 1].lines.push(l);
+    } else {
+      preamble.push(l);
+    }
+  }
+  if (stages.length === 0) return df.lines;
+  const out: string[] = [];
+  const seen = new Set<number>();
+  let i = stages.length - 1;
+  while (i >= 0 && !seen.has(i)) {
+    seen.add(i);
+    out.unshift(...stages[i].lines);
+    const cur = i;
+    const base = stages[cur].base;
+    i = stages.findIndex((s, j) => j < cur && s.name === base);
+  }
+  return [...preamble, ...out];
+}
+
+/** Does the shipped image run as a non-root user? */
 export function runsAsNonRoot(df: Dockerfile): boolean {
-  const stage = finalStage(df);
-  const users = stage.map((l) => /^USER\s+(.+)$/i.exec(l)?.[1]?.trim()).filter((v): v is string => Boolean(v));
-  if (users.length === 0) return false;
-  const last = users[users.length - 1].split(":")[0].trim();
-  return last !== "root" && last !== "0";
+  return nonRootVerdict(df).verdict === "nonroot";
+}
+
+/**
+ * Official images whose default user is root. Docker's own library images run as
+ * root unless the Dockerfile says otherwise (node and python ship a spare user but
+ * never switch to it), so no USER on top of one of these is root, observed.
+ */
+const ROOT_DEFAULT_LIBRARY = new Set([
+  "alpine", "ubuntu", "debian", "busybox", "centos", "fedora", "rockylinux", "almalinux", "amazonlinux",
+  "oraclelinux", "archlinux", "node", "python", "pypy", "ruby", "golang", "rust", "php", "openjdk",
+  "eclipse-temurin", "amazoncorretto", "ibmjava", "ibm-semeru-runtimes", "maven", "gradle", "elixir", "erlang",
+  "haskell", "perl", "julia", "swift", "dart", "gcc", "clojure", "nginx", "httpd", "caddy", "tomcat", "buildpack-deps",
+]);
+
+/** A VS Code / Codespaces dev container: an editor environment, not a deployed image. */
+export function isDevContainerPath(path: string): boolean {
+  return /(?:^|\/)\.devcontainer\//.test(path);
+}
+
+export type NonRootVerdict = { verdict: "nonroot" | "root" | "unknown"; reason: string };
+
+/**
+ * Who the shipped image runs as.
+ *
+ * A USER in the final stage, or in a stage it inherits from (`FROM builder`), decides
+ * it. With no USER at all the answer is the base image's default user, which Pulse
+ * only knows for some images: official library images and distroless default to root;
+ * distroless `:nonroot`, Chainguard and Bitnami images default to an unprivileged
+ * account. Anything else is "unknown", never assumed to be root. The withheld version
+ * of this check failed `distroless/…:nonroot` images for running as root.
+ */
+export function nonRootVerdict(df: Dockerfile): NonRootVerdict {
+  const shipped = shippedLines(df);
+  const users = shipped
+    .map((l) => /^USER\s+(.+)$/i.exec(l)?.[1]?.trim())
+    .filter((v): v is string => Boolean(v));
+  if (users.length > 0) {
+    const last = users[users.length - 1].split(":")[0].trim();
+    return last === "root" || last === "0"
+      ? { verdict: "root", reason: `the last USER is ${last}` }
+      : { verdict: "nonroot", reason: `USER ${last}` };
+  }
+  // The first FROM of the shipped chain is the registry image everything else builds on.
+  const from = shipped.find((l) => /^FROM\s/i.test(l)) ?? "";
+  const ref = (from.replace(/^FROM\s+/i, "").split(/\s+/).filter((p) => !p.startsWith("--"))[0] ?? "").toLowerCase();
+  const withoutDigest = ref.split("@")[0];
+  const tagAt = withoutDigest.lastIndexOf(":");
+  const hasTag = tagAt > withoutDigest.lastIndexOf("/");
+  const name = hasTag ? withoutDigest.slice(0, tagAt) : withoutDigest;
+  const tag = hasTag ? withoutDigest.slice(tagAt + 1) : "";
+  const dropsAtStart = shipped.some((l) =>
+    /^(?:ENTRYPOINT|CMD|RUN)\s.*\b(?:gosu|su-exec|setpriv|runuser|chpst\s+-u)\b/i.test(l),
+  );
+  const nonRootBase =
+    /(?:^|-)nonroot$/.test(tag) ||
+    (/(?:^|\/)chainguard\//.test(name) && !/-dev$/.test(tag)) ||
+    /^(?:docker\.io\/)?bitnami\//.test(name);
+  if (nonRootBase) return { verdict: "nonroot", reason: `the base image ${ref} runs as an unprivileged user by default` };
+  const library = name.replace(/^(?:docker\.io\/)?(?:library\/)?/, "");
+  const rootBase =
+    (!library.includes("/") && ROOT_DEFAULT_LIBRARY.has(library)) ||
+    /^gcr\.io\/distroless\//.test(name) ||
+    /^mcr\.microsoft\.com\/dotnet\//.test(name);
+  if (rootBase && !dropsAtStart) return { verdict: "root", reason: `no USER is set and ${ref} runs as root by default` };
+  return {
+    verdict: "unknown",
+    reason: dropsAtStart
+      ? "no USER is set, but the start command drops privileges (gosu, su-exec or similar), which Pulse cannot follow"
+      : `no USER is set, and the default user of ${ref || "the base image"} is not one Pulse knows`,
+  };
 }
 
 function quote(items: string[]): string {
@@ -142,6 +245,15 @@ export const CONTAINER_CHECK_KEYS: string[] = CATALOGUE.map(([k]) => k);
 export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const dfs = dockerfiles(snapshot);
   const composes = composeFiles(snapshot);
+  // Container files present in the tree but NOT read (the config sample is capped at
+  // CONFIG_CAP in tree order). A verdict about ABSENCE drawn from the files we did read
+  // cannot speak for these — supabase's docker/ compose stack sits past the cap.
+  const isDockerfileName = (b: string) => /^Dockerfile(\.[\w.-]+)?$/i.test(b) || /\.dockerfile$/i.test(b);
+  const isComposeName = (b: string) => /^(docker-)?compose(\.[\w.-]+)?\.ya?ml$/i.test(b);
+  const unreadOf = (pred: (b: string) => boolean) =>
+    snapshot.paths.filter((p) => pred(p.split("/").pop() ?? "") && !snapshot.files.has(p) && !isVendoredPath(p));
+  const unreadDockerfiles = unreadOf(isDockerfileName);
+  const unreadComposes = unreadOf(isComposeName);
   const checks: PulseScanCheckInput[] = [];
 
   const add = (
@@ -156,7 +268,9 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
       checkKey,
       label,
       status,
-      confidence: "HIGH",
+      // An INCONCLUSIVE verdict here means unread files could not be checked: the
+      // result is not established, so it is never reported as HIGH confidence.
+      confidence: status === "INCONCLUSIVE" ? "LOW" : "HIGH",
       detail,
       ...(evidence ? { evidence } : {}),
     });
@@ -182,25 +296,70 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
     const allLines = dfs.flatMap((d) => d.lines);
     const name = (p: string) => p;
 
-    // 1. Root user — the single highest-value container finding.
-    const rootImages = dfs.filter((d) => !runsAsNonRoot(d));
-    add(
+    // 1. Root user, the single highest-value container finding. Who the process runs
+    // as comes from USER, or failing that from the base image's own default user.
+    // A dev container (.devcontainer/) is an editor environment, never deployed, and is
+    // meant to run as root; it is not graded here.
+    const runtimeImages = dfs.filter((d) => !isDevContainerPath(d.path));
+    const verdicts = runtimeImages.map((d) => ({ d, v: nonRootVerdict(d) }));
+    const rootImages = verdicts.filter((x) => x.v.verdict === "root");
+    const unknownImages = verdicts.filter((x) => x.v.verdict === "unknown");
+    if (runtimeImages.length === 0) {
+      add(
+        "docker_nonroot_user",
+        "The container does not run as root",
+        "SKIPPED",
+        "The only Dockerfiles in this repository define a development container (.devcontainer/), which is an " +
+          "editor environment rather than a deployed image, so who it runs as does not apply.",
+      );
+    } else add(
       "docker_nonroot_user",
       "The container does not run as root",
-      rootImages.length === 0 ? "PASS" : "FAIL",
-      rootImages.length === 0
-        ? "Every image's final stage drops to a non-root USER, so the application process has no more privilege " +
-          "inside the container than it needs."
-        : `${quote(rootImages.map((d) => name(d.path)))} never set a non-root USER in the final stage, so the ` +
-          "process runs as root. Root in a container maps to root on the host for anything shared with it — a " +
-          "bind-mounted directory is written as root, and any container escape starts from uid 0 rather than from " +
-          "an unprivileged account. Add a `USER app` (with a matching adduser) as the last instruction. Only the " +
-          "FINAL stage is graded, so a multi-stage build that compiles as root is unaffected.",
+      rootImages.length > 0
+        ? "FAIL"
+        : unknownImages.length > 0 || unreadDockerfiles.length > 0
+          ? "INCONCLUSIVE"
+          : "PASS",
+      rootImages.length > 0
+        ? `${quote(rootImages.map((x) => `${name(x.d.path)} (${x.v.reason})`))}, so the process runs as root. Root ` +
+          "in a container maps to root on the host for anything shared with it: a bind-mounted directory is written " +
+          "as root, and any container escape starts from uid 0 rather than from an unprivileged account. Add a " +
+          "`USER app` (with a matching adduser) to the final stage. Only the shipped stages are graded, so a " +
+          "multi-stage build that compiles as root is unaffected."
+        : unknownImages.length > 0
+          ? `${quote(unknownImages.map((x) => `${name(x.d.path)}: ${x.v.reason}`))}. Whether the process runs as root ` +
+            "depends on that image's default user, so this is not established. Setting `USER` explicitly in the final " +
+            "stage makes it certain."
+          : unreadDockerfiles.length > 0
+            ? `Every Dockerfile read runs as a non-root user, but ${unreadDockerfiles.length} more in the repository ` +
+              "were not read, so this is not established for all of them."
+            : "Every image runs as a non-root user, set by USER or by a base image that defaults to an unprivileged " +
+              "account, so the application process has no more privilege inside the container than it needs.",
     );
 
     // 2/3. Base image provenance.
-    const froms = dfs.flatMap((d) => instr(d, "FROM").map((f) => ({ file: d.path, ref: f.split(/\s+/)[0] })));
-    const unpinned = froms.filter((f) => !/@sha256:[0-9a-f]{64}/i.test(f.ref) && !/:[\w.]+$/.test(f.ref));
+    // `FROM [--platform=…] <image> [AS <name>]`. Skip --flags, and skip references to an
+    // earlier stage or to scratch: those are not registry images and carry no tag.
+    const froms = dfs.flatMap((d) => {
+      const stageNames = new Set<string>();
+      const refs: { file: string; ref: string }[] = [];
+      for (const f of instr(d, "FROM")) {
+        const parts = f.split(/\s+/).filter((p) => !p.startsWith("--"));
+        const ref = parts[0] ?? "";
+        const isStage = stageNames.has(ref.toLowerCase()) || /^scratch$/i.test(ref);
+        if (/^as$/i.test(parts[1] ?? "") && parts[2]) stageNames.add(parts[2].toLowerCase());
+        if (ref && !isStage) refs.push({ file: d.path, ref });
+      }
+      return refs;
+    });
+    // A tag may contain "-" (`node:20-slim`, `python:3.12-bookworm`); without it in the
+    // class every variant tag read as "no tag". A registry port (`host:5000/img`) still
+    // does not count, because "/" is outside the class.
+    // A tag built from a build argument (`java:0-${VARIANT}`, `node:$NODE_VERSION`) is a
+    // tag: the build pins it, Pulse just cannot see the value.
+    const unpinned = froms.filter(
+      (f) => !/@sha256:[0-9a-f]{64}/i.test(f.ref) && !/:(?:[\w.-]|\$\{?\w+\}?)+$/.test(f.ref),
+    );
     const latest = froms.filter((f) => /:latest$/i.test(f.ref) || !/[:@]/.test(f.ref));
     add(
       "docker_base_image_pinned",
@@ -242,9 +401,11 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
       singleStageWithBuildTools.length === 0
         ? "Images either use a multi-stage build or install no build toolchain, so compilers, dev dependencies and " +
           "package caches are not shipped to production."
-        : `${quote(singleStageWithBuildTools.map((d) => d.path))} build in a single stage. Everything the build ` +
-          "needed — compilers, headers, dev dependencies, the package cache — ships to production, which enlarges " +
-          "both the image and the set of things an attacker can use once inside it.",
+        : `${quote(singleStageWithBuildTools.map((d) => d.path))} install dependencies or build in a single stage, ` +
+          "so the image that ships is the one the build ran in. Anything the build needed and did not remove in the " +
+          "same RUN — compilers, headers, dev dependencies, package caches — ships to production, which enlarges " +
+          "both the image and the set of things an attacker can use once inside it. A multi-stage build copies only " +
+          "the output into a clean runtime stage.",
     );
 
     // 5. .dockerignore.
@@ -274,21 +435,44 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
     );
 
     // 6/7. Secrets in the image.
-    const secretEnv = allLines.filter((l) =>
+    const secretEnv = dfs.flatMap((d) => shippedLines(d)).filter((l) =>
       /^(ENV|ARG)\s+\w*(SECRET|PASSWORD|TOKEN|API_?KEY|PRIVATE_KEY|CREDENTIAL)\w*\s*[= ]\s*\S/i.test(l),
     );
-    const realSecretEnv = secretEnv.filter((l) => !/\$\{?\w+\}?\s*$/.test(l) && !/(=|\s)(""|''|<|\$)/.test(l));
+    const isLiteralSecret = (l: string) => !/\$\{?\w+\}?\s*$/.test(l) && !/(=|\s)(""|''|<|\$)/.test(l);
+    const realSecretEnv = secretEnv.filter(isLiteralSecret);
+    // A literal credential in a discarded build stage is not in the shipped image's
+    // metadata — but it is still committed to the repository, and it is in any builder
+    // image that is cached or pushed. That is a WARN, never a PASS that claims no
+    // literal credential exists.
+    const builderSecretEnv =
+      realSecretEnv.length > 0
+        ? []
+        : allLines.filter(
+            (l) =>
+              /^(ENV|ARG)\s+\w*(SECRET|PASSWORD|TOKEN|API_?KEY|PRIVATE_KEY|CREDENTIAL)\w*\s*[= ]\s*\S/i.test(l) &&
+              isLiteralSecret(l) &&
+              // A build-stage placeholder (`ARG NEXTAUTH_SECRET=secret`, so `next build` can run) is
+              // not a credential.
+              !/[= ]["']?(secret|password|passw0rd|changeme|change_?me|example|dummy|placeholder|test|testing|default|x{3,}|\*+)["']?$/i.test(
+                l,
+              ),
+          );
     add(
       "docker_no_secrets_in_env",
       "No credential is baked into an image layer",
-      realSecretEnv.length === 0 ? "PASS" : "FAIL",
-      realSecretEnv.length === 0
-        ? "No ENV or ARG instruction assigns a literal credential. Values supplied at runtime or left as build args " +
-          "with no default are not baked into the image."
-        : `${quote(realSecretEnv)} set a credential as a literal in the Dockerfile. Every ENV and ARG value is stored ` +
+      realSecretEnv.length > 0 ? "FAIL" : builderSecretEnv.length > 0 ? "WARN" : "PASS",
+      realSecretEnv.length > 0
+        ? `${quote(realSecretEnv)} set a credential as a literal in the Dockerfile. Every ENV and ARG value is stored ` +
           "in the image metadata and is readable by anyone who can pull the image, with `docker history` — including " +
-          "from a registry the image was later pushed to. Rotate the value; removing the line does not un-publish it.",
-      realSecretEnv.slice(0, MAX_QUOTED).join(" | "),
+          "from a registry the image was later pushed to. Rotate the value; removing the line does not un-publish it."
+        : builderSecretEnv.length > 0
+          ? `${quote(builderSecretEnv)} set a credential as a literal in a build stage that is not part of the final ` +
+            "image, so it is not in the shipped image's metadata. It is still committed to the repository and its " +
+            "history, and it is in any builder image that is cached or pushed. Pass it as a build secret " +
+            "(`RUN --mount=type=secret`) and rotate the value."
+          : "No ENV or ARG instruction assigns a literal credential. Values supplied at runtime or left as build args " +
+            "with no default are not baked into the image.",
+      (realSecretEnv.length > 0 ? realSecretEnv : builderSecretEnv).slice(0, MAX_QUOTED).join(" | ") || undefined,
     );
     const copiesEnvFile = allLines.filter((l) => /^(COPY|ADD)\s+[^\s]*\.env(\.\w+)?\s/i.test(l));
     add(
@@ -303,14 +487,19 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
     );
 
     // 8-19. Runtime + build hygiene.
-    const hasHealth = dfs.every((d) => finalStage(d).some((l) => /^HEALTHCHECK\s/i.test(l)));
+    const missingHealth = dfs.filter((d) => !finalStage(d).some((l) => /^HEALTHCHECK\s/i.test(l)));
+    const hasHealth = missingHealth.length === 0;
     add(
       "docker_healthcheck",
       "The image declares a HEALTHCHECK",
-      hasHealth ? "PASS" : "WARN",
+      hasHealth ? (unreadDockerfiles.length > 0 ? "INCONCLUSIVE" : "PASS") : "WARN",
       hasHealth
-        ? "Images declare a HEALTHCHECK, so the orchestrator can tell a running process from a working one."
-        : "No HEALTHCHECK is declared. Without one, a container counts as healthy the moment its process starts — " +
+        ? unreadDockerfiles.length > 0
+          ? `Every Dockerfile read declares a HEALTHCHECK, but ${unreadDockerfiles.length} more in the repository ` +
+            "were not read in this scan's sample, so this cannot be confirmed for every image."
+          : "Images declare a HEALTHCHECK, so the orchestrator can tell a running process from a working one."
+        : `${quote(missingHealth.map((d) => d.path))} declare no HEALTHCHECK. Without one, a container counts as ` +
+          "healthy the moment its process starts — " +
           "so an app that boots and then fails to connect to its database is left in the load-balancer pool serving " +
           "errors, and a rolling deploy of a broken build completes successfully.",
     );
@@ -496,41 +685,77 @@ export function evaluateContainerChecks(snapshot: RepoSnapshot): PulseScanCheckI
         "including services intended to be internal.",
   );
 
-  const dockerSock = cname(/\/var\/run\/docker\.sock/i);
+  // Only a MOUNT counts: a volumes entry (`- /var/run/docker.sock:/var/run/docker.sock`,
+  // `- ${DOCKER_SOCKET_LOCATION}:/var/run/docker.sock:ro`, or flow style
+  // `volumes: ["/var/run/docker.sock:/var/run/docker.sock"]`) or a long-form source/target.
+  // dockerd's own `--host=unix:///var/run/docker.sock` inside a DinD service, or a
+  // DOCKER_HOST value, names a socket without exposing the host's.
+  const dockerSock = cname(
+    /(^|\n)[ \t]*-[ \t]*["']?(?![^\n]*unix:\/\/)[^\s"'#]*docker\.sock\b|(^|\n)[ \t]*(source|target):[ \t]*["']?[^\s"'#]*docker\.sock\b|volumes:[ \t]*\[[^\]\n]*docker\.sock/i,
+  );
   add(
     "compose_no_docker_socket",
     "No Compose service mounts the Docker socket",
-    dockerSock.length === 0 ? "PASS" : "FAIL",
+    dockerSock.length === 0 ? (unreadComposes.length > 0 ? "INCONCLUSIVE" : "PASS") : "FAIL",
     dockerSock.length === 0
-      ? "No service mounts /var/run/docker.sock."
+      ? unreadComposes.length > 0
+        ? `No Compose file read mounts the Docker socket, but ${unreadComposes.length} more in the repository were ` +
+          "not read in this scan's sample, so this cannot be confirmed for every service."
+        : "No service mounts /var/run/docker.sock."
       : `${quote(dockerSock)} mount the Docker socket into a container. Access to that socket is equivalent to root ` +
         "on the host: anything that can talk to it can start a new privileged container with the host filesystem " +
         "mounted. This is the most direct container-to-host escalation there is, and it is a configuration choice " +
         "rather than a vulnerability.",
   );
 
-  const plaintextSecret = /(^|\n)\s{2,}[-\s]*\w*(PASSWORD|SECRET|TOKEN|API_?KEY)\w*[=:]\s*(?!\$\{|\$\w|""|''|\s*$)["']?[\w./+-]{6,}/i.test(
-    body,
-  );
+  // m[3] is the matched literal; m[4] is the rest of the same token, so the placeholder
+  // test below sees the WHOLE value (`postgres!Prod2024` must not read as `postgres`).
+  const secretLiterals = [
+    ...body.matchAll(
+      // Indentation and the value are matched with [ \t], never \s: \s crosses the newline after an EMPTY
+      // value (`POSTGRES_PASSWORD:` then `POSTGRES_USER: app` read the next KEY as the password), and
+      // `\s{2,}[-\s]*` over a run of blank lines backtracks cubically.
+      /(^|\n)[ \t]{2,}(?:-[ \t]*)?["']?\w*(PASSWORD|SECRET|TOKEN|API_?KEY)\w*["']?[ \t]*[=:][ \t]*(?!\$\{|\$\w|""|'')["']?([\w./+-]{6,})([^\s"'#]*)/gi,
+    ),
+  ].map((m) => m[3] + (m[4] ?? ""));
+  const plaintextSecret = secretLiterals.length > 0;
+  // `POSTGRES_PASSWORD=secret` in a local dev stack is a throwaway default, not a leaked
+  // credential: still a WARN (the file may be reused beyond dev), not a FAIL.
+  const onlyPlaceholders =
+    plaintextSecret &&
+    secretLiterals.every((v) =>
+      /^(secret|password|passw0rd|changeme|change_?me|example|postgres|default|dummy|placeholder|testing)$/i.test(v),
+    );
   add(
     "compose_no_plaintext_secrets",
     "Compose does not carry literal credentials",
-    plaintextSecret ? "FAIL" : "PASS",
+    plaintextSecret ? (onlyPlaceholders ? "WARN" : "FAIL") : unreadComposes.length > 0 ? "INCONCLUSIVE" : "PASS",
     plaintextSecret
-      ? "A Compose file sets a password, secret, token or API key to a literal value rather than reading it from " +
-        "the environment. Compose files are committed, so the credential is in the repository and in its history. " +
-        "Use `${VAR}` interpolation with a local .env that is gitignored, or Compose's own `secrets:` support."
-      : "Credentials in Compose are supplied by interpolation rather than written in as literals.",
+      ? onlyPlaceholders
+        ? `A Compose file sets credentials to placeholder literals (${quote(secretLiterals)}), typical of a local ` +
+          "development stack rather than a leaked secret. If this file or these values are ever used beyond local " +
+          "development, anyone with the repository has them: use `${VAR}` interpolation with a gitignored .env, or " +
+          "Compose's own `secrets:` support."
+        : "A Compose file sets a password, secret, token or API key to a literal value rather than reading it from " +
+          "the environment. Compose files are committed, so the credential is in the repository and in its history. " +
+          "Use `${VAR}` interpolation with a local .env that is gitignored, or Compose's own `secrets:` support."
+      : unreadComposes.length > 0
+        ? `No Compose file read carries a literal credential, but ${unreadComposes.length} more in the repository ` +
+          "were not read in this scan's sample."
+        : "Credentials in Compose are supplied by interpolation rather than written in as literals.",
   );
 
-  const restart = /restart:\s*(always|unless-stopped|on-failure)/i.test(body);
+  const restart = /restart:\s*["']?(always|unless-stopped|on-failure)/i.test(body);
   add(
     "compose_restart_policy",
     "Compose services declare a restart policy",
-    restart ? "PASS" : "WARN",
+    restart ? "PASS" : unreadComposes.length > 0 ? "INCONCLUSIVE" : "WARN",
     restart
       ? "Services declare a restart policy, so a crashed container comes back rather than staying down."
-      : "No service declares a restart policy. The default is `no`: a container that exits — because the process " +
+      : unreadComposes.length > 0
+        ? `None of the ${composes.length} Compose file(s) read declares a restart policy, but ${unreadComposes.length} ` +
+          "more in the repository were not read in this scan's sample, so absence cannot be established."
+        : "No service declares a restart policy. The default is `no`: a container that exits — because the process " +
         "crashed, or the host rebooted — stays stopped until someone notices and starts it by hand.",
   );
 

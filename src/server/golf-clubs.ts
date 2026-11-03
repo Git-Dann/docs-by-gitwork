@@ -218,6 +218,85 @@ export const SEED_CLUBS: GolfClubInput[] = [
   { manufacturer: "Ping", category: "Putter", modelName: "PLD Milled DS72", modelFamily: "PLD", modelYear: 2023, specs: { headStyle: "Mallet", milled: true }, variants: lengthVariants(["33", "34", "35"]) },
   { manufacturer: "Bettinardi", category: "Putter", modelName: "Queen B 6", modelFamily: "Queen B", modelYear: 2024, specs: { headStyle: "Blade", milled: true }, variants: lengthVariants(["33", "34", "35"]) },
   { manufacturer: "Wilson", category: "Putter", modelName: "Infinite Buckhorn", modelFamily: "Infinite", modelYear: 2023, specs: { headStyle: "Mallet" }, variants: lengthVariants(["34", "35"]) },
+
+  // ── Batch 3: 2026 model-year releases (+ 2025 models previously missed) ────
+  // Drivers — 2026
+  { manufacturer: "TaylorMade", category: "Driver", modelName: "Qi4D", modelFamily: "Qi4D", modelYear: 2026, specs: { face: "5th-gen carbon composite", adjustableLoft: true }, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "TaylorMade", category: "Driver", modelName: "Qi4D LS", modelFamily: "Qi4D", modelYear: 2026, specs: { spin: "Low", adjustableLoft: true }, variants: loftVariants(["8", "9", "10.5"]) },
+  { manufacturer: "TaylorMade", category: "Driver", modelName: "Qi4D Max", modelFamily: "Qi4D", modelYear: 2026, specs: { forgiveness: "Max", adjustableLoft: true }, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "TaylorMade", category: "Driver", modelName: "Qi4D Max Lite", modelFamily: "Qi4D", modelYear: 2026, specs: { profile: "Lightweight", drawBias: true }, variants: loftVariants(["10.5", "12"]) },
+  { manufacturer: "Callaway", category: "Driver", modelName: "Quantum Max", modelFamily: "Quantum", modelYear: 2026, specs: { face: "Tri-Force Face", forgiveness: "High" }, variants: loftVariants(["9", "10.5", "12"]) },
+  { manufacturer: "Callaway", category: "Driver", modelName: "Quantum Max D", modelFamily: "Quantum", modelYear: 2026, specs: { drawBias: true }, variants: loftVariants(["9", "10.5", "12"]) },
+  { manufacturer: "Callaway", category: "Driver", modelName: "Quantum Triple Diamond", modelFamily: "Quantum", modelYear: 2026, aliases: ["Quantum TD"], specs: { spin: "Low", profile: "Tour" }, variants: loftVariants(["8", "9", "10.5"]) },
+  { manufacturer: "Callaway", category: "Driver", modelName: "Quantum Triple Diamond Max", modelFamily: "Quantum", modelYear: 2026, specs: { profile: "Tour" }, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "Callaway", category: "Driver", modelName: "Quantum Max Fast", modelFamily: "Quantum", modelYear: 2026, specs: { profile: "Lightweight" }, variants: loftVariants(["10.5", "12"]) },
+  { manufacturer: "Titleist", category: "Driver", modelName: "GTS2", modelFamily: "GTS", modelYear: 2026, specs: { forgiveness: "High", adjustableLoft: true }, variants: loftVariants(["8", "9", "10", "11"]) },
+  { manufacturer: "Titleist", category: "Driver", modelName: "GTS3", modelFamily: "GTS", modelYear: 2026, specs: { adjustableWeight: true, profile: "Tour" }, variants: loftVariants(["8", "9", "10", "11"]) },
+  { manufacturer: "Titleist", category: "Driver", modelName: "GTS4", modelFamily: "GTS", modelYear: 2026, specs: { spin: "Low", profile: "Tour" }, variants: loftVariants(["8", "9", "10"]) },
+  { manufacturer: "Ping", category: "Driver", modelName: "G440 K", modelFamily: "G440", modelYear: 2026, specs: { forgiveness: "Max", adjustableWeight: true }, variants: loftVariants(["9", "10.5", "12"]) },
+  { manufacturer: "Cobra", category: "Driver", modelName: "OPTM LS", modelFamily: "OPTM", modelYear: 2026, specs: { spin: "Low" }, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "Cobra", category: "Driver", modelName: "OPTM X", modelFamily: "OPTM", modelYear: 2026, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "Cobra", category: "Driver", modelName: "OPTM Max-K", modelFamily: "OPTM", modelYear: 2026, specs: { forgiveness: "Max" }, variants: loftVariants(["9", "10.5", "12"]) },
+  { manufacturer: "Cobra", category: "Driver", modelName: "OPTM Max-D", modelFamily: "OPTM", modelYear: 2026, specs: { drawBias: true }, variants: loftVariants(["10.5", "12"]) },
+  { manufacturer: "Mizuno", category: "Driver", modelName: "JPX One", modelFamily: "JPX One", modelYear: 2026, specs: { face: "NanoAlloy", adjustableLoft: true }, variants: loftVariants(["9", "10.5", "12"]) },
+  { manufacturer: "Mizuno", category: "Driver", modelName: "JPX One Select", modelFamily: "JPX One", modelYear: 2026, specs: { profile: "Tour" }, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "Srixon", category: "Driver", modelName: "ZXi RKT", modelFamily: "ZXi", modelYear: 2026, specs: { adjustableWeight: true, headSizeCc: 460 }, variants: loftVariants(["8", "9", "10.5"]) },
+  { manufacturer: "Srixon", category: "Driver", modelName: "ZXi RKT LS", modelFamily: "ZXi", modelYear: 2026, specs: { spin: "Low", profile: "Tour" }, variants: loftVariants(["8", "9", "10.5"]) },
+  { manufacturer: "Srixon", category: "Driver", modelName: "ZXi RKT Max", modelFamily: "ZXi", modelYear: 2026, specs: { forgiveness: "Max" }, variants: loftVariants(["8", "9", "10.5", "12"]) },
+  { manufacturer: "PXG", category: "Driver", modelName: "Lightning Tour", modelFamily: "Lightning", modelYear: 2026, specs: { profile: "Tour", adjustableWeight: true } },
+  { manufacturer: "PXG", category: "Driver", modelName: "Lightning Tour Mid", modelFamily: "Lightning", modelYear: 2026, specs: { adjustableWeight: true } },
+  { manufacturer: "PXG", category: "Driver", modelName: "Lightning Max-10k+", modelFamily: "Lightning", modelYear: 2026, specs: { forgiveness: "Max", moiGmm2: 10000 } },
+  { manufacturer: "PXG", category: "Driver", modelName: "Lightning Max Lite", modelFamily: "Lightning", modelYear: 2026, specs: { profile: "Lightweight" } },
+
+  // Drivers — 2025 (previously missing from the catalogue)
+  { manufacturer: "Srixon", category: "Driver", modelName: "ZXi", modelFamily: "ZXi", modelYear: 2025, variants: loftVariants(["9", "10.5"]) },
+  { manufacturer: "Srixon", category: "Driver", modelName: "ZXi LS", modelFamily: "ZXi", modelYear: 2025, specs: { spin: "Low" }, variants: loftVariants(["8", "9", "10.5"]) },
+  { manufacturer: "Srixon", category: "Driver", modelName: "ZXi MAX", modelFamily: "ZXi", modelYear: 2025, specs: { forgiveness: "High" }, variants: loftVariants(["9", "10.5", "12"]) },
+
+  // Fairway woods — 2026
+  { manufacturer: "TaylorMade", category: "Fairway Wood", modelName: "Qi4D Fairway", modelFamily: "Qi4D", modelYear: 2026, variants: loftVariants(["15", "16.5", "18", "21", "24"]) },
+  { manufacturer: "Callaway", category: "Fairway Wood", modelName: "Quantum Max Fairway", modelFamily: "Quantum", modelYear: 2026, variants: loftVariants(["15", "16.5", "18", "21", "24", "27"]) },
+  { manufacturer: "Callaway", category: "Fairway Wood", modelName: "Quantum Triple Diamond Fairway", modelFamily: "Quantum", modelYear: 2026, specs: { profile: "Tour" }, variants: loftVariants(["15", "18", "21"]) },
+  { manufacturer: "Titleist", category: "Fairway Wood", modelName: "GTS2 Fairway", modelFamily: "GTS", modelYear: 2026, specs: { adjustableWeight: true }, variants: loftVariants(["13.5", "15", "16.5", "18", "21"]) },
+  { manufacturer: "Titleist", category: "Fairway Wood", modelName: "GTS3 Fairway", modelFamily: "GTS", modelYear: 2026, specs: { profile: "Tour" }, variants: loftVariants(["15", "16.5", "18", "21"]) },
+  { manufacturer: "Mizuno", category: "Fairway Wood", modelName: "JPX One Fairway", modelFamily: "JPX One", modelYear: 2026, specs: { adjustableLoft: true }, variants: loftVariants(["15", "18", "21", "24"]) },
+
+  // Hybrids — 2026
+  { manufacturer: "TaylorMade", category: "Hybrid", modelName: "Qi4D Rescue", modelFamily: "Qi4D", modelYear: 2026, variants: loftVariants(["17", "19", "22", "25"]) },
+  { manufacturer: "Mizuno", category: "Hybrid", modelName: "JPX One Hybrid", modelFamily: "JPX One", modelYear: 2026, specs: { adjustableLoft: true }, variants: loftVariants(["19", "22", "25", "28"]) },
+  { manufacturer: "Callaway", category: "Hybrid", modelName: "Quantum Max Hybrid", modelFamily: "Quantum", modelYear: 2026, variants: loftVariants(["21", "24"]) },
+
+  // Iron sets — 2026
+  { manufacturer: "TaylorMade", category: "Iron Set", modelName: "Qi Max", modelFamily: "Qi", modelYear: 2026, specs: { profile: "Game improvement", setComposition: "4-PW, AW, SW, LW" }, variants: flexRSX.map((f) => ({ name: `4-LW ${f}`, flex: f })) },
+  { manufacturer: "TaylorMade", category: "Iron Set", modelName: "Qi Max HL", modelFamily: "Qi", modelYear: 2026, specs: { profile: "Super game improvement" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Ping", category: "Iron Set", modelName: "i540", modelFamily: "i-Series", modelYear: 2026, specs: { profile: "Players distance", forged: true, setComposition: "4-9, PW, UW" }, variants: flexRSX.map((f) => ({ name: `4-UW ${f}`, flex: f })) },
+  { manufacturer: "Ping", category: "Iron Set", modelName: "G740", modelFamily: "G-Series", modelYear: 2026, specs: { profile: "Super game improvement", setComposition: "5-9, PW, UW, 50°, 56°" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Mizuno", category: "Iron Set", modelName: "Pro M-13", modelFamily: "Pro", modelYear: 2026, specs: { forged: true, profile: "Players", setComposition: "4-PW, GW" }, variants: flexRSX.map((f) => ({ name: `4-GW ${f}`, flex: f })) },
+  { manufacturer: "Mizuno", category: "Iron Set", modelName: "Pro M-15", modelFamily: "Pro", modelYear: 2026, specs: { forged: true, construction: "Hollow body", setComposition: "4-PW, GW" }, variants: flexRSX.map((f) => ({ name: `4-GW ${f}`, flex: f })) },
+  { manufacturer: "Srixon", category: "Iron Set", modelName: "ZXiR", modelFamily: "ZXi", modelYear: 2026, specs: { construction: "Cast", setComposition: "4-PW" }, variants: flexRSX.map((f) => ({ name: `4-PW ${f}`, flex: f })) },
+  { manufacturer: "Srixon", category: "Iron Set", modelName: "ZXiR HL", modelFamily: "ZXi", modelYear: 2026, specs: { profile: "High launch", setComposition: "5-PW" }, variants: flexRSX.map((f) => ({ name: `5-PW ${f}`, flex: f })) },
+  { manufacturer: "Cobra", category: "Iron Set", modelName: "KING", modelFamily: "KING", modelYear: 2026, specs: { construction: "3D-printed medallion" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Cobra", category: "Iron Set", modelName: "KING MAX", modelFamily: "KING", modelYear: 2026, specs: { profile: "Game improvement", setComposition: "4-PW" }, variants: flexRSX.map((f) => ({ name: `4-PW ${f}`, flex: f })) },
+  { manufacturer: "Callaway", category: "Iron Set", modelName: "Quantum Max", modelFamily: "Quantum", modelYear: 2026, specs: { setComposition: "5-PW" }, variants: flexRSX.map((f) => ({ name: `5-PW ${f}`, flex: f })) },
+  { manufacturer: "Callaway", category: "Iron Set", modelName: "Quantum Max OS", modelFamily: "Quantum", modelYear: 2026, specs: { profile: "Game improvement" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Callaway", category: "Iron Set", modelName: "Quantum Max Fast", modelFamily: "Quantum", modelYear: 2026, specs: { profile: "Lightweight" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "PXG", category: "Iron Set", modelName: "GEN8 T", modelFamily: "GEN8", modelYear: 2026, specs: { profile: "Tour" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "PXG", category: "Iron Set", modelName: "GEN8 P", modelFamily: "GEN8", modelYear: 2026, specs: { profile: "Players" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "PXG", category: "Iron Set", modelName: "GEN8 XP", modelFamily: "GEN8", modelYear: 2026, specs: { profile: "Game improvement" }, variants: flexRSX.map((f) => ({ name: `Set ${f}`, flex: f })) },
+  { manufacturer: "Wilson", category: "Iron Set", modelName: "Staff Model Blade", modelFamily: "Staff Model", modelYear: 2026, specs: { construction: "Muscle back", setComposition: "4-PW" }, variants: flexRSX.map((f) => ({ name: `4-PW ${f}`, flex: f })) },
+  { manufacturer: "Wilson", category: "Iron Set", modelName: "Staff Model CB (2026)", modelFamily: "Staff Model", modelYear: 2026, specs: { construction: "Cavity back", setComposition: "4-PW" }, variants: flexRSX.map((f) => ({ name: `4-PW ${f}`, flex: f })) },
+  { manufacturer: "Wilson", category: "Iron Set", modelName: "Staff Model XB", modelFamily: "Staff Model", modelYear: 2026, specs: { construction: "Hollow body", setComposition: "4-PW" }, variants: flexRSX.map((f) => ({ name: `4-PW ${f}`, flex: f })) },
+
+  // Wedges
+  { manufacturer: "Ping", category: "Wedge", modelName: "s259", modelFamily: "s-Series", modelYear: 2026, specs: { grinds: "S, H, B, T, W, E", grooves: "MicroMax" }, variants: loftVariants(["46", "50", "52", "54", "56", "58", "60", "62"], ["Wedge"]) },
+  { manufacturer: "Cleveland", category: "Wedge", modelName: "RTZ", modelFamily: "RTZ", modelYear: 2025, specs: { material: "Z-Alloy steel" }, variants: loftVariants(["46", "48", "50", "52", "54", "56", "58", "60", "62", "64"], ["Wedge"]) },
+  { manufacturer: "Cleveland", category: "Wedge", modelName: "RTZ 2", modelFamily: "RTZ", modelYear: 2026, variants: loftVariants(["46", "48", "50", "52", "54", "56", "58", "60", "62", "64"], ["Wedge"]) },
+
+  // Putters
+  { manufacturer: "TaylorMade", category: "Putter", modelName: "Spider Tour F", modelFamily: "Spider", modelYear: 2026, specs: { headStyle: "Mallet" }, variants: lengthVariants(["33", "34", "35"]) },
+  { manufacturer: "Odyssey", category: "Putter", modelName: "Ai-ONE Square 2 Square #7", modelFamily: "Ai-ONE", modelYear: 2025, specs: { headStyle: "Mallet", zeroTorque: true }, variants: lengthVariants(["33", "34", "35"]) },
+  { manufacturer: "Odyssey", category: "Putter", modelName: "Ai-ONE Square 2 Square Jailbird", modelFamily: "Ai-ONE", modelYear: 2025, specs: { headStyle: "Mallet", zeroTorque: true }, variants: lengthVariants(["33", "34", "35"]) },
+  { manufacturer: "Odyssey", category: "Putter", modelName: "Ai-ONE Square 2 Square Double Wide", modelFamily: "Ai-ONE", modelYear: 2025, specs: { headStyle: "Mallet", zeroTorque: true }, variants: lengthVariants(["33", "34", "35"]) },
 ];
 
 // ── persistence ────────────────────────────────────────────────────────────────
@@ -228,7 +307,7 @@ export const SEED_CLUBS: GolfClubInput[] = [
  * existing rows are preserved and new models are added (never wipes). Skips once
  * the workspace is already at the current version.
  */
-export const GOLF_CLUBS_SEED_VERSION = 2;
+export const GOLF_CLUBS_SEED_VERSION = 3;
 
 export async function seedGolfClubs(workspaceId: string): Promise<number> {
   const ws = await prisma.workspace.findUnique({

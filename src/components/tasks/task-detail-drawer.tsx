@@ -44,11 +44,6 @@ const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 
 const MONO = { fontFamily: "var(--font-mono)" } as const;
 
-// Entry animation for the slide-over: fade the backdrop, slide the panel in from the right.
-const DRAWER_KEYFRAMES =
-  "@keyframes drawer-backdrop-in{from{opacity:0}to{opacity:1}}" +
-  "@keyframes drawer-panel-in{from{transform:translateX(24px);opacity:0.4}to{transform:translateX(0);opacity:1}}";
-
 const STATUS_DOT: Record<TaskStatus, string> = {
   BACKLOG: "bg-[var(--text-4)]",
   TODO: "bg-sky-500",
@@ -363,17 +358,14 @@ export function TaskDetailDrawer({ taskId, onClose }: { taskId: string; onClose:
 
   return (
     <div className="fixed inset-0 z-[70] flex justify-end">
-      <style>{DRAWER_KEYFRAMES}</style>
       <button
         type="button"
-        className="app-dialog-backdrop absolute inset-0"
+        className="app-dialog-backdrop motion-backdrop-in absolute inset-0"
         aria-label="Close"
         onClick={onClose}
-        style={{ animation: "drawer-backdrop-in 160ms ease-out" }}
       />
       <div
-        className="relative z-10 flex h-full w-full max-w-[560px] flex-col bg-[var(--surface-0)] shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]"
-        style={{ animation: "drawer-panel-in 200ms cubic-bezier(0.22,1,0.36,1)" }}
+        className="motion-sheet-right relative z-10 flex h-full w-full max-w-[560px] flex-col bg-[var(--surface-0)] shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)]"
       >
         {isPending || !task ? (
           <div className="flex flex-1 items-center justify-center">

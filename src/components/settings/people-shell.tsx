@@ -6,8 +6,7 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { UserGroupIcon, LockClosedIcon } from "@heroicons/react/24/outline";
-import { cn } from "@/lib/format";
+import { segmentedTabClass, segmentedTabsClass } from "@/components/ui/segmented-tabs";
 import { useAccount } from "@/hooks/use-account";
 import { isSuperAdmin } from "@/types/auth";
 import { TeamSection } from "@/components/settings/team-section";
@@ -27,57 +26,34 @@ export function PeopleAccess() {
 
   return (
     <div className="space-y-5">
-      <div className="inline-flex overflow-hidden rounded-[8px] border border-[var(--border-2)]">
-        <TabButton
-          active={activeTab === "members"}
-          onClick={() => setTab("members")}
-          icon={<UserGroupIcon className="h-4 w-4" />}
-        >
+      <nav aria-label="People & access sections" className={segmentedTabsClass}>
+        <TabButton active={activeTab === "members"} onClick={() => setTab("members")}>
           Members
         </TabButton>
         {isSuper ? (
-          <TabButton
-            active={activeTab === "roles"}
-            onClick={() => setTab("roles")}
-            icon={<LockClosedIcon className="h-4 w-4" />}
-            borderLeft
-          >
+          <TabButton active={activeTab === "roles"} onClick={() => setTab("roles")}>
             Roles &amp; permissions
           </TabButton>
         ) : null}
-      </div>
+      </nav>
 
       {activeTab === "members" ? <TeamSection /> : <RolesSection />}
     </div>
   );
 }
 
+/** Same tabs as the consolidated settings pages (`segmented-tabs.ts`). */
 function TabButton({
   active,
   onClick,
-  icon,
-  borderLeft,
   children,
 }: {
   active: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
-  borderLeft?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-2 px-4 py-2 text-sm font-medium transition",
-        borderLeft && "border-l border-[var(--border-2)]",
-        active
-          ? "bg-[var(--surface-brand)] text-[var(--brand-700)]"
-          : "text-[var(--text-2)] hover:bg-[var(--surface-1)]",
-      )}
-    >
-      {icon}
+    <button type="button" onClick={onClick} aria-pressed={active} className={segmentedTabClass(active)}>
       {children}
     </button>
   );

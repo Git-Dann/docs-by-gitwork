@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { generateEmbedding } from "@/server/care-agents/embeddings";
+import { aiKeyFor } from "@/server/ai-keys";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export async function POST(
         openaiApiKey: true,
         aiProvider: true,
         anthropicApiKey: true,
+        platformAiKeysAllowed: true,
         anthropicModel: true,
         openaiModel: true,
         geminiApiKey: true,
@@ -43,7 +45,7 @@ export async function POST(
       },
     });
 
-    const apiKey = process.env.OPENAI_API_KEY ?? workspace?.openaiApiKey ?? null;
+    const apiKey = aiKeyFor("OPENAI", workspace, "env");
     if (!apiKey) return apiError("OpenAI API key not configured — semantic search requires an OpenAI key", 400);
 
     const queryEmbedding = await generateEmbedding(query, apiKey, workspace?.id);

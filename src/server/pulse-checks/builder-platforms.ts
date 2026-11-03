@@ -159,12 +159,14 @@ export function evaluateBuilderChecks(input: BuilderCheckInput): PulseScanCheckI
       checkKey: "builder_sourcemaps_public",
       label: "Source maps not published alongside the bundle",
       status: "WARN",
-      confidence: "HIGH",
+      confidence: "MEDIUM",
       detail:
-        `The bundle references a public source map (${sourceMapRef[1]}), so the original source — variable names, ` +
-        `comments, unused branches, and any commented-out endpoint or key — is downloadable. That is fine on a ` +
-        `prototype and a real disclosure on a product: it turns "read the minified bundle" into "read the codebase". ` +
-        `Disable source-map upload for the production build, or restrict them to your error tracker.`,
+        `The bundle references a source map (${sourceMapRef[1]}). This scan found the reference but did not fetch the ` +
+        `file, so it has not confirmed the map is actually served — many CDNs return 403/404 for it. If it IS served, the ` +
+        `original source — variable names, comments, unused branches, and any commented-out endpoint or key — is ` +
+        `downloadable, which turns "read the minified bundle" into "read the codebase". Open the .map URL next to the ` +
+        `script yourself; if it returns the file, disable source-map upload for the production build or restrict it to ` +
+        `your error tracker.`,
       evidence: sourceMapRef[1],
     });
   }
@@ -207,7 +209,14 @@ export function evaluateBuilderChecks(input: BuilderCheckInput): PulseScanCheckI
   // hosts that mean something STRONGER than "unbranded" (a Replit workspace, a v0
   // preview) are handled above as their own checks and excluded here, so a single
   // deployment never produces two findings about the same URL.
-  const defaultHost = DEFAULT_SUBDOMAINS.find(([name, re]) => name === builder && re.test(host));
+  // The vendor's own www host (www.squarespace.com, www.wixsite.com) is the platform's
+  // marketing site, not a customer's generated subdomain. Every vendor domain in the table
+  // is two labels, so only exactly "www." + two labels is excluded: a deeper host such as
+  // www.jane.squarespace.com is still a generated default and still warns.
+  const isVendorApexWww = /^www\.[^.]+\.[^.]+$/i.test(host);
+  const defaultHost = isVendorApexWww
+    ? undefined
+    : DEFAULT_SUBDOMAINS.find(([name, re]) => name === builder && re.test(host));
   if (defaultHost && !STRONGER_HOST_FINDING.has(builder)) {
     checks.push({
       category: CATEGORIES.TRUST_BRAND,
@@ -439,6 +448,9 @@ export async function probeBubbleDataApi(
 
   const exposed: string[] = [];
   let reachable = false;
+  // A 200 that is not the Data API's own `{"response":{...}}` envelope — typically
+  // the app's HTML page served for any path. It says nothing about privacy rules.
+  let notTheApi = false;
 
   for (const type of BUBBLE_COMMON_TYPES) {
     try {
@@ -446,8 +458,9 @@ export async function probeBubbleDataApi(
       // 401/403 ⇒ privacy rules are doing their job. 404 ⇒ no such type.
       if (res.status === 401 || res.status === 403) reachable = true;
       if (res.status !== 200) continue;
+      if (!isBubbleDataApiResponse(res.body)) { notTheApi = true; continue; }
       reachable = true;
-      const rows = (res.body as { response?: { results?: unknown[] } })?.response?.results;
+      const rows = (res.body as { response: { results?: unknown[] } }).response.results;
       if (Array.isArray(rows) && rows.length > 0) {
         exposed.push(type);
         break; // One proven exposure is the finding — do not enumerate further.
@@ -471,6 +484,19 @@ export async function probeBubbleDataApi(
         `type in Data → Privacy, and disable the Data API for any type that does not need it. Treat anything already ` +
         `exposed as public.`,
       evidence: `GET /api/1.1/obj/${exposed[0]}?limit=1 returned records unauthenticated`,
+    });
+  } else if (notTheApi) {
+    checks.push({
+      category: CATEGORIES.SECURITY,
+      checkKey: "bubble_data_api_open",
+      label: "Bubble Data API is protected by privacy rules",
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail:
+        `The Data API path answered, but not as the Data API — the response was not Bubble's {"response": …} ` +
+        `format (often the app's own page served for any path). So whether privacy rules are in place could not be ` +
+        `established. Verify in Data → Privacy that every data type has a rule.`,
+      evidence: "GET /api/1.1/obj/<type> returned 200 with a body that is not a Data API response",
     });
   } else if (reachable) {
     checks.push({
@@ -510,29 +536,76 @@ export async function probeBubbleDataApi(
  */
 export async function probeBubbleVersionTest(
   input: { builder: string | null; origin: string },
-  deps: { fetchStatus: (url: string) => Promise<number> },
+  deps: { fetchPage: (url: string) => Promise<{ status: number; body: string; finalUrl?: string }> },
 ): Promise<PulseScanCheckInput[]> {
   if (input.builder !== "Bubble") return [];
 
-  let status: number;
+  let page: { status: number; body: string; finalUrl?: string };
   try {
-    status = await deps.fetchStatus(`${input.origin}/version-test`);
+    page = await deps.fetchPage(`${input.origin}/version-test`);
   } catch {
-    return [];
+    page = { status: 0, body: "" };
   }
 
-  const open = status === 200;
-  return [{
+  const base = {
     category: CATEGORIES.SECURITY,
     checkKey: "bubble_version_test_exposed",
     label: "Bubble development version is not publicly reachable",
-    status: open ? "WARN" : "PASS",
-    confidence: "HIGH",
-    detail: open
-      ? `Bubble's development copy of this app is publicly reachable at /version-test. That version usually carries test ` +
+  } as const;
+
+  if (page.status === 0) {
+    return [{ ...base, status: "INCONCLUSIVE", confidence: "LOW",
+      detail: "The request to /version-test did not complete, so whether the development copy is public could not be established." }];
+  }
+
+  let finalPath = "/version-test";
+  try { if (page.finalUrl) finalPath = new URL(page.finalUrl).pathname; } catch { /* keep requested */ }
+  const stayed = finalPath.toLowerCase().startsWith("/version-test");
+  const bubble = isBubblePage(page.body);
+  const devCopy = bubble && stayed && isBubbleDevVersion(page.body);
+
+  if (page.status === 200 && devCopy) {
+    return [{ ...base, status: "WARN", confidence: "HIGH",
+      detail:
+        `Bubble's development copy of this app is publicly reachable at /version-test. That version usually carries test ` +
         `data, weaker or absent privacy rules and half-built workflows, and it is the copy people forget is public. ` +
-        `Restrict it in the app's settings, and check its privacy rules separately from live — they are not shared.`
-      : `The /version-test development copy is not publicly reachable.`,
-    evidence: `GET /version-test → ${status}`,
-  }];
+        `Restrict it in the app's settings, and check its privacy rules separately from live — they are not shared.`,
+      evidence: `GET /version-test → 200, serving Bubble's development version` }];
+  }
+  if (page.status === 200 && bubble && stayed) {
+    // A Bubble page, but not one that identifies itself as the dev version — could be
+    // a "not authorised" page or the live app served under the path.
+    return [{ ...base, status: "INCONCLUSIVE", confidence: "LOW",
+      detail:
+        "/version-test answered with a Bubble page that does not identify itself as the development version (it may be " +
+        "a sign-in or not-authorised page, or the live app served under that path), so whether the development copy is " +
+        "public could not be established.",
+      evidence: `GET /version-test → ${page.status}` }];
+  }
+  return [{ ...base, status: "PASS", confidence: "HIGH",
+    detail: page.status === 200
+      ? "The /version-test path answered, but not with Bubble's development copy of the app, so it is not publicly reachable."
+      : "The /version-test development copy is not publicly reachable.",
+    evidence: `GET /version-test → ${page.status}` }];
+}
+
+/** Bubble's Data API answers reads in `{"response": {...}}`, whatever the result. */
+export function isBubbleDataApiResponse(body: unknown): boolean {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return false;
+  const response = (body as { response?: unknown }).response;
+  return !!response && typeof response === "object" && !Array.isArray(response);
+}
+
+/** A page served by Bubble's runtime: its CDN, package scripts or page bootstrap. */
+export function isBubblePage(html: string): boolean {
+  // Runtime markers only. A bare "bubble.io" is not one: any page that mentions or
+  // links to Bubble contains it. (Checked against bubble.io itself, a Bubble app.)
+  return /\.bubbleapps\.io|cdn\.bubble\.io|\/package\/(run|static)_js\/|bubble_session_uid|_bubble_page_load_data|_bubble_module_mode/i.test(html);
+}
+
+/** Bubble's development copy names itself: asset/route URLs under /version-test, or app_version "test". */
+export function isBubbleDevVersion(html: string): boolean {
+  // The live runtime writes `app_version: function() { return "live"; }` (bubble.io,
+  // 2026-10-14); the development copy returns "test".
+  return /\/version-test\/|["']?app_version["']?\s*[:=]\s*(?:function\s*\(\)\s*\{\s*return\s*)?["']test["']/i.test(html);
 }

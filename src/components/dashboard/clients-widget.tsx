@@ -6,6 +6,7 @@ import { NewTaskButton } from "@/components/tasks/new-task-button";
 import { useClientList } from "@/hooks/use-proposals";
 import type { WidgetSize } from "@/components/app-overview";
 import type { ClientListItem } from "@/types/client";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 /**
  * 03 // CLIENTS — summarised active-client cards. Built per Dan's HQ-pass-2 ask:
@@ -20,7 +21,7 @@ export default function ClientsWidget({ index }: { size: WidgetSize; index: numb
   const { data, isLoading } = useClientList();
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   const clients = data?.clients ?? [];

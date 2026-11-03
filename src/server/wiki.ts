@@ -6,10 +6,13 @@
  * design-system `shareToken`).
  */
 
+import { publicTeamAvatarUrl } from "@/lib/wiki-team-avatar";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { loadClientStandups } from "@/server/wiki-standups";
+import type { StandupFeed } from "@/lib/wiki-standups";
 import { bytesForPrisma } from "@/lib/prisma-bytes";
 import { dispatchNotification } from "@/server/notifications";
 import type {
@@ -24,6 +27,8 @@ import type {
 } from "@prisma/client";
 import type { DesignTokens } from "@/types/design-tokens";
 import { buildTaskStatusCounts, type TaskLabel, type TaskStatus } from "@/types/tasks";
+import { deriveRequestStage, type RequestStage } from "@/lib/wiki-request-stage";
+import { commentPermissions, type CommentViewer } from "@/lib/wiki-comment-permissions";
 import {
   resolveIntakeCategories,
   typeForCategory,
@@ -32,6 +37,7 @@ import {
   type IntakeCategory,
 } from "@/lib/wiki-intake-categories";
 import { loadWikiMonitors, type WikiMonitorsSection } from "./wiki-monitors";
+import { publicIncident } from "@/lib/monitor-incidents";
 import { assertWithinIntakeQuota } from "./wiki-intake-limit";
 import { deliverIntakeWebhook } from "./wiki-intake-webhook";
 import {
@@ -41,8 +47,30 @@ import {
 } from "./wiki-slack-notify";
 import { loadWikiDocuments, type WikiDocumentsSection } from "./wiki-documents";
 import { loadWikiCodeHandover, type WikiCodeHandoverSection } from "./wiki-code";
+import { loadWikiInsights, type WikiInsightsSection } from "./wiki-insights";
+import { loadWikiCosts } from "./wiki-costs";
+import { EMPTY_ESTIMATES, loadWikiEstimates } from "./wiki-estimates";
+import { EMPTY_COMPARISONS, loadWikiComparisons } from "./wiki-comparisons";
+import { EMPTY_SHEETS, forPublicSheets, loadWikiSheets } from "./wiki-sheets";
+import { isPublishable as isPublishableComparison } from "@/lib/wiki-comparisons";
+import { clientVisibleSections } from "@/lib/wiki-client-visibility";
+import { EMPTY_METRICS, forPublicMetrics, loadWikiMetrics, type WikiMetricsSection } from "./wiki-metrics";
+import { EMPTY_MEETINGS, loadWikiMeetings, type WikiMeetingsSection } from "./wiki-meetings";
+import { loadWikiPlatforms } from "./wiki-platforms";
+import { EMPTY_PLATFORMS, type WikiPlatformsSection } from "@/lib/wiki-platforms";
+import { forPublicDrive, loadWikiDrive } from "./wiki-drive";
+import { EMPTY_DRIVE, type WikiDriveSection } from "@/lib/client-drive";
+import type { WikiEstimatesSection } from "@/types/wiki-estimates";
+import type { WikiComparisonsSection } from "@/types/wiki-comparisons";
+import type { WikiSheetsSection } from "@/types/wiki-sheets";
+import type { CostModel } from "@/types/wiki-costs";
+import { loadWikiSupport, type WikiSupportSection } from "./wiki-support";
 import { getLaunchpadByWikiId } from "./launchpad";
 import type { LaunchpadDTO } from "@/types/launchpad";
+import { blockSpan } from "@/lib/gantt-span";
+import { parseFeedStatus, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
+import type { StoredMention } from "@/lib/wiki-mentions";
+import { deleteStoredUpload, placeUpload, readStoredUpload } from "./blob-storage";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -65,6 +93,9 @@ export interface ChangelogEntryRecord {
   createdAt: string;
   /** "PENDING" | "APPROVED" */
   status: string;
+  /** When it was approved, and the name of whoever approved it (client or teammate). */
+  approvedAt: string | null;
+  approvedByName: string | null;
 }
 
 export interface CourseRequestRecord {
@@ -118,6 +149,23 @@ export interface WikiIntakeItemRecord {
   attachmentUrls: string[];
   source: string | null;
   taskId: string | null;
+  /**
+   * The linked task's live board column, or null when none could be established —
+   * either nothing has been promoted yet, or `taskId` points at a task that has since
+   * been deleted (it is a loose id with no FK, so that dangles).
+   *
+   * Populated only on the list path, which batch-reads the tasks. A single-item
+   * response after a create/update/promote leaves it null and the client's query
+   * invalidation refetches the list a moment later — so the worst case is one render
+   * of a slightly conservative stage, never an invented one.
+   */
+  taskStatus: TaskStatus | null;
+  /**
+   * Where this request has actually got to, in the client's language. DERIVED from
+   * `status` + `taskStatus` on every read and never stored — see
+   * src/lib/wiki-request-stage.ts for why a stored copy would go stale silently.
+   */
+  stage: RequestStage;
   /** True when an image is attached — bytes are served via a separate route. */
   hasImage: boolean;
   imageFilename: string | null;
@@ -135,10 +183,50 @@ export interface WikiIntakeCommentRecord {
   authorKind: "TEAM" | "CLIENT";
   authorName: string;
   body: string;
+  /** People @mentioned in this reply — see src/lib/wiki-mentions.ts. */
+  mentions: StoredMention[];
   createdAt: string;
+  /** When the author last edited it, or null. */
+  editedAt: string | null;
+  /** Soft-deleted: body, mentions and image are blanked server-side — render "Reply deleted". */
+  deleted: boolean;
+  /** A screenshot is attached — bytes are served by the comment image route. */
+  hasImage: boolean;
+  imageFilename: string | null;
+  /** Whether the CURRENT viewer may edit / delete this reply. Always false as built;
+   *  set per request by `applyCommentViewer` (src/lib/wiki-comment-permissions.ts). */
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+/** A stored `mentions` Json value, read defensively: an older reply has none, and a
+ *  malformed one must not take the thread down with it. */
+function parseStoredMentions(raw: unknown): StoredMention[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StoredMention[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const { id, name, kind } = m as Record<string, unknown>;
+    if (typeof id !== "string" || typeof name !== "string") continue;
+    out.push({ id, name, kind: kind === "TEAM" ? "TEAM" : "CLIENT" });
+  }
+  return out;
 }
 
 /** A feature block rendered as a Gantt bar on the wiki Timeline page. */
+/**
+ * Where a row on the timeline came from.
+ *
+ * `null` means this client's own work — the overwhelmingly common case, and the
+ * one that must stay visually unmarked so a wiki with no links looks exactly as
+ * it always did. Anything borrowed from a linked client carries its name, because
+ * a merged timeline that does not say whose work is whose is worse than two.
+ */
+export interface WikiSource {
+  clientId: string;
+  name: string;
+}
+
 export interface WikiTimelineBlock {
   id: string;
   name: string;
@@ -146,8 +234,28 @@ export interface WikiTimelineBlock {
   endDate: string;
   color: string | null;
   progress: number;
-  tasks: { title: string; done: boolean }[];
+  /**
+   * ⚠️ `completedAt` / `startedAt` are REQUIRED, not optional-with-a-default.
+   * RoundUp's "what we did last week" is derived from them, and §47.3 records what a
+   * defaulting serializer over a narrowed `select` does: it turns a missing column into
+   * a plausible value. Required means a caller that narrows the query is a compile
+   * error rather than a page quietly reporting that nothing shipped.
+   *
+   * Still deliberately coarse for a client: title, done, and when — never assignee,
+   * priority or the finer internal statuses.
+   */
+  tasks: WikiTimelineTask[];
   statusCounts: Record<TaskStatus, number>;
+  /** True when the dates are estimated from task due dates rather than set on the block. */
+  estimated: boolean;
+}
+
+/** The client-safe grain: what, whether, and when. Never who or how urgent. */
+export interface WikiTimelineTask {
+  title: string;
+  done: boolean;
+  completedAt: string | null;
+  startedAt: string | null;
 }
 
 export interface WikiTimelineMilestone {
@@ -157,9 +265,66 @@ export interface WikiTimelineMilestone {
   color: string | null;
 }
 
+/**
+ * A linked client's delivery work, kept SEPARATE from this client's own.
+ *
+ * ⚠️ It is not loaded through `loadWikiTimeline`, and that is the whole point.
+ * That loader drops any block it cannot give a span to — no dates on the block
+ * and no due dates on its tasks — because it feeds a Gantt, and a bar with no
+ * dates cannot be drawn. YG intelligence is exactly that shape: four blocks, 66
+ * tasks, not one date between them. Merged into the Gantt it rendered as
+ * nothing at all, which read as "the link is broken".
+ *
+ * A table needs no dates, so this keeps every block and the grouping with it.
+ */
+export interface WikiLinkedWork {
+  source: WikiSource;
+  /**
+   * Gantt-shaped, with NULLABLE dates — which is the whole point. The chart draws
+   * a rail row for every block and a bar only where there are dates, so a
+   * workstream that is tracked but not scheduled appears as work with no date yet
+   * rather than vanishing.
+   */
+  blocks: {
+    id: string;
+    name: string;
+    color: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    /** Dates estimated from task due dates (blockSpan). False when set on the block,
+     *  or when there are no dates at all. */
+    estimated: boolean;
+    progress: number;
+    tasks: { title: string; done: boolean }[];
+    statusCounts: Record<TaskStatus, number>;
+  }[];
+  /** Tasks belonging to no block at all. */
+  looseTasks: { total: number; done: number };
+  total: number;
+  done: number;
+}
+
 export interface WikiTimeline {
   blocks: WikiTimelineBlock[];
+  /** Other clients' work, shown under this client's own. Empty unless linked. */
+  linked?: WikiLinkedWork[];
   milestones: WikiTimelineMilestone[];
+  /**
+   * Live work that is NOT on the timeline above, and therefore was invisible to the
+   * client until this field existed.
+   *
+   * ⚠️ Two ways a task falls out of `blocks`, and both were real on GAIA Bloom:
+   *   1. it belongs to no feature block at all (6 of her tasks, including BOTH the
+   *      ones actually in progress);
+   *   2. its block has no resolvable dates, and the loader drops such blocks whole.
+   *
+   * The consequence was a client portal reporting 98% complete (46 of 47 block tasks)
+   * while six items — two of them active — were counted nowhere. Every consumer that
+   * reports "how much is done" must include these, which is why they are a named field
+   * rather than folded into `blocks`: a synthetic block would have appeared as a phase
+   * on the Gantt and in the Venn, which it is not.
+   */
+  unassigned: WikiTimelineTask[];
 }
 
 /** A delivery-team member (active dev on the client), for the dashboard hero stack. */
@@ -206,6 +371,22 @@ export interface WikiDTO {
   pages: WikiPageRecord[];
   changelog: ChangelogEntryRecord[];
   courseRequests: CourseRequestRecord[];
+  /** The scheduled Big Wedge course-request feed's state (src/server/wedge-course-feed.ts).
+   *  Null when it has never run — and ALWAYS null on a public read: it is our plumbing,
+   *  not the client's business, and its errors name our own configuration. */
+  courseFeed: CourseFeedStatus | null;
+  /**
+   * The sections a CLIENT can see, in the order their rail shows them.
+   *
+   * ⚠️ Present only on the client's copy (`forPublic`); the team's copy leaves it
+   * undefined, because staff see a different and wider set (`availableSections` in
+   * `wiki-workspace.tsx`). A reader must not treat an absent list as "no sections".
+   *
+   * It exists so a second reader of this wiki — the iOS app — stops reimplementing
+   * `clientVisibleSections` and drifting from it. It had: a different order, and two
+   * predicates that disagreed.
+   */
+  visibleSections?: string[];
   intakeItems: WikiIntakeItemRecord[];
   /** Whether the Requests (client intake) section is enabled for this wiki. */
   intakeEnabled: boolean;
@@ -241,6 +422,56 @@ export interface WikiDTO {
    * off" and "on but not set up yet" need different copy on the page.
    */
   launchpad: LaunchpadDTO | null;
+  /** Hand-authored charts and diagrams — see src/server/wiki-insights.ts. */
+  insights: WikiInsightsSection;
+  /**
+   * What the app costs to RUN, and the cost per end user. Distinct from Docs costing,
+   * which is what Gitwork charges. Client-facing, so the totals carry their own blind
+   * spots — see src/lib/wiki-costs.ts.
+   */
+  costs: CostModel;
+  /**
+   * How long the work takes with 1, 2, 3… developers. Stores effort, never dates — every
+   * finish date is derived at render by src/lib/wiki-estimates.ts.
+   */
+  estimates: WikiEstimatesSection;
+  /**
+   * Comparison tables — Free vs Premium vs Pro, the client against competitors. Columns and
+   * rows are parsed defensively on read (src/lib/wiki-comparisons.ts). The client's copy
+   * carries only publishable tables, and none at all while the section is off.
+   */
+  comparisons: WikiComparisonsSection;
+  /**
+   * Sheets — client-editable spreadsheets whose rows can be sent to the task board. Each
+   * row's board stage is derived from its task at read (src/lib/wiki-sheets.ts), never
+   * stored. The client's copy (`forPublicSheets`) drops deleted rows and assignee names,
+   * and is empty while the section is off.
+   */
+  sheets: WikiSheetsSection;
+  /**
+   * Whether the Delivery section is on. There is no `delivery` DTO: the page derives
+   * everything from `timeline` and `blockers`, which are already here — so a loader
+   * would only be a second copy of data this object already carries.
+   */
+  deliveryEnabled: boolean;
+  /** RoundUp — the weekly summary. Pure derivation; this flag is its only state. */
+  roundupEnabled: boolean;
+  /** The client's own Care figures — see src/server/wiki-support.ts. */
+  support: WikiSupportSection;
+  /** The client's own product numbers — see src/server/wiki-metrics.ts. */
+  metrics: WikiMetricsSection;
+  /** Meetings someone chose to share — see src/server/wiki-meetings.ts. */
+  meetings: WikiMeetingsSection;
+  /** The client's platforms as links, with renewal dates — see src/server/wiki-platforms.ts. */
+  clientPlatforms: WikiPlatformsSection;
+  /** The files in the client's linked Google Drive folder — see src/server/wiki-drive.ts. */
+  drive: WikiDriveSection;
+  /**
+   * Pushed AM/PM developer standups for this client — today, plus the days
+   * in the last two weeks that had one. See src/server/wiki-standups.ts. Only
+   * devs who actually pushed appear.
+   */
+  standups: StandupFeed;
   /**
    * Client login accounts for the public link (email + name; password never
    * exposed). Populated only for the internal editor — the public payload omits
@@ -287,6 +518,8 @@ function serializeEntry(e: {
   releasedAt: Date | null;
   createdAt: Date;
   status: WikiEntryStatus;
+  approvedAt?: Date | null;
+  approvedByName?: string | null;
 }): ChangelogEntryRecord {
   return {
     id: e.id,
@@ -297,6 +530,8 @@ function serializeEntry(e: {
     releasedAt: e.releasedAt ? e.releasedAt.toISOString() : null,
     createdAt: e.createdAt.toISOString(),
     status: e.status,
+    approvedAt: e.status === "APPROVED" && e.approvedAt ? e.approvedAt.toISOString() : null,
+    approvedByName: e.status === "APPROVED" ? e.approvedByName ?? null : null,
   };
 }
 
@@ -324,6 +559,13 @@ function serializeCourseRequest(r: {
   };
 }
 
+/**
+ * @param taskStatuses  linked task id → board column, from `loadLinkedTaskStatuses`.
+ *   Omitted on the single-item paths (create/update/promote/comment), where the client
+ *   refetches the list immediately afterwards. A missing entry is treated as "could not
+ *   establish", which `deriveRequestStage` renders conservatively — never as progress
+ *   that may not exist.
+ */
 function serializeWikiIntakeItem(item: {
   id: string;
   type: WikiIntakeItemType;
@@ -346,14 +588,9 @@ function serializeWikiIntakeItem(item: {
   osVersion?: string | null;
   createdAt: Date;
   updatedAt: Date;
-  comments?: {
-    id: string;
-    authorKind: WikiIntakeCommentAuthorKind;
-    authorName: string;
-    body: string;
-    createdAt: Date;
-  }[];
-}): WikiIntakeItemRecord {
+  comments?: SerializableComment[];
+}, taskStatuses?: ReadonlyMap<string, TaskStatus>): WikiIntakeItemRecord {
+  const taskStatus = item.taskId ? (taskStatuses?.get(item.taskId) ?? null) : null;
   return {
     id: item.id,
     type: item.type,
@@ -371,20 +608,39 @@ function serializeWikiIntakeItem(item: {
     attachmentUrls: Array.isArray(item.attachmentUrls) ? (item.attachmentUrls as string[]) : [],
     source: item.source,
     taskId: item.taskId,
+    taskStatus,
+    stage: deriveRequestStage(item.status, taskStatus),
     hasImage: Boolean(item.mime),
     imageFilename: item.filename ?? null,
     device: item.device ?? null,
     osVersion: item.osVersion ?? null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
-    comments: (item.comments ?? []).map((c) => ({
-      id: c.id,
-      authorKind: c.authorKind,
-      authorName: c.authorName,
-      body: c.body,
-      createdAt: c.createdAt.toISOString(),
-    })),
+    comments: (item.comments ?? []).map((c) => serializeWikiIntakeComment(c)),
   };
+}
+
+/**
+ * Read the board column of every task a request has been promoted to, in one query.
+ *
+ * This is the whole of the "the client's sheet follows the dev board" mechanism: there is
+ * no write path, no sync job and nothing to forget — a developer drags a card and the next
+ * read of the wiki reports it. `Task.id` is the primary key so the `in` lookup is an index
+ * scan; `ClientWikiIntakeItem.taskId` carries its own index for the same reason.
+ *
+ * A `taskId` whose task has been deleted simply has no entry in the returned map, which is
+ * what `deriveRequestStage` reads as "could not establish" rather than as a claim.
+ */
+async function loadLinkedTaskStatuses(
+  taskIds: readonly (string | null)[],
+): Promise<Map<string, TaskStatus>> {
+  const ids = [...new Set(taskIds.filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return new Map();
+  const rows = await prisma.task.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, status: true },
+  });
+  return new Map(rows.map((row) => [row.id, row.status]));
 }
 
 const DEFAULT_PLATFORMS = ["IOS", "ANDROID", "WEB"];
@@ -491,9 +747,106 @@ async function loadWikiBlockers(clientId: string): Promise<WikiBlockerRecord[]> 
   }));
 }
 
+/**
+ * A linked client's work, for the table under this client's timeline.
+ *
+ * ⚠️ Deliberately NOT `loadWikiTimeline`. That one exists to feed a Gantt, so it
+ * drops every block it cannot date — and an undated block is the normal case for
+ * a workstream that is tracked but not scheduled. Running the linked client
+ * through it produced an empty section and looked like a broken link.
+ */
+async function loadLinkedWork(
+  source: WikiSource,
+): Promise<WikiLinkedWork> {
+  const [blocks, loose] = await Promise.all([
+    prisma.featureBlock.findMany({
+      where: { clientId: source.clientId },
+      orderBy: [{ orderKey: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        startDate: true,
+        endDate: true,
+        // Same filter as every other progress figure in the app: top-level, live.
+        // Without it subtasks and archived work inflate the counts (§ the wiki's
+        // own task-count fix).
+        tasks: {
+          where: { parentId: null, archivedAt: null },
+          select: { title: true, status: true, dueDate: true },
+          orderBy: { orderKey: "asc" },
+        },
+      },
+    }),
+    prisma.task.findMany({
+      where: {
+        clientId: source.clientId,
+        parentId: null,
+        archivedAt: null,
+        featureBlockId: null,
+      },
+      select: { status: true },
+    }),
+  ]);
+
+  const mapped = blocks.map((b) => {
+    const done = b.tasks.filter((t) => t.status === "DONE").length;
+    const counts = { BACKLOG: 0, TODO: 0, DOING: 0, IN_REVIEW: 0, UI_DONE: 0, DONE: 0 } as Record<
+      TaskStatus,
+      number
+    >;
+    for (const t of b.tasks) counts[t.status as TaskStatus] += 1;
+    // Same rule as this client's own timeline: no dates on the block → estimate from its
+    // tasks' due dates. A block with neither still gets its row, with no bar.
+    const span = blockSpan(b, b.tasks.map((t) => t.dueDate));
+    return {
+      id: b.id,
+      name: b.name,
+      color: b.color,
+      startDate: span?.startDate ?? null,
+      endDate: span?.endDate ?? null,
+      estimated: span?.estimated ?? false,
+      progress: b.tasks.length === 0 ? 0 : Math.round((done / b.tasks.length) * 100),
+      tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+      statusCounts: counts,
+    };
+  });
+
+  const looseTasks = {
+    total: loose.length,
+    done: loose.filter((t) => t.status === "DONE").length,
+  };
+
+  return {
+    source,
+    blocks: mapped,
+    looseTasks,
+    // The client's whole board, blocks and loose work together — a total that
+    // counted only blocked work would understate a client like this one.
+    total: mapped.reduce((n, b) => n + b.tasks.length, 0) + looseTasks.total,
+    done: mapped.reduce((n, b) => n + b.tasks.filter((t) => t.done).length, 0) + looseTasks.done,
+  };
+}
+
+async function loadWikiTimelineWithLinks(
+  clientId: string,
+  links: { linkedClientId: string; name: string }[],
+): Promise<WikiTimeline> {
+  const own = await loadWikiTimeline(clientId);
+  if (links.length === 0) return own;
+  const linked = await Promise.all(
+    links.map((l) => loadLinkedWork({ clientId: l.linkedClientId, name: l.name })),
+  );
+  // ⚠️ A separate field, never merged into `blocks`. Everything that reports "how
+  // much of THIS client is done" reads `blocks` + `unassigned`, and folding
+  // another client's board into those would silently rewrite this client's
+  // progress figure on the dashboard, the Delivery page and RoundUp.
+  return { ...own, linked };
+}
+
 async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
   // Independent queries — run together instead of one round-trip after the other.
-  const [blocks, milestones] = await Promise.all([
+  const [blocks, milestones, allTasks] = await Promise.all([
     prisma.featureBlock.findMany({
       where: { clientId },
       orderBy: [{ orderKey: "asc" }, { startDate: "asc" }],
@@ -505,7 +858,16 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
         // move together) badly overstated the real board's numbers.
         tasks: {
           where: { parentId: null, archivedAt: null },
-          select: { title: true, status: true, dueDate: true },
+          select: {
+            // `id` so the unassigned set can be worked out by subtraction below.
+            id: true,
+            title: true,
+            status: true,
+            dueDate: true,
+            // RoundUp needs "when", not just "whether" — see WikiTimelineBlock.tasks.
+            completedAt: true,
+            startedAt: true,
+          },
           orderBy: { orderKey: "asc" },
         },
       },
@@ -515,37 +877,64 @@ async function loadWikiTimeline(clientId: string): Promise<WikiTimeline> {
       orderBy: { date: "asc" },
       select: { id: true, name: true, date: true, color: true },
     }),
+    // Every live top-level task. What is NOT on the timeline is worked out below by
+    // subtraction, so a task cannot go missing through a second filter drifting out of
+    // step with the block query's.
+    prisma.task.findMany({
+      where: { clientId, parentId: null, archivedAt: null },
+      select: { id: true, title: true, status: true, completedAt: true, startedAt: true },
+      orderBy: { orderKey: "asc" },
+    }),
   ]);
 
   const timelineBlocks: WikiTimelineBlock[] = blocks
     .map((b) => {
-      // Sections render once they have a span — explicit dates, or derived from
-      // the date range of their tasks' due dates (so undated sections still show).
-      const dues = b.tasks
-        .map((t) => t.dueDate)
-        .filter((d): d is Date => d !== null)
-        .map((d) => d.getTime())
-        .sort((a, z) => a - z);
-      const start = b.startDate ?? (dues.length ? new Date(dues[0]) : null);
-      const end = b.endDate ?? (dues.length ? new Date(dues[dues.length - 1]) : null);
-      if (!start || !end) return null;
+      // A span from the block's own dates, or estimated from its tasks' due dates
+      // (blockSpan — the one rule every Gantt uses).
+      const span = blockSpan(b, b.tasks.map((t) => t.dueDate));
+      if (!span) return null;
       const taskCount = b.tasks.length;
       const doneCount = b.tasks.filter((t) => t.status === "DONE").length;
       return {
         id: b.id,
         name: b.name,
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
+        startDate: span.startDate,
+        endDate: span.endDate,
+        estimated: span.estimated,
         color: b.color,
         progress: taskCount === 0 ? 0 : Math.round((doneCount / taskCount) * 100),
-        tasks: b.tasks.map((t) => ({ title: t.title, done: t.status === "DONE" })),
+        tasks: b.tasks.map((t) => ({
+          title: t.title,
+          done: t.status === "DONE",
+          completedAt: t.completedAt?.toISOString() ?? null,
+          startedAt: t.startedAt?.toISOString() ?? null,
+        })),
         statusCounts: buildTaskStatusCounts(b.tasks),
       };
     })
     .filter((b): b is WikiTimelineBlock => b !== null);
 
+  // ⚠️ By SUBTRACTION, not by a mirrored `featureBlockId: null` filter. A block is
+  // dropped from the timeline when it has no resolvable dates, so "has a block" and
+  // "is on the timeline" are different sets — and it is the second that decides whether
+  // the client can see the task.
+  const onTimeline = new Set(
+    blocks.flatMap((b) =>
+      timelineBlocks.some((tb) => tb.id === b.id) ? b.tasks.map((t) => t.id) : [],
+    ),
+  );
+  const unassigned: WikiTimelineTask[] = allTasks
+    .filter((t) => !onTimeline.has(t.id))
+    .map((t) => ({
+      title: t.title,
+      done: t.status === "DONE",
+      completedAt: t.completedAt?.toISOString() ?? null,
+      startedAt: t.startedAt?.toISOString() ?? null,
+    }));
+
   return {
     blocks: timelineBlocks,
+    unassigned,
     milestones: milestones.map((m) => ({
       id: m.id,
       name: m.name,
@@ -574,14 +963,47 @@ async function loadWikiDesignSystem(clientId: string): Promise<WikiDesignSystem 
   };
 }
 
+/**
+ * Run one wiki section loader, falling back to its empty state if it throws.
+ *
+ * Deliberately NOT swallowed silently: the error is logged with the section's name, so a
+ * section that has quietly stopped loading is findable in the container logs rather than
+ * only visible as an absence on the page.
+ */
+async function settle<T>(section: string, load: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await load();
+  } catch (err) {
+    console.error(`[wiki] section "${section}" failed to load; rendering it empty.`, err);
+    return fallback;
+  }
+}
+
 async function buildDTO(
   wiki: {
   id: string;
   clientId: string;
   shareToken: string | null;
   shareEnabled: boolean;
+  /**
+   * Other clients whose delivery work is merged into this wiki's timeline.
+   *
+   * ⚠️ Optional so every existing caller of `buildDTO` compiles unchanged — but a
+   * caller that omits it gets a wiki with NO linked work rather than an error, so
+   * `WIKI_INCLUDE` is the one place that must carry it. A second include that
+   * forgets is the §47.3 defect: a narrowed select turning missing data into a
+   * plausible answer.
+   */
+  linkedClients?: {
+    linkedClientId: string;
+    label: string | null;
+    linkedClient: { id: string; name: string };
+  }[];
   intakeEnabled?: boolean;
   launchpadEnabled?: boolean;
+  insightsEnabled?: boolean;
+  deliveryEnabled?: boolean;
+  roundupEnabled?: boolean;
   intakeCategories?: unknown;
   platforms: unknown;
   pageShares?: unknown;
@@ -614,6 +1036,7 @@ async function buildDTO(
     createdAt: Date;
     status: WikiEntryStatus;
   }>;
+  courseFeedStatus?: unknown;
   courseRequests?: Array<{
     id: string;
     courseName: string;
@@ -634,6 +1057,15 @@ async function buildDTO(
     status: WikiIntakeItemStatus;
     requestedBy: string | null;
     externalRef: string | null;
+    // These five were in the model and in the DTO but were NOT in the loader's `select`,
+    // so every request on the Requests page rendered with no dev label, no category (it
+    // silently fell back to the underlying type) and no link back to the client's own
+    // tracker — the one reason the intake API stores `externalUrl` at all.
+    label?: TaskLabel | null;
+    categoryId?: string | null;
+    categoryLabel?: string | null;
+    externalUrl?: string | null;
+    attachmentUrls?: unknown;
     source: string | null;
     taskId: string | null;
     createdAt: Date;
@@ -642,8 +1074,19 @@ async function buildDTO(
   },
   opts?: { includeUsers?: boolean },
 ): Promise<WikiDTO> {
-  // These 10 section loaders are independent — run them together instead of one
-  // round-trip after another (this ran on every wiki page load with zero caching).
+  // These 13 loaders are independent — run them together instead of one round-trip
+  // after another (this ran on every wiki page load with zero caching).
+  //
+  // ⚠️ `settle` rather than a bare `Promise.all`, and this is not belt-and-braces: an
+  // `orderBy` on a column that does not exist made `loadWikiInsights` reject, and because
+  // `Promise.all` rejects as a whole that 500'd EVERY client's wiki — not the Insights
+  // section, the entire page, including clients who had never enabled it. One optional
+  // section must not be able to take down the rest. Same shape as §35.1, where one failed
+  // GraphQL call silently discarded a whole repo scan.
+  //
+  // A failure is logged with the section's name, and that section falls back to its empty
+  // state — so it reads as "nothing here" rather than as a broken wiki, and the error is
+  // in the container logs rather than swallowed.
   const [
     blockers,
     timeline,
@@ -655,19 +1098,85 @@ async function buildDTO(
     headerLinks,
     documents,
     launchpad,
-  ] =
-    await Promise.all([
-      loadWikiBlockers(wiki.clientId),
-      loadWikiTimeline(wiki.clientId),
-      loadWikiDesignSystem(wiki.clientId),
-      loadWikiMonitors(wiki.clientId),
-      loadWikiCodeHandover(wiki.clientId),
-      loadWikiTeam(wiki.clientId),
-      loadWikiProductTeam(wiki.clientId),
-      loadWikiHeaderLinks(wiki.clientId),
-      loadWikiDocuments(wiki.clientId),
-      getLaunchpadByWikiId(wiki.id),
-    ]);
+    taskStatuses,
+    insights,
+    costs,
+    estimates,
+    comparisons,
+    sheets,
+    support,
+    standups,
+    metrics,
+    meetings,
+    clientPlatforms,
+    drive,
+  ] = await Promise.all([
+    settle("blockers", () => loadWikiBlockers(wiki.clientId), []),
+    settle(
+      "timeline",
+      () =>
+        loadWikiTimelineWithLinks(
+          wiki.clientId,
+          // `label` overrides the client's own name where somebody set one; the
+          // name is the right answer almost always.
+          (wiki.linkedClients ?? []).map((l) => ({
+            linkedClientId: l.linkedClientId,
+            name: l.label?.trim() || l.linkedClient.name,
+          })),
+        ),
+      { blocks: [], milestones: [], unassigned: [] },
+    ),
+    settle("designSystem", () => loadWikiDesignSystem(wiki.clientId), null),
+    settle("monitors", () => loadWikiMonitors(wiki.clientId), { enabled: false, monitors: [], incidents: [] }),
+    settle("codeHandover", () => loadWikiCodeHandover(wiki.clientId), { enabled: false, modules: [] }),
+    settle("team", () => loadWikiTeam(wiki.clientId), []),
+    settle("productTeam", () => loadWikiProductTeam(wiki.clientId), []),
+    settle("headerLinks", () => loadWikiHeaderLinks(wiki.clientId), {
+      platformName: wiki.client.name,
+      productionUrl: null,
+      stagingUrl: null,
+    }),
+    settle("documents", () => loadWikiDocuments(wiki.clientId), { enabled: false, documents: [] }),
+    settle("launchpad", () => getLaunchpadByWikiId(wiki.id), null),
+    settle(
+      "taskStatuses",
+      () => loadLinkedTaskStatuses((wiki.intakeItems ?? []).map((item) => item.taskId)),
+      new Map<string, TaskStatus>(),
+    ),
+    settle("insights", () => loadWikiInsights(wiki.clientId), { enabled: false, boards: [] }),
+    settle("costs", () => loadWikiCosts(wiki.clientId), {
+      enabled: false,
+      currency: "GBP",
+      headlineUsers: 1000,
+      items: [],
+      notes: null,
+      updatedAt: null,
+    }),
+    settle("estimates", () => loadWikiEstimates(wiki.clientId), EMPTY_ESTIMATES),
+    settle("comparisons", () => loadWikiComparisons(wiki.clientId), EMPTY_COMPARISONS),
+    settle("sheets", () => loadWikiSheets(wiki.clientId), EMPTY_SHEETS),
+    settle("support", () => loadWikiSupport(wiki.clientId), {
+      enabled: false,
+      linked: false,
+      current: null,
+      previous: null,
+      daysAllowance: null,
+      daysUsed: null,
+    }),
+    // Pushed AM/PM standups, today and the last two weeks. In the DTO rather
+    // than its own endpoint because it is indexed queries against our own database — no Slack, no
+    // external call — so it costs the page nothing and both audiences get the
+    // same answer. `settle` keeps a failure here from taking the wiki down.
+    settle("standups", () => loadClientStandups(wiki.clientId), {
+      today: { workDate: new Date().toISOString(), devs: [] },
+      history: [],
+    }),
+    // Stored snapshots only — never a call to the client's API on a page load.
+    settle("metrics", () => loadWikiMetrics(wiki.clientId), EMPTY_METRICS),
+    settle("meetings", () => loadWikiMeetings(wiki.clientId), EMPTY_MEETINGS),
+    settle("platforms", () => loadWikiPlatforms(wiki.clientId), EMPTY_PLATFORMS),
+    settle("drive", () => loadWikiDrive(wiki.clientId), EMPTY_DRIVE),
+  ]);
   return {
     id: wiki.id,
     clientId: wiki.clientId,
@@ -707,10 +1216,11 @@ async function buildDTO(
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(serializeCourseRequest),
+    courseFeed: parseFeedStatus(wiki.courseFeedStatus),
     intakeItems: (wiki.intakeItems ?? [])
       .slice()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(serializeWikiIntakeItem),
+      .map((item) => serializeWikiIntakeItem(item, taskStatuses)),
     intakeEnabled: wiki.intakeEnabled ?? true,
     intakeCategories: resolveIntakeCategories(wiki.intakeCategories),
     intakeCategoriesAreDefault: usesDefaultCategories(wiki.intakeCategories),
@@ -724,6 +1234,19 @@ async function buildDTO(
     headerLinks,
     documents,
     launchpad,
+    insights,
+    costs,
+    estimates,
+    comparisons,
+    sheets,
+    deliveryEnabled: wiki.deliveryEnabled ?? false,
+    roundupEnabled: wiki.roundupEnabled ?? false,
+    support,
+    standups,
+    metrics,
+    meetings,
+    clientPlatforms,
+    drive,
     users: opts?.includeUsers
       ? (wiki.wikiUsers ?? [])
           .slice()
@@ -739,7 +1262,16 @@ async function buildDTO(
   };
 }
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const WIKI_INCLUDE = {
+  linkedClients: {
+    orderBy: [{ orderKey: "asc" }, { createdAt: "asc" }],
+    include: { linkedClient: { select: { id: true, name: true } } },
+  },
   client: {
     select: {
       name: true,
@@ -766,6 +1298,15 @@ const WIKI_INCLUDE = {
       status: true,
       requestedBy: true,
       externalRef: true,
+      // ⚠️ These five were missing, and their absence was invisible because
+      // `serializeWikiIntakeItem` defaults each one to null rather than failing. Result:
+      // the Requests page showed every item's category as its underlying TYPE, never
+      // showed a dev label, and dropped the deep link back into the client's own tracker.
+      label: true,
+      categoryId: true,
+      categoryLabel: true,
+      externalUrl: true,
+      attachmentUrls: true,
       source: true,
       taskId: true,
       mime: true,
@@ -775,7 +1316,19 @@ const WIKI_INCLUDE = {
       createdAt: true,
       updatedAt: true,
       comments: {
-        select: { id: true, authorKind: true, authorName: true, body: true, createdAt: true },
+        // No `image`/`thumb` — same reason as the item's own image above.
+        select: {
+          id: true,
+          authorKind: true,
+          authorName: true,
+          body: true,
+          mentions: true,
+          createdAt: true,
+          editedAt: true,
+          deletedAt: true,
+          mime: true,
+          filename: true,
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -783,7 +1336,7 @@ const WIKI_INCLUDE = {
   wikiUsers: { select: { id: true, email: true, name: true, createdAt: true } },
   // platforms is a scalar Json field — included automatically via `include` on
   // the parent model, not via a relation. Listed here as a reminder.
-} as const;
+} as const satisfies Prisma.ClientWikiInclude;
 
 const PAGE_TYPE_TO_SECTION: Partial<Record<WikiPageType, string>> = {
   IA_GUIDE: "ia",
@@ -941,7 +1494,7 @@ export async function addChangelogEntry(
   });
 
   if (entry.status === "PENDING") {
-    void notifyClientSlackChangelogPending(entry.wikiId, entry);
+    notifyClientSlackChangelogPending(entry);
   }
   return serializeEntry(entry);
 }
@@ -955,28 +1508,58 @@ export async function addChangelogEntry(
  * clause is atomic at the database level — only one concurrent caller's
  * update can match a row still not-APPROVED, so only one gets count > 0.
  */
-async function markApprovedOnce(entryId: string): Promise<boolean> {
+async function markApprovedOnce(entryId: string, byName: string | null = null): Promise<boolean> {
   const result = await prisma.clientChangelogEntry.updateMany({
     where: { id: entryId, status: { not: "APPROVED" } },
-    data: { status: "APPROVED" },
+    data: { status: "APPROVED", approvedAt: new Date(), approvedByName: byName },
   });
   return result.count > 0;
 }
 
-/** Update the status of a single changelog entry. */
+/** Back to PENDING forgets who approved it: an old approval must not read as current. */
+const UNAPPROVED = { approvedAt: null, approvedByName: null } as const;
+
+/** Update the status of a single changelog entry. `byName` is who approved it, when approving. */
 export async function updateChangelogEntryStatus(
   entryId: string,
   status: WikiEntryStatus,
+  byName: string | null = null,
 ): Promise<ChangelogEntryRecord> {
-  const approvedNow = status === "APPROVED" && (await markApprovedOnce(entryId));
+  const approvedNow = status === "APPROVED" && (await markApprovedOnce(entryId, byName));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
-    data: { status },
+    data: status === "PENDING" ? { status, ...UNAPPROVED } : { status },
   });
   if (approvedNow) {
-    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+    notifyClientSlackChangelogApproved({ ...entry, approvedBy: byName });
   }
   return serializeEntry(entry);
+}
+
+/**
+ * Approve releases from the client's own wiki page (POST /api/wiki/[token]/changelog/approve).
+ * Only entries of THIS wiki, and only ones still pending: a client can approve, never un-approve,
+ * and an id from another client's wiki matches nothing. Returns how many were approved.
+ */
+export async function approveChangelogEntries(wikiId: string, ids: string[], byName: string): Promise<number> {
+  const pending = await prisma.clientChangelogEntry.findMany({
+    where: { wikiId, id: { in: ids }, status: { not: "APPROVED" } },
+    select: { id: true },
+  });
+  let approved = 0;
+  for (const { id } of pending) {
+    if (!(await markApprovedOnce(id, byName))) continue;
+    approved += 1;
+    const entry = await prisma.clientChangelogEntry.findUnique({ where: { id } });
+    if (entry) notifyClientSlackChangelogApproved({ ...entry, approvedBy: byName });
+  }
+  return approved;
+}
+
+/** The wiki a changelog entry belongs to, for scoping a write to the client in the URL. */
+export async function changelogEntryWikiId(entryId: string): Promise<string | null> {
+  const row = await prisma.clientChangelogEntry.findUnique({ where: { id: entryId }, select: { wikiId: true } });
+  return row?.wikiId ?? null;
 }
 
 /** Update an existing changelog entry's editable fields (by id). */
@@ -989,8 +1572,9 @@ export async function updateChangelogEntry(
     releasedAt?: string | null;
     status?: WikiEntryStatus;
   },
+  byName: string | null = null,
 ): Promise<ChangelogEntryRecord> {
-  const approvedNow = input.status === "APPROVED" && (await markApprovedOnce(entryId));
+  const approvedNow = input.status === "APPROVED" && (await markApprovedOnce(entryId, byName));
   const entry = await prisma.clientChangelogEntry.update({
     where: { id: entryId },
     data: {
@@ -1001,10 +1585,11 @@ export async function updateChangelogEntry(
         ? { releasedAt: input.releasedAt ? new Date(input.releasedAt) : null }
         : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.status === "PENDING" ? UNAPPROVED : {}),
     },
   });
   if (approvedNow) {
-    void notifyClientSlackChangelogApproved(entry.wikiId, entry);
+    notifyClientSlackChangelogApproved({ ...entry, approvedBy: byName });
   }
   return serializeEntry(entry);
 }
@@ -1369,15 +1954,34 @@ export async function ingestWikiItemsByToken(
 }
 
 /**
- * Shared body for both intake paths — the API's ingest token and the client's
- * own wiki share link. Takes a resolved wiki id so the CREDENTIAL question is
- * answered by the caller and this function only does the work.
+ * Shared body for every intake path — the API's ingest token, the client's own wiki
+ * share link, and the staff-side spreadsheet import. Takes a resolved wiki id so the
+ * CREDENTIAL question is answered by the caller and this function only does the work.
+ *
+ * The three differ in exactly three ways, so they are three options rather than three
+ * copies of the dedupe-and-create loop:
+ *
+ * - **`source`** — provenance, and `wiki-intake-limit.ts` counts only `"api"` rows.
+ * - **`skipQuota`** — the ceiling exists to stop a client's looping integration burying
+ *   the page. A Gitwork user pasting a sheet is not that, and the quota doc is explicit
+ *   that a client's misbehaving integration must never block the team filing by hand —
+ *   so an import must not be refused because the client's own API is at its limit.
+ * - **`notify`** — "New client request" told to the dev team, and the Slack ping to the
+ *   client's channel, are both statements that THE CLIENT asked for something. Firing
+ *   them when a Gitwork user imports their own backlog would be untrue.
  */
 async function ingestWikiItemsIntoWiki(
   wikiId: string,
   items: WikiItemIngestItem[],
-  opts: { dryRun?: boolean } = {},
+  opts: {
+    dryRun?: boolean;
+    source?: string;
+    skipQuota?: boolean;
+    notify?: boolean;
+  } = {},
 ): Promise<WikiItemIngestResult | null> {
+  const source = opts.source ?? "api";
+  const notify = opts.notify ?? true;
   const wiki = await prisma.clientWiki.findUnique({
     where: { id: wikiId },
     select: {
@@ -1400,7 +2004,7 @@ async function ingestWikiItemsIntoWiki(
   // Checked BEFORE any write: the token is the only gate on a public write
   // endpoint, and without a ceiling a looping integration could bury this page.
   // Throws a 429; existing items are untouched.
-  await assertWithinIntakeQuota(wiki.id);
+  if (!opts.skipQuota) await assertWithinIntakeQuota(wiki.id);
 
   const seenRefs = new Set(
     wiki.intakeItems.map((item) => item.externalRef).filter((ref): ref is string => Boolean(ref)),
@@ -1446,7 +2050,7 @@ async function ingestWikiItemsIntoWiki(
         attachmentUrls: safeIntakeLinks(raw.attachmentUrls),
         device: raw.device?.trim() || null,
         osVersion: raw.osVersion?.trim() || null,
-        source: "api",
+        source,
       },
     });
     created.push(serializeWikiIntakeItem(item));
@@ -1457,7 +2061,7 @@ async function ingestWikiItemsIntoWiki(
   // Flag new client requests to the client's attributed devs (clientTeam scope
   // means only devs assigned to this client are notified). No actorId — the
   // submitter is the client, not a workspace user, so nobody is excluded.
-  if (created.length > 0) {
+  if (created.length > 0 && notify) {
     const reqTitle = (n: number) =>
       n === 1 ? `New client request: ${created[0].title}` : `${n} client requests to review`;
     dispatchNotification({
@@ -1478,6 +2082,35 @@ async function ingestWikiItemsIntoWiki(
   }
 
   return { client, created, skipped, count: created.length };
+}
+
+/**
+ * Import requests from a pasted or uploaded spreadsheet. Staff-side, by client slug.
+ *
+ * Deliberately routed through the SAME `ingestWikiItemsIntoWiki` body the intake API
+ * uses, so an imported row is deduped by exactly the rules an API-pushed one is: same
+ * `externalRef` → skipped, same title as an existing OPEN request → skipped. That
+ * matters more here than on the API path, because the natural way to use an import is to
+ * re-paste a sheet after editing it, and a second copy of every row would be the failure.
+ *
+ * Returns `{ created, skipped, count }`; `skipped` is an outcome, not an error.
+ */
+export async function importWikiIntakeItems(
+  clientId: string,
+  items: WikiItemIngestItem[],
+  opts: { dryRun?: boolean } = {},
+): Promise<WikiItemIngestResult | null> {
+  const wiki = await prisma.clientWiki.findUnique({
+    where: { clientId },
+    select: { id: true },
+  });
+  if (!wiki) return null;
+  return ingestWikiItemsIntoWiki(wiki.id, items, {
+    dryRun: opts.dryRun,
+    source: "import",
+    skipQuota: true,
+    notify: false,
+  });
 }
 
 /**
@@ -1608,7 +2241,9 @@ export async function deleteWikiIntakeItemByShareToken(
 ): Promise<ClientIntakeMutation> {
   const found = await findClientMutableItem(token, itemId);
   if (!found.ok) return found;
+  const keys = await intakeItemStorageKeys(found.item.id);
   const row = await prisma.clientWikiIntakeItem.delete({ where: { id: found.item.id } });
+  await Promise.all(keys.map((k) => deleteStoredUpload(k)));
   return { ok: true, item: serializeWikiIntakeItem(row) };
 }
 
@@ -1713,7 +2348,11 @@ export async function listWikiIntakeItemsByToken(
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(opts.limit ?? 50, 1), 200),
   });
-  return rows.map(serializeWikiIntakeItem);
+  // Carry the live stage here too. This is the endpoint an integrator polls to reconcile
+  // their own tracker, so "has Gitwork actually shipped this yet" is precisely the
+  // question being asked — and before this it could only be answered as PROMOTED forever.
+  const taskStatuses = await loadLinkedTaskStatuses(rows.map((row) => row.taskId));
+  return rows.map((row) => serializeWikiIntakeItem(row, taskStatuses));
 }
 
 export async function addWikiIntakeItem(
@@ -1814,47 +2453,158 @@ export async function deleteWikiIntakeItem(id: string): Promise<void> {
       type: true, status: true, priority: true, taskId: true,
     },
   });
+  const keys = await intakeItemStorageKeys(id);
   await prisma.clientWikiIntakeItem.delete({ where: { id } });
+  await Promise.all(keys.map((k) => deleteStoredUpload(k)));
   if (row) {
     void deliverIntakeWebhook({ wikiId: row.wikiId, event: "request.deleted", item: row });
   }
 }
 
-function serializeWikiIntakeComment(c: {
+/** The comment columns the serializer reads. Image bytes are never among them. */
+interface SerializableComment {
   id: string;
   authorKind: WikiIntakeCommentAuthorKind;
   authorName: string;
   body: string;
+  mentions?: unknown;
   createdAt: Date;
-}): WikiIntakeCommentRecord {
+  editedAt?: Date | null;
+  deletedAt?: Date | null;
+  mime?: string | null;
+  filename?: string | null;
+}
+
+/**
+ * ⚠️ A deleted reply keeps its row (so the thread keeps its shape) but its body,
+ * mentions and image are blanked HERE, on the server — never sent to a browser and
+ * hidden with CSS, where anyone could read them in the network tab.
+ */
+export function serializeWikiIntakeComment(c: SerializableComment): WikiIntakeCommentRecord {
+  const deleted = Boolean(c.deletedAt);
   return {
     id: c.id,
     authorKind: c.authorKind,
     authorName: c.authorName,
-    body: c.body,
+    body: deleted ? "" : c.body,
+    mentions: deleted ? [] : parseStoredMentions(c.mentions),
     createdAt: c.createdAt.toISOString(),
+    editedAt: !deleted && c.editedAt ? c.editedAt.toISOString() : null,
+    deleted,
+    hasImage: !deleted && Boolean(c.mime),
+    imageFilename: deleted ? null : (c.filename ?? null),
+    canEdit: false,
+    canDelete: false,
   };
 }
 
-/** A Gitwork team member replies on a request. Internal — no token needed;
- *  the route resolves the caller via the session and passes their identity. */
+/** The columns a comment's ownership is decided on — see commentPermissions. */
+const COMMENT_OWNERSHIP_SELECT = {
+  id: true,
+  authorKind: true,
+  authorUserId: true,
+  authorWikiUserId: true,
+  deletedAt: true,
+} as const satisfies Prisma.ClientWikiIntakeCommentSelect;
+
+/** Every column the serializer reads, plus ownership — never the image bytes. */
+const COMMENT_ROW_SELECT = {
+  ...COMMENT_OWNERSHIP_SELECT,
+  authorName: true,
+  body: true,
+  mentions: true,
+  createdAt: true,
+  editedAt: true,
+  mime: true,
+  filename: true,
+} as const satisfies Prisma.ClientWikiIntakeCommentSelect;
+
+/**
+ * Mark which replies the current viewer may edit or delete. The wiki DTO is built
+ * without knowing who is looking, so this runs once per request on the way out — one
+ * indexed read for the comment owners, and the author ids never leave the server.
+ */
+export async function applyCommentViewer<T extends { intakeItems: WikiIntakeItemRecord[] }>(
+  dto: T,
+  viewer: CommentViewer,
+): Promise<T> {
+  if (!viewer) return dto;
+  const ids = dto.intakeItems.flatMap((i) => (i.comments ?? []).map((c) => c.id));
+  if (ids.length === 0) return dto;
+  const owners = await prisma.clientWikiIntakeComment.findMany({
+    where: { id: { in: ids } },
+    select: COMMENT_OWNERSHIP_SELECT,
+  });
+  const byId = new Map(owners.map((o) => [o.id, commentPermissions(o, viewer)]));
+  return {
+    ...dto,
+    intakeItems: dto.intakeItems.map((item) => ({
+      ...item,
+      comments: (item.comments ?? []).map((c) => ({ ...c, ...(byId.get(c.id) ?? { canEdit: false, canDelete: false }) })),
+    })),
+  };
+}
+
+/** Serialize one comment row for the viewer who just acted on it. */
+function serializeForViewer(
+  row: SerializableComment & { authorUserId: string | null; authorWikiUserId: string | null },
+  viewer: CommentViewer,
+): WikiIntakeCommentRecord {
+  return { ...serializeWikiIntakeComment(row), ...commentPermissions({ ...row, deletedAt: row.deletedAt ?? null }, viewer) };
+}
+
+/** Store only `{ id, name, kind }` — the email used to find someone in Slack is
+ *  never written onto a reply the client can read. */
+function storableMentions(mentions: readonly StoredMention[] | undefined): Prisma.InputJsonValue | undefined {
+  if (!mentions || mentions.length === 0) return undefined;
+  return mentions.map(({ id, name, kind }) => ({ id, name, kind }));
+}
+
+/**
+ * A Gitwork team member replies on a request. Internal — no token needed; the
+ * route resolves the caller via the session and passes their identity.
+ *
+ * Scoped to the client in the URL: the item must belong to `slug`'s wiki. Before
+ * this, any signed-in user could post onto any request by id, whatever client the
+ * route named. Returns null when it doesn't, so the route can 404.
+ */
 export async function addWikiIntakeComment(
+  slug: string,
   itemId: string,
-  author: { userId: string; name: string },
+  author: { userId: string; name: string; isAdmin?: boolean },
   body: string,
-): Promise<WikiIntakeCommentRecord> {
+  mentions?: readonly StoredMention[],
+  image?: ReplyImageInput | null,
+): Promise<(WikiIntakeCommentRecord & { wikiId: string }) | null> {
   const trimmed = body.trim();
-  if (!trimmed) throw new Error("Comment can't be empty.");
+  // Words, a screenshot, or both — a screenshot-only reply is a real reply.
+  if (!trimmed && !image) throw new Error("Comment can't be empty.");
+  const item = await prisma.clientWikiIntakeItem.findFirst({
+    where: { id: itemId, wiki: { client: { slug } } },
+    select: { id: true, wikiId: true },
+  });
+  if (!item) return null;
+  const imageData = await replyImageData(item.id, image);
   const comment = await prisma.clientWikiIntakeComment.create({
     data: {
-      intakeItemId: itemId,
+      intakeItemId: item.id,
       authorKind: "TEAM",
       authorName: author.name,
       authorUserId: author.userId,
       body: trimmed,
+      mentions: trimmed ? storableMentions(mentions) : undefined,
+      ...imageData,
     },
+    select: COMMENT_ROW_SELECT,
   });
-  return serializeWikiIntakeComment(comment);
+  const viewer: CommentViewer = { kind: "team", userId: author.userId, isAdmin: Boolean(author.isAdmin) };
+  return { ...serializeForViewer(comment, viewer), wikiId: item.wikiId };
+}
+
+/** The wiki a client slug owns, if it has one — for the internal mention routes. */
+export async function wikiIdForClientSlug(slug: string): Promise<string | null> {
+  const wiki = await prisma.clientWiki.findFirst({ where: { client: { slug } }, select: { id: true } });
+  return wiki?.id ?? null;
 }
 
 /**
@@ -1872,15 +2622,27 @@ export async function addWikiIntakeComment(
  * that isn't theirs — same non-distinguishing failure as the rest of the
  * token-scoped functions, so a caller can't use the error to probe for id
  * existence.
+ *
+ * `authorWikiUserId` / `authorUserId` stamp WHO wrote it, so they can edit or delete
+ * it later (see commentPermissions). The route passes whichever identity it verified.
  */
 export async function addWikiIntakeCommentByToken(
   token: string,
   itemId: string,
-  input: { authorKind: WikiIntakeCommentAuthorKind; authorName: string; body: string },
+  input: {
+    authorKind: WikiIntakeCommentAuthorKind;
+    authorName: string;
+    body: string;
+    mentions?: readonly StoredMention[];
+    authorWikiUserId?: string | null;
+    authorUserId?: string | null;
+    /** A screenshot sent with the reply. With one, the text may be empty. */
+    image?: ReplyImageInput | null;
+  },
 ): Promise<WikiIntakeCommentRecord | null> {
   const authorName = input.authorName.trim();
   const body = input.body.trim();
-  if (!authorName || !body) return null;
+  if (!authorName || (!body && !input.image)) return null;
 
   const wikiId = await resolveWikiIdByPublicToken(token);
   if (!wikiId) return null;
@@ -1893,10 +2655,173 @@ export async function addWikiIntakeCommentByToken(
   });
   if (!item) return null;
 
+  const imageData = await replyImageData(item.id, input.image);
   const comment = await prisma.clientWikiIntakeComment.create({
-    data: { intakeItemId: item.id, authorKind: input.authorKind, authorName, body },
+    data: {
+      intakeItemId: item.id,
+      authorKind: input.authorKind,
+      authorName,
+      body,
+      mentions: body ? storableMentions(input.mentions) : undefined,
+      ...imageData,
+      // A client reply is owned by the wiki user who wrote it; a staff preview reply by
+      // the Foundry user. Never both.
+      authorWikiUserId: input.authorKind === "CLIENT" ? (input.authorWikiUserId ?? null) : null,
+      authorUserId: input.authorKind === "TEAM" ? (input.authorUserId ?? null) : null,
+    },
+    select: COMMENT_ROW_SELECT,
   });
-  return serializeWikiIntakeComment(comment);
+  const viewer: CommentViewer =
+    input.authorKind === "CLIENT" && input.authorWikiUserId
+      ? { kind: "client", wikiUserId: input.authorWikiUserId }
+      : null;
+  return serializeForViewer(comment, viewer);
+}
+
+// ─── Editing, deleting and attaching to a reply ─────────────────────────────
+
+/** Thrown when the viewer may not touch this reply — the route maps it to 403. */
+export class CommentForbiddenError extends Error {
+  readonly status = 403;
+  constructor(message = "You can only change your own replies.") {
+    super(message);
+    this.name = "CommentForbiddenError";
+  }
+}
+
+/**
+ * Where a comment is looked up: by client slug (internal, session-authed) or by the
+ * public wiki token. Either way the comment must sit on a request in THAT wiki — a
+ * comment id from another client 404s rather than being editable through this one.
+ */
+export type CommentScope = { slug: string } | { token: string };
+
+/** A screenshot sent in the same request as a new reply. */
+export type ReplyImageInput = { bytes: Buffer; mime: string; filename: string | null };
+
+/** Transcode a reply's screenshot into the columns it is stored in (nothing when absent). */
+/** A screenshot posted WITH a reply goes through the same storage layer as one
+ *  attached afterwards — the row's columns by default, object storage with only
+ *  `storageKey` when configured. The reply id doesn't exist yet, so the key is
+ *  namespaced under its request. */
+async function replyImageData(itemId: string, image: ReplyImageInput | null | undefined) {
+  if (!image) return {};
+  const transcoded = await transcodeIntakeImage(image.bytes, image.mime);
+  const placed = await placeIntakeImage(`wiki-intake-comment/${itemId}`, transcoded);
+  return { ...placed, mime: transcoded.mime, filename: image.filename };
+}
+
+async function findScopedComment(scope: CommentScope, itemId: string, commentId: string) {
+  let wikiWhere: Prisma.ClientWikiIntakeItemWhereInput;
+  if ("slug" in scope) {
+    wikiWhere = { wiki: { client: { slug: scope.slug } } };
+  } else {
+    const wikiId = await resolveWikiIdByPublicToken(scope.token);
+    if (!wikiId) return null;
+    wikiWhere = { wikiId, wiki: { intakeEnabled: true } };
+  }
+  return prisma.clientWikiIntakeComment.findFirst({
+    where: { id: commentId, intakeItemId: itemId, intakeItem: wikiWhere },
+    select: { ...COMMENT_ROW_SELECT, storageKey: true, intakeItem: { select: { wikiId: true } } },
+  });
+}
+
+/** Edit a reply's text. Mentions are re-resolved by the route and replaced wholesale. */
+export async function editWikiIntakeComment(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  viewer: CommentViewer,
+  body: string,
+  mentions?: readonly StoredMention[],
+): Promise<WikiIntakeCommentRecord | null> {
+  const trimmed = body.trim();
+  if (!trimmed) throw new Error("Comment can't be empty.");
+  const row = await findScopedComment(scope, itemId, commentId);
+  if (!row) return null;
+  if (!commentPermissions(row, viewer).canEdit) throw new CommentForbiddenError();
+  const updated = await prisma.clientWikiIntakeComment.update({
+    where: { id: row.id },
+    data: { body: trimmed, mentions: storableMentions(mentions) ?? Prisma.DbNull, editedAt: new Date() },
+    select: COMMENT_ROW_SELECT,
+  });
+  return serializeForViewer(updated, viewer);
+}
+
+/**
+ * Soft-delete a reply. The row stays so the conversation reads in order ("Reply
+ * deleted" between two replies, not a reply that seems to answer nothing), but the
+ * text, mentions and screenshot are cleared from the database too — deleting means
+ * gone, not hidden.
+ */
+export async function deleteWikiIntakeComment(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  viewer: CommentViewer,
+): Promise<WikiIntakeCommentRecord | null> {
+  const row = await findScopedComment(scope, itemId, commentId);
+  if (!row) return null;
+  if (!commentPermissions(row, viewer).canDelete) throw new CommentForbiddenError();
+  const previousKey = row.storageKey;
+  const updated = await prisma.clientWikiIntakeComment.update({
+    where: { id: row.id },
+    data: {
+      deletedAt: new Date(),
+      body: "",
+      mentions: Prisma.DbNull,
+      image: null,
+      thumb: null,
+      mime: null,
+      filename: null,
+      storageKey: null,
+    },
+    select: COMMENT_ROW_SELECT,
+  });
+  await deleteStoredUpload(previousKey);
+  return serializeForViewer(updated, viewer);
+}
+
+/** Attach (or replace) the screenshot on a reply. Only someone who may edit the reply. */
+export async function attachWikiIntakeCommentImage(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  viewer: CommentViewer,
+  bytes: Buffer,
+  mime: string,
+  filename: string | null,
+): Promise<WikiIntakeCommentRecord | null> {
+  const row = await findScopedComment(scope, itemId, commentId);
+  if (!row) return null;
+  if (!commentPermissions(row, viewer).canEdit) throw new CommentForbiddenError();
+  const transcoded = await transcodeIntakeImage(bytes, mime);
+  const previousKey = row.storageKey;
+  const placed = await placeIntakeImage(`wiki-intake-comment/${row.id}`, transcoded);
+  const updated = await prisma.clientWikiIntakeComment.update({
+    where: { id: row.id },
+    data: { ...placed, mime: transcoded.mime, filename },
+    select: COMMENT_ROW_SELECT,
+  });
+  // The replaced screenshot, if it was in object storage — only now the row no longer points at it.
+  if (previousKey !== placed.storageKey) await deleteStoredUpload(previousKey);
+  return serializeForViewer(updated, viewer);
+}
+
+/** Serve a reply's screenshot — the full image, or its thumb. Never for a deleted reply. */
+export async function getWikiIntakeCommentImageBytes(
+  scope: CommentScope,
+  itemId: string,
+  commentId: string,
+  variant: "full" | "thumb" = "full",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  const found = await findScopedComment(scope, itemId, commentId);
+  if (!found || found.deletedAt) return null;
+  const row = await prisma.clientWikiIntakeComment.findUnique({
+    where: { id: found.id },
+    select: INTAKE_IMAGE_SELECT,
+  });
+  return readIntakeImage(row, variant);
 }
 
 async function nextWikiPromotedTaskOrderKey(workspaceId: string, clientId: string): Promise<number> {
@@ -1951,17 +2876,27 @@ export async function promoteWikiIntakeItemToTask(
 
   // Carry the request's screenshot over to the task so the dev picking it up
   // sees it immediately, instead of having to go dig it up in the wiki.
-  if (item.image && item.mime) {
-    await prisma.taskAttachment.create({
-      data: {
-        taskId: task.id,
-        uploadedById: userId,
-        image: item.image,
-        thumb: item.thumb,
-        mime: item.mime,
-        filename: item.filename,
-      },
-    });
+  // Task attachments stay in Postgres, so an image in object storage is fetched and
+  // copied in rather than shared by key (deleting the request must not break the task).
+  if ((item.image || item.storageKey) && item.mime) {
+    const [image, thumb] = item.storageKey
+      ? await Promise.all([
+          readStoredUpload({ storageKey: item.storageKey, bytes: null }),
+          readStoredUpload({ storageKey: item.storageKey, bytes: null }, "thumb"),
+        ])
+      : [item.image, item.thumb];
+    if (image) {
+      await prisma.taskAttachment.create({
+        data: {
+          taskId: task.id,
+          uploadedById: userId,
+          image: bytesForPrisma(image),
+          thumb: thumb ? bytesForPrisma(thumb) : null,
+          mime: item.mime,
+          filename: item.filename,
+        },
+      });
+    }
   }
 
   const updated = await prisma.clientWikiIntakeItem.update({
@@ -2052,6 +2987,63 @@ async function transcodeIntakeImageUnsafe(
   return { bytes: storedBytes, thumb, mime: storedMime };
 }
 
+/**
+ * Where a transcoded screenshot's bytes go: the row's image/thumb columns (the
+ * default `postgres` driver) or object storage with only `storageKey` on the row.
+ * The result spreads straight into the row update.
+ */
+async function placeIntakeImage(
+  namespace: string,
+  transcoded: { bytes: Buffer; thumb: Buffer; mime: string },
+): Promise<{ image: Uint8Array<ArrayBuffer> | null; thumb: Uint8Array<ArrayBuffer> | null; storageKey: string | null }> {
+  const placed = await placeUpload(namespace, {
+    bytes: transcoded.bytes,
+    thumb: transcoded.thumb,
+    contentType: transcoded.mime,
+  });
+  return {
+    image: placed.bytes ? bytesForPrisma(placed.bytes) : null,
+    thumb: placed.thumb ? bytesForPrisma(placed.thumb) : null,
+    storageKey: placed.storageKey,
+  };
+}
+
+const INTAKE_IMAGE_SELECT = {
+  image: true,
+  thumb: true,
+  mime: true,
+  storageKey: true,
+} as const satisfies Prisma.ClientWikiIntakeItemSelect & Prisma.ClientWikiIntakeCommentSelect;
+
+/** A request's or reply's screenshot, from object storage or its columns. */
+async function readIntakeImage(
+  row: { image: Uint8Array | null; thumb: Uint8Array | null; mime: string | null; storageKey: string | null } | null,
+  variant: "full" | "thumb",
+): Promise<{ bytes: Buffer; mime: string } | null> {
+  if (!row || !row.mime || (!row.image && !row.storageKey)) return null;
+  const bytes = await readStoredUpload({ storageKey: row.storageKey, bytes: row.image, thumb: row.thumb }, variant);
+  if (!bytes) return null;
+  // A thumb is always a server-generated JPEG; with no thumb the full image is
+  // served under the same label, exactly as the column reads always did.
+  return variant === "thumb" ? { bytes, mime: "image/jpeg" } : { bytes, mime: row.mime };
+}
+
+/**
+ * Object-storage keys held by a request and its replies — read BEFORE the request is
+ * deleted, because the cascade takes the replies with it and the bucket is not part
+ * of the database transaction.
+ */
+async function intakeItemStorageKeys(itemId: string): Promise<string[]> {
+  const [item, comments] = await Promise.all([
+    prisma.clientWikiIntakeItem.findUnique({ where: { id: itemId }, select: { storageKey: true } }),
+    prisma.clientWikiIntakeComment.findMany({
+      where: { intakeItemId: itemId, storageKey: { not: null } },
+      select: { storageKey: true },
+    }),
+  ]);
+  return [item?.storageKey, ...comments.map((c) => c.storageKey)].filter((k): k is string => !!k);
+}
+
 /** Attach (or replace) a screenshot on a request — internal, workspace-authed path. */
 export async function attachWikiIntakeItemImage(
   clientId: string,
@@ -2062,19 +3054,18 @@ export async function attachWikiIntakeItemImage(
 ): Promise<WikiIntakeItemRecord> {
   const item = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wiki: { clientId } },
-    select: { id: true },
+    select: { id: true, storageKey: true },
   });
   if (!item) throw new Error("Wiki intake item not found");
   const transcoded = await transcodeIntakeImage(bytes, mime);
+  const previousKey = item.storageKey;
+  const placed = await placeIntakeImage(`wiki-intake-item/${itemId}`, transcoded);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: {
-      image: bytesForPrisma(transcoded.bytes),
-      thumb: bytesForPrisma(transcoded.thumb),
-      mime: transcoded.mime,
-      filename,
-    },
+    data: { ...placed, mime: transcoded.mime, filename },
   });
+  // The replaced screenshot, if it was in object storage — only now the row no longer points at it.
+  if (previousKey !== placed.storageKey) await deleteStoredUpload(previousKey);
   return serializeWikiIntakeItem(row);
 }
 
@@ -2098,19 +3089,18 @@ export async function attachWikiIntakeItemImageByToken(
   if (!wiki || !wiki.intakeEnabled) return null;
   const item = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wikiId: wiki.id },
-    select: { id: true },
+    select: { id: true, storageKey: true },
   });
   if (!item) return null;
   const transcoded = await transcodeIntakeImage(bytes, mime);
+  const previousKey = item.storageKey;
+  const placed = await placeIntakeImage(`wiki-intake-item/${itemId}`, transcoded);
   const row = await prisma.clientWikiIntakeItem.update({
     where: { id: itemId },
-    data: {
-      image: bytesForPrisma(transcoded.bytes),
-      thumb: bytesForPrisma(transcoded.thumb),
-      mime: transcoded.mime,
-      filename,
-    },
+    data: { ...placed, mime: transcoded.mime, filename },
   });
+  // The replaced screenshot, if it was in object storage — only now the row no longer points at it.
+  if (previousKey !== placed.storageKey) await deleteStoredUpload(previousKey);
   return serializeWikiIntakeItem(row);
 }
 
@@ -2122,11 +3112,9 @@ export async function getWikiIntakeItemImageBytes(
 ): Promise<{ bytes: Buffer; mime: string } | null> {
   const row = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wiki: { clientId } },
-    select: { image: true, thumb: true, mime: true },
+    select: INTAKE_IMAGE_SELECT,
   });
-  if (!row || !row.mime || !row.image) return null;
-  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
-  return { bytes: Buffer.from(row.image), mime: row.mime };
+  return readIntakeImage(row, variant);
 }
 
 /** Serve a request's screenshot — public, token-authed path. */
@@ -2142,11 +3130,9 @@ export async function getWikiIntakeItemImageBytesByToken(
   const wiki = { id: wikiId };
   const row = await prisma.clientWikiIntakeItem.findFirst({
     where: { id: itemId, wikiId: wiki.id },
-    select: { image: true, thumb: true, mime: true },
+    select: INTAKE_IMAGE_SELECT,
   });
-  if (!row || !row.mime || !row.image) return null;
-  if (variant === "thumb") return { bytes: Buffer.from(row.thumb ?? row.image), mime: "image/jpeg" };
-  return { bytes: Buffer.from(row.image), mime: row.mime };
+  return readIntakeImage(row, variant);
 }
 
 /** Toggle public sharing. Mints a share token on first enable. */
@@ -2317,6 +3303,17 @@ const SHAREABLE_SECTIONS = [
   // token-only; writes still require the wiki-access cookie (see launchpad-access.ts),
   // so a link recipient can see what is being asked of them but cannot answer it.
   "launchpad",
+  "insights",
+  "costs",
+  "estimates",
+  "comparisons",
+  "sheets",
+  "roundup",
+  "delivery",
+  "support",
+  "metrics",
+  "meetings",
+  "platforms",
   "code-handover",
   "design-system",
   "ia",
@@ -2376,7 +3373,52 @@ export async function getPublicWiki(token: string): Promise<WikiDTO | null> {
     include: WIKI_INCLUDE,
   });
   if (!wiki) return null;
-  return buildDTO(wiki);
+  return forPublic(await buildDTO(wiki));
+}
+
+/** Strip what only Gitwork should see from a DTO that is about to leave on a share token. */
+function forPublic(dto: WikiDTO): WikiDTO {
+  // Hidden metrics and the metrics endpoint/token state are Gitwork's settings, not the
+  // client's data — removed here, not merely flagged, so they never reach the browser.
+  const trimmed: WikiDTO = {
+    ...dto,
+    courseFeed: null,
+    metrics: forPublicMetrics(dto.metrics),
+    // A table drafted while the section is off, or one with no columns or features yet,
+    // is Gitwork's work in progress — it does not leave the server.
+    comparisons: dto.comparisons.enabled
+      ? { enabled: true, comparisons: dto.comparisons.comparisons.filter(isPublishableComparison) }
+      : { enabled: false, comparisons: [] },
+    // Deleted rows and who on our team holds each task stay on the server; nothing at all
+    // leaves while the section is off.
+    sheets: forPublicSheets(dto.sheets),
+    // Whose Google account reads the folder for the client is ours, not theirs.
+    drive: forPublicDrive(dto.drive),
+    // A heartbeat's ping URL is its credential — anyone holding it can mark the job healthy.
+    // Header names say how a client's API is protected; internal incident notes and who on our
+    // team picked an incident up are ours.
+    monitors: {
+      ...dto.monitors,
+      monitors: dto.monitors.monitors.map((m) => {
+        const base = { ...m, headerNames: [], hasBody: false };
+        return m.heartbeat ? { ...base, target: "", heartbeat: { ...m.heartbeat, pingUrl: null } } : base;
+      }),
+      incidents: (dto.monitors.incidents ?? []).map(publicIncident),
+    },
+  };
+
+  // ⚠️ Computed on the TRIMMED copy, never on `dto`. The predicates read the very
+  // arrays this function filters — `metrics.metrics.length`,
+  // `comparisons.comparisons`, `sheets.sheets` — so computing it first would list a
+  // section whose content has since been removed from the client's copy, which is
+  // exactly the blank page the predicates exist to prevent.
+  //
+  // Sending the list at all is what stops a second reader of this wiki inventing its
+  // own answer. The iOS app mirrored `clientVisibleSections` by hand and had already
+  // drifted: a different order, and two predicates that disagreed (`metrics` without
+  // its `source` check, `estimates` without `isPlannable`). One list, from the one
+  // function, and a client sees the same sections in the same order wherever they look.
+  return { ...trimmed, visibleSections: clientVisibleSections(trimmed) };
 }
 
 /**
@@ -2391,7 +3433,7 @@ export async function resolvePublicWiki(
     where: { shareToken: token, shareEnabled: true },
     include: WIKI_INCLUDE,
   });
-  if (whole) return { wiki: await buildDTO(whole), onlySection: null };
+  if (whole) return { wiki: withPublicAvatars(forPublic(await buildDTO(whole)), token), onlySection: null };
 
   // Otherwise look for a per-section token.
   const bySection = await prisma.clientWiki.findFirst({
@@ -2405,7 +3447,17 @@ export async function resolvePublicWiki(
       : {};
   const section = Object.keys(map).find((k) => map[k] === token) ?? null;
   if (!section) return null;
-  return { wiki: await buildDTO(bySection), onlySection: section };
+  return { wiki: withPublicAvatars(forPublic(await buildDTO(bySection)), token), onlySection: section };
+}
+
+/**
+ * Point uploaded team photos at the wiki-scoped avatar route. The signed-in route
+ * 401s for a client, which showed every uploaded photo as a broken image on the share
+ * link (src/lib/wiki-team-avatar.ts). Team lists are the only avatars in the DTO.
+ */
+function withPublicAvatars(dto: WikiDTO, token: string): WikiDTO {
+  const fix = (m: WikiTeamMember): WikiTeamMember => ({ ...m, avatarUrl: publicTeamAvatarUrl(token, m.avatarUrl) });
+  return { ...dto, team: dto.team.map(fix), productTeam: dto.productTeam.map(fix) };
 }
 
 /**

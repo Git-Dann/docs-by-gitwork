@@ -5,6 +5,7 @@ import { EnvelopeIcon } from "@heroicons/react/24/solid";
 import { useQuery } from "@tanstack/react-query";
 import { getGmailMessages } from "@/lib/api";
 import type { WidgetSize } from "@/components/app-overview";
+import { SkeletonWidget } from "@/components/ui/motion/skeleton";
 
 function formatDate(dateStr: string): string {
   try {
@@ -36,7 +37,7 @@ export default function GmailWidget({ size, index }: { size: WidgetSize; index: 
   });
 
   if (isLoading) {
-    return <div className="h-full animate-pulse rounded-[6px] bg-[var(--surface-1)]" />;
+    return <SkeletonWidget />;
   }
 
   if (!data?.connected) {

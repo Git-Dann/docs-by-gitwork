@@ -4,6 +4,11 @@ import { assertCron } from "@/server/auth/cron";
 import { prisma } from "@/lib/prisma";
 import { drainJobs } from "@/server/jobs/runner";
 import { enqueueJob } from "@/server/jobs/queue";
+import { checkMonitorsWatchdog } from "@/server/wiki-monitors";
+import { checkMonitorExpiries } from "@/server/wiki-monitor-expiry";
+import { refreshRunningMonths } from "@/server/wiki-metrics";
+import { sendHrDigests } from "@/server/hr/digest";
+import { startDueAnswerRuns } from "@/server/ai-answers";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -55,7 +60,50 @@ export async function GET(request: NextRequest) {
     // ── Drain the queue ──
     const drain = await drainJobs({ limit: DRAIN_LIMIT });
 
-    return apiOk({ reconciled, ...drain });
+    // ── Uptime-monitor watchdog ──
+    // Here, not in the wiki-monitors cron it watches: if that cron stops, a check of its own
+    // could never say so. Monitors went unchecked for 2½ months (Aug–Oct 2026) unnoticed.
+    // A failure here must not fail the job worker.
+    const monitors = await checkMonitorsWatchdog().catch((err) => {
+      console.error("[jobs] monitor watchdog failed", err);
+      return { stale: 0 };
+    });
+
+    // ── Certificate + domain expiry for monitors ── (a few per tick; read twice / once a day)
+    const expiries = await checkMonitorExpiries().catch((err) => {
+      console.error("[jobs] monitor expiry checks failed", err);
+      return null;
+    });
+
+    // ── Wiki Metrics: the month still running, every 15 minutes ── (reads capture times only
+    // unless one is over an hour old; a failure here must not fail the job worker)
+    const metrics = await refreshRunningMonths().catch((err) => {
+      console.error("[jobs] running-month metrics refresh failed", err);
+      return null;
+    });
+
+    // ── HR's Monday digest ── (does nothing outside Monday 08:00+ UK, or once sent this week)
+    const hrDigest = await sendHrDigests().catch((err) => {
+      console.error("[jobs] HR digest failed", err);
+      return null;
+    });
+
+    // ── Pulse → AI search: weekly buyer questions ── (starts a run and returns; the run
+    // carries on in the background and the next tick sees it as running)
+    const aiAnswers = await startDueAnswerRuns().catch((err) => {
+      console.error("[jobs] AI answers start failed", err);
+      return null;
+    });
+
+    return apiOk({
+      reconciled,
+      ...drain,
+      staleMonitors: monitors.stale,
+      monitorExpiries: expiries,
+      metricsRefreshed: metrics?.refreshed.length ?? null,
+      hrDigest,
+      aiAnswers,
+    });
   } catch (error) {
     return fromError(error);
   }

@@ -1,10 +1,12 @@
 "use client";
 
+import { ADVERTISED_CHECK_COUNT_LABEL } from "@/server/checks-registry";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useSession } from "next-auth/react";
-import { signInWithGoogle } from "./actions";
+import { signInWithGoogle, signInWithPassword } from "./actions";
 
 // Match the client portal login (src/components/portal/portal-login-form.tsx):
 // warm cream, violet accent (NOT the Foundry blue token), DM Serif headings,
@@ -26,7 +28,7 @@ const PAGE_BG = "#EDE8E1";
 const PANEL = "#FFFFFF";
 
 const FEATURES = [
-  { number: "01", name: "Pulse", description: "500+ automated project checks — AI gap analysis and fix-agent PRs in minutes." },
+  { number: "01", name: "Pulse", description: `${ADVERTISED_CHECK_COUNT_LABEL} automated project checks — AI gap analysis and fix-agent PRs in minutes.` },
   { number: "02", name: "Study", description: "Multi-agent user research: persona interviews, synthesis, and shareable reports." },
   { number: "03", name: "Docs", description: "Proposal builder with costing, timelines, and one-click PDF export." },
 ];
@@ -128,7 +130,12 @@ function LoginForm() {
 
           {authError && (
             <p className="mt-4 rounded-[12px] px-3.5 py-3 text-[13px]" style={{ background: "rgba(225,29,72,0.08)", color: "#be123c" }}>
-              Sign-in failed. Make sure you&apos;re using your @gitwork.co.uk account.
+              {/* An archived or removed member gets their own message. The generic one
+                  tells them to use their @gitwork.co.uk account — which they are — and
+                  reads like a broken Google sign-in rather than a decision someone made. */}
+              {authError === "AccessRevoked"
+                ? "Your access to Foundry has been removed. If you think that's a mistake, ask a Foundry admin."
+                : <>Sign-in failed. Make sure you&apos;re using your @gitwork.co.uk account.</>}
             </p>
           )}
 
@@ -141,14 +148,17 @@ function LoginForm() {
               Continue to Foundry →
             </a>
           ) : (
-            <form action={signInWithGoogle} className="mt-7">
-              <input type="hidden" name="callbackUrl" value={callbackUrl} />
-              <GoogleButton />
-            </form>
+            <>
+              <form action={signInWithGoogle} className="mt-7">
+                <input type="hidden" name="callbackUrl" value={callbackUrl} />
+                <GoogleButton />
+              </form>
+              <GuestSignIn callbackUrl={callbackUrl} />
+            </>
           )}
 
           <p className="mt-4 text-center text-[13px]" style={{ color: FAINT }}>
-            Foundry by Gitwork · Gitwork team access only
+            Foundry by Gitwork · Gitwork team, and invited guests
           </p>
         </div>
 
@@ -156,6 +166,82 @@ function LoginForm() {
         <PlatformPanel />
       </div>
     </div>
+  );
+}
+
+/**
+ * Guest sign-in, collapsed behind a link.
+ *
+ * Almost everyone here is Gitwork staff using Google, so this stays out of their way —
+ * but it is a real control, not a hidden one: the link is always visible and opens the
+ * form in place. Every colour is a fixed hex because this page is theme-locked (see the
+ * note at the top of the file).
+ */
+function GuestSignIn({ callbackUrl }: { callbackUrl: string }) {
+  const [open, setOpen] = useState(false);
+  const [state, action] = useActionState(signInWithPassword, null);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-4 w-full text-center text-[13px] underline-offset-2 hover:underline"
+        style={{ color: MUTED }}
+      >
+        Invited guest? Sign in with an email and password
+      </button>
+    );
+  }
+
+  return (
+    <form action={action} className="mt-5 space-y-3 border-t pt-5" style={{ borderColor: BORDER }}>
+      <input type="hidden" name="callbackUrl" value={callbackUrl} />
+      <label className="block text-[13px] font-medium" style={{ color: MUTED }}>
+        Email
+        <input
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+          /* 16px — below that iOS Safari zooms the viewport when the field takes focus. */
+          className="mt-1.5 w-full rounded-[8px] border px-3 py-2.5 text-[16px] outline-none"
+          style={{ borderColor: BORDER, background: PANEL, color: INK }}
+        />
+      </label>
+      <label className="block text-[13px] font-medium" style={{ color: MUTED }}>
+        Password
+        <input
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          className="mt-1.5 w-full rounded-[8px] border px-3 py-2.5 text-[16px] outline-none"
+          style={{ borderColor: BORDER, background: PANEL, color: INK }}
+        />
+      </label>
+      {/* One message for every failure — see the action for why it must not say which. */}
+      {state?.error && (
+        <p className="text-[13px]" style={{ color: "#B42318" }}>
+          {state.error}
+        </p>
+      )}
+      <GuestSubmit />
+    </form>
+  );
+}
+
+function GuestSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full rounded-full px-4 py-3 text-[15px] font-semibold transition hover:opacity-90 disabled:opacity-50"
+      style={{ background: PURPLE, color: "#FFFFFF" }}
+    >
+      {pending ? "Signing in…" : "Sign in"}
+    </button>
   );
 }
 

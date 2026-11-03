@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   apiFetch,
   createRateCardPerson, deleteRateCardPerson, listRateCardPeople, updateRateCardPerson,
-  getIntegrations, saveIntegrations, fetchProviderModels,
+  getIntegrations, saveIntegrations, sendTestEmail, fetchProviderModels,
   bulkImportCandidates,
   type IntegrationsResponse, type ModelOption,
   type BulkImportCandidateRow, type BulkImportResult,
@@ -1917,6 +1917,8 @@ function EmailOutboundSection({
   const [smtpPort, setSmtpPort] = useState<string>("587");
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -1930,6 +1932,20 @@ function EmailOutboundSection({
     setSmtpPort(config.emailSmtpPort ? String(config.emailSmtpPort) : "587");
     setSmtpUser(config.emailSmtpUser ?? "");
   }, [config]);
+
+  // Sends through the SAVED settings, so it tests what customers will actually get.
+  async function handleTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await sendTestEmail();
+      setTestResult({ ok: true, message: `Sent to ${res.to}. Check that inbox.` });
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : "The test email could not be sent." });
+    } finally {
+      setTesting(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -1984,9 +2000,16 @@ function EmailOutboundSection({
           >
             <option value="NONE">Not configured</option>
             <option value="RESEND">Resend (recommended)</option>
-            <option value="SMTP">Custom SMTP</option>
+            <option value="SMTP">SMTP (e.g. Google Workspace)</option>
           </select>
         </div>
+
+        {provider === "NONE" ? (
+          <p className="text-xs leading-relaxed text-[var(--text-3)]">
+            With nothing chosen here, Foundry sends from the server&apos;s own email account
+            (the SMTP settings on the server), if one is set. Send a test email to check.
+          </p>
+        ) : null}
 
         {provider !== "NONE" ? (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -2054,7 +2077,7 @@ function EmailOutboundSection({
                 type="text"
                 value={smtpHost}
                 onChange={(e) => setSmtpHost(e.target.value)}
-                placeholder="smtp.eu.mailgun.org"
+                placeholder="smtp.gmail.com"
                 className="app-input w-full"
               />
             </label>
@@ -2087,16 +2110,39 @@ function EmailOutboundSection({
                 className="app-input w-full font-mono text-sm"
               />
             </label>
+            <p className="text-xs leading-relaxed text-[var(--text-3)] sm:col-span-2">
+              Google Workspace: host <span className="font-mono">smtp.gmail.com</span>, port{" "}
+              <span className="font-mono">465</span>, your full address as the username, and an
+              app password (Google Account → Security → App passwords). The from address must be
+              that account or one of its aliases, or Google replaces it.
+            </p>
           </div>
         ) : null}
 
-        <button
-          onClick={() => void handleSave()}
-          disabled={saving}
-          className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
-        >
-          {saving ? "Saving…" : saved ? "Saved ✓" : "Save email settings"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
+          >
+            {saving ? "Saving…" : saved ? "Saved ✓" : "Save email settings"}
+          </button>
+          <button
+            onClick={() => void handleTest()}
+            disabled={testing || saving}
+            className="app-button app-button-secondary px-4 py-2 text-sm disabled:opacity-40"
+          >
+            {testing ? "Sending…" : "Send test email"}
+          </button>
+        </div>
+        {testResult ? (
+          <p
+            role="status"
+            className={`text-xs leading-relaxed ${testResult.ok ? "text-[var(--success-500)]" : "text-[var(--danger-500)]"}`}
+          >
+            {testResult.message}
+          </p>
+        ) : null}
       </div>
     </SettingsCard>
   );

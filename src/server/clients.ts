@@ -1,3 +1,4 @@
+import { parseRenewalDate } from "@/lib/wiki-platforms";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { normalisePlatformLinks } from "@/lib/platform-links";
 import { Prisma } from "@prisma/client";
@@ -37,6 +38,7 @@ import {
 import { computeLaunchpadSummaries } from "@/server/launchpad";
 import { recordAuditEntry } from "@/server/audit-log";
 import type { EffectiveUser } from "@/server/auth/effective-user";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 const clientBankAccounts = (prisma as unknown as {
   clientBankAccount: Prisma.ClientBankAccountDelegate;
@@ -563,6 +565,8 @@ function serializeClientPlatform(platform: {
   previewImageUrl?: string | null;
   featuredInWiki?: boolean;
   links?: unknown;
+  renewsOn?: Date | null;
+  renewalNote?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ClientPlatformRecord {
@@ -595,6 +599,9 @@ function serializeClientPlatform(platform: {
     // rows hold null, and a row written before validation tightened could hold
     // anything. Callers get a clean array or an empty one, never a surprise.
     links: normalisePlatformLinks(platform.links),
+    // Date only — the time of day carries no meaning for a renewal.
+    renewsOn: platform.renewsOn ? platform.renewsOn.toISOString().slice(0, 10) : null,
+    renewalNote: platform.renewalNote ?? null,
     createdAt: platform.createdAt.toISOString(),
     updatedAt: platform.updatedAt.toISOString(),
   };
@@ -668,11 +675,27 @@ async function loadClientCollections() {
   };
 }
 
+/**
+ * Slugs that are route segments under /app/portal and /api/clients.
+ *
+ * ⚠️ A static segment wins over `[slug]` in Next, so a client slugged "summary" would
+ * make its own page and API route unreachable — silently, with no error anywhere. The
+ * same precedence is what makes `/api/documents/analytics` work (§17); here it is a
+ * hazard rather than a feature, so the name is refused at creation instead.
+ */
+// "deleted" backs /api/clients/deleted — a client with that slug would be shadowed by it.
+const RESERVED_CLIENT_SLUGS = new Set(["summary", "new", "api", "deleted"]);
+
 async function assertClientSlugAvailable(
   workspaceId: string,
   slug: string,
   currentId?: string,
 ) {
+  if (RESERVED_CLIENT_SLUGS.has(slug)) {
+    throw new Error(
+      `"${slug}" is a reserved name — it would collide with a Portal page. Pick another.`,
+    );
+  }
   const existing = await workspaceClients.findUnique({
     where: {
       workspaceId_slug: {
@@ -683,7 +706,23 @@ async function assertClientSlugAvailable(
   });
 
   if (existing && existing.id !== currentId) {
+    // A deleted client keeps its row (hidden), so its name is still taken. Say so, and say
+    // where to deal with it — "already exists" about a client nobody can see sent people
+    // looking for a record the Portal never shows.
+    if ((existing as typeof existing & { hidden?: boolean }).hidden) {
+      throw new ClientNameTakenByDeletedError(existing.name);
+    }
     throw new Error("A client with this name already exists.");
+  }
+}
+
+/** The name belongs to a deleted (hidden) client — restore it or delete it permanently. */
+export class ClientNameTakenByDeletedError extends Error {
+  status = 409;
+  constructor(name: string) {
+    super(
+      `A deleted client called “${name}” is still using this name. Restore it, or delete it permanently, from the Deleted tab in Portal.`,
+    );
   }
 }
 
@@ -710,6 +749,15 @@ export async function listDerivedClients(filters?: {
     .map((c) => ({ id: c.id }));
   const manualIds = manualClientMeta.map((c) => c.id);
 
+  // Current calendar month (UTC) — the window retainer days are counted against.
+  const nowForRetainer = new Date();
+  const retainerMonthStart = new Date(
+    Date.UTC(nowForRetainer.getUTCFullYear(), nowForRetainer.getUTCMonth(), 1),
+  );
+  const retainerMonthEnd = new Date(
+    Date.UTC(nowForRetainer.getUTCFullYear(), nowForRetainer.getUTCMonth() + 1, 1),
+  );
+
   // Parallel enrichment queries — single round-trip.
   const [
     careRecords,
@@ -719,6 +767,7 @@ export async function listDerivedClients(filters?: {
     overdueCounts,
     financials,
     launchpads,
+    standupDays,
   ] = await Promise.all([
     // Which portal clients have a linked Care client (FK on SupportClient).
     prisma.supportClient.findMany({
@@ -744,7 +793,29 @@ export async function listDerivedClients(filters?: {
     // Launchpad completeness per client — what we're waiting on THEM for. Batched,
     // and only covers clients with the section on and a kit assigned.
     computeLaunchpadSummaries(workspace.id, manualIds),
+    // Standup days this month, per involved client — one row per dev per day whose AM/PM
+    // update covered a client (retainer accrual). Gated to financial viewers (retainer figures
+    // are financial). A row's involvedClientIds only fills once a phase is pushed.
+    includeFinancials
+      ? prisma.dailyUpdate.findMany({
+          where: {
+            workspaceId: workspace.id,
+            workDate: { gte: retainerMonthStart, lt: retainerMonthEnd },
+            OR: [{ amPushedAt: { not: null } }, { pmPushedAt: { not: null } }],
+          },
+          select: { involvedClientIds: true },
+        })
+      : Promise.resolve([] as { involvedClientIds: string[] }[]),
   ]);
+
+  // Tally standup days per client: each DailyUpdate row is one dev-day, so counting rows whose
+  // involvedClientIds contains the client yields person-days (AM+PM already collapse to one row).
+  const standupDaysByClient = new Map<string, number>();
+  for (const u of standupDays) {
+    for (const cid of u.involvedClientIds) {
+      standupDaysByClient.set(cid, (standupDaysByClient.get(cid) ?? 0) + 1);
+    }
+  }
 
   const careIds = new Set(
     careRecords.map((r) => r.workspaceClientId).filter(Boolean),
@@ -768,8 +839,12 @@ export async function listDerivedClients(filters?: {
           c.id,
           {
             retainerDays: c.retainerDays,
-            // Lazy monthly reset applied here so the card never shows a stale prior-month figure.
-            retainerDaysUsed: effectiveRetainerUsed(c.retainerDaysUsed, c.retainerPeriodMonth),
+            // Used = any manual adjustment (lazily reset each month) + days auto-accrued from
+            // this month's standups. Standup accrual is what fills the bar as devs push updates;
+            // the manual figure stays available for off-standup top-ups.
+            retainerDaysUsed:
+              (effectiveRetainerUsed(c.retainerDaysUsed, c.retainerPeriodMonth) ?? 0) +
+              (standupDaysByClient.get(c.id) ?? 0),
           },
         ] as const,
     ),
@@ -946,6 +1021,13 @@ export async function updateClientRecord(
 
   const contactData = buildContactData(input);
 
+  // A person choosing a stage by hand PINS it: the CRM automation never moves a pinned stage.
+  // Only an actual change pins — a save that resends the same stage must not switch automation
+  // off as a side effect.
+  const stageChangedByHand =
+    input.leadStage !== undefined && (input.leadStage ?? null) !== (manualClient?.leadStage ?? null);
+  const stagePin = stageChangedByHand ? { leadStagePinned: true, leadStageChangedAt: new Date() } : {};
+
   const persisted = manualClient
     ? await workspaceClients.update({
         where: {
@@ -959,6 +1041,7 @@ export async function updateClientRecord(
           slug: nextSlug,
           ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl.trim() || null } : {}),
           ...contactData,
+          ...stagePin,
         },
       })
     : await workspaceClients.create({
@@ -1079,7 +1162,7 @@ export async function setClientProductTeam(
   if (!client) return null;
   // Keep only ids that are members of this workspace, de-duped, in submitted order.
   const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: workspace.id, userId: { in: userIds } },
+    where: { workspaceId: workspace.id, userId: { in: userIds }, ...ACTIVE_MEMBER },
     select: { userId: true },
   });
   const valid = new Set(members.map((m) => m.userId));
@@ -1090,6 +1173,94 @@ export async function setClientProductTeam(
   });
   revalidateTag("client-collections");
   return clean;
+}
+
+export interface DeletedClientItem {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  /** When it was deleted — the row's last update, which the delete itself stamps. */
+  deletedAt: string;
+}
+
+/** Deleted (hidden) clients — what the Portal's Deleted tab lists. */
+export async function listDeletedClients(): Promise<DeletedClientItem[]> {
+  const { workspace } = await ensureBaseRecords();
+  const rows = await workspaceClients.findMany({
+    where: { workspaceId: workspace.id, hidden: true },
+    select: { id: true, name: true, slug: true, logoUrl: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    logoUrl: r.logoUrl ?? null,
+    deletedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+/** Bring a deleted client back, exactly as it was. False when there's no deleted client by that slug. */
+export async function restoreClientRecord(slug: string, actor?: EffectiveUser | null): Promise<boolean> {
+  const { workspace } = await ensureBaseRecords();
+  const existing = await workspaceClients.findFirst({
+    where: { workspaceId: workspace.id, slug, hidden: true },
+    select: { id: true, name: true },
+  });
+  if (!existing) return false;
+  await workspaceClients.update({ where: { id: existing.id }, data: { hidden: false } });
+  await recordAuditEntry({
+    workspaceId: workspace.id,
+    actorId: actor?.id ?? null,
+    action: "foundry.client.restored",
+    target: `client:${existing.id}`,
+    metadata: { clientSlug: slug, clientName: existing.name },
+  });
+  revalidateTag("client-collections");
+  return true;
+}
+
+/**
+ * PERMANENTLY delete a client that has already been deleted (hidden). Irreversible: every row
+ * that cascades from the client goes with it — tasks, wiki, platforms, designs, touchpoints,
+ * actions, bank details, onboarding answers' link — while records that only point at it
+ * (documents, meetings, Pulse scans, placements, Care records) are kept and unlinked.
+ *
+ * Only a deleted client can be purged, so it is always two deliberate steps, never one click
+ * on a live client. The name must be typed back (`confirmName`) — the guard against purging
+ * the wrong row from a list. `ClientWikiLink.linkedClient` is RESTRICT (another client's wiki
+ * linking to this one), so those links are removed first, in the same transaction: either the
+ * whole client goes or nothing does.
+ */
+export async function purgeClientRecord(
+  slug: string,
+  confirmName: string,
+  actor?: EffectiveUser | null,
+): Promise<"purged" | "not_found" | "name_mismatch"> {
+  const { workspace } = await ensureBaseRecords();
+  const existing = await workspaceClients.findFirst({
+    where: { workspaceId: workspace.id, slug, hidden: true },
+    select: { id: true, name: true },
+  });
+  if (!existing) return "not_found";
+  if (confirmName.trim().toLowerCase() !== existing.name.trim().toLowerCase()) return "name_mismatch";
+
+  await prisma.$transaction([
+    prisma.clientWikiLink.deleteMany({ where: { linkedClientId: existing.id } }),
+    prisma.workspaceClient.delete({ where: { id: existing.id } }),
+  ]);
+  // Recorded AFTER the delete succeeds, and against the id + name — the row is gone, so the
+  // audit entry is the only remaining record that this client existed and who removed it.
+  await recordAuditEntry({
+    workspaceId: workspace.id,
+    actorId: actor?.id ?? null,
+    action: "foundry.client.purged",
+    target: `client:${existing.id}`,
+    metadata: { clientSlug: slug, clientName: existing.name },
+  });
+  revalidateTag("client-collections");
+  return "purged";
 }
 
 export async function deleteClientRecord(slug: string): Promise<boolean> {
@@ -1147,6 +1318,10 @@ async function serializeTouchpoints(
     occurredAt: Date;
     authorId: string | null;
     createdAt: Date;
+    source: string | null;
+    direction: string | null;
+    counterpartName: string | null;
+    counterpartEmail: string | null;
   }>,
 ): Promise<ClientTouchpoint[]> {
   const authorIds = [...new Set(rows.map((r) => r.authorId).filter(Boolean))] as string[];
@@ -1156,14 +1331,22 @@ async function serializeTouchpoints(
   const nameById = new Map(authors.map((u) => [u.id, u.name]));
   return rows.map((r) => ({
     id: r.id,
-    type: r.type as TouchpointType,
+    type: r.type as ClientTouchpoint["type"],
     note: r.note,
     occurredAt: r.occurredAt.toISOString(),
     authorId: r.authorId,
     authorName: r.authorId ? nameById.get(r.authorId) ?? null : null,
     createdAt: r.createdAt.toISOString(),
+    source: (r.source as ClientTouchpoint["source"]) ?? null,
+    direction: r.direction,
+    counterpartName: r.counterpartName,
+    counterpartEmail: r.counterpartEmail,
   }));
 }
+
+/** The activity log omits stage SUGGESTIONS — those are decisions waiting on a person, shown
+ *  in their own place on the lead, and an accepted one is logged as the STAGE move it caused. */
+const ACTIVITY_WHERE = { NOT: { type: "SUGGESTION" } } as const;
 
 /** List a client's logged touchpoints (most recent first). Null when the client is unknown. */
 export async function listClientTouchpoints(slug: string): Promise<ClientTouchpoint[] | null> {
@@ -1175,7 +1358,7 @@ export async function listClientTouchpoints(slug: string): Promise<ClientTouchpo
   if (!client) return null;
   return serializeTouchpoints(
     await prisma.clientTouchpoint.findMany({
-      where: { clientId: client.id },
+      where: { clientId: client.id, ...ACTIVITY_WHERE },
       orderBy: { occurredAt: "desc" },
       take: 200,
     }),
@@ -1402,7 +1585,7 @@ export async function getDerivedClientDetail(slug: string): Promise<ClientDetail
   const touchpoints = manualRecord
     ? await serializeTouchpoints(
         await prisma.clientTouchpoint.findMany({
-          where: { clientId: manualRecord.id },
+          where: { clientId: manualRecord.id, ...ACTIVITY_WHERE },
           orderBy: { occurredAt: "desc" },
           take: 200,
         }),
@@ -1490,6 +1673,8 @@ export async function createClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<ClientPlatformRecord> {
   const platform = await clientPlatforms.create({
@@ -1511,6 +1696,8 @@ export async function createClientPlatform(
       // Re-normalised server-side: the form is not the gate. Anything with a
       // non-http(s) scheme is dropped rather than stored and later rendered.
       links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue,
+      renewsOn: parseRenewalDate(input.renewsOn),
+      renewalNote: input.renewalNote?.trim() || null,
     },
   });
 
@@ -1531,6 +1718,8 @@ export async function updateClientPlatform(
     previewImageUrl?: string;
     featuredInWiki?: boolean;
     links?: { label?: string; url: string }[];
+    renewsOn?: string;
+    renewalNote?: string;
   },
 ): Promise<ClientPlatformRecord | null> {
   const platform = await clientPlatforms.update({
@@ -1551,6 +1740,8 @@ export async function updateClientPlatform(
       ...(input.previewImageUrl !== undefined ? { previewImageUrl: input.previewImageUrl || null } : {}),
       ...(input.featuredInWiki !== undefined ? { featuredInWiki: input.featuredInWiki } : {}),
       ...(input.links !== undefined ? { links: normalisePlatformLinks(input.links) as unknown as Prisma.InputJsonValue } : {}),
+      ...(input.renewsOn !== undefined ? { renewsOn: parseRenewalDate(input.renewsOn) } : {}),
+      ...(input.renewalNote !== undefined ? { renewalNote: input.renewalNote.trim() || null } : {}),
     },
   });
 

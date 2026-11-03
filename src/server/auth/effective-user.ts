@@ -2,7 +2,9 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { recordWorkspaceShadow } from "@/server/auth/request-workspace";
 import { getRequestUser } from "@/server/auth/request-user";
+import { ACTIVE_MEMBER, isActiveMember } from "@/server/auth/member-status";
 import { allowedDocTypes } from "@/lib/templates";
 import type { DocumentType } from "@/types/proposal";
 import {
@@ -10,8 +12,7 @@ import {
   isSuperAdmin,
   normalizeMatrix,
   normalizeOverrides,
-  resolveEffectivePermissions,
-} from "@/types/auth";
+  resolveEffectivePermissions, isExternalRole } from "@/types/auth";
 
 export type EffectiveUser = {
   id: string;
@@ -32,6 +33,47 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * "We know exactly who you are, and you no longer have access."
+ *
+ * ⚠️ **This must never be mapped to `null`, and that is the whole reason it exists.**
+ * `UnauthorizedError` means "no identity at all" — which `getEffectiveUserOrNull`
+ * turns into `null`, and `null` is how a trusted workspace-API-key integration is
+ * represented: `assertCan(null, …)` passes, `requireAuthedUserOrDefault` resolves
+ * it as the workspace owner. That is correct for a server-to-server caller.
+ *
+ * It was catastrophic for a removed member. They still had a valid
+ * `@gitwork.co.uk` Google sign-in, so they arrived WITH an identity but no
+ * membership; that threw `UnauthorizedError`, became `null`, and every one of the
+ * ~180 routes using that pattern treated them as a full-access caller — and three
+ * as the owner. Removing someone gave them more access than they had before.
+ *
+ * So: an identity we resolved and refused is a different outcome, it is a 403,
+ * and nothing swallows it.
+ */
+export class RevokedAccessError extends Error {
+  status = 403;
+  constructor(message = "Your access to this workspace has been removed.") {
+    super(message);
+    this.name = "RevokedAccessError";
+  }
+}
+
+/**
+ * "You may not see this, and you do not get to learn that it exists."
+ *
+ * Used where the resource id is the thing being probed — a scan id, a token. A 403
+ * confirms the row is real, which for an enumerable id is the disclosure itself.
+ * `fromError` already maps `status` onto the response.
+ */
+export class NotFoundError extends Error {
+  status = 404;
+  constructor(message = "Not found") {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
 export class ForbiddenError extends Error {
   status = 403;
   constructor(message = "Forbidden") {
@@ -49,10 +91,14 @@ export class ForbiddenError extends Error {
 // when no identity can be resolved — route handlers catch via fromError.
 export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   let userIdOrEmail: { id?: string; email?: string } = {};
+  // The workspace the caller's token names, for the Phase 2 shadow comparison only.
+  // Nothing below is scoped by it (see src/server/auth/request-workspace.ts).
+  let claimedWorkspace: { id: string | null | undefined; via: "session" | "mobile" } = { id: null, via: "session" };
 
   const mobileUser = getRequestUser(req);
   if (mobileUser) {
     userIdOrEmail = { id: mobileUser.id, email: mobileUser.email };
+    claimedWorkspace = { id: mobileUser.workspaceId, via: "mobile" };
   } else {
     const session = await auth();
     const sessionUser = session?.user;
@@ -61,6 +107,7 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
         id: sessionUser.id ?? undefined,
         email: sessionUser.email ?? undefined,
       };
+      claimedWorkspace = { id: sessionUser.workspaceId, via: "session" };
     }
   }
 
@@ -81,11 +128,24 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     },
   });
 
-  if (!dbUser || dbUser.memberships.length === 0) {
-    throw new UnauthorizedError("No workspace membership");
+  // ⚠️ From here on the caller HAS an identity. Every refusal below is therefore a
+  // RevokedAccessError, never an UnauthorizedError — see that class for why the
+  // difference decides whether the caller ends up with no access or with all of it.
+  if (!dbUser) {
+    // A session or mobile token for a user that no longer exists.
+    throw new RevokedAccessError();
+  }
+  if (dbUser.memberships.length === 0) {
+    // Removed from the workspace (or a pre-archive removal that deleted the row).
+    throw new RevokedAccessError();
   }
 
   const membership = dbUser.memberships[0];
+  if (!isActiveMember(membership)) {
+    // Archived. Checked here, per request, against the database — so it takes
+    // effect on the very next call, including for a session that is still live.
+    throw new RevokedAccessError();
+  }
   // Resolve effective permissions LIVE from the role matrix + this member's
   // overrides — independent of the cached `permissions` column and the JWT. This
   // makes every server-side check (the can* helpers below, field gating) correct
@@ -105,6 +165,14 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     workspaceId: membership.workspaceId,
     membershipId: membership.id,
   };
+
+  // Shadow mode: compare, never decide. The request is served `real.workspaceId` either way.
+  recordWorkspaceShadow({
+    userId: dbUser.id,
+    claimed: claimedWorkspace.id,
+    served: membership.workspaceId,
+    via: claimedWorkspace.via,
+  });
 
   return applyViewAs(req, real);
 }
@@ -126,7 +194,10 @@ async function applyViewAs(req: Request, real: EffectiveUser): Promise<Effective
   if (!targetUserId || targetUserId === real.id || !isSuperAdmin(real.role)) return real;
 
   const member = await prisma.workspaceMember.findFirst({
-    where: { workspaceId: real.workspaceId, userId: targetUserId },
+    // An archived member cannot be previewed: "view as" swaps the WHOLE effective
+    // user, so a write made while previewing would be attributed to someone who
+    // no longer works here.
+    where: { workspaceId: real.workspaceId, userId: targetUserId, ...ACTIVE_MEMBER },
     include: {
       user: { select: { id: true, email: true, name: true, avatarUrl: true } },
       workspace: { select: { rolePermissions: true } },
@@ -164,8 +235,17 @@ async function applyViewAs(req: Request, real: EffectiveUser): Promise<Effective
 export async function getEffectiveUserOrNull(req: Request): Promise<EffectiveUser | null> {
   try {
     return await requireAuthedUser(req);
-  } catch {
-    return null;
+  } catch (error) {
+    // ⚠️ ONLY "there is no identity here" becomes null. This used to be a bare
+    // `catch { return null }`, which had two consequences, both fail-OPEN:
+    //   1. A removed/archived member — who has an identity — came back as null,
+    //      i.e. as a trusted full-access caller. (RevokedAccessError, above.)
+    //   2. Any transient failure (a database blip mid-lookup) also came back as
+    //      null, so an error granted access instead of denying it.
+    // Anything other than a genuine no-identity refusal now propagates and the
+    // route's `fromError` turns it into a 403/500 — closed, not open.
+    if (error instanceof UnauthorizedError) return null;
+    throw error;
   }
 }
 
@@ -354,6 +434,26 @@ export function canIssueCountermark(user: EffectiveUser): boolean {
 export function canViewCheckConfig(user: EffectiveUser): boolean {
   return can(user, "settings.agents");
 }
+/**
+ * The Monitors page: every client's uptime status. Deliberately NOT scoped to assigned
+ * clients — watching every service is the job this permission is granted for. It shows
+ * monitor names, targets and status only; opening a client still needs client access.
+ */
+export function canViewMonitors(user: EffectiveUser): boolean {
+  return can(user, "monitors");
+}
+/** See the Staff roster (the `codeclear` module — the id predates the rename). */
+export function canViewStaff(user: EffectiveUser): boolean {
+  return can(user, "codeclear");
+}
+/** HR: employment details, suppliers and the HR access log (docs/hr-platform.md). */
+export function canManageHr(user: EffectiveUser): boolean {
+  return can(user, "hr.manage");
+}
+/** HR: the sensitive tier of a person record (date of birth, address, NI, ID, emergency contacts). */
+export function canViewHrSensitive(user: EffectiveUser): boolean {
+  return can(user, "hr.viewSensitive");
+}
 /** Add/edit/delete candidates + run analysis in Code. */
 export function canManageCode(user: EffectiveUser): boolean {
   return can(user, "code.manage");
@@ -367,6 +467,17 @@ export function canManageDevSignal(user: EffectiveUser): boolean {
  *  every candidate is scored is a platform-owner action, not delegable. */
 export function canCalibrateDevSignal(user: EffectiveUser): boolean {
   return isSuperAdmin(user.role);
+}
+/**
+ * READ documents in Docs — the module grant, not the manage action.
+ *
+ * Deliberately weaker than `canManageDocs`: a developer who may read a SOW should not
+ * need permission to delete one. It exists because `GET /api/proposals` had no check at
+ * all, which was indistinguishable from "any colleague may read" until an account
+ * existed that is not a colleague.
+ */
+export function canViewDocs(user: EffectiveUser): boolean {
+  return can(user, "proposals");
 }
 /** Create/edit/delete documents in Docs. */
 export function canManageDocs(user: EffectiveUser): boolean {
@@ -439,6 +550,27 @@ export function assertCan(user: EffectiveUser | null, check: (u: EffectiveUser) 
  * assertCan: a signed-in user below the bar is rejected; a trusted API_KEY-only caller
  * (no per-user identity → null) passes, so external/server integrations keep working.
  */
+/**
+ * Refuse a caller who is not a member of Gitwork.
+ *
+ * ⚠️ This exists because "authed" stopped meaning "a colleague". Every account used to
+ * be an @gitwork.co.uk Google sign-in, so a route that merely required a session was
+ * implicitly internal — and several were written that way, with a comment saying
+ * "authed" and nothing else. `GET /api/pulse/leads` returned every captured lead email
+ * to anyone with a session, which a GUEST now has.
+ *
+ * Use it on anything that returns data about GITWORK rather than about the caller:
+ * workspace-wide roll-ups, our own marketing config, captured leads.
+ *
+ * A null user passes, matching `assertAtLeastAdmin` — an identity-less caller is the
+ * workspace API_KEY (server integrations and cron), not a guest with a browser.
+ */
+export function assertInternal(user: EffectiveUser | null): void {
+  if (user && isExternalRole(user.role)) {
+    throw new ForbiddenError("This is only available to the Gitwork team.");
+  }
+}
+
 export function assertAtLeastAdmin(user: EffectiveUser | null): void {
   if (user && !isAtLeast(user.role, "ADMIN")) {
     throw new ForbiddenError("Admin access required.");

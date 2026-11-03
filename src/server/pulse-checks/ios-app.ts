@@ -294,6 +294,67 @@ function hygieneChecks(ctx: IosContext): PulseScanCheckInput[] {
 
 // ── Security ────────────────────────────────────────────────────────────────
 
+/**
+ * Logging calls in shipped code whose ARGUMENTS carry a request or response body. Only
+ * a custom static `Logger.` (capital L, a project type) or print/NSLog/debugPrint count:
+ * Apple's os.Logger is an instance (`logger.log(…)`).
+ */
+export function loggedPayloadSites(shipped: string): number {
+  let count = 0;
+  for (const m of shipped.matchAll(/(?:\bLogger\s*\.\s*(?:log|logAPICall|logRequest|logResponse|debug|info)|(?<![\w.])(?:print|NSLog|debugPrint))\s*\(/g)) {
+    const start = (m.index ?? 0) + m[0].length;
+    let depth = 1;
+    let end = start;
+    while (end < shipped.length && end < start + 400 && depth > 0) {
+      if (shipped[end] === "(") depth++;
+      else if (shipped[end] === ")") depth--;
+      end++;
+    }
+    const args = shipped.slice(start, end);
+    if (/\b(?:httpBody|requestBody|responseBody|responseString|responseJSON|jsonObject|payload)\b|\bbody\b|\bparameters\b/.test(args)) count++;
+  }
+  return count;
+}
+
+/**
+ * Where a token-named value is written to UserDefaults or @AppStorage, as "file: what",
+ * or "" when nowhere. Judged per call: a UserDefaults call whose own arguments name a
+ * token, or an enum case naming a token in a keys enum that is not a CodingKey, in a
+ * file that uses UserDefaults.
+ */
+export function tokenInUserDefaults(files: Map<string, string>): string {
+  const TOKEN = /(?:access|refresh|auth|id|bearer|session)[_-]?token|\bbearer\b/i;
+  for (const [path, text] of files) {
+    for (const m of text.matchAll(/\b(?:UserDefaults(?:\.standard)?|\w*[dD]efaults)\s*\.\s*(?:set|setValue|string|object|value)\s*\(([^)\n]{0,240})\)/g)) {
+      if (TOKEN.test(m[1])) return `${path}: a UserDefaults call names a token`;
+    }
+    const appStorage = /@AppStorage\s*\(\s*"([^"]*token[^"]*)"/i.exec(text);
+    if (appStorage) return `${path}: @AppStorage("${appStorage[1]}")`;
+    if (!/UserDefaults|@AppStorage/.test(text)) continue;
+    for (const e of text.matchAll(/\benum\s+(\w+)\s*:\s*([^{]*)\{([^}]*)\}/g)) {
+      if (/\bCodingKey\b/.test(e[2]) || /CodingKeys?$/.test(e[1])) continue;
+      if (/\bcase\s+\w*(?:accessToken|refreshToken|authToken|idToken)\w*\b/i.test(e[3])) return `${path}: ${e[1]} names a token key`;
+    }
+  }
+  return "";
+}
+
+/** SwiftUI controls, and how many show only an image (no text title, no Label). */
+export function swiftUiControls(shipped: string): { interactive: number; iconOnly: number } {
+  let interactive = 0;
+  let iconOnly = 0;
+  for (const m of shipped.matchAll(/(?<![\w.])(Button|NavigationLink|Toggle|Menu)\s*([({])/g)) {
+    interactive++;
+    const rest = shipped.slice((m.index ?? 0) + m[0].length - 1, (m.index ?? 0) + m[0].length + 300);
+    // A string (or a localized key / Text) as the first argument is a text title.
+    if (/^\(\s*(?:"|LocalizedStringKey|String\(localized|Text\(|\w+\s*,\s*systemImage\s*:)/.test(rest)) continue;
+    // Otherwise read the label content: the trailing closure or a `label:` closure.
+    const content = rest.slice(0, 260);
+    if (/\bImage\s*\(/.test(content) && !/\b(?:Text|Label)\s*\(/.test(content)) iconOnly++;
+  }
+  return { interactive, iconOnly };
+}
+
 function securityChecks(ctx: IosContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const C = CATEGORIES.SECURITY;
@@ -316,25 +377,32 @@ function securityChecks(ctx: IosContext): PulseScanCheckInput[] {
   // Release logging — a logger with a hardcoded always-on flag and no build gate.
   const loggerAlwaysOn = /(isLoggingEnabled|loggingEnabled|isLogEnabled|enableLogging)\s*(:\s*Bool)?\s*=\s*true/i.test(ctx.swift);
   const printCalls = countMatches(ctx.swift, /(?:^|[^\w.])(?:print|NSLog|debugPrint)\s*\(/);
+  // Only NSLog (and a custom logger) reaches the device's unified log; print()/debugPrint()
+  // write to stdout, which nothing captures on a device unless Xcode's debugger is attached.
+  const nslogCalls = countMatches(ctx.swift, /(?:^|[^\w.])NSLog\s*\(/);
   const loggingUnguarded = (loggerAlwaysOn || printCalls > 10) && debugGuards === 0;
+  const reachesDeviceLog = loggerAlwaysOn || nslogCalls > 0;
   checks.push({
     category: C,
     checkKey: "ios_release_logging",
     label: "Console logging disabled in Release builds",
-    status: loggingUnguarded ? "FAIL" : printCalls > 10 ? "WARN" : "PASS",
-    detail: loggingUnguarded
+    status: loggingUnguarded ? (reachesDeviceLog ? "FAIL" : "WARN") : printCalls > 10 ? "WARN" : "PASS",
+    detail: loggingUnguarded && !reachesDeviceLog
+      ? `${printCalls} print()/debugPrint() call sites and no #if DEBUG guard anywhere. print() output goes to stdout, which is not written to the device's unified log and is only captured while Xcode's debugger is attached, so this is not a data leak on its own — but nothing is compile-gated, so the calls still run (and format their arguments) in every Release build, and the first switch to NSLog or os_log would put the same output in sysdiagnose bundles. Wrap diagnostic output in #if DEBUG.`
+      : loggingUnguarded
       ? `Logging is on unconditionally in Release: ${loggerAlwaysOn ? "a logger flag is hardcoded to true" : `${printCalls} print/NSLog call sites`}, with no #if DEBUG guard anywhere. Device logs are readable by anyone with the phone and a Mac (Console.app, no jailbreak needed) and are captured in sysdiagnose bundles users email to support. Wrap the logger in #if DEBUG.`
       : printCalls > 10
-        ? `${printCalls} print/NSLog call sites found. Some #if DEBUG guards exist — confirm the logging paths are inside them, since console output persists on device in Release.`
+        ? `${printCalls} print/NSLog call sites found. Some #if DEBUG guards exist — confirm the logging paths are inside them, since NSLog/os_log output is written to the device's unified log in Release (plain print() output goes to stdout, which is only captured while Xcode's debugger is attached).`
         : "No unconditional console logging detected in the sampled source.",
     evidence: loggerAlwaysOn ? "Logger flag hardcoded to true" : undefined,
   });
 
   // The escalation: request/response bodies logged where a credential model exists.
-  const logsPayload =
-    /Logger\.(log|logAPICall|logRequest|logResponse)[\s\S]{0,400}?(body|payload|httpBody|parameters)/i.test(ctx.swift) ||
-    /(print|NSLog|debugPrint)\s*\([^)]{0,120}(requestBody|httpBody|responseString|responseJSON|jsonObject)/i.test(ctx.swift);
-  const hasCredentialModel = /(struct|class)\s+\w*(Login|Auth|SignIn|Register|Credential)\w*[\s\S]{0,400}?\blet\s+password\b/i.test(ctx.swift);
+  // Judged on the ARGUMENTS of a logging call in shipped code. A case-insensitive
+  // `Logger.log … body` across 400 characters matched Apple's os.Logger
+  // (`logger.log("…")`) followed by SwiftUI's `var body: some View`.
+  const logsPayload = loggedPayloadSites(ctx.shipped) > 0;
+  const hasCredentialModel = /(struct|class)\s+\w*(Login|Auth|SignIn|Register|Credential)\w*[\s\S]{0,400}?\blet\s+password\b/i.test(ctx.shipped);
   const leaksCredentials = logsPayload && hasCredentialModel && debugGuards === 0;
   checks.push({
     category: C,
@@ -361,7 +429,7 @@ function securityChecks(ctx: IosContext): PulseScanCheckInput[] {
     detail: !hasPlist
       ? "No Info.plist could be read."
       : atsArbitrary
-        ? "NSAllowsArbitraryLoads is true — App Transport Security is disabled app-wide, so the app will accept plaintext HTTP and invalid certificates. Remove it and scope any genuine exception to a single domain."
+        ? "NSAllowsArbitraryLoads is true — App Transport Security is disabled app-wide, so the app will load plaintext HTTP and connect to servers that fail ATS's TLS requirements (TLS below 1.2, no forward secrecy); system certificate validation still applies. Unless the app must open arbitrary user-supplied URLs (a browser or feed reader), remove it and scope any genuine exception to a single domain."
         : atsInsecureException
           ? "An ATS exception domain permits insecure HTTP loads. Narrow it to the specific host and remove it once that host serves HTTPS."
           : "App Transport Security is enforced — no app-wide arbitrary loads and no insecure HTTP exceptions.",
@@ -426,41 +494,45 @@ function secretsChecks(ctx: IosContext): PulseScanCheckInput[] {
   const checks: PulseScanCheckInput[] = [];
   const C = CATEGORIES.SECRETS_KEYS;
 
-  const usesKeychain = /(kSecClassGenericPassword|SecItemAdd|SecItemCopyMatching|KeychainAccess|KeychainSwift)/i.test(ctx.swift);
-  // Token-named keys written through UserDefaults / @AppStorage.
-  const tokenInDefaults =
-    /(UserDefaults[\s\S]{0,300}?(accessToken|refreshToken|authToken|idToken|bearer))/i.test(ctx.swift) ||
-    /@AppStorage\s*\(\s*"[^"]*(?:token|Token)[^"]*"/.test(ctx.swift) ||
-    /case\s+\w*(?:accesstoken|accessToken|refreshToken)\w*\s*=\s*"[^"]*"/i.test(ctx.swift);
+  const usesKeychain = /(kSecClassGenericPassword|SecItemAdd|SecItemCopyMatching|KeychainAccess|KeychainSwift)/i.test(ctx.shipped);
+  // Token-named keys written through UserDefaults / @AppStorage, judged at the call.
+  // `case accessToken = "access_token"` is almost always a JSON CodingKeys entry and
+  // says nothing about where the token is kept, so an enum case only counts when the
+  // enum is not a CodingKey and its file actually uses UserDefaults.
+  const tokenInDefaults = tokenInUserDefaults(ctx.shippedByPath);
 
   checks.push({
     category: C,
     checkKey: "ios_token_storage",
     label: "Auth tokens stored in the Keychain",
-    status: tokenInDefaults ? "FAIL" : usesKeychain ? "PASS" : "WARN",
+    status: tokenInDefaults ? "FAIL" : usesKeychain ? "PASS" : "INCONCLUSIVE",
+    confidence: tokenInDefaults || usesKeychain ? "HIGH" : "LOW",
     detail: tokenInDefaults
-      ? `Access/refresh token keys are persisted through UserDefaults or @AppStorage. UserDefaults is an unencrypted plist inside the app container: it is included in unencrypted Finder/iTunes backups and readable on a jailbroken device.${usesKeychain ? " A Keychain wrapper already exists in this codebase — move the tokens into it." : " Move them to the Keychain with kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly."}`
+      ? `Access/refresh token keys are persisted through UserDefaults or @AppStorage (${tokenInDefaults}). UserDefaults is an unencrypted plist inside the app container: it is included in unencrypted Finder/iTunes backups and readable on a jailbroken device.${usesKeychain ? " A Keychain wrapper already exists in this codebase, so move the tokens into it." : " Move them to the Keychain with kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly."}`
       : usesKeychain
-        ? "Keychain APIs are used for credential storage and no token-named keys were found in UserDefaults."
-        : "No Keychain usage detected and no token storage located in the sampled source — confirm where the session token is persisted.",
-    evidence: tokenInDefaults ? "Token key written via UserDefaults/@AppStorage" : undefined,
+        ? "Keychain APIs are used for credential storage and no token-named keys are written to UserDefaults or @AppStorage."
+        : "No Keychain use and no token written to UserDefaults were found in the sampled source, so where the session token is kept is not established.",
+    evidence: tokenInDefaults || undefined,
   });
 
-  // Retaining the password itself is never necessary, Keychain or not.
+  // Retaining the password itself is never necessary, Keychain or not. A WRITE of a
+  // password-named value, in shipped code: test names such as
+  // `testFetchPassword_hasStoredPassword_returnsPassword` (kickstarter/ios-oss) are not one.
   const passwordPersisted =
-    /(KeychainStore|Keychain\w*)\.(save|set|store)\s*\([^)]{0,80}password/i.test(ctx.swift) ||
-    /(passwordAccount|rememberMe\.password|savedPassword|storedPassword)/i.test(ctx.swift) ||
-    /UserDefaults[\s\S]{0,120}?\bpassword\b/i.test(ctx.swift);
-  checks.push({
+    /(KeychainStore|Keychain\w*|keychain)\s*\.\s*(save|set|store|add)\s*\(\s*[^)\n]{0,80}\bpassword\b/i.test(ctx.shipped) ||
+    /\bUserDefaults(?:\.standard)?\s*\.\s*set(?:Value)?\s*\([^)\n]{0,160}\bpassword\b/i.test(ctx.shipped) ||
+    /\b\w*[dD]efaults\s*\.\s*set(?:Value)?\s*\([^)\n]{0,160}\bpassword\b/i.test(ctx.shipped) ||
+    /@AppStorage\s*\(\s*"[^"]*password[^"]*"/i.test(ctx.shipped);
+  checks.push(absence(ctx, {
     category: C,
     checkKey: "ios_password_retention",
     label: "User password is not persisted on device",
     status: passwordPersisted ? "FAIL" : "PASS",
     detail: passwordPersisted
       ? "The user's password appears to be written to on-device storage (typically for a \"Remember me\" feature). A password never needs to be retained: keep a refresh token instead and re-authenticate with that. Retaining it widens the blast radius of any device compromise to the user's actual credential, which is very often reused elsewhere."
-      : "No on-device password persistence detected.",
+      : "No write of a password to the Keychain, UserDefaults or @AppStorage was found in the sampled app code.",
     evidence: passwordPersisted ? "Password written to Keychain/UserDefaults" : undefined,
-  });
+  }));
 
   // Firebase config in git. Google's own position is that these ship in every binary
   // and are not secrets, so this is WARN, never FAIL — the actionable part is whether
@@ -481,8 +553,12 @@ function secretsChecks(ctx: IosContext): PulseScanCheckInput[] {
   });
 
   // Keychain accessibility class — the weak ones survive device lock or migrate off-device.
-  const weakAccessible = /kSecAttrAccessible(?:Always|AlwaysThisDeviceOnly)\b/.test(ctx.swift);
-  const strongAccessible = /kSecAttrAccessible(?:WhenUnlocked|AfterFirstUnlock)(?:ThisDeviceOnly)?\b/.test(ctx.swift);
+  // Also the wrapper spellings: KeychainSwift `withAccess: .accessibleX` and
+  // KeychainAccess `.accessibility(.x)`.
+  const weakAccessible =
+    /kSecAttrAccessible(?:Always|AlwaysThisDeviceOnly)\b|\.accessibleAlways(?:ThisDeviceOnly)?\b|\.accessibility\(\s*\.always(?:ThisDeviceOnly)?\b/.test(ctx.swift);
+  const strongAccessible =
+    /kSecAttrAccessible(?:WhenUnlocked|AfterFirstUnlock|WhenPasscodeSet)(?:ThisDeviceOnly)?\b|\.accessible(?:WhenUnlocked|AfterFirstUnlock|WhenPasscodeSet)(?:ThisDeviceOnly)?\b|\.accessibility\(\s*\.(?:whenUnlocked|afterFirstUnlock|whenPasscodeSet)/.test(ctx.swift);
   checks.push({
     category: C,
     checkKey: "ios_keychain_accessibility",
@@ -503,9 +579,22 @@ function secretsChecks(ctx: IosContext): PulseScanCheckInput[] {
 // ── App Store readiness ─────────────────────────────────────────────────────
 
 /** iOS APIs that require a matching Info.plist usage-description string. */
-const USAGE_DESCRIPTION_RULES: { api: RegExp; key: string; what: string }[] = [
-  { api: /AVCaptureDevice|UIImagePickerController|\.camera\b/, key: "NSCameraUsageDescription", what: "camera" },
-  { api: /PHPhotoLibrary|PHPickerViewController|\.photoLibrary\b/, key: "NSPhotoLibraryUsageDescription", what: "photo library" },
+const USAGE_DESCRIPTION_RULES: { api: RegExp; key: string; also?: string[]; what: string }[] = [
+  // Capture, not mention. UIImagePickerController needs the camera key only for
+  // `sourceType = .camera`; picking from the library needs no permission since iOS 11.
+  {
+    api: /AVCaptureDevice\s*\.\s*(?:requestAccess|authorizationStatus|default)|AVCaptureSession\s*\(|AVCaptureDeviceInput|sourceType\s*=\s*\.camera\b/,
+    key: "NSCameraUsageDescription",
+    what: "camera",
+  },
+  // PHPickerViewController runs out of process and needs no permission at all. Reading
+  // the library does; adding to it needs either key.
+  {
+    api: /PHPhotoLibrary\s*\.\s*(?:requestAuthorization|authorizationStatus|shared\s*\(\s*\)\s*\.\s*performChanges)|PHAsset\s*\.\s*fetch|UIImageWriteToSavedPhotosAlbum/,
+    key: "NSPhotoLibraryUsageDescription",
+    also: ["NSPhotoLibraryAddUsageDescription"],
+    what: "photo library",
+  },
   // Recording only. A bare AVAudioSession reference is playback configuration and
   // needs NO microphone permission — treating it as recording made the check fail
   // on any app that merely plays audio.
@@ -514,18 +603,35 @@ const USAGE_DESCRIPTION_RULES: { api: RegExp; key: string; what: string }[] = [
     key: "NSMicrophoneUsageDescription",
     what: "microphone",
   },
-  { api: /CLLocationManager/, key: "NSLocationWhenInUseUsageDescription", what: "location" },
-  { api: /CNContactStore/, key: "NSContactsUsageDescription", what: "contacts" },
-  { api: /EKEventStore/, key: "NSCalendarsUsageDescription", what: "calendar" },
-  { api: /CMMotionManager|CMPedometer/, key: "NSMotionUsageDescription", what: "motion" },
-  { api: /LAContext/, key: "NSFaceIDUsageDescription", what: "Face ID" },
+  {
+    api: /requestWhenInUseAuthorization|requestAlwaysAuthorization|startUpdatingLocation|requestLocation\s*\(/,
+    key: "NSLocationWhenInUseUsageDescription",
+    also: ["NSLocationAlwaysAndWhenInUseUsageDescription"],
+    what: "location",
+  },
+  { api: /CNContactStore\s*\(/, key: "NSContactsUsageDescription", what: "contacts" },
+  {
+    api: /EKEventStore\s*\(/,
+    key: "NSCalendarsUsageDescription",
+    also: ["NSCalendarsFullAccessUsageDescription", "NSCalendarsWriteOnlyAccessUsageDescription", "NSRemindersUsageDescription", "NSRemindersFullAccessUsageDescription"],
+    what: "calendar",
+  },
+  // CMMotionManager's raw accelerometer and gyroscope data need no permission; the
+  // activity, pedometer and altimeter APIs do.
+  { api: /CMPedometer|CMMotionActivityManager|CMAltimeter/, key: "NSMotionUsageDescription", what: "motion" },
+  { api: /\.evaluatePolicy\s*\(\s*\.deviceOwnerAuthentication/, key: "NSFaceIDUsageDescription", what: "Face ID" },
   { api: /CBCentralManager|CBPeripheralManager/, key: "NSBluetoothAlwaysUsageDescription", what: "Bluetooth" },
 ];
 
 /** Required-reason APIs that oblige a PrivacyInfo.xcprivacy declaration. */
 const REQUIRED_REASON_APIS: { api: RegExp; category: string }[] = [
   { api: /UserDefaults|@AppStorage/, category: "NSPrivacyAccessedAPICategoryUserDefaults" },
-  { api: /\.creationDate|\.modificationDate|FileAttributeKey/, category: "NSPrivacyAccessedAPICategoryFileTimestamp" },
+  // File-attribute access only: a SwiftData/Core Data model property named
+  // `creationDate` is not a required-reason API.
+  {
+    api: /FileAttributeKey|attributesOfItem|\[\s*\.(?:creationDate|modificationDate)\s*\]|\b(?:creationDate|contentModificationDate|contentAccessDate|attributeModificationDate)Key\b|NSURL(?:Creation|ContentModification|ContentAccess|AttributeModification)DateKey|fileModificationDate/,
+    category: "NSPrivacyAccessedAPICategoryFileTimestamp",
+  },
   { api: /systemUptime|mach_absolute_time/, category: "NSPrivacyAccessedAPICategorySystemBootTime" },
   { api: /os_proc_available_memory|activeProcessorCount/, category: "NSPrivacyAccessedAPICategoryDiskSpace" },
 ];
@@ -554,24 +660,33 @@ function storeReadinessChecks(ctx: IosContext): PulseScanCheckInput[] {
   });
 
   // Permission strings — a missing one is an automatic rejection AND a crash.
-  const missing = hasPlist
-    ? USAGE_DESCRIPTION_RULES.filter((r) => r.api.test(ctx.swift) && !ctx.plist.includes(r.key))
+  // Projects with a generated Info.plist (GENERATE_INFOPLIST_FILE) keep these keys in
+  // the build settings as INFOPLIST_KEY_<key>, not in any plist file.
+  const declared = (key: string) => ctx.plist.includes(key) || ctx.pbxproj.includes(`INFOPLIST_KEY_${key}`);
+  const plistKnown = hasPlist || /GENERATE_INFOPLIST_FILE\s*=\s*YES/.test(ctx.pbxproj);
+  const missing = plistKnown
+    ? USAGE_DESCRIPTION_RULES.filter((r) => r.api.test(ctx.shipped) && ![r.key, ...(r.also ?? [])].some(declared))
     : [];
   checks.push({
     category: C,
     checkKey: "ios_usage_descriptions",
     label: "Permission usage descriptions present",
-    status: !hasPlist ? "SKIPPED" : missing.length > 0 ? "FAIL" : "PASS",
-    detail: !hasPlist
+    status: !plistKnown ? "SKIPPED" : missing.length > 0 ? "FAIL" : "PASS",
+    detail: !plistKnown
       ? "No Info.plist could be read."
       : missing.length > 0
-        ? `${missing.length} permission${missing.length !== 1 ? "s are" : " is"} requested in code with no Info.plist usage description: ${missing.map((m) => m.what).join(", ")}. iOS terminates the app the moment the permission is requested, and App Store review rejects the build.`
-        : "Every permission the sampled code requests has a matching Info.plist usage description.",
+        ? `${missing.length} permission${missing.length !== 1 ? "s are" : " is"} requested in code with no usage description in Info.plist or the build settings: ${missing.map((m) => m.what).join(", ")}. iOS refuses the request (and for most of these terminates the app when it is made), and App Store review rejects the build.`
+        : "Every permission the sampled code requests has a matching usage description.",
     evidence: missing.length > 0 ? missing.map((m) => m.key).join(", ") : undefined,
   });
 
   // Push environment — usually rewritten by Xcode on export, so WARN and say so.
-  const apsDev = /<key>\s*aps-environment\s*<\/key>\s*<string>\s*development\s*<\/string>/i.test(ctx.entitlements);
+  // A Debug entitlements file pinned to development is correct when a Release one
+  // declares production (the usual per-configuration split), so only warn when no
+  // committed entitlements file declares production.
+  const apsDev =
+    /<key>\s*aps-environment\s*<\/key>\s*<string>\s*development\s*<\/string>/i.test(ctx.entitlements) &&
+    !/<key>\s*aps-environment\s*<\/key>\s*<string>\s*production\s*<\/string>/i.test(ctx.entitlements);
   const hasEntitlements = ctx.entitlements.length > 0;
   checks.push({
     category: C,
@@ -617,7 +732,10 @@ function storeReadinessChecks(ctx: IosContext): PulseScanCheckInput[] {
   );
 
   // Export-compliance declaration — its absence means a manual question every upload.
-  const hasEncryptionKey = /ITSAppUsesNonExemptEncryption/i.test(ctx.plist);
+  // Generated-Info.plist projects declare it as a build setting instead.
+  const hasEncryptionKey =
+    /ITSAppUsesNonExemptEncryption/i.test(ctx.plist) ||
+    /INFOPLIST_KEY_ITSAppUsesNonExemptEncryption\s*=/.test(ctx.pbxproj);
   checks.push({
     category: C,
     checkKey: "ios_encryption_declaration",
@@ -706,10 +824,17 @@ function storeReadinessChecks(ctx: IosContext): PulseScanCheckInput[] {
 function accessibilityChecks(ctx: IosContext): PulseScanCheckInput[] {
   const C = CATEGORIES.ACCESSIBILITY;
 
-  const scaled = countMatches(ctx.swift, /(ScaledMetric|dynamicTypeSize|relativeTo:\s*\.|\.font\(\.(?:body|title|caption|headline|subheadline|callout|footnote)\b)/);
-  const fixedFonts = countMatches(ctx.swift, /\.font\(\s*\.custom\([^)]*size:/);
-  const labels = countMatches(ctx.swift, /accessibilityLabel/);
-  const interactive = countMatches(ctx.swift, /(?:^|[^\w])(?:Button|NavigationLink|onTapGesture|Toggle)\s*[({]/);
+  // UIKit counts too: UIFontMetrics / preferredFont(forTextStyle:) scale, and
+  // [UIFont].systemFont(ofSize:) / UIFont(name:size:) are fixed. The shorthand
+  // `.systemFont(ofSize:)` is the common spelling, so the UIFont prefix is optional.
+  // adjustsFontForContentSizeCategory is NOT counted: it does nothing on a fixed font.
+  const scaled = countMatches(ctx.swift, /(ScaledMetric|dynamicTypeSize|relativeTo:\s*\.|\.font\(\.(?:body|title|caption|headline|subheadline|callout|footnote)\b|UIFontMetrics|preferredFont\(\s*forTextStyle)/);
+  const fixedFonts = countMatches(ctx.swift, /(\.font\(\s*\.custom\([^)]*size:|\.(?:systemFont|boldSystemFont|italicSystemFont|monospacedSystemFont|monospacedDigitSystemFont)\(\s*ofSize:|UIFont\(\s*name:[^)]*size:)/);
+  const labels = countMatches(ctx.shipped, /accessibilityLabel/);
+  // A control with a text title (`Button("Save")`, `Toggle("Notifications", …)`,
+  // `Label(…)`) is already labelled by it. Only a control whose content is an image
+  // and nothing else needs an explicit label.
+  const { interactive, iconOnly } = swiftUiControls(ctx.shipped);
 
   // Ratio, not presence. Presence alone passed an app with 358 hardcoded sizes and a
   // single `.font(.title)`: technically "uses Dynamic Type", in practice none of the
@@ -728,22 +853,22 @@ function accessibilityChecks(ctx: IosContext): PulseScanCheckInput[] {
           ? "No font declarations found in the sampled source, so Dynamic Type support could not be assessed."
           : scaledShare >= 0.5
             ? `${scaled} of ${typed} font usages scale with the user's font-size setting (${Math.round(scaledShare * 100)}%).`
-            : `Only ${scaled} of ${typed} font usages scale with the user's font-size setting (${Math.round(scaledShare * 100)}%) — ${fixedFonts} use a hardcoded .font(.custom(size:)). Text at a fixed point size ignores the system font-size setting entirely, so a user who raised it for legibility sees almost no change. Pass relativeTo: when declaring a custom font, or size it with @ScaledMetric.`,
+            : `Only ${scaled} of ${typed} font usages scale with the user's font-size setting (${Math.round(scaledShare * 100)}%) — ${fixedFonts} use a hardcoded point size (.font(.custom(size:)), UIFont.systemFont(ofSize:) or UIFont(name:size:)). Text at a fixed point size ignores the system font-size setting entirely, so a user who raised it for legibility sees almost no change. Pass relativeTo: when declaring a custom font, or size it with @ScaledMetric.`,
     }),
     absence(ctx, {
       category: C,
       checkKey: "ios_accessibility_labels",
       label: "VoiceOver labels on interactive elements",
       status:
-        interactive === 0 ? "SKIPPED" : labels === 0 ? "FAIL" : labels / interactive >= 0.3 ? "PASS" : "WARN",
+        interactive === 0 ? "SKIPPED" : iconOnly === 0 || labels >= iconOnly ? "PASS" : "WARN",
       detail:
         interactive === 0
           ? "No interactive SwiftUI elements found in the sampled source."
-          : labels === 0
-            ? `${interactive} interactive element${interactive !== 1 ? "s" : ""} found with no accessibilityLabel anywhere. VoiceOver will announce icon-only controls as unlabelled buttons, which makes the app effectively unusable with a screen reader.`
-            : labels / interactive >= 0.3
-              ? `${labels} accessibility labels across ${interactive} interactive elements.`
-              : `Only ${labels} accessibilityLabel${labels !== 1 ? "s" : ""} across ${interactive} interactive elements. Icon-only controls need explicit labels or VoiceOver announces them as "Button".`,
+          : iconOnly === 0
+            ? `${interactive} interactive element${interactive !== 1 ? "s" : ""} found, each with a text title, which VoiceOver reads as its label.`
+            : labels >= iconOnly
+              ? `${iconOnly} icon-only control${iconOnly !== 1 ? "s" : ""} and ${labels} accessibilityLabel${labels !== 1 ? "s" : ""} in the sampled source.`
+              : `${iconOnly} control${iconOnly !== 1 ? "s show" : " shows"} only an image, and the sampled source has ${labels === 0 ? "no" : `only ${labels}`} accessibilityLabel${labels !== 1 ? "s" : ""}. VoiceOver reads an SF Symbol by its name at best ("square.and.arrow.up"), and a custom image not at all. Give each icon-only control a label that says what it does.`,
     }),
   ];
 }
@@ -778,7 +903,9 @@ function performanceChecks(ctx: IosContext): PulseScanCheckInput[] {
 
   // Adaptive bitrate streaming — the big one for a video app on a weak connection.
   const playsVideo = /(AVPlayer|AVPlayerItem|AVKit|VideoPlayer|GSPlayer)/i.test(ctx.swift);
-  const usesHls = /\.m3u8/i.test(ctx.swift);
+  // HLS URLs usually come from the API, so a `.m3u8` literal is rare; a model/API
+  // field named `hls` or the HLS MIME type is the same evidence.
+  const usesHls = /\.m3u8|\bhls\b|x-mpegurl/i.test(ctx.swift);
   const usesProgressive = /\.mp4/i.test(ctx.swift);
   const capsBitrate = /preferredPeakBitRate|preferredMaximumResolution/i.test(ctx.swift);
   checks.push(
@@ -790,7 +917,7 @@ function performanceChecks(ctx: IosContext): PulseScanCheckInput[] {
       detail: !playsVideo
         ? "No video playback detected."
         : usesHls
-          ? `HLS (.m3u8) playback detected — the player can adapt bitrate to the available bandwidth.${capsBitrate ? " preferredPeakBitRate is also set, so cellular playback can be capped." : ""}`
+          ? `HLS is referenced (a .m3u8 manifest, an \`hls\` field or the HLS MIME type) — the player can adapt bitrate to the available bandwidth.${capsBitrate ? " preferredPeakBitRate is also set, so cellular playback can be capped." : ""}`
           : usesProgressive
             ? "Video is played from progressive .mp4 URLs with no HLS manifest. A progressive file has ONE fixed bitrate, so on a weak or metered connection the player cannot step down — it just buffers. For a video-led app this is usually the single largest cause of \"slow on low data\". Serve an HLS (.m3u8) ladder and set preferredPeakBitRate on cellular."
             : "Video playback detected but no media URLs found in the sampled source — confirm whether delivery is HLS.",
@@ -801,17 +928,32 @@ function performanceChecks(ctx: IosContext): PulseScanCheckInput[] {
   // HTTP response cache. Requires a cache to be CONSTRUCTED or SIZED — merely
   // referencing URLSessionConfiguration passed an app whose only use of it was a
   // background download session, which caches no responses at all.
-  const configuresCache = /(URLCache\s*\(|\.urlCache\s*=|\.diskCapacity|\.memoryCapacity|\.requestCachePolicy\s*=)/i.test(ctx.swift);
+  // `urlCache = nil` and `.requestCachePolicy = .reloadIgnoring…CacheData` switch
+  // caching OFF, so they must not count as configuring it (NetNewsWire sets exactly
+  // those and was reported as "a cache policy is configured").
+  const configuresCache = /(URLCache\s*\(|\.urlCache\s*=(?!\s*nil\b)|\.diskCapacity|\.memoryCapacity|\.requestCachePolicy\s*=(?![^\n]*reloadIgnoring))/i.test(ctx.swift);
+  // Session-level disabling only. A per-request `cachePolicy: .reloadIgnoringLocalCacheData`
+  // (e.g. pull-to-refresh) bypasses the cache for that one request and does NOT
+  // disable it for the app.
+  const disablesCache = /(\.urlCache\s*=\s*nil\b|\.requestCachePolicy\s*=\s*\.reloadIgnoring(?:Local|LocalAndRemote)?CacheData)/.test(ctx.swift);
+  // A deliberate no-cache design that revalidates with conditional GET still avoids
+  // re-downloading unchanged responses.
+  const conditionalGet = /(If-None-Match|If-Modified-Since)/i.test(ctx.swift);
+  const deliberateNoCache = !configuresCache && disablesCache && conditionalGet;
   const sharedOnly = /URLSession\.shared/.test(ctx.swift) && !/URLSession\s*\(\s*configuration:/.test(ctx.swift);
   checks.push(
     absence(ctx, {
       category: C,
       checkKey: "ios_url_cache",
       label: "HTTP response caching configured",
-      status: configuresCache ? "PASS" : "WARN",
+      status: configuresCache || deliberateNoCache ? "PASS" : "WARN",
       detail: configuresCache
-        ? "A URLCache or URLSessionConfiguration cache policy is configured."
-        : `No URLCache or URLSessionConfiguration cache sizing found${sharedOnly ? " — all traffic goes through URLSession.shared" : ""}. The shared session's default cache is small and memory-biased, so list and detail responses are refetched constantly on a slow connection. Create a URLSessionConfiguration with an explicit on-disk URLCache and a cache policy per endpoint.`,
+        ? "A URLCache is constructed or sized, or a URLSessionConfiguration request cache policy is set."
+        : deliberateNoCache
+          ? "The session's URL response cache is deliberately disabled (urlCache = nil / requestCachePolicy = .reloadIgnoringLocalCacheData) and requests revalidate with conditional GET (If-None-Match / If-Modified-Since), so unchanged responses are not re-downloaded in full."
+          : disablesCache
+            ? "The session's URL response cache is explicitly disabled (urlCache = nil or requestCachePolicy = .reloadIgnoringLocalCacheData) and no conditional GET (If-None-Match / If-Modified-Since) was found in the sampled source, so cacheable responses are re-downloaded in full every time. If that is not intended for list and detail endpoints, give the session an on-disk URLCache."
+            : `No URLCache or URLSessionConfiguration cache sizing found${sharedOnly ? " — the sampled networking code uses URLSession.shared" : ""}. Responses therefore go through the system's default shared URLCache, which is only a few megabytes; whether anything is reused also depends on the server's Cache-Control headers (no-store and POST responses are never cached). If your list and detail endpoints are cacheable, give a URLSessionConfiguration an explicit on-disk URLCache sized for them.`,
     }),
   );
 
@@ -861,7 +1003,9 @@ function performanceChecks(ctx: IosContext): PulseScanCheckInput[] {
   );
 
   // Offline / cache fallback when the network is unavailable.
-  const cacheFallback = /(returnCacheDataElseLoad|returnCacheDataDontLoad|useProtocolCachePolicy|waitsForConnectivity)/i.test(ctx.swift);
+  // An app-level persistent store (e.g. a Bodega/Boutique SQLite timeline cache) is
+  // also a fallback: it renders last-known content without any HTTP cache policy.
+  const cacheFallback = /(returnCacheDataElseLoad|returnCacheDataDontLoad|useProtocolCachePolicy|waitsForConnectivity|SQLiteStorageEngine|\bimport\s+(?:Bodega|Boutique)\b)/i.test(ctx.swift);
   checks.push(
     absence(ctx, {
       category: C,
@@ -870,7 +1014,7 @@ function performanceChecks(ctx: IosContext): PulseScanCheckInput[] {
       status: cacheFallback ? "PASS" : "WARN",
       detail: cacheFallback
         ? "A cache-fallback policy is applied when the network is unavailable, so previously-loaded content still renders offline."
-        : "No offline cache-fallback policy detected. Without returnCacheDataElseLoad (or waitsForConnectivity) a brief connection drop empties the UI instead of showing the last-known content.",
+        : "No offline cache-fallback policy or app-level offline store detected. Without returnCacheDataElseLoad, waitsForConnectivity or a persisted copy of the last response, a brief connection drop can empty the UI instead of showing the last-known content.",
     }),
   );
 
@@ -962,16 +1106,17 @@ function codeQualityChecks(ctx: IosContext): PulseScanCheckInput[] {
   });
 
   // Crash-risk density. Credit a clean result — a readout that can only subtract is not trusted.
-  const forceTry = countMatches(ctx.swift, /\btry!/);
-  const forceCast = countMatches(ctx.swift, /\sas!\s/);
-  const fatal = countMatches(ctx.swift, /fatalError\s*\(/);
-  const forceUrl = countMatches(ctx.swift, /URL\(string:[^)]*\)!/);
+  // Shipped code only: a try! in an XCTest case cannot crash the app.
+  const forceTry = countMatches(ctx.shipped, /\btry!/);
+  const forceCast = countMatches(ctx.shipped, /\sas!\s/);
+  const fatal = countMatches(ctx.shipped, /fatalError\s*\(/);
+  const forceUrl = countMatches(ctx.shipped, /URL\(string:[^)]*\)!/);
   const crashRisk = forceTry + forceCast + fatal + forceUrl;
   // Per 1,000 LINES, not per file — a per-file rate is meaningless because file size
   // varies by orders of magnitude. Below MIN_DENSITY_LINES there is too little source
   // to derive a rate at all, so the check skips rather than reporting noise.
   const MIN_DENSITY_LINES = 200;
-  const lines = ctx.swift === "" ? 0 : ctx.swift.split("\n").length;
+  const lines = ctx.shipped === "" ? 0 : ctx.shipped.split("\n").length;
   const per1kLines = lines > 0 ? (crashRisk / lines) * 1000 : 0;
   const tooSmall = lines < MIN_DENSITY_LINES;
   checks.push({
@@ -985,7 +1130,20 @@ function codeQualityChecks(ctx: IosContext): PulseScanCheckInput[] {
   });
 
   // A networking layer that throws away the status code can't handle 401.
-  const discardsStatus = /statusCode:\s*nil/.test(ctx.swift);
+  // `statusCode: nil` is correct where there IS no HTTP response (bad URL, transport
+  // error). It only discards the status when the same shipped file never passes a
+  // real one through. Judged per shipped file, with HTTPURLResponse initialisers
+  // removed, so a test stub `HTTPURLResponse(url:statusCode:...)` or an unrelated
+  // `log(statusCode: code)` elsewhere cannot mask a discarding networking layer.
+  // Lowercase start keeps type annotations like `statusCode: Int?` from counting; a parenthesised
+  // expression such as `(response as? HTTPURLResponse)?.statusCode` does count.
+  const propagatesStatus = (src: string) =>
+    /statusCode:\s*(?!nil\b)(?:[a-z_][\w.?]*|\(\s*[a-z_])/.test(
+      src.replace(/HTTPURLResponse\(\s*url:[\s\S]{0,200}?statusCode:/g, "HTTPURLResponse("),
+    );
+  const discardsStatus = Array.from(ctx.shippedByPath.values()).some(
+    (src) => /statusCode:\s*nil/.test(src) && !propagatesStatus(src),
+  );
   const readsStatus = /(httpResponse|response)\.statusCode/.test(ctx.swift);
   const hasRefreshEndpoint = /(refreshToken|auth\/refresh|\/refresh)/i.test(ctx.swift);
   checks.push({

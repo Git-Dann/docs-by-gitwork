@@ -5,6 +5,9 @@ import {
   apiFetch,
   archiveProposal,
   createClient,
+  listDeletedClientsApi,
+  restoreClientApi,
+  purgeClientApi,
   createClientDesign,
   createClientDocumentLink,
   createClientPlatform,
@@ -22,6 +25,7 @@ import {
   duplicateProposal,
   getClientDetail,
   getClientMeetings,
+  getClientDrive,
   ingestClientMeeting,
   updateMeetingActionItem,
   linkMeetingActionItemTask,
@@ -63,15 +67,19 @@ import type {
 } from "@/types/client";
 import type { CostingSectionData, ProposalDocument } from "@/types/proposal";
 
-export function useProposalList(filters: {
-  search?: string;
-  status?: string;
-  sort?: string;
-  documentType?: string;
-}) {
+export function useProposalList(
+  filters: {
+    search?: string;
+    status?: string;
+    sort?: string;
+    documentType?: string;
+  },
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["proposals", filters],
     queryFn: () => listProposals(filters),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -116,13 +124,17 @@ export function useArchiveClientToDrive(slug: string) {
   });
 }
 
-export function useClientList(filters?: {
-  search?: string;
-  status?: WorkspaceClientStatus | "ALL";
-}) {
+export function useClientList(
+  filters?: {
+    search?: string;
+    status?: WorkspaceClientStatus | "ALL";
+  },
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["clients", filters],
     queryFn: () => listClients(filters),
+    enabled: options.enabled ?? true,
     // 60s (was 5min): the acting user's mutations invalidate immediately, but a
     // 5-minute window meant *other* teammates saw stale client state — e.g. a
     // status flipped to ACTIVE still showing PENDING. 60s keeps cross-user state
@@ -272,9 +284,38 @@ export function useUpdateClient(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       queryClient.invalidateQueries({ queryKey: ["client", slug] });
+      // Setting a lead's stage by hand pins it — the CRM panel shows that state.
+      queryClient.invalidateQueries({ queryKey: ["client-crm", slug] });
       queryClient.invalidateQueries({ queryKey: ["proposal"] });
       queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },
+  });
+}
+
+/** Deleted (hidden) clients — the Portal's Deleted tab. */
+export function useDeletedClients(enabled = true) {
+  return useQuery({
+    queryKey: ["clients", "deleted"],
+    queryFn: () => listDeletedClientsApi().then((r) => r.clients),
+    enabled,
+  });
+}
+
+export function useRestoreClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) => restoreClientApi(slug),
+    // "clients" prefix covers the deleted list AND every status list the restored client rejoins.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
+  });
+}
+
+/** PERMANENT delete of an already-deleted client. Irreversible — Super Admin only on the server. */
+export function usePurgeClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slug: string; confirmName: string }) => purgeClientApi(input.slug, input.confirmName),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
   });
 }
 
@@ -328,6 +369,9 @@ type PlatformInput = {
   notes?: string;
   previewImageUrl?: string;
   featuredInWiki?: boolean;
+  links?: { label?: string; url: string }[];
+  renewsOn?: string;
+  renewalNote?: string;
 };
 
 export function useCreateClientPlatform(slug: string) {
@@ -683,6 +727,24 @@ export function useClientSlackActivity(slug: string, enabled = true) {
 }
 
 // ─── Scribe (client meeting notes) ─────────────────────────────────────────
+
+/** A client's Google Drive folder — the team's own sign-in, or the client's share link. */
+export function useClientDrive(
+  target: import("@/lib/api").DriveTarget,
+  view: import("@/lib/client-drive").ClientDriveView,
+  folder: string | null = null,
+  enabled = true,
+) {
+  const key = target.mode === "internal" ? target.slug : target.token;
+  return useQuery({
+    queryKey: ["client-drive", target.mode, key, view, view === "folder" ? folder : null],
+    queryFn: () => getClientDrive(target, view, folder),
+    enabled: Boolean(key) && enabled,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
+  });
+}
 
 export function useClientMeetings(slug: string, enabled = true, q = "", all = false) {
   return useQuery({

@@ -47,6 +47,8 @@ export interface SyncContext {
     geminiModel: string | null;
     localLlmUrl: string | null;
     localLlmModel: string | null;
+    /** See src/server/ai-keys.ts. */
+    platformAiKeysAllowed: boolean;
   };
 }
 

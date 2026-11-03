@@ -13,6 +13,7 @@
  * No AI imports belong in this file — keep it that way.
  */
 
+import { answersAsApi } from "@/server/pulse-lite/api-target";
 import {
   runUrlChecks,
   runGithubChecks,
@@ -20,12 +21,33 @@ import {
 } from "@/server/pulse-scan";
 import { runDeployAgent } from "@/server/pulse-agents/deploy-agent";
 import { resolveEvidenceBackedControls } from "@/server/pulse-checks/standards-verification";
-import { runCodeAgent } from "@/server/pulse-agents/code-agent";
+import { fetchRepoVisibility, runCodeAgent } from "@/server/pulse-agents/code-agent";
+import { applyPrivateRepoPolicy, type RepoVisibility } from "@/server/pulse-checks/private-repo";
+import { answeredByCodeHealth, runCodeHealth, SUPERSEDED_BY_CODE_HEALTH, type CodeHealthReport } from "@/server/code-health";
 import { runBrowserAgent } from "@/server/pulse-agents/browser-agent";
+import { runRenderedA11yAgent } from "@/server/pulse-agents/rendered-a11y-agent";
+import { runConsentTrackingAgent } from "@/server/pulse-agents/consent-tracking-agent";
+import { runSiteCrawlAgent } from "@/server/pulse-agents/site-crawl-agent";
+import { CRAWL_EVIDENCE_KEYS, crawlEvidencePages, upgradeFromCrawl } from "@/server/pulse-checks/crawl-evidence";
 import { assertScannableUrl } from "./url-guard";
 import { annotateTrust } from "@/server/pulse-checks/confidence";
-import { detectRepoShape } from "@/server/pulse-checks/native-repo";
+import { applyAbsencePolicy } from "@/server/pulse-checks/absence-policy";
+import { detectRepoShape, getRepoSnapshot } from "@/server/pulse-checks/native-repo";
+import {
+  decideRelevance,
+  emptyRelevanceSummary,
+  recordDecision,
+  relevanceRuleFor,
+  WEB_PLATFORMS,
+  type RelevanceSummary,
+  type RepoShape,
+  type ScanContext,
+} from "@/server/pulse-checks/check-relevance";
+import { featuresFromPage, featuresFromRepo } from "@/server/pulse-checks/product-features";
+import { classifyGenericRepo } from "@/server/pulse-checks/repo-kind";
+import { normalizePulsePlatform } from "@/server/pulse-checks/platform-applicability";
 import { buildPlatformCoverageCheck } from "@/server/pulse-checks/platform-coverage";
+import { detectStoreTarget, STORE_NAME, STORE_PLATFORM_LABEL, storePlatformForTarget, withArticle } from "@/lib/pulse-store-url";
 import {
   buildUrlCollectorPlan,
   detectUrlTargetKind,
@@ -33,7 +55,7 @@ import {
 } from "@/server/pulse-checks/scan-execution-plan";
 import { collectorCompletenessCheck, collectorOutcome, sourceCollectorsUnavailable, urlCollectorsUnavailable, type CollectorExecution } from "@/server/pulse-checks/collector-health";
 import { applyCheckPolicy, customPolicyChecks, type CheckPolicy } from "@/server/check-config";
-import type { JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
+import { resolveTargetMarkets, type JurisdictionCode } from "@/server/pulse-checks/jurisdictions";
 import type {
   PulseScanCheckInput,
   BrowserAgentInsights,
@@ -73,6 +95,8 @@ export interface LiteScanResult {
   browserInsights: BrowserAgentInsights | null;
   deployInsights: DeployAgentInsights | null;
   codeInsights: CodeAgentInsights | null;
+  /** The full-checkout code measure (repo scans only). Null when it did not run. */
+  codeHealth: CodeHealthReport | null;
   homepageUrl: string | null;
   /** Jurisdiction codes auto-detected from the page (audit + legacy fallback). */
   detectedMarkets: JurisdictionCode[];
@@ -82,6 +106,18 @@ export interface LiteScanResult {
    * evidence JSON, where nothing but a reader of raw rows would ever find it.
    */
   collectorExecutions: CollectorExecution[];
+  /**
+   * The platform the scan actually ran as. For an App Store / Google Play link this is
+   * IOS_APP / ANDROID_APP whatever was selected — the link decides, not the picker.
+   */
+  executionPlatform: string | undefined;
+  /** The app's name as its store lists it. Null for anything that is not a store link. */
+  appName: string | null;
+  /**
+   * What the relevance gate showed and what it held back, and why — the scan's one-line
+   * "not assessed" note. Hidden checks are not in `checks` at all.
+   */
+  relevance: RelevanceSummary;
 }
 
 export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult> {
@@ -104,10 +140,46 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   };
   const collectorCompleted = (name: string) => collectorExecutions.push({ name, outcome: "COMPLETED" });
 
-  const ingest = (batch: PulseScanCheckInput[]): Promise<void> => {
+  // ── The relevance gate (check-relevance.ts) ──────────────────────────────────
+  // Every check from every collector passes through ingest below, so this is the one
+  // place a check can be held back — no collector can route around it. The context is
+  // filled in as the scan learns what it is looking at, and always BEFORE the checks it
+  // governs are ingested.
+  const relevanceCtx: ScanContext = {
+    platform: normalizePulsePlatform(input.platform),
+    target: input.inputType === "URL" ? { kind: "website" } : { kind: "repo", shape: "none" },
+    features: new Set(),
+  };
+  const relevance = emptyRelevanceSummary();
+  const heldBack = new Set<string>();
+  // Set once, before any repo check is ingested. null (a URL scan, or GitHub would not
+  // say) changes nothing — see private-repo.ts.
+  let repoIsPrivate: RepoVisibility = null;
+
+  // Checks that read only the homepage but can be answered from other pages of the site
+  // (crawl-evidence.ts). While a crawl may still run they are held here, first writer
+  // wins as everywhere else, and ingested once the crawl has finished, so persistence
+  // stays append-only.
+  const awaitingCrawl = new Map<string, PulseScanCheckInput>();
+  let holdForCrawl = false;
+  const ingest = (input0: PulseScanCheckInput[]): Promise<void> => {
+    let batch = input0;
+    if (holdForCrawl) {
+      batch = [];
+      for (const c of input0) {
+        if (!CRAWL_EVIDENCE_KEYS.has(c.checkKey)) batch.push(c);
+        else if (!awaitingCrawl.has(c.checkKey)) awaitingCrawl.set(c.checkKey, c);
+      }
+    }
     const fresh: PulseScanCheckInput[] = [];
-    for (const c of applyCheckPolicy(batch, input.checkPolicy)) {
-      if (seen.has(c.checkKey)) continue;
+    for (const c of applyCheckPolicy(batch, input.checkPolicy).map((c) => applyAbsencePolicy(applyPrivateRepoPolicy(c, repoIsPrivate), relevanceCtx.target.kind))) {
+      if (seen.has(c.checkKey) || heldBack.has(c.checkKey)) continue;
+      const decision = decideRelevance(c, relevanceRuleFor(c.checkKey), relevanceCtx);
+      recordDecision(relevance, decision);
+      if (!decision.show) {
+        heldBack.add(c.checkKey);
+        continue;
+      }
       // Trust layer — stamp confidence + bucket centrally (covers every probe).
       const withOrder = { ...annotateTrust(c), sortOrder: order++ };
       seen.set(c.checkKey, withOrder);
@@ -128,12 +200,14 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
   let browserInsights: BrowserAgentInsights | null = null;
   let deployInsights: DeployAgentInsights | null = null;
   let codeInsights: CodeAgentInsights | null = null;
+  let codeHealth: CodeHealthReport | null = null;
   let homepageUrl: string | null = null;
   let detectedMarkets: JurisdictionCode[] = [];
   let urlTargetBlocked = false;
   let urlSurfaceIsProduction = true;
   let shouldResolveStandards = input.inputType === "GITHUB_REPO";
   let executionPlatform = input.platform;
+  let appName: string | null = null;
 
   if (input.inputType === "URL") {
     const raw = (input.url ?? "").trim();
@@ -143,19 +217,92 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // Classify the actual document first. Starting deploy/PageSpeed in parallel
     // used quota and time on App Store pages, source-only platforms, prototypes,
     // and Vercel/Cloudflare checkpoints whose results were later discarded.
-    const urlResult = await runUrlChecks(safeUrl, input.platform, onWave, input.targetMarkets, { renderJs });
-    collectorCompleted("url-checks");
+    const store = detectStoreTarget(safeUrl);
+    if (store) {
+      relevanceCtx.target = { kind: "store" };
+      relevanceCtx.platform = storePlatformForTarget(store);
+    }
+    // A WEBSITE of a non-web product (an iOS app's site, a CLI's docs site) is that
+    // product's public presence. The URL engine used to skip it entirely for these
+    // platforms — a website scanned as an iOS app returned one check — so it now scans
+    // the site as what it is, a marketing site, and the gate applies the product's
+    // real platform to decide which presence checks to show.
+    const SOURCE_ONLY = new Set(["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE", "DESKTOP_APP", "CHROME_EXTENSION", "CLI_TOOL"]);
+    // The crawl rides the same switch as rendering and never reads a store listing.
+    holdForCrawl = renderJs && !store;
+    const urlEnginePlatform = !store && SOURCE_ONLY.has(normalizePulsePlatform(input.platform)) ? "MARKETING_SITE" : input.platform;
+    const urlResult = await runUrlChecks(safeUrl, urlEnginePlatform, onWave, input.targetMarkets, {
+      renderJs,
+      onPageContext: (page) => {
+        const features = featuresFromPage(page.html);
+        if (page.paymentsFromOtherEvidence) features.add("payments");
+        // The website of an iOS / Android product has that app by definition.
+        if (["IOS_APP", "ANDROID_APP", "CROSS_PLATFORM_MOBILE"].includes(relevanceCtx.platform)) features.add("mobile_app");
+        relevanceCtx.features = features;
+        // A URL that answers with JSON is an API, whatever the dropdown said — and is
+        // judged as one: an API scanned as "iOS app" is not asked for an About page.
+        if (answersAsApi(safeUrl, page.contentType)) {
+          relevanceCtx.target = { kind: "api" };
+          relevanceCtx.platform = "API_BACKEND";
+        }
+      },
+    });
+    const urlTargetKind = detectUrlTargetKind(safeUrl);
+    // ⚠️ A store link is an APP, and is scanned and reported as one.
+    //
+    // runUrlChecks takes an early return for App Store / Google Play links: it reads the
+    // listing and runs none of the website families (headers, TLS, legal pages, SEO,
+    // accessibility, DNS). Two earlier versions of this block got that wrong in opposite
+    // directions. The first recorded url-checks COMPLETED, so the website launch policy
+    // passed a scan that had run none of its checks ("98/100 · READY"). The second
+    // recorded it NOT_APPLICABLE with "scan the product's own URL" — framing an iOS scan
+    // as a website scan that had failed, and telling the user to scan something else.
+    //
+    // Now the collector that actually ran is recorded — store-listing — and the scan is
+    // judged by the iOS / Android listing policy (release-decision.ts), which requires it.
+    // The website and source collectors are recorded as not part of this scan, each with
+    // a reason written about the APP, so coverage never reads as a whole-product answer.
+    const storeTarget = urlResult.store?.target ?? null;
+    if (storeTarget) {
+      const macApp = storeTarget === "app_store" && Boolean(urlResult.store?.listing?.macOnly);
+      const platformLabel = macApp ? "Mac app" : STORE_PLATFORM_LABEL[storeTarget];
+      const storeName = macApp ? "Mac App Store" : STORE_NAME[storeTarget];
+      const liveCheck0 = urlResult.checks.find((check) => check.checkKey === "store_page_live");
+      // A listing the store says is gone (404/410) was OBSERVED, not failed to read —
+      // recording it as a collector ERROR made a removed iOS/Android app "unknown".
+      if (urlResult.store?.listing || liveCheck0?.status === "FAIL") {
+        collectorCompleted("store-listing");
+      } else {
+        const liveCheck = urlResult.checks.find((check) => check.checkKey === "store_page_live");
+        collectorExecutions.push({
+          name: "store-listing",
+          outcome: "ERROR",
+          detail: liveCheck && liveCheck.status !== "PASS"
+            ? (liveCheck.detail ?? `The ${storeName} listing could not be read.`).slice(0, 160)
+            : `The ${storeName} page did not include its listing data, so the listing could not be read.`,
+        });
+      }
+      collectorExecutions.push({
+        name: "url-checks",
+        outcome: "NOT_APPLICABLE",
+        reason: `Not part of this scan: this is ${withArticle(platformLabel)}, assessed from its ${storeName} listing. The website checks (security headers, TLS, SEO, DNS) describe a website, not ${withArticle(platformLabel)}.`,
+      });
+    } else {
+      collectorCompleted("url-checks");
+    }
     techStack = urlResult.techStack;
     detectedMarkets = urlResult.detectedMarkets;
     urlSurfaceIsProduction = urlResult.surfaceKind === "DEPLOYED_PRODUCT";
     urlTargetBlocked = urlResult.checks.some(
-      (check) => check.checkKey === "target_content_accessible" && check.status === "FAIL",
+      (check) => check.checkKey === "target_content_accessible" && (check.status === "FAIL" || check.status === "INCONCLUSIVE"),
     );
-    const targetKind = detectUrlTargetKind(safeUrl);
-    if (targetKind === "app_store") executionPlatform = "IOS_APP";
-    if (targetKind === "play_store") executionPlatform = "ANDROID_APP";
+    const targetKind = urlTargetKind;
+    if (targetKind !== "web") executionPlatform = storePlatformForTarget(targetKind);
+    // A Mac App Store listing on an apps.apple.com link is a Mac app, not an iOS one.
+    if (targetKind === "app_store" && urlResult.store?.listing?.macOnly) executionPlatform = "DESKTOP_APP";
+    appName = urlResult.store?.appName ?? null;
     const collectorPlan = buildUrlCollectorPlan(
-      input.platform,
+      urlEnginePlatform,
       urlResult.surfaceKind,
       targetKind,
     );
@@ -164,19 +311,39 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     pending.push(ingest(urlResult.checks));
 
     // Say so when the selected platform's deep checks need source we do not have.
+    // The platform the scan RUNS as — for a store link that is iOS / Android whatever
+    // the picker said, so the report names the source family the listing cannot reach.
     const coverage = buildPlatformCoverageCheck({
-      selectedPlatform: input.platform ?? "",
+      selectedPlatform: executionPlatform ?? "",
       inputType: "URL",
       detectedShape: null,
+      storeTarget: storeTarget ?? undefined,
     });
     if (coverage) pending.push(ingest([coverage]));
 
-    const [deployOutcome, browserOutcome] = await Promise.all([
+    // The rendered accessibility pass needs a page a browser can draw: a website, reached,
+    // on the internal path (it launches Chromium, so it rides the same switch as rendering).
+    const runRenderedA11y = collectorPlan.browser && renderJs && !storeTarget && !urlTargetBlocked
+      && relevanceCtx.target.kind === "website";
+    const [deployOutcome, browserOutcome, a11yOutcome, consentOutcome, crawlOutcome] = await Promise.all([
       collectorPlan.deploy
         ? Promise.allSettled([runDeployAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
       collectorPlan.browser && includePageSpeed
         ? Promise.allSettled([runBrowserAgent(safeUrl)]).then(([result]) => result)
+        : Promise.resolve(null),
+      runRenderedA11y
+        ? Promise.allSettled([runRenderedA11yAgent(safeUrl)]).then(([result]) => result)
+        : Promise.resolve(null),
+      // Same conditions: a reachable website, internal path. Its own browser, because
+      // the test needs an empty profile — a first visit with no stored consent.
+      runRenderedA11y
+        ? Promise.allSettled([runConsentTrackingAgent(safeUrl, resolveTargetMarkets(input.targetMarkets, detectedMarkets).effective)]).then(([result]) => result)
+        : Promise.resolve(null),
+      // Same conditions again: a reachable website, internal path. Reads up to 15 pages
+      // of the site, so it is never offered to the anonymous public scan.
+      runRenderedA11y
+        ? Promise.allSettled([runSiteCrawlAgent(safeUrl)]).then(([result]) => result)
         : Promise.resolve(null),
     ]);
 
@@ -205,27 +372,106 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
       collectorExecutions.push({ name: "browser-agent", outcome: "NOT_APPLICABLE" });
     }
 
+    // Its checks are ingested on failure too: they say INCONCLUSIVE, which is the honest
+    // answer to "could a keyboard user reach this?" when no browser ran.
+    if (a11yOutcome) {
+      collectorExecutions.push(collectorOutcome("rendered-a11y", a11yOutcome));
+      if (a11yOutcome.status === "fulfilled") pending.push(ingest(a11yOutcome.value.checks));
+    } else {
+      collectorExecutions.push({ name: "rendered-a11y", outcome: "NOT_APPLICABLE" });
+    }
+
+    if (consentOutcome) {
+      collectorExecutions.push(collectorOutcome("consent-tracking", consentOutcome));
+      if (consentOutcome.status === "fulfilled") pending.push(ingest(consentOutcome.value.checks));
+    } else {
+      collectorExecutions.push({ name: "consent-tracking", outcome: "NOT_APPLICABLE" });
+    }
+
+    if (crawlOutcome) {
+      collectorExecutions.push(collectorOutcome("site-crawl", crawlOutcome));
+      if (crawlOutcome.status === "fulfilled") pending.push(ingest(crawlOutcome.value.checks));
+    } else {
+      collectorExecutions.push({ name: "site-crawl", outcome: "NOT_APPLICABLE" });
+    }
+
+    // The held homepage-only checks, improved by the pages the crawl read where they can be.
+    // With no crawl, or a failed one, they go in exactly as the homepage left them.
+    holdForCrawl = false;
+    const held = [...awaitingCrawl.values()];
+    awaitingCrawl.clear();
+    const crawlObservation = crawlOutcome?.status === "fulfilled" ? crawlOutcome.value.observation : null;
+    if (held.length > 0) pending.push(ingest(crawlObservation ? upgradeFromCrawl(held, crawlEvidencePages(crawlObservation)) : held));
+
     // The source collectors are not merely absent from a URL scan — they are
     // UNAVAILABLE, and for a reason the customer can act on. Recording nothing
     // made the coverage check read "every collector completed" while half of
     // Pulse had not run.
     collectorExecutions.push(...sourceCollectorsUnavailable(
-      "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
+      storeTarget
+        ? `The ${executionPlatform === "DESKTOP_APP" && storeTarget === "app_store" ? "Mac app" : STORE_PLATFORM_LABEL[storeTarget]}'s source was not connected, so the checks that read its code did not run. Scan the app's GitHub repository to include them.`
+        : "No repository was connected, so the source-analysis families did not run. Re-scan with a GitHub repo to include them.",
     ));
   } else {
     // GITHUB_REPO — detect the artefact, then run only its source families.
     const repo = (input.githubRepo ?? "").trim();
     if (!repo) throw new Error("A GitHub repo is required.");
 
+    // Visibility runs alongside shape detection and is settled before any collector
+    // ingests: a private product repo is not graded on open-source chores.
+    const visibilityRun = fetchRepoVisibility(repo).catch(() => null);
     // Shares one memoized snapshot with both collectors — no repeated tree fetch.
     const repoShape = await detectRepoShape(repo)
       .then((shape) => { collectorCompleted("repo-shape"); return shape; })
       .catch((error) => { collectorFailed("repo-shape", error); return "none" as const; });
     executionPlatform = effectivePlatformForRepoShape(input.platform, repoShape);
+    // A repo with no specific shape is still a web app, a backend, or neither — and
+    // detection decides, not the dropdown (a Next.js repo picked as "iOS app" used to run
+    // as iOS and lose every web-source check).
+    const snapshot = await getRepoSnapshot(repo).catch(() => null);
+    let relevanceShape: RepoShape = repoShape as RepoShape;
+    if (repoShape === "none" && snapshot?.accessible) {
+      const kind = classifyGenericRepo(snapshot.paths, snapshot.files);
+      relevanceShape = kind;
+      const selected = normalizePulsePlatform(input.platform);
+      if (kind === "web" && !WEB_PLATFORMS.has(selected)) executionPlatform = "WEB_APP";
+      // A backend is an API unless the user called it a web app / SaaS (a full-stack
+      // product whose server this is). A "marketing site" with no UI is not one.
+      else if (kind === "backend" && !["API_BACKEND", "WEB_APP", "SAAS"].includes(selected)) executionPlatform = "API_BACKEND";
+      else if (kind === "none" && !WEB_PLATFORMS.has(selected) && selected !== "API_BACKEND") executionPlatform = "OTHER";
+    }
+    relevanceCtx.target = { kind: "repo", shape: relevanceShape };
+    relevanceCtx.platform = normalizePulsePlatform(executionPlatform);
+    relevanceCtx.features = snapshot?.accessible ? featuresFromRepo(snapshot.paths, snapshot.files) : new Set();
+    // The collectors run as what the repo IS (executionPlatform), not what was picked:
+    // an Express API picked as "iOS app" ran 17 checks, the same repo picked as "Other"
+    // ran 101. The dropdown only labels the scan; the coverage note below says so.
+    // The full-checkout measure answers some sampled checks better. Those are held back
+    // until it settles: shown only if it could not run, so a scan never carries two
+    // answers to one question, and never loses the sampled one when the full one failed.
+    repoIsPrivate = await visibilityRun;
+    const superseded = new Set<string>(SUPERSEDED_BY_CODE_HEALTH);
+    const heldSampled: PulseScanCheckInput[] = [];
+    const repoIngest = (batch: PulseScanCheckInput[]) => {
+      heldSampled.push(...batch.filter((c) => superseded.has(c.checkKey)));
+      return ingest(batch.filter((c) => !superseded.has(c.checkKey)));
+    };
+    const codeHealthRun = (snapshot?.accessible === false ? Promise.resolve(null) : runCodeHealth(repo)).then((r) => {
+      if (!r) return;
+      if (r.report) { codeHealth = r.report; collectorCompleted("code-health"); }
+      else collectorFailed("code-health", new Error(r.unavailable ?? "did not run"));
+      pending.push(ingest(r.checks));
+    });
     const [ghResult, codeResult] = await Promise.all([
-      runGithubChecks(repo, input.platform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
-      runCodeAgent(repo, input.platform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(ingest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
+      runGithubChecks(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("github-checks"); pending.push(repoIngest(r.checks)); return r; }).catch((error) => { collectorFailed("github-checks", error); return { checks: [], techStack: [] as string[], nativePlatform: null }; }),
+      runCodeAgent(repo, executionPlatform, repoShape).then((r) => { collectorCompleted("code-agent"); codeInsights = r.insights; pending.push(repoIngest(r.checks)); return r; }).catch((error) => { collectorFailed("code-agent", error); return null; }),
+      codeHealthRun,
     ]);
+    // Release every held sampled check the full measure did not actually answer: all of
+    // them when it failed, and Dependabot's library answer when the lockfile audit could not run.
+    const answered = answeredByCodeHealth(codeHealth);
+    const released = heldSampled.filter((c) => !answered.has(c.checkKey));
+    if (released.length > 0) pending.push(ingest(released));
     techStack = ghResult.techStack;
     homepageUrl = codeResult?.insights.homepageUrl ?? null;
 
@@ -233,7 +479,11 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     // WARN rather than a failure: detection wins, so the findings are still
     // correct — but the user asked for a family that did not run, and silence
     // there is indistinguishable from "we ran them and found nothing".
-    const coverage = buildPlatformCoverageCheck({
+    // ⚠️ Not when the repository could not be read: its shape is then unknown, and the
+    // note used to tell the user "this looks like a general web project" about a repo
+    // Pulse never opened. `repo_accessible` already says why nothing ran.
+    const repoUnreadable = ghResult.checks.some((c) => c.checkKey === "repo_accessible" && c.status === "FAIL");
+    const coverage = repoUnreadable ? null : buildPlatformCoverageCheck({
       selectedPlatform: input.platform ?? "",
       inputType: "GITHUB_REPO",
       detectedShape: repoShape,
@@ -271,8 +521,12 @@ export async function runLiteScan(input: LiteScanInput): Promise<LiteScanResult>
     browserInsights,
     deployInsights,
     codeInsights,
+    codeHealth,
     homepageUrl,
     detectedMarkets,
     collectorExecutions,
+    executionPlatform,
+    appName,
+    relevance: { ...relevance, target: relevanceCtx.target.kind },
   };
 }

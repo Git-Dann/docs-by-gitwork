@@ -13,6 +13,19 @@
  * is safe and never causes SSR/CSR drift.
  */
 
+import { parseBoardColumns, type BoardColumnDef } from "@/lib/tasks/board-columns";
+import { demoAiSearchReport } from "@/lib/demo/demo-ai-search";
+import { demoAiAnswersReport, demoSaveAiAnswersConfig, demoStartAiAnswersRun } from "@/lib/demo/demo-ai-answers";
+import { parseAiSearchRange } from "@/lib/ai-search";
+import { RECORDED_NORTHWIND_CHECKS } from "@/lib/demo/demo-pulse-recorded";
+import { RECORDED_CADENZA_CHECKS, RECORDED_CADENZA_CODE_HEALTH, RECORDED_CADENZA_SCORE, RECORDED_CADENZA_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-cadenza";
+import { RECORDED_FAIRWAY_CHECKS, RECORDED_FAIRWAY_SCORE, RECORDED_FAIRWAY_TECH_STACK } from "@/lib/demo/demo-pulse-recorded-fairway";
+import { DEMO_CODE_HEALTH, DEMO_PORTFOLIO_REPORTS } from "@/lib/demo/demo-code-health";
+import { byUrgency, summariseRepo, workItemsFor } from "@/lib/code-portfolio";
+import { applyFindingCounts, buildProjects, sortProjects, decodeTargetKey, targetKey, type PulseProject } from "@/lib/pulse-projects";
+import { openFindingCounts, findingFingerprint } from "@/lib/pulse-findings";
+import type { CodeHealthReport } from "@/types/code-health";
+import { buildSummaryBoard, type SummaryClientInput } from "@/lib/client-summary";
 import type {
   TaskDTO,
   TaskStatus,
@@ -27,11 +40,24 @@ import { GITWORK } from "@/lib/gitwork";
 import { DEFAULT_INTAKE_CATEGORIES } from "@/lib/wiki-intake-categories";
 import { getDefaultLaunchpadStructure } from "@/lib/launchpad/default-template";
 import { applyItemPatch, computeCompleteness } from "@/lib/launchpad/structure";
+import {
+  addCustomItem,
+  newCustomItemId,
+  removeCustomItem,
+  updateCustomItem,
+} from "@/lib/launchpad/custom-items";
+import { LAUNCHPAD_FILE_MAX_PER_ITEM, sanitizeLaunchpadFilename } from "@/lib/launchpad/files";
 import { renderLegalDoc } from "@/lib/launchpad/legal/render";
-import type { LaunchpadDTO, LaunchpadItemState } from "@/types/launchpad";
+import { comparisonLimitError, parseComparisonContent } from "@/lib/wiki-comparisons";
+import type { WikiComparison } from "@/types/wiki-comparisons";
+import { demoSheets, resolveDemoSheets } from "@/lib/demo/demo-sheets";
+import { resolveDemoDrive } from "@/lib/demo/demo-drive";
+import type { LaunchpadDTO, LaunchpadItemState, LaunchpadStructure } from "@/types/launchpad";
 import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
-import type { PulseScanDiff } from "@/types/pulse";
+import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
+import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
+import { resolveDemoCandidate, resolveDemoStaff, resolveDemoTeamArchive } from "@/lib/demo/demo-staff";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
 
@@ -52,7 +78,9 @@ export const demoSession = {
     // column, no bulk bar, no channels/settings screen and no triage controls — a
     // deliberately crippled view of the product. Mutations are no-ops here anyway,
     // since the interceptor answers every /api/* call with canned data.
-    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage"],
+    // `hr.manage` + `hr.viewSensitive` so /demo/staff shows the HR cards (employment,
+    // personal details, the access log, Suppliers) the way HR sees them.
+    permissions: ["clients", "proposals", "codeclear", "devsignal", "support", "support.manage", "backstage", "hr.manage", "hr.viewSensitive"],
   },
   expires: "2099-01-01T00:00:00.000Z",
 };
@@ -62,6 +90,13 @@ export const demoSession = {
 const DAY = 86_400_000;
 function atDays(days: number): string {
   return new Date(Date.now() + days * DAY).toISOString();
+}
+
+/** "YYYY-MM" of the month `offset` months from now — for the Metrics fixture. */
+function demoPeriod(offset: number): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 /** ISO for today at a fixed local hour:minute (for calendar events). */
 function todayAt(hour: number, minute = 0): string {
@@ -105,6 +140,12 @@ function mkTask(
     subtaskCount?: number;
     subtaskDoneCount?: number;
     commentCount?: number;
+    /** The category (feature block) it is planned in — Northwind's Gantt blocks. */
+    block?: { id: string; name: string } | null;
+    /** Planned work nobody has picked up yet. */
+    unassigned?: boolean;
+    /** Days ago it was last touched (default yesterday). */
+    touchedDaysAgo?: number;
   },
 ): TaskDTO {
   const client = byClient[partial.clientSlug];
@@ -112,14 +153,15 @@ function mkTask(
     id: partial.id,
     workspaceId: "demo-ws",
     client: { id: client.id, name: client.name, slug: client.slug },
-    assignees: [{ id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl }],
+    assignees: partial.unassigned ? [] : [{ id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl }],
     createdBy: { id: DEV.id, name: DEV.name, avatarUrl: DEV.avatarUrl },
-    featureBlock: null,
+    featureBlock: partial.block ?? null,
     parentId: null,
     title: partial.title,
     description: partial.description ?? null,
     acceptanceCriteria: null,
     status: partial.status,
+    boardColumnId: null,
     priority: partial.priority ?? "MEDIUM",
     label: null,
     orderKey: (orderSeq += 100),
@@ -138,7 +180,7 @@ function mkTask(
     metadata: null,
     scribeSource: null,
     createdAt: atDays(-14),
-    updatedAt: atDays(-1),
+    updatedAt: atDays(-(partial.touchedDaysAgo ?? 1)),
   };
 }
 
@@ -156,11 +198,26 @@ export const demoBoardTasks: TaskDTO[] = [
   mkTask({ id: "t10", title: "Refactor auth middleware", clientSlug: "fairway-nine", status: "BACKLOG", priority: "MEDIUM" }),
   mkTask({ id: "t11", title: "Ship v2 pricing page", clientSlug: "cadenza", status: "DONE", priority: "HIGH", completedAt: todayAt(9, 40) }),
   mkTask({ id: "t12", title: "Add e2e tests for onboarding", clientSlug: "northwind", status: "DONE", priority: "MEDIUM", completedAt: todayAt(11, 15) }),
+  // Planned work nobody has picked up — what My Day's "From the plan" offers before a dev
+  // creates something new (the October 2026 audit: planned tasks sat unassigned while the
+  // same work was logged as fresh tasks outside the plan).
+  mkTask({ id: "t13", title: "Saved searches with email alerts", clientSlug: "northwind", status: "TODO", priority: "HIGH", dueDate: atDays(4), block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
+  mkTask({ id: "t14", title: "Search results relevance tuning", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b2", name: "Search & discovery" }, unassigned: true }),
+  mkTask({ id: "t15", title: "Weekly usage chart on the analytics dashboard", clientSlug: "northwind", status: "BACKLOG", priority: "MEDIUM", dueDate: atDays(9), block: { id: "b3", name: "Analytics dashboard" }, unassigned: true }),
+  mkTask({ id: "t16", title: "CSV export for analytics reports", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b3", name: "Analytics dashboard" }, unassigned: true, touchedDaysAgo: 34 }),
+  mkTask({ id: "t17", title: "Haptics on primary mobile actions", clientSlug: "northwind", status: "BACKLOG", priority: "LOW", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 41 }),
+  mkTask({ id: "t18", title: "Offline mode for saved lists", clientSlug: "northwind", status: "TODO", priority: "MEDIUM", block: { id: "b4", name: "Mobile polish" }, unassigned: true, touchedDaysAgo: 28 }),
+  // …and the same-day log that grew beside it: real work, filed in no category.
+  mkTask({ id: "t19", title: "Search filters: date range picker", clientSlug: "northwind", status: "DONE", completedAt: atDays(-3) }),
+  mkTask({ id: "t20", title: "Fix search result paging on mobile", clientSlug: "northwind", status: "DONE", completedAt: atDays(-5) }),
+  mkTask({ id: "t21", title: "Analytics dashboard loading skeletons", clientSlug: "northwind", status: "DONE", completedAt: atDays(-8) }),
 ];
 
-const doing = demoBoardTasks.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW");
-const doneToday = demoBoardTasks.filter((t) => t.status === "DONE");
-const upcoming = demoBoardTasks.filter((t) => t.status === "TODO" || t.status === "BACKLOG");
+const mine = demoBoardTasks.filter((t) => t.assignees.some((a) => a.id === DEV.id));
+const doing = mine.filter((t) => t.status === "DOING" || t.status === "IN_REVIEW");
+const doneToday = mine.filter((t) => t.status === "DONE");
+const upcoming = mine.filter((t) => t.status === "TODO" || t.status === "BACKLOG");
+const fromPlan = demoBoardTasks.filter((t) => t.assignees.length === 0 && t.featureBlock && t.status !== "DONE");
 const overdue = demoBoardTasks.filter(
   (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "DONE",
 );
@@ -188,6 +245,8 @@ const demoMyDay: MyDayDTO = {
   doing: doing.slice(0, 2),
   done: doneToday.slice(0, 1),
   upcoming: upcoming.slice(0, 3),
+  fromPlan,
+  fromPlanTotal: fromPlan.length,
 };
 
 // ─── Attention aggregate ─────────────────────────────────────────────────────────
@@ -482,6 +541,31 @@ function demoLaunchpadItem(
 const DEMO_LAUNCHPAD_ITEMS: LaunchpadItemState[] = [
   demoLaunchpadItem("brand_assets", "PROVIDED", {
     link: "https://drive.google.com/drive/folders/northwind-brand",
+    files: [
+      {
+        id: "lpf-demo-logo",
+        filename: "northwind-logo-pack.pdf",
+        mime: "application/pdf",
+        size: 1_842_000,
+        uploadedByKind: "client",
+        uploadedByName: "Priya Shah",
+        uploadedAt: atDays(-4),
+      },
+    ],
+  }),
+  // A requirement added for THIS client only (§43.5) — provided by an upload alone.
+  demoLaunchpadItem("custom-demo-insurance", "PROVIDED", {
+    files: [
+      {
+        id: "lpf-demo-insurance",
+        filename: "PI-certificate-2026.pdf",
+        mime: "application/pdf",
+        size: 248_000,
+        uploadedByKind: "client",
+        uploadedByName: "Priya Shah",
+        uploadedAt: atDays(-2),
+      },
+    ],
   }),
   demoLaunchpadItem("existing_accounts_access", "PROVIDED"),
   demoLaunchpadItem("tone_and_content", "NEEDED", {
@@ -535,7 +619,19 @@ const DEMO_PRIVACY_ANSWERS = {
   children: false,
 };
 
-const demoLaunchpadStructure = getDefaultLaunchpadStructure();
+/** The real default template plus one per-client requirement, so the demo shows
+ *  the "This client only" Edit/Remove row on an actual custom item. */
+const demoLaunchpadStructure: LaunchpadStructure =
+  addCustomItem(
+    getDefaultLaunchpadStructure(),
+    "foundations",
+    {
+      label: "Professional indemnity certificate",
+      helper: "Your current PI insurance certificate — the retailer contract asks us to hold a copy.",
+      ownedByClient: true,
+    },
+    "custom-demo-insurance",
+  ) ?? getDefaultLaunchpadStructure();
 
 /** One doc in each state, so the demo shows all three badges + the red banner. */
 const demoLaunchpad: LaunchpadDTO = {
@@ -593,6 +689,181 @@ const demoLaunchpad: LaunchpadDTO = {
   ),
   updatedAt: atDays(-1),
 };
+
+/**
+ * The wiki's timeline, built from the shared Gantt fixture.
+ *
+ * Adds the completion/start stamps RoundUp derives "what we did this week" from. The
+ * Gantt fixture carries only `{title, done}`, so without this the demo would render
+ * RoundUp as "nothing delivered" — a demo that cannot express the feature cannot
+ * verify it (§43.3), and here it would have looked like a bug in the derivation.
+ *
+ * Deterministic rather than random: done tasks are stamped backwards from today so some
+ * land inside the seven-day window and some in the week before (which is what makes the
+ * "+N on the week before" comparison real), and the first unfinished task of any
+ * part-built block is marked started, so "ON NOW" is populated and at least one block
+ * genuinely spans two Venn regions.
+ */
+function wikiTimelineFromGantt(): WikiDTO["timeline"] {
+  // ⚠️ Undated blocks are dropped here for the same reason `loadWikiTimeline` drops
+  // them: `WikiTimelineBlock` dates are non-null because the wiki timeline only ever
+  // carries blocks it could place in time. `GanttBlock` allows null now (a linked
+  // client's work is routinely undated), so this narrowing is what keeps the demo
+  // honest about which of the two shapes it is producing.
+  const blocks = demoGanttBlocks
+    .filter((b): b is typeof b & { startDate: string; endDate: string } =>
+      Boolean(b.startDate && b.endDate),
+    )
+    .map((block, bi) => {
+    let doneSeen = 0;
+    let startedOne = false;
+    const tasks = block.tasks.map((t) => {
+      if (t.done) {
+        // 2, 6, 10 … days back, shifted per block — straddling the boundary on purpose.
+        const daysBack = 2 + bi * 3 + doneSeen * 4;
+        doneSeen += 1;
+        return {
+          title: t.title,
+          done: true,
+          completedAt: atDays(-daysBack),
+          startedAt: atDays(-(daysBack + 3)),
+        };
+      }
+      if (!startedOne && block.progress > 0 && block.progress < 100) {
+        startedOne = true;
+        return { title: t.title, done: false, completedAt: null, startedAt: atDays(-2) };
+      }
+      return { title: t.title, done: false, completedAt: null, startedAt: null };
+    });
+    const doneCount = tasks.filter((t) => t.done).length;
+    const doingCount = tasks.filter((t) => t.startedAt && !t.done).length;
+    return {
+      id: block.id,
+      name: block.name,
+      startDate: block.startDate,
+      endDate: block.endDate,
+      estimated: false,
+      color: block.color ?? null,
+      progress: block.progress,
+      tasks,
+      statusCounts: {
+        BACKLOG: tasks.length - doneCount - doingCount,
+        TODO: 0,
+        DOING: doingCount,
+        IN_REVIEW: 0,
+        UI_DONE: 0,
+        DONE: doneCount,
+      },
+    };
+  });
+  return {
+    blocks,
+    milestones: demoGanttMilestones as WikiDTO["timeline"]["milestones"],
+    // ⚠️ Live work attached to no phase — the exact shape that made RoundUp render an
+    // empty "ON NOW" on GAIA Bloom while two tasks were in progress. A demo without it
+    // cannot express the bug and therefore cannot verify the fix (§42.15).
+    unassigned: [
+      { title: "Role-specific copy under Resources", done: false, completedAt: null, startedAt: atDays(-2) },
+      { title: "Share resources at three levels", done: false, completedAt: null, startedAt: atDays(-1) },
+      { title: "School admin access to the library", done: false, completedAt: null, startedAt: null },
+      { title: "Learner resources view", done: false, completedAt: null, startedAt: null },
+    ],
+  };
+}
+
+/**
+ * Comparisons — two tables chosen for the two scales the section has to look right at: a
+ * three-plan release table (fits the card, with group bands and a featured column) and a
+ * twelve-column competitor table (scrolls, with the feature column pinned). A demo with
+ * only the small one would never show the scroller, the edge cue or the phone's
+ * compare-two view (§43.3).
+ */
+function demoComparison(
+  id: string,
+  title: string,
+  description: string,
+  orderKey: number,
+  columns: { title: string; subtitle?: string; highlight?: boolean }[],
+  rows: (string | [string, ...string[]] | { group: string })[],
+): WikiComparison {
+  const cols = columns.map((c, i) => ({ id: `${id}-c${i + 1}`, ...c }));
+  const value = (v: string) =>
+    v === "y" ? { state: "yes" } : v === "n" ? { state: "no" } : v === "p" ? { state: "partial" } : v === "" ? { state: "none" } : { state: "text", text: v };
+  const parsed = parseComparisonContent(
+    cols,
+    rows.map((r, i) =>
+      typeof r === "object" && !Array.isArray(r)
+        ? { id: `${id}-r${i + 1}`, kind: "group", label: r.group, cells: {} }
+        : {
+            id: `${id}-r${i + 1}`,
+            kind: "row",
+            label: Array.isArray(r) ? r[0] : r,
+            cells: Object.fromEntries(
+              (Array.isArray(r) ? r.slice(1) : []).map((v, ci) => [cols[ci]?.id ?? "", value(v)]),
+            ),
+          },
+    ),
+  );
+  return { id, title, description, orderKey, ...parsed, updatedAt: "2026-10-19T09:00:00.000Z" };
+}
+
+const demoComparisons: WikiComparison[] = [
+  demoComparison(
+    "cmp-plans",
+    "What's in each plan — v2.0",
+    "The member app's three plans after the October release.",
+    0,
+    [
+      { title: "Free", subtitle: "£0" },
+      { title: "Premium", subtitle: "£6.99/mo", highlight: true },
+      { title: "Pro", subtitle: "£12.99/mo" },
+    ],
+    [
+      { group: "Booking" },
+      ["Book classes", "y", "y", "y"],
+      ["Waitlist auto-join", "n", "y", "y"],
+      ["Book for a friend", "n", "p", "y"],
+      ["Advance booking window", "3 days", "14 days", "30 days"],
+      { group: "Training" },
+      ["Workout library", "p", "y", "y"],
+      ["Personal plans", "n", "y", "y"],
+      ["Coach messaging", "n", "n", "y"],
+      { group: "Account" },
+      ["Family members", "1", "2", "5"],
+      ["Priority support", "n", "p", "y"],
+    ],
+  ),
+  demoComparison(
+    "cmp-market",
+    "Northwind vs the market",
+    "Where the member app stands against the studios' usual alternatives.",
+    1,
+    [
+      { title: "Northwind", highlight: true },
+      { title: "ClassPass" },
+      { title: "Mindbody" },
+      { title: "Glofox" },
+      { title: "TeamUp" },
+      { title: "Momence" },
+      { title: "Arbox" },
+      { title: "Zingfit" },
+      { title: "Peloton" },
+      { title: "Strava" },
+      { title: "Fitbod" },
+      { title: "Gymshark Training" },
+    ],
+    [
+      ["Class booking", "y", "y", "y", "y", "y", "y", "y", "y", "p", "n", "n", "n"],
+      ["Native iOS & Android", "y", "y", "y", "y", "p", "p", "y", "p", "y", "y", "y", "y"],
+      ["Waitlists", "y", "y", "y", "y", "y", "y", "y", "y", "n", "n", "n", "n"],
+      ["Apple Watch", "y", "n", "n", "n", "n", "n", "n", "n", "y", "y", "y", "p"],
+      ["Workout plans", "y", "n", "p", "p", "n", "n", "p", "n", "y", "p", "y", "y"],
+      ["Studio branding", "y", "n", "p", "y", "p", "y", "y", "y", "n", "n", "n", "n"],
+      ["Family accounts", "y", "n", "p", "p", "n", "n", "p", "n", "y", "y", "n", "n"],
+      ["Monthly price", "£6.99", "£19+", "£129+", "£110+", "£99", "£79", "£89", "Quote", "£12.99", "£8.99", "£12.99", "Free"],
+    ],
+  ),
+];
 
 const demoWiki: WikiDTO = {
   id: "wiki-northwind",
@@ -654,15 +925,96 @@ const demoWiki: WikiDTO = {
     },
   ],
   changelog: [
-    { id: "cl1", platform: "IOS", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Smarter storage management\n- Fixes for AirPlay handoff", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED" },
-    { id: "cl2", platform: "ANDROID", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Chromecast reliability improvements", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED" },
-    { id: "cl3", platform: "WEB", version: "2.8.1", title: "Faster search", body: "- New search index, ~3x faster results\n- Keyboard navigation in the results list", releasedAt: atDays(-9), createdAt: atDays(-10), status: "APPROVED" },
-    { id: "cl4", platform: "IOS", version: "3.1.0", title: "New player controls", body: "- Redesigned scrubber\n- Playback speed control", releasedAt: atDays(-24), createdAt: atDays(-25), status: "APPROVED" },
+    // One release still waiting for approval, on two platforms, so the approve bar and the
+    // "Pending 1" count can be seen — a demo of only approved releases cannot show them.
+    { id: "cl0a", platform: "IOS", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline", releasedAt: null, createdAt: atDays(0), status: "PENDING", approvedAt: null, approvedByName: null },
+    { id: "cl0b", platform: "ANDROID", version: "3.3.0", title: "Watch parties", body: "- Watch together with up to 8 friends\n- Live reactions on the timeline\n- Picture-in-picture during a party", releasedAt: null, createdAt: atDays(0), status: "PENDING", approvedAt: null, approvedByName: null },
+    { id: "cl1", platform: "IOS", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Smarter storage management\n- Fixes for AirPlay handoff", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
+    { id: "cl2", platform: "ANDROID", version: "3.2.0", title: "Offline downloads", body: "- Download titles for offline viewing\n- Chromecast reliability improvements", releasedAt: atDays(-2), createdAt: atDays(-3), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
+    { id: "cl3", platform: "WEB", version: "2.8.1", title: "Faster search", body: "- New search index, ~3x faster results\n- Keyboard navigation in the results list", releasedAt: atDays(-9), createdAt: atDays(-10), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
+    { id: "cl4", platform: "IOS", version: "3.1.0", title: "New player controls", body: "- Redesigned scrubber\n- Playback speed control", releasedAt: atDays(-24), createdAt: atDays(-25), status: "APPROVED", approvedAt: atDays(-2), approvedByName: "Sam Carter" },
   ],
-  courseRequests: [],
-  // The wiki timeline reuses the shared Gantt shape (rendered fine in prod); the two
-  // are separately typed, so bridge them here rather than duplicate the data.
-  timeline: { blocks: demoGanttBlocks, milestones: demoGanttMilestones } as unknown as WikiDTO["timeline"],
+  // Mirrors the real Wedge board's two shapes so both are verifiable here: genuine
+  // requests extracted from feedback, and the unnamed rows a failed classifier
+  // produces (§53). A demo carrying only the healthy shape cannot express the bug,
+  // and so cannot verify the fix (§42.15).
+  // A healthy feed — the banner is verified separately against the failing shape.
+  courseFeed: {
+    lastRunAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+    lastSuccessAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+    failingSince: null,
+    lastError: null,
+    lastCreated: 2,
+    lastStatusSyncAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+    alertedDownAt: null,
+  },
+  courseRequests: [
+    {
+      id: "cr-1",
+      courseName: "Caernarfon Golf Club",
+      country: "United Kingdom",
+      status: "ADDED",
+      notes: "From Big Wedge Golf (16 Jun 2026):\nCourse map jumps after hole 9.",
+      sourceConversationId: "conv-1",
+      sentAt: null,
+      createdAt: "2026-08-05T14:13:04.682Z",
+      updatedAt: "2026-08-18T13:23:28.107Z",
+    },
+    {
+      id: "cr-2",
+      courseName: "Brechin Golf Course",
+      country: "United Kingdom",
+      status: "SENT",
+      notes: "From Big Wedge Golf (15 Jun 2026):\nCourse map is incorrect.",
+      sourceConversationId: "conv-2",
+      sentAt: "2026-08-18T13:39:06.015Z",
+      createdAt: "2026-08-05T14:13:04.697Z",
+      updatedAt: "2026-08-18T13:39:06.016Z",
+    },
+    {
+      id: "cr-3",
+      courseName: "Wyboston Lakes Golf",
+      country: "United Kingdom",
+      status: "NEW",
+      notes: "From Big Wedge Golf (12 Jun 2026):\nMissing course in my area.",
+      sourceConversationId: "conv-3",
+      sentAt: null,
+      createdAt: "2026-08-05T14:13:04.711Z",
+      updatedAt: "2026-08-05T14:13:04.711Z",
+    },
+    // Unnamed — general app feedback the classifier never labelled. Renders to the
+    // client as "Untitled Course".
+    {
+      id: "cr-4",
+      courseName: "",
+      country: null,
+      status: "NEW",
+      notes: "From Big Wedge Golf (28 Jun 2026):\nIs there a plan to add an Apple Watch app",
+      sourceConversationId: "conv-4",
+      sentAt: null,
+      createdAt: "2026-09-16T13:00:14.944Z",
+      updatedAt: "2026-09-16T13:00:14.944Z",
+    },
+    {
+      id: "cr-5",
+      courseName: "",
+      country: null,
+      status: "NEW",
+      notes: "From Big Wedge Golf (19 Jun 2026):\nI lost all my game records.",
+      sourceConversationId: "conv-5",
+      sentAt: null,
+      createdAt: "2026-09-16T13:00:14.988Z",
+      updatedAt: "2026-09-16T13:00:14.988Z",
+    },
+  ],
+  // The wiki timeline reuses the shared Gantt shape; the two are separately typed, so
+  // bridge them here rather than duplicate the data.
+  //
+  // ⚠️ This used to be `as unknown as WikiDTO["timeline"]`. That cast is precisely how
+  // the demo's blocks came to be missing `statusCounts` while `tsc` said nothing, and
+  // Delivery threw on first render (§49.2). It is a real typed mapping now, so a field
+  // the DTO gains and the demo does not is a compile error rather than a blank panel.
+  timeline: wikiTimelineFromGantt(),
   designSystem: { tokens: demoDesignTokens, logoUrl: null, showFoundryBranding: true, guidelinesEnabled: true },
   monitors: {
     enabled: true,
@@ -671,19 +1023,43 @@ const demoWiki: WikiDTO = {
         id: "mon1", name: "Marketing site", type: "HTTP", target: "https://northwind.co", method: "GET",
         expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5,
         status: "UP", checkedAt: atDays(0), latencyMs: 142, statusCode: 200, error: null,
-        uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140),
+        uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140), stale: false,
+        headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(62), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon2", name: "API", type: "HTTP", target: "https://api.northwind.co/health", method: "GET",
         expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5,
         status: "UP", checkedAt: atDays(0), latencyMs: 88, statusCode: 200, error: null,
-        uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]),
+        uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]), stale: false,
+        headerNames: ["Authorization"], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(11), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon3", name: "Web app", type: "HTTP", target: "https://app.northwind.co", method: "GET",
         expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5,
         status: "DEGRADED", checkedAt: atDays(0), latencyMs: 1340, statusCode: 200, error: null,
-        uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]),
+        uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]), stale: false,
+        headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: null, domain: null,
+      },
+    ],
+    incidents: [
+      {
+        id: "inc1", monitorId: "mon3", monitorName: "Web app", kind: "flaky", title: "Web app is unstable",
+        startedAt: atDays(-0.02), resolvedAt: null, acknowledgedAt: atDays(-0.015), acknowledgedByName: "Harry Brown",
+        status: "identified",
+        updates: [
+          { id: "u1", status: "investigating", message: "Detected automatically: Web app is failing some of its checks.", isPublic: true, automatic: true, authorName: null, createdAt: atDays(-0.02) },
+          { id: "u2", status: "identified", message: "The database host is restarting after a provider maintenance window. Expect service back within 15 minutes.", isPublic: true, automatic: false, authorName: "Harry Brown", createdAt: atDays(-0.012) },
+          { id: "u3", status: "identified", message: "Provider ticket #48213 raised.", isPublic: false, automatic: false, authorName: "Harry Brown", createdAt: atDays(-0.01) },
+        ],
+      },
+      {
+        id: "inc2", monitorId: "mon2", monitorName: "API", kind: "down", title: "API is down",
+        startedAt: atDays(-6), resolvedAt: atDays(-5.98), acknowledgedAt: atDays(-5.995), acknowledgedByName: "Dan Lindsay",
+        status: "resolved",
+        updates: [
+          { id: "u4", status: "investigating", message: "Detected automatically: API stopped responding (Timed out after 15s).", isPublic: true, automatic: true, authorName: null, createdAt: atDays(-6) },
+          { id: "u5", status: "resolved", message: "API is responding again after 29 min.", isPublic: true, automatic: true, authorName: null, createdAt: atDays(-5.98) },
+        ],
       },
     ],
   },
@@ -702,7 +1078,28 @@ const demoWiki: WikiDTO = {
     productionUrl: "https://app.northwind.co",
     stagingUrl: "https://staging.northwind.co",
   },
-  documents: { enabled: false, documents: [] },
+  // ⚠️ Seeded with the REAL shape, not a tidy one: Loom walkthroughs (what
+  // actually gets dropped in here), titles of one, two and four lines, a plain
+  // link with no preview, and a file. A fixture where every title is the same
+  // length cannot show the ragged-card defect and so cannot verify the fix.
+  documents: {
+    enabled: true,
+    documents: [
+      { id: "wd1", title: "Added a loader to the Generate Summaries button on the Application Table.", kind: "LINK", url: "https://www.loom.com/share/a1b2c3d4e5f6", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:00:00.000Z" },
+      { id: "wd2", title: "Preventing Past Date Interview Requests", kind: "LINK", url: "https://www.loom.com/share/b2c3d4e5f6a1", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:01:00.000Z" },
+      { id: "wd3", title: "Recruiter Pre-Screen Concurrency Warning Explained", kind: "LINK", url: "https://www.loom.com/share/c3d4e5f6a1b2", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:02:00.000Z" },
+      { id: "wd4", title: "Rollout", kind: "LINK", url: "https://www.loom.com/share/d4e5f6a1b2c3", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:03:00.000Z" },
+      { id: "wd5", title: "Download Single candidate cv with candidate name and Bulk Candidate CVs with company name and date of export", kind: "LINK", url: "https://www.loom.com/share/e5f6a1b2c3d4", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:04:00.000Z" },
+      { id: "wd6", title: "Brand guidelines", kind: "LINK", url: "https://docs.google.com/document/d/abc123/edit", host: "docs.google.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:05:00.000Z" },
+      { id: "wd7", title: "Displayed application statuses on the Application Stats page in the same order as the board", kind: "LINK", url: "https://www.loom.com/share/f6a1b2c3d4e5", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:06:00.000Z" },
+      { id: "wd8", title: "Onboarding pack", kind: "FILE", url: null, host: null, fileName: "northwind-onboarding.pdf", fileSize: 842_113, addedAt: "2026-09-29T09:07:00.000Z" },
+      { id: "wd9", title: "Removed candidate scores, notes, and chatbot from the Candidate Portal.", kind: "LINK", url: "https://www.loom.com/share/a1b2c3d4e5f7", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:08:00.000Z" },
+      { id: "wd10", title: "Display the Gender column in the Marketing Candidate table and properly display it on export", kind: "LINK", url: "https://www.loom.com/share/b2c3d4e5f6a2", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:09:00.000Z" },
+      { id: "wd11", title: "Statement of work", kind: "FOUNDRY", url: "/docs/demo-token", host: null, fileName: null, fileSize: null, addedAt: "2026-09-29T09:10:00.000Z" },
+      { id: "wd12", title: "Added functionality to edit the campaign slug from Campaign Settings, including validation and redirects", kind: "LINK", url: "https://www.loom.com/share/c3d4e5f6a1b3", host: "loom.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:11:00.000Z" },
+      { id: "wd13", title: "Design review", kind: "LINK", url: "https://www.figma.com/design/xyz/Console", host: "figma.com", fileName: null, fileSize: null, addedAt: "2026-09-29T09:12:00.000Z" },
+    ],
+  },
   codeHandover: {
     enabled: true,
     modules: [
@@ -737,15 +1134,575 @@ const demoWiki: WikiDTO = {
       },
     ],
   },
-  users: [],
+  // Two client users, so Settings → Access shows the list and its "Copy details" action.
+  users: [
+    { id: "wu-priya", email: "priya@northwind.co", name: "Priya Nair", createdAt: atDays(-40) },
+    { id: "wu-ops", email: "ops@northwind.co", name: null, createdAt: atDays(-6) },
+  ],
   launchpad: demoLaunchpad,
   intakeEnabled: true,
   intakeCategories: DEFAULT_INTAKE_CATEGORIES,
   intakeCategoriesAreDefault: true,
+  // Every stage is represented on purpose. The whole point of the tracker is that a
+  // request follows the dev board, so a demo showing only NEW and TRIAGED would verify
+  // the CSS and nothing else — the §43.3 lesson. `taskStatus` is what the live loader
+  // reads off the linked task; `stage` is derived from it by deriveRequestStage.
   intakeItems: [
-    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, label: "FRONTEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-4), updatedAt: atDays(-2), comments: [] },
-    { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, hasImage: false, imageFilename: null, device: "iPhone 15 Pro", osVersion: "iOS 18.1", createdAt: atDays(-1), updatedAt: atDays(-1), comments: [] },
+    { id: "wi1", type: "FEEDBACK", title: "Add a “continue watching” rail to the home screen", description: "Surface the last 10 partially-watched titles at the top of Home.", priority: "MEDIUM", status: "TRIAGED", requestedBy: "Priya Shah", externalRef: null, label: "FRONTEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "REVIEWING", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-4), updatedAt: atDays(-2), comments: [] },
+    { id: "wi2", type: "BUG", title: "AirPlay handoff drops audio on iOS 18", description: "Video continues but audio cuts out when handing off to Apple TV.", priority: "HIGH", status: "NEW", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "NEW", hasImage: false, imageFilename: null, device: "iPhone 15 Pro", osVersion: "iOS 18.1", createdAt: atDays(-1), updatedAt: atDays(-1), comments: [] },
+    { id: "wi3", type: "TASK", title: "Let a household share one subscription across 4 profiles", description: "Finance have signed off the pricing. Needs profile switching in the account area.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: "LIN-4471", label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: "https://linear.app/example/issue/LIN-4471", attachmentUrls: [], source: "api", taskId: "t-demo-3", taskStatus: "DOING", stage: "IN_PROGRESS", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-11), updatedAt: atDays(-1), comments: [{ id: "wc1", authorKind: "TEAM", authorName: "Harry Bell", body: "Picked this up this morning — profile switching is in, the billing split is next.", mentions: [], createdAt: atDays(-1), editedAt: null, deleted: false, hasImage: false, imageFilename: null, canEdit: true, canDelete: true }, { id: "wc2", authorKind: "CLIENT", authorName: "Marcus Webb", body: "Great — @Harry Bell can the split land before the finance review on Friday?", mentions: [{ id: "team:u-harry", name: "Harry Bell", kind: "TEAM" }], createdAt: atDays(0), editedAt: null, deleted: false, hasImage: false, imageFilename: null, canEdit: false, canDelete: true }, { id: "wc3", authorKind: "CLIENT", authorName: "Marcus Webb", body: "", mentions: [], createdAt: atDays(0), editedAt: null, deleted: true, hasImage: false, imageFilename: null, canEdit: false, canDelete: false }] },
+    { id: "wi4", type: "DESIGN", title: "Episode cards are unreadable in bright sunlight", description: "The grey-on-grey metadata line fails contrast outdoors.", priority: "MEDIUM", status: "PROMOTED", requestedBy: "Priya Shah", externalRef: null, label: "UI_UX", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-4", taskStatus: "DONE", stage: "DONE", hasImage: false, imageFilename: null, device: "iPad Air", osVersion: "iPadOS 18.0", createdAt: atDays(-19), updatedAt: atDays(-3), comments: [] },
+    { id: "wi5", type: "BUG", title: "Search returns nothing for titles with an apostrophe", description: "“Grey’s Anatomy” returns 0 results; “Greys Anatomy” works.", priority: "HIGH", status: "PROMOTED", requestedBy: "Marcus Webb", externalRef: null, label: "BACKEND", categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: "t-demo-5", taskStatus: "BACKLOG", stage: "SCHEDULED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-6), updatedAt: atDays(-5), comments: [] },
+    { id: "wi6", type: "FEEDBACK", title: "Downloads should keep working on a plane", description: "Offline playback asks to sign in again once the device loses signal.", priority: "LOW", status: "CLOSED", requestedBy: "Priya Shah", externalRef: null, label: null, categoryId: null, categoryLabel: null, externalUrl: null, attachmentUrls: [], source: "wiki", taskId: null, taskStatus: null, stage: "CLOSED", hasImage: false, imageFilename: null, device: null, osVersion: null, createdAt: atDays(-27), updatedAt: atDays(-20), comments: [] },
   ],
+  deliveryEnabled: true,
+  roundupEnabled: true,
+  // A LINKED support section with two months of figures, so the trend badges have
+  // something to compare against — a demo with one month would render every trend as an
+  // em-dash and prove nothing about the part most likely to be wrong (a duration where
+  // DOWN is good).
+  /**
+   * Today's standups. Deliberately three different shapes, because a fixture
+   * where every dev looks the same cannot show the rules: one PM push (Done
+   * today leads), one AM push (In progress leads), and one who pushed with
+   * nothing to report — which must still appear, since "pushed an empty update"
+   * is a fact and hiding it would make the card disagree with the roster.
+   */
+  standups: {
+    today: {
+      workDate: atDays(0),
+      devs: [
+        {
+          userId: "u-priya",
+          name: "Priya Shah",
+          amPushedAt: atDays(0),
+          pmPushedAt: atDays(0),
+          inProgress: [{ id: "t1", title: "Autocomplete tuning", parentTitle: "Search & discovery" }],
+          inReview: [{ id: "t2", title: "Filters & facets", parentTitle: null }],
+          doneToday: [{ id: "t3", title: "Search index rebuild", parentTitle: null }],
+        },
+        {
+          userId: "u-tom",
+          name: "Tom Mercer",
+          amPushedAt: atDays(0),
+          pmPushedAt: null,
+          inProgress: [{ id: "t4", title: "Payments webhook retries", parentTitle: "Payments" }],
+          inReview: [],
+          doneToday: [],
+        },
+        {
+          userId: "u-sofia",
+          name: "Sofia Oyelaran",
+          amPushedAt: atDays(0),
+          pmPushedAt: null,
+          inProgress: [],
+          inReview: [],
+          doneToday: [],
+        },
+      ],
+    },
+    // History, deliberately in two shapes: a day saved at push time (what was
+    // reported, all three groups), and a day pushed BEFORE snapshots existed —
+    // where only "Done that day" can be established from the board, so the card
+    // has to say so rather than show an empty "In progress" as if it were true.
+    history: [
+      {
+        workDate: atDays(-1),
+        devs: [
+          {
+            userId: "u-priya",
+            name: "Priya Shah",
+            amPushedAt: atDays(-1),
+            pmPushedAt: atDays(-1),
+            inProgress: [{ id: "t1", title: "Autocomplete tuning", parentTitle: "Search & discovery" }],
+            inReview: [],
+            doneToday: [{ id: "t5", title: "Results page skeleton", parentTitle: null }],
+            source: "reported",
+          },
+          {
+            userId: "u-tom",
+            name: "Tom Mercer",
+            amPushedAt: atDays(-1),
+            pmPushedAt: atDays(-1),
+            inProgress: [],
+            inReview: [{ id: "t6", title: "Stripe customer sync", parentTitle: "Payments" }],
+            doneToday: [{ id: "t7", title: "Refund edge cases", parentTitle: "Payments" }],
+            source: "reported",
+          },
+        ],
+      },
+      {
+        workDate: atDays(-4),
+        devs: [
+          {
+            userId: "u-priya",
+            name: "Priya Shah",
+            amPushedAt: atDays(-4),
+            pmPushedAt: atDays(-4),
+            inProgress: [],
+            inReview: [],
+            doneToday: [{ id: "t8", title: "Search analytics events", parentTitle: null }],
+            source: "history",
+          },
+        ],
+      },
+    ],
+  },
+  // Metrics in the state the section is built for: a monthly Care source, six months of
+  // history so the sparklines and trends have something real to draw, one metric hidden
+  // (internal view shows it struck through; the client's copy never carries it) and the
+  // first three featured on the dashboard card.
+  metrics: {
+    enabled: true,
+    source: "care",
+    sourceLabel: "Care analytics — Fellas Loaded",
+    mode: "monthly",
+    period: demoPeriod(-1),
+    previousPeriod: demoPeriod(-2),
+    capturedAt: atDays(-3),
+    historyPeriods: [-6, -5, -4, -3, -2, -1].map(demoPeriod),
+    needsRefresh: false,
+    metrics: [
+      { key: "users.active", label: "Active users", value: 4812, unit: null, group: "Users", previous: 4410, hidden: false, featured: true, history: [3200, 3510, 3890, 4105, 4410, 4812] },
+      { key: "subs.active", label: "Active subscriptions", value: 1240, unit: null, group: "Subscriptions", previous: 1198, hidden: false, featured: true, history: [980, 1012, 1080, 1150, 1198, 1240] },
+      { key: "subs.mrr", label: "Monthly revenue", value: 11408, unit: "£", group: "Subscriptions", previous: 11021, hidden: false, featured: true, history: [8820, 9310, 9935, 10580, 11021, 11408] },
+      { key: "subs.cancelled", label: "Cancellations", value: 38, unit: null, group: "Subscriptions", previous: 44, hidden: false, featured: false, history: [51, 47, 49, 41, 44, 38] },
+      { key: "users.new", label: "New users", value: 1320, unit: null, group: "Users", previous: 1405, hidden: false, featured: false, history: [990, 1104, 1210, 1288, 1405, 1320] },
+      { key: "eng.sessions", label: "Sessions", value: 38210, unit: null, group: "Engagement", previous: 35940, hidden: false, featured: false, history: [27100, 29400, 31800, 33650, 35940, 38210] },
+      { key: "eng.orders", label: "Orders placed", value: 6124, unit: null, group: "Engagement", previous: 5980, hidden: false, featured: false, history: [4410, 4720, 5105, 5530, 5980, 6124] },
+      { key: "eng.per_user", label: "Sessions per active user", value: 7.94, unit: null, group: "Engagement", previous: 8.15, hidden: false, featured: false, history: [8.47, 8.38, 8.17, 8.2, 8.15, 7.94] },
+      { key: "debug.queue_depth", label: "Queue depth", value: 3, unit: null, group: null, previous: 7, hidden: true, featured: false, history: [null, null, 5, 9, 7, 3] },
+    ],
+    // The month still running, with the hidden metric in it too — the client's copy must
+    // drop it from here as well as from the whole-month figures.
+    monthToDate: {
+      period: demoPeriod(0),
+      capturedAt: atDays(0),
+      metrics: [
+        { key: "users.active", label: "Active users", value: 2960, unit: null, group: "Users", hidden: false },
+        { key: "users.new", label: "New users", value: 812, unit: null, group: "Users", hidden: false },
+        { key: "eng.sessions", label: "Sessions", value: 24150, unit: null, group: "Engagement", hidden: false },
+        { key: "eng.orders", label: "Orders placed", value: 3870, unit: null, group: "Engagement", hidden: false },
+        // A ranked list, the way Big Wedge's most played courses render.
+        { key: "top_1", label: "Top product #1", value: 912, unit: null, group: "Engagement", hidden: false, card: { id: "top", title: "Most ordered · orders", part: "Weekly protein box", list: true } },
+        { key: "top_2", label: "Top product #2", value: 640, unit: null, group: "Engagement", hidden: false, card: { id: "top", title: "Most ordered · orders", part: "Recovery shake bundle with a long name that has to truncate", list: true } },
+        { key: "top_3", label: "Top product #3", value: 388, unit: null, group: "Engagement", hidden: false, card: { id: "top", title: "Most ordered · orders", part: "Starter pack", list: true } },
+        // Three metrics in one card, the way Big Wedge's Subscriptions card renders.
+        { key: "subs.active", label: "Active subscriptions", value: 1251, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Total" } },
+        { key: "subs.monthly", label: "Monthly subscriptions", value: 1004, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Monthly" } },
+        { key: "subs.yearly", label: "Yearly subscriptions", value: 247, unit: null, group: "Subscriptions", hidden: false, card: { id: "subs", title: "Subscriptions", part: "Yearly" } },
+        { key: "subs.mrr", label: "Monthly revenue", value: 11502, unit: "£", group: "Subscriptions", money: true, hidden: false },
+        { key: "debug.queue_depth", label: "Queue depth", value: 2, unit: null, group: null, hidden: true },
+      ],
+    },
+    apiEndpoint: null,
+    hasApiToken: false,
+  },
+  // Two shared meetings. The second has every action done, the first has one open — the
+  // dashboard card counts across both.
+  meetings: {
+    enabled: true,
+    meetings: [
+      {
+        id: "mtg-2",
+        title: "Northwind × Gitwork — fortnightly review",
+        startedAt: atDays(-2),
+        summary:
+          "Search is in review and on track for the end of the month. Payments retries are in progress; the client confirmed Stripe test keys are live.\n\nThe team agreed to **ship search behind a flag** first and open it to all users after a week of monitoring.",
+        decisions: [
+          "Ship search behind a feature flag before the full rollout",
+          "Move the Android release to after the payments work",
+        ],
+        actions: [
+          { id: "a-1", title: "Send the production Stripe webhook secret", owner: "Priya (Northwind)", done: false },
+          { id: "a-2", title: "Share the search analytics dashboard", owner: "Tom Mercer", done: true },
+          { id: "a-3", title: "Book the launch-readiness call", owner: "Sofia Oyelaran", done: false },
+        ],
+      },
+      {
+        id: "mtg-1",
+        title: "Kick-off: search & discovery",
+        startedAt: atDays(-16),
+        summary: "Scope for search and discovery agreed. Filters and facets come first; autocomplete follows.",
+        decisions: ["Use the existing product feed as the search index source"],
+        actions: [
+          { id: "a-4", title: "Grant read access to the product feed", owner: "Priya (Northwind)", done: true },
+        ],
+      },
+    ],
+  },
+  // Drive is on and linked, read as a teammate whose sign-in works.
+  drive: { enabled: true, linked: true, reader: { name: "Dan Lindsay", ready: true } },
+  // Three platforms, deliberately one renewing inside a fortnight (amber on the card) and
+  // one with no renewal date at all.
+  clientPlatforms: {
+    enabled: true,
+    platforms: [
+      {
+        id: "plat-web",
+        name: "Northwind web app",
+        platformType: "Next.js",
+        url: "https://northwind.co",
+        stagingUrl: "https://staging.northwind.co",
+        repoUrl: "https://github.com/northwind/web",
+        links: [{ label: "Status page", url: "https://status.northwind.co" }],
+        renewsOn: atDays(9),
+        renewalNote: "Domain (northwind.co)",
+      },
+      {
+        id: "plat-ios",
+        name: "Northwind for iPhone",
+        platformType: "App Store",
+        url: "https://apps.apple.com/gb/app/northwind/id000000000",
+        stagingUrl: null,
+        repoUrl: null,
+        links: [],
+        renewsOn: atDays(54),
+        renewalNote: "Apple developer account",
+      },
+      {
+        id: "plat-admin",
+        name: "Admin panel",
+        platformType: "Admin Panel",
+        url: "https://admin.northwind.co",
+        stagingUrl: null,
+        repoUrl: null,
+        links: [],
+        renewsOn: null,
+        renewalNote: null,
+      },
+    ],
+  },
+  support: {
+    enabled: true,
+    linked: true,
+    current: {
+      month: "2026-09",
+      totalTickets: 38,
+      resolvedCount: 34,
+      openCount: 4,
+      resolutionRate: 89.5,
+      avgFirstResponseMs: 1000 * 60 * 74,
+      medianFirstResponseMs: 1000 * 60 * 41,
+      avgResolutionMs: 1000 * 60 * 60 * 9,
+      medianResolutionMs: 1000 * 60 * 60 * 5,
+      slaCompliancePct: 92,
+      categories: [
+        { label: "Technical issues", count: 17 },
+        { label: "Account queries", count: 11 },
+        { label: "Cancellations", count: 6 },
+        { label: "Other", count: 4 },
+      ],
+    },
+    previous: {
+      month: "2026-08",
+      totalTickets: 45,
+      resolvedCount: 38,
+      openCount: 7,
+      resolutionRate: 84.4,
+      avgFirstResponseMs: 1000 * 60 * 96,
+      medianFirstResponseMs: 1000 * 60 * 58,
+      avgResolutionMs: 1000 * 60 * 60 * 11,
+      medianResolutionMs: 1000 * 60 * 60 * 7,
+      slaCompliancePct: 86,
+      categories: [],
+    },
+    daysAllowance: 5,
+    daysUsed: 3,
+  },
+  // Every board type, with a real two-level node map — a demo that only carried a bar
+  // chart would verify the CSS and nothing else (§43.3). The node board is deliberately
+  // shaped like the case this was built for: one thing at the centre, lots hanging off it.
+  /**
+   * All FOUR pricing kinds, plus two live blind spots — a metered line with no driver
+   * and a stepped line capped at its top band. A demo that only carried well-formed
+   * lines would verify the CSS and nothing else (§43.3); these are the two states the
+   * page's honesty rules exist for.
+   */
+  /**
+   * Two estimates, chosen to exercise the page's two honesty rules: the second has every
+   * phase capped, so its larger teams read "no faster than 2 developers"; and it has no
+   * agreed start date, so the page must say it is planning from next Monday. A demo
+   * carrying only a well-behaved estimate would verify the CSS and nothing else (§43.3).
+   */
+  comparisons: { enabled: true, comparisons: demoComparisons },
+  sheets: demoSheets,
+  estimates: {
+    enabled: true,
+    estimates: [
+      {
+        id: "est-v1",
+        title: "Version 1 — member app",
+        summary:
+          "Accounts, booking, payments and push notifications on iOS and Android, with the admin dashboard the front desk uses.",
+        startDate: "2026-11-02",
+        teamSizes: [1, 2, 3, 4],
+        recommendedTeam: 2,
+        coordination: "TYPICAL",
+        contingencyPct: 20,
+        phases: [
+          { id: "ph-1", name: "Discovery", effortDays: 5, maxDevs: 1 },
+          { id: "ph-2", name: "Design", effortDays: 15, maxDevs: 2 },
+          { id: "ph-3", name: "Build", effortDays: 60, maxDevs: null },
+          { id: "ph-4", name: "Testing", effortDays: 12, maxDevs: 2 },
+          { id: "ph-5", name: "Store launch", effortDays: 3, maxDevs: 1 },
+        ],
+        orderKey: 0,
+        updatedAt: "2026-10-12T09:00:00.000Z",
+      },
+      {
+        id: "est-loyalty",
+        title: "Loyalty add-on",
+        summary: "Points, rewards and a referral link, added to the live app.",
+        startDate: null,
+        teamSizes: [1, 2, 3],
+        recommendedTeam: null,
+        coordination: "HIGH",
+        contingencyPct: 30,
+        phases: [
+          { id: "ph-a", name: "Rules & design", effortDays: 4, maxDevs: 1 },
+          { id: "ph-b", name: "Build", effortDays: 14, maxDevs: 2 },
+          { id: "ph-c", name: "Release", effortDays: 2, maxDevs: 1 },
+        ],
+        orderKey: 1,
+        updatedAt: "2026-10-12T09:00:00.000Z",
+      },
+    ],
+  },
+  costs: {
+    enabled: true,
+    currency: "GBP",
+    headlineUsers: 5000,
+    notes:
+      "Figures are the list price of each service at today's rates. They exclude VAT and any Gitwork retainer.",
+    updatedAt: "2026-09-18T09:00:00.000Z",
+    items: [
+      {
+        id: "cost-hosting",
+        name: "App hosting",
+        vendor: "Fasthosts VPS",
+        kind: "FLAT",
+        amountMonthly: 48,
+        amountAnnual: 480,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: "Two instances behind the load balancer.",
+        included: true,
+        orderKey: 0,
+      },
+      {
+        id: "cost-db",
+        name: "Database & storage",
+        vendor: "Supabase",
+        kind: "STEPPED",
+        amountMonthly: null,
+        amountAnnual: null,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [
+          { id: "t1", upToUsers: 1000, amountMonthly: 25, label: "Pro", orderKey: 0 },
+          { id: "t2", upToUsers: 10000, amountMonthly: 120, label: "Team", orderKey: 1 },
+          { id: "t3", upToUsers: 100000, amountMonthly: 599, label: "Scale", orderKey: 2 },
+        ],
+        notes: "Enterprise pricing above 100k users is quoted, not published.",
+        included: true,
+        orderKey: 1,
+      },
+      {
+        id: "cost-seats",
+        name: "Admin seats",
+        vendor: "Foundry",
+        kind: "PER_USER",
+        amountMonthly: 0.4,
+        amountAnnual: 4,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: null,
+        included: true,
+        orderKey: 2,
+      },
+      {
+        id: "cost-email",
+        name: "Transactional email",
+        vendor: "Resend",
+        kind: "METERED",
+        amountMonthly: 18,
+        amountAnnual: null,
+        unitLabel: "emails",
+        includedUnits: 50000,
+        unitPrice: 0.0004,
+        unitsPerUser: 6,
+        tiers: [],
+        notes: null,
+        included: true,
+        orderKey: 3,
+      },
+      /**
+       * Three providers priced as OPTIONS — the comparison case this exists for.
+       * Same unit (1k tokens) and the same per-user volume on all three, because a
+       * comparison where the assumptions differ is not one. Excluded, so none of
+       * them touches the total until the client picks.
+       */
+      {
+        id: "cost-opt-haiku",
+        name: "Claude Haiku 4.5",
+        vendor: "Anthropic",
+        kind: "METERED",
+        amountMonthly: 0,
+        amountAnnual: null,
+        unitLabel: "k tokens",
+        includedUnits: null,
+        unitPrice: 0.0012,
+        unitsPerUser: 40,
+        tiers: [],
+        notes: "Assumes 40k tokens per user per month across summarise + search.",
+        included: false,
+        orderKey: 5,
+      },
+      {
+        id: "cost-opt-sonnet",
+        name: "Claude Sonnet 4.6",
+        vendor: "Anthropic",
+        kind: "METERED",
+        amountMonthly: 0,
+        amountAnnual: null,
+        unitLabel: "k tokens",
+        includedUnits: null,
+        unitPrice: 0.009,
+        unitsPerUser: 40,
+        tiers: [],
+        notes: "Same 40k tokens per user. Stronger on long documents.",
+        included: false,
+        orderKey: 6,
+      },
+      {
+        id: "cost-opt-selfhost",
+        name: "Self-hosted Llama",
+        vendor: "Own GPU box",
+        kind: "FLAT",
+        amountMonthly: 420,
+        amountAnnual: 4620,
+        unitLabel: null,
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: "Fixed whatever the volume — cheapest only above roughly 9k users.",
+        included: false,
+        orderKey: 7,
+      },
+      {
+        id: "cost-ai",
+        name: "AI assistant",
+        vendor: "Anthropic",
+        kind: "METERED",
+        amountMonthly: 0,
+        amountAnnual: null,
+        unitLabel: "tokens",
+        includedUnits: null,
+        unitPrice: null,
+        unitsPerUser: null,
+        tiers: [],
+        notes: "Usage per user still being measured from the beta.",
+        included: true,
+        orderKey: 4,
+      },
+    ],
+  },
+  insights: {
+    enabled: true,
+    boards: [
+      {
+        id: "ib-node",
+        kind: "node",
+        title: "How the product fits together",
+        caption:
+          "The app at the centre, and everything it talks to. Anything we do not own outright is shown on its own branch.",
+        core: "Northwind app",
+        branches: [
+          { id: "n1", label: "Playback", color: "blue", note: null, link: null, leaves: [
+            { id: "n1a", label: "HLS streaming", note: null, link: null },
+            { id: "n1b", label: "Offline downloads", note: null, link: null },
+            { id: "n1c", label: "AirPlay & Chromecast", note: null, link: null },
+            { id: "n1d", label: "Subtitles", note: null, link: null },
+          ] },
+          { id: "n2", label: "Identity", color: "violet", note: null, link: null, leaves: [
+            { id: "n2a", label: "Household profiles", note: null, link: null },
+            { id: "n2b", label: "Sign-in with Apple", note: null, link: null },
+          ] },
+          { id: "n3", label: "Billing", color: "emerald", note: null, link: null, leaves: [
+            { id: "n3a", label: "Stripe", note: null, link: null },
+            { id: "n3b", label: "App Store IAP", note: null, link: null },
+            { id: "n3c", label: "Play Billing", note: null, link: null },
+          ] },
+          { id: "n4", label: "Catalogue", color: "amber", note: null, link: null, leaves: [
+            { id: "n4a", label: "Search index", note: null, link: null },
+            { id: "n4b", label: "Editorial rails", note: null, link: null },
+          ] },
+          { id: "n5", label: "Analytics", color: "rose", note: null, link: null, leaves: [] },
+        ],
+        createdAt: atDays(-14),
+        updatedAt: atDays(-2),
+      },
+      {
+        id: "ib-bar",
+        kind: "bar",
+        title: "Where the build time went",
+        caption: "Days of engineering time by area, across the first two phases.",
+        unit: "d",
+        points: [
+          { id: "p1", label: "Playback", value: 34, color: "blue", note: null },
+          { id: "p2", label: "Identity", value: 12, color: "violet", note: null },
+          { id: "p3", label: "Billing", value: 21, color: "emerald", note: null },
+          { id: "p4", label: "Catalogue", value: 16, color: "amber", note: null },
+        ],
+        createdAt: atDays(-10),
+        updatedAt: atDays(-10),
+      },
+      {
+        id: "ib-pie",
+        kind: "pie",
+        title: "Where people watch",
+        caption: "Share of playback minutes by platform, last 30 days.",
+        unit: null,
+        points: [
+          { id: "q1", label: "iOS", value: 46, color: "blue", note: null },
+          { id: "q2", label: "Android", value: 31, color: "violet", note: null },
+          { id: "q3", label: "Web", value: 17, color: "emerald", note: null },
+          { id: "q4", label: "TV", value: 6, color: "amber", note: null },
+        ],
+        createdAt: atDays(-8),
+        updatedAt: atDays(-8),
+      },
+      {
+        id: "ib-venn",
+        kind: "venn",
+        title: "What each plan includes",
+        caption: "Where the two paid tiers overlap, and what only one of them carries.",
+        sets: [
+          { key: "A", label: "Standard", color: "blue" },
+          { key: "B", label: "Premium", color: "violet" },
+        ],
+        items: [
+          { id: "v1", label: "Ad-free playback", region: "AB", note: null },
+          { id: "v2", label: "Two profiles", region: "A", note: null },
+          { id: "v3", label: "Six profiles", region: "B", note: null },
+          { id: "v4", label: "4K & HDR", region: "B", note: null },
+          { id: "v5", label: "Offline downloads", region: "AB", note: null },
+        ],
+        createdAt: atDays(-6),
+        updatedAt: atDays(-6),
+      },
+    ],
+  },
   blockers: [
     { taskId: "t-blocked-1", title: "Wire up the new search index", blockedReason: "We need the Algolia admin API key for the production index before we can cut over. Can you add it to the shared vault?", blockedAt: atDays(-2), category: "Search & discovery", blockedResponse: null, blockedResponseAt: null },
   ],
@@ -806,13 +1763,13 @@ const demoClientDetail: ClientDetailRecord = {
       id: "pf1", clientId: WIKI_CLIENT.id, name: "Production web", platformType: "WEB",
       url: "https://app.northwind.co", stagingUrl: "https://staging.northwind.co",
       repoUrl: "https://github.com/northwind/app", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, links: [], createdAt: atDays(-110), updatedAt: atDays(-4),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: true, links: [], renewsOn: atDays(9).slice(0, 10), renewalNote: "Domain (northwind.co)", createdAt: atDays(-110), updatedAt: atDays(-4),
     },
     {
       id: "pf2", clientId: WIKI_CLIENT.id, name: "iOS app", platformType: "IOS",
       url: "https://apps.apple.com/app/northwind", stagingUrl: null,
       repoUrl: "https://github.com/northwind/ios", hasUsername: false, hasPassword: false,
-      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, links: [], createdAt: atDays(-90), updatedAt: atDays(-9),
+      logins: [], notes: null, previewImageUrl: null, featuredInWiki: false, links: [], renewsOn: null, renewalNote: null, createdAt: atDays(-90), updatedAt: atDays(-9),
     },
   ],
   designs: [
@@ -924,8 +1881,14 @@ const demoSlackActivity = {
   messages: [
     { id: "sa1", author: "Priya", text: "Deploy to staging looks good ✅", ts: atDays(0) },
     { id: "sa2", author: "Tom", text: "Search index rebuilt overnight — much faster.", ts: atDays(0) },
+    // Tom twice, so the per-dev grouping has something to collapse, and an
+    // unresolved author, so the "unattributed" label is actually exercised — a
+    // fixture where every author is distinct and named cannot show either.
+    { id: "sa3", author: "Tom", text: "Older note nobody should see as the latest.", ts: atDays(-3) },
+    { id: "sa4", author: "Teammate", text: "Bumped the staging cert.", ts: atDays(-1) },
   ],
 };
+
 
 // ─── Docs (dev-visible document types only: HANDOVER / REPORT / BRIEF / OTHER) ────
 
@@ -2000,8 +2963,10 @@ type DemoPulseCheckRow = {
   category: string;
   checkKey: string;
   label: string;
-  status: "PASS" | "WARN" | "FAIL";
+  status: "PASS" | "WARN" | "FAIL" | "INCONCLUSIVE" | "ERROR" | "SKIPPED" | "NOT_APPLICABLE";
   detail: string;
+  evidence?: string | null;
+  confidence?: string;
 };
 
 function demoPulseChecks(scanId: string, rows: DemoPulseCheckRow[]) {
@@ -2013,10 +2978,10 @@ function demoPulseChecks(scanId: string, rows: DemoPulseCheckRow[]) {
     label: r.label,
     status: r.status,
     detail: r.detail,
-    evidence: null,
+    evidence: (r.evidence ?? null) as string | null,
     sortOrder: i,
     createdAt: atDays(-3),
-    confidence: "HIGH" as const,
+    confidence: (r.confidence ?? "HIGH") as "HIGH" | "MEDIUM" | "LOW",
     confidenceReason: null,
     trustBucket: "CONFIRMED" as const,
   }));
@@ -2037,6 +3002,7 @@ function makeDemoScan(o: {
   at: string;
   checks: ReturnType<typeof demoPulseChecks>;
   llmAnalysis: unknown;
+  codeHealth?: CodeHealthReport | null;
 }) {
   return {
     id: o.id,
@@ -2060,6 +3026,7 @@ function makeDemoScan(o: {
     llmAnalysis: o.llmAnalysis,
     discoveryKit: null,
     codeInsights: null,
+    codeHealth: o.codeHealth ?? null,
     deployInsights: null,
     browserInsights: null,
     visualInsights: null,
@@ -2097,21 +3064,8 @@ const demoScanNorthwind = makeDemoScan({
   previousHealthScore: 79,
   techStack: ["Next.js", "React", "TypeScript", "PostgreSQL", "Tailwind CSS", "Vercel"],
   at: atDays(-5),
-  checks: demoPulseChecks("scan-northwind", [
-    { category: "Security", checkKey: "https_enforced", label: "HTTPS enforced", status: "PASS", detail: "Valid TLS with HSTS and a clean certificate chain." },
-    { category: "Security", checkKey: "security_headers", label: "Security headers", status: "PASS", detail: "CSP, X-Frame-Options and Referrer-Policy all set." },
-    { category: "Authentication", checkKey: "auth_present", label: "Authentication", status: "PASS", detail: "Session auth with secure, http-only cookies." },
-    { category: "Performance", checkKey: "lcp", label: "Largest Contentful Paint", status: "PASS", detail: "LCP 1.9s on a throttled 4G profile." },
-    { category: "Performance", checkKey: "image_opt", label: "Image optimisation", status: "WARN", detail: "A few hero images are served without explicit dimensions." },
-    { category: "SEO", checkKey: "meta_tags", label: "Meta tags & Open Graph", status: "PASS", detail: "Titles, descriptions and OG images present site-wide." },
-    { category: "SEO", checkKey: "sitemap", label: "Sitemap & robots", status: "PASS", detail: "sitemap.xml discoverable and referenced in robots.txt." },
-    { category: "Accessibility", checkKey: "contrast", label: "Colour contrast", status: "WARN", detail: "Two link hover states fall just under AA contrast." },
-    { category: "Observability", checkKey: "error_monitoring", label: "Error monitoring", status: "PASS", detail: "Sentry wired across web and API with source maps." },
-    { category: "Infrastructure", checkKey: "cdn", label: "CDN & caching", status: "PASS", detail: "Static assets on a CDN with long-lived immutable caching." },
-    { category: "Legal & Compliance", checkKey: "privacy_policy", label: "Privacy & cookie policy", status: "PASS", detail: "Both linked in the footer and the consent banner." },
-    { category: "Code Quality", checkKey: "ci_pipeline", label: "CI pipeline", status: "PASS", detail: "Typecheck, lint and tests run on every pull request." },
-    { category: "Code Quality", checkKey: "test_coverage", label: "Automated tests", status: "WARN", detail: "Coverage ~52% — core flows covered, edges thin." },
-  ]),
+  // A real scan's checks (renamed to Northwind), so the page is seen at its real size.
+  checks: demoPulseChecks("scan-northwind", RECORDED_NORTHWIND_CHECKS as DemoPulseCheckRow[]),
   llmAnalysis: {
     projectClassification: { type: "SaaS", subtype: "B2B streaming analytics", confidence: "HIGH", signals: ["Authenticated app shell", "Usage-based dashboards", "Multi-tenant routing"], verticalInsights: ["Publish an uptime/status page to build enterprise trust", "Add SSO (SAML/OIDC) to unlock larger accounts", "Expose an audit log for security-conscious buyers"] },
     executiveSummary: "Northwind is a well-built, production-grade SaaS. Security, infrastructure and SEO are strong; the main opportunities are deepening test coverage and a handful of polish items before the next enterprise push.",
@@ -2157,7 +3111,7 @@ const demoScanNorthwind = makeDemoScan({
   },
 });
 
-// Report 2 — Cadenza: promising SaaS with gaps (amber, 63, improving).
+// Report 2 — Cadenza: a repo scan with real gaps (a real scan's checks, renamed).
 const demoScanCadenza = makeDemoScan({
   id: "scan-cadenza",
   projectName: "cadenza (github)",
@@ -2166,6 +3120,140 @@ const demoScanCadenza = makeDemoScan({
   inputType: "GITHUB_REPO",
   inputGithubRepo: "cadenza-app/cadenza",
   platform: "Render",
+  codeHealth: RECORDED_CADENZA_CODE_HEALTH,
+  healthScore: RECORDED_CADENZA_SCORE,
+  previousHealthScore: RECORDED_CADENZA_SCORE - 4,
+  techStack: RECORDED_CADENZA_TECH_STACK,
+  at: atDays(-2),
+  // A real repository scan's checks (renamed to Cadenza), so the repo scan is seen at its real size.
+  checks: demoPulseChecks("scan-cadenza", RECORDED_CADENZA_CHECKS as DemoPulseCheckRow[]),
+  llmAnalysis: {
+    projectClassification: { type: "SaaS", subtype: "Music collaboration tool", confidence: "MEDIUM", signals: ["React front end with an Express API", "Account-based access with admin screens", "MongoDB models"], verticalInsights: ["Version history is a strong retention feature", "Presence indicators help real-time collaboration", "Offline-friendly sync would differentiate"] },
+    executiveSummary: "Cadenza's code is small and readable, but the service around it isn't production-hardened: 80 of its pinned libraries have published vulnerabilities (9 critical), there is no error tracking, no health endpoint, no graceful shutdown and no tests. Most of this is quick to close.",
+    healthNarrative: `At ${RECORDED_CADENZA_SCORE} Cadenza scores well on what it has, up 4 since the last scan. The score hides the gaps that matter for a live service: vulnerable dependencies, no tests and no operational layer.`,
+    strengths: [
+      { title: "Sound basics", detail: "A committed lockfile, pinned versions, HttpOnly and SameSite cookies, and no stack traces returned to the client." },
+      { title: "Readable code", detail: "Low complexity across the codebase, with a handful of long screen components the only real debt." },
+    ],
+    criticalGaps: [
+      { category: "Dependencies", gap: "80 libraries with published vulnerabilities", impact: "Nine are critical, including the database driver; known exploits apply at the versions in the lockfile.", urgency: "CRITICAL" },
+      { category: "Observability", gap: "No error tracking or structured logging", impact: "Production failures go unnoticed until a user reports them, and logs can't be filtered by request.", urgency: "HIGH" },
+      { category: "Code Quality", gap: "No automated tests", impact: "Every change to checkout-style flows is verified by hand, so regressions ship.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Dependency upgrade sprint", description: "Upgrade the critical and high advisories first, then switch on Dependabot to keep them current.", estimatedEffort: "S", businessValue: "HIGH", category: "Security" },
+      { title: "Operational baseline", description: "Error tracking, a health endpoint, SIGTERM handling and request ids.", estimatedEffort: "S", businessValue: "HIGH", category: "Observability" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Production hardening", duration: "1–2 weeks", goals: ["Clear the critical advisories", "Add error tracking", "Add a health endpoint and graceful shutdown", "Cap request body sizes"] },
+      { phase: 2, title: "Confidence to change", duration: "2–4 weeks", goals: ["Tests on the core journeys", "Tag releases", "Split the longest screen components"] },
+    ],
+    techDebt: [
+      { area: "Dependencies", description: "A large backlog of vulnerable library versions across both lockfiles.", severity: "HIGH" },
+      { area: "Duplication", description: "Copied blocks across 23 files, mostly in the screen components.", severity: "MEDIUM" },
+    ],
+    proposalHook: "Cadenza is one short hardening sprint away from being production-ready — the gaps are well understood and quick to close.",
+    productionBlockers: [
+      { category: "Dependencies", blocker: "Critical library vulnerabilities", why: "Known exploits apply at the pinned versions.", urgency: "CRITICAL" },
+      { category: "Observability", blocker: "No error tracking", why: "You can't see or triage production failures.", recommendedService: "Sentry", urgency: "HIGH" },
+    ],
+    productionReadinessChecklist: [
+      { category: "Dependencies", item: "No known vulnerabilities", status: "MISSING", notes: "80 vulnerable, 9 critical." },
+      { category: "Observability", item: "Error tracking", status: "MISSING", notes: "Nothing wired." },
+      { category: "Infrastructure", item: "Health endpoint and graceful shutdown", status: "MISSING", notes: "Neither found." },
+      { category: "Code Quality", item: "Automated tests", status: "MISSING", notes: "No test code found." },
+      { category: "Security", item: "Session cookies", status: "DONE", notes: "HttpOnly and SameSite set." },
+    ],
+    techStackAnalysis: {
+      assessment: "A conventional React and Express stack on MongoDB; the choices are fine, but the operational layer (monitoring, health checks, upgrades) hasn't been built out yet.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Monitoring", current: "None", recommended: "Sentry", reason: "Production visibility is the single biggest win here.", priority: "HIGH" },
+        { area: "Dependencies", current: "Pinned, never upgraded", recommended: "Dependabot with weekly batches", reason: "Keeps the advisory backlog from growing back.", priority: "HIGH" },
+      ],
+      missingForProduction: ["Error tracking", "Health endpoint", "Automated tests", "Dependency upgrades"],
+    },
+    aiMaturityScore: 2,
+  },
+});
+
+// Report 3 — Fairway Nine: the weakest of the three (a real scan's checks, renamed).
+const demoScanFairway = makeDemoScan({
+  id: "scan-fairway",
+  projectName: "fairwaynine.co.uk",
+  clientId: null,
+  clientName: "Fairway Nine",
+  inputType: "URL",
+  inputUrl: "https://fairwaynine.co.uk",
+  platform: "Azure App Service",
+  healthScore: RECORDED_FAIRWAY_SCORE,
+  previousHealthScore: RECORDED_FAIRWAY_SCORE + 4,
+  techStack: RECORDED_FAIRWAY_TECH_STACK,
+  at: atDays(-1),
+  // A real website scan's checks (renamed to Fairway Nine).
+  checks: demoPulseChecks("scan-fairway", RECORDED_FAIRWAY_CHECKS as DemoPulseCheckRow[]),
+  llmAnalysis: {
+    projectClassification: { type: "Service Business", subtype: "Golf club", confidence: "HIGH", signals: ["Course status and green fees pages", "Membership sections", "Club policies"], verticalInsights: ["A fast mobile green-fee booking flow directly lifts revenue", "Structured data for the course improves local search", "Members expect an accessible, readable site"] },
+    executiveSummary: "Fairway Nine's site works and is on HTTPS, but it sends no security headers at all, advertises its server versions, sets session cookies without Secure, and fails basic accessibility on every page read. None of it is hard to fix, and it has slipped since the last scan.",
+    healthNarrative: `At ${RECORDED_FAIRWAY_SCORE} the site is the weakest of the three and down 4 points. The biggest wins (headers, cookie flags, a page language and alt text) are configuration changes rather than a rebuild.`,
+    strengths: [
+      { title: "HTTPS done properly", detail: "A valid certificate and an HTTP to HTTPS redirect." },
+      { title: "Nothing exposed", detail: "No .env, .git, backups or admin pages served to the public." },
+    ],
+    criticalGaps: [
+      { category: "Security", gap: "No security headers", impact: "No CSP, HSTS, X-Frame-Options or X-Content-Type-Options, so the browser has no instructions to protect visitors.", urgency: "HIGH" },
+      { category: "Security", gap: "Session cookies without Secure or SameSite", impact: "The session cookie can travel over plain HTTP and in cross-site requests.", urgency: "HIGH" },
+      { category: "Accessibility", gap: "No page language and missing alt text", impact: "All 15 pages read lack <html lang>, and screen readers get no description of images.", urgency: "HIGH" },
+    ],
+    buildOpportunities: [
+      { title: "Header and cookie hardening", description: "Add the standard security headers and Secure/SameSite cookies at the web server.", estimatedEffort: "S", businessValue: "HIGH", category: "Security" },
+      { title: "Accessibility pass", description: "Page language, alt text, named dialogs and meta descriptions across the site.", estimatedEffort: "S", businessValue: "MEDIUM", category: "Mobile & Accessibility" },
+    ],
+    scalingRoadmap: [
+      { phase: 1, title: "Stabilise & secure", duration: "1 week", goals: ["Add security headers", "Secure the session cookies", "Hide server version banners", "Disable TRACE"] },
+      { phase: 2, title: "Readable for everyone", duration: "1–2 weeks", goals: ["Set the page language", "Add alt text and dialog names", "Write meta descriptions", "Update the privacy policy"] },
+    ],
+    techDebt: [
+      { area: "Server configuration", description: "Default IIS and ASP.NET response headers, including version banners.", severity: "HIGH" },
+      { area: "Content", description: "Pages without descriptions or a declared language.", severity: "MEDIUM" },
+    ],
+    proposalHook: "Fairway Nine has fast, high-impact wins available today — a one-week stabilise sprint would lift it clear of the other two.",
+    productionBlockers: [
+      { category: "Security", blocker: "No security headers", why: "Visitors get none of the browser's built-in protections.", urgency: "HIGH" },
+    ],
+    productionReadinessChecklist: [
+      { category: "Security", item: "Security headers", status: "MISSING", notes: "None set." },
+      { category: "Security", item: "HTTPS", status: "DONE", notes: "Valid certificate with redirect." },
+      { category: "Security", item: "Session cookie flags", status: "MISSING", notes: "No Secure or SameSite." },
+      { category: "Accessibility", item: "Page language and alt text", status: "MISSING", notes: "Absent on every page read." },
+      { category: "Legal & Compliance", item: "Privacy policy", status: "PARTIAL", notes: "Present; no date and no right of access." },
+    ],
+    techStackAnalysis: {
+      assessment: "An ASP.NET site on IIS. The platform is fine for a club site; the issues are configuration the host was left with, not the choice of stack.",
+      detectedStack: null,
+      recommendations: [
+        { area: "Web server", current: "IIS defaults", recommended: "Security headers and cookie flags in web.config", reason: "Immediate protection with no code change.", priority: "HIGH" },
+        { area: "Content", current: "No language or descriptions", recommended: "A template-level accessibility pass", reason: "Fixes every page at once.", priority: "MEDIUM" },
+      ],
+      missingForProduction: ["Security headers", "Secure cookies", "Page language", "Image alt text"],
+    },
+    aiMaturityScore: 1,
+  },
+});
+
+// The /pulse/features example reports need a middling and a weak result. Real lite scans of
+// small sites and repos land at 80 or above, so the public examples keep these two hand-written
+// scans (score 63 and 48); /demo/pulse uses the recorded scans above.
+// Example (public) — Cadenza: promising SaaS with gaps (amber, 63, improving).
+const exampleScanCadenza = makeDemoScan({
+  id: "scan-cadenza",
+  projectName: "cadenza (github)",
+  clientId: null,
+  clientName: "Cadenza",
+  inputType: "GITHUB_REPO",
+  inputGithubRepo: "cadenza-app/cadenza",
+  platform: "Render",
+  codeHealth: DEMO_CODE_HEALTH,
   healthScore: 63,
   previousHealthScore: 58,
   techStack: ["React", "Vite", "Node.js", "Express", "PostgreSQL", "Render"],
@@ -2233,8 +3321,8 @@ const demoScanCadenza = makeDemoScan({
   },
 });
 
-// Report 3 — Fairway Nine: at-risk (red, 48, regressed).
-const demoScanFairway = makeDemoScan({
+// Example (public) — Fairway Nine: at-risk (red, 48, regressed).
+const exampleScanFairway = makeDemoScan({
   id: "scan-fairway",
   projectName: "fairwaynine.co.uk",
   clientId: null,
@@ -2312,10 +3400,48 @@ const demoPulseScansById: Record<string, unknown> = {
   "scan-fairway": demoScanFairway,
 };
 
+/**
+ * The three demo scans as the /pulse/features example reports (strong, middling, weak).
+ * Renamed onto `.example` names so a public page never gives a real domain a made-up score.
+ */
+export function examplePulseReportScans(): Record<string, unknown> {
+  const rename = (scan: object, projectName: string, url: string | null, repo: string | null): unknown => ({
+    ...scan,
+    projectName,
+    clientId: null,
+    clientName: null,
+    inputUrl: url,
+    inputGithubRepo: repo,
+  });
+  return {
+    strong: rename(demoScanNorthwind, "northwind.example", "https://app.northwind.example", null),
+    middling: rename(exampleScanCadenza, "cadenza (GitHub repo)", null, "example/cadenza"),
+    weak: rename(exampleScanFairway, "fairwaynine.example", "https://fairwaynine.example", null),
+  };
+}
+
+/** The demo code portfolio, built by the same pure functions the real loader uses. */
+function demoCodePortfolio() {
+  const repos = DEMO_PORTFOLIO_REPORTS.map((r) =>
+    summariseRepo(r.report, {
+      scanId: r.scanId,
+      projectName: r.projectName,
+      clientName: r.clientName,
+      history: r.history.map((score, i) => ({ at: atDays(-7 * (r.history.length - 1 - i)), score })),
+    }),
+  ).sort(byUrgency);
+  return { repos, items: DEMO_PORTFOLIO_REPORTS.flatMap((r) => workItemsFor(r.report)), unmeasured: [] };
+}
+
 const demoPulseScanList = [
-  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: 48, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
-  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: 63, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
+  { id: "scan-fairway", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE, generatedProposalId: null, createdAt: atDays(-1), updatedAt: atDays(-1) },
+  { id: "scan-cadenza", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE, generatedProposalId: null, createdAt: atDays(-2), updatedAt: atDays(-2) },
   { id: "scan-northwind", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 86, generatedProposalId: null, createdAt: atDays(-5), updatedAt: atDays(-5) },
+  // Earlier scans of the same site, so the demo has a project history and a trend to show.
+  { id: "scan-northwind-prev", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co", inputGithubRepo: null, status: "COMPLETED", healthScore: 80, generatedProposalId: null, createdAt: atDays(-33), updatedAt: atDays(-33) },
+  { id: "scan-northwind-first", workspaceId: "demo-ws", clientId: WIKI_CLIENT.id, clientName: "Northwind Studio", projectName: "northwind.co", inputType: "URL", inputUrl: "https://app.northwind.co/", inputGithubRepo: null, status: "COMPLETED", healthScore: 71, generatedProposalId: null, createdAt: atDays(-61), updatedAt: atDays(-61) },
+  { id: "scan-cadenza-prev", workspaceId: "demo-ws", clientId: null, clientName: "Cadenza", projectName: "cadenza (github)", inputType: "GITHUB_REPO", inputUrl: null, inputGithubRepo: "cadenza-app/cadenza", status: "COMPLETED", healthScore: RECORDED_CADENZA_SCORE - 4, generatedProposalId: null, createdAt: atDays(-30), updatedAt: atDays(-30) },
+  { id: "scan-fairway-prev", workspaceId: "demo-ws", clientId: null, clientName: "Fairway Nine", projectName: "fairwaynine.co.uk", inputType: "URL", inputUrl: "https://fairwaynine.co.uk", inputGithubRepo: null, status: "COMPLETED", healthScore: RECORDED_FAIRWAY_SCORE + 4, generatedProposalId: null, createdAt: atDays(-20), updatedAt: atDays(-20) },
 ];
 
 /**
@@ -2330,6 +3456,10 @@ const demoPulseScanList = [
 const demoScanDiff: PulseScanDiff = {
   previousScanId: "scan-northwind-prev",
   previousCompletedAt: "2026-07-30T09:14:00.000Z",
+  previousScore: 80,
+  currentScore: 86,
+  currentCompletedAt: null,
+  summary: "2 fixed, 1 got worse, 1 new issue, and 2 Pulse could not check this time.",
   scoreChange: 6,
   fixed: [
     { checkKey: "security_headers_csp", label: "Content-Security-Policy present", category: "Security", status: "PASS", prevStatus: "FAIL" },
@@ -2365,20 +3495,88 @@ const demoScanDiff: PulseScanDiff = {
   ],
 };
 
+/**
+ * The Cadenza and Fairway diffs, built from their recorded rows so every label, category and
+ * current status is the one the scan page shows. Previous statuses are the demo's story.
+ */
+function recordedDiffItem(rows: { checkKey: string; label: string; category: string; status: string }[], checkKey: string, prevStatus: ScanDiffItem["status"]): ScanDiffItem {
+  const r = rows.find((x) => x.checkKey === checkKey);
+  if (!r) throw new Error(`demo diff: ${checkKey} is not in the recorded scan`);
+  return { checkKey, label: r.label, category: r.category, status: r.status as ScanDiffItem["status"], prevStatus };
+}
+
+const demoScanDiffCadenza: PulseScanDiff = {
+  previousScanId: "scan-cadenza-prev",
+  previousCompletedAt: "2026-09-28T09:00:00.000Z",
+  previousScore: RECORDED_CADENZA_SCORE - 4,
+  currentScore: RECORDED_CADENZA_SCORE,
+  currentCompletedAt: null,
+  summary: "2 fixed, 1 got worse, 1 new issue, and 1 Pulse could not check this time.",
+  scoreChange: 4,
+  fixed: [
+    recordedDiffItem(RECORDED_CADENZA_CHECKS, "web_dependency_pinning", "WARN"),
+    recordedDiffItem(RECORDED_CADENZA_CHECKS, "svc_session_cookie_flags", "FAIL"),
+  ],
+  regressed: [recordedDiffItem(RECORDED_CADENZA_CHECKS, "clean_duplication_cross_file", "PASS")],
+  newIssues: [(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_CADENZA_CHECKS, "svc_express_body_limit", "WARN"))],
+  unverified: [
+    {
+      ...(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_CADENZA_CHECKS, "branch_protection", "FAIL")),
+      prevStatus: "FAIL",
+      reason: "PROBE_INCONCLUSIVE",
+      detail: "This scan could not read the branch rules, so the finding from last time is neither confirmed nor cleared.",
+    },
+  ],
+};
+
+const demoScanDiffFairway: PulseScanDiff = {
+  previousScanId: "scan-fairway-prev",
+  previousCompletedAt: "2026-10-08T09:00:00.000Z",
+  previousScore: RECORDED_FAIRWAY_SCORE + 4,
+  currentScore: RECORDED_FAIRWAY_SCORE,
+  currentCompletedAt: null,
+  summary: "1 fixed, 2 got worse, 1 new issue, and 1 Pulse could not check this time.",
+  scoreChange: -4,
+  fixed: [recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "http_redirect", "FAIL")],
+  regressed: [
+    recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "secure_cookie_attributes", "PASS"),
+    recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "crawl_html_lang", "PASS"),
+  ],
+  newIssues: [(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "api_trace_method", "WARN"))],
+  unverified: [
+    {
+      ...(({ prevStatus: _p, ...rest }) => rest)(recordedDiffItem(RECORDED_FAIRWAY_CHECKS, "dmarc_record", "WARN")),
+      prevStatus: "WARN",
+      reason: "PROBE_INCONCLUSIVE",
+      detail: "The DNS lookup did not complete this time, so the finding from last time is neither confirmed nor cleared.",
+    },
+  ],
+};
+
+const demoScanDiffs: Record<string, PulseScanDiff> = {
+  "scan-cadenza": demoScanDiffCadenza,
+  "scan-fairway": demoScanDiffFairway,
+};
+
 const demoPulseStats = {
   totalScans: 3,
   completedScans: 3,
-  avgHealthScore: 66,
+  avgHealthScore: Math.round((86 + RECORDED_CADENZA_SCORE + RECORDED_FAIRWAY_SCORE) / 3),
   awaitingFollowUp: 2,
-  totalCriticalGaps: 6,
-  healthTiers: { green: 1, amber: 1, red: 1 },
+  totalCriticalGaps: 8,
+  // Every score is 75 or above, so all three are green: tiers come from the recorded scores.
+  healthTiers: {
+    green: [86, RECORDED_CADENZA_SCORE, RECORDED_FAIRWAY_SCORE].filter((x) => x >= 75).length,
+    amber: [86, RECORDED_CADENZA_SCORE, RECORDED_FAIRWAY_SCORE].filter((x) => x >= 50 && x < 75).length,
+    red: [86, RECORDED_CADENZA_SCORE, RECORDED_FAIRWAY_SCORE].filter((x) => x < 50).length,
+  },
   recentScans: demoPulseScanList,
 };
 
 const demoPulsePortfolio = [
   { key: "client:northwind", clientId: WIKI_CLIENT.id, label: "Northwind Studio", scanCount: 3, latestScanId: "scan-northwind", latestScore: 86, latestStatus: "COMPLETED", lastScannedAt: atDays(-5), delta: 7, sparkline: [71, 74, 79, 86], worstScore: 86, monitor: { active: true, alerting: false }, running: false },
-  { key: "client:cadenza", clientId: null, label: "Cadenza", scanCount: 2, latestScanId: "scan-cadenza", latestScore: 63, latestStatus: "COMPLETED", lastScannedAt: atDays(-2), delta: 5, sparkline: [58, 63], worstScore: 63, monitor: null, running: false },
-  { key: "client:fairway", clientId: null, label: "Fairway Nine", scanCount: 2, latestScanId: "scan-fairway", latestScore: 48, latestStatus: "COMPLETED", lastScannedAt: atDays(-1), delta: -4, sparkline: [52, 48], worstScore: 48, monitor: { active: true, alerting: true }, running: false },
+  { key: "client:cadenza", clientId: null, label: "Cadenza", scanCount: 2, latestScanId: "scan-cadenza", latestScore: RECORDED_CADENZA_SCORE, latestStatus: "COMPLETED", lastScannedAt: atDays(-2), delta: 4, sparkline: [RECORDED_CADENZA_SCORE - 4, RECORDED_CADENZA_SCORE], worstScore: RECORDED_CADENZA_SCORE - 4, monitor: null, running: false },
+  { key: "client:fairway", clientId: null, label: "Fairway Nine", scanCount: 2, latestScanId: "scan-fairway", latestScore: RECORDED_FAIRWAY_SCORE, latestStatus: "COMPLETED", lastScannedAt: atDays(-1), delta: -4, sparkline: [RECORDED_FAIRWAY_SCORE + 4, RECORDED_FAIRWAY_SCORE], worstScore: RECORDED_FAIRWAY_SCORE, monitor: { active: true, alerting: true }, running: false },
 ];
 
 // ─── Resolver used by the fetch interceptor ─────────────────────────────────────
@@ -2421,14 +3619,93 @@ function resolveDemoLaunchpad(
   pathname: string,
   init?: { method?: string; body?: unknown },
 ): unknown {
-  const match = /\/launchpad(?:\/(items|docs)\/([^/]+))?(?:\/(modules|answers))?$/.exec(pathname);
-  if (!match) return undefined;
   const current = demoLaunchpadNow();
-  const [, kind, id] = match;
   const body =
     typeof init?.body === "string"
       ? (JSON.parse(init.body) as Record<string, unknown>)
       : {};
+
+  // Per-client requirements, through the REAL custom-item rules.
+  const custom = /\/launchpad\/custom-items(?:\/([^/]+))?$/.exec(pathname);
+  if (custom) {
+    const itemId = custom[1] ? decodeURIComponent(custom[1]) : null;
+    const input = body as {
+      moduleId?: string;
+      label?: string;
+      helper?: string | null;
+      ownedByClient?: boolean | null;
+    };
+    const next = !itemId
+      ? addCustomItem(
+          current.structure,
+          input.moduleId ?? "",
+          { label: input.label ?? "", helper: input.helper, ownedByClient: input.ownedByClient },
+          newCustomItemId(current.structure),
+        )
+      : init?.method === "DELETE"
+        ? removeCustomItem(current.structure, itemId)
+        : updateCustomItem(current.structure, itemId, input);
+    // The demo interceptor always answers 200, so a refused edit returns the kit
+    // unchanged rather than an `error` the caller would read as a success.
+    if (!next) return { launchpad: current };
+    return { launchpad: recomputeDemoLaunchpad({ ...current, structure: next }) };
+  }
+
+  // Files on a requirement. The demo keeps metadata only (a download link 404s on
+  // the demo — there is no server behind it; the client has already run the real
+  // upload verdict on the bytes) but runs the REAL status rule.
+  const files = /\/launchpad\/items\/([^/]+)\/files(?:\/([^/]+))?$/.exec(pathname);
+  if (files) {
+    const itemId = decodeURIComponent(files[1]);
+    const fileId = files[2] ? decodeURIComponent(files[2]) : null;
+    const existing = current.items.find((i) => i.itemId === itemId);
+    let list = existing?.files ?? [];
+    if (init?.method === "DELETE" && fileId) {
+      list = list.filter((f) => f.id !== fileId);
+    } else {
+      const file = init?.body instanceof FormData ? init.body.get("file") : null;
+      if (!(file instanceof File) || list.length >= LAUNCHPAD_FILE_MAX_PER_ITEM) {
+        return { launchpad: current };
+      }
+      list = [
+        ...list,
+        {
+          id: `lpf-demo-${Date.now()}`,
+          filename: sanitizeLaunchpadFilename(file.name),
+          mime: file.type || "application/octet-stream",
+          size: file.size,
+          uploadedByKind: "team",
+          uploadedByName: "Priya Shah",
+          uploadedAt: atDays(0),
+        },
+      ];
+    }
+    const values = applyItemPatch(
+      {
+        status: existing?.status ?? "NEEDED",
+        link: existing?.link ?? null,
+        note: existing?.note ?? null,
+        ownedByClient: existing?.ownedByClient ?? null,
+      },
+      {},
+      { fileCount: list.length, filesChanged: true },
+    );
+    const nextItem: LaunchpadItemState = {
+      itemId,
+      ...values,
+      updatedBy: "Priya Shah",
+      updatedAt: atDays(0),
+      files: list,
+    };
+    const items = existing
+      ? current.items.map((i) => (i.itemId === itemId ? nextItem : i))
+      : [...current.items, nextItem];
+    return { launchpad: recomputeDemoLaunchpad({ ...current, items }) };
+  }
+
+  const match = /\/launchpad(?:\/(items|docs)\/([^/]+))?(?:\/(modules|answers))?$/.exec(pathname);
+  if (!match) return undefined;
+  const [, kind, id] = match;
 
   if (kind === "items" && id) {
     const itemId = decodeURIComponent(id);
@@ -2441,8 +3718,10 @@ function resolveDemoLaunchpad(
         ownedByClient: existing?.ownedByClient ?? null,
       },
       body as Parameters<typeof applyItemPatch>[1],
+      { fileCount: existing?.files?.length ?? 0 },
     );
     const nextItem: LaunchpadItemState = {
+      ...existing,
       itemId,
       ...nextValues,
       updatedBy: "Priya Shah",
@@ -2496,6 +3775,279 @@ function resolveDemoLaunchpad(
   return { launchpad: current };
 }
 
+// ─── Client summary board ────────────────────────────────────────────────────────
+
+/**
+ * Seeded so the board can actually be READ in the demo: one client in each bucket,
+ * one hidden, a fresh note and a stale one.
+ *
+ * ⚠️ A fixture of six healthy clients would verify the CSS and nothing else (§43.3) —
+ * the ordering, the "no signal" bucket and the stale-note marking are the parts most
+ * likely to be wrong, so each has a row that exercises it. The verdicts are NOT
+ * written here: `buildSummaryBoard` derives them from these figures on every read,
+ * exactly as the server does.
+ */
+const demoSummaryClients: SummaryClientInput[] = [
+  {
+    id: "cl-northwind",
+    slug: "northwind",
+    name: "Northwind Studio",
+    hidden: false,
+    devCount: 3,
+    deliveredThisWeek: 4,
+    inFlight: 3,
+    planned: 11,
+    note: "Search release slipped a week — their content team is late on copy.",
+    detail:
+      "Facets and autocomplete are built and behind a flag. The blocker is 40-odd category descriptions we asked for on the 2nd; their marketing lead is on leave until Monday. If it lands next week we hold the launch date, if not it moves a fortnight. Nothing is blocked on us.",
+    noteAt: atDays(-2),
+  },
+  {
+    id: "cl-cadenza",
+    slug: "cadenza",
+    name: "Cadenza",
+    hidden: false,
+    devCount: 2,
+    deliveredThisWeek: 0,
+    inFlight: 0,
+    planned: 6,
+    note: "All on track, nothing to flag.",
+    detail: null,
+    // Deliberately old: this is the case the stale marker exists for — prose that
+    // reads as current sitting beside figures that say otherwise.
+    noteAt: atDays(-21),
+  },
+  {
+    id: "cl-bigwedge",
+    slug: "fairway-nine",
+    name: "Fairway Nine",
+    hidden: false,
+    devCount: 2,
+    deliveredThisWeek: 6,
+    inFlight: 2,
+    planned: 8,
+    note: null,
+    detail: null,
+    noteAt: null,
+  },
+  {
+    id: "cl-orrery",
+    slug: "orrery",
+    name: "Orrery Health",
+    hidden: false,
+    devCount: 0,
+    deliveredThisWeek: 0,
+    inFlight: 0,
+    planned: 0,
+    note: null,
+    detail: null,
+    noteAt: null,
+  },
+  {
+    id: "cl-lantern",
+    slug: "lantern",
+    name: "Lantern Logistics",
+    hidden: false,
+    devCount: 1,
+    deliveredThisWeek: 2,
+    inFlight: 1,
+    planned: 4,
+    note: "Retainer renewed to March.",
+    detail: null,
+    noteAt: atDays(-5),
+  },
+  {
+    id: "cl-freeway",
+    slug: "freeway",
+    name: "Freeway",
+    hidden: true,
+    devCount: 1,
+    deliveredThisWeek: 1,
+    inFlight: 1,
+    planned: 2,
+    note: null,
+    detail: null,
+    noteAt: null,
+  },
+];
+
+/**
+ * GET the board, or PATCH one card. Writes go through the SAME rules as the server —
+ * the note's stamp moves with its text and is cleared with it — so the demo can show
+ * a note going stale-free, not merely re-render.
+ */
+function resolveDemoSummary(pathname: string, init?: { method?: string; body?: unknown }) {
+  if (pathname === "/api/clients/summary") {
+    const board = buildSummaryBoard(demoSummaryClients, new Date());
+    // Distinct people, deliberately LESS than the sum of the per-client counts (9) —
+    // a fixture where the two agree cannot show the difference the real query exists
+    // to get right.
+    return { ...board, devTotal: 6, generatedAt: atDays(0) };
+  }
+  const match = /^\/api\/clients\/summary\/([^/]+)$/.exec(pathname);
+  if (!match) return undefined;
+  const row = demoSummaryClients.find((c) => c.id === match[1]);
+  if (!row) return { error: "No such client in this workspace" };
+  const body = (typeof init?.body === "string" ? JSON.parse(init.body) : {}) as {
+    note?: string | null;
+    hidden?: boolean;
+  };
+  if (body.note !== undefined) {
+    const trimmed = body.note?.trim() ?? "";
+    row.note = trimmed === "" ? null : trimmed;
+    row.noteAt = row.note ? atDays(0) : null;
+  }
+  if (body.hidden !== undefined) row.hidden = body.hidden;
+  return { ok: true };
+}
+
+// ── Pulse findings (demo) ─────────────────────────────────────────────────────
+// Writes are applied to an in-memory copy, so triage on /demo/pulse behaves like the
+// real page for the session. Northwind starts with one finding on the board and one
+// accepted, so every stage of the list has something in it.
+const demoFindingStore = new Map<string, { states: import("@/lib/pulse-findings").FindingState[]; tasks: import("@/lib/pulse-findings").FindingTask[] }>();
+
+function demoFindingSeed(scanId: string) {
+  const scan = (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[scanId] ?? demoScanNorthwind;
+  const warns = scan.checks.filter((c) => c.status === "WARN").map((c) => c.checkKey);
+  const states: import("@/lib/pulse-findings").FindingState[] = [];
+  const tasks: import("@/lib/pulse-findings").FindingTask[] = [];
+  // One finding on the board and one accepted risk per scan, chosen from that scan's own warnings.
+  const seeds: Record<string, { task: string; title: string; assignee: string; accept: string; note: string }> = {
+    "scan-northwind": { task: warns[0], title: "[Pulse] finding", assignee: "Alex Rivera", accept: warns[1], note: "Marketing site only; no user data on these pages." },
+    "scan-cadenza": { task: "svc_error_tracking", title: "[Pulse] The service reports errors to a tracker", assignee: "Marco Bianchi", accept: "has_typescript", note: "Staying on JavaScript this year; revisit with the next major release." },
+    "scan-fairway": { task: "hsts_header", title: "[Pulse] HSTS header", assignee: "Alex Rivera", accept: "cdn_detected", note: "Local club site; traffic is too small to justify a CDN." },
+  };
+  const seed = seeds[scanId];
+  const has = (key: string | undefined) => Boolean(key && warns.includes(key));
+  if (seed && has(seed.task) && has(seed.accept)) {
+    const id = `demo-pulse-task-${scanId}`;
+    states.push({ checkKey: seed.task, decision: null, note: null, taskId: id, decidedByName: null, decidedAt: null });
+    tasks.push({ id, status: "DOING", title: seed.title, assigneeName: seed.assignee, clientSlug: scanId === "scan-northwind" ? WIKI_CLIENT.slug : null });
+    states.push({ checkKey: seed.accept, decision: "ACCEPTED_RISK", note: seed.note, taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-1) });
+  }
+  if (scanId === "scan-northwind" && warns[2]) {
+    // Dismissed as not a real issue on an earlier scan, about a different report: back in Open.
+    states.push({ checkKey: warns[2], decision: "FALSE_POSITIVE", note: "The banner is set by the CDN, not the page.", taskId: null, decidedByName: "Alex Rivera", decidedAt: atDays(-30), fingerprint: "00000000", decisionStatus: "WARN", passedSinceDecision: false });
+  }
+  return { states, tasks };
+}
+
+function demoPulseFindings(scanId: string, isTask: boolean, init?: { method?: string; body?: unknown }) {
+  const store = demoFindingStore.get(scanId) ?? demoFindingSeed(scanId);
+  demoFindingStore.set(scanId, store);
+  const scan = (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[scanId] ?? demoScanNorthwind;
+  const method = (init?.method ?? "GET").toUpperCase();
+  let body: Record<string, unknown> = {};
+  try { body = typeof init?.body === "string" ? JSON.parse(init.body) : {}; } catch { body = {}; }
+  const checkKey = typeof body.checkKey === "string" ? body.checkKey : "";
+  const upsert = (patch: Partial<import("@/lib/pulse-findings").FindingState>) => {
+    const i = store.states.findIndex((st) => st.checkKey === checkKey);
+    const base = i >= 0 ? store.states[i] : { checkKey, decision: null, note: null, taskId: null, decidedByName: null, decidedAt: null };
+    const next = { ...base, ...patch };
+    if (i >= 0) store.states[i] = next; else store.states.push(next);
+  };
+  if (isTask && method === "POST" && checkKey) {
+    const id = `demo-pulse-task-${store.tasks.length + 2}`;
+    const slug = CLIENTS.find((c) => c.id === scan.clientId)?.slug ?? null;
+    store.tasks.push({ id, status: "TODO", title: `[Pulse] ${checkKey}`, assigneeName: null, clientSlug: slug });
+    upsert({ taskId: id });
+    return { taskId: id, created: true, targetKey: targetKey(scan), clientId: scan.clientId, ...store };
+  }
+  if (method === "PUT" && checkKey) {
+    const decision = body.decision === "ACCEPTED_RISK" || body.decision === "FALSE_POSITIVE" ? body.decision : null;
+    const check = scan.checks.find((c) => c.checkKey === checkKey);
+    upsert({
+      decision, note: decision && typeof body.note === "string" ? body.note : null, decidedByName: "Alex Rivera", decidedAt: new Date().toISOString(),
+      fingerprint: decision && check ? findingFingerprint(check) : null, decisionStatus: decision && check ? check.status : null, passedSinceDecision: false,
+    });
+  }
+  return { targetKey: targetKey(scan), clientId: scan.clientId, ...store };
+}
+
+/** Each demo project's open findings, by the same rule and the same in-memory decisions as its scan page. */
+function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
+  return sortProjects(projects.map((p) => {
+    const scan = p.latestCompletedScanId ? (demoPulseScansById as Record<string, typeof demoScanNorthwind>)[p.latestCompletedScanId] : undefined;
+    if (!scan || !p.latestCompletedScanId) return p;
+    const store = demoFindingStore.get(p.latestCompletedScanId) ?? demoFindingSeed(p.latestCompletedScanId);
+    demoFindingStore.set(p.latestCompletedScanId, store);
+    return applyFindingCounts(p, openFindingCounts(scan.checks, store.states, store.tasks));
+  }));
+}
+
+let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
+
+function demoMonitorBoard() {
+  const now = Date.now();
+  const ago = (min: number) => new Date(now - min * 60000).toISOString();
+  let n = 0;
+  const m = (name: string, target: string, over: Record<string, unknown> = {}) => ({
+    id: `board-${++n}`,
+    name,
+    target,
+    status: "UP",
+    stale: false,
+    alertKind: null,
+    latencyMs: 40 + n * 13,
+    statusCode: 200,
+    error: null,
+    checkedAt: ago(1),
+    downSince: null,
+    uptime24h: 100,
+    ...over,
+  });
+  return {
+    readAt: new Date(now).toISOString(),
+    incidents: [
+      {
+        id: "binc1", monitorId: "bm-wedge-api", monitorName: "Big Wedge app API", kind: "down" as const,
+        title: "Big Wedge app API is down", startedAt: ago(14), resolvedAt: null, acknowledgedAt: null,
+        acknowledgedByName: null, status: "investigating" as const, clientSlug: "wedge", clientName: "Big Wedge Golf",
+        updates: [
+          { id: "bu1", status: "investigating" as const, message: "Detected automatically: Big Wedge app API stopped responding (Unexpected status 503) · also failed from a second location (Vercel iad1).", isPublic: true, automatic: true, authorName: null, createdAt: ago(14) },
+        ],
+      },
+    ],
+    clients: [
+      {
+        clientId: "cl-gitwork",
+        slug: "gitwork",
+        name: "Gitwork",
+        monitors: [
+          m("Foundry — app", "https://foundry.gitwork.co.uk/api/health"),
+          m("Foundry — marketing", "https://foundry.gitwork.co.uk/"),
+          m("gitwork.co.uk", "https://gitwork.co.uk/"),
+        ],
+      },
+      {
+        clientId: "cl-northwind",
+        slug: "northwind",
+        name: "Northwind Studio",
+        monitors: [
+          m("Production API", "https://api.northwind.co/health", {
+            status: "DOWN",
+            statusCode: 503,
+            latencyMs: null,
+            alertKind: "down",
+            downSince: ago(7),
+            uptime24h: 97.2,
+          }),
+          m("Website", "https://northwind.co/"),
+        ],
+      },
+      {
+        clientId: "cl-bigwedge",
+        slug: "fairway-nine",
+        name: "Fairway Nine",
+        monitors: [m("Booking app", "https://app.fairwaynine.com/", { status: "DEGRADED", latencyMs: 4210, uptime24h: 100 })],
+      },
+      { clientId: "cl-cadenza", slug: "cadenza", name: "Cadenza", monitors: [m("Website", "https://cadenza.app/")] },
+      { clientId: "cl-kestrel", slug: "kestrel", name: "Kestrel", monitors: [] },
+    ],
+  };
+}
+
 export function resolveDemoApi(
   pathname: string,
   search?: URLSearchParams,
@@ -2523,14 +4075,214 @@ export function resolveDemoApi(
     case "/api/auth/session":
       return demoSession;
   }
+  // Drive — the team's (by slug) and the client's (by share token) read the same fixture.
+  if (/^\/api\/(clients\/[^/]+|wiki\/[^/]+)\/drive$/.test(pathname)) return resolveDemoDrive(search);
+  if (pathname.startsWith("/api/team/members/")) {
+    const result = resolveDemoTeamArchive(pathname, init?.method ?? "GET");
+    if (result !== undefined) return result;
+  }
+  if (pathname.startsWith("/api/codeclear/candidates/")) {
+    const result = resolveDemoCandidate(pathname, init);
+    if (result !== undefined) return result;
+  }
+  if (pathname === "/api/staff" || pathname.startsWith("/api/staff/")) {
+    const result = resolveDemoStaff(pathname, init, search);
+    if (result !== undefined) return result;
+  }
+  if (pathname.startsWith("/api/platform/")) {
+    const result = resolveDemoPlatform(pathname, init, search);
+    if (result !== undefined) return result;
+  }
+  if (pathname.startsWith("/api/clients/summary")) {
+    const result = resolveDemoSummary(pathname, init);
+    if (result !== undefined) return result;
+  }
   // Launchpad — reads and writes, applied through the real status machine.
+  // Wiki → Meetings share picker. GET only: the shared ones come from the wiki fixture,
+  // plus one unshared call, so the picker shows both states rather than an empty list.
+  if (/^\/api\/clients\/[^/]+\/wiki\/meetings$/.test(pathname) && (init?.method ?? "GET") === "GET") {
+    return {
+      meetings: [
+        ...demoWiki.meetings.meetings.map((m) => ({ id: m.id, title: m.title, startedAt: m.startedAt, shared: true })),
+        { id: "mtg-internal", title: "Internal: Northwind sprint planning", startedAt: atDays(-6), shared: false },
+      ].sort((a, b) => (a.startedAt ?? "") < (b.startedAt ?? "") ? 1 : -1),
+    };
+  }
+  // Monitors → "From this client's Platforms". Two URLs nothing watches yet, so the
+  // one-click suggestions render (the catch-all's `{}` would hide the block entirely).
+  // Monitors → the all-clients board (only the agency's wiki shows it). One client down, one
+  // slow, one with nothing monitored, so every state of the board can be seen.
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/board$/.test(pathname)) {
+    return demoMonitorBoard();
+  }
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/suggestions$/.test(pathname)) {
+    return {
+      suggestions: [
+        { name: "Admin panel", target: "https://admin.northwind.co/" },
+        { name: "Status page", target: "https://status.northwind.co/" },
+      ],
+    };
+  }
   if (pathname.includes("/launchpad")) {
     const result = resolveDemoLaunchpad(pathname, init);
     if (result !== undefined) return result;
   }
+  // Requests → @mention roster, and replies. A reply is appended to the fixture so the
+  // refetch that follows shows it — a demo where posting changes nothing verifies the
+  // CSS and nothing else (§43.3).
+  if (/^\/api\/(clients\/[^/]+\/wiki|wiki\/[^/]+)\/mentionables$/.test(pathname)) {
+    return {
+      people: [
+        { id: "client:u-marcus", name: "Marcus Webb", kind: "CLIENT" },
+        { id: "client:u-priya", name: "Priya Shah", kind: "CLIENT" },
+        { id: "team:u-harry", name: "Harry Bell", kind: "TEAM" },
+        { id: "team:u-sam", name: "Sam Okafor", kind: "TEAM" },
+        { id: "team:u-lena", name: "Lena Hartmann", kind: "TEAM" },
+      ],
+      slack: { connected: true, channelName: "ext-northwind-gitwork" },
+    };
+  }
+  {
+    const m = /^\/api\/(?:clients\/[^/]+\/wiki|wiki\/[^/]+)\/intake-items\/([^/]+)\/comments$/.exec(pathname);
+    if (m && init?.method === "POST") {
+      const item = demoWiki.intakeItems.find((i) => i.id === decodeURIComponent(m[1]));
+      const payload = JSON.parse(String(init.body ?? "{}")) as { body?: string; mentionIds?: string[] };
+      const names: Record<string, { name: string; kind: "TEAM" | "CLIENT" }> = {
+        "client:u-marcus": { name: "Marcus Webb", kind: "CLIENT" },
+        "client:u-priya": { name: "Priya Shah", kind: "CLIENT" },
+        "team:u-harry": { name: "Harry Bell", kind: "TEAM" },
+        "team:u-sam": { name: "Sam Okafor", kind: "TEAM" },
+        "team:u-lena": { name: "Lena Hartmann", kind: "TEAM" },
+      };
+      const comment = {
+        id: `wc-${Date.now()}`,
+        authorKind: "TEAM" as const,
+        authorName: "You",
+        body: (payload.body ?? "").trim(),
+        mentions: (payload.mentionIds ?? [])
+          .filter((id) => names[id])
+          .map((id) => ({ id, ...names[id] })),
+        createdAt: new Date().toISOString(),
+        editedAt: null,
+        deleted: false,
+        hasImage: false,
+        imageFilename: null,
+        // Your own reply — so Edit/Delete can be tried on it straight away.
+        canEdit: true,
+        canDelete: true,
+      };
+      item?.comments.push(comment);
+      return comment;
+    }
+  }
+  // Edit / delete a reply, and attach a screenshot to one. Applied to the fixture, and
+  // gated on the reply's own canEdit/canDelete exactly like the real routes, so the demo
+  // shows a reply you may not touch staying untouched.
+  {
+    const m = /^\/api\/(?:clients\/[^/]+\/wiki|wiki\/[^/]+)\/intake-items\/([^/]+)\/comments\/([^/]+)(\/image)?$/.exec(pathname);
+    if (m && init?.method && init.method !== "GET") {
+      const item = demoWiki.intakeItems.find((i) => i.id === decodeURIComponent(m[1]));
+      const comment = item?.comments.find((c) => c.id === decodeURIComponent(m[2]));
+      if (!comment) return { error: "Reply not found" };
+      if (m[3] && init.method === "POST") {
+        if (!comment.canEdit) return comment;
+        const file = init.body instanceof FormData ? init.body.get("file") : null;
+        Object.assign(comment, { hasImage: true, imageFilename: file instanceof File ? file.name : "screenshot.png" });
+        return comment;
+      }
+      if (init.method === "PATCH" && comment.canEdit) {
+        const payload = JSON.parse(String(init.body ?? "{}")) as { body?: string };
+        Object.assign(comment, { body: (payload.body ?? comment.body).trim(), editedAt: new Date().toISOString() });
+      }
+      if (init.method === "DELETE" && comment.canDelete) {
+        Object.assign(comment, {
+          body: "",
+          mentions: [],
+          deleted: true,
+          editedAt: null,
+          hasImage: false,
+          imageFilename: null,
+          canEdit: false,
+          canDelete: false,
+        });
+      }
+      return comment;
+    }
+  }
+  // Sheets — every internal Sheets write is applied to the fixture (src/lib/demo/demo-sheets.ts).
+  {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const body = (typeof init?.body === "string" ? JSON.parse(init.body) : init?.body) as
+      | Record<string, unknown>
+      | undefined;
+    const handled = resolveDemoSheets(pathname, method, body);
+    if (handled !== undefined) return handled;
+  }
+  // Comparisons — writes are applied to the fixture, so an edit survives the refetch that
+  // follows it. A demo where saving changes nothing verifies the CSS and nothing else (§43.3).
+  {
+    const m = /^\/api\/clients\/[^/]+\/wiki\/comparisons(?:\/([^/]+))?$/.exec(pathname);
+    if (m) {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const body = (typeof init?.body === "string" ? JSON.parse(init.body) : init?.body) as
+        | Record<string, unknown>
+        | undefined;
+      const section = demoWiki.comparisons;
+      const write = (target: WikiComparison, b: Record<string, unknown>): WikiComparison => {
+        const content = parseComparisonContent(b.columns, b.rows);
+        if (comparisonLimitError(content)) return target;
+        return {
+          ...target,
+          title: typeof b.title === "string" ? b.title : target.title,
+          description: typeof b.description === "string" ? b.description : null,
+          ...content,
+          updatedAt: new Date().toISOString(),
+        };
+      };
+      if (!m[1]) {
+        if (method === "PATCH" && body) section.enabled = body.enabled === true;
+        if (method === "PUT" && Array.isArray(body?.order)) {
+          const order = body.order as string[];
+          section.comparisons.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        }
+        if (method === "POST" && body) {
+          const created = write(
+            {
+              id: `cmp-${Date.now().toString(36)}`,
+              title: "",
+              description: null,
+              columns: [],
+              rows: [],
+              orderKey: section.comparisons.length,
+              updatedAt: "",
+            },
+            body,
+          );
+          section.comparisons.push(created);
+          return { comparison: created, section };
+        }
+        return section;
+      }
+      const i = section.comparisons.findIndex((c) => c.id === m[1]);
+      if (i === -1) return { deleted: false };
+      if (method === "DELETE") {
+        section.comparisons.splice(i, 1);
+        return { deleted: true };
+      }
+      if (method === "PATCH" && body) section.comparisons[i] = write(section.comparisons[i], body);
+      return section.comparisons[i];
+    }
+  }
   // Client wiki — GET /api/clients/{slug}/wiki (exact; sub-paths are mutations → benign).
   if (/^\/api\/clients\/[^/]+\/wiki$/.test(pathname)) {
-    return { ...demoWiki, launchpad: demoLaunchpadNow() };
+    return {
+      ...demoWiki,
+      launchpad: demoLaunchpadNow(),
+      // A copy: the fixture is mutated by writes, and React Query's structural sharing would
+      // otherwise compare the cache against the very object that changed and see no change.
+      comparisons: JSON.parse(JSON.stringify(demoWiki.comparisons)) as WikiDTO["comparisons"],
+      sheets: JSON.parse(JSON.stringify(demoSheets)) as WikiDTO["sheets"],
+    };
   }
   // Client portal detail sub-reads (before the generic /api/clients/{slug} case).
   if (/^\/api\/clients\/[^/]+\/slack-activity$/.test(pathname)) {
@@ -2567,6 +4319,13 @@ export function resolveDemoApi(
 
   // Tasks — feature blocks + milestones (per-client tasks page).
   if (pathname === "/api/feature-blocks") return demoFeatureBlocks;
+  if (pathname === "/api/board-columns") {
+    // Writes land in the fixture, so a column added in the demo survives the refetch.
+    if (init?.method === "PUT" && typeof init.body === "string") {
+      demoBoardColumns = parseBoardColumns((JSON.parse(init.body) as { columns?: unknown }).columns);
+    }
+    return demoBoardColumns;
+  }
   if (pathname === "/api/milestones") return demoMilestones;
   // Push-to-Slack composer prefs (so the modal renders with sensible defaults).
   if (pathname === "/api/tasks/push-prefs")
@@ -2611,16 +4370,77 @@ export function resolveDemoApi(
   if (pathname === "/api/backstage/absences/covers") return []; // CoverAssignmentDTO[] — ClientDevelopersSection
   if (pathname === "/api/backstage/leave") return [];
   if (pathname === "/api/backstage/alerts") return demoStaffingAlerts;
+  // BackstageMember[] — the task form's assignee picker reads it with `.filter`, so an
+  // unmapped `{}` crashed every "New task" in the demo.
+  if (pathname === "/api/backstage/team")
+    return [
+      {
+        id: DEV.id,
+        name: DEV.name,
+        email: DEV_EMAIL,
+        avatarUrl: DEV.avatarUrl,
+        role: "DEVELOPER",
+        countryCode: "GB",
+        assignedClientIds: CLIENTS.map((c) => c.id),
+      },
+    ];
 
   // Pulse (AI project validation) — 3 seeded reports.
   if (pathname === "/api/pulse/scans") return { scans: demoPulseScanList };
+  if (pathname === "/api/pulse/code-portfolio") return demoCodePortfolio();
+  if (pathname === "/api/pulse/projects") return { projects: demoWithOpenFindings(buildProjects(demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[])) };
+  {
+    const pp = pathname.match(/^\/api\/pulse\/projects\/([^/]+)$/);
+    if (pp) {
+      const key = decodeTargetKey(pp[1]);
+      const scans = (demoPulseScanList as unknown as import("@/types/pulse").PulseScanListItem[]).filter((sc) => targetKey(sc) === key).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      return scans.length ? { project: demoWithOpenFindings(buildProjects(scans))[0], scans } : { project: null, scans: [] };
+    }
+  }
   if (pathname === "/api/pulse/stats") return demoPulseStats;
   if (pathname === "/api/pulse/portfolio") return { portfolio: demoPulsePortfolio };
-  if (pathname === "/api/pulse/leads") return { leads: [] };
-  if (pathname === "/api/pulse/monitors") return { monitors: [] };
+  if (pathname === "/api/pulse/ai-search/answers") {
+    if (init?.method === "POST") return demoStartAiAnswersRun();
+    return { report: demoAiAnswersReport() };
+  }
+  if (pathname === "/api/pulse/ai-search/answers/config" && init?.method === "PUT") {
+    let body: unknown = init.body;
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        body = null;
+      }
+    }
+    return demoSaveAiAnswersConfig(body);
+  }
+  if (pathname === "/api/pulse/ai-search") {
+    return { report: demoAiSearchReport(parseAiSearchRange(search?.get("range")), { refresh: search?.get("refresh") === "1" }) };
+  }
+  if (pathname === "/api/pulse/leads") return { leads: demoPulseLeads(Date.now()) };
+  {
+    const lp = pathname.match(/^\/api\/pulse\/leads\/([^/]+)\/preview$/);
+    if (lp) {
+      const lead = demoPulseLeads(Date.now()).find((l) => l.id === lp[1]) ?? demoPulseLeads(Date.now())[0];
+      return {
+        id: lead.id, email: lead.email, name: lead.name, business: lead.business, source: lead.source,
+        createdAt: lead.createdAt, targetUrl: lead.targetUrl, healthScore: lead.healthScore,
+        checks: demoLeadChecks,
+      };
+    }
+  }
+  if (pathname === "/api/pulse/monitors") return { monitors: demoPulseMonitors(Date.now()) };
+  if (pathname === "/api/workspace/pulse-embed") return demoPulseEmbedConfig;
   if (/^\/api\/pulse\/scans\/[^/]+\/history$/.test(pathname)) return { history: [] };
-  if (/^\/api\/pulse\/scans\/[^/]+\/diff$/.test(pathname)) return { diff: demoScanDiff };
+  {
+    const dm = pathname.match(/^\/api\/pulse\/scans\/([^/]+)\/diff$/);
+    if (dm) return { diff: demoScanDiffs[dm[1]] ?? demoScanDiff };
+  }
   if (/^\/api\/pulse\/scans\/[^/]+\/benchmarks$/.test(pathname)) return { benchmarks: null };
+  {
+    const fm = pathname.match(/^\/api\/pulse\/scans\/([^/]+)\/findings(\/task)?$/);
+    if (fm) return demoPulseFindings(fm[1], Boolean(fm[2]), init);
+  }
   {
     const ps = pathname.match(/^\/api\/pulse\/scans\/([^/]+)$/);
     if (ps) return { scan: demoPulseScansById[ps[1]] ?? demoScanNorthwind };
@@ -2661,5 +4481,83 @@ export function resolveDemoApi(
   if (/^\/api\/vet\/[^/]+\/consent$/.test(pathname)) return { session: demoVetSession };
   if (/^\/api\/vet\/[^/]+(\/connect)?$/.test(pathname)) return { session: demoVetSession };
 
+  // ⚠️ The catch-all `{}` is why an unmapped endpoint is NOT harmless here. A hook
+  // that reads a field off the response (`.then((r) => r.unread)`) gets `undefined`,
+  // and React Query treats an undefined query result as an error — so every demo page
+  // that mounts the app shell logged "Query data cannot be undefined" forever, with
+  // the notification bell stuck in an error state. Map the endpoint rather than
+  // letting it fall through.
+  if (pathname === "/api/notifications/unread-count") return { unread: 0 };
+  if (/^\/api\/documents\/[^/]+\/signature-requests$/.test(pathname)) return { requests: [] };
+
   return {};
 }
+
+
+// ─── Pulse leads (public scanner) ─────────────────────────────────────────────
+// One per report state, so the demo shows what each looks like on the leads list.
+function demoPulseLeads(now: number) {
+  const ago = (min: number) => new Date(now - min * 60_000).toISOString();
+  return [
+    {
+      id: "lead-sent", email: "sam@northwind.test", name: "Sam Okafor", business: "Northwind Studio",
+      targetUrl: "https://northwind.test/", healthScore: 72, source: "gitwork.co.uk", criticalCount: 2,
+      createdAt: ago(95), importedScanId: "demo-northwind", importedScanStatus: "COMPLETED",
+      report: { state: "sent" as const, sentAt: ago(91), error: null },
+    },
+    {
+      id: "lead-preparing", email: "priya@lumen.test", name: "Priya Anand", business: "Lumen Health",
+      targetUrl: "https://www.lumen.test/", healthScore: 88, source: "production-ready", criticalCount: 0,
+      createdAt: ago(2), importedScanId: "demo-lumen", importedScanStatus: "RUNNING",
+      report: { state: "preparing" as const, sentAt: null, error: null },
+    },
+    {
+      id: "lead-failed", email: "ops@harbour.test", name: null, business: null,
+      targetUrl: "https://harbour.test/", healthScore: 41, source: "gitwork.co.uk", criticalCount: 6,
+      createdAt: ago(60 * 26), importedScanId: null, importedScanStatus: null,
+      report: { state: "failed" as const, sentAt: null, error: "No report was sent; it was probably interrupted by a server restart." },
+    },
+    // Enough more to need a second page.
+    ...[
+      ["Maya Chen", "Fernleaf", "fernleaf.test", 83], ["Tom Hughes", "Brightwater Legal", "brightwater.test", 67],
+      ["Aisha Bello", "Kora Foods", "korafoods.test", 91], ["Liam Walsh", "Peak Lettings", "peaklettings.test", 58],
+      ["Nina Kowalski", "Saltmarsh", "saltmarsh.test", 76], ["Owen Price", "Ridgeline Bikes", "ridgeline.test", 49],
+      ["Grace Mensah", "Atlas Physio", "atlasphysio.test", 88], ["Ravi Shah", "Copper Kettle", "copperkettle.test", 71],
+      ["Ellie Ford", "Tidewater", "tidewater.test", 64],
+    ].map(([name, business, site, score], i) => ({
+      id: `lead-x${i}`, email: `${String(name).split(" ")[0].toLowerCase()}@${site}`, name: String(name), business: String(business),
+      targetUrl: `https://${site}/`, healthScore: Number(score), source: i % 3 === 0 ? "production-ready" : "gitwork.co.uk", criticalCount: i % 4,
+      createdAt: ago(60 * 24 * (i + 2)), importedScanId: `demo-x${i}`, importedScanStatus: "COMPLETED",
+      report: { state: "sent" as const, sentAt: ago(60 * 24 * (i + 2) - 6), error: null },
+    })),
+  ];
+}
+
+const demoLeadChecks = [
+  { checkKey: "csp_header", category: "Security", label: "Content-Security-Policy", status: "FAIL", detail: "No Content-Security-Policy header." },
+  { checkKey: "privacy_policy", category: "Legal & Compliance", label: "Privacy Policy", status: "FAIL", detail: "No privacy policy link found on the page." },
+  { checkKey: "x_frame_options", category: "Security", label: "X-Frame-Options header", status: "WARN", detail: "No X-Frame-Options header and no CSP frame-ancestors directive." },
+  { checkKey: "sitemap_xml", category: "SEO", label: "sitemap.xml", status: "WARN", detail: "No sitemap found at /sitemap.xml or declared in robots.txt." },
+  { checkKey: "hsts_header", category: "Security", label: "HSTS header", status: "PASS", detail: "max-age=31536000" },
+  { checkKey: "ssl_valid", category: "Security", label: "SSL certificate", status: "PASS", detail: "Valid, expires in 74 days." },
+  { checkKey: "meta_description", category: "SEO", label: "Meta description", status: "INCONCLUSIVE", detail: "The page renders with JavaScript, so its content isn't in the page source." },
+];
+
+// ─── Pulse → Monitors / Growth (demo) ────────────────────────────────────────
+// Added for the Pulse nav's Monitors and Growth pages. Fictional projects.
+function demoPulseMonitors(now: number) {
+  const ago = (h: number) => new Date(now - h * 3_600_000).toISOString();
+  const base = { inputType: "URL", inputGithubRepo: null, webhookSecret: "", alertThreshold: 10, webhookUrl: "", lastDigestAt: null };
+  return [
+    { ...base, id: "mon-northwind", projectName: "Northwind Studio", inputUrl: "https://northwind.example", lastScanId: "scan-northwind", lastHealthScore: 72, isActive: true, frequency: "WEEKLY", lastRunAt: ago(30), createdAt: ago(900), digestEmails: ["ops@northwind.example"] },
+    { ...base, id: "mon-cadenza", projectName: "Cadenza", inputUrl: "https://cadenza.example", lastScanId: "scan-cadenza", lastHealthScore: RECORDED_CADENZA_SCORE, isActive: true, frequency: "DAILY", lastRunAt: ago(5), createdAt: ago(400), digestEmails: [] },
+  ];
+}
+
+const demoPulseEmbedConfig = {
+  enabled: true,
+  freeCheckKeys: null,
+  bookingUrl: "https://gitwork.co.uk/contact",
+  turnstileSiteKey: null,
+  turnstileConfigured: true,
+};

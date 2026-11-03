@@ -42,8 +42,18 @@ if (typeof window !== "undefined" && !globalThis.__foundryDemoFetchPatched) {
         method: init?.method,
         body: init?.body,
       });
-      return new Response(JSON.stringify(body), {
-        status: 200,
+      // A handler can refuse a write the way the real route would: `{ error, __status }`
+      // answers with that status, so the caller's error path runs instead of reading a
+      // refusal as success.
+      let status = 200;
+      let payload = body;
+      if (body && typeof body === "object" && typeof (body as { __status?: unknown }).__status === "number") {
+        const { __status, ...rest } = body as { __status: number } & Record<string, unknown>;
+        status = __status;
+        payload = rest;
+      }
+      return new Response(JSON.stringify(payload), {
+        status,
         headers: { "Content-Type": "application/json" },
       });
     }

@@ -3,6 +3,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { ensureBaseRecords } from "@/server/bootstrap";
 import { resolveForemanConfig } from "./config";
 import { listFindingActions, findingState, visibleFindings, type FindingState } from "./actions";
@@ -40,6 +41,11 @@ function toArr<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+/** ⚠️ `satisfies`, not `as const`. Extracting a Prisma args object into a named
+ *  const DISABLES the excess-property check that would otherwise catch a field
+ *  that does not exist — `as const` does NOT restore it (a bogus key compiles
+ *  clean). This is the mechanism that 500'd every client's wiki in Sept 2026.
+ *  See CLAUDE.md §50. */
 const RUN_SELECT = {
   id: true,
   mode: true,
@@ -51,7 +57,7 @@ const RUN_SELECT = {
   narrative: true,
   aiModel: true,
   error: true,
-} as const;
+} as const satisfies Prisma.ForemanRunSelect;
 
 type RunRow = {
   id: string;

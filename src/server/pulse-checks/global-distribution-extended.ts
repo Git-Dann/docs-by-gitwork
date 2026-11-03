@@ -1,5 +1,13 @@
 import { CATEGORIES } from "./categories";
 import { type ExtendedCheckContext, type PulseScanCheckInput } from "./_types";
+import { claimSeen, claimUnseen, findClaim, proseRuns } from "./page-claims";
+import { EU_REPRESENTATIVE_CLAIM } from "./legal-extended";
+
+/** A named mechanism for international data transfers. Acronyms in capitals only. */
+export const TRANSFER_MECHANISM_CLAIMS: readonly RegExp[] = [
+  /\bSCCs?\b|\bTIAs?\b|\bIDTA\b/,
+  /\bstandard contractual clauses\b|\btransfer impact assessments?\b|\bSchrems II\b|\bData Privacy Framework\b|\binternational data transfer agreement\b|\binternational (?:data )?transfers?\b[^.!?]{0,60}\b(?:safeguards?|clauses|adequacy)\b/i,
+];
 
 export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): Promise<PulseScanCheckInput[]> {
   const { hostname } = ctx;
@@ -11,14 +19,18 @@ export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): 
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "uk_pecr_cookie_law", label: "UK PECR cookie law compliance", status: hasUkPecr ? "PASS" : "WARN", detail: hasUkPecr ? "UK PECR cookie compliance signals detected." : "No UK PECR reference — UK organisations must comply with the Privacy and Electronic Communications Regulations (PECR) for cookie consent, separate from UK GDPR." });
 
   // CNIL France
-  const isFrenchSite = /\.fr\b/.test(hostname) || /lang=["']fr/i.test(html) || html.includes("français") || html.includes("en France");
+  const isFrenchSite = /\.fr\b/.test(hostname) || /<html\b[^>]*[\s:]lang=["']?fr\b/i.test(html) || html.includes("français") || html.includes("en France");
   const hasCnil = /cnil|commission nationale de l'informatique/i.test(html);
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "cnil_france_compliant", label: "CNIL compliance signals (France)", status: isFrenchSite ? (hasCnil ? "PASS" : "WARN") : "PASS", detail: isFrenchSite ? (hasCnil ? "CNIL compliance signals detected." : "French market signals detected but no CNIL reference — France's CNIL has strict cookie consent guidance; specific banner wording is regulated.") : "Not applicable — no French market signals detected." });
 
   // EU Art. 27 representative
-  const hasArt27 = /eu.*representative|european.*representative|article 27|art\. 27/i.test(html);
-  const isNonEuProduct = !/\.eu\b/.test(hostname) && !/\.de\b/.test(hostname) && !/\.fr\b/.test(hostname);
-  checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "eu_art27_representative", label: "EU Art. 27 representative named", status: isNonEuProduct ? (hasArt27 ? "PASS" : "WARN") : "PASS", detail: isNonEuProduct ? (hasArt27 ? "EU Art. 27 representative signals detected." : "Non-EU product targeting EU customers — GDPR Art. 27 requires appointing a named EU representative if you process EU personal data without an EU establishment.") : "Not applicable — EU-based product." });
+  // Every non-.eu/.de/.fr host used to be presumed a non-EU organisation targeting the EU.
+  // Neither fact is on a web page, so only a named representative is a finding.
+  const art27Base = { category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "eu_art27_representative", label: "EU Art. 27 representative named" };
+  const art27Quote = findClaim(proseRuns(ctx.contentHtml ?? html), EU_REPRESENTATIVE_CLAIM);
+  checks.push(art27Quote
+    ? claimSeen(art27Base, "The page names an EU representative under GDPR Art. 27.", art27Quote)
+    : claimUnseen(art27Base, "The scanned page does not name an EU representative. Art. 27 applies only to an organisation with no establishment in the EU that offers goods or services to, or monitors, people there; Pulse cannot tell either from a web page. The representative is normally named in the privacy policy, which this check does not read."));
 
   // Australian Consumer Law
   const hasAuCl = /australian consumer law|acl|consumer guarantee|statutory guarantee|competition.*consumer.*act/i.test(html);
@@ -43,8 +55,14 @@ export async function runGlobalDistributionExtended(ctx: ExtendedCheckContext): 
   checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "iso_27701_signals", label: "ISO 27701 (privacy management) signals", status: hasIso27701 ? "PASS" : "WARN", detail: hasIso27701 ? "ISO 27701 signals detected." : "No ISO 27701 signals — ISO 27701 (Privacy Information Management) is increasingly requested by enterprise DPOs during vendor assessment." });
 
   // Transfer impact assessment
-  const hasTia = /standard contractual clause|scc|transfer impact assessment|tia|schrems|data transfer.*mechanism/i.test(html);
-  checks.push({ category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "transfer_impact_assessment", label: "SCCs / Data Transfer Impact Assessment", status: hasTia ? "PASS" : "WARN", detail: hasTia ? "Data transfer mechanism signals detected (SCCs / TIA)." : "No data transfer mechanism referenced — post-Schrems II, international data transfers must be covered by SCCs or another valid transfer mechanism." });
+  // Word-bounded, in visible copy: "tia" is inside initial, essential and credential, so
+  // nearly every page passed. The acronyms are matched in capitals only.
+  const transferRuns = proseRuns(ctx.contentHtml ?? html);
+  const transferBase = { category: CATEGORIES.GLOBAL_DISTRIBUTION, checkKey: "transfer_impact_assessment", label: "SCCs / Data Transfer Impact Assessment" };
+  const transferPhrase = findClaim(transferRuns, TRANSFER_MECHANISM_CLAIMS[0]) ?? findClaim(transferRuns, TRANSFER_MECHANISM_CLAIMS[1]);
+  checks.push(transferPhrase
+    ? claimSeen(transferBase, "The page names a mechanism for international data transfers. Pulse did not review the agreements themselves.", transferPhrase)
+    : claimUnseen(transferBase, "The scanned page does not name a mechanism for international data transfers (such as SCCs or the Data Privacy Framework). That normally sits in the privacy policy or data processing agreement, which Pulse did not read, so this does not show it is missing."));
 
   // Mentions Légales (France/Belgium)
   const hasMentionsLegales = /mentions.légales|mentions legales|mentions légal/i.test(html) || /href=["'][^"']*legal[^"']*["']/i.test(html);

@@ -16,11 +16,13 @@ import {
 } from "@heroicons/react/24/outline";
 import type { CourseRequestRecord } from "@/lib/api";
 import { fuzzySearch, normalise } from "@/lib/fuzzy-search";
+import { menuItem, menuPanel } from "@/components/ui/menu-styles";
 import {
   computeCourseDemand,
   type CourseDemand,
   type DemandLevel,
 } from "@/lib/course-demand";
+import { describeFeedHealth, type CourseFeedStatus } from "@/lib/wedge-course-feed-status";
 
 // JetBrains Mono stack — used for all data labels and timestamps per DESIGN.md
 const MONO =
@@ -88,6 +90,18 @@ function DemandCell({ demand }: { demand: CourseDemand | undefined }) {
   );
 }
 
+/** The first line of real detail in the notes — the "Via Big Wedge API …" source
+ *  line is stripped, since it says nothing a reader needs. */
+function notesPreviewOf(r: CourseRequestRecord): string | null {
+  if (!r.notes) return null;
+  return (
+    r.notes
+      .replace(/^Via Big Wedge API[^\n]*\n?/i, "")
+      .trim()
+      .split("\n")[0] || null
+  );
+}
+
 /** Strip UUIDs that occasionally land in the country field from intake bugs. */
 function safeCountry(c: string | null): string | null {
   if (!c) return null;
@@ -134,10 +148,6 @@ function downloadTxt(reqs: CourseRequestRecord[], filename: string) {
   URL.revokeObjectURL(url);
 }
 
-const menuPanel =
-  "z-50 mt-1.5 rounded-[10px] border border-[rgba(0,0,0,0.10)] bg-white p-1.5 shadow-[0_12px_32px_-4px_rgba(0,0,0,0.18)] focus:outline-none";
-const menuItem =
-  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-[var(--text-2)] transition data-[focus]:bg-[var(--surface-1)] hover:bg-[var(--surface-1)]";
 
 export interface CourseRequestsSectionProps {
   requests: CourseRequestRecord[];
@@ -146,6 +156,10 @@ export interface CourseRequestsSectionProps {
   onDelete: (ids: string[]) => Promise<void>;
   onSetStatus: (ids: string[], status: string) => Promise<void>;
   readOnly?: boolean;
+  /** The scheduled Big Wedge feed's state. Internal view only — pass it and the page says,
+   *  in one line, whether new requests are actually arriving. Omit it (the client's view)
+   *  and nothing renders. */
+  feed?: CourseFeedStatus | null;
 }
 
 export function CourseRequestsSection({
@@ -155,8 +169,16 @@ export function CourseRequestsSection({
   onDelete,
   onSetStatus,
   readOnly = false,
+  feed,
 }: CourseRequestsSectionProps) {
-  const [filter, setFilter] = useState<"ALL" | ActiveStatus>("ALL");
+  /** ⚠️ `UNNAMED` is not a status — it is a repair view.
+   *  A course request with no name cannot be actioned: it renders as "Untitled Course"
+   *  to the client and there is nothing to send a provider. 389 of them were created in
+   *  one run when the import classifier failed (§53), and there was **no way to isolate
+   *  them** — every one sits in NEW alongside genuine requests, so "select all" would
+   *  have taken real work with it, and search cannot match an empty string. That is why
+   *  clearing them needed database access instead of two clicks. */
+  const [filter, setFilter] = useState<"ALL" | ActiveStatus | "UNNAMED">("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -187,11 +209,15 @@ export function CourseRequestsSection({
     [requests, search],
   );
 
+  const unnamedRequests = nonAddedRequests.filter((r) => !r.courseName.trim());
+
   const filtered = searching
     ? searchResults
     : filter === "ALL"
       ? activeRequests
-      : nonAddedRequests.filter((r) => r.status === filter);
+      : filter === "UNNAMED"
+        ? unnamedRequests
+        : nonAddedRequests.filter((r) => r.status === filter);
 
   const allVisibleSelected =
     filtered.length > 0 && filtered.every((r) => selected.has(r.id));
@@ -293,15 +319,90 @@ export function CourseRequestsSection({
    * and unreachable below ~590px (measured: 200px lost at 390px wide). The header row and
    * the list share ONE scroller so their columns stay in step.
    */
-  const scrollFrame = "overflow-x-auto";
+  // `hidden sm:block`: below `sm` the table is replaced by stacked cards (below), so a
+  // phone never has to scroll a 7-column table sideways to reach Status.
+  const scrollFrame = "hidden overflow-x-auto sm:block";
   // 800px, not the 600px the columns strictly need: at the tighter figure the 1fr
   // course name is squeezed below the Country column beside it and every name
   // ellipses, which defeats the point of scrolling. It grew from 700px when the
   // Demand column was added — keep the two in step.
   const scrollInner = "min-w-[800px]";
 
+  /** One status control, shared by the table row and the phone card. The menu is
+   *  anchored (portalled), so neither the table's scroller nor `.widget-card`'s
+   *  `overflow: hidden` can clip it. */
+  function renderStatus(r: CourseRequestRecord, status: Status) {
+    if (readOnly) {
+      return (
+        <span
+          className={`inline-block rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${STATUS_STYLE[status]}`}
+          style={{ fontFamily: MONO }}
+          data-status-control
+        >
+          {STATUS_LABEL[status]}
+        </span>
+      );
+    }
+    return (
+      <Menu as="div" className="relative" data-status-control>
+        <MenuButton
+          className={[
+            "inline-flex w-full items-center justify-between gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
+            STATUS_STYLE[status],
+          ].join(" ")}
+          style={{ fontFamily: MONO }}
+        >
+          {STATUS_LABEL[status]}
+          <ChevronDownIcon className="h-2.5 w-2.5 shrink-0" />
+        </MenuButton>
+        <MenuItems anchor="bottom end" className={`${menuPanel} w-36`}>
+          {STATUSES.map((s) => (
+            <MenuItem key={s}>
+              <button
+                type="button"
+                onClick={() => void onSetStatus([r.id], s)}
+                className={menuItem}
+              >
+                {STATUS_LABEL[s]}
+              </button>
+            </MenuItem>
+          ))}
+        </MenuItems>
+      </Menu>
+    );
+  }
+
+  function renderActions(r: CourseRequestRecord) {
+    return (
+      <div className="flex items-center justify-end gap-0.5">
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(r)}
+            className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+            title="Edit"
+            aria-label={`Edit ${r.courseName || "untitled course"}`}
+          >
+            <PencilSquareIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => void onDelete([r.id])}
+          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600"
+          title="Delete"
+          aria-label={`Delete ${r.courseName || "untitled course"}`}
+        >
+          <TrashIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
+      {feed !== undefined && <FeedHealthLine feed={feed} />}
+
       {/* ── Count summary — mono data-label per DESIGN.md ───────────── */}
       {requests.length > 0 && (
         <div
@@ -347,6 +448,24 @@ export function CourseRequestsSection({
                 : `${STATUS_LABEL[s]} (${counts[s]})`}
             </button>
           ),
+        )}
+        {/* Only ever shown when there ARE unnamed rows — an affordance for a state that
+            should not exist does not belong on a healthy board. Amber, not red: these
+            are junk to clear, not a fault to alarm about. */}
+        {!readOnly && unnamedRequests.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilter("UNNAMED")}
+            title="Requests with no course name — they show as “Untitled Course” and cannot be actioned"
+            className={[
+              "rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition",
+              filter === "UNNAMED"
+                ? "bg-amber-600 text-white"
+                : "border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100",
+            ].join(" ")}
+          >
+            Unnamed ({unnamedRequests.length})
+          </button>
         )}
         {/* On a phone the tabs wrap first, so this group takes its own full-width
             row rather than leaving a 190px search stub floated right. */}
@@ -416,6 +535,7 @@ export function CourseRequestsSection({
           )}
         </div>
       ) : (
+        <>
         <div className={scrollFrame}>
           <div className={scrollInner}>
             <div
@@ -450,13 +570,7 @@ export function CourseRequestsSection({
                 ) as Status;
                 const isSelected = !readOnly && selected.has(r.id);
                 const country = safeCountry(r.country);
-                // Strip the "Via Big Wedge API …" source line — only show actual extra detail
-                const notesPreview = r.notes
-                  ? r.notes
-                      .replace(/^Via Big Wedge API[^\n]*\n?/i, "")
-                      .trim()
-                      .split("\n")[0] || null
-                  : null;
+                const notesPreview = notesPreviewOf(r);
 
                 return (
                   <div
@@ -533,73 +647,92 @@ export function CourseRequestsSection({
                     </span>
 
                     {/* Status — clickable dropdown per row */}
-                    {!readOnly ? (
-                      <Menu as="div" className="relative">
-                        <MenuButton
-                          className={[
-                            "inline-flex w-full items-center justify-between gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] transition",
-                            STATUS_STYLE[status],
-                          ].join(" ")}
-                          style={{ fontFamily: MONO }}
-                        >
-                          {STATUS_LABEL[status]}
-                          <ChevronDownIcon className="h-2.5 w-2.5 shrink-0" />
-                        </MenuButton>
-                        <MenuItems
-                          anchor="bottom end"
-                          className={`${menuPanel} w-36`}
-                        >
-                          {STATUSES.map((s) => (
-                            <MenuItem key={s}>
-                              <button
-                                type="button"
-                                onClick={() => void onSetStatus([r.id], s)}
-                                className={menuItem}
-                              >
-                                {STATUS_LABEL[s]}
-                              </button>
-                            </MenuItem>
-                          ))}
-                        </MenuItems>
-                      </Menu>
-                    ) : (
-                      <span
-                        className={`inline-block rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] ${STATUS_STYLE[status]}`}
-                        style={{ fontFamily: MONO }}
-                      >
-                        {STATUS_LABEL[status]}
-                      </span>
-                    )}
+                    {renderStatus(r, status)}
 
                     {/* Row actions */}
-                    {!readOnly && (
-                      <div className="flex items-center justify-end gap-0.5">
-                        {onEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(r)}
-                            className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
-                            title="Edit"
-                          >
-                            <PencilSquareIcon className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => void onDelete([r.id])}
-                          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600"
-                          title="Delete"
-                        >
-                          <TrashIcon className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
+                    {!readOnly && renderActions(r)}
                   </div>
                 );
               })}
             </div>
           </div>
         </div>
+
+        {/* ── Phone: one stacked card per request ─────────────────────────
+            Below `sm` the table above is hidden. Seven columns on a 390px phone
+            was a 384px sideways scroll to reach Status; a card puts the name (in
+            full — it wraps, never truncates), demand, the facts and the status
+            control all within the width of the screen. */}
+        <ul
+          className="divide-y divide-[rgba(0,0,0,0.05)] overflow-hidden rounded-[10px] border border-[rgba(0,0,0,0.08)] bg-white sm:hidden"
+          data-course-cards
+        >
+          {filtered.map((r) => {
+            const status = (
+              STATUSES.includes(r.status as Status) ? r.status : "NEW"
+            ) as Status;
+            const isSelected = !readOnly && selected.has(r.id);
+            const country = safeCountry(r.country);
+            const notesPreview = notesPreviewOf(r);
+            return (
+              <li
+                key={r.id}
+                className={[
+                  "flex gap-2.5 px-3 py-3",
+                  isSelected ? "bg-blue-50/50" : "",
+                ].join(" ")}
+                data-course-card
+              >
+                {!readOnly && (
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggle(r.id)}
+                    aria-label={`Select ${r.courseName || "untitled course"}`}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded-[3px] border-[var(--border-2)] accent-[var(--brand-700)]"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 break-words text-[13px] font-semibold leading-snug text-[var(--text-1)] [overflow-wrap:anywhere]">
+                      {r.courseName || (
+                        <span className="italic text-[var(--text-4)]">
+                          Untitled course
+                        </span>
+                      )}
+                    </span>
+                    <div className="shrink-0">
+                      <DemandCell demand={demand.get(r.id)} />
+                    </div>
+                  </div>
+                  {notesPreview && (
+                    <p
+                      className="mt-0.5 line-clamp-2 break-words text-[11px] text-[var(--text-4)]"
+                      title={notesPreview}
+                    >
+                      {notesPreview}
+                    </p>
+                  )}
+                  <p
+                    className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
+                    style={{ fontFamily: MONO }}
+                  >
+                    <span className="break-words text-[var(--text-3)]">
+                      {country ?? "No country"}
+                    </span>
+                    <span>· Submitted {fmtDate(r.createdAt)}</span>
+                    <span>· Sent {fmtDate(r.sentAt)}</span>
+                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <div className="w-28">{renderStatus(r, status)}</div>
+                    {!readOnly && renderActions(r)}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        </>
       )}
 
       {/* ── 02 // ADDED COURSES — collapsed reference table ───────────
@@ -634,9 +767,53 @@ export function CourseRequestsSection({
               {addedRequests.map((r) => {
                 const country = safeCountry(r.country);
                 return (
+                  <div key={r.id}>
+                  {/* Phone: a stacked card, so nothing sits past the card edge
+                      (this table has no scroller of its own). */}
+                  <div className="flex items-start gap-2 px-3 py-2.5 sm:hidden" data-added-card>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 break-words text-[13px] text-[var(--text-2)] [overflow-wrap:anywhere]">
+                          {r.courseName}
+                        </span>
+                        <div className="shrink-0">
+                          <DemandCell demand={demand.get(r.id)} />
+                        </div>
+                      </div>
+                      <p
+                        className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--text-4)]"
+                        style={{ fontFamily: MONO }}
+                      >
+                        <span className="break-words">{country ?? "No country"}</span>
+                        <span>· Submitted {fmtDate(r.createdAt)}</span>
+                        <span>· Sent {fmtDate(r.sentAt)}</span>
+                      </p>
+                    </div>
+                    {!readOnly && (
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => void onSetStatus([r.id], "NEW")}
+                          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-[var(--surface-1)] hover:text-[var(--text-1)]"
+                          title="Move back to active"
+                          aria-label={`Move ${r.courseName} back to active`}
+                        >
+                          <PencilSquareIcon className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void onDelete([r.id])}
+                          className="rounded-[4px] p-1 text-[var(--text-4)] transition hover:bg-red-50 hover:text-red-600"
+                          title="Delete"
+                          aria-label={`Delete ${r.courseName}`}
+                        >
+                          <TrashIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <div
-                    key={r.id}
-                    className="grid items-center gap-x-3 px-3 py-2 hover:bg-white/70 transition"
+                    className="hidden items-center gap-x-3 px-3 py-2 transition hover:bg-white/70 sm:grid"
                     style={{
                       gridTemplateColumns: readOnly
                         ? "1fr 88px 88px 92px 92px"
@@ -691,6 +868,7 @@ export function CourseRequestsSection({
                         </button>
                       </div>
                     )}
+                  </div>
                   </div>
                 );
               })}
@@ -785,6 +963,43 @@ export function CourseRequestsSection({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One line saying whether new requests are actually arriving. ⚠️ Healthy is quiet (a mono
+ * readout); failing is a tinted block that names the error — the feed was dead for two
+ * months once and the board looked exactly the same as a quiet week, which is the whole
+ * reason this exists.
+ */
+function FeedHealthLine({ feed }: { feed: CourseFeedStatus | null }) {
+  const health = describeFeedHealth(feed, new Date());
+  if (health.state === "healthy") {
+    return (
+      <p
+        className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.06em] text-[var(--text-3)]"
+        style={{ fontFamily: MONO }}
+        data-feed-state="healthy"
+      >
+        <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success-500)]" />
+        {health.message}
+      </p>
+    );
+  }
+  return (
+    <div
+      role="status"
+      data-feed-state={health.state}
+      className="mb-3 rounded-[6px] border border-[var(--danger-500)] bg-[var(--danger-50)] px-3 py-2 text-[13px] leading-snug text-[var(--text-1)]"
+    >
+      <span
+        className="mr-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--danger-500)]"
+        style={{ fontFamily: MONO }}
+      >
+        Feed down
+      </span>
+      {health.message}
     </div>
   );
 }

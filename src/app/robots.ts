@@ -24,10 +24,12 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         disallow: [
-          // The platform itself, plus the Deck editor shell (session-gated).
+          // The platform itself, plus the Deck and Canvas shells (session-gated).
           "/app",
           "/deck",
+          "/canvas",
           "/edge",
+          "/guidelines",
           // API surface. Gated by API_KEY, but there is nothing here to crawl.
           "/api/",
           // Sales demos: deliberately public so a link can be shared, deliberately

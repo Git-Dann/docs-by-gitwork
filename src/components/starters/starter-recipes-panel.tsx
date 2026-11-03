@@ -16,6 +16,7 @@ import { buttonStyles } from "@/components/ui/button";
 import { cn } from "@/lib/format";
 import type { StarterRecipeWithStarters } from "@/server/starter-recipes";
 import type { StarterListItem } from "@/server/starters";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 
 /** A named, curated bundle of existing Starters — "give me the whole stack for X kind of
  * project" in one click. Pure grouping layer over the catalog; no new content. */
@@ -57,7 +58,7 @@ export function StarterRecipesPanel() {
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {[1, 2].map((i) => (
-            <div key={i} className="h-40 animate-pulse rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)]" />
+            <Skeleton key={i} className="h-40 rounded-[10px] border border-[var(--border-2)]" />
           ))}
         </div>
       ) : (recipes ?? []).length === 0 ? (

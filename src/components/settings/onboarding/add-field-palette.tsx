@@ -98,8 +98,7 @@ export function AddFieldPalette({ open, onClose, onPick, usedSystemKeys }: AddFi
     <div className="fixed inset-0 z-50">
       <button type="button" aria-label="Close palette" className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div
-        className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-[var(--shadow-lg)]"
-        style={{ animation: "fieldPaletteSlide 220ms ease-out" }}
+        className="motion-sheet-right absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-white shadow-[var(--shadow-lg)]"
       >
         <div className="widget-header">
           <span className="widget-header__label">ADD A FIELD</span>
@@ -201,18 +200,6 @@ export function AddFieldPalette({ open, onClose, onPick, usedSystemKeys }: AddFi
         </div>
       </div>
 
-      <style jsx>{`
-        @keyframes fieldPaletteSlide {
-          from {
-            transform: translateX(40px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

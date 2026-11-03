@@ -1,5 +1,6 @@
 import { CATEGORIES } from "../pulse-checks/categories";
-import { githubGraphQL, hasGithubToken, parseGithubRepo } from "@/lib/github";
+import { githubGraphQL, githubRequest, hasGithubToken, parseGithubRepo } from "@/lib/github";
+import { applyPrivateRepoPolicyAll, parseRepoVisibility, type RepoVisibility } from "@/server/pulse-checks/private-repo";
 import type { PulseScanCheckInput, CodeAgentInsights } from "@/types/pulse";
 import { collectorCompletenessCheck, collectorExecution } from "@/server/pulse-checks/collector-health";
 import { scanRepoSecrets, type SecretFinding } from "./secret-scanner";
@@ -22,7 +23,6 @@ import {
   effectivePlatformForRepoShape,
   type RepoCollectorName,
 } from "@/server/pulse-checks/scan-execution-plan";
-import { keepApplicableChecks } from "@/server/pulse-checks/platform-applicability";
 
 const CODE_AGENT_QUERY = `
   query RepoIntelligence($owner: String!, $name: String!) {
@@ -41,8 +41,18 @@ const CODE_AGENT_QUERY = `
         nodes {
           requiresApprovingReviews
           requiresStatusChecks
+          requiresCommitSignatures
           restrictsPushes
           isAdminEnforced
+        }
+      }
+      viewerPermission
+      rulesets(first: 25) {
+        nodes {
+          enforcement
+          target
+          conditions { refName { include } }
+          rules(first: 30) { nodes { type } }
         }
       }
       pullRequests(last: 20, states: [MERGED]) {
@@ -53,6 +63,7 @@ const CODE_AGENT_QUERY = `
         }
       }
       defaultBranchRef {
+        name
         target {
           ... on Commit {
             history(first: 30) {
@@ -65,6 +76,7 @@ const CODE_AGENT_QUERY = `
           }
         }
       }
+      tags: refs(refPrefix: "refs/tags/", first: 1) { totalCount }
       releases(last: 10, orderBy: {field: CREATED_AT, direction: DESC}) {
         totalCount
         nodes { tagName createdAt isLatest }
@@ -79,6 +91,8 @@ const CODE_AGENT_QUERY = `
       licenseInfo { name spdxId }
       isArchived
       isEmpty
+      isPrivate
+      visibility
       diskUsage
       primaryLanguage { name }
       languages(first: 5) { nodes { name } }
@@ -106,6 +120,7 @@ interface GQLResponse {
       nodes: {
         requiresApprovingReviews: boolean;
         requiresStatusChecks: boolean;
+        requiresCommitSignatures?: boolean;
         restrictsPushes: boolean;
         isAdminEnforced: boolean;
       }[];
@@ -114,7 +129,10 @@ interface GQLResponse {
       totalCount: number;
       nodes: { mergedAt: string; reviews: { totalCount: number } }[];
     } | null;
+    viewerPermission?: string | null;
+    rulesets?: BranchRulesets | null;
     defaultBranchRef: {
+      name?: string;
       target: {
         history: {
           totalCount: number;
@@ -126,6 +144,7 @@ interface GQLResponse {
       totalCount: number;
       nodes: { tagName: string; createdAt: string; isLatest: boolean }[];
     } | null;
+    tags?: { totalCount: number } | null;
     codeOfConduct: { name: string } | null;
     hasIssuesEnabled: boolean;
     issues: { totalCount: number } | null;
@@ -136,10 +155,112 @@ interface GQLResponse {
     licenseInfo: { name: string; spdxId: string } | null;
     isArchived: boolean;
     isEmpty: boolean;
+    // Basic repository fields, but still nullable under a partial response (§35.1).
+    isPrivate?: boolean | null;
+    visibility?: string | null;
     diskUsage: number | null;
     primaryLanguage: { name: string } | null;
     languages: { nodes: { name: string }[] } | null;
     homepageUrl: string | null;
+  };
+}
+
+interface BranchRulesets {
+  nodes: {
+    enforcement: string;
+    target: string | null;
+    conditions: { refName: { include: string[] } | null } | null;
+    rules: { nodes: { type: string }[] } | null;
+  }[];
+}
+
+/**
+ * Whether the default branch is protected, from BOTH mechanisms: classic branch
+ * protection rules and repository rulesets (org rulesets included). "No protection" is
+ * only reported when the viewer could have seen it: classic rules are listed to admins
+ * only, so for anyone else an empty list establishes nothing.
+ */
+export function assessBranchProtection(repo: {
+  branchProtectionRules: { nodes: { requiresApprovingReviews: boolean; requiresStatusChecks: boolean }[] } | null;
+  rulesets?: BranchRulesets | null;
+  viewerPermission?: string | null;
+  defaultBranchRef?: { name?: string } | null;
+}): PulseScanCheckInput {
+  const base = { category: CATEGORIES.CODE_QUALITY, checkKey: "branch_protection", label: "Branch protection on default branch" } as const;
+  const branch = repo.defaultBranchRef?.name ?? null;
+  const applies = (include: string[]) =>
+    include.some((ref) => ref === "~ALL" || ref === "~DEFAULT_BRANCH" || (branch !== null && ref === `refs/heads/${branch}`));
+  const active = (repo.rulesets?.nodes ?? []).filter(
+    (r) => r.enforcement === "ACTIVE" && r.target === "BRANCH" && applies(r.conditions?.refName?.include ?? []),
+  );
+  const ruleTypes = new Set(active.flatMap((r) => (r.rules?.nodes ?? []).map((n) => n.type)));
+  const classic = repo.branchProtectionRules?.nodes?.[0] ?? null;
+  const reviews = Boolean(classic?.requiresApprovingReviews) || ruleTypes.has("PULL_REQUEST");
+  const checksRequired = Boolean(classic?.requiresStatusChecks) || ruleTypes.has("REQUIRED_STATUS_CHECKS");
+  const protectedBranch = classic !== null || active.length > 0;
+
+  if (protectedBranch) {
+    return {
+      ...base,
+      status: reviews ? "PASS" : "WARN",
+      detail: reviews
+        ? `The default branch is protected${active.length > 0 ? ` (${active.length} active ruleset${active.length === 1 ? "" : "s"}${classic ? " and a branch protection rule" : ""})` : ""}: pull request reviews are required${checksRequired ? ", and so are status checks" : ""}.`
+        : `The default branch is protected${active.length > 0 ? ` by ${active.length} active ruleset${active.length === 1 ? "" : "s"}` : ""}, but nothing requires a pull request review before merging.`,
+    };
+  }
+  // Nothing seen. Classic rules are only visible to admins, so the absence is only
+  // established for an admin viewer who could also read the rulesets.
+  const canSeeAll = repo.viewerPermission === "ADMIN" && repo.branchProtectionRules !== null && repo.rulesets != null;
+  if (!canSeeAll) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      detail: repo.branchProtectionRules === null && repo.rulesets == null
+        ? "Branch protection metadata is inaccessible with the configured GitHub permissions."
+        : "No ruleset protects the default branch, and classic branch protection rules are only listed to repository " +
+          "admins, which this scanner is not. Whether the branch is protected is not established.",
+    };
+  }
+  return { ...base, status: "FAIL", detail: "No branch protection rule or ruleset covers the default branch, so anyone with write access can push to it directly." };
+}
+
+/**
+ * Whether commits to the default branch must be signed, from the same two mechanisms
+ * as `assessBranchProtection` and with the same visibility rule: classic rules are
+ * listed to admins only, so "not required" is only established for an admin viewer.
+ */
+export function assessCommitSigning(repo: {
+  branchProtectionRules: { nodes: { requiresCommitSignatures?: boolean }[] } | null;
+  rulesets?: BranchRulesets | null;
+  viewerPermission?: string | null;
+  defaultBranchRef?: { name?: string } | null;
+}): PulseScanCheckInput {
+  const base = { category: CATEGORIES.CODE_QUALITY, checkKey: "commit_signing_enabled", label: "Signed commits (GPG / Sigstore)" } as const;
+  const branch = repo.defaultBranchRef?.name ?? null;
+  const applies = (include: string[]) =>
+    include.some((ref) => ref === "~ALL" || ref === "~DEFAULT_BRANCH" || (branch !== null && ref === `refs/heads/${branch}`));
+  const active = (repo.rulesets?.nodes ?? []).filter(
+    (r) => r.enforcement === "ACTIVE" && r.target === "BRANCH" && applies(r.conditions?.refName?.include ?? []),
+  );
+  const ruleRequires = active.some((r) => (r.rules?.nodes ?? []).some((n) => n.type === "REQUIRED_SIGNATURES"));
+  const classic = repo.branchProtectionRules?.nodes?.[0] ?? null;
+  if (ruleRequires || classic?.requiresCommitSignatures) {
+    return { ...base, status: "PASS", confidence: "HIGH", detail: "Commits to the default branch must be signed, so each one is verifiably from its author." };
+  }
+  const canSeeAll = repo.viewerPermission === "ADMIN" && repo.branchProtectionRules !== null && repo.rulesets != null;
+  if (!canSeeAll) {
+    return {
+      ...base,
+      status: "INCONCLUSIVE",
+      confidence: "LOW",
+      detail: "No ruleset requires signed commits, and classic branch protection rules are only listed to repository admins, which this scanner is not. Whether signatures are required is not established.",
+    };
+  }
+  return {
+    ...base,
+    status: "WARN",
+    confidence: "HIGH",
+    detail: "Nothing requires signed commits on the default branch. Requiring signatures (GPG, SSH or Sigstore gitsign) proves who made each commit; some frameworks (FedRAMP, SLSA) expect it.",
   };
 }
 
@@ -167,13 +288,17 @@ export async function runCodeAgent(
   const rest = await runRestOnlyFamilies(parsed, repoInput, effectivePlatform, resolvedShape);
 
   let data: GQLResponse | null = null;
+  // Kept so the INCONCLUSIVE detail can tell "repo does not exist / not visible"
+  // apart from "token lacks a permission" — different causes, different fixes.
+  let graphQLError = "";
   try {
     data = await githubGraphQL<GQLResponse>(CODE_AGENT_QUERY, {
       owner: parsed.owner,
       name: parsed.repo,
     });
-  } catch {
+  } catch (err) {
     data = null;
+    graphQLError = err instanceof Error ? err.message : String(err);
   }
 
   const repo = data?.repository ?? null;
@@ -183,21 +308,24 @@ export async function runCodeAgent(
   // from "this repo has no branch protection", and they need different fixes.
   if (!repo) {
     return {
-      checks: keepApplicableChecks([
+      checks: ([
         ...rest.checks,
         {
           category: CATEGORIES.CODE_QUALITY,
           checkKey: "repo_intelligence",
           label: "GitHub repo intelligence",
           status: "INCONCLUSIVE" as const,
-          detail: hasGithubToken()
+          detail: /Could not resolve to a Repository/i.test(graphQLError)
+            ? `GitHub reports no repository ${parsed.owner}/${parsed.repo} visible to this scanner — it does not exist, ` +
+              "was renamed, or is private and outside the configured GITHUB_TOKEN's access. Repo intelligence could not be read."
+            : hasGithubToken()
             ? "Repo intelligence (branch protection, releases, commit velocity, dependency alerts) " +
               "could not be read. The configured GITHUB_TOKEN most likely lacks the permissions these " +
               "fields require — Dependabot alerts: read, and administration: read for branch protection."
             : "GITHUB_TOKEN is not configured on this server, so branch protection, releases, commit " +
               "velocity and dependency alerts could not be read.",
         },
-      ], effectivePlatform),
+      ]),
       insights: { ...emptyInsights(), exposedSecrets: rest.exposedSecrets },
     };
   }
@@ -238,29 +366,14 @@ export async function runCodeAgent(
   });
 
   // ── Branch protection ──────────────────────────────────────────────────────
-  // `?.` throughout: now that partial GraphQL responses are honoured, any single
-  // field can arrive null because the token lacked the permission for just that one
-  // (branchProtectionRules needs administration:read). Nulling one field must not
-  // throw and lose the other seven checks.
-  const branchRule = repo.branchProtectionRules?.nodes?.[0];
-  const branchMetadataAccessible = repo.branchProtectionRules !== null;
-  const branchProtected = branchMetadataAccessible && Boolean(branchRule);
-  const requiresReviews = branchRule?.requiresApprovingReviews ?? false;
-  const requiresChecks = branchRule?.requiresStatusChecks ?? false;
-
-  checks.push({
-    category: CATEGORIES.CODE_QUALITY,
-    checkKey: "branch_protection",
-    label: "Branch protection on default branch",
-    status: !branchMetadataAccessible ? "INCONCLUSIVE" : !branchProtected ? "FAIL" : !requiresReviews ? "WARN" : "PASS",
-    detail: !branchMetadataAccessible
-      ? "Branch protection metadata is inaccessible with the configured GitHub permissions."
-      : !branchProtected
-      ? "No branch protection rules — anyone can push directly to the default branch."
-      : !requiresReviews
-        ? "Branch protection enabled but does not require PR reviews before merging."
-        : `Branch protection active: requires reviews${requiresChecks ? " and status checks" : ""}.`,
-  });
+  // Classic rules are only listed to repository admins (a READ viewer gets an empty
+  // list on a protected repo), and repository rulesets are a second mechanism. vercel/next.js
+  // reads as "0 rules" to a READ token while 7 active rulesets protect its default branch.
+  const branchCheck = assessBranchProtection(repo);
+  checks.push(branchCheck);
+  checks.push(assessCommitSigning(repo));
+  const branchProtected = branchCheck.status === "PASS" || branchCheck.status === "WARN";
+  const requiresReviews = branchCheck.status === "PASS";
 
   // ── PR review culture ──────────────────────────────────────────────────────
   const prs = repo.pullRequests?.nodes ?? [];
@@ -308,13 +421,22 @@ export async function runCodeAgent(
 
     const names = new Set(commits.map((c) => c.author.name));
     uniqueContributors = names.size;
+    // The detail says "over last 30 days", so contributors must come from the same
+    // window: counting all 30 fetched commits credited archived flutter/gallery
+    // (last commit 2024) with "9 contributors" alongside 0 commits/week.
+    const recentContributors = new Set(recentCommits.map((c) => c.author.name)).size;
+    // history(first: 30) caps the sample. When every fetched commit is inside the
+    // window the true rate is a lower bound (cli/cli showed exactly 7/week = 30/30*7).
+    const velocitySampleCapped =
+      recentCommits.length === commits.length &&
+      (repo.defaultBranchRef?.target?.history?.totalCount ?? 0) > commits.length;
 
     checks.push({
       category: CATEGORIES.CODE_QUALITY,
       checkKey: "commit_velocity",
       label: "Active development velocity",
       status: commitVelocity >= 3 ? "PASS" : commitVelocity >= 1 ? "WARN" : "FAIL",
-      detail: `${commitVelocity} commits/week over last 30 days, ${uniqueContributors} contributor${uniqueContributors !== 1 ? "s" : ""}.`,
+      detail: `${velocitySampleCapped ? "At least " : ""}${commitVelocity} commits/week over last 30 days, ${recentContributors}${velocitySampleCapped ? "+" : ""} contributor${recentContributors !== 1 ? "s" : ""}.`,
     });
   } else if (!repo.isEmpty && repo.defaultBranchRef === null) {
     checks.push({
@@ -327,17 +449,28 @@ export async function runCodeAgent(
   }
 
   // ── Releases / versioning ─────────────────────────────────────────────────
-  const releaseCount = repo.releases?.totalCount ?? 0;
+  // A version tag is as pinnable as a GitHub Release (android/nowinandroid: 3 tags,
+  // 2 Releases), so count whichever is larger, as the label promises.
+  const releaseCount = Math.max(repo.releases?.totalCount ?? 0, repo.tags?.totalCount ?? 0);
+  // The tags field arrives null when GitHub could not resolve it (a partial GraphQL
+  // error). With no releases either, "no version tags" would be a claim about refs we
+  // never read, so that case is unestablished rather than a FAIL.
+  const tagsUnread = repo.tags == null;
   checks.push({
     category: CATEGORIES.CODE_QUALITY,
     checkKey: "has_releases",
     label: "GitHub releases / version tags",
-    status: repo.releases === null ? "INCONCLUSIVE" : releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
+    status:
+      repo.releases === null || (releaseCount === 0 && tagsUnread)
+        ? "INCONCLUSIVE"
+        : releaseCount >= 3 ? "PASS" : releaseCount >= 1 ? "WARN" : "FAIL",
     detail: repo.releases === null
       ? "Release metadata could not be read."
+      : releaseCount === 0 && tagsUnread
+      ? "No GitHub releases are published, and the repository's tags could not be read, so whether it has version tags is unknown."
       : releaseCount > 0
-      ? `${releaseCount} release${releaseCount !== 1 ? "s" : ""} published — versioning history documented.`
-      : "No releases — users and integrators cannot pin to a stable version.",
+      ? `${releaseCount} published release${releaseCount !== 1 ? "s" : ""}/version tag${releaseCount !== 1 ? "s" : ""} — versioning history documented.`
+      : "No releases or version tags — users and integrators cannot pin to a stable version.",
   });
 
   // ── Issue health ───────────────────────────────────────────────────────────
@@ -362,13 +495,19 @@ export async function runCodeAgent(
   });
 
   // ── Repo vitals ────────────────────────────────────────────────────────────
-  const stars = repo.stargazerCount ?? 0;
+  // Stars are a public repository's social proof, nothing more: a low count is a
+  // reading, not a defect, and a private repository cannot be starred by the public.
+  const stars = typeof repo.stargazerCount === "number" ? repo.stargazerCount : null;
   checks.push({
     category: CATEGORIES.TRUST_BRAND,
     checkKey: "github_stars",
     label: "GitHub stars (social proof)",
-    status: stars >= 100 ? "PASS" : stars >= 10 ? "WARN" : "FAIL",
-    detail: `${stars.toLocaleString()} GitHub stars.${stars < 10 ? " Low stars suggest limited community adoption or a private/new project." : ""}`,
+    status: repo.isPrivate === true ? "NOT_APPLICABLE" : stars === null ? "INCONCLUSIVE" : stars >= 100 ? "PASS" : "WARN",
+    detail: repo.isPrivate === true
+      ? "Private repository: it cannot be starred by the public, so stars are not a measure here."
+      : stars === null
+        ? "The star count could not be read."
+        : `${stars.toLocaleString()} GitHub star${stars === 1 ? "" : "s"}.${stars < 100 ? " A low count is normal for a new or niche public project; it only matters if the repository is meant to attract outside users or contributors." : ""}`,
   });
 
   // ── Archived check ─────────────────────────────────────────────────────────
@@ -404,7 +543,7 @@ export async function runCodeAgent(
     status: license ? "PASS" : "WARN",
     detail: license
       ? `Licensed under ${license.name} (${license.spdxId}).`
-      : "No license detected — code is legally all-rights-reserved by default, even in public repos.",
+      : "No license file detected by GitHub — unless a licence is granted elsewhere (e.g. stated in the README), the code is all-rights-reserved by default, even in public repos.",
   });
 
   const vulnerabilities = (vulnAlerts?.nodes ?? []).map((n) => ({
@@ -418,7 +557,12 @@ export async function runCodeAgent(
   checks.push(...rest.checks);
 
   return {
-    checks: keepApplicableChecks(checks, effectivePlatform),
+    // The relevance gate in run-lite-scan decides per check; see runGithubChecks.
+    // run-lite-scan applies the private-repo policy to every check it ingests, from a
+    // visibility it fetched up front. Applying it here too, from GraphQL's own answer,
+    // covers the case where that up-front read failed but this query did not. The
+    // policy is idempotent, so applying it twice is harmless.
+    checks: applyPrivateRepoPolicyAll(checks, parseRepoVisibility(repo)),
     insights: {
       vulnerabilities,
       branchProtected,
@@ -495,4 +639,38 @@ function emptyInsights(): CodeAgentInsights {
     homepageUrl: null,
     exposedSecrets: [],
   };
+}
+
+const VISIBILITY_QUERY = `
+  query RepoVisibility($owner: String!, $name: String!) {
+    repository(owner: $owner, name: $name) { isPrivate visibility }
+  }
+`;
+
+/**
+ * Whether GitHub says the repo is private. REST first — `/repos/{owner}/{repo}` carries
+ * `private` and `visibility`, needs no token for a public repo and costs one call — then
+ * GraphQL as a fallback. Anything that cannot be established is `null`, and a null never
+ * changes a check: an unreadable answer is not evidence the repo is private (§35).
+ */
+export async function fetchRepoVisibility(repoInput: string): Promise<RepoVisibility> {
+  const parsed = parseGithubRepo(repoInput);
+  if (!parsed) return null;
+  try {
+    const meta = await githubRequest<unknown>(`/repos/${parsed.owner}/${parsed.repo}`);
+    const fromRest = parseRepoVisibility(meta);
+    if (fromRest !== null) return fromRest;
+  } catch {
+    // Fall through to GraphQL.
+  }
+  if (!hasGithubToken()) return null;
+  try {
+    const data = await githubGraphQL<{ repository: { isPrivate?: boolean | null; visibility?: string | null } | null }>(
+      VISIBILITY_QUERY,
+      { owner: parsed.owner, name: parsed.repo },
+    );
+    return parseRepoVisibility(data?.repository ?? null);
+  } catch {
+    return null;
+  }
 }

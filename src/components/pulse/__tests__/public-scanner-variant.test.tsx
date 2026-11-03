@@ -143,7 +143,7 @@ describe("both variants render the actual tool", () => {
       expect(host.querySelector("button")?.textContent).toBe("Scan my site");
       // The count is a prop precisely so it stays in step with the registry; the
       // widget used to hardcode "Over 900" while every other surface said 1,600.
-      expect(text()).toContain("over 1,600 automated checks");
+      expect(text()).toMatch(/over 1,600 automated checks/i);
     });
   }
 });

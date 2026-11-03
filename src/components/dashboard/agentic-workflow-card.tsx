@@ -17,6 +17,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/motion/skeleton";
 import {
   useCreateAutomationOnboardingLink,
   useDraftProposalFromMeeting,
@@ -240,7 +241,7 @@ export function AgenticWorkflowCard() {
   }
 
   if (isLoading) {
-    return <div className="h-72 animate-pulse rounded-[10px] bg-[var(--surface-1)]" />;
+    return <Skeleton className="h-72 rounded-[10px]" />;
   }
 
   return (

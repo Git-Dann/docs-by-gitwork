@@ -21,16 +21,23 @@
 import { CATEGORIES } from "./categories";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import type { RepoSnapshot } from "./native-mobile";
+import { isVendoredPath, sampleCoverage } from "./native-mobile";
 
 export type BackendFramework = "django" | "rails" | "laravel" | "spring" | "express" | "next" | null;
 
 interface Ctx {
   frameworks: Set<string>;
   pySettings: string;
+  /** Django settings modules read, by path (settings.py, settings/production.py …). */
+  pySettingsFiles: [string, string][];
+  /** The pinned Django major version, when a requirements file states one. */
+  djangoMajor: number | null;
   railsProd: string;
   laravelConfig: string;
   springProps: string;
   nodeSource: string;
+  /** Python source outside settings modules (FastAPI / Flask app setup). */
+  pySource: string;
   packageJson: string;
   envExample: string;
   allConfig: string;
@@ -44,8 +51,18 @@ function buildCtx(snapshot: RepoSnapshot): Ctx {
   const node: string[] = [];
   let packageJson = "";
   const envExample: string[] = [];
+  const pySrc: string[] = [];
+  const pySettingsFiles: [string, string][] = [];
+  let djangoMajor: number | null = null;
 
   for (const [path, text] of snapshot.files) {
+    if (/(?:^|\/)(?:\w+_)?settings(?:_\w+)?\.py$|(?:^|\/)settings\/[\w-]+\.py$/i.test(path) && !isVendoredPath(path)) {
+      pySettingsFiles.push([path, text]);
+    }
+    if (/(?:^|\/)(?:requirements[\w.-]*\.txt|pyproject\.toml|Pipfile|setup\.(?:py|cfg))$/i.test(path)) {
+      const pin = /\bdjango\s*(?:==|~=|===)\s*["']?(\d+)\./i.exec(text) ?? /["']?django["']?\s*=\s*["'](?:==|~=|\^)?(\d+)\./i.exec(text);
+      if (pin) djangoMajor = Number(pin[1]);
+    }
     if (/settings(_?\w*)?\.py$/i.test(path)) py.push(text);
     else if (/config\/environments\/production\.rb$/i.test(path)) rails.push(text);
     else if (/config\/(application|storage|database)\.rb$/i.test(path)) rails.push(text);
@@ -54,6 +71,7 @@ function buildCtx(snapshot: RepoSnapshot): Ctx {
     else if (/(^|\/)package\.json$/i.test(path) && !packageJson) packageJson = text;
     else if (/\.env\.example$/i.test(path)) envExample.push(text);
     if (/\.(ts|js|mjs|cjs)$/i.test(path)) node.push(text);
+    if (/\.py$/i.test(path) && !isVendoredPath(path)) pySrc.push(text);
   }
 
   const frameworks = new Set<string>();
@@ -67,11 +85,16 @@ function buildCtx(snapshot: RepoSnapshot): Ctx {
 
   return {
     frameworks,
-    pySettings: py.join("\n"),
+    // A project whose settings are split into a package (settings/base.py,
+    // settings/production.py) has no settings.py; read the package instead of skipping.
+    pySettings: py.length > 0 ? py.join("\n") : pySettingsFiles.map(([, t]) => t).join("\n"),
+    pySettingsFiles,
+    djangoMajor,
     railsProd: rails.join("\n"),
     laravelConfig: laravel.join("\n"),
     springProps: spring.join("\n"),
     nodeSource: node.join("\n"),
+    pySource: pySrc.join("\n"),
     packageJson,
     envExample: envExample.join("\n"),
     allConfig: [...py, ...rails, ...laravel, ...spring].join("\n"),
@@ -126,23 +149,292 @@ export function pySetting(source: string, name: string): string | null {
   return value;
 }
 
+/** The last top-level `NAME = value` in a Python file, comment stripped, or null if absent. */
+export function pyAssignment(source: string, name: string): string | null {
+  const all = pyAssignments(source, name, false);
+  return all.length > 0 ? all[all.length - 1] : null;
+}
+
+/** Every `NAME = value` in a Python file, top-level only or at any indent (inside an if/else). */
+export function pyAssignments(source: string, name: string, anyIndent: boolean): string[] {
+  // A type annotation is allowed: PokeAPI writes `DEBUG: bool = False`.
+  const re = new RegExp(`^${anyIndent ? "[ \\t]*" : ""}${name}(?:\\s*:\\s*[\\w.[\\], ]+?)?\\s*=(?!=)\\s*(.+)$`, "gm");
+  return [...source.matchAll(re)].map((m) => m[1].replace(/\s+#.*$/, "").trim());
+}
+
+/**
+ * The fallback a settings value takes when its environment variable is unset:
+ * `os.environ.get("X", "True")`, `os.getenv("X", 1)`, `env("X", default=True)`,
+ * `config("X", default=True, cast=bool)`. `readsEnv` is false for a plain literal;
+ * `fallback` is null when there is no default (unset means None, or a KeyError).
+ */
+export function pyEnvFallback(value: string): { readsEnv: boolean; fallback: string | null } {
+  if (!/os\.(?:environ|getenv)|\benv(?:\.\w+)?\(|\bconfig\(|decouple|getenv\(/i.test(value)) {
+    return { readsEnv: false, fallback: null };
+  }
+  const keyword = /\bdefault\s*=\s*([^,)]+)/.exec(value);
+  if (keyword) return { readsEnv: true, fallback: keyword[1].trim() };
+  const positional = /(?:os\.environ\.get|os\.getenv|getenv|\benv(?:\.\w+)?|\bconfig)\(\s*["'][^"']+["']\s*,\s*([^,)]+)/.exec(value);
+  return { readsEnv: true, fallback: positional ? positional[1].trim() : null };
+}
+
+const unquote = (v: string) => v.replace(/^[rbfu]?(["'])([\s\S]*)\1$/i, "$2");
+/** A whole Python string literal, not an expression that starts with one (`"".join(...)`). */
+const isStringLiteral = (v: string) => /^[rbfu]?(?:"[^"\n]*"|'[^'\n]*')$/i.test(v);
+
+/**
+ * Is DEBUG on when its environment variable is unset? "on" / "off" / "unknown".
+ * Python semantics, applied to the committed fallback: `os.environ.get("DEBUG",
+ * "True") == "True"` is on, and so is a bare `os.environ.get("DEBUG", "False")`,
+ * because the string "False" is truthy and Django reads DEBUG with `if settings.DEBUG`.
+ */
+export function pyDebugFallbackOn(value: string): "on" | "off" | "unknown" {
+  const { fallback } = pyEnvFallback(value);
+  if (fallback === null || /^None$/.test(fallback)) return "off";
+  const lowered = /\.lower\(\)/.test(value);
+  const raw = unquote(fallback);
+  const d = lowered ? raw.toLowerCase() : raw;
+  const quoted = /^[rbfu]?["']/i.test(fallback);
+  const eq = /(==|!=)\s*["']([^"']*)["']/.exec(value);
+  if (eq) return (d === eq[2]) === (eq[1] === "==") ? "on" : "off";
+  const inList = /\bin\s*[([{]([^)\]}]*)[)\]}]/.exec(value);
+  if (inList) {
+    const items = [...inList[1].matchAll(/["']([^"']*)["']/g)].map((m) => m[1]);
+    return items.includes(d) ? "on" : "off";
+  }
+  const truthyWord = (s: string) => /^(?:true|1|yes|on|y|t)$/i.test(s);
+  const falsyWord = (s: string) => /^(?:false|0|no|off|n|f|)$/i.test(s);
+  if (/\benv\.bool\(|cast\s*=\s*bool|strtobool|\bget_bool|getboolean/i.test(value)) {
+    return truthyWord(raw) ? "on" : falsyWord(raw) ? "off" : "unknown";
+  }
+  if (/\bint\(/.test(value)) return /^\d+$/.test(raw) ? (Number(raw) !== 0 ? "on" : "off") : "unknown";
+  if (!quoted) return raw === "True" || /^[1-9]\d*$/.test(raw) ? "on" : raw === "False" || raw === "0" ? "off" : "unknown";
+  // A bare string fallback (`bool(...)` or no wrapper): any non-empty string is truthy.
+  return raw === "" ? "off" : "on";
+}
+
+/**
+ * Spring configuration as dotted `key=value` lines, from either form: a `.properties`
+ * file is already dotted; a YAML file nests (`management:` / `endpoints:` / `web:` …),
+ * which the withheld actuator check never read, so a nested `include: "*"` passed.
+ * List items under a key become one line each (`…include=*`).
+ */
+export function springDotted(text: string): string[] {
+  const out: string[] = [];
+  const stack: { indent: number; key: string }[] = [];
+  for (const raw of text.split("\n")) {
+    if (/^---\s*$/.test(raw)) {
+      stack.length = 0;
+      continue;
+    }
+    const line = raw.replace(/\s+#.*$/, "").replace(/^\s*#.*$/, "");
+    if (line.trim() === "") continue;
+    const dotted = /^\s*([\w.[\]-]+)\s*[=:]\s*(.*)$/.exec(line);
+    if (/^[\w.[\]-]+\s*=/.test(line.trim()) && !/^\s/.test(line)) {
+      // properties form
+      out.push(line.trim().replace(/\s*=\s*/, "="));
+      continue;
+    }
+    const indent = line.length - line.trimStart().length;
+    const item = /^\s*-\s+(.*)$/.exec(line);
+    if (item) {
+      // `- "*"` belongs to the key above it, which may sit at the same indent.
+      while (stack.length > 0 && stack[stack.length - 1].indent > indent) stack.pop();
+      if (stack.length > 0) out.push(`${stack.map((s) => s.key).join(".")}=${item[1].trim()}`);
+      continue;
+    }
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop();
+    const prefix = stack.map((s) => s.key).join(".");
+    if (!dotted) continue;
+    const key = prefix ? `${prefix}.${dotted[1]}` : dotted[1];
+    const value = dotted[2].trim();
+    if (value === "") stack.push({ indent, key: dotted[1] });
+    else out.push(`${key}=${value}`);
+  }
+  return out;
+}
+
+/**
+ * CORS configurations that allow credentials for every origin, read one config at a
+ * time so an `origin` in one file never pairs with `credentials` in another.
+ *
+ * `reflects`: the library echoes the caller's Origin, so any site can read
+ * credentialed responses: cors/Nest/Fastify `{ origin: true, credentials: true }`,
+ * django-cors-headers `CORS_ALLOW_ALL_ORIGINS = True` with credentials, Starlette's
+ * CORSMiddleware with `allow_origins=["*"]` and credentials, Flask-CORS with
+ * `supports_credentials=True` and no origins list. `literal`: `origin: "*"` with
+ * credentials, which browsers refuse, so it fails closed.
+ */
+export function corsCredentialFindings(ctx: {
+  nodeSource: string;
+  pySource: string;
+  pySettings: string;
+}): { reflects: string[]; literal: string[] } {
+  const reflects: string[] = [];
+  const literal: string[] = [];
+  for (const m of ctx.nodeSource.matchAll(/\{[^{}]{0,400}\}/g)) {
+    const obj = m[0];
+    if (!/\bcredentials\s*:\s*true\b/.test(obj) || !/\borigin\s*:/.test(obj)) continue;
+    if (/\borigin\s*:\s*true\b/.test(obj)) reflects.push("A CORS config sets `origin: true` with `credentials: true`");
+    else if (/\borigin\s*:\s*["'`]\*["'`]/.test(obj)) literal.push("A CORS config sets `origin: \"*\"` with `credentials: true`");
+  }
+  const allowAll = /^\s*CORS_(?:ALLOW_ALL_ORIGINS|ORIGIN_ALLOW_ALL)\s*=\s*True\b/m.test(ctx.pySettings);
+  if (allowAll && /^\s*CORS_ALLOW_CREDENTIALS\s*=\s*True\b/m.test(ctx.pySettings)) {
+    reflects.push("Django settings set CORS_ALLOW_ALL_ORIGINS and CORS_ALLOW_CREDENTIALS to True");
+  }
+  for (const m of ctx.pySource.matchAll(/add_middleware\(\s*CORSMiddleware\s*,([^)]{0,600})\)/g)) {
+    if (/allow_origins\s*=\s*\[\s*["']\*["']\s*\]/.test(m[1]) && /allow_credentials\s*=\s*True\b/.test(m[1])) {
+      reflects.push("Starlette's CORSMiddleware allows every origin with allow_credentials=True");
+    }
+  }
+  for (const m of ctx.pySource.matchAll(/\bCORS\(\s*\w+\s*,([^)]{0,400})\)/g)) {
+    if (/supports_credentials\s*=\s*True\b/.test(m[1]) && !/\b(?:origins|resources)\s*=/.test(m[1])) {
+      reflects.push("Flask-CORS is enabled with supports_credentials=True and no origins list");
+    }
+  }
+  return { reflects: [...new Set(reflects)], literal: [...new Set(literal)] };
+}
+
+/**
+ * Does the code own a long-running server process, and if so does it drain on SIGTERM?
+ * Only a process the repository starts itself (`app.listen`, `createServer`, a Nest or
+ * Fastify bootstrap) is graded. Spring Boot is graded by its `server.shutdown`
+ * setting, and graceful by default from Boot 3.4.
+ */
+export function gracefulShutdownVerdict(
+  ctx: { nodeSource: string; packageJson: string; springProps: string; frameworks: Set<string>; pySource: string; allConfig: string },
+  paths: string[],
+  coverage: number,
+  pomAndGradle = "",
+): { status: PulseScanCheckInput["status"]; detail: string } {
+  const ownsNodeServer =
+    /\.listen\(\s*(?:[\w.]*port\b|\d{2,5}\b|\{)|\bcreateServer\(|NestFactory\.create\(|\bfastify\(\s*[{)]/i.test(ctx.nodeSource);
+  if (ownsNodeServer) {
+    const drains =
+      /\bSIGTERM\b|gracefulShutdown|server\.close\(|\bonShutdown\b|enableShutdownHooks\(|createTerminus|@godaddy\/terminus|http-terminator|createHttpTerminator|\bstoppable\b|close-with-grace|\blightship\b/i.test(
+        ctx.nodeSource + ctx.packageJson,
+      );
+    return drains
+      ? { status: "PASS", detail: "The server code handles SIGTERM (directly or through a shutdown helper), so in-flight requests can finish before the process exits." }
+      : {
+          status: "WARN",
+          detail:
+            "This repository starts its own Node server, and no SIGTERM handling was found. Every deploy and every " +
+            "scale-down then stops the process mid-request, so some users see a connection reset on each release. " +
+            "Close the server on SIGTERM (`process.on(\"SIGTERM\", () => server.close())`) or use a helper such as " +
+            "@godaddy/terminus.",
+        };
+  }
+  if (ctx.frameworks.has("spring")) {
+    const setting = springDotted(ctx.springProps).find((l) => /^server\.shutdown=/i.test(l));
+    if (setting) {
+      return /=\s*["']?graceful/i.test(setting)
+        ? { status: "PASS", detail: "Spring Boot is configured with server.shutdown=graceful." }
+        : { status: "WARN", detail: "Spring Boot is configured with server.shutdown=immediate, so in-flight requests are cut off on every deploy. Set server.shutdown=graceful." };
+    }
+    const boot =
+      /spring-boot-starter-parent<\/artifactId>\s*<version>(\d+)\.(\d+)/.exec(pomAndGradle) ??
+      /org\.springframework\.boot["']?\)?\s*version\s*["'](\d+)\.(\d+)/.exec(pomAndGradle);
+    if (boot && (Number(boot[1]) > 3 || (Number(boot[1]) === 3 && Number(boot[2]) >= 4))) {
+      return { status: "PASS", detail: `Spring Boot ${boot[1]}.${boot[2]} shuts down gracefully by default, and server.shutdown is not overridden.` };
+    }
+    return {
+      status: "INCONCLUSIVE",
+      detail:
+        "server.shutdown is not set. Spring Boot 3.4 and later shut down gracefully by default; earlier versions " +
+        "stop immediately. The Boot version was not established, so this is not settled. Setting " +
+        "server.shutdown=graceful makes it certain.",
+    };
+  }
+  const appServerManaged =
+    ctx.frameworks.has("django") || ctx.frameworks.has("rails") || ctx.frameworks.has("laravel") ||
+    /\bfrom\s+(?:fastapi|flask|starlette)\s+import\b|\bimport\s+(?:fastapi|flask)\b/.test(ctx.pySource);
+  if (appServerManaged || ctx.frameworks.has("next")) {
+    return {
+      status: "SKIPPED",
+      detail:
+        "The process is started by an app server or platform (gunicorn or uvicorn, Puma, PHP-FPM, `next start` or " +
+        "a serverless deploy), which drains in-flight requests on SIGTERM itself, so the application code has " +
+        "nothing to add.",
+    };
+  }
+  if (paths.some((p) => /\.go$/i.test(p))) {
+    return { status: "INCONCLUSIVE", detail: "This looks like a Go service. Pulse does not read Go shutdown handling (signal.Notify with http.Server.Shutdown), so this is not established." };
+  }
+  return coverage < 0.3
+    ? { status: "INCONCLUSIVE", detail: `No server process started by this repository was found in the ${Math.round(coverage * 100)}% of source files read, which is too few to say there is none.` }
+    : { status: "SKIPPED", detail: "No long-running server process started by this repository was found, so there is no shutdown for it to handle." };
+}
+
+/** Settings modules that configure a deployed environment and override the shared base. */
+const PROD_SETTINGS = /(?:^|[/_-])(?:prod|production|live|deploy|deployment|staging|heroku)(?:_settings)?\.py$/i;
+
+/** Settings modules a team keeps for development or tests, where DEBUG = True is the point. */
+const DEV_SETTINGS =
+  /(?:^|[/_-])(?:dev|develop|development|local|test|tests|testing|ci)(?:_settings)?\.py$|(?:^|\/)(?:local|test|dev)_?settings\.py$/i;
+
 export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanCheckInput[] {
   const ctx = buildCtx(snapshot);
   const checks: PulseScanCheckInput[] = [];
+
+  // Checks whose adverse verdict is the ABSENCE of a pattern in the SAMPLED source.
+  // The web sample is capped, so on a large repository "not found" is not "not
+  // there": below the coverage threshold these self-downgrade to LOW, exactly as the
+  // web-source family's absence() does. And a repository with no server-side code or
+  // service manifest at all (a static page) has no service for them to grade.
+  const SAMPLED_ABSENCE_KEYS = new Set([
+    "svc_express_helmet",
+    "svc_express_body_limit",
+    "svc_express_rate_limit",
+    "svc_session_cookie_flags",
+    "svc_graceful_shutdown",
+    "svc_health_endpoint",
+    "svc_structured_logging",
+    "svc_request_id",
+    "svc_db_connection_pool",
+    "svc_error_tracking",
+  ]);
+  const SOURCE_FILE = /\.(js|jsx|ts|tsx|mjs|cjs|py|rb|php|go|java|cs)$/i;
+  const sourcePaths = snapshot.paths.filter((p) => SOURCE_FILE.test(p) && !isVendoredPath(p));
+  const sourceRead = [...snapshot.files.keys()].filter((p) => SOURCE_FILE.test(p) && !isVendoredPath(p)).length;
+  const coverage = sampleCoverage(sourceRead, sourcePaths.length, snapshot.truncated);
+  const isService =
+    ctx.frameworks.size > 0 ||
+    ctx.packageJson !== "" ||
+    ctx.allConfig !== "" ||
+    sourcePaths.some((p) => /\.(py|rb|php|go|java|cs)$/i.test(p)) ||
+    // A Deno service has no package.json.
+    snapshot.paths.some((p) => /(^|\/)deno\.jsonc?$/i.test(p));
 
   const add = (
     checkKey: string,
     label: string,
     status: PulseScanCheckInput["status"],
     detail: string,
+    confidenceOverride?: PulseScanCheckInput["confidence"],
   ) => {
+    let finalStatus = status;
+    let finalDetail = detail;
+    let confidence: PulseScanCheckInput["confidence"] = confidenceOverride ?? (status === "INCONCLUSIVE" ? "LOW" : "HIGH");
+    if (SAMPLED_ABSENCE_KEYS.has(checkKey) && status !== "SKIPPED") {
+      if (!isService) {
+        finalStatus = "SKIPPED";
+        finalDetail =
+          "No server-side code or service manifest was found in this repository, so this service check does not apply.";
+      } else if (status === "WARN" && coverage < 0.3) {
+        confidence = "LOW";
+        finalDetail =
+          `${detail} (Based on ${Math.round(coverage * 100)}% of this project's source files — below the threshold ` +
+          `for a confident "not present anywhere", so this is inconclusive rather than a failure.)`;
+      }
+    }
     checks.push({
-      category: status === "SKIPPED" ? CATEGORIES.INFRASTRUCTURE : CATEGORIES.SECURITY,
+      category: finalStatus === "SKIPPED" ? CATEGORIES.INFRASTRUCTURE : CATEGORIES.SECURITY,
       checkKey,
       label,
-      status,
-      confidence: "HIGH",
-      detail,
+      status: finalStatus,
+      confidence,
+      detail: finalDetail,
     });
   };
 
@@ -153,32 +445,110 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
 
   // ── Django — from the official deployment checklist ────────────────────────
   if (has("django") && ctx.pySettings) {
-    const debug = pySetting(ctx.pySettings, "DEBUG");
+    // DEBUG and SECRET_KEY are judged per settings module. A development or test module
+    // (settings/dev.py, local_settings.py) is meant to run with DEBUG on and a throwaway
+    // key, so it is not read. A value taken from the environment is judged by its
+    // committed FALLBACK: `os.environ.get("DEBUG", "True")` is debug on whenever the
+    // variable is unset, and the withheld version passed it as "read from the environment".
+    // A production module that assigns the setting overrides the shared base, so
+    // `base.py: DEBUG = True` with `production.py: DEBUG = False` is judged on production.py.
+    const prodSettings = ctx.pySettingsFiles.filter(([p]) => !DEV_SETTINGS.test(p));
+    // An assignment inside an if/else in the production module (bakerydemo sets SECRET_KEY
+    // from the environment or generates one) still overrides the base.
+    const decidingModules = (name: string): { modules: [string, string][]; anyIndent: boolean } => {
+      const overriding = prodSettings.filter(([p, t]) => PROD_SETTINGS.test(p) && pyAssignments(t, name, true).length > 0);
+      return overriding.length > 0 ? { modules: overriding, anyIndent: true } : { modules: prodSettings, anyIndent: false };
+    };
+    const debugOn: string[] = [];
+    const debugFallbackOn: string[] = [];
+    const debugUnknown: string[] = [];
+    const debugDecider = decidingModules("DEBUG");
+    for (const [path, text] of debugDecider.modules) {
+      const value = debugDecider.anyIndent ? pyAssignments(text, "DEBUG", true).pop() ?? null : pyAssignment(text, "DEBUG");
+      if (value === null) continue;
+      const env = pyEnvFallback(value);
+      if (!env.readsEnv) {
+        if (/^True$|^1$/.test(value)) debugOn.push(path);
+        else if (!/^False$|^0$/.test(value)) debugUnknown.push(path);
+        continue;
+      }
+      const on = pyDebugFallbackOn(value);
+      if (on === "on") debugFallbackOn.push(path);
+      else if (on === "unknown") debugUnknown.push(path);
+    }
     add(
       "svc_django_debug",
       "Django DEBUG is not enabled in the committed settings",
-      debug === null ? "PASS" : /true/i.test(debug) ? "FAIL" : "PASS",
-      debug === null
-        ? "DEBUG is read from the environment rather than written in, which is the recommended pattern."
-        : /true/i.test(debug)
-          ? "DEBUG = True is committed in settings. With debug on, Django returns a full traceback, every local " +
-            "variable, and the settings module on any unhandled error — including the database credentials. It also " +
-            "disables ALLOWED_HOSTS enforcement and retains every SQL query in memory, which leaks slowly until the " +
-            "process dies."
-          : "DEBUG is set to False in the committed settings.",
+      prodSettings.length === 0
+        ? "INCONCLUSIVE"
+        : debugOn.length > 0
+          ? "FAIL"
+          : debugFallbackOn.length > 0
+            ? "WARN"
+            : debugUnknown.length > 0
+              ? "INCONCLUSIVE"
+              : "PASS",
+      prodSettings.length === 0
+        ? "Only development or test settings modules were read, so the production DEBUG value was not seen."
+        : debugOn.length > 0
+          ? `DEBUG = True is committed in ${debugOn.join(", ")}. With debug on, Django returns a full traceback, every ` +
+            "local variable and the settings module on any unhandled error, including the database credentials. It " +
+            "also disables ALLOWED_HOSTS enforcement and keeps every SQL query in memory."
+          : debugFallbackOn.length > 0
+            ? `DEBUG is read from the environment in ${debugFallbackOn.join(", ")}, but its committed fallback turns ` +
+              "debug ON whenever the variable is unset (a string such as \"False\" is truthy in Python). A deploy that " +
+              "forgets the variable then serves full tracebacks. Make the fallback off, for example " +
+              "`DEBUG = os.environ.get(\"DEBUG\") == \"1\"`."
+            : debugUnknown.length > 0
+              ? `DEBUG in ${debugUnknown.join(", ")} is set by an expression Pulse could not evaluate, so whether it ` +
+                "can be on in production is not established."
+              : "DEBUG is off in the committed production settings, or read from the environment with a fallback " +
+                "that is off when the variable is unset.",
     );
 
-    const key = pySetting(ctx.pySettings, "SECRET_KEY");
+    const keyLiteral: string[] = [];
+    const keyFallback: string[] = [];
+    const keyPlaceholder: string[] = [];
+    const keyDecider = decidingModules("SECRET_KEY");
+    for (const [path, text] of keyDecider.modules) {
+      // Every assignment in the deciding module counts: a literal in either branch of an
+      // if/else is committed.
+      for (const value of pyAssignments(text, "SECRET_KEY", keyDecider.anyIndent)) {
+      const env = pyEnvFallback(value);
+      const literal = env.readsEnv ? env.fallback : value;
+      if (literal === null || !isStringLiteral(literal)) continue;
+      const keyText = unquote(literal);
+      if (keyText === "") continue; // Django refuses to start with an empty SECRET_KEY.
+      const real =
+        /^django-insecure/.test(keyText) ||
+        (/^[\w!@#$%^&*()_+=\-]{20,}$/.test(keyText) && !/change|example|placeholder|dummy|your|secret[-_]?key/i.test(keyText));
+      if (!env.readsEnv) (real ? keyLiteral : keyPlaceholder).push(path);
+      else (real ? keyFallback : keyPlaceholder).push(path);
+      }
+    }
     add(
       "svc_django_secret_key",
       "Django SECRET_KEY is not hardcoded",
-      key === null ? "PASS" : /^["']django-insecure|^["'][\w!@#$%^&*()_+=-]{20,}["']$/.test(key) ? "FAIL" : "WARN",
-      key === null
-        ? "SECRET_KEY is read from the environment."
-        : "SECRET_KEY is a literal in committed settings. It signs session cookies and password-reset tokens, so " +
-          "anyone with repository access can forge a session for any user — including staff. The `django-insecure-` " +
-          "prefix means it is still the value `startproject` generated. Rotate it; removing the line leaves it in " +
-          "git history.",
+      prodSettings.length === 0
+        ? "INCONCLUSIVE"
+        : keyLiteral.length > 0 || keyFallback.length > 0
+          ? "FAIL"
+          : keyPlaceholder.length > 0
+            ? "WARN"
+            : "PASS",
+      prodSettings.length === 0
+        ? "Only development or test settings modules were read, so the production SECRET_KEY was not seen."
+        : keyLiteral.length > 0 || keyFallback.length > 0
+          ? `A real SECRET_KEY is committed in ${[...keyLiteral, ...keyFallback].join(", ")}` +
+            (keyFallback.length > 0 ? ", as the fallback used when the environment variable is unset" : "") +
+            ". It signs session cookies and password-reset tokens, so anyone with repository access can forge a " +
+            "session for any user, staff included. The `django-insecure-` prefix means it is still the value " +
+            "`startproject` generated. Rotate it and remove the fallback; deleting the line leaves it in git history."
+          : keyPlaceholder.length > 0
+            ? `SECRET_KEY in ${keyPlaceholder.join(", ")} is, or falls back to, a placeholder string. Unless something ` +
+              "replaces it at deploy time, Django signs sessions with a key that is printed in your repository. Read " +
+              "it with `os.environ[\"SECRET_KEY\"]` so a missing value stops the process instead."
+            : "SECRET_KEY is read from the environment with no committed key as a fallback.",
     );
 
     const hosts = pySetting(ctx.pySettings, "ALLOWED_HOSTS");
@@ -218,6 +588,32 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
     ] as const) {
       const v = pySetting(ctx.pySettings, setting);
       const on = v !== null && !/false|^0$/i.test(v);
+      if (key2 === "svc_django_content_type_nosniff") {
+        // SECURE_CONTENT_TYPE_NOSNIFF defaults to True since Django 3.0, so leaving it
+        // unset SENDS the header. Only an explicit False, or a pinned Django older than
+        // 3.0, leaves it off. A value read from the environment is not established.
+        const raw = pyAssignment(ctx.pySettings, setting);
+        const fromEnv = raw !== null && pyEnvFallback(raw).readsEnv;
+        const oldDjango = ctx.djangoMajor !== null && ctx.djangoMajor < 3;
+        const off = (v !== null && !on) || (raw === null && oldDjango);
+        add(
+          key2,
+          label,
+          off ? "WARN" : fromEnv ? "INCONCLUSIVE" : "PASS",
+          off
+            ? raw === null
+              ? `Django ${ctx.djangoMajor} is pinned and ${setting} is not set; before Django 3.0 it defaulted to ` +
+                `False, so the header is not sent. ${why}`
+              : `${setting} is disabled. ${why}`
+            : fromEnv
+              ? `${setting} is read from the environment, so whether the header is sent is not established.`
+              : raw === null
+                ? `${setting} is not set, so Django's default applies: it has been True since Django 3.0 and no older ` +
+                  "Django is pinned, so the X-Content-Type-Options: nosniff header is sent."
+                : `${setting} is enabled.`,
+        );
+        continue;
+      }
       add(
         key2,
         label,
@@ -259,8 +655,9 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         ? "config/environments/production.rb was not read."
         : forceSsl
           ? "config.force_ssl is enabled, so Rails redirects to HTTPS and marks cookies secure."
-          : "config.force_ssl is not enabled in production. One setting turns on the HTTPS redirect, the Secure " +
-            "cookie flag and HSTS together, so leaving it off costs all three.",
+          : "config.force_ssl is not enabled in production. That one setting turns on the HTTPS redirect, the " +
+            "Secure cookie flag and HSTS together; without it those protections exist only if a TLS-terminating " +
+            "proxy or the application's own code provides them, which the Rails configuration read here does not show.",
     );
 
     const secretCommitted = snapshot.paths.some((p) => /config\/master\.key$|config\/credentials\.yml$/i.test(p));
@@ -321,7 +718,11 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
 
   // ── Spring Boot ────────────────────────────────────────────────────────────
   if (has("spring")) {
-    const actuatorAll = /management\.endpoints\.web\.exposure\.include\s*[=:]\s*["']?\*/i.test(ctx.springProps);
+    // Read the setting as a value, in either the dotted .properties form or nested YAML.
+    const actuatorAll = springDotted(ctx.springProps).some((l) => {
+      const m = /^management\.endpoints\.web\.exposure\.include=(.*)$/i.exec(l);
+      return m !== null && m[1].replace(/[[\]"']/g, "").split(",").some((v) => v.trim() === "*");
+    });
     add(
       "svc_spring_actuator_exposure",
       "Spring actuator endpoints are not fully exposed",
@@ -353,27 +754,45 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   // ── Node services ──────────────────────────────────────────────────────────
   const isNode = has("express") || has("next");
   if (isNode) {
-    const helmet = /helmet|@fastify\/helmet|contentSecurityPolicy/i.test(ctx.packageJson + ctx.nodeSource);
+    // Header names count only as quoted literals (next.config headers() keys, headers.set()),
+    // not as a bare mention in a comment or log line.
+    const helmet = /helmet|@fastify\/helmet|contentSecurityPolicy|["'](Content-Security-Policy|X-Content-Type-Options)["']/i.test(
+      ctx.packageJson + ctx.nodeSource,
+    );
     add(
       "svc_express_helmet",
       "Express sets security headers",
       helmet ? "PASS" : "WARN",
       helmet
-        ? "A security-header middleware is configured."
-        : "No security-header middleware (helmet or equivalent) was found. Express sends no CSP, no " +
-          "X-Content-Type-Options and no Referrer-Policy by default, so every one of those defences is simply " +
-          "absent rather than misconfigured.",
+        ? "A security-header middleware or security-header configuration is present."
+        : "No security-header middleware (helmet or equivalent) or security-header configuration (such as " +
+          "headers() in next.config) was found. Neither Express nor Next.js sends a CSP, X-Content-Type-Options " +
+          "or Referrer-Policy by default, so unless a proxy or CDN adds them those defences are simply absent " +
+          "rather than misconfigured.",
     );
     const bodyLimit = /limit:\s*["']\d+[kmKM]b?["']|bodyLimit|maxRequestBodySize/i.test(ctx.nodeSource);
+    // body-parser / express.json() / urlencoded() cap bodies at 100kb by default, and
+    // Next.js API routes and Server Actions at 1MB. A missing explicit limit is only an
+    // exposure where a body is read with NO default cap: a multipart upload library, a
+    // raw request stream, or an App Router handler reading the body itself.
+    const uncappedBody =
+      /multer|busboy|formidable|bodyParser:\s*false|\.on\(\s*["']data["']|\b(req|request)\.(json|text|formData|arrayBuffer|blob)\(\)|\b(req|request)\.pipe\(|\.body\.getReader\(\)/i.test(
+        ctx.packageJson + ctx.nodeSource,
+      );
     add(
       "svc_express_body_limit",
       "The request body size is capped",
-      bodyLimit ? "PASS" : "WARN",
+      bodyLimit || !uncappedBody ? "PASS" : "WARN",
       bodyLimit
         ? "A request body size limit is configured."
-        : "No request body limit was found. express.json() defaults to 100kb, but a raw body parser or a file " +
-          "upload route without a cap lets one request allocate as much memory as the client cares to send — the " +
-          "cheapest denial-of-service there is against a Node process.",
+        : !uncappedBody
+          ? "No explicit body limit is set, but the body parsers in use apply a default cap (100kb for " +
+            "express.json()/body-parser, 1MB for Next.js API routes and Server Actions) and no uncapped upload " +
+            "parser or raw body read was found."
+          : "A request body is read without a size cap — an upload parser (multer, busboy, formidable), a raw " +
+            "request stream, or a route handler calling request.json()/text()/formData()/blob() — and no explicit " +
+            "limit was found. One request can then allocate as much memory as the client cares to send, the " +
+            "cheapest denial-of-service there is against a Node process.",
     );
     const rateLimit = /rate-?limit|rateLimiter|@upstash\/ratelimit|slowDown/i.test(ctx.packageJson + ctx.nodeSource);
     add(
@@ -402,20 +821,38 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
 
   // ── Cross-framework ────────────────────────────────────────────────────────
   const all = ctx.allConfig + ctx.nodeSource;
-  const corsWildcardCreds =
-    /origin:\s*["']\*["']/.test(all) && /credentials:\s*true/.test(all);
+  const cors = corsCredentialFindings(ctx);
+  const thinSample = coverage < 0.3;
   add(
     "svc_cors_wildcard",
     "CORS does not combine a wildcard origin with credentials",
-    corsWildcardCreds ? "FAIL" : "PASS",
-    corsWildcardCreds
-      ? "CORS is configured with a wildcard origin AND credentials enabled. Browsers reject that combination, so " +
-        "the usual workaround is to reflect the request's Origin header — which means any website a logged-in user " +
-        "visits can call your API with their cookies attached and read the response."
-      : "No wildcard-origin-with-credentials CORS configuration was found.",
+    cors.reflects.length > 0 ? "FAIL" : cors.literal.length > 0 ? "WARN" : "PASS",
+    cors.reflects.length > 0
+      ? `${cors.reflects.join("; ")}. With credentials allowed, that echoes back whatever Origin the browser sends, so ` +
+        "any website a signed-in user visits can call your API with their cookies attached and read the response. " +
+        "List the origins you trust instead."
+      : cors.literal.length > 0
+        ? `${cors.literal.join("; ")}. Browsers refuse a credentialed response with a literal \`*\` origin, so this ` +
+          "configuration breaks signed-in cross-origin calls rather than exposing them. The usual next step, " +
+          "reflecting the request's Origin, is the exposure; list the origins you trust instead."
+        : thinSample
+          ? `No CORS configuration combining every origin with credentials was found in the ` +
+            `${Math.round(coverage * 100)}% of source files read, which is too few to establish it is absent.`
+          : "No CORS configuration combining every origin with credentials was found.",
+    cors.reflects.length === 0 && cors.literal.length === 0 && thinSample ? "LOW" : undefined,
   );
 
-  const cookieFlags = /httpOnly:\s*true/i.test(all) && /sameSite/i.test(all);
+  // NextAuth/Auth.js and iron-session issue their session cookie HttpOnly + SameSite=Lax
+  // by default, so an app using them has both flags without writing either.
+  // The library vouches only for ITS cookie: an app that also writes cookies itself
+  // (res.cookie, cookies().set, a Set-Cookie header) must set the flags on those, so
+  // there the library alone does not pass.
+  const explicitFlags = /httpOnly:\s*true/i.test(all) && /sameSite/i.test(all);
+  const libraryCookie = /["']next-auth(\/[\w/-]+)?["']|["']@auth\/(core|nextjs|express)["']|["']iron-session["']/.test(
+    ctx.packageJson + all,
+  );
+  const manualCookieWrite = /\bres\.cookie\(|cookies\(\)\.set\(|\.cookies\.set\(|\bsetCookie\(|["']Set-Cookie["']/i.test(all);
+  const cookieFlags = explicitFlags || (libraryCookie && !manualCookieWrite);
   const setsCookies = /cookie|session/i.test(all);
   add(
     "svc_session_cookie_flags",
@@ -424,24 +861,33 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
     !setsCookies
       ? "No cookie or session handling was found in the configuration read."
       : cookieFlags
-        ? "Cookies are configured with HttpOnly and SameSite."
+        ? explicitFlags
+          ? "Cookies are configured with HttpOnly and SameSite."
+          : "The session cookie is issued by an auth library (NextAuth/Auth.js or iron-session) that sets HttpOnly " +
+            "and SameSite by default, and no other cookie write was found in the code read."
         : "Session cookie flags (HttpOnly, SameSite) were not found. Without HttpOnly a single XSS reads the session " +
           "token directly; without SameSite the cookie is attached to cross-site requests, which is what CSRF is.",
   );
 
-  const graceful = /SIGTERM|gracefulShutdown|server\.close\(|onShutdown/i.test(ctx.nodeSource + ctx.allConfig);
+  // Graceful shutdown is only this repository's job when the code owns the process.
+  // An app server (gunicorn, uvicorn, Puma, PHP-FPM) or `next start` drains in-flight
+  // requests on SIGTERM by itself, and a serverless deploy has no long-lived process.
+  // The withheld version told vercel/commerce it dropped requests on every deploy.
+  const buildFiles = [...snapshot.files]
+    .filter(([p]) => /(?:^|\/)(?:pom\.xml|build\.gradle(?:\.kts)?)$/i.test(p))
+    .map(([, t]) => t)
+    .join("\n");
+  const shutdown = gracefulShutdownVerdict(ctx, snapshot.paths, coverage, buildFiles);
   add(
     "svc_graceful_shutdown",
     "The service shuts down gracefully",
-    graceful ? "PASS" : "WARN",
-    graceful
-      ? "The service handles SIGTERM, so in-flight requests finish before the process exits."
-      : "No SIGTERM handling was found. Every deploy and every autoscaling event then kills the process mid-request, " +
-        "so a share of users see a connection reset on each release — usually reported as 'the site glitches when " +
-        "you deploy' rather than as an error anyone can reproduce.",
+    shutdown.status,
+    shutdown.detail,
   );
 
-  const health = /\/health|\/healthz|\/readyz|\/_health|actuator\/health/i.test(all + snapshot.paths.join("\n"));
+  const health = /\/health|\/healthz|\/readyz|\/livez|\/_health|actuator\/health|@Get\(\s*["'`]\/?health/i.test(
+    all + snapshot.paths.join("\n"),
+  );
   add(
     "svc_health_endpoint",
     "The service exposes a health endpoint",
@@ -452,9 +898,10 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "reach its database, and a rolling deploy of a broken build completes successfully.",
   );
 
-  const structuredLogs = /pino|winston|bunyan|structlog|logback|slf4j|semantic_logger|zap\.|logrus/i.test(
-    ctx.packageJson + all,
-  );
+  // tslog defaults to "pretty" (free text); it is structured only when configured with type "json".
+  const structuredLogs =
+    /pino|winston|bunyan|structlog|logback|slf4j|semantic_logger|zap\.|logrus/i.test(ctx.packageJson + all) ||
+    (/tslog/i.test(ctx.packageJson + all) && /\btype:\s*[^,\n}]*["']json["']/i.test(all));
   add(
     "svc_structured_logging",
     "Logs are structured rather than free text",
@@ -465,7 +912,12 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "severity, so during an incident the logs are a wall of text at exactly the moment they need to be a query.",
   );
 
-  const requestId = /request-?id|correlation-?id|traceparent|x-request-id/i.test(all + ctx.nodeSource);
+  // Rails ships ActionDispatch::RequestId in its default middleware stack: every
+  // response carries X-Request-Id. Keyed on Rails::Application, not on a bare Gemfile
+  // (Sinatra/Roda apps have a Gemfile but no such middleware).
+  const requestId =
+    /Rails::Application/.test(ctx.railsProd) ||
+    /request-?id|correlation-?id|traceparent|x-request-id/i.test(all + ctx.nodeSource);
   add(
     "svc_request_id",
     "Requests carry a correlation id",
@@ -476,15 +928,27 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
         "cannot be tied to a specific request chain — every log line has to be matched by timestamp and guesswork.",
   );
 
-  const pool = /pool|POOL_SIZE|CONN_MAX_AGE|HikariCP|max_connections|connectionLimit/i.test(all);
+  // `kb.dataSources` (an AWS Bedrock knowledge-base field) is not a database, so
+  // "datasource" must not be followed by "s". "database" stays a substring match:
+  // databaseName, MongoDatabase and DatabaseService are real database signals, and a
+  // word boundary there would SKIP a real service.
+  const usesDb = /database|datasource(?!s)/i.test(all);
+  // Prisma, Sequelize, TypeORM, Knex, Mongoose and ActiveRecord pool connections by
+  // default, so a project using one is pooled without a pool setting being written.
+  // ActiveRecord is keyed on real Rails/AR evidence, not on a bare Gemfile (Sinatra, Jekyll).
+  const pool =
+    /Rails::Application|ActiveRecord/.test(all) ||
+    /pool|POOL_SIZE|CONN_MAX_AGE|HikariCP|max_connections|connectionLimit|@prisma\/client|PrismaClient|sequelize|typeorm|knex|mongoose/i.test(
+      ctx.packageJson + all,
+    );
   add(
     "svc_db_connection_pool",
     "Database connections are pooled",
-    !/database|DATABASE_URL|datasource/i.test(all) ? "SKIPPED" : pool ? "PASS" : "WARN",
-    !/database|DATABASE_URL|datasource/i.test(all)
+    !usesDb ? "SKIPPED" : pool ? "PASS" : "WARN",
+    !usesDb
       ? "No database configuration was read, so pooling does not apply."
       : pool
-        ? "Connection pooling is configured."
+        ? "Connection pooling is configured, explicitly or through a database client that pools by default."
         : "No connection pool configuration was found. Opening a connection per request costs a round trip each time " +
           "and exhausts the database's connection limit under load — which fails as timeouts on unrelated queries, " +
           "so it is rarely diagnosed as a pooling problem.",
@@ -496,8 +960,8 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   add(
     "svc_db_migrations_versioned",
     "Schema changes are versioned migrations",
-    !/database|DATABASE_URL|datasource/i.test(all) ? "SKIPPED" : migrations ? "PASS" : "WARN",
-    !/database|DATABASE_URL|datasource/i.test(all)
+    !usesDb ? "SKIPPED" : migrations ? "PASS" : "WARN",
+    !usesDb
       ? "No database configuration was read."
       : migrations
         ? "Schema changes are committed as versioned migrations, so the database can be rebuilt from the repository."
@@ -506,7 +970,9 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
           "environment to the same state.",
   );
 
-  const envSecrets = /^[A-Z_]*(SECRET|PASSWORD|TOKEN|API_?KEY)[A-Z_]*\s*=\s*(?!$|["']?(your|changeme|xxx|<|\$))[\w./+-]{12,}/m.test(
+  // [ \t]* not \s*: \s* crosses the newline after an EMPTY value, so `NEXTAUTH_SECRET=`
+  // followed by `GITHUB_CLIENT_ID=` read the next variable's NAME as a credential.
+  const envSecrets = /^[A-Z_]*(SECRET|PASSWORD|TOKEN|API_?KEY)[A-Z_]*[ \t]*=[ \t]*(?!$|["']?(your|changeme|xxx|<|\$))[\w./+-]{12,}/m.test(
     ctx.envExample,
   );
   add(
@@ -522,21 +988,27 @@ export function evaluateBackendServiceChecks(snapshot: RepoSnapshot): PulseScanC
   );
 
   const lockfile = snapshot.paths.some((p) =>
-    /(package-lock\.json|yarn\.lock|pnpm-lock\.ya?ml|bun\.lockb?|poetry\.lock|Gemfile\.lock|composer\.lock|go\.sum|Cargo\.lock)$/i.test(
+    /(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.ya?ml|bun\.lockb?|poetry\.lock|Pipfile\.lock|uv\.lock|pdm\.lock|Gemfile\.lock|composer\.lock|go\.sum|Cargo\.lock|deno\.lock|gradle\.lockfile|packages\.lock\.json)$/i.test(
       p,
     ),
+  );
+  // No dependency manifest means nothing is installed, so there is nothing to lock.
+  const hasManifest = snapshot.paths.some((p) =>
+    /(^|\/)(package\.json|requirements[\w.-]*\.txt|requirements\/[\w.-]+\.txt|Pipfile|pyproject\.toml|setup\.py|setup\.cfg|Gemfile|composer\.json|go\.mod|Cargo\.toml|pom\.xml|build\.gradle(\.kts)?|deno\.jsonc?|[\w.-]+\.csproj)$/i.test(p),
   );
   add(
     "svc_dependency_lockfile",
     "A dependency lockfile is committed",
-    lockfile ? "PASS" : "WARN",
-    lockfile
+    !hasManifest ? "SKIPPED" : lockfile ? "PASS" : "WARN",
+    !hasManifest
+      ? "No dependency manifest was found, so there are no installed dependencies to lock."
+      : lockfile
       ? "A lockfile is committed, so every environment installs the same dependency versions."
       : "No lockfile is committed. Each install resolves versions afresh, so the build is not reproducible and a " +
         "malicious or broken release of a transitive dependency reaches production without any change here.",
   );
 
-  const errorTracking = /sentry|bugsnag|rollbar|honeybadger|airbrake|datadog|newrelic|opentelemetry/i.test(
+  const errorTracking = /sentry|bugsnag|rollbar|honeybadger|airbrake|datadog|newrelic|opentelemetry|logster|appsignal/i.test(
     ctx.packageJson + all,
   );
   add(

@@ -4,6 +4,7 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { buttonStyles } from "./button-styles";
 import type { ButtonVariant, ButtonSize } from "./button-styles";
+import { Spinner } from "@/components/ui/motion/spinner";
 export type { ButtonVariant, ButtonSize } from "./button-styles";
 export { buttonStyles } from "./button-styles";
 
@@ -37,7 +38,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {...props}
     >
       {loading ? (
-        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" />
+        <Spinner size="sm" />
       ) : (
         leadingIcon
       )}
