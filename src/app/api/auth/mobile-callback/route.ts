@@ -21,7 +21,7 @@ import {
   verifyGoogleIdToken,
 } from "@/server/auth/google-id-token";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
-import { isActiveMember } from "@/server/auth/member-status";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
@@ -75,11 +75,9 @@ export async function POST(request: NextRequest) {
     // mobile token: a removed person (User row kept, membership gone) got a fresh
     // STAFF token, and an archived one kept their old role, for the token's whole
     // lifetime. Mirrors `refusedMembership` in src/auth.ts — keep the two in step.
-    if (dbUser) {
-      const existing = dbUser.memberships[0];
-      if (!existing || !isActiveMember(existing)) {
-        return apiError("Your access to this workspace has been removed.", 403);
-      }
+    // An active membership in any workspace (src/server/auth/home-membership.ts).
+    if (dbUser && !(await findHomeMembership(dbUser.id))) {
+      return apiError("Your access to this workspace has been removed.", 403);
     }
 
     // A known owner email is always Super Admin; the first real member bootstraps as
@@ -128,7 +126,8 @@ export async function POST(request: NextRequest) {
       dbUser.memberships[0].role = "SUPER_ADMIN";
     }
 
-    const membership = dbUser.memberships[0];
+    // Which workspace this token is for: Gitwork for every Gitwork member, else their own.
+    const membership = await findHomeMembership(dbUser.id, null);
     const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
     // Resolve + persist effective permissions from the role matrix.
     const permissions = membership ? await recomputeMember(membership.id) : [];

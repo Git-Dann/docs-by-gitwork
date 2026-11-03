@@ -48,9 +48,12 @@ describe("every sign-in path refuses a removed or archived member", () => {
     "%s checks the member is active before minting",
     (_name, file) => {
       const src = readFileSync(file as string, "utf8");
-      expect(src).toMatch(/isActiveMember\(/);
+      // findHomeMembership only ever returns an ACTIVE membership (home-membership.ts).
+      expect(src).toMatch(/findHomeMembership\(/);
       // The check must come BEFORE the token is signed, not after.
-      expect(src.indexOf("isActiveMember(")).toBeLessThan(src.indexOf("signMobileToken("));
+      expect(src.indexOf("findHomeMembership(")).toBeLessThan(src.indexOf("signMobileToken("));
+      // And the refusal itself, before anything is created or promoted.
+      expect(src).toMatch(/if \(dbUser && !\(await findHomeMembership\(/);
     },
   );
 
@@ -60,7 +63,7 @@ describe("every sign-in path refuses a removed or archived member", () => {
     expect(signIn).toMatch(/refusedMembership\(/);
     // A User with no membership is refused, not re-provisioned.
     const helper = src.slice(src.indexOf("async function refusedMembership"));
-    expect(helper.slice(0, 900)).toMatch(/return !membership \|\| !isActiveMember\(membership\)/);
+    expect(helper.slice(0, 900)).toMatch(/return !\(await findHomeMembership\(existing\.id\)\);/);
   });
 
   it("a live web session is revalidated and cleared for an archived member", () => {
@@ -68,7 +71,8 @@ describe("every sign-in path refuses a removed or archived member", () => {
     const jwt = src.slice(src.indexOf("async jwt("));
     const branch = jwt.slice(0, jwt.indexOf("// On first sign-in"));
     // null from the jwt callback is what makes Auth.js clear the session cookie.
-    expect(branch).toMatch(/if \(!membership \|\| !isActiveMember\(membership\)\) return null;/);
+    expect(branch).toMatch(/const membership = await findHomeMembership\(/);
+    expect(branch).toMatch(/if \(!membership\) return null;/);
   });
 
   it("a live session picks up a role change within the recheck window", () => {
@@ -83,6 +87,6 @@ describe("every sign-in path refuses a removed or archived member", () => {
 
   it("an archived guest is refused by the password path", () => {
     const src = readFileSync(join(process.cwd(), "src/server/auth/password-login.ts"), "utf8");
-    expect(src).toMatch(/archivedAt\) return \{ ok: false \}/);
+    expect(src).toMatch(/const membership = await findHomeMembership\(user\.id\);\n\s*if \(!membership\) return \{ ok: false \};/);
   });
 });

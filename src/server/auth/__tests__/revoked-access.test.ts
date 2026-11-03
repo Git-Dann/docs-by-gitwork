@@ -30,7 +30,17 @@ vi.mock("@/lib/prisma", () => ({
         return state.dbUser;
       }),
     },
-    workspaceMember: { findFirst: vi.fn(async () => null) },
+    workspaceMember: {
+      findFirst: vi.fn(async () => null),
+      // findHomeMembership reads every membership and chooses; the fixtures are Gitwork rows.
+      findMany: vi.fn(async () =>
+        (((state.dbUser as { memberships?: Array<Record<string, unknown>> } | null)?.memberships) ?? []).map((m) => ({
+          createdAt: new Date(0),
+          ...m,
+          workspace: { slug: "gitwork", ...(m.workspace as object) },
+        })),
+      ),
+    },
   },
 }));
 

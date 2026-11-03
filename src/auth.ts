@@ -9,7 +9,7 @@ import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { resolveWorkspaceModules } from "@/lib/workspace-modules";
 import { verifyGuestPassword } from "@/server/auth/password-login";
-import { isActiveMember } from "@/server/auth/member-status";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 /**
@@ -42,19 +42,10 @@ const MEMBER_RECHECK_MS = 5 * 60 * 1000;
  * action (Restore within the window, Reinstate after it).
  */
 async function refusedMembership(email: string): Promise<boolean> {
-  const existing = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      memberships: {
-        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { archivedAt: true },
-        take: 1,
-      },
-    },
-  });
+  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (!existing) return false; // brand new — auto-provisioned in the jwt callback
-  const membership = existing.memberships[0];
-  return !membership || !isActiveMember(membership);
+  // An active membership in ANY workspace lets them in (src/server/auth/home-membership.ts).
+  return !(await findHomeMembership(existing.id));
 }
 
 // The placeholder email created by bootstrap — never a real team member
@@ -139,18 +130,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const tokenId = typeof token.id === "string" ? token.id : null;
         const last = typeof token.memberCheckedAt === "number" ? token.memberCheckedAt : 0;
         if (tokenId && Date.now() - last > MEMBER_RECHECK_MS) {
-          const membership = await prisma.workspaceMember.findFirst({
-            where: { userId: tokenId, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-            select: {
-              archivedAt: true,
-              workspaceId: true,
-              role: true,
-              permissions: true,
-              workspace: { select: { modulesRestricted: true, enabledModules: true } },
-            },
-          });
+          const membership = await findHomeMembership(
+            tokenId,
+            typeof token.workspaceId === "string" ? token.workspaceId : null,
+          );
           // null → Auth.js clears the session cookie: signed out on this request.
-          if (!membership || !isActiveMember(membership)) return null;
+          if (!membership) return null;
           // Refresh the role and resolved permissions the middleware gates pages on.
           // They used to be fixed at sign-in ("matrix changes apply on their next
           // sign-in"), and sessions last 30 days — so changing someone's role in the
@@ -255,7 +240,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           try {
             await prisma.candidate.updateMany({
               where: {
-                workspaceId: dbUser.memberships[0]?.workspaceId,
+                workspaceId: (await findHomeMembership(dbUser.id))?.workspaceId,
                 email: user.email,
                 avatarUrl: null,
               },
@@ -266,7 +251,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         }
 
-        const membership = dbUser.memberships[0];
+        // Which workspace this session is for (src/server/auth/home-membership.ts): Gitwork for
+        // every Gitwork member, else the person's own. Provisioning and the first-admin bootstrap
+        // above stay with Gitwork until businesses have their own sign-up.
+        const membership = await findHomeMembership(dbUser.id);
         token.id = dbUser.id;
         // Carry identity from the DB row, not from the provider profile.
         //

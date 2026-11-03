@@ -17,7 +17,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { originFrom } from "@/lib/request-origin";
 import { signMobileToken } from "@/server/auth/mobile-jwt";
-import { isActiveMember } from "@/server/auth/member-status";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
@@ -97,11 +97,9 @@ export async function GET(request: NextRequest) {
   // session had not yet been revalidated could exchange it here for a desktop
   // token that outlives the session check entirely. Mirrors `refusedMembership` in
   // src/auth.ts and the mobile callback — `sign-in-paths.test.ts` holds all three.
-  if (dbUser) {
-    const existing = dbUser.memberships[0];
-    if (!existing || !isActiveMember(existing)) {
-      return schemeHandoff("error=revoked", "error");
-    }
+  // An active membership in any workspace (src/server/auth/home-membership.ts).
+  if (dbUser && !(await findHomeMembership(dbUser.id, session.user?.workspaceId ?? null))) {
+    return schemeHandoff("error=revoked", "error");
   }
 
   const isKnownSuperAdmin = KNOWN_SUPER_ADMIN_EMAILS.includes(email);
@@ -144,7 +142,8 @@ export async function GET(request: NextRequest) {
     dbUser.memberships[0].role = "SUPER_ADMIN";
   }
 
-  const membership = dbUser.memberships[0];
+  // Which workspace this token is for: Gitwork for every Gitwork member, else their own.
+  const membership = await findHomeMembership(dbUser.id, session.user?.workspaceId ?? null);
   const role = membership?.role ?? DEFAULT_PROVISIONED_ROLE;
   const permissions = membership ? await recomputeMember(membership.id) : [];
 

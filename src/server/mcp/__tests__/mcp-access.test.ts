@@ -24,7 +24,14 @@ vi.mock("@/lib/prisma", () => ({
         if ("archivedAt" in args.where && args.where.archivedAt === null && m.archivedAt) return null;
         return m;
       }),
+      // findHomeMembership reads every membership for the user and chooses an active one.
+      findMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        state.lastWhere = args.where;
+        const m = state.member;
+        return m ? [{ createdAt: new Date(0), ...m, workspace: { slug: "gitwork", ...(m.workspace as object) } }] : [];
+      }),
     },
+    user: { findUnique: vi.fn(async () => (state.member ? state.member.user : null)) },
     oAuthToken: { findUnique: vi.fn(async () => ({ userId: "u2" })) },
   },
 }));
@@ -81,9 +88,11 @@ describe("every MCP call", () => {
     expect(user?.id).toBe("u2");
   });
 
-  it("only looks up an active membership", async () => {
+  it("looks up that person's memberships, and only an active one can be chosen", async () => {
     await resolveMcpActor("u2");
-    expect(state.lastWhere).toMatchObject({ userId: "u2", archivedAt: null });
+    expect(state.lastWhere).toMatchObject({ userId: "u2" });
+    state.member = member({ archivedAt: new Date() });
+    expect(await resolveMcpActor("u2")).toBeNull();
   });
 
   it("refuses an archived member", async () => {

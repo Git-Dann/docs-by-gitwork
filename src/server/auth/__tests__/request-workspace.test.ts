@@ -20,7 +20,17 @@ vi.mock("@/lib/templates", () => ({ allowedDocTypes: vi.fn(() => []) }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findFirst: vi.fn(async () => state.dbUser) },
-    workspaceMember: { findFirst: vi.fn(async () => null) },
+    workspaceMember: {
+      findFirst: vi.fn(async () => null),
+      // findHomeMembership reads every membership and chooses; the fixtures are Gitwork rows.
+      findMany: vi.fn(async () =>
+        (((state.dbUser as { memberships?: Array<Record<string, unknown>> } | null)?.memberships) ?? []).map((m) => ({
+          createdAt: new Date(0),
+          ...m,
+          workspace: { slug: "gitwork", ...(m.workspace as object) },
+        })),
+      ),
+    },
   },
 }));
 
@@ -55,7 +65,7 @@ describe("compareWorkspace", () => {
   });
 });
 
-describe("requireAuthedUser in shadow mode", () => {
+describe("requireAuthedUser chooses the workspace", () => {
   it("counts a session from before the claim existed, and serves it as before", async () => {
     const user = await requireAuthedUser(req());
     expect(user.workspaceId).toBe("ws-gitwork");
@@ -68,11 +78,26 @@ describe("requireAuthedUser in shadow mode", () => {
     expect(workspaceShadowStats()).toMatchObject({ checked: 1, withClaim: 1, mismatches: 0 });
   });
 
-  it("records a disagreement but still serves the OLD answer", async () => {
+  it("serves the workspace the token names when the person is an active member of it", async () => {
+    state.dbUser = {
+      ...(state.dbUser as object),
+      memberships: [
+        { id: "m1", role: "STAFF", workspaceId: "ws-gitwork", permissionOverrides: {}, archivedAt: null, workspace: { rolePermissions: null } },
+        { id: "m2", role: "ADMIN", workspaceId: "ws-canary", permissionOverrides: {}, archivedAt: null, workspace: { slug: "canary", rolePermissions: null } },
+      ],
+    };
+    state.session = { user: { id: "u1", workspaceId: "ws-canary" } };
+    const user = await requireAuthedUser(req());
+    expect(user.workspaceId).toBe("ws-canary");
+    expect(user.role).toBe("ADMIN");
+    expect(user.membershipId).toBe("m2");
+  });
+
+  it("never serves a claimed workspace the person is not an active member of", async () => {
     state.session = { user: { id: "u1", workspaceId: "ws-other" } };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const user = await requireAuthedUser(req());
-    expect(user.workspaceId).toBe("ws-gitwork"); // never the claimed one
+    expect(user.workspaceId).toBe("ws-gitwork"); // not a member of the claimed one
     const stats = workspaceShadowStats();
     expect(stats.mismatches).toBe(1);
     expect(stats.recent[0]).toMatchObject({ userId: "u1", claimed: "ws-other", served: "ws-gitwork", via: "session" });

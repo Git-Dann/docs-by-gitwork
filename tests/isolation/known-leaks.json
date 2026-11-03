@@ -15,16 +15,26 @@
     "GET /api/support/clients/[clientId]/tickets/[ticketId] b→a",
     "GET /api/support/dashboard b→a",
     "PATCH /api/support/clients/[clientId] a→b",
+    "PATCH /api/support/clients/[clientId] b→a",
     "PATCH /api/support/clients/[clientId]/conversations/[convId] a→b",
+    "PATCH /api/support/clients/[clientId]/conversations/[convId] b→a",
     "PATCH /api/support/clients/[clientId]/conversations/[convId]/triage a→b",
+    "PATCH /api/support/clients/[clientId]/conversations/[convId]/triage b→a",
     "PATCH /api/support/clients/[clientId]/tickets/[ticketId] a→b",
+    "PATCH /api/support/clients/[clientId]/tickets/[ticketId] b→a",
     "POST /api/support/clients/[clientId]/conversations/[convId]/assign a→b",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b"
+    "POST /api/support/clients/[clientId]/conversations/[convId]/assign b→a",
+    "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b",
+    "POST /api/support/clients/[clientId]/conversations/[convId]/close b→a"
   ],
   "writes": [
     "DELETE /api/support/clients/[clientId] a→b",
+    "DELETE /api/support/clients/[clientId] b→a",
     "DELETE /api/support/clients/[clientId]/tickets/[ticketId] a→b",
+    "DELETE /api/support/clients/[clientId]/tickets/[ticketId] b→a",
     "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b",
-    "POST /api/support/clients/[clientId]/sync a→b"
+    "POST /api/support/clients/[clientId]/conversations/[convId]/close b→a",
+    "POST /api/support/clients/[clientId]/sync a→b",
+    "POST /api/support/clients/[clientId]/sync b→a"
   ]
 }

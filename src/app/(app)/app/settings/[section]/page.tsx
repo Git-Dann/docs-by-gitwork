@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findSessionMembership } from "@/server/auth/home-membership";
 import { AppShell } from "@/components/app-shell";
 import { AccountSettingsPanel } from "@/components/account-settings-panel";
 import dynamic from "next/dynamic";
@@ -266,16 +265,8 @@ export default async function SettingsSectionPage({
   // take effect without forcing a re-login. The catalog reconcile that grants newly-added
   // settings permissions runs in first-boot setup, at server start.
   const sessionUser = session?.user;
-  const member =
-    sessionUser?.id || sessionUser?.email
-      ? await prisma.workspaceMember.findFirst({
-          where: {
-            user: sessionUser.id ? { id: sessionUser.id } : { email: sessionUser.email! },
-            workspace: { slug: DEFAULT_WORKSPACE_SLUG },
-          },
-          select: { role: true, permissions: true },
-        })
-      : null;
+  // The workspace this session is signed in to (src/server/auth/home-membership.ts).
+  const member = await findSessionMembership(sessionUser);
   const role = member?.role ?? sessionUser?.role ?? "";
   const permissions = Array.isArray(member?.permissions)
     ? (member!.permissions as string[])

@@ -124,7 +124,9 @@ describe("a guest can change their own password", () => {
     // A JWT is minted at sign-in and outlives a role change, so a member demoted
     // since theirs was issued would still be carrying the old one.
     expect(routeSource).toMatch(/prisma\.user\.findUnique/);
-    expect(routeSource).toMatch(/isPasswordLoginAllowed\(user\.memberships\[0\]\?\.role\)/);
+    // The live membership from the database (src/server/auth/home-membership.ts).
+    expect(routeSource).toMatch(/const membership = await findHomeMembership\(/);
+    expect(routeSource).toMatch(/isPasswordLoginAllowed\(membership\?\.role\)/);
     expect(
       /isPasswordLoginAllowed\(session/.test(routeSource),
       "the role must not come from the session",

@@ -1,10 +1,10 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { recordWorkspaceShadow } from "@/server/auth/request-workspace";
 import { getRequestUser } from "@/server/auth/request-user";
-import { ACTIVE_MEMBER, isActiveMember } from "@/server/auth/member-status";
+import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import { allowedDocTypes } from "@/lib/templates";
 import type { DocumentType } from "@/types/proposal";
 import {
@@ -119,13 +119,7 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     where: userIdOrEmail.id
       ? { id: userIdOrEmail.id }
       : { email: userIdOrEmail.email! },
-    include: {
-      memberships: {
-        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        take: 1,
-        include: { workspace: { select: { rolePermissions: true } } },
-      },
-    },
+    select: { id: true, email: true, name: true, avatarUrl: true },
   });
 
   // ⚠️ From here on the caller HAS an identity. Every refusal below is therefore a
@@ -135,15 +129,12 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
     // A session or mobile token for a user that no longer exists.
     throw new RevokedAccessError();
   }
-  if (dbUser.memberships.length === 0) {
-    // Removed from the workspace (or a pre-archive removal that deleted the row).
-    throw new RevokedAccessError();
-  }
-
-  const membership = dbUser.memberships[0];
-  if (!isActiveMember(membership)) {
-    // Archived. Checked here, per request, against the database — so it takes
-    // effect on the very next call, including for a session that is still live.
+  // The workspace the token names, while that membership is still active; else Gitwork, else
+  // the oldest active one (src/server/auth/home-membership.ts). Archived rows are never chosen,
+  // and this is read per request, so archiving someone takes effect on their very next call.
+  const membership = await findHomeMembership(dbUser.id, claimedWorkspace.id);
+  if (!membership) {
+    // Removed or archived everywhere (or a pre-archive removal that deleted the row).
     throw new RevokedAccessError();
   }
   // Resolve effective permissions LIVE from the role matrix + this member's
