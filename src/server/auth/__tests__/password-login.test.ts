@@ -73,13 +73,13 @@ describe("a password sign-in cannot gain privileges", () => {
     // `adminOrAboveCount === 0` promotes whoever signs in first. A guest reaching that
     // would be handed the workspace.
     expect(jwt).toMatch(/isPasswordSignIn/);
-    expect(jwt).toMatch(/!isPasswordSignIn && \(isKnownSuperAdmin/);
+    expect(jwt).toMatch(/!isPasswordSignIn && !isBusinessGoogle && \(isKnownSuperAdmin/);
   });
 
   it("never auto-provisions a member", () => {
-    // The provisioning branch creates a STAFF membership. A password sign-in must bail
-    // before it rather than mint one.
-    const bail = jwt.indexOf("if (!dbUser && isPasswordSignIn) return token;");
+    // The provisioning branch creates a Gitwork membership. A password sign-in, or a
+    // business Google sign-in, must bail before it rather than mint one.
+    const bail = jwt.indexOf("if (!dbUser && (isPasswordSignIn || isBusinessGoogle)) return token;");
     const provision = jwt.indexOf("if (!dbUser) {");
     expect(bail, "the password bail-out is missing").toBeGreaterThan(-1);
     expect(bail, "the bail-out must come BEFORE the provisioning branch").toBeLessThan(provision);

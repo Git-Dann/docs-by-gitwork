@@ -24,7 +24,7 @@ import type {
 import { planNewBusiness, planWorkspaceUpdate, type NewBusinessInput, type PlatformWorkspaceQuery } from "@/lib/platform-rules";
 import { DEFAULT_BUSINESS_MODULES } from "@/lib/workspace-modules";
 import { normaliseAllowedDomains } from "@/lib/email-domains";
-import { PlatformInputError } from "@/lib/platform-rules";
+import { HOME_WORKSPACE_SLUG, PlatformInputError } from "@/lib/platform-rules";
 import { escapeHtml, sendWorkspaceEmail } from "@/server/email";
 export { PlatformConflictError, PlatformInputError, planWorkspaceUpdate } from "@/lib/platform-rules";
 
@@ -260,7 +260,7 @@ export async function createPlatformBusiness(actorId: string, input: NewBusiness
 export async function setPlatformWorkspaceDomains(actorId: string, workspaceId: string, input: string[]): Promise<PlatformWorkspace> {
   const current = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true, allowedEmailDomains: true } });
   if (!current) throw Object.assign(new Error("Workspace not found"), { status: 404 });
-  if (current.slug === DEFAULT_WORKSPACE_SLUG) throw new PlatformInputError("Gitwork signs in with its own Google client.");
+  if (current.slug === HOME_WORKSPACE_SLUG) throw new PlatformInputError("Gitwork signs in with its own Google client.");
   const next = normaliseAllowedDomains(input);
   const taken = await prisma.workspace.findFirst({
     where: { id: { not: workspaceId }, allowedEmailDomains: { hasSome: next } },

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { readSecret } from "@/server/stored-secret";
 import { HOME_WORKSPACE_SLUG } from "@/lib/platform-rules";
 import { gettingStartedSteps, showGettingStarted, type GettingStartedFacts } from "@/lib/getting-started";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       hasLogo: typeof branding.brandLogoUrl === "string" && branding.brandLogoUrl.length > 0,
       otherPeople,
       pendingInvites,
-      hasAiKey: Boolean(ws.anthropicApiKey || ws.openaiApiKey || ws.geminiApiKey),
+      hasAiKey: Boolean(readSecret(ws.anthropicApiKey) || readSecret(ws.openaiApiKey) || readSecret(ws.geminiApiKey)),
       clients,
     };
     return apiOk({ show: showGettingStarted(facts), steps: gettingStartedSteps(facts) });
