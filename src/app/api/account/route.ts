@@ -14,7 +14,7 @@ import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { splitAvatarInput } from "@/lib/avatar";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { isPasswordLoginAllowed } from "@/types/auth";
 import { resolveWorkspaceModules } from "@/lib/workspace-modules";
 import { isPlatformAdminUserId } from "@/server/platform/admin";
@@ -36,8 +36,7 @@ export async function GET() {
     // Look up the User row. If it's missing for any reason (e.g. the DB was reset after the
     // JWT was issued), we still return something useful so the UI doesn't break — and we
     // upsert behind the scenes so subsequent requests are consistent.
-    const [user, workspace] = await Promise.all([
-      prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
         where: { id: session.user.id },
         select: {
           id: true,
@@ -45,18 +44,8 @@ export async function GET() {
           name: true,
           avatarUrl: true,
           avatarPosition: true,
-          memberships: {
-            where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-            take: 1,
-            select: { role: true, permissions: true },
-          },
         },
-      }),
-      prisma.workspace.findFirst({
-        where: { slug: DEFAULT_WORKSPACE_SLUG },
-        select: { showDevRates: true, docsBackupEnabled: true, modulesRestricted: true, enabledModules: true },
-      }),
-    ]);
+      });
 
     let mutableUser = user;
     if (!mutableUser && sessionEmail) {
@@ -76,16 +65,20 @@ export async function GET() {
           name: true,
           avatarUrl: true,
           avatarPosition: true,
-          memberships: {
-            where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-            take: 1,
-            select: { role: true, permissions: true },
-          },
         },
       });
     }
 
     if (!mutableUser) return apiError("User not found", 404);
+
+    // The workspace this session is signed in to (src/server/auth/home-membership.ts).
+    const membership = await findHomeMembership(mutableUser.id, session.user.workspaceId ?? null);
+    const workspace = membership
+      ? await prisma.workspace.findUnique({
+          where: { id: membership.workspaceId },
+          select: { showDevRates: true, docsBackupEnabled: true, modulesRestricted: true, enabledModules: true },
+        })
+      : null;
 
     // Keep DB name in sync with the live Google profile name. We only update when something
     // changed — most reads are no-ops.
@@ -94,7 +87,7 @@ export async function GET() {
     // profile to source it from), and a JWT carries whatever name it was minted with — so
     // without this guard the next GET after a rename would quietly write the OLD name back
     // and the edit would appear to revert on its own.
-    const ownsOwnName = isPasswordLoginAllowed(mutableUser.memberships[0]?.role);
+    const ownsOwnName = isPasswordLoginAllowed(membership?.role);
     if (!ownsOwnName && sessionName && sessionName !== (mutableUser.name ?? "")) {
       await prisma.user.update({
         where: { id: mutableUser.id },
@@ -103,7 +96,6 @@ export async function GET() {
       mutableUser.name = sessionName;
     }
 
-    const membership = mutableUser.memberships[0];
     return apiOk({
       account: {
         id: mutableUser.id,
@@ -163,10 +155,7 @@ export async function PATCH(request: NextRequest) {
 
     let nameUpdate: string | undefined;
     if (parsed.data.name !== undefined) {
-      const membership = await prisma.workspaceMember.findFirst({
-        where: { userId: session.user.id, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { role: true },
-      });
+      const membership = await findHomeMembership(session.user.id, session.user.workspaceId ?? null);
       // Read the role from the DATABASE, not the token — a JWT outlives a role change.
       if (!isPasswordLoginAllowed(membership?.role)) {
         return apiError("Your name is managed by Google Workspace.", 400);

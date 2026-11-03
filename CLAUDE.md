@@ -8861,11 +8861,27 @@ Foreman and Curator runs now require it.
   config), the `/apply` careers page, golf clubs, the Wedge jobs, meeting notes, the team-roster
   seed and the `/api/dev` one-shots. Care stays out entirely (Dan).
 
-**Still to do for multi-tenant (Nov 2026):** the sign-in switch. `auth.ts`, the mobile and desktop
-sign-in, `requireAuthedUser`, password login, MCP auth and admin state, the account routes, the
-settings/analytics/new-scan pages' membership reads and `autoAcceptMatchingInvite` all find the
-membership by the Gitwork slug. They change together to the token's workspace (0 shadow
-mismatches is the evidence). Then per-workspace API keys.
+**Phase 2.3, the sign-in switch (Nov 2026).** Which workspace a person is in is decided by
+`src/server/auth/home-membership.ts`, not the Gitwork slug: the workspace their token names while
+that membership is active, else Gitwork, else their oldest active membership. Archived rows are
+never chosen. Every path uses it: `requireAuthedUser` (per request), the web sign-in and its
+five-minute recheck (`auth.ts`), the iOS and desktop token exchanges, guest password login, MCP
+(`resolveEffectiveUserById`, `getMcpAdminState`), `/api/account` and the settings, analytics and
+new-scan pages (`findSessionMembership`). Every Gitwork member resolves to Gitwork exactly as
+before. Tests: `home-membership.test.ts`, `request-workspace.test.ts` (a token naming another
+workspace the person belongs to is served it; one they don't belong to never is).
+- ⚠️ Still with Gitwork on purpose, until businesses have their own sign-up: provisioning a NEW
+  account (Google sign-in is `@gitwork.co.uk` only), the first-admin bootstrap, invite auto-accept,
+  and the workspace API key (no user → Gitwork; per-workspace keys are the next step). MCP tokens
+  are not bound to a workspace yet either.
+- No workspace switcher yet: someone in two workspaces lands in Gitwork, or the one their token
+  names.
+- ⚠️ **The isolation suite can now see b→a.** With the second test business served its own
+  workspace, 9 more Care crossings became visible (`support/**`, b→a). They are not new code,
+  they were always there behind the Gitwork-only sign-in. Recorded on the Care worklist in
+  `known-leaks.json`. A business created with `DEFAULT_BUSINESS_MODULES` cannot reach them: Care
+  is not in the bundle and the module gate refuses `/api/support` before any role check. Fix them
+  before Care is ever switched on for another business. Nothing outside Care crosses.
 
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
 Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,

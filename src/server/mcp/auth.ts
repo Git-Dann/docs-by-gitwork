@@ -5,14 +5,13 @@
 
 import { prisma } from "@/lib/prisma";
 import { validateAccessToken } from "@/server/oauth";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import {
   normalizeMatrix,
   normalizeOverrides,
   resolveEffectivePermissions,
 } from "@/types/auth";
 import { canConnectMcp, type EffectiveUser } from "@/server/auth/effective-user";
-import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 
 /**
  * Extract a bearer token from the Authorization header and resolve it to an
@@ -58,32 +57,29 @@ export async function resolveMcpActor(userId: string): Promise<EffectiveUser | n
  */
 export async function resolveEffectiveUserById(
   userId: string,
+  preferredWorkspaceId?: string | null,
 ): Promise<EffectiveUser | null> {
-  // Resolve the user's membership in the default workspace. Mirrors
-  // requireAuthedUser's lookup — same field-gating math, same role.
-  const membership = await prisma.workspaceMember.findFirst({
-    where: {
-      userId,
-      workspace: { slug: DEFAULT_WORKSPACE_SLUG },
-      // An archived member has no access anywhere in Foundry (§57), MCP included.
-      ...ACTIVE_MEMBER,
-    },
-    include: {
-      workspace: { select: { rolePermissions: true } },
-      user: { select: { id: true, email: true, name: true, avatarUrl: true } },
-    },
-  });
+  // Same membership rule as every sign-in path (src/server/auth/home-membership.ts): an
+  // ACTIVE membership only — an archived member has no access anywhere in Foundry (§57),
+  // MCP included. MCP tokens are not bound to a workspace yet, so this is Gitwork for every
+  // Gitwork member, else the person's own.
+  const membership = await findHomeMembership(userId, preferredWorkspaceId);
   if (!membership) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, avatarUrl: true },
+  });
+  if (!user) return null;
 
   const matrix = normalizeMatrix(membership.workspace?.rolePermissions);
   const overrides = normalizeOverrides(membership.permissionOverrides);
   const permissions = resolveEffectivePermissions(membership.role, matrix, overrides);
 
   return {
-    id: membership.user.id,
-    email: membership.user.email,
-    name: membership.user.name,
-    avatarUrl: membership.user.avatarUrl,
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
     role: membership.role,
     permissions,
     workspaceId: membership.workspaceId,

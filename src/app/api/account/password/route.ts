@@ -26,7 +26,7 @@ import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { isPasswordLoginAllowed } from "@/server/auth/password-login";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findHomeMembership } from "@/server/auth/home-membership";
 
 export const dynamic = "force-dynamic";
 
@@ -61,11 +61,6 @@ export async function POST(request: NextRequest) {
       where: { id: session.user.id },
       select: {
         passwordHash: true,
-        memberships: {
-          where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-          select: { role: true },
-          take: 1,
-        },
       },
     });
     if (!user) return apiError("Not authenticated", 401);
@@ -73,7 +68,8 @@ export async function POST(request: NextRequest) {
     // Read the role from the DATABASE, not the JWT. A token is issued at sign-in and
     // outlives a role change, so a member demoted since theirs was minted would still
     // be carrying the old one.
-    if (!isPasswordLoginAllowed(user.memberships[0]?.role)) {
+    const membership = await findHomeMembership(session.user.id, session.user.workspaceId ?? null);
+    if (!isPasswordLoginAllowed(membership?.role)) {
       return apiError(
         "This account signs in with Google, so it has no password to change.",
         400,

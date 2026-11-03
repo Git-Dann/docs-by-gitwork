@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { PulseNewScanForm } from "@/components/pulse/pulse-new-scan-form";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findSessionMembership } from "@/server/auth/home-membership";
 import { headers } from "next/headers";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
 import { auth } from "@/auth";
@@ -38,12 +38,8 @@ async function getPageData() {
   // picker entirely: their scan is theirs, attributed to no client. That is the
   // intended shape, not a degraded one.
   const session = await auth();
-  const viewer = session?.user?.id
-    ? await prisma.workspaceMember.findFirst({
-        where: { userId: session.user.id, workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { role: true, permissions: true, userId: true, workspaceId: true },
-      })
-    : null;
+  const home = session?.user?.id ? await findSessionMembership(session.user) : null;
+  const viewer = home && session?.user?.id ? { ...home, userId: session.user.id } : null;
 
   const seesAllClients =
     !!viewer &&

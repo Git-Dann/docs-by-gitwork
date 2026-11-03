@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
+import { findHomeMembership } from "@/server/auth/home-membership";
 import { PASSWORD_LOGIN_ROLES, isPasswordLoginAllowed } from "@/types/auth";
 
 /**
@@ -69,11 +69,6 @@ export async function verifyGuestPassword(
       email: true,
       name: true,
       passwordHash: true,
-      memberships: {
-        where: { workspace: { slug: DEFAULT_WORKSPACE_SLUG } },
-        select: { role: true, archivedAt: true },
-        take: 1,
-      },
     },
   });
 
@@ -82,11 +77,13 @@ export async function verifyGuestPassword(
   const matches = await bcrypt.compare(password, hash);
 
   if (!user || !user.passwordHash || !matches) return { ok: false };
-  if (!isPasswordLoginAllowed(user.memberships[0]?.role)) return { ok: false };
-  // An archived guest is refused exactly like a wrong password — same response,
-  // same timing (bcrypt already ran above), so the login form cannot be used to
-  // learn whether an account exists or has been archived.
-  if (user.memberships[0]?.archivedAt) return { ok: false };
+  // Their ACTIVE membership (src/server/auth/home-membership.ts). An archived guest has none,
+  // and is refused exactly like a wrong password — same response, same timing (bcrypt already
+  // ran above), so the login form cannot be used to learn whether an account exists or has
+  // been archived.
+  const membership = await findHomeMembership(user.id);
+  if (!membership) return { ok: false };
+  if (!isPasswordLoginAllowed(membership.role)) return { ok: false };
 
   return { ok: true, userId: user.id, email: user.email, name: user.name };
 }
