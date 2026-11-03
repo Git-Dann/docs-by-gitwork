@@ -76,3 +76,25 @@ export async function findSessionMembership(
   if (!userId) return null;
   return findHomeMembership(userId, sessionUser.workspaceId ?? null);
 }
+
+/**
+ * The person's ACTIVE membership in exactly this workspace, or null. No fallback: for a
+ * credential that belongs to one workspace (an API key, an MCP connection), being a member
+ * somewhere else is not enough.
+ */
+export async function findActiveMembershipIn(userId: string, workspaceId: string) {
+  const membership = await prisma.workspaceMember.findFirst({
+    where: { userId, workspaceId, archivedAt: null },
+    select: {
+      id: true,
+      workspaceId: true,
+      role: true,
+      permissions: true,
+      permissionOverrides: true,
+      archivedAt: true,
+      createdAt: true,
+      workspace: { select: { slug: true, rolePermissions: true, modulesRestricted: true, enabledModules: true } },
+    },
+  });
+  return membership && isActiveMember(membership) ? membership : null;
+}

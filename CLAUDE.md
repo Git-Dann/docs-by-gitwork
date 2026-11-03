@@ -528,8 +528,8 @@ Core domains:
 
 **Auth**
 - All `/api/` routes except `/api/health` are gated by `API_KEY` env var
-- Browser traffic to `/app/**` gets a `gitwork_api_session` HttpOnly cookie from middleware
-- External API calls use `Authorization: Bearer {API_KEY}` header
+- Browser traffic is authorised by the NextAuth session (the old `gitwork_api_session` cookie carrying `API_KEY` was removed, §88)
+- External API calls use `Authorization: Bearer <key>`: a workspace key from Settings → Developer, or the env `API_KEY` (Gitwork only)
 
 **CSS / Tailwind v4**
 - No `tailwind.config.js` — config is CSS-first in `globals.css`
@@ -6053,9 +6053,9 @@ Each is a policy decision or a larger change, recorded rather than done silently
    this PR an archived member's session is cleared within 5 minutes — but those routes also let
    any *active* member of any role call them (a DEVELOPER can PATCH any client's wiki documents).
    That is a general authorisation gap, larger than archiving.
-3. **Browser sessions carry the real workspace `API_KEY`** in the HttpOnly
-   `gitwork_api_session` cookie (12h), set on every `/app` response. It is why `null` = trusted is
-   so dangerous: everyone who has had a session has had the master key in their cookie jar.
+3. ✅ **Fixed (Nov 2026, §88).** Browser sessions used to carry the real workspace `API_KEY` in
+   the HttpOnly `gitwork_api_session` cookie. The middleware no longer sets it, deletes any copy a
+   browser still holds, and no longer accepts it: the env key now only works as a Bearer header.
 4. **Three duplicated sign-in/provisioning paths.** `sign-in-paths.test.ts` now finds every
    token-minting file and requires the active check before signing, but one shared
    `provisionOrRefuse(email)` is the real fix.
@@ -8872,8 +8872,8 @@ before. Tests: `home-membership.test.ts`, `request-workspace.test.ts` (a token n
 workspace the person belongs to is served it; one they don't belong to never is).
 - ⚠️ Still with Gitwork on purpose, until businesses have their own sign-up: provisioning a NEW
   account (Google sign-in is `@gitwork.co.uk` only), the first-admin bootstrap, invite auto-accept,
-  and the workspace API key (no user → Gitwork; per-workspace keys are the next step). MCP tokens
-  are not bound to a workspace yet either.
+  and the env `API_KEY` (no user → Gitwork). Each business now has its own keys and MCP
+  connections are bound to a workspace (below).
 - No workspace switcher yet: someone in two workspaces lands in Gitwork, or the one their token
   names.
 - ⚠️ **The isolation suite can now see b→a.** With the second test business served its own
@@ -8882,6 +8882,31 @@ workspace the person belongs to is served it; one they don't belong to never is)
   `known-leaks.json`. A business created with `DEFAULT_BUSINESS_MODULES` cannot reach them: Care
   is not in the bundle and the module gate refuses `/api/support` before any role check. Fix them
   before Care is ever switched on for another business. Nothing outside Care crosses.
+
+**Per-workspace API keys, and MCP bound to a workspace (Nov 2026).**
+- **Settings → Developer → `01 // API KEYS`** (Admins and Super Admins). A key is named, shown
+  once, stored only as a SHA-256 (`WorkspaceApiKey`, additive, loose ids), at most 25 live per
+  workspace, revoked rather than deleted. Create and revoke are audited (`api_key.created` /
+  `api_key.revoked`) and refuse to be called with a key. The old "External API key" box went:
+  it saved `Workspace.externalApiKey`, which nothing read.
+- **Format** `fwk_<keyId>_<secret>_<signature>` (`src/lib/api-key-token.ts`, WebCrypto, edge-safe).
+  The signature is an HMAC under `AUTH_SECRET`, so the middleware refuses a made-up key without a
+  database read. ⚠️ Rotating `AUTH_SECRET` invalidates every key (and every session).
+- **A key acts as the person who created it, in its own workspace only.** `requireAuthedUser`
+  resolves it (`resolveApiKey`) on every request: live, not revoked, and its creator still an
+  active member of THAT workspace (`findActiveMembershipIn`, no fallback). Archive the creator and
+  their keys stop. ⚠️ Every failure is `RevokedAccessError`, never `null`: null is the trusted env
+  `API_KEY`, and a broken key must never be promoted to it.
+- **The browser cookie is gone** (§57.6 item 3). The env `API_KEY` still works as a Bearer header
+  for Gitwork's own integrations and crons, and still resolves to Gitwork.
+- **MCP:** a request is served only from the workspace its `McpConnection` was approved in
+  (`validateMcpBearer` → `resolveMcpActor(userId, workspaceId)`, strict). A revoked or missing
+  connection refuses; the token refresh checks the same. A person in two businesses connects once
+  per workspace.
+- ⚠️ A key on a route that trusts any session (§57.6 item 2) gets what any session gets there.
+  Those routes are the remaining Phase 2 worklist, the same as for sessions.
+- Tests: `api-key-token.test.ts`, `src/server/__tests__/api-keys.test.ts`,
+  `api-keys-routes.test.ts`, `mcp-access.test.ts`.
 
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
 Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,

@@ -1,11 +1,11 @@
 "use client";
 
+import { ApiKeysCard } from "@/components/settings/api-keys-card";
 import {
   ArrowDownIcon,
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
   ArrowUpIcon,
-  CheckIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
   PencilIcon,
@@ -2155,7 +2155,7 @@ export function DeveloperTab({
 }) {
   return (
     <div className="space-y-6">
-      <ExternalApiKeySection />
+      <ApiKeysCard number="01" />
       <CandidateBulkImportSection />
       <ApiSection apiKeyConfigured={apiKeyConfigured} />
     </div>
@@ -2453,105 +2453,6 @@ function CandidateBulkImportSection() {
 // DemoDataCleanupSection has been removed — the seed demo developers and rate-card
 // people have long since been cleaned up. If we ever need a similar one-shot
 // maintenance tool, restore from git history (commit before this one).
-
-function ExternalApiKeySection() {
-  const [integrations, setIntegrations] = useState<IntegrationsResponse | null>(null);
-  const [keyInput, setKeyInput] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    getIntegrations().then(setIntegrations).catch(() => null);
-  }, []);
-
-  async function handleSave() {
-    if (!keyInput.trim()) return;
-    setSaving(true);
-    try {
-      await saveIntegrations({ externalApiKey: keyInput.trim() });
-      const updated = await getIntegrations();
-      setIntegrations(updated);
-      setKeyInput("");
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <SettingsCard number="01" title="External API Key">
-      <p className="max-w-2xl text-sm leading-6 text-[var(--text-3)]">
-        Used for programmatic access to the Foundry API from external tools and integrations.
-        Pass as an{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
-          Authorization: Bearer &lt;key&gt;
-        </code>{" "}
-        header. The{" "}
-        <code className="rounded bg-[var(--surface-1)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-2)]">
-          API_KEY
-        </code>{" "}
-        environment variable takes precedence if set.
-      </p>
-
-      <div className="mt-5 space-y-3">
-        {integrations?.externalApiKeyMasked ? (
-          <div className="space-y-1.5">
-            <FieldLabel>Current key</FieldLabel>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 truncate rounded-[10px] border border-[var(--border-2)] bg-[var(--surface-1)] px-3 py-2 font-mono text-sm text-[var(--text-2)]">
-                {integrations.externalApiKeyMasked}
-              </code>
-              {integrations.externalApiKeySource === "env" && (
-                <span className="shrink-0 rounded-[4px] bg-[var(--mist)] px-2.5 py-1 text-xs font-medium text-[var(--brand-700)]">
-                  from env
-                </span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="rounded-[10px] border border-dashed border-[var(--border-2)] px-3 py-2.5 text-sm text-[var(--text-4)]">
-            No external API key set yet.
-          </p>
-        )}
-
-        <div className="space-y-1.5">
-          <FieldLabel>
-            {integrations?.externalApiKeyMasked ? "Replace key" : "Set key"}
-          </FieldLabel>
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="Paste your API key…"
-              className="app-input flex-1 font-mono text-sm"
-              autoComplete="off"
-            />
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={handleSave}
-              disabled={saving || !keyInput.trim()}
-            >
-              {saved ? (
-                <>
-                  <CheckIcon className="h-4 w-4" />
-                  Saved
-                </>
-              ) : saving ? (
-                "Saving…"
-              ) : (
-                "Save"
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </SettingsCard>
-  );
-}
 
 // Method-coloured chip used in the endpoint table. Same colour mapping as /api-docs.
 function methodColor(method: string): string {

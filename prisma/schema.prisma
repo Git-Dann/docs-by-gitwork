@@ -6073,3 +6073,22 @@ model AiAnswerRun {
 
   @@index([workspaceId, startedAt])
 }
+
+/// A workspace API key (multi-tenant Phase 2). It acts as the member who created it, inside its
+/// own workspace only, re-checked on every request. Only a SHA-256 of the token is stored; the
+/// token itself is shown once. See src/server/api-keys.ts and src/lib/api-key-token.ts.
+model WorkspaceApiKey {
+  id          String    @id
+  workspaceId String
+  createdById String
+  name        String
+  tokenHash   String
+  /// The first characters of the token, so a person can tell their keys apart.
+  preview     String
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId])
+  @@index([tokenHash])
+}
