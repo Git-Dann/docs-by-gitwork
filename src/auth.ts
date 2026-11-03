@@ -9,7 +9,7 @@ import { autoAcceptMatchingInvite } from "@/server/team";
 import { KNOWN_SUPER_ADMIN_EMAILS, recomputeMember } from "@/server/permissions";
 import { resolveWorkspaceModules } from "@/lib/workspace-modules";
 import { verifyPassword } from "@/server/auth/password-login";
-import { findHomeMembership } from "@/server/auth/home-membership";
+import { findActiveMembershipIn, findHomeMembership } from "@/server/auth/home-membership";
 import { DEFAULT_PROVISIONED_ROLE } from "@/types/auth";
 
 /**
@@ -122,11 +122,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return false;
     },
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger, session }) {
       // Subsequent reads of an existing session (no `account`): revalidate that the
       // member is still active, at most every MEMBER_RECHECK_MS. See that constant.
       if (!account) {
         const tokenId = typeof token.id === "string" ? token.id : null;
+        // Switching workspace (useSession().update({ workspaceId })): only to one this person
+        // is an ACTIVE member of, checked here, never trusted from the client. The recheck
+        // below then refreshes role, permissions and modules for the new workspace.
+        const wanted = (session as { workspaceId?: unknown } | null | undefined)?.workspaceId;
+        if (trigger === "update" && tokenId && typeof wanted === "string") {
+          if (await findActiveMembershipIn(tokenId, wanted)) {
+            token.workspaceId = wanted;
+            token.memberCheckedAt = 0;
+          }
+        }
         const last = typeof token.memberCheckedAt === "number" ? token.memberCheckedAt : 0;
         if (tokenId && Date.now() - last > MEMBER_RECHECK_MS) {
           const membership = await findHomeMembership(

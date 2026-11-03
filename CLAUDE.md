@@ -8874,8 +8874,8 @@ workspace the person belongs to is served it; one they don't belong to never is)
   account (Google sign-in is `@gitwork.co.uk` only), the first-admin bootstrap, invite auto-accept,
   and the env `API_KEY` (no user → Gitwork). Each business now has its own keys and MCP
   connections are bound to a workspace (below).
-- No workspace switcher yet: someone in two workspaces lands in Gitwork, or the one their token
-  names.
+- Someone in two workspaces lands in Gitwork, or the one their token names, and can switch
+  (below).
 - ⚠️ **The isolation suite can now see b→a.** With the second test business served its own
   workspace, 9 more Care crossings became visible (`support/**`, b→a). They are not new code,
   they were always there behind the Gitwork-only sign-in. Recorded on the Care worklist in
@@ -8932,9 +8932,17 @@ scopes, which Google only grants to outside users after verification and a yearl
   emails a single-use, one-hour link (`src/server/auth/password-reset.ts`, `PasswordResetToken`,
   SHA-256 stored), only to accounts that may use a password, and answers the same either way.
   `/reset-password` uses it. **Never bring back a reset that doesn't prove control of the mailbox.**
-- **Not done yet:** a first-run checklist for a new business, per-workspace allowed email
-  domains (Google sign-in for a business), choosing role and email on Settings → Team invites,
-  email and password on the iOS app, and a public sign-up page.
+- **Settings → Team invites** take an optional email (only that address can accept) and the role
+  they join with. The inviter can only offer roles they may assign (`canManageRole`), checked again
+  in `createInvite`, so an Admin can't mint a Super Admin invite.
+- **Workspace switcher** (`src/components/workspace-switcher.tsx`, above the profile menu) for
+  someone in more than one business. It calls `useSession().update({ workspaceId })`; the jwt
+  callback switches only to a workspace the person is an ACTIVE member of
+  (`findActiveMembershipIn`), then refreshes role, permissions and modules.
+- **Getting started** card on HQ (`src/lib/getting-started.ts`, admins, never Gitwork): logo,
+  invite the team, AI key, first client. Hidden once all four are done.
+- **Not done yet:** per-workspace allowed email domains (Google sign-in for a business), email and
+  password on the iOS app, and a public sign-up page.
 - Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
 
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only

@@ -1,5 +1,6 @@
 "use client";
 
+import { GettingStartedCard } from "@/components/dashboard/getting-started-card";
 import Link from "next/link";
 
 import { useState } from "react";
@@ -298,6 +299,8 @@ export function AppOverview() {
           <StripLink href="/app/starters" label="Starters" title="Prompt→Production library" />
         ) : null}
       </div>
+
+      {isEffectiveAdmin ? <GettingStartedCard /> : null}
 
       {/* Today band — "On your desk" (personal to-do, auto-hides when empty)
           and the DevOps lead's "Daily roll-up". Side-by-side only when both
