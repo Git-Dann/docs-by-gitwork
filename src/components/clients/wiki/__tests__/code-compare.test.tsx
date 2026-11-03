@@ -19,7 +19,8 @@ vi.mock("@/hooks/use-wiki", () => ({
   useUpdateCodeVersion: mutation,
 }));
 
-import { WikiCodeSection, mergeDraftFiles } from "../wiki-code-section";
+import { WikiCodeSection } from "../wiki-code-section";
+import { mergeDraftFiles } from "@/lib/code-upload";
 import { CodeCompareDialog, defaultComparePair, FOLD_ABOVE_LINES } from "../code-compare";
 import type { WikiCodeHandoverSection, WikiCodeVersionRecord } from "@/lib/api";
 
@@ -162,7 +163,7 @@ describe("New version", () => {
       { filename: "main.cpp", language: "cpp", content: "new" },
       { filename: "radio.h", language: "cpp", content: "r" },
     ];
-    expect(mergeDraftFiles([main, blank], upload).map((f) => `${f.filename}:${f.content}`)).toEqual(["main.cpp:new", "radio.h:r"]);
-    expect(mergeDraftFiles([blank], [])).toEqual([blank]);
+    expect(mergeDraftFiles([main, blank], upload).files.map((f) => `${f.filename}:${f.content}`)).toEqual(["main.cpp:new", "radio.h:r"]);
+    expect(mergeDraftFiles([blank], []).files).toEqual([blank]);
   });
 });
