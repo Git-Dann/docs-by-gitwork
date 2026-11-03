@@ -14,6 +14,8 @@ import { prisma } from "@/lib/prisma";
 export type AuditAction =
   // Settings
   | "settings.ai_provider.changed"
+  | "api_key.created"
+  | "api_key.revoked"
   | "settings.ai_key.rotated"
   | "settings.external_key.rotated"
   | "settings.branding.updated"

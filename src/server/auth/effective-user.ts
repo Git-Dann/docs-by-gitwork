@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureBaseRecords } from "@/server/bootstrap";
-import { findHomeMembership } from "@/server/auth/home-membership";
+import { findActiveMembershipIn, findHomeMembership } from "@/server/auth/home-membership";
+import { looksLikeApiKey } from "@/lib/api-key-token";
+import { resolveApiKey } from "@/server/api-keys";
 import { recordWorkspaceShadow } from "@/server/auth/request-workspace";
 import { getRequestUser } from "@/server/auth/request-user";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
@@ -91,12 +93,24 @@ export class ForbiddenError extends Error {
 // when no identity can be resolved — route handlers catch via fromError.
 export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   let userIdOrEmail: { id?: string; email?: string } = {};
-  // The workspace the caller's token names, for the Phase 2 shadow comparison only.
-  // Nothing below is scoped by it (see src/server/auth/request-workspace.ts).
-  let claimedWorkspace: { id: string | null | undefined; via: "session" | "mobile" } = { id: null, via: "session" };
+  // The workspace the caller's token names. Sessions and mobile tokens prefer it
+  // (home-membership.ts); an API key is bound to it.
+  let claimedWorkspace: { id: string | null | undefined; via: "session" | "mobile" | "apikey" } = {
+    id: null,
+    via: "session",
+  };
 
-  const mobileUser = getRequestUser(req);
-  if (mobileUser) {
+  // A workspace API key (src/server/api-keys.ts). Any failure is a REFUSAL: an unusable key must
+  // never become "no identity", which is how the trusted env API_KEY is represented.
+  const authHeader = req.headers.get("authorization");
+  const presented = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  const mobileUser = looksLikeApiKey(presented) ? null : getRequestUser(req);
+  if (looksLikeApiKey(presented)) {
+    const key = await resolveApiKey(presented);
+    if (!key) throw new RevokedAccessError();
+    userIdOrEmail = { id: key.userId };
+    claimedWorkspace = { id: key.workspaceId, via: "apikey" };
+  } else if (mobileUser) {
     userIdOrEmail = { id: mobileUser.id, email: mobileUser.email };
     claimedWorkspace = { id: mobileUser.workspaceId, via: "mobile" };
   } else {
@@ -132,7 +146,10 @@ export async function requireAuthedUser(req: Request): Promise<EffectiveUser> {
   // The workspace the token names, while that membership is still active; else Gitwork, else
   // the oldest active one (src/server/auth/home-membership.ts). Archived rows are never chosen,
   // and this is read per request, so archiving someone takes effect on their very next call.
-  const membership = await findHomeMembership(dbUser.id, claimedWorkspace.id);
+  const membership =
+    claimedWorkspace.via === "apikey" && claimedWorkspace.id
+      ? await findActiveMembershipIn(dbUser.id, claimedWorkspace.id)
+      : await findHomeMembership(dbUser.id, claimedWorkspace.id);
   if (!membership) {
     // Removed or archived everywhere (or a pre-archive removal that deleted the row).
     throw new RevokedAccessError();

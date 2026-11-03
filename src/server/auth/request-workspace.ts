@@ -29,7 +29,7 @@ export interface WorkspaceShadowStats {
   /** Requests whose token named a different workspace from the one they were served. */
   mismatches: number;
   /** The most recent disagreements, newest first (at most 20). Ids only. */
-  recent: Array<{ at: string; userId: string; claimed: string; served: string; via: "session" | "mobile" }>;
+  recent: Array<{ at: string; userId: string; claimed: string; served: string; via: "session" | "mobile" | "apikey" }>;
 }
 
 const MAX_RECENT = 20;
@@ -62,7 +62,7 @@ export function recordWorkspaceShadow(input: {
   userId: string;
   claimed: string | null | undefined;
   served: string;
-  via: "session" | "mobile";
+  via: "session" | "mobile" | "apikey";
 }): void {
   try {
     const s = stats();

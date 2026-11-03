@@ -5,7 +5,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { validateAccessToken } from "@/server/oauth";
-import { findHomeMembership } from "@/server/auth/home-membership";
+import { findActiveMembershipIn, findHomeMembership } from "@/server/auth/home-membership";
 import {
   normalizeMatrix,
   normalizeOverrides,
@@ -32,7 +32,14 @@ export async function validateMcpBearer(req: Request): Promise<EffectiveUser | n
   const validated = await validateAccessToken(token);
   if (!validated) return null;
 
-  return resolveMcpActor(validated.user.id);
+  // The workspace this connection was approved in. Every call resolves the person there and
+  // only there, so a token can never read another workspace the person also belongs to.
+  const connection = await prisma.mcpConnection.findUnique({
+    where: { userId_oauthClientId: { userId: validated.user.id, oauthClientId: validated.oauthClientId } },
+    select: { workspaceId: true, revokedAt: true },
+  });
+  if (!connection || connection.revokedAt) return null;
+  return resolveMcpActor(validated.user.id, connection.workspaceId);
 }
 
 /**
@@ -42,8 +49,8 @@ export async function validateMcpBearer(req: Request): Promise<EffectiveUser | n
  * member (or one whose MCP permission was taken away) kept working MCP access for as long as
  * Claude kept refreshing — 30 days at a time.
  */
-export async function resolveMcpActor(userId: string): Promise<EffectiveUser | null> {
-  const user = await resolveEffectiveUserById(userId);
+export async function resolveMcpActor(userId: string, workspaceId: string): Promise<EffectiveUser | null> {
+  const user = await resolveEffectiveUserById(userId, workspaceId, { onlyThisWorkspace: true });
   if (!user || !canConnectMcp(user)) return null;
   return user;
 }
@@ -58,12 +65,17 @@ export async function resolveMcpActor(userId: string): Promise<EffectiveUser | n
 export async function resolveEffectiveUserById(
   userId: string,
   preferredWorkspaceId?: string | null,
+  opts: { onlyThisWorkspace?: boolean } = {},
 ): Promise<EffectiveUser | null> {
   // Same membership rule as every sign-in path (src/server/auth/home-membership.ts): an
   // ACTIVE membership only — an archived member has no access anywhere in Foundry (§57),
   // MCP included. MCP tokens are not bound to a workspace yet, so this is Gitwork for every
   // Gitwork member, else the person's own.
-  const membership = await findHomeMembership(userId, preferredWorkspaceId);
+  // A credential bound to one workspace (an MCP connection) resolves only there.
+  const membership =
+    opts.onlyThisWorkspace && preferredWorkspaceId
+      ? await findActiveMembershipIn(userId, preferredWorkspaceId)
+      : await findHomeMembership(userId, preferredWorkspaceId);
   if (!membership) return null;
   const user = await prisma.user.findUnique({
     where: { id: userId },
