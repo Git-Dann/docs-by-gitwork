@@ -8950,6 +8950,11 @@ scopes, which Google only grants to outside users after verification and a yearl
   `src/lib/email-domains.ts` refuses public mail services and gitwork.co.uk). ⚠️ A domain never
   brings back an archived or removed account. Its refresh token is NOT stored (wrong scopes for
   the Gmail widgets), and it never touches Gitwork's provisioning or first-admin bootstrap.
+- **iOS sign-in with a password** (`POST /api/auth/mobile-password` { email, password }, public,
+  rate-limited per IP and per email). Runs `verifyPassword`, re-reads `findHomeMembership` and
+  refuses again if `isPasswordLoginAllowed` fails, then mints the same token and JSON shape as
+  `mobile-callback`, naming the member's workspace. Every refusal is one 401. ⚠️ It never creates
+  or promotes anyone. The app side is Git-Dann/foundry-ios#1 (unbuilt until a Mac build).
 - **Not done yet:** a public sign-up page.
 - Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
 
