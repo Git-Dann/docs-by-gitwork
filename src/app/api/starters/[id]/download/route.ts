@@ -41,10 +41,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const documentId = request.nextUrl.searchParams.get("documentId");
     const scanId = request.nextUrl.searchParams.get("scanId");
     if (clientSlug || documentId || scanId) {
+      const workspaceId = await requestWorkspaceId(user);
       const [clientDetail, document, scan] = await Promise.all([
-        clientSlug ? getDerivedClientDetail(await requestWorkspaceId(user), clientSlug) : null,
-        documentId ? prisma.document.findFirst({ where: { id: documentId }, include: proposalInclude }) : null,
-        scanId ? getPulseScan(scanId) : null,
+        clientSlug ? getDerivedClientDetail(workspaceId, clientSlug) : null,
+        documentId ? prisma.document.findFirst({ where: { id: documentId, workspaceId }, include: proposalInclude }) : null,
+        scanId ? getPulseScan(scanId, workspaceId) : null,
       ]);
       let vars: Record<string, string> = {};
       if (clientDetail?.client) vars = { ...vars, ...resolveClientTokens(clientDetail.client) };

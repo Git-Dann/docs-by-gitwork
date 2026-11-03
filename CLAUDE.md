@@ -8803,6 +8803,22 @@ and the Staff schedule work inside the caller's workspace.
     so an Admin can't reset an Admin's or a Super Admin's password. Your own is always allowed.
   - Tests: `src/app/api/team/__tests__/team-userid-routes.test.ts`.
 
+**Phase 2.2b, Pulse scans and Study (Nov 2026).** A scan or study is found by id **and** workspace.
+- `getPulseScan`, `renamePulseScan`, `deletePulseScan`, `reanalysePulseScan` and `getStudy` /
+  `updateStudy` / `deleteStudy` / `listStudies` / `createStudy` take a workspace (`tsc` finds every
+  caller, the MCP and the starters download included). `assertPulseScanAccess` refuses another
+  business's scan before the "sees all clients" shortcut, so its Super Admin can't open one.
+- The scan sub-routes (stream, email, pdf, run-browser, share) look up with `findFirst({ id,
+  workspaceId })`. Re-analysis, fix-agent, discovery prep, study plans and study runs use the
+  row's own workspace AI keys, not Gitwork's.
+- The printable report page (`/app/pulse/[scanId]/report`) had no access check; it now has the
+  same one as the scan API. The study plan POST now checks the study is the caller's first.
+- Tests: `src/server/__tests__/pulse-study-workspace-scope.test.ts` and
+  `src/app/api/pulse/__tests__/pulse-study-routes-scoped.test.ts` (fails on a scan or study route
+  that uses `ensureBaseRecords` or an id-only `findUnique`).
+- ⚠️ Still Gitwork-scoped: the scan **list**, projects and portfolio (they read Gitwork's
+  workspace), and `getScanHistory`. Next block.
+
 ## 89. Recent Changes (October 2026) — A client's own board columns, and a one-line plan strip
 
 A developer asked to add columns to a client's task board. **Columns** (beside Categories) adds

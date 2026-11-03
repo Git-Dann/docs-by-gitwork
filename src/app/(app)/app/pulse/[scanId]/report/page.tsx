@@ -1,5 +1,9 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getPulseScan } from "@/server/pulse";
+import { assertPulseScanAccess, getPulseScan } from "@/server/pulse";
+import { assignedClientIds } from "@/server/tasks";
+import { getEffectiveUserOrNull } from "@/server/auth/effective-user";
+import { requestWorkspaceId } from "@/server/workspaces/scope";
 import { DocumentCover, HealthScoreRing } from "@/components/document-cover";
 import { PrintButton } from "./print-button";
 import type { PulseScanCheckRecord } from "@/types/pulse";
@@ -62,7 +66,15 @@ export default async function PulseReportPage({
   params: Promise<{ scanId: string }>;
 }) {
   const { scanId } = await params;
-  const scan = await getPulseScan(scanId);
+  // Same rules as GET /api/pulse/scans/[scanId]: the caller's own workspace, and only a scan
+  // they may see. The page used to print any scan in Gitwork's workspace given its id.
+  const user = await getEffectiveUserOrNull(new Request("http://foundry.local", { headers: await headers() }));
+  try {
+    await assertPulseScanAccess(user, scanId, async () => (user ? assignedClientIds(user) : []));
+  } catch {
+    notFound();
+  }
+  const scan = await getPulseScan(scanId, await requestWorkspaceId(user));
 
   if (!scan || scan.status !== "COMPLETED") notFound();
 

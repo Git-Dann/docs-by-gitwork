@@ -1,9 +1,5 @@
 {
   "leaks": [
-    "GET /api/pulse/scans/[scanId] a→b",
-    "GET /api/pulse/scans/[scanId]/stream a→b",
-    "GET /api/study/studies/[studyId] a→b",
-    "GET /api/study/studies/[studyId]/stream a→b",
     "GET /api/support/clients/[clientId]/audit-logs a→b",
     "GET /api/support/clients/[clientId]/audit-logs b→a",
     "GET /api/support/clients/[clientId]/conversations a→b",
@@ -18,24 +14,16 @@
     "GET /api/support/clients/[clientId]/tickets/[ticketId] a→b",
     "GET /api/support/clients/[clientId]/tickets/[ticketId] b→a",
     "GET /api/support/dashboard b→a",
-    "PATCH /api/study/studies/[studyId] a→b",
     "PATCH /api/support/clients/[clientId] a→b",
     "PATCH /api/support/clients/[clientId]/conversations/[convId] a→b",
     "PATCH /api/support/clients/[clientId]/conversations/[convId]/triage a→b",
     "PATCH /api/support/clients/[clientId]/tickets/[ticketId] a→b",
-    "POST /api/pulse/scans/[scanId]/reanalyse a→b",
     "POST /api/support/clients/[clientId]/conversations/[convId]/assign a→b",
     "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b"
   ],
   "writes": [
-    "DELETE /api/pulse/scans/[scanId] a→b",
-    "DELETE /api/pulse/scans/[scanId]/share a→b",
-    "DELETE /api/study/studies/[studyId] a→b",
     "DELETE /api/support/clients/[clientId] a→b",
     "DELETE /api/support/clients/[clientId]/tickets/[ticketId] a→b",
-    "POST /api/pulse/scans/[scanId]/generate-proposal a→b",
-    "POST /api/pulse/scans/[scanId]/reanalyse a→b",
-    "POST /api/pulse/scans/[scanId]/share a→b",
     "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b",
     "POST /api/support/clients/[clientId]/sync a→b"
   ]

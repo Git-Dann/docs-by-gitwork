@@ -13,6 +13,7 @@ import { originFrom } from "@/lib/request-origin";
 import { renderPulseReportPdf } from "@/server/pulse-report-pdf";
 import { assertCan, canManagePulse, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { requireScanAccess } from "@/server/pulse";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sca
     const { scanId } = await context.params;
     await requireScanAccess(request, scanId);
 
-    const scan = await prisma.pulseScan.findUnique({
-      where: { id: scanId },
+    const scan = await prisma.pulseScan.findFirst({
+      where: { id: scanId, workspaceId: await workspaceIdForRequest(request) },
       select: { shareToken: true, isShared: true, projectName: true },
     });
     if (!scan) return apiError("Scan not found", 404);

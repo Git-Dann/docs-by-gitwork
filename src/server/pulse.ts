@@ -268,6 +268,9 @@ export async function assertPulseScanAccess(
   assignedIds: () => Promise<string[]>,
 ): Promise<void> {
   if (!user) return;
+  // Another business's scan reads as not found, whatever the caller's role here.
+  const inWorkspace = await prisma.pulseScan.count({ where: { id: scanId, workspaceId: user.workspaceId } });
+  if (!inWorkspace) throw new NotFoundError("Scan not found.");
   if (canSeeAllClients(user)) return;
   if (await canViewPulseScan(user, scanId, assignedIds)) return;
   throw new NotFoundError("Scan not found.");
@@ -279,8 +282,8 @@ export async function canViewPulseScan(
   assignedIds: () => Promise<string[]>,
 ): Promise<boolean> {
   if (!user) return true;
-  const row = await prisma.pulseScan.findUnique({
-    where: { id: scanId },
+  const row = await prisma.pulseScan.findFirst({
+    where: { id: scanId, workspaceId: user.workspaceId },
     select: { clientId: true, triggeredByUserId: true },
   });
   if (!row) return false;
@@ -439,20 +442,23 @@ export async function getPulsePortfolio(params?: { clientIds?: string[] | null }
   return entries;
 }
 
-export async function getPulseScan(id: string): Promise<PulseScanRecord | null> {
-  const record = await prisma.pulseScan.findUnique({
-    where: { id },
+/** A scan in `workspaceId`; another business's id reads as null (not found). */
+export async function getPulseScan(id: string, workspaceId: string): Promise<PulseScanRecord | null> {
+  const record = await prisma.pulseScan.findFirst({
+    where: { id, workspaceId },
     include: pulseInclude,
   });
   if (!record) return null;
   return serializePulseScan(record);
 }
 
-export async function deletePulseScan(id: string): Promise<void> {
-  await prisma.pulseScan.delete({ where: { id } });
+export async function deletePulseScan(id: string, workspaceId: string): Promise<void> {
+  await prisma.pulseScan.deleteMany({ where: { id, workspaceId } });
 }
 
-export async function renamePulseScan(id: string, projectName: string): Promise<PulseScanRecord> {
+export async function renamePulseScan(id: string, workspaceId: string, projectName: string): Promise<PulseScanRecord> {
+  const owned = await prisma.pulseScan.count({ where: { id, workspaceId } });
+  if (!owned) throw new NotFoundError("Scan not found.");
   const record = await prisma.pulseScan.update({
     where: { id },
     data: { projectName },
@@ -962,16 +968,18 @@ export async function retryPulseScan(scanId: string): Promise<{
  */
 export async function reanalysePulseScan(
   scanId: string,
+  workspaceId: string,
   additionalContext?: string,
 ): Promise<PulseScanRecord> {
-  const existing = await prisma.pulseScan.findUnique({
-    where: { id: scanId },
+  const existing = await prisma.pulseScan.findFirst({
+    where: { id: scanId, workspaceId },
     include: pulseInclude,
   });
-  if (!existing) throw new Error("Scan not found.");
+  if (!existing) throw new NotFoundError("Scan not found.");
   if (existing.status !== "COMPLETED") throw new Error("Only completed scans can be re-analysed.");
 
-  const { workspace } = await ensureBaseRecords();
+  // The scan's own workspace and AI keys, never Gitwork's whoever owns the scan.
+  const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: existing.workspaceId } });
   const p = (workspace.aiProvider ?? "ANTHROPIC") as "ANTHROPIC" | "OPENAI" | "GEMINI" | "LOCAL";
   const aiConfig = {
     provider: p,
