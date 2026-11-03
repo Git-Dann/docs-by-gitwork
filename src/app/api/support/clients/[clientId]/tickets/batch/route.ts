@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { batchUpdateTickets } from "@/server/support";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -11,6 +12,7 @@ export async function PATCH(
 ) {
   try {
     const { clientId } = await params;
+    await requireSupportClient(request, clientId);
     const body = (await request.json()) as {
       ticketIds: string[];
       data: { status?: string; priority?: string; assignedTo?: string };

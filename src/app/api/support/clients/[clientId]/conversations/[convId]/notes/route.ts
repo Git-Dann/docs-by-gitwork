@@ -2,15 +2,18 @@ import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { assertCan, canManageSupport, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { listConversationNotes, addConversationNote } from "@/server/support";
+import { requireSupportClient, requireSupportRow } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ clientId: string; convId: string }> },
 ) {
   try {
-    const { convId } = await params;
+    const { clientId, convId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("conversation", convId, clientId);
     const notes = await listConversationNotes(convId);
     return apiOk({ notes });
   } catch (error) {
@@ -25,7 +28,9 @@ export async function POST(
   try {
     const user = await getEffectiveUserOrNull(request);
     assertCan(user, canManageSupport, "add Care conversation notes");
-    const { convId } = await params;
+    const { clientId, convId } = await params;
+    await requireSupportClient(request, clientId);
+    await requireSupportRow("conversation", convId, clientId);
     const body = (await request.json()) as { body?: string };
     if (!body.body || !body.body.trim()) {
       return apiError("Note `body` is required", 400);

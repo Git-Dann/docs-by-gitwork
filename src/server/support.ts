@@ -24,7 +24,6 @@ import type {
 } from "@/types/support";
 import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { seedAccountUserWhere, isSeedAccount } from "@/server/seed-accounts";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canSeeAllClients, ForbiddenError } from "@/server/auth/effective-user";
@@ -467,11 +466,6 @@ export function serializeAuditLog(row: {
 
 // ─── Workspace helper ─────────────────────────────────────────────────────────
 
-export async function getWorkspaceId(): Promise<string> {
-  const { workspace } = await ensureBaseRecords();
-  return workspace.id;
-}
-
 async function supportClientScopeWhere(user: EffectiveUser): Promise<Prisma.SupportClientWhereInput> {
   if (canSeeAllClients(user)) return { workspaceId: user.workspaceId };
   const clientIds = await assignedClientIds(user);
@@ -491,10 +485,12 @@ async function assertSupportClientInScope(user: EffectiveUser, supportClientId: 
 
 // ─── SupportClient CRUD ───────────────────────────────────────────────────────
 
-export async function listSupportClients(user?: EffectiveUser): Promise<SupportClient[]> {
-  const workspaceId = await getWorkspaceId();
+export async function listSupportClients(
+  workspaceId: string,
+  user?: EffectiveUser,
+): Promise<SupportClient[]> {
   const rows = await prisma.supportClient.findMany({
-    where: user ? await supportClientScopeWhere(user) : { workspaceId },
+    where: user ? { ...(await supportClientScopeWhere(user)), workspaceId } : { workspaceId },
     orderBy: { name: "asc" },
     include: {
       _count: { select: { conversations: { where: { unread: true } } } },
@@ -516,10 +512,12 @@ export type SupportDashboardSummary = {
   >;
 };
 
-export async function getSupportDashboardSummary(options?: {
-  recentConversationLimit?: number;
-}): Promise<SupportDashboardSummary> {
-  const workspaceId = await getWorkspaceId();
+export async function getSupportDashboardSummary(
+  workspaceId: string,
+  options?: {
+    recentConversationLimit?: number;
+  },
+): Promise<SupportDashboardSummary> {
   const limit = options?.recentConversationLimit ?? 8;
 
   const [clientCount, openTicketCount, conversationRows] = await Promise.all([
@@ -573,7 +571,7 @@ export async function getSupportClient(clientId: string, user?: EffectiveUser): 
   return serializeSupportClient(row);
 }
 
-export async function createSupportClient(data: {
+export async function createSupportClient(workspaceId: string, data: {
   name: string;
   slug: string;
   status?: SupportClient["status"];
@@ -583,7 +581,6 @@ export async function createSupportClient(data: {
   reportDueDay?: number;
   workspaceClientId?: string;
 }): Promise<SupportClient> {
-  const workspaceId = await getWorkspaceId();
   const row = await prisma.supportClient.create({
     data: {
       workspaceId,
@@ -932,8 +929,7 @@ export async function getConversationViewCounts(
  * version — if the two disagreed, the home page and the cockpit would report different numbers for
  * the same client, which is exactly the class of thing that destroys trust in a dashboard.
  */
-export async function getClientQueueSummaries(): Promise<Record<string, ClientQueueSummary>> {
-  const workspaceId = await getWorkspaceId();
+export async function getClientQueueSummaries(workspaceId: string): Promise<Record<string, ClientQueueSummary>> {
   const scope: Prisma.SupportConversationWhereInput = { client: { workspaceId } };
   const active: Prisma.SupportConversationWhereInput = { ...scope, status: { in: ["NEW", "OPEN"] } };
   const awaiting: Prisma.SupportConversationWhereInput = {
@@ -2286,9 +2282,9 @@ export async function getReport(reportId: string): Promise<SupportReport | null>
 // ─── Workspace Members ────────────────────────────────────────────────────────
 
 export async function listWorkspaceMembers(
+  workspaceId: string,
   clientId?: string,
 ): Promise<{ id: string; name: string; email: string; role: string }[]> {
-  const workspaceId = await getWorkspaceId();
   const rows = await prisma.workspaceMember.findMany({
     where: { workspaceId, user: seedAccountUserWhere(), ...ACTIVE_MEMBER },
     include: { user: true },

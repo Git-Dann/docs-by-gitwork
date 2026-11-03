@@ -8731,12 +8731,9 @@ the others. `docs-gdrive-backup` loops through it. Pulse monitors scan on the mo
 - `resolveBackupAuth` fell back to any user's Google token in the database;
 - monitor scans were saved to Gitwork whoever owned the monitor.
 
-⚠️ **Care's jobs are deliberately untouched** (Dan, 29 Oct 2026: Care is a broken product and is
-left out of the multi-tenant work for now). Those jobs are `support-sync`, `care-digest`,
-`embed-conversations` and `analytics-snapshot` (the Care analytics connector). They still run on
-the Gitwork workspace only. `embed-conversations` still selects unembedded conversations from
-every workspace, which only matters once another business has Care. Fix it when Care is brought
-in. Also Gitwork-only by design: `meet-transcripts`, `wedge-course-feed`, `wedge-keepwarm`.
+Care's jobs (`support-sync`, `care-digest`, `embed-conversations`, `analytics-snapshot`) were
+left until Nov 2026 and now loop per workspace too: see "Phase 2.2b, Care" below. Gitwork-only by
+design: `meet-transcripts`, `wedge-course-feed`, `wedge-keepwarm`.
 
 Tests: `src/server/__tests__/crons-per-workspace.test.ts`, `monitor-workspace.test.ts`,
 `tests/isolation/crons.test.ts`.
@@ -8957,9 +8954,30 @@ scopes, which Google only grants to outside users after verification and a yearl
   or promotes anyone. The app side is Git-Dann/foundry-ios#1 (unbuilt until a Mac build).
 - **Not done yet:** a public sign-up page.
 - Tests: `src/lib/__tests__/signup-rules.test.ts`, `src/server/__tests__/password-reset-and-signup.test.ts`.
+**Phase 2.2b, Care (Nov 2026).** Every `/api/support/clients/[clientId]/**` handler starts with
+`requireSupportClient(req, clientId)` (`src/server/support-scope.ts`), which proves the Care
+client is in the caller's workspace and returns that workspace id. A route that names a row
+under it (conversation, ticket, connection, report, draft action, workflow rule) also runs
+`requireSupportRow(kind, id, clientId)`. Another business's id reads as a 404 and nothing is
+written. Lookups only: nothing a Gitwork user sees changed.
+- `listSupportClients`, `createSupportClient`, `getSupportDashboardSummary`,
+  `getClientQueueSummaries` and `listWorkspaceMembers` take a `workspaceId`; `getWorkspaceId()`
+  (Gitwork) is gone. The dashboard, queue summaries and `support/reports/[reportId]` read the
+  caller's workspace. Linking a Portal client (`workspaceClientId`) or a conversation to a ticket
+  must stay in the same workspace / client.
+- AI routes (draft, semantic search, narratives) and draft-reply sending use the client's own
+  workspace keys. `buildSyncContext` and `syncClientConnections` use the connection's own
+  workspace; the report Document is created in the Care client's workspace.
+- The four Care crons loop with `forEachWorkspace` (workspaces with Care clients).
+  `embed-conversations` selects only that workspace's conversations and embeds with its key.
+- Exempt from the sweep: `support/webhook/[token]` (token is the credential) and
+  `support/discord/channels` (holds no workspace data).
+- Tests: `src/app/api/support/__tests__/support-routes-scoped.test.ts` (sweep),
+  `src/server/__tests__/support-workspace-scope.test.ts`, `care-crons-per-workspace.test.ts`.
+  `known-leaks.json` no longer has any `support/` entry.
 
-**What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
-Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,
+**What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` held only
+Care (now cleared). That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,
 so every b→a call is refused before it reaches the code. A route that still reads Gitwork's
 workspace directly passes the suite and would show Gitwork's data to another business the day
 they can sign in. The `ensureBaseRecords` / `DEFAULT_WORKSPACE_SLUG` ratchet is the real

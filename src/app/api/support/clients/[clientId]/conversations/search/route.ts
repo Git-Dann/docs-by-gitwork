@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_WORKSPACE_SLUG } from "@/server/proposals";
 import { generateEmbedding } from "@/server/care-agents/embeddings";
 import { aiKeyFor } from "@/server/ai-keys";
+import { requireSupportClient } from "@/server/support-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +23,14 @@ export async function POST(
 ) {
   try {
     const { clientId } = await params;
+    const workspaceId = await requireSupportClient(request, clientId);
     const body = await request.json() as { query?: string; limit?: number };
     const query = body.query?.trim();
     if (!query) return apiError("query is required", 400);
     const limit = Math.min(body.limit ?? 10, 25);
 
     const workspace = await prisma.workspace.findFirst({
-      where: { slug: DEFAULT_WORKSPACE_SLUG },
+      where: { id: workspaceId },
       select: {
         id: true,
         openaiApiKey: true,

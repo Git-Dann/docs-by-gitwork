@@ -1,40 +1,4 @@
 {
-  "leaks": [
-    "GET /api/support/clients/[clientId]/audit-logs a→b",
-    "GET /api/support/clients/[clientId]/audit-logs b→a",
-    "GET /api/support/clients/[clientId]/conversations a→b",
-    "GET /api/support/clients/[clientId]/conversations b→a",
-    "GET /api/support/clients/[clientId]/conversations/[convId] a→b",
-    "GET /api/support/clients/[clientId]/conversations/[convId] b→a",
-    "GET /api/support/clients/[clientId]/conversations/[convId]/messages a→b",
-    "GET /api/support/clients/[clientId]/conversations/[convId]/messages b→a",
-    "GET /api/support/clients/[clientId]/members b→a",
-    "GET /api/support/clients/[clientId]/tickets a→b",
-    "GET /api/support/clients/[clientId]/tickets b→a",
-    "GET /api/support/clients/[clientId]/tickets/[ticketId] a→b",
-    "GET /api/support/clients/[clientId]/tickets/[ticketId] b→a",
-    "GET /api/support/dashboard b→a",
-    "PATCH /api/support/clients/[clientId] a→b",
-    "PATCH /api/support/clients/[clientId] b→a",
-    "PATCH /api/support/clients/[clientId]/conversations/[convId] a→b",
-    "PATCH /api/support/clients/[clientId]/conversations/[convId] b→a",
-    "PATCH /api/support/clients/[clientId]/conversations/[convId]/triage a→b",
-    "PATCH /api/support/clients/[clientId]/conversations/[convId]/triage b→a",
-    "PATCH /api/support/clients/[clientId]/tickets/[ticketId] a→b",
-    "PATCH /api/support/clients/[clientId]/tickets/[ticketId] b→a",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/assign a→b",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/assign b→a",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/close b→a"
-  ],
-  "writes": [
-    "DELETE /api/support/clients/[clientId] a→b",
-    "DELETE /api/support/clients/[clientId] b→a",
-    "DELETE /api/support/clients/[clientId]/tickets/[ticketId] a→b",
-    "DELETE /api/support/clients/[clientId]/tickets/[ticketId] b→a",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/close a→b",
-    "POST /api/support/clients/[clientId]/conversations/[convId]/close b→a",
-    "POST /api/support/clients/[clientId]/sync a→b",
-    "POST /api/support/clients/[clientId]/sync b→a"
-  ]
+  "leaks": [],
+  "writes": []
 }

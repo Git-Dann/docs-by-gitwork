@@ -304,7 +304,7 @@ async function resolveSupportClient(
 ): Promise<{ id: string; name: string }> {
   const needle = input.trim();
   if (!needle) throw new Error("Care client identifier is required.");
-  const clients = await listSupportClients(user);
+  const clients = await listSupportClients(user.workspaceId, user);
   const lower = needle.toLowerCase();
 
   const byId = clients.find((c) => c.id === needle);
