@@ -34,13 +34,13 @@ import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { SECTION_REGISTRY } from "@/lib/sections/registry";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError } from "@/server/document-ai";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { recordAiUsage, usageFromAnthropic } from "@/server/ai-usage";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { readSecret } from "@/server/stored-secret";
 import { requireDocumentInWorkspace } from "@/server/documents-scope";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = chatSchema.parse(await request.json());
 
     // Load workspace AI config
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const ws = await prisma.workspace.findUnique({
       where: { id: workspace.id },
       select: { aiProvider: true, anthropicApiKey: true, platformAiKeysAllowed: true, anthropicModel: true },

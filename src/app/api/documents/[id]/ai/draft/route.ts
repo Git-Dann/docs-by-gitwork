@@ -11,11 +11,11 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { AiNotConfiguredError, draftDocument } from "@/server/document-ai";
 import { proposalInclude, serializeProposal } from "@/server/proposals";
 import { assertCan, canGenerateAi, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { requireDocumentInWorkspace } from "@/server/documents-scope";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     await requireDocumentInWorkspace(id, await getEffectiveUserOrNull(request));
     const body = draftSchema.parse(await request.json());
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
 
     const doc = await prisma.document.findUnique({
       where: { id },

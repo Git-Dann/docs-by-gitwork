@@ -9,8 +9,8 @@
 
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { getSlackBotToken } from "@/server/slack/client";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +39,9 @@ interface SlackApiResponse {
   needed?: string;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: await workspaceIdForRequest(request) };
     const wsWithToken = await prisma.workspace.findUnique({
       where: { id: workspace.id },
       select: { slackBotToken: true, slackBotTokenEncrypted: true },

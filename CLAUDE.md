@@ -8830,6 +8830,22 @@ and the Staff schedule work inside the caller's workspace.
 - Left on Gitwork on purpose: the public `/apply` flow (`src/server/devsignal/apply.ts`) is
   Gitwork's own careers page and has no caller to read a workspace from.
 
+**Phase 2.2b, Settings, workspace config and the rest of Docs (Nov 2026).** Settings
+(integrations, models, dev rates, Docs backup, custom hostname, Slack webhooks), workspace
+branding/defaults/Pulse embed and pricing, roles, the rate card, snippets, the Docs AI routes,
+document creation and Slack/meeting integrations read the caller's workspace. Routes that need
+the whole workspace row read it with `findUniqueOrThrow({ where: { id } })`.
+- Comments, versions and signature requests were recorded against the bootstrap owner; they now
+  name the caller (`requestActor` also returns `id`). The API key still credits the owner.
+- `src/app/api/__tests__/settings-docs-routes-scoped.test.ts` fails on a route in those folders
+  that takes the WORKSPACE from `ensureBaseRecords` or uses the Gitwork slug. Taking the owner
+  from it, for an API-key caller, is still allowed.
+- ⚠️ Not done, on purpose: `/api/account` and `/api/account/password` still read the Gitwork
+  membership by slug. They answer "which workspace am I in", which is what the sign-in switch
+  settles; change them with it.
+- ⚠️ Found, not fixed: `PUT /api/settings/integrations` has no permission check, so any signed-in
+  member can change the workspace AI and Slack keys. A role question for Dan, not isolation.
+
 **What the isolation suite can't see yet.** Once Pulse/Study landed, `known-leaks.json` holds only
 Care. That is not the finish line: the sign-in check (`requireAuthedUser`) only serves Gitwork,
 so every b→a call is refused before it reaches the code. A route that still reads Gitwork's

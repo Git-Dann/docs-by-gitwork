@@ -1,4 +1,3 @@
-import { workspaceIdForRequest } from "@/server/workspaces/scope";
 /**
  * GET /api/codeclear/candidates/[id]/cv
  *
@@ -31,6 +30,7 @@ import { prisma } from "@/lib/prisma";
 import { assertCan, canManageCode, getEffectiveUserOrNull } from "@/server/auth/effective-user";
 import { loadCvAssets } from "@/server/cv-assets";
 import { launchHeadlessBrowser } from "@/server/headless-browser";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";

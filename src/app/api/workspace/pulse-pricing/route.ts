@@ -12,9 +12,9 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { apiError, apiOk, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { recordAuditEntry } from "@/server/audit-log";
 import { resolvePricingConfig } from "@/server/pulse-pricing";
+import { workspaceIdForRequest } from "@/server/workspaces/scope";
 
 const patchSchema = z.object({
   fxFromUsd: z.number().positive().max(10).optional(),
@@ -22,9 +22,9 @@ const patchSchema = z.object({
   seniority: z.enum(["mid", "senior"]).optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     return apiOk({ config: resolvePricingConfig(workspace.pulsePricingConfig) });
   } catch (error) {
     return fromError(error);
@@ -33,7 +33,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { workspace } = await ensureBaseRecords();
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: await workspaceIdForRequest(request) } });
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") return apiError("Invalid JSON body", 400);
 
