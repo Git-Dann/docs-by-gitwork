@@ -14,8 +14,8 @@
 | Staff and Platform polish (paging, popup, validation, seed accounts hidden) | Done, §86.6 and §87 |
 | Phase 2.1 Workspace carried in every token; shadow comparison | Live 29 Oct 2026 (#743), CLAUDE.md §88. Read the counts at `/api/platform/workspace-shadow` |
 | Phase 2.2a Run first-boot setup at server start-up | Done. `runFirstBootSetup()` starts in `src/instrumentation-node.ts` |
-| Phase 2.2b Replace single-workspace lookups, file by file | In progress. Docs (#784) and Portal (`/api/clients/**`) done; Team, Pulse, Study, Code and Care (parked) to go. A ratchet test stops the count growing |
-| Isolation suite: two businesses, every route, both directions | Done (`npm run test:isolation`, CI job `isolation`). 35 reads and 16 writes still cross (none in Docs or Portal); `tests/isolation/known-leaks.json` is the 2.2b worklist. **Empty list = the gate before any other business signs in** |
+| Phase 2.2b Replace single-workspace lookups, file by file | In progress. Docs (#784), Portal (`/api/clients/**`) and Team/admin done; Pulse, Study, Handbook, Starters and Care (parked) to go. A ratchet test stops the count growing |
+| Isolation suite: two businesses, every route, both directions | Done (`npm run test:isolation`, CI job `isolation`). 26 reads and 8 writes still cross (none in Docs, Portal or Team); `tests/isolation/known-leaks.json` is the 2.2b worklist. **Empty list = the gate before any other business signs in** |
 
 ## Context
 

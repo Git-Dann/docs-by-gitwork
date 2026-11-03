@@ -1,16 +1,12 @@
 import { NextRequest } from "next/server";
-import { auth } from "@/auth";
-import { apiOk, apiError, fromError } from "@/lib/api-response";
+import { apiOk, fromError } from "@/lib/api-response";
 import { createInvite, listInvites } from "@/server/team";
-import { isAtLeast } from "@/types/auth";
+import { requireTeamAdmin } from "@/server/auth/team-admin";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user || !isAtLeast(session.user.role, "ADMIN")) {
-      return apiError("Forbidden", 403);
-    }
-    const invites = await listInvites();
+    const actor = await requireTeamAdmin(req);
+    const invites = await listInvites(actor.workspaceId);
     return apiOk(invites);
   } catch (e) {
     return fromError(e);
@@ -19,11 +15,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return apiError("Unauthorized", 401);
-    if (!isAtLeast(session.user.role, "ADMIN")) return apiError("Forbidden", 403);
+    const actor = await requireTeamAdmin(req);
     const body = await req.json().catch(() => ({}));
-    const invite = await createInvite(session.user.id, body.label ?? undefined);
+    const invite = await createInvite(actor.workspaceId, actor.id, body.label ?? undefined);
     return apiOk(invite);
   } catch (e) {
     return fromError(e);

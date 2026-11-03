@@ -16,7 +16,6 @@ import { archiveMember, updateMember } from "@/server/team";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { requireTeamAdmin } from "@/server/auth/team-admin";
 import { recordAuditEntry } from "@/server/audit-log";
-import { ensureBaseRecords } from "@/server/bootstrap";
 import { ROLE_IDS } from "@/types/auth";
 
 export const dynamic = "force-dynamic";
@@ -46,10 +45,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return apiError(parsed.error.issues.map((issue) => issue.message).join(", "), 400);
     }
 
-    const updated = await updateMember(id, parsed.data, actor.role);
+    const updated = await updateMember(id, parsed.data, actor);
 
     // Audit trail — role/permission changes are sensitive enough that we always log them.
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: actor.workspaceId };
     if (parsed.data.role !== undefined) {
       await recordAuditEntry({
         workspaceId: workspace.id,
@@ -87,7 +86,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (!id) return apiError("Missing id", 400);
     const archived = await archiveMember(id, actor);
     if (!archived) return apiError("Member not found", 404);
-    const { workspace } = await ensureBaseRecords();
+    const workspace = { id: actor.workspaceId };
     await recordAuditEntry({
       workspaceId: workspace.id,
       actorId: actor.id,

@@ -19,8 +19,8 @@ export async function getWorkspace() {
   return prisma.workspace.findUniqueOrThrow({ where: { slug: DEFAULT_WORKSPACE_SLUG } });
 }
 
-export async function listMembers() {
-  const workspace = await getWorkspace();
+export async function listMembers(workspaceId: string) {
+  const workspace = { id: workspaceId };
   // includes-archived: this IS the user-management table. It has to see archived
   // members to show them, count down their retention and restore them.
   const rows = await prisma.workspaceMember.findMany({
@@ -92,6 +92,8 @@ export async function listMembers() {
 export interface MemberActor {
   id: string;
   role: string;
+  /** The workspace the actor is acting in. A member of any other workspace reads as not found. */
+  workspaceId: string;
 }
 
 /**
@@ -110,8 +112,8 @@ export interface MemberActor {
  * you cannot archive yourself; and you cannot archive the last ACTIVE Super Admin.
  */
 export async function archiveMember(memberId: string, actor: MemberActor) {
-  const existing = await prisma.workspaceMember.findUnique({
-    where: { id: memberId },
+  const existing = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: actor.workspaceId },
     select: { id: true, workspaceId: true, role: true, userId: true, archivedAt: true },
   });
   if (!existing) return null;
@@ -140,8 +142,8 @@ export async function archiveMember(memberId: string, actor: MemberActor) {
  * job a tidy-up rather than a security control.
  */
 export async function restoreMember(memberId: string, actor: MemberActor) {
-  const existing = await prisma.workspaceMember.findUnique({
-    where: { id: memberId },
+  const existing = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: actor.workspaceId },
     select: { id: true, role: true, archivedAt: true },
   });
   if (!existing) return null;
@@ -174,7 +176,7 @@ export async function restoreMember(memberId: string, actor: MemberActor) {
  * of their own email address for good.
  */
 export async function reinstateMemberByEmail(email: string, role: RoleId, actor: MemberActor) {
-  const workspace = await getWorkspace();
+  const workspace = { id: actor.workspaceId };
   if (!canManageRole(actor.role, role)) {
     throw new ForbiddenError("You can't reinstate someone into a role at or above your own.");
   }
@@ -255,12 +257,17 @@ export interface UpdateMemberInput {
  * Changing a member's role clears their overrides (clean slate for the new role)
  * unless explicit overrides are supplied in the same call.
  */
-export async function updateMember(memberId: string, input: UpdateMemberInput, actorRole: string) {
-  const existing = await prisma.workspaceMember.findUnique({
-    where: { id: memberId },
+export async function updateMember(
+  memberId: string,
+  input: UpdateMemberInput,
+  actor: Pick<MemberActor, "role" | "workspaceId">,
+) {
+  const actorRole = actor.role;
+  const existing = await prisma.workspaceMember.findFirst({
+    where: { id: memberId, workspaceId: actor.workspaceId },
     select: { id: true, workspaceId: true, role: true },
   });
-  if (!existing) throw new Error("Member not found");
+  if (!existing) throw Object.assign(new Error("Member not found"), { status: 404 });
 
   if (!canManageRole(actorRole, existing.role)) {
     throw new ForbiddenError("You can't manage a member at or above your own role.");
@@ -356,8 +363,8 @@ export async function autoAcceptMatchingInvite(userId: string, userName: string 
   });
 }
 
-export async function listInvites() {
-  const workspace = await getWorkspace();
+export async function listInvites(workspaceId: string) {
+  const workspace = { id: workspaceId };
 
   // An invite's status only ever changes in response to a real action by the recipient:
   // opening /invite/[token] (acceptInvite) or signing in directly with a name that matches
@@ -377,8 +384,8 @@ export async function listInvites() {
   });
 }
 
-export async function createInvite(invitedById: string, label?: string) {
-  const workspace = await getWorkspace();
+export async function createInvite(workspaceId: string, invitedById: string, label?: string) {
+  const workspace = { id: workspaceId };
   return prisma.workspaceInvite.create({
     data: {
       workspaceId: workspace.id,
@@ -389,18 +396,26 @@ export async function createInvite(invitedById: string, label?: string) {
   });
 }
 
-export async function revokeInvite(inviteId: string) {
+/** An invite in `workspaceId`, or null. Every invite write goes through this first. */
+export async function findInvite(workspaceId: string, inviteId: string) {
+  return prisma.workspaceInvite.findFirst({ where: { id: inviteId, workspaceId } });
+}
+
+export async function revokeInvite(workspaceId: string, inviteId: string) {
+  if (!(await findInvite(workspaceId, inviteId))) return null;
   return prisma.workspaceInvite.update({
     where: { id: inviteId },
     data: { status: "REVOKED" },
   });
 }
 
-export async function deleteInvite(inviteId: string) {
+export async function deleteInvite(workspaceId: string, inviteId: string) {
+  if (!(await findInvite(workspaceId, inviteId))) return null;
   return prisma.workspaceInvite.delete({ where: { id: inviteId } });
 }
 
-export async function updateInviteLabel(inviteId: string, label: string | null) {
+export async function updateInviteLabel(workspaceId: string, inviteId: string, label: string | null) {
+  if (!(await findInvite(workspaceId, inviteId))) return null;
   return prisma.workspaceInvite.update({
     where: { id: inviteId },
     data: { label: label?.trim() || null },

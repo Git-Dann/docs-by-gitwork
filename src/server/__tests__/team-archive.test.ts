@@ -15,6 +15,10 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     workspaceMember: {
       findUnique: vi.fn(async () => db.member),
+      // Honours the workspace filter, so a member of another business reads as not found.
+      findFirst: vi.fn(async (args: { where: { id?: string; workspaceId?: string } }) =>
+        db.member && (!args.where.workspaceId || db.member.workspaceId === args.where.workspaceId) ? db.member : null,
+      ),
       update: vi.fn(async (args: { data: Record<string, unknown> }) => {
         db.updates.push(args.data);
         return { ...(db.member ?? {}), ...args.data };
@@ -52,8 +56,9 @@ vi.mock("@/server/auth/effective-user", () => ({
 
 import { archiveMember, purgeExpiredMembers, reinstateMemberByEmail, restoreMember } from "../team";
 
-const SA = { id: "dan", role: "SUPER_ADMIN" };
-const ADMIN = { id: "harry", role: "ADMIN" };
+const SA = { id: "dan", role: "SUPER_ADMIN", workspaceId: "w1" };
+const ADMIN = { id: "harry", role: "ADMIN", workspaceId: "w1" };
+const OTHER_BUSINESS_SA = { id: "eve", role: "SUPER_ADMIN", workspaceId: "w2" };
 
 beforeEach(() => {
   db.member = { id: "m1", workspaceId: "w1", role: "STAFF", userId: "leaver", archivedAt: null };
@@ -162,5 +167,14 @@ describe("reinstateMemberByEmail", () => {
   it("refuses to reinstate into a role above the actor's", async () => {
     db.user = { id: "u", memberships: [] };
     await expect(reinstateMemberByEmail("u@gitwork.co.uk", "SUPER_ADMIN", ADMIN)).rejects.toThrow();
+  });
+});
+
+describe("a member of another workspace", () => {
+  it("can't be archived or restored from it", async () => {
+    expect(await archiveMember("m1", OTHER_BUSINESS_SA)).toBeNull();
+    db.member = { id: "m1", workspaceId: "w1", role: "STAFF", userId: "leaver", archivedAt: new Date() };
+    expect(await restoreMember("m1", OTHER_BUSINESS_SA)).toBeNull();
+    expect(db.updates).toEqual([]);
   });
 });
