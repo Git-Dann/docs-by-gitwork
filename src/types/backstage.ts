@@ -74,10 +74,18 @@ export type ExpenseDTO = {
 };
 
 export type LeaveAllowanceDTO = {
+  /** The calendar year the holiday year starts in. */
   year: number;
+  /** First and last day of the holiday year (YYYY-MM-DD, inclusive). */
+  periodStart: string;
+  periodEnd: string;
+  /** True when the year runs from the person's start date, false for January to December. */
+  fromStartDate: boolean;
+  /** True when this person has no figure of their own and gets the workspace default. */
+  isDefaultAllowance: boolean;
   /** Total annual entitlement: WorkspaceMember.annualLeaveDays ?? Workspace.defaultAnnualLeaveDays. */
   allocated: number;
-  /** Sum of approved leave (working days only) in the current calendar year. */
+  /** Sum of approved leave (working days only) in the current holiday year. */
   used: number;
   /** Sum of pending leave (working days only) — informational, not deducted from `remaining`. */
   pending: number;

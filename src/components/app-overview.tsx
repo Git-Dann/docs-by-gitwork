@@ -12,6 +12,8 @@ import ProposalsWidget from "@/components/dashboard/proposals-widget";
 import ClientsWidget from "@/components/dashboard/clients-widget";
 import GmailWidget from "@/components/dashboard/gmail-widget";
 import CalendarWidget from "@/components/dashboard/calendar-widget";
+import TeamLeaveWidget from "@/components/dashboard/team-leave-widget";
+import HrWidget from "@/components/dashboard/hr-widget";
 import { DevOverview } from "@/components/dashboard/dev-overview";
 import { OnYourDeskCard } from "@/components/dashboard/on-your-desk-card";
 // Below-the-fold, admin-only, and the single heaviest dashboard card (~41KB).
@@ -64,8 +66,10 @@ const TILE_GAP = 12;
 // blank cell — and numbering stays sequential because the parent assigns it.
 const GRID: GridEntry[] = [
   { component: ClientsWidget,   band: "feed",    size: "md", module: "clients" },
-  { component: GmailWidget,     band: "feed",    size: "md", requires: "google" },
-  { component: CalendarWidget,  band: "feed",    size: "md", requires: "google" },
+  // Gmail and Calendar are client-work feeds, so they come with Portal. Someone who runs
+  // the team rather than client work (People & office) doesn't get them (Nov 2026).
+  { component: GmailWidget,     band: "feed",    size: "md", module: "clients", requires: "google" },
+  { component: CalendarWidget,  band: "feed",    size: "md", module: "clients", requires: "google" },
   { component: PulseWidget,     band: "summary", size: "sm", module: "pulse" },
   { component: CareWidget,      band: "summary", size: "sm", module: "support" },
   { component: ProposalsWidget, band: "summary", size: "sm", module: "proposals" },
@@ -73,6 +77,10 @@ const GRID: GridEntry[] = [
   // returns null when no client has a Launchpad — so the tile is absent rather than
   // reporting a healthy-looking 0 for a workspace that has never used the feature.
   { component: LaunchpadWidget, band: "summary", size: "sm", module: "clients", requires: "launchpad" },
+  // For leave approvers and HR. The server scopes both to Gitwork staff for an approver
+  // who isn't an Admin.
+  { component: TeamLeaveWidget, band: "summary", size: "sm", module: "backstage.approve" },
+  { component: HrWidget,        band: "summary", size: "sm", module: "hr.manage" },
 ];
 
 type NumberedTile = GridEntry & { number: number };
@@ -207,9 +215,11 @@ export function AppOverview() {
   const isExternal = isExternalRole(isAdmin && viewAs ? viewAs : role);
 
   // Show developer view when previewing as Developer, or when actually a restricted dev.
+  // "Not scoped to every client" only means a developer when they work on clients at all:
+  // someone with no Portal (People & office) is not a developer and gets this grid.
   const isDeveloper = isAdmin
     ? viewAs === "DEVELOPER"
-    : role === "DEVELOPER" || !realPermissions.includes("seeAllClients");
+    : role === "DEVELOPER" || (realPermissions.includes("clients") && !realPermissions.includes("seeAllClients"));
 
   // Full unrestricted view: real Super Admin (isAdmin, no preview, empty permissions array).
   const showAll = isAdmin && previewPerms === null && realPermissions.length === 0;

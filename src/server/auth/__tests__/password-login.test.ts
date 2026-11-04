@@ -211,7 +211,7 @@ describe("a guest only sees what they were given", () => {
 
   it("hides On Your Desk from a guest", () => {
     expect(read("src/components/app-shell.tsx")).toMatch(
-      /isExternalRole\(account\.data\?\.role\) \? null : <DeskDrawer/,
+      /isExternalRole\(account\.data\.role\) \|\|[\s\S]{0,120}\? null : \(\s*<DeskDrawer/,
     );
   });
 });

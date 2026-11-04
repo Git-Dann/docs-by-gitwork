@@ -366,7 +366,13 @@ export const PERMISSION_CATALOG: readonly ProductPermissions[] = [
     product: "Backstage",
     permissions: [
       { id: "backstage", category: "module", label: "Backstage", description: "Book leave, claim expenses, see the team calendar." },
-      { id: "backstage.approve", category: "feature", label: "Approve leave", description: "Approve and decline leave requests. Expenses stay with Super Admins." },
+      { id: "backstage.approve", category: "feature", label: "Approve leave", description: "Approve and decline leave requests, and be told when one comes in." },
+      {
+        id: "backstage.expenses",
+        category: "feature",
+        label: "Review expenses",
+        description: "Claim expenses, and approve, reject or mark paid anyone's. Granted per person, never by role.",
+      },
     ],
   },
   {
@@ -416,6 +422,13 @@ export const ALL_PERMISSION_IDS: string[] = ALL_PERMISSIONS.map((p) => p.id);
 /** HR permissions: never part of a role's defaults, only granted to a named person. */
 export const HR_PERMISSION_IDS: readonly string[] = ["hr.manage", "hr.viewSensitive"];
 
+/**
+ * Never part of any role's defaults, only granted to a named person: HR data, and money.
+ * Expenses were Super Admin only until Nov 2026; this keeps every Admin from gaining them
+ * when the permission arrived (reconcileNewPermissions only adds ids a role's defaults name).
+ */
+export const PER_PERSON_PERMISSION_IDS: readonly string[] = [...HR_PERMISSION_IDS, "backstage.expenses"];
+
 const PERMISSION_BY_ID = new Map<string, PermissionDef>(ALL_PERMISSIONS.map((p) => [p.id, p]));
 
 export function isValidPermissionId(id: string): boolean {
@@ -461,8 +474,8 @@ const MODULE_IDS = MODULE_PERMISSIONS.map((m) => m.id);
  *    no Study (admin-only feature perm), no rate or cost visibility, no seeAllClients.
  */
 export const DEFAULT_ROLE_PERMISSIONS: RoleMatrix = {
-  // Everything except HR: personal and health data is granted per person, never by role.
-  ADMIN: ALL_PERMISSION_IDS.filter((id) => !HR_PERMISSION_IDS.includes(id)),
+  // Everything except HR and expenses: personal data and money are granted per person, never by role.
+  ADMIN: ALL_PERMISSION_IDS.filter((id) => !PER_PERSON_PERMISSION_IDS.includes(id)),
   STAFF: [
     ...MODULE_IDS,
     "seeAllClients",
@@ -516,6 +529,25 @@ export const DEFAULT_STAFF_PERMISSIONS: string[] = [...DEFAULT_ROLE_PERMISSIONS.
  */
 export const PULSE_GUEST_PERMISSIONS: readonly string[] = ["pulse", "pulse.manage", "ai.generate"];
 
+/**
+ * Someone who runs the team rather than client work: the roster and HR records in Staff,
+ * and leave and expenses in Backstage. Nothing else, so their sidebar is those two and HQ
+ * shows only tiles about them. First: Siân (Nov 2026).
+ *
+ * Role STAFF, not DEVELOPER: the developer role is what puts someone on the developer list
+ * and the task-focused dashboard. Every other STAFF default is removed by this set, so the
+ * save stores them as revokes.
+ */
+export const PEOPLE_OPS_PERMISSIONS: readonly string[] = [
+  "codeclear",
+  "code.manage",
+  "hr.manage",
+  "hr.viewSensitive",
+  "backstage",
+  "backstage.approve",
+  "backstage.expenses",
+];
+
 export const PERMISSION_PRESETS = [
   {
     id: "admin",
@@ -538,6 +570,13 @@ export const PERMISSION_PRESETS = [
     description:
       "Outside collaborator who can run Pulse scans and read the results — and nothing else. Includes AI generation, which spends tokens on our account.",
     permissions: PULSE_GUEST_PERMISSIONS,
+  },
+  {
+    id: "people-ops",
+    label: "People & office",
+    role: "STAFF" as const,
+    description: "Staff and HR records, leave approvals and expenses. No client work.",
+    permissions: PEOPLE_OPS_PERMISSIONS,
   },
   {
     id: "developer",

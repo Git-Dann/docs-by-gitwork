@@ -196,7 +196,20 @@ function demoActivity(p: StaffPerson) {
     completedTotal: days.reduce((a, d) => a + d.value, 0),
     placements: p.currentClients.map((c, i) => ({ clientName: c.name, slug: c.slug, startDate: `2025-0${i + 3}-01`, endDate: null, allocationPercent: i ? 50 : 100 })),
     upcomingLeave: p.memberId ? [{ start: inDays(12), end: inDays(16), label: "Annual leave", pending: false }] : [],
-    allowance: p.memberId ? { allocated: 25, used: 14, pending: 0, remaining: 11 } : null,
+    allowance: p.memberId
+      ? {
+          allocated: 25,
+          used: 14,
+          pending: 0,
+          remaining: 11,
+          periodStart: "2026-03-14",
+          periodEnd: "2027-03-13",
+          fromStartDate: true,
+          isDefaultAllowance: true,
+          canEdit: false,
+          userId: p.memberId,
+        }
+      : null,
     developer: p.isDeveloper ? { githubHandle: "alihassan", primaryStack: p.primaryStack, techStacks: ["TypeScript", "Swift"] } : null,
   };
 }

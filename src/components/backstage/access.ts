@@ -16,7 +16,7 @@ export function useBackstageAccess() {
     userId: session?.user?.id as string | undefined,
     /** Admin or HR (backstage.approve): can approve, file on behalf, edit anyone's leave. */
     canApprove: isAdmin || permissions.includes("backstage.approve"),
-    /** Expenses are Super Admin only. */
-    canManageExpenses: isSuperAdmin(role),
+    /** Expenses: Super Admins, plus anyone granted `backstage.expenses` (see effective-user.ts). */
+    canManageExpenses: isSuperAdmin(role) || permissions.includes("backstage.expenses"),
   };
 }

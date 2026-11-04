@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { dispatchNotification } from "@/server/notifications";
 import { createPulseScanRecord, runAnalysis } from "@/server/pulse";
 import { githubHeaders } from "@/lib/github";
-import { sendWorkspaceEmail, listBackstageApproverEmails, escapeHtml } from "@/server/email";
+import { sendWorkspaceEmail, listAdminEmails, escapeHtml } from "@/server/email";
 import { getSlackBotToken } from "@/server/slack/client";
 import { DEFAULT_MODELS } from "@/server/ai-provider";
 import { MAX_DIGEST_RECIPIENTS, maybeSendWeeklyDigest, parseDigestEmails } from "@/server/pulse-agents/monitor-digest";
@@ -288,7 +288,7 @@ async function sendMonitorAlert(
 
   // 1. Email the team (every monitor type). Best-effort.
   try {
-    const recipients = await listBackstageApproverEmails(monitor.workspaceId);
+    const recipients = await listAdminEmails(monitor.workspaceId);
     if (recipients.length > 0) {
       await sendWorkspaceEmail({
         workspaceId: monitor.workspaceId,

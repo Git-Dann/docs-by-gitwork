@@ -544,7 +544,13 @@ export function AppShell({
       {/* On Your Desk is internal staff tooling — a standup prompt, my-clients cash
           flow, the Gmail/Slack inbox. All of it is either meaningless to a guest or
           about people they do not work with, and the dock is on every /app screen. */}
-      {isExternalRole(account.data?.role) ? null : <DeskDrawer sidebarCollapsed={collapsed} />}
+      {/* Also not for someone with no Portal (People & office): every tab is client work.
+          Waits for the account so nobody sees it flash in and out. */}
+      {!account.data ||
+      isExternalRole(account.data.role) ||
+      (!isFullAccessAdmin && !realPermissions.includes("clients")) ? null : (
+        <DeskDrawer sidebarCollapsed={collapsed} />
+      )}
       <HalloweenFogFront />
       <ChristmasSnow />
       {/* Hangs in the header band's right gutter, so only where there is a band. */}

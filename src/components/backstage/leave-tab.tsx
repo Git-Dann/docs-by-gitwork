@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatLeaveYear } from "@/lib/leave-year";
 import { CalendarDaysIcon, PlusIcon } from "@heroicons/react/24/outline";
 import {
   useApproveLeaveRequest,
@@ -44,6 +45,12 @@ export function LeaveTab() {
           <Stat label="Pending" value={allowance.data?.pending ?? "—"} suffix="days" />
           <Stat label="Remaining" value={allowance.data?.remaining ?? "—"} suffix="days" accent />
         </div>
+        {allowance.data?.periodStart ? (
+          <p className="mt-3 font-mono text-[11px] text-[var(--text-3)]">
+            Holiday year {formatLeaveYear({ start: allowance.data.periodStart, end: allowance.data.periodEnd })}
+            {allowance.data.fromStartDate ? " · from your start date" : ""}
+          </p>
+        ) : null}
       </BackstagePanel>
 
       {showForm || editing ? (

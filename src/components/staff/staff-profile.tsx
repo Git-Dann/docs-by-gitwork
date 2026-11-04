@@ -37,6 +37,8 @@ import { DateWithAttention, Field, HeaderAction, formatDate, label, today } from
 import { ActivityHeatmap } from "@/components/ui/easyui/activity-heatmap";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useStaffRoster } from "@/hooks/use-staff";
+import { useSetLeaveAllowance } from "@/hooks/use-backstage";
+import { formatLeaveYear } from "@/lib/leave-year";
 import {
   useAccessLog,
   useDeleteStaffRecord,
@@ -532,21 +534,99 @@ function ActivityCard({ activity, hasLogin, number }: { activity: StaffActivity 
   );
 }
 
-/** Leave in the next 90 days and, for the person, HR and approvers, this year's allowance. */
+/**
+ * Leave in the next 90 days and, for the person, HR and approvers, this holiday year's
+ * allowance. The year runs from their start date when they have one. Whoever handles their
+ * leave can change their days here (`allowance.canEdit`, decided on the server).
+ */
 function TimeOffCard({ activity, number }: { activity: StaffActivity | undefined; number: string }) {
   const a = activity?.allowance;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const save = useSetLeaveAllowance();
+  const parsed = draft.trim() === "" ? null : Number(draft);
+  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= 0 && parsed <= 366);
+
+  function start() {
+    if (!a) return;
+    setDraft(a.isDefaultAllowance ? "" : String(a.allocated));
+    setEditing(true);
+  }
+  function submit() {
+    if (!a || !valid) return;
+    save.mutate({ userId: a.userId, days: parsed }, { onSuccess: () => setEditing(false) });
+  }
+
   return (
-    <WidgetCard number={number} name="Time off" status="Next 90 days" statusTone="muted">
+    <WidgetCard
+      number={number}
+      name="Time off"
+      status="Next 90 days"
+      statusTone="muted"
+      action={a?.canEdit && !editing ? <HeaderAction onClick={start} label="Edit holiday allowance">Edit allowance</HeaderAction> : undefined}
+    >
       {!activity ? (
         <p className="text-[13px] text-[var(--text-3)]">Loading…</p>
       ) : (
         <div className="space-y-4">
           {a ? (
-            <dl className="grid grid-cols-3 gap-4">
-              <Field label="Allowance">{a.allocated} days</Field>
-              <Field label="Used">{a.used}{a.pending ? <span className="text-[var(--text-3)]"> +{a.pending} pending</span> : null}</Field>
-              <Field label="Left">{a.remaining}</Field>
-            </dl>
+            <div className="space-y-2">
+              {editing ? (
+                <form
+                  className="flex flex-wrap items-end gap-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    submit();
+                  }}
+                >
+                  <label className="min-w-[160px] flex-1">
+                    <span className="widget-data-label text-[var(--text-4)]">Days per holiday year</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={366}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Workspace default"
+                      className="app-input mt-1 text-[16px] sm:text-sm"
+                      aria-invalid={!valid}
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button type="button" className="app-button app-button-secondary app-button-sm" onClick={() => setEditing(false)} disabled={save.isPending}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="app-button app-button-primary app-button-sm" disabled={!valid || save.isPending}>
+                      {save.isPending ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                  <p className="w-full text-[12px] text-[var(--text-3)]">
+                    {valid ? "Leave blank to use the workspace default." : "Enter a whole number of days, 0 to 366."}
+                  </p>
+                  {save.isError ? (
+                    <p role="alert" className="w-full text-[12px] text-[var(--danger-500)]">
+                      {save.error instanceof Error ? save.error.message : "Could not save"}
+                    </p>
+                  ) : null}
+                </form>
+              ) : (
+                <dl className="grid grid-cols-3 gap-4">
+                  <Field label="Allowance">
+                    {a.allocated} days
+                    {a.isDefaultAllowance ? <span className="text-[var(--text-3)]"> · default</span> : null}
+                  </Field>
+                  <Field label="Used">{a.used}{a.pending ? <span className="text-[var(--text-3)]"> +{a.pending} pending</span> : null}</Field>
+                  <Field label="Left">{a.remaining}</Field>
+                </dl>
+              )}
+              {a.periodStart ? (
+                <p className="font-mono text-[11px] text-[var(--text-3)]">
+                  Holiday year {formatLeaveYear({ start: a.periodStart, end: a.periodEnd })}
+                  {a.fromStartDate ? " · from start date" : " · no start date, so January to December"}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {activity.upcomingLeave.length ? (
             <ul className="divide-y divide-[var(--border-3)]">
