@@ -9902,14 +9902,56 @@ revoke, so her sidebar is Staff and Backstage.
   with no way to write it, so everyone had the workspace's 25. The Staff profile's Time off card
   has **Edit allowance** for whoever handles that person's leave
   (`PATCH /api/backstage/members/[userId]/allowance`, `canSetLeaveAllowance`); blank = default.
-- **HQ for someone with no Portal:** Gmail and Calendar tiles now need `clients`, and two new
-  tiles appear: **Team leave** (`backstage.approve`: waiting approvals + who's off next) and
+- **HQ for someone with no Portal:** Gmail and Calendar tiles now need `clients`, and three new
+  tiles appear: **Team leave** (`backstage.approve`: leave waiting + who's off next),
+  **Expenses** (`backstage.expenses`: waiting, the total per currency, the latest few) and
   **HR** (`hr.manage`: dates coming up + records missing details). ⚠️ So Admins and Super
-  Admins also get Team leave, and Super Admins get HR. The developer view (standup, My Clients)
+  Admins also get Team leave, and Super Admins get Expenses and HR.
+- **"View as" now follows through HQ and Backstage.** Both used the real role, so a Super
+  Admin previewing Siân kept the Admin bypass and saw Agentic workflow, Analytics/Starters,
+  Handover and Expenses she doesn't have. HQ draws for `viewRole`; Backstage's
+  `useBackstageAccess` reads the preview too. The developer view (standup, My Clients)
   now needs Portal: "not scoped to every client" only means a developer when they work on
   clients. The On Your Desk drawer is hidden without Portal (every tab is client work).
+- **Staff → People shows Gitwork first for her** (`splitGitworkStaff`): non-developers under
+  a "Gitwork" heading, and "Developers and everyone else" folded in a `<details>` below. Only
+  for someone who isn't an Admin; Admins see the roster as before. Follows "view as".
 - Pulse monitor alert emails now go to Admins (`listAdminEmails`), not the Backstage approver
   list they had borrowed, which would have emailed a leave approver too.
+
+## 116. Recent Changes (November 2026) — A scan with no AI write-up says so plainly, once
+
+Dan, on a scan whose AI call failed: the Summary carried a grey "AI analysis not available" box
+printing Anthropic's raw JSON (`400 {"type":"error"… credit balance is too low…}`). Now:
+- **Summary shows nothing** for a missing AI write-up. The checks, score and gate don't use AI.
+- **The Plan tab is hidden** when there is no write-up: every part of it (opportunities, roadmap,
+  stack, estimate) is AI output. A link to one of its parts opens Summary (`activeTab` in
+  `use-scan-view.tsx`).
+- **Raw provider errors are never shown.** `describeAiError` (`src/lib/ai-error-words.ts`, pure,
+  tested) turns them into one sentence: out of credit, key rejected, not set up, rate limited,
+  no answer, or a generic error. The Technical tab keeps its Regenerate banner with that sentence
+  (the raw text is in its tooltip), and the agent panel uses it too.
+
+## 118. Recent Changes (November 2026) — Who counts as Gitwork, and leave that doesn't use allowance
+
+Follow-up to the People & office section (Siân) above.
+
+- **Gitwork's own staff = Employee or Director on their Staff record, and not a developer**
+  (`isGitworkStaff` / `GITWORK_EMPLOYMENT_TYPES` in `src/lib/staff.ts`). "Not a developer" was
+  wrong: Hassaan (Product Manager, Contractor) and Syed (no Staff record) landed in Gitwork.
+  Contractors, freelancers and anyone with no record are "everyone else". The same rule drives
+  Staff → People, whose leave Siân approves and hears about, Team today, staffing alerts and her
+  HR reminders (`gitworkUserIds` / `gitworkUserFilter` in `backstage-people.ts`). A staff-only
+  viewer always sees their own leave too, even before their record has a type. ⚠️ So a Gitwork
+  employee needs an Employment type on their Staff record to be Siân's.
+- **Leave can be marked as not using allowance** (`LeaveRequest.countsToAllowance`, additive,
+  nullable; rules in `src/lib/leave-allowance.ts`). Null (older requests) keeps the old rule:
+  only Annual counts. New requests default the same way and the leave form has a "Counts towards
+  holiday allowance" tickbox that follows the type until someone sets it. The allowance query
+  uses `COUNTS_TO_ALLOWANCE_WHERE`. Leave lists say "not from allowance" / "from allowance"
+  when a request goes against its type's default.
+- The leave form's buttons are pinned to the bottom of the dialog (`BackstageModal`'s `footer`,
+  submit via `form=`); they used to float mid-panel above empty space.
 
 ## 117. Recent Changes (November 2026) — Uptime alerts only for what's on fire
 

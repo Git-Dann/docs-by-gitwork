@@ -9,7 +9,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 type Member = { id: string; userId: string; role: string; permissions: string[]; email: string };
-type Record_ = { memberId: string | null; email: string | null; githubHandle: string | null; isDeveloper: boolean | null; startDate: Date | null };
+type Record_ = {
+  memberId: string | null;
+  email: string | null;
+  githubHandle: string | null;
+  isDeveloper: boolean | null;
+  employmentType: string | null;
+  startDate: Date | null;
+};
 const db = vi.hoisted(() => ({ members: [] as Member[], records: [] as Record_[] }));
 
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => null) }));
@@ -31,10 +38,8 @@ vi.mock("@/lib/prisma", () => ({
     },
     candidate: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        if (where.OR && Array.isArray(where.OR) && (where.OR as unknown[]).length === 2 && JSON.stringify(where.OR).includes("isDeveloper")) {
-          return db.records.filter((r) => r.githubHandle || r.isDeveloper);
-        }
-        return db.records;
+        const types = (where.employmentType as { in?: string[] } | undefined)?.in;
+        return types ? db.records.filter((r) => r.employmentType && types.includes(r.employmentType)) : db.records;
       }),
     },
   },
@@ -70,10 +75,15 @@ beforeEach(() => {
     { id: "m-sian", userId: "u-sian", role: "STAFF", permissions: [...PEOPLE_OPS_PERMISSIONS], email: "sian@gitwork.co.uk" },
     { id: "m-dev", userId: "u-dev", role: "DEVELOPER", permissions: ["backstage"], email: "dev@gitwork.co.uk" },
     { id: "m-ops", userId: "u-ops", role: "STAFF", permissions: ["backstage"], email: "ops@gitwork.co.uk" },
+    { id: "m-hassaan", userId: "u-hassaan", role: "ADMIN", permissions: [], email: "hassaan@gitwork.co.uk" },
+    { id: "m-syed", userId: "u-syed2", role: "STAFF", permissions: ["backstage"], email: "syed2@gitwork.co.uk" },
   ];
   db.records = [
-    { memberId: "m-dev", email: "dev@gitwork.co.uk", githubHandle: "devhandle", isDeveloper: true, startDate: null },
-    { memberId: "m-ops", email: "ops@gitwork.co.uk", githubHandle: null, isDeveloper: false, startDate: new Date("2024-03-14") },
+    { memberId: "m-dev", email: "dev@gitwork.co.uk", githubHandle: "devhandle", isDeveloper: true, employmentType: "EMPLOYEE", startDate: null },
+    { memberId: "m-ops", email: "ops@gitwork.co.uk", githubHandle: null, isDeveloper: false, employmentType: "EMPLOYEE", startDate: new Date("2024-03-14") },
+    // A Product Manager on contract: not a developer, and still not Gitwork's own staff.
+    { memberId: "m-hassaan", email: "hassaan@gitwork.co.uk", githubHandle: null, isDeveloper: false, employmentType: "CONTRACTOR", startDate: null },
+    // m-syed has no Staff record at all.
   ];
 });
 
@@ -127,14 +137,18 @@ describe("a leave approver who isn't an Admin looks after Gitwork staff, not dev
 
   it("refuses a developer's leave and allows staff, herself and Admins", async () => {
     await expect(assertLooksAfterLeaveOf(user(), "u-dev")).rejects.toThrow(/Admins/);
+    // A contractor and someone with no Staff record aren't hers either.
+    await expect(assertLooksAfterLeaveOf(user(), "u-hassaan")).rejects.toThrow(/Admins/);
+    await expect(assertLooksAfterLeaveOf(user(), "u-syed2")).rejects.toThrow(/Admins/);
     await expect(assertLooksAfterLeaveOf(user(), "u-ops")).resolves.toBeUndefined();
     await expect(assertLooksAfterLeaveOf(user(), "u-sian")).resolves.toBeUndefined();
     await expect(assertLooksAfterLeaveOf(user({ id: "u-syed", role: "ADMIN" }), "u-dev")).resolves.toBeUndefined();
   });
 
   it("tells her about staff leave, and leaves developers' leave to Admins", async () => {
-    expect((await leaveApproverUserIds("w1", "u-ops")).sort()).toEqual(["u-dan", "u-sian", "u-syed"]);
-    expect((await leaveApproverUserIds("w1", "u-dev")).sort()).toEqual(["u-dan", "u-syed"]);
+    expect((await leaveApproverUserIds("w1", "u-ops")).sort()).toEqual(["u-dan", "u-hassaan", "u-sian", "u-syed"]);
+    expect((await leaveApproverUserIds("w1", "u-dev")).sort()).toEqual(["u-dan", "u-hassaan", "u-syed"]);
+    expect(await leaveApproverUserIds("w1", "u-syed2")).not.toContain("u-sian");
     // Never tells someone about their own request.
     expect(await leaveApproverUserIds("w1", "u-sian")).not.toContain("u-sian");
   });
@@ -149,15 +163,47 @@ describe("HQ and the shell for someone with no Portal", () => {
     expect(src).toMatch(/CalendarWidget,\s+band: "feed",\s+size: "md", module: "clients"/);
     expect(src).toMatch(/TeamLeaveWidget, band: "summary", size: "sm", module: "backstage.approve"/);
     expect(src).toMatch(/HrWidget,\s+band: "summary", size: "sm", module: "hr.manage"/);
+    expect(src).toMatch(/ExpensesWidget,\s+band: "summary", size: "sm", module: "backstage.expenses"/);
   });
 
   it("only treats someone as a developer on HQ when they work on clients", () => {
     expect(read("src/components/app-overview.tsx")).toMatch(
-      /role === "DEVELOPER" \|\| \(realPermissions\.includes\("clients"\) && !realPermissions\.includes\("seeAllClients"\)\)/,
+      /resolvedPermissions\.includes\("clients"\) &&\s+!resolvedPermissions\.includes\("seeAllClients"\)/,
     );
+  });
+
+  it("draws HQ for the previewed person's role, so no Admin bypass leaks into a preview", () => {
+    const src = read("src/components/app-overview.tsx");
+    expect(src).toMatch(/const acct = \{ role: viewRole, permissions: resolvedPermissions \}/);
+    expect(src).not.toMatch(/isSuperAdmin\(role\) && workspaceHasModule/);
   });
 
   it("hides the client-work Desk drawer without Portal", () => {
     expect(read("src/components/app-shell.tsx")).toMatch(/!realPermissions\.includes\("clients"\)\) \? null : \(/);
+  });
+});
+
+describe("Staff → People for someone who looks after Gitwork's own staff", () => {
+  it("puts Gitwork's people first and everyone else (developers) apart", async () => {
+    const { splitGitworkStaff } = await import("@/lib/staff");
+    const p = (name: string, employmentType: string | null, isDeveloper = false) =>
+      ({ name, employmentType, isDeveloper }) as unknown as import("@/lib/staff").StaffPerson;
+    const { gitwork, others } = splitGitworkStaff([
+      p("Dan", "EMPLOYEE"),
+      p("Harry", "DIRECTOR"),
+      p("Siân", "EMPLOYEE"),
+      p("Hassaan", "CONTRACTOR"),
+      p("Syed", null),
+      p("Ali", "EMPLOYEE", true),
+    ]);
+    expect(gitwork.map((x) => x.name)).toEqual(["Dan", "Harry", "Siân"]);
+    expect(others.map((x) => x.name)).toEqual(["Hassaan", "Syed", "Ali"]);
+  });
+
+  it("folds the rest only for someone who isn't an Admin, and follows view-as", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/staff/staff-roster.tsx"), "utf8");
+    expect(src).toMatch(/const \{ isAdmin: looksAfterEveryone \} = useBackstageAccess\(\)/);
+    expect(src).toMatch(/const focused = !looksAfterEveryone &&/);
+    expect(src).toMatch(/<details[^>]*data-staff-others/);
   });
 });

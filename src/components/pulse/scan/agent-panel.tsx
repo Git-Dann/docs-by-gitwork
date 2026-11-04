@@ -1,5 +1,6 @@
 "use client";
 
+import { describeAiError } from "@/lib/ai-error-words";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
 import type { FixAgentResult } from "@/lib/api";
@@ -206,7 +207,7 @@ export function AgentPanel({
       status: scan.llmAnalysis ? "completed" : scan.aiError ? "error" : "available",
       summary: scan.llmAnalysis
         ? `${scan.llmAnalysis.projectClassification.type}${scan.llmAnalysis.projectClassification.subtype ? ` · ${scan.llmAnalysis.projectClassification.subtype}` : ""} · ${scan.llmAnalysis.criticalGaps.length} critical gap${scan.llmAnalysis.criticalGaps.length !== 1 ? "s" : ""}`
-        : scan.aiError ?? "AI synthesis did not run",
+        : scan.aiError ? describeAiError(scan.aiError) : "AI synthesis did not run",
     },
     // Discovery Prep
     {
