@@ -14,6 +14,7 @@ import { dispatchNotification } from "@/server/notifications";
 import {
   WINDOW,
   alertBlocks,
+  ALERT_AFTER_MINUTES,
   alertMessage,
   CONFIRM_AFTER_MS,
   checkEveryMs,
@@ -41,7 +42,13 @@ import { storeSecret } from "@/server/stored-secret";
 import { monitorHeaders } from "./wiki-monitors/http";
 import { remoteProbe } from "./wiki-monitors/remote";
 import { randomBytes } from "node:crypto";
-import { DEFAULT_MONITOR_ENVIRONMENT, isMonitorEnvironment, nameWithEnvironment, type MonitorEnvironment } from "@/lib/monitor-environment";
+import {
+  DEFAULT_MONITOR_ENVIRONMENT,
+  isClientVisibleEnvironment,
+  isMonitorEnvironment,
+  nameWithEnvironment,
+  type MonitorEnvironment,
+} from "@/lib/monitor-environment";
 
 /** The URL a job calls each time it runs. Add /fail to report a failed run. */
 export function heartbeatPingUrl(token: string): string {
@@ -465,6 +472,7 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
       alertedDownAt: monitor.alertedDownAt,
       alertKind: monitor.alertKind === "down" || monitor.alertKind === "flaky" ? monitor.alertKind : null,
       alertClearedAt: monitor.alertClearedAt,
+      streakSince: monitor.streakSince,
     },
     result.status as ProbeStatus,
     now,
@@ -480,6 +488,7 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
         alertedDownAt: monitor.alertedDownAt,
         alertKind: monitor.alertKind,
         alertClearedAt: monitor.alertClearedAt,
+        streakSince: null,
       }
     : decision.state;
   const alert = maintenance ? null : decision.alert;
@@ -506,6 +515,7 @@ export async function runMonitorCheck(monitor: WikiMonitor, opts: { confirm?: bo
         alertedDownAt: state.alertedDownAt,
         alertKind: state.alertKind,
         alertClearedAt: state.alertClearedAt,
+        streakSince: state.streakSince ?? null,
         // Checked again, so the watchdog may speak up again if checks ever stop.
         staleAlertedAt: null,
         lastRemoteNote: result.note,
@@ -586,7 +596,7 @@ async function sendMonitorAlert(
     const { title, body } = alertMessage(
       { clientName: client.name, monitorName: nameWithEnvironment(monitor.name, monitor.environment), target: monitor.target },
       alert,
-      detail,
+      { ...detail, now: new Date() },
     );
     const actionUrl = `/app/portal/${client.slug}/wiki#monitors`;
     dispatchNotification({
@@ -598,6 +608,9 @@ async function sendMonitorAlert(
       target: { kind: "admins" },
       groupKey: `clients.monitor_alert:${monitor.id}`,
       count: 1,
+      // Only production is on fire for someone. Staging and the rest still record the incident
+      // and tell admins in Foundry, but never post to the channel (Dan, Nov 2026).
+      skipSlack: !isClientVisibleEnvironment(monitor.environment),
       slackBlocks: alertBlocks({
         heading: incidentHeading(alert.kind),
         // The emoji leads the plain-text title (notifications, push); the post has its own
@@ -606,7 +619,7 @@ async function sendMonitorAlert(
         url: `${appBaseUrl()}${actionUrl}`,
         description: body,
         services: await serviceRows(monitor.wikiId),
-        footer: "Foundry uptime monitoring · re-checked every minute while anything is failing",
+        footer: `Foundry uptime monitoring · posted after ${ALERT_AFTER_MINUTES} minutes down · production only`,
         button: allMonitorsButton(),
       }),
     });
