@@ -29,7 +29,7 @@ import { ensureBaseRecords } from "@/server/bootstrap";
 import { proofDocumentInclude, serializeProofDocument } from "@/server/proof";
 import { serializeProposalListItem } from "@/server/proposals";
 import {
-  computeClientDevCounts,
+  computeClientDevTeams,
   computeClientFinancials,
   computeClientOverdueTaskCounts,
   computeClientPulseHealth,
@@ -500,6 +500,7 @@ function toClientListItem(client: ClientAggregateRecord): ClientListItem {
     hasCareClient: false, // overridden by listDerivedClients
     repoUrls: [],        // overridden by listDerivedClients
     devCount: 0,         // overridden by listDerivedClients
+    people: [],          // overridden by listDerivedClients
     monthlyCost: null,   // set by listDerivedClients only for authorized viewers
     workingDays: null,   // set by listDerivedClients only for authorized viewers
     retainerDays: null,  // set by listDerivedClients only for authorized viewers
@@ -762,7 +763,7 @@ export async function listDerivedClients(filters?: {
   const [
     careRecords,
     platformRepos,
-    devCounts,
+    devTeams,
     pulseHealth,
     overdueCounts,
     financials,
@@ -780,7 +781,7 @@ export async function listDerivedClients(filters?: {
       select: { clientId: true, repoUrl: true, name: true },
     }),
     // Assigned-dev count per client (always shown on cards).
-    computeClientDevCounts(workspace.id, manualIds),
+    computeClientDevTeams(workspace.id, manualIds),
     // Latest completed Pulse scan health per client. Hidden when the caller lacks
     // the Pulse module permission, so Portal does not leak Pulse cards/links.
     includePulse ? computeClientPulseHealth(workspace.id, manualIds) : Promise.resolve(new Map()),
@@ -901,7 +902,9 @@ export async function listDerivedClients(filters?: {
         ...toClientListItem(client),
         hasCareClient: careIds.has(client.id),
         repoUrls: reposByClientId.get(client.id) ?? [],
-        devCount: devCounts.get(client.id) ?? 0,
+        // ⚠️ Both from the one list, so the faces and the number agree.
+        people: devTeams.get(client.id) ?? [],
+        devCount: (devTeams.get(client.id) ?? []).length,
         monthlyCost: financial ? financial.monthlyCost : null,
         workingDays: financial ? financial.workingDays : null,
         retainerDays: includeFinancials ? (retainerByClient.get(client.id)?.retainerDays ?? null) : null,

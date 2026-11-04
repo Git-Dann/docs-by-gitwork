@@ -1725,6 +1725,12 @@ const demoClientDetail: ClientDetailRecord = {
     hasCareClient: true,
     repoUrls: ["https://github.com/northwind/app"],
     devCount: 2,
+    // The faces behind the count. A demo that shows a number with no people
+    // cannot exercise the card's team row, which is the thing being demoed.
+    people: [
+      { id: "u-dev-1", name: "Waqar Ahmed", avatarUrl: null },
+      { id: "u-dev-2", name: "Siân Woolridge", avatarUrl: null },
+    ],
     pulseHealthScore: 86,
     pulseScanId: "scan-northwind",
     health: { level: "green", reasons: ["No overdue tasks", "Pulse health 86"] },
