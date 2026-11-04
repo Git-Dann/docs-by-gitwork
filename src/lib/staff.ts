@@ -214,6 +214,18 @@ export function staffGroupOf(p: Pick<StaffPerson, "role">): StaffGroupId {
   }
 }
 
+/**
+ * For someone who looks after Gitwork's own staff and not developers (People & office, Siân):
+ * Gitwork's people first, everyone else apart so it can be folded away. "Developer" is the
+ * Staff record's own fact, the same rule Backstage uses for whose leave she handles.
+ */
+export function splitGitworkStaff(people: StaffPerson[]): { gitwork: StaffPerson[]; others: StaffPerson[] } {
+  const gitwork: StaffPerson[] = [];
+  const others: StaffPerson[] = [];
+  for (const p of people) (p.isDeveloper ? others : gitwork).push(p);
+  return { gitwork, others };
+}
+
 /** People under their headings, in heading order, keeping the order they came in. Empty groups are left out. */
 export function groupStaff(people: StaffPerson[]): Array<{ id: StaffGroupId; label: string; people: StaffPerson[] }> {
   const by = new Map<StaffGroupId, StaffPerson[]>();

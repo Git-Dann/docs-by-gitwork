@@ -149,15 +149,39 @@ describe("HQ and the shell for someone with no Portal", () => {
     expect(src).toMatch(/CalendarWidget,\s+band: "feed",\s+size: "md", module: "clients"/);
     expect(src).toMatch(/TeamLeaveWidget, band: "summary", size: "sm", module: "backstage.approve"/);
     expect(src).toMatch(/HrWidget,\s+band: "summary", size: "sm", module: "hr.manage"/);
+    expect(src).toMatch(/ExpensesWidget,\s+band: "summary", size: "sm", module: "backstage.expenses"/);
   });
 
   it("only treats someone as a developer on HQ when they work on clients", () => {
     expect(read("src/components/app-overview.tsx")).toMatch(
-      /role === "DEVELOPER" \|\| \(realPermissions\.includes\("clients"\) && !realPermissions\.includes\("seeAllClients"\)\)/,
+      /resolvedPermissions\.includes\("clients"\) &&\s+!resolvedPermissions\.includes\("seeAllClients"\)/,
     );
+  });
+
+  it("draws HQ for the previewed person's role, so no Admin bypass leaks into a preview", () => {
+    const src = read("src/components/app-overview.tsx");
+    expect(src).toMatch(/const acct = \{ role: viewRole, permissions: resolvedPermissions \}/);
+    expect(src).not.toMatch(/isSuperAdmin\(role\) && workspaceHasModule/);
   });
 
   it("hides the client-work Desk drawer without Portal", () => {
     expect(read("src/components/app-shell.tsx")).toMatch(/!realPermissions\.includes\("clients"\)\) \? null : \(/);
+  });
+});
+
+describe("Staff → People for someone who looks after Gitwork's own staff", () => {
+  it("puts Gitwork's people first and everyone else (developers) apart", async () => {
+    const { splitGitworkStaff } = await import("@/lib/staff");
+    const p = (name: string, isDeveloper: boolean) => ({ name, isDeveloper }) as unknown as import("@/lib/staff").StaffPerson;
+    const { gitwork, others } = splitGitworkStaff([p("Dan", false), p("Ali", true), p("Siân", false), p("Harry", false), p("Syed", true)]);
+    expect(gitwork.map((x) => x.name)).toEqual(["Dan", "Siân", "Harry"]);
+    expect(others.map((x) => x.name)).toEqual(["Ali", "Syed"]);
+  });
+
+  it("folds the rest only for someone who isn't an Admin, and follows view-as", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/staff/staff-roster.tsx"), "utf8");
+    expect(src).toMatch(/const \{ isAdmin: looksAfterEveryone \} = useBackstageAccess\(\)/);
+    expect(src).toMatch(/const focused = !looksAfterEveryone &&/);
+    expect(src).toMatch(/<details[^>]*data-staff-others/);
   });
 });

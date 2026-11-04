@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useExpenses, useLeaveRequests, useStaffingAlerts } from "@/hooks/use-backstage";
-import { useBackstageAccess } from "@/components/backstage/access";
+import { useLeaveRequests, useStaffingAlerts } from "@/hooks/use-backstage";
 import { formatDateRange } from "@/components/backstage/format";
 import type { WidgetSize } from "@/components/app-overview";
 import { SkeletonWidget } from "@/components/ui/motion/skeleton";
@@ -14,16 +13,13 @@ import { SkeletonWidget } from "@/components/ui/motion/skeleton";
  */
 export default function TeamLeaveWidget({ index }: { size: WidgetSize; index: number }) {
   const num = String(index).padStart(2, "0");
-  const { canManageExpenses } = useBackstageAccess();
   const leave = useLeaveRequests("team", "PENDING");
-  const expenses = useExpenses("team", "SUBMITTED");
   const alerts = useStaffingAlerts();
 
   if (leave.isPending || alerts.isPending) return <SkeletonWidget />;
 
-  const leaveWaiting = leave.data?.length ?? 0;
-  const expensesWaiting = canManageExpenses ? (expenses.data?.length ?? 0) : 0;
-  const waiting = leaveWaiting + expensesWaiting;
+  // Leave only: expenses have their own tile (ExpensesWidget).
+  const waiting = leave.data?.length ?? 0;
   const nextOff = (alerts.data?.alerts ?? [])
     .flatMap((a) => (a.kind === "leave" ? [a] : []))
     .sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -45,11 +41,7 @@ export default function TeamLeaveWidget({ index }: { size: WidgetSize; index: nu
             {waiting}
           </span>
           <span className="text-xs text-[var(--text-3)]" style={{ fontFamily: "var(--font-mono)" }}>
-            {waiting === 0
-              ? "nothing to approve"
-              : canManageExpenses
-                ? `to approve · ${leaveWaiting} leave · ${expensesWaiting} expenses`
-                : "to approve"}
+            {waiting === 1 ? "leave request to approve" : "leave requests to approve"}
           </span>
         </p>
         <div className="min-h-0 flex-1 overflow-hidden">
