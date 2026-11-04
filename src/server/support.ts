@@ -504,13 +504,78 @@ export async function listSupportClients(
 // Single round-trip replacement for fanning out listClients → listTickets per
 // client → listConversations per client. Used by the iOS dashboard.
 
+/**
+ * Who is waiting on US — the one Care number that is a call to action.
+ *
+ * ⚠️ `total` counts conversations where the customer spoke last and nobody has
+ * replied (§42's reply state), NOT open conversations. A thread we answered is
+ * open and is nobody's queue. `oldestAt` is when the longest-waiting customer
+ * wrote, so a reader can age it themselves rather than trusting a duration we
+ * computed at an unknown moment.
+ */
+export type SupportAwaitingSummary = {
+  total: number;
+  /** null = nobody is waiting. Never a zero-length string. */
+  oldestAt: string | null;
+  /** Clients with someone waiting, worst first. Only clients that have one. */
+  clients: Array<{
+    clientId: string;
+    name: string;
+    slug: string;
+    awaiting: number;
+    oldestAt: string | null;
+  }>;
+};
+
 export type SupportDashboardSummary = {
   clientCount: number;
   openTicketCount: number;
+  /** Added Nov 2026 for the iOS dashboard — see `SupportAwaitingSummary`. */
+  awaiting: SupportAwaitingSummary;
   recentConversations: Array<
     Conversation & { client: SupportClient }
   >;
 };
+
+/**
+ * Turn the per-client queue map into the phone's "who is waiting" block.
+ *
+ * ⚠️ Only clients that actually have someone waiting are named. A client at
+ * zero is not news, and a list that includes them makes the one that matters
+ * harder to find. Ordered worst first: most waiting, then longest waiting.
+ */
+async function buildAwaitingSummary(
+  workspaceId: string,
+  queues: Record<string, ClientQueueSummary>,
+): Promise<SupportAwaitingSummary> {
+  const withWaiting = Object.entries(queues).filter(([, q]) => q.awaiting > 0);
+  const total = withWaiting.reduce((n, [, q]) => n + q.awaiting, 0);
+  if (withWaiting.length === 0) return { total: 0, oldestAt: null, clients: [] };
+
+  const rows = await prisma.supportClient.findMany({
+    where: { workspaceId, id: { in: withWaiting.map(([id]) => id) } },
+    select: { id: true, name: true, slug: true },
+  });
+  const named = new Map(rows.map((r) => [r.id, r]));
+
+  const clients = withWaiting
+    .flatMap(([clientId, q]) => {
+      const row = named.get(clientId);
+      // A queue whose client we could not name is dropped rather than shown as
+      // "Unknown" — it is deleted or out of scope, and either way unactionable.
+      return row
+        ? [{ clientId, name: row.name, slug: row.slug, awaiting: q.awaiting, oldestAt: q.oldestAwaitingAt }]
+        : [];
+    })
+    .sort((a, b) => b.awaiting - a.awaiting || (a.oldestAt ?? "").localeCompare(b.oldestAt ?? ""));
+
+  const oldest = clients
+    .map((c) => c.oldestAt)
+    .filter((d): d is string => !!d)
+    .sort()[0] ?? null;
+
+  return { total, oldestAt: oldest, clients };
+}
 
 export async function getSupportDashboardSummary(
   workspaceId: string,
@@ -520,13 +585,17 @@ export async function getSupportDashboardSummary(
 ): Promise<SupportDashboardSummary> {
   const limit = options?.recentConversationLimit ?? 8;
 
-  const [clientCount, openTicketCount, conversationRows] = await Promise.all([
+  const [clientCount, openTicketCount, queues, conversationRows] = await Promise.all([
     prisma.supportClient.count({ where: { workspaceId } }),
     // "Open" now means conversations needing a human (NEW or OPEN) — the conversation
     // is the unit of triage. Field name kept for back-compat with the HQ widget/iOS.
     prisma.supportConversation.count({
       where: { status: { in: ["NEW", "OPEN"] }, client: { workspaceId } },
     }),
+    // Per-client awaiting-reply counts. Already indexed groupBys (§42.6) —
+    // the same read the web's Care home and HQ widget use, so the phone and
+    // the browser can never report different queues.
+    getClientQueueSummaries(workspaceId),
     prisma.supportConversation.findMany({
       where: { client: { workspaceId } },
       orderBy: { receivedAt: "desc" },
@@ -556,6 +625,7 @@ export async function getSupportDashboardSummary(
   return {
     clientCount,
     openTicketCount,
+    awaiting: await buildAwaitingSummary(workspaceId, queues),
     recentConversations: conversationRows.map((row) => ({
       ...serializeConversation(row),
       client: serializeSupportClient(row.client),
