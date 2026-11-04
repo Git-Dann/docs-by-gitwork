@@ -77,7 +77,11 @@ export async function GET(request: NextRequest) {
   // Not signed in → bounce through the normal NextAuth sign-in, returning here afterwards.
   if (!email) {
     const signInUrl = new URL("/api/auth/signin", originFrom(request));
-    signInUrl.searchParams.set("callbackUrl", request.url);
+    // Not `request.url`: behind the VPS proxy that is http(s)://0.0.0.0:3000/…, so after Google
+    // sign-in the browser was sent to an address it can't reach and the Mac app never got its
+    // token. Same reason the origin above comes from originFrom (see request-origin.ts).
+    const back = new URL(request.url);
+    signInUrl.searchParams.set("callbackUrl", `${originFrom(request)}${back.pathname}${back.search}`);
     return NextResponse.redirect(signInUrl);
   }
 
