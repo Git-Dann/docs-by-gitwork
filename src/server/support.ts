@@ -559,6 +559,11 @@ async function buildAwaitingSummary(
   queues: Record<string, ClientQueueSummary>,
 ): Promise<SupportAwaitingSummary> {
   const withWaiting = Object.entries(queues).filter(([, q]) => q.awaiting > 0);
+  // ⚠️ `total` counts every waiting conversation, including any whose client
+  // the lookup below cannot name. It can therefore exceed the sum of
+  // `clients[].awaiting`, and that is deliberate: the headline is "how many
+  // people are waiting", and dropping one because we could not label it would
+  // understate the queue. `clients` is the actionable subset, not the total.
   const total = withWaiting.reduce((n, [, q]) => n + q.awaiting, 0);
   if (withWaiting.length === 0) return { total: 0, oldestAt: null, clients: [] };
 
