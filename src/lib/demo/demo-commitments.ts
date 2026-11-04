@@ -26,6 +26,16 @@ function row(p: Partial<CommitmentDTO> & Pick<CommitmentDTO, "id" | "title">): C
     reason: null,
     snoozedUntil: null,
     doneAt: null,
+    listId: null,
+    tags: [],
+    priority: 0,
+    startAt: null,
+    evening: false,
+    someday: false,
+    remindAt: null,
+    recurrence: null,
+    checklist: [],
+    orderKey: 0,
     createdAt: iso(-3, 9),
     updatedAt: iso(-1, 9),
     ...p,
@@ -136,7 +146,7 @@ export function resolveDemoCommitments(
       store.unshift(c);
       return { commitment: c };
     }
-    const res: CommitmentsResponse = { commitments: store, settings };
+    const res: CommitmentsResponse = { commitments: store, settings, lists: [] };
     return res;
   }
   const id = pathname.split("/").pop() ?? "";
@@ -167,5 +177,5 @@ export function resolveDemoCommitments(
     };
   }
   store[i] = next;
-  return { commitment: next };
+  return { commitment: next, next: null };
 }

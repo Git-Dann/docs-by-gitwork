@@ -20,7 +20,7 @@
  */
 
 import { google, type gmail_v1 } from "googleapis";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { canGenerateAi, canSeeAllClients } from "@/server/auth/effective-user";
@@ -31,9 +31,19 @@ import { assignedClientIds } from "@/server/tasks";
 import { resolveAiConfig, completeText, parseJsonObject } from "@/server/ai-provider";
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { cleanSlackText } from "@/lib/crm/signals";
+import { randomUUID } from "node:crypto";
 import {
   actionItemIsMine,
+  applyWhen,
   clipText,
+  isPriority,
+  isValidRecurrence,
+  nextOccurrenceFields,
+  normaliseChecklist,
+  normaliseTags,
+  readChecklist,
+  RECURRENCE_ERROR,
+  MAX_REORDER_IDS,
   followUpFromEvent,
   normaliseExtraction,
   stripQuotedEmail,
@@ -44,6 +54,7 @@ import {
   SUGGESTION_TTL_DAYS,
   TITLE_MAX,
   type CalendarEventLike,
+  type CommitmentPriority,
   type CommitmentSource,
   type CommitmentState,
   type ExtractionMessage,
@@ -103,6 +114,16 @@ function toDTO(row: CommitmentRow): CommitmentDTO {
     reason: row.reason,
     snoozedUntil: row.snoozedUntil?.toISOString() ?? null,
     doneAt: row.doneAt?.toISOString() ?? null,
+    listId: row.listId,
+    tags: row.tags,
+    priority: (isPriority(row.priority) ? row.priority : 0) as CommitmentPriority,
+    startAt: row.startAt?.toISOString() ?? null,
+    evening: row.evening,
+    someday: row.someday,
+    remindAt: row.remindAt?.toISOString() ?? null,
+    recurrence: row.recurrence,
+    checklist: readChecklist(row.checklist),
+    orderKey: row.orderKey,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -127,7 +148,7 @@ export async function listCommitments(user: EffectiveUser): Promise<CommitmentDT
         { state: { in: ["done", "dismissed"] }, updatedAt: { gte: since } },
       ],
     },
-    orderBy: [{ createdAt: "desc" }],
+    orderBy: [{ orderKey: "asc" }, { createdAt: "desc" }],
     take: 500,
   });
   return rows.map(toDTO);
@@ -139,7 +160,21 @@ async function findMine(user: EffectiveUser, id: string): Promise<CommitmentRow>
   return row;
 }
 
-export interface CommitmentCreateInput {
+/** To-do fields shared by create and PATCH. `null` clears (PATCH); absent leaves. */
+export interface CommitmentTodoInput {
+  listId?: string | null;
+  tags?: string[] | null;
+  priority?: number;
+  startAt?: string | null;
+  evening?: boolean;
+  someday?: boolean;
+  remindAt?: string | null;
+  recurrence?: string | null;
+  checklist?: Array<{ id?: string | null; text: string; done?: boolean }> | null;
+  orderKey?: number;
+}
+
+export interface CommitmentCreateInput extends CommitmentTodoInput {
   title: string;
   notes?: string | null;
   dueAt?: string | null;
@@ -153,9 +188,86 @@ function parseOptionalDate(input: string | null | undefined): Date | null {
   return d;
 }
 
+function unwrap<T>(result: { value: T } | { error: string }): T {
+  if ("error" in result) throw new CommitmentError(result.error);
+  return result.value;
+}
+
+/** A list id must be one of the caller's own lists that isn't archived. */
+async function assertOwnList(user: EffectiveUser, listId: string): Promise<void> {
+  const list = await prisma.commitmentList.findFirst({
+    where: { id: listId, ...mine(user), archivedAt: null },
+    select: { id: true },
+  });
+  if (!list) throw new CommitmentError("That list isn't one of yours.");
+}
+
+type TodoData = {
+  listId?: string | null;
+  tags?: string[];
+  priority?: number;
+  startAt?: Date | null;
+  evening?: boolean;
+  someday?: boolean;
+  remindAt?: Date | null;
+  recurrence?: string | null;
+  checklist?: Prisma.InputJsonValue | typeof Prisma.DbNull;
+  orderKey?: number;
+};
+
+/**
+ * Validates and cleans the to-do fields of a create or PATCH. `current` is the row being edited
+ * (or the defaults, for a create), so the someday/start-date rule sees the result, not the patch.
+ */
+async function todoData(
+  user: EffectiveUser,
+  input: CommitmentTodoInput,
+  current: { startAt: Date | null; evening: boolean; someday: boolean },
+): Promise<TodoData> {
+  const data: TodoData = {};
+  if (input.listId !== undefined) {
+    if (input.listId) await assertOwnList(user, input.listId);
+    data.listId = input.listId || null;
+  }
+  if (input.tags !== undefined) data.tags = unwrap(normaliseTags(input.tags ?? []));
+  if (input.priority !== undefined) {
+    if (!isPriority(input.priority)) throw new CommitmentError("Priority is 0 (none) to 3 (high).");
+    data.priority = input.priority;
+  }
+  if (input.recurrence !== undefined) {
+    const rule = input.recurrence?.trim() || null;
+    if (rule && !isValidRecurrence(rule)) throw new CommitmentError(RECURRENCE_ERROR);
+    data.recurrence = rule;
+  }
+  if (input.checklist !== undefined) {
+    data.checklist = input.checklist
+      ? (unwrap(normaliseChecklist(input.checklist, randomUUID)) as unknown as Prisma.InputJsonValue)
+      : Prisma.DbNull;
+  }
+  if (input.remindAt !== undefined) data.remindAt = parseOptionalDate(input.remindAt);
+  if (input.orderKey !== undefined) {
+    if (!Number.isFinite(input.orderKey)) throw new CommitmentError("That order isn't a valid number.");
+    data.orderKey = input.orderKey;
+  }
+  if (input.startAt !== undefined || input.evening !== undefined || input.someday !== undefined) {
+    const when = unwrap(
+      applyWhen(current, {
+        startAt: input.startAt === undefined ? undefined : parseOptionalDate(input.startAt),
+        evening: input.evening,
+        someday: input.someday,
+      }),
+    );
+    data.startAt = when.startAt;
+    data.evening = when.evening;
+    data.someday = when.someday;
+  }
+  return data;
+}
+
 export async function createCommitment(user: EffectiveUser, input: CommitmentCreateInput): Promise<CommitmentDTO> {
   const title = clipText(input.title, TITLE_MAX);
   if (!title) throw new CommitmentError("A commitment needs a title.");
+  const todo = await todoData(user, input, { startAt: null, evening: false, someday: false });
   const row = await prisma.commitment.create({
     data: {
       ...mine(user),
@@ -165,12 +277,13 @@ export async function createCommitment(user: EffectiveUser, input: CommitmentCre
       counterpart: input.counterpart?.trim() ? clipText(input.counterpart, 80) : null,
       state: "open",
       source: "manual",
+      ...todo,
     },
   });
   return toDTO(row);
 }
 
-export interface CommitmentPatchInput {
+export interface CommitmentPatchInput extends CommitmentTodoInput {
   title?: string;
   notes?: string | null;
   dueAt?: string | null;
@@ -179,13 +292,19 @@ export interface CommitmentPatchInput {
   snoozedUntil?: string | null;
 }
 
+export interface CommitmentUpdateResult {
+  commitment: CommitmentDTO;
+  /** The next occurrence, when completing a repeating to-do created one. */
+  next: CommitmentDTO | null;
+}
+
 export async function updateCommitment(
   user: EffectiveUser,
   id: string,
   patch: CommitmentPatchInput,
-): Promise<CommitmentDTO> {
+): Promise<CommitmentUpdateResult> {
   const row = await findMine(user, id);
-  const data: Prisma.CommitmentUpdateInput = {};
+  const data: Prisma.CommitmentUpdateInput = { ...(await todoData(user, patch, row)) };
   if (patch.title !== undefined) {
     const title = clipText(patch.title, TITLE_MAX);
     if (!title) throw new CommitmentError("A commitment needs a title.");
@@ -212,8 +331,80 @@ export async function updateCommitment(
     data.doneAt = next.doneAt;
     data.snoozedUntil = next.snoozedUntil;
   }
-  const updated = await prisma.commitment.update({ where: { id: row.id }, data });
-  return toDTO(updated);
+  const plan = repeatPlan(row, data);
+  if (!plan) {
+    const updated = await prisma.commitment.update({ where: { id: row.id }, data });
+    return { commitment: toDTO(updated), next: null };
+  }
+  // Completing a repeating to-do: this one stops repeating (so reopening it can't make a
+  // second copy) and the next one is created in the same transaction.
+  const [updated, created] = await prisma.$transaction([
+    prisma.commitment.update({ where: { id: row.id }, data: { ...data, recurrence: null } }),
+    prisma.commitment.create({ data: plan }),
+  ]);
+  return { commitment: toDTO(updated), next: toDTO(created) };
+}
+
+/**
+ * When this PATCH moves a repeating to-do to done, the next occurrence to create. Reads the row
+ * as it will be after the patch, so a title or repeat changed in the same request carries over.
+ * Exported for tests.
+ */
+export function repeatPlan(
+  row: CommitmentRow,
+  data: Prisma.CommitmentUpdateInput,
+  now = new Date(),
+): Prisma.CommitmentUncheckedCreateInput | null {
+  if (data.state !== "done" || row.state === "done") return null;
+  const patch = data as Record<string, unknown>;
+  const after = <K extends keyof CommitmentRow>(key: K): CommitmentRow[K] =>
+    (key in patch ? patch[key as string] : row[key]) as CommitmentRow[K];
+  const rule = after("recurrence");
+  if (!rule || !isValidRecurrence(rule)) return null;
+  const checklistValue = "checklist" in patch ? (patch.checklist === Prisma.DbNull ? null : patch.checklist) : row.checklist;
+  const next = nextOccurrenceFields(
+    rule,
+    {
+      dueAt: after("dueAt"),
+      startAt: after("startAt"),
+      remindAt: after("remindAt"),
+      checklist: readChecklist(checklistValue),
+    },
+    now,
+  );
+  return {
+    workspaceId: row.workspaceId,
+    userId: row.userId,
+    title: after("title"),
+    notes: after("notes"),
+    counterpart: after("counterpart"),
+    listId: after("listId"),
+    tags: after("tags"),
+    priority: after("priority"),
+    evening: after("evening"),
+    recurrence: rule,
+    checklist: next.checklist as unknown as Prisma.InputJsonValue,
+    orderKey: after("orderKey"),
+    dueAt: next.dueAt,
+    startAt: next.startAt,
+    remindAt: next.remindAt,
+    state: "open",
+    source: "manual",
+  };
+}
+
+/** Sets orderKey = position for each id, in one transaction. Every id must be the caller's own. */
+export async function reorderCommitments(user: EffectiveUser, ids: string[]): Promise<void> {
+  if (ids.length > MAX_REORDER_IDS) {
+    throw new CommitmentError(`At most ${MAX_REORDER_IDS} to-dos can be reordered at once.`);
+  }
+  if (new Set(ids).size !== ids.length) throw new CommitmentError("Each to-do can appear in the order once.");
+  if (ids.length === 0) return;
+  const owned = await prisma.commitment.count({ where: { id: { in: ids }, ...mine(user) } });
+  if (owned !== ids.length) throw new CommitmentError("Some of those to-dos aren't yours.", 404);
+  await prisma.$transaction(
+    ids.map((id, index) => prisma.commitment.updateMany({ where: { id, ...mine(user) }, data: { orderKey: index } })),
+  );
 }
 
 /** Only things the person typed can be deleted. A suggestion is dismissed instead, so the

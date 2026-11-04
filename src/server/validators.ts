@@ -12,6 +12,14 @@ import { ESTIMATE_LIMITS } from "@/lib/wiki-estimates";
 import { COMPARISON_LIMITS as CMP } from "@/lib/wiki-comparisons";
 import { COLUMN_TYPES, SHEET_LIMITS as SHT } from "@/lib/wiki-sheets";
 import { normaliseGa4PropertyId, normaliseSearchConsoleSite } from "@/lib/ai-search";
+import {
+  LIST_AREA_MAX,
+  LIST_COLORS,
+  LIST_NAME_MAX,
+  LIST_SYMBOL_MAX,
+  LIST_SYMBOL_RE,
+  MAX_REORDER_IDS,
+} from "@/lib/commitments";
 import { AI_ANSWER_LIMITS, AI_ENGINE_IDS, normaliseBrandName, normaliseDomain } from "@/lib/ai-answers";
 import type { SheetColumnType } from "@/types/wiki-sheets";
 
@@ -2556,11 +2564,30 @@ export const aiAnswersConfigSchema = z
 
 // ── Commitments (Backstage → Commitments, and the Mac app) ──────────────────
 const commitmentDate = z.string().trim().max(40).nullable().optional();
+/** To-do fields (Foundry for Mac). Shapes only: limits and cleaning are in `@/lib/commitments`,
+ *  so the errors read as sentences. `null` clears a field on PATCH; absent leaves it. */
+const commitmentTodoFields = {
+  listId: z.string().trim().min(1).max(64).nullable().optional(),
+  tags: z.array(z.string().max(200)).max(200).nullable().optional(),
+  priority: z.number().int().min(0, "Priority is 0 to 3.").max(3, "Priority is 0 to 3.").optional(),
+  startAt: commitmentDate,
+  evening: z.boolean().optional(),
+  someday: z.boolean().optional(),
+  remindAt: commitmentDate,
+  recurrence: z.string().trim().max(40).nullable().optional(),
+  checklist: z
+    .array(z.object({ id: z.string().max(200).nullable().optional(), text: z.string().max(2000), done: z.boolean().optional() }))
+    .max(1000)
+    .nullable()
+    .optional(),
+  orderKey: z.number().refine(Number.isFinite, "That number isn't valid.").optional(),
+};
 export const commitmentCreateSchema = z.object({
   title: z.string().trim().min(1, "A commitment needs a title").max(200),
   notes: z.string().max(4000).nullable().optional(),
   dueAt: commitmentDate,
   counterpart: z.string().trim().max(120).nullable().optional(),
+  ...commitmentTodoFields,
 });
 export const commitmentUpdateSchema = z
   .object({
@@ -2570,7 +2597,30 @@ export const commitmentUpdateSchema = z
     counterpart: z.string().trim().max(120).nullable().optional(),
     state: z.enum(["suggested", "open", "done", "dismissed"]).optional(),
     snoozedUntil: commitmentDate,
+    ...commitmentTodoFields,
   })
+  .strict();
+const finiteNumber = z.number().refine(Number.isFinite, "That number isn't valid.");
+const commitmentListFields = {
+  color: z.enum(LIST_COLORS).nullable().optional(),
+  symbol: z
+    .string()
+    .trim()
+    .max(LIST_SYMBOL_MAX)
+    .regex(LIST_SYMBOL_RE, "A list symbol is an SF Symbol name: lowercase letters, digits and dots.")
+    .nullable()
+    .optional(),
+  area: z.string().trim().max(LIST_AREA_MAX).nullable().optional(),
+  orderKey: finiteNumber.optional(),
+};
+export const commitmentListCreateSchema = z
+  .object({ name: z.string().trim().min(1, "A list needs a name").max(LIST_NAME_MAX), ...commitmentListFields })
+  .strict();
+export const commitmentListUpdateSchema = z
+  .object({ name: z.string().trim().min(1, "A list needs a name").max(LIST_NAME_MAX).optional(), ...commitmentListFields })
+  .strict();
+export const commitmentReorderSchema = z
+  .object({ ids: z.array(z.string().trim().min(1).max(64)).max(MAX_REORDER_IDS, `At most ${MAX_REORDER_IDS} to-dos can be reordered at once.`) })
   .strict();
 export const commitmentSettingsSchema = z
   .object({

@@ -5809,7 +5809,10 @@ export async function updateCommitment(
     state: import("@/lib/commitments").CommitmentState;
     snoozedUntil: string | null;
   }>,
-): Promise<{ commitment: import("@/types/commitments").CommitmentDTO }> {
+): Promise<{
+  commitment: import("@/types/commitments").CommitmentDTO;
+  next: import("@/types/commitments").CommitmentDTO | null;
+}> {
   return apiFetch(`/api/backstage/commitments/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
