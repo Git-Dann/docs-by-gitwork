@@ -9975,3 +9975,22 @@ Dan: "if they are back up within maybe 5 mins, don't ping Slack". Rules in
 - **Shorter posts.** Only the services that aren't fine are listed, then one line —
   "4 other services OK", or "All 5 services are OK" on a recovery — instead of a green tick per
   service.
+
+## 119. Recent Changes (November 2026) — The free scan's score errs low
+
+StayPay's free scan said **93**; the full scan said **83**. Its homepage is drawn by
+JavaScript, so the free scan (no browser) could judge only 69% of what it set out to check,
+and Pulse leaves unjudged checks out of the score. So the score went UP the less it saw, and
+the lead arrived thinking they were nearly perfect. Dan: "err on the side of a lower score".
+
+- **`freeScanScore`** (`src/server/pulse-lite/free-score.ts`): every check the free scan
+  couldn't judge gets **half marks**, halfway between the score from what it saw and the
+  breakdown's `lowerBound` (as if everything unseen had failed). A scan that saw everything
+  is unchanged. StayPay's shape (93 at 69%) comes out at 79, under the full scan's 83.
+- Under **70% coverage** (`PROVISIONAL_BELOW`, `src/lib/pulse-free-score.ts`) the score is
+  labelled provisional with one sentence why, on the widget and in our lead email.
+- Used by: the stored `PulseLiteScan.healthScore` (so the lead and the leads list carry it),
+  the widget's API, the public report and our lead email. The anonymous benchmark corpus
+  still records the score from what it saw, so it stays comparable with full scans.
+- **The visitor's own report email is unchanged**: it carries the FULL scan's score, which
+  loads the page and matches the PDF it links to.

@@ -1,8 +1,8 @@
+import { freeScanScore } from "@/server/pulse-lite/free-score";
 import { NextRequest } from "next/server";
 import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { summarise, triage, type PublicScanView } from "@/server/pulse-lite/public-scan";
-import { computeScoreBreakdown } from "@/server/pulse-checks/score-breakdown";
 import type { PulseScanCheckInput } from "@/types/pulse";
 import { getPulseEmbedWorkspaceConfig } from "@/server/pulse-embed-workspace";
 import { freeKeysFor } from "@/lib/pulse-free-tier";
@@ -39,7 +39,8 @@ export const dynamic = "force-dynamic";
  * That never touches the score — only the list.
  *
  * Now there is ONE number: `computeScoreBreakdown` over the full scan, the same
- * function the internal report, the badge and Provenance all use.
+ * function the internal report, the badge and Provenance all use — shown cautiously:
+ * what the free scan couldn't judge counts as half marks (free-score.ts, Nov 2026).
  */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -66,15 +67,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     // Same formula as every other surface. While a scan is still streaming its
     // first wave `checks` can be empty — fall back to the persisted score rather
     // than reporting a confident 0.
-    const healthScore = checks.length > 0
-      ? computeScoreBreakdown(checks).finalScore
-      : lite.healthScore;
+    // The FREE scan's score: anything it couldn't judge counts as half marks, so a site it
+    // could barely see doesn't score higher for it (free-score.ts).
+    const free = checks.length > 0 ? freeScanScore(checks) : null;
+    const healthScore = free ? free.score : lite.healthScore;
 
     const view: PublicScanView = {
       id: lite.id,
       status: lite.status,
       targetUrl: lite.targetUrl,
       healthScore,
+      scoreProvisional: free?.provisional ?? false,
+      scoreCoverage: free?.coverage ?? null,
       techStack: (lite.techStack as string[] | null) ?? [],
       totalChecks: checks.length,
       pass,
