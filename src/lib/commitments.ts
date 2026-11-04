@@ -196,6 +196,8 @@ export interface CalendarEventLike {
   end?: { dateTime?: string | null; date?: string | null } | null;
   attendees?: CalendarAttendee[] | null;
   htmlLink?: string | null;
+  /** Set on every occurrence of a repeating event. */
+  recurringEventId?: string | null;
 }
 
 export interface FollowUpSuggestion {
@@ -216,9 +218,17 @@ function domainOf(email: string): string {
  */
 export function followUpFromEvent(
   event: CalendarEventLike,
-  opts: { userEmail: string; internalDomains: ReadonlyArray<string>; now: Date },
+  opts: {
+    userEmail: string;
+    internalDomains: ReadonlyArray<string>;
+    now: Date;
+    /** People who are on our side whatever their address (teammates and developers on gmail.com). */
+    internalEmails?: ReadonlySet<string>;
+  },
 ): FollowUpSuggestion | null {
   if (event.status === "cancelled") return null;
+  // A stand-up or a weekly call isn't something you follow up after each time.
+  if (event.recurringEventId) return null;
   const endIso = event.end?.dateTime;
   if (!endIso || !event.start?.dateTime) return null; // all-day events have no time
   const endedAt = new Date(endIso);
@@ -240,6 +250,7 @@ export function followUpFromEvent(
     if (!email || a.self || a.resource) return false;
     if (email.endsWith("calendar.google.com")) return false;
     if (a.responseStatus === "declined") return false;
+    if (opts.internalEmails?.has(email)) return false;
     return !internal.has(domainOf(email));
   });
   if (external.length === 0) return null;
@@ -255,6 +266,40 @@ export function followUpFromEvent(
     dueAt: addWorkingDays(endedAt, FOLLOW_UP_DUE_WORKING_DAYS),
     endedAt,
   };
+}
+
+// ── Which suggestions are worth showing ─────────────────────────────────────
+
+/** New suggestions saved per person per day, at most. More than this and nobody reads them. */
+export const MAX_SUGGESTIONS_PER_DAY = 5;
+/** A suggestion nobody acted on is let go after this long. */
+export const SUGGESTION_TTL_DAYS = 7;
+
+function normaliseName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9@.\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Whether a meeting action item's free-text owner ("Dan", "Dan Lindsay", "dan@gitwork.co.uk",
+ * "Dan and Harry") is this person. A first name only counts when it stands as a whole word,
+ * so "Dan" never matches "Daniela". No owner means nobody was named, which is not "me".
+ */
+export function actionItemIsMine(owner: string | null | undefined, me: { email: string | null; name: string | null }): boolean {
+  if (!owner?.trim()) return false;
+  const o = normaliseName(owner);
+  if (me.email && o.includes(me.email.toLowerCase())) return true;
+  const name = me.name ? normaliseName(me.name) : "";
+  if (!name) return false;
+  const words = ` ${o} `;
+  if (words.includes(` ${name} `)) return true;
+  const first = name.split(" ")[0];
+  return first.length >= 2 && words.includes(` ${first} `);
 }
 
 // ── State changes ────────────────────────────────────────────────────────────
