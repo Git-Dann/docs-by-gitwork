@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeftIcon, EyeIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/format";
-import { EMPLOYMENT_TYPE_LABEL, isEmploymentType, type StaffPerson } from "@/lib/staff";
+import { EMPLOYMENT_TYPE_LABEL, GITWORK_EMPLOYMENT_TYPES, isEmploymentType, type StaffPerson } from "@/lib/staff";
 import {
   EMPTY_SENSITIVE,
   HR_ACCESS_LABEL,
@@ -72,6 +72,11 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
   const [error, setError] = useState<string | null>(null);
   const suppliers = useSuppliers(editing && profile.access.editEmployment);
   const save = useUpdateEmployment(profile.recordId);
+  // "Supplied by" is the partner company a contractor comes through. Gitwork's own employees
+  // and directors aren't supplied by anyone, so it's hidden for them unless one is already set.
+  const employedByGitwork = (GITWORK_EMPLOYMENT_TYPES as readonly string[]).includes(profile.employmentType ?? "");
+  const showSupplier = !employedByGitwork || Boolean(e.supplierId);
+  const supplierOptions = suppliers.data?.suppliers ?? [];
 
   const start = () => {
     setSupplierId(e.supplierId ?? "");
@@ -109,17 +114,31 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
       {editing ? (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className={cn(label, "sm:col-span-2")}>
-              Supplied by
-              <select className="app-select mt-1 w-full" value={supplierId} onChange={(ev) => setSupplierId(ev.target.value)}>
-                <option value="">Not supplied (engaged directly)</option>
-                {(suppliers.data?.suppliers ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!showSupplier ? null : suppliers.isSuccess && supplierOptions.length === 0 && !supplierId ? (
+              // A one-option dropdown that can only say "not supplied" is no use to anyone.
+              <div className={cn(label, "sm:col-span-2")}>
+                Supplied by
+                <p className="mt-1 text-[13px] font-normal text-[var(--text-3)]">
+                  The partner company they come through, if any. No suppliers yet:{" "}
+                  <Link href="/app/staff/suppliers" className="text-[var(--brand-600)] hover:underline">
+                    add one
+                  </Link>
+                  .
+                </p>
+              </div>
+            ) : (
+              <label className={cn(label, "sm:col-span-2")}>
+                Supplied by
+                <select className="app-select mt-1 w-full" value={supplierId} onChange={(ev) => setSupplierId(ev.target.value)}>
+                  <option value="">Not supplied (engaged directly)</option>
+                  {supplierOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className={label}>
               Contract end or leaving date
               <DatePicker className="mt-1 w-full" value={endDate} onChange={setEndDate} />
@@ -153,9 +172,11 @@ function EmploymentCard({ profile, number, className }: { profile: StaffProfile;
         </div>
       ) : (
         <dl className="grid gap-4 sm:grid-cols-2">
-            <Field label="Supplied by" className="sm:col-span-2">
-              {e.supplierName ?? "Engaged directly"}
-            </Field>
+            {showSupplier ? (
+              <Field label="Supplied by" className="sm:col-span-2">
+                {e.supplierName ?? "Engaged directly"}
+              </Field>
+            ) : null}
             <Field label="Contract end">
               <DateWithAttention value={e.endDate} />
             </Field>
