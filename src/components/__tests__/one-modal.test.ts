@@ -123,6 +123,14 @@ describe("dialogs — one primitive, no re-rolls", () => {
     expect(src).toContain("labelledById");
   });
 
+  it("⚠️ the fixed layer carries no margin, so a space-y parent can't shorten the backdrop", () => {
+    // Tailwind v4's space-y gives every child but the last a bottom margin. The leave form is
+    // rendered inside one, so its backdrop stopped 24px short and the On Your Desk bar showed
+    // through undimmed (Nov 2026).
+    const src = read(join(process.cwd(), "src/components/ui/modal.tsx"));
+    expect(src).toMatch(/className="fixed inset-0 z-50 m-0"/);
+  });
+
   it("a caller's action row can be PINNED below the scroll region", () => {
     // Without the `footer` prop an action row is just another child, so it sits
     // inside the scroller: it floats wherever the content happens to end, leaving
