@@ -6162,11 +6162,49 @@ model Commitment {
   reason      String?
   snoozedUntil DateTime?
   doneAt      DateTime?
+  /// To-do fields (Foundry for Mac). Loose id of one of the owner's CommitmentLists.
+  listId      String?
+  /// Lowercased, no '#', deduped, at most 20.
+  tags        String[]  @default([])
+  /// 0 none · 1 low · 2 medium · 3 high
+  priority    Int       @default(0)
+  /// The day it's planned for ("when"). Excludes `someday`.
+  startAt     DateTime?
+  /// "This Evening".
+  evening     Boolean   @default(false)
+  someday     Boolean   @default(false)
+  remindAt    DateTime?
+  /// "daily" | "weekdays" | "weekly" | "fortnightly" | "monthly" | "yearly" | "every:N:day|week|month"
+  recurrence  String?
+  /// [{ id, text, done }], at most 100.
+  checklist   Json?
+  orderKey    Float     @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([userId, workspaceId, state])
   @@index([userId, externalId])
+  @@index([userId, listId])
+}
+
+/// A person's own to-do list (Foundry for Mac). Private to its owner. Deleting one archives it.
+model CommitmentList {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  name        String
+  /// red orange yellow green mint teal cyan blue indigo purple pink brown gray
+  color       String?
+  /// An SF Symbol name.
+  symbol      String?
+  /// Free-text grouping ("Work", "Home").
+  area        String?
+  orderKey    Float     @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, workspaceId])
 }
 
 /// One row per person per workspace: which sources they let Commitments read, and how the
