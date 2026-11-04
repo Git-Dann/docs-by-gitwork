@@ -77,6 +77,16 @@ and a follow-up after every external meeting, stand-ups included. Now:
   longer offers are let go on the next successful read of that source. Let-go means `dismissed`, so
   the same item is never suggested again.
 
+## Mail for Foundry for Mac, and remembering "Not mine" (November 2026)
+
+- `GET /api/backstage/mail/inbox?q=` returns the signed-in person's own Gmail: unread, primary,
+  this week by default (`DEFAULT_INBOX_QUERY` in `src/lib/mail-inbox.ts`). It accepts the mobile
+  JWT, refuses "view as", reads headers and Gmail's snippet only, and stores nothing. Each message
+  carries a `link` that opens the thread in the right Google account.
+- Pressing **Not mine** on a calendar follow-up now stops follow-ups with that person
+  (`declinedFollowUps`). Suggestions Foundry lets go of itself are marked `LET_GO_REASON` so they
+  never count as a person's choice; dismissals from before the marker existed are ignored.
+
 ## To-do fields, lists, order and repeating (November 2026)
 
 Added so Foundry for Mac can be a full task tracker. All additive; existing rows read as
@@ -129,4 +139,3 @@ transaction:
   none set, `dueAt` is the next occurrence from now, at the current time of day.
 
 The `PATCH` response is `{ commitment, next }`, where `next` is that new to-do or `null`.
-
