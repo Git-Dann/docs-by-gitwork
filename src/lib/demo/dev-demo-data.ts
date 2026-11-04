@@ -57,6 +57,7 @@ import type { WikiMonitorHistoryPoint } from "@/server/wiki-monitors";
 import type { PulseScanDiff, ScanDiffItem } from "@/types/pulse";
 import { DEFAULT_NOTICE_CONTENT } from "@/lib/devsignal/processing-notice";
 import { resolveDemoPlatform } from "@/lib/demo/demo-platform";
+import { resolveDemoCommitments } from "@/lib/demo/demo-commitments";
 import { resolveDemoCandidate, resolveDemoStaff, resolveDemoTeamArchive } from "@/lib/demo/demo-staff";
 
 // ─── Demo identity ────────────────────────────────────────────────────────────
@@ -4452,6 +4453,8 @@ export function resolveDemoApi(
   }
 
   // Backstage — calendar only.
+  const commitments = resolveDemoCommitments(pathname, init);
+  if (commitments !== undefined) return commitments;
   if (pathname === "/api/backstage/calendar") return demoCalendarMonth;
   if (pathname === "/api/backstage/calendar/connections") return { selfConnected: false, members: [] };
   if (pathname === "/api/backstage/calendar/team-events") return { events: [] };

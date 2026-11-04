@@ -2551,3 +2551,30 @@ export const aiAnswersConfigSchema = z
       if (!normaliseDomain(d)) ctx.addIssue({ code: "custom", path: ["domains", i], message: `"${d}" isn't a domain. Use the form gitwork.co.uk.` });
     });
   });
+
+// ── Commitments (Backstage → Commitments, and the Mac app) ──────────────────
+const commitmentDate = z.string().trim().max(40).nullable().optional();
+export const commitmentCreateSchema = z.object({
+  title: z.string().trim().min(1, "A commitment needs a title").max(200),
+  notes: z.string().max(4000).nullable().optional(),
+  dueAt: commitmentDate,
+  counterpart: z.string().trim().max(120).nullable().optional(),
+});
+export const commitmentUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    notes: z.string().max(4000).nullable().optional(),
+    dueAt: commitmentDate,
+    counterpart: z.string().trim().max(120).nullable().optional(),
+    state: z.enum(["suggested", "open", "done", "dismissed"]).optional(),
+    snoozedUntil: commitmentDate,
+  })
+  .strict();
+export const commitmentSettingsSchema = z
+  .object({
+    gmailEnabled: z.boolean().optional(),
+    slackEnabled: z.boolean().optional(),
+    meetingsEnabled: z.boolean().optional(),
+    calendarEnabled: z.boolean().optional(),
+  })
+  .strict();
