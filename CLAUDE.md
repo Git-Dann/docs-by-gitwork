@@ -9918,3 +9918,16 @@ revoke, so her sidebar is Staff and Backstage.
   for someone who isn't an Admin; Admins see the roster as before. Follows "view as".
 - Pulse monitor alert emails now go to Admins (`listAdminEmails`), not the Backstage approver
   list they had borrowed, which would have emailed a leave approver too.
+
+## 116. Recent Changes (November 2026) — A scan with no AI write-up says so plainly, once
+
+Dan, on a scan whose AI call failed: the Summary carried a grey "AI analysis not available" box
+printing Anthropic's raw JSON (`400 {"type":"error"… credit balance is too low…}`). Now:
+- **Summary shows nothing** for a missing AI write-up. The checks, score and gate don't use AI.
+- **The Plan tab is hidden** when there is no write-up: every part of it (opportunities, roadmap,
+  stack, estimate) is AI output. A link to one of its parts opens Summary (`activeTab` in
+  `use-scan-view.tsx`).
+- **Raw provider errors are never shown.** `describeAiError` (`src/lib/ai-error-words.ts`, pure,
+  tested) turns them into one sentence: out of credit, key rejected, not set up, rate limited,
+  no answer, or a generic error. The Technical tab keeps its Regenerate banner with that sentence
+  (the raw text is in its tooltip), and the agent panel uses it too.

@@ -6,7 +6,6 @@ import { ReleaseGateBanner } from "@/components/pulse/release-gate-banner";
 import { PlainScanBox } from "@/components/pulse/code-health-sections";
 import { cn } from "@/lib/format";
 import type { PulseScanRecord } from "@/types/pulse";
-import { AiUnavailable } from "./scan/score-explainer";
 import { CompetitorsTab } from "./scan/competitors-tab";
 import { useScanView } from "./scan/use-scan-view";
 import { renderScanToolbar } from "./scan/scan-toolbar";
@@ -45,9 +44,6 @@ export function PulseScanResults({ scan }: { scan: PulseScanRecord }) {
           dated={heroDated}
         />
       </div>
-      {!llm && (
-        <AiUnavailable aiError={scan.aiError} />
-      )}
 
       {/* The decision, above the tabs, so it is read before any of the detail
           that supports it — and on every tab, not just the one it happens to
