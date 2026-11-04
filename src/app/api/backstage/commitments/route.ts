@@ -1,9 +1,10 @@
-// GET  /api/backstage/commitments  → the signed-in person's commitments + their settings
+// GET  /api/backstage/commitments  → the signed-in person's commitments, settings and lists
 // POST /api/backstage/commitments  → add one by hand
 // Used by Backstage → Commitments and by Foundry for Mac (mobile JWT). Private to the caller.
 import { apiOk, fromError } from "@/lib/api-response";
 import { commitmentsUser } from "@/server/commitments-route";
 import { createCommitment, getCommitmentSettings, listCommitments } from "@/server/commitments";
+import { listCommitmentLists } from "@/server/commitment-lists";
 import { commitmentCreateSchema } from "@/server/validators";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +12,12 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const user = await commitmentsUser(req);
-    const [commitments, settings] = await Promise.all([listCommitments(user), getCommitmentSettings(user)]);
-    return apiOk({ commitments, settings });
+    const [commitments, settings, lists] = await Promise.all([
+      listCommitments(user),
+      getCommitmentSettings(user),
+      listCommitmentLists(user),
+    ]);
+    return apiOk({ commitments, settings, lists });
   } catch (e) {
     return fromError(e);
   }

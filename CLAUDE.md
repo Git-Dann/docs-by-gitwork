@@ -9871,6 +9871,10 @@ Slack and meetings), easy to use by hand and intelligent. Full doc: **`docs/comm
 - **Foundry for Mac:** Dan wants it rebuilt (it "looks shit" and isn't on the latest macOS). It
   can't be built in a Linux session, so the rebuild is a separate task for a Mac session. It
   consumes the API above.
+- **To-do fields for the Mac app (Nov 2026):** lists (`CommitmentList`, archived on delete), tags,
+  priority, when/evening/someday, reminders, checklists, `orderKey` + `POST …/reorder`, and repeats
+  (`nextOccurrence`; completing one creates the next in the same transaction, PATCH returns
+  `{ commitment, next }`). Contract in `docs/commitments.md`; the Mac app is written against it.
 
 
 ## 116. Recent Changes (November 2026) — People & office: Staff + Backstage only, for Siân

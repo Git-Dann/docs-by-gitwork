@@ -405,3 +405,227 @@ export function snoozeUntil(preset: "later" | "tomorrow" | "next-week", now: Dat
   d.setUTCDate(d.getUTCDate() + daysToMonday);
   return d;
 }
+
+// ── To-do fields: tags, priority, checklist, when/someday, repeating ─────────
+// Pure rules shared by the server (and the Mac app's contract). Each `normalise*` returns either
+// the cleaned value or `{ error }` with a sentence, which the server turns into a 400.
+
+export const MAX_TAGS = 20;
+export const TAG_MAX = 40;
+export const MAX_CHECKLIST_ITEMS = 100;
+export const CHECKLIST_TEXT_MAX = 200;
+export const CHECKLIST_ID_MAX = 64;
+export const MAX_LISTS_PER_PERSON = 200;
+export const MAX_REORDER_IDS = 500;
+export const COMMITMENT_PRIORITIES = [0, 1, 2, 3] as const;
+export type CommitmentPriority = (typeof COMMITMENT_PRIORITIES)[number];
+
+export const LIST_COLORS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "mint",
+  "teal",
+  "cyan",
+  "blue",
+  "indigo",
+  "purple",
+  "pink",
+  "brown",
+  "gray",
+] as const;
+export type ListColor = (typeof LIST_COLORS)[number];
+/** An SF Symbol name, e.g. "folder.fill". */
+export const LIST_SYMBOL_RE = /^[a-z0-9.]+$/;
+export const LIST_SYMBOL_MAX = 60;
+export const LIST_AREA_MAX = 60;
+export const LIST_NAME_MAX = 80;
+
+type Result<T> = { value: T } | { error: string };
+
+/** Trimmed, lowercased, leading '#' stripped, deduped (first spelling wins), empties dropped. */
+export function normaliseTags(input: ReadonlyArray<string>): Result<string[]> {
+  const out: string[] = [];
+  for (const raw of input) {
+    const tag = raw.trim().replace(/^#+/, "").trim().toLowerCase();
+    if (!tag) continue;
+    if (tag.length > TAG_MAX) return { error: `A tag can be at most ${TAG_MAX} characters.` };
+    if (!out.includes(tag)) out.push(tag);
+  }
+  if (out.length > MAX_TAGS) return { error: `A to-do can have at most ${MAX_TAGS} tags.` };
+  return { value: out };
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export function normaliseChecklist(
+  input: ReadonlyArray<{ id?: string | null; text: string; done?: boolean | null }>,
+  newId: () => string,
+): Result<ChecklistItem[]> {
+  if (input.length > MAX_CHECKLIST_ITEMS) {
+    return { error: `A checklist can have at most ${MAX_CHECKLIST_ITEMS} items.` };
+  }
+  const seen = new Set<string>();
+  const out: ChecklistItem[] = [];
+  for (const item of input) {
+    const text = item.text.trim();
+    if (!text) return { error: "A checklist item needs some text." };
+    if (text.length > CHECKLIST_TEXT_MAX) {
+      return { error: `A checklist item can be at most ${CHECKLIST_TEXT_MAX} characters.` };
+    }
+    let id = item.id?.trim() || newId();
+    if (id.length > CHECKLIST_ID_MAX) return { error: `A checklist item id can be at most ${CHECKLIST_ID_MAX} characters.` };
+    if (seen.has(id)) id = newId();
+    seen.add(id);
+    out.push({ id, text, done: item.done === true });
+  }
+  return { value: out };
+}
+
+/** Reads a stored checklist defensively: anything malformed is dropped, never thrown. */
+export function readChecklist(stored: unknown): ChecklistItem[] {
+  if (!Array.isArray(stored)) return [];
+  const out: ChecklistItem[] = [];
+  for (const item of stored) {
+    if (!item || typeof item !== "object") continue;
+    const { id, text, done } = item as Record<string, unknown>;
+    if (typeof id !== "string" || typeof text !== "string") continue;
+    out.push({ id, text, done: done === true });
+  }
+  return out;
+}
+
+export function isPriority(n: unknown): n is CommitmentPriority {
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 3;
+}
+
+const FIXED_RULES = ["daily", "weekdays", "weekly", "fortnightly", "monthly", "yearly"] as const;
+const EVERY_RE = /^every:(\d{1,3}):(day|week|month)$/;
+
+/** "daily" · "weekdays" · "weekly" · "fortnightly" · "monthly" · "yearly" · "every:N:day|week|month" (N 1–365). */
+export function isValidRecurrence(rule: string): boolean {
+  if ((FIXED_RULES as readonly string[]).includes(rule)) return true;
+  const m = EVERY_RE.exec(rule);
+  if (!m) return false;
+  const n = Number(m[1]);
+  return n >= 1 && n <= 365;
+}
+
+export const RECURRENCE_ERROR =
+  'A repeat must be "daily", "weekdays", "weekly", "fortnightly", "monthly", "yearly", or "every:N:day", "every:N:week" or "every:N:month" with N from 1 to 365.';
+
+function addUtcDays(d: Date, days: number): Date {
+  return new Date(d.getTime() + days * 86_400_000);
+}
+
+/** Same day-of-month N months on, clamped to the end of a shorter month (31 Jan → 28/29 Feb). Keeps the time. */
+function addUtcMonths(d: Date, months: number): Date {
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + months;
+  const targetYear = y + Math.floor(m / 12);
+  const targetMonth = ((m % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(
+      targetYear,
+      targetMonth,
+      Math.min(d.getUTCDate(), lastDay),
+      d.getUTCHours(),
+      d.getUTCMinutes(),
+      d.getUTCSeconds(),
+      d.getUTCMilliseconds(),
+    ),
+  );
+}
+
+/**
+ * The next time a repeating to-do falls after `from`, keeping its time of day. Days are UTC
+ * calendar days. Throws on a rule `isValidRecurrence` rejects: callers validate first.
+ */
+export function nextOccurrence(rule: string, from: Date): Date {
+  switch (rule) {
+    case "daily":
+      return addUtcDays(from, 1);
+    case "weekdays": {
+      let next = addUtcDays(from, 1);
+      while (next.getUTCDay() === 0 || next.getUTCDay() === 6) next = addUtcDays(next, 1);
+      return next;
+    }
+    case "weekly":
+      return addUtcDays(from, 7);
+    case "fortnightly":
+      return addUtcDays(from, 14);
+    case "monthly":
+      return addUtcMonths(from, 1);
+    case "yearly":
+      return addUtcMonths(from, 12);
+  }
+  const m = EVERY_RE.exec(rule);
+  if (!m || !isValidRecurrence(rule)) throw new Error(`Unknown repeat rule: ${rule}`);
+  const n = Number(m[1]);
+  if (m[2] === "day") return addUtcDays(from, n);
+  if (m[2] === "week") return addUtcDays(from, n * 7);
+  return addUtcMonths(from, n);
+}
+
+export interface WhenFields {
+  startAt: Date | null;
+  evening: boolean;
+  someday: boolean;
+}
+
+/**
+ * Applies a change to when a to-do is planned. Someday and a start date exclude each other:
+ * `someday: true` clears startAt and evening; setting a startAt clears someday. Asking for both
+ * at once is an error rather than a guess.
+ */
+export function applyWhen(
+  current: WhenFields,
+  patch: { startAt?: Date | null; evening?: boolean; someday?: boolean },
+): Result<WhenFields> {
+  if (patch.someday === true && patch.startAt) {
+    return { error: "A to-do can't be both someday and planned for a date." };
+  }
+  if (patch.someday === true && patch.evening === true) {
+    return { error: "A to-do can't be both someday and this evening." };
+  }
+  const next: WhenFields = { ...current };
+  if (patch.startAt !== undefined) next.startAt = patch.startAt;
+  if (patch.evening !== undefined) next.evening = patch.evening;
+  if (patch.someday !== undefined) next.someday = patch.someday;
+  if (patch.someday === true) {
+    next.startAt = null;
+    next.evening = false;
+  } else if (patch.startAt) {
+    next.someday = false;
+  }
+  return { value: next };
+}
+
+export interface RepeatSource {
+  dueAt: Date | null;
+  startAt: Date | null;
+  remindAt: Date | null;
+  checklist: ChecklistItem[];
+}
+
+/**
+ * The dates and checklist of the next occurrence of a repeating to-do just completed. Each date
+ * is moved on from its own old value; when none was set, dueAt is the next occurrence from now.
+ */
+export function nextOccurrenceFields(rule: string, from: RepeatSource, now: Date): RepeatSource {
+  const shift = (d: Date | null) => (d ? nextOccurrence(rule, d) : null);
+  const next: RepeatSource = {
+    dueAt: shift(from.dueAt),
+    startAt: shift(from.startAt),
+    remindAt: shift(from.remindAt),
+    checklist: from.checklist.map((item) => ({ ...item, done: false })),
+  };
+  if (!from.dueAt && !from.startAt && !from.remindAt) next.dueAt = nextOccurrence(rule, now);
+  return next;
+}

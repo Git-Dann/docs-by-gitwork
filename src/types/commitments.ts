@@ -1,4 +1,4 @@
-import type { CommitmentSource, CommitmentState } from "@/lib/commitments";
+import type { ChecklistItem, CommitmentPriority, CommitmentSource, CommitmentState } from "@/lib/commitments";
 
 export interface CommitmentDTO {
   id: string;
@@ -16,6 +16,31 @@ export interface CommitmentDTO {
   reason: string | null;
   snoozedUntil: string | null;
   doneAt: string | null;
+  /** To-do fields (Foundry for Mac). */
+  listId: string | null;
+  tags: string[];
+  /** 0 none · 1 low · 2 medium · 3 high */
+  priority: CommitmentPriority;
+  /** The day it's planned for ("when"). Never set while `someday`. */
+  startAt: string | null;
+  evening: boolean;
+  someday: boolean;
+  remindAt: string | null;
+  recurrence: string | null;
+  checklist: ChecklistItem[];
+  orderKey: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommitmentListDTO {
+  id: string;
+  name: string;
+  color: string | null;
+  symbol: string | null;
+  area: string | null;
+  orderKey: number;
+  archived: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,4 +73,6 @@ export interface CommitmentSyncResult {
 export interface CommitmentsResponse {
   commitments: CommitmentDTO[];
   settings: CommitmentSettingsDTO;
+  /** The person's lists that aren't archived, in order. */
+  lists: CommitmentListDTO[];
 }
