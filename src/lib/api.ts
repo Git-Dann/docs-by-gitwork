@@ -2821,6 +2821,7 @@ export function createBackstageLeave(data: {
   halfDayStart?: boolean;
   halfDayEnd?: boolean;
   reason?: string;
+  countsToAllowance?: boolean;
   userId?: string;
 }): Promise<LeaveRequestDTO> {
   return apiFetch("/api/backstage/leave", {
@@ -2843,6 +2844,7 @@ export function updateBackstageLeave(
     halfDayStart?: boolean;
     halfDayEnd?: boolean;
     reason?: string;
+    countsToAllowance?: boolean;
   },
 ): Promise<LeaveRequestDTO> {
   return apiFetch(`/api/backstage/leave/${id}`, {

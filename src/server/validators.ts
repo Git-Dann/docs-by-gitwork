@@ -922,6 +922,7 @@ export const leaveRequestInputSchema = z
     halfDayStart: z.boolean().optional().default(false),
     halfDayEnd: z.boolean().optional().default(false),
     reason: z.string().max(500).optional(),
+    countsToAllowance: z.boolean().optional(),
     // Admin-only: file a leave request on behalf of another user
     userId: z.string().cuid().optional(),
   })
@@ -1018,6 +1019,7 @@ export const leaveRequestUpdateSchema = z.object({
   halfDayStart: z.boolean().optional(),
   halfDayEnd: z.boolean().optional(),
   reason: z.string().max(500).optional(),
+  countsToAllowance: z.boolean().optional(),
 });
 
 export const approvalDecisionSchema = z.object({

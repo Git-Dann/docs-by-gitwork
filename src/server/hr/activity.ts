@@ -31,6 +31,7 @@ import {
 import { canSetLeaveAllowance, getLeaveAllowance } from "@/server/backstage";
 import { looksAfterDevelopers } from "@/server/backstage-people";
 import { DEVELOPER_RECORD } from "@/server/codeclear-archived";
+import { GITWORK_EMPLOYMENT_TYPES } from "@/lib/staff";
 import { outstandingRequired, STAFF_DOCUMENT_LABEL, type StaffDocumentType } from "@/lib/hr-documents";
 
 const DAY_MS = 86_400_000;
@@ -177,7 +178,8 @@ export async function getHrOverview(
         archivedAt: null,
         NOT: { origin: "EXTERNAL" },
         OR: [{ memberId: null }, { member: ACTIVE_MEMBER }],
-        ...(staffOnly ? { AND: [{ NOT: DEVELOPER_RECORD }] } : {}),
+        // Gitwork's own staff only (isGitworkStaff): Employee or Director, not a developer.
+        ...(staffOnly ? { employmentType: { in: [...GITWORK_EMPLOYMENT_TYPES] }, AND: [{ NOT: DEVELOPER_RECORD }] } : {}),
       },
       select: {
         id: true,

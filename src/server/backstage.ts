@@ -36,12 +36,13 @@ import type {
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import {
   assertLooksAfterLeaveOf,
-  developerUserIds,
+  gitworkUserFilter,
   leaveApproverUserIds,
   staffFactsByUser,
   staffOnlyView,
 } from "@/server/backstage-people";
 import { leaveYearFor } from "@/lib/leave-year";
+import { COUNTS_TO_ALLOWANCE_WHERE, countsToAllowance, defaultCountsToAllowance } from "@/lib/leave-allowance";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ function leaveRowToDTO(row: LeaveRow, countryCode: string): LeaveRequestDTO {
     endDate: toIsoDate(row.endDate),
     halfDayStart: row.halfDayStart,
     halfDayEnd: row.halfDayEnd,
+    countsToAllowance: countsToAllowance(row),
     workingDays: computeWorkingDays(
       row.startDate,
       row.endDate,
@@ -213,7 +215,7 @@ export async function listLeaveRequests(
   const where: Prisma.LeaveRequestWhereInput = { workspaceId: user.workspaceId };
   if (scope === "me") where.userId = user.id;
   // A staff-only approver (People & office) sees Gitwork staff's leave, not developers'.
-  else if (staffOnlyView(user)) where.userId = { notIn: await developerUserIds(user.workspaceId) };
+  else if (staffOnlyView(user)) Object.assign(where, await gitworkUserFilter(user));
   if (opts.status) where.status = opts.status;
 
   const rows = await prisma.leaveRequest.findMany({
@@ -274,6 +276,7 @@ export async function createLeaveRequest(
     halfDayStart?: boolean;
     halfDayEnd?: boolean;
     reason?: string;
+    countsToAllowance?: boolean;
     userId?: string; // admin-only: file on behalf of another user
   },
 ): Promise<LeaveRequestDTO> {
@@ -295,6 +298,7 @@ export async function createLeaveRequest(
       startDate: new Date(input.startDate),
       endDate: new Date(input.endDate),
       halfDayStart: input.halfDayStart ?? false,
+      countsToAllowance: input.countsToAllowance ?? defaultCountsToAllowance(input.type),
       halfDayEnd: input.halfDayEnd ?? false,
       reason: input.reason,
       status: "PENDING",
@@ -370,6 +374,7 @@ export async function updateLeaveRequest(
     halfDayStart?: boolean;
     halfDayEnd?: boolean;
     reason?: string;
+    countsToAllowance?: boolean;
   },
 ): Promise<LeaveRequestDTO> {
   const existing = await prisma.leaveRequest.findFirst({
@@ -393,6 +398,7 @@ export async function updateLeaveRequest(
       ...(input.startDate !== undefined ? { startDate: new Date(input.startDate) } : {}),
       ...(input.endDate !== undefined ? { endDate: new Date(input.endDate) } : {}),
       ...(input.halfDayStart !== undefined ? { halfDayStart: input.halfDayStart } : {}),
+      ...(input.countsToAllowance !== undefined ? { countsToAllowance: input.countsToAllowance } : {}),
       ...(input.halfDayEnd !== undefined ? { halfDayEnd: input.halfDayEnd } : {}),
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
     },
@@ -568,7 +574,8 @@ export async function getLeaveAllowance(
       where: {
         workspaceId: user.workspaceId,
         userId,
-        type: "ANNUAL",
+        // Leave that uses up allowance: Annual by default, or whatever the request says.
+        ...COUNTS_TO_ALLOWANCE_WHERE,
         status: { in: ["APPROVED", "PENDING"] },
         startDate: { lte: yearEnd },
         endDate: { gte: yearStart },
@@ -1059,14 +1066,14 @@ export async function getStaffingAlerts(
   toDate.setUTCDate(toDate.getUTCDate() + windowDays);
 
   // A staff-only approver (People & office) is shown Gitwork staff, not developers.
-  const developers = staffOnlyView(user) ? await developerUserIds(user.workspaceId) : [];
+  const onlyGitwork = staffOnlyView(user) ? await gitworkUserFilter(user) : {};
   const [members, approvedLeave] = await Promise.all([
     prisma.workspaceMember.findMany({
       where: {
         ...ACTIVE_MEMBER,
         workspaceId: user.workspaceId,
         user: seedAccountUserWhere(),
-        ...(developers.length ? { userId: { notIn: developers } } : {}),
+        ...onlyGitwork,
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
@@ -1076,7 +1083,7 @@ export async function getStaffingAlerts(
         status: "APPROVED",
         startDate: { lte: toDate },
         endDate: { gte: fromDate },
-        ...(developers.length ? { userId: { notIn: developers } } : {}),
+        ...onlyGitwork,
       },
       include: { user: { select: { id: true, name: true } } },
     }),
