@@ -27,6 +27,7 @@ import { AGENCY_CLIENT_SLUG } from "@/lib/agency-client";
 import { StatusDot, type StatusDotTone } from "@/components/ui/motion/status-dot";
 import { FadeIn } from "@/components/ui/motion/fade-in";
 import { SkeletonCards } from "@/components/ui/motion/skeleton";
+import { environmentLabel, environmentShort, isClientVisibleEnvironment } from "@/lib/monitor-environment";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 const SERIF = "var(--font-display), 'DM Serif Display', Georgia, serif";
@@ -75,6 +76,21 @@ const TONE: Record<BoardMonitorState, StatusDotTone> = {
  * The motion library's status dot (docs/motion.md). Only a DOWN service pings — "look at this"
  * stays rare, so on a healthy board nothing moves and a failure is the one thing that does.
  */
+/** Marks a monitor that isn't production — the client never sees these. */
+export function EnvironmentTag({ environment }: { environment: string }) {
+  if (isClientVisibleEnvironment(environment)) return null;
+  return (
+    <span
+      className="shrink-0 rounded-[4px] border border-[var(--border-2)] bg-[var(--surface-1)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--text-3)]"
+      style={{ fontFamily: MONO }}
+      title={`${environmentLabel(environment)}: only Gitwork sees this. The client's status board shows production only.`}
+      data-environment-tag={environment}
+    >
+      {environmentShort(environment)}
+    </span>
+  );
+}
+
 export function Dot({ state, still = false }: { state: BoardMonitorState; still?: boolean }) {
   return <StatusDot tone={TONE[state]} motion={state === "down" && !still ? "ping" : "none"} />;
 }
@@ -102,9 +118,12 @@ function MonitorCard({ m }: { m: BoardMonitor }) {
           <Dot state={state} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[14px] font-medium text-[var(--text-1)]" title={m.name}>
-            {m.name}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-[14px] font-medium text-[var(--text-1)]" title={m.name}>
+              {m.name}
+            </p>
+            <EnvironmentTag environment={m.environment} />
+          </div>
           <p className="truncate text-[11px] text-[var(--text-4)]" style={{ fontFamily: MONO }} title={m.target}>
             {shortTarget(m.target)}
           </p>

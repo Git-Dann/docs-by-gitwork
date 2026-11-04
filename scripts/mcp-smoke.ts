@@ -64,7 +64,7 @@ console.log("tools/list");
   });
   if (res && "result" in res) {
     const tools = (res.result as { tools: Array<{ name: string; inputSchema: object }> }).tools;
-    check("returns 61 tools", tools.length === 61, `got ${tools.length}`);
+    check("returns 67 tools", tools.length === 67, `got ${tools.length}`);
     const expected = [
       "list_clients",
       "create_client",
@@ -73,6 +73,12 @@ console.log("tools/list");
       "list_platforms",
       "add_monitor",
       "list_monitors",
+      "summarise_monitors",
+      "update_monitor",
+      "check_monitor",
+      "delete_monitor",
+      "list_monitor_incidents",
+      "update_monitor_incident",
       "create_course_request",
       "list_course_requests",
       "get_running_costs",

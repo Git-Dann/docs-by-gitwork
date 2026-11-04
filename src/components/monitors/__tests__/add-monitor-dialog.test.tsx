@@ -8,14 +8,22 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mutateAsync = vi.fn();
+const updateAsync = vi.fn();
+const monitorsFor = vi.fn();
 vi.mock("@/hooks/use-wiki", () => ({
   useCreateMonitorForClient: () => ({ mutateAsync, isPending: false }),
+  useUpdateMonitorForClient: () => ({ mutateAsync: updateAsync, isPending: false }),
+  useClientWikiMonitors: (slug: string | null) => monitorsFor(slug),
 }));
 
 import { AddMonitorDialog, orderAddMonitorClients, type AddMonitorClient } from "../add-monitor-dialog";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-beforeEach(() => mutateAsync.mockReset().mockResolvedValue({}));
+beforeEach(() => {
+  mutateAsync.mockReset().mockResolvedValue({});
+  updateAsync.mockReset().mockResolvedValue({});
+  monitorsFor.mockReset().mockReturnValue({ data: undefined, isLoading: false, isError: false });
+});
 afterEach(() => {
   document.body.innerHTML = "";
 });
@@ -101,5 +109,43 @@ describe("AddMonitorDialog", () => {
 describe("orderAddMonitorClients", () => {
   it("puts Gitwork first and the rest by name", () => {
     expect(orderAddMonitorClients(clients).map((c) => c.slug)).toEqual(["gitwork", "acme", "kestrel", "northwind"]);
+  });
+
+  it("edits a monitor: fills the form from the client's monitors, client fixed, saves the change", async () => {
+    monitorsFor.mockImplementation((slug: string | null) =>
+      slug === "northwind"
+        ? {
+            isLoading: false,
+            isError: false,
+            data: {
+              enabled: true,
+              incidents: [],
+              monitors: [
+                {
+                  id: "m-1", name: "Staging API", type: "HTTP", environment: "staging", target: "https://staging.x.co",
+                  method: "GET", expectedStatus: null, keyword: null, degradedMs: null, intervalMinutes: 5,
+                  headerNames: [], heartbeat: null,
+                },
+              ],
+            },
+          }
+        : { data: undefined, isLoading: false, isError: false },
+    );
+    await mount({ editing: { clientId: "c-n", monitorId: "m-1" } });
+    expect(dialog().textContent).toContain("Edit monitor");
+    expect(dialog().textContent).toContain("Northwind Studio");
+    expect(field("Website, API").value).toBe("Staging API");
+    const env = [...dialog().querySelectorAll("select")].find((sel) => [...sel.options].some((o) => o.value === "staging")) as HTMLSelectElement;
+    expect(env.value).toBe("staging");
+    expect(dialog().textContent).toContain("Only Gitwork sees this one");
+    await act(async () => setValue(env, "production"));
+    const save = [...dialog().querySelectorAll("button")].find((b) => b.textContent === "Save") as HTMLButtonElement;
+    await act(async () => save.click());
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(updateAsync).toHaveBeenCalledWith({
+      slug: "northwind",
+      id: "m-1",
+      input: expect.objectContaining({ name: "Staging API", environment: "production" }),
+    });
   });
 });

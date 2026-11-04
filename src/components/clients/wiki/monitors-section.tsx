@@ -13,6 +13,8 @@ import type { WikiMonitorDTO } from "@/lib/api";
 import type { IncidentDTO } from "@/lib/monitor-incidents";
 import { IncidentList } from "./monitor-incidents";
 import { EMPTY_MONITOR_FORM, formToMonitorInput, monitorToForm, type MonitorFormState } from "@/lib/monitor-form";
+import { clientVisibleIncidents, clientVisibleMonitors } from "@/lib/monitor-environment";
+import { EnvironmentTag } from "./monitor-board";
 import { MonitorFormFields } from "./monitor-form-fields";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
@@ -340,7 +342,8 @@ export function MonitorsManager({
       <div className="space-y-3 p-6">
         <p className="text-[13px] text-[var(--text-4)]">
           Checks run every few minutes. If one fails twice in a row, Gitwork&apos;s ops channel on
-          Slack gets an alert, and another when it&apos;s back up. Clients see the live board.
+          Slack gets an alert, and another when it&apos;s back up. Clients see the live board, for
+          production monitors only.
         </p>
 
         {editing && (
@@ -411,6 +414,7 @@ export function MonitorsManager({
                       <span className="truncate text-[14px] font-medium text-[var(--text-1)]" title={m.name}>
                         {m.name}
                       </span>
+                      <EnvironmentTag environment={m.environment} />
                     </div>
                     {/* Truncates, so it carries the full target on hover — a container URL is
                         routinely longer than the card. */}
@@ -501,7 +505,8 @@ export function MonitorsManager({
               Show what the client sees
             </summary>
             <div className="pt-3">
-              <MonitorStatusBoard monitors={monitors} incidents={incidents} />
+              {/* Exactly what their board gets: production only, as the server trims it. */}
+              <MonitorStatusBoard monitors={clientVisibleMonitors(monitors)} incidents={clientVisibleIncidents(incidents, monitors)} />
             </div>
           </details>
         )}

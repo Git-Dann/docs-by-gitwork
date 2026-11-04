@@ -9601,6 +9601,39 @@ this page only reads them.
   the bottom of the screen. Render dialogs outside it. Found by screenshot, not by any test.
 - Demo: `/demo/monitors` (add works end to end in memory). Verified there at 1440 and 390.
 
+### 108.4 Environments, and Edit from the Monitors page
+
+Asked for by Shahab (Nov 2026): clients should only see production statuses, never staging.
+
+- **`WikiMonitor.environment`** (additive, default `"production"`, so every existing monitor is
+  production): production · staging · development · testing. Rules in
+  `src/lib/monitor-environment.ts` (pure, tested).
+- **The client only ever sees production.** `forPublic` drops every other monitor, and the
+  incidents on them, before the wiki leaves on a token; the team's "Show what the client sees"
+  preview and `clientVisibleSections` apply the same rule, so a wiki watching only staging offers
+  the client no Monitors section. ⚠️ The check is exactly `"production"`: an unrecognised value
+  stays internal.
+- **Gitwork sees every environment, labelled** (a `STAGING` tag on the wiki cards, the all-clients
+  board and the Monitors page). The Monitors page has an Environment filter when more than one is
+  in use. Alerts name a non-production service ("API (Staging)"), the board headline says
+  "Fellas Loaded (Staging)" when only staging is down, and alerts are grouped within one
+  environment so a staging outage can't carry production's under its headline.
+- **Edit on the Monitors page** (pencil on each monitor, for clients the person can open): the Add
+  popup opened on one monitor, read in full from `GET /api/clients/[slug]/wiki/monitors` and saved
+  through the wiki's own PATCH. A heartbeat's blank target is now "leave it" on PATCH.
+- **Every monitor route checks the caller may work on the client** (`assertMonitorWriter`,
+  `src/server/wiki-monitor-access.ts`): GET (it carries heartbeat ping URLs), POST, PATCH, DELETE
+  and Check now. Only POST did before. A sweep test covers all five.
+- **MCP:** `add_monitor` takes `environment` and now HEARTBEAT monitors (no target; it returns
+  the ping URL), and `list_monitors` returns each environment. New, in
+  `src/server/mcp/monitor-tools.ts` (a factory spread into TOOLS, like sheet tools):
+  `summarise_monitors` (every client: headline, problems and why, open incidents, not monitored;
+  filter by environment), `update_monitor` (incl. `setEnvironment`, pause, maintenance window),
+  `check_monitor`, `delete_monitor`, `list_monitor_incidents`, `update_monitor_incident`
+  (acknowledge or post an update). The every-client readers need the `monitors` permission, as
+  the Monitors page does; writers need 'Manage clients'. Two monitors sharing a name are told
+  apart with `environment`; ambiguity is an error.
+
 ## 109. Recent Changes (November 2026) — Seasonal themes are a workspace setting
 
 The pumpkin in the header is gone. **Settings → Appearance** (Admins and Super Admins) has one

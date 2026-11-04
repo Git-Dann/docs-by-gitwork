@@ -4638,6 +4638,11 @@ export async function createWikiMonitorApi(slug: string, input: MonitorInput): P
   });
 }
 
+/** One client's monitors in full, every field the edit form needs (team only). */
+export async function getWikiMonitorsApi(slug: string): Promise<import("@/server/wiki-monitors").WikiMonitorsSection> {
+  return apiFetch(`/api/clients/${slug}/wiki/monitors`);
+}
+
 export async function updateWikiMonitorApi(
   slug: string,
   id: string,

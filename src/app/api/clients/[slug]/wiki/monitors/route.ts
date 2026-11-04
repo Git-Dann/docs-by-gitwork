@@ -4,9 +4,8 @@ import { loadWikiMonitors, createMonitor, setWikiMonitorsEnabled } from "@/serve
 import { z } from "zod";
 import { MAX_BODY, headersField } from "@/lib/monitor-request";
 import { clientIdForSlug } from "@/server/clients-scope";
-import { assertClientAccessBySlug } from "@/server/client-assignments";
-import { ForbiddenError, getEffectiveUserOrNull } from "@/server/auth/effective-user";
-import { isExternalRole } from "@/types/auth";
+import { assertMonitorWriter } from "@/server/wiki-monitor-access";
+import { MONITOR_ENVIRONMENT_VALUES } from "@/lib/monitor-environment";
 
 export const maxDuration = 60;
 
@@ -21,6 +20,7 @@ const monitorInputSchema = z.object({
   degradedMs: z.number().int().min(1).max(120000).nullable().optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
   enabled: z.boolean().optional(),
+  environment: z.enum(MONITOR_ENVIRONMENT_VALUES).optional(),
   graceMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   /** "Name: value" per line. Blank or null clears; omitted keeps what's saved. */
   requestHeaders: z.string().max(100_000).nullable().optional(),
@@ -35,6 +35,9 @@ const toggleSchema = z.object({ enabled: z.boolean() });
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    // Every field, heartbeat ping URLs included (they're credentials): the same people who may
+    // change the monitors. The client's own copy comes through the wiki DTO, trimmed.
+    await assertMonitorWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     return apiOk(await loadWikiMonitors(clientId));
@@ -46,12 +49,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    // Adding a monitor is reachable from the Monitors page for any client, so it checks the
-    // caller may work on this one: a guest never, a restricted developer only on their clients.
-    // `null` is a trusted API-key caller.
-    const user = await getEffectiveUserOrNull(req);
-    if (user && isExternalRole(user.role)) throw new ForbiddenError("You can't add monitors.");
-    await assertClientAccessBySlug(user, slug);
+    // Reachable from the Monitors page for any client, so it checks the caller may work on this one.
+    await assertMonitorWriter(req, slug);
     const clientId = await clientIdForSlug(slug, req);
     if (!clientId) return apiError("Client not found", 404);
     const body = monitorInputSchema.parse(await req.json());

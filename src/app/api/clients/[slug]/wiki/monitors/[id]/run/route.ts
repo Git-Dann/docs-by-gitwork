@@ -3,6 +3,7 @@ import { apiOk, apiError, fromError } from "@/lib/api-response";
 import { checkMonitorNow } from "@/server/wiki-monitors";
 import { prisma } from "@/lib/prisma";
 import { workspaceIdForRequest } from "@/server/workspaces/scope";
+import { assertMonitorWriter } from "@/server/wiki-monitor-access";
 
 export const maxDuration = 60;
 
@@ -13,6 +14,7 @@ export async function POST(
 ) {
   try {
     const { slug, id } = await params;
+    await assertMonitorWriter(req, slug);
     const workspaceId = await workspaceIdForRequest(req);
     const client = await prisma.workspaceClient.findUnique({
       where: { workspaceId_slug: { workspaceId, slug } },

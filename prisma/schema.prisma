@@ -1754,6 +1754,9 @@ model WikiMonitor {
   enabled         Boolean            @default(true)
   intervalMinutes Int                @default(5)
   sortOrder       Int                @default(0)
+  /// "production" | "staging" | "development" | "testing" (src/lib/monitor-environment.ts).
+  /// The client only ever sees production; Gitwork sees every environment, labelled.
+  environment     String             @default("production")
   /// Denormalised latest result for fast public reads.
   lastStatus      WikiMonitorStatus  @default(UNKNOWN)
   lastCheckedAt   DateTime?

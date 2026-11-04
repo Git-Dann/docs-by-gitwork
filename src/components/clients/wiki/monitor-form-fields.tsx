@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { basicAuthValue } from "@/lib/monitor-request";
 import { MONITOR_METHODS, MONITOR_TYPE_OPTIONS, type MonitorFormState, type MonitorFormType } from "@/lib/monitor-form";
+import { MONITOR_ENVIRONMENTS, isClientVisibleEnvironment, type MonitorEnvironment } from "@/lib/monitor-environment";
 
 const MONO = "var(--font-mono), 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace";
 
@@ -57,6 +58,28 @@ export function MonitorFormFields({
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className={labelCls}>
+          Environment
+          <select
+            className="app-select-compact mt-1 w-full"
+            value={form.environment}
+            onChange={(e) => setForm({ ...form, environment: e.target.value as MonitorEnvironment })}
+          >
+            {MONITOR_ENVIRONMENTS.map((env) => (
+              <option key={env.value} value={env.value}>
+                {env.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="self-end pb-1 text-[12px] text-[var(--text-3)]" data-environment-hint>
+          {isClientVisibleEnvironment(form.environment)
+            ? "Shown on the client's status board."
+            : "Only Gitwork sees this one. The client's status board shows Production only."}
+        </p>
       </div>
 
       {form.type === "HEARTBEAT" ? (

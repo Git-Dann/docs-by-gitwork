@@ -1022,23 +1022,31 @@ const demoWiki: WikiDTO = {
     monitors: [
       {
         id: "mon1", name: "Marketing site", type: "HTTP", target: "https://northwind.co", method: "GET",
-        expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5,
+        expectedStatus: 200, keyword: null, degradedMs: 800, enabled: true, intervalMinutes: 5, environment: "production",
         status: "UP", checkedAt: atDays(0), latencyMs: 142, statusCode: 200, error: null,
         uptime: { d1: 100, d7: 99.9, d30: 99.8 }, avgLatencyMs: 150, history: monitorHistory(140), stale: false,
         headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(62), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon2", name: "API", type: "HTTP", target: "https://api.northwind.co/health", method: "GET",
-        expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5,
+        expectedStatus: 200, keyword: "ok", degradedMs: 500, enabled: true, intervalMinutes: 5, environment: "production",
         status: "UP", checkedAt: atDays(0), latencyMs: 88, statusCode: 200, error: null,
         uptime: { d1: 100, d7: 99.98, d30: 99.9 }, avgLatencyMs: 92, history: monitorHistory(90, [6, 7]), stale: false,
         headerNames: ["Authorization"], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: { expiresAt: atDays(11), issuer: "Let's Encrypt", error: null, checkedAt: atDays(0) }, domain: { name: "northwind.co", expiresAt: atDays(210), error: null, checkedAt: atDays(0) },
       },
       {
         id: "mon3", name: "Web app", type: "HTTP", target: "https://app.northwind.co", method: "GET",
-        expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5,
+        expectedStatus: 200, keyword: null, degradedMs: 1200, enabled: true, intervalMinutes: 5, environment: "production",
         status: "DEGRADED", checkedAt: atDays(0), latencyMs: 1340, statusCode: 200, error: null,
         uptime: { d1: 99.2, d7: 99.5, d30: 99.6 }, avgLatencyMs: 410, history: monitorHistory(300, [0, 1, 2]), stale: false,
+        headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: null, domain: null,
+      },
+      {
+        // Staging, and down while it's redeployed: the team sees it, the client's board never does.
+        id: "mon4", name: "API", type: "HTTP", target: "https://staging-api.northwind.co/health", method: "GET",
+        expectedStatus: 200, keyword: null, degradedMs: null, enabled: true, intervalMinutes: 5, environment: "staging",
+        status: "DOWN", checkedAt: atDays(0), latencyMs: null, statusCode: 502, error: "Unexpected status 502",
+        uptime: { d1: 91.4, d7: 97.8, d30: 98.9 }, avgLatencyMs: 120, history: monitorHistory(120, [0, 1, 2, 3]), stale: false,
         headerNames: [], hasBody: false, remoteNote: null, heartbeat: null, maintenance: null, ssl: null, domain: null,
       },
     ],
@@ -4010,9 +4018,67 @@ function demoWithOpenFindings(projects: PulseProject[]): PulseProject[] {
 let demoBoardColumns: BoardColumnDef[] = [{ id: "col_demoqa01", name: "QA", stage: "IN_REVIEW" }];
 
 /** Monitors added through the demo's Add monitor popup, by client slug. Merged into the board. */
-const demoAddedMonitors = new Map<string, { name: string; target: string }[]>();
+const demoAddedMonitors = new Map<string, { name: string; target: string; environment: string }[]>();
+/** Edits made through the Monitors page's Edit popup, by monitor id. Applied over the board. */
+const demoMonitorEdits = new Map<string, { name?: string; target?: string; environment?: string; intervalMinutes?: number }>();
 
 function demoMonitorBoard() {
+  const board = demoMonitorBoardWithAdded();
+  return {
+    ...board,
+    clients: board.clients.map((c) => ({
+      ...c,
+      monitors: c.monitors.map((m) => {
+        const e = demoMonitorEdits.get(m.id);
+        if (!e) return m;
+        return { ...m, name: e.name ?? m.name, target: e.target ?? m.target, environment: e.environment ?? m.environment };
+      }),
+    })),
+  };
+}
+
+/** A board monitor as the wiki route returns it, so the Edit popup has every field to fill in. */
+function demoMonitorDTO(m: ReturnType<typeof demoMonitorBoard>["clients"][number]["monitors"][number]) {
+  const e = demoMonitorEdits.get(m.id);
+  return {
+    id: m.id, name: m.name, type: "HTTP" as const, target: m.target, method: "GET", expectedStatus: null, keyword: null,
+    degradedMs: null, enabled: true, intervalMinutes: e?.intervalMinutes ?? 5, environment: m.environment,
+    status: m.status, checkedAt: m.checkedAt, latencyMs: m.latencyMs, statusCode: m.statusCode, error: m.error,
+    uptime: { d1: m.uptime24h, d7: null, d30: null }, avgLatencyMs: null, history: [], stale: m.stale,
+    heartbeat: null, maintenance: null, ssl: null, domain: null, headerNames: [], hasBody: false, remoteNote: null,
+  };
+}
+
+/** GET /api/clients/[slug]/wiki/monitors on the demo: that client's board monitors, in full. */
+function demoClientMonitors(pathname: string) {
+  const slug = pathname.split("/")[3] ?? "";
+  const client = demoMonitorBoard().clients.find((c) => c.slug === slug);
+  return { enabled: true, monitors: (client?.monitors ?? []).map(demoMonitorDTO), incidents: [] };
+}
+
+/** PATCH /api/clients/[slug]/wiki/monitors/[id]: kept in memory so an edit shows on the board. */
+function demoEditMonitor(pathname: string, body: unknown) {
+  const id = pathname.split("/")[6] ?? "";
+  let parsed: unknown = body;
+  try {
+    if (typeof body === "string") parsed = JSON.parse(body);
+  } catch {
+    parsed = {};
+  }
+  const input = (parsed ?? {}) as { name?: string; target?: string; environment?: string; intervalMinutes?: number };
+  if (input.name !== undefined && !input.name.trim()) return { error: "Give the monitor a name.", __status: 400 };
+  demoMonitorEdits.set(id, {
+    ...demoMonitorEdits.get(id),
+    ...(input.name ? { name: input.name.trim() } : {}),
+    ...(input.target?.trim() ? { target: input.target.trim() } : {}),
+    ...(input.environment ? { environment: input.environment } : {}),
+    ...(typeof input.intervalMinutes === "number" ? { intervalMinutes: input.intervalMinutes } : {}),
+  });
+  const found = demoMonitorBoard().clients.flatMap((c) => c.monitors).find((m) => m.id === id);
+  return found ? demoMonitorDTO(found) : { error: "Monitor not found", __status: 404 };
+}
+
+function demoMonitorBoardWithAdded() {
   const board = demoMonitorBoardBase();
   return {
     ...board,
@@ -4030,6 +4096,7 @@ function demoMonitorBoard() {
             id: `added-${c.slug}-${i}`,
             name: a.name,
             target: a.target,
+            environment: a.environment,
             status: "UNKNOWN",
             latencyMs: null,
             statusCode: null,
@@ -4056,11 +4123,11 @@ function demoAddMonitor(pathname: string, body: unknown) {
   } catch {
     parsed = {};
   }
-  const input = (parsed ?? {}) as { name?: string; target?: string; type?: string };
+  const input = (parsed ?? {}) as { name?: string; target?: string; type?: string; environment?: string };
   const name = (input.name ?? "").trim();
   const target = input.type === "HEARTBEAT" ? `https://foundry.gitwork.co.uk/api/public/heartbeat/demo-${Date.now()}` : (input.target ?? "").trim();
   if (!name || !target) return { error: "Name and target are required", __status: 400 };
-  demoAddedMonitors.set(slug, [...(demoAddedMonitors.get(slug) ?? []), { name, target }]);
+  demoAddedMonitors.set(slug, [...(demoAddedMonitors.get(slug) ?? []), { name, target, environment: input.environment ?? "production" }]);
   return { id: `added-${slug}-${Date.now()}`, name, target, type: input.type ?? "HTTP" };
 }
 
@@ -4072,6 +4139,7 @@ function demoMonitorBoardBase() {
     id: `board-${++n}`,
     name,
     target,
+    environment: "production",
     status: "UP",
     stale: false,
     alertKind: null,
@@ -4120,6 +4188,7 @@ function demoMonitorBoardBase() {
             uptime24h: 97.2,
           }),
           m("Website", "https://northwind.co/"),
+          m("Staging API", "https://staging-api.northwind.co/health", { environment: "staging", latencyMs: 210 }),
         ],
       },
       {
@@ -4205,6 +4274,12 @@ export function resolveDemoApi(
   if (pathname === "/api/monitors") return { ...demoMonitorBoard(), openableClientIds: null };
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && init?.method === "POST") {
     return demoAddMonitor(pathname, init.body);
+  }
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors$/.test(pathname) && (init?.method ?? "GET") === "GET") {
+    return demoClientMonitors(pathname);
+  }
+  if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/board-\d+$/.test(pathname) && init?.method === "PATCH") {
+    return demoEditMonitor(pathname, init.body);
   }
   if (/^\/api\/clients\/[^/]+\/wiki\/monitors\/suggestions$/.test(pathname)) {
     return {
