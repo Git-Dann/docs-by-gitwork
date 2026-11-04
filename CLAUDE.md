@@ -9872,3 +9872,41 @@ Slack and meetings), easy to use by hand and intelligent. Full doc: **`docs/comm
   can't be built in a Linux session, so the rebuild is a separate task for a Mac session. It
   consumes the API above.
 
+
+## 116. Recent Changes (November 2026) — People & office: Staff + Backstage only, for Siân
+
+Siân runs Gitwork's own staff: their records in Staff, and their leave and expenses in
+Backstage. She doesn't look after developers. Her access is the **People & office** preset
+(Settings → People & access → a member → Quick presets), not a new role: role STAFF, with
+`codeclear`, `code.manage`, `hr.manage`, `hr.viewSensitive`, `backstage`, `backstage.approve`
+and `backstage.expenses` (`PEOPLE_OPS_PERMISSIONS`). Every other STAFF default is saved as a
+revoke, so her sidebar is Staff and Backstage.
+
+- **Expenses are a per-person permission, `backstage.expenses`** ("Review expenses"). Until
+  now only Super Admins could open them. Like the HR permissions, it is in no role's defaults
+  (`PER_PERSON_PERMISSION_IDS`), so no Admin gained the ledger when it arrived. A new expense
+  notifies Super Admins and holders (`target: permission`, `listExpenseReviewerEmails`), no
+  longer every leave approver, most of whom couldn't open it.
+- **A leave approver who isn't an Admin looks after Gitwork staff only**
+  (`src/server/backstage-people.ts`). Admins and Super Admins still look after everyone.
+  "Developer" is the Staff record's own fact (`DEVELOPER_RECORD`), never the sign-in role.
+  Someone with no record counts as staff. For that approver, the approvals queue, the team
+  leave list, Team today, staffing alerts and the HR reminders (and the Monday HR digest) leave
+  developers out, and approving, editing or cancelling a developer's leave is refused. A
+  developer's leave request notifies Admins only (`leaveApproverUserIds`).
+- **The holiday year runs from the person's start date** (`src/lib/leave-year.ts`): it starts
+  on the anniversary of the start date on their Staff record. With no start date it stays
+  January to December. A 29 February start falls on 28 February in other years. The allowance
+  carries `periodStart`/`periodEnd`, shown on Backstage → Leave and the Staff profile.
+- **Holiday days can be set per person** at last. `WorkspaceMember.annualLeaveDays` existed
+  with no way to write it, so everyone had the workspace's 25. The Staff profile's Time off card
+  has **Edit allowance** for whoever handles that person's leave
+  (`PATCH /api/backstage/members/[userId]/allowance`, `canSetLeaveAllowance`); blank = default.
+- **HQ for someone with no Portal:** Gmail and Calendar tiles now need `clients`, and two new
+  tiles appear: **Team leave** (`backstage.approve`: waiting approvals + who's off next) and
+  **HR** (`hr.manage`: dates coming up + records missing details). ⚠️ So Admins and Super
+  Admins also get Team leave, and Super Admins get HR. The developer view (standup, My Clients)
+  now needs Portal: "not scoped to every client" only means a developer when they work on
+  clients. The On Your Desk drawer is hidden without Portal (every tab is client work).
+- Pulse monitor alert emails now go to Admins (`listAdminEmails`), not the Backstage approver
+  list they had borrowed, which would have emailed a leave approver too.

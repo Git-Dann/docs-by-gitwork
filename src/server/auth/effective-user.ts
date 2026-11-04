@@ -332,11 +332,20 @@ export function assertCanApproveBackstage(user: EffectiveUser): void {
   }
 }
 
-// Expenses are Super Admin only — submitting, viewing and reviewing reimbursements
-// is restricted to the platform owner. Everyone else's Backstage is leave + holidays
+// Expenses: Super Admins, plus whoever holds `backstage.expenses` (granted per person,
+// never by role; first Siân, Nov 2026). Everyone else's Backstage is leave + holidays
 // + availability only.
 export function canManageExpenses(user: EffectiveUser): boolean {
-  return isSuperAdmin(user.role);
+  return isSuperAdmin(user.role) || user.permissions.includes("backstage.expenses");
+}
+
+/**
+ * May see, edit or decide on someone else's expense. Deliberately its own question, not
+ * `canApproveBackstage`: approving leave and handling money are separate grants, so an
+ * Admin who approves leave does not thereby see the ledger.
+ */
+export function canReviewExpenses(user: EffectiveUser): boolean {
+  return canManageExpenses(user);
 }
 
 /**

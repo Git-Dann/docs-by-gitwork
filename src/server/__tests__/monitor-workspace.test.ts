@@ -51,7 +51,7 @@ vi.mock("@/server/bootstrap", () => ({
   }),
 }));
 vi.mock("@/server/notifications", () => ({ dispatchNotification: vi.fn() }));
-vi.mock("@/server/email", () => ({ sendWorkspaceEmail: vi.fn(), listBackstageApproverEmails: vi.fn(), escapeHtml: (s: string) => s }));
+vi.mock("@/server/email", () => ({ sendWorkspaceEmail: vi.fn(), listAdminEmails: vi.fn(), escapeHtml: (s: string) => s }));
 vi.mock("@/server/pulse-agents/monitor-digest", () => ({ MAX_DIGEST_RECIPIENTS: 10, maybeSendWeeklyDigest: vi.fn(), parseDigestEmails: () => [] }));
 
 beforeEach(() => {

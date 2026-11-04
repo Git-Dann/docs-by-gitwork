@@ -53,7 +53,7 @@ export function BackstageOverview({ onOpen }: { onOpen: (area: BackstageArea) =>
    * How many COLUMN UNITS the row actually occupies, so the grid is exactly as
    * wide as the cards that render.
    *
-   * ⚠️ Two of these cards are permission-gated — Expenses is Super Admin and
+   * ⚠️ Two of these cards are permission-gated — Expenses is Super Admin (or `backstage.expenses`) and
    * Handover is Admin — so a hard-coded five columns leaves a one- or two-column
    * hole for everyone else, which is the gap the house card-grid rule exists to
    * prevent. Team counts as two because it spans two from `xl`.

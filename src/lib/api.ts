@@ -2932,6 +2932,15 @@ export function getBackstageAllowance(userId?: string): Promise<LeaveAllowanceDT
   return apiFetch(`/api/backstage/allowance${qs}`);
 }
 
+/** Days per holiday year for one person; null puts them back on the workspace default. */
+export function setBackstageAllowance(userId: string, annualLeaveDays: number | null): Promise<LeaveAllowanceDTO> {
+  return apiFetch(`/api/backstage/members/${encodeURIComponent(userId)}/allowance`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ annualLeaveDays }),
+  });
+}
+
 export function getBackstageAlerts(windowDays?: number): Promise<StaffingAlertsResponse> {
   const qs = windowDays ? `?window=${windowDays}` : "";
   return apiFetch(`/api/backstage/alerts${qs}`);

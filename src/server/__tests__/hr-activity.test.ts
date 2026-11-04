@@ -19,7 +19,18 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/server/backstage", () => ({
-  getLeaveAllowance: vi.fn(async () => ({ year: 2026, allocated: 25, used: 3, pending: 0, remaining: 22 })),
+  getLeaveAllowance: vi.fn(async () => ({
+    year: 2026,
+    periodStart: "2026-03-14",
+    periodEnd: "2027-03-13",
+    fromStartDate: true,
+    isDefaultAllowance: true,
+    allocated: 25,
+    used: 3,
+    pending: 0,
+    remaining: 22,
+  })),
+  canSetLeaveAllowance: vi.fn(async () => false),
 }));
 
 import { getStaffActivity } from "@/server/hr/activity";

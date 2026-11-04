@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { isAtLeast } from "@/types/auth";
+import { isAtLeast, isSuperAdmin } from "@/types/auth";
 import { ACTIVE_MEMBER } from "@/server/auth/member-status";
 import nodemailer from "nodemailer";
 import { readSmtpPassword } from "@/server/smtp-password";
@@ -154,9 +154,19 @@ async function sendViaSmtp(
   return { ok: true, id: info.messageId ?? "" };
 }
 
-// Resolve the list of backstage-approver emails (Admins + anyone with
-// backstage.approve). Used when notifying about new leave/expense requests.
-export async function listBackstageApproverEmails(
+// Every active Admin and Super Admin. Pulse monitor alerts go here; they used to borrow
+// the Backstage approver list, which would have sent them to a leave approver too.
+export async function listAdminEmails(workspaceId: string): Promise<string[]> {
+  const members = await prisma.workspaceMember.findMany({
+    where: { workspaceId, ...ACTIVE_MEMBER },
+    include: { user: { select: { email: true } } },
+  });
+  return members.filter((m) => isAtLeast(m.role, "ADMIN")).map((m) => m.user.email);
+}
+
+// Who to email about a new expense: Super Admins plus anyone granted `backstage.expenses`.
+// Not every leave approver, because most of them can't open the expenses ledger.
+export async function listExpenseReviewerEmails(
   workspaceId: string,
   excludeUserId?: string,
 ): Promise<string[]> {
@@ -167,9 +177,9 @@ export async function listBackstageApproverEmails(
   return members
     .filter((m) => {
       if (excludeUserId && m.user.id === excludeUserId) return false;
-      if (isAtLeast(m.role, "ADMIN")) return true;
+      if (isSuperAdmin(m.role)) return true;
       const perms = Array.isArray(m.permissions) ? (m.permissions as string[]) : [];
-      return perms.includes("backstage.approve");
+      return perms.includes("backstage.expenses");
     })
     .map((m) => m.user.email);
 }
