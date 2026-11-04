@@ -519,7 +519,17 @@ export type SupportAwaitingSummary = {
   oldestAt: string | null;
   /** Clients with someone waiting, worst first. Only clients that have one. */
   clients: Array<{
+    /** The CARE client's id. */
     clientId: string;
+    /**
+     * The PORTAL client this Care client is linked to, when it is linked.
+     *
+     * ⚠️ Load-bearing for anything that joins Care to another module. The same
+     * client is `wedge` in Portal and "Big Wedge Golf" in Care (§42.15), so a
+     * name match silently finds almost nothing — and silently is the problem,
+     * because the result looks like "no one is waiting" rather than an error.
+     */
+    workspaceClientId: string | null;
     name: string;
     slug: string;
     awaiting: number;
@@ -554,7 +564,7 @@ async function buildAwaitingSummary(
 
   const rows = await prisma.supportClient.findMany({
     where: { workspaceId, id: { in: withWaiting.map(([id]) => id) } },
-    select: { id: true, name: true, slug: true },
+    select: { id: true, name: true, slug: true, workspaceClientId: true },
   });
   const named = new Map(rows.map((r) => [r.id, r]));
 
@@ -564,7 +574,14 @@ async function buildAwaitingSummary(
       // A queue whose client we could not name is dropped rather than shown as
       // "Unknown" — it is deleted or out of scope, and either way unactionable.
       return row
-        ? [{ clientId, name: row.name, slug: row.slug, awaiting: q.awaiting, oldestAt: q.oldestAwaitingAt }]
+        ? [{
+            clientId,
+            workspaceClientId: row.workspaceClientId,
+            name: row.name,
+            slug: row.slug,
+            awaiting: q.awaiting,
+            oldestAt: q.oldestAwaitingAt,
+          }]
         : [];
     })
     .sort((a, b) => b.awaiting - a.awaiting || (a.oldestAt ?? "").localeCompare(b.oldestAt ?? ""));
