@@ -16,6 +16,8 @@
  *     portalled popover puts keyboard focus inside it.
  *   - `MotionConfig reducedMotion="user"`: the slide and the pill glide are dropped for
  *     people who ask for reduced motion.
+ *   - The month title is a button that opens a year grid, then a month grid (Nov 2026: a
+ *     date of birth meant clicking back through hundreds of months). Bounded by min/max.
  *
  * Dates here are local `Date` objects at midnight, built from year/month/day fields and
  * stepped by calendar fields (`new Date(y, m, d + n)`), never by milliseconds — so a
@@ -130,6 +132,9 @@ export function Calendar(props: CalendarProps) {
   const [dir, setDir] = React.useState(1);
   const [focus, setFocus] = React.useState<Date>(from ?? today);
   const [hover, setHover] = React.useState<Date | null>(null);
+  // Jumping straight to a year, then a month. null = the usual day grid.
+  const [picking, setPicking] = React.useState<null | "year" | "month">(null);
+  const yearListRef = React.useRef<HTMLDivElement>(null);
   const gridRef = React.useRef<HTMLDivElement>(null);
   const shouldFocus = React.useRef(!!autoFocus);
 
@@ -148,6 +153,22 @@ export function Calendar(props: CalendarProps) {
   };
 
   const monthFmt = React.useMemo(() => new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }), [locale]);
+  const shortMonthFmt = React.useMemo(() => new Intl.DateTimeFormat(locale, { month: "short" }), [locale]);
+  // Years on offer: the bounds when set, otherwise far enough back for a date of birth.
+  const firstYear = min ? min.getFullYear() : today.getFullYear() - 110;
+  const lastYear = max ? max.getFullYear() : today.getFullYear() + 25;
+  const years = React.useMemo(
+    () => Array.from({ length: Math.max(0, lastYear - firstYear + 1) }, (_, i) => firstYear + i),
+    [firstYear, lastYear],
+  );
+  const monthAllowed = (year: number, month: number) =>
+    (!min || new Date(year, month + 1, 0) >= min) && (!max || new Date(year, month, 1) <= max);
+  React.useEffect(() => {
+    if (picking !== "year") return;
+    const el = yearListRef.current?.querySelector<HTMLElement>(`[data-year="${y}"]`);
+    el?.scrollIntoView({ block: "center" });
+    el?.focus();
+  }, [picking, y]);
   const dayFmt = React.useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "full" }), [locale]);
   const weekdays = React.useMemo(() => {
     const f = new Intl.DateTimeFormat(locale, { weekday: "narrow" });
@@ -208,10 +229,20 @@ export function Calendar(props: CalendarProps) {
       <div className={cn("w-fit select-none p-3", className)}>
         {/* header */}
         <div className="mb-2 flex h-8 items-center gap-1">
-          <NavButton label="Previous month" disabled={!canPrev} onClick={() => go(addMonths(view, -1), -1)}>
+          <NavButton label="Previous month" disabled={!canPrev || picking !== null} onClick={() => go(addMonths(view, -1), -1)}>
             <ChevronLeftIcon className="size-4" />
           </NavButton>
-          <div className="relative h-5 flex-1 overflow-hidden text-center text-sm font-medium text-[var(--text-1)]">
+          <button
+            type="button"
+            onClick={() => setPicking(picking === null ? "year" : null)}
+            aria-label={picking === null ? `${monthFmt.format(view)}. Choose a month and year` : "Back to days"}
+            aria-expanded={picking !== null}
+            className="relative h-8 flex-1 overflow-hidden rounded-lg text-center text-sm font-medium text-[var(--text-1)] outline-none transition hover:bg-[var(--surface-1)] focus-visible:ring-2 focus-visible:ring-[var(--brand-focus-ring)]"
+          >
+          {picking !== null ? (
+            <span className="absolute inset-0 grid place-items-center">{picking === "year" ? "Choose a year" : String(y)}</span>
+          ) : (
+          <div className="absolute inset-x-0 top-1.5 h-5 overflow-hidden">
             <AnimatePresence initial={false} custom={dir}>
               <motion.span
                 key={y * 12 + m}
@@ -228,11 +259,59 @@ export function Calendar(props: CalendarProps) {
               </motion.span>
             </AnimatePresence>
           </div>
-          <NavButton label="Next month" disabled={!canNext} onClick={() => go(addMonths(view, 1), 1)}>
+          )}
+          </button>
+          <NavButton label="Next month" disabled={!canNext || picking !== null} onClick={() => go(addMonths(view, 1), 1)}>
             <ChevronRightIcon className="size-4" />
           </NavButton>
         </div>
 
+        {picking === "year" ? (
+          <div ref={yearListRef} role="listbox" aria-label="Year" className="grid h-[248px] w-[252px] grid-cols-4 content-start gap-1 overflow-y-auto">
+            {years.map((year) => (
+              <button
+                key={year}
+                type="button"
+                role="option"
+                aria-selected={year === y}
+                data-year={year}
+                onClick={() => {
+                  setView(new Date(year, m, 1));
+                  setPicking("month");
+                }}
+                className={cn(
+                  "h-9 rounded-lg text-sm tabular-nums outline-none transition hover:bg-[var(--surface-1)] focus-visible:ring-2 focus-visible:ring-[var(--brand-focus-ring)]",
+                  year === y ? "bg-[var(--brand-700)] text-white hover:bg-[var(--brand-700)]" : "text-[var(--text-1)]",
+                )}
+              >
+                {year}
+              </button>
+            ))}
+          </div>
+        ) : picking === "month" ? (
+          <div role="listbox" aria-label={`Month in ${y}`} className="grid h-[248px] w-[252px] grid-cols-3 content-center gap-2">
+            {Array.from({ length: 12 }, (_, month) => (
+              <button
+                key={month}
+                type="button"
+                role="option"
+                aria-selected={month === m}
+                disabled={!monthAllowed(y, month)}
+                onClick={() => {
+                  go(new Date(y, month, 1));
+                  setPicking(null);
+                }}
+                className={cn(
+                  "h-10 rounded-lg text-sm outline-none transition hover:bg-[var(--surface-1)] focus-visible:ring-2 focus-visible:ring-[var(--brand-focus-ring)] disabled:pointer-events-none disabled:opacity-30",
+                  month === m ? "bg-[var(--brand-700)] text-white hover:bg-[var(--brand-700)]" : "text-[var(--text-1)]",
+                )}
+              >
+                {shortMonthFmt.format(new Date(y, month, 1))}
+              </button>
+            ))}
+          </div>
+        ) : (
+        <>
         {/* weekdays */}
         <div className="flex" aria-hidden>
           {weekdays.map((w, i) => (
@@ -329,6 +408,8 @@ export function Calendar(props: CalendarProps) {
             </AnimatePresence>
           </div>
         </div>
+        </>
+        )}
       </div>
     </MotionConfig>
   );
