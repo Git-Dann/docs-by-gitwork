@@ -1807,7 +1807,7 @@ tags exist. Do not invent a fourth.
 | Tag | Means | Current members |
 |---|---|---|
 | `{{Product}}` | A top-level module — its own sidebar item and route | **Pulse · Care · Docs · Code · Studio · Portal · Provenance · Monitors** |
-| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search** |
+| `{{Feat}}` | A feature inside, or spanning, the products | **Dispatch · Deck · Canvas · Starters · Wiki · DevSignal · RoundUp · Demo · On Your Desk · Settings · MCP · Calendar · Dashboard · Handbooks · Analytics · Notifications · Launchpad · CRM · Sheets · Multi-tenant · Brand Guidelines · AI search · Commitments** |
 | `{{Agent}}` | A scheduled / background agent | **Curator · Foreman** |
 
 Examples: `Pulse {{Product}}` · `On Your Desk {{Feat}}` · `Foreman {{Agent}}`.
@@ -9814,3 +9814,28 @@ A second pass on the wiki's Code Handover (§112).
   aren't there is ignored. Closing the dialog removes the parameter.
 - Demo: `/demo/wiki#code-handover` (Receiver now has four versions, the newest with `src/` paths
   and a rename).
+
+## 115. Recent Changes (November 2026) — Commitments: the promises you've made, in one list
+
+Backstage → Commitments (`?area=commitments`, a strip above the Backstage cards) and the API the
+Mac app will use. Dan's brief: a Gitwork take on a "commitment tracker" (promises pulled from email,
+Slack and meetings), easy to use by hand and intelligent. Full doc: **`docs/commitments.md`**.
+
+- **Suggested, never acted on.** Sources: the person's sent Gmail and own Slack messages (opt-in,
+  one light-tier AI read), Scribe action items, and calendar follow-ups after external meetings
+  (no AI). A suggestion waits in `02 // SUGGESTED` until accepted.
+- ⚠️ **A Gmail/Slack suggestion must quote words that are in the message** (`quoteAppearsIn`) and
+  cite a message the model was shown. Don't relax it: it's the only thing between the model and an
+  invented promise.
+- **Only the promise is stored**, never a message body. **Private**: owner only, "view as" refused.
+- Models `Commitment` + `CommitmentSettings` (additive, loose ids, no `@unique`), `AiModule
+  COMMITMENTS`. Rules `src/lib/commitments.ts` (pure, tested), server `src/server/commitments.ts`,
+  routes `/api/backstage/commitments/**`, scheduled reads from the `jobs` worker.
+- Demo: `/demo/backstage/commitments`.
+- **Not verified against real Gmail, Slack or Calendar.** The sources follow CRM's readers, but
+  `format: "full"` sent-mail reads and own-message Slack filtering are new. Post-deploy: switch on
+  Sent Gmail, press Check now, and check the suggestions quote your own words.
+- **Foundry for Mac:** Dan wants it rebuilt (it "looks shit" and isn't on the latest macOS). It
+  can't be built in a Linux session, so the rebuild is a separate task for a Mac session. It
+  consumes the API above.
+

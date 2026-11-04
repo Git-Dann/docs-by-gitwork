@@ -5763,3 +5763,58 @@ export function purgeClientApi(slug: string, confirmName: string): Promise<{ pur
     body: JSON.stringify({ confirmName }),
   });
 }
+
+// ─── Commitments (Backstage → Commitments) ───────────────────────────────────
+
+export async function getCommitments(): Promise<import("@/types/commitments").CommitmentsResponse> {
+  return apiFetch("/api/backstage/commitments");
+}
+
+export async function createCommitment(input: {
+  title: string;
+  dueAt?: string | null;
+  notes?: string | null;
+  counterpart?: string | null;
+}): Promise<{ commitment: import("@/types/commitments").CommitmentDTO }> {
+  return apiFetch("/api/backstage/commitments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateCommitment(
+  id: string,
+  input: Partial<{
+    title: string;
+    notes: string | null;
+    dueAt: string | null;
+    counterpart: string | null;
+    state: import("@/lib/commitments").CommitmentState;
+    snoozedUntil: string | null;
+  }>,
+): Promise<{ commitment: import("@/types/commitments").CommitmentDTO }> {
+  return apiFetch(`/api/backstage/commitments/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteCommitment(id: string): Promise<{ deleted: true }> {
+  return apiFetch(`/api/backstage/commitments/${id}`, { method: "DELETE" });
+}
+
+export async function syncCommitments(): Promise<{ result: import("@/types/commitments").CommitmentSyncResult }> {
+  return apiFetch("/api/backstage/commitments/sync", { method: "POST" });
+}
+
+export async function updateCommitmentSettings(
+  input: Partial<Record<"gmailEnabled" | "slackEnabled" | "meetingsEnabled" | "calendarEnabled", boolean>>,
+): Promise<{ settings: import("@/types/commitments").CommitmentSettingsDTO }> {
+  return apiFetch("/api/backstage/commitments/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}

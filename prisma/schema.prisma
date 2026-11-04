@@ -4301,6 +4301,7 @@ enum AiModule {
   WIKI
   EMBEDDING
   CRM
+  COMMITMENTS
   OTHER
 }
 
@@ -6123,4 +6124,59 @@ model PasswordResetToken {
 
   @@index([tokenHash])
   @@index([userId])
+}
+
+/// A promise one person has made: typed in by hand, or suggested from their own sent Gmail,
+/// Slack messages, Scribe action items or calendar. Suggestions are never acted on and never
+/// become open until the person accepts them. Per-user and private to them. Loose ids.
+/// See src/server/commitments.ts and src/lib/commitments.ts.
+model Commitment {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  title       String
+  notes       String?   @db.Text
+  dueAt       DateTime?
+  /// "suggested" | "open" | "done" | "dismissed"
+  state       String    @default("open")
+  /// "manual" | "gmail" | "slack" | "meeting" | "calendar"
+  source      String    @default("manual")
+  /// Dedupe key for a suggestion (source + message/item id + normalised title).
+  externalId  String?
+  /// Who it was promised to, when known.
+  counterpart String?
+  /// The words it was read from (clipped), the subject/meeting/channel, a link and when.
+  quote       String?   @db.Text
+  evidenceLabel String?
+  evidenceUrl String?
+  evidenceAt  DateTime?
+  reason      String?
+  snoozedUntil DateTime?
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, workspaceId, state])
+  @@index([userId, externalId])
+}
+
+/// One row per person per workspace: which sources they let Commitments read, and how the
+/// last read went. Gmail and Slack are opt-in; Scribe and Calendar are on by default.
+model CommitmentSettings {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  userId          String
+  gmailEnabled    Boolean   @default(false)
+  slackEnabled    Boolean   @default(false)
+  meetingsEnabled Boolean   @default(true)
+  calendarEnabled Boolean   @default(true)
+  lastSyncedAt    DateTime?
+  /// Claim so two syncs of one person can't run at once (5-minute TTL).
+  syncStartedAt   DateTime?
+  /// { gmail?: { at, ok, message }, slack?: …, meeting?: …, calendar?: … }
+  sourceStatus    Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([workspaceId, userId])
 }

@@ -9,6 +9,7 @@ import { checkMonitorExpiries } from "@/server/wiki-monitor-expiry";
 import { refreshRunningMonths } from "@/server/wiki-metrics";
 import { sendHrDigests } from "@/server/hr/digest";
 import { startDueAnswerRuns } from "@/server/ai-answers";
+import { syncDueCommitments } from "@/server/commitments";
 
 export const dynamic = "force-dynamic";
 // No serverless cap on the VPS, but keep runs bounded so host cron ticks stay short.
@@ -95,6 +96,12 @@ export async function GET(request: NextRequest) {
       return null;
     });
 
+    // ── Commitments: re-read Gmail/Slack for people who switched them on (a few per tick) ──
+    const commitments = await syncDueCommitments().catch((err) => {
+      console.error("[jobs] commitments read failed", err);
+      return null;
+    });
+
     return apiOk({
       reconciled,
       ...drain,
@@ -103,6 +110,7 @@ export async function GET(request: NextRequest) {
       metricsRefreshed: metrics?.refreshed.length ?? null,
       hrDigest,
       aiAnswers,
+      commitments,
     });
   } catch (error) {
     return fromError(error);
