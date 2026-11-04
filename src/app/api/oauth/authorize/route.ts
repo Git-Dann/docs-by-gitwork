@@ -255,7 +255,7 @@ export async function POST(request: Request) {
     return redirectWithError(
       v.params.redirectUri,
       "access_denied",
-      "Your Foundry account isn't permitted to connect Claude. Ask an admin to grant the 'Connect Claude (MCP)' permission.",
+      "Your Foundry account doesn't have the 'Connect Claude' permission. An admin can turn it on in Settings → People & access (Access on their name → Platform → Connect Claude).",
       v.params.state,
     );
   }
