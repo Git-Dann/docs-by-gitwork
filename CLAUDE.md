@@ -9902,11 +9902,19 @@ revoke, so her sidebar is Staff and Backstage.
   with no way to write it, so everyone had the workspace's 25. The Staff profile's Time off card
   has **Edit allowance** for whoever handles that person's leave
   (`PATCH /api/backstage/members/[userId]/allowance`, `canSetLeaveAllowance`); blank = default.
-- **HQ for someone with no Portal:** Gmail and Calendar tiles now need `clients`, and two new
-  tiles appear: **Team leave** (`backstage.approve`: waiting approvals + who's off next) and
+- **HQ for someone with no Portal:** Gmail and Calendar tiles now need `clients`, and three new
+  tiles appear: **Team leave** (`backstage.approve`: leave waiting + who's off next),
+  **Expenses** (`backstage.expenses`: waiting, the total per currency, the latest few) and
   **HR** (`hr.manage`: dates coming up + records missing details). ⚠️ So Admins and Super
-  Admins also get Team leave, and Super Admins get HR. The developer view (standup, My Clients)
+  Admins also get Team leave, and Super Admins get Expenses and HR.
+- **"View as" now follows through HQ and Backstage.** Both used the real role, so a Super
+  Admin previewing Siân kept the Admin bypass and saw Agentic workflow, Analytics/Starters,
+  Handover and Expenses she doesn't have. HQ draws for `viewRole`; Backstage's
+  `useBackstageAccess` reads the preview too. The developer view (standup, My Clients)
   now needs Portal: "not scoped to every client" only means a developer when they work on
   clients. The On Your Desk drawer is hidden without Portal (every tab is client work).
+- **Staff → People shows Gitwork first for her** (`splitGitworkStaff`): non-developers under
+  a "Gitwork" heading, and "Developers and everyone else" folded in a `<details>` below. Only
+  for someone who isn't an Admin; Admins see the roster as before. Follows "view as".
 - Pulse monitor alert emails now go to Admins (`listAdminEmails`), not the Backstage approver
   list they had borrowed, which would have emailed a leave approver too.
