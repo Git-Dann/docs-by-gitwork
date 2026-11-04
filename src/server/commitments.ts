@@ -550,12 +550,37 @@ async function teamEmails(workspaceId: string): Promise<Set<string>> {
   return out;
 }
 
+/** Marks a suggestion Foundry let go of itself, as opposed to one the person turned down. */
+export const LET_GO_REASON = "Let go: no longer offered, or not acted on within a week.";
+/** Dismissals before this were not marked, so they can't be told apart; ignore them. */
+const DECLINE_MEMORY_SINCE = new Date("2026-11-04T19:00:00Z");
+
+/** Who this person has said "Not mine" to a follow-up with, in the last 180 days. */
+async function declinedFollowUps(user: EffectiveUser): Promise<Set<string>> {
+  const rows = await prisma.commitment.findMany({
+    where: {
+      ...mine(user),
+      source: "calendar",
+      state: "dismissed",
+      counterpart: { not: null },
+      // Only a person's own "Not mine": let-go dismissals carry LET_GO_REASON, and the ones let
+      // go before that marker existed are excluded by the cut-off.
+      updatedAt: { gte: new Date(Math.max(Date.now() - 180 * DAY_MS, DECLINE_MEMORY_SINCE.getTime())) },
+      NOT: { reason: LET_GO_REASON },
+    },
+    select: { counterpart: true },
+    take: 500,
+  });
+  return new Set(rows.map((r) => (r.counterpart ?? "").trim().toLowerCase()).filter(Boolean));
+}
+
 async function readCalendar(user: EffectiveUser, refreshToken: string | null): Promise<SourceOutcome<DirectSuggestion>> {
   if (!refreshToken) return failed("Google isn't connected for you. Sign out of Foundry and back in.");
   const auth = googleClientForRefreshToken(refreshToken);
   if (!auth) return failed("Google sign-in isn't configured on this server.");
   try {
     const internalEmails = await teamEmails(user.workspaceId);
+    const declined = await declinedFollowUps(user);
     const calendar = google.calendar({ version: "v3", auth });
     const now = new Date();
     const res = await calendar.events.list({
@@ -576,6 +601,9 @@ async function readCalendar(user: EffectiveUser, refreshToken: string | null): P
         now,
       });
       if (!follow) continue;
+      // "Not mine" on a follow-up with someone means: stop suggesting follow-ups with them
+      // (a teammate on a personal address, say). Their next meeting is not suggested either.
+      if (declined.has(follow.counterpart.trim().toLowerCase())) continue;
       items.push({
         source: "calendar",
         refId: event.id,
@@ -741,14 +769,14 @@ async function letGoOfSuggestions(
 ): Promise<void> {
   await prisma.commitment.updateMany({
     where: { ...mine(user), state: "suggested", createdAt: { lt: new Date(now.getTime() - SUGGESTION_TTL_DAYS * DAY_MS) } },
-    data: { state: "dismissed" },
+    data: { state: "dismissed", reason: LET_GO_REASON },
   });
   for (const source of ["meeting", "calendar"] as const) {
     const keep = current[source];
     if (!keep) continue;
     await prisma.commitment.updateMany({
       where: { ...mine(user), state: "suggested", source, externalId: { notIn: [...keep] } },
-      data: { state: "dismissed" },
+      data: { state: "dismissed", reason: LET_GO_REASON },
     });
   }
 }
