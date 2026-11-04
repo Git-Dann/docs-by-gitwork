@@ -9952,3 +9952,26 @@ Follow-up to the People & office section (Siân) above.
   when a request goes against its type's default.
 - The leave form's buttons are pinned to the bottom of the dialog (`BackstageModal`'s `footer`,
   submit via `form=`); they used to float mid-panel above empty space.
+
+## 117. Recent Changes (November 2026) — Uptime alerts only for what's on fire
+
+Dan: "if they are back up within maybe 5 mins, don't ping Slack". Rules in
+`src/lib/monitor-alerts.ts`, all pure and tested:
+
+- **Nothing is posted until a service has failed every check for `ALERT_AFTER_MINUTES` (5).**
+  Checks run every minute while failing, so a real outage posts about 5 minutes in; a blip,
+  a deploy or a provider hiccup that's back before then posts nothing at all, not even a
+  "back up". Timed from `WikiMonitor.streakSince` (additive): the start of the CURRENT unbroken
+  run of failures, so an earlier blip it recovered from can't make a fresh outage count as old.
+  The post's "Down for 6 min, since 14:37" starts there too. Failed checks still count in
+  uptime % and show on the Monitors page straight away; only telling people waits. Incidents are
+  opened with the post, so a blip records no incident.
+- **"Unstable" needs flapping**: 3 of the last 6 checks failing in at least two separate runs,
+  for 5 minutes. One unbroken run that has just ended is an outage that recovered — without the
+  runs rule, a 4-minute outage posted "unstable" on the very check that showed it back.
+- **Only production posts to Slack.** A non-production monitor's alert passes
+  `skipSlack` to `dispatchNotification` (new option), so it still records the incident and tells
+  admins in Foundry, but never reaches the channel.
+- **Shorter posts.** Only the services that aren't fine are listed, then one line —
+  "4 other services OK", or "All 5 services are OK" on a recovery — instead of a green tick per
+  service.

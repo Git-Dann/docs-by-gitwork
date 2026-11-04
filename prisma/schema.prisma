@@ -1767,6 +1767,9 @@ model WikiMonitor {
   failStreak      Int                @default(0)
   /// First failing check of the current outage — the "down since" in alerts.
   downSince       DateTime?
+  /// When the current run of consecutive failures began. A "down" post waits until this is
+  /// ALERT_AFTER_MS old, so a service back within 5 minutes never reaches Slack (Nov 2026).
+  streakSince     DateTime?
   /// When this outage's DOWN alert went out — the once-per-outage latch; cleared on recovery.
   alertedDownAt   DateTime?
   /// When the watchdog reported this monitor as no longer being checked; cleared by the next check.

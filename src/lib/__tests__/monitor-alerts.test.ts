@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ALERT_AFTER_FAILURES,
+  ALERT_AFTER_MINUTES,
   alertBlocks,
   checkEveryMs,
   incidentHeading,
@@ -117,9 +118,9 @@ describe("the messages", () => {
   const ctx = { clientName: "Fellas Loaded", monitorName: "Production API", target: "https://api.fellasloaded.com/api/feed/categories/" };
 
   it("down names the client, the service, when it started and why", () => {
-    const m = alertMessage(ctx, { kind: "down", since: t(5), failures: 2 }, { statusCode: 503, error: null });
+    const m = alertMessage(ctx, { kind: "down", since: t(5), failures: 2 }, { statusCode: 503, error: null, now: t(11) });
     expect(m.title).toBe("🔴 Fellas Loaded — Production API is down");
-    expect(m.body).toContain("Failing since 14:05 UTC (2 checks in a row) · HTTP 503");
+    expect(m.body).toContain("Down for 6 min, since 14:05 UTC · HTTP 503");
     const noCode = alertMessage(ctx, { kind: "down", since: t(5), failures: 2 }, { statusCode: null, error: "ECONNREFUSED" });
     expect(noCode.body).toContain("ECONNREFUSED");
   });
@@ -174,6 +175,14 @@ describe("the watchdog — the failure we actually had", () => {
     expect(jobs).toContain("checkMonitorsWatchdog()");
     const own = readFileSync(join(process.cwd(), "src/app/api/cron/wiki-monitors/route.ts"), "utf8");
     expect(own).not.toContain("checkMonitorsWatchdog");
+  });
+});
+
+describe("staging never reaches the channel", () => {
+  const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8");
+  it("⚠️ a non-production monitor's alert skips Slack but still reaches Foundry", () => {
+    expect(read("src/server/wiki-monitors.ts")).toMatch(/skipSlack: !isClientVisibleEnvironment\(monitor\.environment\)/);
+    expect(read("src/server/notifications.ts")).toMatch(/if \(!input\.skipSlack\) await postToSlackChannel\(input\)/);
   });
 });
 
@@ -248,12 +257,22 @@ describe("the Slack post — laid out like GitHub Status", () => {
     expect(blocks[1].text?.text).toBe("*<https://foundry.gitwork.co.uk/app/portal/fellas-loaded/wiki#monitors|Fellas Loaded — Production API is down>*");
   });
 
-  it("lists every service on the client with its status, like GitHub's components", () => {
+  it("lists what's not fine, and counts the rest instead of listing them", () => {
     const rows = blocks.filter((b) => b.type === "context").map((b) => b.elements?.[0].text);
     expect(rows).toContain(":red_circle:  Production API — down");
-    expect(rows).toContain(":white_check_mark:  Website");
     // Escaped, so a monitor name can't inject Slack markup.
     expect(rows).toContain(":large_yellow_circle:  Analytics &lt;beta&gt; — slow");
+    expect(rows).not.toContain(":white_check_mark:  Website");
+    expect(rows).toContain(":white_check_mark:  1 other service OK");
+  });
+
+  it("a recovery with everything fine says so in one line", () => {
+    const back = alertBlocks({
+      heading: "x", title: "x", url: "https://x", description: "x", footer: "x",
+      services: [{ name: "Website", state: "up" }, { name: "Api", state: "up" }, { name: "Admin", state: "up" }],
+    });
+    expect(JSON.stringify(back)).toContain("All 3 services are OK");
+    expect(JSON.stringify(back)).not.toContain("Website");
   });
 
   it("has an Open in Foundry button and a footer", () => {
@@ -285,7 +304,7 @@ describe("the Slack post — laid out like GitHub Status", () => {
   it("⚠️ stays under Slack's 50-block cap however many services a client has", () => {
     const many = alertBlocks({
       heading: "x", title: "x", url: "https://x", description: "x", footer: "x",
-      services: Array.from({ length: 80 }, (_, i) => ({ name: `svc ${i}`, state: "up" as const })),
+      services: Array.from({ length: 80 }, (_, i) => ({ name: `svc ${i}`, state: "down" as const })),
     });
     expect(many.length).toBeLessThanOrEqual(50);
     expect(JSON.stringify(many)).toContain("+60 more");
@@ -302,10 +321,62 @@ describe("a first failure is confirmed straight away", () => {
     expect(shouldConfirm("DEGRADED", { failStreak: 0, alertKind: null })).toBe(false);
   });
 
-  it("two quick failures alert as down", () => {
+  it("two quick failures are confirmed, but nobody is told yet", () => {
     const first = nextAlertState(fresh, "DOWN", t(0));
     expect(shouldConfirm("DOWN", first.state)).toBe(true);
     const second = nextAlertState(first.state, "DOWN", new Date(t(0).getTime() + 20_000), ["DOWN"]);
-    expect(second.alert?.kind).toBe("down");
+    expect(second.alert).toBeNull();
+    expect(second.state.failStreak).toBe(2);
+  });
+});
+
+/** Checks the way they really run while failing: a 20-second confirm, then every minute. */
+function runEveryMinute(statuses: ProbeStatus[]) {
+  let state = fresh;
+  let sinceClear: ProbeStatus[] = [];
+  const alerts: string[] = [];
+  statuses.forEach((st, i) => {
+    const at = new Date(t(0).getTime() + (i === 0 ? 0 : 20_000 + (i - 1) * 60_000));
+    const r = nextAlertState(state, st, at, sinceClear);
+    state = r.state;
+    sinceClear = r.alert && (r.alert.kind === "recovered" || r.alert.kind === "stable") ? [] : [...sinceClear, st];
+    if (r.alert) alerts.push(`${r.alert.kind}@${i}`);
+  });
+  return alerts;
+}
+
+describe(`only what's on fire: nothing is posted until it has failed for ${ALERT_AFTER_MINUTES} minutes`, () => {
+  it("⚠️ back within 5 minutes posts nothing at all, not even a 'back up'", () => {
+    // Down at 0:00, 0:20, 1:20, 2:20, 3:20, 4:20, then back.
+    expect(runEveryMinute(["DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "UP"])).toEqual([]);
+  });
+
+  it("posts once it has been failing for 5 minutes, then 'back' when it answers", () => {
+    // 5:20 is the first check 5 minutes on.
+    expect(runEveryMinute(["DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "UP"])).toEqual([
+      "down@6",
+      "recovered@8",
+    ]);
+  });
+
+  it("⚠️ an earlier blip doesn't make a fresh outage count as 5 minutes old", () => {
+    // Failed at 0:00, answered, then failed again from 3:20. The new run is what's timed.
+    const seq: ProbeStatus[] = ["DOWN", "UP", "UP", "UP", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN", "DOWN"];
+    // The new run starts at 3:20, so 5 minutes on is 8:20 (check 9), and it isn't "unstable".
+    expect(runEveryMinute(seq)).toEqual(["down@9"]);
+  });
+
+  it("an unstable service waits 5 minutes from its first failure too", () => {
+    // 3 of 6 failing by 2:20, but only posted once 5 minutes have passed.
+    expect(runEveryMinute(["DOWN", "UP", "DOWN", "UP", "DOWN", "UP", "DOWN", "UP"])).toEqual(["flaky@6"]);
+  });
+
+  it("says how long it has been down", () => {
+    const msg = alertMessage(
+      { clientName: "Wedge", monitorName: "API", target: "https://apiv1.bigwedgegolf.com/health/" },
+      { kind: "down", since: t(0), failures: 7 },
+      { statusCode: 502, error: null, now: t(6) },
+    );
+    expect(msg.body).toContain("Down for 6 min, since 14:00 UTC · HTTP 502");
   });
 });
