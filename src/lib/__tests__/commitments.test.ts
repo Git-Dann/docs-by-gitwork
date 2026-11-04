@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  actionItemIsMine,
   addWorkingDays,
   countSnoozed,
   followUpFromEvent,
@@ -236,5 +237,40 @@ describe("small helpers", () => {
   it("gives one key per source, message and promise", () => {
     expect(suggestionKey("gmail", "gmail:1", "Send the quote!")).toBe(suggestionKey("gmail", "gmail:1", "send the quote"));
     expect(suggestionKey("gmail", "gmail:1", "Send the quote")).not.toBe(suggestionKey("slack", "gmail:1", "Send the quote"));
+  });
+});
+
+describe("only suggestions that are clearly yours", () => {
+  const base: CalendarEventLike = {
+    id: "e1",
+    summary: "Wedge Team x Dan",
+    start: { dateTime: "2026-11-03T10:00:00Z" },
+    end: { dateTime: "2026-11-03T11:00:00Z" },
+    attendees: [
+      { email: "dan@gitwork.co.uk", self: true, responseStatus: "accepted" },
+      { email: "nasirjavediit@gmail.com", responseStatus: "accepted" },
+    ],
+  };
+  const opts = { userEmail: "dan@gitwork.co.uk", internalDomains: ["gitwork.co.uk"], now: NOW };
+
+  it("no follow-up after a repeating meeting like a stand-up", () => {
+    expect(followUpFromEvent({ ...base, recurringEventId: "standup" }, opts)).toBeNull();
+    expect(followUpFromEvent(base, opts)).not.toBeNull();
+  });
+
+  it("a teammate on a personal address is not someone outside", () => {
+    expect(followUpFromEvent(base, { ...opts, internalEmails: new Set(["nasirjavediit@gmail.com"]) })).toBeNull();
+  });
+
+  it("an action item is mine only when the notes name me", () => {
+    const me = { email: "dan@gitwork.co.uk", name: "Dan Lindsay" };
+    expect(actionItemIsMine("Dan", me)).toBe(true);
+    expect(actionItemIsMine("Dan Lindsay", me)).toBe(true);
+    expect(actionItemIsMine("Dan and Harry", me)).toBe(true);
+    expect(actionItemIsMine("dan@gitwork.co.uk", me)).toBe(true);
+    expect(actionItemIsMine("Daniela", me)).toBe(false);
+    expect(actionItemIsMine("Luke (Big Wedge)", me)).toBe(false);
+    expect(actionItemIsMine(null, me)).toBe(false);
+    expect(actionItemIsMine("", me)).toBe(false);
   });
 });

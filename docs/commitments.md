@@ -62,3 +62,17 @@ CLAUDE.md §54).
 The Foundry Slack bot must be in the client channels and have `channels:history`,
 `groups:history` and `users:read.email`. Someone whose Foundry email isn't on a Slack account
 gets "Your Foundry email isn't on a Slack account".
+
+## What gets suggested (November 2026)
+
+The first version suggested 45 things in a day: every action item from every meeting you were in,
+and a follow-up after every external meeting, stand-ups included. Now:
+
+- **Meeting notes:** only items on a board task assigned to you, or whose owner in the notes is
+  you (`actionItemIsMine`: your email, full name, or first name as a whole word).
+- **Calendar:** no follow-up after a repeating event, and teammates and Staff developers on
+  personal addresses count as our side (`teamEmails`).
+- **At most 5 new a day** (`MAX_SUGGESTIONS_PER_DAY`). What doesn't fit is picked up by a later read.
+- **Let go after 7 days** (`SUGGESTION_TTL_DAYS`), and meeting or calendar suggestions the source no
+  longer offers are let go on the next successful read of that source. Let-go means `dismissed`, so
+  the same item is never suggested again.

@@ -32,13 +32,16 @@ import { resolveAiConfig, completeText, parseJsonObject } from "@/server/ai-prov
 import { cachedOrCompute, hashInputs } from "@/server/ai-cache";
 import { cleanSlackText } from "@/lib/crm/signals";
 import {
+  actionItemIsMine,
   clipText,
   followUpFromEvent,
   normaliseExtraction,
   stripQuotedEmail,
   suggestionKey,
   transition,
+  MAX_SUGGESTIONS_PER_DAY,
   QUOTE_MAX,
+  SUGGESTION_TTL_DAYS,
   TITLE_MAX,
   type CalendarEventLike,
   type CommitmentSource,
@@ -118,7 +121,11 @@ export async function listCommitments(user: EffectiveUser): Promise<CommitmentDT
   const rows = await prisma.commitment.findMany({
     where: {
       ...mine(user),
-      OR: [{ state: { in: ["open", "suggested"] } }, { updatedAt: { gte: since } }],
+      OR: [
+        { state: "open" },
+        { state: "suggested", createdAt: { gte: new Date(Date.now() - SUGGESTION_TTL_DAYS * DAY_MS) } },
+        { state: { in: ["done", "dismissed"] }, updatedAt: { gte: since } },
+      ],
     },
     orderBy: [{ createdAt: "desc" }],
     take: 500,
@@ -486,21 +493,27 @@ async function readMeetingItems(user: EffectiveUser): Promise<SourceOutcome<Dire
     where: { workspaceId: user.workspaceId, OR: [{ assignees: { some: { id: user.id } } }, { assigneeId: user.id }] },
     select: { id: true },
   });
+  const myTaskIds = new Set(myTasks.map((t) => t.id));
+  // Only items that are yours: on a board task assigned to you, or a meeting you were in where
+  // the notes name you as the owner. Everyone else's action items are not your to-dos.
   const relevance: Prisma.MeetingActionItemWhereInput[] = [];
-  if (user.email) relevance.push({ meeting: { attendees: { has: user.email } } });
-  if (myTasks.length) relevance.push({ taskId: { in: myTasks.map((t) => t.id) } });
+  if (user.email) relevance.push({ meeting: { attendees: { has: user.email } }, owner: { not: null } });
+  if (myTaskIds.size) relevance.push({ taskId: { in: [...myTaskIds] } });
   if (!relevance.length) return ok([], "No meeting notes include you.");
-  const rows = await prisma.meetingActionItem.findMany({
+  const candidates = await prisma.meetingActionItem.findMany({
     where: {
       done: false,
-      createdAt: { gte: new Date(Date.now() - 30 * DAY_MS) },
+      createdAt: { gte: new Date(Date.now() - SUGGESTION_TTL_DAYS * DAY_MS) },
       meeting: { workspaceId: user.workspaceId },
       OR: relevance,
     },
     include: { meeting: { select: { id: true, title: true, startedAt: true, client: { select: { slug: true, name: true } } } } },
     orderBy: { createdAt: "desc" },
-    take: 40,
+    take: 80,
   });
+  const rows = candidates.filter(
+    (r) => (r.taskId && myTaskIds.has(r.taskId)) || actionItemIsMine(r.owner, { email: user.email, name: user.name }),
+  );
   const items: DirectSuggestion[] = rows.map((r) => ({
     source: "meeting",
     refId: r.id,
@@ -511,9 +524,30 @@ async function readMeetingItems(user: EffectiveUser): Promise<SourceOutcome<Dire
     label: r.meeting.title,
     url: r.meeting.client ? `/app/portal/${r.meeting.client.slug}` : null,
     at: r.meeting.startedAt,
-    reason: "An action item from meeting notes you were in.",
+    reason: "The meeting notes name you as the owner.",
   }));
-  return ok(items, `${items.length} open action item${items.length === 1 ? "" : "s"} from your meetings.`);
+  return ok(items, `${items.length} open action item${items.length === 1 ? "" : "s"} owned by you in your meetings.`);
+}
+
+/**
+ * Everyone on our side by address: active members and the developers on Staff, many of whom use
+ * a personal gmail.com. A meeting with only them is not one you follow up with a client after.
+ */
+async function teamEmails(workspaceId: string): Promise<Set<string>> {
+  const [members, staff] = await Promise.all([
+    prisma.workspaceMember.findMany({
+      where: { workspaceId, ...ACTIVE_MEMBER },
+      select: { user: { select: { email: true } } },
+    }),
+    prisma.candidate.findMany({
+      where: { workspaceId, email: { not: null } },
+      select: { email: true },
+    }),
+  ]);
+  const out = new Set<string>();
+  for (const m of members) if (m.user.email) out.add(m.user.email.toLowerCase());
+  for (const c of staff) if (c.email) out.add(c.email.toLowerCase());
+  return out;
 }
 
 async function readCalendar(user: EffectiveUser, refreshToken: string | null): Promise<SourceOutcome<DirectSuggestion>> {
@@ -521,6 +555,7 @@ async function readCalendar(user: EffectiveUser, refreshToken: string | null): P
   const auth = googleClientForRefreshToken(refreshToken);
   if (!auth) return failed("Google sign-in isn't configured on this server.");
   try {
+    const internalEmails = await teamEmails(user.workspaceId);
     const calendar = google.calendar({ version: "v3", auth });
     const now = new Date();
     const res = await calendar.events.list({
@@ -537,6 +572,7 @@ async function readCalendar(user: EffectiveUser, refreshToken: string | null): P
       const follow = followUpFromEvent(event as CalendarEventLike, {
         userEmail: user.email,
         internalDomains: INTERNAL_DOMAINS,
+        internalEmails,
         now,
       });
       if (!follow) continue;
@@ -553,7 +589,7 @@ async function readCalendar(user: EffectiveUser, refreshToken: string | null): P
         reason: "You met someone outside Gitwork and haven't followed up here yet.",
       });
     }
-    return ok(items, `${items.length} recent external meeting${items.length === 1 ? "" : "s"} to follow up.`);
+    return ok(items, `${items.length} one-off meeting${items.length === 1 ? "" : "s"} with people outside Gitwork to follow up.`);
   } catch (err) {
     const message = (err as Error).message ?? "unknown error";
     return failed(
@@ -678,10 +714,43 @@ async function saveSuggestions(user: EffectiveUser, suggestions: NewSuggestion[]
     return true;
   });
   if (!fresh.length) return 0;
-  await prisma.commitment.createMany({
-    data: fresh.map((s) => ({ ...mine(user), ...s, state: "suggested" })),
+  // A handful a day, not a backlog. What doesn't fit waits for tomorrow's read (the sources
+  // re-read their window), so nothing is lost by holding it back.
+  const today = await prisma.commitment.count({
+    where: { ...mine(user), source: { not: "manual" }, createdAt: { gte: new Date(Date.now() - DAY_MS) } },
   });
-  return fresh.length;
+  const room = Math.max(0, MAX_SUGGESTIONS_PER_DAY - today);
+  const kept = fresh.slice(0, room);
+  if (!kept.length) return 0;
+  await prisma.commitment.createMany({
+    data: kept.map((s) => ({ ...mine(user), ...s, state: "suggested" })),
+  });
+  return kept.length;
+}
+
+/**
+ * Lets go of suggestions nobody needs any more: any over a week old, and meeting or calendar ones
+ * the source no longer offers (the item was finished, or isn't yours under the current rules).
+ * Only a source that was read this time can let go of its own, so a failed read changes nothing.
+ * Let-go suggestions become "dismissed", so the same item is never suggested again.
+ */
+async function letGoOfSuggestions(
+  user: EffectiveUser,
+  now: Date,
+  current: { meeting: Set<string> | null; calendar: Set<string> | null },
+): Promise<void> {
+  await prisma.commitment.updateMany({
+    where: { ...mine(user), state: "suggested", createdAt: { lt: new Date(now.getTime() - SUGGESTION_TTL_DAYS * DAY_MS) } },
+    data: { state: "dismissed" },
+  });
+  for (const source of ["meeting", "calendar"] as const) {
+    const keep = current[source];
+    if (!keep) continue;
+    await prisma.commitment.updateMany({
+      where: { ...mine(user), state: "suggested", source, externalId: { notIn: [...keep] } },
+      data: { state: "dismissed" },
+    });
+  }
 }
 
 /**
@@ -764,6 +833,10 @@ export async function syncCommitments(user: EffectiveUser): Promise<CommitmentSy
       });
     }
     const added = await saveSuggestions(user, suggestions);
+    await letGoOfSuggestions(user, now, {
+      meeting: meetings?.status.ok ? new Set((meetings.items ?? []).map((d) => suggestionKey(d.source, d.refId, d.title))) : null,
+      calendar: calendar?.status.ok ? new Set((calendar.items ?? []).map((d) => suggestionKey(d.source, d.refId, "follow up"))) : null,
+    });
 
     // Only move the window forward when every enabled source was actually read.
     const allRead = Object.values(sources).every((s) => s.ok);
