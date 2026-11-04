@@ -12,7 +12,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { EffectiveUser } from "@/server/auth/effective-user";
 import { ForbiddenError } from "@/server/auth/effective-user";
-import { developerUserIds, staffOnlyView } from "@/server/backstage-people";
+import { gitworkUserFilter, staffOnlyView } from "@/server/backstage-people";
 import { monthGridRange } from "@/server/backstage-gcal";
 import { getSlackBotToken, postMessage } from "@/server/slack/client";
 import type { AbsenceDTO, AbsenceKind, CoverableClient, CoverAssignmentDTO } from "@/types/backstage";
@@ -86,7 +86,7 @@ function dayUtc(iso?: string): Date {
 export async function listTodayAbsences(user: EffectiveUser): Promise<AbsenceDTO[]> {
   const today = dayUtc();
   // Team today for a staff-only approver (People & office) is Gitwork staff, not developers.
-  const notDevelopers = staffOnlyView(user) ? { userId: { notIn: await developerUserIds(user.workspaceId) } } : {};
+  const notDevelopers = staffOnlyView(user) ? await gitworkUserFilter(user) : {};
   const rows = await prisma.absence.findMany({
     where: {
       workspaceId: user.workspaceId,

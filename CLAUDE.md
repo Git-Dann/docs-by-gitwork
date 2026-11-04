@@ -9931,3 +9931,24 @@ printing Anthropic's raw JSON (`400 {"type":"error"… credit balance is too low
   tested) turns them into one sentence: out of credit, key rejected, not set up, rate limited,
   no answer, or a generic error. The Technical tab keeps its Regenerate banner with that sentence
   (the raw text is in its tooltip), and the agent panel uses it too.
+
+## 118. Recent Changes (November 2026) — Who counts as Gitwork, and leave that doesn't use allowance
+
+Follow-up to the People & office section (Siân) above.
+
+- **Gitwork's own staff = Employee or Director on their Staff record, and not a developer**
+  (`isGitworkStaff` / `GITWORK_EMPLOYMENT_TYPES` in `src/lib/staff.ts`). "Not a developer" was
+  wrong: Hassaan (Product Manager, Contractor) and Syed (no Staff record) landed in Gitwork.
+  Contractors, freelancers and anyone with no record are "everyone else". The same rule drives
+  Staff → People, whose leave Siân approves and hears about, Team today, staffing alerts and her
+  HR reminders (`gitworkUserIds` / `gitworkUserFilter` in `backstage-people.ts`). A staff-only
+  viewer always sees their own leave too, even before their record has a type. ⚠️ So a Gitwork
+  employee needs an Employment type on their Staff record to be Siân's.
+- **Leave can be marked as not using allowance** (`LeaveRequest.countsToAllowance`, additive,
+  nullable; rules in `src/lib/leave-allowance.ts`). Null (older requests) keeps the old rule:
+  only Annual counts. New requests default the same way and the leave form has a "Counts towards
+  holiday allowance" tickbox that follows the type until someone sets it. The allowance query
+  uses `COUNTS_TO_ALLOWANCE_WHERE`. Leave lists say "not from allowance" / "from allowance"
+  when a request goes against its type's default.
+- The leave form's buttons are pinned to the bottom of the dialog (`BackstageModal`'s `footer`,
+  submit via `form=`); they used to float mid-panel above empty space.

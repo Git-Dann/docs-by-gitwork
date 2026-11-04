@@ -40,6 +40,8 @@ export type LeaveRequestDTO = {
   endDate: string; // ISO date (inclusive)
   halfDayStart: boolean;
   halfDayEnd: boolean;
+  /** Whether it uses up holiday allowance (src/lib/leave-allowance.ts). */
+  countsToAllowance: boolean;
   /** Effective length in working days, excluding weekends + public holidays in the user's country. */
   workingDays: number;
   reason: string | null;

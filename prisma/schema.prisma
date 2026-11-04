@@ -4450,6 +4450,9 @@ model LeaveRequest {
   halfDayStart  Boolean   @default(false)
   halfDayEnd    Boolean   @default(false)
   reason        String?
+  /// Whether it uses up holiday allowance. Null (requests before Nov 2026) = only ANNUAL
+  /// counts. See src/lib/leave-allowance.ts.
+  countsToAllowance Boolean?
   status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | CANCELLED
   approvedById  String?
   approvedAt    DateTime?

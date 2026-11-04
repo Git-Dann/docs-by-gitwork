@@ -136,10 +136,12 @@ describe("dialogs — one primitive, no re-rolls", () => {
     // footer is NESTED inside the scroller, which is the bug — caught by sabotage.
     expect(src).toMatch(/overflow-y-auto">\{children\}<\/div>/);
     expect(src).toMatch(/shrink-0 border-t[^"]*">\{footer\}<\/div>/);
-    // The existing callers pass none and keep their footer inside their own form,
-    // which is how Leave and Expenses have always worked.
+    // The leave form uses it (Nov 2026): its buttons floated mid-panel above empty space.
+    // The submit button lives outside the <form>, so it must name the form it submits.
     const leave = read(join(process.cwd(), "src/components/backstage/leave-request-form.tsx"));
-    expect(leave).not.toContain("footer={");
+    expect(leave).toContain("footer={");
+    expect(leave).toMatch(/type="submit" form=\{FORM_ID\}/);
+    expect(leave).toMatch(/<form id=\{FORM_ID\}/);
   });
 
   it("every dialog the fixed-height clamp is on keeps a shrinkable scroll region", () => {

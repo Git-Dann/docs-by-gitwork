@@ -18,6 +18,19 @@ export const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
   FREELANCER: "Freelancer",
 };
 
+/**
+ * Who counts as Gitwork's own staff: employed by it or a director of it, and not a developer.
+ * Contractors, freelancers and anyone without a Staff record are "everyone else". Siân (People
+ * & office) looks after these people only — their leave, their HR records (Dan, Nov 2026:
+ * "Hassaan and Syed are not Gitwork"). One rule, used by Staff → People and by
+ * src/server/backstage-people.ts, so the page and her approvals can't disagree.
+ */
+export const GITWORK_EMPLOYMENT_TYPES = ["EMPLOYEE", "DIRECTOR"] as const;
+
+export function isGitworkStaff(p: { employmentType: string | null | undefined; isDeveloper: boolean }): boolean {
+  return !p.isDeveloper && (GITWORK_EMPLOYMENT_TYPES as readonly string[]).includes(p.employmentType ?? "");
+}
+
 export function isEmploymentType(value: unknown): value is EmploymentType {
   return typeof value === "string" && (EMPLOYMENT_TYPES as readonly string[]).includes(value);
 }
@@ -215,14 +228,14 @@ export function staffGroupOf(p: Pick<StaffPerson, "role">): StaffGroupId {
 }
 
 /**
- * For someone who looks after Gitwork's own staff and not developers (People & office, Siân):
- * Gitwork's people first, everyone else apart so it can be folded away. "Developer" is the
- * Staff record's own fact, the same rule Backstage uses for whose leave she handles.
+ * For someone who looks after Gitwork's own staff (People & office, Siân): Gitwork's people
+ * first, everyone else apart so it can be folded away. `isGitworkStaff` decides, the same rule
+ * Backstage uses for whose leave she handles.
  */
 export function splitGitworkStaff(people: StaffPerson[]): { gitwork: StaffPerson[]; others: StaffPerson[] } {
   const gitwork: StaffPerson[] = [];
   const others: StaffPerson[] = [];
-  for (const p of people) (p.isDeveloper ? others : gitwork).push(p);
+  for (const p of people) (isGitworkStaff(p) ? gitwork : others).push(p);
   return { gitwork, others };
 }
 

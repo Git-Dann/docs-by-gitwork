@@ -103,6 +103,8 @@ export function LeaveTab() {
                     })}{" "}
                     <span className="font-normal text-[var(--text-3)]">
                       · {r.workingDays} {r.workingDays === 1 ? "day" : "days"} · {r.type.toLowerCase()}
+                      {r.type === "ANNUAL" && !r.countsToAllowance ? " · not from allowance" : null}
+                      {r.type !== "ANNUAL" && r.countsToAllowance ? " · from allowance" : null}
                     </span>
                   </p>
                   {r.reason ? (
